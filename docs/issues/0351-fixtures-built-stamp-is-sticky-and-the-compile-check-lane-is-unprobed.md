@@ -1,11 +1,11 @@
 ---
 id: 351
-title: "The `.fixtures-built` stamp is never invalidated, so a build stage that STOPS working keeps its green marker — and the compile-check lane is outside the staleness probe entirely"
+title: "Build-stage fixture gates answer PRESENCE, not truth — the compile-check lane has neither the input-signature nor the toolchain predicate the workspace lane already uses"
 status: open
 type: limitation
 severity: medium
 area: build, testing
-related: [issue-0196, issue-0309, issue-0350]
+related: [issue-0030, issue-0196, issue-0309, issue-0350]
 ---
 
 ## Finding (2026-07-29, from the issue-0350 post-mortem)
@@ -13,7 +13,7 @@ related: [issue-0196, issue-0309, issue-0350]
 Issue 0350 — `compile-check-fixtures.sh` failing wholesale on `main` — sat
 unnoticed for three days. The obvious explanation ("nothing asserts the script's
 exit status") is **wrong**, and worth correcting because it points at the wrong
-fix. The propagation chain is actually sound at every link:
+fix. The propagation chain is sound at every link:
 
 | link | behaviour |
 | --- | --- |
@@ -22,101 +22,139 @@ fix. The propagation chain is actually sound at every link:
 | `_require-fixtures` (test-all prereq) | no stamp → fails loudly with a build hint |
 | `cmake_node_register_metadata.rs` | asserts these very fixtures' `nros-metadata.json` |
 
-Every piece works. The red still hid, for two reasons that are each worth
-fixing on their own.
+Every piece works. The red still hid, because each gate answers **"is the
+artifact present?"** when the question is **"is the artifact TRUE?"** — i.e. was
+it produced by a successful, current build. Presence is a weaker question, and
+the gap between the two is where this lived.
 
-## Defect 1 — the stamp is STICKY
+## The three ways presence diverges from truth
+
+### 1. The suite stamp is STICKY — present ≠ recent
 
 `target/nextest/.fixtures-built` is written by `build-test-fixtures` (and
-`build-all`) on success, and **removed by nothing** — `git grep fixtures-built`
-returns two writes, one read, zero deletions.
-
-So the stamp answers "did this build stage EVER succeed?", not "did it succeed?".
-The regression case is the whole problem:
+`build-all`) on success and **removed by nothing** — `git grep fixtures-built`
+returns two writes, one read, zero deletions. It answers "did this build stage
+EVER succeed?".
 
 1. A run succeeds → stamp written.
 2. A change breaks a fixture (here: the 305-W2 verb sweep, `bb0b08419`).
 3. The next `build-test-fixtures` aborts under `set -e` → **the old stamp
    survives untouched**.
-4. `_require-fixtures` sees a stamp and passes. `test-all` proceeds as if the
-   fixtures were built.
+4. `_require-fixtures` sees a stamp and passes; `test-all` proceeds.
 
-A first-ever run on a clean checkout is safe (no stamp, hard fail). It is
+A first-ever run on a clean checkout is safe (no stamp → hard fail). It is
 precisely the *regression* — the case that matters — that the gate cannot see.
-This is a success marker that is never cleared before the attempt it certifies.
 
-## Defect 2 — the compile-check lane is outside the staleness probe
+Note the same script already gets this right one level down:
+`compile-check-fixtures.sh:118` does `rm -f "$staged/.compile-ok"` **before** the
+build and writes it after. The per-fixture stamps are cleared before the attempt
+they certify; only the suite-level stamp is sticky.
 
-`scripts/check-fixtures-stale.sh` (the `_check-fixtures-stale` gate) enumerates
-its subjects from `examples/fixtures.toml` via `fixtures-manifest.py list` /
-`list-workspaces`. The compile-check fixtures are **not in that manifest** —
-they live in a hardcoded array inside `compile-check-fixtures.sh` (the
-`l9_register_cpp:…` entries).
+### 2. A per-fixture stamp is presence-only — present ≠ current
 
-So the staleness gate has *zero* coverage of that lane: it cannot notice a
-compile-check fixture whose sources moved past its `.compile-ok` stamp, and it
-did not notice these never being produced at all.
+`.compile-ok` records *that* a build succeeded, not *what it was built from*. A
+source edit after the stamp leaves it valid-looking forever. Nothing in the
+compile-check lane compares inputs to outputs.
 
-This is issue 0196's rule ("build-side stale probes must watch the same inputs
-as test-side gates") with the probe's subject list narrower than the class it
-enforces — the same shape as the four gates the 2026-07-28 audit found.
+### 3. Absent is indistinguishable from broken
 
-## Why the test that covers it did not go red
+`require_cmake_fixture` → `require_prebuilt_binary_fresh` is tier-aware: a
+missing fixture is a hard failure in the full tier but a **`[SKIPPED]`** under
+`NROS_FIXTURES_OPTIONAL=1`. Correct for "the toolchain isn't installed", wrong
+for "the fixture is broken" — and the resolver cannot tell them apart, because
+both present as a missing file. So the lane people run locally reports
+green-with-skips for something that cannot be built at all.
 
-`cmake_node_register_metadata.rs` resolves through `require_cmake_fixture` →
-`require_prebuilt_binary_fresh`, which is tier-aware: a missing fixture is a hard
-failure in the full tier but a **`[SKIPPED]`** under `NROS_FIXTURES_OPTIONAL=1`
-(the light host-integration lane). A lane running optional therefore reports
-green-with-skips for a fixture that cannot be built at all.
+## The lane next door already solved all three
 
-That is correct behaviour for "the toolchain is absent" and wrong for "the
-fixture is BROKEN" — the resolver cannot distinguish the two, because both
-present as an absent artifact.
+This does not need inventing. `workspace-fixtures-build.sh` +
+`check-fixtures-stale.sh` answer truth, with two mechanisms:
 
-## Ways to fix, cheapest first
+- **Input signature.** `workspace-fixture-signature.sh` hashes the manifest
+  record plus the source tree; the builder writes
+  `.nros-workspace-fixture.<id>.inputsig` after a successful build, and
+  `workspace-fixture-stale.sh` recomputes and compares. The question is "does
+  this stamp match current inputs?", not "does a stamp exist?" — that is (1) and
+  (2) closed together, since a failed build never writes a signature and a source
+  edit invalidates it.
+- **An explicit toolchain predicate.** `workspace_toolchain_present` →
+  `nros_toolchain_present` (`scripts/test/toolchain-gate.sh`, a SHARED predicate
+  since phase-300 W4) *asks whether the cross toolchain exists* and drops the
+  fixture from the required set with an informational message (issue 0030). It
+  never infers absence from a missing artifact — that is (3) closed.
 
-**A. Clear the stamp before the attempt** (fixes defect 1; ~1 line)
+The compile-check lane has neither. It is the same shape as this week's other
+findings: a rule implemented properly in one place and not in its sibling.
 
-`rm -f target/nextest/.fixtures-built` at the TOP of `build-test-fixtures` (and
-`build-all`). A failed or interrupted run then leaves no stamp and
-`_require-fixtures` fails with its existing message.
+## And the lane is drift from a documented rule
 
-Fail-closed and precisely targeted. The cost is that an interrupted (Ctrl-C)
-build now also demands a re-run before `test-all` — arguably correct, since an
-interrupted build stage IS unverified, and `NROS_SKIP_FIXTURE_CHECK=1` already
-exists for the deliberate bypass.
+`AGENTS.md:79` already prescribes where compile-intent checks belong:
 
-**B. Put the compile-check fixtures in `fixtures.toml`** (fixes defect 2)
+> If a test's *intent* is to verify that something compiles (a macro form, a
+> codegen output, an API shape), make it a **fixture in the build step** — add a
+> row to `examples/fixtures.toml` … and have the test assert the fixture exists /
+> inspect the built artifact.
 
-Make the manifest the SSoT for that lane too, so `check-fixtures-stale.sh` and
-anything else reading the manifest cover it for free. Needs a `kind` for
-"configure-only / cross-build" rows, since these produce a stamp or a JSON rather
-than a runnable binary — real work, but it retires a hardcoded list that is
-already drifting from the manifest world around it.
+Of the 26 entries in `compile-check-fixtures.sh`, **10 are exactly that** —
+compile-time feature checks with no runtime artifact (`n9_form1/2` macro forms,
+`one_dep_component_pkg` dep resolution, `o4_pkg_index`, the three
+`CXX_SYNTAX_FIXTURES` API shapes, the two embassy `CARGO_CHECK_EXAMPLES`). They
+live in a hardcoded shell array instead of `fixtures.toml`, which is why
+`check-fixtures-stale.sh` — which enumerates the manifest — cannot see them.
+That is not a design choice; it is drift from the rule.
 
-**C. Distinguish "absent" from "broken" in the resolver**
+The other **16 produce artifacts tests read or execute** (`BUILD_FIXTURES`
+binaries are run; several `CMAKE_FIXTURES` yield `robot_entry` / `consumer` /
+`smoke` binaries as well as `nros-metadata.json`; `CROSS_BUILD_FIXTURES` ELFs are
+booted in QEMU). Those are ordinary build-stage fixtures that happen to be built
+by a different recipe — so the manifest axis they need is the **builder**
+(`cargo-check` / `cargo-build` / `cmake-configure` / `cross-build`) and the
+output path, not a separate "compile fixture" species.
 
-Have a failed build-stage lane drop a `.build-failed` marker that
-`require_prebuilt_binary_fresh` treats as a hard error even under
-`NROS_FIXTURES_OPTIONAL`. Then a broken fixture is red in every tier while a
-genuinely absent toolchain still skips. Closes the gap in "Why the test did not
-go red" without making the optional tier useless on machines missing SDKs.
+## Ways to fix
+
+**A. Clear the suite stamp before the attempt** (defect 1; ~1 line)
+
+`rm -f target/nextest/.fixtures-built` at the TOP of `build-test-fixtures` and
+`build-all`. Makes the suite level consistent with the per-fixture discipline
+already at `compile-check-fixtures.sh:118`. Fail-closed; an interrupted build now
+also demands a re-run, which is correct (an interrupted build stage IS
+unverified) and `NROS_SKIP_FIXTURE_CHECK=1` remains the deliberate bypass.
+
+**B. Move the lane into `fixtures.toml`** (defect 2; compliance with AGENTS.md:79)
+
+Add a `builder` field to the existing `[[fixture]]` table — defaulting to today's
+behaviour so the 251 existing rows are untouched — plus the output path each row
+produces. Retires six ad-hoc colon-delimited array formats, and gives
+`check-fixtures-stale.sh` a uniform `(sources → output)` pair per row, which is
+what signature comparison needs.
+
+**C. Adopt the signature + toolchain-predicate pair** (defects 2 and 3; the real fix)
+
+Reuse the workspace lane's mechanisms rather than new ones: an `.inputsig`
+equivalent so a stamp is checkable against its inputs, and `nros_toolchain_present`
+at resolve time so "toolchain absent" is *decided* rather than inferred. With the
+predicate in place, a missing artifact whose toolchain IS present becomes a hard
+error in every tier — which is what would have turned #350 red in the lane people
+actually run.
+
+C depends on B for the per-row data (which toolchain, which output), so they land
+in that order.
 
 **D. A `just check` step asserting the script's exit code** — REJECTED
 
 It would re-run the build stage inside the check tier (minutes of cmake/cargo),
-and `check-fast` is explicitly buildless. The exit code is already propagated
-correctly; the defect is the stamp's stickiness, not a missing assertion.
-Recording the rejection so it is not re-proposed.
+and `check-fast` is explicitly buildless. The exit code already propagates
+correctly; the defect is that the *stamps* answer presence, not that an assertion
+is missing.
 
-**Recommended: A now** (one line, removes the sticky-green class outright), then
-**C** (small, and it is the piece that would have turned this red in the lane
-people actually run), with **B** when someone is next in the manifest.
+**Recommended: A now** (one line, independent, removes the sticky class), then
+**B → C** as one pass, since C is where presence finally becomes truth.
 
 ## The general shape
 
 A cached success marker that outlives the thing it certifies is the same pattern
-as issue 0309's count-based proofs and issue 0268's museum binaries: the signal
-is real, but it answers a weaker question than the one being asked. Worth
-checking any other stamp in the tree against "is this cleared before the attempt
-it certifies?"
+as issue 0309's count-based proofs and issue 0268's museum binaries: the signal is
+real but answers a weaker question than the one being asked. Worth auditing every
+stamp in the tree against two questions — *is it cleared before the attempt it
+certifies?* and *can it distinguish "not built" from "failed to build"?*
