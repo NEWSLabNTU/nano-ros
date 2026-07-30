@@ -5,10 +5,16 @@
 //! into a single static archive, then exposes the
 //! `nros_rmw_xrce_register` symbol to the Rust side via `extern "C"`.
 //!
-//! Source list mirrors `packages/xrce/xrce-sys/build.rs` (proven set for
-//! the same uxr core) plus the K.2 backend TUs. Keep both lists in
-//! lockstep — any new file added here must land in xrce-sys's build.rs
-//! and `nros-rmw-xrce/CMakeLists.txt` too.
+//! phase-321 W1.d — this build script is now the SOLE Rust-side owner of the
+//! source list. It used to say "mirrors `packages/xrce/xrce-sys/build.rs` …
+//! keep both lists in lockstep", i.e. it was a maintained duplicate of a build
+//! script belonging to a crate with zero dependents, excluded from every
+//! workspace build. That crate is deleted; only the DIRECTORY survives, because
+//! it hosts the micro-XRCE-DDS-Client and micro-CDR submodules that this script
+//! and `nros-rmw-xrce/CMakeLists.txt` both compile from.
+//!
+//! One mirror remains and is real: a new source file added here must also land
+//! in `nros-rmw-xrce/CMakeLists.txt`, which is the C/C++ consumers' entry point.
 
 use std::{env, fs, path::PathBuf};
 

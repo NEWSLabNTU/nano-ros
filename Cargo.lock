@@ -1893,13 +1893,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-orchestration"
-version = "0.5.0"
-dependencies = [
- "nros-node",
-]
-
-[[package]]
 name = "nros-orchestration-ir"
 version = "0.5.0"
 dependencies = [
@@ -3949,13 +3942,6 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
-]
-
-[[package]]
-name = "xrce-sys"
-version = "0.5.0"
-dependencies = [
- "cc",
 ]
 
 [[package]]

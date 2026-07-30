@@ -79,36 +79,6 @@ doctor:
     fi
     exit $fail
 
-# Build the px4 RMW + board crates (host-mock std mode).
-[group("main")]
-build:
-    #!/usr/bin/env bash
-    set -e
-    source scripts/build/cargo.sh
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    cargo build $cargo_profile_args -p nros-rmw-uorb -p nros-px4 --features std
-
-# Cross-build nros-rmw-uorb for every PX4 target triple in
-# `cmake/px4-rust.cmake`. Pre-flight check that Phase 90.2b's
-# no_std + alloc registry path actually links on the platforms
-# real PX4 modules deploy to: STM32F1/F4 (M3), Pixhawk 4 (M4F),
-# STM32H7 / NXP RT117x (M7).
-[group("examples")]
-build-targets:
-    #!/usr/bin/env bash
-    set -e
-    source scripts/build/cargo.sh
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    echo "→ thumbv7m-none-eabi (Cortex-M3)"
-    cargo build $cargo_profile_args -p nros-rmw-uorb \
-        --target thumbv7m-none-eabi --no-default-features --features alloc
-    echo "→ thumbv7em-none-eabihf (Cortex-M4F / Pixhawk 4)"
-    cargo build $cargo_profile_args -p nros-rmw-uorb \
-        --target thumbv7em-none-eabihf --no-default-features --features alloc
-    echo "→ thumbv8m.main-none-eabihf (Cortex-M7 / STM32H7)"
-    cargo build $cargo_profile_args -p nros-rmw-uorb \
-        --target thumbv8m.main-none-eabihf --no-default-features --features alloc
-
 # Build PX4 SITL with the nano-ros uORB C++ register-check module
 # linked in via EXTERNAL_MODULES_LOCATION. This is the Phase 115.K.4.5
 # validation gate: it compiles the entire `nros-rmw-uorb-cpp` library
@@ -177,38 +147,15 @@ build-fixtures:
     done
     echo "PX4 XRCE fixtures built."
 
-# Build every PX4 tier: core crates, example integrations, and fixtures.
+# Build every PX4 tier: example integrations and fixtures.
+#
+# phase-321 W1.c — `build` and `build-targets` are gone from this list because
+# they built `nros-rmw-uorb` and `nros-px4` as CARGO crates, and both were
+# deleted in phase-115.K.4. The surviving uORB backend is the C++ CMake project
+# at `packages/px4/nros-rmw-uorb`, which `build-examples` covers.
 [group("full-matrix")]
-build-all: build build-targets build-examples build-fixtures
+build-all: build-examples build-fixtures
     @echo "PX4 build-all completed."
-
-# Check formatting + clippy on px4 crates.
-#
-# fmt uses `-p` per crate (not `--all`) because `cargo fmt --all`
-# from the nano-ros workspace walks path-dep
-# `third-party/px4/px4-rs/*` crates with nano-ros's stable rustfmt
-# and rewrites them — drift against px4-rs's pinned nightly
-# rustfmt. Pinning per-crate keeps fmt confined to nano-ros sources.
-check:
-    cargo fmt --check -p nros-rmw-uorb -p nros-px4
-    cargo clippy -p nros-rmw-uorb -p nros-px4 --features std,test-helpers --all-targets -- -D warnings
-
-# Run unit tests against the px4-rs std mock broker (no SITL required).
-# Includes nros-px4's run_async/pump host-mock tests (90.5b acceptance).
-#
-# Default-parallel mode is fine after px4-rs upstream landed:
-# - `3afaf2c2` HRT worker pool — fixes thread-spawn-per-call leak
-# - HRT cancel evicts queue entries — fixes Sleep-Drop UAF
-# - notify holds callback list lock + Vec<Arc<>> — fixes
-#   Subscription-Drop UAF in callback dispatch
-[group("main")]
-test:
-    #!/usr/bin/env bash
-    set -e
-    source scripts/build/cargo.sh
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    cargo test $cargo_profile_args -p nros-rmw-uorb --features std,test-helpers --lib --tests
-    cargo test $cargo_profile_args -p nros-px4 --features test-helpers --tests
 
 # Run E2E tests against PX4 SITL. Builds SITL + the XRCE fixtures first.
 #
@@ -227,9 +174,16 @@ test-sitl: build-sitl-cpp build-fixtures
     cd packages/testing/nros-px4-sitl-test
     cargo nextest run "${cargo_nextest_args[@]}" --test px4_e2e --test px4_xrce_e2e
 
-# Combined CI: check + unit tests (SITL gated separately via test-sitl).
+# Combined CI: build the C++ uORB integration (SITL gated separately via
+# test-sitl).
+#
+# phase-321 W1.c — this was `ci: check test build-targets`, all three of which
+# built the CARGO crates `nros-rmw-uorb` / `nros-px4` that phase-115.K.4
+# deleted. Only archived phase docs referenced this recipe, so it had been
+# unrunnable and unnoticed. What survives is the C++ CMake project, which
+# `build-examples` compiles inside a real `px4_add_module()` context.
 [group("full-matrix")]
-ci: check test build-targets
+ci: build-examples
 
 # Clean PX4 example build artifacts without touching downloaded submodules.
 [group("main")]
@@ -237,7 +191,9 @@ clean:
     #!/usr/bin/env bash
     set -e
     PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
-    rm -rf packages/rmw/nros-rmw-uorb/target packages/platforms/nros-px4/target
+    # (phase-321 W1.c — the old `rm -rf packages/rmw/nros-rmw-uorb/target
+    # packages/platforms/nros-px4/target` line is gone: BOTH crates were deleted
+    # in phase-115.K.4 and `packages/rmw/` has never existed in this tree.)
     if [ -d examples/px4 ]; then
         find examples/px4 -type d -name target -exec rm -rf {} + 2>/dev/null || true
     fi

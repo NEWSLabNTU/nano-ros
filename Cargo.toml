@@ -15,7 +15,6 @@ members = [
     "packages/core/nros-rmw-metadata",
     "packages/core/nros-node",
     "packages/core/nros-log",
-    "packages/core/nros-orchestration",
     # Shared per-tier orchestration schema + resolver (RFC-0015). Leaf crate
     # consumed by BOTH the nros CLI codegen and the nros::main! proc-macro so
     # the tier resolution never drifts between build-time and codegen paths.
@@ -43,7 +42,6 @@ members = [
     # Free-list allocator for z_malloc/z_free on bare-metal
     "packages/zpico/zpico-alloc",
     # XRCE-DDS FFI bindings
-    "packages/xrce/xrce-sys",
     # Zenoh RMW backend (shim + zpico wrapper)
     "packages/zpico/nros-rmw-zenoh",
     # Phase 123.A.1.x.4.a — standalone staticlib wrapper. Emits
@@ -563,7 +561,6 @@ nros-rmw-cyclonedds-sys = { version = "0.5.0", path = "packages/dds/nros-rmw-cyc
 nros-rmw-cffi = { version = "0.5.0", path = "packages/core/nros-rmw-cffi", default-features = false }
 nros-node = { version = "0.5.0", path = "packages/core/nros-node", default-features = false }
 nros-log = { version = "0.5.0", path = "packages/core/nros-log" }
-nros-orchestration = { version = "0.5.0", path = "packages/core/nros-orchestration", default-features = false }
 nros-build-helpers = { version = "0.5.0", path = "packages/core/nros-build-helpers" }
 nros-sizes-build = { version = "0.5.0", path = "packages/core/nros-sizes-build" }
 nros-platform = { version = "0.5.0", path = "packages/core/nros-platform", default-features = false }
@@ -579,7 +576,6 @@ zpico-link-ivc = { version = "0.5.0", path = "packages/zpico/zpico-link-ivc", de
 zpico-platform-custom = { version = "0.5.0", path = "packages/zpico/zpico-platform-custom", default-features = false }
 zpico-sys = { version = "0.5.0", path = "packages/zpico/zpico-sys", default-features = false }
 zpico-alloc = { version = "0.5.0", path = "packages/zpico/zpico-alloc" }
-xrce-sys = { version = "0.5.0", path = "packages/xrce/xrce-sys", default-features = false }
 
 # no_std compatible
 heapless = "0.8"

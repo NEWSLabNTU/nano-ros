@@ -809,7 +809,6 @@ test-unit verbose="":
           --exclude nros-rmw-xrce-cffi \
           --exclude nros-rmw-xrce-cffi-staticlib \
         --exclude nros-build-paths \
-        --exclude xrce-sys \
           --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -1730,7 +1729,6 @@ build-workspace:
         --exclude nros-build-helpers \
         --exclude nros-zpico-build \
         --exclude nros-build-paths \
-        --exclude xrce-sys
     # Mirror the build excludes: under `--no-default-features` nros-c /
     # nros-cpp reference the per-platform `nros_platform_log_write` ABI
     # (Phase 88 log facade default sink) which no platform impl supplies
@@ -1745,7 +1743,6 @@ build-workspace:
         --exclude nros-build-helpers \
         --exclude nros-zpico-build \
         --exclude nros-build-paths \
-        --exclude xrce-sys
 
 # Build workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
@@ -1772,7 +1769,6 @@ build-workspace-embedded:
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \
         --exclude nros-build-paths \
-        --exclude xrce-sys \
         --exclude nros-orchestration-ir \
         --exclude nros-rmw-metadata \
         --exclude nros-board-native \
@@ -1859,7 +1855,6 @@ check-workspace:
         --exclude nros-build-helpers \
         --exclude nros-zpico-build \
         --exclude nros-build-paths \
-        --exclude xrce-sys
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
@@ -1887,7 +1882,6 @@ check-workspace-embedded:
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \
         --exclude nros-build-paths \
-        --exclude xrce-sys \
         --exclude nros-orchestration-ir \
         --exclude nros-rmw-metadata \
         --exclude nros-board-native \

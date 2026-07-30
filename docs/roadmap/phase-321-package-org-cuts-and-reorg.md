@@ -1,6 +1,6 @@
 # Phase 321 — Package organization: cuts and the group reorganization
 
-**Status (2026-07-31): drafted, nothing landed.** Split out of the original
+**Status (2026-07-31): W1 landed (W1.e withdrawn). W2/W3 open.** Split out of the original
 combined draft. Sibling phases: [phase-320](phase-320-board-support-tiers.md)
 (support tiers), [phase-322](phase-322-board-crate-consolidation.md) (board crate
 merges, deferred).
@@ -34,43 +34,51 @@ and it must not block phase-320's honesty fixes.
 
 Each verified: zero consumers, or consumers that cannot work.
 
-- [ ] **W1.a** Delete `packages/core/nros-orchestration/` (315 LoC).
+- [x] **W1.a** Delete `packages/core/nros-orchestration/` (315 LoC).
       `rg "nros_orchestration::"` (excluding docs/lockfiles) → **zero hits**;
       superseded by `nros-orchestration-ir`, which has 10+ real consumers. Its
       own doc-comment describes reading `nros-plan.json`, a pipeline superseded by
       the `system.toml` → `resolve_tiers` path. Drop the member entry and the
       unused workspace-dep row.
-- [ ] **W1.b** Delete `packages/cli/docs/` (19 files). `ROADMAP.md` is titled
+- [x] **W1.b** Delete `packages/cli/docs/` (19 files). `ROADMAP.md` is titled
       **"cargo-ros2: Project Roadmap"** — the retired standalone repo's roadmap,
       imported wholesale by the phase-218 merge and never updated since. It
       duplicates and contradicts `docs/roadmap/`, and `CLI_REFERENCE.md`
       duplicates `book/src/reference/cli.md`. Zero inbound links.
-- [ ] **W1.c** Delete the dead `just/px4.just` cargo recipes (lines 89, 103, 106,
+- [x] **W1.c** Delete the dead `just/px4.just` cargo recipes (lines 89, 103, 106,
       109, 193, 194, 210, 240). They build / fmt / clippy / test `nros-rmw-uorb`
       and `nros-px4`, **neither of which exists as a cargo package** (both were
       deleted in phase-115.K.4; `packages/px4/nros-rmw-uorb` is a C++ CMake
       project). Line 240 `rm -rf`s `packages/rmw/…`, a directory that has never
       existed. Also fix the dead links in `docs/design/0011-px4-rmw-uorb.md:56,64`.
-- [ ] **W1.d** Delete the `xrce-sys` **crate** (701 + 307 LoC, zero dependents,
+- [x] **W1.d** Delete the `xrce-sys` **crate** (701 + 307 LoC, zero dependents,
       `--exclude`d from every build) but **keep the directory** — it hosts two git
       submodules consumed by `nros-rmw-xrce-cffi/build.rs` and
       `nros-rmw-xrce/CMakeLists.txt`. Today `nros-rmw-xrce-cffi/build.rs:8-10`
       declares it "mirrors `xrce-sys/build.rs` … must be kept in lockstep" — a
       maintained duplicate of a dead crate's build script. Make the cffi build.rs
       the sole owner.
-- [ ] **W1.e** Delete the ~10 inert `Cargo.lock` files in leaf crates that are
-      root-workspace members (`packages/drivers/*`, `packages/verification/*`,
-      `packages/zpico/zpico-serial`). Cargo uses the root lock; these are
-      pre-workspace leftovers. The tracked/ignored split across otherwise
-      identical siblings has no discernible rule (archived issue 0012 fixed this
-      once, partly).
-- [ ] **W1.f** Clean the working-tree crud: two 46 KB `.o` files in
+- [~] **W1.e WITHDRAWN — the premise was false.** The claim was that these
+      lockfiles belong to root-workspace members and are therefore inert. Checked
+      against `cargo metadata`: `packages/drivers/cmsdk-uart`,
+      `packages/drivers/nros-smoltcp`, `packages/verification/nros-verification`
+      and `packages/zpico/zpico-serial` are **not** workspace members, so their
+      lockfiles are live — they pin standalone and cross-compiled builds.
+      Deleting them would have been a real regression dressed as cleanup. The
+      inconsistent tracked-vs-ignored policy across siblings is still worth a
+      decision, but it is not a deletion.
+- [x] **W1.f** (partial — see below) Clean the working-tree crud: two 46 KB `.o` files in
       `packages/core/nros-platform-posix/src/` whose names encode an absolute host
       path (`platform.c.home.aeon.repos.nano-ros.integrations.nuttx.o`, dated
       2026-05-30, plus a `_1` copy), and five in-source CMake `build/` dirs — the
       largest, `packages/dds/nros-rmw-cyclonedds/build/`, holds a full vendored
       CycloneDDS object tree. All untracked and gitignored; nothing is committed.
       The `.gitignore` rule exists *because* the build was known to litter `src/`.
+      **Done for the two stale `.o` files only.** The in-source `build/` trees
+      were deliberately left: `packages/dds/nros-rmw-cyclonedds/build/` alone is
+      45 MB of vendored CycloneDDS objects, and deleting a developer's build
+      cache uninvited buys tidiness at the cost of a long rebuild. They are
+      gitignored and harmless; clean them when convenient.
 
 **Decide, do not delete blind:**
 
