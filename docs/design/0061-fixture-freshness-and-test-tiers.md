@@ -435,14 +435,31 @@ These do not depend on proposals 1–2 but bound the same cost:
 
 ## Open questions
 
-1. **Where does the probe corpus live?** `packages/cli/rosidl-codegen/tests/fixtures/`
-   is the natural home for the codegen half, but the fingerprint is consumed by
-   shell scripts in `scripts/build/`, and the resolver half needs a launch tree
-   (a natural fit for `packages/cli/testing_workspaces/`). A committed corpus plus
-   a thin CLI verb per tool is probably right; worth settling before implementation.
-2. **Does tier 2's cover need stability across runs?** Greedy set cover is
-   deterministic for a fixed cell order, but adding one cell can reshuffle the
-   chosen set, which makes "why did this lane change?" harder to answer. A
-   lexicographic tie-break plus committing the computed cover as a reviewable
-   artifact (recomputed and diffed, not hand-edited) would fix it — at the cost of
-   a file that must not be edited by hand.
+**Both settled during phase-318 implementation.**
+
+1. ~~**Where does the probe corpus live?**~~ **Settled: with the emitter, behind a
+   hidden CLI verb.** The codegen corpus is
+   `packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/`, reached from
+   shell via `nros codegen-fingerprint`; the resolver's launch tree is
+   `packages/cli/nros-launch-resolve/tests/fixtures/fingerprint-launch/`, hashed by
+   `scripts/build/resolve-fingerprint.sh`.
+
+   The load-bearing detail is not the location: `tests/codegen_golden.rs` reads the
+   SAME `emit_corpus()` map the fingerprint hashes. A golden test covering
+   different bytes than the fingerprint could pass while the fingerprint moved (or
+   the reverse), and then neither signal is trustworthy.
+
+2. ~~**Does tier 2's cover need stability across runs?**~~ **Settled: the
+   lexicographic tie-break, and no committed cover file.** `ci_lane::cells` is
+   deterministic for a fixed `matrix::CELLS`, which answers "why did this lane
+   change?" for everything except adding a cell — and there the honest answer is
+   that the cover legitimately reshuffles.
+
+   Committing the computed cover was rejected: it is a file that must not be
+   hand-edited, and this repo's recurring defect is exactly the second copy that
+   drifts. What ships instead is the coverage GATE
+   (`lanes_touch_every_declared_value_of_every_axis_they_cover`), which asserts the
+   property the file was meant to protect without being a second source of truth.
+   For CI legibility the resolved cover is published per run as an artifact plus a
+   job summary (`nightly.yml`'s `lane` job) — reviewable, and impossible to edit
+   into disagreement with the computation.

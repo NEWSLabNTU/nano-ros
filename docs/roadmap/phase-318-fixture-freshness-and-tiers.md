@@ -224,6 +224,24 @@ Per RFC-0061 §Acceptance. The load-bearing ones:
       `matrix::CELLS` extends tier 2 with no second edit. *(Gated by
       `ci_lane::tests::lanes_touch_every_declared_value_of_every_axis_they_cover`
       and `lane_filter_tokens_cover_every_non_native_platform`.)*
+- [x] The codegen golden corpus is committed, and a deliberate template change
+      fails **tier 1** with a readable diff. *(Both arms run 2026-07-31. The lane
+      is real: `check-cli-tests` → `check-build` → `check` → `ci`, and it runs the
+      whole `packages/cli` workspace, so `codegen_golden` is inside tier 1 rather
+      than beside it. Adding `// PERTURBED` to one line of `_nros_field.jinja`
+      failed with the changed line quoted golden-vs-now across three named files
+      plus "… and 3 more"; restoring gave an empty `git diff` and 2/2 green.)*
+- [x] With no Python available, `resolve_fp` falls back to the resolver's binary
+      hash and the gate still refuses to call a stale fixture fresh. *(Three arms,
+      2026-07-31, cache backed up and restored around them. Resolver present but
+      unable to resolve → `binary:e042c59a…`; resolver absent → `resolver-absent`;
+      normal → `26ac1134…`. All three differ, so a signature recorded under any one
+      of them cannot match another — the degraded modes over-invalidate, and no
+      path produces a value that would let a stale fixture verify fresh. The
+      remaining asymmetry is benign: `resolver-absent` is a constant, so it cannot
+      distinguish "no resolver now" from "no resolver then" — but the term is only
+      included for records that declare a bringup, and those cannot be BUILT
+      without a resolver, so that state is unreachable.)*
 
 ## Non-goals
 
