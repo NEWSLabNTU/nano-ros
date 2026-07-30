@@ -22,6 +22,7 @@ already establishes regex parsing as the house pattern for exactly this reason.
 """
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -131,8 +132,34 @@ def main():
     errors = []
 
     # --- completeness, both directions (W3.a) ---------------------------------
-    on_disk = {p.name for p in BOARDS_DIR.iterdir()
-               if p.is_dir() and not p.name.startswith(".")}
+    # A board is a directory git TRACKS CONTENT under — not merely a directory.
+    #
+    # Deleting a board crate does not delete the `target/` its last build left
+    # behind: nothing under it is tracked, so git leaves the directory in place.
+    # `nros-board-esp32` was dropped in 9211101cb and left 732 MB of residue, and
+    # this gate reported it as "exists in packages/boards/ but absent from the
+    # registry" — permanently red on `check-fast` for anyone who had ever built
+    # that board, with a message pointing at the registry instead of at the
+    # leftovers.
+    #
+    # Tracked-content is the right predicate rather than "has a Cargo.toml":
+    # boards come in two shapes, crate boards (`Cargo.toml`) and declarative ones
+    # (`nros-board.toml`, e.g. posix/zephyr), and a manifest-name check silently
+    # dropped the declarative half.
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", str(BOARDS_DIR)],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout
+    _rel = BOARDS_DIR.relative_to(ROOT)
+    on_disk = set()
+    for p in tracked.split("\0"):
+        if not p:
+            continue
+        parts = Path(p).relative_to(_rel).parts
+        # `len > 1` skips files that sit directly in packages/boards/ — notably
+        # board-support.toml itself, which is the registry, not a board.
+        if len(parts) > 1:
+            on_disk.add(parts[0])
     listed = [e.get("crate", "<no crate key>") for e in reg]
     dupes = {c for c in listed if listed.count(c) > 1}
     for c in sorted(dupes):
