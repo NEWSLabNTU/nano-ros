@@ -112,7 +112,7 @@ legacy template another ~110; the M-F.8 SITL overlay another ~100).
 ## Reference
 
 The validated SITL build of the legacy 139.5 path lives at
-`examples/px4/cpp/uorb/` (Phase 115.K.4.5 + 131.C.2). That tree is
+`packages/testing/nros-px4-register-check/` (Phase 115.K.4.5 + 131.C.2). That tree is
 the SITL-validated reference; this template is the generic shell.
 
 `packages/testing/nros-tests/tests/phase212_h7_px4.rs` (212.H.7) and

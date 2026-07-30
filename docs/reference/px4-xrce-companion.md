@@ -34,7 +34,7 @@ nros generate-px4-msgs \
 # → generated/px4_msgs (a path-dep crate)
 ```
 
-The example crates under `examples/px4/rust/xrce/` carry a trimmed,
+The example crates under `examples/px4/rust/companion/` carry a trimmed,
 pre-generated `generated/px4_msgs/` (just the topics they touch).
 
 ## 2. QoS — must match PX4
@@ -90,11 +90,11 @@ NROS_LOCATOR=127.0.0.1:8888 cargo run -p px4-offboard-companion
 
 It subscribes `/fmu/out/vehicle_odometry` and streams
 `/fmu/in/offboard_control_mode` at ~10 Hz with the PX4 QoS profile. Source:
-`examples/px4/rust/xrce/offboard-companion/`.
+`examples/px4/rust/companion/offboard-companion/`.
 
 ## Driving it without PX4 SITL
 
-`examples/px4/rust/xrce/px4-stub` plays the PX4 side — it publishes
+`examples/px4/rust/companion/px4-stub` plays the PX4 side — it publishes
 `VehicleOdometry` on `/fmu/out/vehicle_odometry`. Point both at the same agent
 to exercise the companion's publish/connect path:
 

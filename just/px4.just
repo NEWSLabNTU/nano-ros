@@ -93,7 +93,7 @@ build-sitl-cpp:
     #!/usr/bin/env bash
     set -e
     PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
-    EXT_DIR="$(pwd)/examples/px4/cpp/uorb"
+    EXT_DIR="$(pwd)/packages/testing/nros-px4-register-check"
     if [ ! -d "$PX4_DIR/Tools" ]; then
         echo "ERROR: PX4-Autopilot tree not found at $PX4_DIR"
         echo "Run: just px4 setup"
@@ -136,13 +136,13 @@ build-fixtures:
     fi
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     for ex in px4-stub offboard-companion px4-probe; do
-        dir="examples/px4/rust/xrce/$ex"
+        dir="examples/px4/rust/companion/$ex"
         echo "  → generate px4_msgs for $dir"
         "$nros_cli" generate-px4-msgs --px4 "$PX4_DIR" --output "$dir/generated" >/dev/null
     done
     for ex in px4-stub offboard-companion px4-probe; do
         echo "  → cargo build $ex (rmw-xrce, target-xrce/)"
-        ( cd "examples/px4/rust/xrce/$ex" \
+        ( cd "examples/px4/rust/companion/$ex" \
           && cargo build $cargo_profile_args --no-default-features --features rmw-xrce --target-dir target-xrce )
     done
     echo "PX4 XRCE fixtures built."

@@ -60,7 +60,7 @@ The module CMakeLists pulls in nano-ros C++ headers via
 
 The validated end-to-end SITL pattern (with the Rust-side
 `nros-rmw-cffi_register` weak-stub trick) lives at
-`examples/px4/cpp/uorb/`. Use that as the source of truth for the
+`packages/testing/nros-px4-register-check/`. Use that as the source of truth for the
 register-check shape; this template is the generic shell for
 downstreams writing their own modules.
 

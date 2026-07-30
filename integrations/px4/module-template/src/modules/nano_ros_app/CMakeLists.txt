@@ -8,7 +8,7 @@
 #
 # The module links against the nano-ros C++ headers. Real PX4
 # integration of the Rust-built libnros_cpp.a goes through the
-# `nros-rmw-cffi_register` shim — see examples/px4/cpp/uorb/ for the
+# `nros-rmw-cffi_register` shim — see packages/testing/nros-px4-register-check/ for the
 # end-to-end pattern (Phase 115.K.4.5).
 
 set(_nros_root "${CMAKE_CURRENT_LIST_DIR}/../../../../..")

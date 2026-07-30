@@ -5,7 +5,7 @@
 # THIS directory; PX4 then walks `src/CMakeLists.txt` and pulls in
 # every entry listed under `config_module_list_external`.
 #
-# Pattern lifted from examples/px4/cpp/uorb/ (Phase 131.C.2). The
+# Pattern lifted from packages/testing/nros-px4-register-check/ (Phase 131.C.2). The
 # example tree there stays as the validated reference; this template
 # is the generic copy-out form for new PX4 modules.
 #

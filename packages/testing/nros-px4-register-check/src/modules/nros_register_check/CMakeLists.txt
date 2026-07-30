@@ -16,11 +16,21 @@
 # end-to-end against real PX4 sources; the standalone smoke under
 # `packages/px4/nros-rmw-uorb/tests/register_smoke.cpp` covers the
 # pure data-plane via a mock uORB ABI.
+#
+# phase-316 W3.1 — this lived under `examples/px4/cpp/uorb/` until it was moved
+# here. It is not an example: its own header says the build IS the validation,
+# and CLAUDE.md puts non-example binaries under `packages/testing/`. Living in
+# the example tree also cost it a two-file indirection — PX4 requires
+# `<EXTERNAL_MODULES_LOCATION>/src/modules/<name>/CMakeLists.txt`, but the
+# example tree required `<plat>/<lang>/<rmw>/<example>/`, so the real file was
+# hoisted out and a shim `include()`d it back. Both shapes cannot be satisfied
+# at once; outside `examples/` only PX4's constraint applies, and the shim is
+# gone.
 
 set(NROS_RMW_UORB_CPP_DIR
-    ${CMAKE_CURRENT_LIST_DIR}/../../../../../packages/px4/nros-rmw-uorb)
+    ${CMAKE_CURRENT_LIST_DIR}/../../../../../../packages/px4/nros-rmw-uorb)
 set(NROS_RMW_CFFI_INCLUDE_DIR
-    ${CMAKE_CURRENT_LIST_DIR}/../../../../../packages/core/nros-rmw-abi/include)
+    ${CMAKE_CURRENT_LIST_DIR}/../../../../../../packages/core/nros-rmw-abi/include)
 
 if(NOT EXISTS "${NROS_RMW_UORB_CPP_DIR}/src/vtable.cpp")
     message(FATAL_ERROR

@@ -4064,10 +4064,10 @@ pub fn xrce_listener_binary() -> PathBuf {
 }
 
 /// Resolve the prebuilt px4-stub example binary (Phase 233.4). Built by
-/// `just px4 build-fixtures` to `examples/px4/rust/xrce/px4-stub/target-xrce/`.
+/// `just px4 build-fixtures` to `examples/px4/rust/companion/px4-stub/target-xrce/`.
 pub fn build_px4_stub() -> TestResult<&'static Path> {
     PX4_STUB_BINARY
-        .get_or_try_init(|| build_example_rmw("px4/rust/xrce/px4-stub", "px4-stub", Rmw::Xrce))
+        .get_or_try_init(|| build_example_rmw("px4/rust/companion/px4-stub", "px4-stub", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
@@ -4084,7 +4084,7 @@ pub fn build_px4_companion() -> TestResult<&'static Path> {
     PX4_COMPANION_BINARY
         .get_or_try_init(|| {
             build_example_rmw(
-                "px4/rust/xrce/offboard-companion",
+                "px4/rust/companion/offboard-companion",
                 "offboard-companion",
                 Rmw::Xrce,
             )

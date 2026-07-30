@@ -21,7 +21,7 @@ retired in phase-115.K.4); the companion path speaks XRCE-DDS to the
 ## Build & run
 
 ```sh
-just px4 build-examples       # SITL with EXTERNAL_MODULES_LOCATION=examples/px4/cpp/uorb
+just px4 build-examples       # SITL with EXTERNAL_MODULES_LOCATION=packages/testing/nros-px4-register-check
 just px4 build-fixtures       # px4-stub / companion XRCE fixtures (px4_msgs bindings)
 just px4 test                 # unit: nros-rmw-uorb + nros-px4
 just px4 test-sitl            # E2E: px4_e2e (Track A uORB) + px4_xrce_e2e (Track B)
@@ -32,9 +32,9 @@ just px4 test-sitl            # E2E: px4_e2e (Track A uORB) + px4_xrce_e2e (Trac
 | Dir | What it is |
 | --- | --- |
 | `cpp/uorb/nros-register-check/` | canonical in-firmware uORB module smoke (built into SITL via `EXTERNAL_MODULES_LOCATION`) |
-| `rust/xrce/offboard-companion/` | XRCE companion receiving `/fmu/out` telemetry (RFC-0039 Track B) |
-| `rust/xrce/px4-stub/` | fake-PX4 stub publishing `/fmu/out/vehicle_odometry` (CI without SITL) |
-| `rust/xrce/px4-probe/` | XRCE probe utility |
+| `rust/companion/offboard-companion/` | XRCE companion receiving `/fmu/out` telemetry (RFC-0039 Track B) |
+| `rust/companion/px4-stub/` | fake-PX4 stub publishing `/fmu/out/vehicle_odometry` (CI without SITL) |
+| `rust/companion/px4-probe/` | XRCE probe utility |
 
 C and Rust-uORB cells are intentionally empty (see
 [`examples/README.md`](../README.md) "Intentionally empty cells").

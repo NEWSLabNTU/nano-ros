@@ -17,7 +17,7 @@
 extern "C" {
 
 // Forward decl — real builds resolve via the Rust-side
-// nros-rmw-cffi crate (see examples/px4/cpp/uorb/ for the
+// nros-rmw-cffi crate (see packages/testing/nros-px4-register-check/ for the
 // SITL-validated weak-stub pattern).
 extern int nros_rmw_uorb_register(void);
 

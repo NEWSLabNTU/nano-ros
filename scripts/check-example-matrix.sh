@@ -14,11 +14,15 @@ allowed_roots=(
   # only untracked `generated/` output — so Phase 118.G's carve-outs are gone
   # too. Nothing outside px4 and the zephyr cyclonedds pair is exempt now.)
 
-  # px4 (Phase 118.H) is exempted STRUCTURALLY in is_allowed(), not per-case —
-  # see docs/issues/archived/0295. px4 is the one platform whose `examples/px4/<lang>/<name>`
-  # sub-dir axis is a transport integration CASE (uORB vs XRCE — PX4's two native
-  # messaging surfaces), not the retired per-RMW layout. New px4 transport cases
-  # therefore need NO carve-out line here.
+  # px4 had a STRUCTURAL exemption here (Phase 118.H / issue 0295), on the
+  # argument that `examples/px4/<lang>/{uorb,xrce}` named a transport CASE rather
+  # than an RMW. phase-316 took the argument seriously and found the level named
+  # neither: `xrce/` is now `companion/` (where the code RUNS — beside PX4, not
+  # in firmware; its RMW is pinned by `uxrce_dds_client` and was never chosen),
+  # and `uorb/` held only `nros-register-check`, a link gate that is not an
+  # example at all and now lives at `packages/testing/nros-px4-register-check/`.
+  # Neither new path matches $rmw_names, so no exemption is needed — and a
+  # future px4 case cannot inherit one it never earned.
 
   # One-board Zephyr CycloneDDS reference, documented in CLAUDE.md.
   # Both languages carve out — the rust sibling was missed when the cpp one
@@ -29,13 +33,6 @@ allowed_roots=(
 
 is_allowed() {
   local path="$1"
-  # px4 transport-axis exemption (issue #295): `examples/px4/<lang>/<transport>`
-  # (uORB / XRCE) is px4's legitimate integration-case axis, not the retired
-  # per-RMW layout — exempt the whole platform so new transport cases need no
-  # per-case carve-out line.
-  if [[ "$path" == examples/px4/* ]]; then
-    return 0
-  fi
   local allowed
   for allowed in "${allowed_roots[@]}"; do
     if [[ "$path" == "$allowed" ]]; then

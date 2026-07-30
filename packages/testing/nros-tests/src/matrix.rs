@@ -165,7 +165,7 @@ impl PlatformId {
 ///
 /// Issue 0341 — `Uorb` is declared supported in ARCHITECTURE §2
 /// (`rmw-{zenoh,xrce,cyclonedds,uorb}`) with a real crate
-/// (`packages/px4/nros-rmw-uorb`) and example (`examples/px4/cpp/uorb`), so it
+/// (`packages/px4/nros-rmw-uorb`) and example (`packages/testing/nros-px4-register-check`), so it
 /// must be *expressible* in the matrix. It carries a documented CarveOut cell
 /// rather than a Runtime lane: uORB runs inside a PX4-SITL build that no CI
 /// runner here provides. An expressible-but-carved-out axis is honest; an
@@ -737,12 +737,12 @@ pub const CELLS: &[Cell] = &[
 
     // ── uORB (PX4-SITL) — issue 0341 ───────────────────────────────────
     // uORB is a declared RMW (ARCHITECTURE §2) with a real crate
-    // (nros-rmw-uorb) + example (examples/px4/cpp/uorb), but its runtime lane
+    // (nros-rmw-uorb) + example (packages/testing/nros-px4-register-check), but its runtime lane
     // is a PX4-SITL build no CI runner here provides. Expressible + carved out,
     // so the gap is visible rather than inexpressible.
     cell(Px4, Cpp, Uorb, Pubsub, Example,
          CarveOut("uORB runs only inside a PX4-SITL build (just px4 …); no CI runner \
-                   builds SITL. `examples/px4/cpp/uorb` is the source of truth.")),
+                   builds SITL. `packages/testing/nros-px4-register-check` is the source of truth.")),
 ];
 
 /// Runtime cells only — what the matrix consumers iterate.

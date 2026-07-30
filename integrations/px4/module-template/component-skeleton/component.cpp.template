@@ -23,7 +23,7 @@ extern "C" {
 // nros-rmw-uorb registers the uORB-backed RMW vtable; the codegen
 // emits a forward decl so the module links against the staticlib that
 // the bringup pkg's deploy step builds (see Phase 115.K.4.5 weak-stub
-// pattern in examples/px4/cpp/uorb/).
+// pattern in packages/testing/nros-px4-register-check/).
 extern int nros_rmw_uorb_register(void);
 
 // Concrete component entry — `<name>_main` is the symbol PX4's nsh

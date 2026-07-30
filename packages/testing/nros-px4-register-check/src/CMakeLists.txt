@@ -1,7 +1,7 @@
 # PX4 EXTERNAL_MODULES_LOCATION entry point for the nano-ros uORB C++
 # integration test modules.
 #
-# Pass this directory's parent (`examples/px4/cpp/uorb/`) as
+# Pass this directory's parent (`packages/testing/nros-px4-register-check/`) as
 # `EXTERNAL_MODULES_LOCATION` to PX4's `make`. PX4 looks at
 # `<location>/src/CMakeLists.txt` (this file) and pulls in each
 # subdirectory listed in `config_module_list_external`.

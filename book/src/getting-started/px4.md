@@ -145,7 +145,7 @@ failed`, check:
 - PX4 external-module template:
   [`integrations/px4/module-template/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/px4/module-template)
 - Worked PX4 example:
-  [`examples/px4/cpp/uorb/nros-register-check/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/px4/cpp/uorb/nros-register-check)
+  [`packages/testing/nros-px4-register-check/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/testing/nros-px4-register-check)
 - PX4 integration roadmap notes:
   [`integrations/px4/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/px4/README.md)
 

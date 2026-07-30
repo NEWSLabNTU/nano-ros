@@ -446,9 +446,9 @@ done < <(compile_check_records cargo-check)
 # submodule being checked out; absent → no stamp → the coverage gate keeps
 # these as tracked leaves rather than a silent gap.
 PX4_XRCE_EXAMPLES=(
-    "px4_probe:examples/px4/rust/xrce/px4-probe"
-    "px4_stub:examples/px4/rust/xrce/px4-stub"
-    "px4_offboard_companion:examples/px4/rust/xrce/offboard-companion"
+    "px4_probe:examples/px4/rust/companion/px4-probe"
+    "px4_stub:examples/px4/rust/companion/px4-stub"
+    "px4_offboard_companion:examples/px4/rust/companion/offboard-companion"
 )
 px4_autopilot_dir="$repo_root/third-party/px4/PX4-Autopilot"
 px4_n=0

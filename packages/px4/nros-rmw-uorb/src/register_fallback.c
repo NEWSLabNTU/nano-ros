@@ -9,7 +9,7 @@
  * harmless when the staticlib IS linked.
  *
  * This belongs to the backend, not any example: it was previously
- * `sitl_register_stub.c` inside `examples/px4/cpp/uorb/nros-register-check/`
+ * `sitl_register_stub.c` inside `packages/testing/nros-px4-register-check/`
  * (RFC-0026 J1 — no framework glue in examples). C linkage matches the Rust
  * `#[unsafe(no_mangle)] extern "C"` symbol it stands in for.
  */

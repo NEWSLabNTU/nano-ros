@@ -6,7 +6,7 @@
 #
 # PX4 itself is uORB-only (Phase 115.K.4 collapsed uORB to C++) and
 # the canonical PX4 surface lives at
-# `examples/px4/cpp/uorb/nros-register-check/`, which wires components
+# `packages/testing/nros-px4-register-check/`, which wires components
 # into the firmware via PX4's own `px4_add_module()`. This fixture is
 # the *host-side* compile-check shape — it lets the planner walk the
 # pkg dir without dragging in the PX4 build system.

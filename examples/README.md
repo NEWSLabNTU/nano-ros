@@ -28,14 +28,18 @@ something that no longer exists (issue 0314 — a stale `cpp/xrce` reference sat
 in `just zephyr build-xrce` for months, and the abandoned directories lingered
 on disk as untracked `generated/` output that read like real examples).
 
-Three `<rmw>/` paths remain, and none of them is a backend variant of the
-standard roles:
+Two `<rmw>/` paths remain (phase-316 retired the px4 pair — see below):
 
 | path | why it is not an RMW split |
 | --- | --- |
 | `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` | a **board** variant (aemv8r) that happens to sit under a backend name |
-| `px4/rust/xrce/{offboard-companion,px4-probe,px4-stub}` | PX4 offboard tooling, not talker/listener |
-| `px4/cpp/uorb/nros-register-check` | the canonical PX4 uORB surface (see the coverage matrix below) |
+
+px4 had two, and neither named an RMW at all. `px4/rust/xrce/` is now
+`px4/rust/companion/` — the axis is **where the code runs** (beside PX4, not in
+firmware); the RMW is pinned by `uxrce_dds_client` and was never a choice. And
+`px4/cpp/uorb/` held only `nros-register-check`, which is a link/registration
+gate rather than an example, so it moved to
+`packages/testing/nros-px4-register-check/` and the path level went with it.
 
 If you are adding a `talker`/`listener`/`service-*`/`action-*` example, it goes
 at `<platform>/<language>/<role>`. No exceptions.
@@ -74,7 +78,7 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `native`                  | cpp      | 6+    | –    | 6          | –    |
 | `native`                  | rust     | 6+    | 6+   | 6          | –    |
 | `stm32f4`                 | rust     | 1+rtic×6 | –  | –          | –    |
-| `px4`                     | cpp      | –     | –    | –          | nros_register_check |
+| `px4`                     | cpp      | –     | –    | –          | – ²  |
 | `px4`                     | rust     | –     | companion+stub | – | –    |
 | `qemu-arm-baremetal`      | rust     | 6+rtic+serial | – | –     | –    |
 | `qemu-arm-freertos`       | c        | 6     | –    | –          | –    |
@@ -94,6 +98,10 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `zephyr`                  | c        | 6     | 6    | 6          | –    |
 | `zephyr`                  | cpp      | 6     | 6    | 6+aemv8r   | –    |
 | `zephyr`                  | rust     | 6     | 6    | 6+aemv8r   | –    |
+
+² px4's in-firmware uORB surface is `packages/testing/nros-px4-register-check/`,
+not an example: it is a link/registration gate whose build IS the assertion, so
+there is nothing to copy out. phase-316 W3.1 moved it out of this tree.
 
 ¹ `qemu-riscv64-threadx` action lanes are build-only: the action
 example fixtures compile, but the action runtime lanes were
@@ -153,7 +161,7 @@ spin up examples here without first lifting the underlying constraint.
 | `qemu-arm-baremetal/{c,cpp}/*`                         | No bare-metal C/C++ example harness exists. `nros-c` / `nros-cpp` ship as static libs but assume a hosted RTOS for startup, heap, libc, RNG, and clock — none of which are wired on `qemu-arm-baremetal`'s pure Cortex-M3 runtime. Only `qemu-arm-baremetal/rust/` builds. | A future bare-metal C harness phase: ports the Rust `define_*_platform!` startup macros into a C-facing `nano_ros_baremetal_*` toolkit and adds a CMake template per board. No phase tracks this yet; Phase 115.F's bare-metal-C custom-transport demo is the closest gated work item. |
 | `qemu-esp32-baremetal/{c,cpp}/*`                       | Same constraint. Even though ESP-IDF can host C/C++, the `qemu-esp32-baremetal` *example* tree is the no-IDF / pure-Rust HAL path (`esp-hal`). C/C++ on the same board would belong under a hypothetical `esp32-idf/` tree, not here.                                | Same as above, plus a decision on whether ESP-IDF-hosted C/C++ examples deserve a sibling platform dir.                                                                        |
 | `stm32f4/{c,cpp}/*`                                    | Same bare-metal Cortex-M constraint; the STM32F4 examples are RTIC / embassy Rust apps with no C-facing startup story.                                                                                                                                             | Same as above.                                                                                                                                                                 |
-| `px4/{c,rust}/*` (everything except `px4/cpp/uorb/`)   | PX4 integration is uORB-only (the platform's native pub/sub), and Phase 115.K.4 collapsed `nros-rmw-uorb` to a single C++ port (the legacy Rust crate was deleted). `examples/px4/cpp/uorb/nros-register-check/` is the canonical surface (the former `examples/px4/rust/uorb/` README-only placeholder was retired in phase-277 W7). | Won't lift: C is not on the PX4 module API, and the Rust uORB backend was retired in Phase 115.K.4 (see `docs/roadmap/phase-115-runtime-transport-vtable.md`). No C/Rust PX4 examples are planned.                  |
+| `px4/{c,rust}/*` (px4 has no example-tree uORB cell)   | PX4 integration is uORB-only (the platform's native pub/sub), and Phase 115.K.4 collapsed `nros-rmw-uorb` to a single C++ port (the legacy Rust crate was deleted). `packages/testing/nros-px4-register-check/` is the canonical surface (the former `examples/px4/rust/uorb/` README-only placeholder was retired in phase-277 W7). | Won't lift: C is not on the PX4 module API, and the Rust uORB backend was retired in Phase 115.K.4 (see `docs/roadmap/phase-115-runtime-transport-vtable.md`). No C/Rust PX4 examples are planned.                  |
 | `cyclonedds` on bare-metal (`qemu-arm-baremetal`, `qemu-esp32-baremetal`, `stm32f4`) | Cyclone DDS requires a hosted runtime — BSD sockets, threads, heap, libc. Pure Cortex-M / esp-hal bare-metal targets have none, so the C++ Cyclone stack cannot run (Phase 171.C.gate decision). | Won't lift on bare-metal. Cyclone DDS is the hosted-platform DDS backend; embedded targets use the zenoh-pico or XRCE backends instead. |
 | `cyclonedds` on NuttX QEMU (`qemu-arm-nuttx` × all langs) | Deferred-upstream: a Cyclone DDS NuttX socket-shim port is an upstream-scale effort not attempted in nano-ros. FreeRTOS is no longer in this bucket; Phase 175 added FreeRTOS/lwIP Cyclone fixture wiring. | An upstream Cyclone DDS NuttX port (socket shim + config + heap budget), then a nano-ros example cell. |
 | pure-cargo `cyclonedds` Rust binaries on `native` / `threadx-linux` | Still intentionally unsupported: `nros-rmw-cyclonedds-sys` exposes only the C register shim, so a plain Cargo build has no way to build+link the C++ Cyclone lib + `libddsc`. Native Rust Cyclone now uses the Phase 175 CMake/Corrosion path instead. | Use the CMake/Corrosion fixture path for Cyclone-backed Rust examples, or scope a new staticlib crate separately. |
@@ -241,6 +249,10 @@ Test / bench / smoke binaries are NOT under `examples/`. They live with the inte
   - `stm32f4-smoltcp-echo`, `esp32-hello-world`
 - **`packages/testing/nros-tests/bins/`** — fixture binaries that integration tests build & invoke
   - `cdr-roundtrip-qemu`, `lan9118-qemu`
+- **`packages/testing/nros-px4-register-check/`** — PX4 module whose *build* is the assertion
+  - links `nros-rmw-uorb` inside a real `px4_add_module()` context against real
+    PX4 headers; run via `just px4 build-sitl-cpp`. Was `examples/px4/cpp/uorb/`
+    until phase-316 W3.1 — it produces nothing to copy out and nothing to run.
 
 Each is a standalone Cargo package with an empty `[workspace]` table (they nest under the `nros-tests` workspace member).
 

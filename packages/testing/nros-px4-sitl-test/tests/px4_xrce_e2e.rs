@@ -80,7 +80,7 @@ fn agent_binary() -> PathBuf {
 
 fn probe_binary() -> PathBuf {
     // Built by `just px4 build-fixtures` (nros-fast-release profile / target-xrce).
-    let base = project_root().join("examples/px4/rust/xrce/px4-probe/target-xrce");
+    let base = project_root().join("examples/px4/rust/companion/px4-probe/target-xrce");
     for profile in ["nros-fast-release", "release", "debug"] {
         let p = base.join(profile).join("px4-probe");
         if p.is_file() {

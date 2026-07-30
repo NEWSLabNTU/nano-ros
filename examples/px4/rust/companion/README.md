@@ -2,8 +2,9 @@
 
 Companion-side PX4 examples (RFC-0039 Track B / Phase 233): nano-ros nodes that
 talk `px4_msgs` over a `MicroXRCEAgent` — the same agent PX4's
-`uxrce_dds_client` connects to. Unlike the `px4/.../uorb/` examples (in-firmware
-uORB), these run on the host or a peer MCU **beside** PX4.
+`uxrce_dds_client` connects to. Unlike the in-firmware uORB modules, these run
+on the host or a peer MCU **beside** PX4 — which is what the `companion/` path
+level names (phase-316: it is a deployment axis, not an RMW).
 
 Full bring-up (agent + SITL + QoS): [`docs/reference/px4-xrce-companion.md`](../../../../docs/reference/px4-xrce-companion.md).
 
@@ -22,10 +23,10 @@ Regenerate it from the PX4 `.msg` tree before building:
 # from the repo root, for each example:
 nros generate-px4-msgs \
   --px4 third-party/px4/PX4-Autopilot \
-  --output examples/px4/rust/xrce/offboard-companion/generated
+  --output examples/px4/rust/companion/offboard-companion/generated
 nros generate-px4-msgs \
   --px4 third-party/px4/PX4-Autopilot \
-  --output examples/px4/rust/xrce/px4-stub/generated
+  --output examples/px4/rust/companion/px4-stub/generated
 ```
 
 `generate-px4-msgs` emits the whole `px4_msgs` package (235 messages); the
