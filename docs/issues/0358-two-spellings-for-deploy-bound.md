@@ -1,7 +1,8 @@
 ---
 id: 358
 title: "`[package.metadata.nros.entry]` and `[package.metadata.nros.deploy.<target>]` both mean \"bound to a deploy target\", and every consumer must remember both"
-status: open
+status: resolved
+resolved_in: issue-0358-fix
 type: tech-debt
 area: build
 related: [issue-0288, issue-0318, issue-0316, issue-0353, issue-0311]
@@ -71,8 +72,32 @@ Each was found by something breaking, never by the second copy being noticed.
 (1) then (2) is the honest order: the accessor stops the bleeding immediately
 and is a prerequisite for the migration anyway.
 
+## Fix (2026-07-31)
+
+Option (1). `PackageMetadataNros::deploy_bound()` lives on the struct that owns
+both fields; the one real call site (`workspace.rs`, the source-metadata probe's
+predicate) goes through it. A third spelling is now one edit there rather than a
+hunt through consumers.
+
+The test asserts the two spellings **agree** rather than checking each arm.
+A per-arm test passes happily while the other half is broken — which is exactly
+how this survived until 27 packages hard-failed. Verified as a negative control:
+reverting the accessor to `self.entry.is_some()` fails the test with the
+`[deploy.<target>]` diagnostic.
+
+`check-feature-set-ssot.sh` rule 8 forbids re-deriving the predicate at a call
+site, verified to fire on the exact expression issue 0318 had to write by hand.
+
+Option (2) — collapsing to one spelling — is NOT done. The ambiguity in the
+manifest format remains; what is fixed is that no consumer has to know about it.
+That is the honest scope: the accessor stops the bleeding and is a prerequisite
+for any later migration.
+
 ## Acceptance
 
-* Exactly one place answers "is this package deploy-bound?".
-* A package using either spelling is treated identically by every consumer,
-  demonstrated by a test that asserts both forms produce the same answer.
+- [x] Exactly one place answers "is this package deploy-bound?" —
+      `PackageMetadataNros::deploy_bound()`, with rule 8 gating re-derivation.
+- [x] A package using either spelling is treated identically by every consumer,
+      demonstrated by `both_deploy_bound_spellings_agree`, which asserts the
+      equivalence and fails when either half is dropped.
+- [ ] (option 2, not done) One spelling in the manifest format.
