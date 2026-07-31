@@ -16,9 +16,12 @@ license     = "MIT OR Apache-2.0"
 publish     = false
 description = "PX4 SITL E2E test fixture for nano-ros uORB modules (out-of-workspace)"
 
-[[test]]
-name = "px4_e2e"
-path = "tests/px4_e2e.rs"
+# phase-316 / issue 0356 — the `px4_e2e` Track A test was REMOVED here. It built
+# SITL against `examples/px4/rust/uorb/{talker,listener}`, retired by phase-277
+# W7, and it started two NANO-ROS modules and asserted one of them logged
+# `recv:` — a loopback, which passes identically with a correct and a broken
+# struct layout. phase-325 W2 replaces it with a test whose far end is a STOCK
+# PX4 consumer. The `Px4Sitl` harness it used survives in `px4_xrce_e2e`.
 
 [[test]]
 name = "px4_xrce_e2e"

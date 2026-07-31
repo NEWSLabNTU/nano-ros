@@ -159,20 +159,26 @@ build-all: build-examples build-fixtures
 
 # Run E2E tests against PX4 SITL. Builds SITL + the XRCE fixtures first.
 #
-#   px4_e2e       — Track A (uORB in-firmware modules)
 #   px4_xrce_e2e  — Track B (real PX4 uxrce_dds_client → agent → nano-ros
 #                   companion receives /fmu/out telemetry over nros-rmw-xrce)
+#
+# Track A (in-firmware uORB) has NO runtime test. Its `px4_e2e` was removed by
+# issue 0356: it targeted a tree phase-277 W7 retired, and it asserted a
+# nano-ros module could read another nano-ros module — a loopback that a broken
+# struct layout satisfies just as well as a correct one. phase-325 W2 supplies
+# the replacement, whose far end is a stock PX4 consumer. Until then Track A is
+# covered at BUILD level only, by `build-sitl-cpp`.
 [group("debug")]
 test-sitl: build-sitl-cpp build-fixtures
     #!/usr/bin/env bash
-    # Phase 208.D.3 — `px4_e2e` moved to the out-of-workspace
+    # Phase 208.D.3 — these SITL tests live in the out-of-workspace
     # `nros-px4-sitl-test` crate so the root workspace doesn't try to
-    # resolve `px4-rs` on a fresh clone. Run it from its own dir.
+    # resolve `px4-rs` on a fresh clone. Run them from their own dir.
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     cd packages/testing/nros-px4-sitl-test
-    cargo nextest run "${cargo_nextest_args[@]}" --test px4_e2e --test px4_xrce_e2e
+    cargo nextest run "${cargo_nextest_args[@]}" --test px4_xrce_e2e
 
 # Combined CI: build the C++ uORB integration (SITL gated separately via
 # test-sitl).

@@ -284,6 +284,28 @@ the module runs from the pxh shell without an unresolved-symbol abort.
       <topic>` in the SITL shell, or an upstream module that already subscribes
       it. Assert on that output.
 
+      The harness exists — reuse it, do not write a second one. `Px4Sitl` (from
+      the `px4-sitl-tests` path-dep in `nros-px4-sitl-test`) gives boot, pxh
+      shell, log-wait with timeout, a snapshot on failure, and SIGTERM of the
+      process group on `Drop`:
+
+      ```rust
+      let sitl = Px4Sitl::boot_in(&build_dir)?;
+      sitl.shell("<nros module> start")?;
+      sitl.shell("listener <topic>")?;              // the STOCK consumer
+      let line = sitl.wait_for_log("<field marker>", RECV_TIMEOUT)
+          .map_err(|e| panic!("{e:?}\n{}", sitl.log_snapshot()))?;
+      ```
+
+      `wait_for_log` is a SUBSTRING match, not a regex — the deleted test's own
+      comment corrected itself about this twice, so it is worth stating once.
+
+      This recipe is recorded here because the test it came from was **deleted**
+      (issue 0356): `px4_e2e.rs` drove `nros_listener` + `nros_talker` — two
+      NANO-ROS modules — and asserted one logged `recv:`. A loopback, satisfied
+      identically by a correct and a broken struct layout, since both ends share
+      the bug. The scaffolding was good; what it pointed at was not.
+
 **Acceptance:** a message crosses between a nano-ros node and an unmodified PX4
 module, with no serialization step on either side, and the test reads it from the
 PX4 end.
@@ -343,10 +365,11 @@ it happens to open first.
 - **Cold SITL builds are ~10 min.** Iterating on W1 means paying that repeatedly.
   Budget for it; do not shorten the loop by testing something smaller that does
   not link `nros-cpp`, because the linking IS the question.
-- **`just px4 test-sitl` is currently red** — issue 0356: `px4_e2e.rs` targets
-  `examples/px4/rust/uorb/{talker,listener}`, retired by phase-277 W7. Resolve
-  0356 first (delete it, or let W2 supersede it) so this phase's receipts are not
-  read against a lane that already fails.
+- ~~**`just px4 test-sitl` is currently red**~~ — **cleared 2026-07-31.** Issue
+  0356 resolved: `px4_e2e` removed, `test-sitl` runs Track B only and can pass.
+  Track A is build-only via `build-sitl-cpp`, and `just/px4.just` +
+  `examples/px4/README.md` both say so, so this phase's receipts will not be read
+  against a pre-existing red.
 - **Concurrent sessions.** Other agents are active; land each W in small pushed
   steps.
 

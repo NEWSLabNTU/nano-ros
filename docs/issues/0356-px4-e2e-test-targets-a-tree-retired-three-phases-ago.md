@@ -1,11 +1,11 @@
 ---
 id: 356
 title: "`px4_e2e.rs` builds SITL against `examples/px4/rust/uorb/{talker,listener}`, retired by phase-277 W7 — the recipe recorded the retirement, the test did not"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: testing, px4
-related: [issue-0314, issue-0354, phase-316]
+related: [issue-0314, issue-0351, issue-0354, phase-316, phase-325]
 ---
 
 ## Finding (2026-07-31, while doing phase-316 W1)
@@ -77,3 +77,41 @@ second consumer of the same path was not — here with the extra sting that the
 retirement was written down, in prose, in a file 40 lines away. A grep for the
 retired path at retirement time would have found both. Retiring a path is a
 sweep, not an edit.
+
+## Resolved 2026-07-31 — option A, and the test was worse than this issue said
+
+Removed: `tests/px4_e2e.rs`, its `[[test]]` stanza, and `--test px4_e2e` from
+`just px4 test-sitl`. `just px4 test-sitl` now runs Track B only and can pass.
+
+**A second defect, found by reading the body before deleting it.** The retired
+path was the reported symptom; it is not the worst thing here. The test does:
+
+```rust
+sitl.shell("nros_listener start")?;     // a NANO-ROS module
+sitl.shell("nros_talker start")?;       // another NANO-ROS module
+sitl.wait_for_log("recv: ts=", RECV_TIMEOUT)?;
+```
+
+Both endpoints are nano-ros. So even with the examples restored, this asserts
+that nano-ros can read its own publication — a **loopback**. On this backend the
+payload IS the PX4 struct, so the interesting failure is a layout or size
+disagreement with PX4's `orb_metadata`, and a loopback is satisfied identically
+by a correct encoding and a broken one: both ends share the bug. It measures the
+harness, not the interop it is named for.
+
+That makes deleting it right twice over, and it is why phase-325's acceptance for
+the replacement (W2.4) names a **stock, unmodified PX4 consumer** — `listener
+<topic>` in the pxh shell — rather than a second nano-ros module. Issue 0351's
+thesis, in the one place it costs the most.
+
+**What was preserved.** The `Px4Sitl` harness pattern is genuinely good and is the
+scaffolding phase-325 W2.4 needs — boot, drive the pxh shell, wait for a log line,
+dump a snapshot on timeout, SIGTERM the process group on `Drop`. It survives in
+`px4_xrce_e2e.rs`, and the exact call sequence is recorded in phase-325 W2.4 so it
+is not rediscovered.
+
+**Coverage now.** Track A (in-firmware uORB) has no runtime lane and is honest
+about it: `build-sitl-cpp` covers it at build level, `just px4 test-sitl`'s
+comment says so, and `examples/px4/README.md` says so. That is strictly more than
+before, when a permanently-failing test stood in for a runtime lane that did not
+exist.

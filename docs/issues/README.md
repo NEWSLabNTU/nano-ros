@@ -67,7 +67,17 @@ reference to nros_cpp_get_param_integer`, which is what exposed the disjoint pat
 unaffected. Same shape as #0311: one axis, two sources that cannot disagree because only one is
 read. See `0353-*`. (2026-07-31)
 
-**#356** — `px4_e2e.rs` builds SITL against `examples/px4/rust/uorb/{talker,listener}`, a tree
+**#356** — RESOLVED: removed. Reading the body before deleting it found a second, worse defect than
+the one filed — both its endpoints were NANO-ROS modules (`nros_listener` + `nros_talker`, asserting
+`recv: ts=`), so even with the retired examples restored it asserted nano-ros can read its own
+publication. On uORB the payload IS the PX4 struct, so the interesting failure is a layout
+disagreement with `orb_metadata`, and a loopback is satisfied identically by a correct and a broken
+encoding. It measured the harness, not the interop it was named for. `just px4 test-sitl` now runs
+Track B only and can pass; Track A is build-only via `build-sitl-cpp` and every doc says so.
+phase-325 W2 supplies the replacement, whose far end is a STOCK PX4 consumer. See `0356-*`.
+(2026-07-31)
+
+**#356 (original finding)** — `px4_e2e.rs` builds SITL against `examples/px4/rust/uorb/{talker,listener}`, a tree
 phase-277 W7 retired — and whose retirement is recorded in prose in `just/px4.just`, 40 lines from
 the recipe that was migrated. The test asserts honestly (`assert!`, no silent pass), so nothing
 reads green; `just px4 test-sitl` simply cannot pass. Filed rather than fixed: the honest repairs
