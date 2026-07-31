@@ -17,7 +17,7 @@ use std::{fs, path::PathBuf, process::Command};
 #[test]
 #[ignore = "spawns a fat-LTO build of nros"]
 fn extract_sizes_recovers_sizes_from_fat_lto_bitcode() {
-    // packages/core/nros-sizes-build → packages/core → packages → <repo root>
+    // packages/tooling/nros-sizes-build → packages/core → packages → <repo root>
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)

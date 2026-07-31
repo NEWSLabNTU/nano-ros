@@ -161,6 +161,6 @@ to the right value at the target's compile time.
 
 ## See also
 
-- `packages/core/nros-sizes-build/src/lib.rs` for the rlib probe
+- `packages/tooling/nros-sizes-build/src/lib.rs` for the rlib probe
   implementation.
 - `packages/core/nros/src/sizes.rs` for the canonical exports.

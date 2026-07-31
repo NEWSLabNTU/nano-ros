@@ -150,7 +150,7 @@ PY
         # Issue 0022 — the cyclone deadlock (parallel corrosion→cargo on
         # nros-c/nros) is fixed at the SOURCE: nros-sizes-build now strips the
         # make jobserver from the nested opaque-size probe cargo
-        # (packages/core/nros-sizes-build/src/lib.rs), so the recursive
+        # (packages/tooling/nros-sizes-build/src/lib.rs), so the recursive
         # hold-and-wait that hung the build can no longer form — on ANY platform,
         # while the outer build keeps jobserver coordination. No per-leaf
         # jobserver/CARGO_HOME hacks needed here.

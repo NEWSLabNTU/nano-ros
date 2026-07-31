@@ -21,13 +21,13 @@ members = [
     "packages/core/nros-orchestration-ir",
     # Build-script helper: extracts Rust type sizes from a compiled rlib so
     # nros-c/nros-cpp can size their opaque storage from Rust's size_of.
-    "packages/core/nros-sizes-build",
+    "packages/tooling/nros-sizes-build",
     # Phase 208.B Track A — build-script helper that resolves nano-ros
     # repo-relative paths without `just`/`.envrc`. Lets bare `cargo
     # build` succeed in a fresh shell (the audit blocker P1).
-    "packages/core/nros-build-paths",
+    "packages/tooling/nros-build-paths",
     # Phase 221.A.2 — shared build-script helpers for nros-c/nros-cpp.
-    "packages/core/nros-build-helpers",
+    "packages/tooling/nros-build-helpers",
     # Phase 149.5 — shared build-script helpers (manifest parser +
     # link-feature policy) consumed by zpico-sys + the per-kernel
     # generic board crates as `[build-dependencies]`.
@@ -103,7 +103,7 @@ members = [
     "packages/core/nros-platform-cffi",
     "packages/core/nros-platform-critical-section",
     # phase-291 (#211) — zephyr-leaf build.rs helper (zero-dep, host-checkable).
-    "packages/core/nros-zephyr-build",
+    "packages/tooling/nros-zephyr-build",
     # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — the Rust kernel
     # platform crates (nros-platform-{freertos,nuttx,threadx,zephyr,
     # posix}) were deleted. The directories
@@ -561,8 +561,8 @@ nros-rmw-cyclonedds-sys = { version = "0.5.0", path = "packages/rmw/cyclonedds/n
 nros-rmw-cffi = { version = "0.5.0", path = "packages/rmw/cffi", default-features = false }
 nros-node = { version = "0.5.0", path = "packages/core/nros-node", default-features = false }
 nros-log = { version = "0.5.0", path = "packages/core/nros-log" }
-nros-build-helpers = { version = "0.5.0", path = "packages/core/nros-build-helpers" }
-nros-sizes-build = { version = "0.5.0", path = "packages/core/nros-sizes-build" }
+nros-build-helpers = { version = "0.5.0", path = "packages/tooling/nros-build-helpers" }
+nros-sizes-build = { version = "0.5.0", path = "packages/tooling/nros-sizes-build" }
 nros-platform = { version = "0.5.0", path = "packages/core/nros-platform", default-features = false }
 nros-platform-cffi = { version = "0.5.0", path = "packages/core/nros-platform-cffi", default-features = false }
 # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — the Rust kernel

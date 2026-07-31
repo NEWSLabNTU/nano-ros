@@ -11,6 +11,6 @@ nros-platform = { path = "../../../../packages/core/nros-platform" }  # nros-man
 nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed
 nros-rmw-xrce-cffi = { path = "../../../../packages/rmw/xrce/nros-rmw-xrce-cffi" }  # nros-managed
 nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh" }  # nros-managed
-nros-zephyr-build = { path = "../../../../packages/core/nros-zephyr-build" }  # nros-managed
+nros-zephyr-build = { path = "../../../../packages/tooling/nros-zephyr-build" }  # nros-managed
 unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }  # nros-managed
 

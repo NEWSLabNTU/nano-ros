@@ -37,7 +37,7 @@ default = []
 
 [build-dependencies]
 cmake = "0.1"
-nros-build-paths = { path = "../../../core/nros-build-paths" }
+nros-build-paths = { path = "../../../tooling/nros-build-paths" }
 
 [lints]
 workspace = true

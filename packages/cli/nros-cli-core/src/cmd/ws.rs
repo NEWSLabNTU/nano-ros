@@ -2006,7 +2006,7 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         ),
         // phase-291 (#211) — the zephyr-leaf build.rs bake helper; a
         // [build-dependencies] row in every zephyr rust example / ws entry.
-        ("nros-zephyr-build", "packages/core/nros-zephyr-build"),
+        ("nros-zephyr-build", "packages/tooling/nros-zephyr-build"),
         (
             "nros-transport-callbacks",
             "packages/drivers/nros-transport-callbacks",

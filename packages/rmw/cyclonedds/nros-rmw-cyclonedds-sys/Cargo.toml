@@ -104,7 +104,7 @@ nros-platform = { version = "0.5.0", path = "../../../core/nros-platform", defau
 
 [build-dependencies]
 cc = { version = "1.0", optional = true }
-nros-build-paths = { path = "../../../core/nros-build-paths" }
+nros-build-paths = { path = "../../../tooling/nros-build-paths" }
 
 [lints]
 workspace = true
