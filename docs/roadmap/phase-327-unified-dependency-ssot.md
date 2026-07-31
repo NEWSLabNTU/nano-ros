@@ -2,7 +2,7 @@
 
 **Implements:** [RFC-0062](../design/0062-unified-dependency-ssot.md)
 **Resolves:** [issue 0368](../issues/0368-setup-all-on-a-clean-host-seven-modules-fail-on-undeclared-prereqs.md)
-**Status:** Not started
+**Status:** In progress (W5 2026-08-01; W1+W2+W4 and the workspace half of W3 2026-08-01)
 **Informed by:** RFC-0014 (the index this extends), issue 0196 (a gate must
 cover the class it enforces — here applied to doctor probes), issue 0363
 (sync must not narrow a tracked patch table on failure — W5's guard).
@@ -29,7 +29,9 @@ never allowed to abort the sudo-less remainder.
 
 ## Work
 
-1. **W1 — index schema + full inventory move.** Add `[system.*]`,
+1. **W1 — index schema + full inventory move.** — **DONE** (2026-08-01; the
+   pinned-toolchain channel SSOT stays tools/rust-toolchain.toml with the
+   index entry in declared lockstep). Add `[system.*]`,
    `[rust.*]`, `[python.*]` tables and per-`[tool.*]` `system = [..]` to
    `nros-pkg-index` (parse + validate; unknown fields rejected loudly).
    Seed entries from the measured inventory:
@@ -49,7 +51,9 @@ never allowed to abort the sudo-less remainder.
    round-trips every entry; `git grep` finds no OS package name in
    `just/*.just` that lacks an index entry (the sweep is the gate).
 
-2. **W2 — resolver + printer; fix the F1 cascade.** Package-manager
+2. **W2 — resolver + printer; fix the F1 cascade.** — **DONE** (2026-08-01:
+   `nros setup --system [--check|--sudo]`; workspace setup reordered
+   sudo-less-first; apt-packages is the printer). Package-manager
    detection (`os-release` + `command -v`), `nros setup --system [<scope>]`
    resolving a scope's `[system.*]` closure into one native command:
    printed by default, executed only under `--sudo`. Reorder
@@ -61,7 +65,11 @@ never allowed to abort the sudo-less remainder.
    clearly-marked "N system packages pending" summary; the 0368 cascade
    (zephyr/esp32/px4 failing for want of ninja/targets) is unreproducible.
 
-3. **W3 — doctor derives from the index.** A generic walker runs each
+3. **W3 — doctor derives from the index.** — **PARTIAL** (2026-08-01: the
+   workspace doctor's system block derives from `--system --check`; the
+   cyclonedds idlc + play_launch_parser remedies re-pointed at index tools.
+   REMAINING: the generic walker for `[rust.*]`/`[python.*]`, the other
+   module doctors, and the no-index-entry lint). A generic walker runs each
    entry's `check` and prints the computed remedy (`nros setup --tool X`,
    the composed native command, `rustup target add …`). Convert the module
    doctors; delete the three measured wrong remedies (threadx_riscv64's
@@ -72,7 +80,11 @@ never allowed to abort the sudo-less remainder.
    names apt for a dependency with an index dist; a new lint fails when a
    module doctor probes a dependency with no index entry (issue-0196 rule).
 
-4. **W4 — dists declare their runtime system deps.**
+4. **W4 — dists declare their runtime system deps.** — **DONE for the
+   declaration + probe** (2026-08-01: `[tool.qemu] system = ["libslirp"]`;
+   `nros setup --tool` bails naming the missing package + the composed
+   command). REMAINING: the -nros3 rpath re-cut (sdk repo) + ldd audit of
+   the other dists.
    `[tool.qemu] system = ["libslirp"]` (+ audit the other dists' `ldd`
    closures). `nros setup --tool` checks/prints them; doctor probes them.
    Re-cutting the qemu dist with `$ORIGIN`-rpath'd libslirp (making the dep

@@ -54,7 +54,10 @@ default:
 # pinned in a TOML file and installed by `rust-pinned-toolchains`.
 [group("setup")]
 setup:
-    @just workspace apt-packages
+    # phase-327 W2 (issue 0368 F1): every sudo-less installer runs FIRST; the
+    # system-package step is LAST and only PRINTS (a missing OS package must
+    # never abort the sudo-less remainder — one sudo failure here used to
+    # cascade into zephyr/esp32/px4).
     @just workspace install-ninja
     @just workspace install-make
     @just workspace install-corrosion
@@ -64,6 +67,7 @@ setup:
     @just workspace cargo-tools
     @just workspace build-codegen
     @just workspace install-sccache
+    @just workspace apt-packages
 
 # Verify the host `nros` build tool resolves (the message/IDL codegen used by
 # `nros generate-*`, the cmake `nano_ros_generate_interfaces()` path, and the
@@ -251,26 +255,20 @@ doctor:
     check() {
         if "$@" &>/dev/null; then return 0; else return 1; fi
     }
+    source scripts/build/cargo.sh
+    nros_bin="$(nros_cli_bin 2>/dev/null || true)"
 
-    # --- apt-packages ---
-    apt_missing=()
-    check command -v arm-none-eabi-gcc  || apt_missing+=(gcc-arm-none-eabi)
-    check command -v qemu-system-arm    || apt_missing+=(qemu-system-arm)
-    check command -v qemu-system-riscv64 || apt_missing+=(qemu-system-misc)
-    check command -v cmake               || apt_missing+=(cmake)
-    check command -v socat               || apt_missing+=(socat)
-    check command -v riscv64-unknown-elf-gcc || apt_missing+=(gcc-riscv64-unknown-elf)
-    [ -f /usr/include/mbedtls/ssl.h ] || apt_missing+=(libmbedtls-dev)
-    # clang builtin headers — bindgen (zephyr-sys + other `*-sys` crates) needs
-    # the compiler resource headers (`stddef.h`) shipped by libclang-common;
-    # without them bindgen aborts "stddef.h file not found" (Zephyr Rust fixture
-    # builds). The `clang` apt package pulls the matching libclang-common-*-dev.
-    ls /usr/lib/llvm-*/lib/clang/*/include/stddef.h >/dev/null 2>&1 || apt_missing+=(clang)
-    if [ ${#apt_missing[@]} -eq 0 ]; then
-        echo "  [OK] apt-packages"
+    # --- system packages (phase-327 W3: derived from [system.*], never a
+    # hand-written list — the drift class issue 0368 measured) ---
+    if [ -x "$nros_bin" ]; then
+        if sys_out="$("$nros_bin" setup --system --check 2>&1)"; then
+            echo "  [OK] system packages ($(echo "$sys_out" | head -1 | sed 's/^nros setup --system --check: //'))"
+        else
+            echo "$sys_out" | sed 's/^/  /'
+            fail=1
+        fi
     else
-        echo "  [MISSING] apt-packages: ${apt_missing[*]} (run: just workspace apt-packages)"
-        fail=1
+        echo "  [SKIP] system packages (nros CLI not built — run: just setup-cli)"
     fi
 
     # --- pinned ninja (>=1.13 for the GNU-jobserver client, Phase 176) ---
@@ -525,68 +523,23 @@ doctor:
 # Sub-recipes — each can be run individually
 # =============================================================================
 
-# Install required system packages via apt (requires sudo).
+# System OS packages — a thin printer over the `[system.*]` index class
+# (phase-327 W2, RFC-0062). The name survives for muscle memory, but the list
+# lives in nros-sdk-index.toml (abstract keys, per-manager mappings, probes)
+# and this recipe never runs sudo itself: it probes, composes ONE native
+# install command for the detected manager, and prints it. Run
+# `nros setup --system --sudo` to execute it.
 [group("setup")]
 apt-packages:
     #!/usr/bin/env bash
     set -e
-    pkgs=()
-    check_apt() {
-        if command -v "$2" &>/dev/null; then
-            printf "  %-40s %s\n" "$1" "[already installed]"
-        else
-            pkgs+=("$1")
-        fi
-    }
-    check_apt gcc-arm-none-eabi              arm-none-eabi-gcc
-    check_apt qemu-system-arm                qemu-system-arm
-    check_apt qemu-system-misc               qemu-system-riscv64
-    check_apt cmake                          cmake
-    check_apt socat                          socat
-    check_apt gcc-riscv64-unknown-elf        riscv64-unknown-elf-gcc
-    # genromfs: builds the `etc/` ROMFS image for the riscv rv-virt NuttX board
-    # (`just nuttx build-riscv-c`); the arm board's config doesn't use ROMFS, so
-    # this only surfaces on the riscv lane. Without it the build dies at
-    # `Board.mk … etctmp.c … genromfs: command not found`.
-    check_apt genromfs                       genromfs
-    if [ -f /usr/include/mbedtls/ssl.h ]; then
-        printf "  %-40s %s\n" "libmbedtls-dev" "[already installed]"
-    else
-        pkgs+=(libmbedtls-dev)
+    source scripts/build/cargo.sh
+    nros_bin="$(nros_cli_bin 2>/dev/null || true)"
+    if [ ! -x "$nros_bin" ]; then
+        echo "apt-packages: nros CLI not built (run: just setup-cli) — cannot resolve [system.*]"
+        exit 0
     fi
-    # clang builtin headers (bindgen / zephyr-sys — see doctor note above)
-    if ls /usr/lib/llvm-*/lib/clang/*/include/stddef.h >/dev/null 2>&1; then
-        printf "  %-40s %s\n" "clang (libclang headers)" "[already installed]"
-    else
-        pkgs+=(clang)
-    fi
-    # picolibc: check via sysroot
-    picolibc_found=false
-    if command -v riscv64-unknown-elf-gcc &>/dev/null; then
-        sysroot=$(riscv64-unknown-elf-gcc -march=rv32imc -mabi=ilp32 --specs=picolibc.specs -print-sysroot 2>/dev/null || true)
-        if [ -n "$sysroot" ] && [ -d "$sysroot/include" ]; then
-            picolibc_found=true
-        elif [ -d "/usr/lib/picolibc/riscv64-unknown-elf/include" ]; then
-            picolibc_found=true
-        fi
-    fi
-    if $picolibc_found; then
-        printf "  %-40s %s\n" "picolibc-riscv64-unknown-elf" "[already installed]"
-    else
-        pkgs+=(picolibc-riscv64-unknown-elf)
-    fi
-    # kconfig-frontends-nox: required by NuttX build
-    if command -v kconfig-conf &>/dev/null || command -v olddefconfig &>/dev/null; then
-        printf "  %-40s %s\n" "kconfig-frontends-nox" "[already installed]"
-    else
-        pkgs+=(kconfig-frontends-nox)
-    fi
-    if [ ${#pkgs[@]} -eq 0 ]; then
-        echo "All system packages already installed."
-    else
-        echo "Installing: ${pkgs[*]}"
-        sudo apt-get install -y "${pkgs[@]}"
-    fi
+    "$nros_bin" setup --system
 
 # Print the list of project-owned `rust-toolchain.toml` files that
 # `rust-pinned-toolchains` and `doctor` walk. Third-party vendored

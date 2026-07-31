@@ -91,6 +91,25 @@ pub struct Args {
     /// in the index. The inverse of `--full`.
     #[arg(long)]
     pub shallow: bool,
+
+    /// phase-327 W2 (RFC-0062) — resolve the `[system.*]` OS-package closure
+    /// for the detected package manager and PRINT the one native install
+    /// command (never runs it without `--sudo`). With `--check`, run each
+    /// entry's presence probe instead and exit non-zero if anything is
+    /// missing (the doctor surface).
+    #[arg(long)]
+    pub system: bool,
+
+    /// With `--system`: run the presence probes and report
+    /// present/missing/unknown instead of printing the install command.
+    /// Exits 1 when anything is missing.
+    #[arg(long, requires = "system")]
+    pub check: bool,
+
+    /// With `--system`: EXECUTE the composed native install command (which
+    /// invokes sudo where the manager needs it) instead of printing it.
+    #[arg(long, requires = "system", conflicts_with = "check")]
+    pub sudo: bool,
 }
 
 /// `nros setup <subcommand>` (Phase 215.J.2).
@@ -161,6 +180,9 @@ pub fn run(args: Args) -> Result<()> {
     if args.licenses {
         print_licenses(&index);
         return Ok(());
+    }
+    if args.system {
+        return run_system(&index, args.check, args.sudo);
     }
 
     if let Some(tool) = args.tool.as_deref() {
@@ -259,10 +281,10 @@ pub fn run(args: Args) -> Result<()> {
     // RFC-0048 §6 / phase-287 W5 — emit the CMakePreset for this board so
     // `nros init` + `cmake --preset <board>` cross-configure with no hand-set
     // toolchain. Best-effort: a failure here never fails provisioning.
-    if !args.dry_run {
-        if let Err(e) = emit_board_cmake_preset(board, &workspace, &bin_dirs) {
-            eprintln!("nros setup: CMakePreset not written: {e:#}");
-        }
+    if !args.dry_run
+        && let Err(e) = emit_board_cmake_preset(board, &workspace, &bin_dirs)
+    {
+        eprintln!("nros setup: CMakePreset not written: {e:#}");
     }
     Ok(())
 }
@@ -607,6 +629,34 @@ fn install_single_tool(
             }
         }
     }
+    // phase-327 W4 (issue 0368 F3) — the dist's declared RUNTIME system deps.
+    // Probe and NAME what is missing here, so the failure surface is "install
+    // libslirp0" rather than a bare loader error out of a later smoke check.
+    let mut missing_sys: Vec<&str> = Vec::new();
+    for key in &tool.system {
+        if let Some(dep) = index.system.get(key)
+            && run_probe(dep.check.as_ref()) == ProbeResult::Missing
+        {
+            missing_sys.push(key);
+        }
+    }
+    if !missing_sys.is_empty() {
+        let entries: Vec<(&String, &crate::orchestration::sdk_index::SystemDep)> = index
+            .system
+            .iter()
+            .filter(|(k, _)| missing_sys.contains(&k.as_str()))
+            .collect();
+        let hint = detect_package_manager()
+            .map(|mgr| native_install_command(mgr, &compose_packages(&entries, mgr)))
+            .unwrap_or_else(|| "<no supported package manager detected>".to_string());
+        bail!(
+            "nros setup --tool {name}: installed, but its dist needs {} runtime \
+             system package(s) this host is missing: {}.\n  Install with:  {hint}\n  \
+             (declared as [tool.{name}] system = [..]; probes via [system.*].check)",
+            missing_sys.len(),
+            missing_sys.join(", "),
+        );
+    }
     Ok(())
 }
 
@@ -949,6 +999,280 @@ fn print_licenses(index: &SdkIndex) {
                 .unwrap_or_default()
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// phase-327 W2 (RFC-0062) — the `[system.*]` OS-package layer.
+// ---------------------------------------------------------------------------
+
+/// Detect the host's package manager: `/etc/os-release` `ID`/`ID_LIKE`
+/// first (works even when several managers are installed), then a
+/// `command -v` probe as fallback. macOS is always `brew`.
+fn detect_package_manager() -> Option<&'static str> {
+    if std::env::consts::OS == "macos" {
+        return Some("brew");
+    }
+    if let Ok(os_release) = std::fs::read_to_string("/etc/os-release") {
+        let mut ids = String::new();
+        for line in os_release.lines() {
+            if let Some(v) = line
+                .strip_prefix("ID=")
+                .or_else(|| line.strip_prefix("ID_LIKE="))
+            {
+                ids.push(' ');
+                ids.push_str(v.trim_matches('"'));
+            }
+        }
+        for token in ids.split_whitespace() {
+            match token {
+                "debian" | "ubuntu" => return Some("apt"),
+                "fedora" | "rhel" | "centos" => return Some("dnf"),
+                "arch" => return Some("pacman"),
+                _ => {}
+            }
+        }
+    }
+    for (cmd, mgr) in [
+        ("apt-get", "apt"),
+        ("dnf", "dnf"),
+        ("pacman", "pacman"),
+        ("brew", "brew"),
+    ] {
+        if command_exists(cmd) {
+            return Some(mgr);
+        }
+    }
+    None
+}
+
+fn command_exists(cmd: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path).any(|dir| {
+        let p = dir.join(cmd);
+        p.is_file()
+            && std::fs::metadata(&p)
+                .map(|m| {
+                    use std::os::unix::fs::PermissionsExt;
+                    m.permissions().mode() & 0o111 != 0
+                })
+                .unwrap_or(false)
+    })
+}
+
+/// The composed native install command for `manager` over `packages`.
+/// One command, the user's to run — sudo is spelled out where the manager
+/// needs it (brew must NOT run under sudo).
+fn native_install_command(manager: &str, packages: &[String]) -> String {
+    let list = packages.join(" ");
+    match manager {
+        "apt" => format!("sudo apt-get install -y {list}"),
+        "dnf" => format!("sudo dnf install -y {list}"),
+        "pacman" => format!("sudo pacman -S --needed {list}"),
+        "brew" => format!("brew install {list}"),
+        other => format!("<install via {other}: {list}>"),
+    }
+}
+
+/// One entry's probe result.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProbeResult {
+    Present,
+    Missing,
+    /// No probe declared, or the probe kind is not answerable on this host
+    /// (e.g. `sharedlib` off Linux) — composed into the plan, not counted
+    /// as missing.
+    Unknown,
+}
+
+fn run_probe(check: Option<&crate::orchestration::sdk_index::CheckProbe>) -> ProbeResult {
+    let Some(check) = check else {
+        return ProbeResult::Unknown;
+    };
+    if let Some(cmd) = &check.cmd {
+        return if command_exists(cmd) {
+            ProbeResult::Present
+        } else {
+            ProbeResult::Missing
+        };
+    }
+    if let Some(lib) = &check.sharedlib {
+        if std::env::consts::OS != "linux" {
+            return ProbeResult::Unknown;
+        }
+        let Ok(out) = std::process::Command::new("ldconfig").arg("-p").output() else {
+            return ProbeResult::Unknown;
+        };
+        let listing = String::from_utf8_lossy(&out.stdout);
+        return if listing
+            .lines()
+            .any(|l| l.trim_start().starts_with(&format!("{lib} ")))
+        {
+            ProbeResult::Present
+        } else {
+            ProbeResult::Missing
+        };
+    }
+    if let Some(pc) = &check.pkg_config {
+        let Ok(status) = std::process::Command::new("pkg-config")
+            .args(["--exists", pc])
+            .status()
+        else {
+            // No pkg-config on the host — cannot answer.
+            return ProbeResult::Unknown;
+        };
+        return if status.success() {
+            ProbeResult::Present
+        } else {
+            ProbeResult::Missing
+        };
+    }
+    ProbeResult::Unknown
+}
+
+/// `nros setup --system [--check|--sudo]`.
+///
+/// Print mode composes ONE native install command for the packages whose
+/// probe does not report present, plus a per-key `why` listing so the user
+/// can prune — and exits 0 (a missing OS package must never abort the
+/// sudo-less remainder of a setup flow; issue 0368 F1). `--check` reports
+/// probe results and exits 1 on any missing (the doctor surface). `--sudo`
+/// executes the composed command.
+fn run_system(index: &SdkIndex, check_only: bool, run_sudo: bool) -> Result<()> {
+    if index.system.is_empty() {
+        println!("nros setup --system: index declares no [system.*] entries.");
+        return Ok(());
+    }
+    let manager = detect_package_manager();
+
+    let mut missing: Vec<(&String, &crate::orchestration::sdk_index::SystemDep)> = Vec::new();
+    let mut unknown: Vec<&String> = Vec::new();
+    let mut present = 0usize;
+    for (key, dep) in &index.system {
+        match run_probe(dep.check.as_ref()) {
+            ProbeResult::Present => present += 1,
+            ProbeResult::Missing => missing.push((key, dep)),
+            ProbeResult::Unknown => unknown.push(key),
+        }
+    }
+
+    if check_only {
+        println!(
+            "nros setup --system --check: {present} present, {} missing, {} unprobed",
+            missing.len(),
+            unknown.len()
+        );
+        for (key, dep) in &missing {
+            println!(
+                "  [MISSING] {key}{}",
+                dep.why
+                    .as_deref()
+                    .map(|w| format!(" — {w}"))
+                    .unwrap_or_default()
+            );
+        }
+        for key in &unknown {
+            println!("  [UNPROBED] {key} (no check declared / not answerable here)");
+        }
+        if !missing.is_empty() {
+            let Some(mgr) = manager else {
+                bail!(
+                    "{} system package(s) missing and no package manager detected",
+                    missing.len()
+                );
+            };
+            let pkgs = compose_packages(&missing, mgr);
+            bail!(
+                "{} system package(s) missing. Install with:\n  {}",
+                missing.len(),
+                native_install_command(mgr, &pkgs)
+            );
+        }
+        return Ok(());
+    }
+
+    let Some(mgr) = manager else {
+        println!(
+            "nros setup --system: no supported package manager detected \
+             (apt/dnf/pacman/brew). The index declares {} [system.*] entries; \
+             map your platform in nros-sdk-index.toml.",
+            index.system.len()
+        );
+        return Ok(());
+    };
+
+    // Compose over the entries not already present (probe-first, so re-runs
+    // shrink the command instead of repeating it).
+    let to_install: Vec<(&String, &crate::orchestration::sdk_index::SystemDep)> = index
+        .system
+        .iter()
+        .filter(|(_, dep)| run_probe(dep.check.as_ref()) != ProbeResult::Present)
+        .collect();
+    if to_install.is_empty() {
+        println!("nros setup --system: every probed [system.*] entry is present.");
+        return Ok(());
+    }
+    let mut unmapped: Vec<&String> = Vec::new();
+    for (key, dep) in &to_install {
+        if dep.packages_for(mgr).is_empty() {
+            unmapped.push(key);
+        }
+    }
+    let pkgs = compose_packages(&to_install, mgr);
+
+    println!(
+        "nros setup --system ({mgr}): {} entr(ies) not confirmed present:",
+        to_install.len()
+    );
+    for (key, dep) in &to_install {
+        println!(
+            "  {key:<28} {}",
+            dep.why.as_deref().unwrap_or("(no why recorded)")
+        );
+    }
+    if !unmapped.is_empty() {
+        println!(
+            "  ({} entr(ies) have no {mgr} mapping and are omitted: {})",
+            unmapped.len(),
+            unmapped
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    if pkgs.is_empty() {
+        println!("nros setup --system: nothing to compose for {mgr}.");
+        return Ok(());
+    }
+    let cmd = native_install_command(mgr, &pkgs);
+    if run_sudo {
+        println!("nros setup --system --sudo: running:\n  {cmd}");
+        let status = std::process::Command::new("sh")
+            .args(["-c", &cmd])
+            .status()
+            .wrap_err("spawn the native package manager")?;
+        if !status.success() {
+            bail!("system package install failed ({status})");
+        }
+    } else {
+        println!("Install with (or re-run with --sudo):\n  {cmd}");
+    }
+    Ok(())
+}
+
+fn compose_packages(
+    entries: &[(&String, &crate::orchestration::sdk_index::SystemDep)],
+    manager: &str,
+) -> Vec<String> {
+    let mut pkgs: Vec<String> = entries
+        .iter()
+        .flat_map(|(_, dep)| dep.packages_for(manager).iter().cloned())
+        .collect();
+    pkgs.sort();
+    pkgs.dedup();
+    pkgs
 }
 
 #[cfg(test)]

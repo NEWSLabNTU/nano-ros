@@ -47,6 +47,154 @@ pub struct SdkIndex {
     /// NOT by `nros setup`.
     #[serde(default)]
     pub reference: BTreeMap<String, ReferenceEntry>,
+    /// phase-327 W1 (RFC-0062) — OS packages by ABSTRACT key, mapped per
+    /// package manager. The class `apt-packages` + every module's ad-hoc
+    /// prereq probe moves into. `nros setup --system` composes the detected
+    /// manager's install command and PRINTS it (`--sudo` to run);
+    /// `--system --check` runs the probes (the doctor surface).
+    #[serde(default)]
+    pub system: BTreeMap<String, SystemDep>,
+    /// phase-327 W1 — the Rust layer (pinned toolchains, targets, cargo
+    /// tools), previously living in `just workspace` recipe bodies.
+    #[serde(default)]
+    pub rust: RustSection,
+    /// phase-327 W1 — pip-installed tools (west, colcon, …), previously
+    /// scattered per module.
+    #[serde(default)]
+    pub python: BTreeMap<String, PythonDep>,
+}
+
+/// phase-327 W1 (RFC-0062) — one OS package, declared by abstract key.
+///
+/// Per-manager mappings are explicit fields (not a flattened map) so
+/// `deny_unknown_fields` keeps catching typos; adding a manager is a schema
+/// change, which is the point — mappings are reviewed, not guessed.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemDep {
+    /// One line of intent — surfaces in the composed plan so the user knows
+    /// what they are installing and can prune.
+    #[serde(default)]
+    pub why: Option<String>,
+    #[serde(default)]
+    pub apt: Vec<String>,
+    #[serde(default)]
+    pub dnf: Vec<String>,
+    #[serde(default)]
+    pub pacman: Vec<String>,
+    #[serde(default)]
+    pub brew: Vec<String>,
+    /// Presence probe. Optional: an entry without one is composed into the
+    /// install command but reported `unknown` by `--check`.
+    #[serde(default)]
+    pub check: Option<CheckProbe>,
+}
+
+impl SystemDep {
+    /// The native package list for `manager` ("apt" | "dnf" | "pacman" |
+    /// "brew"), empty when unmapped.
+    pub fn packages_for(&self, manager: &str) -> &[String] {
+        match manager {
+            "apt" => &self.apt,
+            "dnf" => &self.dnf,
+            "pacman" => &self.pacman,
+            "brew" => &self.brew,
+            _ => &[],
+        }
+    }
+}
+
+/// A presence probe for a [`SystemDep`] / [`PythonDep`]. Exactly one field —
+/// validated, since serde alone would accept an ambiguous table.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckProbe {
+    /// `command -v <cmd>` succeeds.
+    #[serde(default)]
+    pub cmd: Option<String>,
+    /// A shared library the dynamic linker can find (`ldconfig -p` on Linux;
+    /// skipped elsewhere — the entry reports `unknown` there).
+    #[serde(default)]
+    pub sharedlib: Option<String>,
+    /// `pkg-config --exists <name>` succeeds (dev headers).
+    #[serde(default)]
+    pub pkg_config: Option<String>,
+}
+
+impl CheckProbe {
+    fn field_count(&self) -> usize {
+        [
+            self.cmd.is_some(),
+            self.sharedlib.is_some(),
+            self.pkg_config.is_some(),
+        ]
+        .iter()
+        .filter(|b| **b)
+        .count()
+    }
+}
+
+/// phase-327 W1 — the Rust layer.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RustSection {
+    /// Pinned toolchains, keyed by a stable alias (`nightly-pinned`).
+    #[serde(default)]
+    pub toolchain: BTreeMap<String, RustToolchain>,
+    /// rustup targets, keyed by a short alias.
+    #[serde(default)]
+    pub target: BTreeMap<String, RustTarget>,
+    /// `cargo install`ed tools, keyed by binary-ish alias.
+    #[serde(default, rename = "cargo-tool")]
+    pub cargo_tool: BTreeMap<String, RustCargoTool>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RustToolchain {
+    /// rustup channel (`nightly-2026-04-11`, `stable`).
+    pub channel: String,
+    #[serde(default)]
+    pub components: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RustTarget {
+    pub triple: String,
+    /// Alias of the `[rust.toolchain.*]` this target installs under; `None`
+    /// = the default toolchain.
+    #[serde(default)]
+    pub toolchain: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RustCargoTool {
+    /// The crates.io crate name (`cargo-nextest`).
+    #[serde(rename = "crate")]
+    pub crate_name: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    /// `cargo install --locked` (default true).
+    #[serde(default = "default_true")]
+    pub locked: bool,
+    #[serde(default)]
+    pub check: Option<CheckProbe>,
+}
+
+/// phase-327 W1 — one pip-installed tool.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PythonDep {
+    /// The PyPI distribution name.
+    pub pip: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub why: Option<String>,
+    #[serde(default)]
+    pub check: Option<CheckProbe>,
 }
 
 /// A named `[reference.*]` source grouping (Phase 197.2).
@@ -94,6 +242,12 @@ pub struct ToolPackage {
     /// Build-from-source recipe used when no `dist` matches the host.
     #[serde(default)]
     pub source: Option<ToolSource>,
+    /// phase-327 W4 (RFC-0062) — `[system.*]` keys this tool's DIST needs at
+    /// RUNTIME (e.g. qemu-nros links `libslirp.so.0` dynamically, which stock
+    /// Ubuntu does not ship). `nros setup --tool` checks + names them before
+    /// the smoke check can fail with a bare loader error.
+    #[serde(default)]
+    pub system: Vec<String>,
 }
 
 /// A board's required SDK package set — the board→toolchain SSOT (Phase 191.1).
@@ -301,6 +455,55 @@ impl SdkIndex {
                 }
             }
         }
+        // phase-327 W1 — the new classes' cross-references and probe shapes.
+        for (name, tool) in &self.tool {
+            for key in &tool.system {
+                if !self.system.contains_key(key) {
+                    bail!(
+                        "tool '{name}' declares runtime system dep '{key}' \
+                         with no [system.{key}] entry"
+                    );
+                }
+            }
+        }
+        for (key, dep) in &self.system {
+            if dep.apt.is_empty()
+                && dep.dnf.is_empty()
+                && dep.pacman.is_empty()
+                && dep.brew.is_empty()
+            {
+                bail!("[system.{key}] maps to no package manager at all");
+            }
+            if let Some(check) = &dep.check
+                && check.field_count() != 1
+            {
+                bail!("[system.{key}].check must set exactly one of cmd/sharedlib/pkg_config");
+            }
+        }
+        for (alias, target) in &self.rust.target {
+            if let Some(tc) = &target.toolchain
+                && !self.rust.toolchain.contains_key(tc)
+            {
+                bail!(
+                    "[rust.target.{alias}] references undefined toolchain alias '{tc}' \
+                     (not a [rust.toolchain.*] entry)"
+                );
+            }
+        }
+        for (alias, tool) in &self.rust.cargo_tool {
+            if let Some(check) = &tool.check
+                && check.field_count() != 1
+            {
+                bail!("[rust.cargo-tool.{alias}].check must set exactly one probe field");
+            }
+        }
+        for (alias, py) in &self.python {
+            if let Some(check) = &py.check
+                && check.field_count() != 1
+            {
+                bail!("[python.{alias}].check must set exactly one probe field");
+            }
+        }
         // Phase 195.B — a `[source.*]` provisioning recipe must be coherent so
         // `nros setup` can act on it without guessing. `submodule` mode needs a
         // `dest`; clone mode (a `git` with no `submodule`) needs both `ref` and
@@ -495,6 +698,99 @@ installer = "nvidia-sdk-manager"
                 .unwrap_err()
                 .to_string()
                 .contains("no `dest`")
+        );
+    }
+
+    /// phase-327 W1 (RFC-0062) — the new classes round-trip, cross-refs are
+    /// validated, and probe shapes must be unambiguous.
+    #[test]
+    fn system_rust_python_classes_parse_and_validate() {
+        let idx = SdkIndex::parse(
+            r#"
+[system.libslirp]
+why = "runtime dep of the qemu dist"
+apt = ["libslirp0"]
+dnf = ["libslirp"]
+check = { sharedlib = "libslirp.so.0" }
+
+[system.gnu-parallel]
+apt = ["parallel"]
+brew = ["parallel"]
+check = { cmd = "parallel" }
+
+[tool.qemu]
+version = "11.0-nros2"
+system = ["libslirp"]
+
+[rust.toolchain.nightly-pinned]
+channel = "nightly-2026-04-11"
+components = ["rustfmt", "clippy"]
+
+[rust.target.riscv32imc]
+triple = "riscv32imc-unknown-none-elf"
+toolchain = "nightly-pinned"
+
+[rust.cargo-tool.nextest]
+crate = "cargo-nextest"
+check = { cmd = "cargo-nextest" }
+
+[python.west]
+pip = "west"
+check = { cmd = "west" }
+"#,
+        )
+        .expect("new classes parse");
+        assert!(idx.validate().is_ok());
+        assert_eq!(idx.system["libslirp"].packages_for("apt"), ["libslirp0"]);
+        assert_eq!(idx.system["libslirp"].packages_for("dnf"), ["libslirp"]);
+        assert!(idx.system["libslirp"].packages_for("pacman").is_empty());
+        assert_eq!(idx.tool["qemu"].system, ["libslirp"]);
+        assert_eq!(idx.rust.cargo_tool["nextest"].crate_name, "cargo-nextest");
+        assert!(
+            idx.rust.cargo_tool["nextest"].locked,
+            "locked defaults true"
+        );
+        assert_eq!(idx.python["west"].pip, "west");
+
+        // A tool naming an undefined system key is a validation error.
+        let dangling = SdkIndex::parse("[tool.qemu]\nversion=\"1\"\nsystem=[\"nope\"]\n").unwrap();
+        let err = dangling.validate().unwrap_err().to_string();
+        assert!(err.contains("no [system.nope] entry"), "{err}");
+
+        // A system entry mapping no manager at all is rejected.
+        let unmapped = SdkIndex::parse("[system.x]\nwhy=\"w\"\n").unwrap();
+        assert!(
+            unmapped
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("no package manager"),
+        );
+
+        // An ambiguous probe (two fields) is rejected.
+        let ambiguous = SdkIndex::parse(
+            "[system.x]\napt=[\"x\"]\ncheck = { cmd = \"x\", sharedlib = \"libx.so\" }\n",
+        )
+        .unwrap();
+        assert!(
+            ambiguous
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("exactly one"),
+        );
+
+        // A target referencing an undefined toolchain alias is rejected.
+        let bad_tc = SdkIndex::parse(
+            "[rust.target.t]\ntriple=\"thumbv7m-none-eabi\"\ntoolchain=\"ghost\"\n",
+        )
+        .unwrap();
+        assert!(
+            bad_tc
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("undefined toolchain alias 'ghost'"),
         );
     }
 

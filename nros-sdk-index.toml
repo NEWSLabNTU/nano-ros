@@ -26,6 +26,11 @@
 # nros1 lacked slirp and couldn't network).
 [tool.qemu]
 version = "11.0.0-nros2"
+# phase-327 W4 (issue 0368 F3): the dist links libslirp.so.0 dynamically;
+# stock Ubuntu does not ship it. Re-cut with an $ORIGIN rpath bundle as
+# -nros3 to drop this. Declared so setup/doctor can say so BEFORE the smoke
+# check fails with a bare loader error.
+system = ["libslirp"]
 upstream = "nano-ros-v11.0.0-patches" # exact upstream rev/branch (SSOT for build-tool.yml)
 dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros2/qemu-linux-x86_64.tar.zst", sha256 = "a1cb9df6f41070d43042c2455e23823431226e9274c67435eafcbc9cddb1166e" }
 dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros2/qemu-linux-arm64.tar.zst", sha256 = "33d243e541d2415ceccae65a5e7d7c0aa22c85eeff00c516462f90e4edb4b181" }
@@ -482,8 +487,231 @@ packages = ["arm-fvp"]
 platform = "zephyr" # west + zephyr-sdk toolchain, provisioned outside the index
 packages = []
 
-# NOTE (197.4): a `[reference.*]` grouping for heavy opt-in source sets (px4,
-# tracing) was removed — the released `nros` rejects unknown index sections.
-# `just px4 setup` provisions px4-rs + px4-autopilot directly via
-# `nros setup --source …`. Re-introducing index-level references needs an
-# nros-cli schema change (Phase 197 workflow review).
+# NOTE (197.4 → phase-327): index sections are rejected-unknown by whatever
+# `nros` parses them, so adding a section IS a CLI schema change. phase-327 W1
+# (RFC-0062) added [system.*]/[rust.*]/[python.*] below together with the
+# in-tree CLI schema — a RELEASED pre-327 `nros` cannot parse this file
+# anymore; contributors use the in-tree CLI (issue 0363 forces it fresh).
+
+
+# --- OS packages (phase-327 W1, RFC-0062) -----------------------------------
+#
+# Abstract keys mapped per package manager. `nros setup --system` composes the
+# detected manager's ONE install command and prints it (never runs it without
+# --sudo); `nros setup --system --check` runs the probes (the doctor surface).
+# Mappings verified on Ubuntu 22.04 (issue 0368's clean-host walk); dnf/pacman/
+# brew mappings are best-effort and unverified — fix them as hosts appear.
+
+[system.gcc-arm-none-eabi]
+why = "ARM bare-metal cross gcc via the apt path (the [tool.arm-none-eabi-gcc] dist is the store alternative)"
+apt = ["gcc-arm-none-eabi"]
+dnf = ["arm-none-eabi-gcc-cs"]
+pacman = ["arm-none-eabi-gcc"]
+brew = ["arm-none-eabi-gcc"]
+check = { cmd = "arm-none-eabi-gcc" }
+
+[system.cmake]
+why = "every C/C++ configure step"
+apt = ["cmake"]
+dnf = ["cmake"]
+pacman = ["cmake"]
+brew = ["cmake"]
+check = { cmd = "cmake" }
+
+[system.genromfs]
+why = "NuttX riscv rv-virt etc/ ROMFS image (the [tool.genromfs] source recipe is the store alternative)"
+apt = ["genromfs"]
+pacman = ["genromfs"]
+check = { cmd = "genromfs" }
+
+[system.socat]
+why = "test-harness serial/TCP relays"
+apt = ["socat"]
+dnf = ["socat"]
+pacman = ["socat"]
+brew = ["socat"]
+check = { cmd = "socat" }
+
+[system.libmbedtls]
+why = "zenoh-pico TLS link (zpico-sys)"
+apt = ["libmbedtls-dev"]
+dnf = ["mbedtls-devel"]
+pacman = ["mbedtls"]
+brew = ["mbedtls"]
+check = { sharedlib = "libmbedtls.so" }
+
+[system.clang]
+why = "bindgen + C toolchain probes"
+apt = ["clang"]
+dnf = ["clang"]
+pacman = ["clang"]
+brew = ["llvm"]
+check = { cmd = "clang" }
+
+[system.libclang-dev]
+why = "bindgen (z3-sys via ros-launch-manifest-check -> nros-launch-resolve build; issue 0368 F5)"
+apt = ["libclang-dev"]
+dnf = ["clang-devel"]
+pacman = ["clang"]
+brew = ["llvm"]
+check = { sharedlib = "libclang.so" }
+
+[system.libz3]
+why = "ros-launch-manifest-check (z3) -> nros-launch-resolve build (issue 0368 F5)"
+apt = ["libz3-dev"]
+dnf = ["z3-devel"]
+pacman = ["z3"]
+brew = ["z3"]
+check = { sharedlib = "libz3.so" }
+
+[system.python3-dev]
+why = "pyo3 source builds (play_launch_parser, nros-launch-resolve; issue 0368 F5)"
+apt = ["python3-dev"]
+dnf = ["python3-devel"]
+pacman = ["python"]
+brew = ["python"]
+check = { pkg_config = "python3" }
+
+[system.python3-venv]
+why = "ESP-IDF install + tool venvs (issue 0368 F7)"
+apt = ["python3-venv"]
+dnf = ["python3"]
+pacman = ["python"]
+brew = ["python"]
+
+[system.python3-pip]
+why = "pip-layer installs (west, colcon, clang-format wheel)"
+apt = ["python3-pip"]
+dnf = ["python3-pip"]
+pacman = ["python-pip"]
+brew = ["python"]
+check = { cmd = "pip3" }
+
+[system.libslirp]
+why = "runtime dep of the qemu-nros dist (-netdev user; issue 0368 F3)"
+apt = ["libslirp0"]
+dnf = ["libslirp"]
+pacman = ["libslirp"]
+brew = ["libslirp"]
+check = { sharedlib = "libslirp.so.0" }
+
+[system.aria2]
+why = "Zephyr SDK fetch (west sdk install; issue 0368 F7)"
+apt = ["aria2"]
+dnf = ["aria2"]
+pacman = ["aria2"]
+brew = ["aria2"]
+check = { cmd = "aria2c" }
+
+[system.gnu-parallel]
+why = "just format fan-out (issue 0368 F7)"
+apt = ["parallel"]
+dnf = ["parallel"]
+pacman = ["parallel"]
+brew = ["parallel"]
+check = { cmd = "parallel" }
+
+[system.qemu-system-arm]
+why = "ARM QEMU lanes via the apt path (the [tool.qemu] nros dist is the harness-preferred build)"
+apt = ["qemu-system-arm"]
+dnf = ["qemu-system-arm"]
+pacman = ["qemu-system-arm"]
+brew = ["qemu"]
+check = { cmd = "qemu-system-arm" }
+
+[system.qemu-system-misc]
+why = "RISC-V QEMU lanes (threadx-riscv64, nuttx rv-virt)"
+apt = ["qemu-system-misc"]
+dnf = ["qemu-system-riscv"]
+pacman = ["qemu-system-riscv"]
+brew = ["qemu"]
+check = { cmd = "qemu-system-riscv64" }
+
+[system.gcc-riscv64-unknown-elf]
+why = "RISC-V bare-metal cross gcc (threadx-riscv64, nuttx rv-virt; the [tool.riscv-none-elf-gcc] dist is the xPack-prefixed alternative)"
+apt = ["gcc-riscv64-unknown-elf"]
+pacman = ["riscv64-elf-gcc"]
+check = { cmd = "riscv64-unknown-elf-gcc" }
+
+[system.picolibc-riscv64-unknown-elf]
+why = "picolibc for the riscv64-unknown-elf gcc (nuttx rv-virt userspace)"
+apt = ["picolibc-riscv64-unknown-elf"]
+
+[system.kconfig-frontends]
+why = "NuttX configuration (kconfig-conf/kconfig-mconf)"
+apt = ["kconfig-frontends-nox"]
+check = { cmd = "kconfig-conf" }
+
+# --- Rust layer (phase-327 W1) ----------------------------------------------
+#
+# Previously living in `just workspace` recipe bodies (rust-pinned-toolchains /
+# rust-targets / cargo-tools). The channel SSOT for the pinned nightly stays
+# tools/rust-toolchain.toml (recipes awk it); this records the DECLARATION so
+# setup/doctor derive from one file. cargo-nextest was required by `just
+# test-all` and declared nowhere (issue 0368 F7).
+
+[rust.toolchain.stable]
+channel = "stable"
+components = ["rustfmt", "clippy", "rust-src", "llvm-tools"]
+
+[rust.toolchain.nightly-pinned]
+# Keep in lockstep with tools/rust-toolchain.toml (the awk-read SSOT).
+channel = "nightly-2026-04-11"
+components = ["rustfmt", "miri", "rust-src", "llvm-tools"]
+
+[rust.target.thumbv7em-hf]
+triple = "thumbv7em-none-eabihf"
+
+[rust.target.thumbv7m]
+triple = "thumbv7m-none-eabi"
+
+[rust.target.thumbv7m-nightly]
+triple = "thumbv7m-none-eabi"
+toolchain = "nightly-pinned"
+
+[rust.target.armv7r-hf]
+triple = "armv7r-none-eabihf"
+
+[rust.target.riscv32imc]
+triple = "riscv32imc-unknown-none-elf"
+
+[rust.target.riscv64gc]
+triple = "riscv64gc-unknown-none-elf"
+
+[rust.cargo-tool.nextest]
+crate = "cargo-nextest"
+check = { cmd = "cargo-nextest" }
+
+[rust.cargo-tool.llvm-cov]
+crate = "cargo-llvm-cov"
+check = { cmd = "cargo-llvm-cov" }
+
+[rust.cargo-tool.espflash]
+crate = "espflash"
+check = { cmd = "espflash" }
+
+[rust.cargo-tool.rustfilt]
+crate = "rustfilt"
+check = { cmd = "rustfilt" }
+
+[rust.cargo-tool.show-asm]
+crate = "cargo-show-asm"
+check = { cmd = "cargo-asm" }
+
+# --- Python layer (phase-327 W1) --------------------------------------------
+
+[python.west]
+pip = "west"
+why = "Zephyr workspace + SDK management"
+check = { cmd = "west" }
+
+[python.colcon]
+pip = "colcon-common-extensions"
+why = "rmw_zenoh overlay build (issue 0368 F7 — apt name only exists on ROS-repo hosts; pip works everywhere)"
+check = { cmd = "colcon" }
+
+[python.clang-format]
+pip = "clang-format"
+version = "17.0.6"
+why = "pinned formatter (.clang-format-version); just setup-clang-format installs the wheel"
+check = { cmd = "clang-format" }

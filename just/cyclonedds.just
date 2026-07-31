@@ -25,7 +25,9 @@ setup:
     else
         echo "Cyclone DDS submodule ready."
         echo "NOTE: no 'idlc' on PATH — Cyclone descriptor codegen needs a host"
-        echo "      idlc (a ROS 2 / CycloneDDS install, or pass -DIDLC_EXECUTABLE=<path>)."
+        echo "      idlc. Easiest: 'nros setup --tool cyclonedds' — the dist SHIPS bin/idlc"
+        echo "      (phase-327 W3; point IDLC_EXECUTABLE or PATH at the store). Alternatives:"
+        echo "      a ROS 2 / CycloneDDS install, or pass -DIDLC_EXECUTABLE=<path>."
     fi
 
 # Diagnose Cyclone DDS install status (read-only).
@@ -45,7 +47,7 @@ doctor:
     if command -v idlc >/dev/null 2>&1; then
         echo "  [OK]      idlc (host IDL compiler):  $(command -v idlc)"
     else
-        echo "  [MISSING] idlc on PATH (install a ROS 2 / CycloneDDS, or set IDLC_EXECUTABLE)"
+        echo "  [MISSING] idlc on PATH (run: nros setup --tool cyclonedds — its dist ships bin/idlc; or a ROS 2 install / IDLC_EXECUTABLE)"
         missing=1
     fi
     # Phase 185.5 — embedded-RTOS cross-built `ddsc` installs. Provisioned on
