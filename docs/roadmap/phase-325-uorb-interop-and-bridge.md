@@ -148,18 +148,27 @@ add a second mechanism.
 | formatter | `Tools/astyle/fix_code_style.sh` | `.clang-format` (LLVM-based) |
 | file header | **BSD 3-clause block, every file** | none required |
 
-These are not reconcilable, and today nano-ros's side silently wins:
+These are not reconcilable. **Correction (2026-07-31): our formatter is not the
+cause.** I assumed `check-c-fmt` / `check-cpp-fmt` were reformatting PX4 modules;
+they are not. Both enumerate explicit paths — `nros-c/include`, `zpico-zephyr`,
+`examples/native/c/**`, `nros-cpp/include/nros/*.hpp` — and no PX4 module tree is
+among them. The 4-space style was simply how the file was written. Checking
+before acting is the difference between a guard and a no-op dressed as a fix.
+
+What was true regardless:
 `packages/testing/nros-px4-register-check/.../nros_register_check.cpp` is
 **4-space indented, carries no BSD header, and is a bare `extern "C"` main** with
 no `ModuleBase`, no `print_usage` and therefore no `status` / `stop` / `help`. It
 is a nano-ros file wearing a PX4 file's location.
 
-- [ ] **W0.1** Add the PX4 module trees to `.clang-format-ignore` so nano-ros's
-      `check-c-fmt` / `check-cpp-fmt` do not reformat them, and let PX4's astyle
-      own them. Precedent: `cmake/templates/*` is already ignored for an
-      analogous reason (issue 0159 — reflow broke `@VAR@` tokens).
-- [ ] **W0.2** Bring `nros-px4-register-check` into PX4 convention, or record why
-      not. It is the module a reader copies.
+- [x] **W0.1** `.clang-format-ignore` gains the PX4 module trees. A **guard, not a
+      fix** — nothing formats them today. But both fmt recipes enumerate paths by
+      hand, so the day someone widens a glob to `examples/**/*.cpp` (a likely and
+      otherwise-correct change), PX4 trees would be silently reflowed into
+      4-space. `.clang-format-ignore` is read by clang-format itself, so the guard
+      holds whatever the recipe globs become. Precedent: `cmake/templates/*`
+      (issue 0159 — reflow broke `@VAR@` tokens).
+- [x] **W0.2** `nros-px4-register-check` brought to PX4 convention.
 
 **W0 lands before W2**, so the first real example is written in the right style
 rather than converted afterwards.
@@ -237,8 +246,22 @@ above; listed here so the sequencing is unmissable.
 - [ ] **W0.2** Bring `nros-px4-register-check` into PX4 convention (BSD header,
       tabs, `ModuleBase` + `print_usage`), or record why not.
 
-**Acceptance:** `just check-cpp-fmt` passes without reformatting a PX4 module, and
-`nros_register_check status` / `help` work from the pxh shell.
+**Acceptance:** `nros_register_check help` prints its `PRINT_MODULE_DESCRIPTION`
+from the pxh shell. **DONE 2026-07-31** — verified live:
+
+```
+### Description
+Link/registration check for the nano-ros uORB RMW backend.
+Usage: nros_register_check [arguments...]
+INFO  [nros_register_check] nros_rmw_uorb_register() -> OK
+```
+
+Note the acceptance says `help`, not `status`. An earlier draft said `status` —
+wrong: `status` comes from `ModuleBase<T>`, which is for modules that DAEMONIZE.
+This one is a one-shot command, modelled on `src/systemcmds/gpio`, so it has no
+start/stop/status to offer and inheriting `ModuleBase` to fake them would be
+worse than offering nothing. The old header even documented
+`nros_register_check start` — an invocation that never existed.
 
 ### W1 — a PX4 module can consume nano-ros
 

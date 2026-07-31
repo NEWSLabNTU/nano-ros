@@ -3,3 +3,11 @@
 # breaks substitution and generates un-compilable TUs (issue 0159 fallout,
 # 701ae4b6a corrupted zephyr_entry_main_c_typed.cpp.in this way).
 cmake/templates/*
+
+# PX4 modules follow PX4 style (tab indent, 120 cols, Tools/astyle), not ours.
+# Nothing formats these today — both fmt recipes enumerate paths by hand and no
+# PX4 tree is among them. This is a GUARD: the day a glob widens to
+# `examples/**/*.cpp`, clang-format itself honours this file, so the trees stay
+# PX4-shaped rather than being silently reflowed to 4-space. See phase-325 W0.1.
+packages/testing/nros-px4-register-check/*
+examples/px4/*

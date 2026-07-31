@@ -43,8 +43,20 @@ so that is exactly the shape here:
 ```
 src/CMakeLists.txt                              config_module_list_external
 src/modules/nros_register_check/CMakeLists.txt  px4_add_module(...)
-src/modules/nros_register_check/*.cpp           task_main → nros_rmw_uorb_register()
+src/modules/nros_register_check/Kconfig         menuconfig MODULES_NROS_REGISTER_CHECK
+src/modules/nros_register_check/*.cpp           main → nros_rmw_uorb_register()
 ```
+
+Written to **PX4** convention (phase-325 W0.2), not nano-ros's: tab indent, a
+`Kconfig` beside the module, and `PRINT_MODULE_*` usage strings so
+`nros_register_check help` works and PX4's module-reference scraper can see it.
+Modelled on `src/systemcmds/gpio` — a one-shot COMMAND — deliberately not on
+`ModuleBase<T>`, which is for modules that daemonize and would mean advertising a
+`start`/`stop`/`status` this has no meaning for.
+
+The one PX4 convention not adopted is the BSD 3-clause header naming the PX4
+Development Team: that is a licensing practice, not a style rule, and copying it
+would misattribute copyright. nano-ros is MIT OR Apache-2.0.
 
 Under `examples/` this could not be satisfied directly — the example tree
 demanded `<plat>/<lang>/<rmw>/<example>/`, so the real CMakeLists was hoisted up

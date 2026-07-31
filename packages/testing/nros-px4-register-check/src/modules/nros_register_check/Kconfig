@@ -1,0 +1,7 @@
+menuconfig MODULES_NROS_REGISTER_CHECK
+	bool "nros_register_check"
+	default n
+	---help---
+		Enable the nano-ros uORB RMW register-check module. Links the
+		nros-rmw-uorb backend into the SITL build and calls
+		nros_rmw_uorb_register(); the build itself is the validation.
