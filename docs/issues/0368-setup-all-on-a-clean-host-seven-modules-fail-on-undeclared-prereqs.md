@@ -1,0 +1,115 @@
+---
+id: 368
+title: "`just setup all` on a clean Ubuntu 22.04 host: 7 of 18 modules fail, almost all on prereqs the index model was meant to absorb"
+status: open
+type: tech-debt
+area: build
+related: [rfc-0014, issue-0336, issue-0196]
+---
+
+# `just setup all` on a clean host: 7 of 18 modules fail on undeclared prereqs
+
+## What was done
+
+Simulated the end-user path on a genuinely clean Ubuntu 22.04 host
+(newslab-server-241: no ROS 2, no sudo password available to the session, stock
+python 3.10 without pip/venv): `just setup all`, then `just doctor tier=all`,
+then the doctor's own per-item remedies. Everything below is reproducible from
+the transcripts; nothing was fixed by hand before recording it.
+
+Result: **7 modules failed** (`workspace verification qemu zephyr xrce
+rmw_zenoh esp_idf`), and the doctor pass then flagged **10**. The orchestrator
+itself behaved well — honest per-module failure list, honest non-zero exit,
+per-item remedies in doctor. The failures cluster into a few classes.
+
+## Findings
+
+**F1 — one sudo step gates a chain of sudo-less installers (the big one).**
+`just workspace setup` runs `apt-packages` (sudo) FIRST; under `set -e` its
+failure aborts the module, so `install-ninja`, `install-make`,
+`install-corrosion`, `rust-targets`, `cargo-tools` — all sudo-less — never
+ran. That single ordering cascaded into the `zephyr` (no ninja), `esp32`
+(no espflash/target), and `px4` (no ninja) failures. Running the skipped
+installers by hand afterwards fixed all of those without sudo.
+*Revision: run the sudo-less installers first; make `apt-packages` degrade to
+a "run this yourself: sudo apt install …" listing instead of failing the
+module.*
+
+**F2 — remedies point at apt/sudo where an index prebuilt exists.**
+- doctor `threadx_riscv64`: `[MISSING] riscv64-unknown-elf-gcc (run: just
+  workspace apt-packages)` — while `[tool.riscv-none-elf-gcc]` has a pinned
+  dist and was already sitting in `~/.nros/sdk/`.
+- doctor `cyclonedds`: `[MISSING] idlc on PATH (install a ROS 2 /
+  CycloneDDS, or set IDLC_EXECUTABLE)` — while `nros setup --tool cyclonedds`
+  installs a dist that CONTAINS `bin/idlc` (verified).
+- `just workspace install-play-launch-parser` source-builds with pyo3 (fails
+  on stock hosts, see F5) — while `[tool.play_launch_parser]` has a prebuilt
+  dist that the same run had already installed to the store.
+*Revision: remedies name the index tool when one exists; the apt list keeps
+only what the index cannot supply.*
+
+**F3 — the prebuilt `qemu` dist cannot run on a clean host.**
+`11.0.0-nros2` links `libslirp.so.0` dynamically; stock Ubuntu 22.04 does not
+ship it (it arrives with apt's qemu). `just qemu setup` installs the dist and
+then fails its own smoke check with the loader error. *Revision: bundle
+libslirp in the dist (rpath `$ORIGIN/../lib`), or declare per-tool system
+deps in the index and teach doctor to check them.*
+
+**F4 — the bundled interface set is incomplete for the repo's own examples.**
+`packages/cli/interfaces/` exists so codegen works "without a ROS 2
+environment", but holds only `builtin_interfaces`/`std_msgs`/
+`diagnostic_msgs`. The in-tree example workspaces require
+`example_interfaces`, `action_msgs`, `unique_identifier_msgs` — so on a
+ROS-less host, `nros sync examples/workspaces/rust` fails
+(`no matching package named example_interfaces`) and — worse — **rewrites the
+tracked `.cargo/config.toml`, silently dropping the patch entries it could
+not generate** (the issue-0363 shape, leaf-local flavor). Verified fix shape:
+a share-tree with those three packages' `msg/srv/action` files makes the full
+workspace sync + build cleanly. *Revision: complete the bundle (the three
+packages are small, licenses permitting), and make sync refuse to NARROW a
+leaf patch table when generation failed.*
+
+**F5 — pyo3 source builds need `python3-dev`; nobody says so.**
+`install-play-launch-parser` (and `just setup-launch-resolve`, via
+`ros-launch-manifest-check`'s hard `z3` dep → bindgen → libclang) die on
+stock hosts with raw linker/bindgen errors (`-lpython3.10 not found`,
+`Unable to find libclang`). Neither `python3-dev`, `libz3-dev` nor
+`libclang-*-dev` appear in `apt-packages`, the index, or doctor. *Revision:
+add them to the apt listing + a doctor probe; longer term, decide whether the
+resolver build really needs the z3-backed checker.*
+
+**F6 — `verus` fetches the unpinned latest release.**
+Latest needs `GLIBC_2.39`; Ubuntu 22.04 LTS has 2.35 → hard failure. Kani,
+right next to it, pins and passed. *Revision: pin a release known to run on
+the oldest supported LTS, or degrade with a message (verification is not in
+any CI tier gate).*
+
+**F7 — assorted undeclared prereqs, one line each.**
+`zephyr` prereq check demands `aria2c` (not in any list); `esp_idf` needs
+`python3-venv` (idf's venv bootstrap fails); `rmw_zenoh` instructs
+`sudo apt install python3-colcon-common-extensions` though colcon installs
+fine via pip `--user`; `setup-clang-format` needs pip (absent on stock
+python); `just format` needs GNU `parallel` (undeclared, uncheck-ed);
+`just test-all` needs `cargo-nextest` (undeclared, unchecked).
+
+## The consolidated apt line this host actually needed
+
+```
+sudo apt install qemu-system-arm qemu-system-misc socat gcc-riscv64-unknown-elf \
+  libmbedtls-dev clang picolibc-riscv64-unknown-elf kconfig-frontends-nox \
+  python3-dev python3-venv python3-pip libslirp0 aria2 parallel \
+  libz3-dev libclang-14-dev python3-colcon-common-extensions
+```
+
+Everything else provisioned sudo-less once F1's ordering was worked around by
+hand.
+
+## Suggested work order
+
+1. F1 ordering + degrade (smallest change, biggest cascade removed).
+2. F2 remedy re-pointing (doctor text + threadx/esp32 checks consult the
+   store or name the `--tool`).
+3. F4 bundle completion + the sync narrowing guard.
+4. F3 qemu dist relink/bundle (needs an sdk-repo release; `-nros3` suffix).
+5. F5/F7 apt-list + doctor additions (one sweep).
+6. F6 verus pin.

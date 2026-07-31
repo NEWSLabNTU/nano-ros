@@ -44,6 +44,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#368** — `just setup all` simulated end-to-end on a clean Ubuntu 22.04 host: 7 of 18 modules fail,
+nearly all on prereqs the RFC-0014 index model was meant to absorb. Biggest: ONE sudo `apt-packages`
+step ordered first in the workspace module aborts its own sudo-less installers (ninja/make/targets/
+cargo-tools), cascading into zephyr/esp32/px4. Plus: doctor remedies pointing at apt where index
+prebuilts exist (riscv gcc, idlc, play_launch_parser), the prebuilt qemu dist needing an
+undeclared system `libslirp0`, the bundled interface set missing the three packages the repo's own
+examples need (and a failed sync NARROWS a tracked leaf patch table — 0363 shape), pyo3/z3 build
+deps undeclared, verus unpinned-latest needing glibc 2.39. Full inventory + consolidated apt line +
+suggested work order in the issue. See `0368-*`. (2026-08-01)
+
 Recently resolved: **#364** — `<node machine=>` is ROS 1 roslaunch syntax; ROS 2 rejects it, so the
 phase-211.F multi-host partition was built on a fiction and the four `multihost.launch.xml` fixtures
 could not be run by `ros2 launch`. phase-326 moved the partition to RESOLVE time: a standard `host`
