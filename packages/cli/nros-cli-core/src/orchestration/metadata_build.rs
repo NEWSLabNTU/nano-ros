@@ -199,6 +199,17 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          edition = \"2024\"\n\
          publish = false\n\n\
          [workspace]\n\n\
+         # issue 0288 — the component may be `#![no_std]`, and a host target\n\
+         # defaults to `panic = \"unwind\"`, which needs std:\n\
+         #   error: unwinding panics are not supported without std\n\
+         # The probe only ever builds to RECORD what a component registers, so\n\
+         # abort is the right strategy as well as the working one. Set here\n\
+         # rather than asked of every example, because this is the probe\'s\n\
+         # requirement, not theirs.\n\
+         [profile.dev]\n\
+         panic = \"abort\"\n\n\
+         [profile.release]\n\
+         panic = \"abort\"\n\n\
          [[bin]]\n\
          name = \"probe\"\n\
          path = \"src/main.rs\"\n\n\
@@ -547,6 +558,30 @@ mod tests {
         assert!(main.contains(".exported_symbol(\"nros_component_talker\")"));
         assert!(main.contains("to_source_metadata_json"));
         assert!(main.contains("/out/talker.metadata.json"));
+    }
+
+    /// issue 0288 — the harness must build with `panic = "abort"`.
+    ///
+    /// A standalone example's lib is often `#![no_std]`, and a host target
+    /// defaults to `panic = "unwind"`, which requires std:
+    ///
+    /// ```text
+    /// error: unwinding panics are not supported without std
+    /// ```
+    ///
+    /// That blocked host-probing those packages entirely, so their executor
+    /// sizing fell back to the SystemModel's timer-blind bound. Asserted on the
+    /// EMITTED manifest because that is the only place the setting exists —
+    /// there is no type to hang it off, so nothing else would notice its
+    /// removal.
+    #[test]
+    fn harness_cargo_toml_builds_with_panic_abort() {
+        let toml = render_harness_cargo_toml(&opts()).expect("renders");
+        assert!(
+            toml.contains("[profile.dev]") && toml.contains("panic = \"abort\""),
+            "harness must set panic=abort or a no_std component cannot be \
+             host-probed:\n{toml}"
+        );
     }
 
     #[test]
