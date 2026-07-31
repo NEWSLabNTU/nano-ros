@@ -1,6 +1,6 @@
 # phase-326 — multi-host via launch arguments
 
-**Resolves:** [issue 0364](../issues/0364-machine-attr-is-ros-1-not-ros-2.md)
+**Resolves:** [issue 0365](../issues/0365-machine-attr-is-ros-1-not-ros-2.md)
 **Status:** Not started
 
 ## Why
@@ -9,7 +9,7 @@
 multi-machine launch and its XML frontend rejects the attribute outright, so
 the four `multihost.launch.xml` fixtures cannot be run by `ros2 launch`.
 Upstream removed `machine=` and `model::Deploy.host` on 2026-07-31; see
-issue 0364 for the evidence.
+issue 0365 for the evidence.
 
 ## What replaces it
 
@@ -62,7 +62,7 @@ The partition moves from bake time to resolve time, so `Plan::for_host` and
 4. **system.toml.** `[deploy.robot1]` / `[deploy.robot2]` blocks in the
    example workspaces stop doubling as placement selectors. Each needs an
    explicit `nodes = [..]` list, or the blocks are removed if the per-host
-   models make them redundant. See issue 0364 for why the `by_machine`
+   models make them redundant. See issue 0365 for why the `by_machine`
    fallback went away.
 
 5. **Tests.** `packages/testing/nros-tests/tests/multihost_partition_bake.rs`
