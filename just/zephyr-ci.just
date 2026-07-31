@@ -35,20 +35,27 @@ build-fixtures:
     # Phase 180.B — examples read the ROS interface package dirs from env
     # (no more hardcoded /opt/ros/humble/share/* PKG_DIR). Default to the
     # stock Humble install; override per package if your ROS lives elsewhere.
-    # phase-327 / issue 0368 — prefer the ROS install, fall back to the BUNDLED
-    # share tree so the cyclone zephyr cells configure on a ROS-less host
-    # (the /opt/ros default used to bake a dead .msg path into build.ninja).
-    if [ -z "${NROS_STD_MSGS_DIR:-}" ]; then
-        if [ -d /opt/ros/humble/share/std_msgs ]; then
-            export NROS_STD_MSGS_DIR=/opt/ros/humble/share/std_msgs
-        else
-            export NROS_STD_MSGS_DIR="$PWD/packages/cli/interfaces/std_msgs"
+    # phase-327 / issue 0368 — one ladder for EVERY interface dir (fix the
+    # class, not the first symptom: std_msgs was fixed alone and the next
+    # fixture died on example_interfaces): prefer the ROS install, fall back
+    # to the BUNDLED share tree so the cyclone zephyr cells configure on a
+    # ROS-less host (the /opt/ros defaults used to bake dead .msg paths into
+    # build.ninja).
+    _nros_iface_dir() {
+        # $1 = env var name, $2 = package name
+        if [ -z "$(eval echo "\${$1:-}")" ]; then
+            if [ -d "/opt/ros/humble/share/$2" ]; then
+                export "$1=/opt/ros/humble/share/$2"
+            else
+                export "$1=$PWD/packages/cli/interfaces/$2"
+            fi
         fi
-    fi
-    export NROS_EXAMPLE_INTERFACES_DIR="${NROS_EXAMPLE_INTERFACES_DIR:-/opt/ros/humble/share/example_interfaces}"
-    export NROS_BUILTIN_INTERFACES_DIR="${NROS_BUILTIN_INTERFACES_DIR:-/opt/ros/humble/share/builtin_interfaces}"
-    export NROS_UNIQUE_IDENTIFIER_MSGS_DIR="${NROS_UNIQUE_IDENTIFIER_MSGS_DIR:-/opt/ros/humble/share/unique_identifier_msgs}"
-    export NROS_ACTION_MSGS_DIR="${NROS_ACTION_MSGS_DIR:-/opt/ros/humble/share/action_msgs}"
+    }
+    _nros_iface_dir NROS_STD_MSGS_DIR std_msgs
+    _nros_iface_dir NROS_EXAMPLE_INTERFACES_DIR example_interfaces
+    _nros_iface_dir NROS_BUILTIN_INTERFACES_DIR builtin_interfaces
+    _nros_iface_dir NROS_UNIQUE_IDENTIFIER_MSGS_DIR unique_identifier_msgs
+    _nros_iface_dir NROS_ACTION_MSGS_DIR action_msgs
     # Phase 180.A — 4.4 line: run west via the Python 3.12 venv (find_package
     # Python3>=3.12) and skip the 3.7-only patch set. The proven 4.4 fixture
     # subset is zenoh native_sim, which needs none of these patches (NSOS
