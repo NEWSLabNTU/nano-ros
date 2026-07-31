@@ -118,6 +118,19 @@ TOKEN list is complete, never that the SELECTION is, so it is narrower than the 
 (the issue-0196 class, in the work that introduced the rule; filed by the author).
 See `0357-*`. (2026-07-31)
 
+**#359** — 24 of 49 tracked leaf `Cargo.lock` files cannot satisfy their own manifest
+(`cargo metadata --locked` refuses them). Not cosmetic drift: `nros-board-nuttx-qemu-arm`
+regenerates with **86 packages added and 0 removed**, so the manifests grew dependencies and the
+locks never caught up. Regenerating today does not restore anything — it pins 86 registry crates at
+whatever resolves at that moment, which is why a bulk refresh was deliberately NOT done alongside
+`e2cc5d91d`. Inspected by regenerating each and classifying the diff: **6 PATH-ONLY** (local path
+deps only, safe) vs **18 REGISTRY** (a crates.io package enters or moves — a real dependency change,
+and 12 of the 18 are board or driver crates). Meanwhile nothing runs `--locked` over these leaves,
+so the locks are not pinning what gets built and two builds of the same commit can differ — issue
+#182's class, one layer out. Found while running tier 1 for phase-318 acceptance, which regenerated
+three of them as a side effect (fixed in `e2cc5d91d`).
+See `0359-*`. (2026-07-31)
+
 **#346** — `borrowed` now works on srv/action payloads in both languages, so
 **all three RFC-0033 storage modes are supported end to end** (owned / heap #344+#345 / borrowed
 #346). The design question this issue raised — "a borrowed response has nothing to borrow from" —

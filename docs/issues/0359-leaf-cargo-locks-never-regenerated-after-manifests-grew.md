@@ -1,0 +1,104 @@
+---
+id: 0359
+title: "24 leaf Cargo.locks were never regenerated after their manifests grew; 18 would pull in new registry crates at today's resolution"
+status: open
+severity: P2
+area: build
+created: 2026-07-31
+refs:
+  - issue 0182
+  - RFC-0061
+---
+
+## Summary
+
+Of 49 tracked leaf `Cargo.lock` files (excluding `third-party/` and
+`packages/cli/`), **24 cannot satisfy their own manifest without changing** —
+`cargo metadata --locked` refuses them. They are not merely out of date in the
+cosmetic sense: their manifests gained dependencies and the locks were never
+regenerated.
+
+Found while running tier 1 for phase-318 acceptance, which regenerated three of
+them as a side effect. Those three are fixed (`e2cc5d91d`); this issue is the rest.
+
+## The inspection
+
+Regenerating each drifted lock and classifying the diff — then restoring — gives:
+
+| classification | count | meaning |
+| --- | --- | --- |
+| **PATH-ONLY** | 6 | only local path-dep versions / dep lists move (no `source =` line). Metadata catch-up. Safe. |
+| **REGISTRY** | 18 | a crates.io package enters or moves. A real dependency change on an embedded target. |
+| no change | 1 | flagged by the probe, regenerates identically |
+
+The REGISTRY cases are not small:
+
+| leaf | changed lines |
+| --- | --- |
+| `packages/boards/nros-board-nuttx-qemu-arm` | 704 |
+| `packages/boards/nros-board-threadx-qemu-riscv64` | 416 |
+| `packages/boards/nros-board-fvp-aemv8r-smp` | 410 |
+| `packages/boards/nros-board-s32z270dc2-r52` | 410 |
+| `packages/boards/nros-board-threadx-linux` | 404 |
+| `packages/drivers/cmsdk-uart`, `packages/drivers/stm32f4-usart` | 171 each |
+| `packages/rmw/zenoh/zpico-serial` | 169 |
+
+## What it actually is (this is the load-bearing part)
+
+`nros-board-nuttx-qemu-arm` regenerates with **86 packages added and 0 removed.**
+
+So this is not version churn on a stable graph. The manifests grew dependencies —
+the graph genuinely got bigger — and the locks never caught up. Regenerating today
+therefore does not "restore" anything: it pins 86 registry crates at whatever
+resolves at the moment someone runs it.
+
+That is why a bulk `cargo update`-style refresh is the wrong fix, and why it was
+deliberately not done alongside `e2cc5d91d`.
+
+## Why it matters
+
+- **The locks are not currently pinning what gets built.** Any build of these
+  leaves resolves fresh, so two developers (or a developer and CI) can compile the
+  same commit against different dependency versions. That is the class issue #182
+  exists about, one layer out: a committed artifact that looks authoritative and
+  is not consulted.
+- **It is invisible.** Nothing runs `--locked` over these leaves, so the drift
+  grows silently with every manifest edit and surfaces only when someone happens
+  to build one — which is exactly how it surfaced here.
+- **Embedded targets are where an unintended dependency move hurts most**, and 12
+  of the 18 REGISTRY cases are board or driver crates.
+
+## Reproduce
+
+```sh
+git ls-files "*Cargo.lock" | grep -v "^third-party/" | grep -v "^packages/cli/" \
+  | while read -r l; do d=$(dirname "$l"); \
+      cargo metadata --locked --format-version 1 --manifest-path "$d/Cargo.toml" \
+        2>&1 >/dev/null | grep -q "cannot update the lock file" && echo "$d"; done
+```
+
+Caveat: ~10 further leaves fail this probe for unrelated reasons (they need
+generated message crates, or carry their own workspace config), so **24 is a lower
+bound** — the three fixed in `e2cc5d91d` were themselves unjudgeable by it.
+
+## Fix sketch
+
+Two separable pieces, and the order matters:
+
+1. **Land the 6 PATH-ONLY refreshes now.** Same shape as `e2cc5d91d`: no registry
+   crate moves, so no rebuild is implied.
+2. **Treat the 18 REGISTRY ones as a dependency change, not a lockfile chore.**
+   Regenerate, review what the 86-package additions actually are, and build+test
+   the affected boards. Splitting per board keeps each diff reviewable — a single
+   commit touching five board locks is not something anyone can check.
+
+Then **gate it**, or it silently returns: a `check-fast`-cheap sweep asserting
+every tracked leaf lock satisfies its manifest under `--locked`. The gate must
+handle the ~10 unjudgeable leaves explicitly (skip with a recorded reason) rather
+than silently passing them — a gate narrower than its rule is issue 0196's class.
+
+## Not in scope
+
+Whether these leaves should have individual lockfiles at all. Several are
+`nros sync`-managed (RFC-0048 W9) and the consolidation question belongs with
+phase-321/322's package reorganisation, not here.
