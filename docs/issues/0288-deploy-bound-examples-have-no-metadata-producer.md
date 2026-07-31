@@ -103,6 +103,52 @@ whether the bin should be the only thing enabling it. Defaulting keeps
 point of the standalone shape — but it also means the probe MUST remember
 `--no-default-features`, which is a second thing to remember (cf. issue 0358).
 
+## Option 4 revised — gate the asm at the BOARD, not the example (2026-07-31)
+
+The manifest approach above (board dep `optional` + a `firmware` feature on ~75
+examples) was **not** taken. Measuring the actual failure showed the blocker is
+one un-gated function, and the workaround would have sat as far as possible from
+its cause while adding a Rust-specific feature convention to every example.
+
+```
+error: invalid register `r0`: unknown register
+error: could not compile `nros-board-mps2-an385` (lib)
+```
+
+`semihosting_time()` names ARM registers in an `asm!` block with no `cfg`.
+Gating it on `target_arch` (with an off-ARM stand-in that panics — the value
+seeds entropy, so a silent `0` would collide GUIDs rather than fail) makes the
+example host-compile **with no manifest change at all**.
+
+Why it went unnoticed: these board crates sit in the workspace's `exclude` list
+("embedded-only, require cross-compilation"), so no lane host-builds them. The
+only consumer that tried was the probe, which reported the package as
+unsupported instead of failing.
+
+Verified both directions — `action-client-rtic` host (`x86_64`) and target
+(`thumbv7m-none-eabi`), plus `threadx-qemu-riscv64`'s consumer on
+`riscv64gc-unknown-none-elf`.
+
+### What remains: the build-script layer
+
+Gating the asm unblocks the **mps2/RTIC family only**. Seven board crates
+cross-compile C/asm from `build.rs` and are still host-hostile one layer deeper:
+
+| board crate | blocker |
+| --- | --- |
+| `nros-board-freertos` | `cc::Build` on FreeRTOS sources |
+| `nros-board-mps2-an385-freertos` | same |
+| `nros-board-nuttx-qemu-arm` | same |
+| `nros-board-nuttx-qemu-riscv` | same (`nros-nuttx-ffi`) |
+| `nros-board-orin-spe` | same; also an ungated `wfi`, left alone — its target build cannot be verified without the NVIDIA SDK |
+| `nros-board-threadx` | `riscv64-unknown-elf-gcc` on ThreadX `.S`, invoked regardless of target |
+| `nros-board-threadx-linux` | same |
+
+`threadx` fails with `error occurred in cc-rs: … riscv64-unknown-elf-gcc …
+tx_thread_interrupt_control.S` on a host build. The pattern to apply is the same
+one the asm fix used — compile the target sources only when building for the
+target — but it is a build-script change per crate, not a one-line `cfg`.
+
 ## Cross-refs
 
 * `docs/roadmap/phase-308-cpp-metadata-producer.md`
