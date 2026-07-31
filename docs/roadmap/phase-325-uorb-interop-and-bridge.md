@@ -745,22 +745,43 @@ source to show the selection is real.
 boundary, necessarily. W2 demonstrates the zero-copy property; W3 demonstrates
 reach. Conflating them would overclaim.
 
-### W4 — the existing bridges encode their backend pair in the directory name
+### W4 — the existing bridges: DECIDED, do NOT collapse (2026-07-31)
 
-Not required by W1–W3, and deliberately last.
+The observation that opened this item was mine, filed during phase-316:
+`examples/bridges/tt-zenoh-to-cyclonedds` and `tt-zenoh-to-xrce` "differ only in
+an outward backend the build could have chosen", which looked like the per-RMW
+axis phase-316 removed from paths, surviving in a name.
 
-`examples/bridges/tt-zenoh-to-cyclonedds` and `tt-zenoh-to-xrce` differ only in an
-outward backend the build could have chosen, with both backends named as hard
-crate deps. That is the per-RMW axis phase-316 removed from paths, surviving in a
-name.
+**Measured, that is wrong, and the measurement is the answer.** The two `main.rs`
+are ~190 lines each and differ in **151** of them. The difference is not a
+backend name; it is a different setup contract:
 
-- [ ] **W4.1** Decide whether they collapse to one `tt-zenoh-to-rmw` with the
-      egress selected at build time, as W3's bridge is. Record the answer here
-      before touching them.
+| | XRCE egress | Cyclone egress |
+| --- | --- | --- |
+| type registration | lazy, from name + hash | **explicit schema staged first** — `nros_rmw::register_type_descriptor` with a `&[Field]` before the raw publisher exists |
+| addressing | locator | `ROS_DOMAIN_ID` |
 
-**Why it matters:** if only the uORB bridge is built the right way, it reads as an
-inconsistency rather than a rule, and the next bridge copies whichever neighbour
-it happens to open first.
+Cyclone resolves a topic through a registered `dds_topic_descriptor_t`, so its
+bridge carries a `STRING_FIELDS` schema and a `REG_TYPE_NAME` that the XRCE one
+has no use for. A collapsed bridge would need that staging `cfg`-gated per
+backend — a conditional in the exact place an example is supposed to be readable.
+
+So: **two directories, correctly.** The name `tt-zenoh-to-cyclonedds` describes
+what the example IS, not a build axis it should have selected. That is the test
+phase-316 set for a path level — does it name something the leaf does not? — and
+here it passes.
+
+**Why px4's bridge is genuinely different**, and why W3 still gets ONE path: its
+outward side is uniform. The selected backend changes a cargo feature and a
+register call, and nothing else — no schema staging, no addressing difference in
+the module. When a second backend needs its own setup contract, the honest answer
+is a second example; when it does not, the honest answer is one.
+
+- [x] **W4.1** Decided: leave them. Recorded above with the measurement.
+
+**No code change.** The value here was refusing a refactor that a surface
+resemblance suggested — the two bridges look like duplicates in a directory
+listing and are not in the source.
 
 ## Risks
 
