@@ -1,16 +1,25 @@
 meta:
   version: 1
-# RFC-0052 / phase-296 R4 — resolved model for the custom-msg demo (2 nodes).
+  inputs:
+  - path: launch/system.launch.xml
+    sha256: 056e434bf242fbc57ca4598f09c038dc2bf70652e659559fbbfe0009e7c6be81
+  - path: system.toml
+    sha256: 6365310347ed1147991dab9fd9cca2aab6e7e3f0f10e479d0753d62a0062aea0
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    system.launch.xml:
+      file: system.launch.xml
   nodes:
-    /reading_talker:
-      scope: /
-      pkg: reading_talker_pkg
-      exec: reading_talker
     /reading_listener:
-      scope: /
+      scope: system.launch.xml
       pkg: reading_listener_pkg
       exec: reading_listener
-execution: {}
+      node_name: reading_listener
+    /reading_talker:
+      scope: system.launch.xml
+      pkg: reading_talker_pkg
+      exec: reading_talker
+      node_name: reading_talker
