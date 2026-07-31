@@ -1,6 +1,7 @@
 # Phase 316 — every example path level names a real axis
 
-**Status (2026-07-31): W1–W3 landed. W4 remains BLOCKED on its own decision.**
+**Status (2026-07-31): W1–W3 landed. W4.1 DECIDED for the example (W4.2 ready to
+write); W4.3 (the bridge) still needs a recorded decision.**
 **Implements:** RFC-0026 (example directory layout).
 **Closes:** issue 0315. **Informed by:** issues 0314, 0319, archived 0295.
 **Filed on the way:** issue 0356 (`px4_e2e.rs` targets a tree retired by
@@ -86,26 +87,74 @@ aemv8r fixture still builds.
 **Acceptance:** `examples/` contains only examples; no doc describes the
 retired path form.
 
-### W4 — uORB interop example + bridge (BLOCKED on a decision)
+### W4 — uORB interop example + bridge
 
-Two things that do not exist yet, and one open question that gates them.
+#### W4.1 — the example's purpose: DECIDED (2026-07-31, maintainer)
 
-- **W4.1** *Decide the bridge's purpose.* PX4 already ships
-  `uxrce_dds_client`, which is exactly uORB → XRCE-DDS, so a nano-ros
-  uORB→DDS bridge duplicates it. The non-duplicative framings:
-  - **uORB → Zenoh** — PX4 has nothing there; the bridge is genuinely new
-    capability.
-  - **registry demonstration** — the point is nano-ros's multi-RMW registry
+> The uORB example demonstrates nano-ros interop with existing PX4 features. The
+> writing is different because it skips serialization like ROS does, so other
+> upstream PX4 nodes can understand the message format. uORB is the special one
+> compared to the others.
+
+That is the thesis, and it is load-bearing in the code rather than an
+aspiration. `publisher_publish_raw` checks `len >= meta->o_size` and hands the
+caller's bytes straight to `orb_publish`; `publisher_create` ignores
+`type_name`, `type_hash`, `qos` and `domain_id` entirely and resolves the topic
+to a `const struct orb_metadata *` through `nros_rmw_uorb_register_topic`. So on
+this backend:
+
+| | every other backend | uORB |
+| --- | --- | --- |
+| wire bytes | CDR encoding of the message | the PX4 C struct, verbatim |
+| type identity | ROS type name + type hash | `ORB_ID(<topic>)`, a static descriptor |
+| serialization cost | encode + decode per sample | none — the payload IS the struct |
+| who can read it | another nano-ros / ROS 2 endpoint | **any stock PX4 module**, unmodified |
+
+The last row is the whole point, and it is what no other example in the tree can
+show. Everywhere else nano-ros interoperates by speaking a wire protocol; here it
+interoperates by sharing PX4's in-memory type. That is also why `uorb/` looked
+like an RMW level and was not one — it is not a transport choice, it is the
+absence of a transport.
+
+**Consequence for the example:** its message type must come from
+`<uORB/topics/*.h>`, not from `nros generate-*`. `publish_raw` /
+`subscription_take` are already exposed on both the C and C++ APIs, so this needs
+no new machinery — which is the useful finding here: W4.2 is an EXAMPLE, not a
+feature.
+
+#### W4.2 — write the interop example
+
+- [ ] A nano-ros node inside a PX4 module that publishes and subscribes a real
+      PX4 topic with `publish_raw((const uint8_t *)&msg, sizeof msg)`, registered
+      via `nros_rmw_uorb_register_topic("/<topic>", "<ros_type_name>", ORB_ID(<topic>))`.
+- [ ] The proof must be a **stock, unmodified** PX4 consumer — e.g. `listener
+      <topic>` in the SITL shell, or an upstream module that already subscribes
+      it. An assertion that nano-ros can read its own publication proves nothing
+      about interop; it is satisfied identically by a correct and a broken
+      encoding. (This session hit that exact trap twice — see issue 0351.)
+- [ ] Lands at `examples/px4/cpp/firmware/`, which is what creates that dir —
+      W3.1 deliberately left it uncreated rather than empty.
+
+**Acceptance:** a reader sees a message crossing between a nano-ros node and an
+unmodified PX4 module, with no serialization step on either side, and the test
+observes it from the PX4 side.
+
+#### W4.3 — the bridge: STILL BLOCKED, and W4.1's answer narrows it
+
+The maintainer's answer above is about the EXAMPLE. The bridge question stands,
+but the answer bears on it: if uORB's value is that there is no serialization,
+then a uORB → networked-backend bridge necessarily re-introduces one at its
+boundary — which is precisely what PX4's own `uxrce_dds_client` already does.
+So the surviving framings are:
+
+  - **uORB → Zenoh** — PX4 ships nothing there, so it is new capability rather
+    than a second implementation of an existing one.
+  - **registry demonstration** — the deliverable is nano-ros's multi-RMW registry
     running in-firmware, and the translation is incidental.
+  - **drop W4.3** — defensible. The bridge was scoped alongside the example
+    before W4.1 was answered; nothing in the answer requires one.
 
-  Record the answer in this doc before writing code.
-- **W4.2** Write the uORB **interop** example: a nano-ros node exchanging with
-  a stock PX4 app over uORB, demonstrating the zero-serialization path. This is
-  what `examples/px4/cpp/firmware/` should contain after W3.1 empties it.
-- **W4.3** Write the bridge under `examples/bridges/`, per W4.1.
-
-**Acceptance:** a reader can see uORB interop working against an unmodified PX4
-app, and one bridge translating uORB to a networked backend.
+Do not write bridge code before this is recorded here.
 
 ## Risks
 
