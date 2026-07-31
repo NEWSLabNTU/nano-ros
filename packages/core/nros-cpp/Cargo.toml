@@ -181,7 +181,7 @@ nros-rmw = { version = "0.5.0", path = "../nros-rmw", default-features = false }
 # backend is an orphan crate: the probe links `libnros_cpp.a`, the backend's
 # `.init_array` self-registration is never in the image, and `NROS_RMW=metadata`
 # resolves to an unknown backend.
-nros-rmw-metadata = { path = "../nros-rmw-metadata", optional = true }
+nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
 # Opt-in RTOS heap-usage counter (HeapStats), gated by `alloc-stats`.

@@ -84,7 +84,7 @@ if(NOT NANO_ROS_PLATFORM MATCHES "^nuttx")
     # as an rlib dep, so each binary links exactly ONE Rust staticlib (one `std`).
     # No provider archive, no `external-registry` feature — the cffi `REGISTRY` + C
     # entry points are defined once in the single archive.
-    add_subdirectory(packages/core/nros-rmw-cffi)
+    add_subdirectory(packages/rmw/cffi)
     add_subdirectory(packages/core/nros-c)
     add_subdirectory(packages/core/nros-cpp)
 endif()

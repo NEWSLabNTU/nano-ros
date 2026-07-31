@@ -34,7 +34,7 @@ fi
 
 # ---- RMW surface: nros-rmw-abi headers -> nros-rmw-cffi/src/generated.rs
 RMW_ABI="packages/core/nros-rmw-abi"
-RMW_OUT="packages/core/nros-rmw-cffi/src/generated.rs"
+RMW_OUT="packages/rmw/cffi/src/generated.rs"
 
 wrapper="$(mktemp --suffix=.h)"
 trap 'rm -f "$wrapper"' EXIT

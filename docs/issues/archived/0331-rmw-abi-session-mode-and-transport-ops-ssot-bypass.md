@@ -27,7 +27,7 @@ for the divergence.
 
 ### 2. The custom-transport export bypasses its own generated type
 
-`packages/core/nros-rmw-cffi/src/lib.rs:1008` exports
+`packages/rmw/cffi/src/lib.rs:1008` exports
 
 ```rust
 pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(

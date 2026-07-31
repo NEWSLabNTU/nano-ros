@@ -1,6 +1,6 @@
 # Doxyfile for nros rmw-cffi vtable documentation
 #
-# Usage: doxygen packages/core/nros-rmw-cffi/Doxyfile
+# Usage: doxygen packages/rmw/cffi/Doxyfile
 # Or:    just doc-rmw-cffi
 
 PROJECT_NAME           = "nros rmw-cffi"

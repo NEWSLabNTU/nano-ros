@@ -118,5 +118,5 @@ the failure site through the platform's `printk` equivalent.
 
 - The [Custom RMW Backend porting guide](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/porting/custom-rmw.md)
   — step-by-step walkthrough, factory pattern, lifecycle.
-- The [`nros-rmw-cffi` source tree](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-rmw-cffi)
+- The [`nros-rmw-cffi` source tree](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/cffi)
   — header + library sources for this vtable.

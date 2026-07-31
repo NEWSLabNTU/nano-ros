@@ -21,7 +21,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SRC="packages/core/nros-rmw-cffi/src/lib.rs"
+SRC="packages/rmw/cffi/src/lib.rs"
 [ -f "$SRC" ] || { echo "ERROR: $SRC not found" >&2; exit 1; }
 
 # Slots dispatched via `.expect("rmw vtable: <slot>")`.
@@ -54,7 +54,7 @@ fi
 # extractor ran past the macro, reporting function parameter names as required
 # slots). Anchor the extraction against the vtable's actual fields: every name in
 # either list must BE a slot.
-VTABLE_SRC="packages/core/nros-rmw-cffi/src/generated.rs"
+VTABLE_SRC="packages/rmw/cffi/src/generated.rs"
 if [ -f "$VTABLE_SRC" ]; then
     slots="$(awk '
         /^pub struct nros_rmw_vtable_t/ { instruct = 1; next }

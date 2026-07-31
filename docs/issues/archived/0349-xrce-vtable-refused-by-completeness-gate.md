@@ -24,7 +24,7 @@ local work and re-running against HEAD — it is not a regression from 0330/0331
 ## Cause
 
 Issue 0332 added a completeness check to `nros_rmw_cffi_register_named`
-(`packages/core/nros-rmw-cffi/src/lib.rs:806`), rejecting a vtable with any
+(`packages/rmw/cffi/src/lib.rs:806`), rejecting a vtable with any
 missing slot rather than panicking mid-spin. Sound intent. But
 `first_missing_vtable_slot` (`lib.rs:739`) puts three **optional capability**
 slots on the required list:
@@ -111,7 +111,7 @@ dispatched through an `.expect()`, so this was the whole class.
 Sweep command:
 
 ```
-rg -n 'expect\("rmw vtable' packages/core/nros-rmw-cffi/src/lib.rs
+rg -n 'expect\("rmw vtable' packages/rmw/cffi/src/lib.rs
 ```
 
 ### The gate

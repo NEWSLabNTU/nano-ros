@@ -562,7 +562,7 @@ check-abi-bindings:
     fi
     bash scripts/gen-abi-bindings.sh >/dev/null
     if ! git diff --exit-code --quiet -- \
-        packages/core/nros-rmw-cffi/src/generated.rs \
+        packages/rmw/cffi/src/generated.rs \
         packages/core/nros-platform-cffi/src/generated.rs \
         packages/boards/nros-board-cffi/src/generated.rs; then
         git --no-pager diff --stat -- packages/core/*/src/generated.rs
@@ -2131,7 +2131,7 @@ check-c: check-c-fmt
     # evaluates static asserts.
     cc -fsyntax-only \
         -Ipackages/core/nros-rmw-abi/include \
-        packages/core/nros-rmw-cffi/tests/c_stubs/abi_layout_check.c
+        packages/rmw/cffi/tests/c_stubs/abi_layout_check.c
     echo "All C checks passed!"
 
 # Check C++ formatting only (clang-format) — BUILDLESS, source-free → push lane.
@@ -3079,7 +3079,7 @@ doc-rmw-cffi:
         exit 0
     fi
     mkdir -p target/doxygen/rmw-cffi
-    (cd packages/core/nros-rmw-cffi && doxygen Doxyfile)
+    (cd packages/rmw/cffi && doxygen Doxyfile)
     echo "rmw-cffi docs generated: target/doxygen/rmw-cffi/html/index.html"
 
 # Generate Doxygen for the platform vtable (porter-facing). Triggers a

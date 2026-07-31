@@ -8,7 +8,7 @@ transport ops (`rmw_transport.h`).
 
 - **C/C++ backends** (cyclonedds, uorb, xrce, out-of-tree) include these
   headers directly (`NanoRos::RmwAbi` CMake target).
-- **Rust** (`packages/core/nros-rmw-cffi`) consumes COMMITTED bindgen
+- **Rust** (`packages/rmw/cffi`) consumes COMMITTED bindgen
   output generated from these headers — regenerate with
   `scripts/gen-abi-bindings.sh` after any header edit. Never hand-edit
   the mirror side; there isn't one anymore.

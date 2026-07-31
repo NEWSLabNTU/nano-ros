@@ -11,14 +11,14 @@ related: [issue-0160, issue-0239]
 ## Finding (RMW/platform API audit, 2026-07-21)
 
 `NrosRmwEventKind` is `#[repr(u8)]`
-(`packages/core/nros-rmw-cffi/src/lib.rs:754-755`) and is passed BY VALUE
+(`packages/rmw/cffi/src/lib.rs:754-755`) and is passed BY VALUE
 as a vtable parameter — `register_subscriber_event(sub, kind:
 NrosRmwEventKind, …)` / `register_publisher_event(…)`
 (`lib.rs:564,572`) — and as the first argument of the event callback
 (`rmw_event.h:87` ↔ `lib.rs:804`).
 
 The C counterpart `nros_rmw_event_kind_t`
-(`packages/core/nros-rmw-cffi/include/nros/rmw_event.h:36-48`) is an
+(`packages/rmw/cffi/include/nros/rmw_event.h:36-48`) is an
 UNFIXED C enum (no `: int32_t` / `: uint8_t` underlying type), so it is
 `int`-sized (4 bytes) by default on every supported toolchain. The Rust
 side therefore declares a 1-byte by-value argument where C passes a 4-byte

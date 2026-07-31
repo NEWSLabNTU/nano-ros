@@ -809,7 +809,7 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb_from_isr(ctx: *mut core
 /// RISC-V because `cortex_m_rt`'s link script doesn't provide the
 /// `__start_/__stop_` section anchors in a shape that lets the
 /// iterator terminate (see
-/// `packages/core/nros-rmw-cffi/src/section.rs` Phase 142). Since
+/// `packages/rmw/cffi/src/section.rs` Phase 142). Since
 /// stm32f4 RTIC / Embassy boards are the whole point of Phase 216,
 /// the registry uses the explicit `register()` pattern from Phase
 /// 104.A.

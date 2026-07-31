@@ -12,7 +12,7 @@ members = [
     # DECLARES instead of transporting it. Host probe only; its self-
     # registration ctor is `not(target_os = "none")`, so it cannot reach
     # firmware.
-    "packages/core/nros-rmw-metadata",
+    "packages/rmw/metadata",
     "packages/core/nros-node",
     "packages/core/nros-log",
     # Shared per-tier orchestration schema + resolver (RFC-0015). Leaf crate
@@ -93,7 +93,7 @@ members = [
     "packages/interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag",
     "packages/core/nros-diagnostics",
     # C function table adapter for third-party RMW backends
-    "packages/core/nros-rmw-cffi",
+    "packages/rmw/cffi",
     # Phase 115.L.2 — zenoh-pico via C vtable
     # Ghost model types for verification (shared between production tests and Verus proofs)
     "packages/verification/nros-ghost-types",
@@ -558,7 +558,7 @@ nros-rmw-xrce-cffi = { version = "0.5.0", path = "packages/rmw/xrce/nros-rmw-xrc
 # compiled. External CMake / Zephyr consumers that supply the symbols
 # elsewhere opt out via `default-features = false` at the dep-site.
 nros-rmw-cyclonedds-sys = { version = "0.5.0", path = "packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys" }
-nros-rmw-cffi = { version = "0.5.0", path = "packages/core/nros-rmw-cffi", default-features = false }
+nros-rmw-cffi = { version = "0.5.0", path = "packages/rmw/cffi", default-features = false }
 nros-node = { version = "0.5.0", path = "packages/core/nros-node", default-features = false }
 nros-log = { version = "0.5.0", path = "packages/core/nros-log" }
 nros-build-helpers = { version = "0.5.0", path = "packages/core/nros-build-helpers" }

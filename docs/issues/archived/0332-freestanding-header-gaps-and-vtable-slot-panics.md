@@ -48,7 +48,7 @@ freestanding); keep the `printf` form behind `NROS_CPP_STD` / an explicit
 
 ### 3. 21 vtable slots panic instead of erroring, and registration doesn't check
 
-`packages/core/nros-rmw-cffi/src/lib.rs` — 21 `.expect("rmw vtable: …")` calls
+`packages/rmw/cffi/src/lib.rs` — 21 `.expect("rmw vtable: …")` calls
 unwrap `Option<extern fn>` vtable slots on the embedded runtime path, including
 the hot-path `drive_io`, `has_data`, `try_recv_raw`, `publish_raw` (lines 1220,
 1302, 1370, 1437, 1494, 1523, 1535, 1637, 1914, 2030, 2055, 2072, 2254, 2261,

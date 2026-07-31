@@ -4,7 +4,7 @@ Cyclone DDS RMW backend for nano-ros (Phase 117).
 
 Standalone CMake project — **not a Cargo crate**. Builds a C++ static
 library that implements `nros_rmw_vtable_t` (see
-`<nros/rmw_vtable.h>` from `packages/core/nros-rmw-cffi`) on top of
+`<nros/rmw_vtable.h>` from `packages/rmw/cffi`) on top of
 Eclipse Cyclone DDS. Wired into nros-cpp consumers via the CMake
 option `-DNROS_CPP_RMW=cyclonedds` (Phase 117.8).
 

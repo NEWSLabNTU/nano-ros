@@ -1992,7 +1992,7 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         ("nros-platform-cffi", "packages/core/nros-platform-cffi"),
         ("nros-node", "packages/core/nros-node"),
         ("nros-rmw", "packages/core/nros-rmw"),
-        ("nros-rmw-cffi", "packages/core/nros-rmw-cffi"),
+        ("nros-rmw-cffi", "packages/rmw/cffi"),
         ("nros-log", "packages/core/nros-log"),
         ("nros-macros", "packages/core/nros-macros"),
         ("nros-params", "packages/core/nros-params"),

@@ -7,7 +7,7 @@ on:
       - "book/**"
       - "packages/core/nros/**"
       - "packages/core/nros-rmw/**"
-      - "packages/core/nros-rmw-cffi/**"
+      - "packages/rmw/cffi/**"
       - "packages/core/nros-platform-api/**"
       - "packages/core/nros-platform-cffi/**"
       - "packages/core/nros-platform-posix/**"
@@ -114,7 +114,7 @@ jobs:
       - name: Build Doxygen — RMW vtable (porter-facing)
         run: |
           mkdir -p target/doxygen/rmw-cffi
-          cd packages/core/nros-rmw-cffi
+          cd packages/rmw/cffi
           doxygen Doxyfile
 
       - name: Build Doxygen — Platform vtable (porter-facing)

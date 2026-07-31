@@ -71,12 +71,12 @@ Swift (`@_cdecl`), etc.
 
 The reference implementation of "custom transport written in pure C"
 lives at
-[`packages/core/nros-rmw-cffi/tests/c_stubs/c_stub_transport.c`](../../../packages/core/nros-rmw-cffi/tests/c_stubs/c_stub_transport.c).
+[`packages/rmw/cffi/tests/c_stubs/c_stub_transport.c`](../../../packages/rmw/cffi/tests/c_stubs/c_stub_transport.c).
 ~80 LOC; no Rust headers / cbindgen output / Rust types involved on
 the C side. Use it as a template for ports to other languages.
 
 The corresponding Rust integration test
-([`tests/c_stub_transport.rs`](../../../packages/core/nros-rmw-cffi/tests/c_stub_transport.rs))
+([`tests/c_stub_transport.rs`](../../../packages/rmw/cffi/tests/c_stub_transport.rs))
 exercises the round-trip: register the C-built struct → drive each
 fn pointer from Rust → confirm the C-side counters bumped → confirm
 abi_version mismatch is rejected. Run via:
