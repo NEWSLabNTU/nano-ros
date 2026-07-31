@@ -134,7 +134,7 @@ the per-feature footprint reportable.
   whole phase including this work item.
 - [`docs/roadmap/phase-100-04-link-ivc-design.md`](../../../docs/roadmap/phase-100-04-link-ivc-design.md) — the
   IVC link-transport wire spec, cited by the bridge daemon.
-- [`packages/drivers/nvidia-ivc/`](../../drivers/nvidia-ivc/) — the
+- [`packages/drivers/ipc/nvidia-ivc/`](../../drivers/nvidia-ivc/) — the
   IVC driver crate that backs `PlatformIvc`.
 - [`config/orin-spe/nros-platform.toml`](../../../config/orin-spe/nros-platform.toml) — the
   platform knob manifest. (This previously linked

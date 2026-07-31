@@ -77,11 +77,11 @@ members = [
     # C++ API (header-only C++14 library + Rust FFI staticlib)
     "packages/api/nros-cpp",
     # LAN9118 Ethernet driver for smoltcp
-    "packages/drivers/lan9118-smoltcp",
+    "packages/drivers/net/lan9118-smoltcp",
     # NVIDIA Tegra IVC driver (Orin SPE — Phase 100). Default build is
     # an empty stub; `unix-mock` for host CI, `fsp` to link against
     # NVIDIA's `tegra_aon_fsp.a` (requires `NV_SPE_FSP_DIR`).
-    "packages/drivers/nvidia-ivc",
+    "packages/drivers/ipc/nvidia-ivc",
     # Generated ROS 2 interface types (rcl_interfaces, builtin_interfaces).
     # Required by nros-node's param-services feature. Checked into git because
     # cargo requires workspace member paths to exist on disk.
@@ -353,24 +353,24 @@ exclude = [
     # Reference implementations (library, not an example)
     "packages/testing/qemu-smoltcp-bridge",
     # smoltcp network provider (embedded-only, requires cross-compilation)
-    "packages/drivers/nros-smoltcp",
-    "packages/drivers/nros-transport-callbacks",
+    "packages/drivers/net/nros-smoltcp",
+    "packages/rmw/transport-callbacks",
     # Shared bare-metal helpers (PRNG, sleep, libc stubs) — embedded-only
-    "packages/drivers/nros-baremetal-common",
+    "packages/platform/nros-baremetal-common",
     # lwIP BSD socket bindings for FreeRTOS (requires FREERTOS_DIR + LWIP_DIR)
-    "packages/drivers/freertos-lwip-sys",
+    "packages/drivers/sys/freertos-lwip-sys",
     # NetX Duo BSD socket bindings for ThreadX (requires THREADX_DIR + NETX_DIR)
-    "packages/drivers/threadx-netx-sys",
+    "packages/drivers/sys/threadx-netx-sys",
     # NuttX POSIX socket bindings (requires NUTTX_DIR)
-    "packages/drivers/nuttx-sys",
+    "packages/drivers/sys/nuttx-sys",
     # Zephyr POSIX socket bindings (requires ZEPHYR_BUILD_DIR)
-    "packages/drivers/zephyr-posix-sys",
+    "packages/drivers/sys/zephyr-posix-sys",
     # Serial (UART) link layer (embedded-only, requires cross-compilation)
     "packages/rmw/zenoh/zpico-serial",
     # CMSDK UART driver (embedded-only, Cortex-M)
-    "packages/drivers/cmsdk-uart",
+    "packages/drivers/serial/cmsdk-uart",
     # STM32F4 USART driver (embedded-only, Cortex-M)
-    "packages/drivers/stm32f4-usart",
+    "packages/drivers/serial/stm32f4-usart",
     # Native XRCE-DDS serial examples (requires XRCE Agent / serial transport)
     "examples/native/rust/serial-talker",
     "examples/native/rust/serial-listener",
@@ -458,7 +458,7 @@ exclude = [
     "examples/qemu-riscv64-threadx/rust/zenoh/action-client",
     # Phase 169.2 — qemu-riscv64-threadx rust/dds deleted.
     # ESP32 crates (RISC-V, require nightly + esp-hal)
-    "packages/drivers/openeth-smoltcp",
+    "packages/drivers/net/openeth-smoltcp",
     # ESP32 examples (RISC-V, require nightly + esp-hal)
     "packages/testing/nros-smoke/esp32-hello-world",
     "examples/qemu-esp32-baremetal/rust/talker",

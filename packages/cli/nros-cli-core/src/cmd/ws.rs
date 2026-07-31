@@ -2012,7 +2012,7 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         ("nros-zephyr-build", "packages/tooling/nros-zephyr-build"),
         (
             "nros-transport-callbacks",
-            "packages/drivers/nros-transport-callbacks",
+            "packages/rmw/transport-callbacks",
         ),
         ("mps2-an385-pac", "packages/boards/mps2-an385-pac"),
         // RMW backends
@@ -3185,7 +3185,7 @@ nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }
             ),
             (
                 "nros-transport-callbacks",
-                "packages/drivers/nros-transport-callbacks",
+                "packages/rmw/transport-callbacks",
             ),
             ("mps2-an385-pac", "packages/boards/mps2-an385-pac"),
         ];

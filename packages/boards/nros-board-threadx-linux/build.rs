@@ -82,7 +82,7 @@ fn main() {
     // ---- Build nsos-netx (NetX BSD compatibility shim over POSIX) ----
     let nsos_netx_dir = env_path_or(
         "NSOS_NETX_DIR",
-        workspace_root.join("packages/drivers/nsos-netx"),
+        workspace_root.join("packages/drivers/net/nsos-netx"),
     );
     let nsos_src = nsos_netx_dir.join("src/nsos_netx.c");
     assert!(

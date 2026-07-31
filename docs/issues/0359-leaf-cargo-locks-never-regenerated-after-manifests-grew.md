@@ -40,7 +40,7 @@ The REGISTRY cases are not small:
 | `packages/boards/nros-board-fvp-aemv8r-smp` | 410 |
 | `packages/boards/nros-board-s32z270dc2-r52` | 410 |
 | `packages/boards/nros-board-threadx-linux` | 404 |
-| `packages/drivers/cmsdk-uart`, `packages/drivers/stm32f4-usart` | 171 each |
+| `packages/drivers/serial/cmsdk-uart`, `packages/drivers/serial/stm32f4-usart` | 171 each |
 | `packages/rmw/zenoh/zpico-serial` | 169 |
 
 ## What it actually is (this is the load-bearing part)

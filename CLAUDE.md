@@ -43,9 +43,9 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 
 Workspace: `packages/{core,zpico,xrce,dds,boards,drivers,interfaces,testing,verification,reference,codegen,cli}/`,
 `examples/`, `third-party/` (gitignored SDKs), `zephyr/` module. Run `ls packages/` for the current
-crate list. Layer map → RFC-0001. (`packages/drivers/` has NO category split — RFC-0012
-is board/BSP integration and defines none; the dir is a flat bag of drivers, kernel
-`-sys` bindings, stack adapters and shims. phase-321 W2.f proposes the taxonomy.)
+crate list. Layer map → RFC-0001. `packages/drivers/` is split by what a crate talks
+to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README.md`
+(phase-321 W2.f). RFC-0012 is board/BSP integration and defines no such split.
 
 ## Practices
 - **Run the TIER your change earns, after every task** (RFC-0061 / phase-318).

@@ -85,13 +85,13 @@ pub fn nros_platform_threadx_src() -> PathBuf {
 }
 
 pub fn nros_lan9118_lwip_dir() -> PathBuf {
-    env_or_repo_path("NROS_LAN9118_LWIP_DIR", "packages/drivers/lan9118-lwip")
+    env_or_repo_path("NROS_LAN9118_LWIP_DIR", "packages/drivers/net/lan9118-lwip")
 }
 
 pub fn nros_virtio_net_netx_dir() -> PathBuf {
     env_or_repo_path(
         "NROS_VIRTIO_NET_NETX_DIR",
-        "packages/drivers/virtio-net-netx",
+        "packages/drivers/net/virtio-net-netx",
     )
 }
 

@@ -136,7 +136,7 @@ build-fixture-extras:
     netx_dir="${NETX_DIR:-$root/third-party/threadx/netxduo}"
     config_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/config"
     board_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/c"
-    virtio_dir="$root/packages/drivers/virtio-net-netx"
+    virtio_dir="$root/packages/drivers/net/virtio-net-netx"
     # Phase 88.15.d — nros-log severity-coverage smoke fixture. The RV64
     # threadx-netx-sys build needs this board's NetX port headers rather than
     # the threadx-linux defaults exported by the top-level justfile.

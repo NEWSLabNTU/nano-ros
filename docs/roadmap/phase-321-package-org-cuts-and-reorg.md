@@ -60,8 +60,8 @@ Each verified: zero consumers, or consumers that cannot work.
       the sole owner.
 - [~] **W1.e WITHDRAWN — the premise was false.** The claim was that these
       lockfiles belong to root-workspace members and are therefore inert. Checked
-      against `cargo metadata`: `packages/drivers/cmsdk-uart`,
-      `packages/drivers/nros-smoltcp`, `packages/verification/nros-verification`
+      against `cargo metadata`: `packages/drivers/serial/cmsdk-uart`,
+      `packages/drivers/net/nros-smoltcp`, `packages/verification/nros-verification`
       and `packages/rmw/zenoh/zpico-serial` are **not** workspace members, so their
       lockfiles are live — they pin standalone and cross-compiled builds.
       Deleting them would have been a real regression dressed as cleanup. The

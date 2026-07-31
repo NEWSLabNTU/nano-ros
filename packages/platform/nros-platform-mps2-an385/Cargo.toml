@@ -57,7 +57,7 @@ mps2-an385-pac = { path = "../../boards/mps2-an385-pac" }
 # `-semihosting-config enable=on,target=native`.
 cortex-m-semihosting = "0.5"
 # smoltcp network provider (TCP/UDP via SmoltcpBridge)
-nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
+nros-smoltcp = { path = "../../drivers/net/nros-smoltcp" }
 # Shared bare-metal helpers (PRNG, sleep). `libc-stubs` is re-exposed as this
 # crate's `libc-stubs` feature (default-on) so a picolibc consumer can drop it.
-nros-baremetal-common = { path = "../../drivers/nros-baremetal-common" }
+nros-baremetal-common = { path = "../../platform/nros-baremetal-common" }

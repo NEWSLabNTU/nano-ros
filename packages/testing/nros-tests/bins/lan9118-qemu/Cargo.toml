@@ -13,7 +13,7 @@ test = false
 bench = false
 
 [dependencies]
-lan9118-smoltcp = { path = "../../../../../packages/drivers/lan9118-smoltcp" }
+lan9118-smoltcp = { path = "../../../../../packages/drivers/net/lan9118-smoltcp" }
 smoltcp = { version = "0.12", default-features = false, features = [
     "medium-ethernet",
     "proto-ipv4",

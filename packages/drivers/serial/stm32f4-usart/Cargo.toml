@@ -9,4 +9,4 @@ description = "STM32F4 USART driver implementing zpico-serial SerialPort trait"
 name = "stm32f4_usart"
 
 [dependencies]
-zpico-serial = { path = "../../rmw/zenoh/zpico-serial" }
+zpico-serial = { path = "../../../rmw/zenoh/zpico-serial" }

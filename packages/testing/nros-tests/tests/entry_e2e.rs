@@ -222,7 +222,7 @@ fn require_cell_env(cell: &Cell) {
                 nros_tests::skip!("THREADX_DIR not set or invalid");
             }
             if !is_nsos_netx_available() {
-                nros_tests::skip!("nsos-netx not found at packages/drivers/nsos-netx/");
+                nros_tests::skip!("nsos-netx not found at packages/drivers/net/nsos-netx/");
             }
         }
         Boot::FreertosMps2 => {

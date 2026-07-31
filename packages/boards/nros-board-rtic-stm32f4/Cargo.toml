@@ -86,7 +86,7 @@ rtic = { version = "2.1", features = ["thumbv7-backend"] }
 # Optional smoltcp bridge — mirrors `nros-board-stm32f4`'s
 # `ethernet` feature so user Entry pkgs flip transports the same
 # way on both direct-exec and RTIC variants.
-nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
+nros-smoltcp = { path = "../../drivers/net/nros-smoltcp", optional = true }
 
 # Logging — matches the sibling direct-exec crate.
 defmt = "0.3"

@@ -124,7 +124,7 @@ zpico-platform-custom = { workspace = true, optional = true }
 # `nros-smoltcp` so the zpico smoltcp platform shim stays in
 # lock-step with the canonical socket-buffer footprint. Default-
 # features off because `nros-smoltcp` is an embedded driver crate.
-nros-smoltcp = { path = "../../../drivers/nros-smoltcp", default-features = false }
+nros-smoltcp = { path = "../../../drivers/net/nros-smoltcp", default-features = false }
 
 [build-dependencies]
 # Phase 221.A — build-script implementation lives in a sibling

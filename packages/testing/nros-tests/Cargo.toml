@@ -65,7 +65,7 @@ libc = "0.2"
 # `unix-mock` backend implements the IVC channel API on top of an
 # `AF_UNIX SOCK_DGRAM` pair, so the framing protocol can be exercised
 # on any POSIX host without an SDK Manager install.
-nvidia-ivc = { path = "../../drivers/nvidia-ivc", features = ["unix-mock"] }
+nvidia-ivc = { path = "../../drivers/ipc/nvidia-ivc", features = ["unix-mock"] }
 
 # Workspace dependencies for type access (optional)
 nros-core = { path = "../../core/nros-core", optional = true }

@@ -23,7 +23,7 @@ nros-platform-api = { path = "../../platform/nros-platform-api" }
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi", optional = true }
 zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc" }
 esp-hal = { version = "1", features = ["esp32s3", "unstable"] }
-nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
+nros-smoltcp = { path = "../../drivers/net/nros-smoltcp" }
 # Shared bare-metal helpers (PRNG, sleep). esp-hal already provides
 # libc symbols, so we do NOT enable the `libc-stubs` feature here.
-nros-baremetal-common = { path = "../../drivers/nros-baremetal-common" }
+nros-baremetal-common = { path = "../../platform/nros-baremetal-common" }

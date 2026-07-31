@@ -25,7 +25,7 @@ pub fn is_threadx_available() -> bool {
 /// nsos-netx BSD shim source is available at the expected repo location.
 pub fn is_nsos_netx_available() -> bool {
     let root = project_root();
-    root.join("packages/drivers/nsos-netx/src/nsos_netx.c")
+    root.join("packages/drivers/net/nsos-netx/src/nsos_netx.c")
         .exists()
 }
 

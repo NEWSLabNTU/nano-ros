@@ -52,7 +52,7 @@ set(_NROS_BOARD_ROOT  "${CMAKE_CURRENT_LIST_DIR}/../..")
 set(_NROS_BOARD_DIR   "${_NROS_BOARD_ROOT}/packages/boards/nros-board-mps2-an385-freertos")
 set(_NROS_BOARD_CONFIG_DIR "${_NROS_BOARD_DIR}/config")
 
-set(_NROS_LAN9118_DIR "${_NROS_BOARD_ROOT}/packages/drivers/lan9118-lwip")
+set(_NROS_LAN9118_DIR "${_NROS_BOARD_ROOT}/packages/drivers/net/lan9118-lwip")
 set(_NROS_FREERTOS_PLAT_DIR
     "${_NROS_BOARD_ROOT}/packages/platform/nros-platform-freertos")
 set(_NROS_FREERTOS_STARTUP_C

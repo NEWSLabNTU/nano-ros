@@ -218,7 +218,7 @@ Uses Espressif's QEMU fork (`qemu-system-riscv32 -M esp32c3`) with OpenCores Eth
 **Prerequisites (planned):**
 - Espressif QEMU fork (`qemu-system-riscv32` with `-M esp32c3`)
 - `espflash` or `esptool.py` for flash image creation
-- OpenETH smoltcp driver crate (`packages/drivers/openeth-smoltcp/`)
+- OpenETH smoltcp driver crate (`packages/drivers/net/openeth-smoltcp/`)
 
 ### 5. STM32F4 - Physical Hardware
 
@@ -389,7 +389,7 @@ No C examples exist for QEMU.
 
 **2. ESP32-C3 QEMU interop** — `esp32/qemu-talker`, `esp32/qemu-listener`
 - Uses Espressif QEMU fork with OpenCores Ethernet MAC (no WiFi hardware needed)
-- Requires: OpenETH smoltcp driver (`packages/drivers/openeth-smoltcp/`), ESP32-C3 QEMU BSP variant, flash image tooling
+- Requires: OpenETH smoltcp driver (`packages/drivers/net/openeth-smoltcp/`), ESP32-C3 QEMU BSP variant, flash image tooling
 - Test plan (all in Docker, CI-automatable):
   - ESP32-C3 talker → native listener (via zenohd, TAP network)
   - Native talker → ESP32-C3 listener (via zenohd, TAP network)

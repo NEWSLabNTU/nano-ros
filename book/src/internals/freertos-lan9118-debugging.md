@@ -126,4 +126,4 @@ void vApplicationIdleHook(void) {
 - Zephyr `drivers/ethernet/eth_smsc911x.c`.
 - ARM CMSIS LAN9220 Ethernet driver templates.
 - QEMU `hw/net/lan9118.c`.
-- nano-ros `packages/drivers/lan9118-smoltcp/`.
+- nano-ros `packages/drivers/net/lan9118-smoltcp/`.

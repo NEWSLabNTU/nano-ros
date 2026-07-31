@@ -25,7 +25,7 @@
 #                        tx_thread_*.S overrides)
 #                        (default: board crate's c/)
 #   VIRTIO_DRIVER_DIR  — virtio-net-netx driver source dir
-#                        (default: packages/drivers/virtio-net-netx)
+#                        (default: packages/drivers/net/virtio-net-netx)
 #
 # What this overlay declares:
 #
@@ -81,7 +81,7 @@ set(_NROS_BOARD_C_DIR      "${_NROS_BOARD_DIR}/c")
 set(_NROS_BOARD_STARTUP_C  "${_NROS_BOARD_DIR}/startup.c")
 set(_NROS_BOARD_CXX_COMPAT_DIR "${_NROS_BOARD_DIR}/cxx-compat")
 set(_NROS_VIRTIO_DRIVER_DIR
-    "${_NROS_BOARD_ROOT}/packages/drivers/virtio-net-netx")
+    "${_NROS_BOARD_ROOT}/packages/drivers/net/virtio-net-netx")
 
 # Default vendored locations — overridable via -D/env.
 if(NOT DEFINED THREADX_DIR)

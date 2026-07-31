@@ -94,7 +94,7 @@ build-fixture-extras:
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     root="$(pwd)"
     threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
-    nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/nsos-netx}"
+    nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/net/nsos-netx}"
     config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-board-threadx-linux/config}"
     app_define="$root/packages/boards/nros-board-threadx-linux/c/app_define.c"
     # Phase 177.27 — the cyclonedds RMW needs two flags native.just /

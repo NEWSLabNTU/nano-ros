@@ -12,7 +12,7 @@ categories = ["embedded", "no-std"]
 path = "src/lib.rs"
 
 [dependencies]
-nvidia-ivc = { path = "../../../drivers/nvidia-ivc", default-features = false }
+nvidia-ivc = { path = "../../../drivers/ipc/nvidia-ivc", default-features = false }
 
 [lints]
 workspace = true

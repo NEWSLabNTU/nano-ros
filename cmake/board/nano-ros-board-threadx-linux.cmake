@@ -19,7 +19,7 @@
 #                    are consumed; the stack itself is replaced by
 #                    nsos-netx) (default: third-party/threadx/netxduo)
 #   NSOS_NETX_DIR  — nsos-netx shim source
-#                    (default: packages/drivers/nsos-netx)
+#                    (default: packages/drivers/net/nsos-netx)
 #
 # What this overlay declares:
 #
@@ -95,7 +95,7 @@ if(NOT DEFINED NETX_DIR)
     endif()
 endif()
 if(NOT DEFINED NSOS_NETX_DIR AND NOT DEFINED ENV{NSOS_NETX_DIR})
-    set(NSOS_NETX_DIR "${_NROS_BOARD_ROOT}/packages/drivers/nsos-netx"
+    set(NSOS_NETX_DIR "${_NROS_BOARD_ROOT}/packages/drivers/net/nsos-netx"
         CACHE PATH "nsos-netx shim source")
 endif()
 

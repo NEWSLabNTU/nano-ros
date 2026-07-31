@@ -10,7 +10,7 @@
 //!
 //! Prerequisites:
 //! - `THREADX_DIR` env var pointing to ThreadX source (e.g., `third-party/threadx/kernel`)
-//! - nsos-netx at `packages/drivers/nsos-netx/`
+//! - nsos-netx at `packages/drivers/net/nsos-netx/`
 //!
 //! Run with: `just test-threadx-linux`
 //! Or: `cargo nextest run -p nros-tests --test threadx_linux`

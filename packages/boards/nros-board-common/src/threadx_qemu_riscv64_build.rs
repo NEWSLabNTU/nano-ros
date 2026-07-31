@@ -29,7 +29,7 @@ pub fn run(linker_script: &[u8]) {
     // 192.3: env-overridable like THREADX_DIR/NETX_DIR above (default in sdk-env.just).
     let virtio_driver_dir = env_path_or(
         "NROS_VIRTIO_NET_NETX_DIR",
-        workspace_root.join("packages/drivers/virtio-net-netx"),
+        workspace_root.join("packages/drivers/net/virtio-net-netx"),
     );
 
     // Validate directories

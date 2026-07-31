@@ -79,8 +79,8 @@ nros-platform-freertos = { path = "../../platform/nros-platform-freertos" }
 zpico-sys = { path = "../../rmw/zenoh/zpico-sys", default-features = false }
 
 # Ethernet transport (optional, gated by feature)
-nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
-lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp", optional = true }
+nros-smoltcp = { path = "../../drivers/net/nros-smoltcp", optional = true }
+lan9118-smoltcp = { path = "../../drivers/net/lan9118-smoltcp", optional = true }
 smoltcp = { version = "0.12", default-features = false, optional = true, features = [
     "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp",
 ] }

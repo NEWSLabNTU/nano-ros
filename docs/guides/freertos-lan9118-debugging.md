@@ -299,7 +299,7 @@ These are useful for cross-referencing register sequences and understanding expe
   in the [QEMU repository](https://gitlab.com/qemu-project/qemu)
 
 - **nano-ros Rust LAN9118 driver** (smoltcp variant, same register init sequence):
-  `packages/drivers/lan9118-smoltcp/`
+  `packages/drivers/net/lan9118-smoltcp/`
 
 ## 7. Debugging Tips
 

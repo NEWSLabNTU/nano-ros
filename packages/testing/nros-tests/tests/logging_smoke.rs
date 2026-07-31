@@ -166,7 +166,7 @@ fn logging_smoke_harness_captures_stderr() {
         panic!("[SKIPPED] THREADX_DIR not set or invalid");
     }
     if !threadx_linux::is_nsos_netx_available() {
-        panic!("[SKIPPED] nsos-netx not found at packages/drivers/nsos-netx/");
+        panic!("[SKIPPED] nsos-netx not found at packages/drivers/net/nsos-netx/");
     }
 
     let binary = build_logging_smoke_threadx_linux().expect(

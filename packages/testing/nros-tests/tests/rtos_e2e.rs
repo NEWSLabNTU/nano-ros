@@ -223,7 +223,9 @@ impl Platform {
                     return false;
                 }
                 if !threadx_linux::is_nsos_netx_available() {
-                    eprintln!("Skipping test: nsos-netx not found at packages/drivers/nsos-netx/");
+                    eprintln!(
+                        "Skipping test: nsos-netx not found at packages/drivers/net/nsos-netx/"
+                    );
                     return false;
                 }
                 require_zenohd()

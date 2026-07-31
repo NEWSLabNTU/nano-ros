@@ -41,9 +41,9 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = f
 ], optional = true }
 
 # smoltcp network provider (ethernet only)
-nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
+nros-smoltcp = { path = "../../drivers/net/nros-smoltcp", optional = true }
 # OpenCores Ethernet MAC driver (for QEMU open_eth NIC, ethernet only)
-openeth-smoltcp = { path = "../../drivers/openeth-smoltcp", optional = true }
+openeth-smoltcp = { path = "../../drivers/net/openeth-smoltcp", optional = true }
 # Network stack (ethernet only)
 smoltcp = { version = "0.12", default-features = false, optional = true, features = [
     "medium-ethernet",

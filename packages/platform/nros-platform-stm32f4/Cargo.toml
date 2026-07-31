@@ -21,6 +21,6 @@ nros-platform-cffi = { path = "../../platform/nros-platform-cffi", optional = tr
 zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc", features = ["stats"] }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 defmt = "0.3"
-nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
+nros-smoltcp = { path = "../../drivers/net/nros-smoltcp" }
 # Shared bare-metal helpers (PRNG, sleep, libc stubs)
-nros-baremetal-common = { path = "../../drivers/nros-baremetal-common", features = ["libc-stubs"] }
+nros-baremetal-common = { path = "../../platform/nros-baremetal-common", features = ["libc-stubs"] }
