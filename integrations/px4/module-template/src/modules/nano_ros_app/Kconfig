@@ -1,0 +1,5 @@
+menuconfig MODULES_NANO_ROS_APP
+	bool "nano_ros_app"
+	default n
+	---help---
+		Enable the nano-ros PX4 module template.

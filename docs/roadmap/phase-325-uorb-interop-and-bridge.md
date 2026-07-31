@@ -274,15 +274,91 @@ worse than offering nothing. The old header even documented
       nano-ros's `add_subdirectory` import disagree about flags") is exactly what
       happened, and it disqualifies `find_package(nano_ros)` rather than needing a
       workaround.
-- [ ] **W1.2** Wrap the result as ONE helper — working name
+- [x] **W1.2** Wrap the result as ONE helper — working name
       `nros_px4_add_module()` — under `integrations/px4/`, so a module author
       writes one call. Not a copy of `px4_add_module`'s argument surface: forward
       to it. Per W1.1 it is a **link helper, not a bootstrap**: two prebuilt `.a`
       paths plus the registration hook, and it must not call
       `find_package(nano_ros)`.
-- [ ] **W1.3** Retire the module-template's comment-block placeholder in favour of
+      **DONE** — `integrations/px4/NanoRosPx4Module.cmake`.
+- [x] **W1.3** Retire the module-template's comment-block placeholder in favour of
       the helper, so the template compiles what it documents. A template whose
       body is `// Replace this comment block` is how the gap stayed invisible.
+      **DONE** — it now builds and runs.
+- [ ] **W1.4** Export the generated headers alongside the archive (found by W1.3;
+      see below). Needed before any module can `#include <nros/init.h>`.
+
+#### W1.2 / W1.3 RESULT (2026-07-31)
+
+`nros_px4_add_module()` exists and the module-template — whose body was a comment
+for three phases — now BUILDS and RUNS from one call:
+
+```
+INFO  [nano_ros_app] nano-ros uORB backend registered
+### Description
+Usage: nano_ros_app [arguments...]
+```
+
+That line means the generated strong `nros_app_register_backends()` ran, reaching
+`nros_rmw_cffi_register` in `libnros_cpp.a` — the real symbol, not the weak
+fallback the register-check relies on.
+
+The helper takes `BACKENDS` and supplies that backend's sources, includes and
+flags itself. The alternative — every module hand-listing the uORB backend's 8
+`.cpp` files, two include dirs and one `-D`, as `nros-px4-register-check` does —
+is build knowledge copied per module, and copies drift the moment the backend
+gains a file. `BACKENDS` names WHAT; the helper decides HOW.
+
+##### Four link shapes were wrong before one was right
+
+Worth recording, because each failed differently and only the last is obvious in
+hindsight:
+
+| shape | outcome |
+| --- | --- |
+| `target_sources()` alone | `undefined reference to nros_app_register_backends`. A linker pulls an archive member only if it resolves an undefined symbol AT THE MOMENT it scans that archive, and PX4 puts the module archive BEFORE `libnros_cpp.a`. |
+| an OBJECT library | its object never reaches the link line at all — PX4 assembles the executable from module ARCHIVES it collects itself, not from CMake object propagation. |
+| a separate trailing archive | resolved the hook, then failed on `nros_rmw_uorb_register`. The dependency is genuinely CIRCULAR — module.a needs `libnros_cpp.a`, which needs the hook, which needs the backend back in module.a — so no ordering of distinct archives satisfies it. |
+| **`-Wl,--undefined=nros_app_register_backends` + `target_sources()`** | works. The symbol is undefined from the START, so the member is pulled on the FIRST scan. Same class as nros-c's FORCE_LINK anchors: a symbol nothing has referenced yet is one the linker feels free to drop. |
+
+(CMake 3.24's `$<LINK_GROUP:RESCAN>` would express the `--start-group` answer
+directly; this tree is on 3.22.)
+
+##### A latent bug the probe could not catch
+
+The helper's include paths were written as `packages/core/nros-{cpp,c}/include`
+— **wrong**; phase-321 moved both to `packages/api/`. The W1.1 probe declared its
+symbols by hand rather than including headers (deliberately, to isolate "does it
+link"), so the paths were never exercised and the build stayed green. It would
+have failed for the first caller that included anything.
+
+The helper now validates every include dir with `IS_DIRECTORY` at configure time
+and fails naming the missing path. A path list nothing reads is a path list
+nothing keeps correct.
+
+##### W1.4 — the generated-config gap
+
+Making the template `#include <nros/init.h>` fails:
+
+```
+error: "nros_config_generated.h must be supplied per-build by the build system"
+```
+
+nano-ros's own cmake emits it into `${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/`,
+and the prebuilt-archive model exports nothing. It cannot simply be copied from
+anywhere: it carries **storage sizes**, so it must come from the same build as
+`libnros_cpp.a` — a mismatched copy is the issue-0268 silent-overflow class.
+
+So W1.4 is: ship the archive and its generated headers as one unit. Until then
+the template declares the entry points it uses, and says why in a comment rather
+than looking like a style choice.
+
+##### `nros-px4-register-check` deliberately NOT migrated
+
+It would be a natural second caller, but it exists to prove the backend LINKS
+against real PX4 headers using the weak `nros_rmw_cffi_register` fallback —
+without `libnros_cpp.a`. Moving it onto the helper would link the strong symbol
+and it would stop testing the thing it was built to test.
 
 **Acceptance:** a PX4 SITL build produces a module that links `libnros_cpp.a` and
 starts. No node behaviour yet — that is W2. **MET for W1.1.**

@@ -1,35 +1,32 @@
-# Phase 139.5 — PX4 module CMakeLists template (copy-out shape).
+# PX4 module CMakeLists template (copy-out shape).
 #
-# Adapt this file for your PX4 module:
-#   - Set MAIN to your module entry-point name (matches the C++
-#     <name>_main symbol).
-#   - List your .cpp sources under SRCS.
-#   - Add any extra includes / link deps.
+# Adapt for your module:
+#   - MAIN is your entry-point name, matching the <name>_main symbol.
+#   - List your sources under SRCS.
+#   - BACKENDS names the RMW backends to register (see below).
 #
-# The module links against the nano-ros C++ headers. Real PX4
-# integration of the Rust-built libnros_cpp.a goes through the
-# `nros-rmw-cffi_register` shim — see packages/testing/nros-px4-register-check/ for the
-# end-to-end pattern (Phase 115.K.4.5).
+# phase-325 W1.3 — this used to call px4_add_module() directly with hand-listed
+# nano-ros include dirs, and its .cpp body was a comment reading "Replace this
+# comment block with NodeBuilder / Publisher calls". A template that does not
+# compile what it documents cannot go stale loudly: its include paths still said
+# `packages/api/...` for headers that had moved, and nothing noticed because
+# nothing ever built it.
+#
+# Now it uses the shared helper, which resolves the archives and include dirs and
+# fails at CONFIGURE time when either is missing or moved.
 
-set(_nros_root "${CMAKE_CURRENT_LIST_DIR}/../../../../..")
-# Allow downstream copies to override the path (when the template
-# sits in a separate tree from nano-ros). Phase 208.D.11 — accept
-# both a cache var (`-DNANO_ROS_DIR=<path>`) and an env var; the
-# cache form takes precedence so an explicit configure-line override
-# wins, then env, then the in-tree default.
-if(DEFINED NANO_ROS_DIR)
-    set(_nros_root "${NANO_ROS_DIR}")
-elseif(DEFINED ENV{NANO_ROS_DIR})
-    set(_nros_root "$ENV{NANO_ROS_DIR}")
-endif()
+include("$ENV{NROS_REPO_DIR}/integrations/px4/NanoRosPx4Module.cmake")
 
-px4_add_module(
-    MODULE         modules__nano_ros_app
-    MAIN           nano_ros_app
-    INCLUDES
-        ${_nros_root}/packages/api/nros-cpp/include
-        ${_nros_root}/packages/api/nros-c/include
-        ${_nros_root}/packages/core/nros-rmw-abi/include
-    SRCS
-        ${CMAKE_CURRENT_LIST_DIR}/nano_ros_app.cpp
+nros_px4_add_module(
+	MODULE   modules__nano_ros_app
+	MAIN     nano_ros_app
+
+	# REQUIRED. The helper generates the strong nros_app_register_backends()
+	# from this list, overriding nros-c's weak no-op. There is deliberately no
+	# default: an empty hook links perfectly and registers nothing, and every
+	# entity creation then fails at runtime with no backend.
+	BACKENDS uorb
+
+	SRCS
+		${CMAKE_CURRENT_LIST_DIR}/nano_ros_app.cpp
 )
