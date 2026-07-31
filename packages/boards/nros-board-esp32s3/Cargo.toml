@@ -17,11 +17,11 @@ name = "nros_board_esp32s3"
 # Phase 173.1 — Board super-trait + the generic direct-exec `run`.
 nros-board-common = { path = "../nros-board-common", default-features = false }
 # Unified platform primitives (clock, memory, random, sleep, libc stubs).
-nros-platform-esp32s3 = { path = "../../platforms/nros-platform-esp32s3" }
-nros-platform = { path = "../../core/nros-platform", default-features = false, features = [
+nros-platform-esp32s3 = { path = "../../platform/nros-platform-esp32s3" }
+nros-platform = { path = "../../platform/nros-platform", default-features = false, features = [
     "platform-esp32s3",
 ] }
-nros-platform-api = { path = "../../core/nros-platform-api" }
+nros-platform-api = { path = "../../platform/nros-platform-api" }
 # Phase 248 C5a (#60 T4) — the BOARD is the RMW selection point: depend on the
 # concrete zenoh backend directly (optional, behind `rmw-zenoh`) so the board
 # OWNS linking + registering it, instead of a pure marker that relied on a

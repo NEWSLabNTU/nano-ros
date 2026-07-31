@@ -110,7 +110,7 @@ git commit -am "fix(zephyr-4.4): drop nsos-getsockname patch (upstreamed in 4.4)
 
 **Files:** `examples/zephyr/*/prj*.conf`, `boards/native_sim*.conf`, `zephyr/CMakeLists.txt`, module sources.
 
-- [ ] **Step 1:** Apply the migration-guide renames on the 4.4 path: `CONFIG_NET_SOCKETS_POLL_MAX` → `CONFIG_ZVFS_POLL_MAX` (if present); `#include <zephyr/net/buf.h>` → `<zephyr/net_buf.h>`; drop/replace `CONFIG_NATIVE_SIM_NATIVE_POSIX_COMPAT` reliance. Grep first: `grep -rn "NET_SOCKETS_POLL_MAX\|net/buf.h\|NATIVE_POSIX_COMPAT\|NATIVE_APPLICATION" examples/zephyr zephyr packages/core/nros-platform-zephyr`.
+- [ ] **Step 1:** Apply the migration-guide renames on the 4.4 path: `CONFIG_NET_SOCKETS_POLL_MAX` → `CONFIG_ZVFS_POLL_MAX` (if present); `#include <zephyr/net/buf.h>` → `<zephyr/net_buf.h>`; drop/replace `CONFIG_NATIVE_SIM_NATIVE_POSIX_COMPAT` reliance. Grep first: `grep -rn "NET_SOCKETS_POLL_MAX\|net/buf.h\|NATIVE_POSIX_COMPAT\|NATIVE_APPLICATION" examples/zephyr zephyr packages/platform/nros-platform-zephyr`.
 - [ ] **Step 2: Verify** the 4.4 build advances past these symbols.
 - [ ] **Step 3: Commit.**
 

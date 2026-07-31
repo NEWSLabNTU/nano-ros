@@ -91,7 +91,7 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", features = ["lending
 # Phase 124.A.8.b — posix C symbols (nros_platform_*) for the loan E2E
 # binary. Without `posix-c-port`, nros-platform-cffi declares the
 # canonical symbols extern without providing them, and link fails.
-nros-platform-cffi = { path = "../../core/nros-platform-cffi", features = ["posix-c-port"], optional = true }
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", features = ["posix-c-port"], optional = true }
 
 # Phase 88.14 — `nros-log` facade for the host-side logging tests.
 nros-log = { path = "../../core/nros-log" }
@@ -105,7 +105,7 @@ nros = { path = "../../api/nros", default-features = false, features = ["std"] }
 # wrapper. Tests that invoke that wrapper directly need `nros-platform`
 # nameable in scope; gated on `component-runtime-test` because only the
 # m5a4 dispatch suite touches it today.
-nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-posix"], optional = true }
+nros-platform = { path = "../../platform/nros-platform", default-features = false, features = ["platform-posix"], optional = true }
 
 [features]
 default = []

@@ -37,7 +37,7 @@ include_paths = [
   "{env:NUTTX_DIR}/include",
   # Phase 154 — `<nros/platform_net.h>` source; same need as posix/
   # bare-metal/freertos-lwip blocks above.
-  "{nros}/../../core/nros-platform-api/include",
+  "{nros}/../../platform/nros-platform-api/include",
 ]
 rerun_if_env_changed = ["NUTTX_DIR"]
 

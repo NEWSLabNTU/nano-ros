@@ -16,7 +16,7 @@ name = "nros_board_bare_metal"
 [dependencies]
 # Phase 212.N.1 — Board trait family (BoardEntry, BoardInit, BoardExit,
 # BoardPrint, RuntimeCtx). Trait surface only; no runtime deps pulled.
-nros-platform = { path = "../../core/nros-platform", default-features = false }
+nros-platform = { path = "../../platform/nros-platform", default-features = false }
 
 [features]
 default = []

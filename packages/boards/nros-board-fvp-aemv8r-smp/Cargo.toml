@@ -47,10 +47,10 @@ nros = { path = "../../api/nros", default-features = false }
 nros-rmw-cyclonedds-sys = { path = "../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
 # Phase 121.3 — the Rust `nros-platform-zephyr` crate is gone; the
 # canonical `nros_platform_*` C symbols come from
-# `nros-platform-zephyr` (the C port at `packages/core/nros-platform-zephyr/`,
+# `nros-platform-zephyr` (the C port at `packages/platform/nros-platform-zephyr/`,
 # linked via Zephyr's CMake glue). The board crate pulls `nros-platform`
 # (re-exported via `nros`) to reach `ConcretePlatform = CffiPlatform`.
-nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-zephyr"] }
+nros-platform = { path = "../../platform/nros-platform", default-features = false, features = ["platform-zephyr"] }
 
 # Phase 215.C.1 — Cargo-side mirror of the `board.cmake` sidecar.
 # Same field set as `packages/boards/nros-board-fvp-aemv8r-smp/board.cmake`;

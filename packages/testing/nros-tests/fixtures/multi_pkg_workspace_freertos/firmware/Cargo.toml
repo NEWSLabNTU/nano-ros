@@ -34,7 +34,7 @@ deploy = "freertos"
 # `BoardEntry` lifecycle the Entry pkg invokes.
 nros-board-mps2-an385-freertos = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-mps2-an385-freertos", default-features = false, features = ["rmw-zenoh"] }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, `RuntimeError`.
-nros-platform = { path = "@NANO_ROS_ROOT@/packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
+nros-platform = { path = "@NANO_ROS_ROOT@/packages/platform/nros-platform", default-features = false, features = ["platform-freertos"] }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 
 # Phase 212.N.7 step-5 — Component pkgs are linked here so the codegen

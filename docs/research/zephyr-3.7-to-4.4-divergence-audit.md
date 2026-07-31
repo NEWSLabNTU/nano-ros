@@ -11,7 +11,7 @@ guides, and direct reads of v4.4.0 source for the high-risk internal files.
 ## Method
 
 1. Enumerated the Zephyr API + file surface nano-ros depends on
-   (`packages/core/nros-platform-zephyr/`, `zephyr/*.c`, and the 16
+   (`packages/platform/nros-platform-zephyr/`, `zephyr/*.c`, and the 16
    `scripts/zephyr/*-patch.sh`).
 2. Cross-referenced the cumulative migration guides 4.0 → 4.4.
 3. For the two highest-risk patch families (NSOS, Rust) read v4.4.0 source
@@ -132,4 +132,4 @@ written from this audit.
 - Zephyr v4.4.0 NSOS source: `drivers/net/nsos_sockets.c`, `drivers/net/nsos_adapt.c`
   (github.com/zephyrproject-rtos/zephyr @ v4.4.0)
 - Migration guides 4.0–4.2 (docs.zephyrproject.org / repo `doc/releases/`)
-- Local: `scripts/zephyr/*-patch.sh`, `packages/core/nros-platform-zephyr/`
+- Local: `scripts/zephyr/*-patch.sh`, `packages/platform/nros-platform-zephyr/`

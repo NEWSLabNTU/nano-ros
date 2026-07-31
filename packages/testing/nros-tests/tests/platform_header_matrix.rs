@@ -240,7 +240,7 @@ fn try_compile(cell: &Cell) -> (bool, String) {
     // nros-platform-api (now carrying the generic atomics). Listed first so it
     // wins; nros-c/include kept for the other nros-c headers.
     cmd.arg("-I")
-        .arg(root.join("packages/core/nros-platform-api/include"));
+        .arg(root.join("packages/platform/nros-platform-api/include"));
     cmd.arg("-I")
         .arg(root.join("packages/api/nros-cpp/include"));
     cmd.arg("-I").arg(root.join("packages/api/nros-c/include"));

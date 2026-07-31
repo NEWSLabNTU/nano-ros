@@ -31,7 +31,7 @@ nros-board-common = { path = "../nros-board-common" }
 # BoardEntry}`) so the per-board ZST can plug directly into
 # `nros_board_nuttx::run_entry::<Self, _, _>` from a codegen-emitted
 # Entry pkg `main.rs`.
-nros-platform = { path = "../../core/nros-platform", default-features = false }
+nros-platform = { path = "../../platform/nros-platform", default-features = false }
 # Phase 212.N.3 — `BoardEntry::run` delegates to the NuttX family
 # driver's `run_entry`. We do NOT enable `reference-qemu-arm` here:
 # that feature flag pulls `nros-board-nuttx-qemu-arm` as an optional

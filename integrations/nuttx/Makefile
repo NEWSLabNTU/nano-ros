@@ -80,10 +80,10 @@ export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
 #     provided the real impl, since NuttX's `sem_t` honors
 #     `sem_timedwait` correctly.
 # Obviates a dedicated `nros-platform-nuttx` Rust crate.
-CSRCS = $(NANO_ROS_ROOT)/packages/core/nros-platform-posix/src/platform.c
+CSRCS = $(NANO_ROS_ROOT)/packages/platform/nros-platform-posix/src/platform.c
 # Include the platform.h header in CFLAGS so the POSIX port's
 # `#include <nros/platform.h>` resolves.
-CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/packages/core/nros-platform-api/include
+CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/packages/platform/nros-platform-api/include
 
 # Phase 157.C — resolve the real nano-ros repo root via the
 # `apps/external/nano-ros` symlink (which points at

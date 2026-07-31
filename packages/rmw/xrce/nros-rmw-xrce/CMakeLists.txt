@@ -35,7 +35,7 @@ set(NROS_PLATFORM_CFFI_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../../core/nros-p
 if(NOT EXISTS "${NROS_PLATFORM_CFFI_INCLUDE}/nros/platform_net.h")
     message(FATAL_ERROR
         "nros-platform-cffi headers not found at NROS_PLATFORM_CFFI_INCLUDE='${NROS_PLATFORM_CFFI_INCLUDE}'. "
-        "Set -DNROS_PLATFORM_CFFI_INCLUDE=<path-to-packages/core/nros-platform-api/include>.")
+        "Set -DNROS_PLATFORM_CFFI_INCLUDE=<path-to-packages/platform/nros-platform-api/include>.")
 endif()
 
 # micro-XRCE-DDS-Client + micro-CDR (vendored under xrce-sys). Phase

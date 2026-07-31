@@ -40,7 +40,7 @@ host-only-reason = "the POSIX host board backend"
 # `__FORCE_LINK_CFFI` anchor that keeps `libnros_platform_posix.a` in the link).
 # This is the board-driven platform-selection point, mirroring C5a's RMW gate:
 # the umbrella `nros` dep below stays platform-agnostic (no `platform-posix`).
-nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false, features = ["std", "platform-posix"] }
+nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false, features = ["std", "platform-posix"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `BoardEntry::run` installs a live component runtime sink on the
 # `RuntimeCtx` before invoking the user `setup` closure. `rmw-cffi`

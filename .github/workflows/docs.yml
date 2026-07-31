@@ -8,9 +8,9 @@ on:
       - "packages/api/nros/**"
       - "packages/core/nros-rmw/**"
       - "packages/rmw/cffi/**"
-      - "packages/core/nros-platform-api/**"
-      - "packages/core/nros-platform-cffi/**"
-      - "packages/core/nros-platform-posix/**"
+      - "packages/platform/nros-platform-api/**"
+      - "packages/platform/nros-platform-cffi/**"
+      - "packages/platform/nros-platform-posix/**"
       - "packages/api/nros-c/include/**"
       - "packages/api/nros-c/Doxyfile"
       - "packages/api/nros-c/docs/**"
@@ -90,7 +90,7 @@ jobs:
           # Phase 104.A: `rmw-zenoh` feature on `nros` is now
           # `rmw-zenoh-cffi`. The Rust `nros-platform-posix` crate
           # was deleted (123.A.1.x.2); POSIX C symbols ship from
-          # `packages/core/nros-platform-posix/src/*.c`, compiled
+          # `packages/platform/nros-platform-posix/src/*.c`, compiled
           # by `nros-platform-cffi`'s `posix-c-port` feature.
           # The book rustdoc driver is its own tiny workspace so Cargo
           # does not resolve root workspace members backed by target/runtime
@@ -123,7 +123,7 @@ jobs:
         # consumes that header here.
         run: |
           mkdir -p target/doxygen/platform-cffi
-          cd packages/core/nros-platform-cffi
+          cd packages/platform/nros-platform-cffi
           doxygen Doxyfile
 
       - name: Stage API docs into book output

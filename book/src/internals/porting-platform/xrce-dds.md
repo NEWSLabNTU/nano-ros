@@ -23,7 +23,7 @@ Your `nros-platform-<name>` crate provides the canonical clock primitives
 maps them to the `uxr_*` symbols XRCE-DDS expects.
 
 ```
-packages/core/nros-platform-<name>/
+packages/platform/nros-platform-<name>/
 ├── Cargo.toml
 └── src/
     └── lib.rs          # clock + other primitives

@@ -81,7 +81,7 @@ via `nros::__macro_support`). Standing on the substrate Phase 212 froze.
 **Design doc cross-refs.** `docs/design/0024-multi-node-workspace-layout.md` §11
 (3-pkg-role lock; §11.8 escape hatch); `book/src/internals/rmw-backends.md`
 (executor + `NodeDispatchRuntime` contract — pre-214.K.1 this was named
-`ComponentRuntime`; rename verified in `packages/core/nros-platform/src/
+`ComponentRuntime`; rename verified in `packages/platform/nros-platform/src/
 board/runtime.rs:79`).
 
 ## Trait surface after 212.N.12 + 214.K.1
@@ -95,7 +95,7 @@ three traits:
 | `nros::Node`                   | `packages/api/nros/src/node.rs:69`               | Declarative — `NAME` + `register(ctx)`               |
 | `nros::ExecutableNode`         | `packages/api/nros/src/node.rs:1157`             | Runtime — `init() -> Self::State`, `on_callback(state, cb, ctx)`, `tick(state, ctx)` |
 | `nros::NodeRuntime`            | `packages/api/nros/src/node.rs:112`              | User-facing sink — `create_node` / `create_entity` / `record_callback_effect` |
-| `nros_platform::NodeDispatchRuntime` | `packages/core/nros-platform/src/board/runtime.rs:79` | Board-side dispatch sink (post-214.K.1 rename from `NodeRuntime`) |
+| `nros_platform::NodeDispatchRuntime` | `packages/platform/nros-platform/src/board/runtime.rs:79` | Board-side dispatch sink (post-214.K.1 rename from `NodeRuntime`) |
 
 Phase 216 lands its new methods accordingly:
 
@@ -282,7 +282,7 @@ forbids Deferred Nodes from using closure-based registration.
 ### 216.A — Substrate (foundation; backward-compat-preserving)
 
 - [x] **216.A.1** — `DispatchStrategy` enum in
-      `packages/core/nros-platform/src/runtime.rs`:
+      `packages/platform/nros-platform/src/runtime.rs`:
       ```rust
       #[derive(Copy, Clone, Debug, PartialEq, Eq)]
       pub enum DispatchStrategy {
@@ -293,12 +293,12 @@ forbids Deferred Nodes from using closure-based registration.
       ```
       `#[repr(u8)]` for FFI stability. Re-export through
       `nros::DispatchStrategy`.
-      **Files**: `packages/core/nros-platform/src/runtime.rs`,
+      **Files**: `packages/platform/nros-platform/src/runtime.rs`,
       `packages/api/nros/src/lib.rs` (re-export).
       **Landed:** `09220cef7`
 
 - [x] **216.A.2** — `NodeDispatchRuntime` trait extensions (post-214.K.1
-      name; lives at `packages/core/nros-platform/src/board/runtime.rs`,
+      name; lives at `packages/platform/nros-platform/src/board/runtime.rs`,
       NOT `src/runtime.rs`):
       ```rust
       pub trait NodeDispatchRuntime {
@@ -315,7 +315,7 @@ forbids Deferred Nodes from using closure-based registration.
       Defaulted methods → zero-touch for existing impls
       (`ExecutorNodeRuntime` in `nros`, `NullNodeRuntime` in
       `nros-platform`); `Inline` runtime keeps working unchanged.
-      **Files**: `packages/core/nros-platform/src/board/runtime.rs`.
+      **Files**: `packages/platform/nros-platform/src/board/runtime.rs`.
       **Landed:** `8994163df` (adds `signal_callback` +
       `dispatch_strategy` + `SignaledCallback` newtype).
 
@@ -443,7 +443,7 @@ forbids Deferred Nodes from using closure-based registration.
       ```
       Distinct from `BoardEntry` (which keeps the board-owns-spin
       contract for POSIX + RTOS boards).
-      **Files**: `packages/core/nros-platform/src/board.rs`.
+      **Files**: `packages/platform/nros-platform/src/board.rs`.
       **Landed:** `2a4df2c93`
 
 - [~] **216.B.2** — `nros-board-rtic-stm32f4` crate:
@@ -632,7 +632,7 @@ forbids Deferred Nodes from using closure-based registration.
           type Runtime: NodeDispatchRuntime;
       }
       ```
-      **Files**: `packages/core/nros-platform/src/board.rs`.
+      **Files**: `packages/platform/nros-platform/src/board.rs`.
       **Landed:** `9de4b227e`
 
 - [~] **216.C.2** — `nros-board-embassy-stm32f4` crate:

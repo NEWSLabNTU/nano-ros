@@ -52,7 +52,7 @@ set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast
     CACHE STRING "Default link features for the Foo platform")
 
 # Build / pull in the platform staticlib. May be add_subdirectory(...)
-# into packages/core/nros-platform-foo/ for a Cargo + cmake hybrid, or
+# into packages/platform/nros-platform-foo/ for a Cargo + cmake hybrid, or
 # may declare an IMPORTED target pointing at a prebuilt RTOS archive.
 add_subdirectory(
     "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-foo"

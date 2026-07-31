@@ -23,11 +23,11 @@ add_subdirectory("${FREERTOS_KERNEL_PATH}" FreeRTOS-Kernel EXCLUDE_FROM_ALL)
 # 4. Build nros-platform-freertos against the kernel. Disable net.c
 #    (no lwIP in this harness).
 set(NROS_PLATFORM_CFFI_INCLUDE
-    "${REPO_ROOT}/packages/core/nros-platform-api/include")
+    "${REPO_ROOT}/packages/platform/nros-platform-api/include")
 set(NROS_PLATFORM_FREERTOS_WITH_NET OFF CACHE BOOL "" FORCE)
 set(NROS_PLATFORM_FREERTOS_INSTALL OFF CACHE BOOL "" FORCE)
 set(FREERTOS_KERNEL_TARGET freertos_kernel CACHE STRING "" FORCE)
-add_subdirectory("${REPO_ROOT}/packages/core/nros-platform-freertos"
+add_subdirectory("${REPO_ROOT}/packages/platform/nros-platform-freertos"
                  nros-platform-freertos EXCLUDE_FROM_ALL)
 
 # 5. Link the smoke binary.

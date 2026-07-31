@@ -40,7 +40,7 @@ Three sub-decisions (brainstormed 2026-07-24):
    With committed output, embedded builds see plain checked-in Rust.
 2. **Two packages, not one.** A new pure-header
    `packages/core/nros-rmw-abi/` (headers extracted from
-   `nros-rmw-cffi`); `packages/core/nros-platform-api/` remains the
+   `nros-rmw-cffi`); `packages/platform/nros-platform-api/` remains the
    platform header home (it already carries the headers). One package
    per contract keeps consumer include-paths and ownership stories
    separate.
@@ -59,7 +59,7 @@ Three sub-decisions (brainstormed 2026-07-24):
 - `packages/core/nros-rmw-abi/` — `include/nros/rmw_*.h`, a CMake
   INTERFACE library (`NanoRos::RmwAbi`), the RMW Doxyfile. No build
   logic, no Rust.
-- `packages/core/nros-platform-api/` — unchanged home for
+- `packages/platform/nros-platform-api/` — unchanged home for
   `include/nros/platform*.h` (plus its existing small Rust crate).
 - `packages/boards/nros-board-cffi/include/nros/board.h` — the board-entry
   ABI joined the same model (phase-299 W5): generated declarations in

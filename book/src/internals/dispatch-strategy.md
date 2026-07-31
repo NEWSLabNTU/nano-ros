@@ -14,7 +14,7 @@ A nano-ros Node declares `Node::DISPATCH: DispatchStrategy` to tell the
 codegen + lint layers how its callbacks need to be delivered:
 
 ```rust
-// File: packages/core/nros-platform/src/board/dispatch.rs
+// File: packages/platform/nros-platform/src/board/dispatch.rs
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum DispatchStrategy {
@@ -263,7 +263,7 @@ to `NodeDispatchRuntime` (the user-facing sink kept the
 Phase 216 lands its new methods on `NodeDispatchRuntime`:
 
 ```rust
-// File: packages/core/nros-platform/src/board/runtime.rs
+// File: packages/platform/nros-platform/src/board/runtime.rs
 pub trait NodeDispatchRuntime {
     // ... existing methods unchanged ...
 
@@ -376,6 +376,6 @@ branch in the "after" version — same code, hoisted to a method.
   made.
 - `docs/roadmap/phase-216-baremetal-framework-integration.md` — the
   locked spec.
-- `packages/core/nros-platform/src/board/dispatch.rs` — the
+- `packages/platform/nros-platform/src/board/dispatch.rs` — the
   `DispatchStrategy` enum.
 - `packages/api/nros/src/dispatch_tag.rs` — the tag types.

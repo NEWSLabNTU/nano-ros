@@ -2,7 +2,7 @@
 
 POSIX (Linux / macOS / BSD) family driver crate for the `Board` trait
 surface that lives in [`nros-platform::board`]
-(`packages/core/nros-platform/src/board/`). Implements
+(`packages/platform/nros-platform/src/board/`). Implements
 `BoardInit`, `BoardPrint`, `BoardExit` and `BoardEntry` for a single
 `PosixBoard` ZST so a host Entry pkg `main.rs` boots through the same
 `<Board as BoardEntry>::run(setup)` shape every other family driver

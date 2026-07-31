@@ -60,7 +60,7 @@ rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 
 [dependencies]
 nros = { path = "../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
-nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+nros-platform-cffi = { path = "../../../../packages/platform/nros-platform-cffi", features = ["posix-c-port"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"

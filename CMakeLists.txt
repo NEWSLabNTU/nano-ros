@@ -160,7 +160,7 @@ if(NOT TARGET NanoRos)
         target_include_directories(NanoRos INTERFACE
             # phase-243 — the one canonical `<nros/platform.h>` lives here now
             # (nros-c's legacy platform.h is deleted); list it first.
-            "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-platform-api/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/packages/platform/nros-platform-api/include"
             "${CMAKE_CURRENT_SOURCE_DIR}/packages/api/nros-c/include"
             "${CMAKE_CURRENT_SOURCE_DIR}/packages/api/nros-cpp/include"
             "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-rmw-abi/include")

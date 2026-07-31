@@ -50,6 +50,6 @@ compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-
 # bridge examples) failed with "platform_net.h: No such
 # file or directory". Phase 104.D.3.
 include_paths = [
-  "{nros}/../../core/nros-platform-api/include",
+  "{nros}/../../platform/nros-platform-api/include",
 ]
 

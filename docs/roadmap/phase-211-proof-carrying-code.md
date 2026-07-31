@@ -280,10 +280,10 @@ the SDK store (same pattern as `~/.nros/bin/zenohd` from Phase 208.B).
 
 **Files (platform subphase, weeks 29-32)**
 
-- `packages/core/nros-platform-posix/proofs/{spec,axioms}/`
-- `packages/core/nros-platform-freertos/proofs/{spec,axioms}/`
-- `packages/core/nros-platform-zephyr/proofs/{spec,axioms}/`
-- `packages/core/nros-platform-threadx/proofs/{spec,axioms}/` (NetX BSD
+- `packages/platform/nros-platform-posix/proofs/{spec,axioms}/`
+- `packages/platform/nros-platform-freertos/proofs/{spec,axioms}/`
+- `packages/platform/nros-platform-zephyr/proofs/{spec,axioms}/`
+- `packages/platform/nros-platform-threadx/proofs/{spec,axioms}/` (NetX BSD
   `SO_RCVTIMEO` timeval gotcha encoded)
 - `packages/testing/nros-tests/proofs/axioms/wcet/` (WCET claims per
   target, fed by `cargo-call-stack` + aiT where available)

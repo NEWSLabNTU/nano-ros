@@ -1,6 +1,6 @@
 # The `Board` Trait Family
 
-The `Board` trait family is the **porting surface for a new MCU or host target**. It lives in `packages/core/nros-platform/src/board/` and pins the contract every board crate (`nros-board-<board>` or a user-authored crate in a downstream Entry pkg) implements. Phase 212.N introduces this surface; earlier prototypes used `nros-board-common::board_init::*`, and those legacy traits stay as a transition shim until Phase 212.N.7 lands.
+The `Board` trait family is the **porting surface for a new MCU or host target**. It lives in `packages/platform/nros-platform/src/board/` and pins the contract every board crate (`nros-board-<board>` or a user-authored crate in a downstream Entry pkg) implements. Phase 212.N introduces this surface; earlier prototypes used `nros-board-common::board_init::*`, and those legacy traits stay as a transition shim until Phase 212.N.7 lands.
 
 > **New board crates: implement `nros-platform::board`, not the legacy shim.**
 > The porting surface for new code is the `Board` family described on this

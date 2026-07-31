@@ -28,7 +28,7 @@
 #     lets examples call it without a per-platform `if`.
 #
 #   * Builds the native-C platform shim
-#     `packages/core/nros-platform-nuttx/` (compiles the POSIX
+#     `packages/platform/nros-platform-nuttx/` (compiles the POSIX
 #     `platform.c` / `net.c` / `timer.c` translation units — NuttX's
 #     libc supplies pthread/clock/sched_yield natively). The shim
 #     implements the canonical `nros_platform_*` ABI for NuttX and
@@ -131,7 +131,7 @@ endif()
 include("${_nros_nuttx_board_module}")
 
 # ---------------------------------------------------------------------------
-# Native-C platform shim (`packages/core/nros-platform-nuttx`).
+# Native-C platform shim (`packages/platform/nros-platform-nuttx`).
 # Compiles the POSIX sibling sources — NuttX exposes a POSIX-compatible
 # surface, the Rust `NuttxPlatform` similarly forwards to PosixPlatform.
 # The shim's archive is consumed transitively by the NuttX FFI crate;
@@ -139,7 +139,7 @@ include("${_nros_nuttx_board_module}")
 # dependency and a stand-alone `cmake --build` of the shim works.
 # ---------------------------------------------------------------------------
 # The C shim's `add_library(nros_platform_nuttx STATIC ...)` compiles
-# the POSIX sibling sources (`packages/core/nros-platform-posix/src/{platform,
+# the POSIX sibling sources (`packages/platform/nros-platform-posix/src/{platform,
 # net,timer}.c`) which #include `<arpa/inet.h>` / `<semaphore.h>` /
 # `<signal.h>`. NuttX-the-OS supplies these headers via its own include
 # tree (`$NUTTX_DIR/include`), but the cmake subproject doesn't pull
@@ -151,7 +151,7 @@ include("${_nros_nuttx_board_module}")
 # when cross-compiling.
 if(NOT TARGET nros_platform_nuttx AND NOT CMAKE_CROSSCOMPILING)
     add_subdirectory(
-        "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-nuttx"
+        "${CMAKE_CURRENT_LIST_DIR}/../../packages/platform/nros-platform-nuttx"
         nros_platform_nuttx)
 endif()
 

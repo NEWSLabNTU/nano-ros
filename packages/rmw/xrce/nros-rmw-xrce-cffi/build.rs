@@ -139,7 +139,7 @@ fn main() {
         .include(xrce_c.join("src"))
         .include(xrce_c.join("include"))
         .include(workspace.join("packages/core/nros-rmw-abi/include"))
-        .include(workspace.join("packages/core/nros-platform-api/include"));
+        .include(workspace.join("packages/platform/nros-platform-api/include"));
     if is_posix {
         // `_POSIX_C_SOURCE` is what unlocks `clock_gettime`,
         // `getaddrinfo`, etc in `<sys/socket.h>` + `<time.h>` on
@@ -311,14 +311,14 @@ fn main() {
     // and forcing a non-host target — otherwise the link hits
     // duplicate-symbol errors.
     if is_posix {
-        let posix_src = workspace.join("packages/core/nros-platform-posix/src");
+        let posix_src = workspace.join("packages/platform/nros-platform-posix/src");
         let mut posix_build = cc::Build::new();
         posix_build
             .std("c11")
             .warnings(false)
             .define("_DEFAULT_SOURCE", None)
             .define("_POSIX_C_SOURCE", Some("200809L"))
-            .include(workspace.join("packages/core/nros-platform-api/include"))
+            .include(workspace.join("packages/platform/nros-platform-api/include"))
             .file(posix_src.join("platform.c"))
             .file(posix_src.join("net.c"))
             .file(posix_src.join("timer.c"));

@@ -100,7 +100,7 @@ cyclonedds-sys = { version = "0.5.0", path = "../cyclonedds-sys", optional = tru
 # Phase 249 — only pulled in by the `platform-posix` feature (native). The
 # `__FORCE_LINK_PLATFORM_CFFI` re-anchor in src/lib.rs references its
 # `__FORCE_LINK_CFFI` to keep `libnros_platform_posix.a` in the link graph.
-nros-platform = { version = "0.5.0", path = "../../../core/nros-platform", default-features = false, optional = true }
+nros-platform = { version = "0.5.0", path = "../../../platform/nros-platform", default-features = false, optional = true }
 
 [build-dependencies]
 cc = { version = "1.0", optional = true }

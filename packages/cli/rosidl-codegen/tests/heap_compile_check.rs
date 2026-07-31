@@ -177,7 +177,7 @@ fn generated_c_with_dheader_wrap_syntax_checks() {
         .unwrap()
         .to_path_buf();
     let inc = repo_root.join("packages/api/nros-c/include");
-    let plat = repo_root.join("packages/core/nros-platform-api/include");
+    let plat = repo_root.join("packages/platform/nros-platform-api/include");
     let gen_dir = repo_root.join("target/nros-c-generated");
     let tmp = tempfile::tempdir().unwrap();
     // Write the generated header next to the source so its #include resolves.
@@ -241,7 +241,7 @@ fn generated_c_service_with_dheader_wrap_syntax_checks() {
         .unwrap()
         .to_path_buf();
     let inc = repo_root.join("packages/api/nros-c/include");
-    let plat = repo_root.join("packages/core/nros-platform-api/include");
+    let plat = repo_root.join("packages/platform/nros-platform-api/include");
     let gen_dir = repo_root.join("target/nros-c-generated");
     let tmp = tempfile::tempdir().unwrap();
     let hdr = tmp.path().join(&pkg.header_name);
@@ -306,7 +306,7 @@ fn generated_c_action_with_dheader_wrap_syntax_checks() {
         .unwrap()
         .to_path_buf();
     let inc = repo_root.join("packages/api/nros-c/include");
-    let plat = repo_root.join("packages/core/nros-platform-api/include");
+    let plat = repo_root.join("packages/platform/nros-platform-api/include");
     let gen_dir = repo_root.join("target/nros-c-generated");
     let tmp = tempfile::tempdir().unwrap();
     let hdr = tmp.path().join(&pkg.header_name);

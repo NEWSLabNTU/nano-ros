@@ -164,7 +164,7 @@ no RMW crate dependency. Instead:
   the concrete session type is always `CffiSession` (vtable-backed).
 - **Platform.** `nros`'s `platform-*` feature resolves to
   `nros-platform-cffi`. The canonical `nros_platform_*` C symbols
-  ship from `packages/core/nros-platform-<plat>/src/*.c`, linked at
+  ship from `packages/platform/nros-platform-<plat>/src/*.c`, linked at
   the consumer's build site — `posix-c-port` for pure-cargo POSIX
   builds, the standalone `lib<…>.a` for CMake builds, or the kernel
   build system for NuttX / Zephyr.

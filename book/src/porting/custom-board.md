@@ -70,8 +70,8 @@ name = "nros_my_board"
 
 [dependencies]
 # Platform primitives (pick one)
-nros-platform = { path = "../../core/nros-platform", features = ["platform-freertos"] }
-nros-platform-freertos = { path = "../../core/nros-platform-freertos" }
+nros-platform = { path = "../../platform/nros-platform", features = ["platform-freertos"] }
+nros-platform-freertos = { path = "../../platform/nros-platform-freertos" }
 
 # zenoh-pico FFI. Its default-on `platform-aliases` C TU emits every
 # `z_*` / `_z_*` symbol zenoh-pico needs, forwarding to `nros_platform_*`.

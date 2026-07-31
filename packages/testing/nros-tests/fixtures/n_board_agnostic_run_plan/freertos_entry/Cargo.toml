@@ -26,7 +26,7 @@ deploy = "freertos"
 # Board impl for the FreeRTOS / MPS2-AN385 family.
 nros-board-mps2-an385-freertos = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-mps2-an385-freertos", default-features = false, features = ["rmw-zenoh"] }
 # Trait surface — BoardEntry / RuntimeCtx / RuntimeError.
-nros-platform = { path = "@NANO_ROS_ROOT@/packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
+nros-platform = { path = "@NANO_ROS_ROOT@/packages/platform/nros-platform", default-features = false, features = ["platform-freertos"] }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 # Codegen-emitted `run_plan.rs` defines a `register_dispatch` shim
 # typed `&mut ::nros::Executor`, so the Entry pkg depends on `nros`

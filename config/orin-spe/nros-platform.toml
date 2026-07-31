@@ -30,7 +30,7 @@ include_paths = [
   "{env:NV_SPE_FSP_DIR}/include/freertos/portable/GCC/ARM_R5",
   "{env:NV_SPE_FSP_DIR}/include",
   # Phase 154 — `<nros/platform_net.h>` source.
-  "{nros}/../../core/nros-platform-api/include",
+  "{nros}/../../platform/nros-platform-api/include",
 ]
 rerun_if_env_changed = ["NV_SPE_FSP_DIR"]
 

@@ -37,7 +37,7 @@ fi
 # 2. Exactly one platform→cargo-feature mapping.
 #
 #    Matched on the ASSIGNMENT, not on a feature name: `platform-freertos` also
-#    appears as a directory (`packages/core/nros-platform-freertos`) in the
+#    appears as a directory (`packages/platform/nros-platform-freertos`) in the
 #    board/platform wiring files, and `NROS_PLATFORM_LINK_FEATURES` is a
 #    transport axis (tcp/udp) with nothing to do with cargo. An earlier version
 #    of this check matched the bare substring and reported six files that were

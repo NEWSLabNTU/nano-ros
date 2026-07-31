@@ -23,7 +23,7 @@ deploy = "posix"
 # Board impl for the POSIX family.
 nros-board-posix = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-posix" }
 # Trait surface — BoardEntry / RuntimeCtx / RuntimeError.
-nros-platform = { path = "@NANO_ROS_ROOT@/packages/core/nros-platform", default-features = false, features = ["std", "platform-posix"] }
+nros-platform = { path = "@NANO_ROS_ROOT@/packages/platform/nros-platform", default-features = false, features = ["std", "platform-posix"] }
 # Codegen-emitted `run_plan.rs` defines a `register_dispatch` shim
 # typed `&mut ::nros::Executor`, so the Entry pkg depends on `nros`
 # directly — same platform features the Component pkg forwards.

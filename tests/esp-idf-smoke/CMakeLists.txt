@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 set(EXTRA_COMPONENT_DIRS
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-esp-idf")
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/platform/nros-platform-esp-idf")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(nros_esp_idf_smoke)

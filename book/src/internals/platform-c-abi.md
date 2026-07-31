@@ -19,7 +19,7 @@ facing axis description) and
 ## Surface
 
 Three hand-written headers under
-`packages/core/nros-platform-cffi/include/nros/`:
+`packages/platform/nros-platform-cffi/include/nros/`:
 
 | Header | Purpose | Symbol count |
 |---|---|---|
@@ -30,7 +30,7 @@ Three hand-written headers under
 Every symbol has the prefix `nros_platform_`. A drift gate
 (`scripts/check-platform-abi-mirror.sh`) walks each header and asserts
 that the `unsafe extern "C" {}` mirror block in
-`packages/core/nros-platform-cffi/src/lib.rs` declares the same set —
+`packages/platform/nros-platform-cffi/src/lib.rs` declares the same set —
 no symbol can land in C without its Rust mirror, no Rust mirror can
 declare a symbol without a C header decl. `just check` runs the gate
 on every CI build.
@@ -91,7 +91,7 @@ single-task stub impls are written in Rust and exported via the macro.
 
 The kernel-side ports (FreeRTOS, NuttX, ThreadX, Zephyr, ESP-IDF) write
 the bodies directly in `src/platform.c`, `src/net.c`, `src/timer.c`
-inside each `packages/core/nros-platform-<rtos>/` directory. The Rust
+inside each `packages/platform/nros-platform-<rtos>/` directory. The Rust
 side has no implementation file — the build script (or parent build
 system: NuttX make, Zephyr west module, ESP-IDF cmake) compiles the C
 sources against the kernel's headers.

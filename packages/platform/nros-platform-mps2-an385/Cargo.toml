@@ -1,0 +1,63 @@
+[package]
+name = "nros-platform-mps2-an385"
+version = "0.5.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "nros platform implementation for QEMU MPS2-AN385 bare-metal"
+publish = false
+
+[lib]
+name = "nros_platform_mps2_an385"
+
+[features]
+# `libc-stubs` on by default so bare-metal consumers (the mps2-an385 baremetal
+# board + its fixtures) keep the freestanding libc symbols. Issue #0317 — a
+# FreeRTOS consumer that reuses only this crate's Cortex-M timing (DWT) already
+# has picolibc from the board, so it must `default-features = false` here to
+# avoid a `duplicate symbol: strtol` link conflict; PRNG / sleep / timing stay.
+default = ["libc-stubs"]
+libc-stubs = ["nros-baremetal-common/libc-stubs"]
+# TLS support (larger heap: 128 KB instead of 64 KB)
+link-tls = []
+# Phase 97.3.mps2-an385 — DDS / DDS DcpsDomainParticipant + builtin
+# topics / readers / writers consume far more heap than zenoh-pico (the
+# threadx-rv64 slice needed 2 MB; same budget here). Off by default so
+# zenoh / xrce builds keep their 64 KB footprint.
+dds-heap = []
+# Cortex-M PRIMASK → `critical_section::Impl`. Activated by
+# `nros-platform/critical-section` when the bare-metal platform feature
+# is on. Same flag the FreeRTOS / ThreadX paths use.
+critical-section = ["cortex-m/critical-section-single-core"]
+# Phase 121.2.embedded — emit the canonical `nros_platform_*` C ABI
+# symbols by expanding the `nros-platform-cffi` macro against
+# `Mps2An385Platform`.
+cffi-export = ["dep:nros-platform-cffi"]
+# Issue #6 — opt in to using the bare-metal free-list heap as the Rust
+# `#[global_allocator]`, so zenoh-pico `z_malloc` and Rust `alloc`
+# (`Box`/`Vec`) share ONE heap. Off by default: bare-metal targets that
+# don't enable it install no global allocator and are unchanged.
+global-alloc = ["zpico-alloc/global-alloc"]
+
+[dependencies]
+# Platform trait definitions (trait impls live in lib.rs)
+nros-platform-api = { path = "../../platform/nros-platform-api" }
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", optional = true }
+# Free-list allocator for heap. `stats` tracks live/peak usage so the
+# `PlatformAlloc::heap_used_bytes` override reports real figures
+# (Phase 230 1b / RFC-0034).
+zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc", features = ["stats"] }
+# Cortex-M register access
+cortex-m = "0.7"
+# Phase 110.E.b — `Interrupt::TIMER1` NVIC slot ID for
+# `sporadic_timer::register_periodic` / `destroy`.
+mps2-an385-pac = { path = "../../boards/mps2-an385-pac" }
+# Phase 88 — semihosting writer for `PlatformLog::write`. QEMU
+# semihosting console is the canonical bare-metal log sink for
+# mps2-an385; `hstderr()` lands in the host terminal under
+# `-semihosting-config enable=on,target=native`.
+cortex-m-semihosting = "0.5"
+# smoltcp network provider (TCP/UDP via SmoltcpBridge)
+nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
+# Shared bare-metal helpers (PRNG, sleep). `libc-stubs` is re-exposed as this
+# crate's `libc-stubs` feature (default-on) so a picolibc consumer can drop it.
+nros-baremetal-common = { path = "../../drivers/nros-baremetal-common" }

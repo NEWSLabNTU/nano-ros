@@ -81,7 +81,7 @@ This affects **any Rust code** that calls BSD socket functions via FFI on Zephyr
 ## Files
 
 - `zephyr/nros_platform_zephyr_shims.c` — C shim wrappers (`nros_zephyr_socket`, etc.)
-- `packages/core/nros-platform-zephyr/src/net.rs` — Rust FFI with `#[link_name]` attributes
+- `packages/platform/nros-platform-zephyr/src/net.rs` — Rust FFI with `#[link_name]` attributes
 - `zephyr/CMakeLists.txt` — shims compiled for all RMW backends (not just zenoh)
 
 ## Related

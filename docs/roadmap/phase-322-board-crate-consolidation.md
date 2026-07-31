@@ -25,7 +25,7 @@ thing that makes the rest durable.
 Several boards are near-literal forks. **The empirical case for merging is that
 the forks have already rotted, twice, in ways nobody noticed:**
 
-- `packages/platforms/nros-platform-esp32s3/src/memory.rs` is **missing the #190
+- `packages/platform/nros-platform-esp32s3/src/memory.rs` is **missing the #190
   `foreign_free_count()` fix** its C3 twin has (verified: 2 occurrences in
   `nros-platform-esp32-qemu/src/memory.rs`, 0 in the S3 copy).
 - `nros-board-rtic-mps2-an385`'s `qemu_config()` silently diverges from

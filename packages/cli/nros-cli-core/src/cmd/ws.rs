@@ -1990,9 +1990,9 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         ("nros", "packages/api/nros"),
         ("nros-core", "packages/core/nros-core"),
         ("nros-serdes", "packages/core/nros-serdes"),
-        ("nros-platform", "packages/core/nros-platform"),
-        ("nros-platform-api", "packages/core/nros-platform-api"),
-        ("nros-platform-cffi", "packages/core/nros-platform-cffi"),
+        ("nros-platform", "packages/platform/nros-platform"),
+        ("nros-platform-api", "packages/platform/nros-platform-api"),
+        ("nros-platform-cffi", "packages/platform/nros-platform-cffi"),
         ("nros-node", "packages/core/nros-node"),
         ("nros-rmw", "packages/core/nros-rmw"),
         ("nros-rmw-cffi", "packages/rmw/cffi"),
@@ -2005,7 +2005,7 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         // package name has no `nros-` prefix).
         (
             "nros-platform-critical-section",
-            "packages/core/nros-platform-critical-section",
+            "packages/platform/nros-platform-critical-section",
         ),
         // phase-291 (#211) — the zephyr-leaf build.rs bake helper; a
         // [build-dependencies] row in every zephyr rust example / ws entry.
@@ -3181,7 +3181,7 @@ nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }
         let extras = [
             (
                 "nros-platform-critical-section",
-                "packages/core/nros-platform-critical-section",
+                "packages/platform/nros-platform-critical-section",
             ),
             (
                 "nros-transport-callbacks",

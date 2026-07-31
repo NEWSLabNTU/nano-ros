@@ -59,28 +59,28 @@ pub fn env_or_repo_path(env_name: &str, rel: &str) -> PathBuf {
 pub fn nros_platform_cffi_include() -> PathBuf {
     env_or_repo_path(
         "NROS_PLATFORM_CFFI_INCLUDE",
-        "packages/core/nros-platform-api/include",
+        "packages/platform/nros-platform-api/include",
     )
 }
 
 pub fn nros_platform_posix_src() -> PathBuf {
     env_or_repo_path(
         "NROS_PLATFORM_POSIX_SRC",
-        "packages/core/nros-platform-posix/src",
+        "packages/platform/nros-platform-posix/src",
     )
 }
 
 pub fn nros_platform_freertos_src() -> PathBuf {
     env_or_repo_path(
         "NROS_PLATFORM_FREERTOS_SRC",
-        "packages/core/nros-platform-freertos/src",
+        "packages/platform/nros-platform-freertos/src",
     )
 }
 
 pub fn nros_platform_threadx_src() -> PathBuf {
     env_or_repo_path(
         "NROS_PLATFORM_THREADX_SRC",
-        "packages/core/nros-platform-threadx/src",
+        "packages/platform/nros-platform-threadx/src",
     )
 }
 

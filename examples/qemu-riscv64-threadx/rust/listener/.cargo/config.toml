@@ -18,7 +18,7 @@ THREADX_EXTRA_INCLUDES = { value = "../../../../third-party/threadx/kernel/ports
 [patch.crates-io]
 builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
 nros-board-threadx-qemu-riscv64 = { path = "../../../../packages/boards/nros-board-threadx-qemu-riscv64" }  # nros-managed
-nros-platform = { path = "../../../../packages/core/nros-platform" }  # nros-managed
+nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
 nros-rmw-cyclonedds-sys = { path = "../../../../packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys" }  # nros-managed
 nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh" }  # nros-managed
 std_msgs = { path = "generated/std_msgs" }  # nros-managed

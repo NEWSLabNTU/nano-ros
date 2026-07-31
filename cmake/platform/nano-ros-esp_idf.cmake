@@ -14,7 +14,7 @@
 #   * No per-board overlay include — `cmake/board/nano-ros-board-*.cmake`
 #     is bypassed entirely.
 #
-#   * The C platform shim (`packages/core/nros-platform-freertos`) is
+#   * The C platform shim (`packages/platform/nros-platform-freertos`) is
 #     pulled in with FreeRTOS / lwIP CMake targets aliased to the IDF
 #     component targets (`idf::freertos`, `idf::lwip`).
 #
@@ -62,7 +62,7 @@ set(NROS_PLATFORM_FREERTOS_INSTALL OFF CACHE BOOL
 # path — IDF's FreeRTOS port exposes the same xSemaphore* / xQueue* /
 # xTask* API surface.
 add_subdirectory(
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-freertos"
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/platform/nros-platform-freertos"
     nros_platform_freertos)
 
 add_library(nros_platform_esp_idf_iface INTERFACE)

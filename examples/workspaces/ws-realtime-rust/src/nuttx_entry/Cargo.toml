@@ -58,7 +58,7 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
 # → the board links `nros-rmw-zenoh` and its `run_{entry,tiers}` register it.
 nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm" }
 # Concrete platform impl — also pulled by the board; kept explicit for the link map.
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-nuttx"] }
+nros-platform = { path = "../../../../../packages/platform/nros-platform", default-features = false, features = ["platform-nuttx"] }
 
 # The launch-named Node pkgs (platform/RMW-agnostic) — `system.launch.xml` names
 # ctrl + telem, so the macro emits both `register` calls; the bin links both.

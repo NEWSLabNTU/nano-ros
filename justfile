@@ -563,7 +563,7 @@ check-abi-bindings:
     bash scripts/gen-abi-bindings.sh >/dev/null
     if ! git diff --exit-code --quiet -- \
         packages/rmw/cffi/src/generated.rs \
-        packages/core/nros-platform-cffi/src/generated.rs \
+        packages/platform/nros-platform-cffi/src/generated.rs \
         packages/boards/nros-board-cffi/src/generated.rs; then
         git --no-pager diff --stat -- packages/core/*/src/generated.rs
         echo "ERROR: committed ABI bindings are stale — headers changed without rerunning scripts/gen-abi-bindings.sh; commit the regenerated files."
@@ -2102,7 +2102,7 @@ check-c: check-c-fmt
     cc -fsyntax-only -std=c11 \
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-c/include \
-        -Ipackages/core/nros-platform-api/include \
+        -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/executor_verb_aliases.c
     echo "  - cross-include (nros_cpp_ffi.h + component.h in one TU)"
     # Issue 0160 — the C prototypes and struct typedefs component.h re-declares
@@ -2187,7 +2187,7 @@ check-cpp: check-cpp-fmt
             -Itarget/nros-c-generated \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
-            -Ipackages/core/nros-platform-api/include \
+            -Ipackages/platform/nros-platform-api/include \
             -include "$hdr" -x c++ /dev/null
     done
     # Issue 0089 gap-4 — typed-API INSTANTIATION probe (the header loop only
@@ -2199,7 +2199,7 @@ check-cpp: check-cpp-fmt
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
-        -Ipackages/core/nros-platform-api/include \
+        -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/bind_service.cpp
     # issue 0338 — `spin` verb SHAPE probe: `spin()` blocks until shutdown
     # (rclcpp/C/Rust semantics) and the bounded verb is `spin_for(...)`. The
@@ -2211,7 +2211,7 @@ check-cpp: check-cpp-fmt
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
-        -Ipackages/core/nros-platform-api/include \
+        -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/spin_verbs.cpp
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
     # executed (counting allocator in the TU; asserts zero live allocations
@@ -2221,7 +2221,7 @@ check-cpp: check-cpp-fmt
     mkdir -p target/nros-cpp-tests
     c++ -std=c++14 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/include \
-        -Ipackages/core/nros-platform-api/include \
+        -Ipackages/platform/nros-platform-api/include \
         -o target/nros-cpp-tests/heap_sequence_lifetime \
         packages/api/nros-cpp/tests/compile/heap_sequence_lifetime.cpp
     ./target/nros-cpp-tests/heap_sequence_lifetime
@@ -3093,13 +3093,13 @@ doc-platform-cffi:
         echo "WARNING: doxygen not found — skipping platform-cffi docs."
         exit 0
     fi
-    header="packages/core/nros-platform-cffi/include/nros/platform_vtable.h"
+    header="packages/platform/nros-platform-cffi/include/nros/platform_vtable.h"
     if [ ! -f "$header" ]; then
         echo "Generated header not found, building nros-platform-cffi first..."
         cargo build -p nros-platform-cffi
     fi
     mkdir -p target/doxygen/platform-cffi
-    (cd packages/core/nros-platform-cffi && doxygen Doxyfile)
+    (cd packages/platform/nros-platform-cffi && doxygen Doxyfile)
     echo "platform-cffi docs generated: target/doxygen/platform-cffi/html/index.html"
 
 # Generate all documentation (Rust + C + C++ + cffi vtables + book).

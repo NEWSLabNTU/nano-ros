@@ -57,7 +57,7 @@ include_paths = [
   # ABI + the `nros_platform_socket_get_fd` accessor used by
   # `zpico.c::get_session_fd` to read peer fd without
   # depending on the per-RTOS socket-struct layout).
-  "{nros}/../../core/nros-platform-api/include",
+  "{nros}/../../platform/nros-platform-api/include",
   "{nros}/c/include",
   "{env:THREADX_DIR}/common/inc",
   "{env:THREADX_CONFIG_DIR}",

@@ -48,14 +48,14 @@ zephyr_library_named(nros)
 # Real-symbol wrappers around Zephyr kernel inlines (k_msleep, k_uptime_get,
 # sys_rand_get, getaddrinfo) that nros-platform-zephyr needs to call via FFI.
 zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_platform_zephyr_shims.c)
-zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-platform-api/include)
+zephyr_include_directories(${NROS_REPO_DIR}/packages/platform/nros-platform-api/include)
 zephyr_library_sources(
-    ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/platform.c
-    ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/net.c
-    ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/timer.c
+    ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/platform.c
+    ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net.c
+    ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/timer.c
     # Phase 200.1 — RMW-independent network-wait (compiled for every RMW; was
     # mis-filed as zpico_zephyr_wait_network in the zenoh-only zpico_zephyr.c).
-    ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/net_wait.c
+    ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net_wait.c
 )
 
 # phase-281 W3a — C/C++ multi-tier Zephyr entry seam

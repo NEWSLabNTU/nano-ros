@@ -73,7 +73,7 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
 nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr", features = ["tiers", "zephyr-edf"] }
 
 # Concrete platform vtable — the Zephyr board/CMake also links it.
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-zephyr"] }
+nros-platform = { path = "../../../../../packages/platform/nros-platform", default-features = false, features = ["platform-zephyr"] }
 
 # Issue #129 (C5b amendment) — the concrete zenoh backend, entry-owned on
 # Zephyr (see the `[features]` note). `zpico-sys/zephyr` consumes the west

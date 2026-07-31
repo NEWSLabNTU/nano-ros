@@ -37,7 +37,7 @@ nros-board-mps2-an385-freertos = { path = "../nros-board-mps2-an385-freertos", d
 # `nros-platform-cffi`; the canonical `nros_platform_*` C symbols come from the
 # FreeRTOS C port compiled by the per-board overlay's `build.rs`). Board-driven
 # platform selection: the umbrella `nros` dep below stays platform-agnostic.
-nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos"] }
+nros-platform = { path = "../../platform/nros-platform", default-features = false, features = ["platform-freertos"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # the app task inside `run_entry` installs a live component runtime
 # sink on `RuntimeCtx` before invoking the user `setup` closure +

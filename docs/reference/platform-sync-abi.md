@@ -1,7 +1,7 @@
 # Platform Synchronisation ABI
 
 Reference for the `nros_platform_*` synchronisation primitives
-declared in `<nros/platform.h>` (sources: `packages/core/nros-platform-cffi/include/nros/platform.h`).
+declared in `<nros/platform.h>` (sources: `packages/platform/nros-platform-cffi/include/nros/platform.h`).
 
 Two primitive families are exposed today:
 
@@ -154,9 +154,9 @@ the condvar ABI without disturbing existing consumers.
 
 ## Cross-references
 
-- `packages/core/nros-platform-cffi/include/nros/platform.h` —
+- `packages/platform/nros-platform-cffi/include/nros/platform.h` —
   canonical declarations.
-- `packages/core/nros-platform-api/src/wake.rs` — Rust
+- `packages/platform/nros-platform-api/src/wake.rs` — Rust
   `Wake<P>` ergonomic wrapper.
 - `packages/core/nros-node/src/executor/node_wake.rs` — executor's
   internal `NodeWake` (heap-backed, uses the FFI directly).

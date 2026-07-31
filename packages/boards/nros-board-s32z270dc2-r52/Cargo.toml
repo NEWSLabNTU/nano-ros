@@ -39,7 +39,7 @@ rmw-zenoh      = []
 # crate's direct `nros-platform` dep below; umbrella `nros` stays agnostic.
 nros = { path = "../../api/nros", default-features = false }
 # Phase 121.3 — C-port-canonical platform. See sibling fvp-aemv8r-smp board.
-nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-zephyr"] }
+nros-platform = { path = "../../platform/nros-platform", default-features = false, features = ["platform-zephyr"] }
 # Phase 248 C5a (#60 T4) — board-owned Cyclone DDS linking. `default-features =
 # false` drops `vendored` (no in-tree libddsc/cc build) + `linkme-register`
 # (Zephyr is linkme-blind); the board registers explicitly in `init_hardware`.

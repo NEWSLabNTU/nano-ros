@@ -63,7 +63,7 @@ nros-node = { path = "../../../../packages/core/nros-node", default-features = f
 # `clock_cycles`, `cycles_to_ns`). `default-features = false` drops its
 # `libc-stubs` (this is a FreeRTOS/picolibc build — the board already provides
 # libc), avoiding a `duplicate symbol: strtol` link conflict.
-nros-platform-mps2-an385 = { path = "../../../../packages/platforms/nros-platform-mps2-an385", default-features = false }
+nros-platform-mps2-an385 = { path = "../../../../packages/platform/nros-platform-mps2-an385", default-features = false }
 nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = [
     "platform-freertos",
     "ros-humble",

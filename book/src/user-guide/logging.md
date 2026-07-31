@@ -201,7 +201,7 @@ filter.
 ## Reference
 
 - `packages/core/nros-log/` — facade crate.
-- `packages/core/nros-platform-cffi/include/nros/platform.h` —
+- `packages/platform/nros-platform-cffi/include/nros/platform.h` —
   `nros_platform_log_write` / `nros_platform_log_flush` /
   `nros_platform_register_log_writer` ABI.
 - `packages/api/nros-c/include/nros/log.h` — C API surface

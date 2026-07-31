@@ -20,7 +20,7 @@ name = "nros_board_nuttx_qemu_riscv"
 # NuttX is POSIX/std — no platform crate, no smoltcp/lwIP, no custom net driver
 # (virtio-net is in the kernel). Same dependency shape as the arm board crate.
 nros-board-common = { path = "../nros-board-common" }
-nros-platform = { path = "../../core/nros-platform", default-features = false }
+nros-platform = { path = "../../platform/nros-platform", default-features = false }
 # BoardEntry::run delegates to the NuttX family driver's run_entry (gated
 # target_os = "nuttx"); reference-qemu-arm is NOT enabled (it would pull the arm
 # board crate as an optional dep → cyclic).

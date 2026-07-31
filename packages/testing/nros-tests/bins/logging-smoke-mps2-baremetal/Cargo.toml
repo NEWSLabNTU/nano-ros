@@ -19,11 +19,11 @@ bench = false
 # default; we want every severity to flow through.
 nros-log = { path = "../../../../core/nros-log", default-features = false }
 # Pulls in the `PlatformSink` → `nros_platform_log_write` ABI shim.
-nros-platform-cffi = { path = "../../../../core/nros-platform-cffi", default-features = false }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", default-features = false }
 # Provides the `nros_platform_log_write` symbol via
 # `nros_platform_export_log!(Mps2An385Platform)` — the actual semihosting
 # writer under test.
-nros-platform-mps2-an385 = { path = "../../../../platforms/nros-platform-mps2-an385", features = ["cffi-export"] }
+nros-platform-mps2-an385 = { path = "../../../../platform/nros-platform-mps2-an385", features = ["cffi-export"] }
 
 cortex-m-rt = "0.7"
 cortex-m-semihosting = "0.5"

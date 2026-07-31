@@ -24,7 +24,7 @@ nros-log = { path = "../../../../core/nros-log", default-features = false }
 # Pull `nros-platform-freertos` symbols into the link graph (the
 # board crate already does this transitively, but make it explicit
 # so the binary stays linkable if board-crate deps shift).
-nros-platform = { path = "../../../../core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
+nros-platform = { path = "../../../../platform/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
 
 cortex-m-semihosting = "0.5"
 panic-semihosting = { version = "0.6", features = ["exit"] }

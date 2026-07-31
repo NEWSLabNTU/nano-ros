@@ -209,8 +209,8 @@ stage_and_cross_build() {
         [ "$profile" = "release" ] && profile_flag=(--release)
         echo "   -- profile: $profile"
         ( cd "$staged/$subdir" \
-            && NROS_PLATFORM_FREERTOS_SRC="$repo_root/packages/core/nros-platform-freertos/src" \
-               NROS_PLATFORM_CFFI_INCLUDE="$repo_root/packages/core/nros-platform-api/include" \
+            && NROS_PLATFORM_FREERTOS_SRC="$repo_root/packages/platform/nros-platform-freertos/src" \
+               NROS_PLATFORM_CFFI_INCLUDE="$repo_root/packages/platform/nros-platform-api/include" \
                cargo build "${profile_flag[@]}" --target "$target" -p "$pkg" )
     done
     date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"

@@ -137,7 +137,7 @@ features to match would be a nicer end state and is a separate change.
 **A follow-up I claimed and then disproved.** I recorded `cmake/board/*` and
 `cmake/platform/*` (6 files) as still carrying their own `platform-*` feature
 lists. They do not. The matches were directory paths
-(`packages/core/nros-platform-freertos`) and `NROS_PLATFORM_LINK_FEATURES`, a
+(`packages/platform/nros-platform-freertos`) and `NROS_PLATFORM_LINK_FEATURES`, a
 TRANSPORT axis (tcp / udp_unicast / udp_multicast) unrelated to cargo features.
 
 The three assembly sites were the only ones. The bad claim came from grepping a

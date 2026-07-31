@@ -70,7 +70,7 @@ The crate must have **zero** `nros-*` dependencies. It may depend on your RTOS b
 
 ### 2. Add the feature to nros-platform
 
-In `packages/core/nros-platform/Cargo.toml`:
+In `packages/platform/nros-platform/Cargo.toml`:
 
 ```toml
 [features]
@@ -82,7 +82,7 @@ nros-platform-myos = { version = "0.1.0", path = "../nros-platform-myos", option
 
 ### 3. Add the ConcretePlatform alias
 
-In `packages/core/nros-platform/src/resolve.rs`:
+In `packages/platform/nros-platform/src/resolve.rs`:
 
 ```rust
 #[cfg(feature = "platform-myos")]
@@ -199,7 +199,7 @@ impl MyOsPlatform {
 
 ### Reference implementation
 
-`packages/core/nros-platform-freertos/src/lib.rs` is a complete real-world example covering all categories: clock via `xTaskGetTickCount`, heap via `pvPortMalloc`/`vPortFree`, sleep via `vTaskDelay`, xorshift32 PRNG, and full threading with tasks, recursive mutexes, and condvars built on counting semaphores.
+`packages/platform/nros-platform-freertos/src/lib.rs` is a complete real-world example covering all categories: clock via `xTaskGetTickCount`, heap via `pvPortMalloc`/`vPortFree`, sleep via `vTaskDelay`, xorshift32 PRNG, and full threading with tasks, recursive mutexes, and condvars built on counting semaphores.
 
 ## C/C++ path
 
@@ -208,7 +208,7 @@ If your platform is easier to implement in C, use the `nros-platform-cffi` C ABI
 ### 1. Implement the platform symbols
 
 The canonical header lives at
-`packages/core/nros-platform-cffi/include/nros/platform.h`. It declares
+`packages/platform/nros-platform-cffi/include/nros/platform.h`. It declares
 roughly 45 free `extern "C"` functions — one per platform capability.
 Your port supplies a definition for each; the linker resolves them
 into the nros binary directly. There is no runtime registration call.

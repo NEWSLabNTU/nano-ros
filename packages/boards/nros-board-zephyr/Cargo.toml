@@ -29,6 +29,6 @@ tiers = ["dep:nros", "dep:log"]
 zephyr-edf = []
 
 [dependencies]
-nros-platform = { path = "../../core/nros-platform", default-features = false }
+nros-platform = { path = "../../platform/nros-platform", default-features = false }
 nros = { path = "../../api/nros", default-features = false, features = ["alloc", "rmw-cffi"], optional = true }
 log = { version = "0.4", optional = true }

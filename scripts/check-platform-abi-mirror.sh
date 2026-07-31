@@ -18,9 +18,9 @@
 
 set -euo pipefail
 
-RUST="packages/core/nros-platform-cffi/src/lib.rs"
-GENERATED="packages/core/nros-platform-cffi/src/generated.rs"
-INCLUDE_DIR="packages/core/nros-platform-api/include/nros"
+RUST="packages/platform/nros-platform-cffi/src/lib.rs"
+GENERATED="packages/platform/nros-platform-cffi/src/generated.rs"
+INCLUDE_DIR="packages/platform/nros-platform-api/include/nros"
 
 # RFC-0054 (phase-299 W2): the extern-"C" DECLARATION half is now
 # GENERATED from the headers (src/generated.rs, gen-abi-bindings.sh), so
@@ -129,12 +129,12 @@ echo "platform C ABI mirror clean: $total symbols total across $(( ${#HEADERS_RE
 # `nros_platform_export_net!` on the platform ZST itself.
 
 PLATFORM_CRATES=(
-    "packages/platforms/nros-platform-mps2-an385/src/lib.rs|core,net"
-    "packages/platforms/nros-platform-stm32f4/src/lib.rs|core,net"
-    "packages/platforms/nros-platform-esp32-qemu/src/lib.rs|core,net"
+    "packages/platform/nros-platform-mps2-an385/src/lib.rs|core,net"
+    "packages/platform/nros-platform-stm32f4/src/lib.rs|core,net"
+    "packages/platform/nros-platform-esp32-qemu/src/lib.rs|core,net"
     # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — the Rust kernel
     # crates (nros-platform-{freertos,nuttx,threadx,zephyr,posix}) were
-    # deleted. The directories `packages/core/nros-platform-{rtos,posix}/`
+    # deleted. The directories `packages/platform/nros-platform-{rtos,posix}/`
     # now hold the C ports only. No `lib.rs` invocation to check; the C
     # source at `src/platform.c` covers the core surface, `src/net.c`
     # the net surface, `src/timer.c` the timer surface.

@@ -218,7 +218,7 @@ function(nros_set_cargo_env_from_kconfig)
         # the .env value wins, which is what the fallback framing above intends.
         if(NOT DEFINED ENV{NROS_PLATFORM_CFFI_INCLUDE})
             set(ENV{NROS_PLATFORM_CFFI_INCLUDE}
-                "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../packages/core/nros-platform-api/include")
+                "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../packages/platform/nros-platform-api/include")
         endif()
     endif()
 endfunction()

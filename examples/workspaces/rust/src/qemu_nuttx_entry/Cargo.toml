@@ -71,7 +71,7 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
 nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm" }
 # Concrete platform impl — also pulled by the board; kept explicit for the link
 # map. NOT the agnostic-forbidden `nros/platform-*`.
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-nuttx"] }
+nros-platform = { path = "../../../../../packages/platform/nros-platform", default-features = false, features = ["platform-nuttx"] }
 
 # Node pkg rlibs (platform/RMW-agnostic) — the launch XML names `talker` +
 # `listener`, so the macro emits both `register` calls; the bin links both.

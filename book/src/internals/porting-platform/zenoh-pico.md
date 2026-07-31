@@ -19,7 +19,7 @@ and what capabilities your `nros-platform-<name>` crate must provide.
 ## Platform crate structure
 
 ```
-packages/core/nros-platform-<name>/
+packages/platform/nros-platform-<name>/
 ├── Cargo.toml
 └── src/
     ├── lib.rs

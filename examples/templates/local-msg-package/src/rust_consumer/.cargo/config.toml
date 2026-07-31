@@ -5,6 +5,6 @@ extra_msgs = { path = "../../generated/extra_msgs" }  # nros-managed
 geometry_msgs = { path = "../../generated/geometry_msgs" }  # nros-managed
 local_msgs = { path = "../../generated/local_msgs" }  # nros-managed
 nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }  # nros-managed
-nros-platform = { path = "../../../../../packages/core/nros-platform" }  # nros-managed
+nros-platform = { path = "../../../../../packages/platform/nros-platform" }  # nros-managed
 sensor_msgs = { path = "../../generated/sensor_msgs" }  # nros-managed
 std_msgs = { path = "../../generated/std_msgs" }  # nros-managed

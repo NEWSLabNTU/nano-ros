@@ -1,0 +1,26 @@
+[package]
+name = "nros-platform-stm32f4"
+version = "0.4.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "nros platform implementation for STM32F4 bare-metal"
+publish = false
+
+[lib]
+name = "nros_platform_stm32f4"
+
+[features]
+default = []
+# Phase 121.2.embedded — canonical C ABI export.
+cffi-export = ["dep:nros-platform-cffi"]
+
+[dependencies]
+nros-platform-api = { path = "../../platform/nros-platform-api" }
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", optional = true }
+# `stats` backs `PlatformAlloc::heap_used_bytes` (Phase 230 1b / RFC-0034).
+zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc", features = ["stats"] }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+defmt = "0.3"
+nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
+# Shared bare-metal helpers (PRNG, sleep, libc stubs)
+nros-baremetal-common = { path = "../../drivers/nros-baremetal-common", features = ["libc-stubs"] }

@@ -57,7 +57,7 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
 # it `Executor::open` finds NoBackend and fails with ZERO wire I/O.
 nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-threadx-linux" }
 # Concrete platform impl — also pulled by the board; kept explicit for the link map.
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
+nros-platform = { path = "../../../../../packages/platform/nros-platform", default-features = false, features = ["platform-threadx"] }
 
 # The model-named Node pkgs (platform/RMW-agnostic) — the macro emits both
 # `register` calls; the bin links both.

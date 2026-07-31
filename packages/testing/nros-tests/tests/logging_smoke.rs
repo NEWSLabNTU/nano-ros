@@ -34,7 +34,7 @@ use nros_tests::{
 /// Lines the fixture must produce, in order. The mps2-an385
 /// `PlatformLog` writer formats every record as
 /// `[<LEVEL>] <name>: <message>\n` — see
-/// `packages/platforms/nros-platform-mps2-an385/src/lib.rs`. The
+/// `packages/platform/nros-platform-mps2-an385/src/lib.rs`. The
 /// writer routes to `hstderr()`, which Phase 88.16.A teaches
 /// `QemuProcess::wait_for_output` to drain alongside stdout.
 const EXPECTED_LINES: &[&str] = &[

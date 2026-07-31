@@ -13,7 +13,7 @@
 # mbedtls are out of scope — Wave 1 guards the vendored scalar defs behind
 # a fork `#ifdef` separately) for direct references to kernel allocator
 # symbols. A hit is allowed only in:
-#   * a platform port crate (packages/core/nros-platform-*, config/*),
+#   * a platform port crate (packages/platform/nros-platform-*, config/*),
 #   * the KNOWN_BYPASS allowlist below (sites Phase 230 Wave 1 migrates).
 # A hit ANYWHERE ELSE is a NEW bypass and fails the build immediately.
 #
@@ -35,7 +35,7 @@ ROOTS='packages'
 
 # Paths that are allowed to reference the symbols (regex, matched against
 # the repo-relative path).
-ALLOW_RE='(packages/core/nros-platform-[^/]+/|config/[^/]+/)'
+ALLOW_RE='(packages/platform/nros-platform-[^/]+/|config/[^/]+/)'
 
 # Vendored opaque-struct task/net carve-outs (RFC-0034). ThreadX exposes a
 # SINGLE allocation primitive (`tx_byte_allocate`/`tx_byte_release`) used for

@@ -53,7 +53,7 @@ cortex-r = [
 # from `platform-freertos` (the FSP variant of FreeRTOS V10.4.3 exposes
 # the same kernel surface as upstream). `ConcretePlatform` resolves
 # to `CffiPlatform` per the uniform routing (Phase 121.7.b).
-nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos"] }
+nros-platform = { path = "../../platform/nros-platform", default-features = false, features = ["platform-freertos"] }
 
 # Phase 152.3 — implements `nros_board_common::BoardInit` so the
 # crate fits the canonical overlay pattern documented in

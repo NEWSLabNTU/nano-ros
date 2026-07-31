@@ -29,7 +29,7 @@ nros-bridge = { path = "../../../../../packages/rmw/bridge", features = ["std", 
 nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
 talker_pkg = { path = "../talker_pkg", default-features = false }
 # POSIX platform symbols (wake / clock) the backends + executor need.
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-posix"] }
+nros-platform = { path = "../../../../../packages/platform/nros-platform", default-features = false, features = ["platform-posix"] }
 # The two RMW backends — linked here so they self-register on the native host
 # (`nros_rmw_register_backend!` .init_array ctor). The bridge opens one session
 # per backend via `Executor::open_multi`.

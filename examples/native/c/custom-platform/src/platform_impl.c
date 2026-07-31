@@ -10,7 +10,7 @@
  *
  * The bodies below are POSIX-backed so the reference compiles and runs on a
  * desktop for testing — mirroring the authoritative Rust/C POSIX port
- * (`packages/core/nros-platform-posix/`). Each section also notes the
+ * (`packages/platform/nros-platform-posix/`). Each section also notes the
  * bare-metal alternative (Cortex-M shown) so a real port is a mechanical
  * substitution.
  *

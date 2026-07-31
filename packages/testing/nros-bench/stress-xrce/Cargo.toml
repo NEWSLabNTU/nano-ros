@@ -18,5 +18,5 @@ nros-rmw-xrce-cffi = { path = "../../../../packages/rmw/xrce/nros-rmw-xrce-cffi"
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's
 # `build.rs` compiles the C port into the binary.
-nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+nros-platform-cffi = { path = "../../../../packages/platform/nros-platform-cffi", features = ["posix-c-port"] }
 std_msgs = { version = "*", default-features = false }

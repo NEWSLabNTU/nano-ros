@@ -2,7 +2,7 @@
 //!
 //! Mirrors the legacy `nros_board_common::Board{Init,Print,Exit}` impls in
 //! [`crate::QemuRvVirt`] onto the new platform-level trait family living at
-//! `packages/core/nros-platform/src/board/`. Codegen-emitted Entry pkg
+//! `packages/platform/nros-platform/src/board/`. Codegen-emitted Entry pkg
 //! `main.rs` (Phase 212.N.4) can then call:
 //!
 //! ```ignore

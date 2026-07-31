@@ -16,7 +16,7 @@
 
 #![no_std]
 // Phase 121.3 — the canonical `nros_platform_*` symbols come from the
-// FreeRTOS C port (`packages/core/nros-platform-freertos/src/*.c`)
+// FreeRTOS C port (`packages/platform/nros-platform-freertos/src/*.c`)
 // compiled in-tree by build.rs. The Rust kernel crate that previously
 // emitted the same symbols via the `nros_platform_export!` macro was
 // deleted in Phase 121.3.deprecate-rust-remove.

@@ -29,7 +29,7 @@ binding, RFC-0045 boot config, RFC-0048 CMake verbs).
 - `system.toml` tiers are resolved by `nros-orchestration-ir::resolve_tiers`
   (the CLI/`nros::main!` shared SSoT) and narrowed to the runtime
   `TierSpec { name, groups, priority, stack_bytes, spin_period_us }`
-  (`packages/core/nros-platform/src/board/tier.rs`).
+  (`packages/platform/nros-platform/src/board/tier.rs`).
 - **Lossy narrowing**: `core`, `preempt_threshold`, `sched_class`, `class`,
   `period_us`, `budget_us`, `deadline_us`, `deadline_policy` die at the
   codegen boundary (`codegen_system.rs::PlanTierDoc`); FreeRTOS's

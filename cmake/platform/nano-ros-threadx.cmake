@@ -190,7 +190,7 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds"
 endif()
 
 # ---------------------------------------------------------------------------
-# Native-C platform shim (`packages/core/nros-platform-threadx`). The
+# Native-C platform shim (`packages/platform/nros-platform-threadx`). The
 # board overlay declared `threadx_kernel` (+ `netxduo` or `nsos_netx`)
 # and wired them in. The shim CMakeLists picks them up via the
 # `THREADX_KERNEL_TARGET` / `NETXDUO_TARGET` cache vars. Disable its
@@ -209,7 +209,7 @@ set(NROS_PLATFORM_THREADX_INSTALL OFF CACHE BOOL
     "Skip nros-platform-threadx install rules (umbrella owns install)" FORCE)
 if(NOT TARGET nros_platform_threadx)
     add_subdirectory(
-        "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-threadx"
+        "${CMAKE_CURRENT_LIST_DIR}/../../packages/platform/nros-platform-threadx"
         nros_platform_threadx)
     # The shim's CMakeLists links ${THREADX_KERNEL_TARGET} PUBLIC, but the
     # kernel target keeps its includes PRIVATE (nros_build_rtos_static_lib

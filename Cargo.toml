@@ -98,16 +98,16 @@ members = [
     # Ghost model types for verification (shared between production tests and Verus proofs)
     "packages/verification/nros-ghost-types",
     # Unified platform abstraction
-    "packages/core/nros-platform",
-    "packages/core/nros-platform-api",
-    "packages/core/nros-platform-cffi",
-    "packages/core/nros-platform-critical-section",
+    "packages/platform/nros-platform",
+    "packages/platform/nros-platform-api",
+    "packages/platform/nros-platform-cffi",
+    "packages/platform/nros-platform-critical-section",
     # phase-291 (#211) — zephyr-leaf build.rs helper (zero-dep, host-checkable).
     "packages/tooling/nros-zephyr-build",
     # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — the Rust kernel
     # platform crates (nros-platform-{freertos,nuttx,threadx,zephyr,
     # posix}) were deleted. The directories
-    # `packages/core/nros-platform-{freertos,nuttx,threadx,zephyr,
+    # `packages/platform/nros-platform-{freertos,nuttx,threadx,zephyr,
     # posix}/` now hold the C ports only (renamed from `*-c`). The
     # canonical `nros_platform_*` symbols come from the C port compiled
     # by the board crate's build.rs (FreeRTOS / ThreadX) or by the
@@ -385,10 +385,10 @@ exclude = [
     # path patches, and those examples are themselves excluded). Invisible to
     # the workspace walk is not the same as deliberately excluded — list it.
     "packages/boards/nros-board-rtic-mps2-an385",
-    "packages/platforms/nros-platform-mps2-an385",
-    "packages/platforms/nros-platform-stm32f4",
-    "packages/platforms/nros-platform-esp32-qemu",
-    "packages/platforms/nros-platform-esp32s3",
+    "packages/platform/nros-platform-mps2-an385",
+    "packages/platform/nros-platform-stm32f4",
+    "packages/platform/nros-platform-esp32-qemu",
+    "packages/platform/nros-platform-esp32s3",
     "packages/boards/nros-board-esp32-qemu",
     "packages/boards/nros-board-esp32s3",
     "packages/boards/nros-board-embassy-stm32f4",
@@ -563,11 +563,11 @@ nros-node = { version = "0.5.0", path = "packages/core/nros-node", default-featu
 nros-log = { version = "0.5.0", path = "packages/core/nros-log" }
 nros-build-helpers = { version = "0.5.0", path = "packages/tooling/nros-build-helpers" }
 nros-sizes-build = { version = "0.5.0", path = "packages/tooling/nros-sizes-build" }
-nros-platform = { version = "0.5.0", path = "packages/core/nros-platform", default-features = false }
-nros-platform-cffi = { version = "0.5.0", path = "packages/core/nros-platform-cffi", default-features = false }
+nros-platform = { version = "0.5.0", path = "packages/platform/nros-platform", default-features = false }
+nros-platform-cffi = { version = "0.5.0", path = "packages/platform/nros-platform-cffi", default-features = false }
 # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — the Rust kernel
 # platform crates (nros-platform-{freertos,nuttx,threadx,zephyr,posix})
-# were deleted. The `packages/core/nros-platform-{rtos,posix}/`
+# were deleted. The `packages/platform/nros-platform-{rtos,posix}/`
 # directories now hold the C ports only — no Cargo crate. Consumers
 # link the C port via the board crate's build.rs (FreeRTOS, ThreadX)
 # or via the parent build

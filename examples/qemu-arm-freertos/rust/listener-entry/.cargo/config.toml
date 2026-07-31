@@ -6,8 +6,8 @@ target = "thumbv7m-none-eabi"
 # them, forcing a compile-in-test fallback; carrying them here (relative to this
 # example dir) lets the Entry build standalone → prebuilt as a fixture instead.
 [env]
-NROS_PLATFORM_FREERTOS_SRC = { value = "../../../../packages/core/nros-platform-freertos/src", relative = true }
-NROS_PLATFORM_CFFI_INCLUDE = { value = "../../../../packages/core/nros-platform-api/include", relative = true }
+NROS_PLATFORM_FREERTOS_SRC = { value = "../../../../packages/platform/nros-platform-freertos/src", relative = true }
+NROS_PLATFORM_CFFI_INCLUDE = { value = "../../../../packages/platform/nros-platform-api/include", relative = true }
 
 
 [target.thumbv7m-none-eabi]
@@ -21,5 +21,5 @@ rustflags = [
 [patch.crates-io]
 builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }  # nros-managed
-nros-platform = { path = "../../../../packages/core/nros-platform" }  # nros-managed
+nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
 std_msgs = { path = "generated/std_msgs" }  # nros-managed

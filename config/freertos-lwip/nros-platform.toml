@@ -58,7 +58,7 @@ include_paths = [
   # Phase 154 — `nros-platform-api/include` carries
   # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI).
   # `zpico.c` includes it unconditionally.
-  "{nros}/../../core/nros-platform-api/include",
+  "{nros}/../../platform/nros-platform-api/include",
 ]
 rerun_if_env_changed = ["FREERTOS_DIR", "FREERTOS_PORT", "LWIP_DIR", "FREERTOS_CONFIG_DIR"]
 

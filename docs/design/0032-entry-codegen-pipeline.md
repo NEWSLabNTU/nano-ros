@@ -429,9 +429,9 @@ constructs **no** live publishers/subscriptions, on native or embedded.
 - Per-RTOS scheduling: RFC-0016.
 - Proc-macro: `packages/core/nros-macros/src/main_macro.rs`.
 - CLI mirror + Plan IR: `packages/cli/nros-cli-core/src/codegen/entry/`.
-- BoardEntry seam: `packages/core/nros-platform/src/board/entry.rs`.
+- BoardEntry seam: `packages/platform/nros-platform/src/board/entry.rs`.
 - `run_tiers` + `TierSpec`: `packages/boards/nros-board-posix/src/lib.rs`,
-  `packages/core/nros-platform/src/board/tier.rs`.
+  `packages/platform/nros-platform/src/board/tier.rs`.
 - Shared resolver: `packages/core/nros-orchestration-ir/`.
 - Phase tracking: `docs/roadmap/phase-228-per-tier-orchestration-codegen.md`
   (multi-tier emit); `docs/roadmap/phase-236-cpp-entry-embedded-runtime.md`

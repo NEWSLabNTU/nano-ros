@@ -40,8 +40,8 @@ plat_dep=""
 if [ "$has_dds" = "yes" ]; then
     dds_feature='rmw-dds   = ["dep:nros-rmw-dds", "dep:nros-platform-critical-section", "nros/alloc"]'
     dds_dep='nros-rmw-dds = { path = "../../../../packages/rmw/cyclonedds/nros-rmw-dds", features = ["platform-threadx"], optional = true }'
-    crit_dep='nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section", optional = true }'
-    plat_dep='nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }'
+    crit_dep='nros-platform-critical-section = { path = "../../../../packages/platform/nros-platform-critical-section", optional = true }'
+    plat_dep='nros-platform = { path = "../../../../packages/platform/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }'
 fi
 
 cat > "$dst/Cargo.toml" <<TOML

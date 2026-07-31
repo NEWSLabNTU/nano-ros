@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = ["std", "rmw-cffi"] }
-nros-platform = { path = "../../../../core/nros-platform", default-features = false, features = ["platform-posix"] }
+nros-platform = { path = "../../../../platform/nros-platform", default-features = false, features = ["platform-posix"] }
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
 log = "0.4"
 env_logger = "0.11"

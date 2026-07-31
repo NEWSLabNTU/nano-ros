@@ -54,7 +54,7 @@ set(_NROS_BOARD_CONFIG_DIR "${_NROS_BOARD_DIR}/config")
 
 set(_NROS_LAN9118_DIR "${_NROS_BOARD_ROOT}/packages/drivers/lan9118-lwip")
 set(_NROS_FREERTOS_PLAT_DIR
-    "${_NROS_BOARD_ROOT}/packages/core/nros-platform-freertos")
+    "${_NROS_BOARD_ROOT}/packages/platform/nros-platform-freertos")
 set(_NROS_FREERTOS_STARTUP_C
     "${_NROS_BOARD_DIR}/startup.c")
 set(_NROS_FREERTOS_NET_C

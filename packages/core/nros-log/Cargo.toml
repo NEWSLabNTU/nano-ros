@@ -80,7 +80,7 @@ portable-atomic = { version = "1", default-features = false, features = ["unsafe
 # unchanged); embedded (`target_os = "none"`) sees an empty set so
 # the `posix-c-port → feature "std"` activation path collapses.
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
-nros-platform-cffi = { path = "../nros-platform-cffi", default-features = false, features = ["posix-c-port"] }
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-features = false, features = ["posix-c-port"] }
 
 [lints]
 workspace = true

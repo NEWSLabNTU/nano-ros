@@ -55,7 +55,7 @@ crit_dep_line=""
 if [ "$has_dds" = "yes" ]; then
     dds_feature_line='rmw-dds   = ["dep:nros-rmw-dds", "dep:nros-platform-critical-section"]'
     dds_dep_line='nros-rmw-dds   = { path = "../../../../packages/rmw/cyclonedds/nros-rmw-dds",    features = ["platform-freertos"], optional = true }'
-    crit_dep_line='nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section", optional = true }'
+    crit_dep_line='nros-platform-critical-section = { path = "../../../../packages/platform/nros-platform-critical-section", optional = true }'
 fi
 
 cat > "$dst/Cargo.toml" <<TOML
@@ -80,7 +80,7 @@ ${dds_feature_line}
 [dependencies]
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos", default-features = false }
 nros = { path = "../../../../packages/api/nros", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
-nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
+nros-platform = { path = "../../../../packages/platform/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
 ${msg_dep} = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 

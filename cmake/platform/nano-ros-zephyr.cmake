@@ -25,7 +25,7 @@ set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast
 # build). Warns but does not error when `zephyr` is absent so
 # `cargo metadata` / configure-time sanity checks still pass.
 add_subdirectory(
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-zephyr"
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/platform/nros-platform-zephyr"
     nros_platform_zephyr_build)
 
 # zpico-zephyr only takes effect inside an actual Zephyr build

@@ -68,7 +68,7 @@ Each verified: zero consumers, or consumers that cannot work.
       inconsistent tracked-vs-ignored policy across siblings is still worth a
       decision, but it is not a deletion.
 - [x] **W1.f** (partial — see below) Clean the working-tree crud: two 46 KB `.o` files in
-      `packages/core/nros-platform-posix/src/` whose names encode an absolute host
+      `packages/platform/nros-platform-posix/src/` whose names encode an absolute host
       path (`platform.c.home.aeon.repos.nano-ros.integrations.nuttx.o`, dated
       2026-05-30, plus a `_1` copy), and five in-source CMake `build/` dirs — the
       largest, `packages/rmw/cyclonedds/nros-rmw-cyclonedds/build/`, holds a full vendored
@@ -136,7 +136,7 @@ Rationale, with the evidence for each:
 - **Config dirs look like code dirs**: `config/` holds 12 entries, 8
   of which are single-file `nros-platform.toml` manifests and 4 real crates; same
   in `packages/boards/{posix,zephyr}`. And `config/zephyr/` (config)
-  versus `packages/core/nros-platform-zephyr/` (C code) are different things with
+  versus `packages/platform/nros-platform-zephyr/` (C code) are different things with
   near-identical names. Phase-84 intended the OS-level crates to move here and
   only half landed; phase-290 then added a third, unrelated artifact class.
 

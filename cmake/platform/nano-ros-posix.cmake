@@ -28,7 +28,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 # 138 hoists it into this module so the root CMakeLists.txt no longer
 # knows which platform owns the C-port shim.
 add_subdirectory(
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-posix"
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/platform/nros-platform-posix"
     nros_platform_posix_build)
 
 set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast udp_multicast

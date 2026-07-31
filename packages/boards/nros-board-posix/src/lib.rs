@@ -1,7 +1,7 @@
 //! POSIX family driver — Phase 212.N.2.
 //!
 //! Implements the `Board` trait family from `nros_platform` (the
-//! traits live in `packages/core/nros-platform/src/board/` and are
+//! traits live in `packages/platform/nros-platform/src/board/` and are
 //! re-exported at the `nros_platform` crate root) for the hosted
 //! POSIX target (Linux, macOS, BSD). This is the simplest of the
 //! family driver crates:

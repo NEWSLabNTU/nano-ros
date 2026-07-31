@@ -19,7 +19,7 @@ nros = { path = "../../../../api/nros", default-features = false, features = [
     "ros-humble",
     "safety-e2e",
 ] }
-nros-platform-cffi = { path = "../../../../core/nros-platform-cffi", features = ["posix-c-port"] }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "std",
     "platform-posix",

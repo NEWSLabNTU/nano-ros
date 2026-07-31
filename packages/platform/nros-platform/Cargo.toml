@@ -1,0 +1,182 @@
+[package]
+name = "nros-platform"
+version.workspace = true
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unified platform abstraction traits for nros"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["embedded", "no-std", "rtos", "platform-abstraction"]
+categories = ["embedded", "no-std", "os"]
+
+[features]
+default = ["std"]
+std = []
+
+# Platform backends (select one).
+#
+# Phase 121.7.b — every `platform-*` feature resolves
+# `ConcretePlatform` to `CffiPlatform`; the feature pulls
+# `nros-platform-cffi` (for the dispatch types) and activates the
+# matching provider crate's `cffi-export` (for the symbol
+# emission). RMW + core code see only CffiPlatform.
+# Phase 123.A.1.x.2 — POSIX joins the C-port pattern. The Rust
+# `nros-platform-posix` crate was deleted; canonical `nros_platform_*`
+# symbols now come from the C library built out of
+# `packages/platform/nros-platform-posix/src/{platform,net,timer}.c`,
+# linked at the consumer's CMake site (test harness build.rs or
+# `nano_ros_link_platform`).
+# Phase 150.D — `posix-c-port` must be on too: nros-platform's
+# `__FORCE_LINK_CFFI` static (the link-graph anchor at
+# `src/lib.rs:70`) references `nros_platform_cffi::_nros_force_link_cffi`
+# which is itself gated behind `posix-c-port`. Without the feature
+# flow, every POSIX consumer through the add_subdirectory shape
+# (Phase 138 dispatch, smoke test, etc.) fails to compile with
+# "cannot find _nros_force_link_cffi".
+platform-posix = ["dep:nros-platform-cffi", "nros-platform-cffi/posix-c-port"]
+# `platform-cffi` selects `CffiPlatform` without pinning a Rust
+# kernel crate. The binary's C ABI symbols must come from
+# somewhere else — a hand-written C port (`nros-platform-<rtos>-c`)
+# or an external static lib.
+platform-cffi = ["dep:nros-platform-cffi"]
+# Phase 121.2 — `cffi-export` is *orthogonal* to platform selection:
+# turn it on alongside any `platform-<rtos>` feature to publish the
+# canonical `nros_platform_*` C symbols from that crate's trait impl
+# via `nros-platform-cffi`'s `nros_platform_export!` macro. Optional
+# deps that aren't pulled in are silently ignored by the `?` syntax.
+cffi-export = [
+    # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — POSIX, FreeRTOS,
+    # NuttX, ThreadX, Zephyr no longer have Rust kernel crates that emit
+    # symbols. The canonical `nros_platform_*` symbols come from the C
+    # ports at `packages/platform/nros-platform-{rtos,posix}/src/`, linked
+    # at the board / parent-build level (FreeRTOS / ThreadX via the
+    # board's build.rs; NuttX via the NuttX build system; Zephyr via
+    # the west module; POSIX via the consumer's build.rs or
+    # `nano_ros_link_platform`).
+    "nros-platform-mps2-an385?/cffi-export",
+    "nros-platform-stm32f4?/cffi-export",
+    "nros-platform-esp32-qemu?/cffi-export",
+    "nros-platform-esp32s3?/cffi-export",
+]
+# Phase 121.8.e — bare-metal embedded crates flip to CffiPlatform
+# routing. Each crate impls the full PlatformTcp/Udp/SocketHelpers/
+# UdpMulticast/NetworkPoll surface via `nros_smoltcp::
+# define_smoltcp_platform!` and emits the matching `nros_platform_*`
+# C symbols via `nros_platform_export!` + `nros_platform_export_net!`
+# (gated on the platform crate's `cffi-export` feature).
+platform-mps2-an385 = [
+    "dep:nros-platform-mps2-an385",
+    "dep:nros-platform-cffi",
+    "nros-platform-mps2-an385/cffi-export",
+]
+platform-stm32f4 = [
+    "dep:nros-platform-stm32f4",
+    "dep:nros-platform-cffi",
+    "nros-platform-stm32f4/cffi-export",
+]
+platform-esp32-qemu = [
+    "dep:nros-platform-esp32-qemu",
+    "dep:nros-platform-cffi",
+    "nros-platform-esp32-qemu/cffi-export",
+]
+# Phase 173.6 — ESP32-S3 (Xtensa LX7) real-hardware platform.
+platform-esp32s3 = [
+    "dep:nros-platform-esp32s3",
+    "dep:nros-platform-cffi",
+    "nros-platform-esp32s3/cffi-export",
+]
+# Phase 121.3.deprecate-rust-remove (closed): the four RTOS platform
+# features still resolve `ConcretePlatform` to `CffiPlatform`. The
+# Rust kernel crates that previously emitted the C symbols via
+# `nros_platform_export!` are gone — the canonical symbols come from
+# the C ports at `packages/platform/nros-platform-{rtos}/src/`. Each
+# board (FreeRTOS, ThreadX) compiles + links the C port in its own
+# `build.rs`; NuttX / Zephyr binaries pull the port through the
+# parent build system (make / west).
+platform-nuttx = ["dep:nros-platform-cffi"]
+platform-freertos = ["dep:nros-platform-cffi"]
+platform-threadx = ["dep:nros-platform-cffi"]
+platform-zephyr = ["dep:nros-platform-cffi"]
+# Phase 100 / 121.10 — orin-spe was promoted out of the platform layer.
+# AGX Orin SPE (Cortex-R5F + FreeRTOS FSP) is now a board over
+# `platform-freertos`; `nros-board-orin-spe` selects `platform-freertos`
+# directly and wires IVC + FSP init at the board level. The
+# `platform-orin-spe` feature is kept as a back-compat alias that maps
+# to `platform-freertos` so out-of-workspace callers still build.
+platform-orin-spe = ["platform-freertos"]
+
+# Capability features — enabled by RMW shims to declare requirements
+alloc = []
+threading = []
+
+# Phase 71.27 — opt-in `#[global_allocator]` that routes Rust's
+# `Box`, `Vec`, etc. through `<ConcretePlatform as PlatformAlloc>`.
+# Off by default: host (`platform-posix`) builds use libstd's
+# allocator and would conflict; bare-metal / RTOS examples enable
+# this feature to wire DDS + heapless futures through the
+# board's heap (`pvPortMalloc` on FreeRTOS, `tx_byte_allocate` on
+# ThreadX, `kmm_malloc` on NuttX, etc.).
+global-allocator = ["alloc"]
+
+# Phase 97.1.cs — opt-in `critical_section::Impl` registered against
+# the active platform's interrupt-disable primitive. DDS's
+# oneshot channels reference `_critical_section_1_0_acquire` /
+# `_release` symbols; without this feature, every bare-metal / RTOS
+# DDS example fails to link.
+#
+# Forwards to the per-platform crate's matching feature. POSIX builds
+# get a no-op impl (libstd has its own synchronization primitives;
+# the symbols resolve via critical-section's `std` feature). Zephyr
+# already ships its impl through `nros-c`; consumers that depend on
+# both `nros-platform/critical-section` and `nros-c` need to set the
+# feature on only one to avoid double-registration.
+# Phase 121.9 — `critical_section::Impl` is now registered by the
+# `nros-platform-critical-section` shim crate against the canonical
+# `nros_platform_critical_section_{acquire,release}` C symbols.
+# Consumers that need the global impl depend on
+# `nros-platform-critical-section` directly. The feature here just
+# forwards to the bare-metal embedded crates that still need their
+# per-arch `critical-section` body for Cortex-M PRIMASK registration
+# from the platform crate side (used when no separate shim is wired).
+critical-section = [
+    "nros-platform-mps2-an385?/critical-section",
+]
+
+# Phase 121.3.deprecate-rust-remove — the `debug-mcast-read-zephyr`
+# feature lived on the deleted `nros-platform-zephyr` Rust crate.
+# Equivalent printk tracing belongs in the Zephyr C port if needed.
+# (No active consumer today.)
+
+# Phase 100.1 / 121.10 — Cortex-R5 CPSR I-bit critical-section (Orin SPE).
+# Now that orin-spe is a board over FreeRTOS and the FreeRTOS Rust
+# crate is gone, the Cortex-R `critical_section::Impl` comes from
+# `nros-platform-critical-section` against the FreeRTOS C port's
+# critical-section body. The feature is preserved as a no-op alias
+# for downstream callers that still set it.
+cortex-r = []
+
+[dependencies]
+# Trait definitions live in this standalone crate so platform crates can
+# impl them without creating a cycle back through nros-platform.
+nros-platform-api = { version = "0.5.0", path = "../nros-platform-api" }
+# Phase 123.A.1.x.2 — POSIX Rust crate deleted; the directory at
+# `../nros-platform-posix/` now holds the C port only.
+nros-platform-cffi = { version = "0.5.0", path = "../nros-platform-cffi", optional = true }
+nros-platform-mps2-an385 = { version = "0.5.0", path = "../../platform/nros-platform-mps2-an385", optional = true }
+nros-platform-stm32f4 = { version = "0.4.0", path = "../../platform/nros-platform-stm32f4", optional = true }
+nros-platform-esp32-qemu = { version = "0.4.0", path = "../../platform/nros-platform-esp32-qemu", optional = true }
+nros-platform-esp32s3 = { version = "0.4.0", path = "../../platform/nros-platform-esp32s3", optional = true }
+# Phase 121.3.deprecate-rust-remove — nros-platform-{freertos,nuttx,
+# threadx,zephyr} Rust crates were deleted. `packages/platform/nros-platform-{rtos}/`
+# now hosts the C port only. `platform-{rtos}` features just toggle
+# `dep:nros-platform-cffi` so `ConcretePlatform` resolves to
+# `CffiPlatform`; the canonical symbols come from the linked C port.
+# Phase 121.10 — nros-platform-orin-spe was deleted. `platform-orin-spe`
+# aliases `platform-freertos` for back-compat.
+
+[lints]
+workspace = true

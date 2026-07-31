@@ -16,12 +16,12 @@
 #   * Pulls in the per-board overlay (`cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake`)
 #     EAGERLY — board overlays for FreeRTOS need to declare
 #     `freertos_kernel`, `lwip`, and any netif targets BEFORE
-#     `add_subdirectory(packages/core/nros-platform-freertos)` runs, and
+#     `add_subdirectory(packages/platform/nros-platform-freertos)` runs, and
 #     the per-board overlay is also responsible for composing
 #     `freertos_platform` (the INTERFACE umbrella the apps link).
 #
 #   * Builds the native-C platform shim
-#     `packages/core/nros-platform-freertos/` once the kernel + lwIP
+#     `packages/platform/nros-platform-freertos/` once the kernel + lwIP
 #     targets exist. The shim implements the canonical
 #     `nros_platform_*` ABI for FreeRTOS and is what
 #     `NanoRos::Platform` resolves to.
@@ -154,7 +154,7 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NOT DEFINED NROS_CYCLONE_FREERTOS_FLAG
 endif()
 
 # ---------------------------------------------------------------------------
-# Native-C platform shim (`packages/core/nros-platform-freertos`). The
+# Native-C platform shim (`packages/platform/nros-platform-freertos`). The
 # board overlay must have declared `freertos_kernel` + `lwip` (the shim
 # CMakeLists picks them up via FREERTOS_KERNEL_TARGET / FREERTOS_LWIP_TARGET
 # cache vars). Disable the shim's own install rules — the top-level
@@ -166,7 +166,7 @@ set(FREERTOS_LWIP_TARGET   lwip            CACHE STRING "" FORCE)
 set(NROS_PLATFORM_FREERTOS_INSTALL OFF CACHE BOOL
     "Skip nros-platform-freertos install rules (umbrella owns install)" FORCE)
 add_subdirectory(
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-freertos"
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/platform/nros-platform-freertos"
     nros_platform_freertos)
 
 # ---------------------------------------------------------------------------
