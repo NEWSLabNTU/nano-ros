@@ -66,8 +66,11 @@ never allowed to abort the sudo-less remainder.
    (zephyr/esp32/px4 failing for want of ninja/targets) is unreproducible.
 
 3. **W3 — doctor derives from the index.** — **PARTIAL** (2026-08-01: the
-   workspace doctor's system block derives from `--system --check`; the
-   cyclonedds idlc + play_launch_parser remedies re-pointed at index tools.
+   workspace doctor's system block derives from `--system --check`; all THREE
+   measured-wrong remedies now re-pointed at index tools — cyclonedds idlc +
+   play_launch_parser earlier, and threadx_riscv64's riscv gcc now names
+   `nros setup --tool riscv-none-elf-gcc` and accepts the xPack `riscv-none-elf-gcc`
+   dist (which bundles newlib) as satisfying the check.
    REMAINING: the generic walker for `[rust.*]`/`[python.*]`, the other
    module doctors, and the no-index-entry lint). A generic walker runs each
    entry's `check` and prints the computed remedy (`nros setup --tool X`,

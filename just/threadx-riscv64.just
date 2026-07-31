@@ -48,8 +48,17 @@ doctor:
             echo "             C/C++ riscv64 examples; the Rust ones build without it."
             fail=1
         fi
+    elif command -v riscv-none-elf-gcc &>/dev/null; then
+        # Issue 0368 F2 — the `[tool.riscv-none-elf-gcc]` index dist (xPack) is
+        # the pinned alternative to the distro compiler and BUNDLES its own
+        # newlib libc, so it needs no separate picolibc step. The board's
+        # package set (`nros-sdk-index.toml` [board.*].packages) names it.
+        echo "  [OK] riscv-none-elf-gcc (index dist — bundles newlib)"
     else
-        echo "  [MISSING] riscv64-unknown-elf-gcc (run: just workspace apt-packages)"
+        echo "  [MISSING] riscv64 bare-metal cross-gcc. Install the pinned index"
+        echo "             dist:   nros setup --tool riscv-none-elf-gcc"
+        echo "             or distro: just workspace apt-packages"
+        echo "             (gcc-riscv64-unknown-elf + picolibc-riscv64-unknown-elf)"
         fail=1
     fi
     if command -v qemu-system-riscv64 &>/dev/null; then
