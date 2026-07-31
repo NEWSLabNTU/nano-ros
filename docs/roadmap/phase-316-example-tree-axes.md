@@ -1,9 +1,10 @@
 # Phase 316 — every example path level names a real axis
 
-**Status (2026-07-31): W1–W3 landed and pushed. W4.1 and W4.3 DECIDED (two demos: direct + build-time-RMW bridge); W4.2/W4.3
-recommended for a SUCCESSOR PHASE — scoping found no nano-ros node has ever been
-built on the uORB backend, and there is no px4 platform cmake module, so W4 is a
-phase rather than a work item.**
+**Status (2026-07-31): CLOSED at W1–W3, landed and pushed. W4.1 and W4.3 DECIDED
+(two demos: direct + build-time-RMW bridge); the work moved to
+[phase-325](phase-325-uorb-interop-and-bridge.md) — scoping found no nano-ros node
+has ever been built on the uORB backend, so W4 is a phase rather than a work
+item.**
 **Implements:** RFC-0026 (example directory layout).
 **Closes:** issue 0315. **Informed by:** issues 0314, 0319, archived 0295.
 **Filed on the way:** issue 0356 (`px4_e2e.rs` targets a tree retired by
@@ -232,24 +233,27 @@ node:
 | `packages/testing/nros-px4-register-check/` | compiles the backend sources inline against real PX4 headers and calls `nros_rmw_uorb_register()`. Proves it LINKS. Does not link `nros-cpp`; the weak `register_fallback.c` is there precisely so it need not. |
 | `integrations/px4/module-template/nano_ros_app.cpp` | the node code is a **comment**: *"Replace this comment block with NodeBuilder / Publisher calls"*. |
 
-And there is no `cmake/platform/nano-ros-px4.cmake` — every other platform has
-one (`posix`, `zephyr`, `nuttx`, `freertos`, `threadx`, `esp_idf`, `baremetal`);
-px4 does not, because no px4 build has ever linked `libnros_cpp.a` /
-`libnros_c.a`.
+**Correction (same day).** I first wrote that the gap was a missing
+`cmake/platform/nano-ros-px4.cmake`, since every other platform has one. That is
+true and it is the WRONG DIAGNOSIS — kept here rather than quietly edited,
+because a wrong diagnosis points at the wrong fix, which is this session's
+recurring lesson.
 
-So the honest cost of W4.2 is not "write an example". It is:
+Platform modules are consumed by nano-ros's OWN root `CMakeLists.txt`
+(resolved at `CMakeLists.txt:116`). A PX4 module is built by **PX4's** cmake via
+`px4_add_module()` and never enters that file. SITL is an ordinary host x86_64
+process, so the platform shim it needs is `posix` — which exists. The gap is a
+**consumption path** (RFC-0048: `find_package(nano_ros)` → `_nros_bootstrap`),
+not a platform port.
 
-1. a px4 platform cmake module, so a `px4_add_module()` can link the Rust
-   staticlibs (SITL is a host x86_64 build, so this should be tractable — the
-   NuttX board targets are the harder case and are not needed for the demo);
-2. the first real node on the uORB backend, which is where any gap between "the
-   vtable answers correctly under a mock" and "the API works" will surface;
-3. only then the example itself.
+So the honest cost of W4.2 is not "write an example". It is: a consumption path
+proving a `px4_add_module()` target can link `libnros_cpp.a`; then the first real
+node on this backend, where any gap between "the vtable answers correctly under a
+mock" and "the API works" will surface; then the example.
 
-That is a phase, not a work item, and it should be split out rather than smuggled
-into phase-316's tail. **Recommend: close phase-316 at W1–W3 (done) and open a
-successor phase carrying W4.1's decision, W4.2 and W4.3.** The decisions recorded
-above are the durable part and travel with it.
+That is a phase, not a work item. **Split out as
+[phase-325](phase-325-uorb-interop-and-bridge.md)**, which carries W4.1's and
+W4.3's decisions verbatim — those are the durable part.
 
 This is worth stating plainly because the tree reads otherwise: `examples/README.md`
 called `px4/cpp/uorb/nros-register-check` "the canonical PX4 uORB surface", which
