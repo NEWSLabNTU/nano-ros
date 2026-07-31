@@ -44,6 +44,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#367** — `nros ws sync` is a ghost: the phase-265 rename to `nros sync` left a live hidden alias
+(`cmd/ws.rs Sub::Sync`, "kept for one release cycle" — the cycle is over), the misnamed shell helper
+`nros_require_ws_sync` (its callers already run `nros sync`), and ~187 stale textual references
+(just recipes' comments/echoes, the book, `ci/docker`, a `pr-checks.yml` job name, active RFCs).
+Fix is a sweep + a `check-fast` grep gate (`\bws sync\b`, issue-0336 precedent) so the spelling
+cannot creep back. See `0367-*`. (2026-07-31)
+
 Recently resolved: **#349** — the issue-0332 vtable completeness gate required three OPTIONAL capability
 slots, so the xrce backend could not register at all. Split required (core transport, `.expect()`ed on
 dispatch) from optional (typed `Unsupported` at the point of use), and gated the 1:1 correspondence
