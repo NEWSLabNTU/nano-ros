@@ -673,14 +673,51 @@ The guard now locates `llvm-nm` through `rustc --print sysroot` and SKIPS the
 check when it is absent, rather than guessing. **A guard using the wrong tool is
 worse than no guard: it is wrong with authority.**
 
-##### Remaining for W3
+##### The two-session mechanism in C++ (found, not yet used)
 
-The gate is passed and the helper is wired; what is left is the bridge itself:
-the module holding a uORB session and an outward session, `Executor::open_with_rmw`
-on the selected backend, plus the acceptance — a **real ROS 2 node** subscribing
-the bridged topic (reuse `nros_tests::ros2` / `ros_env`, do not invent a second
-harness), and a second backend built from the same source to demonstrate that the
-selection is real rather than a hardcoded bridge with extra ceremony.
+The plan said `Executor::open_with_rmw`, which is the **Rust** API. The C++
+equivalent is per-NODE binding via `NodeBuilder`:
+
+```cpp
+nros::init();
+nros::Node in;
+nros::NodeBuilder(exec_handle, "px4_bridge_in").rmw("uorb").build(in);
+nros::Node out;
+nros::NodeBuilder(exec_handle, "px4_bridge_out").rmw(NROS_BRIDGE_RMW).build(out);
+```
+
+`NodeBuilder::rmw(name)` selects among backends registered with
+`nros_rmw_cffi_register_named`; empty picks the first-registered. The bridge must
+name BOTH explicitly rather than rely on registration order — the generated
+`nros_app_register_backends()` emits them in `BACKENDS` order, which is an
+argument list, not a contract. `void* exec_handle` comes from
+`Node::executor_handle()`.
+
+##### Remaining for W3, and it is not plumbing
+
+The gate is passed, the link works, and the session mechanism is identified. What
+is left is the part the plan under-described: **the bridge has to TRANSLATE.**
+
+Inward, a payload is a PX4 C struct with identity `ORB_ID(x)`. Outward, a real
+ROS 2 subscriber expects **CDR** with a real type name and type hash. Those are
+not the same bytes, and no amount of session plumbing makes them so — which is
+the honest form of "the serialization uORB avoids comes back at the RMW
+boundary", recorded under W4.3 above before any of this was built. So the bridge
+needs, per topic:
+
+1. a ROS message type on the outward side with generated C++ bindings (the
+   examples get theirs from `nros generate-*` into `generated/`; a PX4 module has
+   no such step today), and
+2. a field-by-field map from the PX4 struct to it.
+
+Hand-rolling the CDR is not an option worth taking: `rmw_zenoh` keys discovery on
+the type hash, so a hand-encoded payload with a guessed hash would either be
+invisible to ROS 2 or — worse — visible and wrong.
+
+So the next work item is a **codegen step for PX4 modules**, then one translated
+topic end to end, then the ROS 2 peer test (`nros_tests::ros2` / `ros_env` —
+reuse it, do not invent a second harness), then a second backend from the same
+source to show the selection is real.
 
 **Not claimed:** zero-copy. The serialization uORB avoids returns at the RMW
 boundary, necessarily. W2 demonstrates the zero-copy property; W3 demonstrates
