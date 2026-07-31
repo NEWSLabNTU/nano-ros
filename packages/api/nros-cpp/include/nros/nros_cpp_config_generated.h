@@ -3,8 +3,13 @@
  *
  * `nros_cpp_config_generated.h` is produced per-build by
  * `nros-cpp/build.rs` and written to
- *   $CARGO_TARGET_DIR/nros-cpp-generated/<variant_slug>/nros/nros_cpp_config_generated.h
- * where <variant_slug> = sorted underscore-joined cargo feature list
+ *   $CARGO_TARGET_DIR/nros-cpp-generated/nros/nros_cpp_config_generated.h
+ * Issue 0360 — the `<variant_slug>/` level documented here was never
+ * implemented; the path is FLAT, so two feature sets sharing a target dir
+ * overwrite each other. The real header instead carries
+ * `#define NROS_CPP_CONFIG_VARIANT "<features>"` and references a matching
+ * symbol in the archive, making a mismatch a link error rather than a silent
+ * `_opaque` overflow
  * (e.g. `platform-posix_rmw-zenoh_ros-humble_std`).
  *
  * Build systems pick the right variant header (Phase 140):
@@ -16,7 +21,7 @@
  *     (the cargo target dir) so the per-build header wins.
  *   - Direct `cargo build`: add the per-build path to your compile
  *     flags manually, e.g.
- *       -I$CARGO_TARGET_DIR/nros-cpp-generated/<variant_slug>
+ *       -I$CARGO_TARGET_DIR/nros-cpp-generated
  *
  * If this stub's `#error` fires, your build system has NOT been
  * configured to supply the real header. See

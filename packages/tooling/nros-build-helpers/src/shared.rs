@@ -428,10 +428,19 @@ pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label
 /// blank lines, include guards, the opaque-struct prose) is presentation that
 /// legitimately differs between the two writers.
 fn defines_of(header: &str) -> Vec<(String, String)> {
+    // Issue 0360 — `NROS_CONFIG_VARIANT` is deliberately NOT compared. This
+    // guard exists to catch DISAGREEING SIZES: two crates resolving different
+    // runtime layouts for the same `_opaque` storage. Feature sets may
+    // legitimately differ while every probed size agrees — the C++ lane builds
+    // nros-cpp with `rmw-zenoh-cffi` and nros-c without it — so comparing the
+    // variant slug would reject a valid configuration and say "different
+    // probed sizes" when no size differs. The stamp's own job (catching a
+    // header/archive mismatch) is done by the linker, not here.
     let mut out: Vec<(String, String)> = header
         .lines()
         .map(str::trim)
         .filter_map(|l| l.strip_prefix("#define "))
+        .filter(|rest| !rest.starts_with("NROS_CONFIG_VARIANT"))
         .filter_map(|rest| {
             let mut it = rest.splitn(2, char::is_whitespace);
             let name = it.next()?.to_string();
@@ -691,4 +700,40 @@ mod tests {
 
         let _ = std::fs::remove_file(&key);
     }
+}
+
+/// Issue 0360 — the cargo feature set of THIS build, as a stable slug.
+///
+/// Sorted and underscore-joined, which is exactly what the checked-in stub
+/// headers have documented since Phase 119.3 as `<variant_slug>` — a path
+/// component nothing ever implemented. It is used here for a different and
+/// cheaper purpose than the documented one: stamping the variant INTO the
+/// generated header (and a matching symbol into the archive) so that compiling
+/// against one feature set and linking another is a LINK error instead of a
+/// silent size mismatch.
+///
+/// Silent is the whole problem: the header carries `NROS_EXECUTOR_SIZE` and the
+/// `_OPAQUE_U64S` counts, a consumer sizes its buffers from them, and the Rust
+/// side writes according to whatever it was actually built with. Disagreement
+/// overflows at runtime rather than failing to build — the reason issues
+/// 0088 / 0114 / 0122 / 0123 / 0245 / 0268 exist as a family.
+pub fn variant_slug() -> String {
+    let mut feats: Vec<String> = env::vars()
+        .filter_map(|(k, _)| k.strip_prefix("CARGO_FEATURE_").map(str::to_string))
+        .map(|f| f.to_ascii_lowercase())
+        .collect();
+    feats.sort();
+    if feats.is_empty() {
+        "default".to_string()
+    } else {
+        feats.join("_")
+    }
+}
+
+/// The same slug reduced to a C identifier suffix (`[a-z0-9_]`).
+pub fn variant_symbol_suffix() -> String {
+    variant_slug()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
 }

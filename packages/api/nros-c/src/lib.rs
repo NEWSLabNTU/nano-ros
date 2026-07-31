@@ -238,6 +238,13 @@ mod util;
 // by build.rs (ungated entry points only). See `generate_c_surface_anchor`.
 include!(concat!(env!("OUT_DIR"), "/c_surface_anchor.rs"));
 
+// Issue 0360 — the archive half of the variant stamp. Defines
+// `nros_config_variant_<feature_slug>`, which the generated
+// `nros_config_generated.h` declares and anchors, so compiling against one
+// feature set and linking another fails at LINK instead of overflowing
+// consumer buffers at runtime.
+include!(concat!(env!("OUT_DIR"), "/variant_symbol.rs"));
+
 pub use cdr::*;
 pub use clock::*;
 pub use constants::*;

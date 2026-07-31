@@ -46,6 +46,30 @@ extern "C" {
 typedef struct ActionServerRawHandle {
     uint64_t _opaque[@EXACT_RAW_HANDLE_U64S@];
 } ActionServerRawHandle;
+/* Issue 0360 — VARIANT STAMP.
+ *
+ * This header carries storage SIZES. A consumer compiled against one feature
+ * set and linked against an archive built with another overflows its buffers at
+ * runtime, silently — there is no build error, which is why the 0088 / 0114 /
+ * 0122 / 0123 / 0245 / 0268 family keeps recurring.
+ *
+ * The generated header and the Rust archive both stamp the same feature slug.
+ * The anchor below forces every including TU to reference the archive's symbol,
+ * so a mismatched pair fails to LINK with an undefined reference naming the
+ * variant it wanted, instead of corrupting memory. This also catches the case
+ * where the archive contains MORE than was asked for (phase-325 W3: a
+ * zenoh-featured libnros_cpp.a overwrote the uORB one and produced 74 undefined
+ * references from a backend the consumer never requested).
+ */
+#define NROS_CONFIG_VARIANT "@VARIANT_SLUG@"
+extern const unsigned char nros_config_variant_@VARIANT_SYMBOL@;
+#if defined(__GNUC__) || defined(__clang__)
+/* `used` keeps it past DCE; `unused` keeps -Wunused quiet under -Werror. */
+__attribute__((used, unused))
+static const unsigned char *const nros__config_variant_anchor =
+    &nros_config_variant_@VARIANT_SYMBOL@;
+#endif
+
 #ifdef __cplusplus
 }
 #endif

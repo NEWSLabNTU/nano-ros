@@ -1,7 +1,7 @@
 ---
 id: 360
 title: "`nros_config_generated.h` is written to a FLAT path, not the `<variant_slug>/` its own stub documents — two feature sets overwrite one header, and the sizes it carries are what a consumer compiles against"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build
@@ -148,3 +148,55 @@ worse than no documentation: it tells the next person the hazard is handled. Sam
 family as issue 0354 (a validator with no caller) and 0351 (a stamp that answers
 presence rather than truth) — the artifact exists, and what it implies is not
 true.
+
+## Resolved (2026-07-31) — option B + C
+
+**B (variant stamp).** The generated headers now carry
+`#define NROS_CONFIG_VARIANT "<sorted_underscore_joined_features>"` (and the
+C++ equivalent) plus a `__attribute__((used, unused))` anchor referencing a
+matching symbol emitted into the archive from `build.rs` via OUT_DIR — the same
+`include!(concat!(env!("OUT_DIR"), ...))` shape `c_surface_anchor.rs` already
+uses. A consumer compiled against one feature set and linked against another now
+gets:
+
+```
+undefined reference to `nros_config_variant_alloc_platform_posix_rmw_cffi_ros_humble_std'
+```
+
+The error NAMES the variant it wanted, instead of the buffers silently
+disagreeing at runtime.
+
+Demonstrated both ways: mismatched header/archive fails to link with that
+message; matched pairs link, and `check-c` / `check-cpp` — which compile and
+link real consumers — both pass.
+
+**It caught a live instance immediately.** After running the C and C++ lanes
+back to back in one target dir, `target/nros-c-generated/nros/nros_config_generated.h`
+wanted `..._rmw_zenoh_ros_humble_std` while `target/debug/libnros_c.a` defined
+`..._rmw_cffi_ros_humble_std`. That is exactly this issue's hazard occurring
+naturally, and before the stamp it was silent.
+
+**C (documentation).** Both stubs, and the helper comments, described a
+`<variant_slug>/` path level that was never implemented. They now describe the
+flat path that exists plus the stamp that protects it.
+
+### Not done: A (the slug directory)
+
+The flat path remains, so two feature sets still overwrite one header and one
+archive. B converts that from silent corruption into a link error, which is the
+cheap half; A additionally requires every consumer that hardcodes
+`nros-c-generated` (`borrowed_{c,cpp}_e2e.sh`, `heap_compile_check.rs`,
+`nuttx_ffi_build.rs`, `NanoRosPx4Module.cmake`) to learn the slug, and would not
+fix the ARCHIVE half at all — cargo owns that path.
+
+### One correction to the pre-existing guard
+
+`write_header_if_absent_or_verify` compares `#define`s between the two crates
+that write the shared C header. `NROS_CONFIG_VARIANT` is explicitly EXCLUDED
+from that comparison: the guard exists to catch disagreeing SIZES, and feature
+sets may legitimately differ while every size agrees (the C++ lane builds
+nros-cpp with `rmw-zenoh-cffi` and nros-c without). Comparing the slug rejected
+that valid configuration while reporting "different probed sizes" when no size
+differed. Catching a header/archive mismatch is the linker's job, not that
+guard's.
+

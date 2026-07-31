@@ -3,8 +3,16 @@
  *
  * `nros_config_generated.h` is produced per-build by `nros-c/build.rs`
  * and written to
- *   $CARGO_TARGET_DIR/nros-c-generated/<variant_slug>/nros/nros_config_generated.h
- * where <variant_slug> = sorted underscore-joined cargo feature list.
+ *   $CARGO_TARGET_DIR/nros-c-generated/nros/nros_config_generated.h
+ *
+ * Issue 0360 — this used to document a `<variant_slug>/` directory level that
+ * NOTHING EVER IMPLEMENTED. The path is flat, so two feature sets sharing a
+ * target dir overwrite each other's header (and each other's archive). Rather
+ * than describe a mechanism that does not exist, the real header now carries
+ *   #define NROS_CONFIG_VARIANT "<sorted_underscore_joined_features>"
+ * plus a reference to a matching symbol in libnros_c.a, so a header/archive
+ * mismatch is an undefined reference NAMING the variant it wanted instead of a
+ * silent `_opaque` overflow at runtime.
  *
  * Build systems pick the right variant header — see the matching stub
  * in `nros-cpp/include/nros/nros_cpp_config_generated.h` for the full
