@@ -67,15 +67,18 @@ reference to nros_cpp_get_param_integer`, which is what exposed the disjoint pat
 unaffected. Same shape as #0311: one axis, two sources that cannot disagree because only one is
 read. See `0353-*`. (2026-07-31)
 
-**#363** — `nros sync` — the documented remedy for a stale central `nros-patch.toml` — is broken,
-and a FAILED run leaves the tracked `.cargo/config.toml` partially rewritten, silently dropping a
-`# nros-managed` patch entry. That is worse than the failure: a stale patch table resolves the wrong
-path loudly, a table missing an entry resolves from crates.io silently. Two faults: (1) a stale
-`nros-launch-resolve` skews against the CLI (`unexpected argument '--bringup-root'`) — they are
-built by DIFFERENT recipes, so rebuilding one silently skews the pair, and nothing gates it;
-(2) with that cleared, sync dies in the metadata-mode harness. Surfaced because every checkout
-predating phase-321's package move has a stale `nros-patch.toml` and the fix command is the broken
-one. Fix (1) is atomicity — write temp, rename on success — independently of why sync fails.
+**#363** [severity **high**; fix A landed] — a STALE `nros` binary silently emits a WRONG
+`[patch.crates-io]` table. Its hardcoded crate→path table predated phase-321's package move, so
+`nros-zephyr-build` resolved to a path that no longer exists and was **dropped without a word** —
+and a dropped patch entry resolves that dependency from crates.io instead of the checkout, failing
+nowhere. My first diagnosis ("a generator that writes before it can finish", fix = atomicity) was
+**wrong**: the writes are already atomic (temp+rename) and complete *before* the later failure; the
+output was a complete write of wrong content. The real defect is that a staleness guard EXISTS and
+is good (`cargo.sh:149`) but lives in `nros_cli_bin()`, so it only runs via `just` — while
+`activate.sh` puts the raw binary on PATH, so the documented recovery (`nros sync`) never reaches
+it. Fix A landed: sync now refuses to emit a table omitting a managed crate with a dead path
+(safe because all 23 lookup paths are in-repo with tracked manifests). B (guard on the direct path)
+and C (couple the CLI to `nros-launch-resolve`, built by a separate recipe) remain.
 See `0363-*`. (2026-07-31)
 
 **#362** — phase-325 W3's uORB→RMW bridge is blocked on TYPES, not plumbing. The plumbing is proven

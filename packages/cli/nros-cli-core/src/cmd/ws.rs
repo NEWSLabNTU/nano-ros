@@ -1795,7 +1795,7 @@ fn write_patch_block(
         pkgs,
         nano_ros_path,
         extra_runtime_crates,
-    );
+    )?;
     // #272 — how this leaf reaches the central trio (`nros`/`nros-core`/
     // `nros-serdes`) depends on whether it lives INSIDE the nano-ros checkout:
     //
@@ -2193,9 +2193,12 @@ fn render_managed_entries(
     pkgs: &[String],
     nano_ros_path: Option<&Path>,
     extra_runtime_crates: &[String],
-) -> Vec<(String, String)> {
+) -> Result<Vec<(String, String)>> {
     let authority_dir = authority.parent().unwrap();
     let mut out: Vec<(String, String)> = Vec::new();
+    // issue 0363 — crates whose lookup-table path is dead. Collected rather than
+    // failing on the first, so one run reports every stale mapping.
+    let mut stale_paths: Vec<(String, String)> = Vec::new();
 
     // 1) Generated msg crates (path = generated/<pkg>).
     for pkg in pkgs {
@@ -2232,13 +2235,55 @@ fn render_managed_entries(
             let sub = nros_crate_subpath(cname).expect("cname is a managed crate; subpath exists");
             let crate_root = nrp.join(&sub);
             if !crate_root.join("Cargo.toml").is_file() {
+                // issue 0363 — a crate that IS in the lookup table but whose path
+                // does not exist means the TABLE is stale (a package moved), not
+                // that the crate is optional. Every one of the 23 table paths is
+                // an in-repo directory with a TRACKED Cargo.toml, so this can only
+                // be staleness.
+                //
+                // Silently `continue`-ing here is how a stale `nros` binary emitted
+                // a patch table missing `nros-zephyr-build` after phase-321 moved
+                // it out of packages/core/: the dropped dependency then resolves
+                // from crates.io instead of the checkout, which fails NOWHERE and
+                // silently builds against the wrong source.
+                //
+                // Note the asymmetry this removes: an UNKNOWN crate name already
+                // warned loudly a few lines above; a known crate with a dead path
+                // was the quiet one.
+                eprintln!(
+                    "ws sync: ERROR — managed crate `{cname}` maps to `{sub}`, which \
+                     does not exist under {}.\n\
+                     \x20 The nros lookup table is stale for this crate (a package \
+                     moved?). Refusing to emit a patch table that silently omits it; \
+                     rebuild the CLI (`just setup-cli`) or fix nros_crate_path_lookup.",
+                    nrp.display()
+                );
+                stale_paths.push((cname.clone(), sub.clone()));
                 continue;
             }
             let rel = pathdiff::diff_paths(&crate_root, authority_dir).unwrap_or(crate_root);
             out.push((cname.clone(), rel.display().to_string()));
         }
     }
-    out
+    if !stale_paths.is_empty() {
+        // Hard stop. The alternative is writing a table we KNOW is incomplete,
+        // and an incomplete [patch.crates-io] is worse than a stale one: a stale
+        // path fails loudly at build, a missing entry resolves from crates.io.
+        let list = stale_paths
+            .iter()
+            .map(|(n, s)| format!("  {n} -> {s}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        eyre::bail!(
+            "ws sync: {} managed crate(s) have a dead path in the nros lookup table:\n{list}\n\
+             Refusing to write an incomplete [patch.crates-io] — a missing entry \
+             resolves that dependency from crates.io instead of this checkout, which \
+             fails nowhere. Rebuild the CLI (`just setup-cli`); if that does not help, \
+             nros_crate_path_lookup is stale.",
+            stale_paths.len()
+        );
+    }
+    Ok(out)
 }
 
 /// Phase 265 (issue 0094) — decor suffix tagging a sync-owned `[patch.crates-io]`
