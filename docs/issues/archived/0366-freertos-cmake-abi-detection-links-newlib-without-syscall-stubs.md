@@ -1,7 +1,8 @@
 ---
 id: 366
 title: "FreeRTOS cmake configure fails 'Detecting C compiler ABI info - failed': the ABI-detection try_compile links an executable against arm-none-eabi newlib, whose syscall stubs (_write/_sbrk/…) are unresolved"
-status: open
+status: resolved
+resolved_in: "arm-freertos-armcm3.cmake CMAKE_TRY_COMPILE_TARGET_TYPE"
 type: bug
 severity: medium
 area: freertos
@@ -86,3 +87,15 @@ source ./activate.sh && source /opt/ros/humble/setup.bash
 just freertos build-fixtures
 # -- Detecting C compiler ABI info - failed  (CMakeError.log: undefined reference to _write/_sbrk/…)
 ```
+
+## RESOLVED (2026-07-31)
+
+`cmake/toolchain/arm-freertos-armcm3.cmake`: added
+`set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)` next to the existing
+`CMAKE_C{,XX}_COMPILER_WORKS TRUE` block, so CMake's ABI-detection `try_compile`
+builds a static library (compile-only) instead of linking an executable — no
+newlib syscall stubs needed at detection time.
+
+**Verified:** `just freertos build-fixtures` no longer errors "Detecting C
+compiler ABI info - failed" / `undefined reference to _write/_sbrk` — cmake
+configure passes and the build proceeds to compilation.

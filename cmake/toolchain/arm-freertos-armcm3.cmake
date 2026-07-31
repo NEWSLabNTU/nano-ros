@@ -42,3 +42,12 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE NEVER)
 # ELFs that cannot be executed on the host.
 set(CMAKE_C_COMPILER_WORKS   TRUE CACHE BOOL "Compiler works" FORCE)
 set(CMAKE_CXX_COMPILER_WORKS TRUE CACHE BOOL "Compiler works" FORCE)
+
+# Issue 0366 — COMPILER_WORKS only skips the "does it run" probe; CMake's
+# SEPARATE ABI-info detection still `try_compile`s a full EXECUTABLE, and on
+# arm-none-eabi newlib that pulls in unresolved `_write`/`_read`/`_sbrk`/…
+# syscall stubs (the board's stubs link only in the real build), so configure
+# aborts "Detecting C compiler ABI info - failed". Building the probe as a
+# STATIC_LIBRARY makes ABI detection compile-only (no link) — the standard
+# bare-metal-CMake idiom.
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
