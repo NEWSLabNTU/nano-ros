@@ -4,10 +4,14 @@ meta:
   - path: launch/action_client.launch.xml
     sha256: 27c8a0725b4ada39067574ca661db9c937423924a6f064eaf46d86c8bcbbac00
   - path: system.toml
-    sha256: 95179f9360ecded0f00b9e253d4478d37fef7267f3d4c329cc233d5ed01c58bb
+    sha256: 1c97afc7c070a3f22fa5c283af12d26989408e81accf15321aaab18f440fc509
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
+  diagnostics:
+  - 'system config: [deploy.robot1] places unknown node ''/talker'' (absent in this variant?)'
+  - 'system config: [deploy.robot1] places unknown node ''/heartbeat'' (absent in this variant?)'
+  - 'system config: [deploy.robot2] places unknown node ''/listener'' (absent in this variant?)'
 structure:
   scopes:
     action_client.launch.xml:
@@ -21,7 +25,6 @@ structure:
 execution:
   deploy:
     /fib_client:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:

@@ -1048,7 +1048,6 @@ mod tests {
                     class_header: None,
                     lang: None,
                     shape: None,
-                    host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
                     remaps: Vec::new(),
@@ -1086,7 +1085,6 @@ mod tests {
                     class_header: Some((*header).into()),
                     lang: Some("cpp".into()),
                     shape: Some("configure".into()),
-                    host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
                     remaps: Vec::new(),
@@ -1117,7 +1115,6 @@ mod tests {
         plan
     }
 
-    #[test]
     /// phase-308 W1 — the probe is the SAME TU an entry would be, minus the
     /// board and plus a dump. That is the point: the per-node construction and
     /// `configure` calls come from one emitter, so the entity count a probe

@@ -1,13 +1,11 @@
-//! Phase 211.F — per-host entry for `robot1`.
+//! phase-326 (issue 0364) — per-host entry for `robot1`.
 //!
-//! `nros::main!(model = "demo_bringup:config/multihost_model.yaml", host = "robot1")`
-//! resolves the multi-host launch and applies the macro's `host` filter: only
-//! `<node machine="robot1">` (the talker) survives, so the macro emits
-//! `talker_pkg::register(runtime)?;` and the native board runs it. The sibling
-//! `native_entry_robot2` bakes `robot2` (the listener); booting both as two
-//! processes is the multi-host runtime topology.
+//! The partition happens at RESOLVE time: `multihost_robot1_model.yaml`
+//! (resolved with `host:=robot1`) contains only the talker, so the macro
+//! emits `talker_pkg::register(runtime)?;` and the native board runs it. The
+//! sibling `native_entry_robot2` bakes the robot2 model (the listener);
+//! booting both as two processes is the multi-host runtime topology. (The
+//! retired `host = "…"` key partitioned at bake time from the ROS 1-ism
+//! `<node machine=…>`.)
 
-nros::main!(
-    model = "demo_bringup:config/multihost_model.yaml",
-    host = "robot1"
-);
+nros::main!(model = "demo_bringup:config/multihost_robot1_model.yaml");

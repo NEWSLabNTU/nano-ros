@@ -125,12 +125,12 @@ pub struct EntryArgs {
     #[arg(long)]
     pub metadata: Option<PathBuf>,
 
-    /// Phase 211.F — multi-host partition. When set, emit the entry for target
-    /// host `<id>` only: keep nodes whose `<node machine="…">` equals `<id>`
-    /// plus all unhosted (shared) nodes; drop other hosts' nodes. A multi-host
-    /// launch bakes one entry per host (`nros codegen entry --host <id>` per
-    /// `[deploy.<id>]` target). Omitted ⇒ all nodes (single-host / unfiltered).
-    #[arg(long)]
+    /// REMOVED (phase-326 / issue 0364). `--host` partitioned the bake by the
+    /// ROS 1-ism `<node machine="…">`; multi-host now partitions at RESOLVE
+    /// time (`host:=<id>` launch argument + `if=` conditions), so pass the
+    /// per-host model via `--model` instead. Kept only to fail loud with
+    /// guidance (the `--args` / phase-296 R-code.1 precedent).
+    #[arg(long, hide = true)]
     pub host: Option<String>,
 
     /// Optional `.d`-style depfile path. Populated with every file the
@@ -244,18 +244,19 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         bail!("codegen entry: pass --model <system_model.yaml>");
     };
 
-    // Phase 211.F — partition for a single target host when `--host` is given.
+    // phase-326 (issue 0364) — the bake-time host partition is REMOVED with
+    // `<node machine=>` (ROS 1 syntax). A resolved model is early-bound, so
+    // `--host` here could only mean the user wanted a different resolve —
+    // same reasoning as `--args` above.
     if let Some(host) = args.host.as_deref() {
-        plan = plan.for_host(host);
-        if plan.nodes.is_empty() {
-            bail!(
-                "no nodes for host `{host}` in model `{}` — check the model's \
-                 `execution.deploy[*].host` values (an unhosted node would have \
-                 been kept, so the model has neither a node for this host nor \
-                 any shared node)",
-                plan.launch_file.display()
-            );
-        }
+        bail!(
+            "codegen entry: `--host` was removed (phase-326 / issue 0364) — \
+             multi-host partitions at RESOLVE time now. Resolve a per-host \
+             SystemModel and pass it via `--model`:\n  nros-launch-resolve \
+             <bringup>/launch/<file>.launch.xml --system <bringup>/system.toml \
+             host:={host} -o <bringup>/config/<file>_{host}_model.yaml\n  \
+             nros codegen entry --model <bringup>/config/<file>_{host}_model.yaml …"
+        );
     }
 
     let src = if args.typed {

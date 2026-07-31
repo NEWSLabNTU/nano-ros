@@ -97,6 +97,18 @@ function(nano_ros_entry)
         "NAME;BOARD;LAUNCH;MODEL;LANG;HOST;LOCATOR"
         "SOURCES;DEPLOY;ARGS"
         ${ARGN})
+    # phase-326 (issue 0364) — the bake-time host partition is gone with
+    # `<node machine=>` (ROS 1 syntax). HOST stays PARSED so an old caller
+    # fails here with guidance instead of the keyword silently joining
+    # SOURCES via UNPARSED_ARGUMENTS.
+    if(_NRA_HOST)
+        message(FATAL_ERROR
+            "nano_ros_entry(${_NRA_NAME}): HOST was removed (phase-326 / "
+            "issue 0364) — multi-host partitions at RESOLVE time now. Point "
+            "MODEL at the per-host SystemModel instead (resolved with "
+            "`host:=${_NRA_HOST}`, e.g. "
+            "MODEL config/multihost_${_NRA_HOST}_model.yaml).")
+    endif()
     foreach(_req NAME DEPLOY)
         if(NOT _NRA_${_req})
             message(FATAL_ERROR
@@ -204,7 +216,6 @@ function(nano_ros_entry)
             LAUNCH    "${_NRA_LAUNCH}"
             MODEL     "${_NRA_MODEL}"
             BOARD     "${_NRA_BOARD}"
-            HOST      "${_NRA_HOST}"
             ARGS_LIST "${_NRA_ARGS}"
             TYPED     "${_NRA_TYPED}"
             OUT_VAR_GEN     _gen_tu
@@ -564,7 +575,7 @@ endfunction()
 function(_nros_entry_invoke_codegen)
     cmake_parse_arguments(_NRX
         ""
-        "NAME;LANG;LAUNCH;MODEL;BOARD;HOST;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
+        "NAME;LANG;LAUNCH;MODEL;BOARD;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
         "ARGS_LIST"
         ${ARGN})
 
@@ -637,13 +648,6 @@ function(_nros_entry_invoke_codegen)
     endif()
     if(_NRX_BOARD)
         list(APPEND _cli_args --board "${_NRX_BOARD}")
-    endif()
-    # phase-263 Track C — multi-host partition: `--host <id>` keeps only the launch
-    # nodes whose `<node machine="…">` equals `<id>` (plus unhosted/shared), exactly
-    # like the Rust `nros::main!(host = …)` path. The codegen is lang-agnostic, so this
-    # gives C/C++ entries the same per-host bake the Rust workspace has.
-    if(_NRX_HOST)
-        list(APPEND _cli_args --host "${_NRX_HOST}")
     endif()
     # Phase 240.2b — typed executor Entry: pass the cmake metadata so the
     # codegen can map each launch `(pkg, exec)` to its C++ class + header.

@@ -63,19 +63,24 @@ board = "mps2-an385-freertos"
 kind = "embedded"
 board = "threadx-linux"
 
-# phase-263 Track C — per-host deploy targets for the multi-host launch
-# (`launch/multihost.launch.xml`: talker on robot1, listener on robot2).
-# `native_entry_robot{1,2}` bake each host's node via the `nano_ros_entry(HOST <id> …)`
-# codegen partition.
+# phase-326 (issue 0364) — per-host deploy targets for the multi-host launch
+# (`launch/multihost.launch.xml`: talker on robot1, listener on robot2, chosen at RESOLVE time by the `host`
+# launch argument). Each per-host model (`config/multihost_robot<N>_model.yaml`,
+# resolved with `host:=robot<N>`) contains only that host's nodes;
+# `native_entry_robot{1,2}` consume those models via `nano_ros_entry(MODEL …)`.
+# The explicit `nodes = [..]` below places them — with `machine=` gone there is
+# no launch-derived placement fact, so every node needs a list entry.
 [deploy.robot1]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
 launch = "multihost.launch.xml"
+nodes = ["/talker"]
 
 [deploy.robot2]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
 launch = "multihost.launch.xml"
+nodes = ["/listener"]
 
 # phase-315 — the embedded BOARD BUILDS of this system.
 #

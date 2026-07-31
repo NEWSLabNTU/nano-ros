@@ -101,9 +101,8 @@ nros::main!();                                          // single-node self-brin
 nros::main!(board = NativeBoard);                       // single-node, explicit board
 nros::main!(model = "demo_bringup");                    // multi-node (CANONICAL): resolved SystemModel
 nros::main!(model = "demo_bringup:config/sim.yaml");    // multi-node, explicit model file
-nros::main!(                                            // multi-host slice of a multihost model
-    model = "demo_bringup:config/multihost_model.yaml",
-    host  = "robot1",
+nros::main!(                                            // multi-host: a PER-HOST model (resolved with `host:=robot1`)
+    model = "demo_bringup:config/multihost_robot1_model.yaml",
 );
 // DEPRECATED (retiring): direct launch-file forms — re-parse the launch XML
 // at build time instead of consuming the reviewed model; bake-time warning.

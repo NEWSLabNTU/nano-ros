@@ -68,13 +68,13 @@ endfunction()
 
 # ---------------------------------------------------------------------------
 # nano_ros_add_executable(<name> <sources…> [DEPLOY <target>…] [BOARD <board>]
-#     [LAUNCH <pkg:launch.xml>] [TYPED] [HOST <h>] [LOCATOR <l>] [ARGS <a>…])
+#     [LAUNCH <pkg:launch.xml>] [TYPED] [LOCATOR <l>] [ARGS <a>…])
 #
 # Standalone entry. DEPLOY/BOARD default to the package.xml `<export>` tuple in
 # W4; until then DEPLOY defaults to `native` and an embedded board is passed
 # explicitly (or comes from a prior `nano_ros_use_board`).
 #
-# 287-W6 workspace slice 3 — LAUNCH/TYPED/HOST/LOCATOR/ARGS pass through to
+# 287-W6 workspace slice 3 — LAUNCH/TYPED/LOCATOR/ARGS pass through to
 # `nano_ros_entry` so a workspace Entry pkg (multi-node carrier generated from
 # a bringup launch manifest) can use the ament verb instead of the raw
 # `nano_ros_entry(...)` call.
@@ -125,8 +125,16 @@ function(nano_ros_add_executable name)
     if(_NRE_TYPED)
         list(APPEND _entry_extra TYPED)
     endif()
+    # phase-326 (issue 0364) — HOST removed with `<node machine=>` (ROS 1
+    # syntax); kept PARSED so an old caller fails loud with guidance instead
+    # of the keyword silently joining SOURCES via UNPARSED_ARGUMENTS.
     if(_NRE_HOST)
-        list(APPEND _entry_extra HOST ${_NRE_HOST})
+        message(FATAL_ERROR
+            "nano_ros_add_executable(${name}): HOST was removed (phase-326 / "
+            "issue 0364) — multi-host partitions at RESOLVE time now. Point "
+            "MODEL at the per-host SystemModel instead (resolved with "
+            "`host:=${_NRE_HOST}`, e.g. "
+            "MODEL config/multihost_${_NRE_HOST}_model.yaml).")
     endif()
     if(_NRE_LOCATOR)
         list(APPEND _entry_extra LOCATOR ${_NRE_LOCATOR})

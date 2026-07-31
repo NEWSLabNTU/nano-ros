@@ -9,10 +9,10 @@ description = "Phase 211.F — per-host entry for `robot2` (the multi-host demo)
 name = "native_entry_robot2"
 path = "src/main.rs"
 
-# Per-host Entry pkg. `nros::main!(launch = "demo_bringup:multihost.launch.xml",
-# host = "robot2")` keeps only `<node machine="robot2">` (the listener) + any
-# unhosted node, so it emits `listener_pkg::register` only. Sibling
-# `native_entry_robot1` bakes `robot1` (the talker).
+# Per-host Entry pkg (phase-326 / issue 0364). The partition happens at
+# RESOLVE time: `multihost_robot2_model.yaml` (resolved with `host:=robot2`)
+# contains only the listener, so the macro emits `listener_pkg::register`
+# only. Sibling `native_entry_robot1` consumes the robot1 model (the talker).
 [package.metadata.nros.entry]
 deploy = "native"
 

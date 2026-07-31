@@ -1,10 +1,15 @@
 <?xml version="1.0"?>
-<!-- Phase 211.F — multi-host launch: the talker runs on `robot1`, the listener
-     on `robot2` (ROS 2 `<node machine="…">`). the per-host entry bake (`host = "<id>"`)
-     partitions this into a per-host entry (robot1 → talker only; robot2 →
-     listener only). A node without `machine=` would be kept on every host
-     (shared); here both are explicitly hosted. -->
+<!-- phase-326 (issue 0364) — multi-host launch via a standard launch argument.
+     `host` selects which host's nodes survive the RESOLVE: robot1 runs the
+     talker, robot2 the listener, `all` (the default) keeps both. A node with
+     no `if=` would be shared across hosts. Bake one model per host:
+       nros-launch-resolve … multihost.launch.xml host:=robot1 -o config/multihost_robot1_model.yaml
+     This file is plain ROS 2 XML — `ros2 launch` runs it too (the retired
+     `<node machine=…>` form was ROS 1 syntax the ROS 2 frontend rejects). -->
 <launch>
-  <node pkg="talker_pkg" exec="talker" name="talker" machine="robot1"/>
-  <node pkg="listener_pkg" exec="listener" name="listener" machine="robot2"/>
+  <arg name="host" default="all"/>
+  <node pkg="talker_pkg" exec="talker" name="talker"
+        if="$(eval '&quot;$(var host)&quot; in (&quot;robot1&quot;, &quot;all&quot;)')"/>
+  <node pkg="listener_pkg" exec="listener" name="listener"
+        if="$(eval '&quot;$(var host)&quot; in (&quot;robot2&quot;, &quot;all&quot;)')"/>
 </launch>

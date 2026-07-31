@@ -4,10 +4,13 @@ meta:
   - path: launch/service_client.launch.xml
     sha256: 8cce8136abc52bbc15fe2d28cf9d5f77ec42d2a814fdbd3eb26b118659ab936f
   - path: system.toml
-    sha256: 9d3917391c71072f75f4987ca1e2a98d4293bb2a666158dd677dc3bf612cfb64
+    sha256: f5b5f670aa707f96eefeb50e4e126ea91966fdf02c98a3d661d618b6954e0279
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
+  diagnostics:
+  - 'system config: [deploy.robot1] places unknown node ''/talker'' (absent in this variant?)'
+  - 'system config: [deploy.robot2] places unknown node ''/listener'' (absent in this variant?)'
 structure:
   scopes:
     service_client.launch.xml:
@@ -21,7 +24,6 @@ structure:
 execution:
   deploy:
     /add_client:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:

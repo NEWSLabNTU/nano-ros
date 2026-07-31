@@ -310,7 +310,6 @@ mod tests {
                     class_header: None,
                     lang: None,
                     shape: None,
-                    host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
                     remaps: Vec::new(),

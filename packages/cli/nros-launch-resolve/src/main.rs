@@ -48,11 +48,13 @@ use ros_launch_resolve::{
     long_about = None,
 )]
 struct Cli {
-    /// Package name, or a path to the launch file.
+    /// Path to the launch file.
+    ///
+    /// (The package-name form the original `play_launch resolve` accepted was
+    /// never wired through this thin main — and its `launch_file` positional
+    /// silently swallowed the first `KEY:=VALUE` binding, so `host:=robot1`
+    /// resolved the default configuration. Path-only, validated bindings.)
     package_or_path: String,
-
-    /// Launch file name, when the first argument is a package name.
-    launch_file: Option<String>,
 
     /// Launch arguments, `KEY:=VALUE`.
     launch_arguments: Vec<String>,
@@ -104,28 +106,39 @@ fn main() -> Result<()> {
     // reimplementation, deliberately: the resolver is ~12k lines and a second
     // copy would drift — the failure issue 0285 is about.
     let launch_path = std::path::PathBuf::from(&cli.package_or_path);
+    // Every trailing positional must be a binding — a malformed one used to
+    // be dropped by `filter_map`, which resolves the default configuration
+    // while looking like success.
+    let arg_binding: std::collections::HashMap<String, String> = cli
+        .launch_arguments
+        .iter()
+        .map(|a| {
+            a.split_once(":=")
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .ok_or_else(|| eyre::eyre!("launch argument `{a}` is not `KEY:=VALUE`"))
+        })
+        .collect::<Result<_>>()?;
     let record = if cli.python_parser {
         eyre::bail!(
             "--python-parser is not wired through the library entry point yet; \
              use the `ros-launch-resolve` binary from the submodule for now"
         )
     } else {
-        play_launch_parser::parse_launch_file(&launch_path, Default::default())
+        // The binding must reach the PARSE, not only the model metadata:
+        // `<arg>` defaults and `if=`/`unless=` conditions evaluate here, so
+        // a `host:=robot1`-style override that stops short of the parser
+        // silently resolves the default configuration (phase-326 found this
+        // resolving the multihost per-host models — both nodes survived).
+        play_launch_parser::parse_launch_file(&launch_path, arg_binding.clone())
             .map_err(|e| eyre::eyre!("parsing {}: {e}", launch_path.display()))?
     };
     let dump: LaunchDump = serde_json::from_str(&serde_json::to_string(&record)?)?;
-
-    let arg_binding = cli
-        .launch_arguments
-        .iter()
-        .filter_map(|a| a.split_once(":=").map(|(k, v)| (k.to_string(), v.to_string())))
-        .collect();
 
     let model = build_checked_model(ModelBuildInputs {
         dump: &dump,
         launch_path: Some(&launch_path),
         bringup_root: cli.bringup_root.as_deref(),
-        arg_binding,
+        arg_binding: arg_binding.into_iter().collect(),
         contracts: cli.contracts.as_deref(),
         no_provider_contracts: cli.no_provider_contracts,
         sched: cli.sched.as_deref(),

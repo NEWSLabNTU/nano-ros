@@ -1,8 +1,10 @@
 meta:
   version: 1
+  args:
+    host: robot2
   inputs:
-  - path: launch/service_client.launch.xml
-    sha256: fb6add712e0fc8c24d416ca73f0258c9b0d9b6e33cd367be386b9fdecc0365b6
+  - path: launch/multihost.launch.xml
+    sha256: 07806eef107da22d4b3c1b680cafb91a57466befaeb4f534e88fa73559154388
   - path: system.toml
     sha256: 1c97afc7c070a3f22fa5c283af12d26989408e81accf15321aaab18f440fc509
   resolver:
@@ -11,23 +13,24 @@ meta:
   diagnostics:
   - 'system config: [deploy.robot1] places unknown node ''/talker'' (absent in this variant?)'
   - 'system config: [deploy.robot1] places unknown node ''/heartbeat'' (absent in this variant?)'
-  - 'system config: [deploy.robot2] places unknown node ''/listener'' (absent in this variant?)'
 structure:
   scopes:
-    service_client.launch.xml:
-      file: service_client.launch.xml
+    multihost.launch.xml:
+      file: multihost.launch.xml
+      args:
+        host: robot2
   nodes:
-    /add_client:
-      scope: service_client.launch.xml
-      pkg: cpp_add_client_pkg
-      exec: add_client
-      node_name: add_client
+    /listener:
+      scope: multihost.launch.xml
+      pkg: cpp_listener_pkg
+      exec: listener
+      node_name: listener
 execution:
   deploy:
-    /add_client:
+    /listener:
       domain: 0
       rmw: zenoh
       extra:
-        deploy_name: native
+        deploy_name: robot2
         kind: self
         target: x86_64-unknown-linux-gnu

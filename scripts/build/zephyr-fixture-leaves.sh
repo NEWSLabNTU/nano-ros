@@ -629,11 +629,12 @@ if [ "$include_workspace_entry" = "1" ]; then
 
     # phase-276 W6 — the MULTIHOST robot1 (talker) Rust workspace Entry
     # (examples/workspaces/rust/src/zephyr_entry_robot1): the
-    # multihost-on-embedded coverage cell. `nros::main!(launch =
-    # "demo_bringup:multihost.launch.xml", host = "robot1")` bakes only the
-    # robot1 slice (the talker); the robot2 listener is a native per-host
-    # entry in the paired e2e, so /chatter crosses hosts. Distinct zenohd
-    # port (7492). Consumed by tests/multihost_e2e.rs (zephyr_rust cell).
+    # multihost-on-embedded coverage cell. `nros::main!(model =
+    # "demo_bringup:config/multihost_robot1_model.yaml")` bakes only the
+    # robot1 slice (the talker; per-host model resolved with `host:=robot1`,
+    # phase-326); the robot2 listener is a native per-host entry in the
+    # paired e2e, so /chatter crosses hosts. Distinct zenohd port (7492).
+    # Consumed by tests/multihost_e2e.rs (zephyr_rust cell).
     wsm_board="native_sim/native/64"
     wsm_lang="rust"
     wsm_lang_tag="rs"

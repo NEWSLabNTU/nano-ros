@@ -9,12 +9,11 @@ description = "Phase 211.F — per-host entry for `robot1` (the multi-host demo)
 name = "native_entry_robot1"
 path = "src/main.rs"
 
-# Per-host Entry pkg. `nros::main!(launch = "demo_bringup:multihost.launch.xml",
-# host = "robot1")` partitions the multi-host launch onto `robot1`: the macro's
-# `host` filter keeps only `<node machine="robot1">` (the talker) + any unhosted
-# (shared) node, so it emits `talker_pkg::register` only. Sibling
-# `native_entry_robot2` does the same for `robot2` (the listener). Running both
-# as two processes is the multi-host runtime topology.
+# Per-host Entry pkg (phase-326 / issue 0364). The partition happens at
+# RESOLVE time: `multihost_robot1_model.yaml` (resolved with `host:=robot1`)
+# contains only the talker, so the macro emits `talker_pkg::register` only.
+# Sibling `native_entry_robot2` consumes the robot2 model (the listener).
+# Running both as two processes is the multi-host runtime topology.
 [package.metadata.nros.entry]
 deploy = "native"
 

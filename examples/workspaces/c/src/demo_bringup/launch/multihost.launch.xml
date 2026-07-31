@@ -1,10 +1,16 @@
 <?xml version="1.0"?>
-<!-- phase-263 Track C — multi-host launch (C parity with the Rust workspace): the
-     talker runs on `robot1`, the listener on `robot2` (`<node machine="…">`). The
-     CMake `nano_ros_entry(HOST <id> …)` passthrough runs the per-host entry bake
-     (`HOST <id>`), which keeps only that host's node (plus any unhosted/shared), so
-     `native_entry_robot1` bakes talker-only and `native_entry_robot2` listener-only. -->
+<!-- phase-326 (issue 0364) — multi-host launch via a standard launch argument
+     (C parity with the Rust workspace). `host` selects which host's nodes
+     survive the RESOLVE: robot1 runs the talker, robot2 the listener, `all`
+     (the default) keeps both. Bake one model per host:
+       nros-launch-resolve … multihost.launch.xml host:=robot1 -o config/multihost_robot1_model.yaml
+     `native_entry_robot1` consumes the robot1 model (talker-only),
+     `native_entry_robot2` the robot2 model (listener-only). Plain ROS 2 XML —
+     the retired `<node machine=…>` form was ROS 1 syntax ROS 2 rejects. -->
 <launch>
-  <node pkg="c_talker_pkg" exec="talker" name="talker" machine="robot1"/>
-  <node pkg="c_listener_pkg" exec="listener" name="listener" machine="robot2"/>
+  <arg name="host" default="all"/>
+  <node pkg="c_talker_pkg" exec="talker" name="talker"
+        if="$(eval '&quot;$(var host)&quot; in (&quot;robot1&quot;, &quot;all&quot;)')"/>
+  <node pkg="c_listener_pkg" exec="listener" name="listener"
+        if="$(eval '&quot;$(var host)&quot; in (&quot;robot2&quot;, &quot;all&quot;)')"/>
 </launch>

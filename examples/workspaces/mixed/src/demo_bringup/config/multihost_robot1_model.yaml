@@ -1,28 +1,29 @@
 meta:
   version: 1
+  args:
+    host: robot1
   inputs:
   - path: launch/multihost.launch.xml
-    sha256: d8295df870a2c68e7d2d0608503a8252494f5e2c37b05aedc3b9e2f6ce7222e7
+    sha256: 07806eef107da22d4b3c1b680cafb91a57466befaeb4f534e88fa73559154388
   - path: system.toml
-    sha256: 95179f9360ecded0f00b9e253d4478d37fef7267f3d4c329cc233d5ed01c58bb
+    sha256: 1c97afc7c070a3f22fa5c283af12d26989408e81accf15321aaab18f440fc509
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
+  diagnostics:
+  - 'system config: [deploy.robot2] places unknown node ''/listener'' (absent in this variant?)'
 structure:
   scopes:
     multihost.launch.xml:
       file: multihost.launch.xml
+      args:
+        host: robot1
   nodes:
     /heartbeat:
       scope: multihost.launch.xml
       pkg: rust_heartbeat_pkg
       exec: heartbeat
       node_name: heartbeat
-    /listener:
-      scope: multihost.launch.xml
-      pkg: cpp_listener_pkg
-      exec: listener
-      node_name: listener
     /talker:
       scope: multihost.launch.xml
       pkg: c_talker_pkg
@@ -31,26 +32,13 @@ structure:
 execution:
   deploy:
     /heartbeat:
-      target: linux
-      host: robot1
       domain: 0
       rmw: zenoh
       extra:
         deploy_name: robot1
         kind: self
         target: x86_64-unknown-linux-gnu
-    /listener:
-      target: linux
-      host: robot2
-      domain: 0
-      rmw: zenoh
-      extra:
-        deploy_name: robot2
-        kind: self
-        target: x86_64-unknown-linux-gnu
     /talker:
-      target: linux
-      host: robot1
       domain: 0
       rmw: zenoh
       extra:

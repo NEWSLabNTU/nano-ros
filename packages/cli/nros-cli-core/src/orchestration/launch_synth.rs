@@ -290,21 +290,6 @@ pub fn synthesise_self_model(
     m
 }
 
-fn xml_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '&' => out.push_str("&amp;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            c => out.push(c),
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,41 +308,6 @@ mod tests {
         p
     }
 
-    fn write_cargo_with_bin(dir: &Path, pkg: &str, bin: &str) {
-        fs::write(
-            dir.join("Cargo.toml"),
-            format!(
-                r#"[package]
-name = "{pkg}"
-version = "0.1.0"
-edition = "2021"
-
-[[bin]]
-name = "{bin}"
-path = "src/main.rs"
-"#
-            ),
-        )
-        .unwrap();
-    }
-
-    fn write_cargo_lib_only(dir: &Path, pkg: &str) {
-        fs::write(
-            dir.join("Cargo.toml"),
-            format!(
-                r#"[package]
-name = "{pkg}"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-path = "src/lib.rs"
-"#
-            ),
-        )
-        .unwrap();
-    }
-
     #[test]
     fn discover_pkg_name_reads_cmake_project_directive() {
         let p = temp_pkg("cmake-project");
@@ -368,34 +318,5 @@ path = "src/lib.rs"
         .unwrap();
         let name = discover_pkg_name(&p).unwrap();
         assert_eq!(name, "my_cpp_pkg");
-    }
-
-    // -----------------------------------------------------------------
-    // Phase 212.L.7 — strict self-entry detection + planner hook
-    // -----------------------------------------------------------------
-
-    fn write_self_entry_cargo(dir: &Path, pkg: &str, board: &str) {
-        fs::write(
-            dir.join("Cargo.toml"),
-            format!(
-                r#"[package]
-name = "{pkg}"
-version = "0.1.0"
-edition = "2021"
-
-[[bin]]
-name = "{pkg}"
-path = "src/main.rs"
-
-[package.metadata.nros.node]
-class = "{pkg}::Node"
-name  = "{pkg}"
-
-[package.metadata.nros.entry]
-deploy = "{board}"
-"#
-            ),
-        )
-        .unwrap();
     }
 }

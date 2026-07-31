@@ -1,0 +1,35 @@
+meta:
+  version: 1
+  args:
+    host: robot1
+  inputs:
+  - path: launch/multihost.launch.xml
+    sha256: b1f4910f1f8c015972dbd324ca7b49d7c2e911f37020339d7ebcb17ea98da144
+  - path: system.toml
+    sha256: f5b5f670aa707f96eefeb50e4e126ea91966fdf02c98a3d661d618b6954e0279
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
+  diagnostics:
+  - 'system config: [deploy.robot2] places unknown node ''/listener'' (absent in this variant?)'
+structure:
+  scopes:
+    multihost.launch.xml:
+      file: multihost.launch.xml
+      args:
+        host: robot1
+  nodes:
+    /talker:
+      scope: multihost.launch.xml
+      pkg: c_talker_pkg
+      exec: talker
+      node_name: talker
+execution:
+  deploy:
+    /talker:
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: robot1
+        kind: self
+        target: x86_64-unknown-linux-gnu

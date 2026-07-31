@@ -338,6 +338,23 @@ fn model_provenance_stale(model_path: &Path, bringup_dir: &Path) -> Option<Strin
     None
 }
 
+/// phase-326 (issue 0364) — the exact launch-argument binding a committed
+/// model was resolved from (`meta.args`). Re-resolving MUST replay it: the
+/// binding reaches the parser, where `<arg>` defaults and `if=`/`unless=`
+/// conditions evaluate, so a per-host variant model
+/// (`multihost_robot1_model.yaml`, resolved with `host:=robot1`) re-resolved
+/// without its binding would silently become the default configuration.
+/// Unparsable/missing model ⇒ empty binding (the plain resolve).
+fn model_recorded_args(model_path: &Path) -> Vec<(String, String)> {
+    let Ok(raw) = std::fs::read_to_string(model_path) else {
+        return Vec::new();
+    };
+    let Ok(model) = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw) else {
+        return Vec::new();
+    };
+    model.meta.args.into_iter().collect()
+}
+
 fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
     // Issue 0285 — resolve the helper by ABSOLUTE PATH, never through PATH.
     //
@@ -434,18 +451,60 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
         if let Some(dl) = &default_launch {
             targets.push((dl.clone(), cfg_dir.join("system_model.yaml")));
         }
-        for lf in &launches {
-            if Some(lf) == default_launch.as_ref() {
-                continue;
-            }
-            let stem = lf
-                .file_name()
-                .and_then(|s| s.to_str())
-                .map(|s| s.trim_end_matches(".launch.xml").to_string())
-                .unwrap_or_default();
-            let variant = cfg_dir.join(format!("{stem}_model.yaml"));
-            if variant.exists() {
-                targets.push((lf.clone(), variant));
+        // Committed variant models stay opt-in: only refreshed, never
+        // created. Two spellings per launch `<stem>.launch.xml`:
+        //   * `<stem>_model.yaml` — the plain resolve;
+        //   * `<stem>_<variant>_model.yaml` — phase-326 (issue 0364): a
+        //     resolve with launch-argument bindings, recorded in the model's
+        //     own `meta.args` and replayed on refresh (e.g.
+        //     `multihost_robot1_model.yaml` from `host:=robot1`).
+        // A variant filename is claimed by the LONGEST matching launch stem,
+        // so `multihost_extra_model.yaml` belongs to
+        // `multihost_extra.launch.xml`, not `multihost.launch.xml`, when
+        // both launch files exist.
+        let stems: Vec<(String, &std::path::PathBuf)> = launches
+            .iter()
+            .filter_map(|lf| {
+                let stem = lf
+                    .file_name()
+                    .and_then(|s| s.to_str())?
+                    .trim_end_matches(".launch.xml")
+                    .to_string();
+                (!stem.is_empty()).then_some((stem, lf))
+            })
+            .collect();
+        if let Ok(rd) = std::fs::read_dir(&cfg_dir) {
+            let mut variants: Vec<std::path::PathBuf> = rd
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|s| s.to_str())
+                        .is_some_and(|n| n.ends_with("_model.yaml") && n != "system_model.yaml")
+                })
+                .collect();
+            variants.sort();
+            for variant in variants {
+                let name = variant.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                let claimed = stems
+                    .iter()
+                    .filter(|(stem, _)| {
+                        name == format!("{stem}_model.yaml")
+                            || name.starts_with(&format!("{stem}_"))
+                    })
+                    .max_by_key(|(stem, _)| stem.len());
+                if let Some((stem, lf)) = claimed {
+                    // The default launch's plain resolve is
+                    // `system_model.yaml`, already targeted above — its
+                    // `<stem>_model.yaml` sibling would duplicate it.
+                    // Binding variants (`<stem>_<v>_model.yaml`) refresh
+                    // even for the default launch.
+                    if Some(*lf) == default_launch.as_ref() && name == format!("{stem}_model.yaml")
+                    {
+                        continue;
+                    }
+                    targets.push(((*lf).clone(), variant));
+                }
             }
         }
         for (launch, model) in targets {
@@ -486,6 +545,12 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
                 .wrap_err_with(|| format!("ws sync: create {}", cfg_dir.display()))?;
             let mut cmd = std::process::Command::new(pl);
             cmd.arg(&launch);
+            // phase-326 (issue 0364) — replay the exact binding the committed
+            // model records, so a variant model refreshes as ITSELF rather
+            // than as the default configuration.
+            for (k, v) in model_recorded_args(&model) {
+                cmd.arg(format!("{k}:={v}"));
+            }
             // Issue 0320 — state the bringup package root explicitly so
             // `meta.inputs[].path` are recorded relative to it structurally,
             // rather than the resolver inferring it as the launch file's

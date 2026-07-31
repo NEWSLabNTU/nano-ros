@@ -5,17 +5,20 @@
 //! (`multihost_runtime_e2e`, `{c,cpp,mixed}_multihost_e2e`,
 //! `multihost_zephyr_entry_e2e`) into one parametrized test over the
 //! `Workload::Multihost` cells of the test matrix (`nros_tests::matrix`).
-//! The SOURCE-level half of the story — `nros codegen entry --host robotN`
-//! emits an entry registering only that host's nodes — stays a separate
-//! codegen gate (`tests/multihost_partition_bake.rs`); this file proves the
-//! RUNTIME half: the per-host entries, booted as two separate processes
-//! (the multi-host topology), actually exchange `/chatter` across hosts.
+//! The SOURCE-level half of the story — resolving with `host:=robotN`
+//! yields a per-host model and `nros codegen entry --model` emits an entry
+//! registering only that host's nodes — stays a separate codegen gate
+//! (`tests/multihost_partition_bake.rs`); this file proves the RUNTIME half:
+//! the per-host entries, booted as two separate processes (the multi-host
+//! topology), actually exchange `/chatter` across hosts.
 //!
-//! Every cell: `multihost.launch.xml` places the talker on `robot1` and the
-//! listener on `robot2` (`<node machine="…">`). Rust workspaces bake the
-//! partition via `nros::main!(launch = …, host = "robotN")` (Phase 211.F);
-//! C/C++/mixed workspaces via the CMake `nano_ros_entry(HOST <id> …)`
-//! passthrough (phase-263 Track C). Cross-process by construction, so the
+//! Every cell: `multihost.launch.xml` gates the talker on `robot1` and the
+//! listener on `robot2` via the `host` launch argument (`if=` conditions —
+//! phase-326 / issue 0364; the ROS 1-ism `<node machine=…>` is gone). Every
+//! workspace consumes the committed per-host models
+//! (`multihost_robotN_model.yaml`): Rust via `nros::main!(model = …)`,
+//! C/C++/mixed via `nano_ros_add_executable(MODEL …)`. Cross-process by
+//! construction, so the
 //! zenoh-pico in-process write-filter limitation (issue 0096 /
 //! `deployed_native_system_e2e`) does not apply.
 //!
@@ -174,8 +177,8 @@ fn spawn_native_entry(
     robot2: || build_native_workspace_rust_entry_robot2().map(|p| p.to_path_buf()),
     port: None, boot: Boot::Native,
     proof: Proof::HostedSpinCallbacks, ready: Robot2Ready::None,
-    note: "Phase 211.F: `nros::main!(launch = …, host = robotN)` macro host filter \
-           bakes talker-only/listener-only entries",
+    note: "phase-326: per-host models (`host:=robotN` resolve) bake talker-only / \
+           listener-only entries",
 })]
 #[case::native_c(Cell {
     platform: "native", lang: "c",
@@ -183,8 +186,8 @@ fn spawn_native_entry(
     robot2: || build_native_workspace_c_entry_robot2().map(|p| p.to_path_buf()),
     port: None, boot: Boot::Native,
     proof: Proof::ListenerCount3, ready: Robot2Ready::Marker,
-    note: "phase-263 Track C: CMake `nano_ros_entry(HOST <id>)` passthrough shells \
-           `nros codegen entry --host <id>` — C parity with the Rust macro bake",
+    note: "phase-326: the C entry consumes the per-host model via \
+           `nano_ros_add_executable(MODEL …)` — C parity with the Rust macro bake",
 })]
 #[case::native_cpp(Cell {
     platform: "native", lang: "cpp",

@@ -1,4 +1,5 @@
-// phase-263 Track C — robot2 per-host entry. The HOST robot2 codegen partition keeps
+// phase-326 (issue 0364) — robot2 per-host entry. The per-host model (resolved with
+// `host:=robot2`) keeps
 // only the C++ listener, booting it on the native board.
 
 #include <nros/main.hpp>

@@ -4,10 +4,13 @@ meta:
   - path: launch/service_inprocess.launch.xml
     sha256: 2bcd29192613a44a260b8d0f536ba38fb5b05ae1fc541e622abc1954c9bd22f2
   - path: system.toml
-    sha256: 51317df55281ab822df0f3a67e042089ed463a334bc6f02b05c4ee7762efd4c0
+    sha256: 75b2138d28ea46ffaf94ec671c3b478fdc247c89244ad4f150cebc56d91b89a3
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
+  diagnostics:
+  - 'system config: [deploy.robot1] places unknown node ''/talker'' (absent in this variant?)'
+  - 'system config: [deploy.robot2] places unknown node ''/listener'' (absent in this variant?)'
 structure:
   scopes:
     service_inprocess.launch.xml:

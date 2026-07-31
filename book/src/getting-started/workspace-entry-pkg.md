@@ -101,9 +101,11 @@ nros::main!(board = NativeBoard);
 nros::main!(model = "demo_bringup");
 nros::main!(model = "demo_bringup:config/variant-b.yaml");
 
-// 4. Multi-host slice: keep only this host's (+ unhosted) nodes from a
-//    multihost model (`<node machine="…">` → the model's deploy.host).
-nros::main!(model = "demo_bringup:config/multihost_model.yaml", host = "robot1");
+// 4. Multi-host slice: point at a PER-HOST model. The launch file gates
+//    nodes on a `host` launch argument (`if=` conditions), and the model
+//    is resolved with `host:=robot1`, so it already contains only this
+//    host's nodes — no extra macro key needed.
+nros::main!(model = "demo_bringup:config/multihost_robot1_model.yaml");
 
 // 5. DEPRECATED (retiring): direct launch-file forms. These re-parse the
 //    launch XML at build time instead of consuming the reviewed model;

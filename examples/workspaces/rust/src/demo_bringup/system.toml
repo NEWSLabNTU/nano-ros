@@ -52,13 +52,14 @@ name = "fibonacci_client"
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
 
-# Phase 211.F — per-host deploy targets for the multi-host launch
-# (`launch/multihost.launch.xml`: talker on robot1, listener on robot2). The
-# target id matches the launch `<node machine="…">` id, so each maps onto its
-# host's bake: `nros codegen entry --host robot1` (or
-# `nros::main!(launch="demo_bringup:multihost.launch.xml", host="robot1")`)
-# builds robot1's binary, deployed via `[deploy.robot1]`. (RFC-0004 §4 home;
-# NOT a root nros.toml — see issue #51.)
+# phase-326 (issue 0364) — per-host deploy targets for the multi-host launch
+# (`launch/multihost.launch.xml`: talker on robot1, listener on robot2, chosen
+# at RESOLVE time by the `host` launch argument). Each per-host model
+# (`config/multihost_robot<N>_model.yaml`, resolved with `host:=robot<N>`)
+# contains only that host's nodes; the explicit `nodes = [..]` below places
+# them — with `machine=` gone there is no launch-derived placement fact, so
+# every node needs a list entry (pre-0291 behaviour, restored).
+# (RFC-0004 §4 home; NOT a root nros.toml — see issue #51.)
 # phase-315 — the embedded BOARD BUILDS of this system.
 #
 # These are not placements. `kind = "self"` blocks (native/robot1/robot2) are
@@ -96,8 +97,10 @@ board = "esp32-qemu"
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
 launch = "multihost.launch.xml"
+nodes = ["/talker"]
 
 [deploy.robot2]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
 launch = "multihost.launch.xml"
+nodes = ["/listener"]

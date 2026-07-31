@@ -6,14 +6,14 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 find_package(nano_ros REQUIRED)
 
-# phase-263 Track C — per-host entry for `robot1`. `HOST robot1` makes the codegen
-# (`nros codegen entry --host robot1`) keep only `<node machine="robot1">` (the
-# talker) from `multihost.launch.xml`, so this binary bakes talker-only — the C
-# parity of the Rust `native_entry_robot1` (`nros::main!(host = "robot1")`).
+# phase-326 (issue 0364) — per-host entry for `robot1`. The partition happens at
+# RESOLVE time: `multihost_robot1_model.yaml` (resolved with `host:=robot1`)
+# contains only the talker, so this binary bakes that host's slice of the
+# multi-host topology. (The retired HOST keyword partitioned at bake time from
+# the ROS 1-ism `<node machine=…>`.)
 nano_ros_add_executable(native_entry_robot1
     SOURCES src/main.c
     BOARD   native
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/multihost_model.yaml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/multihost_robot1_model.yaml"
     TYPED
-    HOST    robot1
     DEPLOY  native)

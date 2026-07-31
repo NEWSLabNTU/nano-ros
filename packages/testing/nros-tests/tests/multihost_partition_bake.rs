@@ -1,47 +1,193 @@
-//! Phase 211.F — per-host partition bake: one multi-host launch
-//! (`<node machine="…">`) bakes a per-host Rust Entry, each carrying only its
-//! host's nodes (plus any unhosted/shared node).
+//! Multi-host partition — RESOLVE-time (phase-326, issue 0364).
 //!
-//! Drives `nros codegen entry --lang rust --host <id>` over the
-//! `examples/workspaces/rust` workspace + `demo_bringup/config/multihost_model.yaml`
-//! (talker on `robot1`, listener on `robot2`) and asserts the emitted `main.rs`
-//! source registers ONLY that host's node. Exercises the full CLI pipeline:
-//! resolved model (`deploy.<fqn>.host`) → `PlanNode.host` → `for_host` filter →
-//! `emit_rust`.
+//! `<node machine="…">` was ROS 1 roslaunch syntax; ROS 2 rejects it, so the
+//! bake-time partition (`Plan::for_host`, `nros codegen entry --host`,
+//! `nros::main!(host = …)`) is gone. The partition now happens when the
+//! launch file is RESOLVED: `multihost.launch.xml` declares
+//! `<arg name="host" default="all"/>` and gates each node with an
+//! `if=$(eval …)` condition, so resolving with `host:=robot1` produces a
+//! SystemModel that only CONTAINS robot1's nodes, and the ordinary
+//! `codegen entry --model` bake needs no partition step.
 //!
-//! This is the ONLY end-to-end exercise of `Plan::for_host` — there is no
-//! unit-level test for it, despite an earlier version of this comment claiming
-//! to complement one. It drove the `--launch` flag until phase-296 R4 removed
-//! it in favour of `--model`, and then failed silently for weeks; that gap is
-//! why issue 0302's four-feature drift in `emit_rust` went uncaught.
+//! Three seams, three tests:
+//! 1. the LIVE resolve drops the other host's nodes
+//!    (`resolving_with_host_arg_partitions_the_model`);
+//! 2. the COMMITTED per-host models carry their own binding (`meta.args`)
+//!    and only their host's nodes, in all four example workspaces
+//!    (`committed_per_host_models_carry_their_binding`) — `nros sync`
+//!    replays `meta.args` on refresh, so a model whose binding went missing
+//!    would silently re-resolve as the default (`all`) configuration;
+//! 3. `nros codegen entry --model <per-host model>` emits an entry
+//!    registering only that host's node
+//!    (`multihost_bake_emits_only_the_hosts_node`).
 //!
-//! Cross-process *delivery* between hosts is already proven by
-//! `deployed_native_system_e2e` (a planned deploy publishes to the ROS graph; a
-//! separate process receives) — this seals the remaining piece, the bake
-//! partition.
+//! Cross-process *delivery* between hosts is proven by `multihost_e2e`; this
+//! file seals the source-level story.
 
 use std::process::Command;
 
-fn codegen_entry_host(host: &str, out: &std::path::Path) -> String {
-    let nros = nros_tests::nros_cli_bin_path().expect("nros CLI (require_nros_cli gated this)");
+/// The `nros-launch-resolve` helper, by ABSOLUTE path (issue 0285 — never
+/// `$PATH`): `just setup-launch-resolve` builds it in-tree.
+fn launch_resolver() -> Option<std::path::PathBuf> {
+    let p = nros_tests::project_root()
+        .join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
+    p.is_file().then_some(p)
+}
+
+fn rust_bringup() -> std::path::PathBuf {
+    nros_tests::project_root().join("examples/workspaces/rust/src/demo_bringup")
+}
+
+/// Resolve the rust workspace's multihost launch with `host:=<id>` into a
+/// temp file and return the model YAML.
+fn resolve_with_host(host: &str, out: &std::path::Path) -> String {
+    let resolver = launch_resolver().expect("caller gated on launch_resolver()");
+    let bringup = rust_bringup();
+    let output = Command::new(&resolver)
+        .arg(bringup.join("launch/multihost.launch.xml"))
+        .arg(format!("host:={host}"))
+        .arg("--bringup-root")
+        .arg(&bringup)
+        .arg("--system")
+        .arg(bringup.join("system.toml"))
+        .arg("-o")
+        .arg(out)
+        .output()
+        .expect("spawn nros-launch-resolve");
+    assert!(
+        output.status.success(),
+        "nros-launch-resolve host:={host} failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    std::fs::read_to_string(out).expect("read resolved model")
+}
+
+#[test]
+fn resolving_with_host_arg_partitions_the_model() {
+    if launch_resolver().is_none() {
+        nros_tests::skip!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
+    }
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    // robot1 → the talker only.
+    let robot1 = resolve_with_host("robot1", &tmp.path().join("r1.yaml"));
+    assert!(
+        robot1.contains("/talker:"),
+        "robot1 model lost the talker:\n{robot1}"
+    );
+    assert!(
+        !robot1.contains("/listener:"),
+        "robot1 model wrongly contains the listener — the `if=` condition \
+         did not drop it at resolve time:\n{robot1}"
+    );
+
+    // robot2 → the listener only.
+    let robot2 = resolve_with_host("robot2", &tmp.path().join("r2.yaml"));
+    assert!(
+        robot2.contains("/listener:"),
+        "robot2 model lost the listener:\n{robot2}"
+    );
+    assert!(
+        !robot2.contains("/talker:"),
+        "robot2 model wrongly contains the talker:\n{robot2}"
+    );
+
+    // The default (`all`) keeps both — a node with no `if=` would be shared.
+    let all = resolve_with_host("all", &tmp.path().join("all.yaml"));
+    assert!(
+        all.contains("/talker:") && all.contains("/listener:"),
+        "host:=all must keep the whole topology:\n{all}"
+    );
+}
+
+/// The committed per-host models in all four workspaces: each records the
+/// binding it was resolved from (`meta.args: host: robotN` — what `nros sync`
+/// replays on refresh) and contains ONLY its host's nodes.
+#[test]
+fn committed_per_host_models_carry_their_binding() {
+    // (workspace, host, must-contain node keys, must-NOT-contain node keys)
+    let cells: &[(&str, &str, &[&str], &[&str])] = &[
+        ("rust", "robot1", &["/talker:"], &["/listener:"]),
+        ("rust", "robot2", &["/listener:"], &["/talker:"]),
+        ("c", "robot1", &["/talker:"], &["/listener:"]),
+        ("c", "robot2", &["/listener:"], &["/talker:"]),
+        ("cpp", "robot1", &["/talker:"], &["/listener:"]),
+        ("cpp", "robot2", &["/listener:"], &["/talker:"]),
+        (
+            "mixed",
+            "robot1",
+            &["/talker:", "/heartbeat:"],
+            &["/listener:"],
+        ),
+        (
+            "mixed",
+            "robot2",
+            &["/listener:"],
+            &["/talker:", "/heartbeat:"],
+        ),
+    ];
+    for (ws, host, contains, absent) in cells {
+        let path = nros_tests::project_root().join(format!(
+            "examples/workspaces/{ws}/src/demo_bringup/config/multihost_{host}_model.yaml"
+        ));
+        let raw = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        assert!(
+            raw.contains(&format!("host: {host}")),
+            "[{ws}/{host}] model records no `meta.args` binding — `nros sync` \
+             would re-resolve it as the default (all-hosts) configuration:\n{}",
+            path.display()
+        );
+        for key in *contains {
+            assert!(
+                raw.contains(key),
+                "[{ws}/{host}] model lost its own node {key}: {}",
+                path.display()
+            );
+        }
+        for key in *absent {
+            assert!(
+                !raw.contains(key),
+                "[{ws}/{host}] model contains the OTHER host's node {key} — \
+                 the per-host partition did not hold: {}",
+                path.display()
+            );
+        }
+        // The deploy SSOT still names this host: `[deploy.<host>]` with an
+        // explicit `nodes = [..]` placement (with `machine=` gone there is no
+        // launch-derived placement fact).
+        let system_toml = path
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.join("system.toml"))
+            .expect("bringup layout");
+        let toml_raw = std::fs::read_to_string(&system_toml)
+            .unwrap_or_else(|e| panic!("read {}: {e}", system_toml.display()));
+        assert!(
+            toml_raw.contains(&format!("[deploy.{host}]")),
+            "[{ws}] system.toml lost `[deploy.{host}]`:\n{toml_raw}"
+        );
+    }
+}
+
+fn codegen_entry_model(model: &std::path::Path, out: &std::path::Path) -> String {
+    let nros = nros_tests::nros_cli_bin_path().expect("require_nros_cli gated this");
     let workspace = nros_tests::project_root().join("examples/workspaces/rust");
     let status = Command::new(&nros)
         .args(["codegen", "entry", "--lang", "rust"])
         .arg("--workspace")
         .arg(&workspace)
         .arg("--model")
-        .arg(
-            nros_tests::project_root()
-                .join("examples/workspaces/rust/src/demo_bringup/config/multihost_model.yaml"),
-        )
-        .args(["--host", host])
+        .arg(model)
         .arg("--out")
         .arg(out)
         .output()
         .expect("spawn nros codegen entry");
     assert!(
         status.status.success(),
-        "`nros codegen entry --host {host}` failed:\nstdout:\n{}\nstderr:\n{}",
+        "`nros codegen entry --model {}` failed:\nstdout:\n{}\nstderr:\n{}",
+        model.display(),
         String::from_utf8_lossy(&status.stdout),
         String::from_utf8_lossy(&status.stderr),
     );
@@ -49,71 +195,38 @@ fn codegen_entry_host(host: &str, out: &std::path::Path) -> String {
 }
 
 #[test]
-fn multihost_launch_bakes_per_host_entries() {
+fn multihost_bake_emits_only_the_hosts_node() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found");
     }
-    // Older CLI without the Phase-211.F `--host` flag → skip rather than misreport.
-    let nros = nros_tests::nros_cli_bin_path().unwrap();
-    let help = Command::new(&nros)
-        .args(["codegen", "entry", "--help"])
-        .output()
-        .expect("nros codegen entry --help");
-    if !String::from_utf8_lossy(&help.stdout).contains("--host") {
-        nros_tests::skip!(
-            "installed nros lacks `codegen entry --host` (Phase 211.F) — rebuild CLI"
-        );
-    }
-
     let tmp = tempfile::tempdir().expect("tempdir");
+    let cfg = rust_bringup().join("config");
 
-    // robot1 → talker only.
-    let robot1 = codegen_entry_host("robot1", &tmp.path().join("robot1_main.rs"));
+    // robot1 model → talker only.
+    let robot1 = codegen_entry_model(
+        &cfg.join("multihost_robot1_model.yaml"),
+        &tmp.path().join("robot1_main.rs"),
+    );
     assert!(
         robot1.contains("talker_pkg::register"),
         "robot1 entry missing talker:\n{robot1}"
     );
     assert!(
         !robot1.contains("listener_pkg::register"),
-        "robot1 entry wrongly includes listener (machine=robot2):\n{robot1}"
+        "robot1 entry wrongly includes listener:\n{robot1}"
     );
 
-    // robot2 → listener only.
-    let robot2 = codegen_entry_host("robot2", &tmp.path().join("robot2_main.rs"));
+    // robot2 model → listener only.
+    let robot2 = codegen_entry_model(
+        &cfg.join("multihost_robot2_model.yaml"),
+        &tmp.path().join("robot2_main.rs"),
+    );
     assert!(
         robot2.contains("listener_pkg::register"),
         "robot2 entry missing listener:\n{robot2}"
     );
     assert!(
         !robot2.contains("talker_pkg::register"),
-        "robot2 entry wrongly includes talker (machine=robot1):\n{robot2}"
-    );
-}
-
-/// Phase 211.F — the bringup `system.toml` declares a `[deploy.<id>]` target
-/// (RFC-0004 §4 home — NOT a root `nros.toml`, see issue #51) for each host the
-/// multi-host launch bakes. The deploy-target id == the launch `machine=` id, so
-/// `nros codegen entry --host <id>` maps onto `[deploy.<id>]` by name. This ties
-/// the per-host bake (above) to the per-host deploy SSOT.
-#[test]
-fn multihost_deploy_targets_match_baked_hosts() {
-    let system_toml =
-        nros_tests::project_root().join("examples/workspaces/rust/src/demo_bringup/system.toml");
-    let raw = std::fs::read_to_string(&system_toml)
-        .unwrap_or_else(|e| panic!("read {}: {e}", system_toml.display()));
-
-    // The hosts the multi-host launch partitions into (mirrors the bake above).
-    for host in ["robot1", "robot2"] {
-        assert!(
-            raw.contains(&format!("[deploy.{host}]")),
-            "system.toml has no `[deploy.{host}]` target for the multi-host launch \
-             machine `{host}` — per-host bake (`--host {host}`) has no deploy SSOT \
-             to map onto:\n{raw}"
-        );
-    }
-    // Both per-host targets point at the multi-host launch.
-    assert!(
-        raw.matches("multihost.launch.xml").count() >= 2,
-        "per-host `[deploy.robotN]` targets must bind to multihost.launch.xml:\n{raw}"
+        "robot2 entry wrongly includes talker:\n{robot2}"
     );
 }

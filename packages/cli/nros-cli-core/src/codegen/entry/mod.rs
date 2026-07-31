@@ -103,53 +103,12 @@ pub struct Plan {
     pub resolved_tiers: Option<ResolvedTierTable>,
 }
 
-impl Plan {
-    /// Phase 211.F — partition a multi-host launch for a single target host.
-    ///
-    /// Returns a copy of the plan keeping only the nodes that belong on host
-    /// `host`: those whose `<node machine="…">` equals `host`, plus every
-    /// **unhosted** node (`host == None`) — an unhosted node is shared / runs
-    /// everywhere (matches ROS 2, where a node without `machine=` runs on the
-    /// local host). The multi-host deploy bakes one entry per host from these
-    /// partitions, each deployed to that host's `[deploy.<id>]` target. A
-    /// single-host launch (no `machine=` anywhere) is unaffected — every node
-    /// is unhosted, so `for_host` returns all of them for any host.
-    #[must_use]
-    pub fn for_host(&self, host: &str) -> Plan {
-        Plan {
-            board: self.board.clone(),
-            nodes: self
-                .nodes
-                .iter()
-                .filter(|n| match &n.host {
-                    Some(h) => h == host,
-                    None => true,
-                })
-                .cloned()
-                .collect(),
-            depfile_paths: self.depfile_paths.clone(),
-            bringup: self.bringup.clone(),
-            launch_file: self.launch_file.clone(),
-            lifecycle: self.lifecycle.clone(),
-            param_services: self.param_services,
-            safety: self.safety,
-            tiers: self.tiers.clone(),
-            node_overrides: self.node_overrides.clone(),
-            resolved_tiers: self.resolved_tiers.clone(),
-        }
-    }
-
-    /// Phase 211.F — the distinct target hosts named across the plan's nodes
-    /// (the `machine=` set), sorted + deduped. Empty for a single-host launch.
-    /// The multi-host deploy bakes one entry per entry in this set.
-    #[must_use]
-    pub fn hosts(&self) -> Vec<String> {
-        let mut hs: Vec<String> = self.nodes.iter().filter_map(|n| n.host.clone()).collect();
-        hs.sort();
-        hs.dedup();
-        hs
-    }
-}
+// phase-326 (issue 0364): `Plan::for_host` / `Plan::hosts` / `PlanNode.host`
+// are gone. They partitioned a multi-host launch at BAKE time from the
+// `<node machine="…">` attribute — ROS 1 roslaunch syntax ROS 2 rejects.
+// Multi-host is now a resolve-time launch argument (`host:=<id>` + `if=`
+// conditions), so a per-host SystemModel already contains only that host's
+// nodes and the bake needs no partition step.
 
 /// Issue #52 / 0303 — one lowered QoS override on a plan node.
 ///
@@ -194,11 +153,6 @@ pub struct PlanNode {
     /// `nros::init` (the ctor owns the node); a `"configure"` node keeps the
     /// 240.x static-construct-then-`configure(node)` path.
     pub shape: Option<String>,
-    /// Phase 211.F — `<node machine="…">` target host (multi-host launch).
-    /// `None` for single-host / unhosted nodes. [`Plan::for_host`] partitions a
-    /// multi-host launch into per-host bakes: an entry for host `H` keeps nodes
-    /// whose `host == Some(H)` plus all unhosted (`None`) nodes.
-    pub host: Option<String>,
     /// Phase 211.H (issue #52) — per-topic QoS overrides decomposed from this
     /// node's `qos_overrides.<topic>.<role>.<policy>` launch params. Empty when
     /// none. The typed C++ entry emitter bakes them into a
@@ -391,9 +345,8 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             return true;
         }
         match (&dep.target, board.as_str()) {
-            // Unplaced (launch-only model, e.g. a machine-derived deploy):
-            // no board named — this entry's board decides; the host filter
-            // still partitions (#236 board≠host orthogonality).
+            // Board-agnostic (multi-board system, issue 0356): no board
+            // named — this entry's board decides.
             (None, _) => true,
             (Some(Target::Linux), "native" | "posix") => true,
             // Exact board key, or the deploy's platform kind (the
@@ -468,7 +421,6 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             class_header: None,
             lang: None,
             shape: None,
-            host: model.execution.deploy.get(fqn).and_then(|d| d.host.clone()),
             qos_overrides,
             params,
             remaps: inst
@@ -705,7 +657,6 @@ mod tests {
             class_header: None,
             lang: None,
             shape: None,
-            host: None,
             qos_overrides: Vec::new(),
             params: Vec::new(),
             remaps: Vec::new(),
@@ -714,65 +665,6 @@ mod tests {
             group_tiers: BTreeMap::new(),
         };
         assert_eq!(n.cmake_link_target(), "talker_pkg_talker_component");
-    }
-
-    /// Phase 211.F — `Plan::for_host` keeps a host's own nodes + all unhosted
-    /// (shared) nodes; `hosts()` returns the distinct `machine=` set.
-    #[test]
-    fn plan_for_host_partitions_by_machine() {
-        let node = |pkg: &str, host: Option<&str>| PlanNode {
-            pkg: pkg.into(),
-            exec: pkg.into(),
-            name: None,
-            namespace: None,
-            class_name: None,
-            class_header: None,
-            lang: None,
-            shape: None,
-            host: host.map(str::to_string),
-            qos_overrides: Vec::new(),
-            params: Vec::new(),
-            remaps: Vec::new(),
-            callback_groups: Vec::new(),
-            sched_context: None,
-            group_tiers: BTreeMap::new(),
-        };
-        let plan = Plan {
-            board: "native".into(),
-            nodes: vec![
-                node("sim", Some("workstation")),
-                node("ctrl", Some("jetson")),
-                node("shared", None),
-            ],
-            depfile_paths: vec![],
-            bringup: "demo".into(),
-            launch_file: std::path::PathBuf::from("/tmp/x.launch.xml"),
-            lifecycle: None,
-            param_services: false,
-            safety: None,
-            tiers: Default::default(),
-            node_overrides: Vec::new(),
-            resolved_tiers: None,
-        };
-
-        assert_eq!(
-            plan.hosts(),
-            vec!["jetson".to_string(), "workstation".to_string()]
-        );
-
-        // workstation entry: its own node + the shared (unhosted) one.
-        let ws = plan.for_host("workstation");
-        let ws_pkgs: Vec<&str> = ws.nodes.iter().map(|n| n.pkg.as_str()).collect();
-        assert_eq!(ws_pkgs, vec!["sim", "shared"]);
-
-        // jetson entry: its own node + shared.
-        let jetson = plan.for_host("jetson");
-        let jetson_pkgs: Vec<&str> = jetson.nodes.iter().map(|n| n.pkg.as_str()).collect();
-        assert_eq!(jetson_pkgs, vec!["ctrl", "shared"]);
-
-        // An unknown host still gets the shared nodes (never empty for a launch
-        // with shared nodes).
-        assert_eq!(plan.for_host("nope").nodes.len(), 1);
     }
 
     /// Issue 0276 + phase-54 — a model's `params_files` project into
@@ -849,17 +741,13 @@ contracts: {}
         assert_eq!(node.qos_overrides[0].value, 0);
     }
 
-    /// #236 — an UNPLACED deploy (`target: None`, e.g. a machine-derived
-    /// entry from a launch-only resolve) is board-agnostic: every board's
-    /// slice keeps the node; only the host filter partitions. An explicit
-    /// `target: linux` still rejects non-native boards.
+    /// #236 / issue 0356 — a board-agnostic deploy (`target: None`, a
+    /// multi-board system's placement) keeps the node on every board's
+    /// slice. An explicit `target: linux` still rejects non-native boards.
     #[test]
     fn model_unplaced_target_is_board_agnostic() {
         use ros_launch_manifest_model::{Deploy, Target};
-        let unplaced = Deploy {
-            host: Some("robot1".into()),
-            ..Default::default()
-        };
+        let unplaced = Deploy::default();
         assert_eq!(unplaced.target, None);
         let placed_linux = Deploy {
             target: Some(Target::Linux),
@@ -970,7 +858,6 @@ contracts: {}
                 class_header: None,
                 lang: None,
                 shape: None,
-                host: None,
                 qos_overrides: Vec::new(),
                 params: Vec::new(),
                 remaps: Vec::new(),
@@ -1115,7 +1002,6 @@ contracts: {}
                     class_header: None,
                     lang: Some("c".into()),
                     shape: None,
-                    host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
                     remaps: Vec::new(),
@@ -1132,7 +1018,6 @@ contracts: {}
                     class_header: None,
                     lang: Some("c".into()),
                     shape: None,
-                    host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
                     remaps: Vec::new(),
@@ -1233,7 +1118,6 @@ contracts: {}
                     class_header: None,
                     lang: Some("c".into()),
                     shape: None,
-                    host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
                     remaps: Vec::new(),
@@ -1250,7 +1134,6 @@ contracts: {}
                     class_header: None,
                     lang: Some("c".into()),
                     shape: None,
-                    host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
                     remaps: Vec::new(),
@@ -1321,7 +1204,6 @@ contracts: {}
                 class_header: None,
                 lang: Some("c".into()),
                 shape: None,
-                host: None,
                 qos_overrides: Vec::new(),
                 params: Vec::new(),
                 remaps: Vec::new(),

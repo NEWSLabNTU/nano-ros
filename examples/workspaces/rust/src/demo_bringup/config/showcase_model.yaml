@@ -4,7 +4,7 @@ meta:
   - path: launch/showcase.launch.xml
     sha256: a2ccfccfab771fd2533a1ca160b23e633df564c16b7a8253e297f87b9b750147
   - path: system.toml
-    sha256: 51317df55281ab822df0f3a67e042089ed463a334bc6f02b05c4ee7762efd4c0
+    sha256: 75b2138d28ea46ffaf94ec671c3b478fdc247c89244ad4f150cebc56d91b89a3
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0

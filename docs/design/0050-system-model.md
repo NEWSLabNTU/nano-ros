@@ -310,6 +310,12 @@ What this means for the nano-ros bake:
   landing the fix now (Phase 46.1), ahead of the rest, to unblock the
   phase-296 R4 multihost migration. Your side (issue #236 step 3): the
   `host =` filter reads `deploy.host`.
+  **RETIRED (phase-326 / issue 0364, 2026-07-31):** `machine=` turned out to
+  be ROS 1 roslaunch syntax — ROS 2's frontend rejects it — so the capture,
+  `Deploy.host`, and the bake-time host filter were all removed. Multi-host
+  is now an ordinary `host` launch **argument** + `if=` conditions, resolved
+  into per-host models (`multihost_robot<N>_model.yaml`, binding recorded in
+  `meta.args` and replayed by `nros sync`).
 - **`NodeInstance` gains launch fields** — `remaps`, `ros_args`,
   `respawn`/`respawn_delay`, launch-declared `env` — additive/optional, in the
   shared `model` crate. Your bake ignores the ones it doesn't consume (you

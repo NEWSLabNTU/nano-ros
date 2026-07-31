@@ -76,14 +76,6 @@ struct MainArgs {
     /// instead of the `NROS_ENTRY_SPIN_MS`-gated bounded spin (whose
     /// unset default is register-and-exit, a production-entry trap).
     spin_forever: bool,
-    /// Phase 211.F — `host = "<id>"`: multi-host partition. When set, keep only
-    /// launch nodes whose `<node machine="…">` equals `<id>` plus all unhosted
-    /// (shared) nodes — mirrors `nros codegen entry --host` / `Plan::for_host`.
-    /// `None` = single-host / unfiltered (every node). A per-host Entry pkg
-    /// passes its target host so a multi-host launch bakes one runnable entry
-    /// per host (CLI/macro parity, now that nros-macros builds against the
-    /// in-tree nros-cli-core carrying `NodeSpec.machine`).
-    host: Option<String>,
     /// Phase 216.B.4 — `custom_tasks = [adc_sample, ui_redraw]`. Each
     /// ident becomes an extra `#[task]` trampoline inside the
     /// generated `mod __nros_app` body when the dispatched framework
@@ -153,16 +145,18 @@ impl Parse for MainArgs {
                     out.model = Some(s);
                 }
                 "host" => {
-                    let s = match value {
-                        KvValue::Str(s) => s,
-                        _ => {
-                            return Err(syn::Error::new(
-                                key.span(),
-                                "`host = ` takes a string literal (the target machine id)",
-                            ));
-                        }
-                    };
-                    out.host = Some(s.value());
+                    // phase-326 (issue 0364) — the bake-time host filter is
+                    // gone with `<node machine=>` (ROS 1 syntax). Fail with
+                    // migration guidance rather than the generic unknown-key
+                    // error.
+                    return Err(syn::Error::new(
+                        key.span(),
+                        "`host = ` was removed (phase-326 / issue 0364) — \
+                         multi-host partitions at RESOLVE time now. Point \
+                         `model = ` at the per-host SystemModel instead \
+                         (resolved with `host:=<id>`, e.g. \
+                         `model = \"demo_bringup:config/multihost_robot1_model.yaml\"`)",
+                    ));
                 }
                 "args" => {
                     let list = match value {
@@ -220,7 +214,7 @@ impl Parse for MainArgs {
                         key.span(),
                         format!(
                             "unknown `nros::main!` argument `{other}` \
-                             (expected one of: board, launch, model, host, args, custom_tasks, spin)"
+                             (expected one of: board, launch, model, args, custom_tasks, spin)"
                         ),
                     ));
                 }
@@ -576,17 +570,14 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // every node (single-image default). Board match mirrors the CLI's
         // `plan_from_model`: Linux target ⇒ native/posix; Mcu target ⇒ exact
         // board key OR the deploy's `kind` family (extra.kind, e.g. "zephyr").
-        // #236 step 3 — when `host = "<id>"` is set, ALSO partition by host:
-        // keep only nodes whose `deploy.host` matches (plus unhosted/shared
-        // nodes, `host == None`), mirroring the launch arm's `Plan::for_host`.
-        // `execution.deploy[fqn].host` is filled from `<node machine=>` by
-        // play_launch resolve (Phase 46.1).
+        // (The bake-time host filter is gone — phase-326 / issue 0364:
+        // multi-host partitions at RESOLVE time, so a per-host model already
+        // contains only that host's nodes.)
         use ros_launch_manifest_model::{ExtraValue, Target};
-        let host_filter = args.host.as_deref();
         // phase-315 — does the model place ANYTHING on this board?
         //
         // `execution.deploy` is a PARTITION: node -> one target. That is the
-        // right shape for machines (`machine="robot1"`), and the wrong shape for
+        // right shape for machines, and the wrong shape for
         // board build-variants, where every board runs every node and the map
         // simply cannot say so.
         //
@@ -616,17 +607,13 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 return model.execution.deploy.is_empty();
             };
             if !board_mentioned {
-                // Unpartitioned for THIS board; the host filter below still applies.
-                return match host_filter {
-                    None => true,
-                    Some(h) => dep.host.as_deref().map(|dh| dh == h).unwrap_or(true),
-                };
+                // Unpartitioned for THIS board.
+                return true;
             }
-            let board_ok = match (&dep.target, board_key) {
-                // Unplaced (launch-only model, e.g. a machine-derived deploy):
-                // the model names no board, so THIS entry's board decides —
-                // keep on every board; the host filter still partitions
-                // (#236 board≠host orthogonality).
+            match (&dep.target, board_key) {
+                // Board-agnostic (multi-board system, issue 0356): the model
+                // names no board, so THIS entry's board decides — keep on
+                // every board.
                 (None, _) => true,
                 (Some(Target::Linux), "native" | "posix") => true,
                 (Some(Target::Mcu { board: b }), key) => {
@@ -637,12 +624,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         )
                 }
                 _ => false,
-            };
-            let host_ok = match host_filter {
-                None => true, // unpartitioned
-                Some(h) => dep.host.as_deref().map(|dh| dh == h).unwrap_or(true),
-            };
-            board_ok && host_ok
+            }
         };
 
         // Walk nodes in FQN order (BTreeMap = deterministic, matches the CLI).
@@ -3266,7 +3248,7 @@ mod derived_sizing_tests {
     /// numbering as `nros_cpp_qos_override_t` and the CLI's C/C++ emitters.
     #[test]
     fn qos_override_params_decompose_into_codes() {
-        let params = vec![
+        let params = [
             (
                 "qos_overrides./chatter.publisher.reliability".to_string(),
                 "best_effort".to_string(),

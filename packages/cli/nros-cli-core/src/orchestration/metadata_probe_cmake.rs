@@ -167,7 +167,6 @@ fn probe_plan(o: &CmakeProbeOptions) -> Plan {
             class_header: Some(o.header.clone()),
             lang: Some(o.language.clone()),
             shape: Some(o.shape.clone()),
-            host: None,
             qos_overrides: Vec::new(),
             params: Vec::new(),
             remaps: Vec::new(),
