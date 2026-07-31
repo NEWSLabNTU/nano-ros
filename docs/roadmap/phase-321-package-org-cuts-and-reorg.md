@@ -1,6 +1,6 @@
 # Phase 321 — Package organization: cuts and the group reorganization
 
-**Status (2026-07-31): W1 landed (W1.e withdrawn). W2.a-d landed. W2.e/W2.f open. W3.b/W3.c landed, W3.a withdrawn.** Split out of the original
+**Status (2026-07-31): COMPLETE. W1 landed (W1.e withdrawn), W2.a-f landed, W3.b/W3.c landed (W3.a withdrawn).** Split out of the original
 combined draft. Sibling phases: [phase-320](phase-320-board-support-tiers.md)
 (support tiers), [phase-322](phase-322-board-crate-consolidation.md) (board crate
 merges, deferred).
@@ -198,8 +198,8 @@ Rationale, with the evidence for each:
 
 - [x] **W2.d** Collapse `zpico/` + `xrce/` + `dds/` + `px4/` + `bridge/` into
       `rmw/`.
-- [ ] **W2.e** Split `core/` into `core/` + `api/` + `platform/` + `tooling/`.
-- [ ] **W2.f** Retax `drivers/`: it currently mixes real hardware drivers,
+- [x] **W2.e** Split `core/` into `core/` + `api/` + `platform/` + `tooling/`.
+- [x] **W2.f** Retax `drivers/`: it currently mixes real hardware drivers,
       kernel/stack `-sys` FFI, protocol-stack adapters (`nros-smoltcp`), a POSIX
       sockets shim (`nsos-netx`), and generic runtime support
       (`nros-baremetal-common`, `nros-transport-callbacks`) across two languages
@@ -305,4 +305,53 @@ vacuous — the C/C++ lanes never compile the shim, and a system
 mutation also passed because the replacement had hit a comment rather than the
 code. Only the fourth run — ROS prefix ignored, `set(_du_dir ...)` broken —
 produced a failing build, and only that run is evidence.
+
+---
+
+## Final shape (2026-07-31)
+
+```
+packages/
+  api/        nros (facade), nros-c, nros-cpp
+  core/       nros-core, nros-node, nros-rmw, nros-rmw-abi, nros-serdes,
+              nros-params, nros-log, nros-macros, nros-diagnostics,
+              nros-orchestration-ir          (23 packages -> 10)
+  rmw/        zenoh, xrce, cyclonedds, uorb, bridge, cffi, metadata,
+              transport-callbacks
+  platform/   14 impl crates (10 OS-level + 4 silicon-level)
+  drivers/    net/ serial/ ipc/ sys/
+  boards/  cli/  interfaces/  reference/  testing/  tooling/  verification/
+config/       the platform knob manifests
+```
+
+## What this cost, and what it taught
+
+**Six path classes, three of them invisible to grep**: absolute; absolute with
+no trailing slash; relative Cargo dep; relative in CMake/shell; relative built
+in a Rust string; and `.parent()` chains. Only a build finds the last two. Every
+group therefore moved in its own commit with its own build.
+
+**Sideways moves change depth too.** Relocating a crate from `core/X` to
+`rmw/X` leaves its own depth unchanged but alters the distance between it and
+its dependents — `../../../core/nros-rmw-cffi` had to become `../../cffi`, not
+`../../../cffi`. `cargo metadata` is the only cheap oracle for that.
+
+**The things that broke were never the crates.** They were: a gate's hardcoded
+allowlist (`check-no-direct-kernel-alloc`), a gitignored generated file with
+absolute paths (`nros-patch.toml`, which broke every example's dependency
+resolution and which no root-level `cargo metadata` reads), a stale prebuilt CLI
+still emitting old paths, and cmake `build/` caches pinning the old absolute
+source dir.
+
+**Three work items did not survive verification** — W1.e (the "inert" lockfiles
+were live), W3.a (the "duplicate" docs share 5 of 37 lines), and W2.a/W2.b's
+premises. Each came from inferring deadness or duplication from a plausible
+signal without checking the mechanism. The items that held up had a call graph
+behind them.
+
+**Cross-session cost was real**: upstream landed a new PX4 cmake module written
+against the pre-split layout mid-rebase, which would have shipped broken. The
+retired-path gate caught one such regression on someone else's change but does
+NOT cover moved-crate paths, only retired GROUP paths — a gap worth closing if
+this kind of reorganization recurs.
 
