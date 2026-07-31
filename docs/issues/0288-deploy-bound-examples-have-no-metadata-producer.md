@@ -149,6 +149,51 @@ tx_thread_interrupt_control.S` on a host build. The pattern to apply is the same
 one the asm fix used — compile the target sources only when building for the
 target — but it is a build-script change per crate, not a one-line `cfg`.
 
+## The blocker is a STACK, not one wall (2026-07-31)
+
+"These packages cannot be host-compiled" turned out to be four layers, each
+hidden behind the one before it. Three are fixed; the fourth is a deliberate
+stop.
+
+| # | layer | symptom | status |
+| --- | --- | --- | --- |
+| 1 | ungated Rust `asm!` in board crates | `invalid register \`r0\`` | **fixed** — `cfg(target_arch)` |
+| 2 | build scripts cross-compile C/asm unconditionally | `riscv64-unknown-elf-gcc … .S`, then `no such instruction: csrrci` | **fixed for ThreadX** |
+| 3 | `no_std` component + host default `panic = "unwind"` | `unwinding panics are not supported without std` | **fixed** — harness sets `panic = "abort"` |
+| 4 | the probe SKIPS deploy-bound packages by declaration | reported `unsupported`, never attempted | **open, deliberately** |
+
+Layers 1–3 are verified on `examples/qemu-riscv64-threadx/rust/action-client`,
+which now host-`cargo check --lib`s after failing at each layer in turn.
+
+### Why layer 4 is not flipped
+
+`metadata_refresh.rs` skips `deploy_bound` packages up front. Lifting that means
+ATTEMPTING the probe, and the Rust path propagates failure (`build_metadata(…)?`)
+whereas the C/C++ path records it as `unsupported`. So flipping the skip requires
+making failure best-effort for these packages — easy — but also means six board
+families that still cannot host-build would each spend a **full failing cargo
+build per sync**, with nothing caching the negative result.
+
+That trades a documented limitation for a build-time regression, which is the
+wrong direction. The prerequisites, in order:
+
+1. finish layer 2 for the remaining boards: `nros-board-freertos`,
+   `nros-board-mps2-an385-freertos`, `nros-board-nuttx-qemu-arm`,
+   `nros-board-nuttx-qemu-riscv`, `nros-board-orin-spe`,
+   `nros-board-threadx-linux`;
+2. give the probe a NEGATIVE cache keyed by source digest, so a package that
+   cannot be probed is not re-attempted every sync;
+3. then make deploy-bound failure best-effort and remove the skip.
+
+Only after (1) and (2) does (3) pay for itself.
+
+### Also fixed on the way
+
+`nros-board-orin-spe` has the same ungated `wfi` and was deliberately left
+alone: its target build cannot be verified here (`nvidia-ivc`'s build script
+needs the NVIDIA SDK), and it is blocked by layer 2 regardless, so gating it
+would be an unverified edit with no present benefit.
+
 ## Cross-refs
 
 * `docs/roadmap/phase-308-cpp-metadata-producer.md`
