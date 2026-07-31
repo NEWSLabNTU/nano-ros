@@ -193,9 +193,17 @@ check_command cargo || MISSING=1
 
 if [ $MISSING -eq 1 ]; then
     echo ""
-    log_error "Missing prerequisites. Please install:"
-    echo "  sudo apt install python3 python3-pip python3-venv cmake ninja-build aria2 git"
-    echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    log_error "Missing prerequisites."
+    # phase-327 W3 — the OS-package remedy is DERIVED from the index (never a
+    # hand-written apt line): the printer composes the native command for THIS
+    # host's package manager. ninja has a sudo-less installer of its own.
+    if command -v nros >/dev/null 2>&1; then
+        nros setup --system || true
+    else
+        echo "  (build the CLI first — just setup-cli — then run: nros setup --system)"
+    fi
+    echo "  ninja (sudo-less): just workspace install-ninja"
+    echo "  rust:  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
     exit 1
 fi
 

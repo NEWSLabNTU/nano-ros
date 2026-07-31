@@ -450,7 +450,7 @@ doctor:
                 codename=$(. /etc/os-release; echo "$VERSION_CODENAME")
                 echo "           Ubuntu detected ($codename). Canonical server-backports PPA:"
                 echo "             sudo add-apt-repository ppa:canonical-server/server-backports"
-                echo "             sudo apt update && sudo apt install qemu-system-arm"
+                echo "             nros setup --system   (composes the install command for this host)"
                 echo "           https://launchpad.net/~canonical-server/+archive/ubuntu/server-backports"
             else
                 echo "           Build from source: https://www.qemu.org/download/#source"

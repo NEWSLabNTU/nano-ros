@@ -43,7 +43,7 @@ doctor:
             echo "  [OK] riscv64 C library headers (picolibc)"
         else
             echo "  [MISSING] riscv64 C library headers — install picolibc:"
-            echo "             sudo apt install picolibc-riscv64-unknown-elf"
+            echo "             nros setup --system   (composes the install command for this host)"
             echo "             (or: just workspace apt-packages). Needed only for the"
             echo "             C/C++ riscv64 examples; the Rust ones build without it."
             fail=1

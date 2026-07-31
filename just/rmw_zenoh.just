@@ -36,8 +36,12 @@ setup:
         git submodule update --init third-party/zenoh/rmw_zenoh
     fi
     if ! command -v colcon &>/dev/null; then
+        # phase-327 W3 — remedy derived from [python.colcon]: pip works on any
+        # host; the apt package name only exists where the ROS apt repo is
+        # configured (issue 0368 F7).
         echo "Error: colcon not found. Install it with:"
-        echo "  sudo apt install python3-colcon-common-extensions"
+        echo "  pip3 install --user colcon-common-extensions"
+        echo "  (or your distro package manager on a ROS-apt host)"
         exit 1
     fi
     if [ ! -f /opt/ros/humble/setup.bash ]; then

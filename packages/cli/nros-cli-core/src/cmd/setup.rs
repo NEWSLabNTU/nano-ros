@@ -100,10 +100,13 @@ pub struct Args {
     #[arg(long)]
     pub system: bool,
 
-    /// With `--system`: run the presence probes and report
-    /// present/missing/unknown instead of printing the install command.
-    /// Exits 1 when anything is missing.
-    #[arg(long, requires = "system")]
+    /// Run presence probes and report present/missing/unknown instead of
+    /// installing/printing; exits 1 when anything is missing. With
+    /// `--system`, probes only the `[system.*]` class; alone, walks EVERY
+    /// declared class — `[system.*]`, `[rust.*]`, `[python.*]` — printing a
+    /// remedy COMPUTED from each entry (phase-327 W3: doctor derives from
+    /// the index, remedies are never hand-written).
+    #[arg(long)]
     pub check: bool,
 
     /// With `--system`: EXECUTE the composed native install command (which
@@ -183,6 +186,9 @@ pub fn run(args: Args) -> Result<()> {
     }
     if args.system {
         return run_system(&index, args.check, args.sudo);
+    }
+    if args.check {
+        return run_check_all(&index);
     }
 
     if let Some(tool) = args.tool.as_deref() {
@@ -1214,12 +1220,26 @@ fn run_system(index: &SdkIndex, check_only: bool, run_sudo: bool) -> Result<()> 
         return Ok(());
     }
     let mut unmapped: Vec<&String> = Vec::new();
+    let mut via_rosdep: Vec<(String, Vec<String>)> = Vec::new();
     for (key, dep) in &to_install {
         if dep.packages_for(mgr).is_empty() {
-            unmapped.push(key);
+            // phase-327 W6 (RFC-0062) — OPTIONAL rosdep backend: for a
+            // manager the index does not map, consult rosdep when (and only
+            // when) it is installed. Keys and their primary mappings stay in
+            // the index; rosdep is never required and never consulted for a
+            // mapped entry.
+            match rosdep_resolve(key, mgr) {
+                Some(pkgs) if !pkgs.is_empty() => via_rosdep.push(((*key).clone(), pkgs)),
+                _ => unmapped.push(key),
+            }
         }
     }
-    let pkgs = compose_packages(&to_install, mgr);
+    let mut pkgs = compose_packages(&to_install, mgr);
+    for (_, extra) in &via_rosdep {
+        pkgs.extend(extra.iter().cloned());
+    }
+    pkgs.sort();
+    pkgs.dedup();
 
     println!(
         "nros setup --system ({mgr}): {} entr(ies) not confirmed present:",
@@ -1231,9 +1251,22 @@ fn run_system(index: &SdkIndex, check_only: bool, run_sudo: bool) -> Result<()> 
             dep.why.as_deref().unwrap_or("(no why recorded)")
         );
     }
+    if !via_rosdep.is_empty() {
+        println!(
+            "  ({} unmapped entr(ies) resolved via rosdep: {})",
+            via_rosdep.len(),
+            via_rosdep
+                .iter()
+                .map(|(k, p)| format!("{k} -> {}", p.join(" ")))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
     if !unmapped.is_empty() {
         println!(
-            "  ({} entr(ies) have no {mgr} mapping and are omitted: {})",
+            "  ({} entr(ies) have no {mgr} mapping and are omitted: {} — map them \
+             in nros-sdk-index.toml, or install rosdep for a database-backed \
+             fallback)",
             unmapped.len(),
             unmapped
                 .iter()
@@ -1260,6 +1293,210 @@ fn run_system(index: &SdkIndex, check_only: bool, run_sudo: bool) -> Result<()> 
         println!("Install with (or re-run with --sudo):\n  {cmd}");
     }
     Ok(())
+}
+
+/// phase-327 W3 — the generic walker: probe every declared class and print a
+/// remedy COMPUTED from the entry. Exit 1 when anything is missing.
+fn run_check_all(index: &SdkIndex) -> Result<()> {
+    let mut missing = 0usize;
+    let mut report = |class: &str, name: &str, ok: ProbeResult, remedy: String| match ok {
+        ProbeResult::Present => println!("  [OK]      {class:<7} {name}"),
+        ProbeResult::Missing => {
+            println!("  [MISSING] {class:<7} {name} (run: {remedy})");
+            missing += 1;
+        }
+        ProbeResult::Unknown => println!("  [UNPROBED] {class:<6} {name}"),
+    };
+
+    // [system.*] — the composed native command is the remedy.
+    let manager = detect_package_manager();
+    for (key, dep) in &index.system {
+        let remedy = match manager {
+            Some(mgr) if !dep.packages_for(mgr).is_empty() => {
+                native_install_command(mgr, dep.packages_for(mgr))
+            }
+            _ => format!("map [system.{key}] for this host in nros-sdk-index.toml"),
+        };
+        report("system", key, run_probe(dep.check.as_ref()), remedy);
+    }
+
+    // [rust.toolchain.*] — `rustup toolchain list` + per-component listing.
+    let toolchain_list = command_stdout("rustup", &["toolchain", "list"]);
+    for (alias, tc) in &index.rust.toolchain {
+        let installed = toolchain_list.lines().any(|l| {
+            l.split_whitespace().next() == Some(tc.channel.as_str())
+                || l.starts_with(&format!("{}-", tc.channel))
+        });
+        let present = if installed {
+            let comps = command_stdout(
+                "rustup",
+                &[
+                    "component",
+                    "list",
+                    "--toolchain",
+                    &tc.channel,
+                    "--installed",
+                ],
+            );
+            tc.components.iter().all(|c| {
+                comps
+                    .lines()
+                    .any(|l| l == c.as_str() || l.starts_with(&format!("{c}-")))
+            })
+        } else {
+            false
+        };
+        report(
+            "rust",
+            &format!("toolchain {alias} ({})", tc.channel),
+            if present {
+                ProbeResult::Present
+            } else {
+                ProbeResult::Missing
+            },
+            format!(
+                "rustup toolchain install --profile minimal {}{}",
+                tc.channel,
+                tc.components
+                    .iter()
+                    .map(|c| format!(" && rustup component add --toolchain {} {c}", tc.channel))
+                    .collect::<String>()
+            ),
+        );
+    }
+
+    // [rust.target.*] — installed-target listing per toolchain.
+    for (alias, target) in &index.rust.target {
+        let channel = target
+            .toolchain
+            .as_ref()
+            .and_then(|a| index.rust.toolchain.get(a))
+            .map(|tc| tc.channel.as_str());
+        let mut rustup_args = vec!["target", "list", "--installed"];
+        if let Some(ch) = channel {
+            rustup_args.extend(["--toolchain", ch]);
+        }
+        let listing = command_stdout("rustup", &rustup_args);
+        let present = listing.lines().any(|l| l.trim() == target.triple);
+        report(
+            "rust",
+            &format!("target {alias} ({})", target.triple),
+            if present {
+                ProbeResult::Present
+            } else {
+                ProbeResult::Missing
+            },
+            format!(
+                "rustup {}target add {}",
+                channel.map(|c| format!("+{c} ")).unwrap_or_default(),
+                target.triple
+            ),
+        );
+    }
+
+    // [rust.cargo-tool.*] — the declared probe, else `cargo install --list`.
+    let cargo_installed = command_stdout("cargo", &["install", "--list"]);
+    for (alias, tool) in &index.rust.cargo_tool {
+        let probed = match &tool.check {
+            Some(c) => run_probe(Some(c)),
+            None => {
+                if cargo_installed
+                    .lines()
+                    .any(|l| l.starts_with(&format!("{} ", tool.crate_name)))
+                {
+                    ProbeResult::Present
+                } else {
+                    ProbeResult::Missing
+                }
+            }
+        };
+        report(
+            "rust",
+            &format!("cargo-tool {alias} ({})", tool.crate_name),
+            probed,
+            format!(
+                "cargo install {}{}{}",
+                tool.crate_name,
+                tool.version
+                    .as_deref()
+                    .map(|v| format!(" --version {v}"))
+                    .unwrap_or_default(),
+                if tool.locked { " --locked" } else { "" }
+            ),
+        );
+    }
+
+    // [python.*].
+    for (alias, py) in &index.python {
+        report(
+            "python",
+            &format!("{alias} ({})", py.pip),
+            run_probe(py.check.as_ref()),
+            format!(
+                "pip3 install --user {}{}",
+                py.pip,
+                py.version
+                    .as_deref()
+                    .map(|v| format!("=={v}"))
+                    .unwrap_or_default()
+            ),
+        );
+    }
+
+    if missing > 0 {
+        bail!("nros setup --check: {missing} declared dependenc(ies) missing (remedies above)");
+    }
+    println!("nros setup --check: every probed declared dependency is present.");
+    Ok(())
+}
+
+/// phase-327 W6 — resolve one abstract key through rosdep, for `manager`.
+/// `None` when rosdep is absent, errors, or has no rule — the caller falls
+/// back to the "unmapped" listing. rosdep's output shape:
+/// `#ROSDEP[<key>]` / `#<installer>` header lines, then one package per line.
+fn rosdep_resolve(key: &str, manager: &str) -> Option<Vec<String>> {
+    if !command_exists("rosdep") {
+        return None;
+    }
+    // rosdep names the brew installer "homebrew"; the rest match ours.
+    let installer = match manager {
+        "brew" => "homebrew",
+        m => m,
+    };
+    let out = std::process::Command::new("rosdep")
+        .args(["resolve", key])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let mut in_section = false;
+    let mut pkgs = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if let Some(section) = line.strip_prefix('#') {
+            // `#ROSDEP[...]` lines separate keys; only the matching
+            // installer header opens a section.
+            in_section = !section.starts_with("ROSDEP") && section.trim() == installer;
+            continue;
+        }
+        if in_section && !line.is_empty() {
+            pkgs.extend(line.split_whitespace().map(str::to_string));
+        }
+    }
+    (!pkgs.is_empty()).then_some(pkgs)
+}
+
+/// Captured stdout of a probe command; empty string when it cannot run (the
+/// caller's listing check then reports missing, which carries the right
+/// remedy anyway).
+fn command_stdout(cmd: &str, args: &[&str]) -> String {
+    std::process::Command::new(cmd)
+        .args(args)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
 }
 
 fn compose_packages(

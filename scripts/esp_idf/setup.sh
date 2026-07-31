@@ -74,6 +74,21 @@ else
 fi
 
 # 2. Run IDF's installer (downloads + sets up toolchains in ~/.espressif/).
+#
+# phase-327 W3 (issue 0368 F7) — IDF's installer bootstraps a venv, and on a
+# stock python without the venv module it dies deep inside a
+# CalledProcessError traceback. Preflight with the entry-derived remedy
+# instead ([system.python3-venv]).
+if ! python3 -m venv --help >/dev/null 2>&1; then
+    echo "ERROR: python3's venv module is missing — esp-idf's install.sh needs it."
+    echo "       Install it (composed for this host):"
+    if command -v nros >/dev/null 2>&1; then
+        nros setup --system 2>/dev/null | tail -2 || true
+    else
+        echo "         sudo apt-get install -y python3-venv   (Debian/Ubuntu)"
+    fi
+    exit 1
+fi
 echo "==> running esp-idf install.sh for targets: $ESP_IDF_TARGETS"
 cd "$WORKSPACE_DIR"
 ./install.sh "$ESP_IDF_TARGETS"

@@ -2,7 +2,8 @@
 
 **Implements:** [RFC-0062](../design/0062-unified-dependency-ssot.md)
 **Resolves:** [issue 0368](../issues/0368-setup-all-on-a-clean-host-seven-modules-fail-on-undeclared-prereqs.md)
-**Status:** In progress (W5 2026-08-01; W1+W2+W4 and the workspace half of W3 2026-08-01)
+**Status:** Complete but for the qemu dist re-cut (2026-08-01; W4's -nros3
+rpath re-cut needs the sdk repo and is the one open item)
 **Informed by:** RFC-0014 (the index this extends), issue 0196 (a gate must
 cover the class it enforces — here applied to doctor probes), issue 0363
 (sync must not narrow a tracked patch table on failure — W5's guard).
@@ -65,14 +66,18 @@ never allowed to abort the sudo-less remainder.
    clearly-marked "N system packages pending" summary; the 0368 cascade
    (zephyr/esp32/px4 failing for want of ninja/targets) is unreproducible.
 
-3. **W3 — doctor derives from the index.** — **PARTIAL** (2026-08-01: the
-   workspace doctor's system block derives from `--system --check`; all THREE
-   measured-wrong remedies now re-pointed at index tools — cyclonedds idlc +
-   play_launch_parser earlier, and threadx_riscv64's riscv gcc now names
-   `nros setup --tool riscv-none-elf-gcc` and accepts the xPack `riscv-none-elf-gcc`
-   dist (which bundles newlib) as satisfying the check.
-   REMAINING: the generic walker for `[rust.*]`/`[python.*]`, the other
-   module doctors, and the no-index-entry lint). A generic walker runs each
+3. **W3 — doctor derives from the index.** — **DONE** (2026-08-01):
+   `nros setup --check` walks ALL classes with computed remedies (rustup/
+   cargo/pip/native-command per entry); workspace doctor derives from
+   `--system --check`; zephyr/rmw_zenoh/esp_idf prereq sites converted; the
+   whole-tree sweep removed every hand-written `sudo apt` remedy from just
+   recipes and `check-sysdep-remedies` (in `check-fast`) bans the class —
+   it caught three more sites (incl. an undeclared doxygen) on its FIRST
+   run, before it was even wired. All THREE measured-wrong remedies
+   re-pointed at index tools (cyclonedds idlc, play_launch_parser, and — by
+   the parallel session — threadx_riscv64's riscv gcc, which now names
+   `nros setup --tool riscv-none-elf-gcc` and accepts the xPack dist as
+   satisfying the check). A generic walker runs each
    entry's `check` and prints the computed remedy (`nros setup --tool X`,
    the composed native command, `rustup target add …`). Convert the module
    doctors; delete the three measured wrong remedies (threadx_riscv64's
@@ -108,18 +113,21 @@ never allowed to abort the sudo-less remainder.
    `AMENT_PREFIX_PATH` and no ROS install; a forced generation failure
    leaves the tracked patch table byte-identical and the sync red.
 
-6. **W6 — verus pin + optional rosdep backend.** — **verus pin PARTIAL** (2026-08-01:
-   `scripts/setup-verus.sh` now pins the release (`VERUS_VERSION`, default
-   `release/0.2026.07.27.31579f0`, `=latest` to opt out) instead of fetching
-   `releases/latest`, and probes `verus --version` before use — on a host whose
-   glibc cannot run the binary it prints an informative `[verus] …` note and
-   exits 0 (verification is in no CI gate) instead of a raw loader crash. REMAINING:
-   the optional rosdep backend.) Pin the verus release to
-   one that runs on the oldest supported LTS glibc (or degrade with a
-   message — verification is in no CI tier gate). Then the rosdep backend:
-   for a detected manager with no index mapping, consult rosdep (public db +
-   the in-repo overlay validated in the 0368 session) — never required,
-   never networked unless invoked.
+6. **W6 — verus pin + optional rosdep backend.** — **DONE** (2026-08-01,
+   merged from two sessions): `scripts/setup-verus.sh` pins via
+   `VERUS_VERSION` (`=latest` to opt out) with an informative glibc degrade
+   instead of a raw loader crash (parallel session), and the DEFAULT pin is
+   `release/0.2026.06.28.1847ab3` — bisected as the NEWEST release that
+   RUNS on glibc 2.35 (05.17 + 06.28 run; 07.05/07.12/07.18/07.27 demand
+   GLIBC_2.39), so 22.04 gets a working verus, not a graceful failure.
+   Two pre-existing script bugs fixed: the fresh-install toolchain parse
+   never matched verus's "required rust toolchain X not found" format, and
+   `set -e` aborted the already-installed branch at `--version` before
+   install_toolchain could run; `verus_ready_or_fix` now disambiguates
+   loader errors (degrade) from missing-toolchain errors (install).
+   Verified end to end on this 22.04 host. rosdep backend: consulted in
+   `run_system` ONLY for entries with no mapping for the detected manager —
+   never required, never touched on a mapped platform.
    Acceptance: `just verification setup` is green-or-informative on Ubuntu
    22.04; `nros setup --system` on a mapped platform never invokes rosdep.
 

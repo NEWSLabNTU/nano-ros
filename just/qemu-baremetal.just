@@ -233,7 +233,7 @@ test-all verbose="":
 
 # Check if QEMU is installed
 check:
-    @which qemu-system-arm > /dev/null || (echo "Error: qemu-system-arm not found. Install with: sudo apt install qemu-system-arm" && exit 1)
+    @which qemu-system-arm > /dev/null || (echo "Error: qemu-system-arm not found. Install with: nros setup --system" && exit 1)
     @echo "QEMU ARM is installed"
 
 # CI: check + test
@@ -382,7 +382,7 @@ doctor:
                 codename=$(. /etc/os-release; echo "$VERSION_CODENAME")
                 echo "           Ubuntu detected ($codename). Canonical server-backports PPA:"
                 echo "             sudo add-apt-repository ppa:canonical-server/server-backports"
-                echo "             sudo apt update && sudo apt install qemu-system-arm"
+                echo "             nros setup --system   (composes the install command for this host)"
                 echo "           https://launchpad.net/~canonical-server/+archive/ubuntu/server-backports"
             else
                 echo "           Build from source: https://www.qemu.org/download/#source"
@@ -414,7 +414,7 @@ help:
     @echo "======================="
     @echo ""
     @echo "Prerequisites:"
-    @echo "  1. Install QEMU: sudo apt install qemu-system-arm"
+    @echo "  1. Install QEMU: nros setup --system   (or just qemu setup for the nros dist)"
     @echo "  2. Set up network: sudo ./scripts/qemu/setup-network.sh"
     @echo ""
     @echo "Build & Test (non-networked):"

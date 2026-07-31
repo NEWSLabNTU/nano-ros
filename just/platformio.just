@@ -24,7 +24,7 @@ setup:
         pipx install platformio
     else
         echo "pipx not found; falling back to pip install --user platformio"
-        echo "(consider: sudo apt install pipx && pipx ensurepath)"
+        echo "(consider: pip3 install --user pipx && pipx ensurepath)"
         pip install --user --upgrade platformio
     fi
     if ! command -v pio >/dev/null 2>&1; then

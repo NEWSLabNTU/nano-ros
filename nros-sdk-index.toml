@@ -502,6 +502,14 @@ packages = []
 # Mappings verified on Ubuntu 22.04 (issue 0368's clean-host walk); dnf/pacman/
 # brew mappings are best-effort and unverified — fix them as hosts appear.
 
+[system.doxygen]
+why = "C API reference docs (just docs-c; found undeclared by check-sysdep-remedies)"
+apt = ["doxygen"]
+dnf = ["doxygen"]
+pacman = ["doxygen"]
+brew = ["doxygen"]
+check = { cmd = "doxygen" }
+
 [system.gcc-arm-none-eabi]
 why = "ARM bare-metal cross gcc via the apt path (the [tool.arm-none-eabi-gcc] dist is the store alternative)"
 apt = ["gcc-arm-none-eabi"]
@@ -699,6 +707,10 @@ crate = "cargo-show-asm"
 check = { cmd = "cargo-asm" }
 
 # --- Python layer (phase-327 W1) --------------------------------------------
+
+[python.tomli]
+pip = "tomli"
+why = "check-fixtures-manifest (python3.10 has no stdlib tomllib; found undeclared running check-fast on a clean host)"
 
 [python.west]
 pip = "west"

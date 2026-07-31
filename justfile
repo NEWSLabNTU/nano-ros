@@ -361,7 +361,7 @@ check-fast: \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest
+    check-cpp-freestanding-includes check-fixtures-manifest check-sysdep-remedies
     @echo "Fast checks passed!"
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
@@ -602,6 +602,11 @@ check-sizes-header-mirrors:
 [private]
 check-retired-submodule-refs:
     @bash scripts/check-retired-submodule-refs.sh
+
+# phase-327 W3 (issue 0368) — no hand-written sudo-apt remedy text in just
+# recipes; the [system.*] index class + `nros setup --system` own that text.
+check-sysdep-remedies:
+    @bash scripts/check-sysdep-remedies.sh
 
 # Phase 215.F.2 — board-crate manifest drift gate. For every
 # `packages/boards/nros-board-*` carrying BOTH a `board.cmake` sidecar
@@ -3057,7 +3062,7 @@ _orchestrate verb tier="everything":
                 if [ -f /etc/os-release ] && grep -q '^ID=ubuntu' /etc/os-release; then
                     echo "  Fallback (system-wide, requires sudo) — Canonical PPA:"
                     echo "    sudo add-apt-repository ppa:canonical-server/server-backports"
-                    echo "    sudo apt update && sudo apt install qemu-system-arm"
+                    echo "    then: nros setup --system   (composes the install command)"
                 else
                     echo "  Fallback: build from source — https://www.qemu.org/download/#source"
                 fi
@@ -3088,7 +3093,7 @@ doc-c:
     set -e
     if ! command -v doxygen &>/dev/null; then
         echo "WARNING: doxygen not found — skipping C API docs."
-        echo "Install with: sudo apt install doxygen"
+        echo "Install with: nros setup --system   (composes the install command; [system.doxygen])"
         exit 0
     fi
     header="packages/api/nros-c/include/nros/nros_generated.h"
@@ -3120,7 +3125,7 @@ doc-cpp:
     set -e
     if ! command -v doxygen &>/dev/null; then
         echo "WARNING: doxygen not found — skipping C++ API docs."
-        echo "Install with: sudo apt install doxygen"
+        echo "Install with: nros setup --system   (composes the install command; [system.doxygen])"
         exit 0
     fi
     mkdir -p target/doxygen/cpp

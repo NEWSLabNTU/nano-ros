@@ -41,7 +41,7 @@ setup:
     fi
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         echo "  [INFO] arm-none-eabi-gcc not on PATH — needed by zpico-sys's cc::Build."
-        echo "         apt: sudo apt install gcc-arm-none-eabi"
+        echo "         or:  nros setup --system   (composes the install command for this host)"
     fi
 
 # Diagnose Orin SPE install status (read-only).
