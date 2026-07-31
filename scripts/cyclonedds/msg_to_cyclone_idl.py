@@ -42,14 +42,41 @@ import tempfile
 from pathlib import Path
 
 
-# Default location of rosidl_adapter scripts. Override via env
-# `NROS_ROSIDL_ADAPTER_BIN_DIR` if a non-Humble distro is in use.
-DEFAULT_ADAPTER_BIN = Path(
-    os.environ.get(
-        "NROS_ROSIDL_ADAPTER_BIN_DIR",
-        "/opt/ros/humble/lib/rosidl_adapter",
-    )
-)
+# rosidl_adapter script resolution ladder (phase-327 / issue 0368: the
+# cyclone lanes must work on a host with NO ROS install):
+#   1. `NROS_ROSIDL_ADAPTER_BIN_DIR` env (explicit override);
+#   2. the ROS install (`/opt/ros/humble/lib/rosidl_adapter`);
+#   3. the vendored `[source.rosidl]` tree (`third-party/ros/rosidl`,
+#      provisioned by `nros setup --source rosidl`) — its scripts import the
+#      module from source, so PYTHONPATH is injected for that case.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_VENDORED_ROSIDL = _REPO_ROOT / "third-party/ros/rosidl"
+
+
+def _adapter_bin_and_env() -> "tuple[Path, dict]":
+    env = dict(os.environ)
+    if explicit := os.environ.get("NROS_ROSIDL_ADAPTER_BIN_DIR"):
+        return Path(explicit), env
+    ros = Path("/opt/ros/humble/lib/rosidl_adapter")
+    if ros.is_dir():
+        return ros, env
+    vendored = _VENDORED_ROSIDL / "rosidl_adapter/scripts"
+    if vendored.is_dir():
+        # Source-tree scripts import rosidl_adapter/_parser/_cli from their
+        # package dirs; python deps (catkin_pkg, empy 3.x, lark) come from
+        # the [python.*] index class.
+        pythonpath = os.pathsep.join(
+            str(_VENDORED_ROSIDL / pkg)
+            for pkg in ("rosidl_adapter", "rosidl_parser", "rosidl_cli")
+        )
+        if existing := env.get("PYTHONPATH"):
+            pythonpath = f"{pythonpath}{os.pathsep}{existing}"
+        env["PYTHONPATH"] = pythonpath
+        return vendored, env
+    return ros, env  # dead path — find_adapter names the remedies
+
+
+DEFAULT_ADAPTER_BIN, _ADAPTER_ENV = _adapter_bin_and_env()
 
 
 
@@ -97,8 +124,9 @@ def find_adapter(name: str) -> Path:
     if not p.is_file():
         sys.exit(
             f"error: rosidl_adapter helper {name} not found at {p}.\n"
-            "Set NROS_ROSIDL_ADAPTER_BIN_DIR to the directory containing\n"
-            "msg2idl.py / srv2idl.py, or install ros-humble-rosidl-adapter."
+            "Provision the vendored copy:  nros setup --source rosidl\n"
+            "(+ python deps: pip3 install --user catkin_pkg 'empy==3.3.4' lark)\n"
+            "or set NROS_ROSIDL_ADAPTER_BIN_DIR / install ros-humble-rosidl-adapter."
         )
     return p
 
@@ -112,6 +140,7 @@ def run_adapter(adapter_script: Path, pkg_dir: Path, rel_iface: Path) -> Path:
     result = subprocess.run(
         cmd,
         cwd=pkg_dir,
+        env=_ADAPTER_ENV,
         capture_output=True,
         text=True,
         check=False,

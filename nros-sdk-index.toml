@@ -498,6 +498,17 @@ packages = []
 # anymore; contributors use the in-tree CLI (issue 0363 forces it fresh).
 
 
+[source.rosidl]
+# phase-327 / issue 0368 — rosidl_adapter for the cyclone msg->IDL step
+# WITHOUT a ROS install: scripts/cyclonedds/msg_to_cyclone_idl.py resolves
+# third-party/ros/rosidl/rosidl_adapter/scripts as its last ladder rung
+# (env override and /opt/ros still win). Python deps ride [python.*]:
+# catkin-pkg, empy (PINNED 3.3.4 — empy 4 breaks rosidl templates), lark.
+version = "humble-5621b26"
+git = "https://github.com/ros2/rosidl"
+ref = "5621b26eff54596a356ad8abd72c06e7650d21f7"
+dest = "third-party/ros/rosidl"
+
 # --- OS packages (phase-327 W1, RFC-0062) -----------------------------------
 #
 # Abstract keys mapped per package manager. `nros setup --system` composes the
@@ -735,6 +746,19 @@ crate = "cargo-show-asm"
 check = { cmd = "cargo-asm" }
 
 # --- Python layer (phase-327 W1) --------------------------------------------
+
+[python.catkin-pkg]
+pip = "catkin_pkg"
+why = "rosidl_adapter import (cyclone msg->IDL on ROS-less hosts)"
+
+[python.empy]
+pip = "empy"
+version = "3.3.4"
+why = "rosidl_adapter templates — empy 4.x is INCOMPATIBLE, keep the pin"
+
+[python.lark]
+pip = "lark"
+why = "rosidl_parser grammar (cyclone msg->IDL on ROS-less hosts)"
 
 [python.tomli]
 pip = "tomli"

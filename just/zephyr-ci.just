@@ -35,7 +35,16 @@ build-fixtures:
     # Phase 180.B — examples read the ROS interface package dirs from env
     # (no more hardcoded /opt/ros/humble/share/* PKG_DIR). Default to the
     # stock Humble install; override per package if your ROS lives elsewhere.
-    export NROS_STD_MSGS_DIR="${NROS_STD_MSGS_DIR:-/opt/ros/humble/share/std_msgs}"
+    # phase-327 / issue 0368 — prefer the ROS install, fall back to the BUNDLED
+    # share tree so the cyclone zephyr cells configure on a ROS-less host
+    # (the /opt/ros default used to bake a dead .msg path into build.ninja).
+    if [ -z "${NROS_STD_MSGS_DIR:-}" ]; then
+        if [ -d /opt/ros/humble/share/std_msgs ]; then
+            export NROS_STD_MSGS_DIR=/opt/ros/humble/share/std_msgs
+        else
+            export NROS_STD_MSGS_DIR="$PWD/packages/cli/interfaces/std_msgs"
+        fi
+    fi
     export NROS_EXAMPLE_INTERFACES_DIR="${NROS_EXAMPLE_INTERFACES_DIR:-/opt/ros/humble/share/example_interfaces}"
     export NROS_BUILTIN_INTERFACES_DIR="${NROS_BUILTIN_INTERFACES_DIR:-/opt/ros/humble/share/builtin_interfaces}"
     export NROS_UNIQUE_IDENTIFIER_MSGS_DIR="${NROS_UNIQUE_IDENTIFIER_MSGS_DIR:-/opt/ros/humble/share/unique_identifier_msgs}"
