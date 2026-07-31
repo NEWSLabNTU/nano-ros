@@ -139,12 +139,26 @@ nros_rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_
     // `file://` ref) so the baked embedded runtime profile (buffer/stack
     // sizes, MaxAutoParticipantIndex, the 127.0.0.1 peer) is overridable
     // without recompiling. Falls back to the built-in profile when unset
-    // (FreeRTOS/ThreadX have no env, so getenv returns null there). The
-    // hosted POSIX path below creates the participant directly and already
-    // honors CYCLONEDDS_URI via Cyclone's own config loader.
+    // (FreeRTOS/ThreadX have no env, so getenv returns null there — and
+    // native_sim's picolibc getenv sees no host environment either, issue
+    // 0367). The hosted POSIX path below creates the participant directly
+    // and already honors CYCLONEDDS_URI via Cyclone's own config loader.
+    //
+    // Issue 0367 — between the env var and the baked profile sits the
+    // Kconfig knob: a non-empty CONFIG_NROS_CYCLONE_CONFIG_XML (declared
+    // in zephyr/Kconfig since phase 117, consumed nowhere until now) is
+    // the compile-time override for targets where no environment exists.
+    // Kconfig strings can't carry escaped double quotes comfortably —
+    // use single-quoted XML attributes (Address='127.0.0.1') in the blob.
+#if defined(CONFIG_NROS_CYCLONE_CONFIG_XML)
+    constexpr const char* kKconfigCycloneConfig = CONFIG_NROS_CYCLONE_CONFIG_XML;
+#else
+    constexpr const char* kKconfigCycloneConfig = "";
+#endif
     const char* user_uri = std::getenv("CYCLONEDDS_URI");
-    const char* cyc_config =
-        (user_uri != nullptr && user_uri[0] != '\0') ? user_uri : kEmbeddedCycloneConfig;
+    const char* cyc_config = (user_uri != nullptr && user_uri[0] != '\0') ? user_uri
+                             : (kKconfigCycloneConfig[0] != '\0')         ? kKconfigCycloneConfig
+                                                                          : kEmbeddedCycloneConfig;
     dds_entity_t domain = dds_create_domain(domain_id, cyc_config);
     if (domain < 0 && domain != DDS_RETCODE_PRECONDITION_NOT_MET) {
         free_session_state(state);

@@ -138,10 +138,14 @@ config NROS_CYCLONE_CONFIG_XML
     default ""
     help
       Optional Cyclone DDS configuration XML blob baked at build time
-      (Zephyr has no filesystem to read from at runtime). Leave empty
-      to use Cyclone's compiled-in defaults; set this to override
-      transport / discovery / QoS settings. Mirrors the
-      ddsi_config struct produced by Cyclone's XML parser.
+      (Zephyr has no filesystem to read from at runtime, and native_sim
+      has no usable environment for CYCLONEDDS_URI — issue 0367). Leave
+      empty to use the platform's baked profile; set this to override
+      transport / discovery / tracing settings wholesale (the blob
+      REPLACES the baked profile — carry over its Sizing/Threads
+      sections). Use single-quoted XML attributes
+      (Address='127.0.0.1') — Kconfig strings and escaped double
+      quotes do not mix.
 
 endif # NROS_RMW_CYCLONEDDS
 
