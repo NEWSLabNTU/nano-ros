@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#370** (filed as #368; renumbered — fifth id collision between parallel sessions) — zephyr fixture family broken after `just setup-cli` on current main: `nros codegen entry`
+rejects ws-realtime-c's committed system model with "places no nodes on board `zephyr`" — the
+rebuilt CLI (ros-launch-resolve line, RFC-0060) and the committed model disagree about
+execution.deploy targets, so `build-test-fixtures` fails and tier-1 ci can't reach fixture
+freshness. Same shape as archived #0361. See `0370-*`. (2026-08-01)
+
 **#367** — `CONFIG_NROS_CYCLONE_CONFIG_XML` is declared in `zephyr/Kconfig` but consumed NOWHERE:
 `session_create` picks env `CYCLONEDDS_URI` or the hard-coded `kEmbeddedCycloneConfig` only — and on
 native_sim picolibc `getenv` sees no host environment, so the baked profile (multicast off, index
