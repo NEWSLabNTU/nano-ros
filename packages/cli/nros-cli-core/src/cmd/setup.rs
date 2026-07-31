@@ -617,27 +617,11 @@ fn install_single_tool(
         eprintln!("(--dry-run: nothing installed)");
         return Ok(());
     }
-    match action {
-        InstallAction::Present => {}
-        InstallAction::Unavailable => bail!(
-            "nros setup --tool {name} {}: no prebuilt for {host} and no source recipe",
-            tool.version
-        ),
-        other => {
-            let prov = execute(&other, name, &tool.version, &prefix)
-                .wrap_err_with(|| format!("install {name} {}", tool.version))?;
-            // Only the shared store is tracked by the lock; --prefix is local.
-            if prefix_override.is_none() {
-                let lock_path = PathBuf::from(LOCK_FILE);
-                let mut lock = SdkLock::load(&lock_path)?;
-                lock.record(name, &prov);
-                lock.save(&lock_path)?;
-            }
-        }
-    }
-    // phase-327 W4 (issue 0368 F3) — the dist's declared RUNTIME system deps.
-    // Probe and NAME what is missing here, so the failure surface is "install
-    // libslirp0" rather than a bare loader error out of a later smoke check.
+    // phase-327 W4 (issue 0368 F3) — the tool's declared system deps: a
+    // dist's RUNTIME libs (libslirp) or a source recipe's BUILD deps (glib
+    // for qemu's meson). Probe BEFORE doing any work, so the failure surface
+    // is "install these packages" rather than a bare loader error out of a
+    // later smoke check — or a dead configure 40 minutes into a source build.
     let mut missing_sys: Vec<&str> = Vec::new();
     for key in &tool.system {
         if let Some(dep) = index.system.get(key)
@@ -656,12 +640,30 @@ fn install_single_tool(
             .map(|mgr| native_install_command(mgr, &compose_packages(&entries, mgr)))
             .unwrap_or_else(|| "<no supported package manager detected>".to_string());
         bail!(
-            "nros setup --tool {name}: installed, but its dist needs {} runtime \
-             system package(s) this host is missing: {}.\n  Install with:  {hint}\n  \
+            "nros setup --tool {name}: needs {} system package(s) this host is \
+             missing: {}.\n  Install with:  {hint}\n  \
              (declared as [tool.{name}] system = [..]; probes via [system.*].check)",
             missing_sys.len(),
             missing_sys.join(", "),
         );
+    }
+    match action {
+        InstallAction::Present => {}
+        InstallAction::Unavailable => bail!(
+            "nros setup --tool {name} {}: no prebuilt for {host} and no source recipe",
+            tool.version
+        ),
+        other => {
+            let prov = execute(&other, name, &tool.version, &prefix)
+                .wrap_err_with(|| format!("install {name} {}", tool.version))?;
+            // Only the shared store is tracked by the lock; --prefix is local.
+            if prefix_override.is_none() {
+                let lock_path = PathBuf::from(LOCK_FILE);
+                let mut lock = SdkLock::load(&lock_path)?;
+                lock.record(name, &prov);
+                lock.save(&lock_path)?;
+            }
+        }
     }
     Ok(())
 }

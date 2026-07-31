@@ -195,6 +195,10 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # only (not hosted) — `just esp32 setup` → `nros setup --tool esp32-qemu`.
 [tool.esp32-qemu]
 version = "esp-develop-nros1"
+# Source-built (no dist): these are BUILD deps of qemu's meson configure —
+# found undeclared when the configure died on glib-2.0 (phase-327 W4 applied
+# to source recipes; probed BEFORE the build so the failure names packages).
+system = ["libglib2-dev", "libpixman-dev", "libgcrypt-dev"]
 upstream = "esp-develop"
 [tool.esp32-qemu.source]
 git = "https://github.com/espressif/qemu"
@@ -501,6 +505,30 @@ packages = []
 # --sudo); `nros setup --system --check` runs the probes (the doctor surface).
 # Mappings verified on Ubuntu 22.04 (issue 0368's clean-host walk); dnf/pacman/
 # brew mappings are best-effort and unverified — fix them as hosts appear.
+
+[system.libglib2-dev]
+why = "qemu source builds (esp32-qemu meson configure)"
+apt = ["libglib2.0-dev"]
+dnf = ["glib2-devel"]
+pacman = ["glib2"]
+brew = ["glib"]
+check = { pkg_config = "glib-2.0" }
+
+[system.libpixman-dev]
+why = "qemu source builds (softmmu display layer)"
+apt = ["libpixman-1-dev"]
+dnf = ["pixman-devel"]
+pacman = ["pixman"]
+brew = ["pixman"]
+check = { pkg_config = "pixman-1" }
+
+[system.libgcrypt-dev]
+why = "qemu source builds (--enable-gcrypt)"
+apt = ["libgcrypt20-dev"]
+dnf = ["libgcrypt-devel"]
+pacman = ["libgcrypt"]
+brew = ["libgcrypt"]
+check = { cmd = "libgcrypt-config" }
 
 [system.doxygen]
 why = "C API reference docs (just docs-c; found undeclared by check-sysdep-remedies)"
