@@ -89,6 +89,14 @@ SEPARATE cmake ABI-detection failure (`undefined reference to _write/_sbrk` — 
 `--specs=nosys.specs` missing), a distinct third freertos-chain blocker (codegen → include-path → cmake-ABI).
 Board-crate v0.4.0 lockstep drift left as its own question. See `archived/0365-*`. (2026-07-31)
 
+**#366** — FreeRTOS cmake configure fails *"Detecting C compiler ABI info - failed"*: `arm-freertos-armcm3.cmake`
+sets `CMAKE_C_COMPILER_WORKS TRUE` but NOT `CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY`, so CMake's
+ABI-detection `try_compile` LINKS an executable against arm-none-eabi newlib, whose syscall stubs
+(`_write`/`_read`/`_close`/`_lseek`/`_sbrk`) are unresolved (no board stubs / `--specs=nosys.specs` at
+detection time) → configure aborts. Only freertos trips it (nuttx uses its own libc, threadx picolibc). Fix =
+`set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)` in the toolchain (compile-only ABI detection, standard
+bare-metal idiom). Third freertos-chain blocker after #361 (codegen) + #365 (include path). See `0366-*`. (2026-07-31)
+
 **#362** — phase-325 W3's uORB→RMW bridge is blocked on TYPES, not plumbing. The plumbing is proven
 (one PX4 module links uORB + zenoh, `NodeBuilder().rmw()` gives two sessions, backend selection is
 the cargo-feature knob one layer down). But the bridge must TRANSLATE: inward a payload is the PX4
