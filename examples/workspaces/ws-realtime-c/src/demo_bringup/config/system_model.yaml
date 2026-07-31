@@ -26,6 +26,7 @@ structure:
 execution:
   deploy:
     /ctrl_node:
+      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -33,6 +34,7 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /telem_node:
+      target: linux
       domain: 0
       rmw: zenoh
       extra:

@@ -4,7 +4,7 @@ meta:
   - path: launch/system.launch.xml
     sha256: d43a001d1ab49eaa983e0e23e10b177c0ad4b4fee09cb212b7446cd6a4eb82da
   - path: system.toml
-    sha256: 9ed29287da8fef7924e2b9d05abcd0bf9602b7e125d95720057fb55112bb82be
+    sha256: 0b4bed8f3406a9e43bcb0ce273c7e20b1ea79568729b3afc81e5b8161221ff6d
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -24,19 +24,6 @@ structure:
       exec: telem
       node_name: telem_node
 execution:
-  deploy:
-    /ctrl_node:
-      domain: 0
-      rmw: zenoh
-      extra:
-        deploy_name: freertos
-        kind: embedded
-    /telem_node:
-      domain: 0
-      rmw: zenoh
-      extra:
-        deploy_name: freertos
-        kind: embedded
   tiers:
     high:
       spin_period_us: 10000

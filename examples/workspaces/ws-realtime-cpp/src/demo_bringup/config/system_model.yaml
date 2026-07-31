@@ -4,7 +4,7 @@ meta:
   - path: launch/system.launch.xml
     sha256: 263292326cd1f0847e622d705fefdc259c519b5f4d32240960e7223dd4156c25
   - path: system.toml
-    sha256: c0155c6b8967aa67ee2479488845416e62bf75c23c410482c8babc1c5d7088b7
+    sha256: 26e84b703581d5b5234fe94233d8841a9f34a013418ec38f6ea8ac4a68444bed
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -26,6 +26,7 @@ structure:
 execution:
   deploy:
     /ctrl_node:
+      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -33,6 +34,7 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /telem_node:
+      target: linux
       domain: 0
       rmw: zenoh
       extra:
