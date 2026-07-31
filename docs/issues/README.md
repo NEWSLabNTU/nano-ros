@@ -67,7 +67,14 @@ reference to nros_cpp_get_param_integer`, which is what exposed the disjoint pat
 unaffected. Same shape as #0311: one axis, two sources that cannot disagree because only one is
 read. See `0353-*`. (2026-07-31)
 
-**#360** — `nros_config_generated.h` is written to a FLAT path while its own checked-in stub
+**#360** [severity raised to **high**, 2026-07-31] — DEMONSTRATED, not hypothetical: building
+`libnros_cpp.a` with `rmw-zenoh-cffi` for phase-325 W3 overwrote the `rmw-cffi` archive W2's uORB
+example links, and that example's SITL build failed with **74 undefined references** to zenoh-pico
+platform symbols it never asked for (`BACKENDS uorb`, no zenoh use). Rebuilding with the original
+features restored it. So the single-path problem is not confined to the generated header — the
+ARCHIVE has it too, and feature selection changes what the archive REQUIRES, not merely what it
+describes. The link failure is the lucky half; the header half fails silently at runtime. Original
+finding: `nros_config_generated.h` is written to a FLAT path while its own checked-in stub
 documents `<variant_slug>/nros/…` ("sorted underscore-joined cargo feature list"). One file per
 project, not per feature set — so a second `cargo build` with different features OVERWRITES the
 header a first archive's consumer compiles against. That header carries STORAGE SIZES, so the

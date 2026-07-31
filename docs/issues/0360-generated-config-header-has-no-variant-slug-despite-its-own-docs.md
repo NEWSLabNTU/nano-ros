@@ -3,7 +3,7 @@ id: 360
 title: "`nros_config_generated.h` is written to a FLAT path, not the `<variant_slug>/` its own stub documents — two feature sets overwrite one header, and the sizes it carries are what a consumer compiles against"
 status: open
 type: bug
-severity: medium
+severity: high
 area: build
 related: [issue-0268, issue-0088, issue-0245, phase-325]
 ---
@@ -74,6 +74,40 @@ Note also that the include must be **prepended**, because
 behaviour — the `#error` is the intended failure when nothing supplies the real
 header — but it means include ORDER is load-bearing and undocumented.
 
+## Demonstrated, not hypothetical (2026-07-31, phase-325 W3)
+
+The original write-up reasoned about the hazard. It then happened, and the
+failure is broader than the header: **`target/release/libnros_cpp.a` is itself a
+single path for every feature set**, and the ARCHIVE has the same problem its
+generated header does.
+
+phase-325 W3 needed a zenoh-capable archive:
+
+```sh
+cargo build -p nros-cpp --no-default-features --features std,rmw-zenoh-cffi --release
+```
+
+That overwrote the `std,rmw-cffi` archive W2's uORB example links. The example's
+module asks for `BACKENDS uorb` and touches no zenoh symbol, but its SITL build
+then failed with **74 undefined references** — `z_clock_now`, `_z_condvar_*`,
+`_z_task_*`, the zenoh-pico socket shims. A backend it never asked for came in
+with the archive and demanded its platform layer.
+
+Rebuilding with the original features restored it (`px4_uorb_interop_e2e` back to
+PASS). Nothing warned; the two builds simply raced for one filename.
+
+This makes the failure mode concrete in a way the header argument was not:
+
+- It is not confined to sizes. Feature selection changes what the archive
+  REQUIRES, not just what it describes.
+- It fails at LINK here, which is the lucky case. The header half of the same
+  problem fails at runtime, silently, which is why this issue exists.
+- Consumers cannot defend themselves: `nros_px4_add_module` validates that the
+  archive DEFINES the backends it was asked for, and that check passes fine — the
+  archive simply contains MORE than was asked for.
+
+Severity raised medium → high on this evidence.
+
 ## Ways to fix
 
 **A. Implement the documented slug.** Write to
@@ -94,7 +128,15 @@ class, but leaves two variants still fighting over one file.
 own — it documents the hazard rather than removing it. Worth doing as part of A
 or B so the guidance stops describing a mechanism that does not exist.
 
-**Recommended: B, then C.** A is the "right" answer but ripples through every
+**D. Give the ARCHIVE a variant path too** (added 2026-07-31). Whatever is done
+for the header must cover `libnros_cpp.a`, since the demonstration above is the
+archive, not the header. `target/release/` is cargo's, so this likely means an
+export step — e.g. `just` recipe copying to
+`build/nros-cpp/<features>/lib…a` + the matching generated headers, which is also
+exactly what phase-325 W1.4 wanted ("ship the archive and its generated headers
+as one unit").
+
+**Recommended: D and B together, then C.** A is the "right" answer but ripples through every
 consumer; B closes the failure mode that actually bites (silent → loud) at a
 fraction of the cost. Whichever lands, C must follow — a stub that documents a
 slug nobody writes is how this went unnoticed.
