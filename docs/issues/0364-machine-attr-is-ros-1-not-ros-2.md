@@ -1,4 +1,4 @@
-# 0363 — `<node machine=>` is ROS 1 syntax, not ROS 2
+# 0364 — `<node machine=>` is ROS 1 syntax, not ROS 2
 
 **Status:** Open
 **Filed:** 2026-07-31
