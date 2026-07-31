@@ -1,27 +1,44 @@
 meta:
   version: 1
-# RFC-0052 / phase-296 R2 — resolved SystemModel for ws-realtime-cpp-fvp demo (FVP AEMv8R entry).
-# Hand-authored to mirror the equivalent `system.toml` (2 nodes, 2 tiers,
-# group→tier bindings); play_launch resolves tiers from a `--sched` platform
-# file, so this is the shape `play_launch resolve --sched <platform.yaml>`
-# emits. NO deploy layer: the system.toml's multi-[deploy.*] blocks pick the
-# BOARD per entry (cmake DEPLOY), not a per-node placement — the SAME nodes
-# build for every board, so every entry keeps all nodes and resolves the tier
-# table for its board's RTOS. The typed C++ path resolves each node's component class from the cmake
-# metadata by (pkg, exec); the model carries pkg + exec.
+  inputs:
+  - path: launch/system.launch.xml
+    sha256: 263292326cd1f0847e622d705fefdc259c519b5f4d32240960e7223dd4156c25
+  - path: system.toml
+    sha256: 82259daf24c961f5c13ed4394a88ce39a3d6f44ecb25329a91a1c19a6712fd53
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    system.launch.xml:
+      file: system.launch.xml
   nodes:
     /ctrl_node:
-      scope: /
+      scope: system.launch.xml
       pkg: ctrl_pkg
       exec: ctrl
+      node_name: ctrl_node
     /telem_node:
-      scope: /
+      scope: system.launch.xml
       pkg: telem_pkg
       exec: telem
+      node_name: telem_node
 execution:
+  deploy:
+    /ctrl_node:
+      domain: 0
+      rmw: cyclonedds
+      extra:
+        deploy_name: fvp
+        kind: zephyr
+        target: fvp_baser_aemv8r_smp
+    /telem_node:
+      domain: 0
+      rmw: cyclonedds
+      extra:
+        deploy_name: fvp
+        kind: zephyr
+        target: fvp_baser_aemv8r_smp
   tiers:
     high:
       spin_period_us: 10000

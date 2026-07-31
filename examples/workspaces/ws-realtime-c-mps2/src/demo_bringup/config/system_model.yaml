@@ -26,14 +26,12 @@ structure:
 execution:
   deploy:
     /ctrl_node:
-      target: mcu:mps2-an385-freertos
       domain: 0
       rmw: zenoh
       extra:
         deploy_name: freertos
         kind: embedded
     /telem_node:
-      target: mcu:mps2-an385-freertos
       domain: 0
       rmw: zenoh
       extra:
