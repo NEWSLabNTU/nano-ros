@@ -49,6 +49,23 @@ name = "fib_client"
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
 
+# Embedded deploy targets for this workspace's embedded Entry packages (issue
+# 0356). No `launch` key → the default `system.launch.xml` nodes deploy to each
+# board (the same demo, cross-compiled). The resolver places multi-board nodes
+# board-agnostically; `nros codegen entry --board <b>` selects the concrete board.
+
+[deploy.freertos]
+kind = "embedded"
+board = "mps2-an385-freertos"
+
+[deploy.nuttx]
+kind = "embedded"
+board = "nuttx-qemu-arm"
+
+[deploy.threadx-linux]
+kind = "embedded"
+board = "threadx-linux"
+
 # phase-263 Track C — per-host deploy targets for the multi-host launch
 # (`launch/multihost.launch.xml`: talker on robot1, listener on robot2). The target id
 # matches the launch `<node machine="…">` id; `native_entry_robot{1,2}` bake each host's

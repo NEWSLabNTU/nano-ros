@@ -21,7 +21,6 @@ structure:
 execution:
   deploy:
     /add_server:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:

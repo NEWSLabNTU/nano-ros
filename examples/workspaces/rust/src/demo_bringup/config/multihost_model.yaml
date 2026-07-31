@@ -26,7 +26,6 @@ structure:
 execution:
   deploy:
     /listener:
-      target: linux
       host: robot2
       domain: 0
       rmw: zenoh
@@ -35,7 +34,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /talker:
-      target: linux
       host: robot1
       domain: 0
       rmw: zenoh

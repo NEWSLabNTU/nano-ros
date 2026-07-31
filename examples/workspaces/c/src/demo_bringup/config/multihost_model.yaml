@@ -4,7 +4,7 @@ meta:
   - path: launch/multihost.launch.xml
     sha256: 2d5adbc9d9593fafe81e1133a4c8614d41cbca33788c35f8b944156d91c02e37
   - path: system.toml
-    sha256: 1bbe619b8faaa76594e5dd1c5aece9f22453b42bb6468cb7acdeda9f0034572c
+    sha256: 053c04ff8433b5fb03487247c44b6e6763e53cf7e61b2c806965b2472979adf1
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -26,7 +26,6 @@ structure:
 execution:
   deploy:
     /listener:
-      target: linux
       host: robot2
       domain: 0
       rmw: zenoh
@@ -35,7 +34,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /talker:
-      target: linux
       host: robot1
       domain: 0
       rmw: zenoh

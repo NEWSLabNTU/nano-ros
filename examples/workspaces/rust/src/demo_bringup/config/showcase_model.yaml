@@ -46,7 +46,6 @@ structure:
 execution:
   deploy:
     /add_client:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -54,7 +53,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /add_server:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -62,7 +60,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /fibonacci_client:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -70,7 +67,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /fibonacci_server:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -78,7 +74,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /listener:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -86,7 +81,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /talker:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:
