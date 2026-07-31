@@ -62,7 +62,7 @@ The partition moves from bake time to resolve time, so `Plan::for_host` and
 4. **system.toml.** `[deploy.robot1]` / `[deploy.robot2]` blocks in the
    example workspaces stop doubling as placement selectors. Each needs an
    explicit `nodes = [..]` list, or the blocks are removed if the per-host
-   models make them redundant. See issue 0363 for why the `by_machine`
+   models make them redundant. See issue 0364 for why the `by_machine`
    fallback went away.
 
 5. **Tests.** `packages/testing/nros-tests/tests/multihost_partition_bake.rs`
