@@ -136,5 +136,8 @@ the per-feature footprint reportable.
   IVC link-transport wire spec, cited by the bridge daemon.
 - [`packages/drivers/nvidia-ivc/`](../../drivers/nvidia-ivc/) — the
   IVC driver crate that backs `PlatformIvc`.
-- [`packages/platforms/nros-platform-orin-spe/`](../../platforms/nros-platform-orin-spe/) — the
-  thin trait-impl crate.
+- [`config/orin-spe/nros-platform.toml`](../../../config/orin-spe/nros-platform.toml) — the
+  platform knob manifest. (This previously linked
+  `packages/platforms/nros-platform-orin-spe/` as "the thin trait-impl crate";
+  no such crate has ever existed — the link was dead before phase-321 moved
+  anything.)

@@ -60,7 +60,7 @@ Five files need changes to register a new platform. This example adds a fictiona
 ### 1. Create the platform crate
 
 ```
-packages/core/nros-platform-myos/
+packages/platform/nros-platform-myos/
   Cargo.toml
   src/
     lib.rs
@@ -131,7 +131,7 @@ This is the recommended approach. Create a ZST and implement each capability as 
 ### Skeleton
 
 ```rust
-// packages/core/nros-platform-myos/src/lib.rs
+// packages/platform/nros-platform-myos/src/lib.rs
 #![no_std]
 use core::ffi::c_void;
 

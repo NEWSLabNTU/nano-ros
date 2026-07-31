@@ -55,7 +55,7 @@ set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast
 # into packages/platform/nros-platform-foo/ for a Cargo + cmake hybrid, or
 # may declare an IMPORTED target pointing at a prebuilt RTOS archive.
 add_subdirectory(
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-foo"
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/platform/nros-platform-foo"
     nros_platform_foo_build)
 
 add_library(nros_platform_foo_iface INTERFACE)

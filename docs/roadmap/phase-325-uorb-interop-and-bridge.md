@@ -406,7 +406,7 @@ both documented, neither surprising:
 
 | missing | supplied by |
 | --- | --- |
-| `nros_platform_{wake_init,wake_wait_ms,wake_signal,wake_drop,wake_storage_size,wake_storage_align,sleep_ms}` | the **posix** platform shim (`packages/core/nros-platform-posix`) |
+| `nros_platform_{wake_init,wake_wait_ms,wake_signal,wake_drop,wake_storage_size,wake_storage_align,sleep_ms}` | the **posix** platform shim (`packages/platform/nros-platform-posix`) |
 | `nros_app_register_backends` | normally a strong-stub TU **generated** by `nano_ros_link_rmw()` (`cmake/NanoRosLink.cmake`); a hand-rolled PX4 module gets no generation and must define it |
 
 The platform half confirms the phase's premise: SITL is an ordinary host process,
@@ -438,7 +438,7 @@ instead of being pulled into PX4's tree:
 
 ```sh
 cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release
-cmake -S packages/core/nros-platform-posix -B <dir> && cmake --build <dir>
+cmake -S packages/platform/nros-platform-posix -B <dir> && cmake --build <dir>
 ```
 
 So W1.2's helper is a **link helper, not a bootstrap**: it points a PX4 module at

@@ -40,7 +40,7 @@
 # ---------------------------------------------------------------------------
 #
 #   cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release
-#   cmake -S packages/core/nros-platform-posix -B build/nros-platform-posix
+#   cmake -S packages/platform/nros-platform-posix -B build/nros-platform-posix
 #   cmake --build build/nros-platform-posix
 #
 # Override either path with -DNROS_CPP_ARCHIVE=... / -DNROS_PLATFORM_ARCHIVE=...
@@ -88,7 +88,7 @@ _nros_px4_resolve_archive(_NROS_PX4_CPP_A NROS_CPP_ARCHIVE NROS_CPP_ARCHIVE
 
 _nros_px4_resolve_archive(_NROS_PX4_PLATFORM_A NROS_PLATFORM_ARCHIVE NROS_PLATFORM_ARCHIVE
     "${NANO_ROS_ROOT}/build/nros-platform-posix/libnros_platform_posix.a"
-    "cmake -S ${NANO_ROS_ROOT}/packages/core/nros-platform-posix -B ${NANO_ROS_ROOT}/build/nros-platform-posix && cmake --build ${NANO_ROS_ROOT}/build/nros-platform-posix")
+    "cmake -S ${NANO_ROS_ROOT}/packages/platform/nros-platform-posix -B ${NANO_ROS_ROOT}/build/nros-platform-posix && cmake --build ${NANO_ROS_ROOT}/build/nros-platform-posix")
 
 # nros-cpp / nros-c live under packages/api (phase-321 moved them there from
 # packages/core); the ABI headers stayed in packages/core. Validated below rather
@@ -100,7 +100,7 @@ set(_NROS_PX4_INCLUDES
     "${NANO_ROS_ROOT}/packages/api/nros-cpp/include"
     "${NANO_ROS_ROOT}/packages/api/nros-c/include"
     "${NANO_ROS_ROOT}/packages/core/nros-rmw-abi/include"
-    "${NANO_ROS_ROOT}/packages/core/nros-platform-api/include")
+    "${NANO_ROS_ROOT}/packages/platform/nros-platform-api/include")
 
 # The PER-BUILD generated headers (storage sizes, feature constants), emitted by
 # nros-c/nros-cpp build.rs into $CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/.
