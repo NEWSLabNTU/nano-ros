@@ -947,14 +947,11 @@ mod tests {
     fn both_deploy_bound_spellings_agree() {
         use super::PackageMetadataNros;
 
-        let via_entry: PackageMetadataNros = toml::from_str(
-            "[entry]\ndeploy = \"native\"\n",
-        )
-        .expect("entry form parses");
-        let via_deploy: PackageMetadataNros = toml::from_str(
-            "[deploy.zephyr]\nboard = \"native_sim/native/64\"\n",
-        )
-        .expect("deploy form parses");
+        let via_entry: PackageMetadataNros =
+            toml::from_str("[entry]\ndeploy = \"native\"\n").expect("entry form parses");
+        let via_deploy: PackageMetadataNros =
+            toml::from_str("[deploy.zephyr]\nboard = \"native_sim/native/64\"\n")
+                .expect("deploy form parses");
         let neither: PackageMetadataNros =
             toml::from_str("[node]\nclass = \"demo::Talker\"\n").expect("node form parses");
 
