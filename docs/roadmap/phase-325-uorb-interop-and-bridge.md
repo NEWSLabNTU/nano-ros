@@ -247,9 +247,12 @@ is its own phase; nothing here should pretend to deliver it.
 Both items are stated in full under "Style: PX4's, and it conflicts with ours"
 above; listed here so the sequencing is unmissable.
 
-- [ ] **W0.1** `.clang-format-ignore` the PX4 module trees; PX4's astyle owns them.
-- [ ] **W0.2** Bring `nros-px4-register-check` into PX4 convention (BSD header,
-      tabs, `ModuleBase` + `print_usage`), or record why not.
+- [x] **W0.1** `.clang-format-ignore` the PX4 module trees; PX4's astyle owns them.
+      (A guard, not a fix — nothing formats them today; see the note above.)
+- [x] **W0.2** Bring `nros-px4-register-check` into PX4 convention (tabs, Kconfig,
+      `PRINT_MODULE_*`), or record why not. Done — and NOT `ModuleBase`, which is
+      for daemons; this is a one-shot command modelled on `src/systemcmds/gpio`.
+      The BSD header is deliberately not adopted (licensing, not style).
 
 **Acceptance:** `nros_register_check help` prints its `PRINT_MODULE_DESCRIPTION`
 from the pxh shell. **DONE 2026-07-31** — verified live:
