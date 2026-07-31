@@ -390,7 +390,11 @@ mod tests {
                 String::from_utf8_lossy(&out.stderr)
             );
         }
-        let filter = String::from_utf8_lossy(&out.stdout).to_lowercase();
+        // Two views on purpose: the family/binary checks are spelling-agnostic,
+        // but the CAPITALISED assertion below is precisely about case — matching
+        // it against a lowercased copy would make it unfalsifiable.
+        let raw = String::from_utf8_lossy(&out.stdout).to_string();
+        let filter = raw.to_lowercase();
         for c in all_runtime_cells() {
             if matches!(c.platform, PlatformId::Native) {
                 continue;
@@ -406,10 +410,34 @@ mod tests {
                 }
                 family.push(ch.to_ascii_lowercase());
             }
-            let covered = filter.contains(&format!("binary(~{family})"));
             assert!(
-                covered,
+                filter.contains(&format!("binary(~{family})")),
                 "native lane would still run {:?} binaries — lane-filter.sh emitted:\n{filter}",
+                c.platform
+            );
+
+            // Issue 0357 — binary exclusion alone is not coverage. The matrix
+            // consumers put EVERY platform's cases in one generically-named
+            // binary (`rtos_e2e` is entirely cross-platform and matches no token
+            // at all), so a lane filtered only by binary name still ran 53
+            // cross-platform tests on a host with none of their fixtures.
+            assert!(
+                filter.contains(&format!("test(~{family})")),
+                "no TEST-level exclusion for {:?}; a cross-platform case inside a \
+                 generically-named binary would still run — lane-filter.sh emitted:\n{filter}",
+                c.platform
+            );
+
+            // nextest's `~` is a case-SENSITIVE substring match and the harnesses
+            // disagree on spelling: rstest emits `platform_1_Platform__Freertos`,
+            // hand-rolled matrices emit `case_05_zephyr_rust`. One spelling
+            // silently covers half the suite.
+            let mut cap = family.clone();
+            cap[..1].make_ascii_uppercase();
+            assert!(
+                raw.contains(&format!("test(~{cap})")),
+                "no CAPITALISED test exclusion for {:?} — rstest case names would \
+                 survive (nextest `~` is case-sensitive):\n{raw}",
                 c.platform
             );
         }
@@ -417,5 +445,64 @@ mod tests {
             !filter.contains("binary(~native)"),
             "the native lane must not exclude itself:\n{filter}"
         );
+
+        // The unit-test exemption. Without it the lane drops host-only tests
+        // whose names merely mention a platform — `board::tier::tests::
+        // threadx_inverts_scale`, `qemu::tests::test_parse_results`, and
+        // `zephyr::tests::content_aware_staleness_ignores_mtime_only_bumps`, a
+        // phase-318 test. Those need no fixture and no toolchain, so excluding
+        // them trades one coverage hole for another.
+        assert!(
+            filter.contains("test(~tests::)"),
+            "the unit-test exemption is missing; host-only `mod tests` cases that \
+             mention a platform would be excluded from tier 1:\n{filter}"
+        );
+    }
+
+    /// The filter's lines are ANDed by the caller. Emitting them as separate
+    /// nextest `-E` flags instead UNIONS them, and `not A or not B` is a
+    /// tautology that selects everything — a filter that silently does nothing.
+    /// `just test-all` joins with " and " into a single `-E`; this pins the
+    /// grouped line's shape so a future edit cannot produce an expression that
+    /// only composes correctly under OR.
+    #[test]
+    fn lane_filter_test_exclusions_are_one_grouped_conjunction() {
+        let out = std::process::Command::new("bash")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../scripts/test/lane-filter.sh"
+            ))
+            .arg("native")
+            .output();
+        let Ok(out) = out else { return };
+        if !out.status.success() {
+            panic!(
+                "lane-filter.sh native failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        let grouped: Vec<&str> = text
+            .lines()
+            .filter(|l| l.starts_with("(test(~tests::)"))
+            .collect();
+        assert_eq!(
+            grouped.len(),
+            1,
+            "expected exactly one grouped test-exclusion line, got {}:\n{text}",
+            grouped.len()
+        );
+        let g = grouped[0];
+        assert!(
+            g.ends_with(')') && g.contains(" or (") && g.contains(" and not test(~"),
+            "the grouped line must be `(exemption or (not … and not …))`; got:\n{g}"
+        );
+        // Every other line is a standalone binary exclusion.
+        for l in text.lines().filter(|l| !l.starts_with("(test(")) {
+            assert!(
+                l.starts_with("not binary(~"),
+                "unexpected filter line (the caller ANDs these): {l}"
+            );
+        }
     }
 }

@@ -126,7 +126,14 @@ cross-platform tests the lane should never have selected**. The anti-rot test
 (`lane_filter_tokens_cover_every_non_native_platform`) passes and always would have — it asserts the
 TOKEN list is complete, never that the SELECTION is, so it is narrower than the rule it enforces
 (the issue-0196 class, in the work that introduced the rule; filed by the author).
-See `0357-*`. (2026-07-31)
+**RESOLVED 2026-07-31** — the filter now also emits a grouped test-level exclusion,
+in both spellings (nextest `~` is case-sensitive; rstest writes `Platform__Freertos`, hand-rolled
+matrices write `case_05_zephyr_rust`), with a `test(~tests::)` exemption so host-only unit tests that
+merely mention a platform are not dropped. Measured by `cargo nextest list`: selection 1360 -> 1263,
+97 newly excluded, all 97 naming a non-native platform, and all 53 cross-platform failures from the
+acceptance run deselected. The gate that let it through now asserts test-level exclusions too, and
+both new gates were negative-tested — reverting the fix makes them fail, which the original never
+could. See `0357-*`. (2026-07-31)
 
 **#359** — 24 of 49 tracked leaf `Cargo.lock` files cannot satisfy their own manifest
 (`cargo metadata --locked` refuses them). Not cosmetic drift: `nros-board-nuttx-qemu-arm`
