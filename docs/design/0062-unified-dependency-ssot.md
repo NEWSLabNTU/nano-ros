@@ -138,7 +138,7 @@ issue-0196 rule applied to dependencies: the gate must cover the class).
   the index later, but are out of scope here.
 - No change to `[gated.*]` (licensed SDKs stay instruction-only).
 
-## Migration (phased, see the phase doc when opened)
+## Migration (phase-327 — `docs/roadmap/phase-327-unified-dependency-ssot.md`)
 
 1. Add the three new classes to the index; move `apt-packages`' list, the
    module-local probes, and every 0368 discovery into entries. `apt-packages`

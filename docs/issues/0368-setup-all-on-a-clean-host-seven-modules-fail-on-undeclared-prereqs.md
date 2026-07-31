@@ -113,6 +113,8 @@ mapped per package manager), the Rust layer, the Python layer — declared in
 sudo-requiring closure composed into one printed native command. The
 findings below map onto it; the per-finding patches remain worthwhile
 stopgaps if the RFC lands later.
+**Implementation: phase-327**
+(`docs/roadmap/phase-327-unified-dependency-ssot.md`).
 
 ## Suggested work order
 
