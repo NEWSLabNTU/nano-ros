@@ -1,6 +1,6 @@
 # phase-326 — multi-host via launch arguments
 
-**Resolves:** [issue 0363](../issues/0363-machine-attr-is-ros-1-not-ros-2.md)
+**Resolves:** [issue 0364](../issues/0364-machine-attr-is-ros-1-not-ros-2.md)
 **Status:** Not started
 
 ## Why
@@ -9,7 +9,7 @@
 multi-machine launch and its XML frontend rejects the attribute outright, so
 the four `multihost.launch.xml` fixtures cannot be run by `ros2 launch`.
 Upstream removed `machine=` and `model::Deploy.host` on 2026-07-31; see
-issue 0363 for the evidence.
+issue 0364 for the evidence.
 
 ## What replaces it
 
