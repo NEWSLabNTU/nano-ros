@@ -1,7 +1,13 @@
 # phase-326 — multi-host via launch arguments
 
-**Resolves:** [issue 0364](../issues/0364-machine-attr-is-ros-1-not-ros-2.md)
-**Status:** Not started
+**Resolves:** [issue 0364](../../issues/archived/0364-machine-attr-is-ros-1-not-ros-2.md)
+**Status:** Complete (2026-07-31, `5f784d5da` + fork chain parser `8774077` →
+rlm `aac489f` → resolve `967031a`). All six work items landed; sugar decision:
+`--host`/`host =`/cmake `HOST` are REMOVED with loud migration errors, not
+kept as sugar (an early-bound model cannot honor them — the `--args` /
+phase-296 R-code.1 precedent). Bonus fixes: the `nros-launch-resolve` helper
+never forwarded `KEY:=VALUE` bindings to the parser (two bugs, see the issue);
+`nros sync` now replays a variant model's recorded `meta.args` on refresh.
 
 ## Why
 

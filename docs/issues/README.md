@@ -44,6 +44,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved: **#364** — `<node machine=>` is ROS 1 roslaunch syntax; ROS 2 rejects it, so the
+phase-211.F multi-host partition was built on a fiction and the four `multihost.launch.xml` fixtures
+could not be run by `ros2 launch`. phase-326 moved the partition to RESOLVE time: a standard `host`
+launch `<arg>` + `if=` conditions produce committed per-host models (`multihost_robot<N>_model.yaml`,
+binding recorded in `meta.args`, replayed by `nros sync`); `machine=`/`Deploy.host` removed across the
+fork chain (parser → rlm → resolver), and `Plan::for_host` / `--host` / `nros::main!(host=)` / cmake
+`HOST` deleted with loud migration errors. Found on the way: the `nros-launch-resolve` helper never
+forwarded `KEY:=VALUE` bindings to the parser (vestigial positional swallowed the first one; binding
+stopped at model metadata) — `<arg>` overrides were inert through it. See `archived/0364-*`. (2026-07-31)
+
 **#367** — `nros ws sync` is a ghost: the phase-265 rename to `nros sync` left a live hidden alias
 (`cmd/ws.rs Sub::Sync`, "kept for one release cycle" — the cycle is over), the misnamed shell helper
 `nros_require_ws_sync` (its callers already run `nros sync`), and ~187 stale textual references
