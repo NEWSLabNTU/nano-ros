@@ -357,10 +357,39 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     let board = board.unwrap_or_else(|| "native".to_string());
     let target_rtos = board_to_rtos(&board).to_string();
 
+    // phase-315 / issue 0288 — does the model place ANYTHING on this board?
+    //
+    // `execution.deploy` is a PARTITION (node -> one target). That is right for
+    // machines and wrong for board build-variants, where every board runs every
+    // node and the map cannot say so. A board the map never mentions is
+    // therefore not "a board with nothing on it" — it is a board the model has
+    // no opinion about, which is exactly what the `(None, _) => true` arm below
+    // already says per-NODE, lifted to the board level.
+    //
+    // This is the SECOND copy of this rule: `nros-macros`'s `main_macro.rs` has
+    // the same filter for the Rust path and was fixed first. Fixing one and not
+    // the other is why `examples/workspaces/c`'s freertos entry still failed
+    // with `places no nodes on board mps2-an385-freertos` after the Rust side
+    // was green. Two entry emitters, one rule — see issue 0358 for the class.
+    let board_mentioned = model.execution.deploy.values().any(|d| match &d.target {
+        Some(Target::Linux) => matches!(board.as_str(), "native" | "posix"),
+        Some(Target::Mcu { board: b }) => {
+            b == &board
+                || matches!(
+                    d.extra.get("kind"),
+                    Some(ros_launch_manifest_model::ExtraValue::Str(k)) if k == &board
+                )
+        }
+        None => false,
+    });
+
     let keep = |fqn: &str| -> bool {
         let Some(dep) = model.execution.deploy.get(fqn) else {
             return model.execution.deploy.is_empty();
         };
+        if !board_mentioned {
+            return true;
+        }
         match (&dep.target, board.as_str()) {
             // Unplaced (launch-only model, e.g. a machine-derived deploy):
             // no board named — this entry's board decides; the host filter

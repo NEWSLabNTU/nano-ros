@@ -64,3 +64,21 @@ board = "native_sim/native/64"
 [deploy.nuttx]
 kind = "embedded"
 board = "nuttx-qemu-arm"
+
+# phase-315 — the embedded BOARD BUILDS of this system.
+#
+# Not placements: `kind = "self"` blocks are machines and PARTITION the nodes;
+# a `kind = "embedded"` block is the whole system compiled for another board,
+# running every node. The resolver excludes embedded blocks from placement.
+#
+# Missing while entries named them, which was invisible until the SystemModel
+# started carrying real `execution.deploy` — then those entries failed with
+# "places no nodes on board <x>". Ids are the DEPLOY values the entries pass.
+
+[deploy.nuttx-qemu-arm]
+kind = "embedded"
+board = "nuttx-qemu-arm"
+
+[deploy.nuttx-qemu-riscv]
+kind = "embedded"
+board = "nuttx-qemu-riscv"

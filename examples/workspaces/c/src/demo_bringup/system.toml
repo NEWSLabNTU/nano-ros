@@ -70,6 +70,36 @@ board = "threadx-linux"
 # (`launch/multihost.launch.xml`: talker on robot1, listener on robot2). The target id
 # matches the launch `<node machine="…">` id; `native_entry_robot{1,2}` bake each host's
 # node via the `nano_ros_entry(HOST <id> …)` codegen partition.
+# phase-315 — the embedded BOARD BUILDS of this system.
+#
+# Not placements: `kind = "self"` blocks (native/robot1/robot2) are machines and
+# PARTITION the nodes between them, while a `kind = "embedded"` block is the
+# whole system compiled for another board, running every node. The resolver
+# excludes embedded blocks from placement for exactly that reason.
+#
+# These were missing while the workspace carried entries naming them
+# (freertos_entry -> mps2-an385-freertos, nuttx_entry -> nuttx-qemu-arm, …).
+# The pre-0.1.0 SystemModel had no `execution:` section at all, so
+# `nros codegen entry` placed every node on whatever board asked; once the model
+# carried real placement the entries failed with "places no nodes on board".
+#
+# Board ids are the DEPLOY/BOARD values the entries' CMakeLists already pass.
+[deploy.mps2-an385-freertos]
+kind = "embedded"
+board = "mps2-an385-freertos"
+
+[deploy.threadx-linux]
+kind = "embedded"
+board = "threadx-linux"
+
+[deploy.nuttx-qemu-arm]
+kind = "embedded"
+board = "nuttx-qemu-arm"
+
+[deploy.zephyr]
+kind = "embedded"
+board = "native_sim/native/64"
+
 [deploy.robot1]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
