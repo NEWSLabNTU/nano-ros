@@ -69,7 +69,7 @@ cargo-nano-ros = { workspace = true }
 # over IDL synthesised from `.msg` sources via this lib.
 nros-msg-to-idl = { workspace = true }
 
-# Phase 210.D.1 — `nros ws sync` writes the auto-managed
+# Phase 210.D.1 — `nros sync` writes the auto-managed
 # [patch.crates-io] block into each Rust consumer's patch authority
 # Cargo.toml. `pathdiff` makes the crate path relative to the authority
 # dir (portable across moved workspace roots); rosidl-bindgen +

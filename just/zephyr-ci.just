@@ -115,16 +115,16 @@ build-fixtures:
     echo "  → zephyr Rust generated-dir preflight"
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the preflight loop below
-    # invokes `nros ws sync`, absent from the shipped 0.3.7 release.
+    # invokes `nros sync`, absent from the shipped 0.3.7 release.
     # Probe once; emit `[PREREQ]` + exit 0 if missing.
-    nros_require_ws_sync "$nros_cli"
+    nros_require_sync "$nros_cli"
     while IFS= read -r pkg; do
         dir="$(dirname "$pkg")"
         stamp="$dir/build/.nros-ws-sync.stamp"
         # Wipe `generated/` if the trait-surface hash has drifted.
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_check_or_wipe "$dir"
         if [ "${NROS_ZEPHYR_GENERATE_RUST_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ "$pkg" -nt "$stamp" ] || [ ! -d "$dir/generated" ]; then
-            echo "    ws sync: $dir"
+            echo "    sync: $dir"
             mkdir -p "$dir/build"
             # issue 0318 — `--no-metadata`, same reason as the `build-one`
             # rust/* branch in zephyr-dev.just, which is where that fix landed.
@@ -236,46 +236,46 @@ build-fixtures:
     # workspace message bindings + system bringup glue from the workspace
     # ROOT (not the per-package `examples/zephyr/rust/*` loop above),
     # mirroring the native lane in scripts/build/workspace-fixtures-build.sh.
-    # `nros ws sync` is the platform-agnostic codegen step; `codegen-system`
+    # `nros sync` is the platform-agnostic codegen step; `codegen-system`
     # materializes the demo_bringup glue. The west build of the Entry leaf
     # (emitted below via --include-workspace-entry) consumes these.
     if [ -d examples/workspaces/rust/src/zephyr_entry ]; then
-        echo "  → workspace-entry prep (nros ws sync + codegen-system)"
+        echo "  → workspace-entry prep (nros sync + codegen-system)"
         ( cd examples/workspaces/rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null
           NROS_REPO_DIR="$nros_root" "$nros_cli" codegen-system --bringup src/demo_bringup --out build-fixtures/demo_bringup >/dev/null )
     fi
     # phase-276 W1 (#128) — the parameterised workspace's Zephyr Entry. Pure-cargo
-    # `nros::main!` path: `ws sync` provisions generated/ + the patch table; NO
+    # `nros::main!` path: `nros sync` provisions generated/ + the patch table; NO
     # codegen-system (the proc-macro bakes the system + the launch `<param>`
     # initials, same as the native ws-params lane).
     if [ -d examples/workspaces/ws-params-rust/src/zephyr_entry ]; then
-        echo "  → ws-params workspace-entry prep (nros ws sync)"
+        echo "  → ws-params workspace-entry prep (nros sync)"
         ( cd examples/workspaces/ws-params-rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
     # phase-276 W3 (#128) — the managed (lifecycle) workspace's Zephyr Entry.
-    # Same pure-cargo `nros::main!` path as ws-params: `ws sync` only.
+    # Same pure-cargo `nros::main!` path as ws-params: `nros sync` only.
     if [ -d examples/workspaces/ws-lifecycle-rust/src/zephyr_entry ]; then
-        echo "  → ws-lifecycle workspace-entry prep (nros ws sync)"
+        echo "  → ws-lifecycle workspace-entry prep (nros sync)"
         ( cd examples/workspaces/ws-lifecycle-rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
-    # phase-276 W5 — the QoS-override workspace's Zephyr Entry (ws sync only).
+    # phase-276 W5 — the QoS-override workspace's Zephyr Entry (nros sync only).
     if [ -d examples/workspaces/ws-qos-rust/src/zephyr_entry ]; then
-        echo "  → ws-qos workspace-entry prep (nros ws sync)"
+        echo "  → ws-qos workspace-entry prep (nros sync)"
         ( cd examples/workspaces/ws-qos-rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
-    # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry (ws sync only).
+    # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry (nros sync only).
     if [ -d examples/workspaces/ws-safety-rust/src/zephyr_entry ]; then
-        echo "  → ws-safety workspace-entry prep (nros ws sync)"
+        echo "  → ws-safety workspace-entry prep (nros sync)"
         ( cd examples/workspaces/ws-safety-rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
-    # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry (ws sync only).
+    # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry (nros sync only).
     if [ -d examples/workspaces/ws-realtime-rust/src/zephyr_entry ]; then
-        echo "  → ws-realtime workspace-entry prep (nros ws sync)"
+        echo "  → ws-realtime workspace-entry prep (nros sync)"
         ( cd examples/workspaces/ws-realtime-rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi

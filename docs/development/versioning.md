@@ -34,7 +34,7 @@ publish on a stray `cargo publish`).
 
 Consumers pin nano-ros runtime crates through their project's
 `[patch.crates-io]` table, redirected to a local path (or to a git
-submodule of the tagged release). The Phase 212.M-F.21 `nros ws sync`
+submodule of the tagged release). The Phase 212.M-F.21 `nros sync`
 verb writes those entries automatically.
 
 ## Single workspace.package.version

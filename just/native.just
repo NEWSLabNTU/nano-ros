@@ -161,11 +161,11 @@ build-fixture-rust:
     source scripts/build/codegen-stamp.sh
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the loop below invokes
-    # `nros ws sync`, absent from the shipped 0.3.7 release. Probe once;
+    # `nros sync`, absent from the shipped 0.3.7 release. Probe once;
     # emit `[PREREQ]` + exit 0 if missing rather than cascading into
     # clap "unrecognized subcommand 'ws'" stack traces.
-    nros_require_ws_sync "$nros_cli"
-    # Phase 210.E.3.d.native — pre-cargo codegen via `nros ws sync` writes
+    nros_require_sync "$nros_cli"
+    # Phase 210.E.3.d.native — pre-cargo codegen via `nros sync` writes
     # the auto-managed [patch.crates-io] block into each example's Cargo.toml
     # + materialises generated msg crates under `<ex>/generated/`.
     # Replaces the legacy `nros generate-rust --force` + hand-managed
@@ -196,7 +196,7 @@ build-fixture-rust-core:
     source scripts/build/cargo.sh
     source scripts/build/codegen-stamp.sh
     nros_cli="$(nros_cli_bin)"
-    nros_require_ws_sync "$nros_cli"
+    nros_require_sync "$nros_cli"
     nros_repo_root="$PWD"
     for ex in talker listener service-server service-client service-client-callback action-server \
               action-client custom-transport-talker custom-transport-listener; do
@@ -224,9 +224,9 @@ build-fixture-extras:
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: `ensure_native_rust_generated`
-    # below invokes `nros ws sync`. Probe once; emit `[PREREQ]` + exit 0
+    # below invokes `nros sync`. Probe once; emit `[PREREQ]` + exit 0
     # if the verb is missing (shipped 0.3.7 predates it).
-    nros_require_ws_sync "$nros_cli"
+    nros_require_sync "$nros_cli"
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
@@ -242,7 +242,7 @@ build-fixture-extras:
         case "$1" in
             native/rust/talker|native/rust/listener)
                 # Phase 210.E.3.d.native — same swap as build-fixture-role-
-                # examples: `ws sync` for the patch-table + codegen flow.
+                # examples: `nros sync` for the patch-table + codegen flow.
                 # Phase 214.J.2 — also wipe `generated/` if trait surface
                 # has drifted since the previous sync.
                 NROS_REPO_DIR="$repo_root" nros_codegen_stamp_check_or_wipe "examples/$1"
@@ -326,7 +326,7 @@ check JOBS="75%":
     # via the fixture-manifest / orchestration path instead, as
     # multi-package-workspace already is):
     #   - ws-sync templates: workspace msg pkgs (`extra_msgs`/`local_msgs`) only
-    #     resolve via the `[patch.crates-io]` block `nros ws sync` writes; cargo
+    #     resolve via the `[patch.crates-io]` block `nros sync` writes; cargo
     #     can't find them on crates.io here.
     #   - `examples/workspaces/*`: a multi-target workspace whose entry packages
     #     are cross-compiled (esp32/threadx/nuttx/freertos/zephyr) — e.g.
@@ -340,7 +340,7 @@ check JOBS="75%":
 
     # Message-bindings precondition gate (phase-264 W4c follow-up). Example msg
     # crates (`generated/<msg>/`) are BUILD-TIME + ROS-version-dependent, so they
-    # are gitignored and materialised by `nros ws sync` / `just generate-bindings`
+    # are gitignored and materialised by `nros sync` / `just generate-bindings`
     # (scripts/regenerate-bindings.sh) — NOT shipped in git. `just check` does NOT
     # sync them: that would couple a pure static check to a live ROS environment and
     # silently rewrite each example's Cargo.toml `[patch.crates-io]` block. Instead

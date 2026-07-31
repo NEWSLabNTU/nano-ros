@@ -28,7 +28,7 @@ the topic that reaches the wire is the **remapped** one.
 ## Build & run
 
 ```sh
-nros ws sync
+nros sync
 cargo build -p native_entry
 NROS_LOCATOR=tcp/127.0.0.1:7447 ./target/debug/native_entry
 # in another shell: subscribe /remapped_out (NOT /island/remap_talker/out)

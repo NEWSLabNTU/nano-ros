@@ -347,7 +347,7 @@ gated to zero) against real zenohd.
 4. **Land the §3.1 boot-scaffold fixes (Phase 212.O.1).** Board panic line on the
    `nros-board-*-freertos` family; the 6 FreeRTOS Node examples → `["rlib"]`;
    linker-script `.cargo/config.toml` sync (audit all freertos examples for the
-   `-Tlink.x` drift, ideally regen via `nros ws sync`). Tracked by phase-212 O.1
+   `-Tlink.x` drift, ideally regen via `nros sync`). Tracked by phase-212 O.1
    + issue 0045.
 5. **O.1 runtime residual (separate from the panic design).** After §3.1, the app
    task stack-overflows at Executor creation because the firmware links **both**

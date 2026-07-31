@@ -25,7 +25,7 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
   each pkg's codegen identically regardless of which layer it lived in.
 
 * `src/rust_consumer/` — **Phase 210.D.3** Rust sibling of the C++
-  consumer. Same four-msg-family coverage. Builds via `nros ws sync` +
+  consumer. Same four-msg-family coverage. Builds via `nros sync` +
   plain `cargo build`. See the "Build — Rust" section below.
 
 * `CMakeLists.txt` (this dir) — the **only** nano-ros-specific file. Pulls
@@ -42,12 +42,12 @@ cmake --build build -j
 ./build/src/consumer/consumer        # publishes on /greetings via zenoh
 ```
 
-## Build — Rust (`nros ws sync` + plain cargo)
+## Build — Rust (`nros sync` + plain cargo)
 
 ```sh
 # 1) Pre-cargo step: codegen workspace msg pkgs + write
 #    [patch.crates-io] block into src/rust_consumer/Cargo.toml.
-NROS_REPO_DIR=/path/to/nano-ros nros ws sync
+NROS_REPO_DIR=/path/to/nano-ros nros sync
 
 # 2) Plain cargo build — no wrapper, no build.rs hack.
 cd src/rust_consumer
@@ -55,10 +55,10 @@ cargo build
 ./target/debug/rust_consumer          # publishes on /greetings via zenoh
 ```
 
-`nros ws sync` writes a delimited `[patch.crates-io]` block into the
+`nros sync` writes a delimited `[patch.crates-io]` block into the
 patch authority Cargo.toml (this fixture has `[workspace]` empty marker
 in `src/rust_consumer/Cargo.toml`, making it its own authority). Re-run
-sync after editing any `.msg` file; `nros ws sync --check` exits
+sync after editing any `.msg` file; `nros sync --check` exits
 non-zero if the generated crates are stale.
 
 ## What's exercised

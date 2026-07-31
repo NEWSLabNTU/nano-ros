@@ -188,16 +188,16 @@ else
     export platform
     export -f nros_fixture_target_dir_flag nros_fixture_group _nros_fixture_variant_sig
     # Phase 214.I.2 — fail-loud prereq guard: `nros_fixture_build_one`
-    # below invokes `nros ws sync`, absent from the shipped 0.3.7 release.
+    # below invokes `nros sync`, absent from the shipped 0.3.7 release.
     # Probe once here in the parent before make fans out workers; pre-probe
     # avoids N copies of the `[PREREQ]` line.
-    nros_require_ws_sync "$NROS_CLI"
+    nros_require_sync "$NROS_CLI"
     # shellcheck source=scripts/build/codegen-stamp.sh
     source scripts/build/codegen-stamp.sh
     export -f nros_codegen_stamp_compute nros_codegen_stamp_check_or_wipe \
               nros_codegen_stamp_write _codegen_stamp_repo_root _codegen_stamp_sources
     # Phase 214.M.2 — re-append the patched libc to NuttX fixtures'
-    # `.cargo/config.toml` after `nros ws sync` runs. Workaround until
+    # `.cargo/config.toml` after `nros sync` runs. Workaround until
     # the CLI bug that drops `[patch.crates-io]` from the rendered
     # `cargo_config` template is fixed upstream. No-op for non-NuttX
     # fixtures. See `scripts/build/nuttx-libc-patch.sh`.
@@ -209,7 +209,7 @@ else
         IFS=$'\x1f' read -r dir envstr args <<< "$1"
         [ -n "$dir" ] || return 0
         echo "  → $dir ${args}"
-        # Phase 210.E.3.d.native — pre-cargo `nros ws sync` writes the
+        # Phase 210.E.3.d.native — pre-cargo `nros sync` writes the
         # auto-managed [patch.crates-io] block + materialises generated
         # msg crates under <dir>/build/. Replaces the legacy
         # `nros generate-rust --force` + per-example .cargo/config.toml
@@ -218,7 +218,7 @@ else
         if [ -f "$dir/package.xml" ]; then
             # Phase 214.J.2 — wipe `<dir>/generated/` if the hash of the
             # trait surface(s) tied to codegen shape (e.g. `RosAction`)
-            # has drifted since the previous `ws sync`. Prevents the
+            # has drifted since the previous `nros sync`. Prevents the
             # stale-3-type-action shape that Phase 214.J first surfaced.
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$dir"
             NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync "$dir" >/dev/null
@@ -245,7 +245,7 @@ else
     # leaving `generated/` absent on a fresh checkout and the Entry build failing
     # to resolve the patch path. Pre-sync every Node pkg in this platform's
     # example tree, once, in the parent before the build fans out. Idempotent;
-    # ws sync only materialises crates (no compile), so syncing a Node pkg whose
+    # nros sync only materialises crates (no compile), so syncing a Node pkg whose
     # Entry is filtered out (--id / --core-only / rmw) is harmless.
     while IFS= read -r pkgxml; do
         pkgdir="$(dirname "$pkgxml")"

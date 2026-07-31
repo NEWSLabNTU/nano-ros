@@ -14,7 +14,7 @@ generated entry emits `nros_cpp_create_sched_context` +
 ## Run
 
 ```sh
-source ./activate.sh && nros ws sync
+source ./activate.sh && nros sync
 nros codegen-system --bringup demo_bringup
 cmake -S . -B build && cmake --build build
 zenohd --listen tcp/127.0.0.1:7447 &

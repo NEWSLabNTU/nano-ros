@@ -33,7 +33,7 @@
 //! uses a tiny local [`PlaceholderSrv`] `RosService` impl (Request +
 //! Reply both shaped like `std_msgs/Int32` — 4-byte LE `i32`),
 //! avoiding a dep on `example_interfaces` (which would require
-//! `nros ws sync` to materialise `generated/example_interfaces/`
+//! `nros sync` to materialise `generated/example_interfaces/`
 //! before cross-check). A follow-up that finishes the trampoline-
 //! registration story swaps this for a typed `AddTwoInts` (or
 //! similar `example_interfaces::srv::*`) once `generated/` ships.

@@ -142,7 +142,7 @@ pub fn write_facade(
         // silently dropping it.
         if !cap.backends_supporting.is_empty() && !cap.backend_supports(rmw.declared) {
             eprintln!(
-                "ws sync: facade `{entry_name}`: capability `{}` declared but the \
+                "sync: facade `{entry_name}`: capability `{}` declared but the \
                  `{}` RMW does not carry it — omitted.",
                 cap.declared, rmw.declared,
             );

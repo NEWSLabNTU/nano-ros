@@ -11,7 +11,7 @@ Configure → Activate at boot. The node (`talker_pkg::Talker`) publishes an
 ## Run
 
 ```sh
-source ./activate.sh && nros ws sync
+source ./activate.sh && nros sync
 nros codegen-system --bringup demo_bringup
 cargo build -p native_entry
 zenohd --listen tcp/127.0.0.1:7447 &
@@ -27,6 +27,6 @@ ros2 topic echo /chatter        # -> data: 1, 2, ...
 
 ## Copy-out notes
 
-Standard workspace copy-out (`nros ws sync` regenerates `generated/` crates +
+Standard workspace copy-out (`nros sync` regenerates `generated/` crates +
 the `# nros-managed` patch block). Fixture id
 `workspace-rust-native-lifecycle`.

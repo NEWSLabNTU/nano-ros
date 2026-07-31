@@ -296,7 +296,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     println!("  cd {}", cfg.name);
     println!("  export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros source checkout");
     println!("  eval \"$(nros ws env)\"   # ROS + interface search path");
-    println!("  nros ws sync          # codegen + write the [patch.crates-io] block (RFC-0040)");
+    println!("  nros sync          # codegen + write the [patch.crates-io] block (RFC-0040)");
     println!("  cargo build           # or: cmake --build build / west build / idf.py build");
 
     Ok(())
@@ -383,7 +383,7 @@ edition = "2024"
 
 # A reusable component is a library (rlib); the deployed system links it.
 # nano-ros crates are not published to crates.io (RFC-0040) — `version = "*"` is
-# only the patched left-hand side. Run `nros ws sync` (with NROS_REPO_DIR set) to
+# only the patched left-hand side. Run `nros sync` (with NROS_REPO_DIR set) to
 # write the nros-managed [patch.crates-io] block redirecting `nros` to your
 # nano-ros checkout, then `cargo build`.
 [dependencies]
@@ -831,11 +831,11 @@ fn scaffold_rust(
     }
 }
 
-/// Shared size/speed profiles + the `nros ws sync` note appended to every
+/// Shared size/speed profiles + the `nros sync` note appended to every
 /// generated `Cargo.toml`.
 const CARGO_PROFILES: &str = r#"
 # nano-ros crates are not published to crates.io (RFC-0040) — the `version = "*"`
-# requirements above are patched, not resolved from crates.io. Run `nros ws sync`
+# requirements above are patched, not resolved from crates.io. Run `nros sync`
 # (with NROS_REPO_DIR set) to write the nros-managed [patch.crates-io] block here
 # (path deps into your nano-ros checkout + any generated msg crates), then build.
 

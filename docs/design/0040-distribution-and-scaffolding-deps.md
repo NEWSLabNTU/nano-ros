@@ -36,7 +36,7 @@ This collides with two scaffolding/convention sites that still assume crates.io:
 - The README `cargo install` line for the CLI references the wrong org and mixes
   `--git` with `--path`.
 
-The examples already solve their half: `nros ws sync` (RFC-0023) writes a
+The examples already solve their half: `nros sync` (RFC-0023) writes a
 `[patch.crates-io]` table into the authority's `.cargo/config.toml` (phase-265;
 was a delimited Cargo.toml block pre-265) redirecting `nros = "*"` (and the
 generated message crates) to path deps into the in-tree source. The gap is the
@@ -63,14 +63,14 @@ RFCs 0024/0025, but the source-release **dependency convention** is unwritten.
 ### D2 — In-tree projects (examples) — unchanged, RFC-0023
 
 In-tree examples keep the existing model: declare `nros = "*"` (+ generated msg
-crates `"*"`) and let `nros ws sync` write the nros-managed `[patch.crates-io]`
+crates `"*"`) and let `nros sync` write the nros-managed `[patch.crates-io]`
 entries (in the authority's `.cargo/config.toml`, phase-265) with path deps into
 the source tree. Already shipped; this RFC only records it as the canonical
-in-tree shape. See RFC-0023 §`nros ws sync`.
+in-tree shape. See RFC-0023 §`nros sync`.
 
 ### D3 — Out-of-tree projects (`nros new`) — the convention (decided 2026-06)
 
-**Canonical: the same `nros ws sync` patch-block model as the in-tree examples
+**Canonical: the same `nros sync` patch-block model as the in-tree examples
 (D2).** A `nros new` project is scaffolded with crates.io-shaped requirements
 that exist only to be patched — never a real crates.io version:
 
@@ -78,9 +78,9 @@ that exist only to be patched — never a real crates.io version:
 [dependencies]
 nros = { version = "*", default-features = false, features = ["<rmw>", "platform-<plat>", "ros-humble"] }
 <board-crate> = "*"
-# msg crates (if any) are also "*" and emitted/redirected by `nros ws sync`.
+# msg crates (if any) are also "*" and emitted/redirected by `nros sync`.
 
-# `nros ws sync` writes/refreshes the nros-managed [patch.crates-io] entries in
+# `nros sync` writes/refreshes the nros-managed [patch.crates-io] entries in
 # this project's .cargo/config.toml (path deps into the user's nano-ros checkout,
 # NROS_REPO_DIR) — same config-patch model as the examples (RFC-0023 + phase-265).
 ```
@@ -90,12 +90,12 @@ The user runs, once, before the first build:
 ```sh
 export NROS_REPO_DIR=/path/to/nano-ros      # their source checkout
 eval "$(nros ws env)"                        # ROS / interface search path
-nros ws sync                                 # codegen msgs + write [patch] block
+nros sync                                 # codegen msgs + write [patch] block
 cargo build                                  # plain cargo
 ```
 
 **Rationale (D-Q1 resolution).** Chosen for **one convention everywhere**: a
-msg-using project must run codegen anyway, and `nros ws sync` does codegen *and*
+msg-using project must run codegen anyway, and `nros sync` does codegen *and*
 writes the patch block for both the generated msg crates and the `nros-*` runtime
 crates in a single step (RFC-0023). A `git`-dep shape would leave msgs on a
 second mechanism. Single mechanism, offline after sync, identical to the examples.
@@ -124,7 +124,7 @@ nros-cli` nor a contradictory `--git` + `--path`. Exact string tracked by 196.7.
 
 - This RFC does not change the CLI verb surface (RFC-0003 §4: `nros` is
   provisioner + codegen + metadata; no `build`/`run`).
-- It does not change codegen or `nros ws sync` mechanics (RFC-0023); it only
+- It does not change codegen or `nros sync` mechanics (RFC-0023); it only
   states that the same patch-block mechanism is the in-tree dependency authority
   and decides the out-of-tree analogue.
 
@@ -140,7 +140,7 @@ nros-cli` nor a contradictory `--git` + `--path`. Exact string tracked by 196.7.
 ## Open questions
 
 - **D-Q1 — out-of-tree dep shape for `nros new`. RESOLVED 2026-06 → option 2**
-  (`nros ws sync` patch-block) as canonical, **option 1** (git deps,
+  (`nros sync` patch-block) as canonical, **option 1** (git deps,
   `nros new --deps git`) as the documented opt-in alternative. See D3. Decided
   on the "one convention" + "msgs need the sync anyway" grounds; option 3
   (computed path dep) dropped as brittle + doesn't cover msgs. Remaining
@@ -154,7 +154,7 @@ nros-cli` nor a contradictory `--git` + `--path`. Exact string tracked by 196.7.
   crates), falling back to a rev if no tag is present. `main` is rejected
   (non-reproducible). Nothing depends on this until `--deps git` lands, so the
   formal lock travels with that implementation.
-- **D-Q3 — board + generated-msg crate coords. RESOLVED 2026-06.** `nros ws sync`
+- **D-Q3 — board + generated-msg crate coords. RESOLVED 2026-06.** `nros sync`
   now patches `nros-board-*` deps too: they resolve to the uniform
   `packages/boards/<name>` path (no static table entry — any current/future board
   crate works), alongside the `nros-*` runtime crates and generated msg crates.
@@ -164,7 +164,7 @@ nros-cli` nor a contradictory `--git` + `--path`. Exact string tracked by 196.7.
 - **D-Q4 — does `nros new` itself run/scaffold the sync? RESOLVED 2026-06 →
   scaffold-only + opt-in `--sync`.** `nros new` stays fast, deterministic,
   env-light file emission: it **prints** the source-release next-steps
-  (`NROS_REPO_DIR` → `eval "$(nros ws env)"` → `nros ws sync` → `cargo build`),
+  (`NROS_REPO_DIR` → `eval "$(nros ws env)"` → `nros sync` → `cargo build`),
   already implemented (196.7). It does **not** auto-run sync — sync codegens
   (needs ROS sourced + `NROS_REPO_DIR`) and would fail/hang at scaffold time when
   the env isn't ready; conditional auto-sync (run-iff-`NROS_REPO_DIR`-set) is
@@ -179,7 +179,7 @@ nros-cli` nor a contradictory `--git` + `--path`. Exact string tracked by 196.7.
   earlier (sync patches `nros-board-*`). All four open questions now resolved;
   ready to flip `Stable` once the scaffold-journey CI lane is green + the
   ARCHITECTURE.md distribution section is synced.
-- 2026-06 — **D-Q1 resolved**: option 2 (`nros ws sync` patch-block) canonical,
+- 2026-06 — **D-Q1 resolved**: option 2 (`nros sync` patch-block) canonical,
   option 1 (`--deps git`) documented alternative; option 3 dropped. D3
   concretized with the scaffolded manifest + first-build steps.
 - 2026-06 — initial Draft. Records the no-crates.io distribution policy (D1),

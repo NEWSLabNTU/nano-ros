@@ -159,7 +159,7 @@ pub fn check_workspace(workspace_root: &Path) -> Result<WorkspaceLintReport> {
                          Cargo.toml AND .cargo/config.toml and the config \
                          file shadows the manifest; move the block to the \
                          workspace-root Cargo.toml (auto-managed by \
-                         `nros ws sync`)"
+                         `nros sync`)"
                     ));
                 }
             }

@@ -27,7 +27,7 @@ receives the publisher's buffered history.
 ## Build & run
 
 ```sh
-nros ws sync                       # generate the std_msgs crate (gitignored)
+nros sync                       # generate the std_msgs crate (gitignored)
 cargo build -p native_entry        # links both Node pkgs
 nros plan demo_bringup             # inspect the resolved plan
 ```

@@ -46,7 +46,7 @@
 //! shape (mirrors `example_interfaces/action/Fibonacci`'s `order`
 //! field width), avoiding deps on `example_interfaces` +
 //! `action_msgs` + `unique_identifier_msgs` + `builtin_interfaces`
-//! (which would require `nros ws sync` to materialise their
+//! (which would require `nros sync` to materialise their
 //! `generated/` trees before cross-check). A follow-up that finishes
 //! the trampoline-registration story swaps this for the real
 //! `Fibonacci` action once `generated/` ships.

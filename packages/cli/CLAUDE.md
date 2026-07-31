@@ -36,7 +36,7 @@ too; this file only adds what is CLI-specific.
 | `nros-msg-to-idl` | msg → Cyclone IDL lowering |
 | `nros-pkg-index` | `nros-sdk-index.toml` model (boards → toolchain/SDK package sets) |
 | `nros-launch-parser` | launch-file → plan resolution (consumes the resolver's SystemModel; does NOT shell out to `play_launch_parser` — RFC-0060) |
-| `nros-launch-resolve` | the `nros-launch-resolve` binary: launch tree → SystemModel (RFC-0060 layer 2, wraps `third-party/ros-launch-resolve`). Built by `just setup-launch-resolve`; `nros ws sync` invokes it by ABSOLUTE path, never via `$PATH` (issue 0285) |
+| `nros-launch-resolve` | the `nros-launch-resolve` binary: launch tree → SystemModel (RFC-0060 layer 2, wraps `third-party/ros-launch-resolve`). Built by `just setup-launch-resolve`; `nros sync` invokes it by ABSOLUTE path, never via `$PATH` (issue 0285) |
 | `nros-build` | build-script codegen library for Entry pkgs |
 | `cargo-nano-ros` | cargo subcommand front-end |
 | `colcon-cargo-ros2/` | the `colcon_nano_ros` Python colcon extension (pyproject; not a Rust member) |
@@ -53,7 +53,7 @@ copy of the rlm spec, reached through the resolver.
   layout. Board/toolchain/source knowledge lives in the parent repo's
   `nros-sdk-index.toml`; fixes are index edits, not CLI special cases.
 - The CLI is consumed by the parent repo's CMake (`nano_ros_*` functions
-  shell out to it) and by `nros ws sync` — changes to verb output formats are
+  shell out to it) and by `nros sync` — changes to verb output formats are
   cross-repo API changes; check `cmake/` consumers before changing them.
 - Design rationale lives in the parent repo's RFCs (RFC-0014 provisioning,
   RFC-0023 message generation, RFC-0048 ament/CMake + presets); don't

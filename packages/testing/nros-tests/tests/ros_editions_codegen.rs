@@ -33,7 +33,7 @@ fn codegen_edition_std_msgs_in_container() {
     // Generate from std_msgs' installed manifest. `nros generate-rust` resolves
     // + emits the packages reachable from that manifest (here builtin_interfaces,
     // std_msgs' dependency) against the EDITION's definitions. (Selecting an exact
-    // target package uses the `nros ws sync` workspace flow — a W5 concern; this
+    // target package uses the `nros sync` workspace flow — a W5 concern; this
     // W4 test proves only that codegen RUNS per-edition, in-container, producing
     // real bindings from the edition's own defs.)
     let result = env

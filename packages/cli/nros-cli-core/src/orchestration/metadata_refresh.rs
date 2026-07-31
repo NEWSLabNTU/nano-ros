@@ -6,7 +6,7 @@
 //! is a user typing `nros metadata --build`: a bake cannot depend on an input
 //! that may or may not exist and may or may not describe the current source.
 //!
-//! This module is the ordering guarantee. `nros ws sync` calls
+//! This module is the ordering guarantee. `nros sync` calls
 //! [`refresh_stale_sidecars`] as its last step — after interface codegen and
 //! after the `[patch.crates-io]` tables are written, because the harness
 //! compiles the Node pkg for real and its generated interface deps resolve
@@ -139,7 +139,7 @@ pub fn refresh_stale_sidecars(
         };
         if verbose {
             println!(
-                "ws sync: metadata {}::{} — sources changed, rebuilding",
+                "sync: metadata {}::{} — sources changed, rebuilding",
                 decl.config.package, decl.config.component
             );
         }
@@ -155,7 +155,7 @@ pub fn refresh_stale_sidecars(
         let dir = crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(&probe_root);
         if verbose {
             println!(
-                "ws sync: metadata — probing {} C/C++ component(s) in one project",
+                "sync: metadata — probing {} C/C++ component(s) in one project",
                 cpp_batch.len()
             );
         }

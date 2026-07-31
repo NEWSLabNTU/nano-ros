@@ -12,7 +12,7 @@ subscriber still receives buffered history. Components `qos_talker` /
 ## Run
 
 ```sh
-source ./activate.sh && nros ws sync
+source ./activate.sh && nros sync
 nros codegen-system --bringup demo_bringup
 cmake -S . -B build && cmake --build build
 zenohd --listen tcp/127.0.0.1:7447 &

@@ -5,7 +5,7 @@
 # workspace with Node packages, a Bringup package, and an Entry package. The
 # build must follow the documented user workflow:
 #
-#   nros ws sync
+#   nros sync
 #   nros codegen-system --bringup <bringup> --out <codegen_out>
 #   cargo build -p <entry> ... OR cmake --build ... --target <entry>
 #
@@ -66,7 +66,7 @@ case "$platform" in
 esac
 
 nros_cli="$(nros_cli_bin)"
-nros_require_ws_sync "$nros_cli"
+nros_require_sync "$nros_cli"
 
 export NROS_REPO_DIR="${NROS_REPO_DIR:-$repo_root}"
 export NROS_REPO_ROOT="${NROS_REPO_ROOT:-$repo_root}"
@@ -148,10 +148,10 @@ build_workspace() {
         fi
         [ -n "$codegen_out" ] && mkdir -p "$(dirname "$codegen_out")"
 
-        echo "     nros ws sync"
+        echo "     nros sync"
         "$nros_cli" sync >/dev/null
 
-        # Phase 225.O — `nros ws sync` strips the board-template
+        # Phase 225.O — `nros sync` strips the board-template
         # `[patch.crates-io] libc` from the rendered `.cargo/config.toml`,
         # so re-append the patched NuttX libc here, mirroring the
         # single-node lane in scripts/build/fixtures-build.sh. Idempotent

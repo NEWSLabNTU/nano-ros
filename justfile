@@ -685,7 +685,7 @@ check-leaf-lockfiles:
     @bash scripts/check-leaf-lockfiles.sh
 
 # Issue 0320 — committed SystemModels must be portable: no absolute host paths in
-# `meta.inputs[].path`. Buildless; regenerate with `nros ws sync`.
+# `meta.inputs[].path`. Buildless; regenerate with `nros sync`.
 [private]
 check-no-absolute-model-paths:
     @bash scripts/check-no-absolute-model-paths.sh
@@ -2649,7 +2649,7 @@ setup-cli:
 
 # Build the launch-resolution helper (issue 0285).
 #
-# `nros ws sync` needs a resolver that can execute Python for `.launch.py`
+# `nros sync` needs a resolver that can execute Python for `.launch.py`
 # trees, which cannot be linked into the portable `nros` binary. It used to
 # shell out to `play_launch` BY NAME through PATH — where an unrelated ROS 2
 # record/replay tool of the same name shadowed it and every platform's
@@ -2907,7 +2907,7 @@ setup target="" tier="":
     # check-{c,cpp}-fmt drift across clang-format major versions, so a consistent
     # pinned binary (`.clang-format-version`) is part of base dev setup. Idempotent.
     just setup-clang-format || echo "  (clang-format provisioning skipped — python3 venv unavailable)"
-    # `nros ws sync` REQUIRES this helper to refresh a stale SystemModel, and
+    # `nros sync` REQUIRES this helper to refresh a stale SystemModel, and
     # since it now errors instead of degrading, a tree without it cannot sync a
     # workspace whose launch files moved. It was never in any tier — the fixture
     # sweep hit the absent-helper path and used museum models. Idempotent; SKIPs

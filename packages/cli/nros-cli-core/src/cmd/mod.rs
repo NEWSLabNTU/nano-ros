@@ -62,8 +62,9 @@ pub enum Cmd {
     /// declared deps (`package.xml` / `Cargo.toml`) — for a standalone pkg
     /// or a workspace (picks single-pkg vs colcon mode by layout). Writes the
     /// patch into each Rust consumer's `.cargo/config.toml` (never `Cargo.toml`).
-    /// Pre-cargo step; run after editing `*.msg` files. Phase-265 W5 — replaces
-    /// `nros ws sync`. (`nros generate-rust` stays the codegen-only primitive.)
+    /// Pre-cargo step; run after editing `*.msg` files. Phase-265 W5 — promoted
+    /// from the retired `ws`-scoped `sync` alias. (`nros generate-rust` stays the
+    /// codegen-only primitive.)
     Sync(ws::SyncArgs),
 
     /// Generate CDR `px4_msgs::msg::*` from a PX4-Autopilot `.msg` tree (no
@@ -113,7 +114,8 @@ pub enum Cmd {
     #[command(subcommand)]
     Board(board::Args),
 
-    /// Workspace-level msg-pkg utilities (Phase 210.B.3 + 210.D.1 — env, sync, …).
+    /// Workspace-level msg-pkg utilities (Phase 210.B.3 + 210.D.1 — env, list,
+    /// status, clean, doctor). `sync` was promoted to the top-level `nros sync`.
     Ws(ws::Args),
 
     /// Print toolchain + library versions

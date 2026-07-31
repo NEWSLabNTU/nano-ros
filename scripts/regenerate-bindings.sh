@@ -5,7 +5,7 @@ source scripts/build/cargo.sh
 source scripts/build/generate-rust-incremental.sh
 
 NROS="$(nros_cli_bin)"
-# `nros ws sync` resolves the nano-ros runtime path-deps via NROS_REPO_DIR.
+# `nros sync` resolves the nano-ros runtime path-deps via NROS_REPO_DIR.
 export NROS_REPO_DIR="${NROS_REPO_DIR:-$PWD}"
 # Codegen only EMITS message structs — its output does not depend on the runtime
 # `nros-core` ABI, so bypass the CLI-vs-workspace ABI guard (phase-265
@@ -23,7 +23,7 @@ echo "Refreshing Rust bindings..."
 #
 #   * Cargo workspace      → ONE SHARED `generated/` at the workspace root,
 #     resolved by the workspace manifest's `[patch.crates-io]` for every member
-#     node pkg. Materialised with `nros ws sync` (codegen + writes the patch
+#     node pkg. Materialised with `nros sync` (codegen + writes the patch
 #     block, which is NOT committed). Member pkgs must NOT each get a per-package
 #     `generated/` — that is redundant + unreferenced.
 #
@@ -35,7 +35,7 @@ echo "Refreshing Rust bindings..."
 # carry an (empty) `[workspace]` table to stop cargo walking up to the repo root
 # (CLAUDE.md "Examples are standalone copy-out projects; no workspace walk-up"). A
 # multi-package workspace is a dir whose `src/<member>/package.xml` exists (the
-# colcon shape `nros ws sync` shares one root `generated/` across) — exactly the
+# colcon shape `nros sync` shares one root `generated/` across) — exactly the
 # `ws.rs` colcon heuristic. A standalone example carries its `package.xml` at the
 # cargo root (no `src/<member>/package.xml`) and owns a per-package `generated/`.
 ws_roots=()
@@ -86,11 +86,11 @@ is_workspace_member() {
     return 1
 }
 
-# --- 1. workspaces: ONE shared `generated/` at the root via `nros ws sync` ---
+# --- 1. workspaces: ONE shared `generated/` at the root via `nros sync` ---
 for root in "${ws_roots[@]}"; do
     # Only sync a workspace that actually declares message deps; a deps-less
     # workspace (e.g. the topic-forward bridge examples) has nothing to
-    # materialise and `nros ws sync` would error on it.
+    # materialise and `nros sync` would error on it.
     # `$root` is absolute (set via `cd && pwd`); git pathspecs are repo-relative.
     rel_root="${root#"$PWD"/}"
     member_deps="$(git ls-files "$rel_root" \
@@ -107,7 +107,7 @@ for root in "${ws_roots[@]}"; do
     for _gen in "$root"/src/*/generated; do
         if [ -d "$_gen" ]; then rm -rf "$_gen"; fi
     done
-    echo "  ws sync: ${root#"$PWD"/}"
+    echo "  sync: ${root#"$PWD"/}"
     "$NROS" sync "$root" >/dev/null
 done
 

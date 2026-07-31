@@ -50,8 +50,19 @@ EXCLUDES=(
     ':!docs/development/audit-findings-*'
     ':!docs/roadmap/**'
     ':!docs/design/**'
+    ':!docs/superpowers/**'
     ':!packages/cli/third-party/**'
     ':!scripts/check-retired-submodule-refs.sh'
+)
+
+# Retired COMMAND SPELLINGS — same drift class as retired paths, but a verb
+# rather than a directory. Issue 0367: phase-265 renamed `nros ws sync` to
+# `nros sync` yet the old spelling kept re-entering new prose because greppable
+# precedent is how text gets written here. The whole class is `\bws sync\b`
+# (issue-0196 rule: gate the class, not the exact string swept today).
+#   regex : what replaced it
+RETIRED_SPELLINGS=(
+    "\\bws sync\\b|nros sync (phase-265 renamed the verb; the \`nros ws sync\` alias is retired — issue 0367)"
 )
 
 fail=0
@@ -69,14 +80,27 @@ for entry in "${RETIRED[@]}"; do
     fi
 done
 
+for entry in "${RETIRED_SPELLINGS[@]}"; do
+    regex="${entry%%|*}"
+    replacement="${entry#*|}"
+    if hits=$(git grep -nE -- "$regex" "${EXCLUDES[@]}" 2>/dev/null || true); [ -n "$hits" ]; then
+        echo "RETIRED COMMAND SPELLING still used: $regex"
+        echo "  use instead: $replacement"
+        echo "$hits" | sed 's/^/    /'
+        echo
+        fail=1
+    fi
+done
+
 if [ "$fail" -ne 0 ]; then
     cat <<'EOF'
-A retired submodule path is still referenced outside the docs that record it.
-Every reference is a place a user or a CI job will follow into a path that no
-longer exists — that is issue 0336 (fresh clone cannot build the CLI) and the
-.github half of 0337 (pr-checks red for 60+ runs).
+A retired submodule path or command spelling is still referenced outside the docs
+that record it. Every reference is a place a user or a CI job will follow into a
+path/verb that no longer exists — that is issue 0336 (fresh clone cannot build the
+CLI), the .github half of 0337 (pr-checks red for 60+ runs), and issue 0367 (the
+`nros ws sync` ghost re-entering new prose).
 EOF
     exit 1
 fi
 
-echo "retired-submodule refs OK — ${#RETIRED[@]} retired path(s), no live references"
+echo "retired refs OK — ${#RETIRED[@]} retired path(s) + ${#RETIRED_SPELLINGS[@]} retired spelling(s), no live references"

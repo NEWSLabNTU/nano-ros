@@ -11,7 +11,7 @@
 //! Build:
 //!
 //!   $ cd <fixture>
-//!   $ NROS_REPO_DIR=<nano-ros-root> nros ws sync
+//!   $ NROS_REPO_DIR=<nano-ros-root> nros sync
 //!   $ cd src/rust_consumer && cargo build      # plain cargo, no wrapper
 //!
 //! Run (zenoh router must be up):

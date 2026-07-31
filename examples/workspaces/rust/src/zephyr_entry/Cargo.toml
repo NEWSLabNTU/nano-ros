@@ -123,7 +123,7 @@ debug = false
 # `exclude`d from the parent workspace, it builds standalone and does NOT
 # inherit the parent's `[patch.crates-io]`. The generated message crates
 # live at the workspace-root `generated/` dir (provisioned once by
-# `nros ws sync` at `examples/workspaces/rust/`); reference them from one
+# `nros sync` at `examples/workspaces/rust/`); reference them from one
 # level up (`../../generated`). nros-core / nros-serdes are patched to the
 # in-repo crates the generated message crates depend on via `version = "*"`.
 [patch.crates-io]

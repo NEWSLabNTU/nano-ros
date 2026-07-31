@@ -2,7 +2,7 @@
 //!
 //! Imports msgs from BOTH worlds via the auto-managed
 //! `[patch.crates-io]` block in this pkg's Cargo.toml (written by
-//! `nros ws sync` / `nros generate-rust`):
+//! `nros sync` / `nros generate-rust`):
 //!
 //!   * `local_msgs::msg::Greeting`      — workspace pkg
 //!   * `extra_msgs::msg::Echo`          — workspace pkg, depends on local_msgs

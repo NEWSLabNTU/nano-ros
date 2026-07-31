@@ -973,7 +973,7 @@ DEPRECATED examples that R-code.1 deletes.
 Caller census after the model-first waves: THREE `resolve_launch` sites
 remain, all fallback-only — `codegen-system` (configless self-pkg synth;
 model branch bypasses), `nros plan` (modelless fallback, R3-warned), and
-`ws sync` bridge planning (modelless fallback). Deletion preconditions:
+`nros sync` bridge planning (modelless fallback). Deletion preconditions:
 
 1. **Composable record synthesis** — `plan_record_from_model` emits empty
    `container`/`load_node`; before any composable bringup carries a model,

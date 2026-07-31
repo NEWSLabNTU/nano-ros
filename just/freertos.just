@@ -58,16 +58,16 @@ build-examples:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    # Phase 214.J.2 — guard `ws sync` against stale `generated/` after trait
+    # Phase 214.J.2 — guard `nros sync` against stale `generated/` after trait
     # surface drift (see scripts/build/codegen-stamp.sh).
     source scripts/build/codegen-stamp.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the loop below invokes
-    # `nros ws sync`, which the shipped 0.3.7 release predates. Probe
+    # `nros sync`, which the shipped 0.3.7 release predates. Probe
     # once, emit `[PREREQ]` + exit 0 if absent rather than cascading
     # into clap "unrecognized subcommand 'ws'" stack traces per example.
-    nros_require_ws_sync "$nros_cli"
+    nros_require_sync "$nros_cli"
     echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
@@ -126,15 +126,15 @@ build-fixture-extras:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    # Phase 214.J.2 — codegen-stamp helpers for `ws sync` invocations below.
+    # Phase 214.J.2 — codegen-stamp helpers for `nros sync` invocations below.
     source scripts/build/codegen-stamp.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the cyclone-fixture loop
-    # below invokes `nros ws sync`. Probe once; emit `[PREREQ]` + exit 0
+    # below invokes `nros sync`. Probe once; emit `[PREREQ]` + exit 0
     # rather than burying the build in clap "unrecognized subcommand 'ws'"
     # stack traces (shipped 0.3.7 release predates the verb).
-    nros_require_ws_sync "$nros_cli"
+    nros_require_sync "$nros_cli"
     export cargo_profile_args
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0

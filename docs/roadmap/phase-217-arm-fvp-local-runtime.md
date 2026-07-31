@@ -202,7 +202,7 @@ Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
       + run recipe `run-fvp-aemv8r-cyclonedds-rust` — LANDED 2026-06-04.
       Both skip identically to the cpp variants (no west / no
       workspace / no aarch64-zephyr-elf SDK / no ELF / no FVP). Build
-      recipe runs the `nros ws sync` step + Cyclone descriptor
+      recipe runs the `nros sync` step + Cyclone descriptor
       codegen prereq + exports `NROS_REPO_DIR` so the example's
       `nano_ros_use_board()` include resolves; run recipe shells
       `west fvp run` over `build-fvp-aemv8r-cyclonedds-rust-talker/`.

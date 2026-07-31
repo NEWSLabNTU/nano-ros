@@ -233,12 +233,12 @@ build-fvp-aemv8r-cyclonedds-rust:
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
-    # Phase 214.I.2 fail-loud prereq guard before `ws sync` (the codegen
+    # Phase 214.I.2 fail-loud prereq guard before `nros sync` (the codegen
     # Rust interface generation the example's `[patch.crates-io]` needs).
-    nros_require_ws_sync "$codegen_tool"
+    nros_require_sync "$codegen_tool"
     src="$nros_root/examples/zephyr/rust/talker-aemv8r"
     source "$nros_root/scripts/build/codegen-stamp.sh"
-    echo "  → ws sync: $src"
+    echo "  → sync: $src"
     NROS_REPO_DIR="$nros_root" nros_codegen_stamp_check_or_wipe "$src"
     NROS_REPO_DIR="$nros_root" "$codegen_tool" sync "$src"
     NROS_REPO_DIR="$nros_root" nros_codegen_stamp_write "$src"

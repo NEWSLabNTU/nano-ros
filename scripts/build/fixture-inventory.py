@@ -285,7 +285,7 @@ def prerequisite_rows():
             "build_root": "examples/native/rust/*/generated",
             "scheduler": "just native build-fixture-rust",
             "shared_mutation": "examples/native/rust/{talker,listener,service-*,action-*,custom-transport-*}/generated; examples/native/rust/*/.cargo/config.toml",
-            "notes": "serial nros ws sync plus codegen-stamp before native Rust fixture leaves",
+            "notes": "serial nros sync plus codegen-stamp before native Rust fixture leaves",
         },
         {
             "id": "native-cmake-codegen-tool",
@@ -342,7 +342,7 @@ def prerequisite_rows():
             "build_root": "examples/qemu-arm-freertos/rust/*/generated",
             "scheduler": "just freertos build-examples",
             "shared_mutation": "examples/qemu-arm-freertos/rust/*/generated; examples/qemu-arm-freertos/rust/*/.cargo/config.toml",
-            "notes": "serial nros ws sync before FreeRTOS Rust role fixtures",
+            "notes": "serial nros sync before FreeRTOS Rust role fixtures",
         },
         {
             "id": "freertos-cmake-codegen-tool",
@@ -491,7 +491,7 @@ def prerequisite_rows():
             "build_root": "examples/zephyr/rust/*/generated",
             "scheduler": "just zephyr build-fixtures",
             "shared_mutation": "examples/zephyr/rust/*/generated; examples/zephyr/rust/*/.cargo/config.toml; examples/zephyr/rust/*/build/.nros-ws-sync.stamp",
-            "notes": "serial nros ws sync before Zephyr west fixture leaves",
+            "notes": "serial nros sync before Zephyr west fixture leaves",
         },
         {
             "id": "zephyr-cmake-codegen-tool",

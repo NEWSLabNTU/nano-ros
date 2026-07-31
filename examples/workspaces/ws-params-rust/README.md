@@ -18,7 +18,7 @@ publish *rate* keeps the baked initial — showing which reads are baked vs live
 ## Run
 
 ```sh
-source ./activate.sh && nros ws sync
+source ./activate.sh && nros sync
 nros codegen-system --bringup demo_bringup
 cargo build -p native_entry
 zenohd --listen tcp/127.0.0.1:7447 &

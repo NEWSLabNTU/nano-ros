@@ -327,7 +327,7 @@ not a codegen-emitted explicit table.
   No new generator in wave B (header stays hand-mirrored against `lib.rs`, guarded
   by `c_stub_platform.rs`).
 - **Q2 — Link-manifest owner.** Does the manifest live in the cmake glue, in
-  `nros` codegen (`nros plan`/`ws sync`), or both? *Lean: codegen emits a
+  `nros` codegen (`nros plan`/`nros sync`), or both? *Lean: codegen emits a
   manifest file; cmake + build.rs consume it — one producer, two consumers,
   matching the existing `APP_FFI_LIBS_FILE` shape.*
 - **Q3 — Capability inference fallback.** During migration, how are

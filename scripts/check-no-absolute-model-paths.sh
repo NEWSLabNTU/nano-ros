@@ -8,7 +8,7 @@
 # `system.toml` lookup silently falls through to `<bringup>/system.toml` — the
 # per-target `[param_services]` leak the recording exists to prevent.
 #
-# `nros ws sync` regenerates portable models (content-addressed staleness in
+# `nros sync` regenerates portable models (content-addressed staleness in
 # `cmd/ws.rs` re-hashes recorded inputs and treats an absolute path as stale).
 # This gate keeps a machine-specific path from ever being committed again.
 set -euo pipefail
@@ -35,7 +35,7 @@ if [ -n "${abs_paths}${home_dirs}" ]; then
   echo "check-no-absolute-model-paths: committed SystemModel(s) carry absolute host paths (issue 0320):" >&2
   printf '%s\n' "${abs_paths}" "${home_dirs}" | sed '/^$/d' >&2
   echo >&2
-  echo "Fix: re-run \`nros ws sync\` in the affected workspace to regenerate portable models." >&2
+  echo "Fix: re-run \`nros sync\` in the affected workspace to regenerate portable models." >&2
   exit 1
 fi
 

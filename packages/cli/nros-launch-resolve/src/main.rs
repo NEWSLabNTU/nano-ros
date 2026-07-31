@@ -1,11 +1,11 @@
 //! `nros-launch-resolve` — nano-ros's dedicated launch-resolution helper.
 //!
 //! Resolves a ROS 2 launch tree into a `SystemModel` YAML (RFC-0050), which
-//! `nros ws sync` bakes into the generated entry.
+//! `nros sync` bakes into the generated entry.
 //!
 //! # Why this exists as its own binary (issue 0285)
 //!
-//! `nros ws sync` used to shell out to `play_launch resolve`, locating the tool
+//! `nros sync` used to shell out to `play_launch resolve`, locating the tool
 //! by BARE NAME through PATH. `play_launch` is also the name of an unrelated
 //! ROS 2 record/replay tool, so on a machine that had that one installed, the
 //! wrong binary won and every platform's fixture build failed with a clap error

@@ -101,7 +101,7 @@ toolchain_fp       = sha256(codegen_fp || resolve_fp)   # resolve_fp only where 
 
 ### Both tools, because both emit fixture inputs (decided 2026-07-28)
 
-`nros ws sync` shells out to `nros-launch-resolve` by absolute path (RFC-0060),
+`nros sync` shells out to `nros-launch-resolve` by absolute path (RFC-0060),
 and the SystemModel that comes back **is** a fixture input — it is committed,
 consumed by `nros::main!(model = …)`, and its contents change what gets built.
 A fingerprint blind to the resolver would repeat, one layer down, exactly the
@@ -119,7 +119,7 @@ Two failures on 2026-07-28 make this concrete:
 
 **Scope it to records that use it.** The manifest record already carries a
 bringup field, so `resolve_fp` enters the signature only for fixtures whose build
-actually runs `ws sync`. A resolver rebuild then invalidates workspace fixtures
+actually runs `nros sync`. A resolver rebuild then invalidates workspace fixtures
 with a bringup and nothing else — correct, and much narrower than hashing it into
 everything.
 

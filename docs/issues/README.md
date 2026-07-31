@@ -64,12 +64,12 @@ fork chain (parser → rlm → resolver), and `Plan::for_host` / `--host` / `nro
 forwarded `KEY:=VALUE` bindings to the parser (vestigial positional swallowed the first one; binding
 stopped at model metadata) — `<arg>` overrides were inert through it. See `archived/0364-*`. (2026-07-31)
 
-**#367** — `nros ws sync` is a ghost: the phase-265 rename to `nros sync` left a live hidden alias
-(`cmd/ws.rs Sub::Sync`, "kept for one release cycle" — the cycle is over), the misnamed shell helper
-`nros_require_ws_sync` (its callers already run `nros sync`), and ~187 stale textual references
-(just recipes' comments/echoes, the book, `ci/docker`, a `pr-checks.yml` job name, active RFCs).
-Fix is a sweep + a `check-fast` grep gate (`\bws sync\b`, issue-0336 precedent) so the spelling
-cannot creep back. See `0367-*`. (2026-07-31)
+**#367** — RESOLVED: the `nros ws sync` ghost (phase-265 renamed the verb to `nros sync` but a hidden
+`cmd/ws.rs Sub::Sync` alias, the misnamed `nros_require_ws_sync` helper, and hundreds of stale prose refs
+survived). Deleted the alias (`nros ws sync` now errors), renamed the helper, swept every active code +
+user-facing-doc ref to `nros sync` (log prefixes, just recipes, book, `pr-checks.yml` job name, scripts,
+examples — historical records left intact), and added a class gate (`RETIRED_SPELLINGS`, `\bws sync\b`) to
+`check-retired-submodule-refs.sh` (in `check-fast`) so it can't creep back. See `archived/0367-*`. (2026-08-01)
 
 **#369** (filed as #368; renumbered — fourth id collision between parallel sessions) — Mixed C+C++ workspace fixture link-fails: `libstd_msgs__nano_ros_c.a` references
 `nros_config_variant_alloc_..._rmw_cffi_rmw_zenoh_ros_humble_std`, but `nros-c` (built for that workspace

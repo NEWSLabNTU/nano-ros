@@ -57,7 +57,7 @@
 //! Phase 216.C.5 ships the trait-shaped scaffolding only. The body
 //! deserialises a 4-byte little-endian `i32` (the wire shape of
 //! `std_msgs/String`), avoiding a dep on `std_msgs` (which would
-//! require `nros ws sync` to materialise `generated/std_msgs/`
+//! require `nros sync` to materialise `generated/std_msgs/`
 //! before cross-check). A follow-up that finishes the trampoline-
 //! registration story swaps this for a typed `String` subscribe once
 //! `generated/` ships.

@@ -1,10 +1,11 @@
 ---
 id: 367
 title: "`nros ws sync` is a ghost: the phase-265 rename to `nros sync` left a hidden live alias, a misnamed shell helper, and ~187 stale references"
-status: open
+status: resolved
 type: tech-debt
 area: build, cli
 related: [phase-265, issue-0336, issue-0363]
+resolved_in: "cmd/ws.rs Sub::Sync deleted + sweep + check-retired-submodule-refs gate"
 ---
 
 # `nros ws sync` is a ghost: the phase-265 rename left a live alias and ~187 stale references
@@ -60,3 +61,25 @@ this reason.
 
 `nros ws` itself stays — `env`/`list`/`status`/`clean`/`doctor` are live
 workspace utilities. Only the `sync` alias inside it is the ghost.
+
+## RESOLVED (2026-08-01)
+
+- Deleted `Sub::Sync` from `cmd/ws.rs` (+ its dispatch arm); `nros ws sync` now
+  fails `error: unrecognized subcommand 'sync'`. `run_sync`/`SyncArgs` stay — they
+  are `nros sync`'s implementation (`lib.rs` `Cmd::Sync → ws::run_sync`).
+- Renamed the shell helper `nros_require_ws_sync` → `nros_require_sync` at its
+  definition (`scripts/build/cargo.sh`) and all call sites.
+- Swept every `ws sync` in active code + user-facing docs → `nros sync`:
+  `ws.rs` log/error prefixes (`ws sync:` → `sync:`), `just/*.just` comments/echoes,
+  the book (removed the dead-alias paragraph), `pr-checks.yml` job name, the
+  facade/metadata-refresh error strings, `scripts/build/*.sh`, examples. Historical
+  records (issue docs, archived roadmap, superpowers specs, audit findings) left as
+  the record of the drift.
+- Added a **class gate**: `RETIRED_SPELLINGS=("\bws sync\b" …)` in
+  `scripts/check-retired-submodule-refs.sh` (already in `check-fast`), so the
+  spelling cannot creep back — issue-0196 rule (gate the class, not the string).
+
+Verified: `nros ws sync` errors; `nros ws --help` shows only env/list/status/clean/doctor;
+`nros sync --help` works; the gate passes with 0 live references.
+
+Sweep command: `git grep -n 'ws sync' -- . ':!*third-party*' ':!*/archived/*'`

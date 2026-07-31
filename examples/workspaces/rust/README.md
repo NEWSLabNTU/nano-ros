@@ -21,7 +21,7 @@ From the repository root:
 source ./activate.sh
 cd examples/workspaces/rust
 nros setup native
-nros ws sync
+nros sync
 nros codegen-system --bringup demo_bringup
 nros check --bringup src/demo_bringup
 nros check --workspace .

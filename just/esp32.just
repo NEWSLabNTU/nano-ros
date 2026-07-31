@@ -87,7 +87,7 @@ build-examples:
     # `fixtures-build.sh esp32 rust` would now select zero plain fixtures.
     echo "Building ESP32 examples (from examples/fixtures.toml)..."
     # Phase 225.O — ESP32-C3 QEMU workspace Entry (Node + Bringup + Entry
-    # pkgs) through the documented workspace workflow (`nros ws sync`,
+    # pkgs) through the documented workspace workflow (`nros sync`,
     # `nros codegen-system`, then cargo). Mirrors the freertos /
     # threadx_linux build-examples workspace-lane tail. The per-row `env`
     # in examples/fixtures.toml carries RUSTUP_TOOLCHAIN +

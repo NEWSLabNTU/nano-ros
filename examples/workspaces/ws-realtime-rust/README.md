@@ -45,6 +45,6 @@ ThreadX) they are real task priorities.
 source ./activate.sh
 cd examples/workspaces/ws-realtime-rust
 nros setup native
-nros ws sync
+nros sync
 cargo run -p native_entry
 ```

@@ -4,7 +4,7 @@
 #
 # Exercises exactly the documented out-of-tree flow:
 #   1. `nros new <name> --platform <p> --lang rust`  (scaffold; emits `version = "*"`)
-#   2. NROS_REPO_DIR=<repo> + `nros ws sync`          (write the [patch.crates-io] block)
+#   2. NROS_REPO_DIR=<repo> + `nros sync`          (write the [patch.crates-io] block)
 #   3. `cargo tree`                                    (resolution proves the patch redirects)
 #
 # Resolution-only (no compile / no cross build-std) — like dep-chain.yml; it
@@ -37,7 +37,7 @@ if grep -nE '(nros|nros-board[a-z0-9-]*)\s*=\s*\{[^}]*version\s*=\s*"0\.1"' "$pr
     exit 1
 fi
 
-echo "::group::nros ws sync (NROS_REPO_DIR=${REPO})"
+echo "::group::nros sync (NROS_REPO_DIR=${REPO})"
 ( cd "$proj" && NROS_REPO_DIR="$REPO" "$NROS" sync )
 echo "::endgroup::"
 

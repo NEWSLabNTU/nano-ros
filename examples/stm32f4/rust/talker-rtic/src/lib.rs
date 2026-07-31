@@ -22,7 +22,7 @@
 //! the integration work scheduled for follow-ups". The body emits raw
 //! CDR for a 4-byte little-endian `i32` (the wire shape of
 //! `std_msgs/String`), avoiding a dep on `std_msgs` (which would require
-//! `nros ws sync` to materialise `generated/std_msgs/` before cross-
+//! `nros sync` to materialise `generated/std_msgs/` before cross-
 //! check). A follow-up that finishes the trampoline-registration story
 //! swaps this for a typed `String` publish once `generated/` ships.
 

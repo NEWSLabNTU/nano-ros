@@ -11,7 +11,7 @@ by hand. Two entries, cross-process (issue 0096).
 ## Run
 
 ```sh
-source ./activate.sh && nros ws sync
+source ./activate.sh && nros sync
 nros codegen-system --bringup demo_bringup
 cmake -S . -B build && cmake --build build
 zenohd --listen tcp/127.0.0.1:7447 &
@@ -28,5 +28,5 @@ reading seq=1 temp=21.5          # listener
 
 ## Copy-out notes
 
-Standard workspace copy-out (`nros ws sync` + `-DNANO_ROS_ROOT`/`NROS_REPO_DIR`).
+Standard workspace copy-out (`nros sync` + `-DNANO_ROS_ROOT`/`NROS_REPO_DIR`).
 Fixture ids `workspace-cpp-native-custom-msg-{talker,listener}`.

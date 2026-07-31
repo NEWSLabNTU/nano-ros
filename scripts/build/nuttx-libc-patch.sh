@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Phase 214.M.2 — re-append the patched libc to a NuttX example's
-# `.cargo/config.toml` after `nros ws sync` has rendered it.
+# `.cargo/config.toml` after `nros sync` has rendered it.
 #
 # Why this exists
 # ---------------
@@ -13,7 +13,7 @@
 #
 # `packages/boards/nros-board-nuttx-qemu-arm/nros-board.toml` declares
 # the libc `[patch.crates-io]` line as part of its `cargo_config`
-# template, but `nros` 0.3.7's `ws sync` drops the `[patch.crates-io]`
+# template, but `nros` 0.3.7's `nros sync` drops the `[patch.crates-io]`
 # section when it renders the file. Until the upstream CLI bug is
 # fixed, this shell helper re-adds the patch line in-place.
 #
@@ -24,7 +24,7 @@
 # Usage: nros_nuttx_libc_patch <example_dir>
 #
 # Hard constraint (CLAUDE.md): we do not touch nros-cli's codegen
-# logic. The fix-up runs strictly after `ws sync` in the host-side
+# logic. The fix-up runs strictly after `nros sync` in the host-side
 # shell.
 
 set -euo pipefail
@@ -62,7 +62,7 @@ nros_nuttx_libc_patch() {
     rel="$(realpath --relative-to="$dir" "$root/third-party/nuttx/libc")"
 
     # #127 blocker-1 — a config that already carries a `[patch.crates-io]`
-    # table (e.g. an Entry pkg whose `nros ws sync` rendered the generated
+    # table (e.g. an Entry pkg whose `nros sync` rendered the generated
     # msg-crate patches) must get the libc line INSERTED under that table.
     # Appending a second `[patch.crates-io]` header is invalid TOML
     # ("could not parse TOML configuration"), which broke every nuttx
@@ -74,7 +74,7 @@ nros_nuttx_libc_patch() {
         awk -v rel="$rel" '
             { print }
             !done && /^\[patch\.crates-io\]$/ {
-                print "# Phase 214.M / #127 — patched libc for build-std (post-`ws sync`"
+                print "# Phase 214.M / #127 — patched libc for build-std (post-`nros sync`"
                 print "# fix-up from scripts/build/nuttx-libc-patch.sh). The pinned"
                 print "# nightly'\''s `std` references `libc::_SC_HOST_NAME_MAX`, which"
                 print "# crates.io libc does not expose for the NuttX target; the fork at"
@@ -90,12 +90,12 @@ nros_nuttx_libc_patch() {
 
     cat >> "$cfg" <<EOF
 
-# Phase 214.M — patched libc for build-std (post-\`ws sync\` fix-up
+# Phase 214.M — patched libc for build-std (post-\`nros sync\` fix-up
 # from scripts/build/nuttx-libc-patch.sh). The pinned nightly's
 # \`std\` references \`libc::_SC_HOST_NAME_MAX\`, which crates.io
 # \`libc 0.2.183\` does not expose for the NuttX target. The patched
 # fork at \`third-party/nuttx/libc/\` adds it. \`nros-board.toml\`
-# declares this patch but \`nros ws sync\` 0.3.7 strips it from the
+# declares this patch but \`nros sync\` 0.3.7 strips it from the
 # rendered config — re-append until the upstream CLI is fixed.
 [patch.crates-io]
 libc = { path = "$rel" }

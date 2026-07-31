@@ -209,8 +209,7 @@ nros sync               # codegen msg pkgs + write [patch.crates-io] → .cargo/
 ```
 
 `nros generate-rust` stays the low-level codegen-only primitive (no patch side
-effects). `nros ws sync` is a deprecated hidden alias for `nros sync` (one
-release cycle; emits a deprecation note).
+effects).
 
 ### `nros ws <subcommand>`
 

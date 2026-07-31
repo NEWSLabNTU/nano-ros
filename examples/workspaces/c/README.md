@@ -18,7 +18,7 @@ From the repository root:
 source ./activate.sh
 cd examples/workspaces/c
 nros setup native
-nros ws sync
+nros sync
 nros codegen-system --bringup demo_bringup
 cmake -S . -B build
 cmake --build build

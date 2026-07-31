@@ -20,7 +20,7 @@ path = "src/main.rs"
 # Phase 210.D.3 fixture — standalone Cargo pkg. Empty [workspace] marker
 # (cargo-ros2 pattern) so cargo treats this Cargo.toml as the patch
 # authority for the auto-managed [patch.crates-io] block written by
-# `nros ws sync` (block lives at the bottom of this file).
+# `nros sync` (block lives at the bottom of this file).
 [workspace]
 
 # Entry pkg deploy key — `nros::main!()` maps "native" →

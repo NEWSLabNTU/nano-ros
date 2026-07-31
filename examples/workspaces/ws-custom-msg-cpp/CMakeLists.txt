@@ -21,7 +21,7 @@ find_package(nano_ros REQUIRED COMPONENTS workspace)
 # name as a string and hand-encode the CDR payload (RFC-0043 raw-CDR idiom,
 # matching the committed C workspace), so NO generated interface archive is linked
 # (avoids the double-`builtin_interfaces`-glue pitfall a typed cpp link can hit).
-# `nros ws sync` still codegens the workspace-local `custom_msgs` crate from its
+# `nros sync` still codegens the workspace-local `custom_msgs` crate from its
 # `<depend>`.
 if(NOT NANO_ROS_PLATFORM)
     set(NANO_ROS_PLATFORM posix)

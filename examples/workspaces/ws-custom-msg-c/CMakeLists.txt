@@ -18,7 +18,7 @@ find_package(nano_ros REQUIRED COMPONENTS workspace)
 # `custom_msgs` (src/custom_msgs) is the in-workspace interface package declaring
 # the schema; it is NOT a CMake subdir here — the C components carry the type name
 # as a string and hand-encode the CDR payload (RFC-0043 typed-component idiom),
-# exactly as the committed `c` workspace does for `std_msgs`. `nros ws sync`
+# exactly as the committed `c` workspace does for `std_msgs`. `nros sync`
 # still codegens the workspace-local `custom_msgs` crate from its `<depend>`.
 if(NOT NANO_ROS_PLATFORM)
     set(NANO_ROS_PLATFORM posix)

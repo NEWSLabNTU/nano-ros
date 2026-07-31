@@ -59,15 +59,15 @@ build:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    # Phase 214.J.2 — guard `ws sync` against stale `generated/` after trait-
+    # Phase 214.J.2 — guard `nros sync` against stale `generated/` after trait-
     # surface drift (see scripts/build/codegen-stamp.sh).
     source scripts/build/codegen-stamp.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the loops below invoke
-    # `nros ws sync`, absent from the shipped 0.3.7 release. Probe once;
+    # `nros sync`, absent from the shipped 0.3.7 release. Probe once;
     # emit `[PREREQ]` + exit 0 if missing.
-    nros_require_ws_sync "$nros_cli"
+    nros_require_sync "$nros_cli"
     echo "Building QEMU ARM examples..."
     # phase-300 W1.1 — enumerate tracked crates via the git index (the
     # F1 `-not -path` find still DESCENDED every target*/build* tree).

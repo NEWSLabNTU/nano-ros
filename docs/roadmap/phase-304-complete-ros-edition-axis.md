@@ -127,7 +127,7 @@ no `ros2 interface hash` subcommand — the doc's claim was also wrong).
 `type_hash: &str` (hash decided by the caller) instead of an `edition`.
 Nested-type closure: `generate_package` resolves **same-package** nested types
 itself from `package.share_dir`; **cross-package** types come from a
-caller-supplied `MsgResolver` (`ws sync` + `cargo-nano-ros` build one over the
+caller-supplied `MsgResolver` (`nros sync` + `cargo-nano-ros` build one over the
 ament interface index; self-contained/Humble paths pass `no_cross_pkg_resolver`).
 An unresolvable nested type is a **HARD error** — never a wrong or placeholder
 hash on the wire. Codegen-level assertions in `generator.rs` pin the real Jazzy
@@ -215,7 +215,7 @@ loudly). Unit-tested (`ros_edition_resolves_with_humble_default_and_typo_guard`)
 **W2b LANDED (2026-07-25) — the lowering.** SSoT `RosEdition::cargo_feature()`
 (`ros-<edition>`, the twin `ResolvedRmw::cargo_feature` lacked). Threaded to:
 
-- **(a) codegen `--ros-edition` default** — `nros ws sync --ros-edition` is now
+- **(a) codegen `--ros-edition` default** — `nros sync --ros-edition` is now
   `Option`; when omitted it auto-lowers `[system].ros_edition` from a
   `system.toml` at the workspace root (`resolve_sync_edition`), else humble. The
   CMake C/C++ path: `nros_generate_interfaces` defaults `ROS_EDITION` from the
@@ -268,7 +268,7 @@ required.
 ### W3 — extend the enum: `jazzy` / `rolling` — **LANDED (2026-07-25)**
 
 `RosEdition` gained `Jazzy`/`Rolling` + a single `RosEdition::parse` /
-`as_str` / `uses_type_hash` API (every CLI parse site — `ws sync`,
+`as_str` / `uses_type_hash` API (every CLI parse site — `nros sync`,
 `generate`, `generate-px4` — routes through it, so a new distro is one arm).
 `ros-jazzy`/`ros-rolling` cargo features added across the 6 forwarding
 Cargo.tomls (nros-rmw-zenoh → staticlib → nros-node → nros → nros-c → nros-cpp);

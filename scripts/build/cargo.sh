@@ -230,32 +230,32 @@ nros_cargo_ensure_codegen_c() {
 
 # Phase 214.I.2 — probe whether the installed `nros` CLI exposes the `sync`
 # verb (added post-0.3.7 by Phase 210.D.1 / 210.E.3.d.native; promoted from
-# `nros ws sync` to top-level `nros sync` by phase-265 W5). The shipped 0.3.7
+# `nros sync` to top-level `nros sync` by phase-265 W5). The shipped 0.3.7
 # release predates it; without this guard every fixture-build recipe cascades
 # into a noisy `clap` "unrecognized subcommand" stack.
 #
 # Returns 0 if `sync` is available, 1 otherwise. Argument: optional path
 # to the `nros` binary (defaults to `$(nros_cli_bin)`). Accepts either the
-# new top-level `nros sync` or the deprecated `nros ws sync` alias.
+# new top-level `nros sync` or the deprecated `nros sync` alias.
 nros_cli_ws_sync_available() {
     local bin="${1:-}"
     if [ -z "$bin" ]; then
         bin="$(nros_cli_bin 2>/dev/null)" || return 1
     fi
     [ -x "$bin" ] || return 1
-    # Top-level `nros sync` (phase-265) OR the hidden `ws sync` alias. The
+    # Top-level `nros sync` (phase-265) OR the hidden `nros sync` alias. The
     # grep on a failure path returns 1 too, so the chained pipes are safe.
     "$bin" help 2>/dev/null | grep -q '^[[:space:]]*sync\b' ||
         "$bin" help ws 2>/dev/null | grep -q '^[[:space:]]*sync\b'
 }
 
 # Phase 214.I.2 — fail-loud guard. Call once at the top of any recipe /
-# script section that will invoke `nros ws sync`. On success: silent.
+# script section that will invoke `nros sync`. On success: silent.
 # On failure: emits a `[PREREQ]` one-liner naming the missing verb and
 # exits 0 (skip, not fail) so a pre-pin checkout doesn't bury the build
 # in cargo / clap stack traces. Honors the same NROS_CLI / PATH / ~/.nros
 # resolution as `nros_cli_bin`.
-nros_require_ws_sync() {
+nros_require_sync() {
     local bin="${1:-}"
     if [ -z "$bin" ]; then
         # No arg: resolve fresh. `nros_cli_bin` now runs the STALE guard itself
@@ -267,14 +267,14 @@ nros_require_ws_sync() {
     if nros_cli_ws_sync_available "$bin"; then
         return 0
     fi
-    # issue #181 — a fixture build REQUIRES `nros ws sync` to generate the
+    # issue #181 — a fixture build REQUIRES `nros sync` to generate the
     # per-example `generated/` msg crates; without it the rust lane produces
     # NOTHING. Exiting 0 here silently skipped the whole rust half of the sweep
     # (freertos/threadx-linux/native), which then surfaced downstream as
     # `test-all` reds ("fixture not prebuilt") that look like runtime bugs. Fail
     # LOUD instead: a stale/wrong CLI is an actionable setup error, not a
     # skippable lane.
-    echo "[ERROR] nros ws sync verb unavailable (CLI at '$bin' lacks Phase 210.D.1 / 210.E.3.d.native; rebuild via 'just setup-cli', or set \$NROS_CLI to a binary that carries the verb). Cannot build rust fixtures without it — failing loud (issue #181) rather than skipping the lane and failing downstream tests." >&2
+    echo "[ERROR] nros sync verb unavailable (CLI at '$bin' lacks Phase 210.D.1 / 210.E.3.d.native; rebuild via 'just setup-cli', or set \$NROS_CLI to a binary that carries the verb). Cannot build rust fixtures without it — failing loud (issue #181) rather than skipping the lane and failing downstream tests." >&2
     exit 1
 }
 
@@ -289,7 +289,7 @@ nros_cargo_fetch_standalone_manifests() {
     # row or broad-build recipe (absent from examples/fixtures.toml and
     # build-all.mk). Some (e.g. multi-node-workspace) carry a gitignored
     # `[patch.crates-io]` path-dep on `generated/<msg-crate>` that only
-    # `nros ws sync` materialises, so `cargo fetch` here would hard-fail on a
+    # `nros sync` materialises, so `cargo fetch` here would hard-fail on a
     # missing manifest. Skip them — same rationale as the `examples/zephyr/**`
     # exclusion (known-issues #14).
     rg --files \

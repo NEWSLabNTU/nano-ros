@@ -1,6 +1,6 @@
 # nano-ros's dedicated launch-resolution helper (issue 0285, RFC-0059).
 #
-# A SEPARATE, DISTINCTLY NAMED binary — not `play_launch`. `nros ws sync` used
+# A SEPARATE, DISTINCTLY NAMED binary — not `play_launch`. `nros sync` used
 # to shell out to whatever `play_launch` sat on PATH, where an unrelated ROS 2
 # record/replay tool of the same name shadowed ours and every platform's
 # fixture build died inside a cmake configure. Naming this binary

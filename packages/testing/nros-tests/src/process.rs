@@ -743,10 +743,10 @@ fn nros_cli_path() -> std::path::PathBuf {
     std::path::PathBuf::from(format!("{home}/bin/nros"))
 }
 
-/// Check whether the installed `nros` CLI exposes the `ws sync` verb.
+/// Check whether the installed `nros` CLI exposes the `nros sync` verb.
 ///
 /// Added by Phase 210.D.1 / 210.E.3.d.native; the shipped 0.3.7 release
-/// predates it. Tests that shell out to `nros ws sync …` (e.g. codegen-
+/// predates it. Tests that shell out to `nros sync …` (e.g. codegen-
 /// preflight integration tests) should gate on this and skip cleanly
 /// rather than burying the run in a clap "unrecognized subcommand 'ws'"
 /// stack trace. Phase 214.I.2.
@@ -770,7 +770,7 @@ pub fn is_nros_ws_sync_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Skip the current test if the installed `nros` CLI lacks `ws sync`.
+/// Skip the current test if the installed `nros` CLI lacks `nros sync`.
 ///
 /// Returns `false` (test should bail / early-return) with a printed
 /// skip line when unavailable; `true` when present. Phase 214.I.2.
@@ -783,13 +783,13 @@ pub fn is_nros_ws_sync_available() -> bool {
 ///     if !require_nros_ws_sync() {
 ///         return;
 ///     }
-///     // ... shell out to `nros ws sync <dir>`
+///     // ... shell out to `nros sync <dir>`
 /// }
 /// ```
 pub fn require_nros_ws_sync() -> bool {
     if !is_nros_ws_sync_available() {
         eprintln!(
-            "Skipping test: `nros ws sync` verb unavailable (installed nros lacks Phase 210.D.1; \
+            "Skipping test: `nros sync` verb unavailable (installed nros lacks Phase 210.D.1; \
              rebuild via `just setup-cli` to pick up the in-tree CLI — Phase 218)"
         );
         return false;

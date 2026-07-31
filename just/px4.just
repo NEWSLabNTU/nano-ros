@@ -141,7 +141,7 @@ build-examples: build-sitl-cpp
 #
 # Phase 233.4 — the XRCE companion host test (`nros-tests::px4_xrce`) runs the
 # prebuilt `px4-stub` example. Generate its `px4_msgs` bindings from the PX4
-# `.msg` tree (no `nros ws sync` path — px4_msgs isn't an ament package) then
+# `.msg` tree (no `nros sync` path — px4_msgs isn't an ament package) then
 # build the standalone example to `target-xrce/` where `build_example_rmw`
 # resolves it. Companion gets the same bindings so a `just px4 build-examples`
 # copy-out builds too.

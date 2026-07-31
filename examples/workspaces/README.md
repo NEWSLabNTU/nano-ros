@@ -15,7 +15,7 @@ Build them with the user workflow:
 source ./activate.sh
 cd examples/workspaces/<rust|c|cpp|mixed>
 nros setup native
-nros ws sync
+nros sync
 nros codegen-system --bringup demo_bringup
 ```
 
@@ -61,7 +61,7 @@ Kconfig selects the RMW. There is no `nros build` / `nros launch` build path.
 source ./activate.sh
 
 # Platform-agnostic message provisioning (once; sibling to `west update`).
-nros ws sync
+nros sync
 
 # west is the build verb. `-b` picks the board; the -DCONF_FILE Kconfig
 # overlay picks the RMW (prj-zenoh.conf / prj-xrce.conf / prj-cyclonedds.conf).

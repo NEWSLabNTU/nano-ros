@@ -3,10 +3,11 @@
 //! Phase 210.B.3 + 210.D.1 (locked design). Subcommands:
 //!
 //! * `env` — print shell export for `NROS_INTERFACE_SEARCH_PATH`.
-//! * `sync` — scan workspace, codegen msg pkgs into
-//!   `generated/<pkg>/`, write `[patch.crates-io]`
-//!   block into the patch authority Cargo.toml so plain `cargo build`
-//!   resolves `local_msgs = "*"` to the generated crate.
+//! * `list` / `status` / `clean` / `doctor` — workspace msg-pkg utilities.
+//!
+//! The codegen + `[patch.crates-io]` writer — once a `sync` subcommand here —
+//! was promoted to the top-level `nros sync` (phase-265 W5); its implementation
+//! is [`run_sync`], still in this module, dispatched from `Cmd::Sync`.
 //!
 //! **Dual-mode (`cargo`-style):** every subcommand works on BOTH layouts —
 //! a multi-pkg colcon workspace (`<root>/src/<pkg>/package.xml`) AND a
@@ -46,12 +47,6 @@ pub enum Sub {
     /// Print shell export adding <dir> (default `./src`) to
     /// `NROS_INTERFACE_SEARCH_PATH`. `eval "$(nros ws env)"`.
     Env(EnvArgs),
-
-    /// DEPRECATED alias for `nros sync` (phase-265 W5). Kept for one release
-    /// cycle. Hidden from help; emits a one-line deprecation note then runs
-    /// the same codegen + `.cargo/config.toml` patch sync.
-    #[command(hide = true)]
-    Sync(SyncArgs),
 
     /// List discovered msg + rust-consumer pkgs in the workspace (or
     /// single pkg). Prints kind, name, dir per row. (Phase 210.F.3.)
@@ -171,10 +166,6 @@ pub struct DoctorArgs {
 pub fn run(args: Args) -> Result<()> {
     match args.command {
         Sub::Env(a) => run_env(a),
-        Sub::Sync(a) => {
-            eprintln!("note: `nros ws sync` is deprecated; use `nros sync` (phase-265).");
-            run_sync(a)
-        }
         Sub::List(a) => run_list(a),
         Sub::Status(a) => run_status(a),
         Sub::Clean(a) => run_clean(a),
@@ -245,7 +236,7 @@ fn resolve_env_root(arg: Option<&Path>) -> Result<PathBuf> {
 }
 
 // =============================================================================
-// `nros ws sync` — pre-cargo codegen + patch-table writer
+// `nros sync` — pre-cargo codegen + patch-table writer
 // =============================================================================
 
 /// Scanned workspace pkg.
@@ -542,7 +533,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
                 continue;
             };
             std::fs::create_dir_all(&cfg_dir)
-                .wrap_err_with(|| format!("ws sync: create {}", cfg_dir.display()))?;
+                .wrap_err_with(|| format!("sync: create {}", cfg_dir.display()))?;
             let mut cmd = std::process::Command::new(pl);
             cmd.arg(&launch);
             // phase-326 (issue 0364) — replay the exact binding the committed
@@ -562,20 +553,20 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
             cmd.arg("-o").arg(&model);
             let out = cmd
                 .output()
-                .wrap_err_with(|| format!("ws sync: spawn nros-launch-resolve for {}", pkg.name))?;
+                .wrap_err_with(|| format!("sync: spawn nros-launch-resolve for {}", pkg.name))?;
             if !out.status.success() {
                 eyre::bail!(
-                    "ws sync: nros-launch-resolve failed for `{}` ({}):\n{}",
+                    "sync: nros-launch-resolve failed for `{}` ({}):\n{}",
                     pkg.name,
                     launch.display(),
                     String::from_utf8_lossy(&out.stderr),
                 );
             }
             if verbose {
-                println!("ws sync: resolved {}", model.display());
+                println!("sync: resolved {}", model.display());
             } else {
                 println!(
-                    "ws sync: resolved {} → {}",
+                    "sync: resolved {} → {}",
                     launch
                         .file_name()
                         .and_then(|s| s.to_str())
@@ -587,7 +578,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
     }
     if !blocked.is_empty() {
         eyre::bail!(
-            "ws sync: {} SystemModel(s) need resolving but `nros-launch-resolve` \
+            "sync: {} SystemModel(s) need resolving but `nros-launch-resolve` \
              is not next to the `nros` binary:\n{}\n\n\
              Build it:  just setup-launch-resolve\n\
              (If the submodule is missing:  git submodule update --init --recursive \
@@ -722,7 +713,7 @@ fn generate_facade_crates(
         [one] => *one,
         many => {
             eprintln!(
-                "ws sync: {} bringups declare a system ({}); selection facades \
+                "sync: {} bringups declare a system ({}); selection facades \
                  are not generated for multi-system workspaces (phase-315 W1 \
                  models one declaration per workspace). Entry manifests keep \
                  their hand-written features.",
@@ -738,9 +729,9 @@ fn generate_facade_crates(
 
     let system_toml = bringup.dir.join("system.toml");
     let raw = std::fs::read_to_string(&system_toml)
-        .wrap_err_with(|| format!("ws sync: read {}", system_toml.display()))?;
+        .wrap_err_with(|| format!("sync: read {}", system_toml.display()))?;
     let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
-        .wrap_err_with(|| format!("ws sync: parse {}", system_toml.display()))?;
+        .wrap_err_with(|| format!("sync: parse {}", system_toml.display()))?;
 
     // Entry packages come from CARGO's member list, not from `scan`.
     //
@@ -785,13 +776,13 @@ fn generate_facade_crates(
             &sys,
             &facade_root,
         )
-        .wrap_err_with(|| format!("ws sync: facade for {pkg_name}"))?
+        .wrap_err_with(|| format!("sync: facade for {pkg_name}"))?
         else {
             continue;
         };
         if f.changed || verbose {
             println!(
-                "ws sync: selection facade {} → nros[{}] {}",
+                "sync: selection facade {} → nros[{}] {}",
                 f.entry,
                 f.nros_features.join(", "),
                 if f.board_features.is_empty() {
@@ -885,7 +876,7 @@ fn generate_bridge_configs(
             // R-code.1 — the launch-synth fallback is deleted; a bridge
             // bringup declares system semantics, so it must resolve a model.
             eyre::bail!(
-                "ws sync: bridge bringup `{}` has no committed SystemModel \
+                "sync: bridge bringup `{}` has no committed SystemModel \
                  (config/system_model.yaml) — the launch-synth fallback was \
                  removed (phase-296 R4); resolve one with `play_launch \
                  resolve … --system {}/system.toml`",
@@ -907,18 +898,18 @@ fn generate_bridge_configs(
                 target: None,
             },
         )
-        .wrap_err_with(|| format!("ws sync: plan bridge bringup {}", pkg.name))?;
+        .wrap_err_with(|| format!("sync: plan bridge bringup {}", pkg.name))?;
 
         let plan_json = std::fs::read_to_string(&output.plan_path)?;
         let plan: crate::orchestration::plan::NrosPlan = serde_json::from_str(&plan_json)
-            .wrap_err_with(|| format!("ws sync: parse plan for bridge bringup {}", pkg.name))?;
+            .wrap_err_with(|| format!("sync: parse plan for bridge bringup {}", pkg.name))?;
 
         match crate::orchestration::bridge_gen::render_bridge_runtime_config(&plan, ws_root) {
             Some(cfg) => {
                 std::fs::write(&dest, cfg)
-                    .wrap_err_with(|| format!("ws sync: write {}", dest.display()))?;
+                    .wrap_err_with(|| format!("sync: write {}", dest.display()))?;
                 if verbose {
-                    println!("ws sync: wrote {}", dest.display());
+                    println!("sync: wrote {}", dest.display());
                 }
             }
             // A `[[bridge]]` whose plan carried no resolvable bridge — drop any
@@ -955,7 +946,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     let nano_ros_for_probes = nano_ros_path_for(&args);
     let ws_root: PathBuf = match args.workspace {
         Some(p) => {
-            std::fs::canonicalize(&p).wrap_err_with(|| format!("ws sync: {}", p.display()))?
+            std::fs::canonicalize(&p).wrap_err_with(|| format!("sync: {}", p.display()))?
         }
         None => std::env::current_dir()?,
     };
@@ -976,7 +967,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         ws_root.clone()
     } else {
         bail!(
-            "ws sync: no `src/<pkg>/package.xml` and no `package.xml` at root \
+            "sync: no `src/<pkg>/package.xml` and no `package.xml` at root \
              under {} — expected colcon-style workspace or single-pkg dir",
             ws_root.display()
         );
@@ -994,7 +985,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         scan_workspace(&src_root, &mut scan)?;
     }
     if scan.is_empty() {
-        println!("ws sync: no pkgs under {}", src_root.display());
+        println!("sync: no pkgs under {}", src_root.display());
         return Ok(());
     }
     // Phase 212.M-F.21 — Rust consumer's transitive msg deps via path-deps.
@@ -1011,13 +1002,13 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 
     if args.verbose || args.dry_run {
         println!(
-            "ws sync: scanned {} pkgs ({} msg, {} rust) under {}",
+            "sync: scanned {} pkgs ({} msg, {} rust) under {}",
             scan.len(),
             msg_pkgs.len(),
             scan.iter().filter(|p| p.is_rust_pkg).count(),
             src_root.display()
         );
-        println!("ws sync: topo order: {topo:?}");
+        println!("sync: topo order: {topo:?}");
     }
 
     if args.check {
@@ -1029,7 +1020,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             let pkg = scan.iter().find(|p| &p.name == name).unwrap();
             let out = build_root.join(name);
             println!(
-                "ws sync: WOULD codegen {} from {} → {}",
+                "sync: WOULD codegen {} from {} → {}",
                 name,
                 pkg.manifest.display(),
                 out.display()
@@ -1091,13 +1082,13 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     generate_facade_crates(&ws_root, &scan, &build_root, args.verbose)?;
 
     if rust_consumers.is_empty() {
-        println!("ws sync: no Rust consumer pkgs — patch tables not written.");
+        println!("sync: no Rust consumer pkgs — patch tables not written.");
         // phase-308 W1 — a C/C++-only workspace has no Rust consumers, but it
         // DOES have components to probe. Returning here skipped the metadata
         // refresh entirely for exactly the workspaces the C/C++ producer
         // exists to serve.
         refresh_source_metadata(&ws_root, nano_ros_for_probes, no_metadata, verbose)?;
-        println!("ws sync: done.");
+        println!("sync: done.");
         return Ok(());
     }
 
@@ -1199,7 +1190,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 
     refresh_source_metadata(&ws_root, nano_ros_path.clone(), no_metadata, verbose)?;
 
-    println!("ws sync: done.");
+    println!("sync: done.");
     Ok(())
 }
 
@@ -1235,7 +1226,7 @@ fn refresh_source_metadata(
         return Ok(());
     }
     println!(
-        "ws sync: source metadata — {} rebuilt, {} already current",
+        "sync: source metadata — {} rebuilt, {} already current",
         report.rebuilt.len(),
         report.fresh.len()
     );
@@ -1243,14 +1234,14 @@ fn refresh_source_metadata(
     // count a bake cannot know, and that is exactly how issue 0257's executor
     // ran out of callback slots at boot.
     for what in &report.unsupported {
-        println!("ws sync: source metadata — no producer for {what}");
+        println!("sync: source metadata — no producer for {what}");
     }
     Ok(())
 }
 
 fn parse_edition(s: &str) -> Result<RosEdition> {
     RosEdition::parse(s)
-        .ok_or_else(|| eyre::eyre!("ws sync: unknown ROS edition '{s}' (humble | iron | jazzy)"))
+        .ok_or_else(|| eyre::eyre!("sync: unknown ROS edition '{s}' (humble | iron | jazzy)"))
 }
 
 /// Resolve the codegen edition (phase-304 W2b): an explicit `--ros-edition`
@@ -1264,13 +1255,13 @@ fn resolve_sync_edition(cli: Option<&str>, ws_root: &Path) -> Result<RosEdition>
     let sys_toml = ws_root.join("system.toml");
     if sys_toml.is_file() {
         let raw = std::fs::read_to_string(&sys_toml)
-            .wrap_err_with(|| format!("ws sync: read {}", sys_toml.display()))?;
+            .wrap_err_with(|| format!("sync: read {}", sys_toml.display()))?;
         let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
-            .wrap_err_with(|| format!("ws sync: parse {}", sys_toml.display()))?;
+            .wrap_err_with(|| format!("sync: parse {}", sys_toml.display()))?;
         return sys
             .system
             .ros_edition()
-            .wrap_err_with(|| format!("ws sync: [system].ros_edition in {}", sys_toml.display()));
+            .wrap_err_with(|| format!("sync: [system].ros_edition in {}", sys_toml.display()));
     }
     Ok(RosEdition::Humble)
 }
@@ -1313,18 +1304,18 @@ fn codegen_workspace_pkg(
 ) -> Result<()> {
     let out_dir = build_root;
     std::fs::create_dir_all(&out_dir)
-        .wrap_err_with(|| format!("ws sync: mkdir {}", out_dir.display()))?;
+        .wrap_err_with(|| format!("sync: mkdir {}", out_dir.display()))?;
     if verbose {
         println!(
-            "ws sync: codegen workspace pkg {} → {}",
+            "sync: codegen workspace pkg {} → {}",
             pkg.name,
             out_dir.display()
         );
     } else {
-        println!("ws sync: codegen {}", pkg.name);
+        println!("sync: codegen {}", pkg.name);
     }
     let package = Package::from_share_dir(pkg.dir.clone())
-        .wrap_err_with(|| format!("ws sync: read pkg {}", pkg.dir.display()))?;
+        .wrap_err_with(|| format!("sync: read pkg {}", pkg.dir.display()))?;
     // Per-field capacity config (RFC-0033), discovered from the pkg source dir.
     let resolver = rosidl_codegen::CapacityResolver::discover(&pkg.dir, None)?;
     let msg_resolve = ament_msg_resolver();
@@ -1335,7 +1326,7 @@ fn codegen_workspace_pkg(
         &resolver,
         &msg_resolve,
     )
-    .wrap_err_with(|| format!("ws sync: generate_package failed for {}", pkg.name))?;
+    .wrap_err_with(|| format!("sync: generate_package failed for {}", pkg.name))?;
     // Codegen emits <out_dir>/<pkg>/{Cargo.toml,src/} with sibling `path =
     // "../<dep>"` deps. We keep that flat layout (no extra `rust/`
     // nesting) so the relative paths between generated crates resolve
@@ -1385,12 +1376,12 @@ fn codegen_ament_deps_for(
         std::fs::create_dir_all(&out_dir)?;
         if verbose {
             println!(
-                "ws sync: codegen AMENT pkg {} → {}",
+                "sync: codegen AMENT pkg {} → {}",
                 amented.name,
                 out_dir.display()
             );
         } else {
-            println!("ws sync: codegen {}", amented.name);
+            println!("sync: codegen {}", amented.name);
         }
         let resolver = rosidl_codegen::CapacityResolver::discover(&amented.share_dir, None)?;
         let msg_resolve = ament_msg_resolver();
@@ -1401,7 +1392,7 @@ fn codegen_ament_deps_for(
             &resolver,
             &msg_resolve,
         )
-        .wrap_err_with(|| format!("ws sync: generate_package failed for {}", amented.name))?;
+        .wrap_err_with(|| format!("sync: generate_package failed for {}", amented.name))?;
         emitted.insert(amented.name.clone());
         // Queue this pkg's own deps (parse its package.xml).
         let pxml = amented.share_dir.join("package.xml");
@@ -1446,7 +1437,7 @@ fn scan_one_pkg_dir_inner(
     let body = std::fs::read_to_string(&manifest)?;
     let Some(name) = extract_pkg_name(&body) else {
         bail!(
-            "ws sync: single-pkg mode: package.xml at {} has no <name>",
+            "sync: single-pkg mode: package.xml at {} has no <name>",
             manifest.display()
         );
     };
@@ -1704,7 +1695,7 @@ fn topo_sort_msg_pkgs(pkgs: &[&WsPkg]) -> Result<Vec<String>> {
             Some(idx) => emitted.push(remaining.remove(idx).name.clone()),
             None => {
                 let names: Vec<&str> = remaining.iter().map(|p| p.name.as_str()).collect();
-                bail!("ws sync: dependency cycle (or missing dep) among {names:?}");
+                bail!("sync: dependency cycle (or missing dep) among {names:?}");
             }
         }
     }
@@ -1851,9 +1842,9 @@ fn write_central_patch_file(nano_ros_path: &Path) -> Result<PathBuf> {
         return Ok(dst);
     }
     let tmp = dst.with_file_name(format!(".{CENTRAL_PATCH_FILE}.tmp.{}", std::process::id()));
-    std::fs::write(&tmp, &body).wrap_err_with(|| format!("ws sync: write {}", tmp.display()))?;
+    std::fs::write(&tmp, &body).wrap_err_with(|| format!("sync: write {}", tmp.display()))?;
     std::fs::rename(&tmp, &dst)
-        .wrap_err_with(|| format!("ws sync: rename {} -> {}", tmp.display(), dst.display()))?;
+        .wrap_err_with(|| format!("sync: rename {} -> {}", tmp.display(), dst.display()))?;
     Ok(dst)
 }
 
@@ -1995,7 +1986,7 @@ fn write_patch_block(
         };
         if !resolved.is_file() {
             bail!(
-                "ws sync: central patch file `{}` is not readable from `{}` — \
+                "sync: central patch file `{}` is not readable from `{}` — \
                  cargo ignores a missing `include` WITHOUT warning and the build \
                  would fail `no matching package named 'nros'`. Re-run `nros sync` \
                  from the nano-ros checkout (the file is gitignored + regenerated).",
@@ -2014,7 +2005,7 @@ fn write_patch_block(
         let narrowed = narrowed_generated_entries(&existing, &new_names, requested);
         if !narrowed.is_empty() {
             bail!(
-                "ws sync: refusing to write {} — it would DROP {} still-declared \
+                "sync: refusing to write {} — it would DROP {} still-declared \
                  generated interface crate(s): {}.\n\
                  \x20 The interface index could not resolve them this run (no ROS 2 \
                  environment and not in the bundled set at packages/cli/interfaces/). \
@@ -2036,7 +2027,7 @@ fn write_patch_block(
     //    patch rows + the rest of the manifest are preserved. Atomic temp + rename
     //    (the parallel-RMW-variant race the splice writer guarded still applies).
     let body = std::fs::read_to_string(authority)
-        .wrap_err_with(|| format!("ws sync: read {}", authority.display()))?;
+        .wrap_err_with(|| format!("sync: read {}", authority.display()))?;
     let migrated = strip_managed_patch_from_cargo(&body);
     if migrated != body {
         let fname = authority
@@ -2046,10 +2037,10 @@ fn write_patch_block(
         let tmp =
             authority.with_file_name(format!(".{fname}.nros-sync-tmp.{}", std::process::id()));
         std::fs::write(&tmp, migrated)
-            .wrap_err_with(|| format!("ws sync: write {}", tmp.display()))?;
+            .wrap_err_with(|| format!("sync: write {}", tmp.display()))?;
         std::fs::rename(&tmp, authority).wrap_err_with(|| {
             format!(
-                "ws sync: rename {} -> {}",
+                "sync: rename {} -> {}",
                 tmp.display(),
                 authority.display()
             )
@@ -2057,7 +2048,7 @@ fn write_patch_block(
     }
 
     println!(
-        "ws sync: wrote [patch.crates-io] → {}",
+        "sync: wrote [patch.crates-io] → {}",
         authority_dir.join(".cargo/config.toml").display()
     );
     Ok(())
@@ -2120,7 +2111,7 @@ fn drop_empty_patch_crates_io_header(body: &str) -> String {
 }
 
 /// Phase 220.E — static lookup of every nano-ros runtime crate the
-/// `ws sync` writer knows how to emit a `[patch.crates-io]` path entry
+/// `nros sync` writer knows how to emit a `[patch.crates-io]` path entry
 /// for. Mirrors the workspace layout under `<NROS_REPO_DIR>/packages/`.
 ///
 /// If a consumer references an `nros-*` crate not in this table, the
@@ -2370,7 +2361,7 @@ fn render_managed_entries(
                 }
             } else {
                 eprintln!(
-                    "ws sync: unknown runtime crate `{extra}` referenced as registry dep; \
+                    "sync: unknown runtime crate `{extra}` referenced as registry dep; \
                      no path mapping in the nros lookup table — skipping patch entry."
                 );
             }
@@ -2397,7 +2388,7 @@ fn render_managed_entries(
                 // warned loudly a few lines above; a known crate with a dead path
                 // was the quiet one.
                 eprintln!(
-                    "ws sync: ERROR — managed crate `{cname}` maps to `{sub}`, which \
+                    "sync: ERROR — managed crate `{cname}` maps to `{sub}`, which \
                      does not exist under {}.\n\
                      \x20 The nros lookup table is stale for this crate (a package \
                      moved?). Refusing to emit a patch table that silently omits it; \
@@ -2421,7 +2412,7 @@ fn render_managed_entries(
             .collect::<Vec<_>>()
             .join("\n");
         eyre::bail!(
-            "ws sync: {} managed crate(s) have a dead path in the nros lookup table:\n{list}\n\
+            "sync: {} managed crate(s) have a dead path in the nros lookup table:\n{list}\n\
              Refusing to write an incomplete [patch.crates-io] — a missing entry \
              resolves that dependency from crates.io instead of this checkout, which \
              fails nowhere. Rebuild the CLI (`just setup-cli`); if that does not help, \
@@ -2462,15 +2453,15 @@ fn write_patch_config(
     let cfg = cfg_dir.join("config.toml");
     let text = std::fs::read_to_string(&cfg).unwrap_or_default();
     let out = render_patch_config(&text, managed, include_rel)
-        .wrap_err_with(|| format!("ws sync: edit {}", cfg.display()))?;
+        .wrap_err_with(|| format!("sync: edit {}", cfg.display()))?;
 
     // Atomic write (create `.cargo/` first).
     std::fs::create_dir_all(&cfg_dir)
-        .wrap_err_with(|| format!("ws sync: mkdir {}", cfg_dir.display()))?;
+        .wrap_err_with(|| format!("sync: mkdir {}", cfg_dir.display()))?;
     let tmp = cfg.with_file_name(format!(".config.toml.nros-sync-tmp.{}", std::process::id()));
-    std::fs::write(&tmp, out).wrap_err_with(|| format!("ws sync: write {}", tmp.display()))?;
+    std::fs::write(&tmp, out).wrap_err_with(|| format!("sync: write {}", tmp.display()))?;
     std::fs::rename(&tmp, &cfg)
-        .wrap_err_with(|| format!("ws sync: rename {} -> {}", tmp.display(), cfg.display()))?;
+        .wrap_err_with(|| format!("sync: rename {} -> {}", tmp.display(), cfg.display()))?;
     Ok(())
 }
 
@@ -2502,7 +2493,7 @@ fn render_patch_config(
         let arr = inc_item
             .as_value_mut()
             .and_then(|v| v.as_array_mut())
-            .ok_or_else(|| eyre!("ws sync: `include` is not an array"))?;
+            .ok_or_else(|| eyre!("sync: `include` is not an array"))?;
         arr.retain(|v| {
             v.as_str()
                 .map(|s| !s.ends_with(CENTRAL_PATCH_FILE))
@@ -2523,14 +2514,14 @@ fn render_patch_config(
         .or_insert_with(|| Item::Table(Table::new()));
     let patch_tbl = patch_item
         .as_table_mut()
-        .ok_or_else(|| eyre!("ws sync: [patch] is not a table"))?;
+        .ok_or_else(|| eyre!("sync: [patch] is not a table"))?;
     patch_tbl.set_implicit(true);
     let cio_item = patch_tbl
         .entry("crates-io")
         .or_insert_with(|| Item::Table(Table::new()));
     let cio = cio_item
         .as_table_mut()
-        .ok_or_else(|| eyre!("ws sync: [patch.crates-io] is not a table"))?;
+        .ok_or_else(|| eyre!("sync: [patch.crates-io] is not a table"))?;
 
     // Evict prior nros-managed keys (preserve user keys + their decor).
     let stale: Vec<String> = cio
@@ -2656,7 +2647,7 @@ fn check_freshness(
         let cargo = crate_root.join("Cargo.toml");
         if !cargo.is_file() {
             eprintln!(
-                "ws sync --check: stale: {name} — no Cargo.toml at {}",
+                "sync --check: stale: {name} — no Cargo.toml at {}",
                 cargo.display()
             );
             stale = true;
@@ -2676,7 +2667,7 @@ fn check_freshness(
                 let mt = entry.metadata()?.modified()?;
                 if mt > cargo_mt {
                     eprintln!(
-                        "ws sync --check: stale: {name} — {} newer than generated crate",
+                        "sync --check: stale: {name} — {} newer than generated crate",
                         entry
                             .path()
                             .strip_prefix(ws_root)
@@ -2689,9 +2680,9 @@ fn check_freshness(
         }
     }
     if stale {
-        bail!("ws sync --check: some pkgs stale — run `nros ws sync` first.");
+        bail!("sync --check: some pkgs stale — run `nros sync` first.");
     }
-    println!("ws sync --check: all good.");
+    println!("sync --check: all good.");
     Ok(())
 }
 
@@ -2934,7 +2925,7 @@ fn run_doctor(args: DoctorArgs) -> Result<()> {
                     if !body.contains(NROS_MANAGED_TAG) {
                         eprintln!(
                             "  ⚠ {}: no nros-managed [patch.crates-io] entries in \
-                             patch authority config ({}). Run `nros ws sync`.",
+                             patch authority config ({}). Run `nros sync`.",
                             pkg.name,
                             cfg.display()
                         );

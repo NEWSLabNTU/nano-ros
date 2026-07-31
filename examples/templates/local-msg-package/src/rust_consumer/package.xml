@@ -3,7 +3,7 @@
 <package format="3">
   <name>rust_consumer</name>
   <version>0.1.0</version>
-  <description>Phase 210.D.3 fixture sibling — Rust consumer pulling msgs from BOTH workspace (local_msgs, extra_msgs) AND AMENT-installed pkgs (std_msgs, geometry_msgs, sensor_msgs) via the auto-managed [patch.crates-io] block written by `nros ws sync`.</description>
+  <description>Phase 210.D.3 fixture sibling — Rust consumer pulling msgs from BOTH workspace (local_msgs, extra_msgs) AND AMENT-installed pkgs (std_msgs, geometry_msgs, sensor_msgs) via the auto-managed [patch.crates-io] block written by `nros sync`.</description>
   <maintainer email="dev@example.org">dev</maintainer>
   <license>Apache-2.0</license>
 

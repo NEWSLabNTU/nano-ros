@@ -4,7 +4,7 @@ rmw = "zenoh"
 domain_id = 0
 
 # phase-263 B6 — in-workspace custom-message showcase. `custom_msgs` (a real ROS
-# interface package living under src/) is codegen'd by `nros ws sync`; both nodes
+# interface package living under src/) is codegen'd by `nros sync`; both nodes
 # below consume the generated `custom_msgs/Reading` type. The listener echoes the
 # decoded sequence on /reading_seq.
 [[component]]

@@ -44,7 +44,7 @@ Just Works. (Python `.launch.py` is not supported yet.)
 ## Build
 
 ```bash
-nros ws sync
+nros sync
 nros codegen-system --bringup demo_bringup
 cargo build
 ```
@@ -55,7 +55,7 @@ Builds the two Node pkg rlibs + the `robot_entry` binary. The
 launch XML, and emits one `<node_pkg>::register(runtime)?;` call per
 `<node>` entry — so `robot_entry` links and boots both nodes in a single
 process. The Node pkgs use generated `std_msgs::msg::Int32`, so run
-`nros ws sync` before the first build and after changing message
+`nros sync` before the first build and after changing message
 dependencies.
 
 ## Validate the workspace

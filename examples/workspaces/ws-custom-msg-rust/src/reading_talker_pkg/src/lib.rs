@@ -2,7 +2,7 @@
 //! `custom_msgs/Reading` on `/reading` (phase-263 B6).
 //!
 //! `custom_msgs` is a real ROS 2 interface package (`package.xml` +
-//! `msg/Reading.msg`) that lives inside this workspace. `nros ws sync` runs the
+//! `msg/Reading.msg`) that lives inside this workspace. `nros sync` runs the
 //! nano-ros codegen pipeline over it and emits a `generated/custom_msgs` Rust
 //! crate; this Node pkg depends on `custom_msgs = "*"` (resolved to the
 //! generated crate via the auto-managed `[patch.crates-io]` block). The

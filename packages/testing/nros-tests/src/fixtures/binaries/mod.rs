@@ -1030,7 +1030,7 @@ fn require_prebuilt_workspace_binary(
 
 /// Resolve a prebuilt Rust workspace Entry pkg binary.
 ///
-/// The workspace fixture build step owns `nros ws sync`,
+/// The workspace fixture build step owns `nros sync`,
 /// `nros codegen-system`, and the Cargo build. Tests only require the
 /// resulting binary from the deterministic fixture target dir.
 pub fn build_workspace_rust_entry(
@@ -1054,7 +1054,7 @@ pub fn build_workspace_rust_entry(
 
 /// Resolve a prebuilt CMake workspace Entry pkg binary.
 ///
-/// The workspace fixture build step owns `nros ws sync`,
+/// The workspace fixture build step owns `nros sync`,
 /// `nros codegen-system`, and the CMake configure/build. Tests only
 /// require the resulting binary from the deterministic fixture build dir.
 pub fn build_workspace_cmake_entry(

@@ -83,7 +83,7 @@ build-examples:
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/fixtures-build.sh nuttx rust
     # Phase 225.O follow-up (known-issue #18) — workspace Entry fixture
     # (`examples/workspaces/rust/src/qemu_nuttx_entry`). Same workspace
-    # workflow as native/freertos/threadx/esp32: `nros ws sync`,
+    # workflow as native/freertos/threadx/esp32: `nros sync`,
     # `nros codegen-system`, then the cargo cross build (build-std + the
     # build.rs kernel-lib link). `NUTTX_DIR` must reach both the board
     # crate's build.rs and the entry's build.rs.

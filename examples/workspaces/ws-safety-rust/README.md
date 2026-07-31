@@ -38,7 +38,7 @@ The capability registry (phase-261) lowers `features = ["safety"]` to:
 source ./activate.sh
 cd examples/workspaces/ws-safety-rust
 nros setup native
-nros ws sync
+nros sync
 cargo run -p native_entry
 ```
 

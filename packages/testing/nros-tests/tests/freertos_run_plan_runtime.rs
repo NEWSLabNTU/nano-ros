@@ -190,7 +190,7 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
         nros_tests::skip!("FreeRTOS Entry pkg fixture missing at {}", dir.display());
     }
     // The Entry pkg's `[patch.crates-io]` points its msg deps at `generated/`,
-    // which `nros ws sync` (run by `just freertos build-examples`) produces. Skip
+    // which `nros sync` (run by `just freertos build-examples`) produces. Skip
     // — rather than fail the in-place build — when that build step hasn't run.
     if !dir.join("generated").is_dir() {
         nros_tests::skip!(

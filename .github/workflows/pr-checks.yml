@@ -169,7 +169,7 @@ jobs:
 
   # ----- scaffold-journey (RFC-0040 resolve-only) -----
   scaffold-journey:
-    name: nros new -> ws sync -> resolve
+    name: nros new -> sync -> resolve
     needs: changes
     if: ${{ needs.changes.outputs.scaffold == 'true' || github.event_name != 'pull_request' }}
     runs-on: ubuntu-22.04

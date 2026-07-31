@@ -3,7 +3,7 @@ project(custom_msgs)
 
 # ===========================================================================
 # Verbatim upstream ROS 2 msg-package shape — no nano-ros-specific lines.
-# Builds unchanged under `colcon build`; the nano-ros build (and `nros ws sync`)
+# Builds unchanged under `colcon build`; the nano-ros build (and `nros sync`)
 # routes `rosidl_generate_interfaces` to the nano-ros codegen pipeline, emitting
 # `generated/custom_msgs` for the Rust Node pkgs to consume.
 # ===========================================================================

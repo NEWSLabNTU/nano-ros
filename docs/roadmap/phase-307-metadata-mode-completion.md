@@ -72,7 +72,7 @@ W1 failure, enumerated by the coverage gate in W5.
 Today `nros metadata --build` has ZERO call sites outside the books — no
 `just` recipe, no cmake hook, no colcon step — so no bake can rely on it.
 Decide and implement ONE producer trigger:
-- (a) a `nros ws sync` / `nros plan` step that refreshes stale sidecars
+- (a) a `nros sync` / `nros plan` step that refreshes stale sidecars
   (mtime vs component sources), or
 - (b) a cargo/cmake build-graph edge for entry targets.
 (a) is strongly preferred: it keeps the nested-cargo invocation out of

@@ -93,7 +93,7 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 # unaffected). Hand-maintained (the single-node lane appends it via
 # `scripts/build/nuttx-libc-patch.sh`, which only fires on a per-example
 # `[build] target` line — this shared workspace config has none).
-# `nros ws sync` does not touch `.cargo/config.toml`, so it persists.
+# `nros sync` does not touch `.cargo/config.toml`, so it persists.
 # Path is relative to the workspace root (this dir).
 [patch.crates-io]
 libc = { path = "../../../third-party/nuttx/libc" }
