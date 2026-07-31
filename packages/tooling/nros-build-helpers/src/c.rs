@@ -24,14 +24,14 @@ pub fn run() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
-    // Issue 0360 — emit FIRST and unconditionally: `lib.rs` `include!`s this
-    // file, so any path that skips it breaks the crate build rather than the
-    // check. The size-probe below has early-outs (fat-LTO rlibs yield no
-    // symbol sizes); the stamp must not depend on them.
-    emit_variant_symbol();
-
     let probed = probe_nros_sizes("nros-c");
-    generate_config(&out_dir, &manifest_dir, &probed);
+    // issue 0369 — the anchor suffix is derived from the exact header's SIZE
+    // values (generate_config computes both), so it must be emitted after.
+    // `variant_symbol.rs` is written unconditionally either way: `lib.rs`
+    // `include!`s it, so a probe-less build (cargo check/doc) still compiles
+    // — it just carries no anchor, matching its absent header.
+    let variant_suffix = generate_config(&out_dir, &manifest_dir, &probed);
+    emit_variant_symbol(&out_dir, variant_suffix.as_deref());
     generate_header(&manifest_dir);
 
     // Weak fallbacks for the platform log ABI (`nros_platform_log_*`), for
@@ -80,7 +80,7 @@ fn generate_config(
     out_dir: &str,
     manifest_dir: &Path,
     probed: &std::collections::HashMap<String, u64>,
-) {
+) -> Option<String> {
     // --- Executor layout from nros-node (via Cargo `links` metadata) ---
     // nros-node is the single source of truth for these values.
     // MESSAGE_BUFFER_SIZE must equal nrs-node's RX_BUF_SIZE because the
@@ -252,7 +252,7 @@ fn generate_config(
     if probe_executor == 0 {
         // `cargo check --no-default-features` / `cargo doc` — no probe
         // result, skip writing.
-        return;
+        return None;
     }
     let exact_executor_storage = probe_executor.max(8);
     let exact_executor_u64s = exact_executor_storage.div_ceil(8);
@@ -317,11 +317,46 @@ fn generate_config(
             &exact_raw_handle_u64s.to_string(),
         );
 
-    // Issue 0360 — stamp the feature variant into the header, and emit the
-    // matching symbol into the archive (below), so a mismatch is a link error.
+    // Issue 0360 — stamp the variant into the header, and emit the matching
+    // symbol into the archive, so a mismatch is a link error. issue 0369 —
+    // the SYMBOL derives from the size values this header ships (not the
+    // cargo feature spelling), so the two nros-c builds of a mixed C+C++
+    // workspace — same sizes, different rmw-feature spellings — agree on
+    // the anchor by construction. The human-readable NROS_CONFIG_VARIANT
+    // string keeps the feature slug for debugging.
+    let sizes: [(&str, usize); 21] = [
+        ("EXACT_EXECUTOR_STORAGE", exact_executor_storage),
+        ("PROBE_EXECUTOR", probe_executor),
+        ("PROBE_GUARD", probe_guard),
+        ("PROBE_PUBLISHER", probe_publisher),
+        ("PROBE_SUBSCRIBER", probe_subscriber),
+        ("PROBE_SERVICE_CLIENT", probe_service_client),
+        ("PROBE_SERVICE_SERVER", probe_service_server),
+        ("PROBE_SESSION", probe_session),
+        ("PROBE_LIFECYCLE_CTX", probe_lifecycle_ctx),
+        ("PROBE_ACTION_SERVER_INTERNAL", probe_action_server_internal),
+        ("EXACT_SESSION_U64S", exact_session_u64s),
+        ("EXACT_PUBLISHER_U64S", exact_publisher_u64s),
+        ("EXACT_EXECUTOR_U64S", exact_executor_u64s),
+        ("EXACT_GUARD_U64S", exact_guard_u64s),
+        ("EXACT_LIFECYCLE_U64S", exact_lifecycle_u64s),
+        ("EXACT_RAW_SUBSCRIPTION_U64S", exact_raw_subscription_u64s),
+        (
+            "EXACT_RAW_SERVICE_SERVER_U64S",
+            exact_raw_service_server_u64s,
+        ),
+        (
+            "EXACT_RAW_SERVICE_CLIENT_U64S",
+            exact_raw_service_client_u64s,
+        ),
+        ("EXACT_RAW_ACTION_SERVER_U64S", exact_raw_action_server_u64s),
+        ("EXACT_RAW_ACTION_CLIENT_U64S", exact_raw_action_client_u64s),
+        ("EXACT_RAW_HANDLE_U64S", exact_raw_handle_u64s),
+    ];
+    let variant_suffix = crate::shared::variant_suffix_from_sizes(&sizes);
     let exact_header = exact_header
         .replace("@VARIANT_SLUG@", &crate::shared::variant_slug())
-        .replace("@VARIANT_SYMBOL@", &crate::shared::variant_symbol_suffix());
+        .replace("@VARIANT_SYMBOL@", &variant_suffix);
 
     // Phase 119.3: two stable per-build locations (see nros-cpp/build.rs
     // for rationale).
@@ -330,6 +365,7 @@ fn generate_config(
         &exact_header,
     );
     write_header_to_corrosion("nros_config_generated.h", &exact_header);
+    Some(variant_suffix)
 }
 
 /// Phase 77.24: write `c_header` to `path`, but only if the probe produced
@@ -399,14 +435,37 @@ fn generate_header(manifest_dir: &Path) {
 /// `c_surface_anchor.rs`. The symbol NAME carries the feature slug, so an
 /// archive built with a different feature set simply does not define what a
 /// consumer's header asked for, and the linker says so.
-fn emit_variant_symbol() {
-    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
-    let sym = crate::shared::variant_symbol_suffix();
-    let body = format!(
-        "// Generated by nros-build-helpers (issue 0360). Do not edit.\n\
-         #[unsafe(no_mangle)]\n\
-         pub static nros_config_variant_{sym}: u8 = 0;\n"
-    );
-    let dest = std::path::PathBuf::from(out_dir).join("variant_symbol.rs");
-    std::fs::write(&dest, body).expect("write variant_symbol.rs");
+fn emit_variant_symbol(out_dir: &str, suffix: Option<&str>) {
+    // `lib.rs` `include!`s this file unconditionally, so it must exist even
+    // on probe-less builds (cargo check/doc) — those carry no anchor,
+    // matching their absent header.
+    let out = std::path::PathBuf::from(out_dir);
+    std::fs::write(
+        out.join("variant_symbol.rs"),
+        "// Generated by nros-build-helpers (issues 0360/0369). Do not edit.\n\
+         // The variant anchor is a WEAK C definition (below, via cc) — a\n\
+         // Rust `#[no_mangle] static` is strong, and a mixed C+C++ image\n\
+         // links TWO nros-c builds (the C half's and the one embedded in\n\
+         // nros-cpp): with the issue-0369 size-derived suffix they agree on\n\
+         // the name, so two strong defs would collide. N identical weak\n\
+         // defs merge; a consumer holding a DIFFERENT-sized header still\n\
+         // fails to resolve its extern.\n",
+    )
+    .expect("write variant_symbol.rs");
+    let Some(suffix) = suffix else {
+        return;
+    };
+    let c_src = out.join("nros_variant_symbol.c");
+    std::fs::write(
+        &c_src,
+        format!(
+            "/* Generated by nros-build-helpers (issues 0360/0369). Do not edit. */\n\
+             __attribute__((weak)) const unsigned char nros_config_variant_{suffix} = 0;\n"
+        ),
+    )
+    .expect("write nros_variant_symbol.c");
+    let mut build = cc::Build::new();
+    build.file(&c_src).warnings(false);
+    crate::shared::apply_baremetal_libc(&mut build);
+    build.compile("nros_variant_symbol");
 }

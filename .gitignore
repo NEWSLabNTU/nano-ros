@@ -120,3 +120,4 @@ packages/core/*/include/nros/.*.tmp.*
 # Local agent tooling (phase-321: swept in by a `git add -A`, never project files)
 .agents/
 skills-lock.json
+third-party/ros/

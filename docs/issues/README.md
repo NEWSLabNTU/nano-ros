@@ -71,7 +71,7 @@ user-facing-doc ref to `nros sync` (log prefixes, just recipes, book, `pr-checks
 examples — historical records left intact), and added a class gate (`RETIRED_SPELLINGS`, `\bws sync\b`) to
 `check-retired-submodule-refs.sh` (in `check-fast`) so it can't creep back. See `archived/0367-*`. (2026-08-01)
 
-**#369** (filed as #368; renumbered — fourth id collision between parallel sessions) — Mixed C+C++ workspace fixture link-fails: `libstd_msgs__nano_ros_c.a` references
+Recently resolved: **#369** (filed as #368; renumbered) — Mixed C+C++ workspace fixture link-fails: the variant anchor suffixed by cargo FEATURE SPELLING diverged between the two nros-c builds of a mixed workspace though their SIZES agreed. Fixed: the anchor now hashes the header's own size values (`sz_<fnv64>`) and the archive def is WEAK, so agreeing builds merge and a different-sized header still fails to link. Verified on the exact failing command. See `archived/0369-*`. Original finding: `libstd_msgs__nano_ros_c.a` references
 `nros_config_variant_alloc_..._rmw_cffi_rmw_zenoh_ros_humble_std`, but `nros-c` (built for that workspace
 with `cffi-zenoh-cffi` → `rmw-zenoh`, NOT `rmw-cffi`) never emits it. The C-side msg codegen stamps its
 variant from the WORKSPACE feature union (which carries `rmw-cffi` via the C++ half's `rmw-zenoh-cffi`),

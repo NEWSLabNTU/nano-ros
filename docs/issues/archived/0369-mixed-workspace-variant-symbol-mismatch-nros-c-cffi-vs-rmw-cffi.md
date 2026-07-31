@@ -1,7 +1,8 @@
 ---
 id: 369
 title: "Mixed C+C++ workspace fixture link-fails: the C msg archive references a `rmw_cffi_rmw_zenoh` config-variant symbol that nros-c (built with `cffi-zenoh-cffi`) never emits"
-status: open
+status: resolved
+resolved_in: "phase-327 session (size-derived variant anchor + weak def)"
 type: bug
 severity: medium
 area: build
@@ -116,3 +117,29 @@ precise diagnosis rather than risking a regression to the size-safety mechanism.
 **Also:** first observed on a pre-rebase tree; several later variant/feature
 commits (#360 and follow-ups) landed the same day — reproduce on current `main`
 before fixing, in case a subsequent commit already covers it.
+
+
+## Resolution (2026-08-01)
+
+Fixed on the seam the deepened root cause identified, taking the issue's own
+"canonical size-determining subset" direction:
+
+- `variant_suffix_from_sizes()` — the anchor suffix hashes the 21 size VALUES
+  the exact header ships (`sz_<fnv64>`), not the cargo feature spelling. The
+  two nros-c builds of a mixed workspace (same sizes, different rmw-feature
+  spellings) agree on the symbol by construction; a consumer holding a header
+  with DIFFERENT sizes still fails to link — the anchor's actual guarantee
+  (the 0088…0268 family). The wrong-backend case the feature slug also caught
+  (phase-325 W3) still fails on its own missing backend symbols.
+- The archive-side definition moved from a strong Rust `#[no_mangle]` static
+  to a WEAK C definition (cc-compiled in build.rs): with agreeing suffixes,
+  a mixed image links BOTH nros-c builds' objects, and N identical weak defs
+  merge where two strong ones would collide.
+- The human-readable `NROS_CONFIG_VARIANT` string keeps the feature slug.
+- `nros_cpp_config_variant_*` is untouched: one writer + one archive per
+  workspace, no divergence to reconcile.
+
+Verified: `just native build-workspace-fixtures` — the exact failing command —
+links every workspace including both mixed per-host entries (rc=0, zero
+undefined/multiple-definition). The threadx-linux and freertos families hit
+the same symbol and re-verify in the fixture campaign.

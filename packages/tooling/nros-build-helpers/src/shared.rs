@@ -737,3 +737,40 @@ pub fn variant_symbol_suffix() -> String {
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect()
 }
+
+/// issue 0369 — the variant ANCHOR suffix, derived from the header's own
+/// size-determining VALUES rather than the cargo feature spelling.
+///
+/// The feature-list suffix was over-broad: a mixed C+C++ workspace builds
+/// nros-c twice with legitimately different rmw-feature SPELLINGS
+/// (`cffi-zenoh-cffi` vs the union with `rmw-cffi` that nros-cpp pulls in)
+/// that resolve to IDENTICAL sizes — yet the shared generated header
+/// (first-writer) named one build's slug and the other build's archive
+/// emitted the other, an undefined reference at link (issue 0369; blocked
+/// the native/threadx mixed fixtures).
+///
+/// The anchor's guarantee is the SIZE contract (the 0088…0268 family:
+/// header sizes vs archive sizes), so the suffix hashes exactly the
+/// `(name, value)` pairs the header ships. Two builds that agree on every
+/// size agree on the symbol by construction; a consumer holding a header
+/// with different sizes still fails to link, which is the point. The
+/// wrong-backend case the feature slug also caught (phase-325 W3's
+/// overwritten archive) keeps failing on its own missing backend symbols,
+/// as it did before the anchor existed.
+pub fn variant_suffix_from_sizes(sizes: &[(&str, usize)]) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for (name, value) in sizes {
+        for b in name
+            .as_bytes()
+            .iter()
+            .chain(b"=")
+            .chain(value.to_string().as_bytes())
+        {
+            h ^= *b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        h ^= b';' as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("sz_{h:016x}")
+}
