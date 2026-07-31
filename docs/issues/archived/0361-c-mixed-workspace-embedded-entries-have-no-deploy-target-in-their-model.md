@@ -1,11 +1,12 @@
 ---
 id: 361
 title: "Grandfathered committed SystemModels: the current nros-launch-resolve requires explicit per-block `nodes=`, so any embedded-workspace re-resolve fails 'node not placed' (and c/mixed embedded entries have no board deploy)"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: codegen
 related: [phase-296, issue-0320, issue-0355, rfc-0060]
+resolved_in: "rlm 92c1a52 + Part-2 (2ce930e39)"
 ---
 
 ## UPDATE (2026-07-31) — the real root cause is broader
@@ -188,3 +189,30 @@ Single-board workspaces are unchanged.
    will flag them stale.
 4. Verify `just {freertos,nuttx,threadx} build-fixtures` builds green (needs the
    embedded toolchains).
+
+## RESOLVED (2026-07-31)
+
+(Filed as #356; a concurrent agent's px4 issue took 0356, so this was renumbered
+to #361 — the pushed commits reference it as **#356**.)
+
+Landed end-to-end:
+- **Resolver fix** (fork chain): `ros-launch-manifest` `92c1a52` — a multi-board
+  system (self machines + `kind="embedded"` board builds) places nodes
+  board-agnostically (`target = None`) so `codegen entry --board <embedded>`
+  includes them; `984fc15` alone (embedded blocks don't partition) fixed only the
+  resolve, not the codegen. Regression test added. → `ros-launch-resolve`
+  `69c13d2` → nano-ros `f760141ef`.
+- **Part 2** (`2ce930e39`): `[deploy.{freertos,nuttx,threadx-linux}]` authored in
+  the c/cpp/mixed bringups; portable SystemModels regenerated for every
+  multi-board workspace against the fixed resolver.
+
+Two red herrings cleared: `nros ws sync` runs the STANDALONE `nros-launch-resolve`
+binary (`setup-launch-resolve`, not `setup-cli`) — earlier "still fails" were
+stale-binary; and `984fc15` was already present.
+
+**Verified:** `just freertos build-fixtures` codegen no longer errors "places no
+nodes on board" — the blocker is gone; the build proceeds to compilation.
+
+**Residual (separate, NOT this issue):** the freertos build then fails
+`nros/app_config.h: No such file` with `nros-board-mps2-an385-freertos` at `v0.4.0`
+(version-lockstep mismatch) — a board-build issue, a fresh follow-up.
