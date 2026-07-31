@@ -1,7 +1,9 @@
 # Phase 316 — every example path level names a real axis
 
-**Status (2026-07-31): W1–W3 landed. W4.1 DECIDED for the example (W4.2 ready to
-write); W4.3 (the bridge) still needs a recorded decision.**
+**Status (2026-07-31): W1–W3 landed and pushed. W4.1 and W4.3 DECIDED; W4.2/W4.3
+recommended for a SUCCESSOR PHASE — scoping found no nano-ros node has ever been
+built on the uORB backend, and there is no px4 platform cmake module, so W4 is a
+phase rather than a work item.**
 **Implements:** RFC-0026 (example directory layout).
 **Closes:** issue 0315. **Informed by:** issues 0314, 0319, archived 0295.
 **Filed on the way:** issue 0356 (`px4_e2e.rs` targets a tree retired by
@@ -139,22 +141,58 @@ feature.
 unmodified PX4 module, with no serialization step on either side, and the test
 observes it from the PX4 side.
 
-#### W4.3 — the bridge: STILL BLOCKED, and W4.1's answer narrows it
+#### W4.3 — the bridge: DECIDED — uORB → Zenoh (2026-07-31, maintainer)
 
-The maintainer's answer above is about the EXAMPLE. The bridge question stands,
-but the answer bears on it: if uORB's value is that there is no serialization,
-then a uORB → networked-backend bridge necessarily re-introduces one at its
-boundary — which is precisely what PX4's own `uxrce_dds_client` already does.
-So the surviving framings are:
+Chosen over "registry demonstration" and over dropping it. PX4 ships nothing on
+Zenoh, so this is **new capability** rather than a second implementation of
+something upstream already provides — the objection that killed uORB → DDS
+(`uxrce_dds_client`) does not apply.
 
-  - **uORB → Zenoh** — PX4 ships nothing there, so it is new capability rather
-    than a second implementation of an existing one.
-  - **registry demonstration** — the deliverable is nano-ros's multi-RMW registry
-    running in-firmware, and the translation is incidental.
-  - **drop W4.3** — defensible. The bridge was scoped alongside the example
-    before W4.1 was answered; nothing in the answer requires one.
+Shape: a PX4 module holding two sessions open at once — uORB inward (zero-copy,
+stock PX4 peers) and Zenoh outward (networked, ROS 2 / nano-ros peers). It is the
+first non-POSIX entry in `examples/bridges/`, since uORB is an in-process bus and
+the bridge must therefore be a C++ PX4 module rather than a host binary.
 
-Do not write bridge code before this is recorded here.
+Note what the bridge is NOT: the serialization uORB avoids comes back at the
+Zenoh boundary, necessarily. The value is reach, not zero-copy — and W4.2 stays
+the example that demonstrates the zero-copy property.
+
+**Sequenced after W4.2**, which establishes the uORB side the bridge reuses.
+
+#### W4 blocker (found 2026-07-31): nothing has ever built a nano-ros NODE on uORB
+
+Scoping W4.2 turned up that the uORB backend's proven surface stops below the
+node API. Three artifacts look like px4 integration; none of them constructs a
+node:
+
+| artifact | what it actually exercises |
+| --- | --- |
+| `nros-rmw-uorb/tests/register_smoke.cpp` | drives the RMW **vtable directly**, stubbing `nros_rmw_cffi_register` AND the uORB ABI. Never touches `nros-cpp`. |
+| `packages/testing/nros-px4-register-check/` | compiles the backend sources inline against real PX4 headers and calls `nros_rmw_uorb_register()`. Proves it LINKS. Does not link `nros-cpp`; the weak `register_fallback.c` is there precisely so it need not. |
+| `integrations/px4/module-template/nano_ros_app.cpp` | the node code is a **comment**: *"Replace this comment block with NodeBuilder / Publisher calls"*. |
+
+And there is no `cmake/platform/nano-ros-px4.cmake` — every other platform has
+one (`posix`, `zephyr`, `nuttx`, `freertos`, `threadx`, `esp_idf`, `baremetal`);
+px4 does not, because no px4 build has ever linked `libnros_cpp.a` /
+`libnros_c.a`.
+
+So the honest cost of W4.2 is not "write an example". It is:
+
+1. a px4 platform cmake module, so a `px4_add_module()` can link the Rust
+   staticlibs (SITL is a host x86_64 build, so this should be tractable — the
+   NuttX board targets are the harder case and are not needed for the demo);
+2. the first real node on the uORB backend, which is where any gap between "the
+   vtable answers correctly under a mock" and "the API works" will surface;
+3. only then the example itself.
+
+That is a phase, not a work item, and it should be split out rather than smuggled
+into phase-316's tail. **Recommend: close phase-316 at W1–W3 (done) and open a
+successor phase carrying W4.1's decision, W4.2 and W4.3.** The decisions recorded
+above are the durable part and travel with it.
+
+This is worth stating plainly because the tree reads otherwise: `examples/README.md`
+called `px4/cpp/uorb/nros-register-check` "the canonical PX4 uORB surface", which
+is true about LINKING and easy to misread as usage.
 
 ## Risks
 
