@@ -1111,9 +1111,12 @@ fn run_probe(check: Option<&crate::orchestration::sdk_index::CheckProbe>) -> Pro
             return ProbeResult::Unknown;
         };
         let listing = String::from_utf8_lossy(&out.stdout);
+        // PREFIX match: distros version the soname differently
+        // (libclang-14.so.1 vs libclang.so.16), so `sharedlib = "libclang"`
+        // matches any of them; an exact soname still works as a probe.
         return if listing
             .lines()
-            .any(|l| l.trim_start().starts_with(&format!("{lib} ")))
+            .any(|l| l.trim_start().starts_with(lib.as_str()))
         {
             ProbeResult::Present
         } else {

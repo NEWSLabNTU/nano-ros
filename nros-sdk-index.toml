@@ -562,7 +562,7 @@ apt = ["libclang-dev"]
 dnf = ["clang-devel"]
 pacman = ["clang"]
 brew = ["llvm"]
-check = { sharedlib = "libclang.so" }
+check = { sharedlib = "libclang" }
 
 [system.libz3]
 why = "ros-launch-manifest-check (z3) -> nros-launch-resolve build (issue 0368 F5)"
