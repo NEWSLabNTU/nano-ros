@@ -4,7 +4,7 @@ title: "Self-contained standalone examples cannot be metadata-probed, so exact e
 status: open
 type: limitation
 area: build, examples
-related: [issue-0257, issue-0100]
+related: [issue-0257, issue-0100, issue-0358]
 ---
 
 ## Finding (phase-308, 2026-07-26)
@@ -45,6 +45,63 @@ covers them; the risk is a user copying one as a template and growing it.
 (1) is the cheap correct answer if the limitation is documented where a user
 copying an example will read it. (2) is the thorough one and would also make
 the examples demonstrate the shape we actually recommend.
+
+## Option 4 — make the board dep optional; probe the LIB (2026-07-31)
+
+Measured, and it makes options (1)–(3) mostly moot. The blocker is narrower
+than "these packages cannot be host-compiled":
+
+* the probe harness deps the component as `{ path = …, package = … }` — **default
+  features** — and does `use <krate>::…`, so it needs a LIB target and gets
+  whatever the default feature set drags in;
+* the board dep is what cannot host-compile (ARM inline asm), and it is
+  **unconditional** in every one of these manifests;
+* but the NODE code does not use the board at all. In
+  `examples/qemu-arm-baremetal/rust/action-client-rtic` — the package this issue
+  cites as failing — `lib.rs` and `main.rs` mention the board **only in doc
+  comments**. The dependency is pulled in by `nros::main!()` in the BIN, which
+  resolves the board type.
+
+So the split this issue's option (2) proposes largely already exists:
+
+```
+deploy-bound standalone rust examples : 88
+  ... that already have a lib target  : 75   (85%)
+  ... with the board dep optional     :  0
+```
+
+The change is per-manifest, not per-crate:
+
+```toml
+nros-board-rtic-mps2-an385 = { version = "*", optional = true }
+
+[features]
+default  = ["firmware"]
+firmware = ["dep:nros-board-rtic-mps2-an385"]
+
+[[bin]]
+required-features = ["firmware"]
+```
+
+plus the harness depping the component with `default-features = false` and
+building the lib.
+
+**Verified on the failing example**: with the board dep made optional,
+`cargo check --lib --no-default-features --target x86_64-unknown-linux-gnu`
+completes cleanly. That is the package whose probe this issue records as dying
+on ARM inline asm.
+
+Remaining cost: 75 examples need ~4 manifest lines; 13 need a lib target
+extracted first. That is materially cheaper than option (2)'s ~51 new crates,
+and unlike option (3) it does not remove a real dependency behind cargo's back —
+the bin still deps the board, declared, and `required-features` keeps a bare
+`cargo build` honest.
+
+Open question before doing it: whether `default = ["firmware"]` is right, or
+whether the bin should be the only thing enabling it. Defaulting keeps
+`cargo build`/`cargo run` working in a copied-out example, which is the whole
+point of the standalone shape — but it also means the probe MUST remember
+`--no-default-features`, which is a second thing to remember (cf. issue 0358).
 
 ## Cross-refs
 
