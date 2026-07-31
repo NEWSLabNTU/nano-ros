@@ -19,11 +19,17 @@
 //! So the check moves to where it cannot be bypassed by invocation style: the
 //! binary checks itself.
 
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-    time::SystemTime,
-};
+use std::path::{Path, PathBuf};
+
+use crate::source_stamp;
+
+/// Stamp of the sources this binary was compiled from, embedded by `build.rs`.
+///
+/// `"unknown"` when the build happened outside a git checkout (tarball,
+/// vendored copy). That is a skip, not a failure: without the tree there is
+/// nothing to be stale RELATIVE TO, and guessing would break every packaged
+/// install.
+const BUILT_STAMP: &str = env!("NROS_CLI_SOURCE_STAMP");
 
 /// Commands that consume the crate→path table or emit generated artifacts.
 ///
@@ -55,14 +61,37 @@ pub fn refuse_if_stale(command_name: &str) -> Result<(), String> {
     let Some(root) = checkout_root_of(&exe) else {
         return Ok(());
     };
-    let Ok(exe_mtime) = exe.metadata().and_then(|m| m.modified()) else {
+    if BUILT_STAMP == "unknown" {
+        return Ok(());
+    }
+    // No stamp computable now (git absent / not a checkout) — skip rather than
+    // guess. Same reasoning as `BUILT_STAMP == "unknown"`.
+    let Some(current) = source_stamp::source_stamp(&root) else {
         return Ok(());
     };
-    let Some(newer) = newest_source_newer_than(&root, exe_mtime) else {
+    if current == BUILT_STAMP {
         return Ok(());
+    }
+    // Name the files actually being edited. The mtime predicate could only
+    // report whichever tracked file sorted first, which was frequently not the
+    // one the developer had touched.
+    let dirty = source_stamp::modified_cli_files(&root);
+    let detail = if dirty.is_empty() {
+        "  (no uncommitted CLI edits — the checkout moved, e.g. a branch switch)".to_string()
+    } else {
+        let mut s = String::from("  uncommitted CLI edits:\n");
+        for f in dirty.iter().take(3) {
+            s.push_str(&format!("    {f}\n"));
+        }
+        if dirty.len() > 3 {
+            s.push_str(&format!("    … and {} more\n", dirty.len() - 3));
+        }
+        s.trim_end().to_string()
     };
     Err(format!(
-        "in-tree nros CLI is STALE — source '{newer}' is newer than '{}'.\n\
+        "in-tree nros CLI is STALE — its sources changed since it was built\n\
+         (source stamp {BUILT_STAMP} != {current}) for '{}'.\n\
+         {detail}\n\
          A stale CLI silently breaks workspace planning + codegen: its hardcoded\n\
          crate→path table can name locations that no longer exist, and a dropped\n\
          [patch.crates-io] entry resolves from crates.io instead of this checkout\n\
@@ -93,36 +122,16 @@ fn checkout_root_of(exe: &Path) -> Option<PathBuf> {
     None
 }
 
-/// The first tracked CLI source newer than `than`, if any.
+/// Report freshness without refusing anything — backs `nros source-stamp`.
 ///
-/// `git ls-files`, not a filesystem walk — the same reasoning as everywhere
-/// else in this repo (`scripts/check-no-tracked-file-find.sh`): these are
-/// tracked files, so the index already knows them. `third-party/` and
-/// `testing_workspaces/` are excluded because they are tracked but are not CLI
-/// build inputs, and a parallel session touching them must not read as stale.
-fn newest_source_newer_than(root: &Path, than: SystemTime) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["ls-files", "packages/cli"])
-        .output()
-        .ok()?;
-    if !out.status.success() {
+/// Returns `(built, current)`. Equal means fresh; `None` means the question
+/// does not apply here (no stamp, or not a per-checkout binary).
+pub fn stamp_pair() -> Option<(String, String)> {
+    if BUILT_STAMP == "unknown" {
         return None;
     }
-    for rel in String::from_utf8_lossy(&out.stdout).lines() {
-        if !(rel.ends_with(".rs") || rel.ends_with("Cargo.toml") || rel.ends_with("Cargo.lock")) {
-            continue;
-        }
-        if rel.contains("/third-party/") || rel.contains("/testing_workspaces/") {
-            continue;
-        }
-        let p = root.join(rel);
-        if let Ok(m) = p.metadata().and_then(|m| m.modified())
-            && m > than
-        {
-            return Some(rel.to_string());
-        }
-    }
-    None
+    let exe = std::env::current_exe().ok()?;
+    let root = checkout_root_of(&exe)?;
+    let current = source_stamp::source_stamp(&root)?;
+    Some((BUILT_STAMP.to_string(), current))
 }

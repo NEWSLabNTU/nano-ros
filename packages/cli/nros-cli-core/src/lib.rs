@@ -6,6 +6,10 @@
 
 pub mod abi_guard;
 pub mod cmd;
+// Issue 0363 — the freshness predicate, shared verbatim with `build.rs` via
+// `include!`. One implementation: the build embeds a stamp, the runtime
+// recomputes it. Replaces the mtime comparison that fired on every rebase.
+pub mod source_stamp;
 pub mod stale_guard;
 // Phase 219.A — Entry-pkg codegen (`nros codegen entry`). The shared
 // pkg-index walk + launch.xml parser also live here so the cmake-fn
@@ -67,6 +71,20 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
             println!("{}", rosidl_codegen::codegen_fingerprint());
             Ok(())
         }
+        cmd::Cmd::SourceStamp => match stale_guard::stamp_pair() {
+            None => {
+                println!("source-stamp: n/a (not a per-checkout binary, or built outside git)");
+                Ok(())
+            }
+            Some((built, current)) if built == current => {
+                println!("source-stamp: fresh ({built})");
+                Ok(())
+            }
+            Some((built, current)) => Err(eyre::eyre!(
+                "source-stamp: STALE — built from {built}, sources are now {current}.\n\
+                 Rebuild: just setup-cli"
+            )),
+        },
         cmd::Cmd::Sync(args) => cmd::ws::run_sync(args),
         cmd::Cmd::GeneratePx4Msgs(args) => cmd::generate_px4::run(args),
         cmd::Cmd::Codegen(args) => cmd::codegen::run(args),

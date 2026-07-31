@@ -109,56 +109,16 @@ nros_cargo_fetch_root() {
     cargo fetch --locked
 }
 
-# #197 / codegen-transparency — assert the resolved CLI is FRESH when it is the
-# per-checkout binary (`packages/cli/target/release/nros`). A stale in-tree CLI
-# silently breaks workspace planning (a binary built before a codegen/parser edit
-# lacks the new verb, so `nros plan`/`sync` fails deep in a build with an opaque
-# error). We deliberately do NOT auto-rebuild — that would compile inside the
-# build/test path (CLAUDE.md: no compilation at run time). Instead fail LOUD +
-# immediate, at the FIRST resolution, pointing at `just setup-cli`. Centralised
-# here so EVERY `nros_cli_bin` caller gets the guard, not just the fixture lanes.
-# Args: $1 = resolved binary path. Returns 0 (fresh / not the per-checkout
-# binary / cannot reason), or 3 (stale) after emitting the loud error.
-_nros_cli_assert_fresh() {
-    local resolved="$1"
-    local co_root="${NROS_REPO_DIR:-}"
-    if [ -z "$co_root" ]; then
-        local _self="${BASH_SOURCE[0]:-$0}"
-        co_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || co_root=""
-    fi
-    [ -n "$co_root" ] || return 0
-    local co_bin="$co_root/packages/cli/target/release/nros"
-    [ -x "$co_bin" ] || return 0
-    # Only the per-checkout binary's sources are ours to reason about.
-    local res_real co_real
-    res_real="$(readlink -f "$resolved" 2>/dev/null || printf '%s' "$resolved")"
-    co_real="$(readlink -f "$co_bin" 2>/dev/null || printf '%s' "$co_bin")"
-    [ "$res_real" = "$co_real" ] || return 0
-    # First cli source newer than the binary → a rebuild is owed. Prune the
-    # non-input trees (matches `setup-cli`): target/generated build output,
-    # testing_workspaces cli-test fixtures, vendored third-party submodules.
-    local src_newer _f
-    # `git ls-files` + an mtime walk, NOT `find`. Same reason as everywhere else
-    # (see scripts/check-no-tracked-file-find.sh): these are tracked sources, so
-    # the index knows them and no filesystem walk is needed. 0.52s -> 0.022s.
-    # `generated`/`target` need no exclusion here — they are gitignored, so the
-    # index never had them. `third-party`/`testing_workspaces` still do: they
-    # ARE tracked but are not nros build inputs, and a parallel session touching
-    # them must not force a rebuild.
-    src_newer=""
-    while IFS= read -r _f; do
-        if [ "$_f" -nt "$co_bin" ]; then src_newer="$_f"; break; fi
-    done < <(git ls-files "$co_root/packages/cli" \
-        | grep -E '\.rs$|Cargo\.(toml|lock)$' \
-        | grep -vE '/(third-party|testing_workspaces)/')
-    [ -z "$src_newer" ] && return 0
-    echo "[ERROR] in-tree nros CLI is STALE — source '$src_newer' is newer than '$co_bin'." >&2
-    echo "        A stale CLI silently breaks workspace planning + codegen (issue #197: it can" >&2
-    echo "        lack parsers for newer verbs, so \`nros plan\`/\`sync\` fails deep in a build)." >&2
-    echo "        Rebuild it (NOT auto-done — compiling at build/test time is forbidden):" >&2
-    echo "            just setup-cli" >&2
-    return 3
-}
+# NOTE (issue 0363): the freshness guard that used to live here is GONE, and
+# deliberately not replaced. It compared mtimes and only covered callers that
+# reached the CLI through this function — so `nros sync` straight off PATH, the
+# documented recovery step, bypassed it, and CMake's `find_program(nros)` never
+# saw it either.
+#
+# The binary now checks ITSELF before dispatching a guarded verb
+# (`nros-cli-core/src/stale_guard.rs`), which covers every invocation style
+# including the two this function could not. Re-adding a check here would be a
+# second spelling of one predicate, which is what issue 0363 set out to remove.
 
 nros_cli_bin() {
     # Phase 218.D.3 — resolution order:
@@ -179,7 +139,6 @@ nros_cli_bin() {
     if command -v nros >/dev/null 2>&1; then
         local _path_nros
         _path_nros="$(command -v nros)"
-        _nros_cli_assert_fresh "$_path_nros" || return 3
         printf '%s\n' "$_path_nros"
         return 0
     fi
@@ -197,7 +156,6 @@ nros_cli_bin() {
         fi
     fi
     if [ -n "$repo_root" ] && [ -x "$repo_root/packages/cli/target/release/nros" ]; then
-        _nros_cli_assert_fresh "$repo_root/packages/cli/target/release/nros" || return 3
         printf '%s\n' "$repo_root/packages/cli/target/release/nros"
         return 0
     fi

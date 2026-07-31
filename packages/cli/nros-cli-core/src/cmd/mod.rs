@@ -58,6 +58,19 @@ pub enum Cmd {
     #[command(name = "codegen-fingerprint", hide = true)]
     CodegenFingerprint,
 
+    /// Report whether this binary matches the CLI sources in its checkout
+    /// (issue 0363). Exits non-zero when stale.
+    ///
+    /// Hidden for the same reason as `codegen-fingerprint`: a build-system
+    /// seam. It exists so `scripts/check-cli-fresh.sh` can ASK the binary
+    /// rather than reimplement the predicate — the freshness logic lives in
+    /// exactly one place, and this is its read-only door.
+    ///
+    /// Deliberately NOT in the guarded set: a stale binary must still be able
+    /// to report that it is stale.
+    #[command(name = "source-stamp", hide = true)]
+    SourceStamp,
+
     /// Sync generated msg bindings + the `[patch.crates-io]` config to the
     /// declared deps (`package.xml` / `Cargo.toml`) — for a standalone pkg
     /// or a workspace (picks single-pkg vs colcon mode by layout). Writes the

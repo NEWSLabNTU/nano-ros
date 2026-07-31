@@ -1835,21 +1835,14 @@ format-cli:
     # in a later lane. Say so HERE, where the cause is obvious. Not an
     # auto-rebuild: compiling from a format recipe is surprising, and
     # `just setup-cli` is the sanctioned producer.
+    # ASK the binary rather than recomputing the predicate here — this block
+    # used to be a 15-line mtime walk, i.e. a third spelling of the same
+    # question, and it shipped with a bug (git's repo-root-relative paths vs
+    # this recipe's `cd`) that made it silently never fire.
     bin="{{justfile_directory()}}/packages/cli/target/release/nros"
-    if [ -f "$bin" ]; then
-        newer=""
-        while IFS= read -r f; do
-            # `git ls-files` yields REPO-ROOT-relative paths, and this recipe
-            # cd'd into packages/cli above, so they must be absolutised or
-            # every `-nt` test silently compares a nonexistent path.
-            if [ "{{justfile_directory()}}/$f" -nt "$bin" ]; then newer="$f"; break; fi
-        done < <(git -C "{{justfile_directory()}}" ls-files packages/cli \
-                    | grep -E '\.rs$|Cargo\.(toml|lock)$' \
-                    | grep -vE '/(third-party|testing_workspaces)/')
-        if [ -n "$newer" ]; then
-            echo "[format-cli] NOTE: reformatting left the built CLI stale ('$newer')." >&2
-            echo "             Rebuild before running codegen lanes:  just setup-cli" >&2
-        fi
+    if [ -x "$bin" ] && ! "$bin" source-stamp >/dev/null 2>&1; then
+        echo "[format-cli] NOTE: reformatting left the built CLI stale." >&2
+        echo "             Rebuild before running codegen lanes:  just setup-cli" >&2
     fi
 
 # #310 — gate the in-tree cli sub-workspace's rustfmt-cleanliness (it is outside
@@ -2615,26 +2608,27 @@ setup-cli:
     # index never had them. `third-party`/`testing_workspaces` still do: they
     # ARE tracked but are not nros build inputs, and a parallel session touching
     # them must not force a rebuild.
-    stale_src=""
-    while IFS= read -r _f; do
-        if [ "$_f" -nt "$bin" ]; then stale_src="$_f"; break; fi
-    done < <(git ls-files "$root/packages/cli" \
-        | grep -E '\.rs$|\.jinja$|Cargo\.(toml|lock)$' \
-        | grep -vE '/(third-party|testing_workspaces)/')
-    if [ -x "$bin" ] && [ -z "$stale_src" ]; then
+    # Issue 0363 — ASK the binary whether it matches its sources, rather than
+    # re-deriving that here. This was the FOURTH copy of the predicate (after
+    # cargo.sh, stale_guard.rs and format-cli), and copies drift: this one and
+    # the content stamp disagreed in the very run that introduced the stamp —
+    # the mtime walk found nothing newer and skipped, handing back a binary the
+    # stamp knew was stale.
+    #
+    # `source-stamp` exits non-zero when stale, when the binary predates the
+    # verb, or when it is unrunnable — all of which mean "build it".
+    if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
         # Quiet on no-op — `just setup` invokes us unconditionally.
         warn_stale_shadow
         exit 0
     fi
     echo "[setup-cli] building nros CLI (packages/cli)…"
     cargo build --release --manifest-path "$root/packages/cli/Cargo.toml" --bin nros
-    # phase-302 W5 — freshen the binary's mtime even when cargo skipped the
-    # relink (fingerprint-fresh sources whose mtimes were bumped by a
-    # pull/rebase). Without this, the mtime-based staleness scans here and in
-    # cargo.sh's #197 guard flag the CLI stale FOREVER: cargo never rewrites
-    # an up-to-date binary, so every fixture lane loops on "rebuild via
-    # setup-cli" until someone touches the file by hand. Build success means
-    # the binary matches the current sources — stamp it so.
+    # phase-302 W5 added this to stop mtime-based scans flagging the CLI stale
+    # FOREVER when cargo skipped a relink. Issue 0363 removed that need — those
+    # scans are gone and freshness is a content stamp, which a `touch` cannot
+    # affect either way. It survives ONLY for the resolver comparison below,
+    # which legitimately asks "which of these two artifacts was built later".
     touch "$bin"
     echo "[setup-cli] built: $bin"
     # Issue 0363 C — the CLI and `nros-launch-resolve` are built by SEPARATE
