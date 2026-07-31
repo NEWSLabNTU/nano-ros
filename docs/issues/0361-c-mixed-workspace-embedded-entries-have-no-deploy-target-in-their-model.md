@@ -1,5 +1,5 @@
 ---
-id: 356
+id: 361
 title: "Grandfathered committed SystemModels: the current nros-launch-resolve requires explicit per-block `nodes=`, so any embedded-workspace re-resolve fails 'node not placed' (and c/mixed embedded entries have no board deploy)"
 status: open
 type: bug
