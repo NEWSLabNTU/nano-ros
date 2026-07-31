@@ -1,5 +1,5 @@
 ---
-id: 364
+id: 365
 title: "FreeRTOS board build can't find `nros/app_config.h`: build.rs still uses the pre-phase-321 `core/nros-c/include` path after nros-c moved to packages/api"
 status: open
 type: bug
