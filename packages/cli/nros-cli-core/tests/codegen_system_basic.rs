@@ -659,8 +659,17 @@ execution:
     assert_eq!(mcu.nodes.len(), 1);
     assert_eq!(mcu.nodes[0].exec, "imu");
 
-    let err = plan_from_model(&model_path, Some("zephyr".to_string())).unwrap_err();
-    assert!(err.to_string().contains("places no nodes"), "{err}");
+    // phase-315 / issue 0288 board-mention lift: a board the deploy map never
+    // mentions is a board the model has no opinion about, so the slice is
+    // UNPARTITIONED (every node), not empty — the map is a partition over the
+    // boards it names, and cannot say "every board runs everything".
+    let unmentioned = plan_from_model(&model_path, Some("zephyr".to_string()))
+        .expect("unmentioned board = unpartitioned");
+    assert_eq!(
+        unmentioned.nodes.len(),
+        2,
+        "whole system on an unmentioned board"
+    );
 }
 
 /// W4.3 — an Mcu deploy naming a CONCRETE board ("fvp-aemv8r-smp") still
@@ -700,7 +709,10 @@ execution:
     let exact =
         plan_from_model(&model_path, Some("fvp-aemv8r-smp".to_string())).expect("exact slice");
     assert_eq!(exact.nodes.len(), 1);
-    // Unrelated family: empty slice refuses.
-    let err = plan_from_model(&model_path, Some("freertos".to_string())).unwrap_err();
-    assert!(err.to_string().contains("places no nodes"), "{err}");
+    // An unrelated family the deploy map never mentions is UNPARTITIONED
+    // (phase-315 / issue 0288 board-mention lift): the whole system, not an
+    // empty-slice error.
+    let unmentioned = plan_from_model(&model_path, Some("freertos".to_string()))
+        .expect("unmentioned family = unpartitioned");
+    assert_eq!(unmentioned.nodes.len(), 1);
 }
