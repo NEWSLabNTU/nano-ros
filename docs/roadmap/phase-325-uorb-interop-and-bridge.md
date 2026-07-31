@@ -567,10 +567,31 @@ freestanding gate. Dropping `inline` fixes it with no loss: `constexpr` at
 namespace scope is implicitly const and already has internal linkage per TU, so
 the keyword bought nothing.
 
-**The gate did not catch it**, which is the more useful finding: a c++14 syntax
-check exists whose file list is narrower than the rule it enforces — the
-issue-0196 class CLAUDE.md names explicitly. Widening it to cover
-`<nros/nros.hpp>` is worth doing and is NOT done here.
+**The gate did not catch it**, which is the more useful finding — though not for
+the reason first recorded here. My initial read was "its file list is narrower
+than the rule it enforces". **Wrong**: the loop globs
+`packages/api/nros-cpp/include/nros/*.hpp`, so `node.hpp` was always covered.
+
+The actual defect is subtler and worse. The probe ran plain `-std=c++14`, and
+**GCC accepts C++17 constructs as EXTENSIONS under `-std=c++14`, warning rather
+than erroring**:
+
+```
+$ c++ -fsyntax-only -std=c++14 iv.cpp                    # rc=0, warning only
+$ c++ -fsyntax-only -std=c++14 -pedantic-errors iv.cpp   # rc=1
+```
+
+So the gate named a standard it did not enforce. It could not detect the one
+class that breaks PX4, which builds every module `-std=gnu++14 -Werror`.
+
+**FIXED (2026-07-31):** `-pedantic-errors` added to both the header loop and the
+`bind_service` instantiation probe. Measured before applying — zero violations
+across every header and the probe — so it pins what was already true rather than
+forcing a cleanup. Mutation-tested: reintroducing the `inline constexpr` now
+fails `just check-cpp` naming the line; removing it goes green.
+
+Worth generalising: a syntax gate that names a standard should enforce it. `-std=`
+alone is a request, not a constraint.
 
 ##### W2.4 — the automated test (DONE)
 
