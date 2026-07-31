@@ -489,7 +489,7 @@ symbols**, which reads exactly like an empty archive. Use the toolchain's own:
       BSD header. See the normative section above. The only deliberate departure
       is that publishing goes through the **nano-ros** publisher rather than
       `uORB::Publication<T>`.
-- [ ] **W2.4** A test that observes the exchange **from the PX4 side**: `listener
+- [x] **W2.4** A test that observes the exchange **from the PX4 side**: `listener
       <topic>` in the SITL shell, or an upstream module that already subscribes
       it. Assert on that output.
 
@@ -571,14 +571,37 @@ check exists whose file list is narrower than the rule it enforces — the
 issue-0196 class CLAUDE.md names explicitly. Widening it to cover
 `<nros/nros.hpp>` is worth doing and is NOT done here.
 
-##### Remaining: W2.4, the automated test
+##### W2.4 — the automated test (DONE)
 
-The receipt above is manual. `Px4Sitl` in `nros-px4-sitl-test` has the harness
-(boot, pxh shell, log-wait, snapshot on timeout) and the call sequence is
-recorded in W2.4 above. One structural note for whoever writes it: PX4 takes
-exactly ONE `EXTERNAL_MODULES_LOCATION` per build, so the register-check gate and
-this example are separate ~10-minute builds — hence `build-sitl-cpp` and
-`build-sitl-example` as separate recipes.
+`packages/testing/nros-px4-sitl-test/tests/px4_uorb_interop_e2e.rs`, run by
+`just px4 test-sitl-example`. Passes in ~2 s against a prebuilt SITL; the compile
+lives in `build-sitl-example`, per CLAUDE.md's no-build-in-tests rule — unlike the
+`px4_e2e` it replaces, which built SITL inside the test.
+
+**Mutation-tested, because a passing assertion proves nothing until you have seen
+it fail.** Changing the published key from `"nros"` to `"XXXX"` and rebuilding
+turns the test RED; restoring it turns it green. So it is reading the actual
+bytes that crossed into uORB, not something incidentally true.
+
+Two things the writing turned up:
+
+- **`Px4Sitl::shell()` returns the command's stdout; it does NOT go through the
+  daemon log.** It spawns `bin/px4-<mod>` as a separate process. The first draft
+  waited on `wait_for_log("key: \"nros\"")` and timed out at 30 s while the
+  module was demonstrably publishing 30 samples. The daemon's own `PX4_INFO`
+  lines DO reach the log, which is why the `vehicle_status` direction still uses
+  `wait_for_log`.
+- **The assertion is on the KEY, not the topic name.** `listener` prints
+  `TOPIC: debug_key_value` even for an all-zero sample, so matching that would
+  pass against a module publishing nothing.
+
+The test also guards the stale-tree case: PX4 takes exactly ONE
+`EXTERNAL_MODULES_LOCATION` per build and every build writes the same
+`build/px4_sitl_default`, so a tree built by `build-sitl-cpp` would boot fine and
+fail confusingly at `nros_uorb_demo start`. It asserts
+`external_modules/modules/nros_uorb_demo/` exists and names the rebuild command —
+the stale-fixture class caught at the top of the test rather than diagnosed from
+a runtime symptom.
 
 ### W3 — the bridge: uORB → the build-time-selected RMW
 

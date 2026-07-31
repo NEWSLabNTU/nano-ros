@@ -27,6 +27,13 @@ description = "PX4 SITL E2E test fixture for nano-ros uORB modules (out-of-works
 name = "px4_xrce_e2e"
 path = "tests/px4_xrce_e2e.rs"
 
+# phase-325 W2.4 — Track A's runtime lane, replacing the px4_e2e issue 0356
+# removed. Unlike its predecessor it asserts on a STOCK PX4 consumer, and it does
+# not build SITL: `just px4 build-sitl-example` does that, per CLAUDE.md.
+[[test]]
+name = "px4_uorb_interop_e2e"
+path = "tests/px4_uorb_interop_e2e.rs"
+
 [dependencies]
 # Path-dep into the px4-rs submodule. Out-of-workspace, so its
 # absence on a fresh clone is a build-time error here only, not a

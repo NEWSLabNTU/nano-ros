@@ -173,6 +173,18 @@ build-fixtures:
     done
     echo "PX4 XRCE fixtures built."
 
+# Run the Track A uORB interop E2E: a STOCK PX4 `listener` reads a nano-ros
+# publication (phase-325 W2.4). Rebuilds SITL against the example first, because
+# the register-check gate and this example cannot share one build dir.
+[group("debug")]
+test-sitl-example: build-sitl-example
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    cd packages/testing/nros-px4-sitl-test
+    cargo nextest run "${cargo_nextest_args[@]}" --test px4_uorb_interop_e2e
+
 # Build every PX4 tier: example integrations and fixtures.
 #
 # phase-321 W1.c — `build` and `build-targets` are gone from this list because
@@ -188,12 +200,12 @@ build-all: build-examples build-fixtures
 #   px4_xrce_e2e  — Track B (real PX4 uxrce_dds_client → agent → nano-ros
 #                   companion receives /fmu/out telemetry over nros-rmw-xrce)
 #
-# Track A (in-firmware uORB) has NO runtime test. Its `px4_e2e` was removed by
-# issue 0356: it targeted a tree phase-277 W7 retired, and it asserted a
-# nano-ros module could read another nano-ros module — a loopback that a broken
-# struct layout satisfies just as well as a correct one. phase-325 W2 supplies
-# the replacement, whose far end is a stock PX4 consumer. Until then Track A is
-# covered at BUILD level only, by `build-sitl-cpp`.
+# Track A (in-firmware uORB) is `px4_uorb_interop_e2e`, run by `test-sitl-example`
+# rather than here. It needs a DIFFERENT EXTERNAL_MODULES_LOCATION than the
+# register-check gate, PX4 takes one per build, and both write to the same
+# build/px4_sitl_default — so the two cannot share a SITL tree. Keeping them in
+# separate recipes makes the rebuild explicit instead of silently testing
+# whichever root was built last.
 [group("debug")]
 test-sitl: build-sitl-cpp build-fixtures
     #!/usr/bin/env bash
