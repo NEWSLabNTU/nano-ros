@@ -84,6 +84,18 @@ fi
 # ROS source above must run FIRST.
 if [ -x "${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/bin/play_launch_parser" ]; then
     export PATH="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/bin:$PATH"
+else
+    # phase-327 W3 — `nros setup --tool play_launch_parser` (the prebuilt
+    # remedy the doctor names) installs to the VERSIONED store layout
+    # (sdk/<tool>/<version>/bin), which the unversioned path above misses.
+    # Wire whichever version is present so both install paths work.
+    for _plp_bin in "${NROS_HOME:-$HOME/.nros}"/sdk/play_launch_parser/*/bin; do
+        if [ -x "$_plp_bin/play_launch_parser" ]; then
+            export PATH="$_plp_bin:$PATH"
+            break
+        fi
+    done
+    unset _plp_bin
 fi
 
 # Cross-compiler toolchains installed by `nros setup` land in the SDK store
