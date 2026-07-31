@@ -226,10 +226,14 @@ Platform modules are consumed by nano-ros's OWN root `CMakeLists.txt`
 x86_64 process, so the platform shim it needs is `posix`, which already exists.
 
 The gap is a **consumption path**: how a `px4_add_module()` target links
-`libnros_cpp.a` + the posix platform shim + the uORB backend. That is RFC-0048
-territory — `find_package(nano_ros)` → `_nros_bootstrap` → `add_subdirectory` of
-the nano-ros root with `NANO_ROS_PLATFORM=posix` and `NROS_RMW=<selected>` — not a
-new platform port.
+`libnros_cpp.a` + the posix platform shim + the uORB backend.
+
+~~That is RFC-0048 territory — `find_package(nano_ros)` → `_nros_bootstrap` →
+`add_subdirectory`.~~ **Wrong, measured in W1.1 (see below).** `_nros_bootstrap`
+works by `add_subdirectory`, which compiles nano-ros sources inside PX4's cmake
+under PX4's `-Werror -Wfatal-errors -Wpedantic …` flags, and the posix shim does
+not survive them. The working shape is the opposite: **nano-ros builds its own
+artifacts, PX4 links prebuilt archives.**
 
 **Real PX4 boards (NuttX, cross-compiled) are explicitly out of scope.** Both
 demos run on SITL. A board port is the `nuttx` platform plus a cross toolchain and
@@ -265,24 +269,109 @@ worse than offering nothing. The old header even documented
 
 ### W1 — a PX4 module can consume nano-ros
 
-- [ ] **W1.1** Prove `find_package(nano_ros REQUIRED)` configures inside a PX4
-      SITL build, with `NANO_ROS_PLATFORM=posix`, and yields a target a
-      `px4_add_module()` can link. Expect friction where PX4's module factory and
-      nano-ros's `add_subdirectory` import disagree about flags/targets; record
-      what actually breaks rather than predicting it here.
+- [x] **W1.1** Prove a `px4_add_module()` target can link nano-ros. **DONE** —
+      see the result below. The friction predicted here ("PX4's module factory and
+      nano-ros's `add_subdirectory` import disagree about flags") is exactly what
+      happened, and it disqualifies `find_package(nano_ros)` rather than needing a
+      workaround.
 - [ ] **W1.2** Wrap the result as ONE helper — working name
       `nros_px4_add_module()` — under `integrations/px4/`, so a module author
       writes one call. Not a copy of `px4_add_module`'s argument surface: forward
-      to it.
+      to it. Per W1.1 it is a **link helper, not a bootstrap**: two prebuilt `.a`
+      paths plus the registration hook, and it must not call
+      `find_package(nano_ros)`.
 - [ ] **W1.3** Retire the module-template's comment-block placeholder in favour of
       the helper, so the template compiles what it documents. A template whose
       body is `// Replace this comment block` is how the gap stayed invisible.
 
 **Acceptance:** a PX4 SITL build produces a module that links `libnros_cpp.a` and
-starts. No node behaviour yet — that is W2.
+starts. No node behaviour yet — that is W2. **MET for W1.1.**
 
-**Receipt:** `nm` on the module archive shows nano-ros C++ symbols resolved, and
-the module runs from the pxh shell without an unresolved-symbol abort.
+#### W1.1 RESULT (2026-07-31): it links, and it runs
+
+**Answered: yes.** A `px4_add_module()` target links `libnros_cpp.a` and starts.
+Receipt, from the pxh shell after a full SITL build (`rc=0`, zero undefined
+references):
+
+```
+INFO  [nros_link_check] nros-cpp linked: nros_rmw_cffi_register=0x5fdc2807ab1d nros_cpp_node_create=0x5fdc28051638
+```
+
+The probe takes the ADDRESS of each symbol rather than calling it: the question
+was whether they resolve at link time, and printing a real address proves that
+without needing an initialised runtime. Calling them would have conflated "does
+it link" with "does it work", which is the distinction W1 exists to settle.
+
+##### Three link inputs, not one
+
+`libnros_cpp.a` alone leaves exactly 10 undefined symbols, in two families —
+both documented, neither surprising:
+
+| missing | supplied by |
+| --- | --- |
+| `nros_platform_{wake_init,wake_wait_ms,wake_signal,wake_drop,wake_storage_size,wake_storage_align,sleep_ms}` | the **posix** platform shim (`packages/core/nros-platform-posix`) |
+| `nros_app_register_backends` | normally a strong-stub TU **generated** by `nano_ros_link_rmw()` (`cmake/NanoRosLink.cmake`); a hand-rolled PX4 module gets no generation and must define it |
+
+The platform half confirms the phase's premise: SITL is an ordinary host process,
+so it wants the **same posix shim every native build uses**. No platform port.
+
+##### CORRECTION: `find_package(nano_ros)` is the wrong consumption path
+
+This phase said the gap was "RFC-0048 territory —
+`find_package(nano_ros)` → `_nros_bootstrap` → `add_subdirectory`". **Measured,
+that is wrong**, and it is the third correction to my own analysis in this phase.
+
+`_nros_bootstrap` works by `add_subdirectory`, which builds nano-ros sources
+*inside PX4's cmake* — where they inherit PX4's flags:
+
+```
+-Werror -Wfatal-errors -Wpedantic -Wnested-externs -Wbad-function-cast
+-Wshadow -Wdouble-promotion -Wfloat-equal -Wlogical-op ...
+```
+
+That set is far stricter than nano-ros's own, and `nros-platform-posix` does not
+survive it — every TU died on `"_DEFAULT_SOURCE" redefined [-Werror]`, PX4 having
+already defined it. Fixing that one macro would only buy the next warning.
+
+**The shape that works: nano-ros artifacts are built by nano-ros's build, and PX4
+links prebuilt archives.** Each project keeps its own warning policy on its own
+sources. This is already how `libnros_cpp.a` reaches the link (cargo builds it;
+cmake only links it) — the platform shim simply has to follow the same rule
+instead of being pulled into PX4's tree:
+
+```sh
+cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release
+cmake -S packages/core/nros-platform-posix -B <dir> && cmake --build <dir>
+```
+
+So W1.2's helper is a **link helper, not a bootstrap**: it points a PX4 module at
+two prebuilt `.a` files and provides the registration hook. It must NOT call
+`find_package(nano_ros)`.
+
+##### Reproducing the probe
+
+`EXTRA_CMAKE_ARGS` is not forwarded by PX4's Makefile — pass configuration
+through the environment, as `NROS_REPO_DIR` already is:
+
+```sh
+export NROS_PLATFORM_POSIX_A=<dir>/libnros_platform_posix.a
+make -C third-party/px4/PX4-Autopilot px4_sitl_default \
+     EXTERNAL_MODULES_LOCATION=<probe-root>
+```
+
+##### Toolchain gotcha worth knowing
+
+The system `nm` cannot read these archives — `LLVM gold plugin has failed to
+create LTO module: Opaque pointers are only supported in -opaque-pointers mode
+(Producer: LLVM22.1.2-rust-1.96.0 Reader: LLVM 14.0.0)` — and reports **no
+symbols**, which reads exactly like an empty archive. Use the toolchain's own:
+
+```sh
+~/.rustup/toolchains/<tc>/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-nm
+```
+
+`libnros_cpp.a` exports 124 `nros_cpp_*` symbols; a bare `nm` says 0.
+
 
 ### W2 — the direct demo: nano-ros ↔ a stock PX4 module
 
