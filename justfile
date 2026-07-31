@@ -351,6 +351,7 @@ check: check-fast check-build
 # is the per-push CI gate (`check.yml`).
 [group("main")]
 check-fast: \
+    check-cli-fresh \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
@@ -663,6 +664,13 @@ check-rmw-required-slots:
 check-board-tiers:
     @python3 scripts/check-board-tiers.py
     @python3 scripts/gen-board-support-table.py --check
+
+# Issue 0363 — a stale in-tree `nros` used to surface at `check-dep-chain`,
+# minutes in, as nine failed cells whose printed cause was a cargo resolution
+# error. Same predicate (it CALLS `nros_cli_bin`), better position. Buildless.
+[private]
+check-cli-fresh:
+    @bash scripts/check-cli-fresh.sh
 
 # Issue 0359 — leaf `Cargo.lock` files outside the root workspace must keep
 # satisfying their own manifests. Nothing ran `--locked` over them, so drift
@@ -1813,7 +1821,31 @@ format-workspace: format-cli
 # untouched.
 [private]
 format-cli:
-    cd packages/cli && cargo +{{NIGHTLY}} fmt
+    #!/usr/bin/env bash
+    set -e
+    cd "{{justfile_directory()}}/packages/cli" && cargo +{{NIGHTLY}} fmt
+    # Issue 0363 — reformatting in place makes the built CLI STALE, and
+    # CLAUDE.md tells people to run `just format` before broad changes. So the
+    # documented workflow creates the condition the guard then trips on, deep
+    # in a later lane. Say so HERE, where the cause is obvious. Not an
+    # auto-rebuild: compiling from a format recipe is surprising, and
+    # `just setup-cli` is the sanctioned producer.
+    bin="{{justfile_directory()}}/packages/cli/target/release/nros"
+    if [ -f "$bin" ]; then
+        newer=""
+        while IFS= read -r f; do
+            # `git ls-files` yields REPO-ROOT-relative paths, and this recipe
+            # cd'd into packages/cli above, so they must be absolutised or
+            # every `-nt` test silently compares a nonexistent path.
+            if [ "{{justfile_directory()}}/$f" -nt "$bin" ]; then newer="$f"; break; fi
+        done < <(git -C "{{justfile_directory()}}" ls-files packages/cli \
+                    | grep -E '\.rs$|Cargo\.(toml|lock)$' \
+                    | grep -vE '/(third-party|testing_workspaces)/')
+        if [ -n "$newer" ]; then
+            echo "[format-cli] NOTE: reformatting left the built CLI stale ('$newer')." >&2
+            echo "             Rebuild before running codegen lanes:  just setup-cli" >&2
+        fi
+    fi
 
 # #310 — gate the in-tree cli sub-workspace's rustfmt-cleanliness (it is outside
 # the root workspace that `check-workspace`'s `cargo fmt --check` covers).
