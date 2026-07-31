@@ -83,10 +83,6 @@ launch = "multihost.launch.xml"
 kind = "embedded"
 board = "mps2-an385-freertos"
 
-[deploy.threadx-linux]
-kind = "embedded"
-board = "threadx-linux"
-
 [deploy.zephyr]
 kind = "embedded"
 board = "native_sim/native/64"

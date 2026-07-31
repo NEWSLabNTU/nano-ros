@@ -4,7 +4,7 @@ meta:
   - path: launch/system.launch.xml
     sha256: da30e28be9c2846424414464acef2c6def3f40c170961e4a0fd3100ce4846d98
   - path: system.toml
-    sha256: 053c04ff8433b5fb03487247c44b6e6763e53cf7e61b2c806965b2472979adf1
+    sha256: 9d3917391c71072f75f4987ca1e2a98d4293bb2a666158dd677dc3bf612cfb64
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -26,6 +26,7 @@ structure:
 execution:
   deploy:
     /listener:
+      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -33,6 +34,7 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /talker:
+      target: linux
       domain: 0
       rmw: zenoh
       extra:

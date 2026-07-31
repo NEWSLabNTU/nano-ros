@@ -88,10 +88,6 @@ board = "threadx-linux"
 kind = "embedded"
 board = "mps2-an385-freertos"
 
-[deploy.threadx-linux]
-kind = "embedded"
-board = "threadx-linux"
-
 [deploy.nuttx-qemu-arm]
 kind = "embedded"
 board = "nuttx-qemu-arm"

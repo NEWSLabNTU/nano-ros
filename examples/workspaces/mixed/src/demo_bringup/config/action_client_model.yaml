@@ -4,7 +4,7 @@ meta:
   - path: launch/action_client.launch.xml
     sha256: 27c8a0725b4ada39067574ca661db9c937423924a6f064eaf46d86c8bcbbac00
   - path: system.toml
-    sha256: 6c394b12f7d818651edd9468f794882065947af40ea1f06c179116854d2e7791
+    sha256: 95179f9360ecded0f00b9e253d4478d37fef7267f3d4c329cc233d5ed01c58bb
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -21,6 +21,7 @@ structure:
 execution:
   deploy:
     /fib_client:
+      target: linux
       domain: 0
       rmw: zenoh
       extra:

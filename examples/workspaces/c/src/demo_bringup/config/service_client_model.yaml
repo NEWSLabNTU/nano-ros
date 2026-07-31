@@ -4,7 +4,7 @@ meta:
   - path: launch/service_client.launch.xml
     sha256: 8cce8136abc52bbc15fe2d28cf9d5f77ec42d2a814fdbd3eb26b118659ab936f
   - path: system.toml
-    sha256: 053c04ff8433b5fb03487247c44b6e6763e53cf7e61b2c806965b2472979adf1
+    sha256: 9d3917391c71072f75f4987ca1e2a98d4293bb2a666158dd677dc3bf612cfb64
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -21,6 +21,7 @@ structure:
 execution:
   deploy:
     /add_client:
+      target: linux
       domain: 0
       rmw: zenoh
       extra:
