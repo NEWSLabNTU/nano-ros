@@ -1,6 +1,6 @@
 # Phase 316 — every example path level names a real axis
 
-**Status (2026-07-31): W1–W3 landed and pushed. W4.1 and W4.3 DECIDED; W4.2/W4.3
+**Status (2026-07-31): W1–W3 landed and pushed. W4.1 and W4.3 DECIDED (two demos: direct + build-time-RMW bridge); W4.2/W4.3
 recommended for a SUCCESSOR PHASE — scoping found no nano-ros node has ever been
 built on the uORB backend, and there is no px4 platform cmake module, so W4 is a
 phase rather than a work item.**
@@ -91,6 +91,18 @@ retired path form.
 
 ### W4 — uORB interop example + bridge
 
+**uORB carries TWO demonstrations, and they make distinct claims** (maintainer,
+2026-07-31). Keeping them distinct is what keeps each honest:
+
+| | claim | proven against | what would falsify it |
+| --- | --- | --- | --- |
+| **W4.2** direct | nano-ros speaks PX4's in-memory format, so no serialization happens at all | a **stock, unmodified PX4 module** | a stock module cannot read the topic |
+| **W4.3** bridge | nano-ros carries uORB traffic out to any RMW it supports, chosen at build time | a **real ROS 2 node** | ROS 2 cannot see the topic, or only one backend works |
+
+Neither is provable by a nano-ros peer at the far end: a nano-ros↔nano-ros test
+passes identically whether the encoding is right or wrong, since both sides share
+the bug. Foreign peers are the whole measurement.
+
 #### W4.1 — the example's purpose: DECIDED (2026-07-31, maintainer)
 
 > The uORB example demonstrates nano-ros interop with existing PX4 features. The
@@ -141,23 +153,72 @@ feature.
 unmodified PX4 module, with no serialization step on either side, and the test
 observes it from the PX4 side.
 
-#### W4.3 — the bridge: DECIDED — uORB → Zenoh (2026-07-31, maintainer)
+#### W4.3 — the bridge: DECIDED — uORB → **the build-time-selected RMW** (2026-07-31, maintainer)
 
-Chosen over "registry demonstration" and over dropping it. PX4 ships nothing on
-Zenoh, so this is **new capability** rather than a second implementation of
-something upstream already provides — the objection that killed uORB → DDS
-(`uxrce_dds_client`) does not apply.
+Refined from the first answer ("uORB → Zenoh"), and the refinement matters. The
+bridge's outward side is **not a fixed backend**. It is the ordinary build-time
+RMW knob every other example already uses — cargo `rmw-*` features for Rust,
+`-DNROS_RMW=<backend>` for C/C++ — so one bridge at one path builds against
+zenoh, xrce or cyclonedds:
 
-Shape: a PX4 module holding two sessions open at once — uORB inward (zero-copy,
-stock PX4 peers) and Zenoh outward (networked, ROS 2 / nano-ros peers). It is the
-first non-POSIX entry in `examples/bridges/`, since uORB is an in-process bus and
-the bridge must therefore be a C++ PX4 module rather than a host binary.
+```
+                    ┌──────────────────────────────┐
+  stock PX4 modules │  nano-ros bridge (PX4 module)│  real ROS 2 nodes
+   ───── uORB ─────▶│  uORB in   │   RMW out ──────│──────▶
+   (no serialization)│           │  -DNROS_RMW=…   │   (zenoh / xrce / cyclonedds)
+                    └──────────────────────────────┘
+```
 
-Note what the bridge is NOT: the serialization uORB avoids comes back at the
-Zenoh boundary, necessarily. The value is reach, not zero-copy — and W4.2 stays
-the example that demonstrates the zero-copy property.
+This is a better answer than the one I asked for, and it is on this phase's own
+thesis: the outward backend is a **build-time choice, not a directory axis**, so
+the bridge gets ONE path and no `<rmw>/` level — RFC-0026's rule applied to the
+very thing that used to violate it.
+
+It also disposes of the "duplicates `uxrce_dds_client`" objection properly. The
+point was never to beat PX4's XRCE client at XRCE. It is that **one** bridge
+covers every backend nano-ros supports — including Zenoh, where PX4 has nothing —
+and `uxrce_dds_client` covers exactly one, permanently.
+
+**Acceptance: a real ROS 2 node on the far side.** Not a nano-ros peer. This
+mirrors W4.2's requirement of a *stock* PX4 consumer, and for the same reason:
+each end must be proven against a FOREIGN, unmodified peer, or the demo is
+satisfied identically by a correct and a broken encoding.
+
+Honest about what it is not: the serialization uORB avoids returns at the RMW
+boundary, necessarily. W4.2 demonstrates the zero-copy property; W4.3
+demonstrates reach. Two demos, two distinct claims.
 
 **Sequenced after W4.2**, which establishes the uORB side the bridge reuses.
+
+#### W4.3 scoping — what already works, and what the existing bridges get wrong
+
+Two live backends in one image is **already proven**, which removes the risk I
+expected here. `examples/bridges/tt-zenoh-to-cyclonedds` does:
+
+```rust
+nros_rmw_zenoh::register().expect("register zenoh backend");
+nros_rmw_cyclonedds_sys::register().expect("register cyclonedds backend");
+let mut exec = Executor::open_with_rmw("zenoh", &cfg)?;   // then a second session
+```
+
+`open_with_rmw` takes the backend by NAME, so build-time selection falls out
+naturally: the cargo feature decides which `register()` is compiled in and which
+name string is passed. The uORB bridge is the same shape with
+`nros_rmw_uorb_register()` inward.
+
+**But the existing bridges encode the backend pair in the DIRECTORY NAME** —
+`tt-zenoh-to-cyclonedds`, `tt-zenoh-to-xrce` — with both backends named as hard
+crate deps. That is the per-RMW axis this phase just removed from paths,
+surviving in a name: two directories that differ only in an outward backend,
+which the build could have chosen. The maintainer's design for the uORB bridge
+(fixed inward end, build-time outward end, one path) is what these should have
+been.
+
+Not decided here, and deliberately not in phase-316's scope: whether
+`tt-zenoh-to-*` should collapse to one `tt-zenoh-to-rmw` with the egress
+selected at build time. Recorded so the successor phase can weigh it — the uORB
+bridge will otherwise be the only one built the right way, and a lone correct
+example reads as an inconsistency rather than a rule.
 
 #### W4 blocker (found 2026-07-31): nothing has ever built a nano-ros NODE on uORB
 
