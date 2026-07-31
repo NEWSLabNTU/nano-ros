@@ -81,13 +81,13 @@ it. Fix A landed: sync now refuses to emit a table omitting a managed crate with
 and C (couple the CLI to `nros-launch-resolve`, built by a separate recipe) remain.
 See `0363-*`. (2026-07-31)
 
-**#365** — FreeRTOS board build can't find `nros/app_config.h`: `nros-board-mps2-an385-freertos/build.rs:107`
-still joins the pre-phase-321 `core/nros-c/include` path after nros-c moved to `packages/api/nros-c`
-(`7e3e15b4d`), so the emitted `nros_app_config_def.c` compile fails "No such file". The build.rs's own doc
-comment cites the new `packages/api/` path — code half-applied. Missed site, not a class: the threadx-linux
-board (`build.rs:53`) already uses `packages/api/nros-c/include`; only the freertos board is stale. Blocks
-`just freertos build-fixtures` — the NEXT tier-2 blocker after #361 cleared "no nodes on board". One-line
-fix. Secondary: board crate at v0.4.0 vs workspace 0.5.0 (lockstep drift, separate). See `0365-*`. (2026-07-31)
+**#365** — RESOLVED: FreeRTOS board build couldn't find `nros/app_config.h` — `nros-board-mps2-an385-freertos/build.rs`
+still joined the pre-phase-321 `core/nros-c/include` after nros-c moved to `packages/api/nros-c` (`7e3e15b4d`);
+the threadx-linux board was updated, this one missed. Fix: `core`→`api` include path + a fail-loud existence
+assert. Verified: `just freertos build-fixtures` no longer errors "No such file". The build then hits a
+SEPARATE cmake ABI-detection failure (`undefined reference to _write/_sbrk` — newlib syscall stubs /
+`--specs=nosys.specs` missing), a distinct third freertos-chain blocker (codegen → include-path → cmake-ABI).
+Board-crate v0.4.0 lockstep drift left as its own question. See `archived/0365-*`. (2026-07-31)
 
 **#362** — phase-325 W3's uORB→RMW bridge is blocked on TYPES, not plumbing. The plumbing is proven
 (one PX4 module links uORB + zenoh, `NodeBuilder().rmw()` gives two sessions, backend selection is

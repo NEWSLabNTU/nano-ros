@@ -1,7 +1,8 @@
 ---
 id: 365
 title: "FreeRTOS board build can't find `nros/app_config.h`: build.rs still uses the pre-phase-321 `core/nros-c/include` path after nros-c moved to packages/api"
-status: open
+status: resolved
+resolved_in: "board build.rs include path fix"
 type: bug
 severity: medium
 area: freertos
@@ -79,3 +80,23 @@ source ./activate.sh && source /opt/ros/humble/setup.bash
 just freertos build-fixtures
 # … fatal error: nros/app_config.h: No such file or directory
 ```
+
+## RESOLVED (2026-07-31)
+
+`nros-board-mps2-an385-freertos/build.rs`: the nros-c include join is
+`packages/api/nros-c/include` (was `core/nros-c/include`), plus a fail-loud
+`assert!` that `nros/app_config.h` exists at the joined path — matching the
+threadx-linux board.
+
+**Verified:** `just freertos build-fixtures` no longer errors
+`nros/app_config.h: No such file` — the board build compiles the config TU.
+
+**Next blocker (separate, NOT this issue):** the freertos WORKSPACE build then
+fails cmake ABI detection — `undefined reference to _write/_close/_lseek/_read/_sbrk`
+linking the arm-none-eabi ABI test against newlib without syscall stubs (needs
+`--specs=nosys.specs` / `CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY`). A distinct
+cmake cross-toolchain issue — the third freertos-chain blocker (codegen →
+include-path → cmake-ABI); a fresh follow-up. Board crate `v0.4.0` vs workspace
+`0.5.0` lockstep drift is its own question.
+
+(Filed as #364; renumbered #365 in a same-day id-collision sweep.)

@@ -99,13 +99,20 @@ fn main() {
     glue.include(lan9118_dir.join("include"));
     // Phase 212.M-F.10.3 — emit_nros_app_config's TU `#include <nros/app_config.h>`
     // (the canonical-path wrapper from M-F.10.1 `c8aafd6ff`).
-    glue.include(
-        manifest_dir
-            .parent() // packages/boards/
-            .and_then(|p| p.parent()) // packages/
-            .expect("workspace layout")
-            .join("core/nros-c/include"),
+    // Issue 0365 — nros-c moved to `packages/api/nros-c` in phase-321 W2.e; this
+    // join was left at the old `core/nros-c`, so the TU could not find the header.
+    // Assert existence so a future move fails loud here, not deep in `cc`.
+    let nros_c_include = manifest_dir
+        .parent() // packages/boards/
+        .and_then(|p| p.parent()) // packages/
+        .expect("workspace layout")
+        .join("api/nros-c/include");
+    assert!(
+        nros_c_include.join("nros/app_config.h").exists(),
+        "nros-c header not at {} — did nros-c move again? (issue 0365)",
+        nros_c_include.display()
     );
+    glue.include(nros_c_include);
     if nros_trace {
         let tband_dir = nros_build_paths::tband_dir();
         let trace_config_dir = manifest_dir.join("trace");
