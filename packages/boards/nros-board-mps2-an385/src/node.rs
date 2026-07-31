@@ -149,6 +149,7 @@ unsafe fn plat_serial_write(h: u8, buf: *const u8, len: usize) -> usize {
 /// Returns seconds since 1970-01-01. On QEMU, this reflects the host's
 /// real clock, providing entropy that varies between QEMU runs (unlike
 /// the DWT cycle counter which is deterministic in emulation).
+#[cfg(target_arch = "arm")]
 fn semihosting_time() -> u32 {
     let result: u32;
     unsafe {
@@ -159,6 +160,31 @@ fn semihosting_time() -> u32 {
         );
     }
     result
+}
+
+/// Host stand-in so this crate COMPILES off-ARM (issue 0288).
+///
+/// The `bkpt` block above names ARM registers, so a host build of any package
+/// that reaches this crate dies with `invalid register \`r0\``. That is not a
+/// theoretical target: the source-metadata probe host-compiles a component to
+/// record its callback slots, and a standalone example deps its board crate
+/// directly — so the probe could never run for those packages and their
+/// executor sizing fell back to the SystemModel's timer-blind lower bound.
+///
+/// This crate is `exclude`d from the root workspace ("embedded-only, require
+/// cross-compilation"), which is why no lane ever caught it: nothing host-builds
+/// these except a probe that was reported as unsupported instead.
+///
+/// It PANICS rather than returning a plausible number. Nothing on the host has
+/// any business reading an ARM semihosting clock, and this value seeds entropy —
+/// a silent `0` would make GUIDs collide rather than fail.
+#[cfg(not(target_arch = "arm"))]
+fn semihosting_time() -> u32 {
+    unreachable!(
+        "semihosting_time() is ARM-only; this crate compiles off-ARM solely so \
+         host-side tooling (the source-metadata probe) can build the packages \
+         that dep it"
+    )
 }
 
 // ---- Ethernet helpers ----

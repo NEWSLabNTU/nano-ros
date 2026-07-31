@@ -30,6 +30,11 @@ mod node;
 // Boot entry point — placed in .text.init so the linker script puts it first.
 // Must be in the binary crate's compilation unit (not a library) for LLD to
 // place it before other .text sections.
+// issue 0288 — RISC-V boot asm; gated so this crate compiles off-target for
+// host-side tooling (the source-metadata probe host-builds any package that
+// deps a board crate). `_start` has no meaning on the host and the linker
+// script that places it is never used there.
+#[cfg(target_arch = "riscv64")]
 core::arch::global_asm!(
     r#"
 .section .text.init
