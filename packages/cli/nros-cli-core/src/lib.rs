@@ -6,6 +6,7 @@
 
 pub mod abi_guard;
 pub mod cmd;
+pub mod stale_guard;
 // Phase 219.A — Entry-pkg codegen (`nros codegen entry`). The shared
 // pkg-index walk + launch.xml parser also live here so the cmake-fn
 // path (`nano_ros_entry(LAUNCH …)`), the Rust proc-macro
@@ -29,7 +30,35 @@ use eyre::Result;
 ///
 /// `argv` is the post-clap parsed command structure. Each variant maps
 /// 1:1 to a `nros <verb>` invocation.
+/// Issue 0363 B — the stable name used by the stale-guard's allow-list.
+///
+/// Matched on the ENUM VARIANT, not a user-typed string: a renamed CLI verb
+/// then cannot silently fall out of the guarded set, which is the drift that
+/// makes allow-lists rot.
+fn cmd_name(cmd: &cmd::Cmd) -> &'static str {
+    match cmd {
+        cmd::Cmd::Sync(_) => "sync",
+        cmd::Cmd::Plan(_) => "plan",
+        cmd::Cmd::Ws(_) => "ws",
+        cmd::Cmd::Codegen(_) => "codegen",
+        cmd::Cmd::CodegenSystem(_) => "codegen-system",
+        cmd::Cmd::GenerateRust(_) => "generate-rust",
+        cmd::Cmd::Setup(_) => "setup",
+        // Everything else stays runnable on a stale binary ON PURPOSE —
+        // `doctor` above all, since diagnosing a broken checkout is exactly
+        // when you have one.
+        _ => "unguarded",
+    }
+}
+
 pub fn run(cmd: cmd::Cmd) -> Result<()> {
+    // Issue 0363 B — self-check BEFORE dispatch. The equivalent shell guard in
+    // `scripts/build/cargo.sh` only covers callers that go through `just`;
+    // `activate.sh` puts this binary straight on PATH, so `nros sync` — the
+    // documented recovery — bypassed it entirely.
+    if let Err(msg) = stale_guard::refuse_if_stale(cmd_name(&cmd)) {
+        return Err(eyre::eyre!("{msg}"));
+    }
     match cmd {
         cmd::Cmd::New(args) => cmd::new::run(args),
         cmd::Cmd::Generate(args) => cmd::generate::run(args),

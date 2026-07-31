@@ -2600,6 +2600,19 @@ setup-cli:
     # the binary matches the current sources — stamp it so.
     touch "$bin"
     echo "[setup-cli] built: $bin"
+    # Issue 0363 C — the CLI and `nros-launch-resolve` are built by SEPARATE
+    # recipes and must agree on an argument list, with nothing gating the pair.
+    # A CLI rebuilt past a resolver invocation change leaves the resolver older
+    # and the mismatch surfaces deep in a fixture build. Warn (do not fail):
+    # setup-cli's job is to produce the binary, and the resolver has its own
+    # skip conditions (submodule absent, no CPython), so hard-failing here would
+    # block a legitimate CLI-only setup.
+    resolver="$root/packages/cli/nros-launch-resolve/target/release/nros-launch-resolve"
+    if [ -f "$resolver" ] && [ "$bin" -nt "$resolver" ]; then
+        echo "[setup-cli] WARNING: nros-launch-resolve is OLDER than the CLI just built." >&2
+        echo "            They are separate recipes that must agree on an argument list" >&2
+        echo "            (issue 0363 C). Rebuild it:  just setup-launch-resolve" >&2
+    fi
     warn_stale_shadow
 
 # Build the launch-resolution helper (issue 0285).

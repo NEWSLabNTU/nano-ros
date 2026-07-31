@@ -1,7 +1,7 @@
 ---
 id: 363
 title: "A stale `nros` binary silently emits a WRONG `[patch.crates-io]` table — the staleness guard exists but a direct `nros sync` bypasses it"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build, cli
@@ -151,3 +151,41 @@ CLASS; B closes the staleness CAUSE.
 
 Atomicity (the original recommendation). The writes are already atomic, and the
 failure mode is a complete write of wrong content.
+
+## B AND C LANDED (2026-07-31)
+
+**B — the guard moved onto the path people are actually told to use.**
+`packages/cli/nros-cli-core/src/stale_guard.rs`: the binary checks ITSELF before
+dispatch, so invocation style can no longer bypass it. Same predicate as the
+shell guard (`git ls-files packages/cli`, `.rs`/`Cargo.toml`/`Cargo.lock`,
+excluding `third-party/` and `testing_workspaces/`), so the two cannot disagree
+about what "stale" means.
+
+Three deliberate limits:
+
+- **Only a binary inside `<root>/packages/cli/target/`.** An installed
+  `~/.nros/bin/nros` is not stale *relative to* a checkout it does not belong
+  to; blocking it would break every out-of-tree user.
+- **Only commands that consume the crate→path table or emit artifacts** —
+  sync, plan, ws, codegen, codegen-system, generate-rust, setup. `doctor`,
+  `--version` and `completions` still run stale ON PURPOSE: diagnosing a broken
+  checkout is exactly when you have one.
+- The allow-list matches the **enum variant**, not a user-typed string, so a
+  renamed verb cannot silently fall out of the guarded set.
+
+`NROS_SKIP_STALE_CHECK=1` overrides for a deliberate experiment.
+
+Verified: with a source touched newer than the binary, a bare `nros sync` — the
+exact invocation that previously bypassed everything — now refuses and names the
+offending file; `nros doctor` and `nros --version` still run; the env override
+works; and after `just setup-cli` the guard goes quiet.
+
+**C — setup-cli now notices when the resolver falls behind.** It warns (not
+fails) when `nros-launch-resolve` is older than the CLI it just built. Warn
+rather than fail because setup-cli's job is to produce the binary, and the
+resolver has legitimate skip conditions (submodule absent, no CPython) that
+would otherwise block a valid CLI-only setup.
+
+It fired immediately on this checkout — the resolver WAS older — and went quiet
+after `just setup-launch-resolve`.
+
