@@ -123,6 +123,15 @@ listener, so it never hit it. Fix: both loops now gate on the REAL `Executor::se
 counter (genuine `drive_io` errors only, resets on idle — issue 0324's correct signal) instead of
 idle timeouts. `interop_e2e` cyclone 6/7/8 + full 10/10 green; regression test
 `idle_spins_never_raise_session_io_failures`. See `archived/0355-*`. (2026-07-31)
+
+**#356** — C/mixed workspace embedded Entry packages (`examples/workspaces/{c,mixed}/src/freertos_entry`,
+`nuttx_entry`) codegen-fail *"SystemModel places no nodes on board `mps2-an385-freertos`"*, breaking
+`just {freertos,nuttx,threadx} build-fixtures`. Migrated to the model path in 296-R4, but the
+workspace `system.toml`/SystemModel declares only native deploy targets (`[deploy.native/robot1/robot2]`,
+all linux) — no embedded-board deploy. The rust freertos fixture uses a different workspace and works.
+Latent since 296-R4/#320 because full tier-2 fixture builds are rarely run locally. Fix = add the
+embedded-board deploy target to the c/mixed bringup (template: `ws-realtime-c-mps2`) + re-commit the
+portable model, OR remove the vestigial entries + their fixtures.toml coords. See `0356-*`. (2026-07-31)
 See `0354-*`. (2026-07-31)
 
 **#357** — Tier 1's FIXTURE gate scopes to native correctly (a tree with no ThreadX/NuttX/FreeRTOS/
