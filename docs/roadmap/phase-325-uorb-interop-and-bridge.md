@@ -472,19 +472,19 @@ symbols**, which reads exactly like an empty archive. Use the toolchain's own:
 
 ### W2 — the direct demo: nano-ros ↔ a stock PX4 module
 
-- [ ] **W2.1** A nano-ros node inside a PX4 module that publishes a real PX4
+- [x] **W2.1** A nano-ros node inside a PX4 module that publishes a real PX4
       topic:
       `nros_rmw_uorb_register_topic("/<topic>", "<ros_type_name>", ORB_ID(<topic>))`,
       then `publish_raw((const uint8_t *)&msg, sizeof msg)` with `msg` a
       `<uORB/topics/*.h>` struct. The message type comes from PX4's headers, NOT
       from `nros generate-*`.
-- [ ] **W2.2** The subscribe direction, reading a topic a stock PX4 module
+- [x] **W2.2** The subscribe direction, reading a topic a stock PX4 module
       publishes.
-- [ ] **W2.3** Lands at `examples/px4/cpp/firmware/` — which this creates.
+- [x] **W2.3** Lands at `examples/px4/cpp/firmware/` — which this creates.
       phase-316 W3.1 deliberately left the dir uncreated rather than empty. That
       dir is an `EXTERNAL_MODULES_LOCATION` root, so the module sits at
       `firmware/src/modules/<snake_name>/` per PX4's requirement.
-- [ ] **W2.5** Written to PX4 convention throughout — `ModuleBase<T>`, `Kconfig`,
+- [x] **W2.5** Written to PX4 convention throughout — `ModuleBase<T>`, `Kconfig`,
       `PRINT_MODULE_*` usage strings, CamelCase files matching the class, tabs,
       BSD header. See the normative section above. The only deliberate departure
       is that publishing goes through the **nano-ros** publisher rather than
@@ -522,6 +522,63 @@ PX4 end.
 **Explicitly NOT acceptance:** nano-ros subscribing its own publication. That
 passes identically with a correct and a broken struct layout — it measures the
 loopback, not the interop.
+
+#### W2 RESULT (2026-07-31): met, by the stock consumer
+
+`examples/px4/cpp/firmware/src/modules/nros_uorb_demo/`, built by
+`just px4 build-sitl-example`. PX4's own `listener` — which knows nothing about
+nano-ros — reading a nano-ros publication:
+
+```
+TOPIC: debug_key_value
+ debug_key_value
+    timestamp: 16736000 (0.920000 seconds ago)
+    value: 5.00000
+    key: "nros"
+```
+
+`key` and `value` come back correct, so the struct layout agrees byte for byte;
+a disagreement with `orb_metadata` would garble exactly these. And the other
+direction, nano-ros reading PX4's commander:
+
+```
+INFO  [nros_uorb_demo] recv vehicle_status: nav_state=4 arming_state=1 (10 samples)
+INFO  [nros_uorb_demo] published debug_key_value key=nros value=9.0 (10 samples)
+```
+
+Foreign peer on both ends, which was the whole requirement.
+
+##### A blocker W1 could not have found: PX4 is C++14
+
+`<nros/nros.hpp>` did not compile in a PX4 module —
+
+```
+node.hpp:100: error: inline variables are only available with '-std=c++17' [-Werror]
+```
+
+PX4 sets `CMAKE_CXX_STANDARD 14` for everything. W1 could not surface this: the
+generated-header stub blocked including nano-ros headers at all until W1.4, and
+the template then only reached `<nros/init.h>`.
+
+It was **one** `inline constexpr` in the entire header set, and nano-ros already
+intends C++14 compatibility — `just check-cpp` runs a `-std=c++14 -fsyntax-only`
+freestanding gate. Dropping `inline` fixes it with no loss: `constexpr` at
+namespace scope is implicitly const and already has internal linkage per TU, so
+the keyword bought nothing.
+
+**The gate did not catch it**, which is the more useful finding: a c++14 syntax
+check exists whose file list is narrower than the rule it enforces — the
+issue-0196 class CLAUDE.md names explicitly. Widening it to cover
+`<nros/nros.hpp>` is worth doing and is NOT done here.
+
+##### Remaining: W2.4, the automated test
+
+The receipt above is manual. `Px4Sitl` in `nros-px4-sitl-test` has the harness
+(boot, pxh shell, log-wait, snapshot on timeout) and the call sequence is
+recorded in W2.4 above. One structural note for whoever writes it: PX4 takes
+exactly ONE `EXTERNAL_MODULES_LOCATION` per build, so the register-check gate and
+this example are separate ~10-minute builds — hence `build-sitl-cpp` and
+`build-sitl-example` as separate recipes.
 
 ### W3 — the bridge: uORB → the build-time-selected RMW
 

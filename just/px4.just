@@ -103,6 +103,32 @@ build-sitl-cpp:
     make -C "$PX4_DIR" px4_sitl_default \
         EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
+# Build PX4 SITL with the uORB INTEROP EXAMPLE as EXTERNAL_MODULES_LOCATION
+# (phase-325 W2).
+#
+# Separate from `build-sitl-cpp` because PX4 takes exactly ONE
+# EXTERNAL_MODULES_LOCATION per build, and the register-check gate
+# (packages/testing/nros-px4-register-check) and this example are different roots.
+# Each is ~10 min cold, <2 s warm.
+#
+# Prereqs the helper checks for at configure time, with the command to fix each:
+#   cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release
+#   cmake -S packages/core/nros-platform-posix -B build/nros-platform-posix
+#   cmake --build build/nros-platform-posix
+[group("examples")]
+build-sitl-example:
+    #!/usr/bin/env bash
+    set -e
+    PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
+    EXT_DIR="$(pwd)/examples/px4/cpp/firmware"
+    if [ ! -d "$PX4_DIR/Tools" ]; then
+        echo "ERROR: PX4-Autopilot tree not found at $PX4_DIR"
+        echo "Run: just px4 setup"
+        exit 1
+    fi
+    echo "Building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
+    make -C "$PX4_DIR" px4_sitl_default EXTERNAL_MODULES_LOCATION="$EXT_DIR"
+
 # Build PX4 examples. (phase-277 W7: the former `build-sitl` recipe pointed
 # EXTERNAL_MODULES_LOCATION at the README-only `examples/px4/rust/uorb/`
 # placeholder — it compiled no nano-ros module and the placeholder dir is

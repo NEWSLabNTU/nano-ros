@@ -97,7 +97,12 @@ class ComponentNode;
 /// image bakes a nonzero domain. Valid domains cap at 232, so 255 is
 /// unambiguous. Mirrors `NROS_DOMAIN_ID_EXPLICIT_ZERO` in the C API
 /// (nros_generated.h); hosted env still overrides it under model A.
-inline constexpr uint8_t kDomainIdExplicitZero = 255;
+// `constexpr` at namespace scope is implicitly const, so it already has internal
+// linkage per TU — `inline` bought nothing and cost C++14 compatibility, which
+// nano-ros otherwise keeps (see `just check-cpp`'s freestanding c++14 syntax
+// gate). PX4 builds every module with -std=gnu++14 -Werror, so an inline
+// variable here made <nros/nros.hpp> uncompilable in a PX4 module (phase-325 W2).
+constexpr uint8_t kDomainIdExplicitZero = 255;
 
 /// Initialize an nros session.
 ///

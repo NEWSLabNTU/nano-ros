@@ -1,0 +1,6 @@
+menuconfig MODULES_NROS_UORB_DEMO
+	bool "nros_uorb_demo"
+	default n
+	---help---
+		nano-ros uORB interop demo: publishes debug_key_value and subscribes
+		vehicle_status through nano-ros, with no serialization on either side.
