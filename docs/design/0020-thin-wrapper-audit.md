@@ -28,8 +28,8 @@ table whenever public surface in `nros-c` / `nros-cpp` grows.
 
 ## Methodology
 
-1. **Scope**: audit `packages/core/nros-c/src/` and
-   `packages/core/nros-cpp/src/` (and their headers) against the five
+1. **Scope**: audit `packages/api/nros-c/src/` and
+   `packages/api/nros-cpp/src/` (and their headers) against the five
    compliance classes listed in the checklist.
 2. **Dispatch an Explore agent** with the prompt in
    `.claude/agents/explore.md` (or a direct invocation) asking for
@@ -37,8 +37,8 @@ table whenever public surface in `nros-c` / `nros-cpp` grows.
    ~500 words to constrain the scan; include the full compliance-rule
    text as context. Example prompt skeleton:
 
-   > Audit `packages/core/nros-c/src/` and
-   > `packages/core/nros-cpp/src/` to verify they are thin FFI wrappers
+   > Audit `packages/api/nros-c/src/` and
+   > `packages/api/nros-cpp/src/` to verify they are thin FFI wrappers
    > over `nros-node`. For each of these five violation classes, list
    > every offending site:
    >

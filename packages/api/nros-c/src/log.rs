@@ -123,7 +123,7 @@ pub extern "C" fn nros_log_default_logger() -> *const c_void {
 }
 
 // `nros_log_emit_fmt` is implemented in C
-// (`packages/core/nros-c/c-stubs/log_fmt.c`) because the Rust
+// (`packages/api/nros-c/c-stubs/log_fmt.c`) because the Rust
 // `c_variadic` feature is still unstable on stable. The C shim
 // vsnprintfs the format args + forwards to `nros_log_emit` above.
 unsafe extern "C" {

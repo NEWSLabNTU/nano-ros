@@ -102,7 +102,7 @@ Two additional, smaller ROS-2-generic friction sources:
 
 ### 209.A — `nros/rclcpp_compat.hpp` source-compat header
 - [x] **Shipped (2026-05-30, branch `phase-209-cpp-port-friction-reduction`).**
-      `packages/core/nros-cpp/include/nros/rclcpp_compat.hpp` lands the surface
+      `packages/api/nros-cpp/include/nros/rclcpp_compat.hpp` lands the surface
       below plus a `rclcpp::Node` shim wrapping `nros::Executor` + `nros::Node`
       so the rclcpp idiom `std::make_shared<rclcpp::Node>("n")` →
       `n->create_publisher<M>(topic, qos)` (shared_ptr-returning) → `rclcpp::spin(n)`
@@ -162,7 +162,7 @@ Two additional, smaller ROS-2-generic friction sources:
       will fold). Builds end-to-end.
 
 ### 209.C — `RCLCPP_COMPONENTS_REGISTER_NODE` no-op shim
-- [x] **Shipped (2026-05-30).** `packages/core/nros-cpp/include/nros/
+- [x] **Shipped (2026-05-30).** `packages/api/nros-cpp/include/nros/
       rclcpp_components_compat.hpp` defines the macro as a no-op. The
       209.B force-include applies it to every compat-built target; source
       lines using the macro just compile away. The cmake side

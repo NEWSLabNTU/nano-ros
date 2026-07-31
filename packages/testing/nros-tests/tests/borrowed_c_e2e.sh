@@ -42,7 +42,7 @@ DRIVER="$ROOT/packages/testing/nros-tests/fixtures/borrowed-c-e2e/driver.c"
 echo "borrowed_c_e2e: compiling + running…"
 gcc -std=c11 -D_DEFAULT_SOURCE -Wall -DNROS_PLATFORM_POSIX \
     -I "$CFG_DIR" \
-    -I "$ROOT/packages/core/nros-c/include" \
+    -I "$ROOT/packages/api/nros-c/include" \
     -I "$GEN" \
     "$DRIVER" "$GEN/e2e_msgs_msg_borrowed.c" \
     "$LIB" -lpthread -ldl -lm \

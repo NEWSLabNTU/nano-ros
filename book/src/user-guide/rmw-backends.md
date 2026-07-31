@@ -173,7 +173,7 @@ see below):
 ```toml
 # Zenoh backend
 [dependencies]
-nros = { path = "<...>/packages/core/nros",
+nros = { path = "<...>/packages/api/nros",
          default-features = false,
          features = ["std", "rmw-cffi", "platform-posix"] }
 nros-rmw-zenoh = { path = "<...>/packages/rmw/zenoh/nros-rmw-zenoh",
@@ -181,7 +181,7 @@ nros-rmw-zenoh = { path = "<...>/packages/rmw/zenoh/nros-rmw-zenoh",
 
 # XRCE-DDS backend
 [dependencies]
-nros = { path = "<...>/packages/core/nros",
+nros = { path = "<...>/packages/api/nros",
          default-features = false,
          features = ["std", "rmw-cffi", "platform-posix"] }
 nros-rmw-xrce-cffi = { path = "<...>/packages/rmw/xrce/nros-rmw-xrce-cffi",
@@ -193,7 +193,7 @@ nros-rmw-xrce-cffi = { path = "<...>/packages/rmw/xrce/nros-rmw-xrce-cffi",
 # configure time via -DNANO_ROS_RMW=cyclonedds. The Rust
 # manifest only carries the `rmw-cffi` feature; no Rust shim dep.
 [dependencies]
-nros = { path = "<...>/packages/core/nros",
+nros = { path = "<...>/packages/api/nros",
          default-features = false,
          features = ["std", "rmw-cffi", "platform-posix"] }
 ```

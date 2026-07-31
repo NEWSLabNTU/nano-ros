@@ -252,7 +252,7 @@ const fn u64s_for<T>() -> usize {
 // With RMW backend: exact sizes from actual types.
 // Phase 87.6: `CppPublisher` removed — the FFI stores an `RmwPublisher`
 // handle directly, sized via `NROS_PUBLISHER_SIZE` from the `nros` probe
-// (see packages/core/nros-cpp/build.rs).
+// (see packages/api/nros-cpp/build.rs).
 // Phase 87.6: `CppSubscription` removed — the FFI stores an
 // `RmwSubscriber` handle directly, sized via `NROS_SUBSCRIBER_SIZE` from
 // the `nros` probe.

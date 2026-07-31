@@ -257,7 +257,7 @@ pub unsafe extern "C" fn nros_timer_fini(timer: *mut nros_timer_t) -> nros_ret_t
 // `nros_timer_is_ready` and `nros_timer_call` were previously exposed
 // as public C symbols for users who wanted to drive timers manually.
 // The executor arena now owns timer readiness evaluation and callback
-// dispatch end-to-end (see `packages/core/nros-c/src/executor.rs`'s
+// dispatch end-to-end (see `packages/api/nros-c/src/executor.rs`'s
 // timer handling), so those entry points never fired in normal flow
 // and duplicated logic that the arena was already doing. Both
 // functions are removed from the public C ABI as of Phase 84.B5.

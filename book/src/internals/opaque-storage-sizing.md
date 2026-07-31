@@ -20,7 +20,7 @@ Every size that crosses the Rust / C boundary follows the same path:
    invocation:
 
    ```rust
-   // packages/core/nros/src/sizes.rs
+   // packages/api/nros/src/sizes.rs
    export_size!(pub PUBLISHER_SIZE = RmwPublisher);
    export_size!(pub SUBSCRIBER_SIZE = RmwSubscriber);
    export_size!(pub EXECUTOR_SIZE = nros_node::Executor);
@@ -95,7 +95,7 @@ fn>` collapses to a fn-pointer-sized slot via niche optimization, etc.
 The fix is a layout-mirror struct in `nros::sizes`:
 
 ```rust
-// packages/core/nros/src/sizes.rs
+// packages/api/nros/src/sizes.rs
 #[repr(C)]
 #[doc(hidden)]
 pub struct ActionServerInternalLayout {
@@ -113,7 +113,7 @@ export_size!(pub ACTION_SERVER_INTERNAL_SIZE = ActionServerInternalLayout);
 Downstream then asserts byte-equivalence at compile time:
 
 ```rust
-// packages/core/nros-c/src/opaque_sizes.rs
+// packages/api/nros-c/src/opaque_sizes.rs
 const _: () = assert!(
     size_of::<crate::action::ActionServerInternal>()
         == size_of::<nros::sizes::ActionServerInternalLayout>(),
@@ -163,4 +163,4 @@ to the right value at the target's compile time.
 
 - `packages/tooling/nros-sizes-build/src/lib.rs` for the rlib probe
   implementation.
-- `packages/core/nros/src/sizes.rs` for the canonical exports.
+- `packages/api/nros/src/sizes.rs` for the canonical exports.

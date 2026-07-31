@@ -92,9 +92,9 @@ three traits:
 
 | Trait                          | Crate / file                                      | Role                                                  |
 |--------------------------------|---------------------------------------------------|-------------------------------------------------------|
-| `nros::Node`                   | `packages/core/nros/src/node.rs:69`               | Declarative — `NAME` + `register(ctx)`               |
-| `nros::ExecutableNode`         | `packages/core/nros/src/node.rs:1157`             | Runtime — `init() -> Self::State`, `on_callback(state, cb, ctx)`, `tick(state, ctx)` |
-| `nros::NodeRuntime`            | `packages/core/nros/src/node.rs:112`              | User-facing sink — `create_node` / `create_entity` / `record_callback_effect` |
+| `nros::Node`                   | `packages/api/nros/src/node.rs:69`               | Declarative — `NAME` + `register(ctx)`               |
+| `nros::ExecutableNode`         | `packages/api/nros/src/node.rs:1157`             | Runtime — `init() -> Self::State`, `on_callback(state, cb, ctx)`, `tick(state, ctx)` |
+| `nros::NodeRuntime`            | `packages/api/nros/src/node.rs:112`              | User-facing sink — `create_node` / `create_entity` / `record_callback_effect` |
 | `nros_platform::NodeDispatchRuntime` | `packages/core/nros-platform/src/board/runtime.rs:79` | Board-side dispatch sink (post-214.K.1 rename from `NodeRuntime`) |
 
 Phase 216 lands its new methods accordingly:
@@ -294,7 +294,7 @@ forbids Deferred Nodes from using closure-based registration.
       `#[repr(u8)]` for FFI stability. Re-export through
       `nros::DispatchStrategy`.
       **Files**: `packages/core/nros-platform/src/runtime.rs`,
-      `packages/core/nros/src/lib.rs` (re-export).
+      `packages/api/nros/src/lib.rs` (re-export).
       **Landed:** `09220cef7`
 
 - [x] **216.A.2** — `NodeDispatchRuntime` trait extensions (post-214.K.1
@@ -339,7 +339,7 @@ forbids Deferred Nodes from using closure-based registration.
       change it — the Deferred path reuses the same trampoline; the
       runtime calls `on_callback` from its dispatch task instead of the
       spin task. Defaulted associated `const` is stable on edition 2024.
-      **Files**: `packages/core/nros/src/node.rs` (the `Node` trait).
+      **Files**: `packages/api/nros/src/node.rs` (the `Node` trait).
       **Landed:** `429583987`
 
 - [x] **216.A.4** — Tag-based callback API. New `_static` registration
@@ -368,7 +368,7 @@ forbids Deferred Nodes from using closure-based registration.
       route through the inline dispatch path with a default-impl `on_callback`
       stub.
       **Files**: `packages/core/nros-node/src/node_context.rs`,
-      `packages/core/nros/src/callback.rs` (Tag types).
+      `packages/api/nros/src/callback.rs` (Tag types).
       **Landed:** `6bb7975c6` (SubscriptionTag / ServiceTag /
       ActionTag types) + `1fbf0f5d9` (followup:
       `DeclaredNode::create_{subscription,service,action}_static`

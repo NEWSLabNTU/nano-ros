@@ -172,7 +172,7 @@ Both options conflict with the no-alloc + framework-task-routed
 contract. So Phase 216.A.4 introduces **tags**:
 
 ```rust
-// File: packages/core/nros/src/dispatch_tag.rs
+// File: packages/api/nros/src/dispatch_tag.rs
 pub struct SubscriptionTag(&'static str);
 pub struct ServiceTag(&'static str);
 pub struct ActionTag(&'static str);
@@ -259,7 +259,7 @@ exactly to avoid this), never renumbering an existing one.
 
 Phase 214.K.1 renamed the board-side dispatch sink from `NodeRuntime`
 to `NodeDispatchRuntime` (the user-facing sink kept the
-`NodeRuntime` name, which is now in `packages/core/nros/src/node.rs`).
+`NodeRuntime` name, which is now in `packages/api/nros/src/node.rs`).
 Phase 216 lands its new methods on `NodeDispatchRuntime`:
 
 ```rust
@@ -378,4 +378,4 @@ branch in the "after" version — same code, hoisted to a method.
   locked spec.
 - `packages/core/nros-platform/src/board/dispatch.rs` — the
   `DispatchStrategy` enum.
-- `packages/core/nros/src/dispatch_tag.rs` — the tag types.
+- `packages/api/nros/src/dispatch_tag.rs` — the tag types.

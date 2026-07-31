@@ -61,7 +61,7 @@ ${dds_feature}
 
 [dependencies]
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-threadx", "ros-humble"] }
+nros = { path = "../../../../packages/api/nros", default-features = false, features = ["rmw-cffi", "platform-threadx", "ros-humble"] }
 ${msg_dep} = { version = "*", default-features = false }
 
 nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"], optional = true }

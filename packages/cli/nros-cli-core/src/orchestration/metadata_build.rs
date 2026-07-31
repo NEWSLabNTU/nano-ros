@@ -207,7 +207,7 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          {krate} = {{ path = {comp:?}, package = {pkg:?} }}\n",
         nros = o
             .nano_ros_workspace
-            .join("packages/core/nros")
+            .join("packages/api/nros")
             .display()
             .to_string(),
         comp = o.component_dir.display().to_string(),
@@ -554,7 +554,7 @@ mod tests {
         let toml = render_harness_cargo_toml(&opts()).unwrap();
         assert!(
             toml.contains(
-                "nros = { path = \"/nano-ros/packages/core/nros\", features = [\"std\"] }"
+                "nros = { path = \"/nano-ros/packages/api/nros\", features = [\"std\"] }"
             )
         );
         assert!(

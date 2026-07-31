@@ -83,7 +83,7 @@ log = "0.4"
 # linked by the Zephyr board's CMake C-port (zenoh-pico Zephyr module / Cyclone
 # CMake / Micro-XRCE) selected from `CONFIG_NROS_RMW_<X>`, NOT a Rust
 # `nros rmw-*` or `nros platform-*` feature.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 
 # Zephyr family board — supplies `ZephyrBoard` (NetworkWait link-up gate;
 # the macro uses it for the carrier gate only, NOT BoardEntry).

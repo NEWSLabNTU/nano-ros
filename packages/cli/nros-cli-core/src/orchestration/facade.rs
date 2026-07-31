@@ -362,7 +362,7 @@ fn render_manifest(
 /// Collapse `.` and `..` without touching the filesystem.
 ///
 /// Needed because the entry's path deps are written relative to the ENTRY
-/// (`../../../../../packages/core/nros`), and joining that onto the entry dir
+/// (`../../../../../packages/api/nros`), and joining that onto the entry dir
 /// leaves the `..`s embedded. Cargo reads such a path fine, but `rel_from`
 /// below compares components to find the common prefix, and an un-collapsed
 /// `..` makes every path look divergent — producing a correct-but-absurd
@@ -432,9 +432,9 @@ mod tests {
         assert_eq!(
             rel_from(
                 Path::new("/ws/build/nros-sync/facade/native_entry"),
-                Path::new("/repo/packages/core/nros")
+                Path::new("/repo/packages/api/nros")
             ),
-            "../../../../../repo/packages/core/nros"
+            "../../../../../repo/packages/api/nros"
         );
         assert_eq!(rel_from(Path::new("/a/b"), Path::new("/a/b/c")), "c");
     }
@@ -444,10 +444,8 @@ mod tests {
         // The exact shape a real entry produces: its `nros` dep is written
         // relative to itself, and joining leaves the hops embedded.
         assert_eq!(
-            lexical_normalize(Path::new(
-                "/ws/src/native_entry/../../../packages/core/nros"
-            )),
-            Path::new("/packages/core/nros")
+            lexical_normalize(Path::new("/ws/src/native_entry/../../../packages/api/nros")),
+            Path::new("/packages/api/nros")
         );
         assert_eq!(
             lexical_normalize(Path::new("/a/./b/../c")),

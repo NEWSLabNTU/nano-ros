@@ -111,7 +111,7 @@ default = []
 zenoh = ["nros/zenoh"]
 
 [dependencies]
-nros = { path = "../../../packages/core/nros", default-features = false, features = ["std"] }
+nros = { path = "../../../packages/api/nros", default-features = false, features = ["std"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
@@ -397,7 +397,7 @@ Zephyr examples patch **all** nros crates plus the active RMW backend crates:
 **Zenoh backend:**
 ```toml
 [patch.crates-io]
-nros = { path = "../../../../../packages/core/nros" }
+nros = { path = "../../../../../packages/api/nros" }
 nros-core = { path = "../../../../../packages/core/nros-core" }
 nros-serdes = { path = "../../../../../packages/core/nros-serdes" }
 nros-node = { path = "../../../../../packages/core/nros-node" }
@@ -413,7 +413,7 @@ std_msgs = { path = "generated/std_msgs" }
 **XRCE backend:**
 ```toml
 [patch.crates-io]
-nros = { path = "../../../../../packages/core/nros" }
+nros = { path = "../../../../../packages/api/nros" }
 nros-core = { path = "../../../../../packages/core/nros-core" }
 nros-serdes = { path = "../../../../../packages/core/nros-serdes" }
 nros-node = { path = "../../../../../packages/core/nros-node" }

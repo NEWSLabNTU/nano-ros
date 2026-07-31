@@ -34,7 +34,7 @@ default_namespace = "/"
 # can build it without an embedded toolchain. (The H.3 fixture uses
 # `platform-freertos`; we want a stock `x86_64-unknown-linux-gnu` build
 # so the smoke runs anywhere cargo runs.)
-nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
+nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "ros-humble",

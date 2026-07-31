@@ -45,7 +45,7 @@ nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-boar
 # platform symbols now come from the board dep + `nros-platform-mps2-an385` (below)
 # and the zpico wiring in `nros-rmw-zenoh/platform-freertos`. So `nros` / `nros-node`
 # no longer carry a `platform-freertos` feature.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = [
+nros = { path = "../../../../packages/api/nros", default-features = false, features = [
     "rmw-cffi",
     "ros-humble",
 ] }

@@ -22,6 +22,6 @@ native_entry_nros_selection = { path = "../../generated/nros-selection/native_en
 # phase-306 W4 — `nros::main!(model = …)` bakes the model's per-node `<remap>`
 # rules into `runtime.remaps` before the register call; no extra feature is
 # needed (the remap seam is part of the core entity-creation path).
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
 remap_talker_pkg = { path = "../remap_talker_pkg", default-features = false }

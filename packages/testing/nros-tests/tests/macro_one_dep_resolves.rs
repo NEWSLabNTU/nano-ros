@@ -6,7 +6,7 @@
 //! `::nros::__macro_support::nros_platform::*`. If someone retargets back to
 //! bare `::nros_platform::*` (the pre-M-F.13 shape that broke the FreeRTOS
 //! fixture) or drops the `__macro_support` re-export from
-//! `packages/core/nros/src/lib.rs`, a downstream Node pkg that depends only on
+//! `packages/api/nros/src/lib.rs`, a downstream Node pkg that depends only on
 //! `nros` fails with `error[E0433]: ... unlinked crate 'nros_platform'`.
 //!
 //! The compile proof lives in the **build stage**: the compile-check fixture

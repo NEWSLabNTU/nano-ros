@@ -2,7 +2,7 @@
 resolver = "2"
 
 members = [
-    "packages/core/nros",
+    "packages/api/nros",
     "packages/core/nros-core",
     "packages/core/nros-serdes",
     "packages/core/nros-macros",
@@ -73,9 +73,9 @@ members = [
     # Integration tests
     "packages/testing/nros-tests",
     # C API for embedded systems
-    "packages/core/nros-c",
+    "packages/api/nros-c",
     # C++ API (header-only C++14 library + Rust FFI staticlib)
-    "packages/core/nros-cpp",
+    "packages/api/nros-cpp",
     # LAN9118 Ethernet driver for smoltcp
     "packages/drivers/lan9118-smoltcp",
     # NVIDIA Tegra IVC driver (Orin SPE — Phase 100). Default build is

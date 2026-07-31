@@ -79,7 +79,7 @@ ${dds_feature_line}
 
 [dependencies]
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos", default-features = false }
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
+nros = { path = "../../../../packages/api/nros", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
 ${msg_dep} = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }

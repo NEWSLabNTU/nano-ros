@@ -24,6 +24,6 @@ native_entry_nros_selection = { path = "../../generated/nros-selection/native_en
 # makes the macro register the ROS 2 param services + seed the volatile store, so
 # `param-services` must be enabled for that registration to compile in (W4b — mirrors
 # the lifecycle-services opt-in; a bake build adds it automatically).
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
 param_talker_pkg = { path = "../param_talker_pkg", default-features = false }

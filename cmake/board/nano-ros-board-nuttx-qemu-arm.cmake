@@ -2,7 +2,7 @@
 #
 # Phase 138.3 / 144.6 — board overlay for QEMU ARM virt (Cortex-A7)
 # under NuttX. Mirrors the legacy
-# `packages/core/nros-c/cmake/nuttx-support.cmake` shape, with the
+# `packages/api/nros-c/cmake/nuttx-support.cmake` shape, with the
 # FFI-crate path pointed at the in-tree (Phase-144.6-relocated)
 # location under `packages/boards/nros-board-nuttx-qemu-arm/`.
 #

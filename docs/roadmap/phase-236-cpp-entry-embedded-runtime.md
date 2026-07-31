@@ -8,7 +8,7 @@ record-only:
 
 - **G1 — embedded Board adapter.** `nros::board::NativeBoard` is the
   *only* `Board::run()` in `nros-cpp`
-  (`packages/core/nros-cpp/include/nros/main.hpp:56`). There is no
+  (`packages/api/nros-cpp/include/nros/main.hpp:56`). There is no
   Zephyr/FVP board that runs the Entry-pkg register sequence into a
   live Zephyr + Cyclone runtime.
 - **G2 — real NodeContext runtime.** Even `NativeBoard::run()` builds a
@@ -128,8 +128,8 @@ its `create_publisher`/`create_subscription` wrappers ARE the real
       observes the talker's live samples. Verified 2026-06-11:
       `Received: 0` → `test result: ok`.)*
 
-**Files.** `packages/core/nros-cpp/include/nros/main.hpp`,
-`packages/core/nros-cpp/include/nros/node.hpp`, a fixture under
+**Files.** `packages/api/nros-cpp/include/nros/main.hpp`,
+`packages/api/nros-cpp/include/nros/node.hpp`, a fixture under
 `packages/testing/nros-tests/`.
 
 **Status.** 236.A landed 2026-06-11. The Native NodeContext runtime is
@@ -193,7 +193,7 @@ by the native runtime.
       Cyclone example uses) — NO runtime `ROS_DOMAIN_ID`/`getenv` on the
       embedded path. `NativeBoard` keeps the host runtime-env exception.)*
 
-**Files.** `packages/core/nros-cpp/include/nros/main.hpp`,
+**Files.** `packages/api/nros-cpp/include/nros/main.hpp`,
 `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs`,
 `cmake/NanoRosEntry.cmake`.
 

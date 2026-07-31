@@ -131,7 +131,7 @@ endif()
 
 idf_component_register(
     SRCS         ${_nros_srcs}
-    INCLUDE_DIRS "${_nros_root}/packages/core/nros-c/include"
+    INCLUDE_DIRS "${_nros_root}/packages/api/nros-c/include"
                  "${_nros_system_out}"
     REQUIRES     log freertos)
 

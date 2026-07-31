@@ -10,7 +10,7 @@
 #     (`nros_freertos_validate`, `nros_freertos_build_kernel`,
 #     `nros_freertos_build_lwip`, `nros_freertos_build_netif`,
 #     `nros_freertos_compose_platform`) — the implementation lives
-#     under `packages/core/nros-c/cmake/nros-freertos.cmake` and stays
+#     under `packages/api/nros-c/cmake/nros-freertos.cmake` and stays
 #     the single source of truth.
 #
 #   * Pulls in the per-board overlay (`cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake`)
@@ -49,11 +49,11 @@ set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast udp_multicast
 
 # ---------------------------------------------------------------------------
 # Layer-2 helpers (kernel / lwip / netif / compose). Implementation
-# lives under packages/core/nros-c/cmake/; re-include here so
+# lives under packages/api/nros-c/cmake/; re-include here so
 # per-board overlays + per-example CMakeLists.txt see the same
 # function names regardless of consumption shape.
 # ---------------------------------------------------------------------------
-include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/nros-freertos.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../packages/api/nros-c/cmake/nros-freertos.cmake")
 
 # ---------------------------------------------------------------------------
 # User-facing nano-ros helpers (config + link).

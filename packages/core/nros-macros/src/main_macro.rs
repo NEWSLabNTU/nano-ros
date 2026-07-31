@@ -2204,7 +2204,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 /// to share the `(Executor, Runtime)` pair so the
                 /// per-callback routing (once plumbed via the
                 /// `ExecutorNodeRuntime::dispatch_callback` sink in
-                /// `packages/core/nros/src/node_runtime.rs`) can drain
+                /// `packages/api/nros/src/node_runtime.rs`) can drain
                 /// the board's static `CALLBACK_CHANNEL` between
                 /// executor iterations. Collapsing the two tasks into
                 /// one gives the spin + drain loops a single coherent

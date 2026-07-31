@@ -108,7 +108,7 @@ See `cmake/board/nano-ros-board-mps2-an385.cmake` for a working example.
 For RTOS ports that compose the kernel + netstack + glue inside CMake
 (FreeRTOS, ThreadX, NuttX), the per-RTOS helper functions
 (`nros_freertos_build_kernel`, `nros_threadx_compose_platform`, …)
-stay at `packages/core/nros-c/cmake/nros-<rtos>.cmake`. The
+stay at `packages/api/nros-c/cmake/nros-<rtos>.cmake`. The
 modules `include(...)` those helpers — the per-platform file is the
 **dispatch entry**, not the implementation.
 

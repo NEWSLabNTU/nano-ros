@@ -91,7 +91,7 @@ pub type ConcretePlatform = nros_platform_myos::MyOsPlatform;
 
 ### 4. Propagate through the nros facade
 
-In `packages/core/nros/Cargo.toml`, add `platform-myos` to the feature list so users can write `nros = { features = ["rmw-zenoh", "platform-myos"] }`.
+In `packages/api/nros/Cargo.toml`, add `platform-myos` to the feature list so users can write `nros = { features = ["rmw-zenoh", "platform-myos"] }`.
 
 ### 5. Register your platform as an ABI marker
 

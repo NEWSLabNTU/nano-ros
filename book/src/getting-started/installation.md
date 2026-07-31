@@ -257,7 +257,7 @@ Rust packages consume nano-ros one of two ways:
 
 ```toml
 [dependencies]
-nros = { path = "src/nano-ros/packages/core/nros",
+nros = { path = "src/nano-ros/packages/api/nros",
          default-features = false,
          features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 ```

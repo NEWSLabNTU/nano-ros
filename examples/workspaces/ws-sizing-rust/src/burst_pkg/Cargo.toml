@@ -18,7 +18,7 @@ default_namespace = "/"
 [dependencies]
 # Platform/RMW-agnostic: platform + RMW flow from the board crate the sibling
 # Entry pkg deps.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
 ] }

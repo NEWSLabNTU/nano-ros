@@ -19,7 +19,7 @@ deploy = "native"
 # below. This entry names none of them: the declaration is the SSoT, and
 # an edition restated here would fail on the WIRE, not at build time.
 native_entry_nros_selection = { path = "../../generated/nros-selection/native_entry" }
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 # phase-263 B1 — `safety-e2e` on the board forwards to the zenoh backend's CRC
 # attach/validate (`nros-rmw-zenoh/safety-e2e`); the demo declares
 # `features=["safety"]` in system.toml. (For a bake build, `nros codegen-system`

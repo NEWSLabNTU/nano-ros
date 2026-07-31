@@ -32,7 +32,7 @@ for the full walkthrough.
 Two cache variables select the RMW backend and they are **not** the same knob:
 
 - **`NANO_ROS_RMW`** — the root API knob, read directly by
-  `packages/core/nros-c/CMakeLists.txt` when you `add_subdirectory(nano-ros)`
+  `packages/api/nros-c/CMakeLists.txt` when you `add_subdirectory(nano-ros)`
   it yourself (as in the `Usage` example above). This is the variable the
   nano-ros build itself branches on.
 - **`NROS_RMW`** — a shorthand used by the standalone-example and

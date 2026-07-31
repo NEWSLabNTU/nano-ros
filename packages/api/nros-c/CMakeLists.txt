@@ -1,4 +1,4 @@
-# packages/core/nros-c/CMakeLists.txt
+# packages/api/nros-c/CMakeLists.txt
 #
 # Builds the nros-c static library via Corrosion (Cargo integration).
 # Installs library (RMW + platform suffixed), headers, and CMake config package.
@@ -123,7 +123,7 @@ add_custom_target(nros_c_config_header DEPENDS "${_nros_c_gen_config_header}")
 set_property(GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE "${_nros_c_gen_config_header}")
 if(TARGET nros_c-static)
     target_include_directories(nros_c-static INTERFACE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../nros-platform-api/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-platform-api/include"
         "${_nros_c_intree_include_dir}"
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )

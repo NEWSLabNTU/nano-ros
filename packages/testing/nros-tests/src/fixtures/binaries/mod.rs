@@ -543,8 +543,8 @@ fn dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
 /// real signal is already covered — any semantic change to these headers
 /// implies an edited `.rs` source, and those sources ARE in the dep graph.
 const REGENERATED_INPLACE_HEADERS: &[&str] = &[
-    "packages/core/nros-c/include/nros/nros_generated.h",
-    "packages/core/nros-cpp/include/nros/nros_cpp_ffi.h",
+    "packages/api/nros-c/include/nros/nros_generated.h",
+    "packages/api/nros-cpp/include/nros/nros_cpp_ffi.h",
     "packages/rmw/zenoh/zpico-sys/c/include/zpico.h",
 ];
 

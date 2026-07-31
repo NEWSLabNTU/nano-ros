@@ -151,7 +151,7 @@ build-fixtures:
     # Phase 160.D — NuttX C/C++ examples now build via cmake. The
     # tier-3 nros-c cross-Corrosion problem (no `-Z build-std`) is
     # sidestepped by:
-    #   - root CMakeLists.txt skips `add_subdirectory(packages/core/nros-c)`
+    #   - root CMakeLists.txt skips `add_subdirectory(packages/api/nros-c)`
     #     for NuttX (no Corrosion attempt against armv7a-nuttx-eabihf).
     #   - root CMakeLists.txt's NanoRos INTERFACE branch (when
     #     nros_c-static is absent) exposes the public include dirs

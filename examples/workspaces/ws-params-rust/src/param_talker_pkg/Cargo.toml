@@ -30,7 +30,7 @@ default_namespace = "/"
 # (works on the no_std targets; std targets get `std` from the Entry/board via
 # feature unification). `rmw-cffi` is the vtable seam only — the concrete RMW
 # backend is linked by the board crate, never named here.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     # W4c — `ctx.parameter::<T>(name)` (the live in-callback param read) is gated on

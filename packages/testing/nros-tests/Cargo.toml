@@ -99,7 +99,7 @@ nros-log = { path = "../../core/nros-log" }
 # Phase 212.L.5 — top-level init API tests. The `nros` umbrella's
 # `init` module is platform/RMW-independent (no backend pulled), so we
 # depend on it with only `std`.
-nros = { path = "../../core/nros", default-features = false, features = ["std"] }
+nros = { path = "../../api/nros", default-features = false, features = ["std"] }
 # Phase 212.N.7 — the `nros::component!()` macro emits a
 # `pub fn register(runtime: &mut ::nros_platform::RuntimeCtx<'_>)`
 # wrapper. Tests that invoke that wrapper directly need `nros-platform`

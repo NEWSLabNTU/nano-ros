@@ -106,7 +106,7 @@ function(nros_nuttx_build_example)
     # `<prefix>/lib/cmake/NanoRos/` — `${NanoRos_DIR}/../../../include`
     # resolves to `<prefix>/include`. Under the Phase 137
     # `add_subdirectory(<repo>)` shape there is no NanoRos_DIR; fall
-    # back to `${_NANO_ROS_PREFIX}/packages/core/nros-cpp/include`
+    # back to `${_NANO_ROS_PREFIX}/packages/api/nros-cpp/include`
     # (the in-tree source layout). `_NANO_ROS_PREFIX` is set by the
     # platform module to the repo root.
     if(DEFINED NanoRos_DIR)
@@ -114,7 +114,7 @@ function(nros_nuttx_build_example)
             "${NanoRos_DIR}/../../../include" ABSOLUTE)
     elseif(DEFINED _NANO_ROS_PREFIX)
         get_filename_component(_nros_cpp_include
-            "${_NANO_ROS_PREFIX}/packages/core/nros-cpp/include" ABSOLUTE)
+            "${_NANO_ROS_PREFIX}/packages/api/nros-cpp/include" ABSOLUTE)
     else()
         message(FATAL_ERROR
             "nros_nuttx_build_example: neither NanoRos_DIR (legacy "

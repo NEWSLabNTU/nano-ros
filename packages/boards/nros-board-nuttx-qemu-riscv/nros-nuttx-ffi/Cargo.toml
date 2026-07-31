@@ -11,10 +11,10 @@ description = "NuttX rv-virt kernel + nros C/C++ FFI bundle for CMake-built exam
 [dependencies]
 # Path deps go up 3 levels to the repo root.
 nros-board-nuttx-qemu-riscv = { path = ".." }
-nros-c = { path = "../../../core/nros-c", features = [
+nros-c = { path = "../../../api/nros-c", features = [
     "std", "cffi-zenoh-cffi", "platform-nuttx", "ros-humble"
 ] }
-nros-cpp = { path = "../../../core/nros-cpp", features = [
+nros-cpp = { path = "../../../api/nros-cpp", features = [
     "std", "rmw-zenoh-cffi", "platform-nuttx", "ros-humble"
 ] }
 # Link the cffi shim directly so register() is callable from main.rs before
@@ -25,7 +25,7 @@ nros-rmw-zenoh = { path = "../../../rmw/zenoh/nros-rmw-zenoh", features = ["plat
 # NuttX FFI build helper (run_nuttx) + repo path resolution.
 nros-board-common = { path = "../../nros-board-common", features = ["build-helpers"] }
 
-# #134 follow-up: the cmake glue (packages/core/nros-c/cmake/nros-nuttx.cmake)
+# #134 follow-up: the cmake glue (packages/api/nros-c/cmake/nros-nuttx.cmake)
 # copies `<triple>/release/nros-nuttx-ffi` — the ARM crate's bin name. Pin the
 # same artifact name here so both NuttX families share one copy path.
 [[bin]]

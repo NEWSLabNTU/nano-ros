@@ -13,7 +13,7 @@ test = false
 bench = false
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false }
+nros = { path = "../../../../../packages/api/nros", default-features = false }
 std_msgs = { version = "*", default-features = false }
 builtin_interfaces = { version = "*", default-features = false }
 

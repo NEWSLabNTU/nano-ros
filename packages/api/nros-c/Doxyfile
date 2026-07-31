@@ -1,6 +1,6 @@
 # Doxyfile for nros C API documentation
 #
-# Usage: doxygen packages/core/nros-c/Doxyfile
+# Usage: doxygen packages/api/nros-c/Doxyfile
 # Or:    just doc-c
 
 PROJECT_NAME           = "nros C API"

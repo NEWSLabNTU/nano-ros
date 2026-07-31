@@ -1,7 +1,7 @@
 //! C FFI surface for the bridge (Phase 128.F.5).
 //!
-//! Mirrors the public types/headers in `packages/core/nros-c/include/nros/bridge.h`
-//! and `packages/core/nros-cpp/include/nros/bridge.hpp`. The C symbols
+//! Mirrors the public types/headers in `packages/api/nros-c/include/nros/bridge.h`
+//! and `packages/api/nros-cpp/include/nros/bridge.hpp`. The C symbols
 //! are emitted with `#[unsafe(no_mangle)] pub extern "C"` so a binary
 //! that links `libnros_bridge.a` picks them up at static-link time.
 //!

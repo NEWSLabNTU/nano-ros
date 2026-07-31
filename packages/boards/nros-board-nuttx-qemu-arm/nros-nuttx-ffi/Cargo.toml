@@ -13,10 +13,10 @@ description = "NuttX kernel + nros C/C++ FFI bundle for CMake-built examples"
 # Path deps go up 3 levels to the repo root (was 4 under
 # examples/qemu-arm-nuttx/cmake/).
 nros-board-nuttx-qemu-arm = { path = ".." }
-nros-c = { path = "../../../core/nros-c", features = [
+nros-c = { path = "../../../api/nros-c", features = [
     "std", "cffi-zenoh-cffi", "platform-nuttx", "ros-humble"
 ] }
-nros-cpp = { path = "../../../core/nros-cpp", features = [
+nros-cpp = { path = "../../../api/nros-cpp", features = [
     "std", "rmw-zenoh-cffi", "platform-nuttx", "ros-humble"
 ] }
 # Phase 115.L.x — link cffi shim directly so `register()` is callable

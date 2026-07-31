@@ -582,7 +582,7 @@ publish = false
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
 nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
 
 [package.metadata.nros.node]
@@ -647,7 +647,7 @@ name = "robot_entry"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
 nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
 nros-board-posix = { path = "../../../../../packages/boards/nros-board-posix" }
 talker_pkg = { path = "../talker_pkg" }

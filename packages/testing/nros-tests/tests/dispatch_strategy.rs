@@ -17,7 +17,7 @@
 //! Plus a Phase 216.A.4 tag-equality sanity check
 //! (`SubscriptionTag::new("x") == CallbackId::new("x")`); the deeper
 //! tag-type coverage already lives in
-//! `packages/core/nros/src/dispatch_tag.rs` unit tests — the check
+//! `packages/api/nros/src/dispatch_tag.rs` unit tests — the check
 //! here just guards against the cross-crate re-export drifting.
 
 use std::panic;

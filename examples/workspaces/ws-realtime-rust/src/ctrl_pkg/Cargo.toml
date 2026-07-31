@@ -19,7 +19,7 @@ default_namespace = "/"
 callback_groups = [{ id = "ctrl", tier = "high" }]
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
 ] }

@@ -148,7 +148,7 @@ Open follow-ups: 209.F (yaml params bake), 209.H (LifecycleNode), 210.E.3
 (in-tree migration of legacy `nros_generate_interfaces(<pkg>)` call
 sites). If your port surfaces a *new* gap not covered by the compat
 header, file it under Phase 209 (Track-A = tree-side fix that lands in
-`cmake/compat/` or `packages/core/nros-cpp/`; Track-B = a codegen change).
+`cmake/compat/` or `packages/api/nros-cpp/`; Track-B = a codegen change).
 
 In-tree regression fixtures:
 

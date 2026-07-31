@@ -3,7 +3,7 @@
 # Phase 138.3 / 144.7 — board overlay for ThreadX RISC-V 64-bit
 # QEMU virt. Bare-metal port: NetX Duo TCP/IP stack + virtio-net
 # driver + picolibc + rust-lld link toolchain. Mirrors the legacy
-# `packages/core/nros-c/cmake/threadx-riscv64-support.cmake` shape,
+# `packages/api/nros-c/cmake/threadx-riscv64-support.cmake` shape,
 # with paths pointed at the in-tree board crate
 # (`packages/boards/nros-board-threadx-qemu-riscv64`) rather than the
 # install prefix.

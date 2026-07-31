@@ -17,7 +17,7 @@
 #   * Re-exports the layer-2 helper functions (`nros_nuttx_validate`,
 #     `nros_nuttx_set_cargo_target`, `nros_nuttx_build_example`) and
 #     the layer-3 `nuttx_build_example(...)` backward-compat wrapper.
-#     Implementation lives under `packages/core/nros-c/cmake/`; this
+#     Implementation lives under `packages/api/nros-c/cmake/`; this
 #     module just include()s so per-board overlays + per-example
 #     CMakeLists.txt see the same function names regardless of
 #     consumption shape.
@@ -67,9 +67,9 @@ set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast udp_multicast
 # ---------------------------------------------------------------------------
 # Layer-2 helpers (nros_nuttx_validate / nros_nuttx_set_cargo_target /
 # nros_nuttx_build_example). Implementation lives under
-# packages/core/nros-c/cmake/nros-nuttx.cmake.
+# packages/api/nros-c/cmake/nros-nuttx.cmake.
 # ---------------------------------------------------------------------------
-include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/nros-nuttx.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../packages/api/nros-c/cmake/nros-nuttx.cmake")
 
 # ---------------------------------------------------------------------------
 # User-facing nano-ros helpers (config + link).

@@ -10,7 +10,7 @@ related: [issue-0226, issue-0329]
 
 ## Finding (deep audit C,E 2026-07-28 — C1)
 
-`packages/core/nros-cpp/include/nros/parameter.hpp:559` — `ParameterServer` keeps
+`packages/api/nros-cpp/include/nros/parameter.hpp:559` — `ParameterServer` keeps
 array-parameter storage in a hand-rolled bump arena **inside the public header**:
 `seq_pool_`, `align_up`, and an out-of-band `uint64_t` capacity word written
 immediately before each block. On `set` it recovers that capacity by reading

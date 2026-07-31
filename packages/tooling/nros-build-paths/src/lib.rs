@@ -96,11 +96,11 @@ pub fn nros_virtio_net_netx_dir() -> PathBuf {
 }
 
 pub fn nros_c_include() -> PathBuf {
-    env_or_repo_path("NROS_C_INCLUDE", "packages/core/nros-c/include")
+    env_or_repo_path("NROS_C_INCLUDE", "packages/api/nros-c/include")
 }
 
 pub fn nros_cpp_include() -> PathBuf {
-    env_or_repo_path("NROS_CPP_INCLUDE", "packages/core/nros-cpp/include")
+    env_or_repo_path("NROS_CPP_INCLUDE", "packages/api/nros-cpp/include")
 }
 
 pub fn freertos_dir() -> PathBuf {

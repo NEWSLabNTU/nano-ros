@@ -13,7 +13,7 @@ use std::{
 };
 
 /// Mirrors `nros::MISSING_COMPONENT_EXPORT_ERROR` (in
-/// `packages/core/nros/src/component.rs`) so host-side diagnostics
+/// `packages/api/nros/src/component.rs`) so host-side diagnostics
 /// surface the same human-readable phrase as the in-tree
 /// `ComponentError::MissingExport` runtime variant. Held as a
 /// `const` here to keep the CLI off the `nros` build dependency

@@ -19,7 +19,7 @@ Classification: all **new** (no baseline).
   and `extern crate … as _` link anchors · framework should own all four; the
   #195 `.init_array` walk likely lets the generated ctor TUs replace
   `cyclonedds_app.c` outright → **issue #205**
-- C1/I1/I3 · `packages/core/nros-cpp/include/nros/node.hpp:686-760` · P2 ·
+- C1/I1/I3 · `packages/api/nros-cpp/include/nros/node.hpp:686-760` · P2 ·
   `ROS_DOMAIN_ID`/`NROS_LOCATOR` env-overlay is business logic living only in
   the C++ header (C users get none of it), duplicated verbatim across two
   `init()` overloads, with the 232 domain-max inlined and malformed input
@@ -54,7 +54,7 @@ Classification: all **new** (no baseline).
 
 ## P3 (report-only, not filed)
 
-- C1 · `packages/core/nros-cpp/include/nros/lifecycle.hpp:130-148` ·
+- C1 · `packages/api/nros-cpp/include/nros/lifecycle.hpp:130-148` ·
   `LifecycleNode::autostart` re-implements the REP-2002 target→transition map
   instead of forwarding to `nros_cpp_lifecycle_autostart` (justified by
   callback-binding order; policy now in two places).

@@ -30,5 +30,5 @@ zephyr-edf = []
 
 [dependencies]
 nros-platform = { path = "../../core/nros-platform", default-features = false }
-nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi"], optional = true }
+nros = { path = "../../api/nros", default-features = false, features = ["alloc", "rmw-cffi"], optional = true }
 log = { version = "0.4", optional = true }

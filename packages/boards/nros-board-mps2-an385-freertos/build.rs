@@ -228,7 +228,7 @@ fn add_lwip_includes(build: &mut cc::Build, lwip_dir: &Path) {
 /// Values mirror `nros_board_freertos::Config::default()` for this
 /// board (MPS2-AN385 + FreeRTOS + lwIP). The struct layout matches
 /// the `nros_app_config_t` shipped under
-/// `packages/core/nros-c/include/nros/zephyr/app_config.h`; we inline
+/// `packages/api/nros-c/include/nros/zephyr/app_config.h`; we inline
 /// the typedef in the emitted TU so the file is self-contained (no
 /// dependency on a non-Zephyr include-path remap of that header).
 ///

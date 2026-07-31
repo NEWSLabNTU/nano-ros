@@ -93,7 +93,7 @@ From [`examples/stm32f4/rust/talker_pkg/Cargo.toml`](../../../../examples/stm32f
 crate-type = ["rlib"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false,
+nros = { path = "../../../../packages/api/nros", default-features = false,
          features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
 
 [package.metadata.nros.node]

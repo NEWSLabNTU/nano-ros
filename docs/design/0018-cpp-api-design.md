@@ -59,7 +59,7 @@ By having a dedicated Rust FFI layer in `nros-cpp`, we can:
 
 ### nros-cpp FFI Layer
 
-The Rust FFI staticlib in `packages/core/nros-cpp/` that:
+The Rust FFI staticlib in `packages/api/nros-cpp/` that:
 
 - Depends on `nros-node` and message crates (e.g., `nros-std-msgs`)
 - Exports `extern "C"` functions for each message/service/action type
@@ -69,7 +69,7 @@ The Rust FFI staticlib in `packages/core/nros-cpp/` that:
 Example FFI surface:
 
 ```rust
-// packages/core/nros-cpp/src/lib.rs (generated per message type)
+// packages/api/nros-cpp/src/lib.rs (generated per message type)
 
 #[repr(C)]
 pub struct StdMsgsInt32 {
@@ -885,7 +885,7 @@ work items, acceptance criteria, and implementation schedule.
 ## Files
 
 ```
-packages/core/nros-cpp/
+packages/api/nros-cpp/
 ├── Cargo.toml              # Rust staticlib (depends on nros-node + message crates)
 ├── src/
 │   ├── lib.rs              # Core FFI exports (init, node, executor)
@@ -920,6 +920,6 @@ packages/core/nros-cpp/
 - rclcpp API: https://docs.ros.org/en/rolling/p/rclcpp/
 - rclcpp_action API: https://docs.ros.org/en/rolling/p/rclcpp_action/
 - Existing nros Rust API: `packages/core/nros-node/src/executor/`
-- Existing nros C API: `packages/core/nros-c/`
+- Existing nros C API: `packages/api/nros-c/`
 - C codegen pipeline: `packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake`
 - C message template: `packages/codegen/packages/rosidl-codegen/templates/message_c.h.jinja`

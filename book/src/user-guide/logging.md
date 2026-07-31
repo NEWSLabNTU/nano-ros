@@ -204,9 +204,9 @@ filter.
 - `packages/core/nros-platform-cffi/include/nros/platform.h` —
   `nros_platform_log_write` / `nros_platform_log_flush` /
   `nros_platform_register_log_writer` ABI.
-- `packages/core/nros-c/include/nros/log.h` — C API surface
+- `packages/api/nros-c/include/nros/log.h` — C API surface
   (`NROS_LOG_*` macros + `nros_log_emit_fmt`).
-- `packages/core/nros-cpp/include/nros/log.hpp` — C++ macros (the
+- `packages/api/nros-cpp/include/nros/log.hpp` — C++ macros (the
   legacy `NROS_INFO` / etc. file:line printf surface stays
   alongside the new `NROS_LOG_*` macros).
 

@@ -23,6 +23,6 @@ native_entry_nros_selection = { path = "../../generated/nros-selection/native_en
 # scope; `nros::main!` calls it because system.toml declares `[lifecycle]`. (A bake
 # build adds this feature automatically from `[lifecycle]`; the hand-cargo entry
 # sets it explicitly.)
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
 talker_pkg = { path = "../talker_pkg", default-features = false }

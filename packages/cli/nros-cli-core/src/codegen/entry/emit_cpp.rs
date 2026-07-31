@@ -18,7 +18,7 @@
 //! - `nros::shutdown()`.
 //!
 //! The thin `nros::board::<Board>::run(lambda)` adapter shipped by
-//! `packages/core/nros-cpp/include/nros/main.hpp` owns the
+//! `packages/api/nros-cpp/include/nros/main.hpp` owns the
 //! init/spin/shutdown ritual so the generated TU stays one declarative
 //! lambda. Phase 235.B added the embedded `ZephyrBoard` sibling: a
 //! non-`native` board key (e.g. `"zephyr"`, derived by `nano_ros_entry`

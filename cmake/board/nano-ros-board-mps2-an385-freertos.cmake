@@ -2,7 +2,7 @@
 #
 # Phase 138.3 / 144.5 — board overlay for QEMU Cortex-M3 MPS2-AN385
 # under FreeRTOS. Mirrors the legacy
-# `packages/core/nros-c/cmake/freertos-support.cmake` shape, with paths
+# `packages/api/nros-c/cmake/freertos-support.cmake` shape, with paths
 # pointed at the in-tree source layout rather than the install prefix.
 #
 # Loaded by `cmake/platform/nano-ros-freertos.cmake` when

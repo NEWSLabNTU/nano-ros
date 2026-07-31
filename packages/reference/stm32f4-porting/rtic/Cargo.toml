@@ -32,7 +32,7 @@ smoltcp = { version = "0.12", default-features = false, features = [
 ] }
 
 # nros
-nros = { path = "../../../core/nros", default-features = false }
+nros = { path = "../../../api/nros", default-features = false }
 
 # Phase 115.L.5 — cffi shim that exposes zenoh-pico via `nros_rmw_vtable_t`.
 # `register()` would be called before `Executor::open` once a live data path

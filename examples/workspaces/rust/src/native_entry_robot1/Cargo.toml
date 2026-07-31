@@ -26,7 +26,7 @@ deploy = "native"
 # an edition restated here would fail on the WIRE, not at build time.
 native_entry_robot1_nros_selection = { path = "../../generated/nros-selection/native_entry_robot1" }
 # Phase 248 C6a (#60 T5) — agnostic `nros`; the board brings RMW+platform.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
 # robot1 hosts only the talker, so the macro emits `talker_pkg::register`.
 talker_pkg = { path = "../talker_pkg", default-features = false }

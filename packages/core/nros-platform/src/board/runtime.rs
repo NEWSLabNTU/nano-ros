@@ -71,7 +71,7 @@ pub struct SignaledCallback<'a> {
 ///
 /// Phase 214.K.1 — renamed from `NodeRuntime` to disambiguate from
 /// the user-facing `nros::NodeRuntime` metadata-sink trait in
-/// `packages/core/nros/src/node.rs:112`. The two traits live at
+/// `packages/api/nros/src/node.rs:112`. The two traits live at
 /// different layers (board-side dispatch sink vs user-side metadata
 /// declaration sink) and the previous shared name forced explicit
 /// `nros_platform::` / `nros::` qualification at every use site +

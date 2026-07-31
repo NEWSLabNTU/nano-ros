@@ -51,8 +51,8 @@ test -f "$LIB" || { echo "FAIL: staticlib missing"; exit 1; }
 # 5) Compile + link the C++ driver, run.
 echo "borrowed_cpp_e2e: compiling + running driver…"
 g++ -std=c++14 -D_DEFAULT_SOURCE -DNROS_PLATFORM_POSIX -Wall \
-    -I "$ROOT/packages/core/nros-cpp/include" \
-    -I "$ROOT/packages/core/nros-c/include" \
+    -I "$ROOT/packages/api/nros-cpp/include" \
+    -I "$ROOT/packages/api/nros-c/include" \
     -I "$CFG_DIR" \
     -I "$BUILD" \
     "$BUILD/driver.cpp" "$LIB" -lpthread -ldl -lm \

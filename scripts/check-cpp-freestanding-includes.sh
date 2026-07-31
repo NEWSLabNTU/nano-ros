@@ -16,7 +16,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-HEADER_DIR="packages/core/nros-cpp/include/nros"
+HEADER_DIR="packages/api/nros-cpp/include/nros"
 
 # Hosted-only STL headers absent from a minimal freestanding libcpp. The
 # freestanding-guaranteed set (`<cstdint>`, `<cstddef>`, `<cstdlib>`,

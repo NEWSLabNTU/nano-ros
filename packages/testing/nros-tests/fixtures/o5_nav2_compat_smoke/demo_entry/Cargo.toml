@@ -31,7 +31,7 @@ deploy = "native"
 # `nros::main!()` macro lives here; we wire `BoardEntry` /
 # `RuntimeCtx` / `RuntimeError` directly via `nros-platform` instead
 # of the macro for parity with the H.3 firmware shape.
-nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
+nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "ros-humble",

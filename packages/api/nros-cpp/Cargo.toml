@@ -173,7 +173,7 @@ nros-c = { version = "0.5.0", path = "../nros-c", default-features = false }
 # Phase 88.12 — `nros_cpp_node_get_logger` returns `&'static nros_log::Logger`.
 nros-log = { workspace = true }
 nros-platform = { workspace = true, default-features = false }
-nros-rmw = { version = "0.5.0", path = "../nros-rmw", default-features = false }
+nros-rmw = { version = "0.5.0", path = "../../core/nros-rmw", default-features = false }
 # Backend deps for nros-cpp's own root-crate force-link (`src/rmw_backend.rs`);
 # shared with nros-c's copy by cargo (one backend rlib).
 # phase-308 — the recording RMW backend. Optional and pulled in ONLY by

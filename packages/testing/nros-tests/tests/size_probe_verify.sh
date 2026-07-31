@@ -11,7 +11,7 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-HEADER="packages/core/nros-c/include/nros/nros_config_generated.h"
+HEADER="packages/api/nros-c/include/nros/nros_config_generated.h"
 FEATURES="cffi-zenoh-cffi,platform-posix,ros-humble"
 JOBS="${JOBS:-8}"
 SOAK_ROUNDS="${SOAK_ROUNDS:-3}"

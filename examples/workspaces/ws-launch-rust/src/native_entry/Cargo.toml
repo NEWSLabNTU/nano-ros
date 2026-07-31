@@ -19,7 +19,7 @@ deploy = "native"
 # below. This entry names none of them: the declaration is the SSoT, and
 # an edition restated here would fail on the WIRE, not at build time.
 native_entry_nros_selection = { path = "../../generated/nros-selection/native_entry" }
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
 talker_pkg = { path = "../talker_pkg", default-features = false }
 listener_pkg = { path = "../listener_pkg", default-features = false }

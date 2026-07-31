@@ -187,7 +187,7 @@ Halves on-disk size and removes nearly all environmental leakage.
 
 ### Open follow-ups
 
-- Concretely refactor `packages/core/nros-c/Cargo.toml` to drop
+- Concretely refactor `packages/api/nros-c/Cargo.toml` to drop
   the RMW / platform feature flags from its own dep graph, and
   carve `nros-rmw-zenoh-staticlib` / `nros-platform-posix-staticlib`
   wrapper crates. Mechanical but touches every variant of every

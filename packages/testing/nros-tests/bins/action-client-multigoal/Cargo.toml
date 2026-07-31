@@ -22,7 +22,7 @@ rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
 
 [dependencies]
-nros = { path = "../../../../core/nros", default-features = false, features = [
+nros = { path = "../../../../api/nros", default-features = false, features = [
     "std",
     "rmw-cffi",
     "ros-humble",

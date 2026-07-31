@@ -117,7 +117,7 @@ fn cmake_platform_threadx_requires_board() {
     // (`freertos_armcm3`, `threadx_linux`, `threadx_riscv64`,
     // `threadx`+board, …). The only platform whose CMakeLists.txt
     // still requires a separate `NANO_ROS_BOARD` value today is
-    // `threadx` (lines 73-81 of `packages/core/nros-c/CMakeLists.txt`),
+    // `threadx` (lines 73-81 of `packages/api/nros-c/CMakeLists.txt`),
     // which disambiguates the std-vs-no_std split between
     // `threadx-linux` (host libc) and `riscv64-qemu` (bare-metal).
     //

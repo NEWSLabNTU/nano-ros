@@ -20,7 +20,7 @@
 # zephyr/CMakeLists.txt includes this file unconditionally.
 #
 # Retires the per-example `<nros/app_config.h>` Kconfig-synthesis path
-# (packages/core/nros-c/include/nros/zephyr/app_config.h) for any app
+# (packages/api/nros-c/include/nros/zephyr/app_config.h) for any app
 # that opts into Phase 212. That header stays in tree as a fallback for
 # pre-212 examples; once every example migrates, it's deletable. See
 # `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`

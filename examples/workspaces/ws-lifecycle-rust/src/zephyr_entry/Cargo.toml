@@ -65,7 +65,7 @@ log = "0.4"
 # vtable + ROS edition + `lifecycle-services` (the system.toml `[lifecycle]`
 # declaration needs the registration to compile in — same opt-in the native
 # entry carries).
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 
 # Zephyr family board — `ZephyrBoard` (NetworkWait link-up gate only).
 nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr" }

@@ -47,7 +47,7 @@ nros-platform = { path = "../../core/nros-platform", default-features = false, f
 # etc.) so `Executor::open` resolves a backend at boot.
 # Phase 248 C5c-platform — `nros` stays platform-agnostic; `platform-freertos`
 # comes from this crate's direct `nros-platform` dep.
-nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 # Phase 248 C5a (#60 T4) — the BOARD is the RMW selection point. Depend on the
 # concrete zenoh backend directly (optional, behind `rmw-zenoh`) instead of
 # forwarding `nros/rmw-zenoh`, and register it explicitly in the boot path

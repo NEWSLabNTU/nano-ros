@@ -1960,7 +1960,7 @@ check-workspace-features:
     # while still exercising the trans-feature dep graph.
     #
     # `--exclude nros-c`: pre-existing latent test-compile bug in
-    # `packages/core/nros-c/src/cdr.rs:565` references `std::ffi::CStr`
+    # `packages/api/nros-c/src/cdr.rs:565` references `std::ffi::CStr`
     # but the lib is no_std-by-default. Filed for separate fix; gate
     # remains valid for every other crate. Remove the exclude once the
     # nros-c lib-test gating lands.
@@ -2008,7 +2008,7 @@ format-c:
     source scripts/dev/clang-format.sh
     CF="$(nros_clang_format)"
     echo "Formatting C code... ($CF)"
-    find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" -i
+    find packages/api/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" -i
     "$CF" -i packages/rmw/zenoh/zpico-zephyr/src/*.c packages/rmw/zenoh/zpico-zephyr/include/*.h
     git ls-files -z 'examples/native/c/**/*.c' | xargs -0 "$CF" -i
     echo "C code formatted."
@@ -2021,7 +2021,7 @@ format-cpp:
     source scripts/dev/clang-format.sh
     CF="$(nros_clang_format)"
     echo "Formatting C++ headers... ($CF)"
-    "$CF" -i packages/core/nros-cpp/include/nros/*.hpp
+    "$CF" -i packages/api/nros-cpp/include/nros/*.hpp
     echo "C++ headers formatted."
 
 # Format Python code with ruff. Phase 195.D — the colcon extension moved to the
@@ -2040,7 +2040,7 @@ check-c-fmt:
     CF="$(nros_clang_format)"
     echo "Checking C formatting... ($CF)"
     echo "  - clang-format (nros-c headers)"
-    find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" --dry-run --Werror
+    find packages/api/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" --dry-run --Werror
     echo "  - clang-format (zpico C)"
     "$CF" --dry-run --Werror packages/rmw/zenoh/zpico-zephyr/src/*.c packages/rmw/zenoh/zpico-zephyr/include/*.h
     echo "  - clang-format (C examples)"
@@ -2091,8 +2091,8 @@ check-c: check-c-fmt
     # real OPAQUE_U64S macros) wins over the source-tree stub.
     cc -fsyntax-only \
         -Itarget/nros-c-generated \
-        -Ipackages/core/nros-c/include \
-        -include packages/core/nros-c/include/nros/nros.h \
+        -Ipackages/api/nros-c/include \
+        -include packages/api/nros-c/include/nros/nros.h \
         -x c /dev/null
     echo "  - executor verb spelling + deprecated aliases (issue 0338)"
     # The entity-registration family is `nros_executor_add_*` (rclc's spelling);
@@ -2101,9 +2101,9 @@ check-c: check-c-fmt
     # fails here rather than at some consumer's link step.
     cc -fsyntax-only -std=c11 \
         -Itarget/nros-c-generated \
-        -Ipackages/core/nros-c/include \
+        -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-platform-api/include \
-        packages/core/nros-c/tests/compile/executor_verb_aliases.c
+        packages/api/nros-c/tests/compile/executor_verb_aliases.c
     echo "  - cross-include (nros_cpp_ffi.h + component.h in one TU)"
     # Issue 0160 — the C prototypes and struct typedefs component.h re-declares
     # must stay compatible with cbindgen's canonical nros_cpp_ffi.h (the
@@ -2116,10 +2116,10 @@ check-c: check-c-fmt
     cc -fsyntax-only \
         -Itarget/nros-c-generated \
         -Itarget/nros-cpp-generated \
-        -Ipackages/core/nros-c/include \
-        -Ipackages/core/nros-cpp/include \
-        -include packages/core/nros-cpp/include/nros/nros_cpp_ffi.h \
-        -include packages/core/nros-c/include/nros/component.h \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/api/nros-cpp/include \
+        -include packages/api/nros-cpp/include/nros/nros_cpp_ffi.h \
+        -include packages/api/nros-c/include/nros/component.h \
         -x c /dev/null
     echo "  - rmw ABI layout static-asserts (issue #238/#239)"
     # The RMW C headers and their Rust `#[repr(C)]` mirrors are hand-kept
@@ -2143,7 +2143,7 @@ check-cpp-fmt:
     CF="$(nros_clang_format)"
     echo "Checking C++ formatting... ($CF)"
     echo "  - clang-format"
-    "$CF" --dry-run --Werror packages/core/nros-cpp/include/nros/*.hpp
+    "$CF" --dry-run --Werror packages/api/nros-cpp/include/nros/*.hpp
     echo "C++ formatting OK."
 
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The
@@ -2166,7 +2166,7 @@ check-cpp: check-cpp-fmt
     # Build both first; variant dirs go FIRST on the include path so
     # their real headers win over the source-tree stubs.
     cargo build -p nros-c -p nros-cpp --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
-    for hdr in packages/core/nros-cpp/include/nros/*.hpp; do
+    for hdr in packages/api/nros-cpp/include/nros/*.hpp; do
         # Phase 209 — `rclcpp_compat.hpp` is a source-compat shim still
         # being aligned with the live nros::Result / nros::QoS API. The
         # clang-format check above still covers it; the freestanding
@@ -2185,8 +2185,8 @@ check-cpp: check-cpp-fmt
         c++ -fsyntax-only -std=c++14 $free -fno-exceptions -fno-rtti \
             -Itarget/nros-cpp-generated \
             -Itarget/nros-c-generated \
-            -Ipackages/core/nros-cpp/include \
-            -Ipackages/core/nros-c/include \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
             -Ipackages/core/nros-platform-api/include \
             -include "$hdr" -x c++ /dev/null
     done
@@ -2197,10 +2197,10 @@ check-cpp: check-cpp-fmt
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
-        -Ipackages/core/nros-cpp/include \
-        -Ipackages/core/nros-c/include \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-platform-api/include \
-        packages/core/nros-cpp/tests/compile/bind_service.cpp
+        packages/api/nros-cpp/tests/compile/bind_service.cpp
     # issue 0338 — `spin` verb SHAPE probe: `spin()` blocks until shutdown
     # (rclcpp/C/Rust semantics) and the bounded verb is `spin_for(...)`. The
     # defect was the shape of the API, so a compile-time assertion on which
@@ -2209,10 +2209,10 @@ check-cpp: check-cpp-fmt
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
-        -Ipackages/core/nros-cpp/include \
-        -Ipackages/core/nros-c/include \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-platform-api/include \
-        packages/core/nros-cpp/tests/compile/spin_verbs.cpp
+        packages/api/nros-cpp/tests/compile/spin_verbs.cpp
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
     # executed (counting allocator in the TU; asserts zero live allocations
     # across dtor / move-assign / clear / reserve-relocation of a two-level
@@ -2220,10 +2220,10 @@ check-cpp: check-cpp-fmt
     echo "  - HeapSequence element-lifetime runtime probe (c++14)"
     mkdir -p target/nros-cpp-tests
     c++ -std=c++14 -fno-exceptions -fno-rtti \
-        -Ipackages/core/nros-cpp/include \
+        -Ipackages/api/nros-cpp/include \
         -Ipackages/core/nros-platform-api/include \
         -o target/nros-cpp-tests/heap_sequence_lifetime \
-        packages/core/nros-cpp/tests/compile/heap_sequence_lifetime.cpp
+        packages/api/nros-cpp/tests/compile/heap_sequence_lifetime.cpp
     ./target/nros-cpp-tests/heap_sequence_lifetime
     echo "  - nros-cpp clippy (zenoh-cffi + posix + humble)"
     cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
@@ -3033,13 +3033,13 @@ doc-c:
         echo "Install with: sudo apt install doxygen"
         exit 0
     fi
-    header="packages/core/nros-c/include/nros/nros_generated.h"
+    header="packages/api/nros-c/include/nros/nros_generated.h"
     if [ ! -f "$header" ]; then
         echo "Generated header not found, building nros-c first..."
         cargo build -p nros-c --features "rmw-zenoh,platform-posix,ros-humble"
     fi
     mkdir -p target/doxygen/c
-    (cd packages/core/nros-c && doxygen Doxyfile)
+    (cd packages/api/nros-c && doxygen Doxyfile)
     echo "C API docs generated: target/doxygen/c/html/index.html"
 
 # Verify hand-written C headers are syntactically correct.
@@ -3050,8 +3050,8 @@ doc-c-check:
     set -e
     echo "Checking C headers for syntax errors..."
     cc -fsyntax-only \
-        -Ipackages/core/nros-c/include \
-        -include packages/core/nros-c/include/nros/nros.h \
+        -Ipackages/api/nros-c/include \
+        -include packages/api/nros-c/include/nros/nros.h \
         -x c /dev/null
     echo "All C headers are syntactically correct."
 
@@ -3066,7 +3066,7 @@ doc-cpp:
         exit 0
     fi
     mkdir -p target/doxygen/cpp
-    (cd packages/core/nros-cpp && doxygen Doxyfile)
+    (cd packages/api/nros-cpp && doxygen Doxyfile)
     echo "C++ API docs generated: target/doxygen/cpp/html/index.html"
 
 # Generate Doxygen for the RMW vtable (porter-facing).

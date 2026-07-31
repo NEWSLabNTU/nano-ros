@@ -16,7 +16,7 @@
   "headers": ["nros/init.h", "nros/node.h"],
   "build": {
     "extraScript": "integrations/platformio/nros_codegen.py",
-    "includeDir": "packages/core/nros-c/include",
+    "includeDir": "packages/api/nros-c/include",
     "srcFilter": ["-<*>"]
   }
 }

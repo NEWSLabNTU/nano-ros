@@ -66,7 +66,7 @@ log = "0.4"
 # Agnostic `nros` dep — `alloc` (no `std`; Zephyr is `no_std`) + `rmw-cffi`
 # vtable + ROS edition. The safety capability rides the BACKEND feature
 # (`nros-rmw-zenoh/safety-e2e` below) + the listener pkg's `safety-e2e`.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 
 # Zephyr family board — `ZephyrBoard` (NetworkWait link-up gate only).
 nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr" }

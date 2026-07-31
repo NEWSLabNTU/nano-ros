@@ -145,7 +145,7 @@ typedef struct nros_transport_ops_s {
  * stack-allocate. To clear the slot, pass NULL.
  *
  * The fn pointer is exported from the nano-ros C staticlib
- * (`packages/core/nros-c/`), where it forwards to the
+ * (`packages/api/nros-c/`), where it forwards to the
  * `nros-rmw-cffi` registry. C++ consumers should include
  * `<nros/transport.hpp>` (from `nros-cpp`) which calls this
  * function under the hood.

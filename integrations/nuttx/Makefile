@@ -14,11 +14,11 @@ include $(APPDIR)/Make.defs
 # drives Cargo via this var rather than free-form strings.
 #
 # Phase 157.C.11 — feature names mirror what
-# `packages/core/nros-c/CMakeLists.txt` passes to Corrosion. nros-c
+# `packages/api/nros-c/CMakeLists.txt` passes to Corrosion. nros-c
 # carries `cffi-zenoh-cffi` / `cffi-dds-cffi` / `cffi-xrce-c` as
 # Cargo features that select the RMW + flip on `rmw-cffi`. Kconfig
 # RMW choice maps onto those names.
-# nros-c features. Names mirror what `packages/core/nros-c/CMakeLists.txt`
+# nros-c features. Names mirror what `packages/api/nros-c/CMakeLists.txt`
 # passes to Corrosion. nros-c uses `cffi-zenoh-cffi` etc.
 NROS_C_FEATURES := std ros-humble platform-nuttx
 ifneq ($(CONFIG_NROS_RMW_ZENOH),)
@@ -36,7 +36,7 @@ endif
 
 # nros-cpp features. Different per-backend feature names from nros-c
 # (rmw-{zenoh,xrce,cyclonedds}-cffi instead of cffi-{...}). Mirrors
-# `packages/core/nros-cpp/CMakeLists.txt`.
+# `packages/api/nros-cpp/CMakeLists.txt`.
 NROS_CPP_FEATURES := std ros-humble platform-nuttx
 ifneq ($(CONFIG_NROS_RMW_ZENOH),)
 NROS_CPP_FEATURES += rmw-zenoh-cffi

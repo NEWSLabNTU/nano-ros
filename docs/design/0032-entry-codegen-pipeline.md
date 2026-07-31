@@ -371,7 +371,7 @@ gated to zero) against real zenohd.
 The C++ Entry path (Phase 219) emits the launch tree → register sequence →
 `NodeContext` dispatch, but only against `nros::board::NativeBoard` and only
 with a **recording** `NodeContextOps` (every op a no-op — see
-`packages/core/nros-cpp/include/nros/main.hpp`). So a generated C++ `main()`
+`packages/api/nros-cpp/include/nros/main.hpp`). So a generated C++ `main()`
 exercises codegen + symbol resolution + launch-order dispatch end-to-end, but
 constructs **no** live publishers/subscriptions, on native or embedded.
 

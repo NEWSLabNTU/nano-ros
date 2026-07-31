@@ -21,7 +21,7 @@ name = "contract-monitor-diagsink"
 path = "src/bin/diagsink.rs"
 
 [dependencies]
-nros = { path = "../../../../core/nros", default-features = false, features = [
+nros = { path = "../../../../api/nros", default-features = false, features = [
     "std",
     "rmw-cffi",
     "ros-humble",

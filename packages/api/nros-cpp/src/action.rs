@@ -27,7 +27,7 @@ const GOAL_USER_BUF: usize = 512;
 // `CppActionClientLayout`). The asserts below ensure the real
 // `CppActionServer` / `CppActionClient` layouts stay byte-equivalent
 // to the mirrors — any field-shape change here must be paired with an
-// update in `packages/core/nros/src/sizes.rs`.
+// update in `packages/api/nros/src/sizes.rs`.
 
 // ============================================================================
 // Action Server
@@ -86,7 +86,7 @@ pub(crate) struct CppActionServer {
 // must have the same byte size as `nros::sizes::CppActionServerLayout`,
 // which is what `NROS_CPP_ACTION_SERVER_SIZE` is sized to. Any field
 // shape change here requires a paired update in
-// `packages/core/nros/src/sizes.rs::CppActionServerLayout`.
+// `packages/api/nros/src/sizes.rs::CppActionServerLayout`.
 const _: () = assert!(
     core::mem::size_of::<CppActionServer>()
         == core::mem::size_of::<nros::sizes::CppActionServerLayout>(),

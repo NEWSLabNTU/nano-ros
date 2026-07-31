@@ -66,7 +66,7 @@ verdict).**
   `NROS_CPP_STD` (NOT `__STDC_HOSTED__` alone — the 0112 pitfall), no
   heap/libc calls on paths embedded builds compile, no exceptions/RTTI.
   Detect: `grep -rn '#include <(string|vector|map|iostream|functional)>'
-  packages/core/nros-cpp/include packages/core/nros-c/include` then confirm
+  packages/api/nros-cpp/include packages/api/nros-c/include` then confirm
   each is `NROS_CPP_STD`-gated.
 - **B6 Magic numbers.** Hardcoded sizes/caps/timeouts (stack sizes, buffer
   lengths like `char buf[128]`, retry counts, ms delays, port numbers) instead
@@ -86,7 +86,7 @@ verdict).**
   machines, or duplicated behavior in the C/C++ layer; it forwards to Rust
   (CFFI) and only adapts types/ergonomics. Flag any C/C++ that reimplements
   what Rust already does, or holds logic that belongs in the core. Check
-  `packages/core/nros-cpp/include/`, `nros-c/`, the CFFI seam.
+  `packages/api/nros-cpp/include/`, `nros-c/`, the CFFI seam.
 - **C2 Layer-map conformance (RFC-0001).** Deps flow the right direction;
   no lower layer reaching up; `packages/drivers/` category split (RFC-0012).
 - **C3 Generated-vs-handwritten boundary.** No hand edits to
@@ -109,7 +109,7 @@ verdict).**
   selected any way other than the env/feature lowering. Detect:
   `rg -n 'cfg\(feature = "(rmw|platform)-' packages/core/` then judge each
   hit against the registration-seam allowlist; `rg -n 'zenoh|cyclonedds|xrce'
-  packages/core/nros-node/src packages/core/nros/src` (names of concrete
+  packages/core/nros-node/src packages/api/nros/src` (names of concrete
   backends appearing in agnostic layers).
 - **C6 User-API shape follows standard ROS conventions.** The C, C++, and
   Rust user surfaces mirror rclc / rclcpp / rclrs respectively (RFC-0018/0019
@@ -121,7 +121,7 @@ verdict).**
   reshapes of standard concepts are drift); signature drift between the three
   language surfaces for the same concept; cmake verbs that require
   nano-ros-specific ceremony where the ament shape exists. Sample:
-  `packages/core/nros-cpp/include/nros/*.hpp` vs rclcpp class list,
+  `packages/api/nros-cpp/include/nros/*.hpp` vs rclcpp class list,
   `nros-c/include/nros/*.h` vs rclc, `nros`/`nros-node` pub API vs rclrs,
   `cmake/NanoRosVerbs.cmake` vs ament verbs.
 - **C7 RMW vtable API mirrors rmw.h.** `nros-rmw` / `nros-rmw-cffi`'s vtable

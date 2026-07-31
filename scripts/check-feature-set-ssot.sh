@@ -23,8 +23,8 @@ note() { printf '  %s\n' "$1"; }
 #    codegen-baked type_hash).
 # Comment lines are excluded: the conversion sites legitimately REFERENCE the
 # old hardcode when explaining why they no longer do it.
-edition_hits=$(git grep -n 'ros-humble' -- 'cmake/*.cmake' 'packages/core/nros-c/CMakeLists.txt' \
-    'packages/core/nros-cpp/CMakeLists.txt' 2>/dev/null \
+edition_hits=$(git grep -n 'ros-humble' -- 'cmake/*.cmake' 'packages/api/nros-c/CMakeLists.txt' \
+    'packages/api/nros-cpp/CMakeLists.txt' 2>/dev/null \
     | grep -v 'cmake/NanoRosFeatureSet.cmake' \
     | grep -v ':[0-9]*:[[:space:]]*#' | cut -d: -f1 | sort -u || true)
 if [ -n "$edition_hits" ]; then
@@ -43,8 +43,8 @@ fi
 #    of this check matched the bare substring and reported six files that were
 #    not duplication at all — which is how a gate loses its credibility.
 plat_hits=$(git grep -n 'set(_platform_features\|set(_rmw_features' -- 'cmake/*.cmake' \
-    'cmake/*/*.cmake' 'packages/core/nros-c/CMakeLists.txt' \
-    'packages/core/nros-cpp/CMakeLists.txt' 2>/dev/null \
+    'cmake/*/*.cmake' 'packages/api/nros-c/CMakeLists.txt' \
+    'packages/api/nros-cpp/CMakeLists.txt' 2>/dev/null \
     | grep -v ':[0-9]*:[[:space:]]*#' | cut -d: -f1 | sort -u || true)
 if [ -n "$plat_hits" ]; then
     echo "FAIL: a platform/rmw→cargo-feature assembly outside cmake/NanoRosFeatureSet.cmake:"
@@ -182,8 +182,8 @@ fi
 #    STANDALONE project selects the axis with `-DNANO_ROS_SAFETY_E2E=ON`. That
 #    is a selector, not a platform default.
 cap_branch=$(git grep -nE 'list\(APPEND _caps [^)]*(param_services|lifecycle)' \
-    -- 'cmake/*.cmake' 'packages/core/nros-c/CMakeLists.txt' \
-    'packages/core/nros-cpp/CMakeLists.txt' 2>/dev/null \
+    -- 'cmake/*.cmake' 'packages/api/nros-c/CMakeLists.txt' \
+    'packages/api/nros-cpp/CMakeLists.txt' 2>/dev/null \
     | grep -v ':[0-9]*:[[:space:]]*#' || true)
 if [ -n "$cap_branch" ]; then
     echo "FAIL: a branch appends a capability instead of reading the declaration:"

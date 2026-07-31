@@ -60,7 +60,7 @@ nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-
 # (`nros-rmw-zenoh`, ...) must be linked by the per-board overlay
 # (`nros-board-nuttx-qemu-arm`, ...) so `Executor::open` resolves a
 # backend at boot.
-nros = { path = "../../core/nros", default-features = false, features = ["std", "rmw-cffi"] }
+nros = { path = "../../api/nros", default-features = false, features = ["std", "rmw-cffi"] }
 nros-board-nuttx-qemu-arm = { path = "../nros-board-nuttx-qemu-arm", optional = true }
 # Phase 225.O — explicit RMW backend registration on NuttX. The unified-RMW
 # `nros_rmw_register_backend!` macro is a NO-OP on NuttX (linkme has no

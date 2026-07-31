@@ -23,7 +23,7 @@ default = ["safety-e2e"]
 safety-e2e = []
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "safety-e2e",

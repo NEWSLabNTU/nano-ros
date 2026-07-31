@@ -242,8 +242,8 @@ fn try_compile(cell: &Cell) -> (bool, String) {
     cmd.arg("-I")
         .arg(root.join("packages/core/nros-platform-api/include"));
     cmd.arg("-I")
-        .arg(root.join("packages/core/nros-cpp/include"));
-    cmd.arg("-I").arg(root.join("packages/core/nros-c/include"));
+        .arg(root.join("packages/api/nros-cpp/include"));
+    cmd.arg("-I").arg(root.join("packages/api/nros-c/include"));
     for d in cell.defines {
         cmd.arg(format!("-D{d}"));
     }

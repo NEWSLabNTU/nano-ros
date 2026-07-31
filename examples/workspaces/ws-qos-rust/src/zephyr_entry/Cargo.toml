@@ -65,7 +65,7 @@ log = "0.4"
 # Agnostic `nros` dep — `alloc` (no `std`; Zephyr is `no_std`) + `rmw-cffi`
 # vtable + ROS edition. No capability feature: the QoS profiles are declared
 # per-entity in node code (RFC-0041), not via a system.toml emit.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 
 # Zephyr family board — `ZephyrBoard` (NetworkWait link-up gate only).
 nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr" }

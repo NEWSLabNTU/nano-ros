@@ -85,8 +85,8 @@ if(NOT NANO_ROS_PLATFORM MATCHES "^nuttx")
     # No provider archive, no `external-registry` feature — the cffi `REGISTRY` + C
     # entry points are defined once in the single archive.
     add_subdirectory(packages/rmw/cffi)
-    add_subdirectory(packages/core/nros-c)
-    add_subdirectory(packages/core/nros-cpp)
+    add_subdirectory(packages/api/nros-c)
+    add_subdirectory(packages/api/nros-cpp)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ if(NOT TARGET NanoRos)
     add_library(NanoRos::NanoRos ALIAS NanoRos)
     # `nros_c-static`'s INTERFACE carries the per-build variant header
     # path + the public `include/` dirs (wired in
-    # `packages/core/nros-c/CMakeLists.txt` for Phase 137). Skipped for
+    # `packages/api/nros-c/CMakeLists.txt` for Phase 137). Skipped for
     # NuttX cross builds where the FFI crate's cargo build supplies
     # nros-c via its own dependency closure.
     if(TARGET nros_c-static)
@@ -161,8 +161,8 @@ if(NOT TARGET NanoRos)
             # phase-243 — the one canonical `<nros/platform.h>` lives here now
             # (nros-c's legacy platform.h is deleted); list it first.
             "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-platform-api/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-c/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-cpp/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/packages/api/nros-c/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/packages/api/nros-cpp/include"
             "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-rmw-abi/include")
     endif()
     # Phase 159 — NanoRos::NanoRosCpp ALIAS for NuttX path (where

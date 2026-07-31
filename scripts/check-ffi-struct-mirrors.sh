@@ -19,8 +19,8 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-MIRROR="packages/core/nros-c/include/nros/component.h"
-CANONICAL="packages/core/nros-cpp/include/nros/nros_cpp_ffi.h"
+MIRROR="packages/api/nros-c/include/nros/component.h"
+CANONICAL="packages/api/nros-cpp/include/nros/nros_cpp_ffi.h"
 
 python3 - "$MIRROR" "$CANONICAL" <<'PY'
 import re

@@ -10,7 +10,7 @@ related: [issue-0338, rfc-0019]
 
 ## Finding (deep audit C,E 2026-07-28 — C6)
 
-`packages/core/nros-cpp/include/nros/rclcpp_compat.hpp:477` — the compat shim for
+`packages/api/nros-cpp/include/nros/rclcpp_compat.hpp:477` — the compat shim for
 `rclcpp::spin_until_future_complete`:
 
 - On the **explicit-timeout** path it calls the bounded `Executor::spin(timeout_ms)`

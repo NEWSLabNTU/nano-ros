@@ -5,17 +5,17 @@ on:
     branches: [main]
     paths:
       - "book/**"
-      - "packages/core/nros/**"
+      - "packages/api/nros/**"
       - "packages/core/nros-rmw/**"
       - "packages/rmw/cffi/**"
       - "packages/core/nros-platform-api/**"
       - "packages/core/nros-platform-cffi/**"
       - "packages/core/nros-platform-posix/**"
-      - "packages/core/nros-c/include/**"
-      - "packages/core/nros-c/Doxyfile"
-      - "packages/core/nros-c/docs/**"
-      - "packages/core/nros-cpp/include/**"
-      - "packages/core/nros-cpp/Doxyfile"
+      - "packages/api/nros-c/include/**"
+      - "packages/api/nros-c/Doxyfile"
+      - "packages/api/nros-c/docs/**"
+      - "packages/api/nros-cpp/include/**"
+      - "packages/api/nros-cpp/Doxyfile"
       - "book/rustdoc-driver/**"
       - "packages/rmw/zenoh/nros-rmw-zenoh/src/**"
       - "packages/rmw/xrce/nros-rmw-xrce/src/**"
@@ -102,13 +102,13 @@ jobs:
       - name: Build Doxygen — C
         run: |
           mkdir -p target/doxygen/c
-          cd packages/core/nros-c
+          cd packages/api/nros-c
           doxygen Doxyfile
 
       - name: Build Doxygen — C++
         run: |
           mkdir -p target/doxygen/cpp
-          cd packages/core/nros-cpp
+          cd packages/api/nros-cpp
           doxygen Doxyfile
 
       - name: Build Doxygen — RMW vtable (porter-facing)

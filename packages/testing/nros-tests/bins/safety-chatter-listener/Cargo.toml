@@ -13,7 +13,7 @@ name = "safety-chatter-listener"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../core/nros", default-features = false, features = [
+nros = { path = "../../../../api/nros", default-features = false, features = [
     "std",
     "rmw-cffi",
     "ros-humble",

@@ -91,7 +91,7 @@ include!("ffi_gen.rs");
     );
 
     // ---- 2. .hpp header: g++ -fsyntax-only ----
-    let inc = root.join("packages/core/nros-cpp/include");
+    let inc = root.join("packages/api/nros-cpp/include");
     let htmp = tempfile::tempdir().unwrap();
     fs::create_dir_all(htmp.path().join("nros")).unwrap();
     // Stub platform.h (the real one needs per-build config).

@@ -1,6 +1,6 @@
 # Doxyfile for nros C++ API documentation
 #
-# Usage: doxygen packages/core/nros-cpp/Doxyfile
+# Usage: doxygen packages/api/nros-cpp/Doxyfile
 # Or:    just doc-cpp
 
 PROJECT_NAME           = "nros C++ API"

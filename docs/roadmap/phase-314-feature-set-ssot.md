@@ -13,8 +13,8 @@ Nothing checks that they agree.
 
 | site | edition | rmw | platform | capabilities |
 | --- | --- | --- | --- | --- |
-| `packages/core/nros-cpp/CMakeLists.txt` | **hardcoded `ros-humble`** | inline copy | inline chain (+ `NANO_ROS_BOARD` threadx split) | param/lifecycle on posix, safety-e2e |
-| `packages/core/nros-c/CMakeLists.txt` | **hardcoded `ros-humble`** | inline copy | inline chain | — |
+| `packages/api/nros-cpp/CMakeLists.txt` | **hardcoded `ros-humble`** | inline copy | inline chain (+ `NANO_ROS_BOARD` threadx split) | param/lifecycle on posix, safety-e2e |
+| `packages/api/nros-c/CMakeLists.txt` | **hardcoded `ros-humble`** | inline copy | inline chain | — |
 | `cmake/NanoRosRuntimeCrate.cmake` | `ros-${_NRR_EDITION}` ✔ | `nros_rmw_dispatch()` SSoT ✔ | `_nros_runtime_platform_features()` | none |
 | every Rust leaf `Cargo.toml` | `"ros-humble"` by hand | — | — | per-leaf |
 

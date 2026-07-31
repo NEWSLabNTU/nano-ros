@@ -301,7 +301,7 @@ zephyr_include_directories(
     ${_nros_graph_types_dir}
 )
 
-# Flips the auto-register hook in packages/core/nros-cpp/include/nros/node.hpp
+# Flips the auto-register hook in packages/api/nros-cpp/include/nros/node.hpp
 # which calls nros_rmw_cyclonedds_register() inside nros::init().
 zephyr_compile_definitions(
     NROS_RMW_CYCLONEDDS=1

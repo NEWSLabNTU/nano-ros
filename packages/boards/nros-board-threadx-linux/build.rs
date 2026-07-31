@@ -50,7 +50,7 @@ fn main() {
     // so the emitted .c rides along in the same staticlib (single archive
     // search per link pass). See `emit_app_config_def` for the value
     // contract.
-    let nros_c_include = workspace_root.join("packages/core/nros-c/include");
+    let nros_c_include = workspace_root.join("packages/api/nros-c/include");
     assert!(
         nros_c_include.join("nros/zephyr/app_config.h").exists(),
         "nros-c shipped header not found at {} — expected the M-F.10.1 \

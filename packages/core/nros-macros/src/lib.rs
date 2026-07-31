@@ -327,7 +327,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
         // bare `::nros_platform::*` path so Node pkgs only need
         // a single `nros` dep in their `Cargo.toml`. The
         // `__macro_support` module is a `#[doc(hidden)]` re-export
-        // alias maintained by `packages/core/nros/src/lib.rs`.
+        // alias maintained by `packages/api/nros/src/lib.rs`.
 
         // Phase 257 (W0-B / D6) — the uniform cross-language component-install seam.
         // A typed Entry of ANY language calls

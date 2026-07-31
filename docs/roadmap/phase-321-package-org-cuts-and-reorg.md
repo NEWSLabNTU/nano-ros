@@ -183,7 +183,7 @@ Rationale, with the evidence for each:
 > everything.
 >
 > **The measured counts UNDERCOUNT, found by moving `bridge` first as a canary.**
-> `packages/core/nros/Cargo.toml` depended on it as
+> `packages/api/nros/Cargo.toml` depended on it as
 > `path = "../../bridge/nros-bridge"` — a RELATIVE path that contains no
 > `packages/bridge` substring, so every `rg "packages/bridge"` sweep missed it and
 > the workspace stopped resolving the moment the directory moved. There are

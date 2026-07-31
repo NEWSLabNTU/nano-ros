@@ -43,7 +43,7 @@ component object + a `spin_once` loop.
 ## Motivation / problem
 
 Phase 235/236.A/B landed a C++ `EntryNodeRuntime` (in
-`packages/core/nros-cpp/include/nros/main.hpp`): a ~700-line interpreter that
+`packages/api/nros-cpp/include/nros/main.hpp`): a ~700-line interpreter that
 reads string descriptors from the declarative register, constructs entities via
 the raw FFI, polls them in its own spin loop, and **synthesizes** fake logic
 (monotonic `Int32` for a timer-publisher, `a+b` for a service, a fixed result

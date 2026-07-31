@@ -332,7 +332,7 @@ function(nros_generate_interfaces target)
       get_filename_component(_nros_repo_dir "${_nros_repo_dir}" ABSOLUTE)
 
       set(_serdes_standalone_toml
-          "${_nros_repo_dir}/packages/core/nros-cpp/cmake/nros-serdes-standalone-Cargo.toml")
+          "${_nros_repo_dir}/packages/api/nros-cpp/cmake/nros-serdes-standalone-Cargo.toml")
       set(_template_dir
           "${_nros_repo_dir}/cmake")
 
@@ -345,7 +345,7 @@ function(nros_generate_interfaces target)
       # Stage a proper crate directory for the per-FFI Cargo.toml's
       # `path = ` dependency. The upstream layout ships the
       # standalone Cargo.toml beside other cmake helpers under
-      # `packages/core/nros-cpp/cmake/`, but Cargo needs the file
+      # `packages/api/nros-cpp/cmake/`, but Cargo needs the file
       # named `Cargo.toml` and the `src/` tree alongside it. Stage
       # both under the build dir on first configure (idempotent).
       set(_serdes_dir "${CMAKE_BINARY_DIR}/nros-rust/staged-nros-serdes")

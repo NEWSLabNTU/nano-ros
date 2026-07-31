@@ -1984,7 +1984,7 @@ fn drop_empty_patch_crates_io_header(body: &str) -> String {
 const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
     &[
         // Core runtime
-        ("nros", "packages/core/nros"),
+        ("nros", "packages/api/nros"),
         ("nros-core", "packages/core/nros-core"),
         ("nros-serdes", "packages/core/nros-serdes"),
         ("nros-platform", "packages/core/nros-platform"),
@@ -3054,7 +3054,7 @@ nros-serdes = "0.4"
     fn extract_consumer_registry_deps_version_plus_path() {
         let body = r#"
 [dependencies]
-nros = { version = "0.4", path = "../core/nros" }
+nros = { version = "0.4", path = "../api/nros" }
 "#;
         let got = extract_consumer_registry_nros_deps(body);
         assert_eq!(got, vec!["nros".to_string()]);
@@ -3096,7 +3096,7 @@ nros-foo-extension = { version = "*" }
     fn extract_consumer_registry_deps_path_only_empty() {
         let body = r#"
 [dependencies]
-nros = { path = "../../../packages/core/nros" }
+nros = { path = "../../../packages/api/nros" }
 nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }
 "#;
         let got = extract_consumer_registry_nros_deps(body);

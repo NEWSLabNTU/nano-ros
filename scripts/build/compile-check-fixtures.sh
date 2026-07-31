@@ -349,7 +349,7 @@ cxx_syntax_check() {
     rm -f "$staged/.compile-ok"
     local cxx="${CXX:-c++}"
     # Issue #34 — the per-build generated config headers MUST precede the
-    # source include dir: `packages/core/nros-cpp/include/nros/nros_cpp_config_generated.h`
+    # source include dir: `packages/api/nros-cpp/include/nros/nros_cpp_config_generated.h`
     # is a stub that `#error`s, so if it is searched first the real header
     # (`target/nros-cpp-generated/nros/...`, emitted by nros-cpp's build.rs) is
     # never reached. Prepend the generated dirs.
@@ -358,8 +358,8 @@ cxx_syntax_check() {
         && inc+=(-I "$repo_root/target/nros-cpp-generated")
     [ -f "$repo_root/target/nros-c-generated/nros/nros_config_generated.h" ] \
         && inc+=(-I "$repo_root/target/nros-c-generated")
-    inc+=(-I "$repo_root/packages/core/nros-cpp/include"
-          -I "$repo_root/packages/core/nros-c/include"
+    inc+=(-I "$repo_root/packages/api/nros-cpp/include"
+          -I "$repo_root/packages/api/nros-c/include"
           -I "$repo_root/cmake/compat/include")
     # Best-effort: a snippet that doesn't compile (pre-existing API drift or a
     # missing generated header) does NOT fail build-test-fixtures — it just

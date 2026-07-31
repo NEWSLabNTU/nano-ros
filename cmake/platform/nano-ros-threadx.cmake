@@ -15,7 +15,7 @@
 #     `nros_threadx_setup_picolibc`, `nros_threadx_setup_rust_lld`,
 #     `nros_threadx_strip_builtins`, `nros_threadx_compose_platform`) —
 #     the implementation lives under
-#     `packages/core/nros-c/cmake/nros-threadx.cmake` and stays the
+#     `packages/api/nros-c/cmake/nros-threadx.cmake` and stays the
 #     single source of truth.
 #
 #   * Pulls in the per-board overlay
@@ -49,11 +49,11 @@ set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast udp_multicast
 
 # ---------------------------------------------------------------------------
 # Layer-2 helpers (kernel / netstack / glue / compose). Implementation
-# lives under packages/core/nros-c/cmake/; re-include here so per-board
+# lives under packages/api/nros-c/cmake/; re-include here so per-board
 # overlays + per-example CMakeLists.txt see the same function names
 # regardless of consumption shape.
 # ---------------------------------------------------------------------------
-include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/nros-threadx.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../packages/api/nros-c/cmake/nros-threadx.cmake")
 
 # ---------------------------------------------------------------------------
 # User-facing nano-ros helpers (config + link).

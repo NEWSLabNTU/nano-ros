@@ -65,7 +65,7 @@ ${dds_feature}
 
 [dependencies]
 nros-board-threadx-qemu-riscv64 = { path = "../../../../packages/boards/nros-board-threadx-qemu-riscv64" }
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-threadx", "ros-humble"] }
+nros = { path = "../../../../packages/api/nros", default-features = false, features = ["rmw-cffi", "platform-threadx", "ros-humble"] }
 ${plat_dep}
 ${msg_dep} = { version = "*", default-features = false }
 

@@ -27,8 +27,8 @@ px4_add_module(
     MAIN           @COMPONENT_NAME@
     COMPILE_FLAGS  -fno-rtti
     INCLUDES
-        ${_nros_root}/packages/core/nros-cpp/include
-        ${_nros_root}/packages/core/nros-c/include
+        ${_nros_root}/packages/api/nros-cpp/include
+        ${_nros_root}/packages/api/nros-c/include
         ${_nros_root}/packages/core/nros-rmw-abi/include
     SRCS
         @COMPONENT_NAME@.cpp

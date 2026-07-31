@@ -301,7 +301,7 @@ pub unsafe extern "C" fn nros_action_client_set_result_callback(
 /// (the goal queryable is the load-bearing entity for the first
 /// `nros_action_send_goal` call) via the same primitive as the
 /// service-client equivalent. See
-/// `packages/core/nros-c/src/service.rs::nros_client_wait_for_service`
+/// `packages/api/nros-c/src/service.rs::nros_client_wait_for_service`
 /// for the re-probe rationale.
 ///
 /// # Returns

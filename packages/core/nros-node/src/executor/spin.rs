@@ -2791,7 +2791,7 @@ impl<'s> Executor<'s> {
     /// `cb_id` actually acts, the rest are cheap string-compare
     /// no-ops. This mirrors the strategy
     /// `ExecutorNodeRuntime::dispatch_callback` uses in
-    /// `packages/core/nros/src/node_runtime.rs:470`.
+    /// `packages/api/nros/src/node_runtime.rs:470`.
     ///
     /// ## What's NOT auto-wired today
     ///

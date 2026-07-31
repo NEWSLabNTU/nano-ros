@@ -50,7 +50,7 @@ esp32_entry_nros_selection = { path = "../../generated/nros-selection/esp32_entr
 # edition). The old `platform-bare-metal` marker is an empty no-op feature; the
 # concrete platform (`platform-esp32-qemu`) AND the zenoh backend come from the
 # board crate. `nros` names neither rmw nor platform.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 
 # CI-runnable ESP32-C3 QEMU board crate — supplies `Esp32QemuEntry`
 # (real-runtime `BoardEntry`) + hardware/transport bringup + the

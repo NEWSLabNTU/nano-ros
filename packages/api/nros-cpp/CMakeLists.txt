@@ -1,4 +1,4 @@
-# packages/core/nros-cpp/CMakeLists.txt
+# packages/api/nros-cpp/CMakeLists.txt
 #
 # nros C++ API: header-only C++14 library + Rust FFI staticlib.
 # Provides the NanoRos::NanoRosCpp target.
@@ -64,21 +64,21 @@ target_include_directories(nros-cpp-headers INTERFACE
 # by nros-cpp's build.rs into CMAKE_CURRENT_BINARY_DIR via corrosion) to
 # a sibling `include/nros/` dir that we add to nros-cpp-headers' INTERFACE.
 # Same pattern as the nros-c sub-project (see Phase 137 comment block in
-# `packages/core/nros-c/CMakeLists.txt`). The mirrored copy is searched
+# `packages/api/nros-c/CMakeLists.txt`). The mirrored copy is searched
 # BEFORE the source-tree stub, so per-variant storage sizes take effect
 # under add_subdirectory(<repo-root>) consumption.
 set(_nros_cpp_intree_include_dir "${CMAKE_CURRENT_BINARY_DIR}/include")
 file(MAKE_DIRECTORY "${_nros_cpp_intree_include_dir}/nros")
 if(TARGET cargo-build_nros_cpp)
     # Issue 0088 — first-class OUTPUT + custom target instead of a POST_BUILD side
-    # effect (see the matching comment in packages/core/nros-c/CMakeLists.txt). The
+    # effect (see the matching comment in packages/api/nros-c/CMakeLists.txt). The
     # POST_BUILD `BYPRODUCTS` gave consumers no real edge to the mirrored headers, so
     # a consumer TU could compile before the copy ran and pick up the in-tree stub.
     # `cargo-build_nros_cpp` emits BOTH the C++ variant header AND (since the C++
     # umbrella bundles nros-c, Phase 241.D3-rev) the C variant header into this dir.
     set(_nros_cpp_gen_cpp_header "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h")
     set(_nros_cpp_gen_c_header "${_nros_cpp_intree_include_dir}/nros/nros_config_generated.h")
-    # Issue 0268 — see the matching comment block in packages/core/nros-c/CMakeLists.txt.
+    # Issue 0268 — see the matching comment block in packages/api/nros-c/CMakeLists.txt.
     # `DEPENDS cargo-build_nros_cpp` alone is ORDER-ONLY in Ninja, so a rebuilt crate
     # never invalidates this copy and the mirror goes stale the moment a core struct
     # grows. Depend on the staticlib file itself — a real Ninja output — so every cargo

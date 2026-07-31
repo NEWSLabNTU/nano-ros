@@ -123,7 +123,7 @@ path = \"src/lib.rs\"
 crate-type = [\"staticlib\"]
 
 [dependencies]
-nros-cpp = { path = \"${NANO_ROS_ROOT}/packages/core/nros-cpp\", default-features = false, features = [${_feat_toml}] }
+nros-cpp = { path = \"${NANO_ROS_ROOT}/packages/api/nros-cpp\", default-features = false, features = [${_feat_toml}] }
 ${_dep_lines}
 [workspace]
 

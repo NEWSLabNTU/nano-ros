@@ -53,8 +53,8 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
     if [ "$builder" = "cxx-syntax" ]; then
         sig_paths=(
             "packages/testing/nros-tests/fixtures/cpp_compat_snippets/$id.cpp"
-            "packages/core/nros-cpp/include"
-            "packages/core/nros-c/include"
+            "packages/api/nros-cpp/include"
+            "packages/api/nros-c/include"
         )
     else
         sig_paths=("$dir")

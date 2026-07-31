@@ -85,19 +85,19 @@ CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/target/nros-c-generated
 # CFLAGS — surface the nano-ros C headers to user code that
 # `#include <nros/...>`. Same symlink-resolution applies; route
 # through the repo-root realpath.
-CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/core/nros-c/include
+CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/api/nros-c/include
 
 # Phase 157.C.11 — C++ surface. Mirror the C-side header
 # precedence + add the cbindgen-emitted `nros_cpp_ffi.h` parent
-# (in `packages/core/nros-cpp/include/`). nros-cpp's per-build
+# (in `packages/api/nros-cpp/include/`). nros-cpp's per-build
 # `nros_cpp_config_generated.h` lands at
 # `$CARGO_TARGET_DIR/nros-cpp-generated/nros/` analogous to nros-c.
 ifneq ($(CONFIG_NROS_CPP_API),)
 CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/target/nros-cpp-generated
-CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/core/nros-cpp/include
+CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/api/nros-cpp/include
 # nros-cpp depends on nros-c headers — keep the C-side -I on the
 # C++ compile line too.
 CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/target/nros-c-generated
-CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/core/nros-c/include
+CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/api/nros-c/include
 endif
 endif

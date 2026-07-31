@@ -8,4 +8,4 @@ publish = false
 default = []
 
 [dependencies]
-nros = { path = "../../../../../core/nros", default-features = false }
+nros = { path = "../../../../../api/nros", default-features = false }

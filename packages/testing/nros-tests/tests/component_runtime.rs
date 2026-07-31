@@ -1,7 +1,7 @@
 //! Phase 212.M.5.a.2 — `ExecutorNodeRuntime` integration tests.
 //!
 //! Exercises the executor-backed component runtime added in
-//! `packages/core/nros/src/component_runtime.rs`. The runtime binds
+//! `packages/api/nros/src/component_runtime.rs`. The runtime binds
 //! the [`Node`] / [`ExecutableNode`] traits to a live
 //! [`nros::Executor`] — registering components materialises their
 //! nodes / pubs / subs / timers on the real executor, and fired

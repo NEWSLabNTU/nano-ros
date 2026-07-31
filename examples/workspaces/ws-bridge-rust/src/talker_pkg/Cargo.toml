@@ -28,7 +28,7 @@ topic = "/header"
 type = "std_msgs/msg/Header"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
 ] }

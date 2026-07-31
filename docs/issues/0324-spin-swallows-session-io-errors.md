@@ -27,7 +27,7 @@ session-health surface anywhere in the crate** — `git grep` for
 `spin()` indefinitely: the node looks alive, publishes go nowhere, and no
 callback ever fires.
 
-Same shape in the C blocking spins — `packages/core/nros-c/src/executor.rs:1911`
+Same shape in the C blocking spins — `packages/api/nros-c/src/executor.rs:1911`
 and `:1949` loop on `let _ = nros_executor_spin_some(...)`, so a persistent
 transport failure never reaches the C caller and the blocking spin eventually
 returns OK on shutdown.
