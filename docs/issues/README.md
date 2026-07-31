@@ -44,6 +44,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#367** — `CONFIG_NROS_CYCLONE_CONFIG_XML` is declared in `zephyr/Kconfig` but consumed NOWHERE:
+`session_create` picks env `CYCLONEDDS_URI` or the hard-coded `kEmbeddedCycloneConfig` only — and on
+native_sim picolibc `getenv` sees no host environment, so the baked profile (multicast off, index
+scan 0..20, no tracing) is effectively immutable on the platform that most needs tuning. Found
+restructuring the safety-island demo onto Autoware's domain (island must scan ~40+ participant
+indices; failure untraceable with the config sealed). Fix direction: wire env → non-empty Kconfig
+XML → baked profile in `session.cpp`; single-quoted XML attributes keep the blob Kconfig-safe.
+See `0367-*`. (2026-07-31)
+
 **#368** — `just setup all` simulated end-to-end on a clean Ubuntu 22.04 host: 7 of 18 modules fail,
 nearly all on prereqs the RFC-0014 index model was meant to absorb. Biggest: ONE sudo `apt-packages`
 step ordered first in the workspace module aborts its own sudo-less installers (ninja/make/targets/
