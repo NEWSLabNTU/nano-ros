@@ -35,6 +35,15 @@ use std::{
 };
 
 fn main() {
+    // issue 0288 — the FREERTOS_DIR guard below does NOT cover host tooling:
+    // an example's `.cargo/config.toml [env]` sets that var for a host probe
+    // just as for a firmware build, so the guard passes and the ARM flags reach
+    // the host compiler (`cc: error: unrecognized command-line option
+    // '-mthumb'`). Only the target says what we are building FOR.
+    if nros_board_common::host_probe::skip_cross_build("nros-board-freertos", &["thumb", "arm"]) {
+        return;
+    }
+
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
     // Skip the heavy lift unless the build is actually targeting a

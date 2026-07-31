@@ -20,6 +20,16 @@
 use std::path::Path;
 
 fn main() {
+    // issue 0288 — skip the NuttX cross-compile when host tooling builds this
+    // crate (the source-metadata probe). `arm-none-eabi-gcc` is invoked
+    // regardless of target and rejects the host's `-m64`.
+    if nros_board_common::host_probe::skip_cross_build(
+        "nros-board-nuttx-qemu-arm",
+        &["arm", "thumb"],
+    ) {
+        return;
+    }
+
     nros_board_common::nuttx_platform_build::run_platform();
     // phase-281 W3 (nuttx) — compile the C++ multi-tier entry seam
     // (`c/nuttx_run_tiers.c`, `nros_board_nuttx_run_tiers`) into a

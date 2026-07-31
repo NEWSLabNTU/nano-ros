@@ -57,3 +57,53 @@ pub mod policy;
 pub mod threadx_qemu_riscv64_build;
 #[cfg(feature = "build-helpers")]
 pub mod threadx_sources;
+
+/// issue 0288 — host-tooling detection for board build scripts.
+///
+/// Gated with the other `build.rs` helpers: this crate is `no_std` for its
+/// runtime surface (the `BoardInit` trait), and the guard needs `std::env` and
+/// `println!`.
+#[cfg(feature = "build-helpers")]
+pub mod host_probe {
+    /// issue 0288 — is this build HOST TOOLING rather than a firmware build?
+    ///
+    /// Board build scripts cross-compile C and assembly for their target. Run for a
+    /// host triple they hand target flags to the host compiler and die before rustc
+    /// starts:
+    ///
+    /// ```text
+    /// cc: error: unrecognized command-line option '-mthumb'
+    /// tx_trace_object_register.c:292: Error: no such instruction: `csrrci …'
+    /// ```
+    ///
+    /// which makes every package depping such a board un-host-buildable. That is
+    /// not academic: the source-metadata probe host-compiles a component to record
+    /// its callback slots, and a standalone example deps its board crate directly,
+    /// so those packages never got exact executor sizing.
+    ///
+    /// `needs` lists the `TARGET` prefixes this build is FOR (`["thumb", "arm"]`).
+    /// Returns `true` — after emitting a warning — when the target matches none of
+    /// them, and the caller should return early.
+    ///
+    /// Deliberately keyed on `TARGET` and not on the SDK env vars several of these
+    /// scripts already test. Those say where the sources ARE, which is equally true
+    /// during host tooling; only the target says what we are building for. The
+    /// `FREERTOS_DIR`-style guards missed exactly this case, because an example's
+    /// `[env]` block sets them for both kinds of build.
+    ///
+    /// Callers whose board legitimately targets a host triple (`threadx-linux`)
+    /// must NOT use this: discriminate on their port instead, or they will skip a
+    /// build that has to happen.
+    pub fn skip_cross_build(crate_name: &str, needs: &[&str]) -> bool {
+        let target = std::env::var("TARGET").unwrap_or_default();
+        if needs.iter().any(|p| target.starts_with(p)) {
+            return false;
+        }
+        println!(
+            "cargo:warning={crate_name}: TARGET={target} is not one of {needs:?}; skipping the \
+             cross-compile. The crate still compiles as a Rust shell so host tooling can build \
+             packages that dep it (issue 0288)."
+        );
+        true
+    }
+}

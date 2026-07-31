@@ -51,6 +51,8 @@ cortex-m-semihosting = "0.5"
 panic-semihosting = "0.6"
 
 [build-dependencies]
+# issue 0288 — `host_probe::skip_cross_build` (see build.rs).
+nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }
 cc = "1"
 # Phase 208.B Track A — repo-relative path resolver.
 nros-build-paths = { path = "../../tooling/nros-build-paths" }

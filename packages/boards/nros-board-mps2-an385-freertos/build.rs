@@ -17,6 +17,16 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 fn main() {
+    // issue 0288 — skip the ARM cross-compile when host tooling builds this
+    // crate (the source-metadata probe). Without it the host `cc` is handed
+    // `-mthumb -mcpu=cortex-m3` and dies before rustc runs.
+    if nros_board_common::host_probe::skip_cross_build(
+        "nros-board-mps2-an385-freertos",
+        &["thumb", "arm"],
+    ) {
+        return;
+    }
+
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let config_dir = manifest_dir.join("config");

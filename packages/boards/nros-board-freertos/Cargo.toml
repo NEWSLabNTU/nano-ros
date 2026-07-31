@@ -60,6 +60,9 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = f
 ], optional = true }
 
 [build-dependencies]
+# issue 0288 — `host_probe::skip_cross_build`, so a host-tooled build (the
+# source-metadata probe) does not hand ARM flags to the host compiler.
+nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }
 # 152.1.B.4 — generic build.rs compiles FreeRTOS kernel + lwIP +
 # nros-platform-freertos + the board-agnostic glue (freertos_hooks +
 # network_glue). Overlays' build.rs only need to handle their own
