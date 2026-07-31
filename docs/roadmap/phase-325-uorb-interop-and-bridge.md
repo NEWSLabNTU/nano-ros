@@ -5,7 +5,7 @@
 **Successor to:** [phase-316](phase-316-example-tree-axes.md) W4, which carried
 the decisions but not the work — scoping showed W4 is a phase, not a work item.
 **Informed by:** issues 0351 (proofs that observe the wrong thing), 0356
-(`px4_e2e` targets a retired tree), 0288.
+(`px4_e2e` targets a retired tree), 0288, 0159 (`.clang-format-ignore` precedent).
 
 ## Goal
 
@@ -43,6 +43,138 @@ type**.
 That is also the cleanest statement of why `examples/px4/cpp/uorb/` looked like an
 RMW path level and was not one (phase-316): uORB is not a transport choice, it is
 the absence of a transport.
+
+## PX4 convention is normative for everything inside a PX4 module
+
+**Maintainer instruction (2026-07-31): the example structure and content follow
+PX4 convention.** Not nano-ros's house style, and not a hybrid. A PX4 module is
+read, reviewed and maintained by PX4 people; it should look like the modules
+next to it in `src/examples/`.
+
+Verified against the vendored tree (`third-party/px4/PX4-Autopilot`) rather than
+recalled. The reference is `src/examples/work_item/` — the canonical C++ module.
+
+### Layout
+
+```
+<EXTERNAL_MODULES_LOCATION>/src/modules/<snake_name>/
+    CMakeLists.txt      BSD 3-clause header, then px4_add_module(...)
+    Kconfig             menuconfig <SECTION>_<NAME>, bool, default n, ---help---
+    <CamelCase>.hpp     class decl, matching the class name
+    <CamelCase>.cpp     impl + the extern "C" entry point
+```
+
+C++ modules name files after the CLASS (`WorkItemExample.cpp/.hpp`), not after
+the module (`work_item`). Plain-C modules use `snake_name.c`
+(`px4_simple_app.c`). Directory is snake_case; class is CamelCase; the
+`px4_add_module` `MODULE` argument is `<section>__<name>`
+(`examples__work_item`).
+
+**This does not conflict with RFC-0026.** The path rule phase-316 enforced is
+about the `<plat>/<lang>/<case>` LEVELS; what an example contains internally is
+its own business. So `examples/px4/cpp/firmware/` is the case dir, and inside it
+sits the PX4-required `src/modules/<name>/` tree — the example dir IS an
+`EXTERNAL_MODULES_LOCATION` root. Note this is the same collision that produced
+the hoist+shim phase-316 W3.1 deleted; it is fine here only because the example
+dir is the root, not a leaf inside one.
+
+### The module class
+
+```cpp
+class NrosUorbTalker : public ModuleBase<NrosUorbTalker>, public ModuleParams,
+                       public px4::ScheduledWorkItem
+```
+
+`ModuleBase<T>` is what gives a module `start` / `stop` / `status` from the pxh
+shell for free. Required members:
+
+| member | why |
+| --- | --- |
+| `static int task_spawn(int argc, char *argv[])` | ModuleBase contract |
+| `static int custom_command(int argc, char *argv[])` | ModuleBase contract |
+| `static int print_usage(const char *reason = nullptr)` | ModuleBase contract |
+| `int print_status() override` | what `<module> status` prints |
+| `void Run() override` | the work-queue tick |
+| `bool init()` | schedules the first run / registers callbacks |
+
+Entry point, at the bottom of the `.cpp`:
+
+```cpp
+extern "C" __EXPORT int nros_uorb_talker_main(int argc, char *argv[])
+{
+	return NrosUorbTalker::main(argc, argv);
+}
+```
+
+`MAIN` in `px4_add_module()` must match the `<name>_main` symbol.
+
+### Usage strings are not optional
+
+```cpp
+PRINT_MODULE_DESCRIPTION(R"DESCR_STR(
+### Description
+...
+)DESCR_STR");
+PRINT_MODULE_USAGE_NAME("nros_uorb_talker", "examples");
+PRINT_MODULE_USAGE_COMMAND("start");
+PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
+```
+
+This is what `<module> help` prints AND what PX4 scrapes for its module
+reference docs. A module without it is invisible in PX4's documentation.
+
+### Kconfig
+
+Every module dir carries one:
+
+```
+menuconfig EXAMPLES_NROS_UORB_TALKER
+	bool "nros_uorb_talker"
+	default n
+	---help---
+		Enable support for nros_uorb_talker
+```
+
+`integrations/px4/sitl-overlay/render-overlay.sh` already walks
+`<px4>/src/modules/nros_*/` and renders the defconfig fragment — reuse it, do not
+add a second mechanism.
+
+### Style: PX4's, and it conflicts with ours
+
+| | PX4 | nano-ros |
+| --- | --- | --- |
+| indent | **tab**, `tab_width = 8` | 4 spaces |
+| max line | 120 | 100 |
+| formatter | `Tools/astyle/fix_code_style.sh` | `.clang-format` (LLVM-based) |
+| file header | **BSD 3-clause block, every file** | none required |
+
+These are not reconcilable, and today nano-ros's side silently wins:
+`packages/testing/nros-px4-register-check/.../nros_register_check.cpp` is
+**4-space indented, carries no BSD header, and is a bare `extern "C"` main** with
+no `ModuleBase`, no `print_usage` and therefore no `status` / `stop` / `help`. It
+is a nano-ros file wearing a PX4 file's location.
+
+- [ ] **W0.1** Add the PX4 module trees to `.clang-format-ignore` so nano-ros's
+      `check-c-fmt` / `check-cpp-fmt` do not reformat them, and let PX4's astyle
+      own them. Precedent: `cmake/templates/*` is already ignored for an
+      analogous reason (issue 0159 — reflow broke `@VAR@` tokens).
+- [ ] **W0.2** Bring `nros-px4-register-check` into PX4 convention, or record why
+      not. It is the module a reader copies.
+
+**W0 lands before W2**, so the first real example is written in the right style
+rather than converted afterwards.
+
+### One thing that is NOT PX4 convention, deliberately
+
+A PX4 module normally reaches uORB through `uORB::Publication<T>` /
+`uORB::Subscription`. **The demo must not** — those bypass nano-ros entirely, so
+a module using them proves nothing about nano-ros and would pass identically if
+the backend were deleted. The demo publishes through the **nano-ros** publisher
+(`publish_raw` over the `<uORB/topics/*.h>` struct); everything AROUND that call
+— module class, Kconfig, usage strings, style, file naming — is PX4's.
+
+Same family of trap as the foreign-peer rule above: a proof that observes
+something common to the working and broken cases proves nothing.
 
 ## What is already true
 
@@ -96,6 +228,18 @@ is its own phase; nothing here should pretend to deliver it.
 
 ## Work items
 
+### W0 — PX4 convention, before anything is written in it
+
+Both items are stated in full under "Style: PX4's, and it conflicts with ours"
+above; listed here so the sequencing is unmissable.
+
+- [ ] **W0.1** `.clang-format-ignore` the PX4 module trees; PX4's astyle owns them.
+- [ ] **W0.2** Bring `nros-px4-register-check` into PX4 convention (BSD header,
+      tabs, `ModuleBase` + `print_usage`), or record why not.
+
+**Acceptance:** `just check-cpp-fmt` passes without reformatting a PX4 module, and
+`nros_register_check status` / `help` work from the pxh shell.
+
 ### W1 — a PX4 module can consume nano-ros
 
 - [ ] **W1.1** Prove `find_package(nano_ros REQUIRED)` configures inside a PX4
@@ -128,7 +272,14 @@ the module runs from the pxh shell without an unresolved-symbol abort.
 - [ ] **W2.2** The subscribe direction, reading a topic a stock PX4 module
       publishes.
 - [ ] **W2.3** Lands at `examples/px4/cpp/firmware/` — which this creates.
-      phase-316 W3.1 deliberately left the dir uncreated rather than empty.
+      phase-316 W3.1 deliberately left the dir uncreated rather than empty. That
+      dir is an `EXTERNAL_MODULES_LOCATION` root, so the module sits at
+      `firmware/src/modules/<snake_name>/` per PX4's requirement.
+- [ ] **W2.5** Written to PX4 convention throughout — `ModuleBase<T>`, `Kconfig`,
+      `PRINT_MODULE_*` usage strings, CamelCase files matching the class, tabs,
+      BSD header. See the normative section above. The only deliberate departure
+      is that publishing goes through the **nano-ros** publisher rather than
+      `uORB::Publication<T>`.
 - [ ] **W2.4** A test that observes the exchange **from the PX4 side**: `listener
       <topic>` in the SITL shell, or an upstream module that already subscribes
       it. Assert on that output.
@@ -203,6 +354,7 @@ it happens to open first.
 
 | Step | Receipt |
 | --- | --- |
+| W0 | `just check-cpp-fmt` green without touching a PX4 module; `nros_register_check help` prints a `PRINT_MODULE_DESCRIPTION` |
 | W1 | PX4 SITL module links `libnros_cpp.a`; `nm` shows resolved nano-ros symbols; module starts from pxh |
 | W2 | a stock PX4 consumer (`listener <topic>`) prints a message published by the nano-ros node, asserted by a test |
 | W3 | a real ROS 2 subscriber receives a stock PX4 module's uORB topic through the bridge; same source builds against a second backend |
