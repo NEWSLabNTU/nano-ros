@@ -4,7 +4,7 @@ title: "`just setup all` on a clean Ubuntu 22.04 host: 7 of 18 modules fail, alm
 status: open
 type: tech-debt
 area: build
-related: [rfc-0014, issue-0336, issue-0196]
+related: [rfc-0014, rfc-0062, issue-0336, issue-0196]
 ---
 
 # `just setup all` on a clean host: 7 of 18 modules fail on undeclared prereqs
@@ -103,6 +103,16 @@ sudo apt install qemu-system-arm qemu-system-misc socat gcc-riscv64-unknown-elf 
 
 Everything else provisioned sudo-less once F1's ordering was worked around by
 hand.
+
+## Design direction
+
+**RFC-0062 (unified dependency SSoT)** is the structural answer: every class
+of dependency — pinned dists, source/submodules, OS packages (abstract keys
+mapped per package manager), the Rust layer, the Python layer — declared in
+`nros-sdk-index.toml`, with setup and doctor both DERIVED from it and the
+sudo-requiring closure composed into one printed native command. The
+findings below map onto it; the per-finding patches remain worthwhile
+stopgaps if the RFC lands later.
 
 ## Suggested work order
 
