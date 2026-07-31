@@ -146,3 +146,45 @@ nros codegen entry --lang c --workspace examples/workspaces/c \
   --model examples/workspaces/c/src/demo_bringup/config/system_model.yaml \
   --board mps2-an385-freertos --out /tmp/e.cpp --typed
 ```
+
+## Progress (2026-07-31) — resolver fix DONE (fork-local), rest is follow-up
+
+**Two red herrings cleared first:** (1) `nros ws sync` shells out to the STANDALONE
+`nros-launch-resolve` binary (RFC-0060), rebuilt by `just setup-launch-resolve`,
+NOT by `just setup-cli` — every earlier "still fails" was a stale resolver binary.
+(2) The embedded-exclusion fix (`984fc15`, "embedded blocks do not partition") was
+already present; with a freshly built resolver, `nros ws sync` on a
+native+embedded workspace RESOLVES.
+
+**Remaining real bug + fix (resolver):** `984fc15` stops embedded blocks from
+partitioning, but a placed node was then pinned to its self-block's concrete
+target (`linux`). The model deploy is single-target per node, so `codegen entry
+--board <embedded>` (whose `keep()` only admits a `linux` node for `native`/`posix`)
+found nothing on the embedded board. Fix: when ANY `kind="embedded"` block is
+present the placement is board-AGNOSTIC (`target = None`); `keep()` admits a `None`
+node on every board, and each entry's `--board` supplies the concrete target.
+Single-board workspaces are unchanged.
+
+- Committed in the vendored fork `ros-launch-manifest` as `b3d82d3` (on top of
+  `origin/main`/`984fc15`), with regression test
+  `embedded_blocks_make_placement_board_agnostic` (both directions). 37 manifest
+  tests green. **Not pushed** — vendored-fork exfiltration rule; the maintainer
+  pushes the fork chain, then bumps the superproject pointers
+  (`ros-launch-manifest` → `ros-launch-resolve` → nano-ros).
+- **Verified locally** (fork built into the resolver): `examples/workspaces/c` with
+  `[deploy.{freertos,nuttx,threadx-linux}]` added → `nros ws sync` succeeds, the
+  regenerated model places `/talker`+`/listener` board-agnostic, and `codegen
+  entry --board {native,mps2-an385-freertos,nuttx-qemu-arm,threadx-linux}` all pass
+  the placement check (the "no nodes on board" error is gone).
+
+**Follow-up (Part 2, separate) — still open:**
+1. Push the fork chain + bump the superproject pointers (maintainer).
+2. Add `[deploy.{freertos,nuttx,threadx-linux}]` to the c / cpp / mixed workspace
+   bringups (`system.toml`) for their declared embedded fixtures
+   (`workspace-{c,cpp,mixed}-{freertos,nuttx,threadx-linux}`), then re-`nros ws
+   sync` to regenerate the portable committed models.
+3. Regenerate EVERY embedded workspace's committed model against the fixed
+   resolver (they are grandfathered) + re-commit; the `resolve-fingerprint` gate
+   will flag them stale.
+4. Verify `just {freertos,nuttx,threadx} build-fixtures` builds green (needs the
+   embedded toolchains).
