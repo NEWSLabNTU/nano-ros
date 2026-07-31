@@ -8,6 +8,38 @@ use std::{
 };
 
 pub fn run(linker_script: &[u8]) {
+    // issue 0288 — do nothing unless we are building FOR riscv64.
+    //
+    // Everything below cross-compiles ThreadX / NetX / virtio sources with
+    // `riscv64-unknown-elf-gcc`. Run on a host build it fails at the first
+    // `.S` file:
+    //
+    //     error occurred in cc-rs: command did not execute successfully:
+    //     "riscv64-unknown-elf-gcc" … tx_thread_interrupt_control.S
+    //
+    // which makes every package that deps this board un-host-buildable. That
+    // matters because the source-metadata probe host-compiles a component to
+    // record its callback slots, and a standalone example deps its board crate
+    // directly — so those packages never got exact executor sizing and fell
+    // back to the SystemModel's timer-blind bound.
+    //
+    // `nros-board-threadx`'s own build.rs already guards this way, for the same
+    // stated reason ("so a host-tooled `cargo check` doesn't accidentally pick
+    // up the cross compiler"). This helper simply never got the same treatment.
+    //
+    // Detected by TARGET rather than by a THREADX_* env var: the env vars say
+    // where the sources ARE, not what we are building for, and the two differ
+    // exactly in the host-tooling case this guards.
+    let target = env::var("TARGET").unwrap_or_default();
+    if !target.starts_with("riscv64") {
+        println!(
+            "cargo:warning=nros-board-threadx-qemu-riscv64: TARGET={target} is not riscv64; \
+             skipping the ThreadX/NetX cross-compile. The crate still compiles as a Rust \
+             shell so host tooling can build packages that dep it (issue 0288)."
+        );
+        return;
+    }
+
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let config_dir = manifest_dir.join("config");
 

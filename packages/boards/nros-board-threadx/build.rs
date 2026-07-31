@@ -47,6 +47,47 @@ fn main() {
     };
 
     let port_subpath = env::var("THREADX_PORT").unwrap_or_else(|_| "linux/gnu".to_string());
+
+    // issue 0288 — skip the C build when the selected PORT does not match the
+    // target we are building for.
+    //
+    // The gate below already picks the cross COMPILER by triple, but the
+    // sources are compiled either way, and the RISC-V port's C carries RISC-V
+    // inline asm. Host-building it hands `csrrci`/`csrrs` to the host
+    // assembler:
+    //
+    //     tx_trace_object_register.c:292: Error: no such instruction:
+    //     `csrrci %rax,mstatus,0x08'
+    //
+    // which makes every package depping this board un-host-buildable — and the
+    // source-metadata probe host-compiles exactly such packages to record their
+    // callback slots (issue 0288).
+    //
+    // The triple ALONE cannot decide this: `threadx-linux` is a real ThreadX
+    // board whose target IS `x86_64-unknown-linux-gnu`, so "skip on x86_64"
+    // would break it. The honest discriminator is the PORT: a cross port
+    // selected while building for a host triple means we are host-tooling, not
+    // building firmware.
+    {
+        let target = env::var("TARGET").unwrap_or_default();
+        let cross_port_arch = if port_subpath.starts_with("risc-v64") {
+            Some("riscv64")
+        } else {
+            // `linux/gnu` is host-native by definition; any future cross port
+            // adds an arm here rather than inheriting a wrong default.
+            None
+        };
+        if let Some(arch) = cross_port_arch
+            && !target.starts_with(arch)
+        {
+            println!(
+                "cargo:warning=nros-board-threadx: THREADX_PORT={port_subpath} targets {arch} \
+                 but TARGET={target}; skipping the ThreadX C build. The crate still compiles \
+                 as a Rust shell so host tooling can build packages that dep it (issue 0288)."
+            );
+            return;
+        }
+    }
     let config_dir = env::var_os("THREADX_CONFIG_DIR")
         .map(PathBuf::from)
         .expect("nros-board-threadx: THREADX_CONFIG_DIR must be set when THREADX_DIR is");
