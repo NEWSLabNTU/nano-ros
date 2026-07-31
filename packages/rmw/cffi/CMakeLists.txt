@@ -7,6 +7,6 @@ project(nros_rmw_cffi VERSION 0.1.0 LANGUAGES C)
 # (incl. the back-compat `nros_rmw_cffi_headers` alias) when this
 # directory is added standalone.
 if(NOT TARGET nros_rmw_abi_headers)
-    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../nros-rmw-abi"
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-rmw-abi"
                      "${CMAKE_CURRENT_BINARY_DIR}/nros-rmw-abi")
 endif()
