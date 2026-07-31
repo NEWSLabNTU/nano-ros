@@ -71,7 +71,7 @@ The partition moves from bake time to resolve time, so `Plan::for_host` and
    dissolves. Rewrite it to assert that resolving with `host:=robot1`
    produces a model containing only robot1's nodes.
    `multihost_e2e.rs` and the `Workload::Multihost` matrix entry
-   (`packages/testing/nros-tests/src/matrix.rs:264`) need the new invocation
+   (`packages/testing/nros-tests/src/matrix.rs:265`) need the new invocation
    form.
 
 6. **Vendored crates.** Bump `packages/cli/third-party/ros-launch-manifest`
