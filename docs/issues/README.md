@@ -71,14 +71,14 @@ stopped at model metadata) — `<arg>` overrides were inert through it. See `arc
 Fix is a sweep + a `check-fast` grep gate (`\bws sync\b`, issue-0336 precedent) so the spelling
 cannot creep back. See `0367-*`. (2026-07-31)
 
-**#368** — Mixed C+C++ workspace fixture link-fails: `libstd_msgs__nano_ros_c.a` references
+**#369** (filed as #368; renumbered — fourth id collision between parallel sessions) — Mixed C+C++ workspace fixture link-fails: `libstd_msgs__nano_ros_c.a` references
 `nros_config_variant_alloc_..._rmw_cffi_rmw_zenoh_ros_humble_std`, but `nros-c` (built for that workspace
 with `cffi-zenoh-cffi` → `rmw-zenoh`, NOT `rmw-cffi`) never emits it. The C-side msg codegen stamps its
 variant from the WORKSPACE feature union (which carries `rmw-cffi` via the C++ half's `rmw-zenoh-cffi`),
 while the linked `nros-c` staticlib carries only its own features → undefined reference. Same variant-
 consistency class as #360, unreconciled for the mixed workspace where C/C++ halves pick different rmw
 spellings. Fix: compute the C-side variant reference from nros-c's OWN features, not the union. Blocks
-`native,mixed,*` fixtures. See `0368-*`. (2026-08-01)
+`native,mixed,*` fixtures. See `0369-*`. (2026-08-01)
 
 Recently resolved: **#349** — the issue-0332 vtable completeness gate required three OPTIONAL capability
 slots, so the xrce backend could not register at all. Split required (core transport, `.expect()`ed on

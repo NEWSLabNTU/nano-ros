@@ -1,5 +1,5 @@
 ---
-id: 368
+id: 369
 title: "Mixed C+C++ workspace fixture link-fails: the C msg archive references a `rmw_cffi_rmw_zenoh` config-variant symbol that nros-c (built with `cffi-zenoh-cffi`) never emits"
 status: open
 type: bug
