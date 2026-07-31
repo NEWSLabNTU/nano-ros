@@ -102,3 +102,43 @@ than silently passing them — a gate narrower than its rule is issue 0196's cla
 Whether these leaves should have individual lockfiles at all. Several are
 `nros sync`-managed (RFC-0048 W9) and the consolidation question belongs with
 phase-321/322's package reorganisation, not here.
+
+## Gate landed (2026-07-31)
+
+`scripts/check-leaf-lockfiles.sh` (`just check-leaf-lockfiles`, wired into
+`check-fast`) runs `cargo metadata --locked --offline` over every tracked leaf
+lock and fails on CHANGE against
+`scripts/leaf-lockfile-drift-baseline.txt` — in both directions:
+
+- a leaf drifts that is not baselined → new drift, which is what this stops;
+- a baselined leaf stops drifting → the line must be deleted, so the backlog can
+  only shrink and cannot become a permanent exemption list.
+
+Mutation-tested both ways. Network-free and ~4s, so it sits in `check-fast`.
+
+**Deliberately does NOT fix the 26 drifted leaves.** That is the pinning
+decision this issue is about, and it is untouched.
+
+Three findings while building it:
+
+1. **The count is 24 drifted, not 27.** An earlier sweep that treated any
+   non-zero exit as drift over-counted. The gate matches cargo's specific
+   "cannot update the lock file … because --locked was passed" message, so a
+   broken manifest or a missing vendored dep is reported as its own class rather
+   than mis-taught as lock drift.
+2. **Two pre-existing workspace holes**, same class as phase-320 W1.b:
+   `packages/reference/stm32f4-porting/{polling,rtic}` were in neither `members`
+   nor `exclude`, so cargo answers any command inside them with "current package
+   believes it's in a workspace when it's not". Now excluded.
+3. **A pre-existing broken path dep in both templates**:
+   `nros-smoltcp = { path = "../../../../drivers/nros-smoltcp" }` — four `../`
+   where three are needed, so it pointed at `<repo>/drivers/`. Every other dep in
+   those files uses three. Nothing ever built these templates
+   (`packages/reference/README.md` says so), which is exactly why it survived.
+   Fixed; they are now ordinary backlog entries.
+
+`tests/simple-workspace` is skipped with a reason rather than baselined: it
+ships no `.cargo/config.toml`, so its registry-style `nros-core` dep only
+resolves after `nros sync` writes the patch table. It fails identically online
+and offline, so `--locked` says nothing about its lock.
+

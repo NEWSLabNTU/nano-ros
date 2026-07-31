@@ -354,6 +354,7 @@ check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
+    check-leaf-lockfiles \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -662,6 +663,17 @@ check-rmw-required-slots:
 check-board-tiers:
     @python3 scripts/check-board-tiers.py
     @python3 scripts/gen-board-support-table.py --check
+
+# Issue 0359 — leaf `Cargo.lock` files outside the root workspace must keep
+# satisfying their own manifests. Nothing ran `--locked` over them, so drift
+# grew silently with every manifest edit and a drifted lock pins NOTHING (the
+# leaf resolves fresh on every build). Baselined, because 26 are drifted today
+# and regenerating them is a supply-chain decision, not a cleanup — the gate
+# fails on NEW drift and on a baselined leaf that stops drifting, so the
+# backlog can only shrink. Network-free (`--offline`), ~4s.
+[private]
+check-leaf-lockfiles:
+    @bash scripts/check-leaf-lockfiles.sh
 
 # Issue 0320 — committed SystemModels must be portable: no absolute host paths in
 # `meta.inputs[].path`. Buildless; regenerate with `nros ws sync`.

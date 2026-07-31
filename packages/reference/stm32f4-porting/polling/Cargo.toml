@@ -38,7 +38,7 @@ nros = { path = "../../../api/nros", default-features = false }
 nros-rmw-zenoh = { path = "../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"] }
 
 # smoltcp TCP bridge for zenoh-pico
-nros-smoltcp = { path = "../../../../drivers/net/nros-smoltcp" }
+nros-smoltcp = { path = "../../../drivers/net/nros-smoltcp" }
 
 # Logging
 defmt = "0.3"
