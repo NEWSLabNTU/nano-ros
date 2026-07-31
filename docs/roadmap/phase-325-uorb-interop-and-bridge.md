@@ -6,6 +6,7 @@
 the decisions but not the work — scoping showed W4 is a phase, not a work item.
 **Informed by:** issues 0351 (proofs that observe the wrong thing), 0356
 (`px4_e2e` targets a retired tree), 0288, 0159 (`.clang-format-ignore` precedent).
+**Blocked on:** issue 0362 (no C++ `px4_msgs` codegen) for W3 only; W0–W2 are done.
 
 ## Goal
 

@@ -67,6 +67,19 @@ reference to nros_cpp_get_param_integer`, which is what exposed the disjoint pat
 unaffected. Same shape as #0311: one axis, two sources that cannot disagree because only one is
 read. See `0353-*`. (2026-07-31)
 
+**#362** — phase-325 W3's uORB→RMW bridge is blocked on TYPES, not plumbing. The plumbing is proven
+(one PX4 module links uORB + zenoh, `NodeBuilder().rmw()` gives two sessions, backend selection is
+the cargo-feature knob one layer down). But the bridge must TRANSLATE: inward a payload is the PX4
+struct keyed by `ORB_ID`, outward a real ROS 2 subscriber needs CDR with a type name AND type hash.
+`nros generate-px4-msgs` already emits exactly the right message set — CDR `px4_msgs::msg::*` from
+the PX4 `.msg` tree — but as a **Rust crate**, for the XRCE companion path; an in-firmware module is
+C++. Hand-rolling the CDR is not the shortcut it looks like: `rmw_zenoh` keys discovery on the type
+hash, so a guessed one is either invisible to ROS 2 or, worse, decoded as a different type. Worth
+doing beyond the bridge: using `px4_msgs` makes the bridge's ROS-2-facing contract identical to what
+`uxrce_dds_client` already publishes, so a subscriber cannot tell which produced a sample — that
+indistinguishability is the interop claim. Blocks W3 only; the W2 direct demo needs no CDR at all,
+which is the point of it. See `0362-*`. (2026-07-31)
+
 **#360** [severity raised to **high**, 2026-07-31] — DEMONSTRATED, not hypothetical: building
 `libnros_cpp.a` with `rmw-zenoh-cffi` for phase-325 W3 overwrote the `rmw-cffi` archive W2's uORB
 example links, and that example's SITL build failed with **74 undefined references** to zenoh-pico
