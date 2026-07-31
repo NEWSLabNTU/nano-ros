@@ -14,7 +14,7 @@ optionally networking. Each platform crate
 [`nros-platform-zephyr`](../nros-platform-zephyr),
 [`nros-platform-nuttx`](../nros-platform-nuttx),
 [`nros-platform-threadx`](../nros-platform-threadx),
-the bare-metal crates under [`packages/platforms/`](../../platforms))
+the bare-metal crates under [`config/`](../../platforms))
 implements the subset its target supports.
 
 ## Source layout

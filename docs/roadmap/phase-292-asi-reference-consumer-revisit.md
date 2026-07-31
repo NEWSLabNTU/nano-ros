@@ -251,7 +251,7 @@ named reference consumer), 287 (ament verbs on zephyr).
   Cyclone self-provisioned `WITH_FREERTOS=ON WITH_LWIP=ON` (ddsrt
   freertos+lwip port), zenoh-pico `system/freertos/lwip/network.c`,
   `thumbv7m-none-eabi`. (`cmake/platform/nano-ros-freertos.cmake`,
-  `packages/platforms/freertos-lwip/nros-platform.toml`,
+  `config/freertos-lwip/nros-platform.toml`,
   `packages/boards/nros-board-mps2-an385-freertos/`.)
 - ASI `freertos-posix` = the FreeRTOS kernel's
   `portable/ThirdParty/GCC/Posix` port running as host pthreads inside a

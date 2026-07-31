@@ -45,7 +45,7 @@ defaults at the hardware layers.
 ```
 nros-platform (core crate)                 — declares the SCHEMA + built-in
                                              defaults (code, versioned)
-packages/platforms/<p>/nros-platform.toml  — platform pkg: capabilities +
+config/<p>/nros-platform.toml  — platform pkg: capabilities +
                                              knob defaults + [build.zenoh]
 packages/boards/<b>/nros-board.toml        — board pkg (EXISTING descriptor,
                                              extended): hw facts + deltas

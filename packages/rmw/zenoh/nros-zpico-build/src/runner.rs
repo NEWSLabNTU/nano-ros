@@ -126,14 +126,21 @@ pub fn run() {
     // `[build.zenoh]` block (keys verbatim) + `[capabilities]` + `[knobs]`.
     // Precedence: `ZPICO_PLATFORMS_TOML` (legacy single-file override — the
     // drift-gate test + out-of-tree hook) > `NROS_PLATFORMS_DIR` (tree
-    // override) > the in-tree `packages/platforms/` default.
+    // override) > the in-tree `config/` default.
     let legacy_file = env::var_os("ZPICO_PLATFORMS_TOML")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from);
     let platforms_root = env::var_os("NROS_PLATFORMS_DIR")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| manifest_dir.join("../../../platforms"));
+        .unwrap_or_else(|| {
+            // phase-321 W2.e — the platform manifests moved from
+            // `packages/platforms/` to the repo-root `config/`, so this walks
+            // FOUR levels (crate -> zenoh -> rmw -> packages -> repo root).
+            // A relative path built in Rust: no grep for `packages/platforms`
+            // finds it, and only a build catches it being wrong.
+            manifest_dir.join("../../../../config")
+        });
     let (platform_manifest, platforms_tree) = match legacy_file {
         Some(path) => {
             println!("cargo:rerun-if-changed={}", path.display());

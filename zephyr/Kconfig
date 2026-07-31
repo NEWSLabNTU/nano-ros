@@ -194,7 +194,7 @@ config NROS_ZENOH_TX_BATCH
       bypass the batch — otherwise a server's readiness banner outruns its
       still-batched queryable declares and immediately-fired queries miss).
       This default MUST mirror
-      packages/platforms/zephyr/nros-platform.toml [knobs.zenoh.tx] — the
+      config/zephyr/nros-platform.toml [knobs.zenoh.tx] — the
       kconfig_platform_default_drift test asserts the mirror.
 
 config NROS_ZENOH_TX_SPLIT_LOCK
@@ -208,7 +208,7 @@ config NROS_ZENOH_TX_SPLIT_LOCK
       one recv-window) send is in flight. Wire order still equals SN order.
       Requires TX_BATCH. Costs a second wbuf (Z_BATCH_UNICAST_SIZE) of RAM
       per session. phase-290 — DEFAULT ON for Zephyr (promotion option C);
-      mirrors packages/platforms/zephyr/nros-platform.toml (drift-tested).
+      mirrors config/zephyr/nros-platform.toml (drift-tested).
 
 config NROS_ZENOH_TX_BATCH_FLUSH_MS
     int "zenoh-pico tx batch flush cadence (ms)"

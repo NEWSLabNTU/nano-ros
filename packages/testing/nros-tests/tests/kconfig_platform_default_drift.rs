@@ -36,9 +36,8 @@ fn kconfig_default(kconfig: &str, name: &str) -> String {
 fn zephyr_kconfig_mirrors_platform_toml_tx_defaults() {
     let root = workspace_root();
     let kconfig = std::fs::read_to_string(root.join("zephyr/Kconfig")).expect("read Kconfig");
-    let toml_text =
-        std::fs::read_to_string(root.join("packages/platforms/zephyr/nros-platform.toml"))
-            .expect("read zephyr nros-platform.toml");
+    let toml_text = std::fs::read_to_string(root.join("config/zephyr/nros-platform.toml"))
+        .expect("read zephyr nros-platform.toml");
     let parsed: toml::Value = toml::from_str(&toml_text).expect("parse platform toml");
     // Absent [knobs.zenoh.tx] = builtin defaults (off/off/50). The zephyr
     // flip is currently ABSENT pending issue 0203; the mirror contract

@@ -137,7 +137,7 @@ pub mod sleep {{
 # zenoh-pico system-layer build block (keys documented in
 # nros-board-common/src/manifest.rs — defines, defines_kv, include,
 # extra_sources, arch, compile, ...). Start from the closest in-tree
-# platform's file under packages/platforms/.
+# platform's file under config/.
 # defines = ["ZENOH_GENERIC"]
 # include = ["system/common"]
 "#

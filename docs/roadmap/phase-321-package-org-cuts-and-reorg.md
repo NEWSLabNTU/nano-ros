@@ -17,7 +17,7 @@ principles — `zpico/` (a vendor library), `xrce/` (a protocol), `dds/` (a
 protocol family), `px4/` (a consumer product) — plus `bridge/`, one crate with
 its own top-level group. `core/` is 23 packages and 143k LoC spanning six roles
 and four artifact kinds, so the path does not even tell you whether something is
-a crate. And `packages/platforms/` holds 12 entries of which 8 are single-file
+a crate. And `config/` holds 12 entries of which 8 are single-file
 TOML manifests.
 
 Meanwhile `nros-orchestration` has zero callers, `packages/cli/docs/` is the
@@ -133,16 +133,16 @@ Rationale, with the evidence for each:
   Note the `core → backend` edges are **not** a layering violation — every one is
   an optional-feature or dev dep — but `nros-c` / `nros-cpp` do name all
   backends, which makes them aggregating *bindings*, not core.
-- **Config dirs look like code dirs**: `packages/platforms/` holds 12 entries, 8
+- **Config dirs look like code dirs**: `config/` holds 12 entries, 8
   of which are single-file `nros-platform.toml` manifests and 4 real crates; same
-  in `packages/boards/{posix,zephyr}`. And `packages/platforms/zephyr/` (config)
+  in `packages/boards/{posix,zephyr}`. And `config/zephyr/` (config)
   versus `packages/core/nros-platform-zephyr/` (C code) are different things with
   near-identical names. Phase-84 intended the OS-level crates to move here and
   only half landed; phase-290 then added a third, unrelated artifact class.
 
 - [x] **W2.a** **Not a blocker — the claim was imprecise.** The repo-root
       sentinel is `nros-sdk-index.toml` (`find_platforms_root`), which is stable;
-      `packages/platforms` is only the *returned* path, so it moves with the
+      `config` is only the *returned* path, so it moves with the
       directory like any other constant. Nothing to do ahead of time; noted here
       so the next reader does not re-derive the same false alarm.
 - [x] **W2.b** **Moved by ROLE, not to `examples/` — the draft misread two
@@ -274,7 +274,7 @@ outright.
 - `rg "nros_orchestration::"`, `rg -- "-p nros-px4"`, `rg "xrce-sys"` return only
   the intended residue.
 - No in-source `build/` directory or stray `.o` remains under `packages/`.
-- `nros config` still finds the repo root after the `packages/platforms` rename
+- `nros config` still finds the repo root after the `config` rename
   (W2.a) — verified by running it from a subdirectory.
 - Every group in `packages/` holds exactly one role, and the RMW backends all
   live under one.

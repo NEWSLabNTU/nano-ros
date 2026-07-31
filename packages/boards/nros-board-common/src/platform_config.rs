@@ -2,7 +2,7 @@
 //! configuration.
 //!
 //! One `nros-platform.toml` per platform package directory
-//! (`packages/platforms/<name>/`, or an out-of-tree dir named via
+//! (`config/<name>/`, or an out-of-tree dir named via
 //! `NROS_PLATFORMS_DIR` + the platform name), carrying:
 //!
 //! ```toml

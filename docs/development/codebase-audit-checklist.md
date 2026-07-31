@@ -96,7 +96,7 @@ verdict).**
   living at the wrong layer (board data hardcoded in platform code, app knobs
   baked into board files), no bypass of the resolution order, no new ad-hoc
   config channel beside it. Check `cmake/board/`, `packages/boards/*/config/`,
-  `packages/platforms/`, per-example `config.toml` handling.
+  `config/`, per-example `config.toml` handling.
 - **C5 Axis-agnostic core + C-ABI bridges (cargo-feature discipline).** The
   RMW and platform axes are selected via env → cargo-feature / `-D` lowering
   (one consistent mechanism across Rust/C/C++ — RFC-0031/ARCHITECTURE §2),

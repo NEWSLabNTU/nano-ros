@@ -8,7 +8,7 @@
 //! `system/<plat>/` dirs.
 //!
 //! This test guards the gate itself: it copies the per-platform config
-//! tree (`packages/platforms/*/nros-platform.toml`, RFC-0049) to a
+//! tree (`config/*/nros-platform.toml`, RFC-0049) to a
 //! sandbox, corrupts the posix file's `include` entry, drives
 //! `cargo build -p zpico-sys` against the sandboxed tree via
 //! `NROS_PLATFORMS_DIR`, and asserts the build-script panic surfaces
@@ -45,7 +45,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn canonical_platforms_root() -> PathBuf {
-    workspace_root().join("packages/platforms")
+    workspace_root().join("config")
 }
 
 /// Copy every `<root>/*/nros-platform.toml` into `dst` preserving the

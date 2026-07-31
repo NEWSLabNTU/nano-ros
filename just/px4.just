@@ -198,8 +198,11 @@ clean:
     set -e
     PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
     # (phase-321 W1.c — the old `rm -rf packages/rmw/nros-rmw-uorb/target
-    # packages/platforms/nros-px4/target` line is gone: BOTH crates were deleted
-    # in phase-115.K.4 and `packages/rmw/` has never existed in this tree.)
+    # packages/platforms/nros-px4/target` line is gone: BOTH cargo crates were
+    # deleted in phase-115.K.4, and neither path existed when the line was
+    # written. Quoted verbatim on purpose — it is a record of a dead line, so it
+    # must NOT be rewritten by path sweeps. `packages/rmw/` does exist now, but
+    # only since phase-321 W2.d, and it never held `nros-rmw-uorb` as a crate.)
     if [ -d examples/px4 ]; then
         find examples/px4 -type d -name target -exec rm -rf {} + 2>/dev/null || true
     fi

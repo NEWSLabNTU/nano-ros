@@ -67,7 +67,7 @@ pub struct ExplainArgs {
     pub board_toml: Option<PathBuf>,
 
     /// Platforms root (default: `$NROS_PLATFORMS_DIR`, else
-    /// `<repo>/packages/platforms` located by walking up from cwd).
+    /// `<repo>/config` located by walking up from cwd).
     #[arg(long)]
     pub platforms_dir: Option<PathBuf>,
 }
@@ -150,17 +150,17 @@ fn explain(args: ExplainArgs) -> Result<()> {
 }
 
 /// Walk up from cwd to the repo root (marked by `nros-sdk-index.toml`, the
-/// same sentinel the cmake glue uses) and return `packages/platforms`.
+/// same sentinel the cmake glue uses) and return `config`.
 fn find_platforms_root() -> Result<PathBuf> {
     let mut dir = std::env::current_dir().wrap_err("resolve cwd")?;
     loop {
         if dir.join("nros-sdk-index.toml").exists() {
-            let root = dir.join("packages/platforms");
+            let root = dir.join("config");
             if root.is_dir() {
                 return Ok(root);
             }
             return Err(eyre!(
-                "found repo root at {} but packages/platforms is missing",
+                "found repo root at {} but config is missing",
                 dir.display()
             ));
         }
