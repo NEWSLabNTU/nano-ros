@@ -1,38 +1,7 @@
-# Leaf crates whose Cargo.lock cannot satisfy its own manifest today.
+# Leaf crates whose Cargo.lock cannot satisfy its own manifest.
 #
-# This is issue 0359 BACKLOG, not an exemption list. Each line means "known
-# drifted, not yet decided how to pin". Regenerating is not a refresh: several
-# of these come back with dozens of registry packages ADDED, which is a
-# supply-chain decision (0359 lists the options).
+# EMPTY as of 2026-07-31 — all 26 were pinned. Issue 0359 is closed.
 #
-# scripts/check-leaf-lockfiles.sh fails if a line here stops drifting — so the
-# list can only shrink. Delete lines as they are fixed; never add one to
-# silence a NEW drift.
-#
-# Generated 2026-07-31.
-packages/boards/mps2-an385-pac
-packages/boards/nros-board-fvp-aemv8r-smp
-packages/boards/nros-board-mps2-an385
-packages/boards/nros-board-mps2-an385-freertos
-packages/boards/nros-board-nuttx-qemu-arm
-packages/boards/nros-board-nuttx-qemu-riscv/nros-nuttx-ffi
-packages/boards/nros-board-s32z270dc2-r52
-packages/boards/nros-board-stm32f4
-packages/boards/nros-board-threadx-linux
-packages/boards/nros-board-threadx-qemu-riscv64
-packages/drivers/net/nros-smoltcp
-packages/drivers/net/openeth-smoltcp
-packages/drivers/serial/cmsdk-uart
-packages/drivers/serial/stm32f4-usart
-packages/drivers/sys/freertos-lwip-sys
-packages/drivers/sys/nuttx-sys
-packages/drivers/sys/threadx-netx-sys
-packages/drivers/sys/zephyr-posix-sys
-packages/reference/stm32f4-porting/polling
-packages/reference/stm32f4-porting/rtic
-packages/rmw/zenoh/zpico-serial
-packages/testing/nros-smoke/esp32-hello-world
-packages/testing/nros-smoke/stm32f4-smoltcp-echo
-packages/testing/nros-tests/bins/int32-observer
-packages/testing/nros-tests/bins/logging-smoke-threadx-linux
-packages/verification/nros-verification
+# scripts/check-leaf-lockfiles.sh fails if a line here stops drifting, so this
+# list can only shrink. Never add a line to silence NEW drift: regenerate the
+# lock and review the diff instead.

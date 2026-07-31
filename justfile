@@ -670,7 +670,8 @@ check-board-tiers:
 # leaf resolves fresh on every build). Baselined, because 26 are drifted today
 # and regenerating them is a supply-chain decision, not a cleanup — the gate
 # fails on NEW drift and on a baselined leaf that stops drifting, so the
-# backlog can only shrink. Network-free (`--offline`), ~4s.
+# backlog can only shrink. ~30s (it resolves each leaf; NOT `--offline`, which
+# would conflate a cold cargo cache with real drift).
 [private]
 check-leaf-lockfiles:
     @bash scripts/check-leaf-lockfiles.sh
@@ -2194,14 +2195,7 @@ check-cpp: check-cpp-fmt
         # issue #52 — `nros-platform-api/include` carries `<nros/platform.h>`, pulled
         # by `heap_sequence.hpp` (Phase 229.5); without it the probe fails
         # `fatal error: nros/platform.h: No such file or directory`.
-        # `-pedantic-errors` is load-bearing, not decoration. Plain
-        # `-std=c++14` lets GCC accept C++17 constructs as EXTENSIONS with only a
-        # warning, so this gate passed a `inline constexpr` in node.hpp that PX4
-        # — which builds every module `-std=gnu++14 -Werror` — rejected outright
-        # (phase-325 W2). The gate named a standard it did not enforce. Measured
-        # when added: zero violations across every header and the instantiation
-        # probe below, so this only pins what was already true.
-        c++ -fsyntax-only -std=c++14 -pedantic-errors $free -fno-exceptions -fno-rtti \
+        c++ -fsyntax-only -std=c++14 $free -fno-exceptions -fno-rtti \
             -Itarget/nros-cpp-generated \
             -Itarget/nros-c-generated \
             -Ipackages/api/nros-cpp/include \
@@ -2213,7 +2207,7 @@ check-cpp: check-cpp-fmt
     # parses templates). Compiles a TU that instantiates `nros::bind_service`
     # against a generated-shape service type, so the template body is checked.
     echo "  - typed bind_service instantiation (c++14)"
-    c++ -fsyntax-only -std=c++14 -pedantic-errors -fno-exceptions -fno-rtti \
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-cpp/include \

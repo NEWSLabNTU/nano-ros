@@ -1,7 +1,7 @@
 ---
 id: 0359
 title: "24 leaf Cargo.locks were never regenerated after their manifests grew; 18 would pull in new registry crates at today's resolution"
-status: open
+status: resolved
 severity: P2
 area: build
 created: 2026-07-31
@@ -141,4 +141,42 @@ Three findings while building it:
 ships no `.cargo/config.toml`, so its registry-style `nros-core` dep only
 resolves after `nros sync` writes the patch table. It fails identically online
 and offline, so `--locked` says nothing about its lock.
+
+## Resolved (2026-07-31) — all 26 pinned
+
+Every baselined leaf was regenerated with `cargo generate-lockfile` and now
+satisfies `cargo metadata --locked`. The baseline file is empty; the gate
+reports "every tracked leaf lock satisfies its manifest".
+
+The graph really did grow, as predicted — and in both directions:
+
+| leaf | packages before -> after |
+| --- | --- |
+| `nros-board-nuttx-qemu-arm` | 23 -> 109 (+86) |
+| `nros-board-threadx-qemu-riscv64` | 62 -> 111 |
+| `nros-board-threadx-linux` | 62 -> 109 |
+| `nros-board-fvp-aemv8r-smp`, `nros-board-s32z270dc2-r52` | 24 -> 72 each |
+| `nros-board-stm32f4` | 175 -> **159** |
+| `nros-board-mps2-an385` | 145 -> **133** |
+
+Three leaves SHRANK: their locks carried packages the manifest no longer pulls.
+Eight changed no registry lines at all (pure path/metadata catch-up).
+
+Verification beyond the gate: `just rust-rtos-link-check` passes, and
+`nros-board-threadx-linux` and `nros-board-mps2-an385` — two of the largest
+graph changes, on different targets — both `cargo build --locked` clean. So the
+newly pinned versions compile, not merely resolve.
+
+### The gate stopped using `--offline`, and pinning is what proved it wrong
+
+The first version ran `cargo metadata --locked --offline` to stay network-free.
+Pinning exposed the flaw immediately: eleven leaves reported
+`failed to download cortex-m-rt v0.7.6` purely because the newly pinned version
+had never been fetched on this machine. Offline conflates "the lock cannot
+satisfy its manifest" with "this crate is not in the local cache" — and on a
+cold CI cache that is EVERY leaf, so the gate would have been red for a reason
+unrelated to lockfiles.
+
+It now resolves normally (~30s). CI downloads crates for every build anyway, so
+allowing the fetch costs nothing real, and the check means what it says.
 

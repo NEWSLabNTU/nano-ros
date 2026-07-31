@@ -47,7 +47,7 @@ checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
 name = "openeth-smoltcp"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "smoltcp",
 ]
