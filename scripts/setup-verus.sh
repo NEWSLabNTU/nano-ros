@@ -4,6 +4,29 @@ echo "=== Verus Setup ==="
 VERUS_DIR="tools"
 VERUS_BIN="$VERUS_DIR/verus"
 
+# Issue 0368 F6 / phase-327 W6 — PIN the release. `releases/latest` moved to a
+# runner whose binary needs `GLIBC_2.39` (Ubuntu 24.04+); on the oldest supported
+# LTS (Ubuntu 22.04, glibc 2.35) it dies with a raw loader error. A pin makes the
+# download reproducible; the glibc guard below degrades to an informative message
+# instead of a hard failure (verification is in no CI tier gate, so a host that
+# cannot run this tool must not have its `just verification setup` fail).
+# Override with VERUS_VERSION=<tag> or VERUS_VERSION=latest.
+VERUS_VERSION="${VERUS_VERSION:-release/0.2026.07.27.31579f0}"
+
+# Print the glibc-degrade note and exit 0 (informative, not fatal).
+verus_glibc_degrade() {
+    cat <<EOF
+[verus] The downloaded Verus binary could not run on this host — almost always a
+        glibc mismatch: recent Verus releases are built against a newer glibc than
+        this LTS provides (issue 0368 F6). Verification is not gated in any CI tier,
+        so this is informative, not fatal.
+        Options: run on a newer host, build Verus from source, or pin an older
+        release: VERUS_VERSION=<tag> just verification verus
+        (tags: https://github.com/verus-lang/verus/releases)
+EOF
+    exit 0
+}
+
 install_toolchain() {
     local required_tc
     required_tc=$("$VERUS_BIN" --version 2>&1 | grep 'Toolchain:' | sed 's/.*Toolchain: //' || true)
@@ -19,7 +42,7 @@ install_toolchain() {
 
 if [ -x "$VERUS_BIN" ]; then
     echo "Verus already installed at $VERUS_BIN"
-    "$VERUS_BIN" --version
+    "$VERUS_BIN" --version 2>/dev/null || verus_glibc_degrade
     install_toolchain
     exit 0
 fi
@@ -33,9 +56,14 @@ case "$OS-$ARCH" in
     Darwin-aarch64) PLATFORM="arm64-macos" ;;
     *)              echo "Unsupported platform: $OS-$ARCH"; exit 1 ;;
 esac
-# Query GitHub API for latest release download URL
-API_URL="https://api.github.com/repos/verus-lang/verus/releases/latest"
-echo "Querying latest Verus release..."
+# Query GitHub API for the pinned (or `latest`) release download URL.
+if [ "$VERUS_VERSION" = "latest" ]; then
+    API_URL="https://api.github.com/repos/verus-lang/verus/releases/latest"
+    echo "Querying latest Verus release..."
+else
+    API_URL="https://api.github.com/repos/verus-lang/verus/releases/tags/${VERUS_VERSION}"
+    echo "Querying pinned Verus release ${VERUS_VERSION}..."
+fi
 DOWNLOAD_URL=$(curl -fsSL "$API_URL" | python3 -c "import sys,json;[print(a['browser_download_url']) for a in json.load(sys.stdin)['assets'] if a['name'].endswith('-${PLATFORM}.zip')]" | head -1)
 if [ -z "$DOWNLOAD_URL" ]; then
     echo "ERROR: No release asset found for platform $PLATFORM"
@@ -52,6 +80,9 @@ mkdir -p "$VERUS_DIR"
 cp -r "$TMPDIR"/verus-${PLATFORM}/* "$VERUS_DIR/"
 rm -rf "$TMPDIR" "$ZIPFILE"
 chmod +x "$VERUS_BIN" "$VERUS_DIR/cargo-verus" "$VERUS_DIR/z3" "$VERUS_DIR/rust_verify"
+# Issue 0368 F6 — the binary is installed but may not RUN on this host's glibc.
+# Probe before using it; degrade informatively instead of a raw loader crash.
+"$VERUS_BIN" --version >/dev/null 2>&1 || verus_glibc_degrade
 install_toolchain
 "$VERUS_BIN" --version
 echo "Verus setup complete."

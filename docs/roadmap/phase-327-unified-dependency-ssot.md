@@ -105,7 +105,13 @@ never allowed to abort the sudo-less remainder.
    `AMENT_PREFIX_PATH` and no ROS install; a forced generation failure
    leaves the tracked patch table byte-identical and the sync red.
 
-6. **W6 — verus pin + optional rosdep backend.** Pin the verus release to
+6. **W6 — verus pin + optional rosdep backend.** — **verus pin PARTIAL** (2026-08-01:
+   `scripts/setup-verus.sh` now pins the release (`VERUS_VERSION`, default
+   `release/0.2026.07.27.31579f0`, `=latest` to opt out) instead of fetching
+   `releases/latest`, and probes `verus --version` before use — on a host whose
+   glibc cannot run the binary it prints an informative `[verus] …` note and
+   exits 0 (verification is in no CI gate) instead of a raw loader crash. REMAINING:
+   the optional rosdep backend.) Pin the verus release to
    one that runs on the oldest supported LTS glibc (or degrade with a
    message — verification is in no CI tier gate). Then the rosdep backend:
    for a detected manager with no index mapping, consult rosdep (public db +
