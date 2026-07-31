@@ -67,6 +67,15 @@ reference to nros_cpp_get_param_integer`, which is what exposed the disjoint pat
 unaffected. Same shape as #0311: one axis, two sources that cannot disagree because only one is
 read. See `0353-*`. (2026-07-31)
 
+**#360** — `nros_config_generated.h` is written to a FLAT path while its own checked-in stub
+documents `<variant_slug>/nros/…` ("sorted underscore-joined cargo feature list"). One file per
+project, not per feature set — so a second `cargo build` with different features OVERWRITES the
+header a first archive's consumer compiles against. That header carries STORAGE SIZES, so the
+disagreement is a silent runtime overflow, the issue-0268 family. `check-sizes-header-mirrors.sh`
+does not cover it: it verifies each build tree's mirror matches its source, not that the source
+matches the archive being linked. Found wiring phase-325 W1.4, where the stub's documented
+`-I…/<slug>` cannot be followed because no slug dir exists. See `0360-*`. (2026-07-31)
+
 **#356** — RESOLVED: removed. Reading the body before deleting it found a second, worse defect than
 the one filed — both its endpoints were NANO-ROS modules (`nros_listener` + `nros_talker`, asserting
 `recv: ts=`), so even with the retired examples restored it asserted nano-ros can read its own

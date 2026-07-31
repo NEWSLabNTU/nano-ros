@@ -15,17 +15,7 @@
 // Development Team, not a style rule — reproducing it here would misattribute
 // copyright. nano-ros is MIT OR Apache-2.0.
 
-// NOT YET <nros/init.h> — see phase-325 W1.4. That header pulls
-// <nros/nros_config_generated.h>, which nano-ros's own cmake emits per build into
-// ${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/. In the prebuilt-archive model
-// this file uses, nothing exports it, so including it fails with:
-//
-//     error: "nros_config_generated.h must be supplied per-build by the build
-//             system; see this stub for guidance."
-//
-// It must come from the SAME build as libnros_cpp.a — it carries storage sizes,
-// and a mismatched copy is the issue-0268 silent-overflow class. Until W1.4
-// exports the pair together, declare the entry points used here.
+#include <nros/init.h>
 
 #include <px4_platform_common/log.h>
 #include <px4_platform_common/module.h>

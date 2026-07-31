@@ -285,8 +285,12 @@ worse than offering nothing. The old header even documented
       the helper, so the template compiles what it documents. A template whose
       body is `// Replace this comment block` is how the gap stayed invisible.
       **DONE** — it now builds and runs.
-- [ ] **W1.4** Export the generated headers alongside the archive (found by W1.3;
-      see below). Needed before any module can `#include <nros/init.h>`.
+- [x] **W1.4** Export the generated headers alongside the archive (found by W1.3).
+      **DONE** — the helper prepends `target/nros-{c,cpp}-generated`, and the
+      template now `#include <nros/init.h>` and builds. Filed **issue 0360** on the
+      way: those headers are written to a FLAT path, not the `<variant_slug>/` the
+      stub documents, so two feature sets overwrite one header carrying storage
+      sizes.
 
 #### W1.2 / W1.3 RESULT (2026-07-31)
 
@@ -336,7 +340,7 @@ The helper now validates every include dir with `IS_DIRECTORY` at configure time
 and fails naming the missing path. A path list nothing reads is a path list
 nothing keeps correct.
 
-##### W1.4 — the generated-config gap
+##### W1.4 — the generated-config gap (CLOSED)
 
 Making the template `#include <nros/init.h>` fails:
 
@@ -349,9 +353,26 @@ and the prebuilt-archive model exports nothing. It cannot simply be copied from
 anywhere: it carries **storage sizes**, so it must come from the same build as
 `libnros_cpp.a` — a mismatched copy is the issue-0268 silent-overflow class.
 
-So W1.4 is: ship the archive and its generated headers as one unit. Until then
-the template declares the entry points it uses, and says why in a comment rather
-than looking like a style choice.
+**Resolved.** `build.rs` already emits them to
+`$CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/`; nothing pointed at them. The
+helper now adds both, and the template includes `<nros/init.h>` and builds.
+
+Two things make it work, both easy to get wrong:
+
+- **PREPEND, not append.** `packages/api/nros-c/include/nros/` ships a
+  same-named STUB whose entire body is the `#error`. Search that directory first
+  and the stub wins. Include ORDER is the mechanism.
+- **Same cargo invocation.** The headers carry storage sizes; pairing them with a
+  differently-featured archive is the issue-0268 silent-overflow class.
+
+Which is where **issue 0360** came from: the stub documents
+`nros-c-generated/<variant_slug>/nros/…` ("sorted underscore-joined cargo feature
+list") and the code writes a FLAT path — one file per project, not per variant.
+So the second point above is currently an unenforced convention, and a second
+`cargo build` with different features silently overwrites the header a first
+archive's consumer compiles against. Documentation describing a safety mechanism
+the code does not implement is worse than none: it tells the next person the
+hazard is handled.
 
 ##### `nros-px4-register-check` deliberately NOT migrated
 

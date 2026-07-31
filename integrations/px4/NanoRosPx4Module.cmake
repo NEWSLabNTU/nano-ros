@@ -102,6 +102,25 @@ set(_NROS_PX4_INCLUDES
     "${NANO_ROS_ROOT}/packages/core/nros-rmw-abi/include"
     "${NANO_ROS_ROOT}/packages/core/nros-platform-api/include")
 
+# The PER-BUILD generated headers (storage sizes, feature constants), emitted by
+# nros-c/nros-cpp build.rs into $CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/.
+# Without these, `#include <nros/init.h>` hits the checked-in STUB, whose whole
+# body is:
+#
+#     #error "nros_config_generated.h must be supplied per-build by the build system"
+#
+# These MUST come from the same cargo invocation that produced libnros_cpp.a —
+# they carry storage sizes, and a header describing different sizes than the
+# archive was compiled with is the issue-0268 silent-overflow class, which fails
+# at runtime rather than at build.
+# PREPENDED, not appended. `packages/api/nros-c/include/nros/` ships a checked-in
+# STUB of the same name whose body is the #error above; if that directory is
+# searched first, the stub wins and the real header is never seen. Include order
+# is the whole mechanism here.
+list(PREPEND _NROS_PX4_INCLUDES
+    "${NANO_ROS_ROOT}/target/nros-c-generated"
+    "${NANO_ROS_ROOT}/target/nros-cpp-generated")
+
 foreach(_inc IN LISTS _NROS_PX4_INCLUDES)
     if(NOT IS_DIRECTORY "${_inc}")
         message(FATAL_ERROR
