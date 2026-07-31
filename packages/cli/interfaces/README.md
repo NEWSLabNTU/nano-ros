@@ -14,6 +14,9 @@ crates.io, which only carries a yanked, unrelated `std_msgs` crate.
   the tracked patch table). Added from the ros2 GitHub `humble` branches:
   `example_interfaces` 0.9.3 (`f8deb566`), `action_msgs` 1.2.3
   (rcl_interfaces `82776fc9`), `unique_identifier_msgs` 2.2.1 (`27767cef`).
+  Completed same day when the W5 narrowing guard fired on the remaining two
+  during the first full fixture build: `lifecycle_msgs` 1.2.3 (rcl_interfaces
+  `82776fc9`), `geometry_msgs` 4.9.2 (common_interfaces `0843449`).
   All Apache-2.0. If an example grows a NEW interface dep, vendor it here in
   the same change — the acceptance is `nros sync examples/workspaces/<ws>`
   green with no `AMENT_PREFIX_PATH`.
