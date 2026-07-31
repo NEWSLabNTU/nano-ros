@@ -81,7 +81,7 @@ never allowed to abort the sudo-less remainder.
    Acceptance: on a host without libslirp, `nros setup --tool qemu` says so
    before the smoke check fails, naming the package.
 
-5. **W5 — complete the bundled interface set + the sync narrowing guard**
+5. **W5 — complete the bundled interface set + the sync narrowing guard** — **DONE** (2026-08-01): both acceptance checks verified live (ROS-less sync green across the rust workspace; a forced generation gap turns sync red with the tracked table byte-identical, `narrowed_generated_entries` unit-tested both directions).
    (0368-F4). Add `example_interfaces`, `action_msgs`,
    `unique_identifier_msgs` share trees to `packages/cli/interfaces/`
    (licenses are Apache-2.0; record upstream refs in the README), so every

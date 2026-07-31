@@ -1109,8 +1109,16 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         v
     };
     let mut authority_to_pkgs: HashMap<PathBuf, Vec<String>> = HashMap::new();
+    // phase-327 W5 — the deps each authority's consumers still DECLARE, so
+    // the writer can tell a legitimately-removed dep from one this run
+    // failed to generate (the narrowing guard in `write_patch_block`).
+    let mut authority_to_requested: HashMap<PathBuf, HashSet<String>> = HashMap::new();
     for c in &rust_consumers {
         let authority = find_patch_authority(&c.dir, &ws_root)?;
+        authority_to_requested
+            .entry(authority.clone())
+            .or_default()
+            .extend(c.deps.iter().cloned());
         // Workspace mode keeps the locked shared-root topology (`3f07dd9f7`):
         // every consumer's authority carries the full emitted set. Single-pkg
         // mode is dependency-aware — only the msg crates this consumer
@@ -1175,6 +1183,9 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         let mut extras = authority_to_extra.remove(&authority).unwrap_or_default();
         extras.sort();
         extras.dedup();
+        let requested = authority_to_requested
+            .remove(&authority)
+            .unwrap_or_default();
         write_patch_block(
             &authority,
             &build_root,
@@ -1182,6 +1193,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             nano_ros_path.as_deref(),
             &extras,
             central_patch.as_deref(),
+            &requested,
         )?;
     }
 
@@ -1845,6 +1857,49 @@ fn write_central_patch_file(nano_ros_path: &Path) -> Result<PathBuf> {
     Ok(dst)
 }
 
+/// phase-327 W5 (issue 0368 F4 / the issue-0363 shape, leaf-local) — the
+/// generated-crate entries a rewrite would DROP even though some consumer
+/// still declares the dependency.
+///
+/// A crate got into the managed block because a previous sync generated it;
+/// for it to leave, either the workspace genuinely dropped the dep (fine —
+/// `requested` no longer names it) or THIS run failed to resolve it (no ROS
+/// env and not in the bundled interfaces). The second case used to write a
+/// narrower table that fails NOWHERE at sync time: the dropped entry
+/// resolves from crates.io (yanked, unrelated crates) at the next build.
+/// Observed live in issue 0368: a ROS-less host's sync silently removed
+/// `example_interfaces`/`action_msgs`/`unique_identifier_msgs` from a
+/// TRACKED `.cargo/config.toml`.
+///
+/// Line-based on the writer's own `# nros-managed` decor, scoped to entries
+/// whose path points into the generated tree — runtime crates have their own
+/// dead-path guard in [`render_managed_entries`].
+fn narrowed_generated_entries(
+    existing_body: &str,
+    new_names: &HashSet<&str>,
+    requested: &HashSet<String>,
+) -> Vec<String> {
+    let mut narrowed = Vec::new();
+    for line in existing_body.lines() {
+        let Some(rest) = line.trim_end().strip_suffix("# nros-managed") else {
+            continue;
+        };
+        let Some((name, spec)) = rest.split_once('=') else {
+            continue;
+        };
+        let name = name.trim();
+        if !spec.contains("generated/") {
+            continue;
+        }
+        if requested.contains(name) && !new_names.contains(name) {
+            narrowed.push(name.to_string());
+        }
+    }
+    narrowed.sort();
+    narrowed.dedup();
+    narrowed
+}
+
 fn write_patch_block(
     authority: &Path,
     build_root: &Path,
@@ -1852,6 +1907,7 @@ fn write_patch_block(
     nano_ros_path: Option<&Path>,
     extra_runtime_crates: &[String],
     central_patch: Option<&Path>,
+    requested: &HashSet<String>,
 ) -> Result<()> {
     let authority_dir = authority.parent().unwrap();
     let mut entries = render_managed_entries(
@@ -1945,6 +2001,31 @@ fn write_patch_block(
                  from the nano-ros checkout (the file is gitignored + regenerated).",
                 resolved.display(),
                 authority_dir.display(),
+            );
+        }
+    }
+    // phase-327 W5 — refuse to NARROW an existing managed block: a
+    // still-requested generated crate missing from the new entry set means
+    // THIS run failed to resolve it (no ROS env, not in the bundled
+    // interfaces), not that the workspace dropped the dep.
+    let cfg_path = authority_dir.join(".cargo/config.toml");
+    if let Ok(existing) = std::fs::read_to_string(&cfg_path) {
+        let new_names: HashSet<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+        let narrowed = narrowed_generated_entries(&existing, &new_names, requested);
+        if !narrowed.is_empty() {
+            bail!(
+                "ws sync: refusing to write {} — it would DROP {} still-declared \
+                 generated interface crate(s): {}.\n\
+                 \x20 The interface index could not resolve them this run (no ROS 2 \
+                 environment and not in the bundled set at packages/cli/interfaces/). \
+                 A narrower [patch.crates-io] fails nowhere at sync time and resolves \
+                 those deps from crates.io at the next build (issue 0368 F4 / the \
+                 issue-0363 shape). Fix: source a ROS 2 env, vendor the package into \
+                 packages/cli/interfaces/, or remove the dependency — then re-run \
+                 `nros sync`.",
+                cfg_path.display(),
+                narrowed.len(),
+                narrowed.join(", "),
             );
         }
     }
@@ -3432,6 +3513,7 @@ version = "*"
             Some(nrp.path()),
             &[],
             Some(&central),
+            &HashSet::new(),
         )
         .unwrap();
 
@@ -3475,6 +3557,7 @@ version = "*"
             Some(nrp.path()),
             &[],
             Some(&central),
+            &HashSet::new(),
         )
         .unwrap();
 
@@ -3771,5 +3854,43 @@ mod provenance_tests {
                 .unwrap()
                 .contains("missing")
         );
+    }
+
+    /// phase-327 W5 (issue 0368 F4) — the narrowing guard's decision table.
+    /// A still-requested generated crate missing from the new entry set is a
+    /// failed generation (refuse); a no-longer-requested one is a removed
+    /// dependency (allow); runtime crates and user rows are out of scope.
+    #[test]
+    fn narrowing_guard_distinguishes_failed_generation_from_removed_dep() {
+        let existing = r#"
+[patch.crates-io]
+libc = { path = "../../../third-party/nuttx/libc" }
+example_interfaces = { path = "generated/example_interfaces" }  # nros-managed
+action_msgs = { path = "generated/action_msgs" }  # nros-managed
+std_msgs = { path = "generated/std_msgs" }  # nros-managed
+nros-zephyr-build = { path = "../../packages/tooling/nros-zephyr-build" }  # nros-managed
+"#;
+        let requested: HashSet<String> = ["example_interfaces", "std_msgs", "rclcpp"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        // This run only produced std_msgs: example_interfaces (requested!)
+        // would be dropped -> narrowing. action_msgs is absent from
+        // `requested` -> legitimately removed, not flagged. The runtime
+        // crate row (non-generated path) is never in scope, and the user's
+        // own libc row (no decor) is invisible to the guard.
+        let new_names: HashSet<&str> = ["std_msgs"].into_iter().collect();
+        assert_eq!(
+            narrowed_generated_entries(existing, &new_names, &requested),
+            vec!["example_interfaces".to_string()]
+        );
+
+        // Full regeneration -> nothing narrowed.
+        let full: HashSet<&str> = ["std_msgs", "example_interfaces"].into_iter().collect();
+        assert!(narrowed_generated_entries(existing, &full, &requested).is_empty());
+
+        // No existing managed block (fresh leaf) -> nothing to narrow.
+        assert!(narrowed_generated_entries("", &new_names, &requested).is_empty());
     }
 }
