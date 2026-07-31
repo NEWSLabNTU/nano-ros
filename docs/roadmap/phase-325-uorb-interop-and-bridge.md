@@ -623,6 +623,65 @@ a runtime symptom.
 **Acceptance:** a stock PX4 module's uORB topic reaches a real ROS 2 subscriber
 through the bridge, and the same source builds against a second backend.
 
+#### W3 GATE PASSED (2026-07-31): two backends in one PX4 module
+
+The W1-equivalent question for W3 — *can a single PX4 module hold uORB and a
+networked backend at once?* — is answered yes, `rc=0`, zero undefined:
+
+```
+INFO  [nros_bridge_probe] two backends linked: uorb=0x5c09d8d53150 zenoh=0x5c09d8f4cd42
+```
+
+**Build-time RMW selection turns out to happen when the ARCHIVE is built, not in
+cmake.** `nros-cpp` has `rmw-{zenoh,xrce,cyclonedds}-cffi` features, each pulling
+in `rmw-cffi` — the same seam uORB registers through — so:
+
+```sh
+cargo build -p nros-cpp --no-default-features --features std,rmw-zenoh-cffi --release
+```
+
+produces one archive carrying both. The cmake layer only needs the register call,
+which `BACKENDS uorb zenoh` already generates. That is a cleaner story than the
+plan assumed: the outward backend is the same cargo-feature knob every other
+example uses, one layer down, and `nros_px4_add_module` needs no per-backend
+source lists for networked backends.
+
+Three prerequisites, all now checked at configure time with the fixing command:
+
+1. `zenoh-pico` must be provisioned — `nros setup --source zenoh-pico`. It is not
+   part of a default checkout, and its absence surfaces as a cargo build failure
+   rather than anything about PX4.
+2. The archive must carry the backend, verified with the rust toolchain's
+   `llvm-nm` (see below).
+3. **zenoh needs a THIRD archive.** `libnros_cpp.a` has the nano-ros zenoh
+   backend, but zenoh-pico's own platform layer — `z_clock_*`, `_z_condvar_*`,
+   `_z_task_*`, the socket shims, **74 symbols** — lives in
+   `nros-rmw-zenoh-staticlib`, built with `--features platform-posix,std`. Its
+   DEFAULT feature set is bare `no_std` and fails with ``#[panic_handler]`
+   function required`` before producing anything.
+
+##### The symbol precheck had to use the right `nm`, and briefly did not
+
+The guard that verifies (2) first used whatever `nm` was on PATH. The system nm
+(binutils + LLVM 14 gold plugin) cannot parse rust-1.96/LLVM 22 bitcode members
+— and does not fail cleanly. It reads the FEW non-bitcode members and reports
+their symbols: it saw **18** `nros_` symbols while missing
+`nros_rmw_zenoh_register` entirely, so it rejected a perfectly good archive.
+
+A first attempt to fail-open on "nm saw nothing" does not survive a PARTIAL read.
+The guard now locates `llvm-nm` through `rustc --print sysroot` and SKIPS the
+check when it is absent, rather than guessing. **A guard using the wrong tool is
+worse than no guard: it is wrong with authority.**
+
+##### Remaining for W3
+
+The gate is passed and the helper is wired; what is left is the bridge itself:
+the module holding a uORB session and an outward session, `Executor::open_with_rmw`
+on the selected backend, plus the acceptance — a **real ROS 2 node** subscribing
+the bridged topic (reuse `nros_tests::ros2` / `ros_env`, do not invent a second
+harness), and a second backend built from the same source to demonstrate that the
+selection is real rather than a hardcoded bridge with extra ceremony.
+
 **Not claimed:** zero-copy. The serialization uORB avoids returns at the RMW
 boundary, necessarily. W2 demonstrates the zero-copy property; W3 demonstrates
 reach. Conflating them would overclaim.

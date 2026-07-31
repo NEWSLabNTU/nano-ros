@@ -200,11 +200,27 @@ function(nros_px4_add_module)
                     ${_uorb}/src/callback_default.cpp
                     ${_uorb}/src/px4_callback_glue.cpp)
             set(_needs_work_queue TRUE)
+        elseif(_b MATCHES "^(zenoh|xrce|cyclonedds)$")
+            # A NETWORKED backend contributes nothing at the cmake layer: it is
+            # compiled INTO libnros_cpp.a by the cargo feature
+            # `rmw-<name>-cffi`, which also pulls in `rmw-cffi` (the seam uORB
+            # registers through). All that is needed here is the register call,
+            # which the stub below emits from this same list.
+            #
+            # So "select the outward RMW at build time" (phase-325 W3) is chosen
+            # when the ARCHIVE is built, not in cmake:
+            #
+            #   cargo build -p nros-cpp --no-default-features \
+            #       --features std,rmw-zenoh-cffi --release
+            #
+            # which is the same knob every other example uses, one layer down.
+            set(_needs_networked_archive TRUE)
+            list(APPEND _networked_backends "${_b}")
         else()
             message(FATAL_ERROR
-                "nros_px4_add_module: BACKENDS '${_b}' is not wired for PX4 yet. "
-                "Only 'uorb' is in-firmware today; a networked backend needs its "
-                "own sources and link inputs added here (phase-325 W3).")
+                "nros_px4_add_module: BACKENDS '${_b}' is not a backend this "
+                "helper knows. In-firmware: uorb. Networked: zenoh, xrce, "
+                "cyclonedds.")
         endif()
     endforeach()
 
@@ -276,12 +292,91 @@ function(nros_px4_add_module)
     target_sources(${NPX_MODULE} PRIVATE "${_stub}")
     target_link_options(${NPX_MODULE} PUBLIC "-Wl,--undefined=nros_app_register_backends")
 
+    # A networked backend lives inside libnros_cpp.a, so the archive must have
+    # been built with the matching feature. Nothing else checks this: a mismatched
+    # archive links every OTHER symbol fine and dies only on
+    # nros_rmw_<name>_register, at the very end of a ~10-minute PX4 build.
+    #
+    # The check MUST use the rust toolchain's llvm-nm. The system nm (binutils +
+    # LLVM 14 gold plugin) cannot parse rust-1.96/LLVM 22 bitcode members, and it
+    # does not fail cleanly — it reads the FEW non-bitcode members and reports
+    # their symbols, so it saw 18 `nros_` symbols while missing
+    # nros_rmw_zenoh_register entirely. A first draft tried to fail-open on "nm
+    # saw nothing"; a partial read defeats that, and the guard confidently
+    # rejected a perfectly good archive. A guard using the wrong tool is worse
+    # than no guard: it is wrong with authority.
+    #
+    # So: locate llvm-nm through rustc's own sysroot, and if it is not there,
+    # SKIP the check rather than guess. The link error remains the backstop.
+    if(_networked_backends)
+        execute_process(COMMAND rustc --print sysroot
+            OUTPUT_VARIABLE _rustc_sysroot OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET RESULT_VARIABLE _sysroot_rc)
+        set(_llvm_nm "")
+        if(_sysroot_rc EQUAL 0)
+            file(GLOB _llvm_nm_candidates
+                "${_rustc_sysroot}/lib/rustlib/*/bin/llvm-nm")
+            if(_llvm_nm_candidates)
+                list(GET _llvm_nm_candidates 0 _llvm_nm)
+            endif()
+        endif()
+
+        if(_llvm_nm)
+            execute_process(COMMAND "${_llvm_nm}" --defined-only "${_NROS_PX4_CPP_A}"
+                OUTPUT_VARIABLE _nm_out ERROR_QUIET)
+            foreach(_nb IN LISTS _networked_backends)
+                if(NOT _nm_out MATCHES "nros_rmw_${_nb}_register")
+                    message(FATAL_ERROR
+                        "nros_px4_add_module: BACKENDS lists '${_nb}', but\n"
+                        "    ${_NROS_PX4_CPP_A}\n"
+                        "does not define nros_rmw_${_nb}_register. Rebuild it "
+                        "with that backend:\n"
+                        "    cargo build -p nros-cpp --no-default-features "
+                        "--features std,rmw-${_nb}-cffi --release")
+                endif()
+            endforeach()
+        else()
+            message(STATUS
+                "nros_px4_add_module: llvm-nm not found via rustc sysroot; "
+                "skipping the backend-symbol precheck (the link will still catch "
+                "a mismatched archive, ~10 min later).")
+        endif()
+    endif()
+
     # PUBLIC so the archives propagate to the final px4 link. px4_add_module
     # produces a STATIC library that the px4 executable links; a PRIVATE link here
     # would satisfy nothing at that final line.
-    target_link_libraries(${NPX_MODULE} PUBLIC
-        "${_NROS_PX4_CPP_A}"
-        "${_NROS_PX4_PLATFORM_A}")
+    set(_nros_px4_link_archives "${_NROS_PX4_CPP_A}" "${_NROS_PX4_PLATFORM_A}")
+
+    # zenoh needs a THIRD archive. libnros_cpp.a carries the nano-ros zenoh
+    # backend, but zenoh-pico's own platform layer (z_clock_*, _z_condvar_*,
+    # _z_task_*, the socket shims — 74 symbols) lives in the zpico-sys staticlib
+    # wrapper, which is a separate crate:
+    #
+    #   cargo build -p nros-rmw-zenoh-staticlib --release --features platform-posix,std
+    #
+    # `platform-posix` is required: the crate's default feature set is bare
+    # no_std and fails with "`#[panic_handler]` function required, but not found"
+    # before it produces anything.
+    if("zenoh" IN_LIST _networked_backends)
+        if(DEFINED NROS_ZENOH_ARCHIVE AND NOT "${NROS_ZENOH_ARCHIVE}" STREQUAL "")
+            set(_zenoh_a "${NROS_ZENOH_ARCHIVE}")
+        elseif(NOT "$ENV{NROS_ZENOH_ARCHIVE}" STREQUAL "")
+            set(_zenoh_a "$ENV{NROS_ZENOH_ARCHIVE}")
+        else()
+            set(_zenoh_a "${NANO_ROS_ROOT}/target/release/libnros_rmw_zenoh_staticlib.a")
+        endif()
+        if(NOT EXISTS "${_zenoh_a}")
+            message(FATAL_ERROR
+                "nros_px4_add_module: BACKENDS lists 'zenoh' but the zenoh-pico "
+                "platform archive is missing:\n    ${_zenoh_a}\n"
+                "Build it:\n    cargo build -p nros-rmw-zenoh-staticlib --release "
+                "--features platform-posix,std")
+        endif()
+        list(APPEND _nros_px4_link_archives "${_zenoh_a}")
+    endif()
+
+    target_link_libraries(${NPX_MODULE} PUBLIC ${_nros_px4_link_archives})
 
     # px4_work_queue provides SubscriptionCallbackWorkItem + WorkQueueManager,
     # which the uORB backend's push-wake glue needs. External modules cannot list
