@@ -67,6 +67,17 @@ reference to nros_cpp_get_param_integer`, which is what exposed the disjoint pat
 unaffected. Same shape as #0311: one axis, two sources that cannot disagree because only one is
 read. See `0353-*`. (2026-07-31)
 
+**#363** — `nros sync` — the documented remedy for a stale central `nros-patch.toml` — is broken,
+and a FAILED run leaves the tracked `.cargo/config.toml` partially rewritten, silently dropping a
+`# nros-managed` patch entry. That is worse than the failure: a stale patch table resolves the wrong
+path loudly, a table missing an entry resolves from crates.io silently. Two faults: (1) a stale
+`nros-launch-resolve` skews against the CLI (`unexpected argument '--bringup-root'`) — they are
+built by DIFFERENT recipes, so rebuilding one silently skews the pair, and nothing gates it;
+(2) with that cleared, sync dies in the metadata-mode harness. Surfaced because every checkout
+predating phase-321's package move has a stale `nros-patch.toml` and the fix command is the broken
+one. Fix (1) is atomicity — write temp, rename on success — independently of why sync fails.
+See `0363-*`. (2026-07-31)
+
 **#362** — phase-325 W3's uORB→RMW bridge is blocked on TYPES, not plumbing. The plumbing is proven
 (one PX4 module links uORB + zenoh, `NodeBuilder().rmw()` gives two sessions, backend selection is
 the cargo-feature knob one layer down). But the bridge must TRANSLATE: inward a payload is the PX4
