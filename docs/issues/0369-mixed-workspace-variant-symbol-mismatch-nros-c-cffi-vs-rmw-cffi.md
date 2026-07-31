@@ -79,3 +79,40 @@ source ./activate.sh && source /opt/ros/humble/setup.bash
 just native build-workspace-fixtures
 # … undefined reference to nros_config_variant_alloc_..._rmw_cffi_rmw_zenoh_ros_humble_std
 ```
+
+## Deepened root cause (2026-08-01, investigation)
+
+The simple fix ("compute the C-side variant from nros-c's own features") is
+ALREADY present: nros-cpp's gap-fill copy of the shared C header carries
+`/* Issue 0360 — deliberately NO variant stamp here */` (`nros-build-helpers/src/cpp.rs`,
+`c_format_header`) precisely so it does not mis-name the symbol. So the union-slug
+anchor the mixed build referenced (`alloc`+`rmw_cffi`, which nros-cpp adds via
+`rmw-zenoh-cffi = ["rmw-cffi", "nros-c/rmw-zenoh", …]`) did NOT come from
+nros-cpp's gap-fill.
+
+It comes from a **second nros-c build**. In a mixed workspace, nros-c is pulled
+twice with different features:
+- the C msg/staticlib path builds it narrow (`cffi-zenoh-cffi` → no `alloc`/`rmw-cffi`);
+- the C++ path pulls `nros-c` through nros-cpp's `rmw-zenoh-cffi` (which unifies in
+  `rmw-cffi` + `alloc`).
+
+The shared `nros_config_generated.h` (written by `write_header_if_absent_or_verify`,
+"nros-c OWNS this file") gets its `nros_config_variant_<slug>` anchor from whichever
+nros-c build writes it FIRST. If the union-featured build writes first, the anchor
+is the union slug; the narrow build emits `nros_config_variant_<narrow-slug>`; the
+C msg archive (including the shared header) references the union symbol nobody
+emitted → undefined reference. `defines_of` passes throughout because the sizes
+agree (the whole point) — only the link symbol diverges.
+
+**Why this is not a safe blind fix:** the correct resolution is a design choice in
+the freshly-landed #360 variant-stamp — e.g. derive the anchor slug from a
+CANONICAL size-determining config subset (identical across both nros-c builds), or
+ensure a single nros-c feature set per workspace, or drop the C link-time anchor
+and rely on `defines_of` (which already provides the size-safety and tolerates
+feature diffs). Each touches load-bearing, actively-worked code and cannot be
+verified without a full mixed-workspace rebuild. Left for the #360 owner with this
+precise diagnosis rather than risking a regression to the size-safety mechanism.
+
+**Also:** first observed on a pre-rebase tree; several later variant/feature
+commits (#360 and follow-ups) landed the same day — reproduce on current `main`
+before fixing, in case a subsequent commit already covers it.
