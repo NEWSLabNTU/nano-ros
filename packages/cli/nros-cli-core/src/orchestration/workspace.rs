@@ -1080,7 +1080,7 @@ fn discover_cargo_component_metadata(
     // Safe against over-triggering: no colcon-workspace Node pkg (`src/<pkg>`,
     // the probeable shape) carries a `[deploy.*]` table — deploy lives on the
     // Entry pkg there. Verified across the tree when this landed.
-    let deploy_bound = nros.entry.is_some() || !nros.deploy.is_empty();
+    let deploy_bound = nros.deploy_bound();
     let single = nros.node.as_ref().or(nros.component.as_ref());
     let multi: Vec<(String, &ComponentMetadata)> = if !nros.nodes.is_empty() {
         nros.nodes.iter().map(|(k, v)| (k.clone(), v)).collect()

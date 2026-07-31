@@ -210,6 +210,28 @@ if [ -n "$fixture_forced" ]; then
     fail=1
 fi
 
+# 8. issue 0358 — "is this package deploy-bound?" is asked in ONE place.
+#
+#    `[package.metadata.nros.entry]` and `[package.metadata.nros.deploy.<target>]`
+#    both mean it. A consumer that reaches for either field alone is already
+#    wrong: the source-metadata probe checked only `entry`, so 27 packages fell
+#    through to a host build they cannot survive and surfaced as `DOTCONFIG must
+#    be set by wrapper` on a Zephyr leaf (issue 0318) — several layers from the
+#    predicate that forgot half its input.
+#
+#    `PackageMetadataNros::deploy_bound()` is that one place. This forbids
+#    re-deriving it at a call site.
+bound_hits=$(git grep -nE 'nros\.(entry\.is_some\(\)|deploy\.is_empty\(\))' \
+    -- 'packages/cli/**/*.rs' 'packages/core/**/*.rs' 2>/dev/null \
+    | grep -v 'fn deploy_bound' \
+    | grep -v ':[0-9]*:[[:space:]]*//' || true)
+if [ -n "$bound_hits" ]; then
+    echo "FAIL: deploy-bound re-derived at a call site instead of via deploy_bound():"
+    printf '%s\n' "$bound_hits" | while IFS= read -r h; do note "$h"; done
+    note "Call PackageMetadataNros::deploy_bound() — it knows both spellings."
+    fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
     echo "feature-set SSoT OK — one edition source, one platform mapping, no node-level"
     echo "editions, no default-list editions, no entry-level axis restatements."

@@ -156,6 +156,33 @@ pub struct PackageMetadataNros {
 }
 
 impl PackageMetadataNros {
+    /// Is this package bound to a deploy target, i.e. NOT host-compilable?
+    ///
+    /// issue 0358 — two manifest spellings say this, and every consumer had to
+    /// remember both:
+    ///
+    /// ```toml
+    /// [package.metadata.nros.entry]           # 24 standalone examples
+    /// deploy = "native"
+    ///
+    /// [package.metadata.nros.deploy.zephyr]   # 27 standalone examples
+    /// board = "native_sim/native/64"
+    /// ```
+    ///
+    /// The source-metadata probe remembered only the first, so 27 packages fell
+    /// through to a host build they cannot survive — they dep a board crate
+    /// directly, or on zephyr the `zephyr` crate whose build script wants
+    /// `DOTCONFIG` from a cmake configure that has not run. That surfaced as
+    /// `DOTCONFIG must be set by wrapper` on a Zephyr leaf (issue 0318), which
+    /// is several layers from a predicate that forgot half its input.
+    ///
+    /// Being one function is the point: the next consumer asks the question
+    /// instead of re-deriving the answer, and a third spelling is one edit here
+    /// rather than a hunt through call sites.
+    pub fn deploy_bound(&self) -> bool {
+        self.entry.is_some() || !self.deploy.is_empty()
+    }
+
     /// Reject manifests that combine more than one of `component` /
     /// `node` / `components` / `nodes` / `application` — the shapes are
     /// mutually exclusive per the Phase 212.L design doc plus the Phase
@@ -910,6 +937,44 @@ fn is_false(b: &bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// issue 0358 — the two spellings must answer identically.
+    ///
+    /// They mean the same thing, so a consumer that reaches for either one in
+    /// isolation is already wrong. Asserting the EQUIVALENCE rather than each
+    /// arm separately is what would have failed when the probe checked only
+    /// `entry`, instead of quietly passing because the `entry` arm was fine.
+    #[test]
+    fn both_deploy_bound_spellings_agree() {
+        use super::PackageMetadataNros;
+
+        let via_entry: PackageMetadataNros = toml::from_str(
+            "[entry]\ndeploy = \"native\"\n",
+        )
+        .expect("entry form parses");
+        let via_deploy: PackageMetadataNros = toml::from_str(
+            "[deploy.zephyr]\nboard = \"native_sim/native/64\"\n",
+        )
+        .expect("deploy form parses");
+        let neither: PackageMetadataNros =
+            toml::from_str("[node]\nclass = \"demo::Talker\"\n").expect("node form parses");
+
+        assert!(via_entry.deploy_bound(), "[entry] means deploy-bound");
+        assert!(
+            via_deploy.deploy_bound(),
+            "[deploy.<target>] means deploy-bound too — this is the half the \
+             metadata probe forgot (issue 0318), and 27 packages hard-failed"
+        );
+        assert_eq!(
+            via_entry.deploy_bound(),
+            via_deploy.deploy_bound(),
+            "the two spellings must not disagree"
+        );
+        assert!(
+            !neither.deploy_bound(),
+            "a plain node pkg is host-probeable and must stay so"
+        );
+    }
+
     use super::*;
 
     /// phase-304 W2 — `[system].ros_edition` resolves to a `RosEdition`; absent
