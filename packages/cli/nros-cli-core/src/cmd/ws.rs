@@ -730,8 +730,8 @@ fn generate_facade_crates(
     let system_toml = bringup.dir.join("system.toml");
     let raw = std::fs::read_to_string(&system_toml)
         .wrap_err_with(|| format!("sync: read {}", system_toml.display()))?;
-    let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
-        .wrap_err_with(|| format!("sync: parse {}", system_toml.display()))?;
+    let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+        toml::from_str(&raw).wrap_err_with(|| format!("sync: parse {}", system_toml.display()))?;
 
     // Entry packages come from CARGO's member list, not from `scan`.
     //
@@ -945,9 +945,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // and the C/C++-only early return still needs the probe's nano-ros path.
     let nano_ros_for_probes = nano_ros_path_for(&args);
     let ws_root: PathBuf = match args.workspace {
-        Some(p) => {
-            std::fs::canonicalize(&p).wrap_err_with(|| format!("sync: {}", p.display()))?
-        }
+        Some(p) => std::fs::canonicalize(&p).wrap_err_with(|| format!("sync: {}", p.display()))?,
         None => std::env::current_dir()?,
     };
     // Two layouts supported:
@@ -1256,8 +1254,8 @@ fn resolve_sync_edition(cli: Option<&str>, ws_root: &Path) -> Result<RosEdition>
     if sys_toml.is_file() {
         let raw = std::fs::read_to_string(&sys_toml)
             .wrap_err_with(|| format!("sync: read {}", sys_toml.display()))?;
-        let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
-            .wrap_err_with(|| format!("sync: parse {}", sys_toml.display()))?;
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+            toml::from_str(&raw).wrap_err_with(|| format!("sync: parse {}", sys_toml.display()))?;
         return sys
             .system
             .ros_edition()
@@ -2039,11 +2037,7 @@ fn write_patch_block(
         std::fs::write(&tmp, migrated)
             .wrap_err_with(|| format!("sync: write {}", tmp.display()))?;
         std::fs::rename(&tmp, authority).wrap_err_with(|| {
-            format!(
-                "sync: rename {} -> {}",
-                tmp.display(),
-                authority.display()
-            )
+            format!("sync: rename {} -> {}", tmp.display(), authority.display())
         })?;
     }
 
