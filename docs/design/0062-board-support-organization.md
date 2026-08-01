@@ -1,0 +1,782 @@
+---
+rfc: 0062
+title: "Board support organization: nano-ros as an embeddable library, not a board framework"
+status: Draft (LIVE — under active exploration)
+since: 2026-07
+last-reviewed: 2026-08-01
+implements-tracked-by: []          # candidates: revive phase-201; extend RFC-0012 Layer 3
+supersedes: []
+superseded-by: null
+---
+
+# RFC-0062 — Board support organization
+
+> **Live document.** Written while bringing the Autoware safety island up on an
+> NXP MR-CANHUBK3 (S32K344 + FreeRTOS) — a board that is out-of-tree by
+> necessity. **[OPEN]** marks unresolved points. The **Exploration log** records
+> what was checked and what it showed; body claims should trace to it. Number
+> 0062 is provisional.
+>
+> **Revision 2 (2026-08-01)** replaced revision 1's central proposal. R1 modelled
+> a board by *enumerating support dimensions* in the descriptor (image ownership,
+> net stack, provenance). That was wrong: the dimensions depend on the shape of
+> the user's RTOS, so any enumeration is a list nano-ros must keep extending
+> forever. R2's spine is the opposite — nano-ros declares what it *needs*, the
+> integrator satisfies it however their ecosystem already does. R1's measurements
+> and defect findings are unchanged and retained below.
+
+## Summary
+
+**nano-ros should be an embeddable library plus the build system to compile a
+ROS-like project against it. Board support is not a nano-ros concept.**
+
+The host ecosystem — Zephyr, ESP-IDF, NuttX, a vendor SDK, PlatformIO — already
+owns boards, drivers, pin mux, linker scripts and DTS. nano-ros competing with
+that produces one crate per `(vendor × board × SDK-variant)`, which does not
+scale and which RFC-0012 already rejected in 2026-05.
+
+What nano-ros owns is narrow and stable:
+
+1. a **portability seam** — the `nros_platform_*` C ABI,
+2. a **capability declaration** — which link features it wants, not which stacks exist,
+3. a **build system** — codegen, entry generation, `NanoRos::NanoRos`,
+4. a **≤200-line integration shell** per host ecosystem.
+
+Everything else is the integrator's, and nano-ros's job is to stay out of the
+way and be discoverable from outside its own tree.
+
+## The stance, and the evidence it already works
+
+`integrations/nano-ros/CMakeLists.txt` is the whole ESP-IDF story — **146 lines**,
+under Phase 139's documented ≤200 LoC hard cap per shell. It does four things:
+
+```cmake
+set(NANO_ROS_PLATFORM "esp_idf" CACHE STRING "" FORCE)   # 1. name the platform
+# ... map CONFIG_NROS_* (Kconfig) → nano-ros cache vars   # 2. adopt host config
+add_subdirectory("${_nros_root}" nano_ros_root)           # 3. pull in the build system
+target_link_libraries(${COMPONENT_LIB} INTERFACE NanoRos::NanoRos)  # 4. re-export
+```
+
+Plus, in `cmake/platform/nano-ros-esp_idf.cmake`, the only board-ish work there
+ever is:
+
+```cmake
+add_library(freertos_kernel INTERFACE)
+target_link_libraries(freertos_kernel INTERFACE idf::freertos)
+add_library(lwip INTERFACE)
+target_link_libraries(lwip INTERFACE idf::lwip)
+```
+
+That is **every ESP32 part supported**, with no board crate, no board module, no
+`NANO_ROS_BOARD`, and no descriptor. The module comment says so outright: *"No
+NANO_ROS_BOARD requirement — IDF supplies every artefact the FreeRTOS board
+overlays would have shipped."*
+
+The same shape already exists for NuttX (`integrations/nuttx/` — CMake entry plus
+Kconfig/Make.defs siblings for the make-driven configs), PX4, PlatformIO, and
+Zephyr (nano-ros ships `zephyr/module.yml` declaring `build.cmake`,
+`build.kconfig`, `snippet_root`, and Twister `samples`). Four ecosystems, all
+integrated, none of them enumerated dimension by dimension.
+
+**This is the model. It is already the Stable design of record** — RFC-0012,
+"Board / BSP Integration Architecture", drafted 2026-05 *"in response to 'vendor
+BSPs vary; we can't ship a board crate per (vendor × board × SDK-variant)
+combo.'"* Its Layer 4 is labelled **"Vendor BSP — owned BY the vendor, NOT by
+nano-ros."** RFC-0062 does not invent this; it finishes it and removes the parts
+of the tree that still contradict it.
+
+## What nano-ros needs (the seam)
+
+### The ABI: 92 C functions
+
+`packages/platform/nros-platform-api/include/nros/` declares the entire
+portability contract as `nros_platform_*`. Grouped:
+
+| Group | Count (approx) | Examples |
+|---|---|---|
+| clock / time | 7 | `clock_us`, `clock_ms`, `time_since_epoch_nanos` |
+| sleep / yield | 4 | `sleep_ms`, `yield_now` |
+| tasks | 6 | `task_init`, `task_join`, `task_detach` |
+| sync | 20 | `mutex_*`, `mutex_rec_*`, `condvar_*`, `critical_section_*` |
+| wake | 7 | `wake_init`, `wake_signal_from_isr`, `wake_wait_ms` |
+| alloc / heap | 5 | `alloc`, `free`, `heap_used_bytes` |
+| random | 5 | `random_u32`, `random_fill` |
+| log | 3 | `log_write`, `register_log_writer` |
+| **sockets / net** | **~33** | `tcp_*`, `udp_*`, `udp_mcast_*`, `socket_*`, `network_poll` |
+| misc | 2 | `atomic_load_bool`, `zephyr_wait_network` |
+
+Satisfy these and nano-ros runs. That is the honest definition of "embeddable
+library", and it is a real boundary, not a slogan — the ESP-IDF, NuttX and Zephyr
+shells all cross it without either side knowing much about the other.
+
+**[OPEN]** How much of the 92 is *mandatory*? A serial-only, single-threaded,
+no-heap deployment plainly does not need 33 socket functions. If the mandatory
+core is ~25 and the rest is capability-gated, "port nano-ros to my RTOS" becomes
+a weekend, and that number belongs in the porting guide's first paragraph. Worth
+measuring: build a minimal platform impl and see what the linker actually demands.
+
+### The capabilities: link features, not stacks
+
+Revision 1 proposed enumerating net stacks (`lwip | smoltcp | netx | rtos |
+host`). **That was the wrong shape** — it names implementations, so the list
+grows with every ecosystem nano-ros meets, and a user whose RTOS has a network
+stack nobody has heard of is simply unrepresentable.
+
+nano-ros already has the right shape and has had it since Phase 134.
+`nros-board-common/src/policy.rs`:
+
+```rust
+pub struct LinkFeatures {
+    pub tcp: bool, pub udp_unicast: bool, pub udp_multicast: bool,
+    pub serial: bool, pub raweth: bool, pub tls: bool,
+    pub ivc: bool,          // Phase 100.4 — NVIDIA Tegra IVC
+    pub custom: bool,       // Phase 115.B — runtime-pluggable user transport
+}
+```
+
+paired with `LinkPolicy`, a per-platform mask using `Force(false)` / `Follow` —
+*"Orin SPE has no Ethernet → `Force(false)` masks TCP / UDP / MC / SERIAL / TLS."*
+
+This is capability negotiation: nano-ros says *which transports it wants*, the
+platform says *which it can provide*, and the intersection decides what gets
+compiled and which socket functions must exist. nano-ros never learns whether
+the bytes leave through lwIP, NetX Duo, smoltcp, a Zephyr driver, or a vendor
+DMA ring. **`custom` is the escape hatch that makes the set closed rather than
+open-ended** — an RTOS with an exotic link implements one transport vtable and
+stops there.
+
+So: **delete `net_stack` from the descriptor rather than extend it.** It is
+redundant with `LinkFeatures` and strictly less general.
+
+**[OPEN]** `net_stack` currently carries a second meaning the link features do
+not — *who is responsible for building the stack* (`nanoros-owned` vs
+`rtos-owned`). That question is real, but it is a property of the integration
+shell, not of the board. Check whether anything reads the field for that purpose
+before deleting it.
+
+## Where board support survives, and why
+
+Three consumption surfaces, decided by one question: **does the host ecosystem
+have a build system?**
+
+| Surface | When | Cost | Examples |
+|---|---|---|---|
+| **Integration shell** | ecosystem owns boards + build | ≤200 LoC once **per ecosystem**, then zero per board | Zephyr, ESP-IDF, NuttX, PX4, PlatformIO, vendor SDKs |
+| **Board module** | no ecosystem build system — nano-ros must produce the image | per **board** | bare FreeRTOS, bare ThreadX, bare metal |
+| **Nothing** | hosted | zero | POSIX, native |
+
+Only the middle row is genuine "board support", and it exists only because bare
+FreeRTOS and bare ThreadX ship a kernel and nothing else — no board abstraction,
+no driver model, no linker script, no build. Someone must supply those, and if
+the vendor has not, it falls to whoever is porting.
+
+Two consequences worth stating plainly:
+
+- **The middle row should shrink, not be systematised.** A vendor SDK build
+  (S32DS, MCUXpresso, STM32CubeIDE) is an ecosystem with a build system, so it
+  belongs in row 1 — a shell, not a board module. The MR-CANHUBK3 FreeRTOS
+  deliverable is an S32DS project with `.cproject`, `Debug_FLASH/makefile`, RTD
+  drivers, startup and two linker scripts. **The right integration may be
+  `integrations/s32ds/` rather than `cmake/board/nano-ros-board-canhubk344-freertos.cmake`.**
+  That inverts the plan RFC-0062 R1 proposed and is the most important open
+  question in this document. **[OPEN — test it during the CANHUBK3 bring-up.]**
+- **For the boards that genuinely stay in row 2, keep the module dumb.** It
+  supplies linker script, startup, kernel config, netif, and nothing else. It
+  should not carry arch policy, language standard, or config that belongs to the
+  platform or the app.
+
+## Worked example — MR-CANHUBK3 via `integrations/s32ds/`
+
+The NXP S32K344 board is the first target chosen deliberately as a *row 1* case:
+its FreeRTOS deliverable is an S32DS project (`.cproject`, `Debug_FLASH/makefile`,
+RTD drivers, startup, two linker scripts), i.e. an ecosystem that owns its build.
+It therefore gets a shell, not a board module.
+
+### Target workflow
+
+**A — host, once.** Note there is deliberately no `nros setup --board <name>`
+(see §"`[board.*]` is a package-set alias" below):
+
+```sh
+git clone <nano-ros> && just setup-cli && source activate.sh
+nros setup --tool arm-none-eabi-gcc --rmw zenoh
+nros setup --source lwip                       # only if not using a vendor stack
+export NXP_S32DS_PROJECT=~/MR_CANHUBK3_IEEE1722
+```
+
+**B — the ROS-shaped project, unchanged.** `package.xml` + `CMakeLists.txt` +
+verbatim `.cpp`, plus a bringup pkg with `system.toml`:
+
+```sh
+nros codegen-system --workspace my_ws --bringup safety_island_bringup \
+                    --target freertos --out build/nros-system
+```
+
+Deploy token is **`freertos`**, not a new one — the entry codegen's token set is
+closed (`freertos nuttx posix threadx zephyr`) and ESP-IDF already reuses
+`freertos`.
+
+**C — build the nano-ros artefacts for the board.**
+
+```sh
+cargo build -p nros-cpp --target thumbv7em-none-eabihf --release
+cmake -S <nano-ros>/packages/platform/nros-platform-freertos -B build/plat \
+      -DCMAKE_TOOLCHAIN_FILE=<nano-ros>/cmake/toolchain/arm-freertos-armcm7.cmake \
+      -DFREERTOS_DIR=$NXP_S32DS_PROJECT/FreeRTOS/Source \
+      -DFREERTOS_PORT=GCC/ARM_CM7/r0p1 \
+      -DFREERTOS_CONFIG_DIR=<your config dir>
+```
+
+`nros-platform-freertos` is already a standalone CMake project (C only,
+parameterised by `NROS_PLATFORM_CFFI_INCLUDE` + FreeRTOS headers), so it builds
+against NXP's kernel fork unmodified.
+
+**D — S32DS links them.**
+
+```sh
+cp <nano-ros>/integrations/s32ds/makefile.defs $NXP_S32DS_PROJECT/
+make -C $NXP_S32DS_PROJECT/Debug_FLASH all
+```
+
+### The injection point already exists
+
+CDT's generated `Debug_FLASH/makefile` contains, in order:
+
+```make
+-include ../makefile.init
+-include objects.mk                #  USER_OBJS :=   LIBS := -lc -lm -lgcc
+-include ../makefile.defs          #  ← included BEFORE the rules
+...elf: $(OBJS) <ld> $(USER_OBJS)
+	arm-none-eabi-gcc -o "...elf" "@....args"  $(USER_OBJS)
+-include ../makefile.targets
+```
+
+None of `makefile.init` / `.defs` / `.targets` exist in the shipped project —
+they are CDT's sanctioned extension points. So the shell drops a `makefile.defs`
+appending nano-ros's `.a` files to `USER_OBJS` and `-I` flags to the compile
+args. Structurally identical to `integrations/nuttx/Make.defs` appending to
+`EXTRA_LIBS` / `EXTRA_LIBPATHS`.
+
+**ABI flags must match exactly.** From the project's own link `.args`:
+
+```
+-mcpu=cortex-m7  -mthumb  -mfloat-abi=hard  -mfpu=fpv5-sp-d16
+-nostartfiles  -specs=rdimon.specs
+```
+
+`fpv5-**sp**-d16` — single precision. And `rdimon.specs` (semihosting), not the
+`nosys.specs` the mps2 board module uses.
+
+**[OPEN]** `Debug_FLASH/`'s `.elf` rule carries a hardcoded prerequisite
+`C:/Users/nxf56445/workspaceS32DS.3.4/.../linker_flash_s32k344.ld`. On Linux
+make will fail "no rule to make target" unless the project is regenerated from
+S32DS locally. If regeneration is required per machine, the shell must say so —
+possibly shipping a `makefile.init` that patches it.
+
+### `[board.*]` is a package-set alias, not board support
+
+`nros setup <board>` resolves `[board.<name>].packages` and errors *"Add a
+`[board.{board}]` entry to nros-sdk-index.toml"*. But look at what an entry
+holds:
+
+```toml
+[board.qemu-arm-freertos]
+arch = "cortex-m3"  ;  platform = "freertos"
+packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
+```
+
+Nothing there is specific to MPS2-AN385. It is "Cortex-M + QEMU + FreeRTOS" — an
+**(arch × ecosystem) profile** wearing a board's name. That is why the table
+would otherwise grow once per board, defeating the whole point of the shell.
+
+Three ways not to add an entry, in increasing cost:
+
+1. **Don't use `--board`.** `--tool <name>` and `--source <name>` already reach
+   index packages directly. Zero nano-ros change; this is what the workflow above
+   does. The board name was only ever an alias for a list.
+2. **User-owned alias.** `--index <path>` already exists, so a project can ship
+   its own index. **Caveat: there is no index composition** — no `extends`,
+   `include` or merge in the parser — so a private index must redefine every
+   `[tool.*]` it references. Making `--index` repeatable (or adding `extends`) is
+   small and makes this the right answer downstream.
+3. **RFC-0013 / phase-201** — boards self-describe deps, read from a path.
+   Precedent exists in a sibling verb: `nros setup board <name>
+   --zephyr-workspace` already reads the *board package's* provisioning contract
+   rather than the index.
+
+**Proposed fix:** re-key the table as `[profile.<arch>-<ecosystem>]` and make
+`[board.*]` an optional alias pointing at a profile. One `cortex-m-freertos`
+profile then covers every Cortex-M FreeRTOS board that will ever exist, and
+`--rmw` stays the orthogonal axis it already is. Keep existing board names as
+aliases so nothing breaks.
+
+### Revisions this workflow requires
+
+| # | Change | Where | Status |
+|---|---|---|---|
+| 1 | FreeRTOS platform runs board-less when a shell composed `freertos_platform` | `cmake/platform/nano-ros-freertos.cmake` | **DONE** |
+| 2 | Cortex-M7 arch profile; `arch` scalar → list | `config/freertos-lwip/nros-platform.toml` | **DONE** |
+| 3 | `integrations/s32ds/` — probe, CMake shell, `makefile.defs`, README | new dir | **PARTIAL** — 226 code lines (**over** the 200 cap, see below); configures, builds the shim, emits the link fragment; full link unexercised |
+| 4 | CM7 toolchain file; split arch from `-fno-exceptions`/`-std=c++14` policy | `cmake/toolchain/arm-freertos-armcm7.cmake` | todo |
+| 5 | Document the mandatory subset of the 92-function platform ABI | `nros-platform-api` + porting guide | todo |
+| 6 | Porting guide: "integrating nano-ros into a vendor SDK build" | `book/src/porting/` | todo |
+| 7 | `FREERTOS_PORT` help text: add the CM7 form | `config/freertos-lwip/…` | **DONE** (with 2) |
+| 8 | `NANO_ROS_BOARD_PATH` search roots | 4 files | todo, demoted — this board never needs it |
+| 9 | `[board.*]` → `[profile.*]` keyed on (arch × ecosystem); index composition | index + `setup.rs` | todo |
+| 10 | Make `--tool` repeatable (`Option<String>` → `Vec<String>`), matching `--source` | `setup.rs` | todo |
+
+Nothing else: no new deploy token, no `PlatformId`, no board crate, no
+descriptor, no `cmake/board/` module, no `board-support.toml` row, no tier entry,
+no SDK-index entry. **This board adds zero per-board files to nano-ros.**
+
+## Discovery: Yocto layers vs the Zephyr model
+
+Both were raised as candidates. They answer different questions.
+
+| | Yocto | Zephyr |
+|---|---|---|
+| Unit | layer (`BBLAYERS`, priorities) | module (`zephyr/module.yml`) + search roots |
+| Out-of-tree hardware | layer contributes recipes | `BOARD_ROOT` / `SOC_ROOT` / `DTS_ROOT` / `ZEPHYR_EXTRA_MODULES` |
+| Override | `.bbappend` can patch any recipe | no override; compose via Kconfig + DTS overlays |
+| Hardware description | code (recipes, machine conf) | **data** (devicetree), drivers bind on `compatible` |
+| Failure mode | layer-priority and append-order bugs | DTS/Kconfig verbosity |
+
+**Recommendation: the Zephyr model, minus devicetree.**
+
+- **Take the search roots.** `BOARD_ROOT` is exactly the `NANO_ROS_BOARD_PATH`
+  proposal, proven at Zephyr's scale where most boards now live out of tree. It
+  is additive, order-independent, and has no priority semantics to get wrong.
+- **Take the module manifest.** nano-ros already *is* a Zephyr module; it should
+  also *accept* modules — a directory declaring what it contributes (boards,
+  platform impls, drivers, toolchain files) discovered via a root variable.
+- **Take the binding-by-capability idea, not devicetree itself.** Devicetree
+  earns its cost when one framework owns hundreds of drivers. nano-ros owns
+  none — it consumes what the host provides. `LinkFeatures` is already the
+  right-sized version of the same idea.
+- **Reject Yocto's override model.** `.bbappend`-style patching of nano-ros's
+  own recipes would let an integrator silently reshape the build, and layer
+  priority is the part of Yocto that people fight most. nano-ros does not need
+  it: an integration shell composes, it does not override.
+
+The one Yocto idea worth keeping is *provenance separation* — Yocto's
+`meta-<vendor>` layers exist precisely because vendor BSPs cannot live upstream.
+That is the same reason `NXP_RTD_DIR` must be an env pointer and not a vendored
+tree.
+
+## The customization ladder
+
+A declarative model that cannot be escaped is worse than none — real boards
+always have one thing nobody anticipated, and if the only answer is "patch
+nano-ros", the model failed exactly when it mattered. Three rungs, and **rung 3
+must always exist**:
+
+| Rung | Cost | Mechanism |
+|---|---|---|
+| 1. Declare | one line | a capability flag or a path pointer |
+| 2. Hook | a function | a `#[no_mangle]` / weak C symbol the glue calls |
+| 3. Escape | own the file | hand-written artifact; the generator defers to it |
+
+Worked for the customization asked about — Ethernet:
+
+| Situation | Rung | What the user does |
+|---|---|---|
+| Host ecosystem has a driver (Zephyr, IDF, NuttX) | — | nothing; enable it in the host's own config |
+| Stack exists, board needs wiring | 2 | implement `nros_board_init_eth()` |
+| Exotic or proprietary link | 1 + 2 | `link.custom`, implement the transport vtable (`zpico-platform-custom`, Phase 115.B) |
+| None of the above fits | 3 | implement the ~33 net functions of the platform ABI directly |
+
+Note that no rung requires nano-ros to know what the stack *is*. That is the
+test the R1 design failed and this one passes.
+
+Rung 3 also carries the rule that keeps any future generator honest: **if a board
+ships an artifact by hand, the generator does not overwrite it and the drift gate
+does not flag it.** That makes generated glue adoptable file by file rather than
+as a flag day.
+
+## Defects found along the way
+
+These are independent of which model wins; all were verified.
+
+### The per-board tax
+
+`mps2-an385-freertos` — one board — is named in **45 functional files** (plus
+~80 docs):
+
+```
+cmake/board/…mps2-an385-freertos.cmake   cmake/platform/nano-ros-freertos.cmake
+cmake/board/…mps2-an385.cmake            cmake/NanoRosPackageXml.cmake
+cmake/templates/freertos_app_config.c.in examples/fixtures.toml
+packages/boards/board-support.toml       just/sdk-env.just
+nros-sdk-index.toml                      packages/tooling/nros-build-paths/src/lib.rs
+Cargo.toml (workspace members)           config/freertos-lwip/nros-platform.toml
+6 board crates · 2 platform crates · 6 CLI sources · 8 test fixtures · scripts/
+```
+
+Nothing regenerates any of it, and `scripts/` carries three drift-checkers
+(`check-board-manifest-drift.sh`, `check-board-abi-mirror.sh`,
+`check-profile-board-mirror.sh`) whose only job is to notice when the copies
+diverge. Under the R2 model most of this simply should not exist: an ecosystem
+integrated by a shell adds **zero** per-board files.
+
+### The arch trap — hard blocker for new silicon
+
+`config/freertos-lwip/nros-platform.toml`, a *platform* manifest, pins the CPU:
+
+```toml
+arch = "cortex-m3"                 # scalar, not a list
+[arch.cortex-m3]
+target_match   = "thumbv7m"
+target_exclude = "thumbv7em"       # ← excludes Cortex-M4F / M7
+```
+
+No other `[arch.*]` block exists, so FreeRTOS + lwIP on Cortex-M7 is excluded by
+construction. Three faults at once:
+
+1. CPU arch is a hardware fact in the platform layer — a direct RFC-0049
+   duty-rule violation (*"platform toml = software-stack facts; board toml =
+   hardware facts"*).
+2. The mechanism already supports better: `config/bare-metal` uses a list,
+   `arch = ["cortex-m3", "riscv32imc"]`, first-`target_match`-wins, and even
+   defines an unused `[arch.cortex-m4f] target_match = "thumbv7em"`.
+3. The board layer cannot fix it from outside. Verified in
+   `nros-board-common/src/platform_config.rs`: `PlatformConfigFile` owns `arch`
+   and `[build.zenoh]`; `BoardKnobsFile` parses **only `[knobs]`**, commented
+   *"The rest of nros-board.toml … is ignored here."*
+
+So RFC-0049's four-rung ladder is implemented for **policy knobs** and absent for
+the **build block** — an out-of-tree board on new silicon must edit a file inside
+nano-ros, the exact thing RFC-0049 §Resolution promises it will not have to.
+
+The same file also names a specific board in `required_env`'s help text
+(`packages/boards/nros-board-mps2-an385-freertos/config`). Help text only, no
+build coupling — but the same inversion: the platform layer knows about one
+board because that board is the only one that ever existed there.
+`config/freertos-lwip/` is the MPS2-AN385 board manifest wearing a platform's
+name; a second FreeRTOS board is what forces them apart.
+
+### "Platform" names four different things
+
+| Source | Values |
+|---|---|
+| `cmake/platform/nano-ros-<p>.cmake` | `baremetal esp_idf freertos nuttx posix threadx zephyr` |
+| `config/<p>/nros-platform.toml` | `bare-metal freertos-lwip generic nuttx orin-spe posix threadx zephyr` |
+| `nros-sdk-index.toml [board.*].platform` | `bare-metal freertos nuttx posix threadx zephyr` |
+| `nros-board.toml` `platform =` | `bare-metal esp32 freertos nuttx orin-spe posix stm32 threadx-linux threadx-riscv64 zephyr` |
+
+`baremetal` vs `bare-metal`; `freertos` vs `freertos-lwip`; `esp_idf` has a cmake
+module but no `config/` dir; `generic` the reverse; and the descriptor mixes in
+**silicon families** (`stm32`, `esp32`) that are not platforms at all. RFC-0049's
+chain — *"the app names its board → the board toml names its platform → the
+loader follows that two-hop chain"* — is only sound with one namespace.
+
+### Hardcoded board discovery
+
+`cmake/platform/nano-ros-{freertos,nuttx,baremetal}.cmake` FATAL_ERROR unless the
+module is at `${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NANO_ROS_BOARD}.cmake`,
+and `nano_ros_use_board()` resolves `${NROS_REPO_DIR}/packages/boards/nros-board-${NAME}`.
+Both in-tree only. Confirmed that **no consumer works around this** — every
+`NANO_ROS_BOARD` value set anywhere (`mps2-an385-freertos`, `nuttx-qemu-arm`,
+`nuttx-qemu-riscv`, `riscv64-qemu`, `threadx-linux`) has an in-tree module,
+because nothing else can.
+
+### Documentation contradicts a decided policy
+
+`book/src/porting/vendor-overlay.md` §"Naming convention" tells vendors to
+*"Publish to crates.io as `nros-board-<vendor>-<chip>-<rtos>`"*. RFC-0040 D1:
+*"No `nros*` crate is ever published."* The book page is the first thing a new
+vendor reads. Fix regardless of everything else here.
+
+## Constraints this design inherits
+
+| Decision | Source | Effect here |
+|---|---|---|
+| nano-ros is a source distribution; nothing on crates.io | RFC-0040 D1 | Distribution is git + index, never a package registry |
+| Vendor BSP is owned by the vendor; integrate per-RTOS | **RFC-0012 (Stable)** | R2's spine; this RFC finishes it |
+| One schema, one file per package, 4-rung ladder | RFC-0049 (Stable) | Extend the ladder to the build block |
+| Keep low-tier boards in-tree | phase-320 W3.d | Do not relocate anything; shells add nothing to relocate |
+| Tier is metadata, not layout | phase-320 W3 | No tier or vendor directories |
+| Board crate merges 27 → 19 | phase-322 (deferred) | Orthogonal |
+| Out-of-tree boards self-describe deps | RFC-0013 / phase-201 (deferred) | The revival case |
+
+## Sequencing
+
+0. ~~**Unblock Cortex-M7 on FreeRTOS**~~ — **DONE 2026-08-01.**
+1. ~~**Board-less FreeRTOS platform**~~ — **DONE 2026-08-01.** Together, 0 and 1
+   are everything nano-ros needs before the shell can be written.
+2. **Write `integrations/s32ds/`** and bring MR-CANHUBK3 up through it. This is
+   now the verification step for the whole R2 model: if the shell stays under
+   the 200-LoC cap and adds no per-board files, the model holds. Discovered, not
+   inferred — phase-321's retro is explicit that inferred gaps do not survive.
+3. **CM7 toolchain file**, splitting arch from language/ABI policy.
+4. **Measure the mandatory subset of the 92-function ABI** and put the number at
+   the top of the porting guide.
+5. **Delete `net_stack`**; document `LinkFeatures` + `LinkPolicy` as *the*
+   network-customization contract, with `custom` as the documented escape.
+6. **`[board.*]` → `[profile.*]`** + index composition, so no downstream board
+   ever needs an entry in nano-ros's index.
+7. **Unify the platform vocabulary** to one namespace.
+8. **Extend the RFC-0049 ladder to the build block** — board layer contributes
+   `[arch.*]`, `include_paths`, `required_env` (allowlist, not open merge). The
+   `-mfpu` hardcoded by revision 2 is the standing debt this pays off.
+9. Fix `vendor-overlay.md` vs RFC-0040 D1.
+
+Note what is *not* here any more: R1's "generate the per-board mirrors" work.
+Under R2 most of those files should not exist for new targets at all, so
+generating them would be automating something that ought to be deleted. Keep
+generation on the table only for whatever survives step 2.
+
+## Open questions
+
+- **[OPEN]** Is a vendor SDK build (S32DS/RTD) row 1 or row 2? The single most
+  consequential question here; step 2 answers it.
+- **[OPEN]** What is the mandatory subset of the 92-function platform ABI?
+- **[OPEN]** Does anything read `net_stack` for build-responsibility rather than
+  stack identity?
+- **[OPEN]** `[board.fvp-aemv8r-smp] platform = "bare-metal"` in the index vs its
+  Zephyr `board.cmake` — drift, or does the index's `platform` mean
+  "provisioning family"? If the latter, the field is misnamed.
+- **[OPEN]** `config/bare-metal` defines `[arch.cortex-m4f]` but never lists it in
+  `arch = [...]`. Dead, or reachable another way?
+- **[OPEN]** Three in-tree board modules — `esp32-c3`, `mps2-an385`,
+  `stm32f4-nucleo` — are selected by no caller found. **Not** a deadness claim;
+  phase-321's retro is explicit about that failure mode. Needs checking.
+- **[OPEN]** Should there be a `integrations/generic-cmake/` shell — the fallback
+  for "my RTOS has a CMake build and nothing else"? It would be the honest
+  default for the long tail.
+
+---
+
+## Exploration log
+
+### 2026-07-31 — initial survey
+
+- **Per-board tax**: `rg -l mps2-an385-freertos` over the functional tree → 43,
+  later corrected to **45** (the first scan omitted the repo root and `config/`).
+- **Artifact coverage**: 12/27 boards have `nros-board.toml`; 2/27 have
+  `board.cmake`; 8 `cmake/board/*.cmake` modules live outside `packages/boards/`.
+- **Platform module contracts**: `NANO_ROS_BOARD` required by freertos, nuttx,
+  threadx, baremetal; not by esp_idf, zephyr, posix.
+- **Gating works end to end**: `NROS_BOARD_GATED_PKGS` → `[gated.arm-fvp] env =
+  "ARM_FVP_DIR"` → `nros doctor --board`.
+- **Two board-support impls acknowledged in-tree** (phase-274 W3 comment), and it
+  had already caused an undefined-reference link failure.
+- **Cyclone DDS on FreeRTOS C/C++ is unexercised**: every FreeRTOS row in
+  `examples/fixtures.toml` is `rmw = "zenoh"`; `just/freertos.just` says the
+  c/cpp cyclonedds cells *"are out of scope (none exist today)"* while
+  `cmake/platform/nano-ros-freertos.cmake` carries phase-186 Cyclone
+  self-provision flags. Plumbing exists, no consumer.
+
+### 2026-07-31 — second pass: the RFC-0049 config layer
+
+- **The arch trap** (see §Defects). Cross-checked all eight platform manifests;
+  only `bare-metal` uses the list form.
+- **Board layer cannot contribute build config** — `BoardKnobsFile` parses only
+  `[knobs]`.
+- **Net stack is a platform fork**: `config/freertos-lwip/` vs `config/orin-spe/`
+  (FreeRTOS + IVC). Does not compose.
+- **`required_env`** (`name` + `help` + `validate_subdir`) already models external
+  SDKs well; two boards re-implement it by hand in `build.rs`.
+- **NetX contract**: C `driver_entry` passed to `nx_ip_create()`, handling
+  `NX_LINK_*`. Both NetX drivers are C + CMake, no Rust crate.
+- **Scaffolder covers only the Rust half**: `nros new board --for-platform` emits
+  `Cargo.toml`, `src/lib.rs`, `nros-board.toml`, and nothing else.
+
+### 2026-08-01 — third pass: the contract and the vocabulary
+
+- Extracted the six-item board contract; found ESP-IDF satisfies it by aliasing.
+- Four incompatible "platform" vocabularies.
+- Descriptor value sets: `entry_kind` ∈ {`board-run` ×10, `hosted-main` ×2,
+  `zephyr-staticlib` ×1}; `link_kind` ∈ {`none` ×11, `nuttx-staging` ×2};
+  `toolchain` ∈ {`stable` ×9, `nightly` ×3, `esp` ×1}. Narrow closed sets — good
+  enum candidates.
+
+### 2026-08-01 — fourth pass: the reframe (R2)
+
+Prompted by the objection that enumerating net stacks does not scale, and that
+nano-ros should be an embeddable library shipping its build system.
+
+- **RFC-0012 is Stable and already says this**, drafted 2026-05 against the
+  `(vendor × board × SDK-variant)` explosion. Its Layer 3 is "integration shell
+  per RTOS"; Layer 4 is "Vendor BSP — owned BY the vendor, NOT by nano-ros".
+  Revision 1 of this RFC had partially re-derived it while still modelling boards
+  by enumeration. R2 drops the enumeration.
+- **Layer 3 is real, not aspirational**: `integrations/nano-ros` (ESP-IDF, 3
+  files, 146 lines under a documented 200-line cap), `integrations/nuttx` (15
+  files — CMake entry + Kconfig/Make.defs for make-driven configs),
+  `integrations/px4` (13), `integrations/platformio` (2, thin). Plus `zephyr/`
+  with `module.yml` declaring cmake + kconfig entry points, `snippet_root`, and
+  six Twister samples.
+- **The seam is 92 `nros_platform_*` functions**, ~33 of them sockets. That is
+  the embeddable-library boundary.
+- **`LinkFeatures` already is the anti-enumeration mechanism** — {tcp,
+  udp_unicast, udp_multicast, serial, raweth, tls, ivc, custom} with `LinkPolicy`
+  per-platform masks (*"Orin SPE has no Ethernet → Force(false)"*), and `custom`
+  as a runtime-pluggable transport since Phase 115.B. Capability negotiation, not
+  stack identity. `net_stack` is redundant with it and strictly weaker.
+- **Zephyr's search roots** (`BOARD_ROOT`, `SOC_ROOT`, `DTS_ROOT`,
+  `ZEPHYR_EXTRA_MODULES`) are the discovery model to copy; Yocto's `.bbappend`
+  override model is the part to reject.
+
+### 2026-08-01 — fifth pass: revisions 1 and 2 landed
+
+Two changes, both verified, both strictly additive.
+
+**Revision 1 — board-less FreeRTOS** (`cmake/platform/nano-ros-freertos.cmake`).
+The two `FATAL_ERROR`s were the *only* thing requiring a board: every later use
+of the overlay's outputs is already guarded (`if(DEFINED FREERTOS_STARTUP_*)`,
+`if(TARGET freertos_platform)`, `if(COMMAND nros_board_link_app)`), and the Phase
+186 Cyclone block already falls back for `FREERTOS_DIR` / `LWIP_DIR`. So the edit
+is: enter board-less mode when `NANO_ROS_BOARD` is undefined *and*
+`freertos_platform` already exists, else fail with a message that now names the
+shell option. Verified: `if`/`endif` and `function`/`endfunction` balance
+(17/17, 1/1); the `NANO_ROS_BOARD`-defined path is untouched, so mps2 is
+unaffected.
+
+**Revision 2 — Cortex-M7** (`config/freertos-lwip/nros-platform.toml`).
+`arch = "cortex-m3"` → `["cortex-m3", "cortex-m7"]` plus an `[arch.cortex-m7]`
+block. Verified against the real file with the actual selection rule
+(first `target_match` substring hit, `target_exclude` vetoes):
+
+| triple | profile |
+|---|---|
+| `thumbv7m-none-eabi` | `cortex-m3` (unchanged) |
+| `thumbv7em-none-eabihf` | `cortex-m7` (new) |
+| `thumbv7em-none-eabi` | none — fails loudly |
+| `riscv32imc-…` | none |
+
+`target_match` is the **full hard-float triple**, not the bare `thumbv7em` token:
+`target_exclude` is also a substring test and `thumbv7em-none-eabi` is a
+substring of `thumbv7em-none-eabihf`, so soft float cannot be excluded — only
+not-matched. Without this, a soft-float thumbv7em build would have silently
+compiled with `-mfloat-abi=hard`.
+
+All eight `config/*/nros-platform.toml` still parse; `cargo test -p
+nros-board-common --features build-helpers` green (8 + 8 tests). No other file
+defines `[arch.cortex-m7]`, so the "duplicate arch blocks must be byte-identical"
+rule (`arch_identical_duplicate_ok_conflict_errors`) is not engaged.
+
+**Debt knowingly incurred:** `-mfpu=fpv5-sp-d16` is a *hardware* fact now sitting
+in a *platform* manifest — the exact fault §"The arch trap" describes. It is
+correct for MR-CANHUBK3 and for nothing else in particular, and `ArchEntry` has
+no per-board gate to express it (`target_match` / `target_exclude` only).
+Sequencing item 8 pays this off; the block carries a comment saying so.
+
+### 2026-08-01 — sixth pass: revision 3, and revision 1 validated by a consumer
+
+`integrations/s32ds/` written — probe, CMake shell, `makefile.defs`, README.
+
+**It ends at 226 code lines, over Phase 139's ≤200-LoC-per-shell cap** (92 +
+132 + 2, comments and blanks excluded). It started at 193 and grew as validation
+found real requirements: the Windows-path re-rooting, the `LWIP_CONFIG_DIR`
+guard, and the link-fragment generation. Reporting rather than squeezing,
+because the overage is informative: **this shell is doing work the IDF shell
+does not**, namely reverse-engineering a foreign build system's flags. ESP-IDF
+hands nano-ros `idf::freertos` and `idf::lwip` directly; S32DS hands it a
+CDT-generated directory and nothing else.
+
+The cap is a good instinct — a shell that keeps growing means nano-ros is
+absorbing responsibility that belongs to the host. But 132 of the 226 lines are
+the probe, and the probe exists precisely so the *user* does not hand-maintain
+duplicated ABI flags. Either raise the cap for ecosystems with no CMake surface,
+or split the probe into a shared helper for the vendor-SDK shells that will
+follow (STM32Cube, MCUXpresso). **[OPEN]**
+
+**Board-less mode confirmed by a real consumer.** Configuring the shell against
+the MR-CANHUBK3 project emits, verbatim:
+
+```
+-- nano-ros-freertos: board-less mode — an integration shell already composed
+   `freertos_platform`; skipping the per-board overlay.
+-- Configuring done / Generating done
+```
+
+Corrosion picked up `thumbv7em-none-eabihf` from the generated toolchain. **The
+board contributed zero files to the nano-ros tree**, which is the R2 claim.
+
+**`libnros_platform_freertos.a` builds for Cortex-M7 against NXP's kernel fork**
+(all four TUs: `platform.c`, `timer.c`, `cyclonedds_compat.c`, `net.c`). And the
+ABI is objectively right — `readelf -A` on our archive versus the NXP project's
+own shipped `msg_converter.o`:
+
+| Tag | ours | NXP's |
+|---|---|---|
+| `Tag_CPU_arch` | v7E-M | v7E-M |
+| `Tag_CPU_name` | 7E-M | 7E-M |
+| `Tag_FP_arch` | FPv5/FP-D16 for ARMv8 | FPv5/FP-D16 for ARMv8 |
+| `Tag_ABI_VFP_args` | VFP registers | VFP registers |
+
+Identical. Probing CDT's `.args` instead of retyping flags is validated against
+the vendor's own artifacts, not just against itself.
+
+**A claim in the probe was wrong, and building found it.** The first version
+dropped every Windows-absolute include path, on the stated basis that each was a
+duplicate of a project-relative one. False: only `RTD/include` is duplicated.
+`generate/include`, `generate/src` and `board` appear **only** as
+`C:/Users/.../<project>/…`, and `generate/include` is where `FreeRTOSConfig.h`
+lives — so the shim compile failed with `FreeRTOSConfig.h: No such file or
+directory`. Fixed by splitting the two cases: paths *inside* the project are
+re-rooted onto the local copy; paths *outside* it (the `C:/NXP/S32DS…`
+PlatformSDK headers) are dropped and **listed** so a later missing-header error
+has an actionable trail. This is exactly the kind of premise that does not
+survive verification (phase-321's retro) — it was inferred from a sample of the
+include list rather than checked against all of it.
+
+**Two integrator-owned files the shell now demands up front**, rather than
+failing deep in a C compile:
+
+- `LWIP_DIR` — the stack itself; the error text spells out the three options
+  (lwIP + netif, implement the socket ABI subset, or `LinkFeatures{custom}`).
+- `LWIP_CONFIG_DIR` — `lwipopts.h` + `arch/cc.h`. These are per-deployment
+  (buffer counts, `MEM_SIZE`), and the mps2 pair is a QEMU-sized starting point
+  that must be re-tuned for the S32K344's 320 KB SRAM.
+
+**`NANO_ROS_ROOT` vs `NANO_ROS_ROOT_DIR`.** `packages/api/nros-{c,cpp}` include
+`${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake`, but the root CMakeLists sets
+`NANO_ROS_ROOT_DIR` — a different variable. Setting the former is the consumer's
+job by convention (`nano_ros_workspace()`, `NanoRosBootstrap.cmake`,
+`zephyr/CMakeLists.txt`, `integrations/px4/NanoRosPx4Module.cmake` all do it).
+The IDF shell does **not**, and leans on the user's component to do it — worth
+tidying, since the failure is the opaque `include could not find requested file:
+/cmake/NanoRosFeatureSet.cmake`.
+
+**No regression: `just freertos build-fixture-extras` exits 0** with revisions 1
+and 2 in place. The mps2/CM3 path selects `--target=thumbv7m-none-eabi` with
+`platform-freertos` exactly as before; remaining output is the usual newlib
+`_gettimeofday/_isatty/_kill is not implemented` bare-metal warnings.
+
+Getting to that answer took three attempts, and two of the failures were
+environmental rather than caused by the change — worth recording because they
+will recur:
+
+1. **A `| tail` pipeline masked the failure.** The first run was reported as
+   "exit code 0"; that was `tail`'s exit, not the build's. It had actually died
+   on the stale-CLI guard. Redirect build output to a file and echo `$?`; do not
+   pipe build commands into `tail`.
+2. **Stale-CLI guard, twice.** First for a genuinely stale binary
+   (`just setup-cli` fixed it), then again with *uncommitted CLI edits* —
+   `packages/cli/nros-cli-core/src/{cmd/mod.rs,lib.rs,stale_guard.rs}` were
+   modified in the working tree, one of them being the guard itself. Cleared
+   with the documented `NROS_SKIP_STALE_CHECK=1` escape, which is correct here:
+   the change under test is CMake, orthogonal to the CLI.
+3. Disk exhaustion mid-run (`/home` 100% full, `target/` at 115 GB) truncated an
+   edit and failed a cargo build. Unrelated to the design, but it is why a
+   partially-applied file appeared briefly.
+
+**Link fragment generation validated.** `nros-libs.mk` emits the shim's concrete
+path plus a make-time `$(wildcard $(NROS_CARGO_LIB_DIR)/*.a)` over Corrosion's
+`<build>/corrosion/` output dir. Deferring cargo libs to make time avoids
+Corrosion's imported targets, which do not reliably support `TARGET_FILE`.
+
+One self-inflicted trap worth naming: `file(GENERATE)` evaluates generator
+expressions **everywhere in CONTENT, including inside text intended as comments
+in the emitted file**. A comment mentioning a bare `TARGET_FILE` genex with an
+empty argument aborted the generate step with "Expression syntax not
+recognized". Do not write literal genex syntax into generated content.
+
+Not yet checked:
+- Whether any code reads `net_stack` (needed before deleting it).
+- The mandatory subset of the platform ABI.
+- `integrations/platformio/` is 2 files — is the PlatformIO shell real or a stub?
+- Whether an `integrations/<vendor-sdk>/` shell is viable for S32DS specifically:
+  it is a make-driven Eclipse CDT project, closer to NuttX's make path than to
+  IDF's CMake path.

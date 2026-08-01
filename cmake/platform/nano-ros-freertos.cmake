@@ -86,29 +86,70 @@ nros_bootstrap_codegen()
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosGenerateInterfaces.cmake")
 
 # ---------------------------------------------------------------------------
-# Per-board overlay — REQUIRED for FreeRTOS. Unlike POSIX, FreeRTOS
-# apps need a board-supplied linker script, startup file, FreeRTOSConfig.h,
-# lwIP config, and netif driver. The overlay declares freertos_kernel /
-# lwip / <netif> static libs and composes freertos_platform.
+# Per-board overlay — required UNLESS an integration shell already supplied
+# the platform.
+#
+# Bare FreeRTOS ships a kernel and nothing else, so a board normally has to
+# supply the linker script, startup file, FreeRTOSConfig.h, lwIP config and
+# netif driver, and compose `freertos_platform` from them. That is what the
+# `cmake/board/nano-ros-board-<board>.cmake` overlays do.
+#
+# RFC-0062 — but a HOST ECOSYSTEM that owns its own build (ESP-IDF, a vendor
+# SDK build such as S32DS/RTD, PlatformIO) has already produced every one of
+# those artefacts. Its integration shell binds them to the target names this
+# module expects — exactly as `cmake/platform/nano-ros-esp_idf.cmake` aliases
+# `idf::freertos` / `idf::lwip` and consequently needs no NANO_ROS_BOARD at
+# all. In that case there is no board to name and no overlay to include, and
+# demanding one would force a per-board file into this tree for a board
+# nano-ros never builds.
+#
+# Board-less mode is entered when the shell created `freertos_platform` (the
+# INTERFACE umbrella apps link) BEFORE `add_subdirectory(<nano-ros>)` reached
+# this module. Targets created in the caller's scope are visible here, so a
+# shell can either build them or declare them IMPORTED against artefacts its
+# own build system produced.
+#
+# Nothing else in this file needs to change: every later use of the overlay's
+# outputs is already guarded on `if(DEFINED ...)` (FREERTOS_STARTUP_SOURCE /
+# _INCLUDES), `if(TARGET ...)` (freertos_platform) or `if(COMMAND ...)`
+# (nros_board_link_app), and the Phase 186 Cyclone block already falls back
+# for FREERTOS_DIR / LWIP_DIR.
 # ---------------------------------------------------------------------------
+set(_nros_freertos_boardless FALSE)
 if(NOT DEFINED NANO_ROS_BOARD)
-    message(FATAL_ERROR
-        "nano-ros-freertos: NANO_ROS_BOARD is required for the FreeRTOS "
-        "platform (e.g. -DNANO_ROS_BOARD=mps2-an385-freertos). Boards "
-        "supply the linker script, startup file, FreeRTOSConfig.h, "
-        "lwIP config, and netif driver.")
+    if(TARGET freertos_platform)
+        set(_nros_freertos_boardless TRUE)
+        message(STATUS
+            "nano-ros-freertos: board-less mode — an integration shell "
+            "already composed `freertos_platform`; skipping the per-board "
+            "overlay.")
+    else()
+        message(FATAL_ERROR
+            "nano-ros-freertos: NANO_ROS_BOARD is required for the FreeRTOS "
+            "platform (e.g. -DNANO_ROS_BOARD=mps2-an385-freertos). Boards "
+            "supply the linker script, startup file, FreeRTOSConfig.h, "
+            "lwIP config, and netif driver.\n"
+            "If you are instead integrating nano-ros into a host build that "
+            "already provides those (ESP-IDF, a vendor SDK such as S32DS, "
+            "PlatformIO), create the `freertos_platform` INTERFACE target — "
+            "plus `freertos_kernel` and `lwip` — BEFORE "
+            "add_subdirectory(<nano-ros>), and this module runs board-less. "
+            "See docs/design/0062-board-support-organization.md.")
+    endif()
 endif()
 
-set(_nros_freertos_board_module
-    "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NANO_ROS_BOARD}.cmake")
-if(NOT EXISTS "${_nros_freertos_board_module}")
-    message(FATAL_ERROR
-        "nano-ros-freertos: no board overlay at "
-        "${_nros_freertos_board_module}. Add a "
-        "cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake module or "
-        "pick a supported board (e.g. mps2-an385-freertos).")
+if(NOT _nros_freertos_boardless)
+    set(_nros_freertos_board_module
+        "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NANO_ROS_BOARD}.cmake")
+    if(NOT EXISTS "${_nros_freertos_board_module}")
+        message(FATAL_ERROR
+            "nano-ros-freertos: no board overlay at "
+            "${_nros_freertos_board_module}. Add a "
+            "cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake module or "
+            "pick a supported board (e.g. mps2-an385-freertos).")
+    endif()
+    include("${_nros_freertos_board_module}")
 endif()
-include("${_nros_freertos_board_module}")
 
 # ---------------------------------------------------------------------------
 # Phase 186 — CycloneDDS self-provision flags (FreeRTOS + lwIP).

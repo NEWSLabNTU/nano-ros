@@ -40,11 +40,15 @@ extra_sources = [
   { path = "{src}/system/freertos/lwip/network.c" },
   { path = "{nros}/c/zpico/zpico.c" },
 ]
-arch = "cortex-m3"
+# RFC-0062 — list form (Phase 148): the first arch whose `target_match` matches
+# the build target wins. Was the scalar `"cortex-m3"`, which combined with that
+# profile's `target_exclude = "thumbv7em"` made every Cortex-M4F / M7 FreeRTOS
+# target unbuildable by construction.
+arch = ["cortex-m3", "cortex-m7"]
 compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 required_env = [
   { name = "FREERTOS_DIR", help = "FreeRTOS kernel source. just setup-freertos; export FREERTOS_DIR=$PWD/third-party/freertos/kernel", validate_subdir = "include" },
-  { name = "FREERTOS_PORT", help = "FreeRTOS portable layer. Example: export FREERTOS_PORT=GCC/ARM_CM3" },
+  { name = "FREERTOS_PORT", help = "FreeRTOS portable layer. Examples: export FREERTOS_PORT=GCC/ARM_CM3 (Cortex-M3) | GCC/ARM_CM7/r0p1 (Cortex-M7)" },
   { name = "LWIP_DIR", help = "lwIP source. just setup-freertos; export LWIP_DIR=$PWD/third-party/freertos/lwip", validate_subdir = "src/include" },
   { name = "FREERTOS_CONFIG_DIR", help = "Directory containing FreeRTOSConfig.h + lwipopts.h. Example: packages/boards/nros-board-mps2-an385-freertos/config" },
 ]
@@ -67,3 +71,30 @@ rerun_if_env_changed = ["FREERTOS_DIR", "FREERTOS_PORT", "LWIP_DIR", "FREERTOS_C
 target_match = "thumbv7m"
 target_exclude = "thumbv7em"
 cflags = ["-mcpu=cortex-m3", "-mthumb"]
+
+# RFC-0062 — Cortex-M7, hard float (`thumbv7em-none-eabihf`). Added for the
+# NXP S32K344 / MR-CANHUBK3 bring-up; before it, this platform had exactly one
+# arch profile and it vetoed thumbv7em.
+#
+# KNOWN LIMITATION — `target_match` is a substring test on the target triple,
+# and Cortex-M4F and Cortex-M7 share `thumbv7em-none-eabihf`. This profile
+# therefore claims every hard-float thumbv7em FreeRTOS+lwIP build. Safe today
+# (no M4F board targets this platform — `stm32f4` is bare-metal), but it is the
+# layering fault RFC-0062 documents: the `-mfpu` choice below is a HARDWARE
+# fact living in a PLATFORM manifest, and `ArchEntry` has no per-board gate to
+# express it. The fix is letting the board layer contribute `[arch.*]`
+# (RFC-0049's ladder already orders board above platform; only the loader
+# needs extending — `BoardKnobsFile` currently parses `[knobs]` only).
+#
+# `fpv5-sp-d16` (single precision) matches the MR-CANHUBK3 S32DS project's own
+# link args. A board whose SDK builds `-mfpu=fpv5-d16` must not mix objects
+# with this profile — check your vendor project's link flags before assuming.
+# `target_match` is the FULL hard-float triple, not the bare `thumbv7em` arch
+# token: `target_exclude` is also a substring test, and `thumbv7em-none-eabi`
+# (soft float) is a substring of `thumbv7em-none-eabihf`, so soft float cannot
+# be excluded — only not-matched. A soft-float thumbv7em build therefore
+# selects no profile and fails loudly, instead of silently compiling with
+# `-mfloat-abi=hard` against a soft-float target.
+[arch.cortex-m7]
+target_match = "thumbv7em-none-eabihf"
+cflags = ["-mcpu=cortex-m7", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv5-sp-d16"]
