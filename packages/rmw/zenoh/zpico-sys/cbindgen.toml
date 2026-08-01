@@ -81,6 +81,9 @@ exclude = [
 ]
 include = [
     # zpico API - Session lifecycle
+    "zpico_session_t",
+    "zpico_session_acquire",
+    "zpico_session_release",
     "zpico_init",
     "zpico_init_with_config",
     "zpico_property_t",

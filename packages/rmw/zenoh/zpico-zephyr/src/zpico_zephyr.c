@@ -22,6 +22,11 @@ LOG_MODULE_REGISTER(zpico_zephyr, LOG_LEVEL_INF);
  * RMW-independent platform primitive that was historically mis-filed here
  * only because zenoh was the first Zephyr backend. */
 
+/* phase-328 (issue 0348) — the zpico C API is now handle-passing. This shim
+ * keeps its singleton `init_session`/`shutdown` public signatures and owns one
+ * pool slot internally (this path only ever opens a single session). */
+static zpico_session_t* g_zephyr_session = NULL;
+
 int32_t zpico_zephyr_init_session(const char* locator) {
     if (locator == NULL) {
         LOG_ERR("Locator is NULL");
@@ -31,17 +36,27 @@ int32_t zpico_zephyr_init_session(const char* locator) {
     LOG_INF("Initializing zenoh session");
     LOG_INF("  Locator: %s", locator);
 
-    int32_t ret = zpico_init(locator);
+    g_zephyr_session = zpico_session_acquire();
+    if (g_zephyr_session == NULL) {
+        LOG_ERR("Failed to acquire a zenoh session slot (pool full)");
+        return ZPICO_ERR_FULL;
+    }
+
+    int32_t ret = zpico_init(g_zephyr_session, locator);
     if (ret != ZPICO_OK) {
         LOG_ERR("Failed to initialize zenoh: %d", ret);
+        zpico_session_release(g_zephyr_session);
+        g_zephyr_session = NULL;
         return ret;
     }
 
     LOG_INF("  Zenoh initialized");
 
-    ret = zpico_open();
+    ret = zpico_open(g_zephyr_session);
     if (ret != ZPICO_OK) {
         LOG_ERR("Failed to open zenoh session: %d", ret);
+        zpico_session_release(g_zephyr_session);
+        g_zephyr_session = NULL;
         return ret;
     }
 
@@ -50,6 +65,10 @@ int32_t zpico_zephyr_init_session(const char* locator) {
 }
 
 void zpico_zephyr_shutdown(void) {
-    zpico_close();
+    if (g_zephyr_session != NULL) {
+        zpico_close(g_zephyr_session);
+        zpico_session_release(g_zephyr_session);
+        g_zephyr_session = NULL;
+    }
     LOG_INF("Zenoh session closed");
 }

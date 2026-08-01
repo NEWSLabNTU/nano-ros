@@ -392,6 +392,7 @@ impl Publisher for ZenohPublisher {
 
         let rc = unsafe {
             zpico_sys::zpico_publish_streamed(
+                self.publisher.session(),
                 self.publisher.handle(),
                 total,
                 Some(chunk_cb),

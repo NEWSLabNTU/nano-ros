@@ -134,6 +134,29 @@ pub type ZpicoQueryCallback = extern "C" fn(
 mod cbindgen_stubs {
     use super::*;
 
+    /// Opaque per-session handle (issue 0348 / phase-328). A `zpico_session_t*`
+    /// points into the C shim's compile-time session pool
+    /// (`ZPICO_MAX_SESSIONS`, default 1). Every `zpico_*` entry point that
+    /// operates on a session takes one as its leading argument. Rust never
+    /// dereferences it — it is a bare pointer forwarded to the C shim.
+    #[repr(C)]
+    pub struct zpico_session_t {
+        _private: [u8; 0],
+    }
+
+    /// Acquire a free slot from the C shim's session pool. Returns NULL when
+    /// the pool (`ZPICO_MAX_SESSIONS`) is exhausted. Pair with
+    /// `zpico_session_release` after `zpico_close`.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_session_acquire() -> *mut zpico_session_t {
+        core::ptr::null_mut()
+    }
+
+    /// Return a slot to the pool. Call after `zpico_close`; the pointer is
+    /// invalid afterwards.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_session_release(_session: *mut zpico_session_t) {}
+
     /// A key-value property for transport configuration.
     #[repr(C)]
     pub struct zpico_property_t {
@@ -180,7 +203,7 @@ mod cbindgen_stubs {
     /// # Returns
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_init(_locator: *const c_char) -> i32 {
+    pub extern "C" fn zpico_init(_session: *mut zpico_session_t, _locator: *const c_char) -> i32 {
         0
     }
 
@@ -197,6 +220,7 @@ mod cbindgen_stubs {
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_init_with_config(
+        _session: *mut zpico_session_t,
         _locator: *const c_char,
         _mode: *const c_char,
         _properties: *const zpico_property_t,
@@ -210,7 +234,7 @@ mod cbindgen_stubs {
     /// # Returns
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_open() -> i32 {
+    pub extern "C" fn zpico_open(_session: *mut zpico_session_t) -> i32 {
         0
     }
 
@@ -219,7 +243,7 @@ mod cbindgen_stubs {
     /// # Returns
     /// Non-zero if open, 0 if closed.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_is_open() -> i32 {
+    pub extern "C" fn zpico_is_open(_session: *mut zpico_session_t) -> i32 {
         0
     }
 
@@ -230,7 +254,7 @@ mod cbindgen_stubs {
     /// if the send failed (treated as a probe timeout — caller maps
     /// to `NROS_RMW_RET_TIMEOUT`).
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_send_keep_alive() -> i32 {
+    pub extern "C" fn zpico_send_keep_alive(_session: *mut zpico_session_t) -> i32 {
         ZPICO_ERR_SESSION
     }
 
@@ -239,6 +263,7 @@ mod cbindgen_stubs {
     /// Returns 0 on success, `ZPICO_ERR_*` on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_publish_streamed(
+        _session: *mut zpico_session_t,
         _handle: i32,
         _total_len: usize,
         _chunk_cb: Option<
@@ -258,7 +283,7 @@ mod cbindgen_stubs {
 
     /// Close the session and clean up all resources.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_close() {}
+    pub extern "C" fn zpico_close(_session: *mut zpico_session_t) {}
 
     /// Configure scheduling attributes for zenoh-pico read and lease background tasks.
     ///
@@ -283,14 +308,21 @@ mod cbindgen_stubs {
     /// # Returns
     /// Publisher handle (>= 0) on success, negative error code on failure.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_declare_publisher(_keyexpr: *const c_char) -> i32 {
+    pub extern "C" fn zpico_declare_publisher(
+        _session: *mut zpico_session_t,
+        _keyexpr: *const c_char,
+    ) -> i32 {
         0
     }
 
     /// Declare a publisher with options (stub). `_is_express` mirrors the real
     /// shim's phase-279 express hint.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_declare_publisher_ex(_keyexpr: *const c_char, _is_express: i32) -> i32 {
+    pub extern "C" fn zpico_declare_publisher_ex(
+        _session: *mut zpico_session_t,
+        _keyexpr: *const c_char,
+        _is_express: i32,
+    ) -> i32 {
         0
     }
 
@@ -304,7 +336,12 @@ mod cbindgen_stubs {
     /// # Returns
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_publish(_handle: i32, _data: *const u8, _len: usize) -> i32 {
+    pub extern "C" fn zpico_publish(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+        _data: *const u8,
+        _len: usize,
+    ) -> i32 {
         0
     }
 
@@ -316,7 +353,10 @@ mod cbindgen_stubs {
     /// # Returns
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_undeclare_publisher(_handle: i32) -> i32 {
+    pub extern "C" fn zpico_undeclare_publisher(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+    ) -> i32 {
         0
     }
 
@@ -331,6 +371,7 @@ mod cbindgen_stubs {
     /// Subscriber handle (>= 0) on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_declare_subscriber(
+        _session: *mut zpico_session_t,
         _keyexpr: *const c_char,
         _callback: ZpicoCallback,
         _ctx: *mut c_void,
@@ -349,6 +390,7 @@ mod cbindgen_stubs {
     /// Subscriber handle (>= 0) on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_declare_subscriber_with_attachment(
+        _session: *mut zpico_session_t,
         _keyexpr: *const c_char,
         _callback: ZpicoCallbackWithAttachment,
         _ctx: *mut c_void,
@@ -375,6 +417,7 @@ mod cbindgen_stubs {
     /// Subscriber handle (>= 0) on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_declare_subscriber_direct_write(
+        _session: *mut zpico_session_t,
         _keyexpr: *const c_char,
         _buf_ptr: *mut u8,
         _buf_capacity: usize,
@@ -402,6 +445,7 @@ mod cbindgen_stubs {
     /// Subscriber handle (>= 0) on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_declare_subscriber_ring(
+        _session: *mut zpico_session_t,
         _keyexpr: *const c_char,
         _desc: *mut zpico_ring_desc_t,
         _callback: ZpicoNotifyCallback,
@@ -425,6 +469,7 @@ mod cbindgen_stubs {
     /// Subscriber handle (>= 0) on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_subscribe_zero_copy(
+        _session: *mut zpico_session_t,
         _keyexpr: *const c_char,
         _callback: ZpicoZeroCopyCallback,
         _ctx: *mut c_void,
@@ -440,7 +485,10 @@ mod cbindgen_stubs {
     /// # Returns
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_undeclare_subscriber(_handle: i32) -> i32 {
+    pub extern "C" fn zpico_undeclare_subscriber(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+    ) -> i32 {
         0
     }
 
@@ -456,7 +504,7 @@ mod cbindgen_stubs {
     /// # Returns
     /// Number of events processed, or negative on error.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_spin_once(_timeout_ms: u32) -> i32 {
+    pub extern "C" fn zpico_spin_once(_session: *mut zpico_session_t, _timeout_ms: u32) -> i32 {
         0
     }
 
@@ -481,7 +529,7 @@ mod cbindgen_stubs {
     /// # Returns
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_get_zid(_zid_out: *mut u8) -> i32 {
+    pub extern "C" fn zpico_get_zid(_session: *mut zpico_session_t, _zid_out: *mut u8) -> i32 {
         0
     }
 
@@ -497,7 +545,10 @@ mod cbindgen_stubs {
     /// # Returns
     /// Liveliness handle (>= 0) on success, negative error code on failure.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_declare_liveliness(_keyexpr: *const c_char) -> i32 {
+    pub extern "C" fn zpico_declare_liveliness(
+        _session: *mut zpico_session_t,
+        _keyexpr: *const c_char,
+    ) -> i32 {
         0
     }
 
@@ -509,7 +560,10 @@ mod cbindgen_stubs {
     /// # Returns
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_undeclare_liveliness(_handle: i32) -> i32 {
+    pub extern "C" fn zpico_undeclare_liveliness(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+    ) -> i32 {
         0
     }
 
@@ -530,6 +584,7 @@ mod cbindgen_stubs {
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_publish_with_attachment(
+        _session: *mut zpico_session_t,
         _handle: i32,
         _data: *const u8,
         _len: usize,
@@ -554,6 +609,7 @@ mod cbindgen_stubs {
     /// Queryable handle (>= 0) on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_declare_queryable(
+        _session: *mut zpico_session_t,
         _keyexpr: *const c_char,
         _callback: ZpicoQueryCallback,
         _ctx: *mut c_void,
@@ -569,7 +625,10 @@ mod cbindgen_stubs {
     /// # Returns
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_undeclare_queryable(_handle: i32) -> i32 {
+    pub extern "C" fn zpico_undeclare_queryable(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+    ) -> i32 {
         0
     }
 
@@ -586,6 +645,7 @@ mod cbindgen_stubs {
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_query_reply(
+        _session: *mut zpico_session_t,
         _queryable_handle: i32,
         _reply_seq: i64,
         _keyexpr: *const c_char,
@@ -601,7 +661,10 @@ mod cbindgen_stubs {
     /// deferred-reply seq); call from inside the synchronous query callback.
     /// Stub returns -1 (no slot) in the pure-Rust no-op build.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_queryable_take_reply_seq(_queryable_handle: i32) -> i64 {
+    pub extern "C" fn zpico_queryable_take_reply_seq(
+        _session: *mut zpico_session_t,
+        _queryable_handle: i32,
+    ) -> i64 {
         -1
     }
 
@@ -619,6 +682,7 @@ mod cbindgen_stubs {
     /// Number of bytes in reply on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_get(
+        _session: *mut zpico_session_t,
         _keyexpr: *const c_char,
         _payload: *const u8,
         _payload_len: usize,
@@ -634,6 +698,7 @@ mod cbindgen_stubs {
     /// Returns a non-negative slot handle on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_get_start(
+        _session: *mut zpico_session_t,
         _keyexpr: *const c_char,
         _payload: *const u8,
         _payload_len: usize,
@@ -645,6 +710,7 @@ mod cbindgen_stubs {
     /// Issue 0153 — attachment-carrying query start (rmw_zenoh service interop).
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_get_start_with_attachment(
+        _session: *mut zpico_session_t,
         _keyexpr: *const c_char,
         _payload: *const u8,
         _payload_len: usize,
@@ -660,6 +726,7 @@ mod cbindgen_stubs {
     /// Returns positive byte count on reply, 0 if still pending, negative on error/timeout.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_get_check(
+        _session: *mut zpico_session_t,
         _handle: i32,
         _reply_buf: *mut u8,
         _reply_buf_size: usize,
@@ -669,7 +736,11 @@ mod cbindgen_stubs {
 
     /// Start a non-blocking liveliness query (for wait_for_service).
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_liveliness_get_start(_keyexpr: *const c_char, _timeout_ms: u32) -> i32 {
+    pub extern "C" fn zpico_liveliness_get_start(
+        _session: *mut zpico_session_t,
+        _keyexpr: *const c_char,
+        _timeout_ms: u32,
+    ) -> i32 {
         -1 // stub: not available
     }
 
@@ -678,7 +749,10 @@ mod cbindgen_stubs {
     /// Returns 1 on first matching token reply, 0 if still pending, -9 on
     /// timeout (dropper fired without replies), other negative on error.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_liveliness_get_check(_handle: i32) -> i32 {
+    pub extern "C" fn zpico_liveliness_get_check(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+    ) -> i32 {
         -1 // stub: not available
     }
 
@@ -686,13 +760,20 @@ mod cbindgen_stubs {
     /// replies on this slot. Used by the subscriber-side
     /// `LivelinessChanged` bridge to surface `alive_count > 1`.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_liveliness_get_count(_handle: i32) -> i32 {
+    pub extern "C" fn zpico_liveliness_get_count(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+    ) -> i32 {
         -1 // stub: not available
     }
 
     /// Register a reply waker callback for async service client support.
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_set_reply_waker(_func: Option<unsafe extern "C" fn(i32)>) {}
+    pub extern "C" fn zpico_set_reply_waker(
+        _session: *mut zpico_session_t,
+        _func: Option<unsafe extern "C" fn(i32)>,
+    ) {
+    }
 
     /// Capture the current clock into an opaque 16-byte buffer.
     /// Used by FFI reentrancy guard timeout decomposition.

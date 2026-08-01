@@ -19,6 +19,11 @@ pub struct ShimConfig {
     pub max_queryables: usize,
     pub max_liveliness: usize,
     pub max_pending_gets: usize,
+    /// phase-328 (issue 0348) — size of the C shim's session pool
+    /// (`ZPICO_MAX_SESSIONS`, default 1). A single-session target keeps the
+    /// default so its static footprint is one session's tables plus one
+    /// in-use flag; a multi-domain build raises it.
+    pub max_sessions: usize,
     pub get_reply_buf_size: usize,
     pub get_poll_interval_ms: usize,
     /// phase-279 (#145) — opt-in tx batching (`ZPICO_TX_BATCH=1`): puts queue in
@@ -47,12 +52,15 @@ impl ShimConfig {
              /// Maximum number of concurrent liveliness tokens (set via ZPICO_MAX_LIVELINESS, default 16).\n\
              pub const ZPICO_MAX_LIVELINESS: usize = {};\n\
              /// Maximum number of concurrent pending get operations (set via ZPICO_MAX_PENDING_GETS, default 4).\n\
-             pub const ZPICO_MAX_PENDING_GETS: usize = {};\n",
+             pub const ZPICO_MAX_PENDING_GETS: usize = {};\n\
+             /// Size of the session pool (set via ZPICO_MAX_SESSIONS, default 1). phase-328 / issue 0348.\n\
+             pub const ZPICO_MAX_SESSIONS: usize = {};\n",
             self.max_publishers,
             self.max_subscribers,
             self.max_queryables,
             self.max_liveliness,
             self.max_pending_gets,
+            self.max_sessions,
         )
     }
 
@@ -78,6 +86,7 @@ impl ShimConfig {
             "ZPICO_MAX_PENDING_GETS",
             self.max_pending_gets.to_string().as_str(),
         );
+        build.define("ZPICO_MAX_SESSIONS", self.max_sessions.to_string().as_str());
         build.define(
             "ZPICO_GET_REPLY_BUF_SIZE",
             self.get_reply_buf_size.to_string().as_str(),
@@ -726,6 +735,7 @@ int32_t zpico_init(void);\n";
             max_queryables: 3,
             max_liveliness: 4,
             max_pending_gets: 5,
+            max_sessions: 9,
             get_reply_buf_size: 6,
             get_poll_interval_ms: 7,
             tx_batch: false,
@@ -735,6 +745,7 @@ int32_t zpico_init(void);\n";
         let body = cfg.rust_consts();
         assert!(body.contains("ZPICO_MAX_PUBLISHERS: usize = 1;"));
         assert!(body.contains("ZPICO_MAX_PENDING_GETS: usize = 5;"));
+        assert!(body.contains("ZPICO_MAX_SESSIONS: usize = 9;"));
         assert!(!body.contains("get_reply_buf_size"));
     }
 

@@ -65,12 +65,20 @@ int main(void) {
     printk("stress-zenoh-zephyr: locator=%s count=%d size=%d\n", CONFIG_NROS_ZENOH_LOCATOR,
            STRESS_COUNT, STRESS_SIZE);
 
+    /* phase-328 (issue 0348) — the zpico C API is handle-passing; acquire one
+     * pool slot for this single-session stress image. */
+    zpico_session_t* s = zpico_session_acquire();
+    if (s == NULL) {
+        printk("STRESS_FAIL: session pool full\n");
+        return 1;
+    }
+
     /* Session open with retry: the router may come up after the image. */
     int32_t rc = -1;
     for (int attempt = 0; attempt < 40; attempt++) {
-        rc = zpico_init(CONFIG_NROS_ZENOH_LOCATOR);
+        rc = zpico_init(s, CONFIG_NROS_ZENOH_LOCATOR);
         if (rc == 0) {
-            rc = zpico_open();
+            rc = zpico_open(s);
             if (rc == 0) {
                 break;
             }
@@ -86,7 +94,7 @@ int main(void) {
     /* Phase 282 W3 (#145) — STRESS_EXPRESS=1 declares the publisher express:
      * its samples bypass tx batching (wire EXPRESS flag) even in a batching
      * image, so per-message latency is not flush-cadence-quantized. */
-    int32_t handle = zpico_declare_publisher_ex(STRESS_KEYEXPR, STRESS_EXPRESS);
+    int32_t handle = zpico_declare_publisher_ex(s, STRESS_KEYEXPR, STRESS_EXPRESS);
     if (handle < 0) {
         printk("STRESS_FAIL: declare rc=%d\n", handle);
         return 1;
@@ -99,7 +107,7 @@ int main(void) {
     int64_t t0 = k_uptime_get();
     for (uint32_t seq = 0; seq < STRESS_COUNT; seq++) {
         build_payload(seq);
-        (void)zpico_publish(handle, g_payload, STRESS_SIZE);
+        (void)zpico_publish(s, handle, g_payload, STRESS_SIZE);
 #if STRESS_INTERVAL_MS > 0
         k_sleep(K_MSEC(STRESS_INTERVAL_MS));
 #endif
@@ -110,7 +118,8 @@ int main(void) {
     /* Drain: give the flush thread / lease keepalives time to ship any
      * batched remainder before closing (close also flushes). */
     k_sleep(K_SECONDS(3));
-    zpico_close();
+    zpico_close(s);
+    zpico_session_release(s);
     printk("STRESS_EXIT\n");
     return 0;
 }

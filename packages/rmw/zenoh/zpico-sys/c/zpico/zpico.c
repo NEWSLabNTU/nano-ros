@@ -190,16 +190,12 @@ typedef struct {
 #define ZPICO_MAX_PENDING_GETS 4
 #endif
 
-// Static storage for zenoh objects
-static z_owned_config_t g_config;
-static z_owned_session_t g_session;
-static bool g_session_open = false;
-static bool g_initialized = false;
-
-static publisher_entry_t g_publishers[ZPICO_MAX_PUBLISHERS];
-static subscriber_entry_t g_subscribers[ZPICO_MAX_SUBSCRIBERS];
-static liveliness_entry_t g_liveliness[ZPICO_MAX_LIVELINESS];
-static queryable_entry_t g_queryables[ZPICO_MAX_QUERYABLES];
+// issue 0348 / phase-328 — the shim is multi-session (handle-passing). Every
+// per-session zenoh object that used to be a file-scope static (config, the
+// session handle, the lifecycle flags, and the registration tables) now lives
+// in `struct zpico_session`, defined below after the reply-slot typedefs. Every
+// `zpico_*` entry point takes a leading `zpico_session_t*` handle into the
+// compile-time session pool.
 
 // Phase 237 — per-queryable seq-keyed reply slots. A reply can be sent long
 // after the query callback returned (an action `get_result` held until the goal
@@ -211,13 +207,11 @@ static queryable_entry_t g_queryables[ZPICO_MAX_QUERYABLES];
 #ifndef ZPICO_MAX_PENDING_REPLIES
 #define ZPICO_MAX_PENDING_REPLIES 4
 #endif
-static z_owned_query_t g_stored_queries[ZPICO_MAX_QUERYABLES][ZPICO_MAX_PENDING_REPLIES];
-static bool g_stored_query_valid[ZPICO_MAX_QUERYABLES]
-                                [ZPICO_MAX_PENDING_REPLIES]; // zero-init = all false
-// Index of the slot allocated by the most recent `query_handler` invocation,
-// read by `zpico_queryable_take_reply_seq` from inside the (synchronous) user
-// callback. -1 if the table was full (the reply is dropped — back-pressure).
-static int64_t g_last_reply_seq[ZPICO_MAX_QUERYABLES];
+// `stored_queries` / `stored_query_valid` / `last_reply_seq` are per-session —
+// they live in `struct zpico_session` (defined below). The index of the slot
+// allocated by the most recent `query_handler` invocation is read by
+// `zpico_queryable_take_reply_seq` from inside the (synchronous) user callback;
+// -1 if the table was full (the reply is dropped — back-pressure).
 #if defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
 static uint32_t g_session_zid_counter;
 #else
@@ -261,7 +255,7 @@ typedef struct {
     bool in_use;
 } pending_get_slot_t;
 
-static pending_get_slot_t g_pending_gets[ZPICO_MAX_PENDING_GETS];
+// The `pending_gets` slot pool is per-session — see `struct zpico_session` below.
 
 // Phase 127.D — diagnostic counters for reply-dispatch debugging.
 // Read via `zpico_get_diag_counters` from Rust.
@@ -286,24 +280,194 @@ static volatile uint32_t g_diag_start_ctx_addr = 0;
 
 // Reply waker callback — invoked when a pending get slot receives a reply
 // or times out, allowing Rust async code to wake the corresponding Future.
+// Per-session (stored in `struct zpico_session.reply_waker`); set via
+// `zpico_set_reply_waker(s, fn)`.
 typedef void (*zpico_waker_fn)(int32_t slot);
-static zpico_waker_fn g_reply_waker = NULL;
 
-// Spin-wake primitive for multi-threaded spin_once().
-// Signaled by our callbacks (sample_handler, query_handler, get reply handlers)
-// so spin_once() can wake immediately when application data arrives, rather
-// than sleeping for the full timeout duration.
+// ============================================================================
+// Session pool (issue 0348 / phase-328 — multi-session handle-passing)
+// ============================================================================
+//
+// Every per-session zenoh object that used to be a file-scope static now lives
+// in `struct zpico_session`, held in a compile-time pool (`ZPICO_MAX_SESSIONS`,
+// default 1 so single-session targets keep TODAY's footprint plus one `bool`
+// per slot). No heap — embedded targets do not assume `malloc`. The diagnostic
+// counters and the ZID uniquifier stay process-global (below / above).
+//
+// The generated header (zpico.h) exposes `zpico_session_t` as an opaque
+// 0-length stub and every `zpico_*` prototype takes a `zpico_session_t*`. The
+// concrete storage therefore lives under a DISTINCT tag `struct zpico_session`;
+// each entry point reinterprets its `zpico_session_t*` handle as a
+// `struct zpico_session*`.
+
+// Some struct members need platform types whose headers were previously pulled
+// in inside the spin-primitive section; hoist those includes above the struct.
+#if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZPICO_SMOLTCP)
+#if defined(ZENOH_FREERTOS_LWIP)
+#include <FreeRTOS.h>
+#include <semphr.h>
+#elif defined(ZENOH_NUTTX)
+#include <semaphore.h>
+#include <errno.h>
+#endif
+#endif
+
+// phase-279 (#145) — dedicated tx-flush thread selector. Defined here (ahead of
+// its previous site) because `struct zpico_session` gates its flush-task
+// members on it. On multi-threaded, batching-on, non-ThreadX builds a dedicated
+// low-duty thread absorbs the socket waits; ThreadX keeps the spin-driven flush
+// (it runs no background tasks — read-task starvation, see zpico_open);
+// single-threaded platforms have no tasks at all.
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && Z_FEATURE_MULTI_THREAD == 1 &&               \
+    !defined(ZENOH_THREADX)
+#define ZPICO_TX_BATCH_THREAD 1
+#else
+#define ZPICO_TX_BATCH_THREAD 0
+#endif
+#ifndef ZPICO_TX_BATCH_FLUSH_MS
+#define ZPICO_TX_BATCH_FLUSH_MS 50
+#endif
+
+#ifndef ZPICO_MAX_SESSIONS
+#define ZPICO_MAX_SESSIONS 1 // single-session targets keep TODAY's footprint
+#endif
+
+struct zpico_session {
+    // Session handle + config + lifecycle (per handle — issue 0347's
+    // single-session guard is gone; each handle is independent).
+    z_owned_config_t config;
+    z_owned_session_t session;
+    bool session_open;
+    bool initialized;
+
+    // Registration tables.
+    publisher_entry_t publishers[ZPICO_MAX_PUBLISHERS];
+    subscriber_entry_t subscribers[ZPICO_MAX_SUBSCRIBERS];
+    liveliness_entry_t liveliness[ZPICO_MAX_LIVELINESS];
+    queryable_entry_t queryables[ZPICO_MAX_QUERYABLES];
+
+    // Phase 237 — per-queryable seq-keyed reply slots. Each slot holds one
+    // cloned (owned) query so a reply can be sent after the query callback
+    // returned (deferred get_result) even if more queries land meanwhile.
+    z_owned_query_t stored_queries[ZPICO_MAX_QUERYABLES][ZPICO_MAX_PENDING_REPLIES];
+    bool stored_query_valid[ZPICO_MAX_QUERYABLES][ZPICO_MAX_PENDING_REPLIES];
+    int64_t last_reply_seq[ZPICO_MAX_QUERYABLES];
+
+    // Non-blocking z_get slot pool.
+    pending_get_slot_t pending_gets[ZPICO_MAX_PENDING_GETS];
+
+    // Reply waker (async service client).
+    zpico_waker_fn reply_waker;
+
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && ZPICO_TX_BATCH_THREAD == 0
+    // phase-279 (#145) — rate-limited batch-flush cadence for platforms WITHOUT
+    // the dedicated tx-flush thread (ThreadX + single-threaded). Was a pair of
+    // function-local statics in zpico_spin_once.
+    z_clock_t last_batch_flush;
+    bool batch_flush_init;
+#endif
+
+    // Spin-wake primitive for multi-threaded spin_once(). Signaled by our
+    // callbacks (sample_handler, query_handler, get reply handlers) so
+    // spin_once() wakes immediately when application data arrives, rather than
+    // sleeping for the full timeout duration.
+#if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZPICO_SMOLTCP)
+#if defined(ZENOH_FREERTOS_LWIP)
+    // FreeRTOS: binary semaphore — lightweight, no mutex needed.
+    SemaphoreHandle_t spin_sem;
+#elif defined(ZENOH_NUTTX)
+    // NuttX: POSIX `sem_t` + `sem_timedwait`. The pthread mutex + condvar pair
+    // hangs indefinitely inside the kernel's watchdog-backed semaphore wait
+    // (Phase 55.12 follow-up); POSIX `sem_timedwait` does not share that path.
+    sem_t spin_sem_posix;
+    bool spin_sem_initialized;
+#else
+    // POSIX/Zephyr: mutex + condvar
+    _z_mutex_t spin_mutex;
+#if defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD == 1
+    // issue #247 — multi-tier serialization of the spin-driven read path (see
+    // _zpico_threadx_locked_read). TRY-lock: the losing spinner skips this
+    // round's read (data is drained by the winner).
+    _z_mutex_t threadx_read_mutex;
+    bool threadx_read_mutex_initialized;
+#endif
+    _z_condvar_t spin_cv;
+    bool spin_cv_initialized;
+#endif
+#endif
+
+#if ZPICO_TX_BATCH_THREAD == 1
+    // phase-279/282 W4 (#145) — dedicated tx-flush task + its optional
+    // attributes (copied from the process-wide defaults at zpico_open).
+    _z_task_t tx_flush_task;
+    volatile bool tx_flush_run;
+    bool flush_task_configured;
+    z_task_attr_t flush_task_attr;
+#endif
+
+#if Z_FEATURE_MULTI_THREAD == 1
+    // Read/lease task attributes (copied from the process-wide defaults at
+    // zpico_open). When non-configured, NULL is passed (platform default).
+    bool read_task_configured;
+    bool lease_task_configured;
+    zp_task_read_options_t read_task_opts;
+    zp_task_lease_options_t lease_task_opts;
+    z_task_attr_t read_task_attr;
+    z_task_attr_t lease_task_attr;
+#endif
+};
+
+static struct zpico_session g_sessions[ZPICO_MAX_SESSIONS];
+static bool g_session_inuse[ZPICO_MAX_SESSIONS];
+
+// Acquire a free pool slot (zeroed). NULL when the pool is exhausted.
+zpico_session_t* zpico_session_acquire(void) {
+    for (int i = 0; i < ZPICO_MAX_SESSIONS; i++) {
+        if (!g_session_inuse[i]) {
+            g_session_inuse[i] = true;
+            memset(&g_sessions[i], 0, sizeof(g_sessions[i]));
+            return (zpico_session_t*)&g_sessions[i];
+        }
+    }
+    return NULL;
+}
+
+// Return a slot to the pool. The pointer is invalid afterwards.
+void zpico_session_release(zpico_session_t* session) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || s < g_sessions || s >= g_sessions + ZPICO_MAX_SESSIONS) {
+        return;
+    }
+    g_session_inuse[s - g_sessions] = false;
+}
+
+// Callback context packing (issue 0348 / phase-328). zenoh-pico closures carry
+// a single `void* ctx`; pack the owning session's pool index and the table slot
+// index into it instead of an `int idx` (which no longer identifies a session)
+// or a back-pointer into a now-pooled array. At ZPICO_MAX_SESSIONS == 1 the
+// session index is 0, so the packed value equals the old `(void*)(intptr_t)idx`.
+static inline void* _zpico_pack_ctx(struct zpico_session* s, int slot_idx) {
+    uintptr_t session_idx = (uintptr_t)(s - g_sessions);
+    return (void*)((session_idx << 16) | (uintptr_t)(unsigned)slot_idx);
+}
+static inline struct zpico_session* _zpico_unpack_session(void* ctx) {
+    return &g_sessions[(uintptr_t)ctx >> 16];
+}
+static inline int _zpico_unpack_slot(void* ctx) {
+    return (int)((uintptr_t)ctx & 0xFFFF);
+}
+
+// Spin-wake helpers for multi-threaded spin_once(). Signal the OWNING
+// session's wake object (the primitives now live in `struct zpico_session`) so
+// spin_once() can wake immediately when application data arrives, rather than
+// sleeping for the full timeout duration. Callers have `s` in hand.
 #if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZPICO_SMOLTCP)
 
 #if defined(ZENOH_FREERTOS_LWIP)
 // FreeRTOS: binary semaphore — lightweight, no mutex needed.
-#include <FreeRTOS.h>
-#include <semphr.h>
-static SemaphoreHandle_t g_spin_sem = NULL;
-
-static inline void _zpico_notify_spin(void) {
-    if (g_spin_sem != NULL) {
-        xSemaphoreGive(g_spin_sem);
+static inline void _zpico_notify_spin(struct zpico_session* s) {
+    if (s->spin_sem != NULL) {
+        xSemaphoreGive(s->spin_sem);
     }
 }
 #elif defined(ZENOH_NUTTX)
@@ -312,23 +476,16 @@ static inline void _zpico_notify_spin(void) {
 // hangs indefinitely inside the kernel's watchdog-backed semaphore
 // wait (Phase 55.12 follow-up). POSIX `sem_timedwait` does not share
 // that code path and is safe.
-#include <semaphore.h>
-#include <time.h>
-#include <errno.h>
-static sem_t g_spin_sem_posix;
-static bool g_spin_sem_initialized = false;
-
-static inline void _zpico_notify_spin(void) {
-    if (g_spin_sem_initialized) {
+static inline void _zpico_notify_spin(struct zpico_session* s) {
+    if (s->spin_sem_initialized) {
         // sem_post is async-signal-safe; binary-ish semantics are fine
         // because we only care that spin_once wakes at least once per
         // event, not that every post is counted.
-        sem_post(&g_spin_sem_posix);
+        sem_post(&s->spin_sem_posix);
     }
 }
 #else
 // POSIX/Zephyr: mutex + condvar
-static _z_mutex_t g_spin_mutex;
 
 #if defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD == 1
 /* issue #247 — multi-tier serialization of the spin-driven read path. The
@@ -340,36 +497,33 @@ static _z_mutex_t g_spin_mutex;
  * confirmed the reply was sent; the guest never processed it). TRY-lock:
  * the losing spinner skips this round's read (data is drained by the
  * winner) instead of blocking its 1 ms tier cadence. */
-static _z_mutex_t g_threadx_read_mutex;
-static bool g_threadx_read_mutex_initialized = false;
-
-static int _zpico_threadx_locked_read(void) {
-    if (g_threadx_read_mutex_initialized) {
-        if (_z_mutex_try_lock(&g_threadx_read_mutex) != 0) {
+static int _zpico_threadx_locked_read(struct zpico_session* s) {
+    if (s->threadx_read_mutex_initialized) {
+        if (_z_mutex_try_lock(&s->threadx_read_mutex) != 0) {
             /* Another tier is mid-read — it drains the data. */
             return ZPICO_ERR_TIMEOUT;
         }
-        int r = zp_read(z_session_loan_mut(&g_session), NULL);
-        _z_mutex_unlock(&g_threadx_read_mutex);
+        int r = zp_read(z_session_loan_mut(&s->session), NULL);
+        _z_mutex_unlock(&s->threadx_read_mutex);
         return r;
     }
-    return zp_read(z_session_loan_mut(&g_session), NULL);
+    return zp_read(z_session_loan_mut(&s->session), NULL);
 }
 #endif
-static _z_condvar_t g_spin_cv;
-static bool g_spin_cv_initialized = false;
 
-static inline void _zpico_notify_spin(void) {
-    if (g_spin_cv_initialized) {
-        _z_mutex_lock(&g_spin_mutex);
-        _z_condvar_signal(&g_spin_cv);
-        _z_mutex_unlock(&g_spin_mutex);
+static inline void _zpico_notify_spin(struct zpico_session* s) {
+    if (s->spin_cv_initialized) {
+        _z_mutex_lock(&s->spin_mutex);
+        _z_condvar_signal(&s->spin_cv);
+        _z_mutex_unlock(&s->spin_mutex);
     }
 }
 #endif // ZENOH_FREERTOS_LWIP / ZENOH_NUTTX
 
 #else
-static inline void _zpico_notify_spin(void) {}
+static inline void _zpico_notify_spin(struct zpico_session* s) {
+    (void)s;
+}
 #endif
 
 // ============================================================================
@@ -381,47 +535,47 @@ static inline void _zpico_notify_spin(void) {}
 // ThreadX deliberately runs no background tasks (read-task starvation — see
 // zpico_open), so it keeps the spin-driven flush. Single-threaded platforms
 // have no tasks at all.
-#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && Z_FEATURE_MULTI_THREAD == 1 &&               \
-    !defined(ZENOH_THREADX)
-#define ZPICO_TX_BATCH_THREAD 1
-#else
-#define ZPICO_TX_BATCH_THREAD 0
-#endif
-#ifndef ZPICO_TX_BATCH_FLUSH_MS
-#define ZPICO_TX_BATCH_FLUSH_MS 50
-#endif
-
+//
+// The ZPICO_TX_BATCH_THREAD / ZPICO_TX_BATCH_FLUSH_MS selectors are defined
+// above, ahead of `struct zpico_session`, which gates its flush members on them.
 #if ZPICO_TX_BATCH_THREAD == 1
-static _z_task_t g_tx_flush_task;
-static volatile bool g_tx_flush_run = false;
-/* phase-282 W4 (#145) — optional attributes for the flush task, set via
- * zpico_set_flush_task_config() before zpico_open(). Same platform matrix as
- * the read/lease task attrs: FreeRTOS + POSIX-like honour them, others
- * ignore the attr. */
-static bool g_flush_task_configured = false;
-static z_task_attr_t g_flush_task_attr;
+/* phase-282 W4 (#145) — the flush task runs off the OWNING session (passed as
+ * the task `arg`) and flushes that session's transport. */
 static void* _zpico_tx_flush_task_fn(void* arg) {
-    (void)arg;
-    while (g_tx_flush_run) {
-        zp_batch_flush(z_session_loan(&g_session));
+    struct zpico_session* s = (struct zpico_session*)arg;
+    while (s->tx_flush_run) {
+        zp_batch_flush(z_session_loan(&s->session));
         z_sleep_ms(ZPICO_TX_BATCH_FLUSH_MS);
     }
     return NULL;
 }
 #endif
 
-// Task Configuration (set before zpico_open)
+// Task Configuration — PROCESS-WIDE DEFAULTS (set before zpico_open, copied
+// into the session at open). Boards call these before any session exists, so
+// they cannot take a `zpico_session_t*` (documented exception to the handle
+// rule — issue 0348 / phase-328).
 // ============================================================================
 
 #if Z_FEATURE_MULTI_THREAD == 1
-// Optional task attributes for read/lease tasks.  When non-NULL, passed to
-// zp_start_read_task() / zp_start_lease_task() instead of NULL (platform default).
-static bool g_read_task_configured = false;
-static bool g_lease_task_configured = false;
-static zp_task_read_options_t g_read_task_opts;
-static zp_task_lease_options_t g_lease_task_opts;
-static z_task_attr_t g_read_task_attr;
-static z_task_attr_t g_lease_task_attr;
+// Optional default task attributes for read/lease tasks. When configured they
+// are copied into the session at zpico_open and passed to zp_start_read_task()
+// / zp_start_lease_task() instead of NULL (platform default).
+static bool g_default_read_task_configured = false;
+static bool g_default_lease_task_configured = false;
+static zp_task_read_options_t g_default_read_task_opts;
+static zp_task_lease_options_t g_default_lease_task_opts;
+static z_task_attr_t g_default_read_task_attr;
+static z_task_attr_t g_default_lease_task_attr;
+#endif
+
+#if ZPICO_TX_BATCH_THREAD == 1
+/* phase-282 W4 (#145) — process-wide default attributes for the flush task, set
+ * via zpico_set_flush_task_config() before zpico_open(), copied into the session
+ * at open. Same platform matrix as the read/lease task attrs: FreeRTOS +
+ * POSIX-like honour them, others ignore the attr. */
+static bool g_default_flush_task_configured = false;
+static z_task_attr_t g_default_flush_task_attr;
 #endif
 
 // ============================================================================
@@ -453,7 +607,7 @@ static uint32_t zpico_next_session_zid_counter(void) {
 #endif
 }
 
-static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
+static void zpico_fill_session_zid(struct zpico_session* s, uint8_t bytes[ZPICO_ZID_SIZE]) {
 #if defined(__linux__)
     if (getrandom(bytes, ZPICO_ZID_SIZE, 0) == ZPICO_ZID_SIZE) {
         return;
@@ -473,7 +627,7 @@ static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
     sys_rand_get(bytes, ZPICO_ZID_SIZE);
 
     uint64_t zephyr_seed = k_cycle_get_64();
-    zephyr_seed ^= (uint64_t)(uintptr_t)&g_session;
+    zephyr_seed ^= (uint64_t)(uintptr_t)&s->session;
     zephyr_seed ^= (uint64_t)zpico_next_session_zid_counter();
 #if defined(CONFIG_POSIX_MULTI_PROCESS)
     zephyr_seed ^= (uint64_t)getpid() << 32;
@@ -487,7 +641,7 @@ static void zpico_fill_session_zid(uint8_t bytes[ZPICO_ZID_SIZE]) {
     return;
 #endif
 
-    uint64_t seed = (uint64_t)(uintptr_t)&g_session;
+    uint64_t seed = (uint64_t)(uintptr_t)&s->session;
     seed ^= (uint64_t)zpico_next_session_zid_counter();
 #if defined(__linux__)
     seed ^= (uint64_t)getpid() << 32;
@@ -535,12 +689,13 @@ static void zpico_format_session_zid(char out[37], const uint8_t bytes[ZPICO_ZID
  * Internal callback for queryable that receives queries
  */
 static void query_handler(z_loaned_query_t* query, void* arg) {
-    int idx = (int)(intptr_t)arg;
+    struct zpico_session* s = _zpico_unpack_session(arg);
+    int idx = _zpico_unpack_slot(arg);
     if (idx < 0 || idx >= ZPICO_MAX_QUERYABLES) {
         return;
     }
 
-    queryable_entry_t* entry = &g_queryables[idx];
+    queryable_entry_t* entry = &s->queryables[idx];
     if (!entry->active || entry->callback == NULL) {
         return;
     }
@@ -571,15 +726,15 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
     // `zpico_queryable_take_reply_seq` to hand to the (synchronous) callback.
     int64_t reply_seq = -1;
     for (int j = 0; j < ZPICO_MAX_PENDING_REPLIES; ++j) {
-        if (!g_stored_query_valid[idx][j]) {
-            if (z_query_clone(&g_stored_queries[idx][j], query) == 0) {
-                g_stored_query_valid[idx][j] = true;
+        if (!s->stored_query_valid[idx][j]) {
+            if (z_query_clone(&s->stored_queries[idx][j], query) == 0) {
+                s->stored_query_valid[idx][j] = true;
                 reply_seq = j;
             }
             break;
         }
     }
-    g_last_reply_seq[idx] = reply_seq;
+    s->last_reply_seq[idx] = reply_seq;
 
     // Call user callback
     entry->callback(keyexpr_str, keyexpr_len, payload_data, payload_len, entry->ctx);
@@ -588,7 +743,7 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
     if (payload_data != NULL) {
         z_slice_drop(z_slice_move(&payload_slice));
     }
-    _zpico_notify_spin();
+    _zpico_notify_spin(s);
 }
 
 /**
@@ -600,12 +755,13 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
  * - legacy: copies payload only via z_bytes_to_slice()
  */
 static void sample_handler(z_loaned_sample_t* sample, void* arg) {
-    int idx = (int)(intptr_t)arg;
+    struct zpico_session* s = _zpico_unpack_session(arg);
+    int idx = _zpico_unpack_slot(arg);
     if (idx < 0 || idx >= ZPICO_MAX_SUBSCRIBERS) {
         return;
     }
 
-    subscriber_entry_t* entry = &g_subscribers[idx];
+    subscriber_entry_t* entry = &s->subscribers[idx];
     if (!entry->active) {
         return;
     }
@@ -640,7 +796,7 @@ static void sample_handler(z_loaned_sample_t* sample, void* arg) {
                 entry->zero_copy_cb(data, len, NULL, 0, entry->ctx);
             }
         }
-        _zpico_notify_spin();
+        _zpico_notify_spin(s);
         return;
     }
 #endif
@@ -674,7 +830,7 @@ static void sample_handler(z_loaned_sample_t* sample, void* arg) {
             // Ring full — drop. Still fire notify(len) so the Rust
             // side can observe the arrival for waker / lost-count.
             entry->notify(payload_len, NULL, 0, entry->ctx);
-            _zpico_notify_spin();
+            _zpico_notify_spin(s);
             return;
         }
 
@@ -710,7 +866,7 @@ static void sample_handler(z_loaned_sample_t* sample, void* arg) {
         // Fire notify for the async waker. Pass NULL attachment —
         // the consumer reads the per-slot attachment array directly.
         entry->notify(payload_len, NULL, 0, entry->ctx);
-        _zpico_notify_spin();
+        _zpico_notify_spin(s);
         return;
     }
 
@@ -750,7 +906,7 @@ static void sample_handler(z_loaned_sample_t* sample, void* arg) {
         } else {
             entry->notify(payload_len, NULL, 0, entry->ctx);
         }
-        _zpico_notify_spin();
+        _zpico_notify_spin(s);
         return;
     }
 
@@ -795,48 +951,41 @@ static void sample_handler(z_loaned_sample_t* sample, void* arg) {
     }
 
     z_slice_drop(z_slice_move(&payload_slice));
-    _zpico_notify_spin();
+    _zpico_notify_spin(s);
 }
 
 // ============================================================================
 // Session Lifecycle Implementation
 // ============================================================================
 
-int32_t zpico_init(const char* locator) {
-    return zpico_init_with_config(locator, "client", NULL, 0);
+int32_t zpico_init(zpico_session_t* session, const char* locator) {
+    return zpico_init_with_config(session, locator, "client", NULL, 0);
 }
 
-int32_t zpico_init_with_config(const char* locator, const char* mode,
+int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, const char* mode,
                                const zpico_property_t* properties, size_t num_properties) {
-    /* issue 0347 — zpico is SINGLE-SESSION per process by construction:
-       `g_session` is one static handle and every registration table below is a
-       process global. A second init while a session is open used to succeed,
-       memset `g_subscribers`/`g_publishers`/... and replace `g_session`, so the
-       first session's registrations were silently destroyed: its subscribers
-       stopped receiving while `open()` had returned Ok. That presented as
-       "two sessions never exchange data" and cost a day to localise.
-
-       Refuse instead. The condition is "a session is currently OPEN", not "init
-       ran before", so the retry path stays intact: a FAILED `zpico_open()`
-       leaves `g_session_open == false` and re-inits normally (issue #64's
-       esp32-c3 backoff depends on that). */
-    if (g_session_open) {
-        return ZPICO_ERR_SESSION;
-    }
+    struct zpico_session* s = (struct zpico_session*)session;
+    /* issue 0348 / phase-328 — each handle is an INDEPENDENT session drawn from
+       the pool, so issue 0347's "refuse a second init while a session is open"
+       guard is gone: a second `zpico_session_acquire()` + init operates on its
+       own slot and cannot clobber the first session's registrations. The
+       per-handle `initialized` / `session_open` lifecycle is unchanged (a FAILED
+       `zpico_open()` leaves `s->session_open == false` and re-inits normally —
+       issue #64's esp32-c3 backoff depends on that). */
 
     // Initialize storage
-    memset(g_publishers, 0, sizeof(g_publishers));
-    memset(g_subscribers, 0, sizeof(g_subscribers));
-    memset(g_liveliness, 0, sizeof(g_liveliness));
-    memset(g_queryables, 0, sizeof(g_queryables));
-    memset(g_stored_query_valid, 0, sizeof(g_stored_query_valid));
+    memset(s->publishers, 0, sizeof(s->publishers));
+    memset(s->subscribers, 0, sizeof(s->subscribers));
+    memset(s->liveliness, 0, sizeof(s->liveliness));
+    memset(s->queryables, 0, sizeof(s->queryables));
+    memset(s->stored_query_valid, 0, sizeof(s->stored_query_valid));
     for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
-        g_last_reply_seq[i] = -1;
+        s->last_reply_seq[i] = -1;
         for (int j = 0; j < ZPICO_MAX_PENDING_REPLIES; j++) {
-            z_internal_query_null(&g_stored_queries[i][j]);
+            z_internal_query_null(&s->stored_queries[i][j]);
         }
     }
-    g_session_open = false;
+    s->session_open = false;
 
 #ifdef ZPICO_SMOLTCP
     // Initialize smoltcp platform
@@ -847,9 +996,9 @@ int32_t zpico_init_with_config(const char* locator, const char* mode,
 #endif
 
     // Initialize zenoh config
-    z_config_default(&g_config);
+    z_config_default(&s->config);
 
-    if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_MODE_KEY, mode) < 0) {
+    if (zp_config_insert(z_config_loan_mut(&s->config), Z_CONFIG_MODE_KEY, mode) < 0) {
         return ZPICO_ERR_CONFIG;
     }
 
@@ -863,9 +1012,9 @@ int32_t zpico_init_with_config(const char* locator, const char* mode,
     if (!has_session_zid) {
         uint8_t zid_bytes[ZPICO_ZID_SIZE];
         char zid[37];
-        zpico_fill_session_zid(zid_bytes);
+        zpico_fill_session_zid(s, zid_bytes);
         zpico_format_session_zid(zid, zid_bytes);
-        if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_SESSION_ZID_KEY, zid) < 0) {
+        if (zp_config_insert(z_config_loan_mut(&s->config), Z_CONFIG_SESSION_ZID_KEY, zid) < 0) {
             return ZPICO_ERR_CONFIG;
         }
     }
@@ -902,7 +1051,7 @@ int32_t zpico_init_with_config(const char* locator, const char* mode,
             continue;
         }
 
-        if (zp_config_insert(z_config_loan_mut(&g_config), config_key, properties[i].value) < 0) {
+        if (zp_config_insert(z_config_loan_mut(&s->config), config_key, properties[i].value) < 0) {
             return ZPICO_ERR_CONFIG;
         }
     }
@@ -910,49 +1059,49 @@ int32_t zpico_init_with_config(const char* locator, const char* mode,
     // Insert connect endpoint after link properties so TLS endpoint parsing can
     // see root CA / verification settings supplied through session config.
     if (locator != NULL) {
-        if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_CONNECT_KEY, locator) < 0) {
+        if (zp_config_insert(z_config_loan_mut(&s->config), Z_CONFIG_CONNECT_KEY, locator) < 0) {
             return ZPICO_ERR_CONFIG;
         }
     }
 
-    g_initialized = true;
+    s->initialized = true;
     return ZPICO_OK;
 }
 
 void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
                            uint32_t lease_priority, uint32_t lease_stack_bytes) {
 #if Z_FEATURE_MULTI_THREAD == 1
-    memset(&g_read_task_attr, 0, sizeof(g_read_task_attr));
-    memset(&g_lease_task_attr, 0, sizeof(g_lease_task_attr));
+    memset(&g_default_read_task_attr, 0, sizeof(g_default_read_task_attr));
+    memset(&g_default_lease_task_attr, 0, sizeof(g_default_lease_task_attr));
 
     // Platform-specific field assignment.
     // z_task_attr_t varies by platform — only FreeRTOS and POSIX-like
     // platforms have meaningful fields. ThreadX and generic use void*
     // and zenoh-pico ignores the attr entirely on those platforms.
 #if defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
-    g_read_task_attr.name = "zpico_read";
-    g_read_task_attr.priority = (UBaseType_t)read_priority;
-    g_read_task_attr.stack_depth = read_stack_bytes / sizeof(StackType_t);
-    g_lease_task_attr.name = "zpico_lease";
-    g_lease_task_attr.priority = (UBaseType_t)lease_priority;
-    g_lease_task_attr.stack_depth = lease_stack_bytes / sizeof(StackType_t);
-    g_read_task_opts.task_attributes = &g_read_task_attr;
-    g_lease_task_opts.task_attributes = &g_lease_task_attr;
-    g_read_task_configured = true;
-    g_lease_task_configured = true;
+    g_default_read_task_attr.name = "zpico_read";
+    g_default_read_task_attr.priority = (UBaseType_t)read_priority;
+    g_default_read_task_attr.stack_depth = read_stack_bytes / sizeof(StackType_t);
+    g_default_lease_task_attr.name = "zpico_lease";
+    g_default_lease_task_attr.priority = (UBaseType_t)lease_priority;
+    g_default_lease_task_attr.stack_depth = lease_stack_bytes / sizeof(StackType_t);
+    g_default_read_task_opts.task_attributes = &g_default_read_task_attr;
+    g_default_lease_task_opts.task_attributes = &g_default_lease_task_attr;
+    g_default_read_task_configured = true;
+    g_default_lease_task_configured = true;
 #elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__) ||                       \
        defined(ZENOH_ZEPHYR)) &&                                                                   \
     !defined(ZENOH_THREADX)
     // POSIX: set stack size via pthread_attr. Priority requires SCHED_FIFO
     // (root privileges); for now only stack size is configurable.
-    pthread_attr_init(&g_read_task_attr);
-    pthread_attr_setstacksize(&g_read_task_attr, (size_t)read_stack_bytes);
-    pthread_attr_init(&g_lease_task_attr);
-    pthread_attr_setstacksize(&g_lease_task_attr, (size_t)lease_stack_bytes);
-    g_read_task_opts.task_attributes = &g_read_task_attr;
-    g_lease_task_opts.task_attributes = &g_lease_task_attr;
-    g_read_task_configured = true;
-    g_lease_task_configured = true;
+    pthread_attr_init(&g_default_read_task_attr);
+    pthread_attr_setstacksize(&g_default_read_task_attr, (size_t)read_stack_bytes);
+    pthread_attr_init(&g_default_lease_task_attr);
+    pthread_attr_setstacksize(&g_default_lease_task_attr, (size_t)lease_stack_bytes);
+    g_default_read_task_opts.task_attributes = &g_default_read_task_attr;
+    g_default_lease_task_opts.task_attributes = &g_default_lease_task_attr;
+    g_default_read_task_configured = true;
+    g_default_lease_task_configured = true;
     (void)read_priority;
     (void)lease_priority;
 #else
@@ -973,20 +1122,20 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
 
 void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
 #if ZPICO_TX_BATCH_THREAD == 1
-    memset(&g_flush_task_attr, 0, sizeof(g_flush_task_attr));
+    memset(&g_default_flush_task_attr, 0, sizeof(g_default_flush_task_attr));
 #if defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
-    g_flush_task_attr.name = "zpico_flush";
-    g_flush_task_attr.priority = (UBaseType_t)priority;
-    g_flush_task_attr.stack_depth = stack_bytes / sizeof(StackType_t);
-    g_flush_task_configured = true;
+    g_default_flush_task_attr.name = "zpico_flush";
+    g_default_flush_task_attr.priority = (UBaseType_t)priority;
+    g_default_flush_task_attr.stack_depth = stack_bytes / sizeof(StackType_t);
+    g_default_flush_task_configured = true;
 #elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__) ||                       \
        defined(ZENOH_ZEPHYR)) &&                                                                   \
     !defined(ZENOH_THREADX)
     /* POSIX: stack size via pthread_attr; priority needs SCHED_FIFO (root),
      * so only the stack size is applied — mirrors zpico_set_task_config. */
-    pthread_attr_init(&g_flush_task_attr);
-    pthread_attr_setstacksize(&g_flush_task_attr, (size_t)stack_bytes);
-    g_flush_task_configured = true;
+    pthread_attr_init(&g_default_flush_task_attr);
+    pthread_attr_setstacksize(&g_default_flush_task_attr, (size_t)stack_bytes);
+    g_default_flush_task_configured = true;
     (void)priority;
 #else
     (void)priority;
@@ -1000,10 +1149,33 @@ void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
 #endif
 }
 
-int32_t zpico_open(void) {
-    if (!g_initialized) {
+int32_t zpico_open(zpico_session_t* session) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->initialized) {
         return ZPICO_ERR_GENERIC;
     }
+
+#if Z_FEATURE_MULTI_THREAD == 1
+    /* issue 0348 / phase-328 — copy the process-wide task-spawn DEFAULTS (set by
+     * the board via zpico_set_task_config before any session existed) into this
+     * session, and re-point the opts at the session's OWN attr copy. */
+    s->read_task_configured = g_default_read_task_configured;
+    s->lease_task_configured = g_default_lease_task_configured;
+    s->read_task_attr = g_default_read_task_attr;
+    s->lease_task_attr = g_default_lease_task_attr;
+    s->read_task_opts = g_default_read_task_opts;
+    s->lease_task_opts = g_default_lease_task_opts;
+    if (s->read_task_configured) {
+        s->read_task_opts.task_attributes = &s->read_task_attr;
+    }
+    if (s->lease_task_configured) {
+        s->lease_task_opts.task_attributes = &s->lease_task_attr;
+    }
+#endif
+#if ZPICO_TX_BATCH_THREAD == 1
+    s->flush_task_configured = g_default_flush_task_configured;
+    s->flush_task_attr = g_default_flush_task_attr;
+#endif
 
     z_open_options_t open_opts;
     z_open_options_default(&open_opts);
@@ -1011,7 +1183,7 @@ int32_t zpico_open(void) {
     open_opts.auto_start_read_task = false;
     open_opts.auto_start_lease_task = false;
 #endif
-    int open_ret = z_open(&g_session, z_config_move(&g_config), &open_opts);
+    int open_ret = z_open(&s->session, z_config_move(&s->config), &open_opts);
     if (open_ret < 0) {
         return ZPICO_ERR_SESSION;
     }
@@ -1023,7 +1195,7 @@ int32_t zpico_open(void) {
     zpico_serial_set_nonblocking();
 #endif
     {
-        z_id_t zid = z_info_zid(z_session_loan(&g_session));
+        z_id_t zid = z_info_zid(z_session_loan(&s->session));
         (void)zid;
     }
 
@@ -1033,28 +1205,29 @@ int32_t zpico_open(void) {
     // and keepalives explicitly for that platform.
 #if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZENOH_THREADX)
 #if defined(ZENOH_FREERTOS_LWIP)
-    g_spin_sem = xSemaphoreCreateBinary();
+    s->spin_sem = xSemaphoreCreateBinary();
 #elif defined(ZENOH_NUTTX)
-    if (sem_init(&g_spin_sem_posix, 0, 0) == 0) {
-        g_spin_sem_initialized = true;
+    if (sem_init(&s->spin_sem_posix, 0, 0) == 0) {
+        s->spin_sem_initialized = true;
     }
 #elif !defined(ZPICO_SMOLTCP)
-    _z_mutex_init(&g_spin_mutex);
-    _z_condvar_init(&g_spin_cv);
-    g_spin_cv_initialized = true;
+    _z_mutex_init(&s->spin_mutex);
+    _z_condvar_init(&s->spin_cv);
+    s->spin_cv_initialized = true;
 #endif
 
-    const zp_task_read_options_t* read_opts = g_read_task_configured ? &g_read_task_opts : NULL;
-    const zp_task_lease_options_t* lease_opts = g_lease_task_configured ? &g_lease_task_opts : NULL;
+    const zp_task_read_options_t* read_opts = s->read_task_configured ? &s->read_task_opts : NULL;
+    const zp_task_lease_options_t* lease_opts =
+        s->lease_task_configured ? &s->lease_task_opts : NULL;
 
-    if (zp_start_read_task(z_session_loan_mut(&g_session), read_opts) < 0) {
-        z_close(z_session_loan_mut(&g_session), NULL);
+    if (zp_start_read_task(z_session_loan_mut(&s->session), read_opts) < 0) {
+        z_close(z_session_loan_mut(&s->session), NULL);
         return ZPICO_ERR_TASK;
     }
 
-    if (zp_start_lease_task(z_session_loan_mut(&g_session), lease_opts) < 0) {
-        zp_stop_read_task(z_session_loan_mut(&g_session));
-        z_close(z_session_loan_mut(&g_session), NULL);
+    if (zp_start_lease_task(z_session_loan_mut(&s->session), lease_opts) < 0) {
+        zp_stop_read_task(z_session_loan_mut(&s->session));
+        z_close(z_session_loan_mut(&s->session), NULL);
         return ZPICO_ERR_TASK;
     }
 #endif
@@ -1067,31 +1240,32 @@ int32_t zpico_open(void) {
      * message — so the lease keepalive bounds batch sit-time even without
      * spins). Express messages (query replies, gets, express publishers)
      * bypass the batch inside zenoh-pico. Compile-time knob, default OFF. */
-    zp_batch_start(z_session_loan(&g_session));
+    zp_batch_start(z_session_loan(&s->session));
 #if ZPICO_TX_BATCH_THREAD == 1
-    g_tx_flush_run = true;
-    if (_z_task_init(&g_tx_flush_task, g_flush_task_configured ? &g_flush_task_attr : NULL,
-                     _zpico_tx_flush_task_fn, NULL) != 0) {
+    s->tx_flush_run = true;
+    if (_z_task_init(&s->tx_flush_task, s->flush_task_configured ? &s->flush_task_attr : NULL,
+                     _zpico_tx_flush_task_fn, s) != 0) {
         /* No thread → flushes ride only on implicit sends (keepalives bound
          * sit-time to the lease interval). Loud, not fatal. */
-        g_tx_flush_run = false;
+        s->tx_flush_run = false;
         printk("zpico: tx-flush task init FAILED — batched puts flush on keepalives only\n");
     }
 #endif
 #endif
 
 #if defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD == 1
-    if (!g_threadx_read_mutex_initialized && _z_mutex_init(&g_threadx_read_mutex) == 0) {
-        g_threadx_read_mutex_initialized = true;
+    if (!s->threadx_read_mutex_initialized && _z_mutex_init(&s->threadx_read_mutex) == 0) {
+        s->threadx_read_mutex_initialized = true;
     }
 #endif
 
-    g_session_open = true;
+    s->session_open = true;
     return ZPICO_OK;
 }
 
-int32_t zpico_is_open(void) {
-    return g_session_open ? 1 : 0;
+int32_t zpico_is_open(zpico_session_t* session) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    return s->session_open ? 1 : 0;
 }
 
 /**
@@ -1112,11 +1286,12 @@ int32_t zpico_is_open(void) {
  * For a 32 KiB message, that's 32 KiB less stack pressure on the
  * publishing task.
  */
-int32_t zpico_publish_streamed(int32_t handle, size_t total_len,
+int32_t zpico_publish_streamed(zpico_session_t* session, int32_t handle, size_t total_len,
                                void (*chunk_cb)(uint8_t* out_buf, size_t cap, size_t* out_written,
                                                 void* user_ctx),
                                void* user_ctx, const uint8_t* attachment, size_t attachment_len) {
-    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !s->publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
     if (chunk_cb == NULL) {
@@ -1176,7 +1351,7 @@ int32_t zpico_publish_streamed(int32_t handle, size_t total_len,
         opts.attachment = z_bytes_move(&attachment_bytes);
     }
 
-    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher), z_bytes_move(&payload),
+    if (z_publisher_put(z_publisher_loan(&s->publishers[handle].publisher), z_bytes_move(&payload),
                         &opts) < 0) {
         return ZPICO_ERR_PUBLISH;
     }
@@ -1200,91 +1375,93 @@ int32_t zpico_publish_streamed(int32_t handle, size_t total_len,
  * is open, ZPICO_ERR_TIMEOUT when the keep-alive failed (treated
  * as a probe timeout per the 124.F.1 semantics).
  */
-int32_t zpico_send_keep_alive(void) {
-    if (!g_session_open) {
+int32_t zpico_send_keep_alive(zpico_session_t* session) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
     zp_send_keep_alive_options_t options;
     zp_send_keep_alive_options_default(&options);
-    z_result_t ret = zp_send_keep_alive(z_session_loan(&g_session), &options);
+    z_result_t ret = zp_send_keep_alive(z_session_loan(&s->session), &options);
     if (ret < 0) {
         return ZPICO_ERR_TIMEOUT;
     }
     return ZPICO_OK;
 }
 
-void zpico_close(void) {
+void zpico_close(zpico_session_t* session) {
+    struct zpico_session* s = (struct zpico_session*)session;
     // Clean up publishers
     for (int i = 0; i < ZPICO_MAX_PUBLISHERS; i++) {
-        if (g_publishers[i].active) {
-            z_undeclare_publisher(z_publisher_move(&g_publishers[i].publisher));
-            g_publishers[i].active = false;
+        if (s->publishers[i].active) {
+            z_undeclare_publisher(z_publisher_move(&s->publishers[i].publisher));
+            s->publishers[i].active = false;
         }
     }
 
     // Clean up subscribers
     for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (g_subscribers[i].active) {
-            z_undeclare_subscriber(z_subscriber_move(&g_subscribers[i].subscriber));
-            g_subscribers[i].active = false;
-            g_subscribers[i].callback = NULL;
-            g_subscribers[i].ctx = NULL;
+        if (s->subscribers[i].active) {
+            z_undeclare_subscriber(z_subscriber_move(&s->subscribers[i].subscriber));
+            s->subscribers[i].active = false;
+            s->subscribers[i].callback = NULL;
+            s->subscribers[i].ctx = NULL;
         }
     }
 
     // Clean up liveliness tokens
     for (int i = 0; i < ZPICO_MAX_LIVELINESS; i++) {
-        if (g_liveliness[i].active) {
-            z_liveliness_undeclare_token(z_liveliness_token_move(&g_liveliness[i].token));
-            g_liveliness[i].active = false;
+        if (s->liveliness[i].active) {
+            z_liveliness_undeclare_token(z_liveliness_token_move(&s->liveliness[i].token));
+            s->liveliness[i].active = false;
         }
     }
 
     // Clean up queryables
     for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
-        if (g_queryables[i].active) {
-            z_undeclare_queryable(z_queryable_move(&g_queryables[i].queryable));
-            g_queryables[i].active = false;
-            g_queryables[i].callback = NULL;
-            g_queryables[i].ctx = NULL;
+        if (s->queryables[i].active) {
+            z_undeclare_queryable(z_queryable_move(&s->queryables[i].queryable));
+            s->queryables[i].active = false;
+            s->queryables[i].callback = NULL;
+            s->queryables[i].ctx = NULL;
         }
     }
 
     // Close session
-    if (g_session_open) {
+    if (s->session_open) {
 #if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
 #if ZPICO_TX_BATCH_THREAD == 1
-        if (g_tx_flush_run) {
-            g_tx_flush_run = false;
-            _z_task_join(&g_tx_flush_task);
+        if (s->tx_flush_run) {
+            s->tx_flush_run = false;
+            _z_task_join(&s->tx_flush_task);
         }
 #endif
         /* phase-279 (#145) — stop batching; zp_batch_stop flushes the remainder. */
-        zp_batch_stop(z_session_loan(&g_session));
+        zp_batch_stop(z_session_loan(&s->session));
 #endif
 #if Z_FEATURE_MULTI_THREAD == 1
         // Stop background tasks (only in multi-threaded mode)
-        zp_stop_read_task(z_session_loan_mut(&g_session));
-        zp_stop_lease_task(z_session_loan_mut(&g_session));
+        zp_stop_read_task(z_session_loan_mut(&s->session));
+        zp_stop_lease_task(z_session_loan_mut(&s->session));
 
 #if defined(ZENOH_FREERTOS_LWIP)
-        if (g_spin_sem != NULL) {
-            vSemaphoreDelete(g_spin_sem);
-            g_spin_sem = NULL;
+        if (s->spin_sem != NULL) {
+            vSemaphoreDelete(s->spin_sem);
+            s->spin_sem = NULL;
         }
 #elif defined(ZENOH_NUTTX)
-        if (g_spin_sem_initialized) {
-            g_spin_sem_initialized = false;
-            sem_destroy(&g_spin_sem_posix);
+        if (s->spin_sem_initialized) {
+            s->spin_sem_initialized = false;
+            sem_destroy(&s->spin_sem_posix);
         }
 #elif !defined(ZPICO_SMOLTCP)
-        g_spin_cv_initialized = false;
-        _z_condvar_drop(&g_spin_cv);
-        _z_mutex_drop(&g_spin_mutex);
+        s->spin_cv_initialized = false;
+        _z_condvar_drop(&s->spin_cv);
+        _z_mutex_drop(&s->spin_mutex);
 #endif
 #endif
-        z_close(z_session_loan_mut(&g_session), NULL);
-        g_session_open = false;
+        z_close(z_session_loan_mut(&s->session), NULL);
+        s->session_open = false;
     }
 
 #ifdef ZPICO_SMOLTCP
@@ -1292,26 +1469,28 @@ void zpico_close(void) {
     smoltcp_cleanup();
 #endif
 
-    g_initialized = false;
+    s->initialized = false;
 }
 
 // ============================================================================
 // Publisher Implementation
 // ============================================================================
 
-int32_t zpico_declare_publisher(const char* keyexpr) {
-    return zpico_declare_publisher_ex(keyexpr, 0);
+int32_t zpico_declare_publisher(zpico_session_t* session, const char* keyexpr) {
+    return zpico_declare_publisher_ex(session, keyexpr, 0);
 }
 
-int32_t zpico_declare_publisher_ex(const char* keyexpr, int32_t is_express) {
-    if (!g_session_open) {
+int32_t zpico_declare_publisher_ex(zpico_session_t* session, const char* keyexpr,
+                                   int32_t is_express) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
     for (int i = 0; i < ZPICO_MAX_PUBLISHERS; i++) {
-        if (!g_publishers[i].active) {
+        if (!s->publishers[i].active) {
             idx = i;
             break;
         }
@@ -1341,19 +1520,20 @@ int32_t zpico_declare_publisher_ex(const char* keyexpr, int32_t is_express) {
      * options carry no congestion control in zenoh-pico). */
     pub_opts.congestion_control = Z_CONGESTION_CONTROL_BLOCK;
 #endif
-    int pub_ret = z_declare_publisher(z_session_loan(&g_session), &g_publishers[idx].publisher,
+    int pub_ret = z_declare_publisher(z_session_loan(&s->session), &s->publishers[idx].publisher,
                                       z_view_keyexpr_loan(&ke), &pub_opts);
     if (pub_ret < 0) {
         printk("zpico: z_declare_publisher failed: %d for '%s'\n", pub_ret, keyexpr);
         return ZPICO_ERR_GENERIC;
     }
 
-    g_publishers[idx].active = true;
+    s->publishers[idx].active = true;
     return idx;
 }
 
-int32_t zpico_publish(int32_t handle, const uint8_t* data, size_t len) {
-    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
+int32_t zpico_publish(zpico_session_t* session, int32_t handle, const uint8_t* data, size_t len) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !s->publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
 
@@ -1364,7 +1544,7 @@ int32_t zpico_publish(int32_t handle, const uint8_t* data, size_t len) {
         return ZPICO_ERR_PUBLISH;
     }
 
-    int put_ret = z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher),
+    int put_ret = z_publisher_put(z_publisher_loan(&s->publishers[handle].publisher),
                                   z_bytes_move(&payload), NULL);
     if (put_ret < 0) {
         printk("zpico: z_publisher_put failed: %d\n", put_ret);
@@ -1374,13 +1554,14 @@ int32_t zpico_publish(int32_t handle, const uint8_t* data, size_t len) {
     return ZPICO_OK;
 }
 
-int32_t zpico_undeclare_publisher(int32_t handle) {
-    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
+int32_t zpico_undeclare_publisher(zpico_session_t* session, int32_t handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !s->publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
 
-    z_undeclare_publisher(z_publisher_move(&g_publishers[handle].publisher));
-    g_publishers[handle].active = false;
+    z_undeclare_publisher(z_publisher_move(&s->publishers[handle].publisher));
+    s->publishers[handle].active = false;
     return ZPICO_OK;
 }
 
@@ -1388,15 +1569,17 @@ int32_t zpico_undeclare_publisher(int32_t handle) {
 // Subscriber Implementation
 // ============================================================================
 
-int32_t zpico_declare_subscriber(const char* keyexpr, ZpicoCallback callback, void* ctx) {
-    if (!g_session_open) {
+int32_t zpico_declare_subscriber(zpico_session_t* session, const char* keyexpr,
+                                 ZpicoCallback callback, void* ctx) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
     for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (!g_subscribers[i].active) {
+        if (!s->subscribers[i].active) {
             idx = i;
             break;
         }
@@ -1405,45 +1588,46 @@ int32_t zpico_declare_subscriber(const char* keyexpr, ZpicoCallback callback, vo
         return ZPICO_ERR_FULL;
     }
 
-    g_subscribers[idx].callback = callback;
-    g_subscribers[idx].ctx = ctx;
-    g_subscribers[idx].with_attachment = false; // Legacy mode
+    s->subscribers[idx].callback = callback;
+    s->subscribers[idx].ctx = ctx;
+    s->subscribers[idx].with_attachment = false; // Legacy mode
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        g_subscribers[idx].callback = NULL;
-        g_subscribers[idx].ctx = NULL;
+        s->subscribers[idx].callback = NULL;
+        s->subscribers[idx].ctx = NULL;
         return ZPICO_ERR_KEYEXPR;
     }
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, sample_handler, NULL, (void*)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, _zpico_pack_ctx(s, idx));
 
     int sub_ret =
-        z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+        z_declare_subscriber(z_session_loan(&s->session), &s->subscribers[idx].subscriber,
                              z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
-        g_subscribers[idx].callback = NULL;
-        g_subscribers[idx].ctx = NULL;
+        s->subscribers[idx].callback = NULL;
+        s->subscribers[idx].ctx = NULL;
         return ZPICO_ERR_GENERIC;
     }
 
-    g_subscribers[idx].active = true;
+    s->subscribers[idx].active = true;
     return idx;
 }
 
-int32_t zpico_declare_subscriber_with_attachment(const char* keyexpr,
+int32_t zpico_declare_subscriber_with_attachment(zpico_session_t* session, const char* keyexpr,
                                                  ZpicoCallbackWithAttachment callback, void* ctx) {
-    if (!g_session_open) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
     for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (!g_subscribers[i].active) {
+        if (!s->subscribers[i].active) {
             idx = i;
             break;
         }
@@ -1452,46 +1636,48 @@ int32_t zpico_declare_subscriber_with_attachment(const char* keyexpr,
         return ZPICO_ERR_FULL;
     }
 
-    g_subscribers[idx].callback_ext = callback;
-    g_subscribers[idx].ctx = ctx;
-    g_subscribers[idx].with_attachment = true; // Extended mode with attachment
+    s->subscribers[idx].callback_ext = callback;
+    s->subscribers[idx].ctx = ctx;
+    s->subscribers[idx].with_attachment = true; // Extended mode with attachment
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        g_subscribers[idx].callback_ext = NULL;
-        g_subscribers[idx].ctx = NULL;
+        s->subscribers[idx].callback_ext = NULL;
+        s->subscribers[idx].ctx = NULL;
         return ZPICO_ERR_KEYEXPR;
     }
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, sample_handler, NULL, (void*)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, _zpico_pack_ctx(s, idx));
 
     int sub_ret =
-        z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+        z_declare_subscriber(z_session_loan(&s->session), &s->subscribers[idx].subscriber,
                              z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
-        g_subscribers[idx].callback_ext = NULL;
-        g_subscribers[idx].ctx = NULL;
+        s->subscribers[idx].callback_ext = NULL;
+        s->subscribers[idx].ctx = NULL;
         return ZPICO_ERR_GENERIC;
     }
 
-    g_subscribers[idx].active = true;
+    s->subscribers[idx].active = true;
     return idx;
 }
 
-int32_t zpico_declare_subscriber_direct_write(const char* keyexpr, uint8_t* buf_ptr,
-                                              size_t buf_capacity, const bool* locked_ptr,
-                                              ZpicoNotifyCallback callback, void* ctx) {
-    if (!g_session_open) {
+int32_t zpico_declare_subscriber_direct_write(zpico_session_t* session, const char* keyexpr,
+                                              uint8_t* buf_ptr, size_t buf_capacity,
+                                              const bool* locked_ptr, ZpicoNotifyCallback callback,
+                                              void* ctx) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
     for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (!g_subscribers[i].active) {
+        if (!s->subscribers[i].active) {
             idx = i;
             break;
         }
@@ -1500,44 +1686,46 @@ int32_t zpico_declare_subscriber_direct_write(const char* keyexpr, uint8_t* buf_
         return ZPICO_ERR_FULL;
     }
 
-    g_subscribers[idx].notify = callback;
-    g_subscribers[idx].ctx = ctx;
-    g_subscribers[idx].with_attachment = false;
-    g_subscribers[idx].direct_write = true;
-    g_subscribers[idx].buf_ptr = buf_ptr;
-    g_subscribers[idx].buf_capacity = buf_capacity;
-    g_subscribers[idx].locked_ptr = locked_ptr;
+    s->subscribers[idx].notify = callback;
+    s->subscribers[idx].ctx = ctx;
+    s->subscribers[idx].with_attachment = false;
+    s->subscribers[idx].direct_write = true;
+    s->subscribers[idx].buf_ptr = buf_ptr;
+    s->subscribers[idx].buf_capacity = buf_capacity;
+    s->subscribers[idx].locked_ptr = locked_ptr;
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        g_subscribers[idx].notify = NULL;
-        g_subscribers[idx].ctx = NULL;
-        g_subscribers[idx].direct_write = false;
+        s->subscribers[idx].notify = NULL;
+        s->subscribers[idx].ctx = NULL;
+        s->subscribers[idx].direct_write = false;
         return ZPICO_ERR_KEYEXPR;
     }
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, sample_handler, NULL, (void*)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, _zpico_pack_ctx(s, idx));
 
     int sub_ret =
-        z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+        z_declare_subscriber(z_session_loan(&s->session), &s->subscribers[idx].subscriber,
                              z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
-        g_subscribers[idx].notify = NULL;
-        g_subscribers[idx].ctx = NULL;
-        g_subscribers[idx].direct_write = false;
+        s->subscribers[idx].notify = NULL;
+        s->subscribers[idx].ctx = NULL;
+        s->subscribers[idx].direct_write = false;
         return ZPICO_ERR_GENERIC;
     }
 
-    g_subscribers[idx].active = true;
+    s->subscribers[idx].active = true;
     return idx;
 }
 
-int32_t zpico_declare_subscriber_ring(const char* keyexpr, zpico_ring_desc_t* desc,
-                                      ZpicoNotifyCallback callback, void* ctx) {
-    if (!g_session_open) {
+int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keyexpr,
+                                      zpico_ring_desc_t* desc, ZpicoNotifyCallback callback,
+                                      void* ctx) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
     if (desc == NULL || desc->slot_count == 0) {
@@ -1546,7 +1734,7 @@ int32_t zpico_declare_subscriber_ring(const char* keyexpr, zpico_ring_desc_t* de
 
     int idx = -1;
     for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (!g_subscribers[i].active) {
+        if (!s->subscribers[i].active) {
             idx = i;
             break;
         }
@@ -1555,51 +1743,53 @@ int32_t zpico_declare_subscriber_ring(const char* keyexpr, zpico_ring_desc_t* de
         return ZPICO_ERR_FULL;
     }
 
-    g_subscribers[idx].notify = callback;
-    g_subscribers[idx].ctx = ctx;
-    g_subscribers[idx].with_attachment = false;
-    g_subscribers[idx].direct_write = false;
-    g_subscribers[idx].ring_mode = true;
-    g_subscribers[idx].ring = desc;
+    s->subscribers[idx].notify = callback;
+    s->subscribers[idx].ctx = ctx;
+    s->subscribers[idx].with_attachment = false;
+    s->subscribers[idx].direct_write = false;
+    s->subscribers[idx].ring_mode = true;
+    s->subscribers[idx].ring = desc;
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        g_subscribers[idx].notify = NULL;
-        g_subscribers[idx].ctx = NULL;
-        g_subscribers[idx].ring_mode = false;
-        g_subscribers[idx].ring = NULL;
+        s->subscribers[idx].notify = NULL;
+        s->subscribers[idx].ctx = NULL;
+        s->subscribers[idx].ring_mode = false;
+        s->subscribers[idx].ring = NULL;
         return ZPICO_ERR_KEYEXPR;
     }
 
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, sample_handler, NULL, (void*)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, _zpico_pack_ctx(s, idx));
 
     int sub_ret =
-        z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+        z_declare_subscriber(z_session_loan(&s->session), &s->subscribers[idx].subscriber,
                              z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber (ring) failed: %d for '%s'\n", sub_ret, keyexpr);
-        g_subscribers[idx].notify = NULL;
-        g_subscribers[idx].ctx = NULL;
-        g_subscribers[idx].ring_mode = false;
-        g_subscribers[idx].ring = NULL;
+        s->subscribers[idx].notify = NULL;
+        s->subscribers[idx].ctx = NULL;
+        s->subscribers[idx].ring_mode = false;
+        s->subscribers[idx].ring = NULL;
         return ZPICO_ERR_GENERIC;
     }
 
-    g_subscribers[idx].active = true;
+    s->subscribers[idx].active = true;
     return idx;
 }
 
 #if defined(Z_FEATURE_UNSTABLE_API)
-int32_t zpico_subscribe_zero_copy(const char* keyexpr, ZpicoZeroCopyCallback callback, void* ctx) {
-    if (!g_session_open) {
+int32_t zpico_subscribe_zero_copy(zpico_session_t* session, const char* keyexpr,
+                                  ZpicoZeroCopyCallback callback, void* ctx) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
     for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
-        if (!g_subscribers[i].active) {
+        if (!s->subscribers[i].active) {
             idx = i;
             break;
         }
@@ -1608,41 +1798,43 @@ int32_t zpico_subscribe_zero_copy(const char* keyexpr, ZpicoZeroCopyCallback cal
         return ZPICO_ERR_FULL;
     }
 
-    g_subscribers[idx].ctx = ctx;
-    g_subscribers[idx].with_attachment = false;
-    g_subscribers[idx].direct_write = false;
-    g_subscribers[idx].zero_copy = true;
-    g_subscribers[idx].zero_copy_cb = callback;
+    s->subscribers[idx].ctx = ctx;
+    s->subscribers[idx].with_attachment = false;
+    s->subscribers[idx].direct_write = false;
+    s->subscribers[idx].zero_copy = true;
+    s->subscribers[idx].zero_copy_cb = callback;
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        g_subscribers[idx].zero_copy = false;
-        g_subscribers[idx].zero_copy_cb = NULL;
-        g_subscribers[idx].ctx = NULL;
+        s->subscribers[idx].zero_copy = false;
+        s->subscribers[idx].zero_copy_cb = NULL;
+        s->subscribers[idx].ctx = NULL;
         return ZPICO_ERR_KEYEXPR;
     }
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, sample_handler, NULL, (void*)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, _zpico_pack_ctx(s, idx));
 
     int sub_ret =
-        z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+        z_declare_subscriber(z_session_loan(&s->session), &s->subscribers[idx].subscriber,
                              z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber (zero_copy) failed: %d for '%s'\n", sub_ret, keyexpr);
-        g_subscribers[idx].zero_copy = false;
-        g_subscribers[idx].zero_copy_cb = NULL;
-        g_subscribers[idx].ctx = NULL;
+        s->subscribers[idx].zero_copy = false;
+        s->subscribers[idx].zero_copy_cb = NULL;
+        s->subscribers[idx].ctx = NULL;
         return ZPICO_ERR_GENERIC;
     }
 
-    g_subscribers[idx].active = true;
+    s->subscribers[idx].active = true;
     return idx;
 }
 #else
 // Stub when unstable API is not enabled — returns error
-int32_t zpico_subscribe_zero_copy(const char* keyexpr, ZpicoZeroCopyCallback callback, void* ctx) {
+int32_t zpico_subscribe_zero_copy(zpico_session_t* session, const char* keyexpr,
+                                  ZpicoZeroCopyCallback callback, void* ctx) {
+    (void)session;
     (void)keyexpr;
     (void)callback;
     (void)ctx;
@@ -1650,16 +1842,17 @@ int32_t zpico_subscribe_zero_copy(const char* keyexpr, ZpicoZeroCopyCallback cal
 }
 #endif
 
-int32_t zpico_undeclare_subscriber(int32_t handle) {
-    if (handle < 0 || handle >= ZPICO_MAX_SUBSCRIBERS || !g_subscribers[handle].active) {
+int32_t zpico_undeclare_subscriber(zpico_session_t* session, int32_t handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_SUBSCRIBERS || !s->subscribers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
 
-    z_undeclare_subscriber(z_subscriber_move(&g_subscribers[handle].subscriber));
-    g_subscribers[handle].active = false;
-    g_subscribers[handle].callback = NULL;
-    g_subscribers[handle].ctx = NULL;
-    g_subscribers[handle].with_attachment = false;
+    z_undeclare_subscriber(z_subscriber_move(&s->subscribers[handle].subscriber));
+    s->subscribers[handle].active = false;
+    s->subscribers[handle].callback = NULL;
+    s->subscribers[handle].ctx = NULL;
+    s->subscribers[handle].with_attachment = false;
     return ZPICO_OK;
 }
 
@@ -1675,12 +1868,12 @@ int32_t zpico_undeclare_subscriber(int32_t handle) {
 /**
  * Extract the socket file descriptor from the zenoh session.
  *
- * Path: g_session → _z_session_t._tp._transport._unicast._peers → first peer → _socket
+ * Path: s->session → _z_session_t._tp._transport._unicast._peers → first peer → _socket
  *
  * Returns -1 if the session is not unicast or has no connected peers.
  */
-static int get_session_fd(void) {
-    _z_session_t* session = _Z_RC_IN_VAL(z_session_loan(&g_session));
+static int get_session_fd(struct zpico_session* s) {
+    _z_session_t* session = _Z_RC_IN_VAL(z_session_loan(&s->session));
     if (session->_tp._type != _Z_TRANSPORT_UNICAST_TYPE) {
         return -1;
     }
@@ -1707,8 +1900,9 @@ static int get_session_fd(void) {
 // zpico_spin_once() instead, which adds keep-alive handling)
 // ============================================================================
 
-int32_t zpico_spin_once(uint32_t timeout_ms) {
-    if (!g_session_open) {
+int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
@@ -1722,17 +1916,16 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
      * the send window, which MEASURED WORSE than no batching (4.7-4.9 vs 8.6
      * msg/s on the W1 harness). Flushing at a bounded cadence lets puts pile
      * into the write buffer cheaply and ships them as ONE send per interval.
-     * Racy static across tier threads is benign (worst case one extra flush).
-     * zenoh-pico's implicit flushes (buffer overflow, any transport message)
-     * still bound memory + sit-time independently of this cadence. */
+     * Racy across tier threads sharing this session is benign (worst case one
+     * extra flush). zenoh-pico's implicit flushes (buffer overflow, any
+     * transport message) still bound memory + sit-time independently of this
+     * cadence. The cadence state is per-session (was function-local statics). */
     {
-        static z_clock_t g_last_batch_flush;
-        static bool g_batch_flush_init = false;
-        if (!g_batch_flush_init ||
-            z_clock_elapsed_ms(&g_last_batch_flush) >= ZPICO_TX_BATCH_FLUSH_MS) {
-            zp_batch_flush(z_session_loan(&g_session));
-            g_last_batch_flush = z_clock_now();
-            g_batch_flush_init = true;
+        if (!s->batch_flush_init ||
+            z_clock_elapsed_ms(&s->last_batch_flush) >= ZPICO_TX_BATCH_FLUSH_MS) {
+            zp_batch_flush(z_session_loan(&s->session));
+            s->last_batch_flush = z_clock_now();
+            s->batch_flush_init = true;
         }
     }
 #endif
@@ -1759,7 +1952,7 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     uint64_t start = smoltcp_clock_now_ms();
     int ret;
     do {
-        ret = zp_read(z_session_loan_mut(&g_session), &opts);
+        ret = zp_read(z_session_loan_mut(&s->session), &opts);
         if (ret == 0 && timeout_ms != 0) break; // Processed one message (timeout mode)
         if (ret != 0 && timeout_ms == 0) break; // No data (drain mode)
         // timeout_ms == 0 && ret == 0: data processed, loop to drain next message
@@ -1769,8 +1962,8 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     // this, but on single-threaded bare-metal (smoltcp) there is no lease task.
     // Without this call, timed-out queries are never cleaned up and their
     // dropper callbacks never fire, breaking service/action request flows.
-    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
-    zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&s->session)));
+    zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
     return ret;
 
 #elif defined(ZPICO_SERIAL)
@@ -1784,12 +1977,12 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     z_clock_t start = z_clock_now();
     int ret;
     do {
-        ret = zp_read(z_session_loan_mut(&g_session), NULL);
+        ret = zp_read(z_session_loan_mut(&s->session), NULL);
         if (ret == 0) break; // Data processed
         if (timeout_ms == 0) break;
     } while (z_clock_elapsed_ms(&start) < timeout_ms);
-    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
-    zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&s->session)));
+    zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
     return ret;
 
 #elif defined(ZENOH_THREADX)
@@ -1815,11 +2008,11 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     // (`_z_zbuf_reset` mid parse) and silently LOSE inbound frames — both
     // debugging tracks saw the spawned tier's interest replies vanish,
     // leaving its write filter closed forever (zero publishes).
-    // Serialization is `g_threadx_read_mutex` (TRY-lock; a losing spinner
+    // Serialization is `s->threadx_read_mutex` (TRY-lock; a losing spinner
     // skips the round — the winner drains) via `_zpico_threadx_locked_read`
     // below; the frame-loss half of the bug is fixed in zenoh-pico itself
     // (`87f7a84d` — the polled read drains every buffered frame).
-    int fd = get_session_fd();
+    int fd = get_session_fd(s);
     int ret = ZPICO_ERR_TIMEOUT;
     if (timeout_ms > 0) {
         z_sleep_ms(timeout_ms);
@@ -1844,23 +2037,23 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
 #endif
         if (ready > 0) {
 #if Z_FEATURE_MULTI_THREAD == 1
-            /* issue #247 — one reader at a time (g_threadx_read_mutex). */
-            ret = _zpico_threadx_locked_read();
+            /* issue #247 — one reader at a time (s->threadx_read_mutex). */
+            ret = _zpico_threadx_locked_read(s);
 #else
-            ret = zp_read(z_session_loan_mut(&g_session), NULL);
+            ret = zp_read(z_session_loan_mut(&s->session), NULL);
 #endif
         } else if (ready < 0) {
             ret = ready;
         }
     } else {
 #if Z_FEATURE_MULTI_THREAD == 1
-        ret = _zpico_threadx_locked_read();
+        ret = _zpico_threadx_locked_read(s);
 #else
-        ret = zp_read(z_session_loan_mut(&g_session), NULL);
+        ret = zp_read(z_session_loan_mut(&s->session), NULL);
 #endif
     }
-    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
-    zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&s->session)));
+    zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
     return ret;
 
 #elif defined(ZENOH_FREERTOS_LWIP)
@@ -1868,8 +2061,8 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     // keep-alives. Wait on a binary semaphore that _zpico_notify_spin()
     // signals when application data arrives (subscriptions, query replies).
     // This gives near-zero latency wake-up without busy-looping.
-    if (timeout_ms > 0 && g_spin_sem != NULL) {
-        xSemaphoreTake(g_spin_sem, pdMS_TO_TICKS(timeout_ms));
+    if (timeout_ms > 0 && s->spin_sem != NULL) {
+        xSemaphoreTake(s->spin_sem, pdMS_TO_TICKS(timeout_ms));
     }
     return 0;
 
@@ -1889,7 +2082,7 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     // `usleep(timeout_ms * 1000)` busy-sleep.
     if (timeout_ms > 0) {
 #ifdef ZENOH_NUTTX
-        if (g_spin_sem_initialized) {
+        if (s->spin_sem_initialized) {
             struct timespec deadline;
             clock_gettime(CLOCK_REALTIME, &deadline);
             deadline.tv_sec += (time_t)(timeout_ms / 1000);
@@ -1900,7 +2093,7 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
             }
             // EINTR / ETIMEDOUT are both acceptable — the outer executor
             // loop re-checks arena state regardless of why we woke up.
-            while (sem_timedwait(&g_spin_sem_posix, &deadline) != 0 && errno == EINTR) {
+            while (sem_timedwait(&s->spin_sem_posix, &deadline) != 0 && errno == EINTR) {
                 // retry on signal
             }
         } else {
@@ -1910,16 +2103,16 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
 #else
         z_clock_t deadline = z_clock_now();
         z_clock_advance_ms(&deadline, (unsigned long)timeout_ms);
-        _z_mutex_lock(&g_spin_mutex);
-        _z_condvar_wait_until(&g_spin_cv, &g_spin_mutex, &deadline);
-        _z_mutex_unlock(&g_spin_mutex);
+        _z_mutex_lock(&s->spin_mutex);
+        _z_condvar_wait_until(&s->spin_cv, &s->spin_mutex, &deadline);
+        _z_mutex_unlock(&s->spin_mutex);
 #endif
     }
     return 0;
 
 #else
     // Single-threaded (not smoltcp): use select() then zp_read()
-    int fd = get_session_fd();
+    int fd = get_session_fd(s);
     if (fd >= 0 && timeout_ms > 0) {
         fd_set read_fds;
         FD_ZERO(&read_fds);
@@ -1929,12 +2122,12 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
         tv.tv_usec = (timeout_ms % 1000) * 1000;
         int result = select(fd + 1, &read_fds, NULL, NULL, &tv);
         if (result <= 0) {
-            zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+            zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
             return (result == 0) ? ZPICO_ERR_TIMEOUT : result;
         }
     }
-    int ret = zp_read(z_session_loan_mut(&g_session), NULL);
-    zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+    int ret = zp_read(z_session_loan_mut(&s->session), NULL);
+    zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
     return ret;
 #endif
 }
@@ -1952,12 +2145,13 @@ bool zpico_uses_polling(void) {
 // ZenohId Implementation
 // ============================================================================
 
-int32_t zpico_get_zid(uint8_t* zid_out) {
-    if (!g_session_open || zid_out == NULL) {
+int32_t zpico_get_zid(zpico_session_t* session, uint8_t* zid_out) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open || zid_out == NULL) {
         return ZPICO_ERR_SESSION;
     }
 
-    z_id_t zid = z_info_zid(z_session_loan(&g_session));
+    z_id_t zid = z_info_zid(z_session_loan(&s->session));
     memcpy(zid_out, zid.id, 16);
     return ZPICO_OK;
 }
@@ -1966,15 +2160,16 @@ int32_t zpico_get_zid(uint8_t* zid_out) {
 // Liveliness Implementation
 // ============================================================================
 
-int32_t zpico_declare_liveliness(const char* keyexpr) {
-    if (!g_session_open) {
+int32_t zpico_declare_liveliness(zpico_session_t* session, const char* keyexpr) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
     for (int i = 0; i < ZPICO_MAX_LIVELINESS; i++) {
-        if (!g_liveliness[i].active) {
+        if (!s->liveliness[i].active) {
             idx = i;
             break;
         }
@@ -1988,7 +2183,7 @@ int32_t zpico_declare_liveliness(const char* keyexpr) {
         return ZPICO_ERR_KEYEXPR;
     }
 
-    int lv_ret = z_liveliness_declare_token(z_session_loan(&g_session), &g_liveliness[idx].token,
+    int lv_ret = z_liveliness_declare_token(z_session_loan(&s->session), &s->liveliness[idx].token,
                                             z_view_keyexpr_loan(&ke), NULL);
     if (lv_ret < 0) {
         /* issue 0283 — a failed token is a SILENT graph outage (the ROS 2
@@ -1998,17 +2193,18 @@ int32_t zpico_declare_liveliness(const char* keyexpr) {
         return ZPICO_ERR_GENERIC;
     }
 
-    g_liveliness[idx].active = true;
+    s->liveliness[idx].active = true;
     return idx;
 }
 
-int32_t zpico_undeclare_liveliness(int32_t handle) {
-    if (handle < 0 || handle >= ZPICO_MAX_LIVELINESS || !g_liveliness[handle].active) {
+int32_t zpico_undeclare_liveliness(zpico_session_t* session, int32_t handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_LIVELINESS || !s->liveliness[handle].active) {
         return ZPICO_ERR_INVALID;
     }
 
-    z_liveliness_undeclare_token(z_liveliness_token_move(&g_liveliness[handle].token));
-    g_liveliness[handle].active = false;
+    z_liveliness_undeclare_token(z_liveliness_token_move(&s->liveliness[handle].token));
+    s->liveliness[handle].active = false;
     return ZPICO_OK;
 }
 
@@ -2016,9 +2212,11 @@ int32_t zpico_undeclare_liveliness(int32_t handle) {
 // Publish with Attachment Implementation
 // ============================================================================
 
-int32_t zpico_publish_with_attachment(int32_t handle, const uint8_t* data, size_t len,
-                                      const uint8_t* attachment, size_t attachment_len) {
-    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
+int32_t zpico_publish_with_attachment(zpico_session_t* session, int32_t handle, const uint8_t* data,
+                                      size_t len, const uint8_t* attachment,
+                                      size_t attachment_len) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !s->publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
 
@@ -2041,7 +2239,7 @@ int32_t zpico_publish_with_attachment(int32_t handle, const uint8_t* data, size_
         options.attachment = z_bytes_move(&attachment_bytes);
     }
 
-    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher), z_bytes_move(&payload),
+    if (z_publisher_put(z_publisher_loan(&s->publishers[handle].publisher), z_bytes_move(&payload),
                         &options) < 0) {
         return ZPICO_ERR_PUBLISH;
     }
@@ -2054,9 +2252,11 @@ int32_t zpico_publish_with_attachment(int32_t handle, const uint8_t* data, size_
 // `data` outlives the call (z_publisher_put consumes the alias
 // synchronously on posix/embedded transports). Attachment is still
 // copied (small, fixed size).
-int32_t zpico_publish_with_attachment_aliased(int32_t handle, const uint8_t* data, size_t len,
+int32_t zpico_publish_with_attachment_aliased(zpico_session_t* session, int32_t handle,
+                                              const uint8_t* data, size_t len,
                                               const uint8_t* attachment, size_t attachment_len) {
-    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !s->publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
 
@@ -2079,7 +2279,7 @@ int32_t zpico_publish_with_attachment_aliased(int32_t handle, const uint8_t* dat
         options.attachment = z_bytes_move(&attachment_bytes);
     }
 
-    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher), z_bytes_move(&payload),
+    if (z_publisher_put(z_publisher_loan(&s->publishers[handle].publisher), z_bytes_move(&payload),
                         &options) < 0) {
         return ZPICO_ERR_PUBLISH;
     }
@@ -2091,15 +2291,17 @@ int32_t zpico_publish_with_attachment_aliased(int32_t handle, const uint8_t* dat
 // Queryable Implementation (for ROS 2 Services)
 // ============================================================================
 
-int32_t zpico_declare_queryable(const char* keyexpr, ZpicoQueryCallback callback, void* ctx) {
-    if (!g_session_open) {
+int32_t zpico_declare_queryable(zpico_session_t* session, const char* keyexpr,
+                                ZpicoQueryCallback callback, void* ctx) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
     for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
-        if (!g_queryables[i].active) {
+        if (!s->queryables[i].active) {
             idx = i;
             break;
         }
@@ -2108,19 +2310,19 @@ int32_t zpico_declare_queryable(const char* keyexpr, ZpicoQueryCallback callback
         return ZPICO_ERR_FULL;
     }
 
-    g_queryables[idx].callback = callback;
-    g_queryables[idx].ctx = ctx;
+    s->queryables[idx].callback = callback;
+    s->queryables[idx].ctx = ctx;
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        g_queryables[idx].callback = NULL;
-        g_queryables[idx].ctx = NULL;
+        s->queryables[idx].callback = NULL;
+        s->queryables[idx].ctx = NULL;
         return ZPICO_ERR_KEYEXPR;
     }
 
     // Create closure for callback
     z_owned_closure_query_t closure;
-    z_closure_query(&closure, query_handler, NULL, (void*)(intptr_t)idx);
+    z_closure_query(&closure, query_handler, NULL, _zpico_pack_ctx(s, idx));
 
     // Set complete=true so that queries with Z_QUERY_TARGET_ALL_COMPLETE
     // (used by rmw_zenoh_cpp service clients) match this queryable.
@@ -2129,37 +2331,38 @@ int32_t zpico_declare_queryable(const char* keyexpr, ZpicoQueryCallback callback
     opts.complete = true;
 
     int q_ret =
-        z_declare_queryable(z_session_loan(&g_session), &g_queryables[idx].queryable,
+        z_declare_queryable(z_session_loan(&s->session), &s->queryables[idx].queryable,
                             z_view_keyexpr_loan(&ke), z_closure_query_move(&closure), &opts);
     if (q_ret < 0) {
         printk("zpico: z_declare_queryable failed: %d for '%s'\n", q_ret, keyexpr);
-        g_queryables[idx].callback = NULL;
-        g_queryables[idx].ctx = NULL;
+        s->queryables[idx].callback = NULL;
+        s->queryables[idx].ctx = NULL;
         return ZPICO_ERR_GENERIC;
     }
 
-    g_queryables[idx].active = true;
+    s->queryables[idx].active = true;
     return idx;
 }
 
-int32_t zpico_undeclare_queryable(int32_t handle) {
-    if (handle < 0 || handle >= ZPICO_MAX_QUERYABLES || !g_queryables[handle].active) {
+int32_t zpico_undeclare_queryable(zpico_session_t* session, int32_t handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_QUERYABLES || !s->queryables[handle].active) {
         return ZPICO_ERR_INVALID;
     }
 
-    z_undeclare_queryable(z_queryable_move(&g_queryables[handle].queryable));
-    g_queryables[handle].active = false;
-    g_queryables[handle].callback = NULL;
-    g_queryables[handle].ctx = NULL;
+    z_undeclare_queryable(z_queryable_move(&s->queryables[handle].queryable));
+    s->queryables[handle].active = false;
+    s->queryables[handle].callback = NULL;
+    s->queryables[handle].ctx = NULL;
     // Phase 237 — drop any cloned queries still held in this queryable's reply
     // slots (unanswered deferred requests) so they don't leak session refs.
     for (int j = 0; j < ZPICO_MAX_PENDING_REPLIES; j++) {
-        if (g_stored_query_valid[handle][j]) {
-            z_query_drop(z_query_move(&g_stored_queries[handle][j]));
-            g_stored_query_valid[handle][j] = false;
+        if (s->stored_query_valid[handle][j]) {
+            z_query_drop(z_query_move(&s->stored_queries[handle][j]));
+            s->stored_query_valid[handle][j] = false;
         }
     }
-    g_last_reply_seq[handle] = -1;
+    s->last_reply_seq[handle] = -1;
     return ZPICO_OK;
 }
 
@@ -2228,9 +2431,11 @@ static void get_reply_dropper(void* ctx) {
 #endif
 }
 
-int32_t zpico_get(const char* keyexpr, const uint8_t* payload, size_t payload_len,
-                  uint8_t* reply_buf, size_t reply_buf_size, uint32_t timeout_ms) {
-    if (!g_session_open) {
+int32_t zpico_get(zpico_session_t* session, const char* keyexpr, const uint8_t* payload,
+                  size_t payload_len, uint8_t* reply_buf, size_t reply_buf_size,
+                  uint32_t timeout_ms) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
@@ -2280,7 +2485,7 @@ int32_t zpico_get(const char* keyexpr, const uint8_t* payload, size_t payload_le
     z_closure(&callback, get_reply_handler, get_reply_dropper, &ctx);
 
     // Send the query
-    if (z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts) <
+    if (z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts) <
         0) {
         return ZPICO_ERR_GENERIC;
     }
@@ -2304,11 +2509,11 @@ int32_t zpico_get(const char* keyexpr, const uint8_t* payload, size_t payload_le
     {
         z_clock_t start = z_clock_now();
         while (!ctx.done) {
-            zp_read(z_session_loan_mut(&g_session), NULL);
-            zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+            zp_read(z_session_loan_mut(&s->session), NULL);
+            zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
             // Drive zenoh-pico's query timeout so its dropper fires cleanly
             // while ctx is still on the stack.
-            _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
+            _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&s->session)));
             if (ctx.received) {
                 break;
             }
@@ -2358,12 +2563,15 @@ int32_t zpico_get(const char* keyexpr, const uint8_t* payload, size_t payload_le
 // ============================================================================
 
 // Reply handler for pending get slots — reuses the same logic as get_reply_handler
-static void pending_get_reply_handler(z_loaned_reply_t* reply, void* ctx) {
+static void pending_get_reply_handler(z_loaned_reply_t* reply, void* arg) {
     g_diag_reply_handler_calls++;
+    struct zpico_session* s = _zpico_unpack_session(arg);
+    int slot = _zpico_unpack_slot(arg);
+    get_reply_ctx_t* rctx = &s->pending_gets[slot].ctx;
     /* Phase 127.D.2 — keep the address-recording side effect. It
      * defeats whole-program LTO alias analysis that would otherwise
      * prove the closure's `ctx` pointer disjoint from
-     * `&g_pending_gets[handle].ctx` (because the slot table is
+     * `&s->pending_gets[handle].ctx` (because the slot table is
      * private to this TU and the callback type-erases `ctx` to
      * `void *`). Without this side effect the write to
      * `rctx->received` here was hoisted away from the read in
@@ -2375,25 +2583,28 @@ static void pending_get_reply_handler(z_loaned_reply_t* reply, void* ctx) {
      * Bumping a counter unconditionally (vs. the "first write only"
      * pattern) keeps the side effect from being scheduled as a
      * one-shot branch that constant-folds away after the first hit. */
-    g_diag_handler_ctx_addr = (uint32_t)(uintptr_t)ctx;
-    get_reply_handler(reply, ctx);
-    _zpico_notify_spin();
-    if (g_reply_waker) {
-        // ctx is &ps->ctx which is the first field, so ps == (pending_get_slot_t*)ctx
-        int32_t slot = (int32_t)((pending_get_slot_t*)ctx - g_pending_gets);
-        g_reply_waker(slot);
+    /* Record the REAL reply-context address (not the packed handle): a volatile
+     * store of an address derived from the pooled `g_sessions` array keeps the
+     * write to `rctx->received` in `get_reply_handler` from being hoisted over
+     * the read in `zpico_get_check`. */
+    g_diag_handler_ctx_addr = (uint32_t)(uintptr_t)rctx;
+    get_reply_handler(reply, rctx);
+    _zpico_notify_spin(s);
+    if (s->reply_waker) {
+        s->reply_waker(slot);
     }
 }
 
 // Dropper for pending get slots — just sets the done flag (no condvar)
-static void pending_get_dropper(void* ctx) {
+static void pending_get_dropper(void* arg) {
     g_diag_reply_dropper_calls++;
-    get_reply_ctx_t* rctx = (get_reply_ctx_t*)ctx;
+    struct zpico_session* s = _zpico_unpack_session(arg);
+    int slot = _zpico_unpack_slot(arg);
+    get_reply_ctx_t* rctx = &s->pending_gets[slot].ctx;
     __atomic_store_n(&rctx->done, true, __ATOMIC_SEQ_CST);
-    _zpico_notify_spin();
-    if (g_reply_waker) {
-        int32_t slot = (int32_t)((pending_get_slot_t*)ctx - g_pending_gets);
-        g_reply_waker(slot);
+    _zpico_notify_spin(s);
+    if (s->reply_waker) {
+        s->reply_waker(slot);
     }
 }
 
@@ -2418,9 +2629,10 @@ void zpico_get_diag_counters(uint32_t out[18]) {
     out[17] = g_diag_check_ctx_addr;
 }
 
-int32_t zpico_get_start(const char* keyexpr, const uint8_t* payload, size_t payload_len,
-                        uint32_t timeout_ms) {
-    return zpico_get_start_with_attachment(keyexpr, payload, payload_len, NULL, 0, timeout_ms);
+int32_t zpico_get_start(zpico_session_t* session, const char* keyexpr, const uint8_t* payload,
+                        size_t payload_len, uint32_t timeout_ms) {
+    return zpico_get_start_with_attachment(session, keyexpr, payload, payload_len, NULL, 0,
+                                           timeout_ms);
 }
 
 /* Issue 0153 — attachment-carrying variant. rmw_zenoh_cpp's service server
@@ -2431,11 +2643,13 @@ int32_t zpico_get_start(const char* keyexpr, const uint8_t* payload, size_t payl
  * server and then dies inside rcl ("service failed to take request") — the
  * client only ever sees Transport(Timeout). nano<->nano services tolerate a
  * missing attachment, which is why this stayed invisible in-tree. */
-int32_t zpico_get_start_with_attachment(const char* keyexpr, const uint8_t* payload,
-                                        size_t payload_len, const uint8_t* attachment,
-                                        size_t attachment_len, uint32_t timeout_ms) {
+int32_t zpico_get_start_with_attachment(zpico_session_t* session, const char* keyexpr,
+                                        const uint8_t* payload, size_t payload_len,
+                                        const uint8_t* attachment, size_t attachment_len,
+                                        uint32_t timeout_ms) {
+    struct zpico_session* s = (struct zpico_session*)session;
     g_diag_get_start_calls++;
-    if (!g_session_open) {
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
@@ -2445,10 +2659,10 @@ int32_t zpico_get_start_with_attachment(const char* keyexpr, const uint8_t* payl
     // Now that the dropper has fired (done=true), the slot can be reclaimed.
     int32_t slot = -1;
     for (int32_t i = 0; i < ZPICO_MAX_PENDING_GETS; i++) {
-        if (g_pending_gets[i].in_use && g_pending_gets[i].ctx.done) {
-            g_pending_gets[i].in_use = false;
+        if (s->pending_gets[i].in_use && s->pending_gets[i].ctx.done) {
+            s->pending_gets[i].in_use = false;
         }
-        if (!g_pending_gets[i].in_use) {
+        if (!s->pending_gets[i].in_use) {
             slot = i;
             break;
         }
@@ -2458,7 +2672,7 @@ int32_t zpico_get_start_with_attachment(const char* keyexpr, const uint8_t* payl
     }
 
     // Initialize slot context
-    pending_get_slot_t* ps = &g_pending_gets[slot];
+    pending_get_slot_t* ps = &s->pending_gets[slot];
     ps->ctx.len = 0;
     ps->ctx.received = false;
     ps->ctx.done = false;
@@ -2498,12 +2712,12 @@ int32_t zpico_get_start_with_attachment(const char* keyexpr, const uint8_t* payl
     }
 
     z_owned_closure_reply_t callback;
-    z_closure(&callback, pending_get_reply_handler, pending_get_dropper, &ps->ctx);
+    z_closure(&callback, pending_get_reply_handler, pending_get_dropper, _zpico_pack_ctx(s, slot));
     /* Same aliasing-defeat trick. */
     g_diag_start_ctx_addr = (uint32_t)(uintptr_t)&ps->ctx;
 
     z_result_t zret =
-        z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts);
+        z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts);
     if (zret < 0) {
         ps->in_use = false;
         return ZPICO_ERR_GENERIC;
@@ -2520,7 +2734,7 @@ int32_t zpico_get_start_with_attachment(const char* keyexpr, const uint8_t* payl
  * until either at least one matching token reports back or the dropper fires
  * empty-handed.
  *
- * Reuses the same `g_pending_gets` slot pool as `zpico_get_start` — a slot is
+ * Reuses the same `s->pending_gets` slot pool as `zpico_get_start` — a slot is
  * just a (received_flag, dropper_done_flag, payload_buf) triple, agnostic to
  * whether the caller will read the payload. The reply handler still copies
  * the (typically empty) liveliness token bytes into the slot's buffer; we
@@ -2528,17 +2742,19 @@ int32_t zpico_get_start_with_attachment(const char* keyexpr, const uint8_t* payl
  *
  * Returns the slot handle on success, ZPICO_ERR_* on failure.
  */
-int32_t zpico_liveliness_get_start(const char* keyexpr, uint32_t timeout_ms) {
-    if (!g_session_open) {
+int32_t zpico_liveliness_get_start(zpico_session_t* session, const char* keyexpr,
+                                   uint32_t timeout_ms) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
 
     int32_t slot = -1;
     for (int32_t i = 0; i < ZPICO_MAX_PENDING_GETS; i++) {
-        if (g_pending_gets[i].in_use && g_pending_gets[i].ctx.done) {
-            g_pending_gets[i].in_use = false;
+        if (s->pending_gets[i].in_use && s->pending_gets[i].ctx.done) {
+            s->pending_gets[i].in_use = false;
         }
-        if (!g_pending_gets[i].in_use) {
+        if (!s->pending_gets[i].in_use) {
             slot = i;
             break;
         }
@@ -2547,7 +2763,7 @@ int32_t zpico_liveliness_get_start(const char* keyexpr, uint32_t timeout_ms) {
         return ZPICO_ERR_FULL;
     }
 
-    pending_get_slot_t* ps = &g_pending_gets[slot];
+    pending_get_slot_t* ps = &s->pending_gets[slot];
     ps->ctx.len = 0;
     ps->ctx.received = false;
     ps->ctx.done = false;
@@ -2565,9 +2781,9 @@ int32_t zpico_liveliness_get_start(const char* keyexpr, uint32_t timeout_ms) {
     opts.timeout_ms = (uint64_t)timeout_ms;
 
     z_owned_closure_reply_t callback;
-    z_closure(&callback, pending_get_reply_handler, pending_get_dropper, &ps->ctx);
+    z_closure(&callback, pending_get_reply_handler, pending_get_dropper, _zpico_pack_ctx(s, slot));
 
-    z_result_t zret = z_liveliness_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke),
+    z_result_t zret = z_liveliness_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke),
                                        z_move(callback), &opts);
     if (zret < 0) {
         ps->in_use = false;
@@ -2601,11 +2817,12 @@ int32_t zpico_liveliness_get_start(const char* keyexpr, uint32_t timeout_ms) {
  * The count is left intact on read; only `zpico_liveliness_get_check`
  * releases the slot, so callers should pair `count → check`.
  */
-int32_t zpico_liveliness_get_count(int32_t handle) {
+int32_t zpico_liveliness_get_count(zpico_session_t* session, int32_t handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
         return ZPICO_ERR_INVALID;
     }
-    pending_get_slot_t* ps = &g_pending_gets[handle];
+    pending_get_slot_t* ps = &s->pending_gets[handle];
     if (!ps->in_use) {
         return ZPICO_ERR_INVALID;
     }
@@ -2615,12 +2832,13 @@ int32_t zpico_liveliness_get_count(int32_t handle) {
     return c > (uint32_t)INT32_MAX ? INT32_MAX : (int32_t)c;
 }
 
-int32_t zpico_liveliness_get_check(int32_t handle) {
+int32_t zpico_liveliness_get_check(zpico_session_t* session, int32_t handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
         return ZPICO_ERR_INVALID;
     }
 
-    pending_get_slot_t* ps = &g_pending_gets[handle];
+    pending_get_slot_t* ps = &s->pending_gets[handle];
     if (!ps->in_use) {
         return ZPICO_ERR_INVALID;
     }
@@ -2641,14 +2859,16 @@ int32_t zpico_liveliness_get_check(int32_t handle) {
     return 0;
 }
 
-int32_t zpico_get_check(int32_t handle, uint8_t* reply_buf, size_t reply_buf_size) {
+int32_t zpico_get_check(zpico_session_t* session, int32_t handle, uint8_t* reply_buf,
+                        size_t reply_buf_size) {
+    struct zpico_session* s = (struct zpico_session*)session;
     g_diag_get_check_calls++;
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
         g_diag_gck_invalid_arg++;
         return ZPICO_ERR_INVALID;
     }
 
-    pending_get_slot_t* ps = &g_pending_gets[handle];
+    pending_get_slot_t* ps = &s->pending_gets[handle];
     if (!ps->in_use) {
         g_diag_gck_not_in_use++;
         return ZPICO_ERR_INVALID;
@@ -2692,17 +2912,19 @@ int32_t zpico_get_check(int32_t handle, uint8_t* reply_buf, size_t reply_buf_siz
     return 0;
 }
 
-void zpico_set_reply_waker(zpico_waker_fn fn) {
-    g_reply_waker = fn;
+void zpico_set_reply_waker(zpico_session_t* session, zpico_waker_fn fn) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    s->reply_waker = fn;
 }
 
 // ============================================================================
 // Query Reply Implementation (for service servers)
 // ============================================================================
 
-int32_t zpico_query_reply(int32_t queryable_handle, int64_t reply_seq, const char* keyexpr,
-                          const uint8_t* data, size_t len, const uint8_t* attachment,
-                          size_t attachment_len) {
+int32_t zpico_query_reply(zpico_session_t* session, int32_t queryable_handle, int64_t reply_seq,
+                          const char* keyexpr, const uint8_t* data, size_t len,
+                          const uint8_t* attachment, size_t attachment_len) {
+    struct zpico_session* s = (struct zpico_session*)session;
     if (queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
         return ZPICO_ERR_INVALID;
     }
@@ -2710,10 +2932,10 @@ int32_t zpico_query_reply(int32_t queryable_handle, int64_t reply_seq, const cha
     // `query_handler` (the slot index it recorded). The reply may arrive long
     // after the query callback returned (deferred get_result).
     if (reply_seq < 0 || reply_seq >= ZPICO_MAX_PENDING_REPLIES ||
-        !g_stored_query_valid[queryable_handle][reply_seq]) {
+        !s->stored_query_valid[queryable_handle][reply_seq]) {
         return ZPICO_ERR_INVALID;
     }
-    z_owned_query_t* stored_query = &g_stored_queries[queryable_handle][reply_seq];
+    z_owned_query_t* stored_query = &s->stored_queries[queryable_handle][reply_seq];
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
@@ -2767,7 +2989,7 @@ int32_t zpico_query_reply(int32_t queryable_handle, int64_t reply_seq, const cha
 
     // Drop the cloned query + free the slot after reply.
     z_query_drop(z_query_move(stored_query));
-    g_stored_query_valid[queryable_handle][reply_seq] = false;
+    s->stored_query_valid[queryable_handle][reply_seq] = false;
 
     return ZPICO_OK;
 }
@@ -2775,11 +2997,12 @@ int32_t zpico_query_reply(int32_t queryable_handle, int64_t reply_seq, const cha
 // Phase 237 — return the reply-slot index allocated by the most recent
 // `query_handler` for this queryable (the deferred-reply seq). Must be called
 // from inside the synchronous query callback; -1 if the reply table was full.
-int64_t zpico_queryable_take_reply_seq(int32_t queryable_handle) {
+int64_t zpico_queryable_take_reply_seq(zpico_session_t* session, int32_t queryable_handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
     if (queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
         return -1;
     }
-    return g_last_reply_seq[queryable_handle];
+    return s->last_reply_seq[queryable_handle];
 }
 
 // ============================================================================

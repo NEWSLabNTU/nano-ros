@@ -1,10 +1,32 @@
 ---
 id: 348
 title: "zpico supports only one zenoh session per process — multi-domain / multi-session topologies need g_session and 51 process globals moved into a per-session context"
-status: open
+status: resolved
 type: limitation
 area: core
 related: [issue-0347, issue-0096]
+resolved_by: phase-328
+---
+
+## Resolution (2026-08-01, phase-328)
+
+Option **3** (full handle-passing) shipped. `zpico.c`'s `g_session` and every
+per-session `g_*` table moved into a `struct zpico_session` allocated from a
+compile-time pool (`ZPICO_MAX_SESSIONS`, default 1); every `zpico_*` entry
+point takes a `zpico_session_t*` handle (the diagnostic counters and the ZID
+uniquifier stay process-global; the two task-config setters stay process-wide
+defaults, applied at open). zenoh-pico closures recover their session by
+packing `{session_idx, slot_idx}` into the existing `void* ctx`. The Rust
+`Context` owns one pool slot; `ZenohSession` is unchanged above it.
+
+Verified: `two_sessions_deliver_cross_session_through_router`
+(`ZPICO_MAX_SESSIONS=2`) — session A's subscriber receives what session B
+(opened second) publishes, proving the two sessions are independent. Full
+`zenoh_integration` suite 15/15 green at pool=2. Single-session footprint delta
++142 B `.bss` (the `g_session_inuse[1]` flag + struct-aggregation padding; the
+21 KB table budget did not multiply). See
+[phase-328](../roadmap/phase-328-zpico-multi-session.md). Detail below is the
+original finding.
 ---
 
 ## Finding (2026-07-28, split out of issue 0347)

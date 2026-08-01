@@ -72,6 +72,12 @@ pub(super) struct ServiceBuffer {
     /// Phase 122.3.c.6.e — waker registered by event-driven service
     /// servers. Woken by `queryable_callback` after a request lands.
     pub(super) waker: AtomicWaker,
+    /// phase-328 (issue 0348) — the owning zpico session pool slot, recorded
+    /// at server-registration time. `queryable_callback` reads it back so
+    /// `zpico_queryable_take_reply_seq(session, …)` addresses the correct
+    /// session's reply-slot table (this buffer array is process-global, so the
+    /// handle cannot be recovered from the buffer index alone).
+    pub(super) session: core::sync::atomic::AtomicPtr<zpico_sys::zpico_session_t>,
 }
 
 impl ServiceBuffer {
@@ -83,6 +89,7 @@ impl ServiceBuffer {
             keyexpr: [0u8; 256],
             keyexpr_len: AtomicUsize::new(0),
             waker: AtomicWaker::new(),
+            session: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
         }
     }
 }
@@ -221,7 +228,8 @@ extern "C" fn queryable_callback(
     // FFI returns i64; narrow to the counter's native width (i32 on 32-bit
     // targets, where AtomicSeqCounter is AtomicI32). Reply-slot indices are
     // small and fit. Symmetric with the `.into()` widening on load.
-    let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(buffer_index as i32) };
+    let session = buffer.session.load(Ordering::Acquire);
+    let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(session, buffer_index as i32) };
     slot.seq.store(seq as SeqScalar, Ordering::Relaxed);
 
     if payload_len > slot.data.len() {
@@ -300,6 +308,13 @@ impl ZenohServiceServer {
         }
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
         keyexpr_buf[bytes.len()] = 0;
+
+        // phase-328 — record the owning session BEFORE declaring, so a query
+        // that arrives during declaration finds the right pool slot.
+        ServiceBufferRef::new(buffer_index)
+            .get()
+            .session
+            .store(context.handle(), Ordering::Release);
 
         // Create queryable with callback
         let queryable = unsafe {
@@ -457,9 +472,9 @@ unsafe extern "C" fn reply_waker_callback(slot: i32) {
 /// Register the reply waker callback with the C shim.
 ///
 /// Called once during session initialization.
-pub(super) fn register_reply_waker() {
+pub(super) fn register_reply_waker(session: *mut zpico_sys::zpico_session_t) {
     unsafe {
-        zpico_sys::zpico_set_reply_waker(Some(reply_waker_callback));
+        zpico_sys::zpico_set_reply_waker(session, Some(reply_waker_callback));
     }
 }
 
@@ -740,7 +755,7 @@ impl ClientTrait for ZenohServiceClient {
                 if attempt + 1 < MAX_ATTEMPTS {
                     #[cfg(feature = "platform-threadx")]
                     unsafe {
-                        let _ = zpico_sys::zpico_spin_once(SLEEP_MS as u32);
+                        let _ = zpico_sys::zpico_spin_once(context.handle(), SLEEP_MS as u32);
                     }
                     #[cfg(not(feature = "platform-threadx"))]
                     unsafe {

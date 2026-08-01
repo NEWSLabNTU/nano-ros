@@ -32,6 +32,7 @@ fn shim_config_from_env() -> ShimConfig {
         max_queryables: env_usize("ZPICO_MAX_QUERYABLES", 8),
         max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", 16),
         max_pending_gets: env_usize("ZPICO_MAX_PENDING_GETS", 4),
+        max_sessions: env_usize("ZPICO_MAX_SESSIONS", 1),
         get_reply_buf_size: env_usize("ZPICO_GET_REPLY_BUF_SIZE", 4096),
         get_poll_interval_ms: env_usize("ZPICO_GET_POLL_INTERVAL_MS", 10),
         tx_batch: env_usize("ZPICO_TX_BATCH", 0) != 0,

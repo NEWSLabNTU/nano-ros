@@ -304,7 +304,7 @@ impl ZenohSession {
             .map_err(TransportError::from)?;
 
         // Register the reply waker callback for async service client support
-        super::service::register_reply_waker();
+        super::service::register_reply_waker(context.handle());
 
         // Fix #104 — declare the node liveliness token so the primary node
         // appears in `ros2 node list`.  Build the session first (token is
@@ -731,7 +731,7 @@ impl Session for ZenohSession {
         // True round-trip ping would need a `z_send_ping` API that
         // zenoh-pico hasn't yet exposed; deferred to a follow-up
         // when upstream lands one.
-        let rc = unsafe { zpico_sys::zpico_send_keep_alive() };
+        let rc = unsafe { zpico_sys::zpico_send_keep_alive(self.context.handle()) };
         if rc == 0 {
             Ok(())
         } else {

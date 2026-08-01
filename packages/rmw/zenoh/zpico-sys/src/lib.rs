@@ -128,25 +128,50 @@ pub struct zpico_ring_desc_t {
 // see the `use core::ffi::c_void` note above). The `not(cbindgen)`
 // guard stays — these are Rust imports of C functions, not header
 // declarations.
+/// Opaque per-session handle (issue 0348 / phase-328). A `zpico_session_t*`
+/// points into the C shim's compile-time session pool
+/// (`ZPICO_MAX_SESSIONS`, default 1). Every `zpico_*` entry point that
+/// operates on a session takes one as its leading argument. Rust never
+/// dereferences it — it is a bare pointer forwarded to the C shim.
+///
+/// EXCEPTIONS to the handle rule (process-wide, no session arg):
+/// `zpico_set_task_config` / `zpico_set_flush_task_config` are process-wide
+/// task-spawn DEFAULTS applied at `zpico_open` (they are called from board
+/// boot before any session exists), and `zpico_get_diag_counters` /
+/// `zpico_uses_polling` / the clock helpers are process-global.
+#[repr(C)]
+pub struct zpico_session_t {
+    _private: [u8; 0],
+}
+
 #[cfg(not(cbindgen))]
 #[allow(improper_ctypes)]
 unsafe extern "C" {
     // Session lifecycle
-    pub fn zpico_init(locator: *const core::ffi::c_char) -> i32;
+    /// Acquire a free slot from the C shim's session pool. Returns NULL when
+    /// the pool (`ZPICO_MAX_SESSIONS`) is exhausted. Pair with
+    /// `zpico_session_release` after `zpico_close`.
+    pub fn zpico_session_acquire() -> *mut zpico_session_t;
+    /// Return a slot to the pool. Call after `zpico_close`; the pointer is
+    /// invalid afterwards.
+    pub fn zpico_session_release(session: *mut zpico_session_t);
+    pub fn zpico_init(session: *mut zpico_session_t, locator: *const core::ffi::c_char) -> i32;
     pub fn zpico_init_with_config(
+        session: *mut zpico_session_t,
         locator: *const core::ffi::c_char,
         mode: *const core::ffi::c_char,
         properties: *const zpico_property_t,
         num_properties: usize,
     ) -> i32;
-    pub fn zpico_open() -> i32;
-    pub fn zpico_is_open() -> i32;
+    pub fn zpico_open(session: *mut zpico_session_t) -> i32;
+    pub fn zpico_is_open(session: *mut zpico_session_t) -> i32;
     /// Phase 124.F.2 — wire-level connectivity probe. Returns 0
     /// on success, `ZPICO_ERR_*` on failure.
-    pub fn zpico_send_keep_alive() -> i32;
-    pub fn zpico_close();
+    pub fn zpico_send_keep_alive(session: *mut zpico_session_t) -> i32;
+    pub fn zpico_close(session: *mut zpico_session_t);
 
-    // Task scheduling configuration (call between zpico_init and zpico_open)
+    // Task scheduling configuration (process-wide default; call before
+    // zpico_open — see the zpico_session_t exception note above).
     pub fn zpico_set_task_config(
         read_priority: u32,
         read_stack_bytes: u32,
@@ -155,18 +180,31 @@ unsafe extern "C" {
     );
 
     // ZenohId
-    pub fn zpico_get_zid(zid_out: *mut u8) -> i32;
+    pub fn zpico_get_zid(session: *mut zpico_session_t, zid_out: *mut u8) -> i32;
 
     // Publishers
-    pub fn zpico_declare_publisher(keyexpr: *const core::ffi::c_char) -> i32;
-    pub fn zpico_declare_publisher_ex(keyexpr: *const core::ffi::c_char, is_express: i32) -> i32;
-    pub fn zpico_publish(handle: i32, data: *const u8, len: usize) -> i32;
+    pub fn zpico_declare_publisher(
+        session: *mut zpico_session_t,
+        keyexpr: *const core::ffi::c_char,
+    ) -> i32;
+    pub fn zpico_declare_publisher_ex(
+        session: *mut zpico_session_t,
+        keyexpr: *const core::ffi::c_char,
+        is_express: i32,
+    ) -> i32;
+    pub fn zpico_publish(
+        session: *mut zpico_session_t,
+        handle: i32,
+        data: *const u8,
+        len: usize,
+    ) -> i32;
     /// Phase 124.E.3 — streamed publish via zenoh-pico's
     /// `z_bytes_writer` API. `chunk_cb` is invoked repeatedly with
     /// up to 1 KiB buffers until `total_len` bytes have landed.
     /// `attachment` carries the ROS-interop metadata (seq + source
     /// timestamp + GID); pass NULL / 0 for a bare publish.
     pub fn zpico_publish_streamed(
+        session: *mut zpico_session_t,
         handle: i32,
         total_len: usize,
         chunk_cb: Option<
@@ -182,6 +220,7 @@ unsafe extern "C" {
         attachment_len: usize,
     ) -> i32;
     pub fn zpico_publish_with_attachment(
+        session: *mut zpico_session_t,
         handle: i32,
         data: *const u8,
         len: usize,
@@ -191,26 +230,30 @@ unsafe extern "C" {
     /// Phase 99.F: zero-copy publish via z_bytes_from_static_buf.
     /// Caller guarantees `data` outlives the call.
     pub fn zpico_publish_with_attachment_aliased(
+        session: *mut zpico_session_t,
         handle: i32,
         data: *const u8,
         len: usize,
         attachment: *const u8,
         attachment_len: usize,
     ) -> i32;
-    pub fn zpico_undeclare_publisher(handle: i32) -> i32;
+    pub fn zpico_undeclare_publisher(session: *mut zpico_session_t, handle: i32) -> i32;
 
     // Subscribers
     pub fn zpico_declare_subscriber(
+        session: *mut zpico_session_t,
         keyexpr: *const core::ffi::c_char,
         callback: ZpicoCallback,
         ctx: *mut c_void,
     ) -> i32;
     pub fn zpico_declare_subscriber_with_attachment(
+        session: *mut zpico_session_t,
         keyexpr: *const core::ffi::c_char,
         callback: ZpicoCallbackWithAttachment,
         ctx: *mut c_void,
     ) -> i32;
     pub fn zpico_declare_subscriber_direct_write(
+        session: *mut zpico_session_t,
         keyexpr: *const core::ffi::c_char,
         buf_ptr: *mut u8,
         buf_capacity: usize,
@@ -219,30 +262,37 @@ unsafe extern "C" {
         ctx: *mut c_void,
     ) -> i32;
     pub fn zpico_declare_subscriber_ring(
+        session: *mut zpico_session_t,
         keyexpr: *const core::ffi::c_char,
         desc: *mut zpico_ring_desc_t,
         callback: ZpicoNotifyCallback,
         ctx: *mut c_void,
     ) -> i32;
     pub fn zpico_subscribe_zero_copy(
+        session: *mut zpico_session_t,
         keyexpr: *const core::ffi::c_char,
         callback: ZpicoZeroCopyCallback,
         ctx: *mut c_void,
     ) -> i32;
-    pub fn zpico_undeclare_subscriber(handle: i32) -> i32;
+    pub fn zpico_undeclare_subscriber(session: *mut zpico_session_t, handle: i32) -> i32;
 
     // Liveliness
-    pub fn zpico_declare_liveliness(keyexpr: *const core::ffi::c_char) -> i32;
-    pub fn zpico_undeclare_liveliness(handle: i32) -> i32;
+    pub fn zpico_declare_liveliness(
+        session: *mut zpico_session_t,
+        keyexpr: *const core::ffi::c_char,
+    ) -> i32;
+    pub fn zpico_undeclare_liveliness(session: *mut zpico_session_t, handle: i32) -> i32;
 
     // Queryables (for services)
     pub fn zpico_declare_queryable(
+        session: *mut zpico_session_t,
         keyexpr: *const core::ffi::c_char,
         callback: ZpicoQueryCallback,
         ctx: *mut c_void,
     ) -> i32;
-    pub fn zpico_undeclare_queryable(handle: i32) -> i32;
+    pub fn zpico_undeclare_queryable(session: *mut zpico_session_t, handle: i32) -> i32;
     pub fn zpico_query_reply(
+        session: *mut zpico_session_t,
         queryable_handle: i32,
         reply_seq: i64,
         keyexpr: *const core::ffi::c_char,
@@ -253,10 +303,14 @@ unsafe extern "C" {
     ) -> i32;
     /// Phase 237 — reply-slot index from the most recent query callback (the
     /// deferred-reply seq); call from inside the synchronous query callback.
-    pub fn zpico_queryable_take_reply_seq(queryable_handle: i32) -> i64;
+    pub fn zpico_queryable_take_reply_seq(
+        session: *mut zpico_session_t,
+        queryable_handle: i32,
+    ) -> i64;
 
     // Service client (queries)
     pub fn zpico_get(
+        session: *mut zpico_session_t,
         keyexpr: *const core::ffi::c_char,
         payload: *const u8,
         payload_len: usize,
@@ -267,12 +321,14 @@ unsafe extern "C" {
 
     // Non-blocking service client (async queries)
     pub fn zpico_get_start(
+        session: *mut zpico_session_t,
         keyexpr: *const core::ffi::c_char,
         payload: *const u8,
         payload_len: usize,
         timeout_ms: u32,
     ) -> i32;
     pub fn zpico_get_start_with_attachment(
+        session: *mut zpico_session_t,
         keyexpr: *const core::ffi::c_char,
         payload: *const u8,
         payload_len: usize,
@@ -280,29 +336,42 @@ unsafe extern "C" {
         attachment_len: usize,
         timeout_ms: u32,
     ) -> i32;
-    pub fn zpico_get_check(handle: i32, reply_buf: *mut u8, reply_buf_size: usize) -> i32;
+    pub fn zpico_get_check(
+        session: *mut zpico_session_t,
+        handle: i32,
+        reply_buf: *mut u8,
+        reply_buf_size: usize,
+    ) -> i32;
 
     // Non-blocking liveliness query (for wait_for_service / wait_for_action_server).
-    pub fn zpico_liveliness_get_start(keyexpr: *const core::ffi::c_char, timeout_ms: u32) -> i32;
-    pub fn zpico_liveliness_get_check(handle: i32) -> i32;
+    pub fn zpico_liveliness_get_start(
+        session: *mut zpico_session_t,
+        keyexpr: *const core::ffi::c_char,
+        timeout_ms: u32,
+    ) -> i32;
+    pub fn zpico_liveliness_get_check(session: *mut zpico_session_t, handle: i32) -> i32;
     /// Phase 108.C.zenoh.4-followup — count of liveliness-token
     /// replies on this slot. Used by the subscriber-side
     /// `LivelinessChanged` bridge to surface `alive_count > 1`.
-    pub fn zpico_liveliness_get_count(handle: i32) -> i32;
+    pub fn zpico_liveliness_get_count(session: *mut zpico_session_t, handle: i32) -> i32;
 
-    // Reply waker callback (for async service client)
-    pub fn zpico_set_reply_waker(func: Option<unsafe extern "C" fn(i32)>);
+    // Reply waker callback (for async service client) — per-session.
+    pub fn zpico_set_reply_waker(
+        session: *mut zpico_session_t,
+        func: Option<unsafe extern "C" fn(i32)>,
+    );
 
-    // Phase 127.D — get/get_check/reply-handler/dropper diagnostic counters.
+    // Phase 127.D — get/get_check/reply-handler/dropper diagnostic counters
+    // (process-global — see the zpico_session_t exception note above).
     // out fills with [get_start, get_check, get_check_returns_data,
     // reply_handler_calls, reply_dropper_calls].
     pub fn zpico_get_diag_counters(out: *mut u32);
 
     // Polling
-    pub fn zpico_spin_once(timeout_ms: u32) -> i32;
+    pub fn zpico_spin_once(session: *mut zpico_session_t, timeout_ms: u32) -> i32;
     pub fn zpico_uses_polling() -> bool;
 
-    // Clock helpers (for FFI reentrancy guard timeout decomposition)
+    // Clock helpers (for FFI reentrancy guard timeout decomposition) — process-global.
     pub fn zpico_clock_start(clock_buf: *mut u8);
     pub fn zpico_clock_elapsed_ms_since(clock_buf: *mut u8) -> core::ffi::c_ulong;
 }

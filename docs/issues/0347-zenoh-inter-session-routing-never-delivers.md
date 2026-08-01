@@ -116,6 +116,13 @@ that path.
 **passes** — the file now runs 13/13 with nothing ignored, where 5 tests had
 never run at all.
 
+**Superseded by [phase-328](../roadmap/phase-328-zpico-multi-session.md) /
+[issue 0348](0348-zpico-multi-session-support.md) (2026-08-01):** the refusal
+was the honest stop-gap; 0348 added real multi-session support (per-session
+`zpico_session_t` pool + handle-passing). The refusal test above is now
+`two_sessions_deliver_cross_session_through_router`, which asserts delivery
+across two independent sessions instead of refusal.
+
 ## Behaviour change worth knowing
 
 A caller that configured two zenoh sessions in one process (e.g. two

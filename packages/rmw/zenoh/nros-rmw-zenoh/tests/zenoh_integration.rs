@@ -196,30 +196,29 @@ fn test_pubsub_loopback() {
     session.close().expect("Failed to close session");
 }
 
-/// zpico is SINGLE-SESSION per process — a second open must FAIL, not corrupt
-/// the first session (issue 0347).
+/// phase-328 (issue 0348) — two independent zpico sessions in ONE process
+/// deliver across each other through the router.
 ///
-/// This was `test_pubsub_separate_sessions`, ignored for "requires zenohd
-/// router". Un-ignoring it (issue 0328) showed it failing against a live
-/// router, and localisation found the cause: `zpico.c` holds one static
-/// `g_session` and process-global registration tables, and
-/// `zpico_init_with_config` used to memset those tables and replace the
-/// session on a SECOND open — silently destroying the first session's
-/// subscribers while returning Ok. The old test was therefore asserting
-/// delivery through a configuration the shim does not implement.
+/// This replaces `second_session_open_in_one_process_is_refused` (issue 0347's
+/// honest stop-gap). 0347 made a second `ZenohTransport::open` FAIL rather than
+/// memset the first session's registration tables out from under it; 0348 adds
+/// the actual capability. `zpico.c`'s `g_session` and every per-session `g_*`
+/// table now live inside a pooled `zpico_session_t` (`ZPICO_MAX_SESSIONS`,
+/// default 1), and every `zpico_*` entry point takes a handle — so a second
+/// open takes its own pool slot instead of clobbering the first.
 ///
-/// The evidence, for anyone tempted to "fix" the routing instead:
-/// - two processes, one session each, via a router: WORKS (verified with the
-///   stock talker/listener, 11 published / 11 received);
-/// - same-session pub/sub: works via the local loopback
-///   (`Z_FEATURE_LOCAL_SUBSCRIBER=1` on host builds), not the router;
-/// - cross-session in one process: delivered only when the subscriber was
-///   declared AFTER the second open — i.e. after the memset that erased it.
+/// Proof of independence: session A holds the SUBSCRIBER, session B (opened
+/// second) holds the PUBLISHER, on the SAME topic + domain through the router.
+/// Under the old global-state shim the second open would have wiped A's
+/// subscriber registration and delivery would fail; with per-session state it
+/// succeeds, exactly as two separate processes do (verified 11/11 with the
+/// stock talker/listener).
 ///
-/// Multi-session support would mean moving `g_session` and every `g_*` table
-/// into a per-session context; until then the honest contract is to refuse.
+/// Requires the shim built with `ZPICO_MAX_SESSIONS >= 2`. When it is 1 (the
+/// default), the second open returns `Err` (pool exhausted) and the test skips
+/// rather than failing — rebuild with `ZPICO_MAX_SESSIONS=2` to exercise it.
 #[test]
-fn second_session_open_in_one_process_is_refused() {
+fn two_sessions_deliver_cross_session_through_router() {
     let Some(_router) = router() else { return };
     let router_locator = _router.locator();
     let config = TransportConfig {
@@ -231,16 +230,89 @@ fn second_session_open_in_one_process_is_refused() {
         domain_id: 0,
     };
 
-    let _first = ZenohTransport::open(&config).expect("first session should open");
+    // Session A — opened first, owns the subscriber.
+    let mut session_a = ZenohTransport::open(&config).expect("first session should open");
 
-    // The second open must report failure rather than quietly re-initialising
-    // the global state out from under `_first`.
-    let second = ZenohTransport::open(&config);
-    assert!(
-        second.is_err(),
-        "a second zpico session in one process must be refused — before issue \
-         0347 this returned Ok and wiped the first session's registrations"
-    );
+    // Session B — opened SECOND. Under ZPICO_MAX_SESSIONS=1 this is refused
+    // (the 0347 contract); skip rather than fail so the default single-session
+    // build stays green.
+    let mut session_b = match ZenohTransport::open(&config) {
+        Ok(s) => s,
+        Err(_) => {
+            nros_tests::skip!(
+                "second session refused — shim built with ZPICO_MAX_SESSIONS=1; \
+                 rebuild with ZPICO_MAX_SESSIONS=2 to exercise multi-session"
+            );
+        }
+    };
+
+    let topic = TopicInfo::new("test/cross_session", "Int32", "hash348");
+
+    // Subscriber on session A, established BEFORE session B publishes.
+    let mut subscriber = session_a
+        .create_subscription(&topic, QosSettings::BEST_EFFORT)
+        .expect("Failed to create subscriber on session A");
+    thread::sleep(Duration::from_secs(2));
+
+    // Publisher on session B.
+    let publisher = session_b
+        .create_publisher(&topic, QosSettings::BEST_EFFORT)
+        .expect("Failed to create publisher on session B");
+
+    let test_value: i32 = 348;
+    let cdr_msg: [u8; 8] = [
+        0x00,
+        0x01,
+        0x00,
+        0x00, // CDR header (LE)
+        (test_value & 0xFF) as u8,
+        ((test_value >> 8) & 0xFF) as u8,
+        ((test_value >> 16) & 0xFF) as u8,
+        ((test_value >> 24) & 0xFF) as u8,
+    ];
+
+    // Cross-session delivery goes through the router (not the same-session
+    // local-loopback path), so allow discovery/matching to settle: republish
+    // and poll for up to ~10 s.
+    let mut recv_buf = [0u8; 64];
+    let mut received: Option<i32> = None;
+    for attempt in 0..20 {
+        publisher
+            .publish_raw(&cdr_msg)
+            .expect("Failed to publish from session B");
+        thread::sleep(Duration::from_millis(500));
+        match subscriber.try_recv_raw(&mut recv_buf) {
+            Ok(Some(len)) => {
+                assert_eq!(len, 8, "cross-session message length should be 8 bytes");
+                received = Some(i32::from_le_bytes([
+                    recv_buf[4],
+                    recv_buf[5],
+                    recv_buf[6],
+                    recv_buf[7],
+                ]));
+                eprintln!("[cross-session] delivered on attempt {attempt}");
+                break;
+            }
+            Ok(None) => continue,
+            Err(e) => panic!("Error receiving on session A: {:?}", e),
+        }
+    }
+
+    match received {
+        Some(v) => assert_eq!(
+            v, test_value,
+            "session A must receive what session B published — the two \
+             sessions are independent (issue 0348)"
+        ),
+        None => panic!(
+            "session A received nothing after 20 attempts — a second open wiped \
+             its subscriber, or two in-process sessions do not route through the \
+             router (the pre-0348 global-state failure)"
+        ),
+    }
+
+    session_a.close().expect("Failed to close session A");
+    session_b.close().expect("Failed to close session B");
 }
 
 /// Test multiple publishers on same session
@@ -598,7 +670,7 @@ fn default_locator_port() -> u16 {
 /// pub/sub is served by zenoh-pico's local loopback
 /// (`Z_FEATURE_LOCAL_SUBSCRIBER=1` on host builds), so a delivery check would
 /// pass even with a dead endpoint (see the note on
-/// `second_session_open_in_one_process_is_refused`). `ZenohTransport::open`, by
+/// `two_sessions_deliver_cross_session_through_router`). `ZenohTransport::open`, by
 /// contrast, only returns `Ok` after zenoh-pico completed a TCP connect +
 /// session handshake against the endpoint it was configured with. Remove the
 /// substitution and this test fails: `zpico_init_with_config` gets no connect
