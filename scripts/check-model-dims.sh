@@ -27,6 +27,11 @@
 # `execution_tier_dims()` the sync-time guard uses. Re-parsing YAML in shell
 # would be a second spelling that could disagree about what a "dim" is — and it
 # would get it wrong: `spin_period_us` is a tier dim while `nuttx.period_us` is
+#
+# The glob covers every `config/*model.yaml`, not just `system_model.yaml`: the
+# variant models (talker/listener/multihost/...) carry no dims TODAY, but a
+# gate scoped to the files that happen to have them now is narrower than the
+# rule it enforces (issue 0196).
 # the sporadic one, and a grep for `period_us` conflates them.
 
 set -euo pipefail
@@ -51,7 +56,7 @@ while IFS= read -r model; do
         [ -z "$dim" ] && continue
         printf '%s\t%s\n' "$model" "$dim"
     done < <("$nros_bin" ws model-dims "$model" 2>/dev/null || true)
-done < <(git ls-files '*/config/system_model.yaml') | sort -u >"$current"
+done < <(git ls-files '*/config/*model.yaml') | sort -u >"$current"
 
 # `--write` FIRST: it is the thing that creates the baseline, so gating it
 # behind the baseline existing makes bootstrapping impossible. (The first draft
