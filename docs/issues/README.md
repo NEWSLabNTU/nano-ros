@@ -44,6 +44,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#386** — the `--locked` cargo shim (#359/#378) breaks the book's first node on a FRESH clone: the
+example leaf `Cargo.lock` is gitignored, so cargo must CREATE it and `--locked` forbids exactly that
+(`error: cannot create the lock file … because --locked was passed`). Reproduced on host and in a
+container. Distinct from #384 (argv-tail leak) — same shim, different defect. See `0386-*`.
+(2026-08-02)
+
+**#385** — `nros setup` cannot unpack a `.tar.zst` prebuilt dist on a host without `zstd` (not in
+stock Ubuntu 22.04): `tar (child): zstd: Cannot exec`, and nros reports only `unpack prebuilt
+archive` with no remedy. Undeclared `[system.*]` dep, probed AFTER the download rather than before —
+same class as #0368 F3's libslirp. Hits the FIRST prebuilt any user installs. See `0385-*`.
+(2026-08-02)
+
 Recently resolved: **#384** — `scripts/bin/cargo` (the `--locked` injector) appended `$FLAGS` at
 argv TAIL, so any `cargo <sub> -- <args>` leaked `--locked` to the child (test harness /
 clippy-driver): `error: Unrecognized option: 'locked'`. Surfaced by #379's clippy lane + 4
