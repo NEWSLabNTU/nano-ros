@@ -130,13 +130,6 @@ pub struct SyncArgs {
     #[arg(short, long)]
     pub verbose: bool,
 
-    /// Allow a re-resolve to DROP hand-authored `execution.tiers` dims from a
-    /// committed SystemModel (issue 0380). Off by default: those dims are the
-    /// declared SSoT for scheduling data the resolver inputs cannot express,
-    /// so silently regenerating a narrower model is data loss.
-    #[arg(long)]
-    pub allow_dim_loss: bool,
-
     /// phase-307 W2 — skip the source-metadata refresh. The refresh compiles a
     /// host probe per Node pkg, which is the slow part of a cold sync; skipping
     /// it leaves any existing sidecars untouched and makes bakes fall back to
@@ -370,7 +363,7 @@ fn model_recorded_args(model_path: &Path) -> Vec<(String, String)> {
     model.meta.args.into_iter().collect()
 }
 
-fn resolve_system_models(scan: &[WsPkg], verbose: bool, allow_dim_loss: bool) -> Result<()> {
+fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
     // Issue 0285 — resolve the helper by ABSOLUTE PATH, never through PATH.
     //
     // This used to run `play_launch` by bare name. `play_launch` is also an
@@ -598,7 +591,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, allow_dim_loss: bool) ->
                 .map(|s| execution_tier_dims(&s))
                 .unwrap_or_default();
             let dropped: Vec<&String> = prior_dims.difference(&new_dims).collect();
-            if !dropped.is_empty() && !allow_dim_loss {
+            if !dropped.is_empty() {
                 let _ = std::fs::remove_file(&staged);
                 eyre::bail!(
                     "sync: re-resolving `{}` would DROP {} hand-authored execution dim(s) \
@@ -607,8 +600,10 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, allow_dim_loss: bool) ->
                      (launch + system.toml) cannot express, so a re-resolve cannot put them \
                      back — this is data loss, not a refresh (issue 0380: two such commits \
                      stripped 17 dims and ~17 realtime e2e tests lost their subject).\n\n\
-                     Either restore the dims in the model and re-run, or, if the loss is \
-                     intended, pass --allow-dim-loss.",
+                     To retire a dim deliberately, REMOVE IT FROM THE MODEL and re-run: \
+                     the guard compares against what the model declares, so an intended \
+                     removal is simply not a loss — and it lands as a reviewable diff \
+                     instead of a flag nobody sees.",
                     pkg.name,
                     dropped.len(),
                     model.strip_prefix(&pkg.dir).unwrap_or(&model).display(),
@@ -1134,7 +1129,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // entry's `nros_bridge::run_from_config` consumes at runtime.
     // R-code UX — resolve/refresh each bringup's committed SystemModel first
     // (the canonical input; bridge planning below consumes it).
-    resolve_system_models(&scan, args.verbose, args.allow_dim_loss)?;
+    resolve_system_models(&scan, args.verbose)?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
     generate_facade_crates(&ws_root, &scan, &build_root, args.verbose)?;
 

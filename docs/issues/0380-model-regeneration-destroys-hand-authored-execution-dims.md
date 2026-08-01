@@ -119,8 +119,20 @@ shell, so the gate and the sync-time guard share one definition of "a dim".
 That matters concretely: `spin_period_us` is a tier dim and `nuttx.period_us`
 is the sporadic one, so a shell `grep period_us` would conflate them.
 
-**A and B remain open and are still worth doing** — this makes the loss loud,
-it does not make regeneration reproduce the dims. Until the dims have a
-resolver input (A) or an overlay (B), `--allow-dim-loss` is still a foot-gun
-and a hand-authored file whose maintenance procedure is "regenerate" is still
-the underlying contradiction.
+**`--allow-dim-loss` was removed (2026-08-02).** It was a one-flag path to the
+exact data loss the guard exists to prevent, and the legitimate workflow never
+needed it: to retire a dim you remove it from the model, at which point there
+is nothing to drop and the change lands as a reviewable diff. It was also
+nearly inert before the delete-path fix — anyone blocked could simply delete
+the model instead.
+
+**Resolution direction settled: RFC-0063.** The model becomes a DERIVED BUILD
+ARTIFACT, generated on the fly into `build/` (colcon-style) and exposed for
+inspection, with the user maintaining launch file + project config + system
+config. That makes direction A mandatory rather than optional — the dims must
+become expressible in user-maintained config, because a derived artifact cannot
+hold hand-authored content.
+
+The guards here are therefore TRANSITIONAL: they protect data that will no
+longer live in a committed file, and should be removed in the same change that
+deletes the last committed model — not before.
