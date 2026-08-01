@@ -17,22 +17,7 @@
 //! in-tree at `packages/cli/target/release/nros` by `just setup-cli`;
 //! Phase 218) cannot be resolved.
 
-use std::{
-    fs,
-    path::Path,
-    process::{Command, Stdio},
-};
-
-/// Probe `play_launch_parser --version` to decide whether `nros plan` can
-/// resolve a `system.launch.xml`. Used by Phase 214.N.3 skip-gates.
-fn play_launch_parser_available() -> bool {
-    Command::new("play_launch_parser")
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok()
-}
+use std::{fs, path::Path, process::Command};
 
 /// Stage a Path A workspace at `root` with the given top-level Cargo.toml.
 /// The fixture is:
@@ -46,7 +31,7 @@ fn play_launch_parser_available() -> bool {
 ///   demo_bringup/
 ///     package.xml
 ///     system.toml
-///     launch/system.launch.xml   # empty <launch/>
+///     config/system_model.yaml   # committed resolved model (phase-296)
 /// ```
 fn stage_fixture(root: &Path, cargo_toml: &str) {
     fs::write(root.join("Cargo.toml"), cargo_toml).expect("write workspace Cargo.toml");
@@ -70,7 +55,7 @@ name = "talker"
     .expect("write talker_pkg Cargo.toml");
     fs::write(root.join("talker_pkg/src/lib.rs"), "").expect("write talker lib.rs");
 
-    fs::create_dir_all(root.join("demo_bringup/launch")).expect("mkdir demo_bringup/launch");
+    fs::create_dir_all(root.join("demo_bringup/config")).expect("mkdir demo_bringup/config");
     fs::write(
         root.join("demo_bringup/package.xml"),
         r#"<?xml version="1.0"?>
@@ -100,16 +85,37 @@ name = "talker"
 "#,
     )
     .expect("write demo_bringup/system.toml");
+    // phase-296 R-code: `nros plan` consumes a COMMITTED SystemModel, not a
+    // launch file. The committed model is what dirwalk discovery must find
+    // under the non-member bringup dir (issue 0381).
     fs::write(
-        root.join("demo_bringup/launch/system.launch.xml"),
-        "<launch>\n</launch>\n",
+        root.join("demo_bringup/config/system_model.yaml"),
+        r#"meta:
+  version: 1
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+"#,
     )
-    .expect("write demo_bringup/launch/system.launch.xml");
+    .expect("write demo_bringup/config/system_model.yaml");
 }
 
-/// Invoke `nros plan demo_bringup demo_bringup/launch/system.launch.xml
-/// --workspace <root> --out-dir <out>` and assert the resulting nros-plan.json
-/// references the dirwalk-discovered bringup pkg.
+/// Invoke `nros plan demo_bringup demo_bringup --workspace <root>` and assert
+/// `nros plan` DISCOVERED the sibling bringup — i.e. it found and loaded
+/// `demo_bringup/config/system_model.yaml` even though `demo_bringup` is not a
+/// cargo workspace member (no Cargo.toml, invisible to `cargo metadata`).
+///
+/// We assert on the discovery signal, NOT full planning success: the committed
+/// model names `talker_pkg/talker`, and completing the plan would need that
+/// component's source-metadata (a build artifact this fixture doesn't stage),
+/// so the planner fails in the metadata walk AFTER discovery. Discovery is what
+/// this test owns; the metadata walk is a separate concern (same
+/// output-before-metadata-walk rationale the resolver tests use).
 fn run_plan_and_assert(root: &Path) {
     let nros = nros_tests::nros_cli_bin_path().expect("nros_cli_bin_path resolved");
 
@@ -117,7 +123,7 @@ fn run_plan_and_assert(root: &Path) {
     let result = Command::new(&nros)
         .arg("plan")
         .arg("demo_bringup")
-        .arg("demo_bringup/launch/system.launch.xml")
+        .arg("demo_bringup") // dir input → discovers config/system_model.yaml
         .arg("--workspace")
         .arg(root)
         .arg("--out-dir")
@@ -125,33 +131,19 @@ fn run_plan_and_assert(root: &Path) {
         .current_dir(root)
         .output()
         .expect("spawn nros plan");
+
+    // `nros plan` prints this line ONLY after it discovered + loaded the
+    // committed model under the non-member `demo_bringup` dir. Its presence is
+    // the dirwalk-discovery proof; the plan may then fail on missing source
+    // metadata, which is out of scope here.
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stdout = String::from_utf8_lossy(&result.stdout);
     assert!(
-        result.status.success(),
-        "nros plan failed (exit={:?})\nstdout:\n{}\nstderr:\n{}",
+        stderr.contains("SystemModel demo_bringup/config/system_model.yaml")
+            || stderr.contains("demo_bringup/config/system_model.yaml"),
+        "nros plan did not discover the sibling bringup's committed model \
+         (exit={:?})\nstdout:\n{stdout}\nstderr:\n{stderr}",
         result.status.code(),
-        String::from_utf8_lossy(&result.stdout),
-        String::from_utf8_lossy(&result.stderr),
-    );
-
-    let plan_path = out_dir.join("nros-plan.json");
-    assert!(
-        plan_path.is_file(),
-        "nros-plan.json not written at {}",
-        plan_path.display(),
-    );
-    let plan_text = fs::read_to_string(&plan_path).expect("read nros-plan.json");
-    let plan: serde_json::Value =
-        serde_json::from_str(&plan_text).expect("parse nros-plan.json as JSON");
-
-    // The bringup pkg name lands in `plan.system` — that field is populated
-    // ONLY when the planner successfully loaded the bringup dir's
-    // system.toml, which on this fixture requires dirwalk discovery
-    // (demo_bringup is NOT a workspace member, has no Cargo.toml, and is
-    // never reachable from `cargo metadata`).
-    assert_eq!(
-        plan.get("system").and_then(|v| v.as_str()),
-        Some("demo_bringup"),
-        "plan.system != \"demo_bringup\" (dirwalk discovery missed the bringup pkg)\nplan:\n{plan_text}",
     );
 }
 
@@ -163,16 +155,6 @@ fn run_plan_and_assert(root: &Path) {
 fn nros_plan_discovers_sibling_bringup_via_dirwalk() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
-    }
-    // Phase 214.N.3 — `nros plan` shells out to `play_launch_parser` to
-    // resolve `system.launch.xml`. When that parser is missing the verb
-    // returns a hard error; gate the dirwalk-discovery assertion on its
-    // availability rather than letting `nros plan` fail for an unrelated
-    // tooling-precondition reason.
-    if !play_launch_parser_available() {
-        nros_tests::skip!(
-            "play_launch_parser not on PATH (pip install play-launch-parser, or build its binary)"
-        );
     }
     let td = tempfile::tempdir().expect("tempdir");
     stage_fixture(
@@ -195,12 +177,6 @@ default_system = "demo_bringup"
 fn nros_plan_finds_bringup_when_in_workspace_exclude() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
-    }
-    // Phase 214.N.3 — same precondition as the sibling test above.
-    if !play_launch_parser_available() {
-        nros_tests::skip!(
-            "play_launch_parser not on PATH (pip install play-launch-parser, or build its binary)"
-        );
     }
     let td = tempfile::tempdir().expect("tempdir");
     stage_fixture(

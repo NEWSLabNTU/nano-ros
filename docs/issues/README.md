@@ -109,11 +109,14 @@ conflict (content-addressed regeneration vs hand-authored model SSoT) needs a de
 dims a resolver input, or an overlay file, or a sync narrowing guard — plus a bake-time gate. See
 `0380-*`. (2026-08-01)
 
-**#381** (filed as #371; renumbered) — Five plan/launch tests still assert the pre-296 launch-XML parse path, latently broken
-since phase-296 but skipped on every host via `play_launch_parser_available()` gates — the first
-product-provisioned host (which installs the parser) ran them for the first time and all failed.
-Re-point at the post-296 seams (committed models for discovery, resolver-level depth cap), drop the
-dead gates, sweep the class. See `0381-*`. (2026-08-01)
+Recently resolved: **#381** (filed as #371; renumbered) — plan/launch tests asserted the deleted
+pre-296 launch-XML parse path, skip-hidden by `play_launch_parser_available()` gates. RESOLVED
+(2026-08-02): launch_synth — removed the 2 resolver-owned tests (synthesis, launch-file precedence),
+re-pointed Path-A refusal to the "no committed SystemModel" contract; workspace_dirwalk — stage a
+committed `config/system_model.yaml` + assert the discovery signal; orchestration_includes — kept
+the `--record` chain test, removed the cycle + depth-cap tests (moved to ros-launch-resolve).
+self_bringup was NOT broken (live `synthesise_self_model`). All four files now RUN + pass; the dead
+gates are gone. See `0381-*`. (2026-08-02)
 
 **#382** (filed as #372; renumbered) — The resolver serializes `structure.nodes` alphabetized, so entry construct order no
 longer follows launch declaration order (typed cpp multi-node TU builds listener before talker).
