@@ -180,3 +180,78 @@ unrelated to lockfiles.
 It now resolves normally (~30s). CI downloads crates for every build anyway, so
 allowing the fetch costs nothing real, and the check means what it says.
 
+## Root cause CORRECTED (2026-08-02)
+
+The title says the locks "were never regenerated". That describes the state
+accurately and the cause not at all, and the difference decides what fixes it.
+
+**The builds rewrote them.** `cargo build` does not fail when a manifest stops
+agreeing with the lock — it UPDATES THE LOCK and carries on. Verified, not
+inferred:
+
+```
+$ cargo metadata          # stale lock, no flag
+rc=0                      # ...and Cargo.lock was rewritten
+```
+
+This issue already observed that "nothing runs `--locked` over these leaves",
+but read it as *drift going undetected*. It is stronger than that: drift was
+being MANUFACTURED. Every ordinary build was licensed to rewrite a committed
+artifact, so the locks tracked whatever each developer's machine last resolved.
+At the time of the correction, **none of the 76 cargo build/test/run
+invocations** in `justfile` + `scripts/` passed `--locked`.
+
+A gate over the locks could therefore never be enough. It measures the damage
+after the fact, and the thing doing the damage is the normal build.
+
+### Cargo has no universal switch (verified)
+
+```
+[build] locked = true              -> warning: unused config key `build.locked`
+CARGO_LOCKED / CARGO_BUILD_LOCKED  -> ignored
+```
+
+`--locked` is CLI-only. Adding it at each call site would mean 57 edits and
+would still miss the sites that matter most: cmake and corrosion invoke `cargo`
+BY NAME (`cmake/NanoRosGenerateInterfaces.cmake:499`), out of reach of any
+justfile variable.
+
+So the flags are defined once (`NROS_CARGO_FLAGS` in `activate.sh`) and
+injected by `scripts/bin/cargo`, the same PATH mechanism that already wires
+`nros` / `play_launch_parser` / `zenohd`. `check-cargo-locked` now asserts that
+mechanism stays wired instead of counting call sites, and
+`just lock-update [crate] [version] [dir]` is the one sanctioned way to move a
+lock — it runs `cargo update`, never `cargo generate-lockfile`.
+
+### "All 26 pinned" was right for real deps and WRONG for message crates
+
+Cargo records every resolved package in `Cargo.lock`, path and patched deps
+included. Generated message crates take their version from the consumer's ament
+install and are never shipped, so **16 of 48 leaf locks were pinning an
+ament-derived version** — a reproducibility artifact asserting which ROS
+install produced it. Regenerating "fixes" that only for the host that
+regenerated.
+
+The follow-up commit refreshing `nros-bench/executor-fairness`
+(`action_msgs 1.2.3 -> 1.2.2`) was exactly this mistake and has been reverted:
+it substituted one host's ament version for another's.
+
+That also corrects this issue's "backlog can only shrink" framing. For those 16
+leaves the drift is environment-dependent by construction and no amount of
+pinning closes it. Codegen now emits a constant `version = "0.0.0"` for
+generated crates, with the ament version moved to
+`[package.metadata.nros] ament_version` (metadata cargo ignores, so it never
+reaches a lock). Nothing depended on the number: all 113 in-tree message
+dependencies declare `version = "*"`.
+
+Existing trees keep their old versions until the next `nros sync`, so
+`check-leaf-lockfiles` recognises "differs ONLY in generated msg-crate
+versions" and reports it as environment rather than demanding a refresh.
+
+### What this means for the pinning decision above
+
+The 18 REGISTRY cases were still a real dependency change and the review
+described above still applies. What changed is that pinning them is no longer
+a thing that quietly comes undone: with injection active, a build that would
+move a lock now fails and names the crate, and moving one is a deliberate act.
+

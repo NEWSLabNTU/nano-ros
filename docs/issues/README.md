@@ -328,7 +328,16 @@ and 12 of the 18 are board or driver crates). Meanwhile nothing runs `--locked` 
 so the locks are not pinning what gets built and two builds of the same commit can differ — issue
 #182's class, one layer out. Found while running tier 1 for phase-318 acceptance, which regenerated
 three of them as a side effect (fixed in `e2cc5d91d`).
-See `0359-*`. (2026-07-31)
+**Root cause corrected 2026-08-02:** the locks did not go stale on their own — **the builds
+rewrote them**. `cargo build` updates `Cargo.lock` instead of failing when a manifest no longer
+matches (verified: stale lock + no flag → `rc=0`, lock rewritten), and NONE of the 76 cargo
+build/test/run invocations passed `--locked`. Drift was manufactured, not merely undetected, so a
+gate over the locks could never be enough. Cargo has no config/env knob (`[build] locked` is an
+unused key), and per-site flags would miss cmake/corrosion, which invoke `cargo` by NAME — so
+`--locked` is now injected project-wide by the `scripts/bin/cargo` PATH shim, with
+`just lock-update` the one sanctioned mutator. Also: "all 26 pinned" was wrong for message crates —
+16 of 48 locks pinned an ament-derived version, so codegen now emits a constant `0.0.0`.
+See `0359-*`. (2026-07-31; corrected 2026-08-02)
 
 **#346** — `borrowed` now works on srv/action payloads in both languages, so
 **all three RFC-0033 storage modes are supported end to end** (owned / heap #344+#345 / borrowed
