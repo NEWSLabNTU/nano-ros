@@ -1,8 +1,28 @@
 [package]
 name = "{{ package_name }}"
-version = "{{ package_version }}"
+# Issue 0378 — CONSTANT, deliberately not the ament package version.
+#
+# These crates are generated per host by `nros sync` from whatever the
+# consumer's ament environment provides; they are never published. Cargo
+# records every resolved package in `Cargo.lock` INCLUDING path/patched ones,
+# so an ament-derived version here is baked into a committed lockfile — i.e. a
+# reproducibility artifact ends up asserting which ROS install produced it, and
+# every other install reads as drift.
+#
+# Nothing depends on the number: all 113 in-tree message dependencies are
+# declared `version = "*"`, so it carries no resolution meaning and normalizing
+# it is free.
+#
+# The real ament version is still recorded, below, where "what produced this"
+# belongs.
+version = "0.0.0"
 edition = "2021"
 license = "Apache-2.0"
+
+[package.metadata.nros]
+# The ament package version this crate was generated from. Metadata, not
+# identity: cargo ignores it, so it never reaches Cargo.lock.
+ament_version = "{{ package_version }}"
 
 [features]
 default = ["std"]

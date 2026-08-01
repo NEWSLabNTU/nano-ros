@@ -247,6 +247,16 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   shadows the activate.sh CLI; use `PATHS` for fallbacks. → AGENTS.md CMake Pitfalls.
 - **Case-normalize enum-ish cmake args** (`string(TOUPPER)`) — the ament verbs pass lowercase
   `cpp`; a case-sensitive `STREQUAL "CPP"` silently takes the C branch. → AGENTS.md CMake Pitfalls.
+- **Lockfiles change ONLY when a dev means it** (issues 0359/0378). `Cargo.lock` is a promise
+  that someone else's build resolves what yours did, so `just lock-update [crate] [version] [dir]`
+  is the only sanctioned way to move one — never bare `cargo generate-lockfile`, which re-resolves
+  EVERY package (26 leaf locks once moved 5388 lines as a "cleanup"). Build steps must pass
+  `--locked` so a mismatch FAILS instead of silently rewriting the file; `check-cargo-locked`
+  freezes the 57 sites that still don't and fails on new ones. **Generated msg crates are the
+  exception**: they are produced per host by `nros sync` from the consumer's ament install and
+  never shipped, so codegen emits a CONSTANT `version = "0.0.0"` (the ament version moves to
+  `[package.metadata.nros] ament_version`) — otherwise a committed lock asserts which ROS install
+  built it and every other host reads as drift.
 - **Rust leaf `.cargo/config.toml` is `nros sync`-managed (RFC-0048 W9)**: one
   `include = ["…/nros-patch.toml"]` (central, gitignored, absolute paths) + leaf-local
   `generated/*`/platform patches. Never hand-edit; moved checkout → re-run `nros sync`. Central

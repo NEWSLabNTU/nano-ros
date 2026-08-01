@@ -81,9 +81,41 @@ SKIP_RE='^(tests/simple-workspace)$'
 # path fails to load the source. Neither silently falls through to crates.io.
 UNSYNCED_RE='failed to load config include|failed to read configuration file .*nros-patch\.toml|unable to update .*/generated/|failed to load source for dependency'
 
+# Issue 0378 — drift that is ENVIRONMENT, not a dependency change.
+#
+# Generated message crates take their version from the consumer's ament install
+# and are never shipped. Cargo still records them in `Cargo.lock` (it records
+# every resolved package, path deps included), so a committed lock ends up
+# asserting which ROS install produced it and every other install reads as
+# drift. Regenerating "fixes" it only for the host that regenerated — that is
+# how `action_msgs 1.2.3 -> 1.2.2` got committed and then reverted.
+#
+# So: if a leaf's drift is only that its generated msg crates carry a different
+# version than the lock, say so and do NOT demand a pointless refresh. The real
+# fix is normalising the generated version (codegen now emits 0.0.0), after
+# which this branch stops firing.
+msg_version_drift_only() {
+    local dir="$1" lock="$1/Cargo.lock" m n gv lv found=1
+    [ -d "$dir/generated" ] || return 1
+    for m in "$dir"/generated/*/; do
+        [ -d "$m" ] || continue
+        n="$(basename "$m")"
+        gv="$(grep -m1 '^version' "$m/Cargo.toml" 2>/dev/null | cut -d'"' -f2)"
+        [ -z "$gv" ] && continue
+        lv="$(awk -v n="$n" '/^\[\[package\]\]/{p=0} $0=="name = \""n"\""{p=1} p&&/^version/{gsub(/"/,"",$3); print $3; exit}' "$lock" 2>/dev/null)"
+        [ -z "$lv" ] && continue
+        if [ "$gv" != "$lv" ]; then
+            echo "    $n: generated=$gv lock=$lv"
+            found=0
+        fi
+    done
+    return "$found"
+}
+
 drifted=()
 broken=()
 unsynced=()
+msg_drift=()
 while read -r lock; do
     dir="$(dirname "$lock")"
     if grep -qE "$SKIP_RE" <<<"$dir"; then
@@ -93,6 +125,11 @@ while read -r lock; do
         continue
     fi
     if grep -qE "$DRIFT_RE" <<<"$out"; then
+        if detail="$(msg_version_drift_only "$dir")"; then
+            msg_drift+=("$dir")
+            printf '%s\n' "$detail" >/dev/null
+            continue
+        fi
         drifted+=("$dir")
     elif grep -qE "$UNSYNCED_RE" <<<"$out"; then
         unsynced+=("$dir")
@@ -156,6 +193,13 @@ if [ -n "$fixed" ]; then
     fail=1
 fi
 [ "$fail" -eq 0 ] || exit 1
+
+if [ ${#msg_drift[@]} -gt 0 ]; then
+    echo "note: ${#msg_drift[@]} leaf lock(s) differ ONLY in generated msg-crate versions —"
+    echo "      that is this host's ament environment, not a dependency change, and"
+    echo "      regenerating would just bake a different host's versions in (issue 0378)."
+    printf '        %s\n' "${msg_drift[@]}"
+fi
 
 if [ ${#drifted[@]} -eq 0 ]; then
     echo "leaf lockfiles OK — every tracked leaf lock satisfies its manifest."

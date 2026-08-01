@@ -355,7 +355,7 @@ check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
-    check-leaf-lockfiles check-msg-dep-redirect \
+    check-leaf-lockfiles check-msg-dep-redirect check-cargo-locked \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -727,6 +727,48 @@ check-leaf-lockfiles:
 [private]
 check-msg-dep-redirect:
     @bash scripts/check-msg-dep-redirect.sh
+
+# issue 0359/0378 — a build step without `--locked` REWRITES Cargo.lock on a
+# manifest mismatch instead of failing. That is how leaf locks "drifted": the
+# builds did it. Baselined (57 sites today), shrink-only. Buildless.
+[private]
+check-cargo-locked:
+    @bash scripts/check-cargo-locked.sh
+
+# THE sanctioned way to change a lockfile (issue 0359 / 0378).
+#
+# A lockfile exists so someone else's build resolves what yours did, so its
+# contents change ONLY when a dev asks for it. Everything else — `just check`,
+# fixture builds, CI — must run `--locked` and FAIL on a mismatch rather than
+# quietly rewriting the file.
+#
+#   just lock-update                     # root workspace, minimal refresh
+#   just lock-update serde               # one crate, latest compatible
+#   just lock-update serde 1.0.203       # one crate, exact version
+#   just lock-update "" "" <dir>         # a leaf crate's own lock
+#
+# Bare `cargo generate-lockfile` is deliberately NOT what this runs: it
+# re-resolves EVERY package to latest-compatible. That is how 26 leaf locks
+# once moved 5388 lines in a single "cleanup" — a supply-chain change nobody
+# reviewed. `cargo update` touches what you name and leaves the rest pinned.
+[group("main")]
+lock-update crate="" version="" dir=".":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}/{{dir}}"
+    if [ -n "{{crate}}" ] && [ -n "{{version}}" ]; then
+        cargo update -p "{{crate}}" --precise "{{version}}"
+    elif [ -n "{{crate}}" ]; then
+        cargo update -p "{{crate}}"
+    else
+        # No crate named: refresh only what the manifests now REQUIRE, without
+        # bumping anything already satisfied.
+        cargo update --workspace 2>/dev/null || cargo update
+    fi
+    echo ""
+    echo "[lock-update] REVIEW THE DIFF before committing:"
+    echo "    git diff -- '*Cargo.lock'"
+    echo "  Added/removed packages are a dependency change, not a refresh."
 
 # Issue 0320 — committed SystemModels must be portable: no absolute host paths in
 # `meta.inputs[].path`. Buildless; regenerate with `nros sync`.

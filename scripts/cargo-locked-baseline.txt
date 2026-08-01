@@ -1,0 +1,62 @@
+# Issue 0359/0378 — cargo invocations that do NOT pass --locked, frozen as a
+# SHRINKING baseline. New unlocked invocations fail check-cargo-locked.
+# Remove a line when you add --locked to that site; the list can only get
+# shorter. See scripts/check-cargo-locked.sh for why builds must not rewrite
+# lockfiles.
+justfile:1007
+justfile:1037
+justfile:1137
+justfile:1139
+justfile:1307
+justfile:1345
+justfile:1492
+justfile:1494
+justfile:1554
+justfile:1556
+justfile:1562
+justfile:1639
+justfile:1670
+justfile:1780
+justfile:1843
+justfile:1857
+justfile:1882
+justfile:2085
+justfile:2206
+justfile:2232
+justfile:2285
+justfile:2582
+justfile:2700
+justfile:2800
+justfile:3170
+justfile:3230
+justfile:327
+justfile:395
+justfile:428
+justfile:429
+justfile:430
+justfile:486
+justfile:494
+justfile:894
+justfile:896
+justfile:907
+justfile:910
+justfile:935
+justfile:963
+scripts/bootstrap.sh:229
+scripts/build/cargo.sh:276
+scripts/build/compile-check-fixtures.sh:130
+scripts/build/compile-check-fixtures.sh:214
+scripts/build/compile-check-fixtures.sh:401
+scripts/build/fixture-make-driver.sh:131
+scripts/build/fixtures-build.sh:236
+scripts/build/link-determinism-fixture.sh:28
+scripts/check-zenoh-archive-symbols.sh:26
+scripts/ci/dep-chain-check.sh:136
+scripts/ci/dep-chain-check.sh:140
+scripts/ci/dep-chain-check.sh:143
+scripts/ci/dep-chain-check.sh:144
+scripts/ci/scaffold-journey-check.sh:53
+scripts/ci/scaffold-journey-check.sh:54
+scripts/ci/scaffold-journey-check.sh:57
+scripts/ci/scaffold-journey-check.sh:58
+scripts/stack-analysis.sh:60
