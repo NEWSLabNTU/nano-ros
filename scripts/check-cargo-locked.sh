@@ -1,88 +1,66 @@
 #!/usr/bin/env bash
 #
-# Issue 0359 / 0378 — build steps must RESPECT the lockfile, not rewrite it.
+# Issues 0359 / 0378 — the project-wide cargo flag injection must stay wired.
 #
-# THE PROBLEM THIS EXISTS FOR
+# WHAT THIS REPLACED, AND WHY
 #
-# A lockfile is a promise that someone else's build resolves what yours did.
-# `cargo build` breaks that promise silently: when a manifest no longer agrees
-# with the lock, it UPDATES THE LOCK as a side effect and carries on. No
-# warning, no diff in the output, just a modified tracked file.
+# The first version of this gate counted cargo invocations missing `--locked`
+# (57 of them) and froze that as a shrink-only baseline. That was the wrong
+# shape: it asked 57 call sites to each remember a flag, and it could never
+# cover the ones that matter most — cmake and corrosion invoke `cargo` BY NAME
+# (`cmake/NanoRosGenerateInterfaces.cmake:499`), so no justfile variable or
+# shell helper reaches them.
 #
-# That is the actual root cause of issue 0359, which was filed as "leaf locks
-# drifted". They did not drift on their own — builds rewrote them, and nothing
-# ever asserted otherwise, because at the time this gate was written NONE of
-# the 76 cargo build/test/run invocations in `justfile` + `scripts/` passed
-# `--locked`. Drift was not just undetected; it was manufactured.
+# The flags are now defined ONCE (`NROS_CARGO_FLAGS` in `activate.sh`) and
+# injected by a PATH shim (`scripts/bin/cargo`) — the same mechanism the
+# project already uses to wire `nros`, `play_launch_parser` and `zenohd`.
 #
-# `--locked` inverts it: a manifest/lock mismatch becomes a hard error naming
-# the crate, and the only way to change a lock is to mean it —
-# `just lock-update`.
-#
-# WHY A BASELINE
-#
-# Flipping all 76 call sites in one change is a large mechanical edit whose
-# blast radius is every build lane, and it cannot be honestly verified without
-# a full sweep. So the existing sites are frozen and NEW ones must be locked:
-# the count can only go down, and the file says exactly which are left. A gate
-# that cannot pass gets bypassed, and a bypassed gate is worth less than none.
+# So there is nothing to count any more. What has to hold is that the
+# mechanism is present and reachable, which is what this checks. If someone
+# deletes the shim or drops the PATH line, every build silently goes back to
+# rewriting `Cargo.lock` on a manifest mismatch — the exact failure that
+# produced issue 0359, where locks did not drift on their own: the builds
+# rewrote them.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BASELINE="scripts/cargo-locked-baseline.txt"
-
-# Invocations that BUILD or RESOLVE, so a lock mismatch matters. `cargo fmt`,
-# `cargo clippy --version`, `cargo search` and friends never touch a lock.
-CARGO_RE='cargo (\+[a-zA-Z0-9._-]+ )?(build|test|run|rustc|nextest run|metadata|tree|fetch)\b'
-
-# `lock-update` is the sanctioned mutator; it exists precisely to write locks.
-SKIP_RECIPE='lock-update'
-
-current="$(
-    grep -rnE "$CARGO_RE" justfile scripts/*.sh scripts/build/*.sh scripts/ci/*.sh 2>/dev/null |
-        grep -v -- '--locked' |
-        grep -v -- '--frozen' |
-        grep -vE "$SKIP_RECIPE" |
-        # Prose: comment lines and doc text mentioning a command, not running it.
-        grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' |
-        awk -F: '{print $1":"$2}' |
-        sort -u
-)"
-
-mapfile -t baseline < <(grep -vE '^\s*(#|$)' "$BASELINE" 2>/dev/null | sort -u)
-
-tmp_cur="$(mktemp)"
-tmp_base="$(mktemp)"
-trap 'rm -f "$tmp_cur" "$tmp_base"' EXIT
-printf '%s\n' "$current" | grep -v '^$' | sort -u >"$tmp_cur"
-if [ ${#baseline[@]} -gt 0 ]; then printf '%s\n' "${baseline[@]}"; fi >"$tmp_base"
-
-# Compare by FILE only, not file:line — an unrelated edit above a call site
-# shifts its line number and would otherwise read as a brand-new violation.
-cut -d: -f1 <"$tmp_cur" | sort | uniq -c | sed 's/^ *//' >"$tmp_cur.by_file"
-cut -d: -f1 <"$tmp_base" | sort | uniq -c | sed 's/^ *//' >"$tmp_base.by_file"
-
 status=0
-while read -r count file; do
-    base_count="$(awk -v f="$file" '$2==f {print $1}' "$tmp_base.by_file")"
-    base_count="${base_count:-0}"
-    if [ "$count" -gt "$base_count" ]; then
-        status=1
-        echo "[FAIL] $file: $count unlocked cargo invocation(s), baseline allows $base_count" >&2
-        grep -nE "$CARGO_RE" "$file" | grep -v -- '--locked' | grep -vE '^[0-9]+:[[:space:]]*#' |
-            sed 's/^/       /' >&2 || true
-    fi
-done <"$tmp_cur.by_file"
+shim="scripts/bin/cargo"
+
+if [ ! -f "$shim" ]; then
+    echo "[FAIL] $shim is missing — cargo flag injection is gone." >&2
+    status=1
+elif [ ! -x "$shim" ]; then
+    echo "[FAIL] $shim is not executable, so PATH will skip it silently." >&2
+    status=1
+fi
+
+if ! grep -q 'scripts/bin' activate.sh; then
+    echo "[FAIL] activate.sh no longer puts scripts/bin on PATH." >&2
+    status=1
+fi
+
+if ! grep -q 'NROS_CARGO_FLAGS' activate.sh; then
+    echo "[FAIL] activate.sh no longer defines NROS_CARGO_FLAGS." >&2
+    status=1
+fi
+
+# The shim must default to --locked. An empty default would disable the whole
+# mechanism while leaving every file in place, which is the failure mode most
+# likely to pass a casual review.
+if ! grep -qE 'NROS_CARGO_FLAGS[:-]?="?--locked' activate.sh scripts/bin/cargo 2>/dev/null; then
+    echo "[FAIL] neither activate.sh nor $shim defaults NROS_CARGO_FLAGS to --locked." >&2
+    status=1
+fi
 
 if [ "$status" -ne 0 ]; then
     echo "" >&2
-    echo "  A build step that omits --locked REWRITES Cargo.lock on a manifest" >&2
-    echo "  mismatch instead of failing (issue 0359). Add --locked; if the lock" >&2
-    echo "  genuinely needs to change, change it deliberately:" >&2
+    echo "  Without this, \`cargo build\` REWRITES Cargo.lock when a manifest" >&2
+    echo "  no longer matches it, instead of failing — verified behaviour, not" >&2
+    echo "  a theory. Deliberate dependency changes go through:" >&2
     echo "      just lock-update [crate] [version] [dir]" >&2
     exit 1
 fi
 
-remaining="$(wc -l <"$tmp_cur" | tr -d ' ')"
-echo "cargo --locked OK — $remaining baselined unlocked invocation(s), none new."
+echo "cargo flag injection OK — scripts/bin/cargo wired, default --locked."

@@ -728,9 +728,10 @@ check-leaf-lockfiles:
 check-msg-dep-redirect:
     @bash scripts/check-msg-dep-redirect.sh
 
-# issue 0359/0378 — a build step without `--locked` REWRITES Cargo.lock on a
-# manifest mismatch instead of failing. That is how leaf locks "drifted": the
-# builds did it. Baselined (57 sites today), shrink-only. Buildless.
+# issue 0359/0378 — `--locked` is injected project-wide by the scripts/bin/cargo
+# PATH shim (cargo has no config/env knob for it, and per-site flags would miss
+# cmake/corrosion, which invoke `cargo` by name). This asserts the mechanism is
+# still wired; without it every build silently rewrites Cargo.lock. Buildless.
 [private]
 check-cargo-locked:
     @bash scripts/check-cargo-locked.sh

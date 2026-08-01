@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+#
+# Project-wide cargo argument injection (issues 0359 / 0378).
+#
+# WHY A SHIM AND NOT A FLAG AT EVERY CALL SITE
+#
+# `Cargo.lock` is a promise that someone else's build resolves what yours did.
+# `cargo build` breaks it silently: when a manifest no longer matches the lock
+# it REWRITES the lock and carries on. Verified, not assumed:
+#
+#     $ cargo metadata            # stale lock, no flag
+#     rc=0                        # ...and Cargo.lock was rewritten
+#
+# `--locked` turns that into a hard error. But cargo offers NO universal way to
+# switch it on — also verified:
+#
+#     [build] locked = true   ->  warning: unused config key `build.locked`
+#     CARGO_LOCKED / CARGO_BUILD_LOCKED  ->  ignored
+#
+# It is CLI-only. Adding it to each site would mean editing 57 places in
+# `justfile` + `scripts/`, and would STILL miss the ones that matter most:
+# cmake and corrosion invoke `cargo` by name
+# (`cmake/NanoRosGenerateInterfaces.cmake:499`), so no just-variable can reach
+# them.
+#
+# PATH is the project's existing universal mechanism — `activate.sh` already
+# wires `nros`, `play_launch_parser` and `zenohd` that way, and `just doctor`
+# enforces that it was sourced. One definition, every caller, including cmake.
+#
+# CONTRACT
+#
+#   NROS_CARGO_FLAGS   flags to inject. Default `--locked`.
+#                      Set EMPTY to disable entirely:  NROS_CARGO_FLAGS= cargo …
+#
+# Injection is deliberately conservative: only for subcommands that accept the
+# flags, never when the caller already passed them, and never for `fmt`,
+# `search`, `new`, `init` or bare `--version`, which do not take `--locked` and
+# would fail outright.
+
+set -euo pipefail
+
+FLAGS="${NROS_CARGO_FLAGS-"--locked"}"
+
+# --- locate the REAL cargo -------------------------------------------------
+# Walk PATH and take the first `cargo` that is not this shim. Comparing
+# resolved directories, not names, so a differently-named copy of this
+# directory cannot fool it into calling itself.
+self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+real_cargo=""
+IFS=':' read -r -a _path_entries <<<"$PATH"
+for _d in "${_path_entries[@]}"; do
+    [ -z "$_d" ] && continue
+    _rd="$(cd "$_d" 2>/dev/null && pwd -P)" || continue
+    [ "$_rd" = "$self_dir" ] && continue
+    if [ -x "$_rd/cargo" ]; then
+        real_cargo="$_rd/cargo"
+        break
+    fi
+done
+
+if [ -z "$real_cargo" ]; then
+    echo "nros cargo shim: no real \`cargo\` found on PATH beyond $self_dir" >&2
+    exit 127
+fi
+
+# No flags configured → pure passthrough, no parsing, no surprises.
+if [ -z "$FLAGS" ]; then
+    exec "$real_cargo" "$@"
+fi
+
+# --- decide whether this invocation takes the flags ------------------------
+# A leading `+toolchain` is cargo's, not a subcommand.
+args=("$@")
+idx=0
+if [ "${args[0]-}" != "" ] && [ "${args[0]#+}" != "${args[0]}" ]; then
+    idx=1
+fi
+sub="${args[$idx]-}"
+
+case "$sub" in
+    build | b | check | c | test | t | run | r | rustc | bench | doc | metadata | tree | fetch | package | publish | install | nextest | clippy)
+        ;;
+    *)
+        exec "$real_cargo" "$@"
+        ;;
+esac
+
+# Already asked for by the caller → do not duplicate.
+for a in "$@"; do
+    case "$a" in
+        --locked | --frozen | --offline)
+            exec "$real_cargo" "$@"
+            ;;
+    esac
+done
+
+# `cargo nextest` takes its own subcommand (`run`, `list`) before the flags;
+# appending at the end is still valid for it, so one form covers both.
+exec "$real_cargo" "$@" $FLAGS
