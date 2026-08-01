@@ -26,17 +26,48 @@ const FORBIDDEN_FILES: &[&str] = &[
 ];
 
 fn skip_dir(name: &str) -> bool {
-    matches!(
-        name,
-        "target"
-            | "build"
-            | ".git"
-            | "node_modules"
-            | "generated"
-            | ".cargo"
-            | "cmake-build-debug"
-            | "cmake-build-release"
-    )
+    // Prefix-match target*/build*: per-RMW example builds use suffixed dirs
+    // (`target-zenoh`, `target-cyclonedds`, zephyr `build-rs-*`) that an
+    // exact match walks into — millions of artifact files, a 60s+ timeout
+    // on a host with every fixture family built.
+    name == "target"
+        || name.starts_with("target-")
+        || name == "build"
+        || name.starts_with("build-")
+        || matches!(
+            name,
+            ".git" | "node_modules" | "generated" | ".cargo" | "cmake-build-debug"
+                | "cmake-build-release"
+        )
+}
+
+/// Keep only hits that are TRACKED in git. The ban is about COMMITTED
+/// pre-212 shapes; the same names appear as gitignored BUILD OUTPUT
+/// (`nros-metadata` emission writes `metadata/*.json` into src pkgs), so a
+/// host that has built the workspace fixtures would otherwise flag dozens
+/// of artifacts. If git is unavailable, keep every hit (conservative).
+fn retain_tracked(root: &Path, hits: Vec<PathBuf>) -> Vec<PathBuf> {
+    if hits.is_empty() {
+        return hits;
+    }
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C").arg(root).args(["ls-files", "-z", "--"]);
+    for h in &hits {
+        cmd.arg(h.strip_prefix(root).unwrap_or(h));
+    }
+    let Ok(out) = cmd.output() else {
+        return hits;
+    };
+    if !out.status.success() {
+        return hits;
+    }
+    let tracked: std::collections::HashSet<PathBuf> = out
+        .stdout
+        .split(|b| *b == 0)
+        .filter(|s| !s.is_empty())
+        .map(|s| root.join(String::from_utf8_lossy(s).as_ref()))
+        .collect();
+    hits.into_iter().filter(|h| tracked.contains(h)).collect()
 }
 
 fn walk(dir: &Path, hits: &mut Vec<PathBuf>) {
@@ -82,6 +113,7 @@ fn examples_tree_has_no_pre_212_files() {
 
     let mut hits = Vec::new();
     walk(&examples_root, &mut hits);
+    let mut hits = retain_tracked(&root, hits);
     hits.sort();
     if !hits.is_empty() {
         let lines: Vec<String> = hits
@@ -112,6 +144,7 @@ fn nros_tests_fixtures_have_no_pre_212_files() {
 
     let mut hits = Vec::new();
     walk(&fixtures_root, &mut hits);
+    let mut hits = retain_tracked(&root, hits);
     hits.sort();
     if !hits.is_empty() {
         let lines: Vec<String> = hits
