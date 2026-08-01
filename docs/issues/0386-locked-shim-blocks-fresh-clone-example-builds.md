@@ -1,10 +1,25 @@
 ---
 id: 386
 title: "The `--locked` cargo shim breaks the book's first node on a fresh clone — leaf `Cargo.lock` is gitignored, so cargo may not create it"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0359, issue-0378, issue-0373, issue-0384, rfc-0048]
+---
+
+## Resolution (2026-08-02)
+
+`scripts/bin/cargo` now skips `--locked` injection when the target's
+`Cargo.lock` is git-IGNORED — a regenerable local artifact, not a tracked
+promise. It resolves the manifest dir (`--manifest-path` if given, else cwd)
+and, when `git -C <dir> check-ignore -q Cargo.lock` succeeds, execs the real
+cargo with no injected flag. This covers BOTH failure modes: `--locked`
+forbidding the *creation* of a first lock and forbidding the *update* of a stale
+one after `nros sync` changes a leaf's deps. The repo's own workspaces (tracked
+locks) are unaffected — `check-ignore` returns non-zero, so `--locked` still
+applies; a non-git dir also falls through to injection. Verified via `bash -x`:
+example leaf (cwd or `--manifest-path`) → no `--locked`; repo root → `--locked`
+injected. Sibling of issue 0384 (both in the shim).
 ---
 
 # `--locked` blocks the fresh-clone example build

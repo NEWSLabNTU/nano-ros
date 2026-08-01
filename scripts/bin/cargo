@@ -94,6 +94,27 @@ for a in "$@"; do
     esac
 done
 
+# Don't force `--locked` when the target's `Cargo.lock` is a git-IGNORED
+# artifact rather than a tracked promise (issue 0386). `--locked` is right for
+# the repo's own workspaces, whose locks are committed; it is WRONG for a leaf
+# whose lock is deliberately untracked and (re)generated on first build — there
+# `--locked` forbids *creating* a first lock (`cannot create the lock file …
+# because --locked was passed`) and forbids *updating* a stale one after
+# `nros sync` changes its deps. The example / template leaves are exactly this
+# shape (`examples/**/.gitignore` ignores `/Cargo.lock`). Resolve the manifest
+# dir (`--manifest-path` if given, else cwd) and skip injection when its lock is
+# ignored. A non-git dir → `check-ignore` fails → we fall through and inject.
+_manifest_dir="$PWD"
+for ((_i = 0; _i < ${#args[@]}; _i++)); do
+    case "${args[$_i]}" in
+        --manifest-path) _manifest_dir="$(dirname "${args[$((_i + 1))]-.}")" ;;
+        --manifest-path=*) _manifest_dir="$(dirname "${args[$_i]#--manifest-path=}")" ;;
+    esac
+done
+if git -C "$_manifest_dir" check-ignore -q Cargo.lock 2>/dev/null; then
+    exec "$real_cargo" "$@"
+fi
+
 # Insert FLAGS BEFORE the first `--` separator (issue 0384). Everything after
 # `--` is the child binary's argv (test harness / run target / clippy-driver);
 # appending FLAGS there leaks e.g. `--locked` to it → "Unrecognized option:

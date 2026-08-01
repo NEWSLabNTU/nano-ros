@@ -44,11 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#386** — the `--locked` cargo shim (#359/#378) breaks the book's first node on a FRESH clone: the
-example leaf `Cargo.lock` is gitignored, so cargo must CREATE it and `--locked` forbids exactly that
-(`error: cannot create the lock file … because --locked was passed`). Reproduced on host and in a
-container. Distinct from #384 (argv-tail leak) — same shim, different defect. See `0386-*`.
-(2026-08-02)
+Recently resolved: **#386** — the `--locked` cargo shim broke the book's first node on a FRESH
+clone: the example leaf `Cargo.lock` is gitignored, so cargo must CREATE it and `--locked` forbade
+exactly that. RESOLVED (2026-08-02): the shim skips `--locked` when the manifest's `Cargo.lock` is
+git-ignored (a regenerable artifact, not a tracked promise) — resolves the manifest dir
+(`--manifest-path` or cwd) and probes `git check-ignore`; tracked-lock workspaces are unaffected.
+Fixes both the can't-create and can't-update-stale modes. Sibling of #384. See `0386-*`. (2026-08-02)
 
 Recently resolved: **#385** — `nros setup` couldn't unpack a `.tar.zst` prebuilt dist on a host
 without `zstd`: `tar (child): zstd: Cannot exec`, reported as a bare `unpack prebuilt archive`.
