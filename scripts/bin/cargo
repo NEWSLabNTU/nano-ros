@@ -94,6 +94,22 @@ for a in "$@"; do
     esac
 done
 
-# `cargo nextest` takes its own subcommand (`run`, `list`) before the flags;
-# appending at the end is still valid for it, so one form covers both.
-exec "$real_cargo" "$@" $FLAGS
+# Insert FLAGS BEFORE the first `--` separator (issue 0384). Everything after
+# `--` is the child binary's argv (test harness / run target / clippy-driver);
+# appending FLAGS there leaks e.g. `--locked` to it → "Unrecognized option:
+# 'locked'". `--locked` is cargo's own flag, so it belongs on cargo's side of
+# the `--`. With no `--`, append at the end (unchanged). `cargo nextest` takes
+# its own subcommand before the flags, and its `--` (if any) is handled the
+# same way.
+_out=()
+_inserted=0
+for _a in "$@"; do
+    if [ "$_inserted" -eq 0 ] && [ "$_a" = "--" ]; then
+        _out+=($FLAGS "--")
+        _inserted=1
+    else
+        _out+=("$_a")
+    fi
+done
+[ "$_inserted" -eq 0 ] && _out+=($FLAGS)
+exec "$real_cargo" "${_out[@]}"

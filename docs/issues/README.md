@@ -44,6 +44,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved: **#384** — `scripts/bin/cargo` (the `--locked` injector) appended `$FLAGS` at
+argv TAIL, so any `cargo <sub> -- <args>` leaked `--locked` to the child (test harness /
+clippy-driver): `error: Unrecognized option: 'locked'`. Surfaced by #379's clippy lane + 4
+runtime-clippy tests in `rosidl-codegen/tests/compilation_test.rs`. RESOLVED (2026-08-02): insert
+`$FLAGS` BEFORE the first `--` (they're cargo's own flags); no-`--` case unchanged. Verified `cargo
+test … -- --nocapture` + `cargo clippy … -- -D warnings` run cleanly through the shim. See `0384-*`.
+(2026-08-02)
+
 Recently resolved: **#379** — no lane ran clippy on the `packages/cli` sub-workspace, so 107 lints
 (grown from ~30) had accumulated. RESOLVED (2026-08-02): added the `check-cli-clippy` lane (in
 `check-build`) and cleared all 107 — `--fix` for the mechanical class, hand-fixes for the rest
