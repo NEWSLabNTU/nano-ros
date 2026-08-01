@@ -82,3 +82,45 @@ In all cases: add a gate that diffs baked tier dims in the realtime
 fixtures against the committed model, so a stripped model fails the BUILD,
 not a QEMU e2e three tiers later. (Issue-0196 rule: the gate must watch
 the same inputs the tests consume.)
+
+## Landed (2026-08-02) — direction C + the gate
+
+**C, the regeneration guard.** `nros sync` resolved straight over the
+committed model (`-o <model>`), which made destruction the default AND the
+check impossible — once overwritten there is nothing left to compare. It now
+resolves to a side file, compares `execution.tiers` dim KEY SETS, and refuses
+to commit a narrower model:
+
+```
+Error: sync: re-resolving `demo_bringup` would DROP 10 hand-authored execution
+dim(s) from config/system_model.yaml:
+  - execution.tiers.high.zephyr.deadline_us
+  - execution.tiers.low.threadx.preempt_threshold
+  …
+```
+
+Key sets, not values: a changed value is a re-resolve doing its job, while a
+key that DISAPPEARS is content the inputs could never have produced.
+`--allow-dim-loss` is the deliberate escape hatch.
+
+Verified against the real regression rather than a synthetic one — running
+`nros sync` on `ws-realtime-rust` reproduces it exactly: refused, model left
+byte-identical, no stray side file. With `--allow-dim-loss` the same run
+strips the model from 15 dim-lines to 2, which is what the two historical
+commits did.
+
+**The gate.** `check-model-dims` (in `check-fast`) compares every committed
+model's dim set against `scripts/model-dims-baseline.txt` and fails in both
+directions — a lost dim is data loss, a new one must be recorded so the
+baseline keeps meaning something. 86 dims across 11 models today.
+
+It asks the CLI (`nros ws model-dims`, hidden) rather than re-parsing YAML in
+shell, so the gate and the sync-time guard share one definition of "a dim".
+That matters concretely: `spin_period_us` is a tier dim and `nuttx.period_us`
+is the sporadic one, so a shell `grep period_us` would conflate them.
+
+**A and B remain open and are still worth doing** — this makes the loss loud,
+it does not make regeneration reproduce the dims. Until the dims have a
+resolver input (A) or an overlay (B), `--allow-dim-loss` is still a foot-gun
+and a hand-authored file whose maintenance procedure is "regenerate" is still
+the underlying contradiction.

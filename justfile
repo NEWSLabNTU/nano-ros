@@ -355,7 +355,7 @@ check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
-    check-leaf-lockfiles check-msg-dep-redirect check-cargo-locked \
+    check-leaf-lockfiles check-msg-dep-redirect check-cargo-locked check-model-dims \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -749,6 +749,16 @@ check-leaf-lockfiles:
 [private]
 check-msg-dep-redirect:
     @bash scripts/check-msg-dep-redirect.sh
+
+# issue 0380 — a committed SystemModel must not silently LOSE `execution.tiers`
+# dims. They are hand-authored (the resolver's inputs cannot express them), so
+# regeneration DELETES them: that happened twice and surfaced a QEMU tier later
+# as ~17 realtime e2e tests reporting the fail-loud violation they exist to
+# catch. `nros sync` now refuses to shrink a model; this catches a strip by any
+# other means, at check-fast speed. Buildless (reads YAML via the CLI).
+[private]
+check-model-dims:
+    @bash scripts/check-model-dims.sh
 
 # issue 0359/0378 — `--locked` is injected project-wide by the scripts/bin/cargo
 # PATH shim (cargo has no config/env knob for it, and per-site flags would miss

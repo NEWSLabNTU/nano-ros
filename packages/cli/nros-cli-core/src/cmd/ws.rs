@@ -32,7 +32,7 @@ use rosidl_bindgen::ament::Package;
 use rosidl_codegen::RosEdition;
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -65,6 +65,22 @@ pub enum Sub {
     /// rosidl_interface_packages</member_of_group>` markers, malformed
     /// `package.xml`, stale patch blocks. Mirrors the sync detection.
     Doctor(DoctorArgs),
+
+    /// Print the `execution.tiers` dim keys a committed SystemModel declares,
+    /// one per line, sorted (issue 0380).
+    ///
+    /// Hidden: a build-system seam, same role as `codegen-fingerprint`. It
+    /// exists so `scripts/check-model-dims.sh` can ASK for the dim set instead
+    /// of re-parsing YAML in shell — the extraction that the sync-time guard
+    /// uses stays the only implementation. Reads a file; needs no ROS.
+    #[command(name = "model-dims", hide = true)]
+    ModelDims(ModelDimsArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct ModelDimsArgs {
+    /// Path to a committed `system_model.yaml`.
+    pub model: PathBuf,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -113,6 +129,13 @@ pub struct SyncArgs {
     /// Verbose codegen output.
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Allow a re-resolve to DROP hand-authored `execution.tiers` dims from a
+    /// committed SystemModel (issue 0380). Off by default: those dims are the
+    /// declared SSoT for scheduling data the resolver inputs cannot express,
+    /// so silently regenerating a narrower model is data loss.
+    #[arg(long)]
+    pub allow_dim_loss: bool,
 
     /// phase-307 W2 — skip the source-metadata refresh. The refresh compiles a
     /// host probe per Node pkg, which is the slow part of a cold sync; skipping
@@ -170,6 +193,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::Status(a) => run_status(a),
         Sub::Clean(a) => run_clean(a),
         Sub::Doctor(a) => run_doctor(a),
+        Sub::ModelDims(a) => run_model_dims(a),
     }
 }
 
@@ -346,7 +370,7 @@ fn model_recorded_args(model_path: &Path) -> Vec<(String, String)> {
     model.meta.args.into_iter().collect()
 }
 
-fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
+fn resolve_system_models(scan: &[WsPkg], verbose: bool, allow_dim_loss: bool) -> Result<()> {
     // Issue 0285 — resolve the helper by ABSOLUTE PATH, never through PATH.
     //
     // This used to run `play_launch` by bare name. `play_launch` is also an
@@ -550,11 +574,21 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
             if system_toml.is_file() {
                 cmd.arg("--system").arg(&system_toml);
             }
-            cmd.arg("-o").arg(&model);
+            // Issue 0380 — resolve to a SIDE FILE, not over the committed model.
+            // The resolver cannot reproduce hand-authored `execution.tiers`
+            // dims, so writing in place makes destruction the default and the
+            // check impossible: once the file is overwritten there is nothing
+            // left to compare against.
+            let prior_dims = std::fs::read_to_string(&model)
+                .map(|s| execution_tier_dims(&s))
+                .unwrap_or_default();
+            let staged = model.with_extension("yaml.resolving");
+            cmd.arg("-o").arg(&staged);
             let out = cmd
                 .output()
                 .wrap_err_with(|| format!("sync: spawn nros-launch-resolve for {}", pkg.name))?;
             if !out.status.success() {
+                let _ = std::fs::remove_file(&staged);
                 eyre::bail!(
                     "sync: nros-launch-resolve failed for `{}` ({}):\n{}",
                     pkg.name,
@@ -562,6 +596,33 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
                     String::from_utf8_lossy(&out.stderr),
                 );
             }
+            let new_dims = std::fs::read_to_string(&staged)
+                .map(|s| execution_tier_dims(&s))
+                .unwrap_or_default();
+            let dropped: Vec<&String> = prior_dims.difference(&new_dims).collect();
+            if !dropped.is_empty() && !allow_dim_loss {
+                let _ = std::fs::remove_file(&staged);
+                eyre::bail!(
+                    "sync: re-resolving `{}` would DROP {} hand-authored execution dim(s) \
+                     from {}:\n{}\n\n\
+                     Those dims are the SSoT for scheduling data the resolver's inputs \
+                     (launch + system.toml) cannot express, so a re-resolve cannot put them \
+                     back — this is data loss, not a refresh (issue 0380: two such commits \
+                     stripped 17 dims and ~17 realtime e2e tests lost their subject).\n\n\
+                     Either restore the dims in the model and re-run, or, if the loss is \
+                     intended, pass --allow-dim-loss.",
+                    pkg.name,
+                    dropped.len(),
+                    model.strip_prefix(&pkg.dir).unwrap_or(&model).display(),
+                    dropped
+                        .iter()
+                        .map(|d| format!("  - execution.tiers.{d}"))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                );
+            }
+            std::fs::rename(&staged, &model)
+                .wrap_err_with(|| format!("sync: commit resolved model {}", model.display()))?;
             if verbose {
                 println!("sync: resolved {}", model.display());
             } else {
@@ -1075,7 +1136,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // entry's `nros_bridge::run_from_config` consumes at runtime.
     // R-code UX — resolve/refresh each bringup's committed SystemModel first
     // (the canonical input; bridge planning below consumes it).
-    resolve_system_models(&scan, args.verbose)?;
+    resolve_system_models(&scan, args.verbose, args.allow_dim_loss)?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
     generate_facade_crates(&ws_root, &scan, &build_root, args.verbose)?;
 
@@ -1888,6 +1949,75 @@ fn narrowed_generated_entries(
     narrowed.sort();
     narrowed.dedup();
     narrowed
+}
+
+/// Every `execution.tiers.<tier>[.<scope>].<dim>` leaf a model declares.
+///
+/// Issue 0380 — the committed SystemModel is the SSoT for scheduling dims the
+/// resolver's inputs cannot express (`zephyr.deadline_us`,
+/// `nuttx.budget_us`/`period_us`, `threadx.preempt_threshold`/`time_slice_us`,
+/// per-platform `core` pins). `system.toml` deliberately does not carry them.
+///
+/// So a re-resolve cannot reproduce them, and two regeneration commits
+/// (`07650d0a1`, `6071bd150`) deleted the models and re-resolved — stripping 17
+/// dims. Nothing failed at sync time; it surfaced a tier later as ~17 realtime
+/// e2e tests reporting the RFC-0052 fail-loud violation they exist to catch.
+///
+/// Comparing key SETS, not values: a value that legitimately changes is a
+/// re-resolve doing its job, whereas a key that DISAPPEARS is content the
+/// inputs could never have produced.
+fn execution_tier_dims(yaml: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let Ok(doc) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(yaml) else {
+        // Unparseable: report nothing rather than guess. The caller treats an
+        // empty prior set as "nothing to lose", which is the safe direction —
+        // a guard that fires on a file it cannot read is a guard people disable.
+        return out;
+    };
+    let Some(tiers) = doc.get("execution").and_then(|e| e.get("tiers")) else {
+        return out;
+    };
+    let serde_yaml_ng::Value::Mapping(tiers) = tiers else {
+        return out;
+    };
+    for (tier, body) in tiers {
+        let Some(tier) = tier.as_str() else { continue };
+        let serde_yaml_ng::Value::Mapping(body) = body else {
+            continue;
+        };
+        for (k, v) in body {
+            let Some(k) = k.as_str() else { continue };
+            match v {
+                // A platform scope (`zephyr:`, `nuttx:`, …) — descend one level
+                // so `high.zephyr.deadline_us` is distinguishable from a
+                // generic `high.deadline_us`. They lower differently, which is
+                // the entire point of the scoped tables.
+                serde_yaml_ng::Value::Mapping(scope) => {
+                    for (dim, _) in scope {
+                        if let Some(dim) = dim.as_str() {
+                            out.insert(format!("{tier}.{k}.{dim}"));
+                        }
+                    }
+                }
+                _ => {
+                    out.insert(format!("{tier}.{k}"));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `nros ws model-dims <model.yaml>` — issue 0380's read-only door onto
+/// [`execution_tier_dims`], so the gate and the sync-time guard cannot disagree
+/// about what a "dim" is.
+fn run_model_dims(args: ModelDimsArgs) -> Result<()> {
+    let raw = std::fs::read_to_string(&args.model)
+        .wrap_err_with(|| format!("model-dims: read {}", args.model.display()))?;
+    for dim in execution_tier_dims(&raw) {
+        println!("{dim}");
+    }
+    Ok(())
 }
 
 fn write_patch_block(
