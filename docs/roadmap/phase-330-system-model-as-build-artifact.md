@@ -48,17 +48,62 @@ useful partial progress on W3–W5 without it.
 
 ### W2 — Prove the round-trip across the family
 
-- [ ] **W2.a** Repeat W1.c for all nine `ws-realtime-*` workspaces plus the
-      subnode/portable variants — 86 dims across 11 models today
-      (`scripts/model-dims-baseline.txt` is the census).
-- [ ] **W2.b** Any dim that cannot round-trip is a W1 schema gap, not an
+**The census is bigger than "the realtime workspaces".** Measured 2026-08-02:
+
+| Set | Count |
+| --- | --- |
+| Tracked `*/config/*model.yaml`, repo-wide | **120** |
+| …in `examples/workspaces/` | 80 (36 `system_model.yaml` + 44 variants) |
+| …in `packages/testing/.../fixtures/` | 40 |
+| Models carrying `execution.tiers` dims | **11** (86 dims) |
+
+The 11 dim-carrying models are the *migration risk*; the other 109 are the
+*migration work*. Both have to move — every one of them is a derived artifact
+committed under `src/`.
+
+- [ ] **W2.a** Round-trip W1.c across the 11 dim-carrying models: the nine
+      `ws-realtime-*` workspaces plus the two `orchestration_tiers_{native,
+      freertos}` test fixtures. `scripts/model-dims-baseline.txt` is the oracle.
+- [ ] **W2.b** Round-trip the remaining 109. They carry no dims, so a
+      byte-comparison of before/after regeneration is the whole test — any
+      difference is a resolver-determinism bug worth finding before the
+      committed copies are deleted.
+- [ ] **W2.c** Any dim that cannot round-trip is a W1 schema gap, not an
       exception to grant. Record it; do not special-case it.
 
 ### W3 — Relocate the artifact
 
-- [ ] **W3.a** Decide the location (RFC-0063 open question):
-      `build/<pkg>/system_model.yaml` mirrors colcon most closely; a single
-      workspace-level `build/nros/` is the alternative.
+- [ ] **W3.a** Decide the location. This is the phase's central open question,
+      and it is wider than the model — **the model is not the only derived
+      artifact living in `src/`**:
+
+      | Artifact | Today | Tracked? |
+      | --- | --- | --- |
+      | `<pkg>/config/*model.yaml` | in `src/` | **committed** ✗ |
+      | `<pkg>/metadata/*.json` | in `src/` | gitignored |
+      | `<pkg>/generated/<msg crate>/` | in `src/` | gitignored |
+
+      Two of the three are already gitignored, so the pattern is HALF-MIGRATED:
+      the model is simply the one that got committed. Whatever `build/` means
+      should mean the same thing for all three, or the next artifact repeats
+      issue 0380.
+
+      Options:
+
+      1. **Workspace-level `build/<pkg>/…`** — matches colcon, matches the
+         framing that motivated this RFC. One root to delete.
+      2. **Per-package output subtree** — smallest diff, keeps relative paths
+         short, but leaves derived output interleaved with sources, which is
+         the shape being retired.
+
+      **`generated/` is what makes option 1 non-free**: each leaf's
+      `.cargo/config.toml` redirects msg crates by RELATIVE path
+      (`std_msgs = { path = "generated/std_msgs" }`, RFC-0048 W9, `nros
+      sync`-managed). Moving the tree rewrites 110 redirects and lengthens
+      every one; issue 0378 is a live reminder that when those redirects are
+      wrong, resolution falls through to a third party's crate on crates.io.
+      Sequence `generated/` deliberately, or scope W3 to the model and leave
+      the other two where they are with a recorded reason.
 - [ ] **W3.b** Update the consumers. Ten files resolve the path today:
 
       | Consumer | Why it is awkward |
@@ -78,8 +123,9 @@ useful partial progress on W3–W5 without it.
 
 ### W4 — Delete the committed models
 
-- [ ] **W4.a** Remove every tracked `config/system_model.yaml`; add the build
-      location to `.gitignore`.
+- [ ] **W4.a** Remove all **120** tracked `*/config/*model.yaml` (80 under
+      `examples/workspaces/`, 40 under test fixtures); add the build location
+      to `.gitignore`.
 - [ ] **W4.b** Update issue 0320's staleness text: a per-build artifact does not
       need `meta.inputs[]` sha256 provenance any more than an object file needs
       it. Decide whether `meta.inputs` stays for inspection or goes.
@@ -103,7 +149,7 @@ useful partial progress on W3–W5 without it.
 
 ## Acceptance
 
-- [ ] No tracked `system_model.yaml` remains.
+- [ ] No tracked `*/config/*model.yaml` remains (120 today).
 - [ ] A clean checkout builds every `ws-realtime-*` workspace and the generated
       models carry all 86 dims (`nros ws model-dims` against the retired
       baseline as the oracle).
