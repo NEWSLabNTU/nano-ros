@@ -4,6 +4,7 @@
 **Amends:** phase-296 (committed SystemModel as the sole `nros plan` input),
 issue 0320 (content-addressed model staleness), RFC-0047 / RFC-0052 (scheduling
 dims and their fail-loud contract).
+**Implemented by:** [phase-330](../roadmap/phase-330-system-model-as-build-artifact.md)
 **Motivated by:** issue 0380 — two regeneration commits deleted committed
 models, stripped 17 hand-authored scheduling dims, and ~17 realtime e2e tests
 silently lost their subject.

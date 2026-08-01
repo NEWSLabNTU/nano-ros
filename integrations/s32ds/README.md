@@ -2,7 +2,7 @@
 
 **Status: skeleton, partially validated.** The project probe is tested against
 the MR-CANHUBK3 reference project; the full build and link have **not** been
-exercised on hardware. Design of record: [RFC-0062](../../docs/design/0062-board-support-organization.md).
+exercised on hardware. Design of record: [RFC-0064](../../docs/design/0064-board-support-organization.md).
 
 ## What this is
 
@@ -38,7 +38,7 @@ make -C ~/MR_CANHUBK3_IEEE1722/Debug_FLASH all
 
 Host tools come from the ordinary index verbs — there is deliberately no
 `nros setup --board <name>`, because a board name in the SDK index is only an
-alias for a package list (RFC-0062):
+alias for a package list (RFC-0064):
 
 ```sh
 nros setup --tool arm-none-eabi-gcc --rmw zenoh
