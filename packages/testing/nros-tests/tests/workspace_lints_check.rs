@@ -88,7 +88,10 @@ fn run_check_workspace(root: &Path) -> (bool, String, String) {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn nros_check_rejects_class_pkg_mismatch() {
+fn nros_check_rejects_unqualified_class() {
+    // RFC-0057 D2 retired the pkg-prefix rule (any upstream namespace is
+    // fine); the live L.4 lint rejects a class that is not namespace-
+    // qualified at all.
     if require_nros_cli().is_none() {
         nros_tests::skip!("nros CLI not on PATH");
     }
@@ -96,21 +99,21 @@ fn nros_check_rejects_class_pkg_mismatch() {
     write_bringup(
         tmp.path(),
         "demo_bringup",
-        &[("talker_pkg", "wrong::Talker", "talker")],
+        &[("talker_pkg", "Talker", "talker")],
     );
 
     let (ok, _stdout, stderr) = run_check_workspace(tmp.path());
     assert!(
         !ok,
-        "expected failure for class/pkg mismatch; stderr:\n{stderr}"
+        "expected failure for an unqualified class; stderr:\n{stderr}"
     );
     assert!(
-        stderr.contains("class mismatch") || stderr.to_lowercase().contains("mismatch"),
-        "stderr should mention mismatch, got:\n{stderr}"
+        stderr.contains("namespace-qualified"),
+        "stderr should mention namespace-qualified, got:\n{stderr}"
     );
     assert!(
-        stderr.contains("talker_pkg::"),
-        "stderr should hint expected prefix talker_pkg::, got:\n{stderr}"
+        stderr.contains("class=\"Talker\""),
+        "stderr should name the offending component class, got:\n{stderr}"
     );
 }
 

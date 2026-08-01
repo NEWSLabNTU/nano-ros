@@ -52,21 +52,24 @@ fn configure(root: &PathBuf, build: &PathBuf) -> std::process::Output {
 }
 
 #[test]
-fn nano_ros_node_register_rejects_class_pkg_mismatch() {
+fn nano_ros_node_register_rejects_unqualified_class() {
+    // RFC-0057 D2 retired the 212.L.4 pkg-prefix rule (CLASS may carry any
+    // upstream namespace); the live rule is that CLASS must still be a
+    // namespace-QUALIFIED name — the entry codegen needs a real type name.
     if !nros_tests::process::require_cmake() {
         nros_tests::skip!("cmake not on PATH");
     }
-    let body = "nano_ros_node_register(\n  NAME talker\n  CLASS wrong_pkg::Talker\n  SOURCES src/dummy.cpp\n  DEPLOY native)\n";
+    let body = "nano_ros_node_register(\n  NAME talker\n  CLASS Talker\n  SOURCES src/dummy.cpp\n  DEPLOY native)\n";
     let (_g, root, build) = stage(body, "talker_pkg");
     let out = configure(&root, &build);
     assert!(
         !out.status.success(),
-        "expected cmake configure to fail on CLASS pkg mismatch"
+        "expected cmake configure to fail on an unqualified CLASS"
     );
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(
-        err.contains("must start with 'talker_pkg::'") || err.contains("Phase 212.L.4"),
-        "expected L.4 diagnostic, got:\n{err}"
+        err.contains("must be a") && err.contains("namespace-qualified"),
+        "expected the RFC-0057 qualified-class diagnostic, got:\n{err}"
     );
 }
 
@@ -75,8 +78,9 @@ fn nano_ros_application_rejects_embedded_deploy() {
     if !nros_tests::process::require_cmake() {
         nros_tests::skip!("cmake not on PATH");
     }
-    let body =
-        "nano_ros_application(\n  NAME my_app\n  SOURCES src/dummy.cpp\n  DEPLOY native zephyr)\n";
+    // `nano_ros_application` (the 212.N.6 shim) was retired in 287-W8; the
+    // live spelling of the same misuse is `nano_ros_entry`.
+    let body = "nano_ros_entry(\n  NAME my_app\n  SOURCES src/dummy.cpp\n  DEPLOY native zephyr)\n";
     let (_g, root, build) = stage(body, "my_app");
     let out = configure(&root, &build);
     assert!(

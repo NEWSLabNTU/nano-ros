@@ -77,9 +77,12 @@ fn nros_init_returns_context() {
 
     let ctx = nros::init().expect("nros::init returned Err on a clean env");
     assert_eq!(ctx.domain_id, 0, "default domain id should be 0");
+    // Issue 0330 — `nros` is RMW-agnostic: unset env leaves the locator EMPTY
+    // and the linked backend substitutes its own default (zenoh's is the
+    // loopback; cyclonedds ignores the locator entirely).
     assert_eq!(
-        ctx.locator, "tcp/127.0.0.1:7447",
-        "default locator should be the zenoh loopback"
+        ctx.locator, "",
+        "default locator should be empty (backend substitutes its default)"
     );
     assert_eq!(
         ctx.source,
