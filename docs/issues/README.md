@@ -44,6 +44,31 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#375** (filed as #374; renumbered — id collision with a parallel session) — repo root is resolved
+LOGICALLY (`cd "$(dirname …)" && pwd`) in both `activate.sh` and `scripts/bootstrap.sh`, so a
+checkout reached through a symlinked parent bakes the alias path into `NROS_REPO_DIR` /
+`nano_ros_ROOT` / the proposed rc line — two names for one tree, with RFC-0048's absolute-path
+`nros sync` output and every path-keyed cache downstream. Latent, not yet observed to break.
+See `0375-*`. (2026-08-01)
+
+**#374** (filed as #373; renumbered) — `nros setup native --rmw zenoh` source-builds zenohd
+(`[tool.zenohd]` has no `dist.linux-x86_64`; assets never seeded) and pulls a SECOND rust toolchain
+(`1.85.0`, zenoh's own pin) for 792 MB of store — while installation.md:123 promises "ships prebuilt
+toolchains per platform per RMW" for exactly this board. See `0374-*`. (2026-08-01)
+
+**#373** (filed as #372; renumbered) — the book's install path is exercised only on `ubuntu:24.04` +
+bash (`PROBE_IMAGE` default, issue 0204), so an Arch run found three defects the probe cannot see:
+apt-only prereq block with no per-distro mapping, `just` a de-facto prereq via `sdk-env.sh` though
+the page says it is not, and an unactionable `/opt/ros/humble` warning on distros with no Humble
+packages. See `0373-*`. (2026-08-01)
+
+**#372** (filed as #371; renumbered) — `source ./activate.sh` aborts mid-file under **zsh**:
+unmatched SDK-store globs are fatal (`nomatch`), killing the sourced shell at `activate.sh:92`
+before `nros setup` and at `activate.sh:115` after it, so the SDK PATH loop (`zenohd`), ninja/make,
+`.env` and `sdk-env.sh` never run — while the file's header claims bash/zsh support and "never
+errors". Two glob sites = one class; `activate.fish` separately missed the phase-327 versioned-store
+mirror. See `0372-*`. (2026-08-01)
+
 **#371** [severity **high**] — native_sim cyclone app abort()s at a near-deterministic 19–21 s
 joining the full Autoware graph during the safety-island demo's scenario init (7/7 on 2026-08-01;
 the same tree passed 2× on 2026-07-31 when one sim node was down). mrm_handler flaps
