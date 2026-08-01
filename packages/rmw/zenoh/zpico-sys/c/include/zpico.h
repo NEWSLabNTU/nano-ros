@@ -271,6 +271,11 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * `LivelinessChanged` bridge to surface `alive_count > 1`.
  */
 /**
+ * The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if the handle is
+ * not a valid pool slot. Used to scope the Rust shim's process-global
+ * service-buffer / reply-waker tables per session (issue 0376).
+ */
+/**
  * Acquire a free slot from the C shim's session pool. Returns NULL when
  * the pool (`ZPICO_MAX_SESSIONS`) is exhausted. Pair with
  * `zpico_session_release` after `zpico_close`.
@@ -282,6 +287,12 @@ struct zpico_session_t *zpico_session_acquire(void);
  * invalid afterwards.
  */
 void zpico_session_release(struct zpico_session_t *_session);
+
+/**
+ * The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if invalid.
+ * Scopes the Rust shim's process-global tables per session (issue 0376).
+ */
+int32_t zpico_session_index(struct zpico_session_t *_session);
 
 /**
  * Initialize zenoh configuration with client mode and connect locator.
@@ -744,7 +755,7 @@ int32_t zpico_liveliness_get_count(struct zpico_session_t *_session, int32_t _ha
 /**
  * Register a reply waker callback for async service client support.
  */
-void zpico_set_reply_waker(struct zpico_session_t *_session, void (*_func)(int32_t));
+void zpico_set_reply_waker(struct zpico_session_t *_session, void (*_func)(int32_t, int32_t));
 
 /**
  * Capture the current clock into an opaque 16-byte buffer.

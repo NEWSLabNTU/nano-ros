@@ -157,6 +157,13 @@ mod cbindgen_stubs {
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_session_release(_session: *mut zpico_session_t) {}
 
+    /// The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if invalid.
+    /// Scopes the Rust shim's process-global tables per session (issue 0376).
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_session_index(_session: *mut zpico_session_t) -> i32 {
+        -1
+    }
+
     /// A key-value property for transport configuration.
     #[repr(C)]
     pub struct zpico_property_t {
@@ -771,7 +778,7 @@ mod cbindgen_stubs {
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_set_reply_waker(
         _session: *mut zpico_session_t,
-        _func: Option<unsafe extern "C" fn(i32)>,
+        _func: Option<unsafe extern "C" fn(i32, i32)>,
     ) {
     }
 

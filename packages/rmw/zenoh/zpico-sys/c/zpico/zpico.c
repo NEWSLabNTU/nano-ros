@@ -281,8 +281,10 @@ static volatile uint32_t g_diag_start_ctx_addr = 0;
 // Reply waker callback — invoked when a pending get slot receives a reply
 // or times out, allowing Rust async code to wake the corresponding Future.
 // Per-session (stored in `struct zpico_session.reply_waker`); set via
-// `zpico_set_reply_waker(s, fn)`.
-typedef void (*zpico_waker_fn)(int32_t slot);
+// `zpico_set_reply_waker(s, fn)`. phase-328/#376 — carries the owning session's
+// pool index alongside the slot so the Rust waker table can be session-scoped
+// (two sessions' pending-get slot N must not wake each other's future).
+typedef void (*zpico_waker_fn)(int32_t session_index, int32_t slot);
 
 // ============================================================================
 // Session pool (issue 0348 / phase-328 — multi-session handle-passing)
@@ -439,6 +441,17 @@ void zpico_session_release(zpico_session_t* session) {
         return;
     }
     g_session_inuse[s - g_sessions] = false;
+}
+
+// phase-328/#376 — the session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if
+// the handle is not a valid pool slot. The Rust shim uses it to scope its
+// process-global service-buffer / reply-waker tables per session.
+int32_t zpico_session_index(zpico_session_t* session) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || s < g_sessions || s >= g_sessions + ZPICO_MAX_SESSIONS) {
+        return -1;
+    }
+    return (int32_t)(s - g_sessions);
 }
 
 // Callback context packing (issue 0348 / phase-328). zenoh-pico closures carry
@@ -2591,7 +2604,7 @@ static void pending_get_reply_handler(z_loaned_reply_t* reply, void* arg) {
     get_reply_handler(reply, rctx);
     _zpico_notify_spin(s);
     if (s->reply_waker) {
-        s->reply_waker(slot);
+        s->reply_waker((int32_t)(s - g_sessions), slot);
     }
 }
 
@@ -2604,7 +2617,7 @@ static void pending_get_dropper(void* arg) {
     __atomic_store_n(&rctx->done, true, __ATOMIC_SEQ_CST);
     _zpico_notify_spin(s);
     if (s->reply_waker) {
-        s->reply_waker(slot);
+        s->reply_waker((int32_t)(s - g_sessions), slot);
     }
 }
 

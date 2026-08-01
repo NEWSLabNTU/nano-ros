@@ -13,7 +13,7 @@ use super::{
 };
 use crate::{
     keyexpr::ServiceKeyExpr,
-    zpico::{self, Queryable, ZPICO_MAX_QUERYABLES},
+    zpico::{self, Queryable, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SESSIONS},
 };
 
 #[cfg(feature = "std")]
@@ -96,12 +96,20 @@ impl ServiceBuffer {
 
 /// Static buffers for service servers.
 ///
-/// Count matches `ZPICO_MAX_QUERYABLES` from zpico-sys.
-static mut SERVICE_BUFFERS: [ServiceBuffer; ZPICO_MAX_QUERYABLES] =
-    [const { ServiceBuffer::new() }; ZPICO_MAX_QUERYABLES];
+/// phase-328 / issue 0376 — sized `ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES`
+/// and indexed by `session_index * ZPICO_MAX_QUERYABLES + local`, so two zenoh
+/// sessions in one process get disjoint buffer ranges (the C shim's queryable
+/// tables are already per-session). At the default `ZPICO_MAX_SESSIONS == 1`
+/// this is `[ServiceBuffer; ZPICO_MAX_QUERYABLES]` with `session_index == 0`,
+/// identical to the pre-0376 layout.
+const SERVICE_BUFFER_COUNT: usize = ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES;
+static mut SERVICE_BUFFERS: [ServiceBuffer; SERVICE_BUFFER_COUNT] =
+    [const { ServiceBuffer::new() }; SERVICE_BUFFER_COUNT];
 
-/// Next available service buffer index
-static NEXT_SERVICE_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
+/// Next available LOCAL service-buffer index, per session pool slot. The global
+/// index handed to the callback is `session_index * ZPICO_MAX_QUERYABLES + local`.
+static NEXT_SERVICE_BUFFER_INDEX: [AtomicUsize; ZPICO_MAX_SESSIONS] =
+    [const { AtomicUsize::new(0) }; ZPICO_MAX_SESSIONS];
 
 // ============================================================================
 // ServiceBufferRef — safe accessor wrapper
@@ -116,7 +124,7 @@ static NEXT_SERVICE_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
 /// # Safety invariant
 ///
 /// `SERVICE_BUFFERS` is a module-level `static mut` with a fixed address
-/// and element count equal to `ZPICO_MAX_QUERYABLES`. The index is validated
+/// and element count equal to `SERVICE_BUFFER_COUNT`. The index is validated
 /// at construction and never changes, so every `get()` / `get_mut()` call
 /// dereferences a valid, in-bounds element.
 pub(super) struct ServiceBufferRef {
@@ -128,11 +136,11 @@ impl ServiceBufferRef {
     ///
     /// # Panics
     ///
-    /// Panics if `index >= ZPICO_MAX_QUERYABLES`.
+    /// Panics if `index >= SERVICE_BUFFER_COUNT`.
     pub(super) fn new(index: usize) -> Self {
         assert!(
-            index < ZPICO_MAX_QUERYABLES,
-            "service buffer index out of bounds: {index} >= {ZPICO_MAX_QUERYABLES}"
+            index < SERVICE_BUFFER_COUNT,
+            "service buffer index out of bounds: {index} >= {SERVICE_BUFFER_COUNT}"
         );
         Self { index }
     }
@@ -177,8 +185,10 @@ extern "C" fn queryable_callback(
     payload_len: usize,
     ctx: *mut core::ffi::c_void,
 ) {
+    // phase-328/#376 — `ctx` is the GLOBAL buffer index
+    // (session_index * ZPICO_MAX_QUERYABLES + local), set at server registration.
     let buffer_index = ctx as usize;
-    if buffer_index >= ZPICO_MAX_QUERYABLES {
+    if buffer_index >= SERVICE_BUFFER_COUNT {
         return;
     }
 
@@ -290,12 +300,20 @@ impl ZenohServiceServer {
         service: &ServiceInfo,
         liveliness: Option<super::LivelinessToken>,
     ) -> Result<Self, TransportError> {
-        // Allocate a buffer index
-        let buffer_index = NEXT_SERVICE_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
-        if buffer_index >= ZPICO_MAX_QUERYABLES {
-            NEXT_SERVICE_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
+        // phase-328/#376 — allocate a per-session LOCAL buffer index and map it
+        // to a global `SERVICE_BUFFERS` slot, so two sessions' servers never
+        // share a slot. `session_index` is the C shim's session pool slot.
+        let session_index = unsafe { zpico_sys::zpico_session_index(context.handle()) };
+        if session_index < 0 || (session_index as usize) >= ZPICO_MAX_SESSIONS {
             return Err(TransportError::ServiceServerCreationFailed);
         }
+        let session_index = session_index as usize;
+        let local = NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_add(1, Ordering::SeqCst);
+        if local >= ZPICO_MAX_QUERYABLES {
+            NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_sub(1, Ordering::SeqCst);
+            return Err(TransportError::ServiceServerCreationFailed);
+        }
+        let buffer_index = session_index * ZPICO_MAX_QUERYABLES + local;
 
         // Generate the service key
         let key: heapless::String<KEYEXPR_STRING_SIZE> = service.to_key();
@@ -325,7 +343,7 @@ impl ZenohServiceServer {
             )
         }
         .map_err(|e| {
-            NEXT_SERVICE_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
+            NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_sub(1, Ordering::SeqCst);
             TransportError::from(e)
         })?;
 
@@ -452,20 +470,33 @@ impl ServiceTrait for ZenohServiceServer {
 
 use crate::zpico::ZPICO_MAX_PENDING_GETS;
 
-/// One AtomicWaker per pending get slot. Registered by `Promise::poll()`,
-/// woken from the C shim when a reply arrives or the channel closes.
-static REPLY_WAKERS: [AtomicWaker; ZPICO_MAX_PENDING_GETS] =
-    [const { AtomicWaker::new() }; ZPICO_MAX_PENDING_GETS];
+/// One AtomicWaker per (session, pending-get slot). phase-328 / issue 0376 —
+/// sized `ZPICO_MAX_SESSIONS * ZPICO_MAX_PENDING_GETS` and indexed by
+/// `session_index * ZPICO_MAX_PENDING_GETS + slot`, so a reply on session A's
+/// slot N wakes A's future, not session B's future parked on the same C slot
+/// index. At the default `ZPICO_MAX_SESSIONS == 1` this is unchanged.
+/// Registered by `Promise::poll()`, woken from the C shim when a reply arrives
+/// or the channel closes.
+const REPLY_WAKER_COUNT: usize = ZPICO_MAX_SESSIONS * ZPICO_MAX_PENDING_GETS;
+static REPLY_WAKERS: [AtomicWaker; REPLY_WAKER_COUNT] =
+    [const { AtomicWaker::new() }; REPLY_WAKER_COUNT];
 
 /// C callback invoked by zpico.c when a pending get slot gets a reply.
 ///
 /// # Safety
 ///
-/// Called from C (pending_get_reply_handler / pending_get_dropper).
-/// `slot` must be in range [0, ZPICO_MAX_PENDING_GETS).
-unsafe extern "C" fn reply_waker_callback(slot: i32) {
-    if slot >= 0 && (slot as usize) < ZPICO_MAX_PENDING_GETS {
-        REPLY_WAKERS[slot as usize].wake();
+/// Called from C (pending_get_reply_handler / pending_get_dropper) with the
+/// owning session's pool index and the per-session slot (issue 0376).
+/// `slot` must be in [0, ZPICO_MAX_PENDING_GETS); `session_index` in
+/// [0, ZPICO_MAX_SESSIONS).
+unsafe extern "C" fn reply_waker_callback(session_index: i32, slot: i32) {
+    if session_index >= 0
+        && (session_index as usize) < ZPICO_MAX_SESSIONS
+        && slot >= 0
+        && (slot as usize) < ZPICO_MAX_PENDING_GETS
+    {
+        let idx = session_index as usize * ZPICO_MAX_PENDING_GETS + slot as usize;
+        REPLY_WAKERS[idx].wake();
     }
 }
 
@@ -510,6 +541,10 @@ pub struct ZenohServiceClient {
     _liveliness: Option<super::LivelinessToken>,
     /// Reference to context for making queries
     context: *const Context,
+    /// phase-328/#376 — the owning session's pool index, cached at construction.
+    /// Scopes this client's `REPLY_WAKERS` registrations so a reply on another
+    /// session's same-numbered slot cannot wake this client's future.
+    session_index: usize,
     /// Timeout in milliseconds
     timeout_ms: u32,
     /// Handles for outstanding non-blocking get operations.
@@ -588,6 +623,13 @@ impl ZenohServiceClient {
         #[cfg(feature = "std")]
         log::debug!("Service client keyexpr: {}", key.as_str());
 
+        // phase-328/#376 — cache the owning session's pool slot for
+        // session-scoped REPLY_WAKERS indexing.
+        let session_index = unsafe { zpico_sys::zpico_session_index(context.handle()) };
+        if session_index < 0 || (session_index as usize) >= ZPICO_MAX_SESSIONS {
+            return Err(TransportError::ServiceClientCreationFailed);
+        }
+
         Ok(Self {
             keyexpr: keyexpr_buf,
             keyexpr_len: bytes.len(),
@@ -597,6 +639,7 @@ impl ZenohServiceClient {
             discovery_handle: None,
             _liveliness: liveliness,
             context: context as *const Context,
+            session_index: session_index as usize,
             timeout_ms: SERVICE_DEFAULT_TIMEOUT_MS,
             pending_handles: heapless::Vec::new(),
             rmw_gid: RmwAttachment::generate_gid(),
@@ -638,7 +681,9 @@ impl ClientTrait for ZenohServiceClient {
         // first (see `pending_handles` docs).
         for &handle in &self.pending_handles {
             if (handle as usize) < ZPICO_MAX_PENDING_GETS {
-                REPLY_WAKERS[handle as usize].register(waker);
+                // phase-328/#376 — session-scoped slot (matches reply_waker_callback).
+                let idx = self.session_index * ZPICO_MAX_PENDING_GETS + handle as usize;
+                REPLY_WAKERS[idx].register(waker);
             }
         }
     }

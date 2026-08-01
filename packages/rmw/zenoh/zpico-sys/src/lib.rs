@@ -355,10 +355,17 @@ unsafe extern "C" {
     /// `LivelinessChanged` bridge to surface `alive_count > 1`.
     pub fn zpico_liveliness_get_count(session: *mut zpico_session_t, handle: i32) -> i32;
 
-    // Reply waker callback (for async service client) — per-session.
+    /// The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if the handle is
+    /// not a valid pool slot. Used to scope the Rust shim's process-global
+    /// service-buffer / reply-waker tables per session (issue 0376).
+    pub fn zpico_session_index(session: *mut zpico_session_t) -> i32;
+
+    // Reply waker callback (for async service client) — per-session. The
+    // callback receives (session_index, slot) so the Rust waker table is
+    // session-scoped (issue 0376).
     pub fn zpico_set_reply_waker(
         session: *mut zpico_session_t,
-        func: Option<unsafe extern "C" fn(i32)>,
+        func: Option<unsafe extern "C" fn(i32, i32)>,
     );
 
     // Phase 127.D — get/get_check/reply-handler/dropper diagnostic counters

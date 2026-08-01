@@ -58,14 +58,13 @@ exists, and the gate names no remedy. Worse, with the RFC-0048 patch targets abs
 because that version is yanked. nano-ros publishes nothing to crates.io, so the bare registry names
 in leaf manifests are protected solely by a generated, gitignored file. See `0378-*`. (2026-08-01)
 
-**#376** (filed as #372; renumbered — id collision with parallel sessions) — zpico multi-session
-(phase-328 / #348) is **pubsub-only**: the Rust RMW shim's `SERVICE_BUFFERS` + `REPLY_WAKERS` are
-process-global arrays indexed by a bare handle with no session dimension, so two sessions' service
-servers/clients collide (queryable rings overwrite, pending-get wakers cross-wake). The C shim IS
-per-session; single-session services are correct (the queryable callback records its owning session
-per-buffer). Fix: move the arrays under the session dimension (per-`ZenohSession` table), matching
-the C-side design without multiplying the static footprint. Not urgent — nothing in-tree opens two
-sessions, let alone two services. See `0376-*`. (2026-08-01)
+Recently resolved: **#376** (filed as #372; renumbered — id collision with parallel sessions) — zpico
+multi-session (phase-328 / #348) WAS **pubsub-only**: the Rust RMW shim's `SERVICE_BUFFERS` +
+`REPLY_WAKERS` were process-global arrays with no session dimension, so two sessions' service
+servers/clients collided (async-client cross-wake = lost wakeup). RESOLVED: both arrays flattened by
+the session's pool index (`ZPICO_MAX_SESSIONS * K`, indexed `session_index * K + slot`) via a new
+`zpico_session_index()`; the reply-waker callback gained a leading `session_index` arg. Identical at
+`ZPICO_MAX_SESSIONS=1`; verified 15/15 at pool=2. See `0376-*`. (2026-08-01)
 
 **#374** (filed as #373; renumbered) — `nros setup native --rmw zenoh` source-builds zenohd
 (`[tool.zenohd]` has no `dist.linux-x86_64`; assets never seeded) and pulls a SECOND rust toolchain

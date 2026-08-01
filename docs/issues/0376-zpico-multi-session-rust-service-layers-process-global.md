@@ -1,10 +1,34 @@
 ---
 id: 376
 title: "zpico multi-session is pubsub-only — the Rust service/client layers (SERVICE_BUFFERS, REPLY_WAKERS) are still process-global arrays, so two sessions' queryables and pending-gets collide"
-status: open
+status: resolved
 type: limitation
 area: core
 related: [issue-0348, issue-0347]
+resolved_by: phase-328
+---
+
+## Resolution (2026-08-01, phase-328 follow-up)
+
+Both process-global arrays are now session-scoped, flattened by the session's
+pool index (which the C shim exposes via a new `zpico_session_index(handle)`):
+
+- `SERVICE_BUFFERS` is sized `ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES`,
+  indexed `session_index * ZPICO_MAX_QUERYABLES + local`; the per-session
+  local index comes from `NEXT_SERVICE_BUFFER_INDEX[session_index]`. The global
+  index is the callback's `ctx`.
+- `REPLY_WAKERS` is sized `ZPICO_MAX_SESSIONS * ZPICO_MAX_PENDING_GETS`, indexed
+  `session_index * ZPICO_MAX_PENDING_GETS + slot`. The C reply-waker callback
+  type gained a leading `session_index` arg (`void (*)(int32_t, int32_t)`) —
+  `pending_get_reply_handler`/`_dropper` pass `s - g_sessions`; the client
+  registers/wakes at the same session-scoped slot (`ZenohServiceClient` caches
+  its `session_index`).
+
+At the default `ZPICO_MAX_SESSIONS == 1` both arrays are their original size
+and `session_index == 0`, so the layout and footprint are byte-identical to
+before. Verified: full `zenoh_integration` suite 15/15 at `ZPICO_MAX_SESSIONS=2`
+and 14+skip at the default 1 (single-session unchanged). See
+[phase-328](../roadmap/phase-328-zpico-multi-session.md). Original finding below.
 ---
 
 ## Finding (2026-08-01, residual of phase-328 / issue 0348)
