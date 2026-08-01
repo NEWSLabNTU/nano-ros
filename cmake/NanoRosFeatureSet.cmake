@@ -122,8 +122,9 @@ function(nros_feature_set out_var)
             list(APPEND _feats alloc panic-halt platform-threadx)
         else()
             message(FATAL_ERROR
-                "nros_feature_set: PLATFORM=threadx requires BOARD to be one of: "
-                "threadx-linux, riscv64-qemu. Got '${_FS_BOARD}'.")
+                "nros_feature_set: PLATFORM=threadx requires a board (set "
+                "NANO_ROS_BOARD) — one of: threadx-linux, riscv64-qemu. "
+                "Got '${_FS_BOARD}'.")
         endif()
     elseif(_cross)
         # Unknown embedded cross target: no_std + alloc, matching the board tier

@@ -18,7 +18,9 @@ endif()
 # phase-314 — was ~90 lines of inline rmw/platform mapping that hardcoded
 # `ros-humble` and applied capabilities only on posix. See cmake/NanoRosFeatureSet.cmake
 # and issue 0311 for why the duplication was a defect rather than a tidy-up.
-include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")
+# Relative to THIS file, not ${NANO_ROS_ROOT}: a raw `add_subdirectory(<repo>)`
+# consumer (the phase-138 smoke shape) never defines NANO_ROS_ROOT.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosFeatureSet.cmake")
 option(NANO_ROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
 set(_caps ${NANO_ROS_FEATURES})
 if(NANO_ROS_SAFETY_E2E)
