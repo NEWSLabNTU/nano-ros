@@ -1,10 +1,11 @@
 ---
-id: 380
+id: 383
 title: "The book's first node cannot build on gcc >= 14: vendored zenoh-pico's unix/network.c calls `_z_connect_serial` with no declaration"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0373, issue-0135, rfc-0014]
+resolved_in: "zenoh-pico 61ed48f + submodule pointer bump"
 ---
 
 # zenoh-pico unix build fails on gcc >= 14 (implicit declaration)
@@ -49,11 +50,10 @@ One-line include, guarded by the same feature macro as its only caller:
 #endif
 ```
 
-Committed in the vendored fork as `61ed48f` on branch
-`fix/unix-network-serial-include` (`jerry73204/zenoh-pico`). **Not pushed** —
-per the repo's vendored-fork rule the agent leaves fork branches ready and the
-maintainer pushes; the superproject pointer bump has to follow the push, so
-this issue stays open until both happen.
+Landed as `61ed48f` on `jerry73204/zenoh-pico` `main` (fast-forward over
+`0ef606e`, linear), with the superproject pointer bumped to it in the same
+commit that archives this issue — fork first, pointer second, per the
+vendored-fork rule.
 
 Verified after the fix: `cargo build` in `examples/native/rust/talker`
 succeeds, and the talker publishes end to end against the store `zenohd`

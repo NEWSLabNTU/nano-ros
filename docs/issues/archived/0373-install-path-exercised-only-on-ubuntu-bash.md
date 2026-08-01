@@ -4,7 +4,7 @@ title: "The book's install path is exercised only on ubuntu+bash — on Arch Lin
 status: resolved
 type: tech-debt
 area: build
-related: [rfc-0014, rfc-0062, issue-0204, issue-0368, issue-0372, issue-0380, phase-327]
+related: [rfc-0014, rfc-0062, issue-0204, issue-0368, issue-0372, issue-0383, phase-327]
 resolved_in: "issue-0373 fix (see git log for `probe=NN distro=`)"
 ---
 
@@ -59,4 +59,4 @@ opt-in and were NOT executed here (they need docker and ~30-60 min each).
 
 Running the Arch path by hand also turned up a separate hard blocker that this
 issue did not predict — vendored zenoh-pico fails to compile on gcc >= 14 —
-filed as issue 0380.
+filed as issue 0383.
