@@ -105,6 +105,26 @@ XML → baked profile in `session.cpp`; single-quoted XML attributes keep the bl
 See `0377-*`. (2026-07-31; renumbered twice on 2026-08-01, 0367 → 0372 → 0377 — commits
 reference it as `#367`)
 
+**#380** (filed as #370; renumbered — id collision with parallel sessions) — Model regeneration destroys hand-authored execution dims: the ws-realtime committed
+SystemModels carried phase-296 W5 sched/placement dims (`class: real_time`, zephyr `deadline_us`,
+nuttx sporadic, threadx preempt/time-slice, per-platform `core`) that exist NOWHERE in the resolver
+inputs; two "delete + re-resolve" commits (#320 2026-07-28, #361-gap 2026-07-31) silently stripped
+them, and ~17 realtime e2e tests lost their subject. Dims restored from git history; the class
+conflict (content-addressed regeneration vs hand-authored model SSoT) needs a decision: give the
+dims a resolver input, or an overlay file, or a sync narrowing guard — plus a bake-time gate. See
+`0380-*`. (2026-08-01)
+
+**#381** (filed as #371; renumbered) — Five plan/launch tests still assert the pre-296 launch-XML parse path, latently broken
+since phase-296 but skipped on every host via `play_launch_parser_available()` gates — the first
+product-provisioned host (which installs the parser) ran them for the first time and all failed.
+Re-point at the post-296 seams (committed models for discovery, resolver-level depth cap), drop the
+dead gates, sweep the class. See `0381-*`. (2026-08-01)
+
+**#382** (filed as #372; renumbered) — The resolver serializes `structure.nodes` alphabetized, so entry construct order no
+longer follows launch declaration order (typed cpp multi-node TU builds listener before talker).
+Preserve declaration order in the emitted mapping + a resolver-level order test. Fix collides with
+#380's regeneration hazard — sequence them. See `0382-*`. (2026-08-01)
+
 **#368** — `just setup all` simulated end-to-end on a clean Ubuntu 22.04 host: 7 of 18 modules fail,
 nearly all on prereqs the RFC-0014 index model was meant to absorb. Biggest: ONE sudo `apt-packages`
 step ordered first in the workspace module aborts its own sudo-less installers (ninja/make/targets/
