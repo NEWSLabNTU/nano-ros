@@ -2,6 +2,7 @@
 id: 386
 title: "The `--locked` cargo shim breaks the book's first node on a fresh clone — leaf `Cargo.lock` is gitignored, so cargo may not create it"
 status: resolved
+resolved_in: 99df7c7fa + dfa306c70
 type: bug
 area: build
 related: [issue-0359, issue-0378, issue-0373, issue-0384, rfc-0048]
@@ -112,3 +113,17 @@ Arch Linux, checkout at `c0aad42d8` (after the shim landed in `d3adb8df6` /
 The lock's content is *not* the problem: after one permissive build the tree is
 consistent and `--locked` succeeds; the failure is that the first build in a
 fresh tree is never permitted to happen.
+
+## Verified (2026-08-02)
+
+Fixed by `99df7c7fa` (shim skips `--locked` when the target's `Cargo.lock` is
+git-ignored) + `dfa306c70` (states the tracked-vs-ignored policy).
+
+Re-ran the fresh-clone repro — deleted `examples/native/rust/talker/Cargo.lock`
+and built in an activated shell with `NROS_CARGO_FLAGS=--locked` still exported:
+the build completes and the lock is created. Direction 1 from the list below is
+what landed.
+
+Checked the invariant did not get weakened in the process: `packages/cli` has a
+TRACKED lock, `git check-ignore` says so, and the shim still injects `--locked`
+there. So "locks change only on purpose" still holds everywhere it has meaning.

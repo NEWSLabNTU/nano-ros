@@ -2,6 +2,7 @@
 id: 385
 title: "`nros setup` cannot unpack a zstd prebuilt dist on a host without `zstd`, and reports only `unpack prebuilt archive`"
 status: resolved
+resolved_in: c5a0b79c2
 type: bug
 area: build
 related: [issue-0368, rfc-0014, rfc-0062, phase-327]
@@ -85,3 +86,26 @@ Ubuntu 22.04.5 distrobox on an Arch host, checkout `c0aad42d8`, box store at
 `$NROS_HOME=~/.nros-ubuntu`. The zenoh RMW path provisioned cleanly beforehand
 because zenohd is source-built on this host (issue 0374) and never touches the
 unpack path — so the gap only appears on the first PREBUILT dist a host pulls.
+
+## Verified (2026-08-02)
+
+Re-ran the exact failing command on an Ubuntu 22.04 box with `zstd` removed
+again, using a CLI built from `c5a0b79c2`:
+
+```
+$ nros setup native --rmw cyclonedds
+  cyclonedds             prebuilt 0.10.5-nros1 (dist linux-x86_64)
+Error: install cyclonedds 0.10.5-nros1
+Caused by:
+    this prebuilt dist is zstd-compressed, but the `zstd` binary is not on PATH
+    — `tar` cannot unpack a `.tar.zst` without it. Install it:
+      sudo apt-get install -y zstd
+    (or run `nros setup --system`)
+```
+
+Both halves of the issue are addressed: the remedy names the package for the
+DETECTED package manager (apt here), and the probe fires **before the
+download** — the store directory did not exist at all afterwards, where the
+original failure left a 1.0 MB `.download` behind. `nros setup --system` now
+lists zstd with its `why` text, and reinstalling it let the same command
+provision cleanly.
