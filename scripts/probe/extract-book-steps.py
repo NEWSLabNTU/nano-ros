@@ -27,14 +27,20 @@ from pathlib import Path
 
 FENCE_RE = re.compile(r"^```+\s*(\S.*)?$")
 PROBE_TOKEN_RE = re.compile(r"(?:^|\s)probe=(\d+)(?:\s|$)")
+# issue 0373 — a step can be distro-specific (the host-prereq block is
+# apt/dnf/pacman). `distro=arch` (or a comma list) restricts a block to those
+# hosts; an untagged block applies everywhere. Two blocks may then share a
+# probe order, as long as no two of them survive the same --distro filter.
+DISTRO_TOKEN_RE = re.compile(r"(?:^|\s)distro=([A-Za-z0-9_,+-]+)(?:\s|$)")
 
 
 def extract_blocks(path: Path):
-    """Yield (order, lineno, body) for each probe-tagged fence in *path*."""
+    """Yield (order, lineno, body, distros) for each probe-tagged fence."""
     blocks = []
     in_fence = False
     order = None
     start = None
+    distros = None
     body = []
     for lineno, line in enumerate(path.read_text().splitlines(), 1):
         m = FENCE_RE.match(line)
@@ -45,6 +51,10 @@ def extract_blocks(path: Path):
                     in_fence = True
                     order = int(tok.group(1))
                     start = lineno
+                    dtok = DISTRO_TOKEN_RE.search(m.group(1))
+                    distros = (
+                        set(dtok.group(1).split(",")) if dtok else None
+                    )
                     body = []
                 elif line.startswith("```"):
                     # untagged fence — skip to its close so an inner
@@ -57,7 +67,7 @@ def extract_blocks(path: Path):
                 in_fence = False
         else:
             if line.startswith("```"):
-                blocks.append((order, start, "\n".join(body)))
+                blocks.append((order, start, "\n".join(body), distros))
                 in_fence = False
             else:
                 body.append(line)
@@ -71,20 +81,45 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--subst", action="append", default=[],
                     help="LITERAL:::REPLACEMENT, must match exactly once")
+    ap.add_argument("--distro", default="debian",
+                    help="host distro the steps are extracted FOR; blocks tagged "
+                         "distro=<other> are skipped (default: debian)")
     ap.add_argument("files", nargs="+")
     args = ap.parse_args()
 
     steps = []  # (order, file, lineno, body)
+    skipped = {}  # order -> distros it IS tagged for, when filtered out
     for f in args.files:
         p = Path(f)
         if not p.is_file():
             sys.exit(f"probe extract: no such chapter: {f}")
-        for order, lineno, body in extract_blocks(p):
+        for order, lineno, body, distros in extract_blocks(p):
+            if distros is not None and args.distro not in distros:
+                # Remember that this ORDER exists for some distro, so a
+                # requested distro nobody tagged fails loudly below instead of
+                # silently dropping the step (a probe missing its host-prereq
+                # step still "passes" on an image that happens to ship the
+                # packages — the exact false green this filter could create).
+                skipped.setdefault(order, set()).update(distros)
+                continue
             steps.append((order, f, lineno, body))
 
     if not steps:
-        sys.exit("probe extract: no probe=NN blocks found — book tags removed?")
+        sys.exit(
+            f"probe extract: no probe=NN blocks for distro '{args.distro}' — "
+            "book tags removed, or every block is tagged for another distro?"
+        )
     orders = [s[0] for s in steps]
+    dropped = sorted(o for o in skipped if o not in orders)
+    if dropped:
+        detail = "; ".join(
+            f"step {o} exists only for {'/'.join(sorted(skipped[o]))}" for o in dropped
+        )
+        sys.exit(
+            f"probe extract: no block for distro '{args.distro}' at "
+            f"step(s) {dropped} — {detail}. Tag a block for this distro in the "
+            "book, or probe one of the distros above."
+        )
     dupes = {o for o in orders if orders.count(o) > 1}
     if dupes:
         sys.exit(f"probe extract: duplicate probe order(s): {sorted(dupes)}")

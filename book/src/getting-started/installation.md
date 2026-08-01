@@ -6,17 +6,48 @@ and built in-tree via `add_subdirectory(nano-ros)`. There is no binary
 tarball, no system-wide install step, no `find_package(NanoRos)`, and
 no prebuilt `nros` CLI.
 
-## Host prerequisites (Ubuntu/Debian)
+## Host prerequisites
 
 Everything toolchain-shaped — rustup, cross-compilers, emulators, the
 zenoh router — is provisioned by the steps below. The host itself only
-needs the basics:
+needs the basics: git, curl, a C toolchain, `pkg-config`, python3.
 
-```sh probe=10
+**Debian / Ubuntu:**
+
+```sh probe=10 distro=debian
 sudo apt-get update
 sudo apt-get install -y git curl ca-certificates build-essential \
     pkg-config python3
 ```
+
+**Fedora / RHEL:**
+
+```sh probe=10 distro=fedora
+sudo dnf install -y git curl ca-certificates gcc gcc-c++ make \
+    pkgconf-pkg-config python3
+```
+
+**Arch:**
+
+```sh probe=10 distro=arch
+sudo pacman -S --needed git curl base-devel python
+```
+
+(`base-devel` is a package *group*, and it covers `pkg-config`;
+`ca-certificates` ships with the base system.)
+
+**macOS:** `xcode-select --install`, plus `brew install pkg-config`.
+
+These few packages are the only ones you install by hand. Per-board OS
+dependencies later on are declared in the index and printed for *your*
+package manager — apt, dnf, pacman or brew — by:
+
+```sh
+nros setup --system          # what is missing + the exact install command
+```
+
+That command needs the `nros` CLI, which is why the basics above come
+first: they are what it takes to clone the repo and build the CLI.
 
 ## The whole flow, end to end
 
@@ -54,6 +85,36 @@ the [Rust-only consumers](#rust-only-consumers) path dependency. See
 > See [build-as-subdirectory.md](build-as-subdirectory.md) for the
 > canonical user incantation (4-line `CMakeLists.txt`). This page
 > walks the surrounding workspace + per-target setup choices.
+
+## Do I need ROS 2 installed?
+
+**For the getting-started path, no.** Verified on a host with no ROS 2 at
+all: `nros sync` generates the message bindings from the interface
+sources vendored in `packages/cli/interfaces/`, and the Rust/C/C++ first
+node builds and publishes against the in-tree `zenohd`.
+
+| Task | Needs a ROS 2 install? |
+|---|---|
+| `nros setup`, `nros sync`, message codegen | **No** — interface sources are vendored |
+| First Node (Rust / C / C++) on Linux | **No** |
+| Embedded targets (Zephyr, FreeRTOS, NuttX, ThreadX) | **No** |
+| Cyclone DDS backend | **No** — `idlc` comes from the index dist, not ROS |
+| Verifying with `ros2 topic echo` / `ros2 node list` | **Yes** |
+| Interop tests against `rmw_zenoh_cpp` / a real ROS 2 graph | **Yes** |
+| Contributor lanes that bridge to ROS 2 (`just test-all` interop cells) | **Yes** |
+
+When you source `activate.sh` without ROS 2 present it says so:
+
+```
+activate.sh: /opt/ros/humble/setup.bash not found — ROS-dependent recipes
+  will fail (interop tests, `ros2` CLI verification). The setup, codegen
+  and first-node flows do not need it.
+```
+
+That line is informational on a getting-started host. If you *do* want
+the ROS 2 side and your distro has no Humble packages (Arch, for
+example), a container is the usual answer — nano-ros itself stays on the
+host.
 
 ## Pattern A: nano-ros lives inside your ROS 2 workspace
 
@@ -151,6 +212,12 @@ source, without fetching anything.
 nano-ros is a **source distribution** — there is no prebuilt `nros`
 download. One front door from a fresh checkout (`just` is NOT a
 prereq; rustup is installed on demand):
+
+> Sourcing `activate.sh` on a host without `just` prints one line about
+> RTOS SDK path defaults (`FREERTOS_DIR`, `NUTTX_DIR`, `IDF_PATH`, …)
+> not being loaded. Harmless here — nothing in the native flow reads
+> them. Embedded builds and every `just` recipe do need it:
+> `cargo install just`.
 
 ```sh
 git clone https://github.com/NEWSLabNTU/nano-ros.git

@@ -44,6 +44,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#380** — the book's first node cannot build on gcc >= 14: vendored zenoh-pico's
+`src/system/unix/network.c` calls `_z_connect_serial` with no declaration (missing
+`common/serial.h` include), fatal since gcc 14 / clang 15. Every CI image is Ubuntu with gcc 11/13,
+so no lane sees it; Arch/Fedora users hit it on their FIRST build. Fork fix committed
+(`61ed48f`, branch `fix/unix-network-serial-include`) but NOT pushed — maintainer pushes, then the
+pointer bumps. See `0380-*`. (2026-08-01)
+
 **#379** — no lane runs clippy on the `packages/cli` sub-workspace (every clippy call targets the
 ROOT workspace), so ~30 lints have accumulated there under rust 1.97 — `nros-msg-to-idl`,
 `rosidl-codegen`, incl. a few `unwrap`-after-`is_some` worth a real look. Same silent-lane class as
@@ -73,12 +80,6 @@ toolchains per platform per RMW" for exactly this board. **Narrowed 2026-08-01:*
 announced up front by `nros setup` and the book no longer promises unconditional prebuilts; what
 remains is out-of-repo — publish `1.7.2-nros2` assets on `nano-ros-sdk` so the dist rows return.
 See `0374-*`. (2026-08-01)
-
-**#373** (filed as #372; renumbered) — the book's install path is exercised only on `ubuntu:24.04` +
-bash (`PROBE_IMAGE` default, issue 0204), so an Arch run found three defects the probe cannot see:
-apt-only prereq block with no per-distro mapping, `just` a de-facto prereq via `sdk-env.sh` though
-the page says it is not, and an unactionable `/opt/ros/humble` warning on distros with no Humble
-packages. See `0373-*`. (2026-08-01)
 
 **#371** [severity **high**] — native_sim cyclone app abort()s at a near-deterministic 19–21 s
 joining the full Autoware graph during the safety-island demo's scenario init (7/7 on 2026-08-01;

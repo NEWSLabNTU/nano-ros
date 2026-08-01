@@ -60,8 +60,20 @@ _nros_sdk_env_fish_quote() {
 
 _nros_sdk_env_apply() {
     local var
+    # issue 0373 F2 — the defaults live in `just/sdk-env.just` and are read by
+    # evaluating them, so no `just` means no defaults. That is fine for the
+    # book's native flow (nothing there reads FREERTOS_DIR & friends), and it
+    # is NOT fine for an RTOS build, which fails much later with an unset-path
+    # error. Say which of the two the reader is in, and name the remedy —
+    # the bare "SDK defaults not loaded" left a first-time Arch user unable to
+    # tell whether their activation had just half-failed.
     if ! command -v just >/dev/null 2>&1; then
-        echo "nano-ros sdk-env: just not found; SDK defaults not loaded" >&2
+        if [ -z "${NROS_QUIET_ACTIVATE:-}" ]; then
+            echo "nano-ros sdk-env: \`just\` not found — RTOS SDK path defaults" \
+                "(FREERTOS_DIR, NUTTX_DIR, THREADX_DIR, IDF_PATH, …) not loaded." >&2
+            echo "  Harmless for the native/host flow. Needed for embedded builds" \
+                "and every \`just\` recipe: cargo install just" >&2
+        fi
         return 0
     fi
     for var in "${_nros_sdk_env_vars[@]}"; do

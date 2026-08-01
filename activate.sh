@@ -79,7 +79,14 @@ if [ -f /opt/ros/humble/setup.bash ]; then
     # shellcheck disable=SC1091
     . /opt/ros/humble/setup.bash
 else
-    echo "activate.sh: /opt/ros/humble/setup.bash not found — ROS-dependent recipes will fail" >&2
+    # issue 0373 F3 — the bare "ROS-dependent recipes will fail" left a
+    # first-time reader unable to tell whether their setup was broken. It is
+    # not: setup, `nros sync`, codegen and the first-node flows all work
+    # without ROS 2 (interface sources are vendored in packages/cli/interfaces/,
+    # verified end-to-end on a ROS-less host). Name what actually needs it.
+    echo "activate.sh: /opt/ros/humble/setup.bash not found — ROS-dependent recipes will fail" \
+        "(interop tests, \`ros2\` CLI verification). The setup, codegen and first-node" \
+        "flows do not need it — see book/src/getting-started/installation.md" >&2
 fi
 
 # Issues 0359/0378 — project-wide cargo args, injected by a PATH shim.
