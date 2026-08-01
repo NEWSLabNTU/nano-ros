@@ -92,6 +92,18 @@ fine via pip `--user`; `setup-clang-format` needs pip (absent on stock
 python); `just format` needs GNU `parallel` (undeclared, uncheck-ed);
 `just test-all` needs `cargo-nextest` (undeclared, unchecked).
 
+**F8 — `just ci-matrix` gates fixtures twice, and the two gates disagree.**
+`ci-matrix` = `_lane-gate tier2` (content-based freshness over exactly the
+tier-2 coordinates — the right check) followed by `test-all`, whose
+`_require-fixtures` checks only the `target/nextest/.fixtures-built` stamp
+that the monolithic tier-3 `build-test-fixtures` writes. A tier-2 host that
+built its fixture set per-family (as the tier ladder intends) passes the
+lane gate and then dies on the stamp, with a hint telling it to run the
+tier-3 build it deliberately avoided. *Revision: `ci-matrix` should invoke
+`test-all` with the stamp check waived (its own gate already proved the
+stronger property), or `_lane-gate` should write a tier-scoped stamp that
+`_require-fixtures` accepts.*
+
 ## The consolidated apt line this host actually needed
 
 ```
