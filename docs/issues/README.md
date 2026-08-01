@@ -75,7 +75,7 @@ the same tree passed 2× on 2026-07-31 when one sim node was down). mrm_handler 
 operate/cancel (hot service path) right before death; unnamed cyclone pthread; gdb masks it;
 strace -k unwinds only to the zephyr print shim. Isolation: island alone / single-peer feed /
 availability flap / idle sim / EKF-odometry all survive — only the full graph + scenario churn
-kills it. See `0371-*`. (2026-08-01)
+kills it. TRIGGER CONFIRMED by A/B: shadowing autoware_manual_lane_change_handler out of the sim flips 7/7 aborts to VERDICT PASS. See `0371-*`. (2026-08-01)
 
 **#370** (filed as #368; renumbered — fifth id collision between parallel sessions) — zephyr fixture family broken after `just setup-cli` on current main: `nros codegen entry`
 rejects ws-realtime-c's committed system model with "places no nodes on board `zephyr`" — the

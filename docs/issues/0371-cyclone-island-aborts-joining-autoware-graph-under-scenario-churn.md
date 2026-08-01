@@ -56,6 +56,23 @@ Reproduces under `strace -f -k` (stacks unwind only to zephyr's
 thread stack, invisible to the strace unwinder). No core: apport ignores
 non-package binaries.
 
+## Trigger CONFIRMED (2026-08-01): `autoware_manual_lane_change_handler`
+
+A/B on the live stack: overlay-shadowing the node out of
+`tier4_planning_launch` (demo commit; same mechanism as the MRM shadow)
+turns 7/7 deterministic aborts into a clean `VERDICT: PASS` on the first
+try — with the island built from the pinned submodule. This also explains
+the 07-31/08-01 flip: on 07-31 the node happened to crash at startup
+(apport 20:58, sim 32/33), so the passing runs never saw its endpoints.
+
+The node's surface (launch remaps): subscribes the lanelet `vector_map`
+(multi-MB transient_local) and `/localization/kinematic_state`; exposes the
+manual-lane-change services/state used by its RViz plugin. Which of its
+endpoints kills the island's cyclone session is the open question — the
+island subscribes neither of its inputs, so suspicion falls on its
+service/TL endpoint announcements interacting with the island's SEDP
+handling at scale.
+
 ## Next steps
 
 - Get the abort site: wrap zephyr's `abort()` (link-order stub printing a
