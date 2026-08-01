@@ -94,7 +94,7 @@ rebuilt CLI (ros-launch-resolve line, RFC-0060) and the committed model disagree
 execution.deploy targets, so `build-test-fixtures` fails and tier-1 ci can't reach fixture
 freshness. Same shape as archived #0361. See `0370-*`. (2026-08-01)
 
-**#377** (filed as #367; renumbered twice — sixth and seventh id collisions between parallel sessions) — `CONFIG_NROS_CYCLONE_CONFIG_XML` is declared in `zephyr/Kconfig` but consumed NOWHERE:
+Recently resolved: **#377** (filed as #367; renumbered twice — sixth and seventh id collisions between parallel sessions) — RESOLVED (verified 2026-08-02): already fixed in main by `c01eb9a8c`; the issue was left open only by the renumber churn. `session_create` now selects env `CYCLONEDDS_URI` → non-empty `CONFIG_NROS_CYCLONE_CONFIG_XML` → baked profile, and the Kconfig help carries the single-quoted-attribute + carry-over-Sizing/Threads notes. Original finding: `CONFIG_NROS_CYCLONE_CONFIG_XML` was declared in `zephyr/Kconfig` but consumed NOWHERE:
 `session_create` picks env `CYCLONEDDS_URI` or the hard-coded `kEmbeddedCycloneConfig` only — and on
 native_sim picolibc `getenv` sees no host environment, so the baked profile (multicast off, index
 scan 0..20, no tracing) is effectively immutable on the platform that most needs tuning. Found

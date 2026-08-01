@@ -1,10 +1,23 @@
 ---
 id: 377
 title: CONFIG_NROS_CYCLONE_CONFIG_XML is declared but consumed nowhere
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [rfc-0054]
+resolved_in: c01eb9a8c
+---
+
+## Resolution (verified 2026-08-02)
+
+Already fixed in main by `c01eb9a8c` ("fix(#367): wire
+CONFIG_NROS_CYCLONE_CONFIG_XML into cyclone config selection") — this issue was
+left `open` only by the 0367→0372→0377 renumber churn documented below.
+`session_create()` in `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/session.cpp`
+now selects `CYCLONEDDS_URI` env → non-empty `CONFIG_NROS_CYCLONE_CONFIG_XML`
+→ `kEmbeddedCycloneConfig`, and `zephyr/Kconfig`'s help carries the
+single-quoted-attribute note plus the "blob REPLACES the baked profile —
+carry over Sizing/Threads" caveat. Nothing left to do; closing.
 ---
 
 # 0377 — `CONFIG_NROS_CYCLONE_CONFIG_XML` is declared but consumed nowhere
