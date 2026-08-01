@@ -9,6 +9,18 @@ related: [rfc-0014, issue-0204, issue-0368, issue-0373]
 
 # `nros setup native` source-builds zenohd — the book promises prebuilt
 
+> **UPDATE 2026-08-01 — the honesty half landed; the issue now tracks only the
+> missing asset.** Directions 2, 3 and 4 below are done: `nros setup` announces
+> source builds up front on both the board and the `--tool` path, and
+> installation.md no longer promises unconditional prebuilts. What is still
+> open is direction 1, and it is **not fixable in this repository** — it needs
+> `1.7.2-nros2` release assets published on `NEWSLabNTU/nano-ros-sdk` (the
+> build script `ci/nano-ros-sdk/scripts/build-zenohd.sh` already carries the
+> required `--features zenoh/transport_serial`), after which `[tool.zenohd]`
+> gets its `dist.<host>` rows back and the default board stops compiling zenoh
+> on every user's machine. Until then the wait is announced rather than
+> removed.
+
 ## Summary
 
 installation.md:123-127 tells the first-time user:
@@ -56,16 +68,21 @@ convey minutes-and-hundreds-of-MB.
 
 Pick one, they are not exclusive:
 
-1. **Seed the asset** — `ci/nano-ros-sdk/scripts/build-zenohd.sh` already carries
+1. **Seed the asset** — STILL OPEN, out-of-repo.
+   `ci/nano-ros-sdk/scripts/build-zenohd.sh` already carries
    the `transport_serial` flag per the index comment; publishing the
    `1.7.2-nros2` release assets restores `dist.linux-x86_64` and makes the doc
    claim true for the default board.
-2. **Make setup honest up front** — when resolution picks a source recipe, print
-   the fallback reason plus a rough time/disk estimate before starting, not only
-   under `--dry-run`.
-3. **Reword installation.md** — "prebuilt where available, source-built
-   otherwise", and name zenohd as today's exception so the first-run wait is
-   expected rather than alarming.
-4. Consider reusing the workspace's pinned toolchain for source recipes, or at
-   least declaring the extra toolchain download, so a `nros setup` on a metered
+2. **Make setup honest up front** — DONE. `nros setup` resolves the whole plan
+   first and prints a `BUILDING FROM SOURCE: <names>` heads-up with the time and
+   disk cost before the first fetch, on the board path and the `--tool` path
+   alike (`warn_source_builds` / `source_build_names` in `cmd/setup.rs`,
+   unit-tested).
+3. **Reword installation.md** — DONE. The page now says prebuilt *where the
+   index has a binary for your host, source-built otherwise*, shows the
+   heads-up, and names zenohd as today's exception with the ~800 MB figure.
+4. PARTLY DONE — the heads-up states that a recipe pinning its own Rust
+   toolchain makes rustup fetch it. Still worth considering: reusing the
+   workspace's pinned toolchain for source recipes instead of merely declaring
+   the extra download, so a `nros setup` on a metered
    or air-gapped host is predictable.

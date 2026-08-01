@@ -121,11 +121,30 @@ walkthrough.
 ## Provision your toolchain with `nros setup`
 
 `nros setup` is the single command that prepares a machine to build
-nano-ros for a given board. It ships **prebuilt toolchains per platform
-per RMW** — the cross-compiler, emulator, RMW host daemon, and any SDK
-sources a board needs are fetched from a pinned index and placed in a
-shared store (`~/.nros/sdk`). You do **not** install cross-toolchains by
-hand, and you do not need ROS 2 on the machine.
+nano-ros for a given board. The cross-compiler, emulator, RMW host
+daemon, and any SDK sources a board needs are resolved from a pinned
+index and placed in a shared store (`~/.nros/sdk`). You do **not**
+install cross-toolchains by hand, and you do not need ROS 2 on the
+machine.
+
+Packages are **prebuilt where the index has a binary for your host, and
+built from source otherwise**. Source builds are normal, not an error —
+but they cost real time and disk, so `nros setup` announces them before
+it starts:
+
+```
+nros setup: 1 package(s) have no prebuilt for linux-x86_64 — BUILDING FROM SOURCE: zenohd
+  Expect minutes (tens of minutes for a large recipe) and hundreds of MB under …
+```
+
+Today `zenohd` is the notable one: the nano-ros rebuild
+(`1.7.2-nros2`, which adds zenoh's `transport_serial` feature) has no
+published binary yet, so **every host source-builds it** — including on
+the `native` board this page starts with. Budget several minutes and
+~800 MB the first time; the zenoh checkout also pins its own Rust
+toolchain, which rustup will fetch alongside the one nano-ros pins.
+`nros setup <board> --dry-run` prints the whole plan, prebuilt vs
+source, without fetching anything.
 
 ### 1. Get the `nros` CLI onto PATH
 

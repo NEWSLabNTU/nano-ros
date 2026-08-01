@@ -63,8 +63,11 @@ sessions, let alone two services. See `0376-*`. (2026-08-01)
 
 **#374** (filed as #373; renumbered) — `nros setup native --rmw zenoh` source-builds zenohd
 (`[tool.zenohd]` has no `dist.linux-x86_64`; assets never seeded) and pulls a SECOND rust toolchain
-(`1.85.0`, zenoh's own pin) for 792 MB of store — while installation.md:123 promises "ships prebuilt
-toolchains per platform per RMW" for exactly this board. See `0374-*`. (2026-08-01)
+(`1.85.0`, zenoh's own pin) for 792 MB of store — while installation.md:123 promised "ships prebuilt
+toolchains per platform per RMW" for exactly this board. **Narrowed 2026-08-01:** the wait is now
+announced up front by `nros setup` and the book no longer promises unconditional prebuilts; what
+remains is out-of-repo — publish `1.7.2-nros2` assets on `nano-ros-sdk` so the dist rows return.
+See `0374-*`. (2026-08-01)
 
 **#373** (filed as #372; renumbered) — the book's install path is exercised only on `ubuntu:24.04` +
 bash (`PROBE_IMAGE` default, issue 0204), so an Arch run found three defects the probe cannot see:

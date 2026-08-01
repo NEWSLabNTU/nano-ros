@@ -228,6 +228,13 @@ pub fn run(args: Args) -> Result<()> {
     // CMakePreset's environment.PATH (so the cross-compiler resolves).
     let mut bin_dirs: Vec<PathBuf> = Vec::new();
 
+    // issue 0374 — resolve the whole plan first so the source builds can be
+    // announced together, before the first fetch. The loop below prints and
+    // installs one package at a time, so without this pre-pass the user learns
+    // about a long build only as it starts.
+    let source_builds = source_build_names(&index, &packages, &root, &host);
+    warn_source_builds(&source_builds, &host);
+
     for name in &packages {
         // `[tool.*]` packages install into the shared store; `[source.*]` are
         // provisioned into their index-declared `dest` (Phase 195.B);
@@ -613,6 +620,11 @@ fn install_single_tool(
         describe(&action, &tool.version, &host),
         prefix.display()
     );
+    // issue 0374 — same heads-up as the board path; a single `--tool` install
+    // hits the identical source-build cost (sccache, play_launch_parser, …).
+    if matches!(action, InstallAction::Source { .. }) {
+        warn_source_builds(&[name], &host);
+    }
     if dry_run {
         eprintln!("(--dry-run: nothing installed)");
         return Ok(());
@@ -869,6 +881,64 @@ fn describe_source(
         src.version,
         src.dest.as_deref().unwrap_or("-")
     )
+}
+
+/// Names of the `[tool.*]` packages in `packages` that this host will BUILD
+/// FROM SOURCE — no `dist.<host>` row in the index, and not already installed.
+/// `[source.*]` submodule packages are excluded: they are a git checkout, not a
+/// compile. Split out of the board path so the selection is unit-testable
+/// (issue 0374).
+fn source_build_names<'p>(
+    index: &SdkIndex,
+    packages: &[&'p str],
+    root: &Path,
+    host: &str,
+) -> Vec<&'p str> {
+    packages
+        .iter()
+        .filter(|name| {
+            index.tool.get(**name).is_some_and(|tool| {
+                let prefix = tool_prefix(root, name, &tool.version);
+                matches!(
+                    plan_install(tool, host, &prefix),
+                    InstallAction::Source { .. }
+                )
+            })
+        })
+        .copied()
+        .collect()
+}
+
+/// Heads-up printed BEFORE any fetching starts when the index has no prebuilt
+/// for this host and `nros setup` will therefore build the tool from source.
+///
+/// issue 0374 — installation.md promises "prebuilt toolchains per platform per
+/// RMW", and for the book's own headline board that is not what happens:
+/// `[tool.zenohd]` carries no `dist.<host>` row, so `nros setup native` cargo-
+/// builds zenoh 1.7.2. On a first run that took minutes, pulled a SECOND rust
+/// toolchain (the zenoh checkout pins its own), and left 792 MB in the store —
+/// none of it announced. The per-package plan line ("source build … (no
+/// prebuilt for …)") is accurate but reads as a routing detail rather than as
+/// "this will take a while", and a user who did not think to pass `--dry-run`
+/// meets it as an unexplained stall. Say the cost in words, once, up front.
+fn warn_source_builds(names: &[&str], host: &str) {
+    if names.is_empty() {
+        return;
+    }
+    eprintln!(
+        "nros setup: {} package(s) have no prebuilt for {host} — BUILDING FROM SOURCE: {}",
+        names.len(),
+        names.join(", ")
+    );
+    eprintln!(
+        "  Expect minutes (tens of minutes for a large recipe) and hundreds of MB under {} — \
+         the source checkout and its build dir stay in the store.",
+        store_root().display()
+    );
+    eprintln!(
+        "  A recipe that pins its own Rust toolchain also makes rustup fetch that toolchain."
+    );
+    eprintln!("  `nros setup … --dry-run` prints the full plan and fetches nothing.");
 }
 
 /// One-line description of the planned action (mirrors `disposition`, but for an
@@ -1636,5 +1706,45 @@ mod tests {
         assert!(disposition(&idx, "freertos-kernel", "linux-x86_64").starts_with("source "));
         assert!(disposition(&idx, "nv-spe-fsp", "linux-x86_64").starts_with("license-gated"));
         assert!(disposition(&idx, "openocd", "linux-x86_64").starts_with("NOT in index"));
+    }
+
+    /// issue 0374 — the up-front "BUILDING FROM SOURCE" heads-up must name
+    /// exactly the tools this host compiles: a tool with a dist for the host is
+    /// prebuilt, one without falls back to source, and `[source.*]` submodule
+    /// packages are a checkout rather than a build. Getting this wrong in
+    /// either direction is bad: a missed name is the unannounced multi-minute
+    /// stall the issue was filed for, a spurious one trains users to ignore the
+    /// warning.
+    #[test]
+    fn source_build_names_lists_only_host_source_builds() {
+        // qemu: dist for linux + a source fallback — prebuilt on linux, built
+        // on any other host. zenohd: source only, built everywhere (the real
+        // [tool.zenohd] shape that prompted this issue).
+        let idx = SdkIndex::parse(
+            "[tool.qemu]\nversion=\"11.0\"\ndist.linux-x86_64={url=\"u\",sha256=\"h\"}\n\
+             [tool.qemu.source]\ngit=\"g\"\nref=\"r\"\n\
+             [tool.zenohd]\nversion=\"1.7.2\"\n[tool.zenohd.source]\ngit=\"g\"\nref=\"r\"\n\
+             [source.mbedtls]\nversion=\"3.x\"\n",
+        )
+        .unwrap();
+        // An empty store, so nothing resolves to `Present`.
+        let root = std::env::temp_dir().join("nros-source-build-names-test");
+
+        let pkgs = ["qemu", "zenohd", "mbedtls"];
+        assert_eq!(
+            source_build_names(&idx, &pkgs, &root, "linux-x86_64"),
+            vec!["zenohd"],
+            "only the dist-less [tool.*] entry is a source build on this host"
+        );
+
+        // Same index, a host the prebuilt does not cover: qemu joins the list.
+        assert_eq!(
+            source_build_names(&idx, &pkgs, &root, "macos-arm64"),
+            vec!["qemu", "zenohd"]
+        );
+
+        // Nothing to build => nothing to warn about (warn_source_builds is a
+        // no-op on an empty slice).
+        assert!(source_build_names(&idx, &["mbedtls"], &root, "linux-x86_64").is_empty());
     }
 }
