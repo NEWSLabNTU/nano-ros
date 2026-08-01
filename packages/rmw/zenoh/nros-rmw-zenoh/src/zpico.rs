@@ -1038,7 +1038,10 @@ impl<'a> Publisher<'a> {
     }
 
     /// The owning session handle (for the shim's direct `publish_streamed`
-    /// call, which bypasses this wrapper).
+    /// call, which bypasses this wrapper). Same cfg as that sole caller —
+    /// `safety-e2e` builds take the staging-buffer path and would otherwise
+    /// trip `-D dead_code`.
+    #[cfg(not(feature = "safety-e2e"))]
     pub(crate) fn session(&self) -> *mut zpico_session_t {
         self.session
     }
