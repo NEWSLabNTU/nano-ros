@@ -1301,7 +1301,7 @@ fn codegen_workspace_pkg(
     verbose: bool,
 ) -> Result<()> {
     let out_dir = build_root;
-    std::fs::create_dir_all(&out_dir)
+    std::fs::create_dir_all(out_dir)
         .wrap_err_with(|| format!("sync: mkdir {}", out_dir.display()))?;
     if verbose {
         println!(
@@ -1319,7 +1319,7 @@ fn codegen_workspace_pkg(
     let msg_resolve = ament_msg_resolver();
     rosidl_bindgen::generator::generate_package(
         &package,
-        &out_dir,
+        out_dir,
         edition,
         &resolver,
         &msg_resolve,
@@ -1371,7 +1371,7 @@ fn codegen_ament_deps_for(
         };
         // Codegen the AMENT pkg.
         let out_dir = build_root;
-        std::fs::create_dir_all(&out_dir)?;
+        std::fs::create_dir_all(out_dir)?;
         if verbose {
             println!(
                 "sync: codegen AMENT pkg {} → {}",
@@ -1385,7 +1385,7 @@ fn codegen_ament_deps_for(
         let msg_resolve = ament_msg_resolver();
         rosidl_bindgen::generator::generate_package(
             &amented,
-            &out_dir,
+            out_dir,
             edition,
             &resolver,
             &msg_resolve,
@@ -1413,10 +1413,11 @@ fn has_pkg_subdir(dir: &Path) -> bool {
         return false;
     };
     for e in entries.flatten() {
-        if let Ok(t) = e.file_type() {
-            if t.is_dir() && e.path().join("package.xml").is_file() {
-                return true;
-            }
+        if let Ok(t) = e.file_type()
+            && t.is_dir()
+            && e.path().join("package.xml").is_file()
+        {
+            return true;
         }
     }
     false
@@ -1519,9 +1520,9 @@ fn extract_pkg_name(body: &str) -> Option<String> {
 
 /// Phase 212.M-F.21 — walk each Rust consumer's `Cargo.toml [dependencies]`
 /// + sibling `[dev-dependencies]` / `[build-dependencies]` tables for
-/// `path = "..."` entries that resolve (by directory) to another `WsPkg`
-/// in `scan`. For each such hit, union the target pkg's `deps` into the
-/// consumer's `deps`. Idempotent — re-running deduplicates.
+///   `path = "..."` entries that resolve (by directory) to another `WsPkg`
+///   in `scan`. For each such hit, union the target pkg's `deps` into the
+///   consumer's `deps`. Idempotent — re-running deduplicates.
 ///
 /// Concretely unblocks the Entry-pkg → Component-pkg path: the Entry
 /// pkg's `package.xml` typically has no `<depend>` rows but its
@@ -1529,7 +1530,7 @@ fn extract_pkg_name(body: &str) -> Option<String> {
 /// The Component pkg's `package.xml` lists `<depend>std_msgs</depend>`
 /// etc. — those msg deps need to land in the Entry pkg's patch table
 /// (the patch authority cargo invokes).
-fn augment_rust_consumer_deps_via_path_deps(scan: &mut Vec<WsPkg>) -> Result<()> {
+fn augment_rust_consumer_deps_via_path_deps(scan: &mut [WsPkg]) -> Result<()> {
     // Index by canonical directory so we can resolve path-dep targets.
     let dir_to_pkg: std::collections::HashMap<PathBuf, usize> = scan
         .iter()
@@ -1543,16 +1544,16 @@ fn augment_rust_consumer_deps_via_path_deps(scan: &mut Vec<WsPkg>) -> Result<()>
     for _ in 0..4 {
         let snapshot: Vec<Vec<String>> = scan.iter().map(|p| p.deps.clone()).collect();
         let mut changed = false;
-        for i in 0..scan.len() {
-            if !scan[i].is_rust_pkg {
+        for (i, pkg) in scan.iter_mut().enumerate() {
+            if !pkg.is_rust_pkg {
                 continue;
             }
-            let cargo_toml = scan[i].dir.join("Cargo.toml");
+            let cargo_toml = pkg.dir.join("Cargo.toml");
             let Ok(body) = std::fs::read_to_string(&cargo_toml) else {
                 continue;
             };
             for path in extract_cargo_path_deps(&body) {
-                let target = scan[i].dir.join(&path);
+                let target = pkg.dir.join(&path);
                 let Ok(canon) = std::fs::canonicalize(&target) else {
                     continue;
                 };
@@ -1564,14 +1565,14 @@ fn augment_rust_consumer_deps_via_path_deps(scan: &mut Vec<WsPkg>) -> Result<()>
                 }
                 let target_deps = &snapshot[j];
                 for d in target_deps {
-                    if !scan[i].deps.contains(d) {
-                        scan[i].deps.push(d.clone());
+                    if !pkg.deps.contains(d) {
+                        pkg.deps.push(d.clone());
                         changed = true;
                     }
                 }
             }
-            scan[i].deps.sort();
-            scan[i].deps.dedup();
+            pkg.deps.sort();
+            pkg.deps.dedup();
         }
         if !changed {
             break;
@@ -2792,13 +2793,12 @@ fn run_status(args: StatusArgs) -> Result<()> {
                 continue;
             }
             for e in std::fs::read_dir(d)?.flatten() {
-                if e.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                    if let Ok(mt) = e.metadata().and_then(|m| m.modified()) {
-                        if mt > cargo_mt {
-                            pkg_stale = true;
-                            break;
-                        }
-                    }
+                if e.file_type().map(|t| t.is_file()).unwrap_or(false)
+                    && let Ok(mt) = e.metadata().and_then(|m| m.modified())
+                    && mt > cargo_mt
+                {
+                    pkg_stale = true;
+                    break;
                 }
             }
             if pkg_stale {
@@ -3511,7 +3511,7 @@ version = "*"
         let cio = doc["patch"]["crates-io"].as_table().unwrap();
         for name in CENTRAL_PATCH_CRATES {
             let p = cio
-                .get(*name)
+                .get(name)
                 .unwrap_or_else(|| panic!("trio `{name}` not inlined:\n{cfg}"))["path"]
                 .as_str()
                 .unwrap();

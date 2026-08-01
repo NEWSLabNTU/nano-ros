@@ -376,7 +376,7 @@ check-build: \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-dep-chain \
     check-embedded-feature-unification \
-    check-c check-cpp check-rmw-cyclonedds check-cli-tests check-feature-set-ssot \
+    check-c check-cpp check-rmw-cyclonedds check-cli-tests check-cli-clippy check-feature-set-ssot \
     check-no-tracked-file-find \
     native::check
     @echo "Build checks passed!"
@@ -394,6 +394,28 @@ check-cli-tests:
     set -e
     cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet
     echo "CLI tests passed!"
+
+# issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on
+# packages/cli, so ~107 warnings accreted unnoticed. Mirrors check-cli-tests
+# (separate workspace, its own Cargo.toml/lock). Two deliberate deviations from
+# a bare `--workspace` clippy:
+#   * `--exclude ros-launch-manifest-{model,sched,types}` — these are vendored
+#     submodule crates under third-party/, pulled in as path-dep members; their
+#     lints are upstream's, out of scope here.
+#   * `--locked` sits BEFORE `--`: the scripts/bin/cargo shim (issues 0359/0378)
+#     appends $NROS_CARGO_FLAGS at the END of argv, which would land after `--`
+#     and reach clippy-driver ("Unrecognized option: 'locked'"). Passing it
+#     ourselves makes the shim skip its own injection.
+[private]
+check-cli-clippy:
+    #!/usr/bin/env bash
+    set -e
+    cargo clippy --manifest-path packages/cli/Cargo.toml --workspace --all-targets \
+        --exclude ros-launch-manifest-model \
+        --exclude ros-launch-manifest-sched \
+        --exclude ros-launch-manifest-types \
+        --locked -- -D warnings
+    echo "CLI clippy passed!"
 
 # Phase: crate-version lockstep — every workspace crate shares the release
 # version (the bump script edits them atomically). Mirrors the `check.yml`

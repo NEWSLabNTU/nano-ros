@@ -113,7 +113,7 @@ pub fn cli_input_files(root: &Path) -> Vec<String> {
 ///    error on the very next verb). Usually zero files, at most a handful.
 /// 3. **Untracked-but-present sources**, hashed the same way (`hash-object`
 ///    + a synthesized index-style meta) for the same reason: committing a
-///    new file must not change the stamp of unchanged content.
+///      new file must not change the stamp of unchanged content.
 ///
 /// Component 2 is what makes a rebase silent: git compares content, so a
 /// touched-but-identical file simply is not reported as modified. And blob

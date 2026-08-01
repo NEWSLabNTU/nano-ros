@@ -91,9 +91,9 @@ pub fn render_bridge_runtime_config(plan: &NrosPlan, ws_root: &std::path::Path) 
     for (i, (rmw, domain, locator)) in sessions.iter().enumerate() {
         let _ = write!(out, "\n[[node]]\nname = \"s{i}\"\nrmw = {rmw:?}\n");
         if let Some(loc) = locator {
-            let _ = write!(out, "locator = {loc:?}\n");
+            let _ = writeln!(out, "locator = {loc:?}");
         }
-        let _ = write!(out, "domain_id = {domain}\n");
+        let _ = writeln!(out, "domain_id = {domain}");
     }
     out.push_str(&bridges_toml);
     for (rust_path, rmw) in &register_types {

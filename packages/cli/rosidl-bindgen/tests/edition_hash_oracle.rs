@@ -30,10 +30,10 @@ fn load_fixture(name: &str) -> HashMap<String, String> {
             continue;
         }
         let mut it = line.split_whitespace();
-        if let (Some(ty), Some(h)) = (it.next(), it.next()) {
-            if h.starts_with("RIHS01_") {
-                map.insert(ty.to_string(), h.to_string());
-            }
+        if let (Some(ty), Some(h)) = (it.next(), it.next())
+            && h.starts_with("RIHS01_")
+        {
+            map.insert(ty.to_string(), h.to_string());
         }
     }
     map
@@ -83,10 +83,10 @@ done"#,
     let mut map = HashMap::new();
     for line in String::from_utf8_lossy(&out.stdout).lines() {
         let mut it = line.split_whitespace();
-        if let (Some(ty), Some(h)) = (it.next(), it.next()) {
-            if h.starts_with("RIHS01_") {
-                map.insert(ty.to_string(), h.to_string());
-            }
+        if let (Some(ty), Some(h)) = (it.next(), it.next())
+            && h.starts_with("RIHS01_")
+        {
+            map.insert(ty.to_string(), h.to_string());
         }
     }
     map

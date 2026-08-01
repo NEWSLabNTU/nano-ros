@@ -397,7 +397,7 @@ fn cmake_bool(v: &str) -> bool {
 }
 
 fn basename(p: &str) -> &str {
-    p.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(p)
+    p.rsplit(['/', '\\']).next().unwrap_or(p)
 }
 
 #[cfg(test)]

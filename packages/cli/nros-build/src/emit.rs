@@ -84,7 +84,7 @@ pub fn emit_run_plan(plan: &NrosPlan) -> String {
 /// `SESSION_SPECS` + `register_backends` + `build_executor_bridge` +
 /// `register_bridges`). S2 wires the `nros::main!` OwnedSpin entry to splice this
 /// + drive `Executor::open_multi`; until then this is reachable but unused (no
-/// behaviour change for non-bridge plans, which get `None`).
+///   behaviour change for non-bridge plans, which get `None`).
 pub fn emit_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
     nros_cli_core::orchestration::bridge_gen::render_bridge_entry_fns(plan)
 }

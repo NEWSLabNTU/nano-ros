@@ -109,6 +109,24 @@ pub fn resolve_system_tiers(
     )
 }
 
+/// Best-effort RTOS name for tier resolution from the selected deploy target.
+/// Defaults to `posix` (native); embedded targets refine it from the deploy
+/// `board`/`kind` hint.
+pub fn derive_target_rtos(system: &SystemToml, target: Option<&str>) -> String {
+    target
+        .and_then(|t| system.deploy.get(t))
+        .and_then(|d| d.board.as_deref().or(d.kind.as_deref()))
+        .map(|hint| {
+            for rtos in ["freertos", "zephyr", "threadx", "nuttx"] {
+                if hint.contains(rtos) {
+                    return rtos.to_string();
+                }
+            }
+            "posix".to_string()
+        })
+        .unwrap_or_else(|| "posix".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,22 +267,4 @@ priority = 10
             "sub_node/telem must be in low tier"
         );
     }
-}
-
-/// Best-effort RTOS name for tier resolution from the selected deploy target.
-/// Defaults to `posix` (native); embedded targets refine it from the deploy
-/// `board`/`kind` hint.
-pub fn derive_target_rtos(system: &SystemToml, target: Option<&str>) -> String {
-    target
-        .and_then(|t| system.deploy.get(t))
-        .and_then(|d| d.board.as_deref().or(d.kind.as_deref()))
-        .map(|hint| {
-            for rtos in ["freertos", "zephyr", "threadx", "nuttx"] {
-                if hint.contains(rtos) {
-                    return rtos.to_string();
-                }
-            }
-            "posix".to_string()
-        })
-        .unwrap_or_else(|| "posix".to_string())
 }

@@ -4,8 +4,10 @@
 //!     concatenated) — the unsafe raw-pointer + shared-allocator
 //!     code — is `cargo check`'d against the real nros-serdes;
 //!   * the `.hpp` header (using `nros::HeapSequence`) is `g++ -fsyntax-only`'d.
+//!
 //! Ignored by default; run with:
-//!   cargo test -p rosidl-codegen --test cpp_heap_compile_check -- --ignored
+//!
+//!     cargo test -p rosidl-codegen --test cpp_heap_compile_check -- --ignored
 
 use rosidl_codegen::{CapacityResolver, generate_cpp_message_package};
 use rosidl_parser::parse_message;

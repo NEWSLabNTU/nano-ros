@@ -31,7 +31,10 @@
 //! emitted code.
 
 use rosidl_codegen::fingerprint::emit_corpus;
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 fn golden_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fingerprint-corpus/expected")
@@ -160,9 +163,9 @@ fn first_diff(a: &str, b: &str) -> String {
     out
 }
 
-fn walk(dir: &PathBuf) -> std::io::Result<Vec<PathBuf>> {
+fn walk(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
-    let mut stack = vec![dir.clone()];
+    let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
         for e in fs::read_dir(&d)? {
             let p = e?.path();

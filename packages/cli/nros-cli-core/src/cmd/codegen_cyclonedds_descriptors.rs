@@ -310,14 +310,14 @@ fn render_register_c(entry: &str, descriptors: &[ManifestEntry]) -> String {
         let stem = format!("{}_{}", d.pkg, d.msg);
         s.push_str(&format!("#include \"{stem}.h\"\n"));
     }
-    s.push_str("\n");
+    s.push('\n');
     for d in descriptors {
         s.push_str(&format!(
             "extern const dds_topic_descriptor_t {};\n",
             d.descriptor_symbol
         ));
     }
-    s.push_str("\n");
+    s.push('\n');
     s.push_str(
         "extern void nros_rmw_cyclonedds_register_descriptor(\n    const char *type_name, const dds_topic_descriptor_t *desc);\n\n",
     );
@@ -348,7 +348,7 @@ fn c_ident(s: &str) -> String {
             out.push('_');
         }
     }
-    if out.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+    if out.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         out.insert(0, '_');
     }
     out

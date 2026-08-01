@@ -1,10 +1,34 @@
 ---
 id: 379
 title: "No lane runs clippy on the `packages/cli` sub-workspace, so ~30 lints have accumulated there under rust 1.97"
-status: open
+status: resolved
 type: tech-debt
 area: build
 related: [issue-0319, issue-0202]
+---
+
+## Resolution (2026-08-02)
+
+Added the `check-cli-clippy` lane (justfile, wired into `check-build` after
+`check-cli-tests`): `cargo clippy --manifest-path packages/cli/Cargo.toml
+--workspace --all-targets -- -D warnings`. Cleared all 107 accumulated warnings
+(grown from ~30): `cargo clippy --fix` for the mechanical class, hand-fixes for
+the rest (map_entry, collapsible_if, manual_pattern_char_comparison, ptr_arg,
+field_reassign_with_default, doc_lazy_continuation, `result_large_err` → boxed
+the large `toml::de::Error` variant, `type_complexity` → alias, needless
+range/borrow, `unexpected_cfgs` → registered the RFC-0060-retired
+`play-launch-parser` cfg). Two `#[allow(clippy::too_many_arguments)]` on
+`emit_bake_tree`/`render_plan_json` (each arg a distinct bake input; a struct
+only relocates the coupling). The lane excludes the three vendored
+`ros-launch-manifest-*` submodule crates (can't edit the submodule).
+
+**Follow-up flagged:** the `scripts/bin/cargo` shim appends `--locked` at the
+END of argv, so any `cargo <sub> -- <args>` breaks (clippy-driver /
+libtest see `--locked`); the lane works around it by passing `--locked` before
+`--`. The shim also breaks 4 runtime-clippy tests in
+`rosidl-codegen/tests/compilation_test.rs` under a sourced `activate.sh` — the
+real fix (insert flags before any `--`) is 0359/0378 territory, left for a
+separate issue.
 ---
 
 # The `packages/cli` sub-workspace is never clippy'd

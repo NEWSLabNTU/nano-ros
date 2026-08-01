@@ -71,10 +71,10 @@ pub fn mangle_idl(src: &str, inject_service_header: bool) -> String {
     // `splitlines(keepends=False)` semantics — split on `\n` but
     // drop the trailing empty after a final `\n`.
     let mut lines: Vec<&str> = src.split('\n').collect();
-    if let Some(last) = lines.last() {
-        if last.is_empty() {
-            lines.pop();
-        }
+    if let Some(last) = lines.last()
+        && last.is_empty()
+    {
+        lines.pop();
     }
 
     for raw in lines {
@@ -223,7 +223,7 @@ fn match_struct(line: &str) -> Option<(String, String, String)> {
 
     let after_id = &after_ws[id_end..];
     // Skip optional whitespace then require `{`.
-    let after_id_trimmed = after_id.trim_start_matches(|c: char| c == ' ' || c == '\t');
+    let after_id_trimmed = after_id.trim_start_matches([' ', '\t']);
     let rest_after_brace = after_id_trimmed.strip_prefix('{')?;
 
     Some((
@@ -329,8 +329,5 @@ fn is_word(b: u8) -> bool {
 
 fn is_valid_ident_start(s: &str) -> bool {
     let mut chars = s.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => true,
-        _ => false,
-    }
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
 }

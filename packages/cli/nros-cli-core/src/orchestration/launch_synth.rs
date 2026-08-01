@@ -101,16 +101,16 @@ pub fn enumerate_launch_files(pkg_dir: &Path) -> Vec<String> {
 /// * C++: `project(<name> …)` in `CMakeLists.txt`
 pub fn discover_pkg_name(pkg_dir: &Path) -> Result<String> {
     let cargo = pkg_dir.join("Cargo.toml");
-    if cargo.is_file() {
-        if let Some(name) = read_cargo_pkg_name(&cargo)? {
-            return Ok(name);
-        }
+    if cargo.is_file()
+        && let Some(name) = read_cargo_pkg_name(&cargo)?
+    {
+        return Ok(name);
     }
     let cmake = pkg_dir.join("CMakeLists.txt");
-    if cmake.is_file() {
-        if let Some(name) = read_cmake_project_name(&cmake)? {
-            return Ok(name);
-        }
+    if cmake.is_file()
+        && let Some(name) = read_cmake_project_name(&cmake)?
+    {
+        return Ok(name);
     }
     Err(LaunchResolveError::UnknownPkgName {
         pkg: pkg_dir.to_path_buf(),

@@ -122,21 +122,22 @@ pub fn run(args: Args) -> Result<()> {
     // auto-route into the bringup lint so the manual smoke-test from the
     // F.2 task brief — `cd demo_bringup && nros check` — exits 0 / 1
     // without the user spelling out `--bringup .`.
-    let plan_arg_is_default = args.plan == PathBuf::from("build/nros/nros-plan.json");
-    if plan_arg_is_default && !args.plan.exists() {
-        if let Ok(cwd) = std::env::current_dir() {
-            if cwd.join("package.xml").is_file() && cwd.join("system.toml").is_file() {
-                lint_bringup(&cwd)?;
-                for w in &legacy_overlay_warnings(&cwd.join("system.toml"))? {
-                    eprintln!("nros check: warning: {w}");
-                }
-                eprintln!(
-                    "nros check: ok (bringup pkg {} is pure declarative)",
-                    cwd.display()
-                );
-                return Ok(());
-            }
+    let plan_arg_is_default = args.plan == *"build/nros/nros-plan.json";
+    if plan_arg_is_default
+        && !args.plan.exists()
+        && let Ok(cwd) = std::env::current_dir()
+        && cwd.join("package.xml").is_file()
+        && cwd.join("system.toml").is_file()
+    {
+        lint_bringup(&cwd)?;
+        for w in &legacy_overlay_warnings(&cwd.join("system.toml"))? {
+            eprintln!("nros check: warning: {w}");
         }
+        eprintln!(
+            "nros check: ok (bringup pkg {} is pure declarative)",
+            cwd.display()
+        );
+        return Ok(());
     }
 
     // Phase 212.G.2 — drift sweep over any explicitly named pkg dirs runs

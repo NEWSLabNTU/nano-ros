@@ -71,10 +71,10 @@ pub fn parse_msg(package: &str, name: &str, source: &str) -> Result<Message, Con
     // python `splitlines()` drops a trailing empty line if the
     // string ends in `\n`. Mimic that.
     let mut all_lines: Vec<&str> = raw_lines.clone();
-    if let Some(last) = all_lines.last() {
-        if last.is_empty() {
-            all_lines.pop();
-        }
+    if let Some(last) = all_lines.last()
+        && last.is_empty()
+    {
+        all_lines.pop();
     }
 
     // 1. Extract file-level (message) comments: every leading line
@@ -152,12 +152,12 @@ pub fn parse_msg(package: &str, name: &str, source: &str) -> Result<Message, Con
             Some((n, d)) => (n, Some(d.trim_start().to_string())),
             None => (rest, None),
         };
-        if let Some(d) = &default {
-            if !d.is_empty() {
-                return Err(ConvertError::Unsupported(format!(
-                    "default values not yet supported: {code}"
-                )));
-            }
+        if let Some(d) = &default
+            && !d.is_empty()
+        {
+            return Err(ConvertError::Unsupported(format!(
+                "default values not yet supported: {code}"
+            )));
         }
 
         let ty = parse_type(ty_tok, package)?;
@@ -167,7 +167,7 @@ pub fn parse_msg(package: &str, name: &str, source: &str) -> Result<Message, Con
             name: field_name.to_string(),
             comments: Vec::new(),
         };
-        field.comments.extend(current_comments.drain(..));
+        field.comments.append(&mut current_comments);
         fields.push(field);
     }
 
@@ -242,8 +242,8 @@ fn textwrap_dedent(lines: &[String]) -> Vec<String> {
     lines
         .iter()
         .map(|l| {
-            if l.starts_with(common) {
-                l[common.len()..].to_string()
+            if let Some(stripped) = l.strip_prefix(common) {
+                stripped.to_string()
             } else {
                 l.clone()
             }

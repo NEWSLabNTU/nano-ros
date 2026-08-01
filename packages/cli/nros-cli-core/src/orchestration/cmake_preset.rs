@@ -22,15 +22,15 @@ use serde_json::json;
 /// Where per-board preset fragments live: `$NROS_HOME/presets`, else
 /// `~/.nros/presets`, else `.nros/presets` (last resort).
 pub fn presets_dir() -> PathBuf {
-    if let Ok(home) = std::env::var("NROS_HOME") {
-        if !home.is_empty() {
-            return PathBuf::from(home).join("presets");
-        }
+    if let Ok(home) = std::env::var("NROS_HOME")
+        && !home.is_empty()
+    {
+        return PathBuf::from(home).join("presets");
     }
-    if let Ok(home) = std::env::var("HOME") {
-        if !home.is_empty() {
-            return PathBuf::from(home).join(".nros").join("presets");
-        }
+    if let Ok(home) = std::env::var("HOME")
+        && !home.is_empty()
+    {
+        return PathBuf::from(home).join(".nros").join("presets");
     }
     PathBuf::from(".nros").join("presets")
 }
@@ -120,7 +120,7 @@ pub fn write_project_presets(project_dir: &Path) -> Result<(PathBuf, usize)> {
 pub fn write_project_presets_from(dir: &Path, project_dir: &Path) -> Result<(PathBuf, usize)> {
     let mut fragments: Vec<String> = Vec::new();
     if dir.is_dir() {
-        let mut entries: Vec<PathBuf> = std::fs::read_dir(&dir)
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
             .wrap_err_with(|| format!("read presets dir {}", dir.display()))?
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("json"))
@@ -163,7 +163,7 @@ mod tests {
             "nuttx-qemu-arm",
             &repo,
             Some(&toolchain),
-            &[bin.clone()],
+            std::slice::from_ref(&bin),
         )
         .unwrap();
 

@@ -73,8 +73,9 @@ pub(crate) fn primitive_idl(name: &str) -> Option<&'static str> {
 /// - `uint8[<=5]` → `"sequence<uint8, 5>"`
 pub fn idl_type_for(ty: &RosType) -> String {
     let base = if let Some(prim) = primitive_idl(&ty.base) {
-        if (prim == "string" || prim == "wstring") && ty.string_upper_bound.is_some() {
-            format!("{prim}<{}>", ty.string_upper_bound.unwrap())
+        if let (true, Some(bound)) = (prim == "string" || prim == "wstring", ty.string_upper_bound)
+        {
+            format!("{prim}<{bound}>")
         } else {
             prim.to_string()
         }

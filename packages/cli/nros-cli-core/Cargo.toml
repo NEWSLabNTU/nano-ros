@@ -23,6 +23,15 @@ default = []
 # Hidden from `nros --help` unless this feature is on at build time.
 release = []
 
+# Issue 0379: `planner.rs` still carries `#[cfg(feature = "play-launch-parser")]`
+# gates around dormant tests for the launch path RFC-0060 retired (the feature
+# is intentionally undefined so the code never compiles). Declare the cfg value
+# as expected so `unexpected_cfgs` stays quiet without resurrecting the feature.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(feature, values("play-launch-parser"))',
+] }
+
 [dependencies]
 clap = { workspace = true }
 eyre = "0.6"

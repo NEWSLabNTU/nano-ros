@@ -92,8 +92,10 @@ pub enum NrosConfigError {
     BringupSystemTomlParse {
         package: String,
         path: PathBuf,
+        // Boxed to keep `NrosConfigError` small (issue 0379 / clippy
+        // `result_large_err`): `toml::de::Error` alone is ~144 bytes.
         #[source]
-        source: toml::de::Error,
+        source: Box<toml::de::Error>,
     },
 
     /// A bringup system (on-disk or synthesised) declares an RMW backend that
@@ -304,7 +306,7 @@ impl NrosConfig {
                             NrosConfigError::BringupSystemTomlParse {
                                 package: package.name.clone(),
                                 path: system_toml_path.clone(),
-                                source,
+                                source: Box::new(source),
                             }
                         })?;
                         bringup_packages.insert(
@@ -434,7 +436,7 @@ fn discover_path_a_bringups(
             toml::from_str(&raw).map_err(|source| NrosConfigError::BringupSystemTomlParse {
                 package: name.to_string(),
                 path: system_toml_path.clone(),
-                source,
+                source: Box::new(source),
             })?;
         bringup_packages.insert(
             name.to_string(),

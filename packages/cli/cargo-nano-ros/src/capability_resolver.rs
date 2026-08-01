@@ -186,13 +186,12 @@ mod tests {
             );
             // An axis with a cmake_token must set exactly that token; one without
             // must NOT set any `NANO_ROS_*` option for the axis.
-            match c.cmake_token {
-                Some(tok) => assert!(
+            if let Some(tok) = c.cmake_token {
+                assert!(
                     src.contains(&format!("set({tok} ON")),
                     "axis `{}` cmake_token `{tok}` is not set in NanoRosCapabilities.cmake",
                     c.declared
-                ),
-                None => {}
+                )
             }
         }
     }

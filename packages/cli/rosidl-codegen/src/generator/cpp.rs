@@ -78,13 +78,15 @@ pub struct GeneratedCppActionPackage {
 ///
 /// `message_name` + `resolver` supply per-field capacity (RFC-0033); the same
 /// resolved `cap` feeds both the header type and the FFI repr so the two agree.
+type BuiltFields = (Vec<CppField>, Vec<CppFfiField>, Vec<SequenceStructDef>);
+
 fn build_fields(
     fields: &[rosidl_parser::Field],
     struct_name: &str,
     current_package: Option<&str>,
     message_name: &str,
     resolver: &CapacityResolver,
-) -> Result<(Vec<CppField>, Vec<CppFfiField>, Vec<SequenceStructDef>), GeneratorError> {
+) -> Result<BuiltFields, GeneratorError> {
     let mut cpp_fields = Vec::new();
     let mut ffi_fields = Vec::new();
     let mut seq_structs = Vec::new();

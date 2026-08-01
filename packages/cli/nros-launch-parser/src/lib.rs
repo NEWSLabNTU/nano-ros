@@ -162,8 +162,10 @@ impl ArgScope {
     /// inherits the parent's overrides but starts a fresh value map
     /// per ROS 2 launch semantics.
     fn child_for_include(&self, include_args: &[(String, String)]) -> ArgScope {
-        let mut child = ArgScope::default();
-        child.overrides = self.overrides.clone();
+        let mut child = ArgScope {
+            overrides: self.overrides.clone(),
+            ..Default::default()
+        };
         // Included file's `<include><arg name="X" value="Y"/></include>`
         // children are treated as caller-supplied overrides on that file.
         for (k, v) in include_args {
@@ -240,10 +242,12 @@ fn parse_file(
     // Walk includes recursively while THIS file is still on the
     // include stack — pop happens after the recursion (cycle detection
     // works because the stack still contains us while we descend).
-    let mut merged = LaunchDescription::default();
-    merged.args = std::mem::take(&mut desc.args);
-    merged.groups = std::mem::take(&mut desc.groups);
-    merged.nodes = std::mem::take(&mut desc.nodes);
+    let mut merged = LaunchDescription {
+        args: std::mem::take(&mut desc.args),
+        groups: std::mem::take(&mut desc.groups),
+        nodes: std::mem::take(&mut desc.nodes),
+        ..Default::default()
+    };
     for include in &desc.includes {
         // Already-substituted file path.
         let included_path = PathBuf::from(&include.file);
@@ -405,8 +409,10 @@ fn handle_start(
             }
         }
         "group" => {
-            let mut group = GroupSpec::default();
-            group.namespace = attrs.get("ns").cloned();
+            let group = GroupSpec {
+                namespace: attrs.get("ns").cloned(),
+                ..Default::default()
+            };
             if self_closing {
                 attach_group(group, stack, desc);
             } else {
@@ -512,7 +518,7 @@ fn attach_group(g: GroupSpec, stack: &mut [Frame], desc: &mut LaunchDescription)
         }
     }
     match stack.last_mut() {
-        Some(Frame::Group(parent)) => parent.nodes.extend(g.nodes.drain(..)),
+        Some(Frame::Group(parent)) => parent.nodes.append(&mut g.nodes),
         _ => desc.groups.push(g),
     }
 }

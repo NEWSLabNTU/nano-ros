@@ -123,8 +123,8 @@ fn explain(args: ExplainArgs) -> Result<()> {
         println!("capabilities: {}", caps_str.join(", "));
     }
     println!();
-    println!("{:<24} {:<10} {}", "knob", "value", "set by");
-    println!("{:<24} {:<10} {}", "----", "-----", "------");
+    println!("{:<24} {:<10} set by", "knob", "value");
+    println!("{:<24} {:<10} ------", "----", "-----");
     println!(
         "{:<24} {:<10} {}",
         "zenoh.tx.batch",

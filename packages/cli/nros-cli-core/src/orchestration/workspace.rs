@@ -1169,9 +1169,10 @@ fn synthesise_summary(
     // staticlib Component pkg (no `[[bin]]`), the executable IS the
     // component name (it's the symbolic identity the launcher resolves;
     // the actual binary is the Entry pkg that links the component in).
-    let executable = if bins.iter().any(|n| n == &component_name) {
-        component_name.clone()
-    } else if bins.is_empty() {
+    let executable = if bins.iter().any(|n| n == &component_name) || bins.is_empty() {
+        // `[[bin]] name = component_name` (clean Application pkg) OR a
+        // staticlib Component pkg with no `[[bin]]` — both cases the
+        // executable IS the component name.
         component_name.clone()
     } else {
         pkg_name.to_string()

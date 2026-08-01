@@ -550,7 +550,7 @@ pub fn generate_c_service_package(
                 &field.field_type,
                 Some(package_name),
                 &request_msg,
-                &resolver,
+                resolver,
             )
         })
         .collect::<Result<_, _>>()?;
@@ -577,7 +577,7 @@ pub fn generate_c_service_package(
                 &field.field_type,
                 Some(package_name),
                 &response_msg,
-                &resolver,
+                resolver,
             )
         })
         .collect::<Result<_, _>>()?;

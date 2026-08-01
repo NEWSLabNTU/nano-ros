@@ -71,12 +71,11 @@ fn emit_struct(out: &mut String, message: &str, msg: &Message) {
         }
         let n = f.ty.array_size.unwrap();
         let idl_type_identifier = format!("{}[{n}]", get_idl_type_identifier(&idl_type));
-        if !seen.contains_key(&idl_type_identifier) {
-            typedefs.push((
-                idl_type_identifier.clone(),
-                idl_base_type_identifier.clone(),
-            ));
-            seen.insert(idl_type_identifier, idl_base_type_identifier);
+        if let std::collections::btree_map::Entry::Vacant(entry) =
+            seen.entry(idl_type_identifier.clone())
+        {
+            typedefs.push((idl_type_identifier, idl_base_type_identifier.clone()));
+            entry.insert(idl_base_type_identifier);
         }
     }
     for (k, v) in &typedefs {

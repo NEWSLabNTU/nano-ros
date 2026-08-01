@@ -509,7 +509,7 @@ fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
     // Header lives at `include/<pkg>/<Class>.hpp` so the typed Entry can
     // `#include "<pkg>/<Class>.hpp"` (nano_ros_node_register adds `include/`).
     fs::create_dir_all(dir.join("src"))?;
-    fs::create_dir_all(dir.join("include").join(&cfg.name.replace('-', "_")))?;
+    fs::create_dir_all(dir.join("include").join(cfg.name.replace('-', "_")))?;
 
     // Pkg name → namespace + class. `my-talker` → ns `my_talker`, class
     // `Talker` (PascalCase of use_case). §212.L.4 class prefix must equal
@@ -793,7 +793,7 @@ NROS_C_COMPONENT({state_ty}, {configure_fn})
 
 /// Map `talker` → `Talker`, `service-server` → `ServiceServer`.
 fn use_case_to_pascal(s: &str) -> String {
-    s.split(|c: char| c == '_' || c == '-')
+    s.split(['_', '-'])
         .filter(|p| !p.is_empty())
         .map(|p| {
             let mut chars = p.chars();

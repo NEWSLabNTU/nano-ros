@@ -138,7 +138,7 @@ fn resolve_config(explicit: Option<&Path>) -> Option<PathBuf> {
 /// `~/.nros/sdks/arm-fvp/current/` symlink the installer drops). A miss is
 /// a WARN with a one-liner pointing at `scripts/installers/arm-fvp-installer.sh`
 /// + the Arm EULA URL — NOT counted as a problem (gated tool, never
-/// hard-fails the doctor run).
+///   hard-fails the doctor run).
 fn check_license_gates(workspace: Option<&Path>, board: Option<&str>) -> Result<usize> {
     let Some(index_path) = crate::cmd::setup::locate_index(workspace) else {
         return Ok(0);
@@ -162,10 +162,10 @@ fn check_license_gates(workspace: Option<&Path>, board: Option<&str>) -> Result<
     eprintln!("nros doctor: license-gated SDKs ({})", index_path.display());
     let mut problems = 0usize;
     for (name, g) in &index.gated {
-        if let Some(allow) = &board_filter {
-            if !allow.iter().any(|p| p == name) {
-                continue;
-            }
+        if let Some(allow) = &board_filter
+            && !allow.iter().any(|p| p == name)
+        {
+            continue;
         }
         // Special-case ARM FVP: binary discovery (Zephyr's armfvp.cmake calls
         // `find_program(... PATHS ENV ARMFVP_BIN_PATH)`), and `[gated.arm-fvp]`
