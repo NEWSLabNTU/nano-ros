@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+#
+# Refuse to push a duplicate issue id.
+#
+# `scripts/reserve-issue-id.sh` stops two sessions from CHOOSING the same id.
+# This stops a duplicate from LANDING when the reservation was skipped, or when
+# the id was chosen by hand before the tool existed. Both are needed: the first
+# prevents wasted work, the second is the guarantee.
+#
+# Why here and not only in `check-fast`: the gate has always been able to catch
+# this, and repeatedly did not, because of WHEN it runs. A session files 0372,
+# runs `check-fast` (green — no duplicate exists in ITS tree), rebases onto a
+# main that now contains someone else's 0372, and pushes. The rebase is the
+# moment the duplicate becomes visible, and nothing re-checked between the
+# rebase and the push. `pre-push` is exactly that gap.
+#
+# Cheap by construction: reads filenames, no build, no network.
+#
+# Install: `just setup-hooks` (or `git config core.hooksPath .githooks`).
+# Bypass for a genuine emergency: `git push --no-verify`.
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+check="$repo_root/scripts/ci/issue-ids-check.sh"
+
+[ -x "$check" ] || exit 0
+
+# Guard BRANCH pushes only.
+#
+# git feeds us `<local-ref> <local-sha> <remote-ref> <remote-sha>` per ref. An
+# earlier draft ignored that and checked every push, which deadlocked: while a
+# duplicate existed, `reserve-issue-id.sh` could not push its reservation ref
+# either — so the tool that resolves a collision was blocked BY the collision.
+# Found by dogfooding the reservation immediately after writing the hook.
+#
+# Non-branch pushes (`refs/issue-ids/*`, tags, notes) carry no issue files and
+# have nothing to corrupt.
+guard=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+    [ -z "${remote_ref:-}" ] && continue
+    case "$remote_ref" in
+        refs/heads/*) guard=1 ;;
+    esac
+done
+
+# NO ref lines means git is pushing nothing — it already rejected the update
+# locally (e.g. a non-fast-forward reservation re-claim, which is the CAS
+# working). Reporting an issue-id failure there would blame the wrong thing:
+# an earlier draft did exactly that, and the "duplicate issue ids" error came
+# out of a push that had nothing to do with issue files.
+#
+# Verified against git's actual behaviour rather than assumed — it feeds
+# `<local-ref> <local-sha> <remote-ref> <remote-sha>` for a ref it intends to
+# push, and feeds NOTHING when it does not.
+[ "$guard" -eq 0 ] && exit 0
+
+if ! out="$("$check" 2>&1)"; then
+    printf '%s\n' "$out" >&2
+    echo "" >&2
+    echo "pre-push: REFUSING to push — the issue-id namespace would be corrupted." >&2
+    echo "" >&2
+    echo "  If this appeared right after a rebase, another session filed the same" >&2
+    echo "  id first. Renumber YOUR filing (the later one), update its \`id:\`" >&2
+    echo "  frontmatter and every reference, then push again." >&2
+    echo "" >&2
+    echo "  Reserve ids atomically to avoid this entirely:" >&2
+    echo "      just issue-new <slug>" >&2
+    exit 1
+fi
+
+exit 0

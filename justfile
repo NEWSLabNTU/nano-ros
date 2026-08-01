@@ -520,6 +520,23 @@ check-string-conventions:
 check-issue-ids:
     @scripts/ci/issue-ids-check.sh
 
+# Reserve the next free issue id ATOMICALLY across parallel sessions, and print
+# it. Use this instead of eyeballing the highest existing number: that is a
+# check-then-act race, and it has produced six id collisions (see
+# `scripts/reserve-issue-id.sh` for why an instruction cannot fix it).
+[group("docs")]
+issue-new slug="":
+    @scripts/reserve-issue-id.sh {{slug}}
+
+# Install the repo's git hooks (currently: pre-push refuses a duplicate issue
+# id). Idempotent; safe to re-run. Not automatic — pointing `core.hooksPath` at
+# tracked scripts means a clone can run repo code on push, so it stays opt-in
+# and `just setup` calls it explicitly.
+[group("main")]
+setup-hooks:
+    @git config core.hooksPath .githooks
+    @echo "hooks installed: core.hooksPath -> .githooks"
+
 # issues 0320 / 0334 — no build-host absolute paths in tracked code/config.
 # A pure grep, so it belongs in the source-free tier (see #337 for what happens
 # when a gate here needs more than the index).

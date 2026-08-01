@@ -252,9 +252,13 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `generated/*`/platform patches. Never hand-edit; moved checkout → re-run `nros sync`. Central
   membership = only crates registry-named in EVERY graph (else cargo "unused patch" warnings).
   → AGENTS.md Rust Consumption.
-- **Parallel agent sessions push to `main`** — fetch + check origin's highest issue id (incl.
-  `archived/`) before filing; expect `docs/issues/README.md` rebase conflicts; write full
-  background logs to files (`| tail` hides the real error). → AGENTS.md Multi-Session Pitfalls.
+- **Parallel agent sessions push to `main`** — **reserve issue ids with `just issue-new <slug>`,
+  never by reading the highest number.** Reading-then-writing is a race that has collided seven
+  times (0367→0372→0377 collided TWICE, the second time while renumbering the first). The tool
+  claims `refs/issue-ids/NNNN` on origin, which git rejects if it already exists; the `pre-push`
+  hook (`just setup-hooks`) refuses to push a duplicate even if the tool was skipped. Expect
+  `docs/issues/README.md` rebase conflicts; write full background logs to files (`| tail` hides
+  the real error). → AGENTS.md Multi-Session Pitfalls.
 
 ## Verification
 Kani (bounded harnesses, `just verify-kani`) + Verus (unbounded proofs, `just verify-verus`).
