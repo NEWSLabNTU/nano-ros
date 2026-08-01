@@ -34,7 +34,9 @@ either the model needs re-resolving with the current resolver or the
 entry codegen's board-selection lost these nodes. Same shape as archived
 #0361 (embedded entries with no deploy target in their model).
 
-Environment note: found while running tier-1 ci for the unrelated #367 fix
+Environment note: found while running tier-1 ci for the unrelated #372 fix
+(the commit says `fix(#367)` — that issue was renumbered to 0372 after an id
+collision; see `0372-*`)
 (cyclone Kconfig wiring); the failure reproduces with that change absent
 from the build path (it touches `packages/rmw/cyclonedds` + `zephyr/Kconfig`
 only). Tier-1 could not be driven fully green on this box because of it.

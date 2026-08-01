@@ -1,5 +1,5 @@
 ---
-id: 367
+id: 372
 title: CONFIG_NROS_CYCLONE_CONFIG_XML is declared but consumed nowhere
 status: open
 type: bug
@@ -7,7 +7,17 @@ area: rmw
 related: [rfc-0054]
 ---
 
-# 0367 — `CONFIG_NROS_CYCLONE_CONFIG_XML` is declared but consumed nowhere
+# 0372 — `CONFIG_NROS_CYCLONE_CONFIG_XML` is declared but consumed nowhere
+
+> **Renumbered from 0367.** Two parallel sessions filed 0367 the same day:
+> `archived/0367-nros-ws-sync-ghost-alias-and-187-stale-references.md` at 01:58
+> and this one at 09:34. The later filing moves, per the rule
+> `check-issue-ids` enforces.
+>
+> **Commit messages still say `#367`** and cannot be rewritten —
+> `c01eb9a8c fix(#367): wire CONFIG_NROS_CYCLONE_CONFIG_XML into cyclone config
+> selection` is this issue, not the `ws sync` ghost. Anyone tracing that commit
+> lands here.
 
 **Status:** Open
 **Filed:** 2026-07-31

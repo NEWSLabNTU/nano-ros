@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: rmw
-related: [issue-0367, issue-0267]
+related: [issue-0372, issue-0267]
 ---
 
 # 0371 — native_sim cyclone app abort()s ~19–21 s into an Autoware-graph session
