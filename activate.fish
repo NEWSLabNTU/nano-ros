@@ -9,7 +9,9 @@
 # generator would be a sharper edge than parallel hand-edits across
 # two ~50 LoC files.
 
-set -l _nros_root (cd (dirname (status -f)); pwd)
+# `pwd -P` resolves symlinks so a checkout reached through a symlinked parent
+# records the ONE physical path (issue 0375; mirror of activate.sh).
+set -l _nros_root (cd (dirname (status -f)); pwd -P)
 set -gx NROS_REPO_DIR $_nros_root
 # RFC-0048 (phase-287): find_package(nano_ros) locates nano_rosConfig.cmake via
 # CMake's <pkg>_ROOT env var — a sourced shell then needs no -Dnano_ros_ROOT.
@@ -53,9 +55,21 @@ else if not set -q NROS_QUIET_ACTIVATE; and not command -v nros >/dev/null 2>&1
 end
 
 # play_launch_parser
-set -l _nros_home_play (set -q NROS_HOME; and echo $NROS_HOME/sdk/play_launch_parser/bin; or echo $HOME/.nros/sdk/play_launch_parser/bin)
-if test -x $_nros_home_play/play_launch_parser
-    set -gx PATH $_nros_home_play $PATH
+set -l _nros_play_root (set -q NROS_HOME; and echo $NROS_HOME/sdk/play_launch_parser; or echo $HOME/.nros/sdk/play_launch_parser)
+if test -x $_nros_play_root/bin/play_launch_parser
+    set -gx PATH $_nros_play_root/bin $PATH
+else
+    # phase-327 W3 — `nros setup --tool play_launch_parser` installs to the
+    # VERSIONED store layout (sdk/<tool>/<version>/bin), which the unversioned
+    # path above misses. This fallback existed only in activate.sh until issue
+    # 0372; the two files are hand-mirrored, so it has to be kept in step here.
+    for _plp_bin in (find $_nros_play_root -mindepth 2 -maxdepth 2 -type d -name bin 2>/dev/null)
+        if test -x $_plp_bin/play_launch_parser
+            set -gx PATH $_plp_bin $PATH
+            break
+        end
+    end
+    set -e _plp_bin
 end
 
 # Cross-compiler toolchains installed by `nros setup` (SDK store

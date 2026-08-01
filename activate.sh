@@ -17,14 +17,41 @@
 # Resolve the workspace root the way both bash and zsh agree on:
 # ${BASH_SOURCE[0]} for bash, ${(%):-%N} for zsh, $0 as the fallback
 # when the script is `source`d.
+#
+# `cd -P` resolves symlinks, so a checkout reached through a symlinked parent
+# (e.g. ~/data -> /mnt/wd) still records the ONE physical path. Plain `cd` +
+# `pwd` keeps the alias, and the alias then propagates into NROS_REPO_DIR,
+# nano_ros_ROOT, the rc line bootstrap.sh proposes, RFC-0048's absolute-path
+# `nros sync` output, and every path-keyed build cache — two names for one
+# tree (issue 0375). scripts/bootstrap.sh resolves the same way.
 if [ -n "${BASH_SOURCE[0]:-}" ]; then
-    _nros_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    _nros_root="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 elif [ -n "${ZSH_VERSION:-}" ]; then
-    _nros_root="$(cd "$(dirname "${(%):-%N}")" && pwd)"
+    _nros_root="$(cd -P "$(dirname "${(%):-%N}")" && pwd -P)"
 else
-    _nros_root="$(cd "$(dirname "$0")" && pwd)"
+    _nros_root="$(cd -P "$(dirname "$0")" && pwd -P)"
 fi
 export NROS_REPO_DIR="$_nros_root"
+
+# --- SDK-store lookup helpers (issue 0372) ---------------------------------
+# THE RULE FOR THIS FILE: never let a glob reach the shell's word expansion.
+# zsh's default `nomatch` makes an UNMATCHED glob a FATAL error, and this file
+# is `source`d — so a bare `for d in "$store"/*/bin` (or `ls "$d"/*-gcc`) does
+# not "skip harmlessly", it kills activation mid-file and silently drops every
+# export below it. `find` reports nothing instead of failing, in every shell.
+# Both lookups below go through these two helpers; add a third caller here
+# rather than reintroducing a glob at the call site.
+
+# List `bin` directories exactly $2 levels below root $1 (nothing if absent).
+_nros_bin_dirs() {
+    [ -d "$1" ] || return 0
+    find "$1" -mindepth "$2" -maxdepth "$2" -type d -name bin 2>/dev/null
+}
+
+# True when directory $1 holds at least one `*-gcc` (cross-toolchain probe).
+_nros_dir_has_gcc() {
+    [ -n "$(find "$1" -maxdepth 1 -name '*-gcc' 2>/dev/null)" ]
+}
 # RFC-0048 (phase-287): the ament shape's `find_package(nano_ros REQUIRED)`
 # locates the in-tree `nano_rosConfig.cmake` via CMake's `<pkg>_ROOT` env var.
 # Exporting it here means a sourced shell needs no `-Dnano_ros_ROOT`; a copy-out
@@ -89,12 +116,15 @@ else
     # remedy the doctor names) installs to the VERSIONED store layout
     # (sdk/<tool>/<version>/bin), which the unversioned path above misses.
     # Wire whichever version is present so both install paths work.
-    for _plp_bin in "${NROS_HOME:-$HOME/.nros}"/sdk/play_launch_parser/*/bin; do
+    while IFS= read -r _plp_bin; do
+        [ -n "$_plp_bin" ] || continue
         if [ -x "$_plp_bin/play_launch_parser" ]; then
             export PATH="$_plp_bin:$PATH"
             break
         fi
-    done
+    done <<EOF
+$(_nros_bin_dirs "${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser" 2)
+EOF
     unset _plp_bin
 fi
 
@@ -112,19 +142,27 @@ fi
 # by explicit path).
 _nros_sdk="${NROS_HOME:-$HOME/.nros}/sdk"
 if [ -d "$_nros_sdk" ]; then
-    for _nros_tcbin in "$_nros_sdk"/*/*/bin "$_nros_sdk"/*/bin; do
+    # Depth 3 is the versioned layout `nros setup` writes
+    # (sdk/<tool>/<version>/bin); depth 2 is the older unversioned
+    # sdk/<tool>/bin. Enumerated via the helper, NOT a glob: the store almost
+    # never holds both layouts at once, and one empty pattern used to abort the
+    # whole file under zsh (issue 0372).
+    while IFS= read -r _nros_tcbin; do
+        [ -n "$_nros_tcbin" ] || continue
         [ -d "$_nros_tcbin" ] || continue
         # Cross-gcc toolchains, plus build host tools the RTOS `make` invokes by
         # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c),
         # and sccache (issue #74) — the justfile's `RUSTC_WRAPPER` + the zephyr
         # fixture CMake launcher auto-use it once it's on PATH.
-        if ls "$_nros_tcbin"/*-gcc >/dev/null 2>&1 \
+        if _nros_dir_has_gcc "$_nros_tcbin" \
             || [ -x "$_nros_tcbin/genromfs" ] \
             || [ -x "$_nros_tcbin/sccache" ] \
             || [ -x "$_nros_tcbin/zenohd" ]; then
             export PATH="$_nros_tcbin:$PATH"
         fi
-    done
+    done <<EOF
+$(_nros_bin_dirs "$_nros_sdk" 3; _nros_bin_dirs "$_nros_sdk" 2)
+EOF
     unset _nros_tcbin
 fi
 unset _nros_sdk
@@ -156,3 +194,4 @@ fi
 . "$_nros_root/scripts/sdk-env.sh"
 
 unset _nros_root
+unset -f _nros_bin_dirs _nros_dir_has_gcc 2>/dev/null || true

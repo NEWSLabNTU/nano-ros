@@ -3,8 +3,13 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# `cd -P` resolves symlinks: a checkout reached through a symlinked parent
+# (e.g. ~/data -> /mnt/wd) must record the ONE physical path, or the alias ends
+# up in the rc line proposed below, in NROS_REPO_DIR, and in RFC-0048's
+# absolute-path `nros sync` output — two names for one tree (issue 0375).
+# activate.sh / activate.fish resolve the same way.
+SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd -P "${SCRIPT_DIR}/.." && pwd -P)"
 
 # Global flags — set by main() before subcommand dispatch.
 DRY_RUN=0

@@ -361,7 +361,8 @@ check-fast: \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-sysdep-remedies
+    check-cpp-freestanding-includes check-fixtures-manifest check-sysdep-remedies \
+    check-activate-shells
     @echo "Fast checks passed!"
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
@@ -607,6 +608,17 @@ check-retired-submodule-refs:
 # recipes; the [system.*] index class + `nros setup --system` own that text.
 check-sysdep-remedies:
     @bash scripts/check-sysdep-remedies.sh
+
+# issue 0372 — `activate.sh` / `activate.fish` are SOURCED, so anything that
+# aborts them mid-file silently drops every export below the failure. Two
+# unmatched SDK-store globs did exactly that under zsh (fatal `nomatch`), on
+# empty stores AND on the versioned layout `nros setup` writes, while no lane
+# sourced either file under a non-bash shell. This gate sources both in every
+# available shell against both store shapes and asserts they reach their last
+# line. zsh/fish absent = loud skip, never a silent pass.
+[private]
+check-activate-shells:
+    @bash scripts/check-activate-shells.sh
 
 # Phase 215.F.2 — board-crate manifest drift gate. For every
 # `packages/boards/nros-board-*` carrying BOTH a `board.cmake` sidecar
