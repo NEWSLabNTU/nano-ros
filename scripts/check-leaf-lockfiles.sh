@@ -63,8 +63,27 @@ DRIFT_RE='cannot update the lock file .* because --locked was passed'
 # leaving it as "broken" would make the gate permanently red.
 SKIP_RE='^(tests/simple-workspace)$'
 
+# Issue 0378 — an UNSYNCED tree, told apart from a broken one.
+#
+# The leaf `.cargo/config.toml` is `nros sync`-managed (RFC-0048): it includes
+# the central, gitignored `nros-patch.toml` and redirects the message crates at
+# a per-leaf `generated/` tree that `nros generate-rust` produces. On a host set
+# up by the BOOK's flow (bootstrap + `nros setup`) neither exists yet, so cargo
+# cannot even load the config.
+#
+# That is not a broken crate and not lock drift — it is a setup step nobody was
+# told to run. Before this, nine leaves landed in the unclassified bucket and
+# the gate printed "failed for a reason that is NOT lock drift" with no remedy,
+# which is where issue 0378's reporter got stuck.
+#
+# Both spellings fail CLOSED (verified, not assumed): a missing `include`
+# aborts config loading outright, and a present patch pointing at an absent
+# path fails to load the source. Neither silently falls through to crates.io.
+UNSYNCED_RE='failed to load config include|failed to read configuration file .*nros-patch\.toml|unable to update .*/generated/|failed to load source for dependency'
+
 drifted=()
 broken=()
+unsynced=()
 while read -r lock; do
     dir="$(dirname "$lock")"
     if grep -qE "$SKIP_RE" <<<"$dir"; then
@@ -75,12 +94,32 @@ while read -r lock; do
     fi
     if grep -qE "$DRIFT_RE" <<<"$out"; then
         drifted+=("$dir")
+    elif grep -qE "$UNSYNCED_RE" <<<"$out"; then
+        unsynced+=("$dir")
     else
         broken+=("$dir")
         printf '  %s\n' "$dir" >&2
         printf '%s\n' "$out" | head -3 | sed 's/^/      /' >&2
     fi
 done < <(git ls-files '*/Cargo.lock' | grep -v '^third-party/' | grep -v '^packages/cli/')
+
+if [ ${#unsynced[@]} -gt 0 ]; then
+    echo "ERROR: ${#unsynced[@]} leaf crate(s) cannot resolve because this tree is NOT SYNCED." >&2
+    printf '       %s\n' "${unsynced[@]}" >&2
+    echo "" >&2
+    echo "       Their \`.cargo/config.toml\` includes the central \`nros-patch.toml\`" >&2
+    echo "       and redirects the message crates at a per-leaf \`generated/\` tree." >&2
+    echo "       Both are produced, not committed, so a checkout set up by the book's" >&2
+    echo "       install flow alone does not have them yet." >&2
+    echo "" >&2
+    echo "       Fix (issue 0378):" >&2
+    echo "           nros sync            # writes nros-patch.toml + the leaf patch tables" >&2
+    echo "           just setup all       # if the generated/ message crates are missing too" >&2
+    echo "" >&2
+    echo "       This is a SETUP gap, not a broken crate — the gate used to report it" >&2
+    echo "       as 'not lock drift' with no remedy, which is unactionable." >&2
+    exit 1
+fi
 
 if [ ${#broken[@]} -gt 0 ]; then
     echo "ERROR: ${#broken[@]} leaf crate(s) failed for a reason that is NOT lock drift (see above)." >&2

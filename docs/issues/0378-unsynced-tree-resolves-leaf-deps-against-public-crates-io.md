@@ -68,6 +68,71 @@ gate's own failure text says "run `nros sync` first". A first-time contributor
 on a clean host reads `version 4.2.3 is yanked` and has no path from that
 message to the actual cause.
 
+## Root cause CORRECTED (2026-08-01, investigation)
+
+The two problems are real, but P1's mechanism is not the one above, and the
+difference changes which fixes work.
+
+**An unsynced tree does NOT reach crates.io — it fails CLOSED.** Verified by
+hiding the redirect targets on a synced host:
+
+- redirect present, `generated/` absent →
+  `error: failed to load source for dependency 'builtin_interfaces'`
+- `include` of a missing `nros-patch.toml` →
+  `error: failed to load config include ... failed to read configuration file`
+
+Cargo aborts in both cases. It never consults the registry. So the nine leaves
+in the reporter's run are a SETUP gap (P2), not a supply-chain exposure.
+
+**The crates.io resolution comes from cargo's config discovery, and reproduces
+on a FULLY SYNCED tree.** Cargo reads `.cargo/config.toml` from the CURRENT
+DIRECTORY upward, not from the manifest's directory. The repro in this issue
+runs from the repo root:
+
+```
+$ cargo metadata --manifest-path packages/testing/nros-bench/stress-zenoh/Cargo.toml
+error: failed to select a version for the requirement `std_msgs = "*"`
+  version 4.2.3 is yanked
+location searched: crates.io index
+```
+
+That is this checkout, today, with `generated/std_msgs` and `nros-patch.toml`
+both present. The leaf's `[patch.crates-io]` is simply never loaded, because
+cwd is the repo root. `--manifest-path` from anywhere outside the leaf does it.
+
+**The exposure is real.** Those names are taken on crates.io by third parties:
+
+```
+std_msgs = "0.0.0"            # "std_msgs ros2 rust generated dependencies"
+builtin_interfaces = "0.0.0"  # "Ros2 builtin_interfaces"
+```
+
+nano-ros publishes nothing there. The resolution fails today only because the
+published 4.2.3 is YANKED. A yank is not a security control — publish a
+matching version and the same command resolves against foreign code.
+
+**Why no repo-side config can close it.** A `[patch]` entry maps one name to
+ONE path, and every leaf redirects to its own per-leaf `generated/` tree, so
+the root config cannot hold a redirect that is correct for all sixteen. Closing
+it structurally needs either one canonical vendored copy of the message crates
+(some leaves already commit theirs — `nros-bench/wake-latency-cortex-m3` tracks
+`generated/`) or crate names that do not exist on crates.io. That is an
+RFC-0048 / RFC-0023 decision, left here rather than improvised across sixteen
+leaves.
+
+## Landed
+
+- `check-leaf-lockfiles` now classifies the unsynced case separately and prints
+  the remedy (`nros sync` / `just setup all`) instead of "failed for a reason
+  that is NOT lock drift" with no next step. That is what stranded the reporter.
+- `check-msg-dep-redirect` (new, in `check-fast`) asserts every registry-named
+  message dep has a committed redirect somewhere up its config chain — 110
+  today. It stops a NEW leaf from being added unprotected, which is the
+  reachable regression.
+
+Still open: the `--manifest-path`-from-elsewhere hole, which needs the layout
+decision above.
+
 ## Direction
 
 1. **Make the redirect not depend on a generated file for its safety.** Options,

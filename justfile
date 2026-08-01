@@ -355,7 +355,7 @@ check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
-    check-leaf-lockfiles \
+    check-leaf-lockfiles check-msg-dep-redirect \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -717,6 +717,16 @@ check-cli-fresh:
 [private]
 check-leaf-lockfiles:
     @bash scripts/check-leaf-lockfiles.sh
+
+# issue 0378 — a message dep reached by REGISTRY NAME must carry a committed
+# `[patch.crates-io]` redirect. Those names are published on crates.io by THIRD
+# PARTIES (`std_msgs = "0.0.0"`, `builtin_interfaces = "0.0.0"`); nano-ros
+# publishes nothing there, so an unredirected one resolves to a stranger's
+# crate. It fails today only because that published version is yanked, and a
+# yank is not a security control. Buildless (reads manifests + configs).
+[private]
+check-msg-dep-redirect:
+    @bash scripts/check-msg-dep-redirect.sh
 
 # Issue 0320 — committed SystemModels must be portable: no absolute host paths in
 # `meta.inputs[].path`. Buildless; regenerate with `nros sync`.
