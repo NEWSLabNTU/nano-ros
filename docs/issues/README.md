@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#379** — no lane runs clippy on the `packages/cli` sub-workspace (every clippy call targets the
+ROOT workspace), so ~30 lints have accumulated there under rust 1.97 — `nros-msg-to-idl`,
+`rosidl-codegen`, incl. a few `unwrap`-after-`is_some` worth a real look. Same silent-lane class as
+#0202 (nothing ran the CLI tests) and #0319 (backend suite on no lane). Latent, not red — adding
+the lane needs the cleanup first. See `0379-*`. (2026-08-01)
+
 **#378** — a host set up by the DOCUMENTED flow (bootstrap + activate + `nros setup native`) cannot
 reach tier-1 ci: `check-leaf-lockfiles` fails for 9 leaves because neither `generated/` (needs
 `nros generate-rust` → needs ROS 2) nor the root `nros-patch.toml` (needs `nros sync`, gitignored)
