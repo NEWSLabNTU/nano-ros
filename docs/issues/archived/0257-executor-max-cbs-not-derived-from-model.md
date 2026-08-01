@@ -105,7 +105,7 @@ guarantee (prefer a `nros ws sync`/`plan` refresh step over a
 proc-macro-time nested cargo); W3 a C/C++ producer built on phase-235's
 already-recording NativeBoard NodeContext (coordinate with phase-236);
 W4 folds it in as `max(model, metadata)` with the tier-group filter and
-closes this issue. See `docs/roadmap/phase-307-metadata-mode-completion.md`.
+closes this issue. See `docs/roadmap/archived/phase-307-metadata-mode-completion.md`.
 
 ## Resolved (2026-07-26) — phase-307
 
@@ -127,7 +127,7 @@ all fell:
    instead of guessing `<crate>::<module>::Component`.
 3. **No C/C++ producer.** Still true, and still the reason this issue's
    fix is Rust-only — tracked as
-   `docs/roadmap/phase-308-cpp-metadata-producer.md`. C/C++ node packages
+   `docs/roadmap/archived/phase-308-cpp-metadata-producer.md`. C/C++ node packages
    keep the model bound, which is exactly today's behaviour, so nothing
    regresses.
 

@@ -196,7 +196,7 @@ would be an unverified edit with no present benefit.
 
 ## Cross-refs
 
-* `docs/roadmap/phase-308-cpp-metadata-producer.md`
+* `docs/roadmap/archived/phase-308-cpp-metadata-producer.md`
 * `docs/issues/archived/0257-executor-max-cbs-not-derived-from-model.md`
 
 ## Update: the detection predicate was incomplete (2026-07-28)

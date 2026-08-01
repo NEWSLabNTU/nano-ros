@@ -1,8 +1,8 @@
 # Phase 322 — Board crate consolidation
 
 **Status (2026-07-31): drafted, DEFERRED.** Deliberately sequenced after
-[phase-320](phase-320-board-support-tiers.md) (support tiers) and
-[phase-321](phase-321-package-org-cuts-and-reorg.md) (cuts + reorganization).
+[phase-320](archived/phase-320-board-support-tiers.md) (support tiers) and
+[phase-321](archived/phase-321-package-org-cuts-and-reorg.md) (cuts + reorganization).
 
 **Why deferred.** This is the largest and riskiest of the three: it rewrites
 board crates that several platforms boot from, and every merge needs its

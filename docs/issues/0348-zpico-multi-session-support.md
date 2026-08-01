@@ -25,7 +25,7 @@ Verified: `two_sessions_deliver_cross_session_through_router`
 `zenoh_integration` suite 15/15 green at pool=2. Single-session footprint delta
 +142 B `.bss` (the `g_session_inuse[1]` flag + struct-aggregation padding; the
 21 KB table budget did not multiply). See
-[phase-328](../roadmap/phase-328-zpico-multi-session.md). Detail below is the
+[phase-328](../roadmap/archived/phase-328-zpico-multi-session.md). Detail below is the
 original finding.
 ---
 

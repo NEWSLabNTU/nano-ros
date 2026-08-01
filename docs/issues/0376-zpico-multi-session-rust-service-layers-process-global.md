@@ -28,7 +28,7 @@ At the default `ZPICO_MAX_SESSIONS == 1` both arrays are their original size
 and `session_index == 0`, so the layout and footprint are byte-identical to
 before. Verified: full `zenoh_integration` suite 15/15 at `ZPICO_MAX_SESSIONS=2`
 and 14+skip at the default 1 (single-session unchanged). See
-[phase-328](../roadmap/phase-328-zpico-multi-session.md). Original finding below.
+[phase-328](../roadmap/archived/phase-328-zpico-multi-session.md). Original finding below.
 ---
 
 ## Finding (2026-08-01, residual of phase-328 / issue 0348)
@@ -102,5 +102,5 @@ not a live break — single-session services are correct.
 - Footprint of a single-session build with `ZPICO_MAX_SESSIONS=1` is unchanged
   (per-session tables must not multiply on a target that opens one session).
 
-See [phase-328](../roadmap/phase-328-zpico-multi-session.md) and issue 0348 for
+See [phase-328](../roadmap/archived/phase-328-zpico-multi-session.md) and issue 0348 for
 the C-side design this extends.

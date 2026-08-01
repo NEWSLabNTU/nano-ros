@@ -74,11 +74,11 @@ set-cardinality over the same data the slot count already walks.
    the count. 0257's `executor_sizing_bake_gate.rs` is the precedent for
    what that error must say.
 3. C/C++ node packages have no sidecar until
-   `docs/roadmap/phase-308-cpp-metadata-producer.md` lands; they keep the
+   `docs/roadmap/archived/phase-308-cpp-metadata-producer.md` lands; they keep the
    current behaviour, so nothing regresses.
 
 ## Cross-refs
 
 * `docs/issues/archived/0257-executor-max-cbs-not-derived-from-model.md`
-* `docs/roadmap/phase-307-metadata-mode-completion.md`
-* `docs/roadmap/phase-308-cpp-metadata-producer.md`
+* `docs/roadmap/archived/phase-307-metadata-mode-completion.md`
+* `docs/roadmap/archived/phase-308-cpp-metadata-producer.md`
