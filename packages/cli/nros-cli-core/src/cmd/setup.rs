@@ -1086,7 +1086,7 @@ fn print_licenses(index: &SdkIndex) {
 /// Detect the host's package manager: `/etc/os-release` `ID`/`ID_LIKE`
 /// first (works even when several managers are installed), then a
 /// `command -v` probe as fallback. macOS is always `brew`.
-fn detect_package_manager() -> Option<&'static str> {
+pub(crate) fn detect_package_manager() -> Option<&'static str> {
     if std::env::consts::OS == "macos" {
         return Some("brew");
     }
@@ -1142,7 +1142,7 @@ fn command_exists(cmd: &str) -> bool {
 /// The composed native install command for `manager` over `packages`.
 /// One command, the user's to run — sudo is spelled out where the manager
 /// needs it (brew must NOT run under sudo).
-fn native_install_command(manager: &str, packages: &[String]) -> String {
+pub(crate) fn native_install_command(manager: &str, packages: &[String]) -> String {
     let list = packages.join(" ");
     match manager {
         "apt" => format!("sudo apt-get install -y {list}"),

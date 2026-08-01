@@ -1,10 +1,28 @@
 ---
 id: 385
 title: "`nros setup` cannot unpack a zstd prebuilt dist on a host without `zstd`, and reports only `unpack prebuilt archive`"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0368, rfc-0014, rfc-0062, phase-327]
+---
+
+## Resolution (2026-08-02)
+
+Both defects fixed:
+
+- **D1 (undeclared):** added `[system.zstd]` to `nros-sdk-index.toml`
+  (apt/dnf/pacman/brew `zstd` + `check = { cmd = "zstd" }`). `nros setup
+  --system` / doctor now list it (verified: with zstd masked, `--system
+  --check` shows `[MISSING] zstd` and composes it into the install command).
+- **D2 (opaque error, probe-late):** `sdk_store::execute`'s prebuilt arm probes
+  `zstd` on PATH BEFORE downloading when the dist URL is `.zst`/`.tzst`, and
+  bails with the package name for the detected manager (reusing
+  `detect_package_manager` + `native_install_command`, now `pub(crate)`):
+  *"this prebuilt dist is zstd-compressed, but the `zstd` binary is not on PATH
+  … Install it: sudo apt-get install -y zstd (or run `nros setup --system`)"*.
+  Verified: with zstd masked, `nros setup --tool cyclonedds` fails with that
+  message before any download.
 ---
 
 # zstd is an undeclared prerequisite of every prebuilt dist

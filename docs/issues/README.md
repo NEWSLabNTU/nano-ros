@@ -50,11 +50,11 @@ example leaf `Cargo.lock` is gitignored, so cargo must CREATE it and `--locked` 
 container. Distinct from #384 (argv-tail leak) — same shim, different defect. See `0386-*`.
 (2026-08-02)
 
-**#385** — `nros setup` cannot unpack a `.tar.zst` prebuilt dist on a host without `zstd` (not in
-stock Ubuntu 22.04): `tar (child): zstd: Cannot exec`, and nros reports only `unpack prebuilt
-archive` with no remedy. Undeclared `[system.*]` dep, probed AFTER the download rather than before —
-same class as #0368 F3's libslirp. Hits the FIRST prebuilt any user installs. See `0385-*`.
-(2026-08-02)
+Recently resolved: **#385** — `nros setup` couldn't unpack a `.tar.zst` prebuilt dist on a host
+without `zstd`: `tar (child): zstd: Cannot exec`, reported as a bare `unpack prebuilt archive`.
+RESOLVED (2026-08-02): added `[system.zstd]` to the index (D1 — listed by `--system`/doctor when
+missing) and made `sdk_store` probe `zstd` BEFORE downloading a `.zst` dist, failing with the
+package-manager install command (D2). Verified both with zstd masked. See `0385-*`. (2026-08-02)
 
 Recently resolved: **#384** — `scripts/bin/cargo` (the `--locked` injector) appended `$FLAGS` at
 argv TAIL, so any `cargo <sub> -- <args>` leaked `--locked` to the child (test harness /

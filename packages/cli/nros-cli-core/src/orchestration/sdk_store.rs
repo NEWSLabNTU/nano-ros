@@ -171,6 +171,22 @@ pub fn execute(
         InstallAction::Present => Provenance::read(prefix)
             .ok_or_else(|| eyre!("{tool}: present but no provenance marker")),
         InstallAction::Prebuilt { url, sha256 } => {
+            // The prebuilt dists are `.tar.zst`; `tar -xf` shells out to the
+            // external `zstd` binary to decompress. A host without it (stock
+            // Ubuntu 22.04 ships no `zstd`) otherwise fails DEEP inside tar with
+            // a cryptic "zstd: Cannot exec", after a download and behind a bare
+            // "unpack prebuilt archive". Probe BEFORE downloading and fail with
+            // the package name for the detected manager (issue 0385).
+            if (url.ends_with(".zst") || url.ends_with(".tzst")) && !command_on_path("zstd") {
+                let remedy = crate::cmd::setup::detect_package_manager()
+                    .map(|m| crate::cmd::setup::native_install_command(m, &["zstd".to_string()]))
+                    .unwrap_or_else(|| "install `zstd` with your package manager".to_string());
+                eyre::bail!(
+                    "this prebuilt dist is zstd-compressed, but the `zstd` binary \
+                     is not on PATH — `tar` cannot unpack a `.tar.zst` without it. \
+                     Install it:\n  {remedy}\n(or run `nros setup --system`)"
+                );
+            }
             std::fs::create_dir_all(prefix)
                 .wrap_err_with(|| format!("create {}", prefix.display()))?;
             let archive = prefix.with_extension("download");
@@ -488,6 +504,18 @@ pub fn provision_source(
             Ok(SourceDisposition::Provisioned)
         }
     }
+}
+
+/// True when `cmd` is executable on PATH (issue 0385 — probe `zstd` before an
+/// unpack that would otherwise fail deep inside `tar`).
+fn command_on_path(cmd: &str) -> bool {
+    std::process::Command::new(cmd)
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 fn sh(args: &[&str], cwd: Option<&Path>) -> Result<()> {
