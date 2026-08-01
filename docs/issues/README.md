@@ -44,6 +44,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#376** (filed as #372; renumbered — id collision with parallel sessions) — zpico multi-session
+(phase-328 / #348) is **pubsub-only**: the Rust RMW shim's `SERVICE_BUFFERS` + `REPLY_WAKERS` are
+process-global arrays indexed by a bare handle with no session dimension, so two sessions' service
+servers/clients collide (queryable rings overwrite, pending-get wakers cross-wake). The C shim IS
+per-session; single-session services are correct (the queryable callback records its owning session
+per-buffer). Fix: move the arrays under the session dimension (per-`ZenohSession` table), matching
+the C-side design without multiplying the static footprint. Not urgent — nothing in-tree opens two
+sessions, let alone two services. See `0376-*`. (2026-08-01)
+
 **#375** (filed as #374; renumbered — id collision with a parallel session) — repo root is resolved
 LOGICALLY (`cd "$(dirname …)" && pwd`) in both `activate.sh` and `scripts/bootstrap.sh`, so a
 checkout reached through a symlinked parent bakes the alias path into `NROS_REPO_DIR` /
