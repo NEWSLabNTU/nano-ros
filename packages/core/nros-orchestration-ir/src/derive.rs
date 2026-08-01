@@ -145,6 +145,14 @@ pub fn derive_tiers_from_contracts(
             // Time-slicing is not a derived dim (no contract fact implies
             // round-robin); an authored `time_slice_us` is the only source.
             time_slice_us: None,
+            // phase-330 W1.a — placement/policy dims are AUTHORED, never
+            // derived: nothing in a contract fact implies a core pin or a
+            // sporadic budget. Left unset so a derived tier stays a plain
+            // priority tier.
+            core: None,
+            deadline_us: None,
+            budget_us: None,
+            period_us: None,
             // sched_class deliberately unset: the runtime consumes the GENERIC
             // policy (class/period/budget/deadline → SchedContext; on Zephyr
             // class+deadline → kernel EDF). The realizer's internal vocab

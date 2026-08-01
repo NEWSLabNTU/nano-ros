@@ -5,7 +5,7 @@
 **Touches:** phase-296 (model as sole plan input), issue 0320 (content-addressed
 staleness), RFC-0047 / RFC-0052 (scheduling dims + fail-loud contract)
 
-**Status.** OPEN — not started.
+**Status.** IN PROGRESS — W1 landed 2026-08-02 (wave 1).
 
 ## Goal
 
@@ -29,22 +29,28 @@ useful partial progress on W3–W5 without it.
 
 ### W1 — Give the dims a resolver input (BLOCKS EVERYTHING)
 
-- [ ] **W1.a** Extend the system-config schema (`nros_orchestration_ir`) with
+- [x] **W1.a** Extend the system-config schema (`nros_orchestration_ir`) with
       per-platform scoped tier dims: `zephyr.deadline_us`,
       `nuttx.budget_us`/`period_us`, `threadx.preempt_threshold`/
       `time_slice_us`, per-platform `core`, and the generic `class`. The
       resolver already carries `posix.core` / `sched_class` — this widens the
       same table rather than inventing a second one.
-- [ ] **W1.b** Teach `ros-launch-resolve`'s `sched_loader` to read them and
-      emit them into the resolved model. NOTE: that is a **vendored fork**
-      (`packages/cli/third-party/ros-launch-resolve`) — per CLAUDE.md the agent
-      commits and rebases there but does not push the fork remote; the
-      maintainer pushes, then the superproject pointer moves.
-- [ ] **W1.c** Round-trip acceptance, using the tooling issue 0380 already
+- [x] **W1.b** ~~Teach the resolver to read them~~ — **NOT NEEDED.** The
+      resolver parses this same `[tiers.*]` block into the shared
+      `ros_launch_manifest_sched::TierPlatformSpec`, which has carried `core` /
+      `deadline_us` / `budget_us` / `period_us` / `time_slice_us` all along.
+      The gap was entirely on the nano-ros side: two mirrors of one concept
+      drifted, and the NARROWER one (`nros_orchestration_ir::TierRtosSpec`)
+      defined what users could write. No fork change, so no maintainer push is
+      in the critical path — the risk this phase recorded does not apply.
+- [x] **W1.c** Round-trip acceptance, using the tooling issue 0380 already
       landed: for `ws-realtime-rust`, delete the committed model, re-resolve,
       and assert `nros ws model-dims` returns the SAME 20 dims. Equivalently:
       `nros sync` must not refuse, because there is nothing left to drop.
       **This is the falsifiable definition of "the inputs can express it".**
+      **PASS (2026-08-02)** for `ws-realtime-rust`: dims moved into
+      `system.toml`, model deleted, `nros sync` exits 0 (nothing to drop) and
+      `nros ws model-dims` returns the same 20 dims.
 
 ### W2 — Prove the round-trip across the family
 

@@ -176,6 +176,36 @@ pub struct TierRtosSpec {
     /// POSIX scheduler class (e.g. `"SCHED_FIFO"`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sched_class: Option<String>,
+
+    // phase-330 W1.a (RFC-0063) — PLATFORM-SCOPED policy dims.
+    //
+    // `TierDef` already carries `core`/`deadline_us`/`budget_us`/`period_us` as
+    // GENERIC heads applying to every platform. These are the per-platform
+    // overrides, and the distinction is the point: a generic head turns the
+    // policy on EVERYWHERE, while a sub-table entry engages one kernel's
+    // mechanism and lowers to `None` elsewhere. A generic `budget_us` flips
+    // every executor into cooperative sporadic gating; `[tiers.high.nuttx]
+    // .budget_us` engages only NuttX's SCHED_SPORADIC.
+    //
+    // Their ABSENCE here is why issue 0380 happened: this struct is the schema
+    // `system.toml` is parsed against, so a scoped dim could not be written in
+    // the inputs and lived only in the committed model YAML — a file whose
+    // documented maintenance procedure is "delete and re-resolve". The shared
+    // `ros_launch_manifest_sched::TierPlatformSpec`, which the resolver parses
+    // the SAME `[tiers.*]` block into, has had these all along: two mirrors
+    // drifted and the narrower one defined what users could write.
+    /// CPU core to pin this tier's task to on THIS platform (SMP).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub core: Option<u32>,
+    /// Relative deadline (µs) on THIS platform, tighter than the generic head.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_us: Option<u64>,
+    /// Sporadic execution budget (µs) on THIS platform; pairs with `period_us`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_us: Option<u64>,
+    /// Sporadic replenishment period (µs) on THIS platform.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period_us: Option<u64>,
 }
 
 /// `[[node.callback_groups]]` row (Phase 228.A, RFC-0015 §4.1).
@@ -544,6 +574,15 @@ fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> T
         preempt_threshold: spec.preempt_threshold,
         time_slice_us: spec.time_slice_us,
         sched_class: spec.sched_class.clone(),
+        // phase-330 W1.a — these four were DROPPED here, because this crate's
+        // `TierRtosSpec` had nowhere to put them. This is the ONE conversion
+        // from the resolved model into the IR the proc-macro and
+        // `codegen-system` consume, so a field missing here is a scoped dim
+        // that silently never reaches the runtime.
+        core: spec.core,
+        deadline_us: spec.deadline_us,
+        budget_us: spec.budget_us,
+        period_us: spec.period_us,
     }
 }
 

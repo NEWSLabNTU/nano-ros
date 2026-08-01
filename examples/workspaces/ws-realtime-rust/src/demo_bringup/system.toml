@@ -23,29 +23,47 @@ group_tiers = { telem = "low" }
 
 # Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
 # the native deploy; priorities are raw POSIX (advisory on native).
-# phase-296 W5.5 — the CONSUMED tier model for every entry is the hand-authored
-# `demo_bringup/config/system_model.yaml` (all four entries use
-# `nros::main!(model = ...)`). There the `high` tier gains `class = "real_time"`
-# plus a ZEPHYR-SCOPED `[tiers.high.zephyr].deadline_us` that fires the Zephyr
-# kernel-EDF path (k_thread_deadline_set) while lowering to None (Fifo,
-# unchanged) on posix/nuttx. This system.toml table is NOT re-parsed for tiers
-# here; the sub-table `deadline_us` field the model uses is not in this file's
-# stricter `nros_orchestration_ir` schema, so it is intentionally left in the
-# YAML only.
+# phase-330 W1 (RFC-0063) — THE DIMS LIVE HERE NOW.
+#
+# This block used to say the scoped dims were "intentionally left in the YAML
+# only", because `nros_orchestration_ir::TierRtosSpec` had no field for them.
+# That was a schema gap, not a design choice, and it is what made issue 0380
+# possible: the dims lived only in the generated-and-regenerable model, so
+# regenerating deleted them.
+#
+# W1.a added `core`/`deadline_us`/`budget_us`/`period_us` to that struct
+# (the shared `ros_launch_manifest_sched::TierPlatformSpec` the RESOLVER parses
+# this same block into always had them — the two mirrors had drifted). The
+# model is now reproducible from launch + this file alone.
+#
+# SCOPING IS THE POINT. A dim on `[tiers.high]` applies to EVERY platform; the
+# same dim in `[tiers.high.<rtos>]` engages one kernel's mechanism and lowers to
+# None elsewhere. A generic `budget_us` flips every executor into cooperative
+# sporadic gating, while `[tiers.high.nuttx].budget_us` engages only NuttX's
+# SCHED_SPORADIC.
 [tiers.high]
+class = "real_time"
 spin_period_us = 1000
 [tiers.high.posix]
 priority = 80
+core = 0
 # phase-276 W2 / issue #128 half 2 — RAW Zephyr priority (preemptive; lower
 # number = higher priority). Consumed by the zephyr_entry projection.
 [tiers.high.zephyr]
 priority = 5
+# ZEPHYR-SCOPED: fires the kernel-EDF path (k_thread_deadline_set) here and
+# lowers to None (Fifo, unchanged) on posix/nuttx/threadx.
+deadline_us = 10000
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
 # priority). `[tiers.*.nuttx]` flips the macro's generic OwnedSpin arm onto
 # `<QemuArmVirt>::run_tiers` (RFC-0015 Model 1), one std::thread (NuttX pthread)
 # per tier over one shared session.
 [tiers.high.nuttx]
 priority = 110
+# NUTTX-SCOPED sporadic policy (both fields required): engages NuttX
+# SCHED_SPORADIC without flipping other platforms into cooperative gating.
+budget_us = 5000
+period_us = 10000
 # phase-297 W5 — RAW ThreadX priority (lower number = higher priority), near
 # the app thread priority (4). Mirrors config/system_model.yaml (the entries
 # read the model; this file feeds `play_launch resolve --system`).
@@ -58,7 +76,15 @@ spin_period_us = 10000
 priority = 10
 [tiers.low.zephyr]
 priority = 10
+core = 0
 [tiers.low.nuttx]
 priority = 100
+core = 0
 [tiers.low.threadx]
 priority = 15
+# THREADX-SCOPED: preemption threshold + round-robin slice; `core` is an SMP
+# pin via tx_thread_smp_core_exclude (threadx-linux is non-SMP, so the board
+# seam ignores it there).
+preempt_threshold = 10
+core = 0
+time_slice_us = 5000

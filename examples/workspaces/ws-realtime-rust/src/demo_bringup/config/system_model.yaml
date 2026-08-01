@@ -4,7 +4,7 @@ meta:
   - path: launch/system.launch.xml
     sha256: fec2a92c1ab536e834089027d087d5ce0f21345bc0b468d2e2d00e7ded4bb108
   - path: system.toml
-    sha256: f24716aad2c7d6f61ba408f11e3b1fc609c20284a08663b61894f913d3c2abcd
+    sha256: 0c61adda6e7bc58d1123d45857d7b24ed33165b04d236b53ee330bd90150e099
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -25,86 +25,36 @@ structure:
       node_name: telem_node
 execution:
   tiers:
-    # phase-296 W5.5 — the `high` tier is real_time; `deadline_us` lives in the
-    # `zephyr` sub-table (ZEPHYR-SCOPED, tier_from_model selects it only for the
-    # zephyr bake) so the Zephyr build's boot tier fires the Task-2 EDF path
-    # (class == real_time && deadline_us.is_some() ⇒ k_thread_deadline_set +
-    # the `nros: EDF deadline set tier=` marker). The generic `class` head is
-    # shared by every bake, but with NO generic `deadline_us`/`budget_us`/
-    # `period_us` it lowers to `None` (Fifo, byte-identical) on posix/nuttx —
-    # only zephyr's sub-table deadline turns on a SchedContext monitor.
     high:
       class: real_time
       spin_period_us: 1000
       posix:
         priority: 80
-        # phase-296 W5.13 — placement dim on POSIX: pin the HIGH tier to CPU 0
-        # via sched_setaffinity. A Linux host is genuinely multi-core and the
-        # call is unprivileged, so this is the first RUNTIME kernel-ACCEPT proof
-        # of the core-pin consumer (issue #260 — the RTOS SMP arms only ever hit
-        # the fallback on their uniprocessor fixtures).
         core: 0
       zephyr:
         priority: 5
         deadline_us: 10000
-      nuttx:
-        priority: 110
-        # phase-296 W5.9 — NUTTX-SCOPED sporadic policy: with class real_time
-        # this arms the kernel sporadic server (SCHED_SPORADIC) when the
-        # kernel has CONFIG_SCHED_SPORADIC, else the boot logs the loud
-        # "executor SchedContext only" note. Other platforms' bakes see no
-        # budget/period (sub-table scoped — no cooperative gating flips).
-        budget_us: 5000
-        period_us: 10000
-      # phase-297 W5 — RAW ThreadX priority (lower number = higher priority),
-      # near the app thread priority (nros_board_app_priority() = 4). NOTE:
-      # resolve_tiers sorts descending by raw number without per-RTOS
-      # inversion, so on ThreadX tiers[0] (the boot tier) is `low`.
       threadx:
         priority: 5
+      nuttx:
+        priority: 110
+        budget_us: 5000
+        period_us: 10000
     low:
       spin_period_us: 10000
       posix:
         priority: 10
       zephyr:
         priority: 10
-        # phase-296 W5.11 — placement dim: pin the LOW tier to CPU 0. On the
-        # non-SMP native_sim fixture `k_thread_cpu_pin` returns -ENOSYS
-        # (CONFIG_SCHED_CPU_MASK_PIN_ONLY absent) → the board logs the LOUD
-        # "core pin FAILED" note and the tier runs unpinned (RFC-0052 fail-loud
-        # — never a silent drop). An SMP fixture would flip it to kernel-accept;
-        # the e2e asserts EITHER, so the placement dim is proven never-silent.
-        core: 0
-      nuttx:
-        priority: 100
-        # phase-296 W5.11 — placement dim on NuttX: pin the LOW tier to CPU 0.
-        # The qemu-arm-virt fixture is single-core (no CONFIG_SMP) so
-        # `pthread_setaffinity_np` cannot be honored → the board seam logs the
-        # LOUD "core pin FAILED" note and the tier runs unpinned (RFC-0052
-        # fail-loud — before W5.11 the ABI carried `core_plus1` but NO consumer
-        # applied it, a silent drop). An SMP fixture flips it to kernel-accept.
         core: 0
       threadx:
         priority: 15
-        # phase-296 W5.10 — non_preempt_scope on the LOW tier: threads at
-        # priorities 10-15 cannot preempt telem mid-callback; the ctrl tier
-        # (5) and the transport threads still can, so the high-rate path is
-        # unaffected (prefer thresholds BELOW the transport priorities). On
-        # ThreadX `low` is the BOOT tier, so the marker comes from the boot
-        # reprioritize (tx_thread_preemption_change), kernel-accept-gated.
-        preempt_threshold: 10
-        # phase-296 W5.13 — placement dim on ThreadX (SMP core exclude): pin the
-        # LOW/boot tier to core 0 via tx_thread_smp_core_exclude. The
-        # threadx-linux port is non-SMP (no TX_THREAD_SMP), so the board seam
-        # returns 0 → the LOUD "core pin FAILED" note fires and the tier runs
-        # unpinned (RFC-0052 fail-loud). An SMP build flips it to kernel-accept.
         core: 0
-        # phase-296 #0266 — time-slicing knob on ThreadX: request round-robin on
-        # the LOW/boot tier (5 ms slice). ThreadX honors a per-thread slice
-        # unconditionally (tx_thread_time_slice_change on the boot thread), so
-        # the "time slice set" marker fires. Other RTOSes reject it at bake
-        # (their time-slicing is a global kernel config, not a per-tier knob).
+        preempt_threshold: 10
         time_slice_us: 5000
+      nuttx:
+        priority: 100
+        core: 0
   bindings:
     /control_node/ctrl: high
     /telem_node/telem: low

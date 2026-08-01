@@ -32,7 +32,7 @@
 // build-dependency would have to resolve in every `--locked` build of this
 // sub-workspace for no gain.
 
-use std::{path::Path, process::Command};
+use std::{collections::BTreeSet, path::Path, process::Command};
 
 /// FNV-1a, 64-bit. Stable by construction: the constants are in this file, so
 /// `build.rs` and the runtime cannot disagree the way two std-hasher versions
@@ -81,16 +81,126 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// Directories the CLI is built from: `packages/cli` plus the transitive
+/// closure of its LOCAL PATH DEPENDENCIES.
+///
+/// phase-330 W1.a found this the hard way. The stamp used to watch
+/// `packages/cli` alone, but `nros-cli-core` path-depends on
+/// `../../core/nros-orchestration-ir`, which path-depends further. Editing one
+/// of those left the CLI genuinely stale while `nros source-stamp` reported
+/// FRESH and `setup-cli` skipped the rebuild — so a schema change appeared not
+/// to take effect, and the error message kept listing the old fields.
+///
+/// That is the same shape as the input lists this file already warns about: a
+/// freshness probe watching less than the build consumes (issue 0196). The
+/// closure is computed from manifests rather than `cargo metadata` so it stays
+/// dependency-free and usable from `build.rs`.
+fn cli_source_dirs(root: &Path) -> Vec<String> {
+    let mut dirs = vec!["packages/cli".to_string()];
+    let mut seen: BTreeSet<String> = dirs.iter().cloned().collect();
+    let mut queue = dirs.clone();
+
+    while let Some(dir) = queue.pop() {
+        let Some(listing) = git(root, &["ls-files", "--", &dir]) else {
+            continue;
+        };
+        for rel in listing.lines() {
+            if !rel.ends_with("Cargo.toml") {
+                continue;
+            }
+            // Vendored submodules carry their own graphs; they are not nano-ros
+            // build inputs (and would drag in thousands of files).
+            if rel.contains("/third-party/") || rel.contains("/testing_workspaces/") {
+                continue;
+            }
+            let Ok(body) = std::fs::read_to_string(root.join(rel)) else {
+                continue;
+            };
+            let manifest_dir = Path::new(rel).parent().unwrap_or(Path::new(""));
+            for dep in path_deps_of(&body) {
+                let Some(joined) = normalize_rel(manifest_dir, &dep) else {
+                    continue;
+                };
+                if joined.starts_with("packages/cli") || joined.contains("/third-party/") {
+                    continue;
+                }
+                if seen.insert(joined.clone()) {
+                    dirs.push(joined.clone());
+                    queue.push(joined);
+                }
+            }
+        }
+    }
+    dirs
+}
+
+/// `path = "..."` values in a manifest. Deliberately textual: this runs from
+/// `build.rs`, so it cannot pull in a TOML parser.
+fn path_deps_of(manifest: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.starts_with('#') {
+            continue;
+        }
+        let mut rest = line;
+        while let Some(i) = rest.find("path") {
+            rest = &rest[i + 4..];
+            let after = rest.trim_start();
+            let Some(after) = after.strip_prefix('=') else {
+                continue;
+            };
+            let after = after.trim_start();
+            let Some(after) = after.strip_prefix('"') else {
+                continue;
+            };
+            let Some(end) = after.find('"') else { continue };
+            out.push(after[..end].to_string());
+        }
+    }
+    out
+}
+
+/// Resolve `base/rel` and collapse `..` segments, repo-relative.
+fn normalize_rel(base: &Path, rel: &str) -> Option<String> {
+    let mut parts: Vec<&str> = base
+        .to_str()?
+        .split('/')
+        .filter(|p| !p.is_empty())
+        .collect();
+    for seg in rel.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            other => parts.push(other),
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(parts.join("/"))
+}
+
 /// Every tracked CLI input, repo-relative. Used by `build.rs` for
 /// `cargo:rerun-if-changed`.
 pub fn cli_input_files(root: &Path) -> Vec<String> {
-    let Some(out) = git(root, &["ls-files", "--", "packages/cli"]) else {
-        return Vec::new();
-    };
-    out.lines()
-        .filter(|l| is_cli_input(l))
-        .map(str::to_string)
-        .collect()
+    let mut out = Vec::new();
+    for dir in cli_source_dirs(root) {
+        let Some(listing) = git(root, &["ls-files", "--", &dir]) else {
+            continue;
+        };
+        out.extend(
+            listing
+                .lines()
+                .filter(|l| is_cli_input(l))
+                .map(str::to_string),
+        );
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// A stamp of the CLI sources as they exist right now, or `None` outside a git
@@ -130,8 +240,14 @@ pub fn source_stamp(root: &Path) -> Option<String> {
             .collect()
     };
 
-    // 1. index side (worktree blob SHA substituted for dirty files).
-    let idx = git(root, &["ls-files", "-s", "--", "packages/cli"])?;
+    // 1. index side (worktree blob SHA substituted for dirty files), over the
+    // SAME closure the rest of this file uses — `packages/cli` plus its local
+    // path-dep closure. Hardcoding `packages/cli` here is what let an edit to
+    // `packages/core/nros-orchestration-ir` leave the stamp unchanged.
+    let mut idx = String::new();
+    for dir in cli_source_dirs(root) {
+        idx.push_str(&git(root, &["ls-files", "-s", "--", &dir])?);
+    }
     for line in idx.lines() {
         // "<mode> <sha> <stage>\t<path>" — skip anything that does not parse
         // rather than aborting the whole stamp on one odd entry.
@@ -208,13 +324,26 @@ fn file_index_mode(path: &Path) -> &'static str {
 /// more useful than naming whichever file happened to sort first, which is all
 /// the mtime predicate could report.
 pub fn modified_cli_files(root: &Path) -> Vec<String> {
-    let Some(out) = git(root, &["diff", "--name-only", "--", "packages/cli"]) else {
-        return Vec::new();
-    };
-    out.lines()
-        .filter(|l| is_cli_input(l))
-        .map(str::to_string)
-        .collect()
+    // Over the SAME closure as the index side. An earlier draft fixed the index
+    // half and left this hardcoded to `packages/cli`, so an edit to an
+    // out-of-tree path dep changed no component of the stamp and the binary
+    // still reported FRESH — the very bug the closure was added to fix,
+    // surviving in the other half of the same function.
+    let mut out = Vec::new();
+    for dir in cli_source_dirs(root) {
+        let Some(listing) = git(root, &["diff", "--name-only", "--", &dir]) else {
+            continue;
+        };
+        out.extend(
+            listing
+                .lines()
+                .filter(|l| is_cli_input(l))
+                .map(str::to_string),
+        );
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 #[cfg(test)]
