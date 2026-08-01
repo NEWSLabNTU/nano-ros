@@ -177,6 +177,16 @@ function(_nros_find_msg_package_root pkg out_var)
             set(${out_var} "${_NANO_ROS_PREFIX}/packages/interfaces/${pkg}" PARENT_SCOPE)
             return()
         endif()
+        # phase-327 / issue 0368 — the CODEGEN bundle (`packages/cli/
+        # interfaces/`, the same share trees `nros sync` falls back to), so
+        # a ROS-less host resolves std_msgs & co. here too. Without this
+        # rung the stub silently generated NOTHING for a dep package and
+        # the cpp-ffi closure compiled a consumer whose embedded
+        # `std_msgs_msg_header_t` did not exist (local_msg_pkg fixture).
+        if(EXISTS "${_NANO_ROS_PREFIX}/packages/cli/interfaces/${pkg}/package.xml")
+            set(${out_var} "${_NANO_ROS_PREFIX}/packages/cli/interfaces/${pkg}" PARENT_SCOPE)
+            return()
+        endif()
         if(EXISTS "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${pkg}")
             set(${out_var} "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${pkg}" PARENT_SCOPE)
             return()

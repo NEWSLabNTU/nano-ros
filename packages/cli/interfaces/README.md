@@ -17,6 +17,9 @@ crates.io, which only carries a yanked, unrelated `std_msgs` crate.
   Completed same day when the W5 narrowing guard fired on the remaining two
   during the first full fixture build: `lifecycle_msgs` 1.2.3 (rcl_interfaces
   `82776fc9`), `geometry_msgs` 4.9.2 (common_interfaces `0843449`).
+  `sensor_msgs` 4.9.2 (common_interfaces `0843449`) joined when the cmake
+  find-stub gained its bundle rung and the local_msg_pkg compile-check
+  fixture (which deliberately consumes AMENT pkgs) first ran ROS-less.
   All Apache-2.0. If an example grows a NEW interface dep, vendor it here in
   the same change — the acceptance is `nros sync examples/workspaces/<ws>`
   green with no `AMENT_PREFIX_PATH`.

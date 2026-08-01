@@ -30,7 +30,7 @@ if(NOT EXISTS "${NROS_RMW_CFFI_DIR}/nros/rmw_vtable.h")
         "Set -DNROS_RMW_CFFI_DIR=<path-to-packages/core/nros-rmw-abi/include>.")
 endif()
 
-set(NROS_PLATFORM_CFFI_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../../core/nros-platform-api/include"
+set(NROS_PLATFORM_CFFI_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../../platform/nros-platform-api/include"
     CACHE PATH "Path to the nros-platform-cffi public headers (platform.h, platform_net.h, …)")
 if(NOT EXISTS "${NROS_PLATFORM_CFFI_INCLUDE}/nros/platform_net.h")
     message(FATAL_ERROR
