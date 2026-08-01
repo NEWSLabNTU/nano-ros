@@ -44,6 +44,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#371** [severity **high**] — native_sim cyclone app abort()s at a near-deterministic 19–21 s
+joining the full Autoware graph during the safety-island demo's scenario init (7/7 on 2026-08-01;
+the same tree passed 2× on 2026-07-31 when one sim node was down). mrm_handler flaps
+operate/cancel (hot service path) right before death; unnamed cyclone pthread; gdb masks it;
+strace -k unwinds only to the zephyr print shim. Isolation: island alone / single-peer feed /
+availability flap / idle sim / EKF-odometry all survive — only the full graph + scenario churn
+kills it. See `0371-*`. (2026-08-01)
+
 **#370** (filed as #368; renumbered — fifth id collision between parallel sessions) — zephyr fixture family broken after `just setup-cli` on current main: `nros codegen entry`
 rejects ws-realtime-c's committed system model with "places no nodes on board `zephyr`" — the
 rebuilt CLI (ros-launch-resolve line, RFC-0060) and the committed model disagree about
