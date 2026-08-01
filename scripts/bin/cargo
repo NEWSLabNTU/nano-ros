@@ -95,15 +95,18 @@ for a in "$@"; do
 done
 
 # Don't force `--locked` when the target's `Cargo.lock` is a git-IGNORED
-# artifact rather than a tracked promise (issue 0386). `--locked` is right for
-# the repo's own workspaces, whose locks are committed; it is WRONG for a leaf
-# whose lock is deliberately untracked and (re)generated on first build — there
-# `--locked` forbids *creating* a first lock (`cannot create the lock file …
-# because --locked was passed`) and forbids *updating* a stale one after
-# `nros sync` changes its deps. The example / template leaves are exactly this
-# shape (`examples/**/.gitignore` ignores `/Cargo.lock`). Resolve the manifest
+# artifact rather than a tracked promise (issue 0386; policy in RFC-0026
+# "Lockfiles"). `--locked` is right for the repo's own core/workspace crates,
+# whose locks are COMMITTED and whose dep graph is fixed here. It is WRONG for
+# an example leaf, whose lock is intentionally untracked because it cannot be
+# resolved at the repo at all: the leaf redirects its message deps through
+# `[patch.crates-io]` to a `generated/` tree that only exists AFTER the USER
+# runs message codegen (`nros sync`) on their machine. So the leaf lock is
+# created on the user's first build; forcing `--locked` forbids *creating* that
+# first lock (`cannot create the lock file … because --locked was passed`) and
+# forbids *updating* a stale one after a later `nros sync`. Resolve the manifest
 # dir (`--manifest-path` if given, else cwd) and skip injection when its lock is
-# ignored. A non-git dir → `check-ignore` fails → we fall through and inject.
+# git-ignored. A non-git dir → `check-ignore` fails → we fall through and inject.
 _manifest_dir="$PWD"
 for ((_i = 0; _i < ${#args[@]}; _i++)); do
     case "${args[$_i]}" in

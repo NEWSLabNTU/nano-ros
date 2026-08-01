@@ -78,13 +78,35 @@ against a checkout is part of the CI-checked surface
 > copy-out contract itself (build a copied-out leaf against a checkout) is
 > preserved; only the spelling changes.
 
-### Lockfiles
+### Lockfiles — the tracked-vs-ignored policy
 
-`examples/**/Cargo.lock` is **gitignored repo-wide** (phase-277 W7): standalone
-example/workspace lockfiles are not reproducibility-critical (the fixture
-prefetch in `scripts/build/cargo.sh` refreshes them without `--locked`) and
-committed copies only go stale. Per-example `.gitignore` files keep their own
-`/Cargo.lock` line so the ignore travels with a copy-out.
+Two rules, by who owns the dependency graph:
+
+- **Core / workspace crates → `Cargo.lock` is TRACKED.** Their dependency
+  graph is fixed at the repo, so the committed lock is a genuine
+  reproducibility promise, and the `--locked` cargo shim
+  (`scripts/bin/cargo`, issues 0359/0378) enforces it: a build that would
+  rewrite the lock fails instead of drifting silently.
+
+- **`examples/**/Cargo.lock` → gitignored repo-wide** (phase-277 W7). An
+  example leaf's lock **cannot** be produced at the repo, because the leaf
+  redirects its message deps through `[patch.crates-io]` to a `generated/`
+  tree that does not exist until the **user** runs message codegen
+  (`nros sync` / `nros generate-rust`) on THEIR machine — the lock is only
+  resolvable *after* that user-side step. A lock committed from the repo would
+  pin paths/hashes for generated crates the user hasn't produced yet: stale
+  and misleading, never reproducible. So the leaf lock is a regenerable local
+  artifact, created on the user's first build, not a tracked promise.
+  (Standalone copy-out leaves are also not reproducibility-critical — the
+  fixture prefetch in `scripts/build/cargo.sh` refreshes them without
+  `--locked`.) Per-example `.gitignore` files keep their own `/Cargo.lock` line
+  so the ignore travels with a copy-out.
+
+**Tooling agrees with the policy by construction (issue 0386):** the `--locked`
+shim keys off `git check-ignore Cargo.lock`, so it forces `--locked` exactly for
+the tracked (core) locks and skips it exactly for the ignored (example/leaf)
+locks — the leaf may create its first lock and re-resolve after a later
+`nros sync`, while a core lock still cannot drift.
 
 ## Sibling categories
 

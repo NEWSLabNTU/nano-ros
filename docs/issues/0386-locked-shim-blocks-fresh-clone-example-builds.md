@@ -9,9 +9,17 @@ related: [issue-0359, issue-0378, issue-0373, issue-0384, rfc-0048]
 
 ## Resolution (2026-08-02)
 
+The policy (now stated in [RFC-0026 §Lockfiles](../design/0026-example-directory-layout.md)):
+**core/workspace crates track their `Cargo.lock`** (fixed dep graph, a real
+reproducibility promise), while **example leaf locks are gitignored** — a leaf
+cannot resolve its lock at the repo at all, because it redirects message deps
+through `[patch.crates-io]` to a `generated/` tree that only exists after the
+USER runs message codegen (`nros sync`) on their machine. The leaf lock is a
+regenerable local artifact created on first build, not a tracked promise.
+
 `scripts/bin/cargo` now skips `--locked` injection when the target's
-`Cargo.lock` is git-IGNORED — a regenerable local artifact, not a tracked
-promise. It resolves the manifest dir (`--manifest-path` if given, else cwd)
+`Cargo.lock` is git-IGNORED — so the shim enforces `--locked` exactly for the
+tracked (core) locks and skips it exactly for the ignored (example) locks. It resolves the manifest dir (`--manifest-path` if given, else cwd)
 and, when `git -C <dir> check-ignore -q Cargo.lock` succeeds, execs the real
 cargo with no injected flag. This covers BOTH failure modes: `--locked`
 forbidding the *creation* of a first lock and forbidding the *update* of a stale
