@@ -44,6 +44,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#378** — a host set up by the DOCUMENTED flow (bootstrap + activate + `nros setup native`) cannot
+reach tier-1 ci: `check-leaf-lockfiles` fails for 9 leaves because neither `generated/` (needs
+`nros generate-rust` → needs ROS 2) nor the root `nros-patch.toml` (needs `nros sync`, gitignored)
+exists, and the gate names no remedy. Worse, with the RFC-0048 patch targets absent, cargo resolved
+`std_msgs = "*"` against the **public crates.io** and matched a stranger's crate — it failed only
+because that version is yanked. nano-ros publishes nothing to crates.io, so the bare registry names
+in leaf manifests are protected solely by a generated, gitignored file. See `0378-*`. (2026-08-01)
+
 **#376** (filed as #372; renumbered — id collision with parallel sessions) — zpico multi-session
 (phase-328 / #348) is **pubsub-only**: the Rust RMW shim's `SERVICE_BUFFERS` + `REPLY_WAKERS` are
 process-global arrays indexed by a bare handle with no session dimension, so two sessions' service
@@ -52,13 +60,6 @@ per-session; single-session services are correct (the queryable callback records
 per-buffer). Fix: move the arrays under the session dimension (per-`ZenohSession` table), matching
 the C-side design without multiplying the static footprint. Not urgent — nothing in-tree opens two
 sessions, let alone two services. See `0376-*`. (2026-08-01)
-
-**#375** (filed as #374; renumbered — id collision with a parallel session) — repo root is resolved
-LOGICALLY (`cd "$(dirname …)" && pwd`) in both `activate.sh` and `scripts/bootstrap.sh`, so a
-checkout reached through a symlinked parent bakes the alias path into `NROS_REPO_DIR` /
-`nano_ros_ROOT` / the proposed rc line — two names for one tree, with RFC-0048's absolute-path
-`nros sync` output and every path-keyed cache downstream. Latent, not yet observed to break.
-See `0375-*`. (2026-08-01)
 
 **#374** (filed as #373; renumbered) — `nros setup native --rmw zenoh` source-builds zenohd
 (`[tool.zenohd]` has no `dist.linux-x86_64`; assets never seeded) and pulls a SECOND rust toolchain
@@ -70,13 +71,6 @@ bash (`PROBE_IMAGE` default, issue 0204), so an Arch run found three defects the
 apt-only prereq block with no per-distro mapping, `just` a de-facto prereq via `sdk-env.sh` though
 the page says it is not, and an unactionable `/opt/ros/humble` warning on distros with no Humble
 packages. See `0373-*`. (2026-08-01)
-
-**#372** (filed as #371; renumbered) — `source ./activate.sh` aborts mid-file under **zsh**:
-unmatched SDK-store globs are fatal (`nomatch`), killing the sourced shell at `activate.sh:92`
-before `nros setup` and at `activate.sh:115` after it, so the SDK PATH loop (`zenohd`), ninja/make,
-`.env` and `sdk-env.sh` never run — while the file's header claims bash/zsh support and "never
-errors". Two glob sites = one class; `activate.fish` separately missed the phase-327 versioned-store
-mirror. See `0372-*`. (2026-08-01)
 
 **#371** [severity **high**] — native_sim cyclone app abort()s at a near-deterministic 19–21 s
 joining the full Autoware graph during the safety-island demo's scenario init (7/7 on 2026-08-01;
@@ -92,14 +86,15 @@ rebuilt CLI (ros-launch-resolve line, RFC-0060) and the committed model disagree
 execution.deploy targets, so `build-test-fixtures` fails and tier-1 ci can't reach fixture
 freshness. Same shape as archived #0361. See `0370-*`. (2026-08-01)
 
-**#372** (filed as #367; renumbered — sixth id collision between parallel sessions) — `CONFIG_NROS_CYCLONE_CONFIG_XML` is declared in `zephyr/Kconfig` but consumed NOWHERE:
+**#377** (filed as #367; renumbered twice — sixth and seventh id collisions between parallel sessions) — `CONFIG_NROS_CYCLONE_CONFIG_XML` is declared in `zephyr/Kconfig` but consumed NOWHERE:
 `session_create` picks env `CYCLONEDDS_URI` or the hard-coded `kEmbeddedCycloneConfig` only — and on
 native_sim picolibc `getenv` sees no host environment, so the baked profile (multicast off, index
 scan 0..20, no tracing) is effectively immutable on the platform that most needs tuning. Found
 restructuring the safety-island demo onto Autoware's domain (island must scan ~40+ participant
 indices; failure untraceable with the config sealed). Fix direction: wire env → non-empty Kconfig
 XML → baked profile in `session.cpp`; single-quoted XML attributes keep the blob Kconfig-safe.
-See `0372-*`. (2026-07-31; renumbered 2026-08-01 — commits reference it as `#367`)
+See `0377-*`. (2026-07-31; renumbered twice on 2026-08-01, 0367 → 0372 → 0377 — commits
+reference it as `#367`)
 
 **#368** — `just setup all` simulated end-to-end on a clean Ubuntu 22.04 host: 7 of 18 modules fail,
 nearly all on prereqs the RFC-0014 index model was meant to absorb. Biggest: ONE sudo `apt-packages`

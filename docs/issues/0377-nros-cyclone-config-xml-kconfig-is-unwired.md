@@ -1,5 +1,5 @@
 ---
-id: 372
+id: 377
 title: CONFIG_NROS_CYCLONE_CONFIG_XML is declared but consumed nowhere
 status: open
 type: bug
@@ -7,12 +7,17 @@ area: rmw
 related: [rfc-0054]
 ---
 
-# 0372 — `CONFIG_NROS_CYCLONE_CONFIG_XML` is declared but consumed nowhere
+# 0377 — `CONFIG_NROS_CYCLONE_CONFIG_XML` is declared but consumed nowhere
 
-> **Renumbered from 0367.** Two parallel sessions filed 0367 the same day:
-> `archived/0367-nros-ws-sync-ghost-alias-and-187-stale-references.md` at 01:58
-> and this one at 09:34. The later filing moves, per the rule
-> `check-issue-ids` enforces.
+> **Renumbered twice: 0367 → 0372 → 0377.** Two parallel sessions filed 0367 the
+> same day: `archived/0367-nros-ws-sync-ghost-alias-and-187-stale-references.md`
+> at 01:58 and this one at 09:34, so this one moved to 0372 — but 0372 had
+> ALREADY been taken by `archived/0372-activate-sh-aborts-under-zsh-on-unmatched-sdk-globs.md`,
+> pushed in `2f902d6fa` before the renumber landed in `487422e6a`. Moving again
+> to the next free id, per the rule `check-issue-ids` enforces (the later filing
+> moves). Re-check `git fetch` + the origin listing immediately before a
+> renumber, not only before the original filing — that is what this second
+> collision cost.
 >
 > **Commit messages still say `#367`** and cannot be rewritten —
 > `c01eb9a8c fix(#367): wire CONFIG_NROS_CYCLONE_CONFIG_XML into cyclone config
