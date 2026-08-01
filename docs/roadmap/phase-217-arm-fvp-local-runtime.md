@@ -18,10 +18,20 @@ the same hwv2 Zephyr shape (`fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`).
 
 ## Overview
 
-The Zephyr FVP build path already works — `just zephyr build-fvp-aemv8r`
-and `build-fvp-aemv8r-cyclonedds` produce a linked `zephyr.elf` on the
-hwv2 board id (`fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`). What is
-missing is the **run** half: invoking the Arm `FVP_BaseR_AEMv8R` binary
+The Zephyr FVP build path already works — `just zephyr
+build-fvp-aemv8r-cyclonedds` (and `-rust`, `build-fvp-ws-entry`,
+`build-fvp-board-import`) produce a linked `zephyr.elf` on the hwv2
+board id (`fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`). What is
+missing is the **run** half:
+
+> **Doc correction (2026-08-02).** This section and 217.A.2 previously
+> named a plain `build-fvp-aemv8r` / `run-fvp-aemv8r` pair. Those lanes
+> were RETIRED by maintainer decision in `0d4a9b139` ("retire the
+> sourceless build-fvp-aemv8r base lane"), so `just zephyr
+> run-fvp-aemv8r` now errors with "justfile does not contain recipe".
+> The recipes actually shipped live in `just/zephyr-setup.just`:
+> `{build,run}-fvp-aemv8r-cyclonedds{,-rust}`, `{build,run}-fvp-ws-entry`,
+> `{build,run}-fvp-board-import`, and `verify-fvp-runtime`. invoking the Arm `FVP_BaseR_AEMv8R` binary
 with the canonical `boards/arm/fvp_baser_aemv8r/board.cmake` `-C`
 arguments + the built ELF, then capturing UART 0–3 in the host's
 stdout.
@@ -76,13 +86,14 @@ accepts the Arm EULA, installs the FVP locally, and exports
       (sdk-index `[gated.arm-fvp]`) → `dirname $(command -v
       FVP_BaseR_AEMv8R)` (PATH fallback). Prints absolute dir on
       stdout; exits 1 with EULA pointer on miss. ~80 LoC bash.
-- [x] **217.A.2** `just zephyr run-fvp-aemv8r` — verifies
-      `build-fvp-aemv8r-talker/zephyr/zephyr.elf` exists (else hints
-      `just zephyr build-fvp-aemv8r`), resolves the FVP dir via 217.A.1,
-      exports `ARMFVP_BIN_PATH`, runs `west build -d
-      build-fvp-aemv8r-talker -t run`. Mirrors the
-      `build-fvp-aemv8r` recipe's skip rules (no west / no workspace /
-      no SDK / no ELF / no FVP).
+- [~] **217.A.2** `just zephyr run-fvp-aemv8r` — **RETIRED, not
+      shipped.** Landed in `23b4be8a5`, then removed with its build
+      sibling in `0d4a9b139` ("retire the sourceless build-fvp-aemv8r
+      base lane — maintainer decision"). The base lane had no example
+      source of its own; the cyclonedds variants (A.3, D.2) carry the
+      runtime path. Left as `[~]` rather than `[x]` because a ticked box
+      naming a recipe that errors with "justfile does not contain
+      recipe" is worse than an open one.
 - [x] **217.A.3** `just zephyr run-fvp-aemv8r-cyclonedds` — same shape
       over `build-aemv8r-cyclonedds-talker` (Phase 117.14 cpp/cyclonedds
       example).
@@ -244,16 +255,43 @@ Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
 
 ## Acceptance
 
-- [ ] `just zephyr run-fvp-aemv8r` boots the talker on the FVP, prints
-      the Zephyr 3.7 boot banner + the talker UART output, exits clean
-      on Ctrl-C.
+- [ ] ~~`just zephyr run-fvp-aemv8r` boots the talker~~ — **void**: that
+      lane was retired in `0d4a9b139` (see 217.A.2). Superseded by the
+      criterion below.
 - [ ] `just zephyr run-fvp-aemv8r-cyclonedds` publishes
       `std_msgs/Int32` over Cyclone DDS — verifiable in a sibling
       native_sim listener AND in stock `ros2 topic echo /chatter`.
-- [ ] Both recipes skip gracefully with a clear hint when the FVP
-      binary is not installed (matches every other `[gated.*]` tool
-      policy).
+- [x] **Every run recipe skips gracefully with a clear hint when the FVP
+      binary is not installed** (matches every other `[gated.*]` tool
+      policy). **Verified 2026-08-02** on a host with no FVP: all four
+      exit 0 with a hint naming both env vars and the licence gate —
+      `run-fvp-aemv8r-cyclonedds`, `run-fvp-aemv8r-cyclonedds-rust`,
+      `run-fvp-ws-entry`, `run-fvp-board-import`, e.g.
+
+      ```
+      Zephyr/FVP-Cyclone run skip: ARM FVP model not resolvable
+        (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)
+      ```
+
 - [ ] Phase 217.C smoke passes locally; gated `skip!` on CI.
+
+## Blocked — what the rest needs (2026-08-02)
+
+Everything still open (`C.3`, `D.3`'s `Published:` assertion, and the two
+unticked acceptance criteria) requires **one real FVP run**, and that is
+gated on a local install this project deliberately does not automate:
+
+- **Arm FVP is licence-gated** (`[gated.arm-fvp]`). The user accepts the
+  Arm EULA and installs `FVP_BaseR_AEMv8R`, then exports `ARM_FVP_DIR`
+  (or `ARMFVP_BIN_PATH`); `scripts/installers/arm-fvp-installer.sh`
+  only discovers and symlinks an existing install.
+- The **Zephyr west workspace and the `aarch64-zephyr-elf` SDK** must
+  also be present. Neither is installed on the verification host, so the
+  build half could not be re-checked either.
+
+Until those exist on one machine, the remaining boxes cannot be closed by
+any amount of in-tree work — the artefacts build, but nothing observes
+them boot.
 
 ## Notes
 
