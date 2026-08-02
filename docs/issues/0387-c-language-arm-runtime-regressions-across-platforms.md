@@ -191,3 +191,35 @@ on the QEMU sweep.
 **Still open (separate roots, not this fix):** `cpp_c_param_live_read_e2e`
 (single-node param) and the NuttX C cells (generic MT path — `zpico_spin_once`
 already returns 0 there, so this bug does not apply). Chase next.
+
+## RESOLVED (2026-08-02) — `cpp_c_param_live_read_e2e` was a flake, not a param bug
+
+The reported symptom ("component never publishes the baked param;
+`nros_cpp_get_param_integer` never reaches the callback") is REFUTED. The param
+chain is sound on both arms: ran the prebuilt `ws-params-c` / `ws-params-cpp`
+native entries by hand against a manual zenohd + `int32-sink` — both print
+`Published: 250` continuously and the sink logs 15+ `Received: 250` in 8 s. Under
+`cargo test` the C arm passes; the C++ arm passes ALONE and under
+`--test-threads=1`; only the CONCURRENT (`--test-threads=2`) run intermittently
+lost the C++ arm.
+
+Two confounders produced the "confirmed" red:
+1. A STALE `int32-sink` listener (source newer than binary) — its freshness skip
+   is miscounted as a FAILURE by bare `cargo test` (the junit rewrite in
+   `just test-all` would mark it skipped). Rebuilding the sink flipped the C arm
+   green immediately.
+2. The hosted entry self-terminates after `NROS_ENTRY_SPIN_MS` (8 s), but the
+   listener waits 20 s for 3 samples. Under concurrent load the session open +
+   subscriber discovery eats several seconds before the first delivery; the
+   heavier C++ entry (slower startup) can exit before the sink accumulated 3
+   samples — so it loses first.
+
+Fix (`921eb1a0a`, test-only): raise the entry spin budget to 25 s so it keeps
+publishing across the whole 20 s listener window. Verified both arms green alone,
+serial, and 3x concurrent. No product change — the C/C++ live param-read path
+works.
+
+**Remaining in #387:** NuttX C cells (generic MT path returns 0 — not the
+ThreadX idle bug) + ThreadxRiscv64 C pubsub/service (expected green from the
+idle-spin fix; QEMU-sweep confirm). Native realtime C/C++ + EDF cells covered by
+the tier fix; ThreadX C pubsub/service/action covered by the idle-spin fix.
