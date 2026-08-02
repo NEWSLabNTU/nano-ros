@@ -56,7 +56,13 @@ fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
 
     let locator = zenohd_unique.locator();
     let mut listener = spawn_listener(&locator);
-    let mut entry = spawn_entry(path, "c_param_talker", &locator, 8000);
+    // Entry must keep publishing for at least the listener's wait window
+    // (20 s below): the hosted spin self-terminates after NROS_ENTRY_SPIN_MS,
+    // and under concurrent-test load the session open + subscriber discovery
+    // can eat several seconds before the first delivery. An 8 s entry could die
+    // before the sink accumulated 3 samples — a load-only flake (issue 0387),
+    // NOT a param-read bug (the chain passes alone/serial). Outlive the wait.
+    let mut entry = spawn_entry(path, "c_param_talker", &locator, 25000);
 
     let out = listener
         .wait_for_output_count(
@@ -93,7 +99,9 @@ fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
 
     let locator = zenohd_unique.locator();
     let mut listener = spawn_listener(&locator);
-    let mut entry = spawn_entry(path, "cpp_param_talker", &locator, 8000);
+    // Outlive the 20 s listener wait — see the C arm for why 8 s flaked
+    // under concurrent load (issue 0387).
+    let mut entry = spawn_entry(path, "cpp_param_talker", &locator, 25000);
 
     let out = listener
         .wait_for_output_count(
