@@ -34,6 +34,23 @@ Same shape for the other explicit dirs: `target-zenoh` (4 sites),
 `target-zenoh-fixture-posix`, `target-xrce`, `target-tls`,
 `target-ros-edition-<distro>-<rmw>`.
 
+### Second instance, FIXED (2026-08-03)
+
+`scripts/build/link-determinism-fixture.sh` built with cargo (honouring
+`CARGO_TARGET_DIR`) but copied from a HARDCODED `$repo_root/target/debug/libnros_c.a`.
+In the box that copies the HOST's archive — built by some other lane with
+different features — so `build/link-determinism/libnros_c.a` contained no
+`nros_rmw_zenoh_register` at all and `staticlib_duplicate_symbols` failed with
+
+    `-u nros_rmw_zenoh_register` did not pull the backend register entry into the image
+
+i.e. a link-MODEL error message for what was a stale file from another machine
+image. Fixed by resolving the archive from `${CARGO_TARGET_DIR:-$repo_root/target}`
+and failing loudly when it is absent. The justfile recipes above are unfixed.
+
+Worth sweeping for the rest of the class: any script or recipe that pairs a
+`cargo build` with a hand-built `target/…` path.
+
 ## Repro
 
 ```sh

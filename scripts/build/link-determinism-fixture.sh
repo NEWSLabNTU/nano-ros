@@ -27,7 +27,20 @@ mkdir -p "$out_dir"
 ( cd "$repo_root" \
     && cargo build -p nros-c --features platform-posix,rmw-zenoh )
 
-cp "$repo_root/target/debug/libnros_c.a" "$out_dir/"
+# Copy from the target dir cargo ACTUALLY wrote to. Hardcoding
+# `$repo_root/target` silently copies a foreign archive whenever
+# CARGO_TARGET_DIR is set — which is exactly the ROS distrobox setup
+# (`scripts/dev/ros2-box-env.sh` redirects it so host-built build scripts don't
+# get re-run against the box's older glibc). The box then shipped the HOST's
+# `target/debug/libnros_c.a`, built by some other lane with different features,
+# and the validator failed with "did not pull the backend register entry" —
+# a link-model error message for what was really a stale file from another
+# machine image. Issue 0398 is the same class in the justfile recipes.
+target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
+case "$target_dir" in /*) ;; *) target_dir="$repo_root/$target_dir" ;; esac
+built="$target_dir/debug/libnros_c.a"
+[ -f "$built" ] || { echo "no archive at $built (CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-unset})" >&2; exit 1; }
+cp "$built" "$out_dir/"
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "$out_dir/.compile-ok"
 echo "   built $out_dir/libnros_c.a"
