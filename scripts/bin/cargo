@@ -104,9 +104,17 @@ done
 # runs message codegen (`nros sync`) on their machine. So the leaf lock is
 # created on the user's first build; forcing `--locked` forbids *creating* that
 # first lock (`cannot create the lock file … because --locked was passed`) and
-# forbids *updating* a stale one after a later `nros sync`. Resolve the manifest
-# dir (`--manifest-path` if given, else cwd) and skip injection when its lock is
-# git-ignored. A non-git dir → `check-ignore` fails → we fall through and inject.
+# forbids *updating* a stale one after a later `nros sync`.
+#
+# The rule is TRACKED, not "not-ignored": inject `--locked` only where the lock
+# is a committed promise this repo can keep. An earlier revision skipped only
+# git-IGNORED locks and fell through everywhere else, which broke the opposite
+# case — the metadata-mode tests compile probe crates in a TEMP DIR by design
+# (packages/cli/CLAUDE.md), and a scratch crate under /tmp is in no git repo at
+# all, so `check-ignore` failed, `--locked` was injected, and cargo refused with
+# `cannot create the lock file /tmp/…/Cargo.lock`. Five nros-tests failed on
+# that. A directory outside any git repo can never hold a tracked lock, so the
+# tracked test answers both cases with one predicate.
 _manifest_dir="$PWD"
 for ((_i = 0; _i < ${#args[@]}; _i++)); do
     case "${args[$_i]}" in
@@ -114,7 +122,7 @@ for ((_i = 0; _i < ${#args[@]}; _i++)); do
         --manifest-path=*) _manifest_dir="$(dirname "${args[$_i]#--manifest-path=}")" ;;
     esac
 done
-if git -C "$_manifest_dir" check-ignore -q Cargo.lock 2>/dev/null; then
+if ! git -C "$_manifest_dir" ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
     exec "$real_cargo" "$@"
 fi
 
