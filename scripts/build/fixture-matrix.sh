@@ -54,6 +54,24 @@ nros_cmake_fixture_build() {
         fi
     fi
 
+    # CMake pins the compiler at first configure; a later -DCMAKE_TOOLCHAIN_FILE
+    # does not swap it (see cmake-incremental.sh for the full rationale — issue
+    # 0391). Wipe on a toolchain-file mismatch so a host-cc-poisoned dir picks up
+    # the cross compiler instead of feeding RISC-V/ARM to the x86 assembler.
+    if [ -f "$build_dir/CMakeCache.txt" ]; then
+        local want_tc="" cached_tc _a
+        for _a in "$@"; do
+            case "$_a" in
+                -DCMAKE_TOOLCHAIN_FILE=*) want_tc="${_a#-DCMAKE_TOOLCHAIN_FILE=}" ;;
+            esac
+        done
+        cached_tc="$(sed -n 's/^CMAKE_TOOLCHAIN_FILE:[^=]*=//p' "$build_dir/CMakeCache.txt")"
+        if [ "$want_tc" != "$cached_tc" ]; then
+            echo "  (toolchain change: '${cached_tc:-<none>}' -> '${want_tc:-<none>}' — wiping $build_dir)" >&2
+            rm -rf "$build_dir"
+        fi
+    fi
+
     mkdir -p "$build_dir"
 
     local stamp_file="$build_dir/.nros-cmake-configure.args"

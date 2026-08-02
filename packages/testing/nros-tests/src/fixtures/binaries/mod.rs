@@ -848,6 +848,57 @@ fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
             return Some(dep_path);
         }
     }
+    // Sources compiled into the fixture by a Rust dep's `build.rs` (via the `cc`
+    // crate) are INVISIBLE to ninja's dependency graph above: corrosion invokes
+    // `cargo` as one opaque custom command, so `ninja -t deps` never lists e.g.
+    // `zpico.c`. A committed edit to that C surface therefore slips past this
+    // gate and the fixture runs as a museum binary showing the pre-edit
+    // behaviour (issue 0391 — the issue-0196 "watch the same inputs" rule, one
+    // level deeper). Close it for the zpico (zenoh-pico) C shim, the one
+    // purely-cargo C surface these fixtures link.
+    zpico_c_source_newer(binary_path, bin_mtime)
+}
+
+/// The zpico C shim (`zpico-sys/c/**`) is compiled by `zpico-sys`'s `build.rs`,
+/// not by the fixture's cmake/ninja graph, so [`cmake_dep_info_newer_source`]
+/// cannot see it. When the fixture is a zenoh-backed cmake build (cyclone
+/// fixtures don't link zpico → gate on the `build-zenoh` marker to avoid false
+/// stales), compare every `.c`/`.h` under `zpico-sys/c/` against the binary
+/// mtime and report the first newer one. Detect-only; never builds.
+fn zpico_c_source_newer(binary_path: &Path, bin_mtime: std::time::SystemTime) -> Option<PathBuf> {
+    let build_dir = binary_path.parent()?;
+    if !build_dir.to_string_lossy().contains("zenoh") {
+        return None;
+    }
+    let c_root = project_root().join("packages/rmw/zenoh/zpico-sys/c");
+    newest_source_after(&c_root, bin_mtime)
+}
+
+/// Recursively walk `dir` for `.c`/`.h`/`.cpp`/`.hpp` sources and return the
+/// first one whose mtime is newer than `bin_mtime`. Bounded to the given tree;
+/// reads directory entries + `stat`, never builds. Symlinks are not followed.
+fn newest_source_after(dir: &Path, bin_mtime: std::time::SystemTime) -> Option<PathBuf> {
+    let entries = fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let file_type = entry.file_type().ok()?;
+        if file_type.is_dir() {
+            if let Some(found) = newest_source_after(&path, bin_mtime) {
+                return Some(found);
+            }
+        } else if file_type.is_file() {
+            let is_source = matches!(
+                path.extension().and_then(|e| e.to_str()),
+                Some("c" | "h" | "cpp" | "hpp" | "cc" | "hh")
+            );
+            if is_source
+                && let Ok(mtime) = fs::metadata(&path).and_then(|m| m.modified())
+                && mtime > bin_mtime
+            {
+                return Some(path);
+            }
+        }
+    }
     None
 }
 

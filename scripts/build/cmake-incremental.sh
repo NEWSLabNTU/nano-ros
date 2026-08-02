@@ -38,6 +38,30 @@ nros_cmake_configure_if_needed() {
         fi
     fi
 
+    # A cached CMakeCache pins CMAKE_C/CXX_COMPILER at FIRST configure; passing a
+    # different -DCMAKE_TOOLCHAIN_FILE on a re-configure does NOT swap the
+    # compiler (CMake reads the toolchain file only against a fresh cache). So a
+    # dir first configured without the cross toolchain — e.g. a bare
+    # `fixtures-build.sh <cross-platform> c` call that defaulted to host cc —
+    # stays host-cc forever, silently feeding a RISC-V / ARM kernel to the x86
+    # assembler ("Error: no such instruction: csrrci %rax,mstatus"). The
+    # arg-stamp below WOULD reconfigure on the changed toolchain arg, but the
+    # reconfigure can't move the compiler. Detect a toolchain-file mismatch vs
+    # the cache and WIPE so the new compiler actually takes effect (issue 0391).
+    if [ -f "$build_dir/CMakeCache.txt" ]; then
+        local want_tc="" cached_tc _a
+        for _a in "$@"; do
+            case "$_a" in
+                -DCMAKE_TOOLCHAIN_FILE=*) want_tc="${_a#-DCMAKE_TOOLCHAIN_FILE=}" ;;
+            esac
+        done
+        cached_tc="$(sed -n 's/^CMAKE_TOOLCHAIN_FILE:[^=]*=//p' "$build_dir/CMakeCache.txt")"
+        if [ "$want_tc" != "$cached_tc" ]; then
+            echo "  (toolchain change: '${cached_tc:-<none>}' -> '${want_tc:-<none>}' — wiping $build_dir)" >&2
+            rm -rf "$build_dir"
+        fi
+    fi
+
     mkdir -p "$build_dir"
 
     local stamp_file="$build_dir/.nros-cmake-configure.args"
