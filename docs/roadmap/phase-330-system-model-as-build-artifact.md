@@ -70,14 +70,54 @@ committed under `src/`.
 - [ ] **W2.a** Round-trip W1.c across the 11 dim-carrying models: the nine
       `ws-realtime-*` workspaces plus the two `orchestration_tiers_{native,
       freertos}` test fixtures. `scripts/model-dims-baseline.txt` is the oracle.
-- [ ] **W2.b** Round-trip the remaining 109. They carry no dims, so a
-      byte-comparison of before/after regeneration is the whole test — any
-      difference is a resolver-determinism bug worth finding before the
-      committed copies are deleted.
+- [x] **W2.b** Round-trip the remaining models — **DONE (2026-08-02).** All
+      **121** committed models regenerated and the diffs classified. **Zero**
+      failed to regenerate.
+
+      | Class | Count |
+      | --- | --- |
+      | byte-IDENTICAL | **117** |
+      | drops `target:` (issue 0356) | 1 |
+      | provenance only (`sha256`/comments) | 1 |
+      | ADDS `meta.inputs` provenance | 2 |
+
+      **The answer: regeneration never loses data. Every difference is the
+      COMMITTED copy being stale**, from three distinct causes:
+
+      1. `ws-realtime-cpp` — its deploy layer still carries pre-0356
+         `target: linux` because commit `07025368b` RESTORED it by grafting the
+         block out of git history (the #380 rescue) rather than re-resolving.
+         Hand-restoration reintroduced old content.
+      2. the two `orchestration_tiers_*` fixtures — last touched 2026-07-24,
+         before `meta.inputs` provenance was emitted, so regeneration ADDS it.
+      3. `ws-realtime-cpp-mps2` — `sha256`/comment churn only.
+
+      Omitting `target` is the DOCUMENTED contract, not a loss: `Deploy.target =
+      None` means board-agnostic — "a multi-board system runs the same nodes on
+      every board, so the consuming entry's own board decides (nano-ros issue
+      0356)". Both workspaces declare one `kind = "self"` plus FOUR
+      `kind = "embedded"` blocks, which is exactly that case. The fork history
+      confirms it is deliberate: `69c13d2 chore: bump rlm — multi-board
+      placement is board-agnostic (nano-ros #356)`.
+
+      **A correction to the W2.a note above:** the earlier report that
+      `ws-realtime-c` drops `target` was produced by the STALE resolver. With
+      the rebuilt one it is byte-identical. Two of this phase's observations
+      have now been distorted by that stale binary — re-measure after
+      `just setup-launch-resolve`, not before.
+
+      **So `resolve(inputs)` is total for the structure and deploy layers.** The
+      only thing regeneration could not reproduce was the execution dims, which
+      W1 fixed. That is the premise RFC-0063 needs, now measured rather than
+      assumed.
+
+**W2.a is complete at 11/11.** The sweep regenerated every dim-carrying model;
+the four non-identical diffs touch `target:`/`sha256`/comments/`inputs` only —
+no `execution.tiers` line moved in any of them.
 - [ ] **W2.c** Any dim that cannot round-trip is a W1 schema gap, not an
       exception to grant. Record it; do not special-case it.
 
-**W2.a status (2026-08-02): 7 of 11 round-trip PASS.**
+**W2.a status (2026-08-02): 11 of 11 — see W2.b's sweep, which supersedes this.**
 `ws-realtime-rust` (wave 1), `-c`, `-c-mps2`, `-cpp-fvp`, `-cpp-rclcpp`,
 `-cpp-subnode`, `-cpp-subnode-portable`. Not yet run: `ws-realtime-cpp`,
 `-cpp-mps2`, and the two `orchestration_tiers_*` fixtures.
