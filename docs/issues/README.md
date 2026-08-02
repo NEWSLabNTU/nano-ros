@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#397** (RESOLVED 2026-08-03) — a failing `nros` CLI made `check-model-dims` report every dim of
+every model as LOST. The loop read `… 2>/dev/null || true`, so a stale-CLI refusal after a rebase
+(the common case) produced zero dims per model and a 118-line data-loss report for content that
+was intact — advising "restore from git history" when the fix was `just setup-cli`, whose message
+the redirect had discarded. Worse, `--write` shares the loop: re-recording through a broken CLI
+bakes the empty reading in, which is the loss the gate exists to prevent. Now fatal per model,
+with the CLI's stderr, and both compare and re-record refuse. Watched to fire against a stub CLI —
+the first version used a shell variable set inside a pipeline subshell and silently never fired.
+See `archived/0397-*`.
+
 **#395** (RESOLVED 2026-08-03) — phase-331 W6 dropped the `[tiers.*.freertos]` declarations when it retargeted the `workspace-cpp-freertos-realtime` fixture onto `realtime-cpp`, and pointed the row at a `deploy_bringup` that belongs to a different workspace. Restored from `a92778843^` (high=5, low=2, cpp low core=0 — the dim `tests/freertos_core_pin_applied.rs` asserts), row repointed at `src/demo_bringup`. Two further baseline entries turned out to be W6 RENAME errors rather than losses: the `fast`/`bulk` dims were intact under `realtime-cpp-subnode-portable`, and the `mid.*` three-tier system was deliberately dropped (`aux_pkg` unreferenced — REVERSED by the follow-up below).
 
 Follow-up on the same day: the two-tier restore left `aux_pkg` unreferenced on the reading that

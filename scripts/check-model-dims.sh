@@ -51,12 +51,46 @@ current="$(mktemp)"
 baseline_sorted="$(mktemp)"
 trap 'rm -f "$current" "$baseline_sorted"' EXIT
 
+# A FAILING CLI IS NOT AN EMPTY MODEL (issue 0397).
+#
+# This loop used to read `… 2>/dev/null || true`, so any non-zero exit — most
+# often the stale-CLI refusal after a rebase moves `packages/cli/` — produced
+# zero dims for EVERY model and the diff below reported all 118 as LOST. That
+# is the loudest failure this gate has, pointing at data loss that did not
+# happen, and its own advice ("restore from git history rather than
+# re-resolving") would have someone hand-editing generated files to fix a stale
+# binary. The swallow also hid the one-line remedy the CLI already prints.
+#
+# So: a per-model failure is fatal and says which model and why. The `--write`
+# path shares this loop, which matters more — re-recording from a broken CLI
+# would BAKE the empty reading into the baseline and destroy the record the
+# gate exists to keep.
+# The marker is a FILE, not a variable: this loop is the left side of a
+# pipeline, so it runs in a subshell and any variable it sets is gone by the
+# time the parent reads it. (Written as a variable first; it silently never
+# fired, which is the same shape as the bug being fixed.)
+_dims_failed="$(mktemp)"
+rm -f "$_dims_failed"
 while IFS= read -r model; do
+    if ! dims="$("$nros_bin" ws model-dims "$model" 2>&1)"; then
+        printf 'model-dims: FAILED to read %s\n%s\n' "$model" "$dims" >&2
+        : >"$_dims_failed"
+        continue
+    fi
     while IFS= read -r dim; do
         [ -z "$dim" ] && continue
         printf '%s\t%s\n' "$model" "$dim"
-    done < <("$nros_bin" ws model-dims "$model" 2>/dev/null || true)
+    done <<<"$dims"
 done < <(git ls-files '*/config/*model.yaml') | sort -u >"$current"
+
+if [ -e "$_dims_failed" ]; then
+    rm -f "$_dims_failed"
+    echo "" >&2
+    echo "[FAIL] model-dims could not read every committed model — refusing to" >&2
+    echo "       compare (or re-record) against a partial reading. Fix the CLI" >&2
+    echo "       first; the error above says how." >&2
+    exit 1
+fi
 
 # `--write` FIRST: it is the thing that creates the baseline, so gating it
 # behind the baseline existing makes bootstrapping impossible. (The first draft
