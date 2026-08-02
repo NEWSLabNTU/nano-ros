@@ -28,7 +28,7 @@ issue 0389 made the fixture build lane-scoped. Both are load-bearing here:
 
 Establish the baseline the RFC deliberately does not assert.
 
-- [ ] Wall-clock `just build-test-fixtures lane=native` on a clean tree
+- [x] Wall-clock `just build-test-fixtures lane=native` on a clean tree
       (wipe the manifest-declared workspace build dirs first — derive them from
       `fixtures-manifest.py list-workspaces`, **not** a `build-workspace-fixtures`
       glob; non-default `build_subdir` values exist: `-safety-talker`,
@@ -41,31 +41,126 @@ Establish the baseline the RFC deliberately does not assert.
 **Acceptance:** a committed baseline table. Without it W5 cannot say whether
 the fold paid.
 
-### W2 — Fold the API themes into the large workspaces
+**Done 2026-08-02** (`docs/roadmap/data/phase-331-w1-baseline.md`, base
+`82b82a6d6`): cold build **7051 s / 1 h 57 m**, native stage 5912 s (84 %), 64
+fixtures, 0 errors. 337 manifest rows (251 single-node + 86 workspace); 35
+workspace dirs; tier1 = 10 coords / module `native`; tier2 = 12 coords.
+Prerequisites needed a `just setup-cli` + `just setup-launch-resolve` rebuild
+first — the checkout had moved 51 commits and the stale-CLI guard caught it in
+1 s.
 
-One workspace at a time, `c` first (smallest node set), then `cpp`, `rust`,
-`mixed`.
+### W2 — Collect the feature demos into `examples/workspaces/features/`
 
-- [ ] Move `qos_{talker,listener}_pkg`, `param_talker_pkg`,
-      `lifecycle_talker_pkg`, `custom_msgs/`, `reading_{talker,listener}_pkg`,
-      `remap_talker_pkg` into `examples/workspaces/<lang>/src/`.
-- [ ] Move `managed_bringup` into `workspaces/cpp` — the workspace then carries
-      **two system models**; confirm `nros codegen-system` handles both and that
-      the entry packages select the right one.
-- [ ] Extend `demo_bringup` to place the folded nodes.
-- [ ] Confirm `custom_msgs` stays workspace-local (RFC-0066 open question) —
-      four copies of an interface package must not collide.
-- [ ] Verify `ws-launch-rust`'s coverage is genuinely carried by the large
-      workspaces' bringups **before** deleting it (RFC-0066 open question).
+**Revised 2026-08-02 (RFC-0066 R2).** W2 originally folded each theme into the
+same-language large workspace. That was implemented for `c` and `cpp` and then
+abandoned: capabilities are an IMAGE property, every large workspace contains
+EMBEDDED entries, and `param_services`/`lifecycle` are alloc-gated features an
+embedded image must opt into explicitly. Rust made it unbuildable outright —
+`nros sync` will not generate selection facades for a multi-system workspace
+(phase-315 W1). See RFC-0066 *Where a capability applies*.
 
-**Acceptance:** each large workspace builds and its e2e tests pass; the folded
-nodes are placed by a bringup and observable at runtime, not merely compiled.
+Build ONE new native-only workspace instead. Order: scaffold it, then move the
+C packages (already proven), then C++, then Rust.
+
+- [ ] **Revert the R1 folds already landed in `workspaces/{c,cpp}`** — the
+      qos / params / lifecycle / custom-msg packages, their renamed entries, the
+      `lifecycle_bringup` split, the capability stanzas, and `cpp`'s
+      `SYSTEM demo_bringup` line (keep that last one: it is a genuine
+      pre-existing gap, see the checklist).
+- [ ] Scaffold `examples/workspaces/features/` — one `demo_bringup` declaring
+      `[param_services]` + `[lifecycle] autostart = "active"`, native entries
+      only, NO embedded entry packages.
+- [ ] Move the C, then C++, then Rust feature packages in, applying the
+      per-fold checklist below.
+- [ ] `managed_bringup` joins as the second (manual-transition) system. Its
+      entries are C++ only; a rust managed entry would hit the phase-315 limit.
+- [x] Confirm `custom_msgs` stays workspace-local — **done**: all copies are
+      byte-identical and workspaces build independently, so one copy lives in
+      `features/`.
+- [x] Verify `ws-launch-rust`'s coverage — **done, and the assumption was
+      wrong**: it is the only workspace exercising the launch v1 language
+      surface (`<arg>`, `$(var …)`, `<group ns=>`, child `<param>`/`<remap>`,
+      `<include>` with pass-through). It is KEPT, so the deletion list is 17.
+
+**Acceptance:** `features/` builds and its e2e tests pass; the collected nodes
+are placed by a bringup and **observable at runtime, not merely compiled**; the
+four large workspaces are byte-unchanged apart from `cpp`'s `SYSTEM` line.
+
+The runtime clause is load-bearing. During the R1 attempt the `c` fold was
+reported green while having silently lost its lifecycle autostart — the entry
+compiled and simply never emitted `nros_cpp_lifecycle_autostart`, so the managed
+node never reached `active`. Only a diff of the generated
+`*_nros_main_generated.c` against the pre-fold one caught it. Verify capability
+effects in the GENERATED ENTRY, not in the exit code.
+
+#### Per-fold checklist (learned from the R1 `c` and `cpp` folds, 2026-08-02)
+
+A fold is NOT a directory move. Each item below was a real failure, found by
+building rather than by reading:
+
+1. **CMake TARGET names collide even when directory names do not.**
+   `c_lifecycle_talker_pkg` and `c_talker_pkg` both declared
+   `nano_ros_auto_add_library(talker_lib …)` and `EXECUTABLE talker`; each was
+   unique only inside its own workspace. Audit before moving:
+   `grep -oP 'nano_ros_auto_add_library\(\K\w+' … | sort | uniq -d` and the same
+   for `EXECUTABLE`. Renaming the executable also means editing the theme's
+   launch `exec=`/`name=`.
+2. **ENTRY package names collide across themes.** Several themes ship
+   `native_entry` / `native_talker_entry` / `native_listener_entry`, and the
+   target workspace already owns `native_entry`. Rename entries on fold
+   (`native_<theme>_<role>_entry`); node packages need no rename in a
+   single-language workspace.
+3. **A capability stanza travels with its node package.** `c_param_talker_pkg`
+   compiled and then failed at LINK with `undefined reference to
+   nros_cpp_get_param_integer` — the themed bringup declared `[param_services]`
+   in `system.toml` and the target's did not. Diff the two `system.toml` files
+   for stanzas beyond `[system]`/`[[component]]`/`[deploy.*]`.
+4. **Launch and model basenames collide.** Themed workspaces name their
+   single-scenario launch `system.launch.xml` + `system_model.yaml` — the same
+   names the target uses for its OWN default. Namespace them by theme on the
+   move (`params.launch.xml`, `params_model.yaml`).
+5. **Rewrite MODEL paths ONLY in the entries just moved.** A blanket
+   `sed` over `$dst/src/*/CMakeLists.txt` retargeted five pre-existing entries
+   (`native_entry`, `freertos_entry`, `native_threadx_entry`, `nuttx_entry`,
+   `zephyr_entry`) from `system_model.yaml` to the theme's model, because of (4).
+6. **An interface package is not a CMake subdir.** `custom_msgs` declares the
+   schema, but the components carry the type name as a string and hand-encode
+   CDR (the RFC-0043 typed-component idiom). Do NOT add it to `_ws_subdirs`;
+   instead set `NROS_INTERFACE_SEARCH_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src"`
+   **before** `find_package(nano_ros)` so the compat layer auto-emits its
+   Find-stub (Phase 210.A.2).
+7. **Add the folded components to the bringup catalog** so the workspace
+   documents what it now contains.
+
+8. **A capability is SYSTEM-level, so it needs its own bringup.** Putting
+   `[lifecycle]` in a shared `demo_bringup` made EVERY entry emit the autostart
+   call, including the plain pubsub one. `managed_bringup` already showed the
+   right shape.
+9. **A moved bringup must be RENAMED.** It keeps `<name>demo_bringup</name>`,
+   and two packages of that name collapse bringup resolution to
+   `known bringup pkgs: []`.
+10. **C/C++ `NANO_ROS_FEATURES` is `FORCE`-set per bake — last bake wins.** With
+   three bringups, `managed_bringup`'s empty set erased the others' capabilities
+   for the whole workspace. Declare the union in every bringup (a BARE
+   `[lifecycle]` enables the feature without emitting autostart).
+11. **`nano_ros_workspace()` needs `SYSTEM`** or the capability block is skipped
+   entirely (`if(_NRW_SYSTEM)`) and `NANO_ROS_FEATURES` stays empty. `cpp` was
+   missing it; `c` was not, which is why the same fold worked there first.
+12. **Rust: the generated `<entry>_nros_selection` facade carries the
+   capability**, and `nros sync` refuses to emit facades for a multi-system
+   workspace. This is what makes the R1 shape unbuildable in rust and what R2
+   routes around.
+
+R1 result, for the record: `c` reached 18 → 30 source dirs with 7/7 fixtures
+green and `cpp` 8/8, before R2 superseded the approach. Those builds are what
+produced items 1–12.
 
 ### W3 — Delete the folded directories and their fixture rows
 
 - [ ] Remove `ws-qos-{c,cpp,rust,mixed}`, `ws-params-{c,cpp,rust}`,
       `ws-lifecycle-{c,cpp,rust}`, `ws-custom-msg-{c,cpp,rust,mixed}`,
-      `ws-remap-rust`, `ws-launch-rust` (18 directories).
+      `ws-remap-rust` (17 directories; `ws-launch-rust` is KEPT -- it is the only
+      coverage of the launch v1 language surface, RFC-0066 open question answered).
 - [ ] Remove their `[[workspace_fixture]]` rows.
 - [ ] Re-point every test that named a deleted workspace at the large one.
 - [ ] `matrix_fixture_coverage` green — this is the gate that the deletion

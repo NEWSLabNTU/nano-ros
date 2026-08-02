@@ -21,12 +21,22 @@ at all**: 84 of 86 workspace fixture rows are zenoh.
 This RFC inverts both:
 
 - a **feature** (QoS, parameters, lifecycle, custom messages, remapping) is a
-  **node package inside a large workspace**, not a workspace of its own;
-- a **configuration** (RMW, feature set) is a **fixture axis over that
-  workspace**, not a directory.
+  **node package**, not a workspace of its own — all of them collected into ONE
+  native-only `features` workspace;
+- a **configuration** (RMW, feature set) is a **fixture axis over the large
+  workspaces**, not a directory.
 
-Net: 32 workspace directories become 11, and the RMW axis reaches workspaces
+Net: 32 workspace directories become 12, and the RMW axis reaches workspaces
 for the first time.
+
+> **Revision 2 (2026-08-02).** R1 folded each theme into the same-language large
+> workspace (`ws-qos-c` → `workspaces/c`, etc.). Implementing it proved that
+> wrong for the two capability-bearing themes: capabilities are an **image**
+> property, the large workspaces all contain **embedded** entries, and
+> `param_services`/`lifecycle` are alloc-gated features an embedded image must
+> opt into explicitly. R2 collects the feature demos into one native-only
+> workspace instead. The measurements and the fixture-axis half of R1 are
+> unchanged. See *Where a capability applies*.
 
 ## The measurements this rests on
 
@@ -56,25 +66,119 @@ a maintenance-surface question, addressed separately.
 directories; 37 of those directories are built 2–8 times as variants,
 accounting for 120 rows.
 
+## Where a capability applies — the image, not the workspace
+
+This is the constraint R2 turns on, and the tree already states the intended
+unit:
+
+```cmake
+cmake/NanoRosFeatureSet.cmake — "---- capabilities ----
+                                 Image-level, not platform-level."
+```
+
+An **image** — one entry, one executable — is the right unit: a capability
+changes what is linked into that binary. "Whole workspace" is too coarse and
+"per node package" is meaningless, since a node package is a library and links
+nothing.
+
+Two implementations, only one of which achieves it:
+
+| | carrier | actual granularity |
+|---|---|---|
+| **Rust** | the generated `<entry>_nros_selection` facade | **per entry** |
+| **C / C++** | `NANO_ROS_FEATURES` → `nros_feature_set` → one shared `libnros_cpp.a` per configure | **per workspace configure** |
+
+The rust facade is the evidence — the same entry name, two systems:
+
+```toml
+# ws-params-rust/generated/nros-selection/native_entry/Cargo.toml
+nros = { …, features = ["param-services", "ros-humble"] }
+# workspaces/rust/generated/nros-selection/native_showcase_entry/Cargo.toml
+nros = { …, features = ["ros-humble"] }
+```
+
+**So the rule is already the right one: capabilities are declared on the SYSTEM
+an entry consumes.** What differs is the freedom each language has to vary it:
+
+- rust cannot have more than one system per workspace —
+  `sync: N bringups declare a system … selection facades are not generated for
+  multi-system workspaces (phase-315 W1 models one declaration per workspace)`;
+- C/C++ can have several bringups, but every entry in one configure shares the
+  single `NANO_ROS_FEATURES` value, so the capability set cannot vary between
+  them either. (Worse, each bake `FORCE`-writes that cache var, so with several
+  bringups the last one configured silently wins.)
+
+Both are the same limit seen from two sides: **one capability set per
+workspace, in practice.**
+
+### Why that rules out folding into the large workspaces
+
+```cmake
+# `param_services` / `lifecycle` still imply hosted: both are alloc-gated,
+# so an embedded image opts in explicitly rather than getting them by default.
+```
+
+Every large workspace contains embedded entries — `rust` has
+`esp32/qemu_freertos/qemu_nuttx/threadx_linux/zephyr`; `c`, `cpp` and `mixed`
+likewise. With one capability set per workspace, folding a capability-bearing
+theme into any of them forces alloc-gated features onto size-constrained
+embedded images that the design says must opt in explicitly. `mixed` is no
+refuge: it is equally multi-platform.
+
 ## Design
 
-### Features fold into the large workspaces
+### Feature demos collect into one native-only workspace
 
-Each of `workspaces/{rust,c,cpp,mixed}` gains the node packages its themed
-workspaces held:
+A new `examples/workspaces/features/` holds every capability demo, in all three
+languages, with **no embedded entries**:
 
-| folded in | from | note |
-|---|---|---|
-| `qos_talker_pkg`, `qos_listener_pkg` | `ws-qos-*` | |
-| `param_talker_pkg` | `ws-params-*` | |
-| `lifecycle_talker_pkg` | `ws-lifecycle-*` | |
-| `custom_msgs/`, `reading_{talker,listener}_pkg` | `ws-custom-msg-*` | adds custom **interface-package codegen**, which the large workspaces do not exercise today |
-| `remap_talker_pkg` | `ws-remap-rust` | |
-| `managed_bringup` | `ws-lifecycle-cpp` | a **second system model** in one workspace — this is what exercises orchestration |
+```
+examples/workspaces/features/
+  src/demo_bringup/            ONE system:  [param_services] + [lifecycle]
+  src/{c,cpp,rust}_param_talker_pkg
+  src/{c,cpp,rust}_lifecycle_talker_pkg
+  src/qos_{talker,listener}_pkg          (per language)
+  src/custom_msgs/  src/reading_{talker,listener}_pkg
+  src/remap_talker_pkg
+  src/managed_bringup/                   the manual-transition second system
+  src/native_*_entry                     native only
+```
 
-Eighteen directories are deleted: `ws-qos-{c,cpp,rust,mixed}`,
-`ws-params-{c,cpp,rust}`, `ws-lifecycle-{c,cpp,rust}`,
-`ws-custom-msg-{c,cpp,rust,mixed}`, `ws-remap-rust`, `ws-launch-rust`.
+| collected | from |
+|---|---|
+| `qos_{talker,listener}_pkg` | `ws-qos-{c,cpp,rust,mixed}` |
+| `param_talker_pkg` | `ws-params-{c,cpp,rust}` |
+| `lifecycle_talker_pkg` | `ws-lifecycle-{c,cpp,rust}` |
+| `custom_msgs/`, `reading_{talker,listener}_pkg` | `ws-custom-msg-{c,cpp,rust,mixed}` |
+| `remap_talker_pkg` | `ws-remap-rust` |
+| `managed_bringup` | `ws-lifecycle-cpp` |
+
+Why this shape satisfies every constraint at once:
+
+- **one system** — rust's facade generator is happy;
+- **capability union is harmless** — nothing embedded is built here, so the
+  alloc-gated `param_services`/`lifecycle` reach only hosted images, which is
+  exactly the "opt in explicitly" the platform layer asks for;
+- **the large workspaces stay clean** — `{rust,c,cpp,mixed}` keep their
+  pubsub/service/action core across six platforms and gain no capabilities;
+- **11 themed workspaces become 1**, rather than 3 (one per language).
+
+The cost, stated plainly: this is a **fourth workspace shape**, organised by
+*concern* rather than by *language*, sitting alongside `{rust,c,cpp,mixed}`.
+That is a real inconsistency in the layout. It is accepted because these
+packages exist to demonstrate capabilities, which is a different axis from
+"which language binds the API" — and because the alternative violates the
+embedded opt-in rule above.
+
+`managed_bringup` still gives this workspace **two systems**, which C/C++ can
+carry but rust cannot. Its entries are C++ only today, so the constraint is not
+hit; if a rust managed entry is ever wanted, it needs the phase-315 limit lifted
+(see Open questions).
+
+Seventeen directories are deleted (`ws-launch-rust` is kept — see Open
+questions): `ws-qos-{c,cpp,rust,mixed}`, `ws-params-{c,cpp,rust}`,
+`ws-lifecycle-{c,cpp,rust}`, `ws-custom-msg-{c,cpp,rust,mixed}`,
+`ws-remap-rust`. Net workspace count: 32 → 12 (11 kept + the new `features`).
 
 ### Behavioural outliers stay separate
 
@@ -155,24 +259,60 @@ partial-language trees (`px4`, `stm32f4`, `qemu-esp32-baremetal`).
 
 ## Cost this does not hide
 
-Each large workspace grows from roughly 8 to 13 node packages, so its
-individual fixture build gets slower even as the total drops. The win is 18
-fewer `nros sync` + CMake-configure cycles against four slightly larger builds.
-**This has not been measured.** Phase-331 W1 measures it before the fold, so
-the trade is a number rather than an assertion.
+Under R2 the large workspaces do not grow at all — the feature demos go to
+`features/` instead. The trade becomes 17 `nros sync` + CMake-configure cycles
+replaced by **one** (plus `features/`'s own build, which is larger than any
+single themed workspace but far smaller than the 11 it replaces).
+
+**This has not been measured.** Phase-331 W1 captured the baseline before any
+change — cold `just build-test-fixtures lane=native`, **7051 s (1 h 57 m)**, 64
+fixtures, on `82b82a6d6`. W5 re-measures against exactly that.
 
 Second cost, accepted knowingly: a QoS regression now fails inside a workspace
-that also builds pubsub, service and action packages. Bisection is coarser and
-one broken node package blocks that workspace's whole fixture. Option (c) of
-the brainstorm — splitting each language into a "core" and a "features"
-workspace — trades this back at the price of doubling the workspace count, and
-was rejected because the duplication being removed is exactly the near-identical
-talker/listener triplets.
+that also builds the params, lifecycle and custom-msg demos. Bisection is
+coarser and one broken node package blocks `features/`'s whole fixture set. That
+is strictly better than R1, where the same break would have blocked a large
+workspace carrying pubsub/service/action across six platforms.
+
+Third cost, new in R2 and the reason R1 was written the other way: the layout
+gains a **fourth shape**. `{rust,c,cpp,mixed}` are organised by language;
+`features/` is organised by concern. A reader looking for "the lifecycle
+example" no longer finds it under their language.
 
 ## Open questions
 
-- Does folding `custom_msgs` into four workspaces create interface-package name
-  collisions across them, or does each keep its own local package? (Local, on
-  current reading; confirm during W2.)
-- `ws-launch-rust` is folded on the assumption that launch handling is
-  exercised by the large workspaces' bringups. Verify before deleting it.
+- **Should the phase-315 one-system-per-workspace limit be lifted?** It is the
+  binding constraint behind R2. Rust cannot generate selection facades for a
+  multi-system workspace, and C/C++ `FORCE`-write a single `NANO_ROS_FEATURES`
+  per configure, so a workspace has one capability set whichever language it is.
+  Lifting it would let a capability travel with its entry — the "image-level"
+  granularity `NanoRosFeatureSet.cmake` already claims — and would make R1's
+  per-language fold viable after all. RFC-0063 / phase-330 is already reworking
+  model generation and is the natural place to consider it. **This RFC does not
+  depend on it**; R2 is correct under the limit as it stands.
+- **Does the C/C++ `FORCE` last-write-wins need its own fix?** Observed during
+  W2: with three bringups, `managed_bringup`'s empty capability set silently
+  erased `param_services` + `lifecycle` for the whole cpp workspace. Worked
+  around by declaring the union in every bringup. That is a defect in an area
+  issue 0353 marked resolved (it fixed the single-bringup path only).
+- **Is `mixed` still worth keeping** once the feature demos leave? Its value is
+  the language seam (a C++ entry carrying C components). Under R2 it keeps that
+  and loses nothing, so yes — but it should be re-examined at W5.
+- ~~Does folding `custom_msgs` into four workspaces create interface-package name
+  collisions?~~ **Answered (W2, 2026-08-02): no — keep it workspace-local.** All
+  four copies are byte-identical (`Reading.msg`, sha `e6ba1fbe0d38`) and all
+  declare `<name>custom_msgs</name>`; workspaces build independently and each
+  must stay self-contained for copy-out.
+- ~~`ws-launch-rust` is folded on the assumption that launch handling is
+  exercised by the large workspaces' bringups.~~ **Answered (W2, 2026-08-02):
+  the assumption was WRONG — `ws-launch-rust` must be KEPT.** It is the only
+  workspace in the tree exercising the launch v1 language surface: `<arg>` with
+  defaults, `$(var …)` substitution, `<group ns=…>`, child `<param>`/`<remap>`,
+  and `<include>` of a sub-launch with argument pass-through
+  (`sensors.launch.xml`). `grep` over `workspaces/rust/src/demo_bringup/launch/`
+  finds no `<include>` and no `<group ns=`, so folding it would delete that
+  coverage outright. It joins safety / realtime / sizing / bridge as a
+  behavioural outlier — the axis it covers is the launch LANGUAGE, not a node
+  API, so it cannot become a node package in a large workspace.
+
+  Consequence: the deletion list is **17** directories, not 18.
