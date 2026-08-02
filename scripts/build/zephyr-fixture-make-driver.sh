@@ -96,17 +96,35 @@ target_name_for() {
 
 make_bin="make"
 make_args=()
-outer_jobs="${NROS_ZEPHYR_BUILD_JOBS:-${NROS_BUILD_JOBS:-1}}"
 fallback_ninja_jobs="${NROS_ZEPHYR_NINJA_JOBS:-${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}}"
 jobserver_mode=0
 if [ -x "$repo_root/third-party/make/make" ] && \
    "$repo_root/third-party/make/make" --version | head -1 | grep -q "4.4"; then
     make_bin="$repo_root/third-party/make/make"
+    # In fifo-jobserver mode the -j value IS the shared token pool: every
+    # leaf's ninja joins it, so it bounds TOTAL concurrency across the
+    # family, and leaves build into disjoint build-<name> dirs (parallel-safe
+    # by design — see the issue #19 note below; only cross-INVOCATION overlap
+    # needs the lock). It therefore defaults to nproc, not 1: the old
+    # `:-1` default handed the whole family a single token — one compiler
+    # process at a time across ~56 west builds on any host that didn't set
+    # NROS_BUILD_JOBS, which is why the standalone zephyr lane crawled while
+    # the no-jobserver fallback (each ninja -j nproc) ran circles around it.
+    # NROS_ZEPHYR_JOBSERVER_TOKENS is the pool size the CALLER intends
+    # (zephyr-ci.just passes the full family budget, or the user's explicit
+    # NROS_ZEPHYR_BUILD_JOBS when they pinned concurrency — the serial
+    # escape hatch). Falling back to NROS_ZEPHYR_BUILD_JOBS here kept the
+    # old behavior for direct driver invocations.
+    outer_jobs="${NROS_ZEPHYR_JOBSERVER_TOKENS:-${NROS_ZEPHYR_BUILD_JOBS:-${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}}}"
     make_args=(-j"$outer_jobs" --jobserver-style=fifo)
     jobserver_mode=1
     export PATH="$repo_root/third-party/make:$repo_root/third-party/ninja:$PATH"
     echo "zephyr-fixture-make-driver: using pinned fifo make"
 else
+    # No shared token pool here: each leaf's ninja runs -j$fallback_ninja_jobs
+    # on its own, so a serial outer walk is what keeps total load ≈ one
+    # machine-width (outer N would oversubscribe to N × ninja_jobs).
+    outer_jobs="${NROS_ZEPHYR_BUILD_JOBS:-${NROS_BUILD_JOBS:-1}}"
     make_args=(-j"$outer_jobs")
     echo "zephyr-fixture-make-driver: pinned fifo make not found; using ordinary make fallback"
 fi

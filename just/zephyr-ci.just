@@ -176,6 +176,12 @@ build-fixtures:
     # with NROS_ZEPHYR_BUILD_JOBS (set =1 to fall back to serial).
     zephyr_budget="${NROS_BUILD_JOBS:-8}"
     default_build_jobs=$(( zephyr_budget / 8 )); [ "$default_build_jobs" -lt 1 ] && default_build_jobs=1
+    # Remember whether the USER pinned the west-build concurrency: an explicit
+    # NROS_ZEPHYR_BUILD_JOBS (e.g. =1, the serial escape hatch) must bound the
+    # fifo-jobserver token pool too, while the computed budget/8 split is a
+    # FALLBACK-model artifact that must NOT shrink the pool (it throttled the
+    # whole family to budget/8 compile processes — 3 of 24 cores here).
+    user_build_jobs="${NROS_ZEPHYR_BUILD_JOBS:-}"
     jobs="${NROS_ZEPHYR_BUILD_JOBS:-$default_build_jobs}"
     if ! [[ "$jobs" =~ ^[0-9]+$ ]] || [ "$jobs" -lt 1 ]; then
         echo "Invalid NROS_ZEPHYR_BUILD_JOBS=$jobs; expected positive integer" >&2
@@ -328,6 +334,7 @@ build-fixtures:
         NROS_ZEPHYR_TOOL_PATH="$tool_path" \
         NROS_ZEPHYR_MAKE_BIN="$make_bin" \
         NROS_ZEPHYR_BUILD_JOBS="$jobs" \
+        NROS_ZEPHYR_JOBSERVER_TOKENS="${user_build_jobs:-$zephyr_budget}" \
         NROS_ZEPHYR_NINJA_JOBS="$ninja_jobs" \
         NROS_ZEPHYR_SCCACHE_DISABLE="$sccache_disable" \
         NROS_ZEPHYR_CCACHE_DIR="$ccache_dir" \
