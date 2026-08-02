@@ -1172,7 +1172,11 @@ pub fn build_native_workspace_rust_params_entry() -> TestResult<&'static Path> {
 pub fn build_native_workspace_rust_qos_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_QOS_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_rust_entry("workspace-features-rust-qos", "features", "native_rust_qos_entry")
+            build_workspace_rust_entry(
+                "workspace-features-rust-qos",
+                "features",
+                "native_rust_qos_entry",
+            )
         })
         .map(|p| p.as_path())
 }
@@ -1184,11 +1188,7 @@ pub fn build_native_workspace_rust_qos_entry() -> TestResult<&'static Path> {
 pub fn build_native_workspace_rust_sizing_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_SIZING_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_rust_entry(
-                "workspace-rust-native-sizing",
-                "sizing",
-                "native_entry",
-            )
+            build_workspace_rust_entry("workspace-rust-native-sizing", "sizing", "native_entry")
         })
         .map(|p| p.as_path())
 }
@@ -1417,7 +1417,11 @@ pub fn build_native_workspace_c_entry() -> TestResult<&'static Path> {
 pub fn build_native_workspace_c_params_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_PARAMS_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-features-c-params", "features", "native_c_params_entry")
+            build_workspace_cmake_entry(
+                "workspace-features-c-params",
+                "features",
+                "native_c_params_entry",
+            )
         })
         .map(|p| p.as_path())
 }
@@ -2250,11 +2254,7 @@ pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static
 pub fn build_native_workspace_c_realtime_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry(
-                "workspace-c-native-realtime",
-                "realtime-c",
-                "native_entry",
-            )
+            build_workspace_cmake_entry("workspace-c-native-realtime", "realtime-c", "native_entry")
         })
         .map(|p| p.as_path())
 }

@@ -364,7 +364,7 @@ check-fast: \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-model-dims \
     check-nested-workspace-excludes \
     check-cargo-profile-mirror check-test-targets \
-    check-version-lockstep check-example-fmt check-cli-fmt \
+    check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
@@ -372,6 +372,19 @@ check-fast: \
     check-cpp-freestanding-includes check-fixtures-manifest check-sysdep-remedies \
     check-activate-shells
     @echo "Fast checks passed!"
+
+# Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
+# the fast tier; the ROOT workspace's `fmt --check` was the one left in the build
+# tier, so an unformatted file you just wrote survived `check-fast` — which is
+# how `model_location.rs` (phase-330 W3.b) shipped needing a reflow.
+#
+# Buildless and seconds-long: rustfmt parses, it does not compile.
+#
+# NIGHTLY, always: `rustfmt.toml` enables nightly-only options and stable
+# produces different output (CLAUDE.md).
+[private]
+check-workspace-fmt:
+    cargo +{{NIGHTLY}} fmt --check
 
 # Compile the TEST targets. Buildless gates never touch `#[cfg(test)]` code, and
 # neither does `check-workspace`'s clippy (no `--all-targets`), so a field added
@@ -2230,11 +2243,13 @@ check-cli-fmt:
 # can't resolve its type parameter. Real consumers always specify
 # a platform; the per-feature combinations are covered by
 # `check-workspace-features` further down.
+# Kept as a name others may invoke. Both of its former jobs moved to the FAST
+# tier, where they catch a mistake before a build tier nobody runs per task:
+# host clippy -> `check-test-targets` (now `--all-targets`, `-D warnings`),
+# `fmt --check` -> `check-workspace-fmt`.
 [private]
-check-workspace:
-    cargo +{{NIGHTLY}} fmt --check
-    # Host clippy moved to `check-test-targets` (fast tier) — it runs there with
-    # `--all-targets` and `-D warnings`, a strict superset of what ran here.
+check-workspace: check-workspace-fmt
+    @echo "check-workspace: fmt + clippy now run in the fast tier."
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build

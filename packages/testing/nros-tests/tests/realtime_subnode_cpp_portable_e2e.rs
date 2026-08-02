@@ -58,9 +58,7 @@ fn realtime_subnode_cpp_portable_two_groups_bind_renamed_tiers(zenohd_unique: Ze
     }
     let entry = build_native_workspace_cpp_subnode_portable_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| {
-            nros_tests::skip!("realtime-cpp entry fixture not built: {e}")
-        });
+        .unwrap_or_else(|e| nros_tests::skip!("realtime-cpp entry fixture not built: {e}"));
     let locator = zenohd_unique.locator();
 
     let mut ctrl = spawn_listener("/ctrl", &locator);

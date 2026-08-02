@@ -71,9 +71,7 @@ fn realtime_subnode_cpp_two_groups_on_two_tiers(zenohd_unique: ZenohRouter) {
     }
     let entry = build_native_workspace_cpp_subnode_realtime_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| {
-            nros_tests::skip!("realtime-cpp entry fixture not built: {e}")
-        });
+        .unwrap_or_else(|e| nros_tests::skip!("realtime-cpp entry fixture not built: {e}"));
     let locator = zenohd_unique.locator();
 
     let mut ctrl = spawn_listener("/ctrl", &locator);
