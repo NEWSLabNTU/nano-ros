@@ -43,10 +43,13 @@ fn zenoh_vtable_monomorphised_with_every_slot() {
 // Pubsub round-trip via a one-shot zenohd fixture.
 // ----------------------------------------------------------------------------
 
-const ZENOHD_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../../build/zenohd/zenohd"
-);
+/// Same resolution as every other zenohd consumer: the shared harness helper
+/// (build/zenohd → `nros setup` store → PATH). See status_events_matrix.rs and
+/// issue 0388 — hardcoding the repo-local path made a store-provisioned host
+/// look like it had no zenohd.
+fn zenohd_path() -> std::path::PathBuf {
+    nros_tests::process::zenohd_binary_path()
+}
 
 fn router_locator() -> Option<String> {
     static ROUTER: OnceLock<Mutex<Option<RouterHandle>>> = OnceLock::new();
@@ -62,15 +65,19 @@ struct RouterHandle {
 
 impl RouterHandle {
     fn start() -> Option<Self> {
-        if !std::path::Path::new(ZENOHD_PATH).is_file() {
-            eprintln!("[zenoh-cffi] zenohd missing at {ZENOHD_PATH}; pubsub test skipped");
+        let zenohd = zenohd_path();
+        if !zenohd.is_file() {
+            eprintln!(
+                "[zenoh-cffi] zenohd not found (build/zenohd, nros setup store, PATH) \
+                 — run `nros setup <board> --rmw zenoh`; pubsub test skipped"
+            );
             return None;
         }
         let listener = TcpListener::bind("127.0.0.1:0").ok()?;
         let port = listener.local_addr().ok()?.port();
         drop(listener);
         let endpoint = format!("tcp/127.0.0.1:{port}");
-        let child = Command::new(ZENOHD_PATH)
+        let child = Command::new(&zenohd)
             .args(["--listen", &endpoint, "--no-multicast-scouting"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -121,12 +128,12 @@ impl Drop for RouterHandle {
 /// those tests exercise the same `RustBackendAdapter<ZenohRmw>`
 /// vtable this crate registers.
 ///
-/// Requires `build/zenohd/zenohd` built (`just setup`).
+/// Requires zenohd from `nros setup <board> --rmw zenoh` (or build/zenohd).
 #[test]
 #[ignore = "in-process zenoh-pico pubsub is architecturally broken (zpico-sys static-slot limitation); cffi data flow verified by the two-process native_api/nano2nano tests once L.3 default-flip reaches the example Cargo.toml files"]
 fn cffi_pubsub_round_trip() {
     let locator =
-        router_locator().expect("zenohd unavailable at build/zenohd/zenohd — run `just setup`");
+        router_locator().expect("zenohd unavailable — run `nros setup <board> --rmw zenoh`");
     nros_rmw_zenoh::register().expect("register");
 
     let mut session = CffiSession::open(&locator, /* client */ 0, 0, "l2_pubsub").expect("open");

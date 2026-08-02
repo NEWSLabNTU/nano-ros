@@ -34,6 +34,23 @@ setup:
         echo "zenohd present but $have != index $want — reprovisioning."
         rm -rf build/zenohd
     fi
+    # issue 0388 — REUSE the `nros setup … --rmw zenoh` store copy before
+    # provisioning a second one. `--prefix` installs are workspace-local and NOT
+    # lock-tracked, so `nros setup --tool` plans against build/zenohd alone: on a
+    # host where zenohd has no prebuilt (every host today, issue 0374) that means
+    # SOURCE-BUILDING zenoh a second time, minutes and hundreds of MB, for a
+    # binary already sitting in the store at the same pinned version. Symlink to
+    # it instead. build/zenohd stays the override slot: a locally built or
+    # patched zenohd there still wins, here and in the harness's resolver.
+    store_root="${NROS_HOME:-$HOME/.nros}/sdk/zenohd/$want/bin/zenohd"
+    if [ -x "$store_root" ]; then
+        echo "zenohd $want present in the nros store — linking, not rebuilding."
+        mkdir -p build/zenohd
+        ln -sfn "$store_root" build/zenohd/zenohd
+        printf 'version = "%s"\nsource = "nros-store"\n' "$want" >build/zenohd/.nros-provenance
+        build/zenohd/zenohd --version 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^zenohd v' | tail -1 || true
+        exit 0
+    fi
     source scripts/build/cargo.sh
     nros="$(nros_cli_bin)"
     "$nros" setup --tool zenohd --prefix "$(pwd)/build/zenohd" --index "$(pwd)/nros-sdk-index.toml"

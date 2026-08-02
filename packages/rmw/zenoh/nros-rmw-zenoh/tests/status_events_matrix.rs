@@ -34,11 +34,16 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Project-tree zenohd binary (built by `just setup`).
-const ZENOHD_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../../build/zenohd/zenohd"
-);
+/// zenohd is a SETUP-provided prerequisite, not something tests build. Resolve
+/// it through the shared harness helper, which tries `build/zenohd/zenohd`, then
+/// the `nros setup` store (`$NROS_HOME/sdk/zenohd/<v>/bin`, honouring NROS_HOME),
+/// then PATH. This file used to hardcode the repo-local path alone, so a host
+/// provisioned exactly as the book documents — `nros setup <board> --rmw zenoh`,
+/// which installs to the store — failed this test with zenohd sitting installed
+/// (issue 0388).
+fn zenohd_path() -> std::path::PathBuf {
+    nros_tests::process::zenohd_binary_path()
+}
 
 /// One zenohd per test run, shared across tests via OnceLock + Mutex.
 /// Returns the locator string the tests should connect to. `None` if
@@ -57,8 +62,12 @@ struct RouterHandle {
 
 impl RouterHandle {
     fn start() -> Option<Self> {
-        if !std::path::Path::new(ZENOHD_PATH).is_file() {
-            eprintln!("[zenoh-matrix] zenohd binary missing at {ZENOHD_PATH}; tests will skip");
+        let zenohd = zenohd_path();
+        if !zenohd.is_file() {
+            eprintln!(
+                "[zenoh-matrix] zenohd not found (looked at build/zenohd/zenohd, \
+                 the nros setup store and PATH) — run `nros setup <board> --rmw zenoh`"
+            );
             return None;
         }
         // Bind a listener to grab a free port, then close it before
@@ -68,7 +77,7 @@ impl RouterHandle {
         let port = listener.local_addr().ok()?.port();
         drop(listener);
         let endpoint = format!("tcp/127.0.0.1:{port}");
-        let child = Command::new(ZENOHD_PATH)
+        let child = Command::new(&zenohd)
             .args(["--listen", &endpoint, "--no-multicast-scouting"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -130,9 +139,18 @@ fn topic() -> TopicInfo<'static> {
 #[test]
 fn zenoh_event_matrix() {
     use nros_rmw::QosPolicyMask;
-    let mut sess = open_session().expect(
-        "zenoh client-mode session unavailable — is build/zenohd/zenohd built? Run `just setup`",
-    );
+    // issue 0388 — an absent zenohd is an unmet PRECONDITION, not a defect, and
+    // `RouterHandle::start` already treats it that way ("tests will skip"). This
+    // `expect` then panicked anyway, so the tier reported a missing prerequisite
+    // exactly like a broken assertion. `skip!` makes the two distinguishable:
+    // tier 1 rewrites [SKIPPED] panics to <skipped> and passes, while a real
+    // failure still fails.
+    let Some(mut sess) = open_session() else {
+        nros_tests::skip!(
+            "zenohd unavailable (looked at build/zenohd/zenohd, the nros setup store \
+             and PATH) — run `nros setup <board> --rmw zenoh`"
+        );
+    };
 
     // ---- Subscriber-side mask ----
     let mut sub = sess
