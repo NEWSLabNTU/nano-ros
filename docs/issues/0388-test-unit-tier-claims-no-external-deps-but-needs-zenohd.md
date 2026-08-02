@@ -78,6 +78,24 @@ to name their own remedies.
 3. While there: `zenoh_event_matrix` prints `tests will skip` on stderr and then
    PANICS instead of skipping — pick one.
 
+## D2 fixed (2026-08-02, `e6ed5d68a`)
+
+`test-unit` now applies the same handling `test-all` and `_nextest-platform`
+already had: capture rc, `_rewrite-skipped-junit`, pass iff
+`_count-real-failures` is 0. The issue-#29 guard came with it — a nextest exit
+that is not 100, or a missing junit, is still a build/setup failure, so a crate
+that fails to compile cannot tally as "0 real failures" and green the lane.
+
+Verified both directions in the distrobox, which has a real `[SKIPPED]`
+(ZPICO_MAX_SESSIONS=1, issue 0389): the skip run rewrote 1 failure to
+`<skipped>` and exited 0; an injected `assert!(false)` in a zpico-alloc unit test
+gave `ERROR: 1 real (non-[SKIPPED]) test failure(s)` and exit 1.
+
+**D1 remains open** — the two tests needing `build/zenohd/zenohd` while the
+recipe advertises "no external deps". That is a tier-ladder decision (move them
+to `just test`, or make `test-unit` depend on `build-zenohd` and drop the
+claim), not a mechanical fix.
+
 ## Evidence
 
 Arch Linux host + Ubuntu 22.04 distrobox, checkout `1d192d4f2`, box store at
