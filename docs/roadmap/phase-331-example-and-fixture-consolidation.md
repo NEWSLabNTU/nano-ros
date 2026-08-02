@@ -226,22 +226,42 @@ the way) and BEFORE W3 (the deletions), so the renames land once.
 **Acceptance:** no test references a deleted path; coverage gates green; a
 `git grep` for each deleted workspace name returns only historical docs.
 
-### W4 — Make configuration an axis
+### W4 — Make configuration an axis (rmw AND feature set)
 
-- [ ] Declare workspace fixtures as `(workspace) × (rmw) × (feature set)` per
-      RFC-0066, replacing hand-written near-duplicate rows.
-- [ ] Add the missing RMW coverage: `cyclonedds` and `xrce` on `workspaces/
-      {c,cpp,rust}`, which do not exist today.
-- [ ] Keep `mixed` at zenoh only (its value is the language seam, not the RMW
-      seam) — state that in the manifest so it reads as a decision, not a gap.
+- [ ] Declare workspace fixtures as `(workspace) x (rmw) x (feature set)`,
+      replacing hand-written near-duplicate rows.
+- [ ] Add the missing RMW coverage: `cyclonedds` and `xrce` on
+      `workspaces/{c,cpp,rust}`, which do not exist today (84 of 86 workspace
+      rows were zenoh).
+- [ ] Keep `mixed` at zenoh only — its value is the language seam, not the RMW
+      seam. State that in the manifest so it reads as a decision, not a gap.
+- [ ] **Fold `safety` into the feature-set column.** `workspaces/{c,cpp,rust} x
+      {default, safety-e2e}` replaces `ws-safety-{c,cpp,rust}` entirely.
+
+      Evidence: the safety TALKER is the plain talker. Its own doc says that
+      with `NANO_ROS_SAFETY_E2E=ON` "the zenoh backend automatically attaches a
+      CRC-32 + sequence number on every publish — **no code change required
+      here**". So the talker side is a pure build axis, and running it over the
+      whole language workspace gives BROADER coverage than the three
+      talker/listener pairs it replaces.
+
+      The LISTENER is not: it calls
+      `nros_cpp_subscription_register_validated` (surfacing `crc_valid`:
+      1 ok / 0 mismatch / -1 no CRC) where the plain listener calls
+      `nros_cpp_subscription_register`. That is a distinct API surface, so it
+      becomes `{c,cpp,rust}_safety_listener_pkg` in `features/`.
+
+      Caveat: `safety-e2e` changes probed ABI sizes, so the variant needs its
+      own `target_dir` / build subdir or it trips the sizes-mirror guard. The
+      `target-safety/` precedent already exists.
 - [ ] **Do not add a `uorb` axis value.** uORB models neither services nor
-      actions (RFC-0011), and the large workspaces contain both; the cell is
-      unbuildable, not merely expensive. PX4 stays out of this phase entirely —
-      it is a `CarveOut` with zero `platform = "px4"` fixture rows, so it
-      contributes nothing to the time being reduced. Phase-325 owns that surface.
+      actions (RFC-0011) while the large workspaces contain both, so the cell is
+      unbuildable, not merely expensive. PX4 is a `CarveOut` with zero
+      `platform = "px4"` rows; phase-325 owns that surface.
 
-**Acceptance:** the new RMW cells build and pass; `matrix_fixture_coverage`
-shows the added coordinates; no `uorb` cell appears.
+**Acceptance:** the new RMW and safety cells build and pass;
+`matrix_fixture_coverage` shows the added coordinates; `ws-safety-*` deleted; no
+`uorb` cell appears.
 
 ### W5 — Re-measure and record
 
@@ -253,33 +273,65 @@ shows the added coordinates; no `uorb` cell appears.
 
 **Acceptance:** RFC-0066's cost section carries real numbers.
 
+### W6 — Consolidate realtime and bridge
+
+Runs AFTER W5, so the re-measure is not contaminated.
+
+**realtime: 8 -> 3.** `ws-realtime-*` is a scheduling DIMENSION, not a feature
+and not a set of cases: one system (ctrl @10 ms high tier, telem @100 ms low
+tier) projected onto each RTOS's native scheduler via
+`[tiers.high.{posix,zephyr,nuttx,threadx}]`.
+
+- [ ] Fold `ws-realtime-{c,cpp}-mps2` back as `freertos_entry`, and
+      `ws-realtime-cpp-fvp` as `fvp_entry`. These are unambiguous duplication:
+      `ws-realtime-c-mps2/src/ctrl_pkg` is **byte-identical** to the base, and
+      the only thing separating them is a `CMAKE_TOOLCHAIN_FILE` block that
+      `workspaces/c` already carries and `ws-realtime-c` never got.
+- [ ] Fold `-rclcpp`, `-subnode`, `-subnode-portable` in as additional cpp
+      entries (+ `subnode_pkg`).
+- [ ] Rename to `realtime-{c,cpp,rust}`.
+
+**bridge: 2 -> 1.** `ws-bridge-rust` / `ws-bridge-xrce-rust` differ only in
+which RMW they bridge to — the W4 axis, expressed as two directories.
+
+**Rename the survivors**, dropping the now-meaningless `ws-` prefix:
+`ws-launch-rust` -> `launch`, `ws-sizing-rust` -> `sizing`,
+`ws-managed-cpp` -> `managed`.
+
+**NOT in scope: merging realtime's tiers into the language workspaces.** The 86
+`execution.tiers` dims are the hand-authored data issue 0380 destroyed twice,
+and phase-330's coordination note asks that they not be disturbed. Re-resolving
+every realtime model to merge them is exactly that risk. Revisit once RFC-0063
+makes models build artifacts, at which point the risk largely evaporates.
+
+**Acceptance:** 22 -> 12 workspaces; all fixtures green;
+`matrix_fixture_coverage` green; no `ws-` prefix remains.
+
 ## Target workspace inventory (end state)
 
-32 workspace directories become **13**:
+**22 -> 12 workspaces.** The `ws-` prefix is dropped: everything under
+`examples/workspaces/` is a workspace, so it never carried information.
 
-| # | workspace | shape | languages | platforms |
+| # | workspace | what it is | languages | platforms |
 |---|---|---|---|---|
-| 1-3 | `rust` / `c` / `cpp` | language comparison — IDENTICAL node sets (W2b) | one each | native + 5 embedded |
-| 4 | `mixed` | the language SEAM: one entry, components from several languages | c + cpp + rust | native + 3 embedded |
-| 5 | `features` | capability demos (params, lifecycle, qos, custom-msg, remap) | all three, prefixed | **native only** |
-| 6-8 | `ws-safety-{c,cpp,rust}` | `safety-e2e` build feature; cross-process pair | one each | native |
-| 9-11 | `ws-realtime-{c,cpp,rust}` (+ `-rclcpp`, `-subnode`, `-subnode-portable`, `-mps2` variants) | own toolchain pin; the only multi-platform theme | one each | native, nuttx, nuttx-riscv, freertos |
-| 12 | `ws-sizing-rust` | executor sizing: launch names zero callback entities, runtime needs six (issue 0257) | rust | native |
-| — | `ws-launch-rust` | the launch v1 LANGUAGE surface | rust | native |
-| — | `ws-bridge-rust`, `ws-bridge-xrce-rust` | bridge topology; the only non-zenoh workspace rows | rust | native |
-| 13 | `ws-managed-cpp` | MANUAL-transition lifecycle. Split out of `features/` in W2: a second bringup there would make it two-system and break rust's selection facades (the limit is per WORKSPACE, not per language) | cpp | native |
+| 1-3 | `rust` / `c` / `cpp` | language comparison — IDENTICAL node sets (W2b, done) | one each | native + 5 embedded |
+| 4 | `mixed` | the language SEAM: one entry, components from several languages | c+cpp+rust | native + 3 embedded |
+| 5 | `features` | capability demos (params, lifecycle, qos, custom-msg, remap, validated-subscription) | all three | native (+3 zephyr, see W3) |
+| 6-8 | `realtime-{c,cpp,rust}` | the scheduling DIMENSION: ctrl @10 ms high tier + telem @100 ms low tier, projected onto each RTOS scheduler | one each | native, nuttx, nuttx-riscv, zephyr, threadx, freertos, fvp |
+| 9 | `bridge` | bridge topology; RMW is an AXIS, not a directory | rust | native |
+| 10 | `launch` | the launch v1 LANGUAGE surface (`<arg>`, `$(var)`, `<group ns=>`, `<include>`) | rust | native |
+| 11 | `sizing` | executor sizing: the launch names zero callback entities, the runtime needs six (issue 0257) | rust | native |
+| 12 | `managed` | MANUAL-transition lifecycle (no autostart) | cpp | native |
 
-(The last three rows are the remaining outliers; counting them individually the
-total is 15 directories, 12 distinct *shapes*.)
+**Safety becomes zero workspaces** — see W4.
 
-Naming rules, applied consistently:
+Naming rules, applied everywhere:
 
-- **single-language workspace** -> no prefix (`talker_pkg`);
-- **multi-language workspace** (`mixed`, `features`) -> language prefix
-  (`c_talker_pkg`), because the languages coexist;
+- single-language workspace -> **no prefix** (`talker_pkg`);
+- multi-language workspace (`mixed`, `features`) -> language prefix;
 - **roles, not payloads** (`service_server_pkg`, not `add_server_pkg`);
-- **one platform vocabulary** for entries (`freertos_entry`, `nuttx_entry`,
-  `threadx_entry`, `zephyr_entry`, `esp32_entry`).
+- one platform vocabulary for entries (`freertos_entry`, `nuttx_entry`,
+  `threadx_entry`, `zephyr_entry`, `esp32_entry`, `fvp_entry`).
 
 ## Explicitly out of scope
 

@@ -26,7 +26,7 @@ This RFC inverts both:
 - a **configuration** (RMW, feature set) is a **fixture axis over the large
   workspaces**, not a directory.
 
-Net: 32 workspace directories become 13, and the RMW axis reaches workspaces
+Net: 32 workspace directories become 12, and the RMW axis reaches workspaces
 for the first time.
 
 > **Revision 2 (2026-08-02).** R1 folded each theme into the same-language large
@@ -247,6 +247,48 @@ workspace fixture = (large workspace) × (rmw) × (feature set)
 
 This is the coverage the current tree lacks: workspaces are 84/86 zenoh today,
 so the RMW seam is exercised almost exclusively by single-node micro-examples.
+
+### Safety is a build axis, not a workspace
+
+`ws-safety-{c,cpp,rust}` looked like behavioural outliers in R2. Reading the
+code says otherwise for one half of each:
+
+- the safety **talker** is the plain talker. Its own doc: with
+  `NANO_ROS_SAFETY_E2E=ON` "the zenoh backend automatically attaches a CRC-32 +
+  sequence number on every publish — **no code change required here**". So it is
+  a pure configuration variant and belongs in the feature-set column above —
+  where it covers the WHOLE language workspace rather than one pair of nodes;
+- the safety **listener** is not. It calls
+  `nros_cpp_subscription_register_validated` (surfacing `crc_valid`) where the
+  plain listener calls `nros_cpp_subscription_register`. A distinct API surface
+  is a capability demo, so it moves into `features/`.
+
+Result: three workspaces become zero, with strictly more coverage.
+`safety-e2e` changes probed ABI sizes, so the variant takes its own
+`target_dir` (the `target-safety/` precedent).
+
+### Realtime is a dimension, not a feature or a case set
+
+`ws-realtime-*` declares one system — ctrl @10 ms on a high tier, telem @100 ms
+on a low tier — and projects it onto each RTOS's native scheduler:
+
+```toml
+[[component]] group_tiers = { ctrl = "high" }
+[tiers.high]        spin_period_us = 10000
+[tiers.high.posix]  priority = 80        # POSIX priority
+[tiers.high.zephyr] priority = 5         # RAW Zephyr priority, k_thread per tier
+[tiers.high.nuttx]  ...                  # SCHED_FIFO
+```
+
+That is the PLATFORM axis applied to scheduling. It follows that the `-mps2` and
+`-fvp` splits are simply missing entries: `ws-realtime-c-mps2/src/ctrl_pkg` is
+byte-identical to the base and separated only by a `CMAKE_TOOLCHAIN_FILE` block
+the language workspaces already carry. 8 workspaces collapse to 3 (phase-331 W6).
+
+Merging the tiers into the language workspaces themselves is deliberately NOT
+proposed: the 86 `execution.tiers` dims are the hand-authored data issue 0380
+destroyed twice, and re-resolving every realtime model is exactly that hazard.
+Revisit once RFC-0063 makes models build artifacts.
 
 ### PX4 / uORB is excluded, explicitly
 
