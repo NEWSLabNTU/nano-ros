@@ -982,7 +982,32 @@ test-unit verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
+    # issue 0388 — `nros_tests::skip!` panics with `[SKIPPED]` for an unmet
+    # precondition, and nextest has no native skip, so those land as FAILURES and
+    # the tier exits 100. `test-all` and `_nextest-platform` already rewrite them
+    # to `<skipped>` and tally only REAL failures; tier 1 did not, so the tier
+    # CLAUDE.md tells everyone to run reported red for "you are missing a
+    # binary" exactly as it does for "you broke something". Same handling here.
+    set +e
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    rc=$?
+    set -e
+    just _rewrite-skipped-junit || true
+    [ $rc -eq 0 ] && exit 0
+    # Issue #29 — a build/setup failure (nextest exit != 100, or no junit) must
+    # NOT be masked by the [SKIPPED] tolerance: a crate that fails to COMPILE
+    # emits zero junit cases, which would otherwise tally as "0 real failures"
+    # and green a broken build. Exit 100 means "tests ran and some failed".
+    if [ "$rc" -ne 100 ] || [ ! -f target/nextest/default/junit.xml ]; then
+        echo "ERROR: unit-test build/setup failed (nextest exit $rc) — not a [SKIPPED] precondition."
+        exit 1
+    fi
+    real="$(just _count-real-failures)"
+    if [ "$real" -ne 0 ]; then
+        echo "ERROR: $real real (non-[SKIPPED]) test failure(s)."
+        exit 1
+    fi
+    echo "All failures were [SKIPPED] preconditions — treating as pass."
 
 # nros-tests integration tests, skipping heavy cross-compile / QEMU groups.
 # Filters mirror the `test` recipe's `-E` predicate, just scoped to
