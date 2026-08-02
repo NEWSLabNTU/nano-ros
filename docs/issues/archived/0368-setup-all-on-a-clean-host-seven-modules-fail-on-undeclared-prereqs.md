@@ -1,7 +1,7 @@
 ---
 id: 368
 title: "`just setup all` on a clean Ubuntu 22.04 host: 7 of 18 modules fail, almost all on prereqs the index model was meant to absorb"
-status: open
+status: resolved
 type: tech-debt
 area: build
 related: [rfc-0014, rfc-0062, issue-0336, issue-0196]
@@ -22,7 +22,7 @@ rmw_zenoh esp_idf`), and the doctor pass then flagged **10**. The orchestrator
 itself behaved well — honest per-module failure list, honest non-zero exit,
 per-item remedies in doctor. The failures cluster into a few classes.
 
-## Status (2026-08-03) — F1–F3, F5–F8 RESOLVED; only F4 remains
+## Status (2026-08-03) — ALL EIGHT FINDINGS RESOLVED
 
 - **F1 DONE (phase-327 W2, verified).** `just workspace setup` now runs every
   sudo-less installer FIRST and the system step LAST, and `apt-packages`
@@ -55,11 +55,20 @@ per-item remedies in doctor. The failures cluster into a few classes.
   so the inner `_require-fixtures` requires the SAME lane `_lane-gate` proved,
   instead of the `all` stamp (this cycle).
 
-**Only F4 remains open** — the bundled `packages/cli/interfaces/` is incomplete
-(needs example_interfaces, action_msgs, unique_identifier_msgs) + sync must
-refuse to NARROW a leaf patch table on generation failure. Deliberately DEFERRED:
-it overlaps the active phase-333 / RFC-0067 message-dependency migration; folding
-it in there (where the msg-crate shape is being reworked) avoids a collision.
+- **F4 DONE** (phase-327 W5, verified 2026-08-03). Both halves landed:
+  - The bundle `packages/cli/interfaces/` was completed — `example_interfaces`
+    0.9.3, `action_msgs` 1.2.3, `unique_identifier_msgs` 2.2.1 added from ros2
+    `humble` — and is wired as the ROS-less codegen search path
+    (`ws.rs` "a host WITHOUT ROS 2 still resolves … packages/cli/interfaces/").
+  - The narrowing guard is in `render_managed_entries` /`write_patch_block`: a
+    managed crate whose generated/lookup path is missing is a HARD STOP
+    (`bail!` "Refusing to write an incomplete [patch.crates-io] — a missing entry
+    resolves from crates.io … which fails nowhere"), never a silent drop. The
+    guard "fired on the remaining two" packages during the W5 bundle completion.
+
+**All eight findings resolved.** F1/F2/F8 across phase-327 + this cycle;
+F3/F5/F6/F7/F4 landed in phase-327 W4–W6 (the issue was simply never updated —
+several were fixed the same day it was filed). Closing 0368.
 
 ## Findings
 

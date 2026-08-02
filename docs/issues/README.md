@@ -184,15 +184,15 @@ longer follows launch declaration order (typed cpp multi-node TU builds listener
 Preserve declaration order in the emitted mapping + a resolver-level order test. Fix collides with
 #380's regeneration hazard — sequence them. See `0382-*`. (2026-08-01)
 
-**#368** — `just setup all` simulated end-to-end on a clean Ubuntu 22.04 host: 7 of 18 modules fail,
-nearly all on prereqs the RFC-0014 index model was meant to absorb. Biggest: ONE sudo `apt-packages`
-step ordered first in the workspace module aborts its own sudo-less installers (ninja/make/targets/
-cargo-tools), cascading into zephyr/esp32/px4. Plus: doctor remedies pointing at apt where index
-prebuilts exist (riscv gcc, idlc, play_launch_parser), the prebuilt qemu dist needing an
-undeclared system `libslirp0`, the bundled interface set missing the three packages the repo's own
-examples need (and a failed sync NARROWS a tracked leaf patch table — 0363 shape), pyo3/z3 build
-deps undeclared, verus unpinned-latest needing glibc 2.39. Full inventory + consolidated apt line +
-suggested work order in the issue. See `0368-*`. (2026-08-01)
+(#368 resolved 2026-08-03 — see `archived/0368-*`: `just setup all` failed 7/18 modules on a clean
+Ubuntu 22.04, nearly all on prereqs RFC-0062's dependency SSoT was meant to absorb. All EIGHT
+findings closed. F1 (sudo `apt-packages` first aborting the sudo-less installers behind it) + F3
+(qemu libslirp system dep) + F5 (pyo3/z3/libclang) + F6 (verus pin) + F7 (aria2/nextest/colcon…) +
+F4 (complete the bundled interface set + a narrowing guard that HARD-STOPs rather than silently drop
+a leaf patch entry) all landed in phase-327 W2–W6 — the issue was just never updated, several fixed
+the day it was filed. F2 (doctor remedies name the index tool, not apt — fixed the SIBLING sites the
+first pass missed) + F8 (`ci-matrix{,-nightly}` set `NROS_FIXTURE_LANE` so its two fixture gates
+agree) closed this cycle. Audited exhaustively.)
 
 **#362** — phase-325 W3's uORB→RMW bridge is blocked on TYPES, not plumbing. The plumbing is proven
 (one PX4 module links uORB + zenoh, `NodeBuilder().rmw()` gives two sessions, backend selection is
