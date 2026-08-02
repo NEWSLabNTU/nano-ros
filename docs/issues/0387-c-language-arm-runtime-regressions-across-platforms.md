@@ -176,10 +176,18 @@ NetX (`nx_bsd_select`) ThreadX arms. Verified: `rtos_e2e` ThreadxLinux C pubsub
 0 -> 14 messages, service 0 -> 1 response — both green. This should also flip the
 ThreadxRiscv64 C pubsub + service cells (same ThreadX poll path).
 
-**Still open — ThreadX C ACTION (distinct root):** with the session now alive,
-`nros_action_send_goal` still returns `-2` after its full 15 s wall-clock budget
-— the SendGoal acceptance reply never arrives (`accepted=false`). Plain service
-call/reply works on the same cell, so this is action-specific (SendGoal
-queryable discovery / hash / entity-id on the ThreadX C path), NOT the idle-spin
-bug. `cpp_c_param_live_read_e2e` and NuttX C (generic MT path, returns 0 — not
-this bug) also remain to chase.
+**UPDATE — action is fixed by the SAME change (no separate root).** All three
+ThreadxLinux C variants pass together after a clean fixture rebuild
+(`platform_3_...ThreadxLinux::lang_2_Lang__C`, 3 tests, 16 s): pubsub 14
+messages, service 1 response, action `accepted=true, completed=true`
+(`Result received: [0,1,1,...55]`). The action cell's transient failure right
+after the pubsub fix was a STALE pre-fix `c_action_server`/`c_action_client` in
+the combined run (only talker+listener had been manually rebuilt then) — a fresh
+rebuild passes with no action-specific change. So the one idle-spin fix flips the
+entire ThreadX C class (pubsub/service/action). Expected to also flip
+ThreadxRiscv64 C pubsub + service (same ThreadX poll path, NetX branch) — confirm
+on the QEMU sweep.
+
+**Still open (separate roots, not this fix):** `cpp_c_param_live_read_e2e`
+(single-node param) and the NuttX C cells (generic MT path — `zpico_spin_once`
+already returns 0 there, so this bug does not apply). Chase next.
