@@ -390,7 +390,16 @@ check JOBS="75%":
         # the example's file path, so failures stay identifiable. Set
         # NROS_CHECK_VERBOSE=1 to restore the per-example progress label.
         if [ -n "${NROS_CHECK_VERBOSE:-}" ]; then echo "  check $dir"; fi
-        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check && eval $env_prefix cargo clippy --quiet $flags )
+        # `-p <leaf>`, not a bare `fmt --check`: run inside the leaf, cargo fmt
+        # formats every member of THAT leaf's workspace — which, once a
+        # developer has run `nros sync`, includes the `generated/*` message
+        # crates. Those are USER-side codegen output (gitignored, regenerated
+        # per host), so the gate was checking rustfmt's opinion of a code
+        # generator's output and failing `just ci` for exactly the people who
+        # followed the setup instructions. A fresh clone has no `generated/`,
+        # so CI never saw it and main stayed green.
+        pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.toml" | head -1)"
+        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check -p "$pkg" && eval $env_prefix cargo clippy --quiet $flags )
     }
     export -f check_one
     export NIGHTLY="{{NIGHTLY}}"
