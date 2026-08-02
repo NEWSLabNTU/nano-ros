@@ -5,7 +5,7 @@ status: resolved
 type: bug
 area: rmw
 related: [issue-0373, issue-0135, rfc-0014]
-resolved_in: "zenoh-pico 61ed48f + submodule pointer bump"
+resolved_in: "zenoh-pico 61ed48f + 07de44f + submodule pointer bumps"
 ---
 
 # zenoh-pico unix build fails on gcc >= 14 (implicit declaration)
@@ -76,3 +76,34 @@ this closed:
 A cheap first step for (2): add one modern-compiler container to whatever lane
 builds the native fixtures, or run `just probe bootstrap-arch` (added by 0373)
 before releases — it would have caught exactly this.
+
+## Second site, and a near-miss worth recording (2026-08-03)
+
+The same class hit a second file: `src/link/endpoint.c` calls
+`_z_custom_config_to_str` inside its `Z_FEATURE_LINK_CUSTOM == 1` branch while
+including the config header for every OTHER link type (tcp, udp, bt, serial,
+ivc, ws, tls, raweth) and not `custom.h`. With the feature on — which
+`examples/native/rust/custom-transport-talker` turns on, that being its whole
+point — the call is an implicit declaration returning `int`, returned as
+`char *`:
+
+    src/link/endpoint.c:547:16: error: returning 'int' from a function with
+    return type 'char *' makes pointer from integer without a cast
+    [-Wint-conversion]
+
+Fixed in `07de44f` with a guarded include, pushed to `jerry73204/zenoh-pico`
+`main`, pointer bumped here.
+
+**The near-miss:** that commit was made hours earlier and then LOST — a
+superproject checkout reset the submodule HEAD back to `61ed48f`, leaving
+`07de44f` as a dangling object, the include absent from the working tree, and
+this issue claiming a fix that was no longer in the tree. Nothing detected it:
+the submodule pointer never moved, so `git status` in the superproject was clean.
+A fork commit is not landed until the fork is PUSHED and the pointer bumped —
+until then a routine checkout can silently revert it.
+
+**Sweep result (unchanged):** `-fsyntax-only -Werror=implicit-function-declaration
+-Werror=int-conversion` over all 128 host-compilable zenoh-pico TUs, in both the
+shipped config and with every `Z_FEATURE_LINK_*` forced on, reports zero further
+sites. The other vendored C (mbedtls, micro-xrce-dds-client, FreeRTOS/lwIP,
+NetX) has still not been swept.
