@@ -196,6 +196,19 @@ Two findings:
 
 ### W4 — Delete the committed models
 
+> **Coordinate with phase-331 (RFC-0066) — added 2026-08-02.** That phase folds
+> 18 themed workspaces into the four large ones and deletes them. **29 of the
+> 120 models below live inside those 18**, plus 10 workspace-root
+> `CMakeLists.txt`. Let phase-331 W2–W3 land FIRST: the census then drops to 91
+> and this phase does not migrate files that are about to be deleted. Nothing
+> here blocks phase-331 — W1 is already landed, and none of the 18 folded
+> workspaces carries an `execution.tiers` dim, so their re-resolve is free of
+> the issue-0380 hazard.
+>
+> **Do not run W3–W4 between phase-331's W1 baseline and its W5 re-measure**:
+> moving model generation moves fixture build wall-clock, and W5's delta would
+> then mix two causes.
+
 - [ ] **W4.a** Remove all **120** tracked `*/config/*model.yaml` (80 under
       `examples/workspaces/`, 40 under test fixtures); add the build location
       to `.gitignore`.
@@ -233,6 +246,12 @@ Two findings:
 - [ ] A copied-out standalone example still builds (W3.c).
 
 ## Risks
+
+- **Phase-331 is folding examples underneath this phase.** See the note on W4:
+  order its W2–W3 before this phase's W4, and keep this phase's W3–W4 outside
+  its W1→W5 measurement window. RFC-0065's builder would remove most of the
+  per-move churn that phase pays, but it is a Draft and phase-331 should not
+  wait on it.
 
 - **The proc-macro path (W3.b).** `nros-macros` reads the model at expansion
   time. If it cannot see the build directory, either the macro stops reading

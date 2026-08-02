@@ -123,6 +123,20 @@ by the probe … C/C++ cmake cells + cross platforms = rollout in progress". A
 builder that takes `(target, bringup)` is exactly what a fixture row already
 is, so the row becomes an invocation rather than a description of one.
 
+## Validation case
+
+Phase-331 (RFC-0066) folds 18 themed workspaces into four and deletes them,
+moving node packages between workspaces as it goes. Every one of those moves
+edits a hand-maintained `SUBDIRS` list or `[workspace] members`, and the
+deletions remove 10 workspace-root `CMakeLists.txt`. That is precisely the
+churn this RFC removes, so phase-331 is the concrete test of whether the design
+here is right: if a tree-walking builder would have made that fold `git mv` plus
+a bringup edit, the design holds.
+
+Phase-331 should NOT wait on this RFC — it is a Draft with open questions below,
+and blocking a measured consolidation on an unbuilt builder would be the wrong
+trade. But its W2/W3 cost is the evidence to check this against.
+
 ## Open questions
 
 - **How the per-package build is driven.** Generate a `CMakeLists.txt` into

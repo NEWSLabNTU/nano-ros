@@ -113,6 +113,50 @@ shows the added coordinates; no `uorb` cell appears.
 - **Anything under `examples/px4/`.** See W4.
 - **Test-side matrix binding.** Phase-329 owns it.
 
+## Coordination with phase-330 (RFC-0063) — added 2026-08-02
+
+Phase-330 makes the SystemModel a generated build artifact. The two phases
+overlap on concrete files, so the order matters.
+
+**The overlap, measured:** 29 of the 120 committed `*/config/*model.yaml` live
+inside the 18 workspaces W3 deletes, along with 10 workspace-root
+`CMakeLists.txt`.
+
+**Recommended order: this phase's W2–W3 BEFORE phase-330's W4.** Deleting the
+18 workspaces first drops phase-330's deletion census from 120 to 91 — there is
+no point migrating files that are about to be removed. Nothing in phase-330
+blocks this phase; its W1 (scheduling dims expressible in `system.toml`) is
+already landed.
+
+**W2 is safe from issue 0380.** W2 extends `demo_bringup` to place the folded
+nodes, which re-resolves models — the operation that stripped 17 hand-authored
+dims in issue 0380. It is safe here because **none of the 18 folded workspaces
+carries any `execution.tiers` dim**: all 86 dims live in the nine
+`ws-realtime-*` workspaces and two `orchestration_tiers_*` fixtures, none of
+which this phase touches (verified by the phase-330 W2.b sweep). `nros sync`
+also refuses to shrink a model now, so the failure mode is a loud refusal
+rather than silent loss.
+
+**Two system models in one workspace (W2) gets easier, not harder.** Once
+models are generated per build, a workspace carrying `demo_bringup` and
+`managed_bringup` produces two models as a consequence of having two bringups —
+there is no committed pair to keep in sync.
+
+**Measurement contamination (W1/W5).** Phase-330's W3–W4 change where models
+are generated, which moves fixture build wall-clock. Land this phase's W1
+baseline, fold, and W5 re-measure **before** phase-330 W3, or W5's delta mixes
+two causes. Note also that all `examples/workspaces/*/build*` trees were wiped
+on 2026-08-02 (104G), so W1 starts from a genuinely clean tree — which W1 wants
+anyway.
+
+**RFC-0065 is the same problem one level up.** W2/W3 move packages between
+workspaces and delete 18 roots; every move edits a hand-maintained `SUBDIRS`
+list or `[workspace] members`. RFC-0065 (colcon-like builder) removes exactly
+that churn by discovering packages from the tree. It is a Draft with open
+questions and this phase should NOT wait on it — but this fold is its strongest
+motivating case, and 0065's design should be checked against what W2/W3
+actually cost.
+
 ## Risks
 
 - **Coarser bisection.** A QoS regression now fails inside a workspace that also
