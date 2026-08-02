@@ -320,10 +320,37 @@ So a build can run from a generated model alone. What still blocks W4.a:
       needs either include-analysis (the resolver already records included
       files in `meta.inputs`) or an explicit declaration in `system.toml`.
 
-- [ ] **W4.0b — every build path must pass the model dir.** Only a direct cargo
-      build was proven. The cmake fixtures, `fixtures.toml` rows and the `just`
-      recipes all still point at committed models; each needs `--model-dir` on
-      the sync side and `NROS_MODEL_DIR` on the build side.
+- [x] **W4.0b — DONE 2026-08-02. One env var, both halves, zero call-site churn.**
+
+      `nros sync` now falls back to `NROS_MODEL_DIR` when `--model-dir` is
+      absent, so the variable that tells consumers where models are READ is the
+      variable that tells sync where to WRITE them. The alternative was
+      threading `--model-dir` through **15** `just` call sites across
+      native/freertos/zephyr/nuttx/threadx/esp32/px4 — a second spelling of one
+      fact in fifteen places.
+
+      **Wiring the cmake path surfaced four consumers W3.b had missed**, each
+      re-deriving `join("config/system_model.yaml")` independently:
+      `cmd/plan.rs` (twice — dir input and the cmake seam's file input),
+      `cmd/codegen_system.rs`, and `cmd/ws.rs`'s bridge-bringup branch. `nros
+      plan` is what the cmake workspace seam actually shells out to, so the C
+      workspace failed to CONFIGURE until it went through `model_location`.
+      W3.b's claim to have wired "all three consumer families" was wrong: there
+      were seven sites, not three.
+
+      Proven end-to-end on `examples/workspaces/c` (7 models — `system_model`
+      plus 6 variants) with the committed `config/` MOVED ASIDE:
+
+      * `NROS_MODEL_DIR=… nros sync` → all 7 written to the build dir, committed
+        tree untouched;
+      * `cmake -S . -B build/cm -DNANO_ROS_PLATFORM=posix` → **rc=0**;
+      * `cmake --build build/cm` → **rc=0**;
+      * control, same configure with NO env var → **rc=1**, "has no committed
+        SystemModel".
+
+      So both build systems can now run with zero committed models. W4.a stays
+      blocked on W4.0 alone (the variant SET is still declared by the committed
+      files).
 
 **W4.b (issue 0320's staleness text) is deliberately deferred** until the models
 actually move — editing it now would describe a state the tree is not in.

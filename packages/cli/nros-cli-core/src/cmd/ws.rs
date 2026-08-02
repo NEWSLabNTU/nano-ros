@@ -943,7 +943,11 @@ fn generate_bridge_configs(
         // resolution survives only for modelless bringups. Both temp guards
         // (synth XML / synthesized record) live in `_guards` through
         // plan_system.
-        let model_path = pkg.dir.join("config/system_model.yaml");
+        // phase-330 W4.0b — bridge bringups resolve through the shared order too.
+        let model_path = crate::orchestration::model_location::resolve_model_path(
+            &pkg.dir,
+            "config/system_model.yaml",
+        );
         let mut _guard_record = None;
         let (plan_launch_file, plan_record_file) = if model_path.exists() {
             let model = crate::orchestration::model_ingest::load_model(&model_path)?;
@@ -1156,7 +1160,18 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // entry's `nros_bridge::run_from_config` consumes at runtime.
     // R-code UX — resolve/refresh each bringup's committed SystemModel first
     // (the canonical input; bridge planning below consumes it).
-    resolve_system_models(&scan, args.verbose, args.model_dir.as_deref())?;
+    // phase-330 W4.0b — ONE knob for both halves. Consumers already read
+    // `NROS_MODEL_DIR` (W3.b's search order), so sync honours the same env when
+    // `--model-dir` is absent. Symmetric by construction: the variable that
+    // says where models are READ is the variable that says where they are
+    // WRITTEN. The alternative was threading `--model-dir` through 15 `just`
+    // call sites, i.e. a second spelling of the same fact in 15 places.
+    let model_dir = args.model_dir.clone().or_else(|| {
+        std::env::var_os("NROS_MODEL_DIR")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    });
+    resolve_system_models(&scan, args.verbose, model_dir.as_deref())?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
     generate_facade_crates(&ws_root, &scan, &build_root, args.verbose)?;
 

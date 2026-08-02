@@ -116,14 +116,22 @@ pub fn run(args: Args) -> Result<()> {
         // Dir input: `<dir>/config/system_model.yaml`. File input (the cmake
         // workspace seam passes `<bringup>/launch/<f>.launch.xml`): hop to
         // the bringup dir — the launch file's `launch/` parent's parent.
-        let conv = if launch_input_path.is_dir() {
-            launch_input_path.join("config/system_model.yaml")
+        // phase-330 W4.0b — the bringup dir is the anchor; where the model
+        // actually LIVES is `model_location`'s call (build output first,
+        // committed copy last), so plan agrees with the proc-macro, cmake and
+        // `nros-build` instead of re-deriving the path a fourth time.
+        let bringup_dir = if launch_input_path.is_dir() {
+            launch_input_path.to_path_buf()
         } else {
             launch_input_path
                 .parent()
-                .and_then(std::path::Path::parent)
-                .map(|b| b.join("config/system_model.yaml"))?
+                .and_then(std::path::Path::parent)?
+                .to_path_buf()
         };
+        let conv = crate::orchestration::model_location::resolve_model_path(
+            &bringup_dir,
+            "config/system_model.yaml",
+        );
         conv.exists().then_some(conv)
     });
     if let Some(model_path) = &discovered_model {

@@ -162,10 +162,10 @@ pub fn run(args: Args) -> Result<()> {
     // extra_script, the fixture builder) never spell the flag; explicit
     // `--model` stays as the override for out-of-tree/variant models.
     let discovered_model: Option<PathBuf> = args.model.clone().or_else(|| {
-        let conv = bringup
-            .manifest_path
-            .parent()
-            .map(|d| d.join("config/system_model.yaml"))?;
+        // phase-330 W4.0b — same search order as every other consumer.
+        let conv = bringup.manifest_path.parent().map(|d| {
+            crate::orchestration::model_location::resolve_model_path(d, "config/system_model.yaml")
+        })?;
         if conv.exists() {
             eprintln!(
                 "codegen-system: using committed SystemModel {} (convention \
