@@ -284,9 +284,9 @@ build-fixtures:
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
     # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry (nros sync only).
-    if [ -d examples/workspaces/ws-safety-rust/src/zephyr_entry ]; then
-        echo "  → ws-safety workspace-entry prep (nros sync)"
-        ( cd examples/workspaces/ws-safety-rust
+    if [ -d examples/workspaces/safety/src/zephyr_rust_safety_entry ]; then
+        echo "  → safety workspace-entry prep (nros sync)"
+        ( cd examples/workspaces/safety
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
     # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry (nros sync only).

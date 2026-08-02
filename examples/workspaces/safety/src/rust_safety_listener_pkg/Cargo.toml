@@ -1,0 +1,31 @@
+[package]
+name = "rust_safety_listener_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — SAFETY subscription on /chatter, reads CRC/gap/dup integrity."
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "rust_safety_listener_pkg::SafeListener"
+name = "safe_listener"
+default_namespace = "/"
+
+[features]
+# phase-277 W3.c — this pkg IS the safety-CRC listener (its whole purpose is
+# reading `CallbackCtx::integrity()`), so the E2E-safety axis is unconditional
+# on `nros` below. `safety-e2e` is kept as a no-op feature name so existing
+# consumers (native_entry, native_safety_listener_entry) that request
+# `features = ["safety-e2e"]` keep working.
+default = ["safety-e2e"]
+safety-e2e = []
+
+[dependencies]
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "safety-e2e",
+] }
+std_msgs = { version = "*", default-features = false }

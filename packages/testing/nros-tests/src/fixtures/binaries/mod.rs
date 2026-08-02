@@ -1355,9 +1355,9 @@ pub fn build_native_workspace_rust_safety_talker_entry() -> TestResult<&'static 
     NATIVE_WORKSPACE_RUST_SAFETY_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry(
-                "workspace-rust-native-safety-talker",
-                "ws-safety-rust",
-                "native_safety_talker_entry",
+                "workspace-safety-rust-talker",
+                "safety",
+                "native_rust_safety_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1370,9 +1370,9 @@ pub fn build_native_workspace_rust_safety_listener_entry() -> TestResult<&'stati
     NATIVE_WORKSPACE_RUST_SAFETY_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry(
-                "workspace-rust-native-safety-listener",
-                "ws-safety-rust",
-                "native_safety_listener_entry",
+                "workspace-safety-rust-listener",
+                "safety",
+                "native_rust_safety_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1437,33 +1437,33 @@ pub fn build_native_workspace_c_lifecycle_entry() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Phase 269 W3 — the talker half of the cross-process E2E-safety C demo (`ws-safety-c`).
+/// Phase 269 W3 — the talker half of the cross-process E2E-safety C demo (`safety`).
 /// Publishes CRC-annotated /chatter frames when built with NANO_ROS_SAFETY_E2E=ON.
 /// Consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_c_safety_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_SAFETY_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry_in(
-                "workspace-c-native-safety-talker",
-                "ws-safety-c",
-                "build-workspace-fixtures-safety-talker",
-                "native_safety_talker_entry",
+                "workspace-safety-c-talker",
+                "safety",
+                "build-workspace-fixtures",
+                "native_c_safety_talker_entry",
             )
         })
         .map(|p| p.as_path())
 }
 
-/// Phase 269 W3 — the listener half of the cross-process E2E-safety C demo (`ws-safety-c`).
+/// Phase 269 W3 — the listener half of the cross-process E2E-safety C demo (`safety`).
 /// Uses `nros_cpp_subscription_register_validated`; counts CRC-valid frames.
 /// Consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_c_safety_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_SAFETY_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry_in(
-                "workspace-c-native-safety-listener",
-                "ws-safety-c",
-                "build-workspace-fixtures-safety-listener",
-                "native_safety_listener_entry",
+                "workspace-safety-c-listener",
+                "safety",
+                "build-workspace-fixtures",
+                "native_c_safety_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2211,33 +2211,33 @@ pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'stat
         .map(|p| p.as_path())
 }
 
-/// Phase 269 W3 — the talker half of the cross-process E2E-safety C++ demo (`ws-safety-cpp`).
+/// Phase 269 W3 — the talker half of the cross-process E2E-safety C++ demo (`safety`).
 /// Publishes CRC-annotated /chatter frames when built with NANO_ROS_SAFETY_E2E=ON.
 /// Consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_safety_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_SAFETY_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry_in(
-                "workspace-cpp-native-safety-talker",
-                "ws-safety-cpp",
-                "build-workspace-fixtures-safety-talker",
-                "native_safety_talker_entry",
+                "workspace-safety-cpp-talker",
+                "safety",
+                "build-workspace-fixtures",
+                "native_cpp_safety_talker_entry",
             )
         })
         .map(|p| p.as_path())
 }
 
-/// Phase 269 W3 — the listener half of the cross-process E2E-safety C++ demo (`ws-safety-cpp`).
+/// Phase 269 W3 — the listener half of the cross-process E2E-safety C++ demo (`safety`).
 /// Uses `node.create_subscription_with_safety<M>()` typed API + IntegrityStatus callback.
 /// Consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_SAFETY_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry_in(
-                "workspace-cpp-native-safety-listener",
-                "ws-safety-cpp",
-                "build-workspace-fixtures-safety-listener",
-                "native_safety_listener_entry",
+                "workspace-safety-cpp-listener",
+                "safety",
+                "build-workspace-fixtures",
+                "native_cpp_safety_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3033,7 +3033,7 @@ pub fn build_zephyr_workspace_rust_qos_entry() -> TestResult<PathBuf> {
 }
 
 /// phase-276 W4 — the Zephyr (native_sim) E2E-SAFETY (CRC) Rust workspace Entry
-/// (`ws-safety-rust/src/zephyr_entry`): the system declares `features = ["safety"]`,
+/// (`safety/src/zephyr_rust_safety_entry`): the system declares `features = ["safety"]`,
 /// so the zenoh backend attaches the E2E CRC + sequence number on publish and
 /// validates on receive; safe_listener republishes its CRC-VALIDATED count on
 /// `/safe_ok`. Built by the west lane into

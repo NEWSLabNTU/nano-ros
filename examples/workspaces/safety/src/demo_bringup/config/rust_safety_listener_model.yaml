@@ -1,0 +1,32 @@
+meta:
+  version: 1
+  inputs:
+  - path: launch/rust_safety_listener.launch.xml
+    sha256: 906bb08e6185dd18edf8e5edf0dce98ba5362db0c7683445f0c6c4091be6389c
+  - path: system.toml
+    sha256: 1d0ea40335635816419cba9449ff5b78e8619d50286f78831b9ab1344ccb74a9
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
+structure:
+  scopes:
+    rust_safety_listener.launch.xml:
+      file: rust_safety_listener.launch.xml
+  nodes:
+    /safe_listener:
+      scope: rust_safety_listener.launch.xml
+      pkg: rust_safety_listener_pkg
+      exec: safe_listener
+      node_name: safe_listener
+execution:
+  deploy:
+    /safe_listener:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  features:
+  - safety

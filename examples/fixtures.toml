@@ -223,33 +223,6 @@ target_dir = "target-fixtures"
 # proving the E2E CRC attach→validate→integrity-read path. Each entry is 1 node (under
 # the default MAX_CBS, issue 0095).
 [[workspace_fixture]]
-id = "workspace-rust-native-safety-talker"
-platform = "native"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-safety-rust"
-bringup = "src/demo_bringup"
-entry = "native_safety_talker_entry"
-target_dir = "target-fixtures"
-
-[[workspace_fixture]]
-id = "workspace-rust-native-safety-listener"
-platform = "native"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-safety-rust"
-bringup = "src/demo_bringup"
-entry = "native_safety_listener_entry"
-target_dir = "target-fixtures"
-
-# phase-306 W4 (issue 0255) — the remap/private-name workspace, pure-cargo
-# `nros::main!(model = …)` path (no codegen_out). The node publishes on the
-# PRIVATE `~/out`; the model namespaces it under /island and remaps `~/out` to
-# /remapped_out. Consumed by tests/workspace_features_e2e.rs (native_rust_remap
-# cell): a sink on /remapped_out must receive, one on the unremapped expansion
-# /island/remap_talker/out must stay silent — proving the launch/model remap
-# reaches the WIRE.
-[[workspace_fixture]]
 id = "workspace-rust-native-robot1"
 platform = "native"
 lang = "rust"
@@ -757,66 +730,6 @@ build_subdir = "build-workspace-fixtures"
 # Phase 269 W1 — parameterised C workspace. [param_services] bakes nros_cpp_declare_param
 # calls into the generated entry; the C component reads the live value via
 # nros_cpp_get_param_integer. Consumed by tests/cpp_c_param_live_read_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-c-native-safety-talker"
-platform = "native"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-safety-c"
-bringup = "src/demo_bringup"
-entry = "native_safety_talker_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures-safety-talker"
-
-# Phase 269 W3 — E2E-safety C workspace (listener half). C listener registers
-# `nros_cpp_subscription_register_validated`; validates CRC and counts good frames.
-# Consumed by tests/workspace_features_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-c-native-safety-listener"
-platform = "native"
-lang = "c"
-rmw = "zenoh"
-# See workspace-c-native-safety-talker: enable the CRC validate path in nros-cpp.
-dir = "examples/workspaces/ws-safety-c"
-bringup = "src/demo_bringup"
-entry = "native_safety_listener_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures-safety-listener"
-
-# Phase 269 W3 — E2E-safety C++ workspace (talker half). C++ talker publishes
-# CRC-annotated /chatter frames when built with NANO_ROS_SAFETY_E2E=ON.
-# Consumed by tests/workspace_features_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-cpp-native-safety-talker"
-platform = "native"
-lang = "cpp"
-rmw = "zenoh"
-# See workspace-c-native-safety-talker: enable the CRC attach/validate path in nros-cpp.
-dir = "examples/workspaces/ws-safety-cpp"
-bringup = "src/demo_bringup"
-entry = "native_safety_talker_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures-safety-talker"
-
-# Phase 269 W3 — E2E-safety C++ workspace (listener half). C++ listener uses
-# `node.create_subscription_with_safety<M>()` to receive typed msgs + IntegrityStatus.
-# Consumed by tests/workspace_features_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-cpp-native-safety-listener"
-platform = "native"
-lang = "cpp"
-rmw = "zenoh"
-# See workspace-c-native-safety-talker: enable the CRC validate path in nros-cpp.
-dir = "examples/workspaces/ws-safety-cpp"
-bringup = "src/demo_bringup"
-entry = "native_safety_listener_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures-safety-listener"
-
-# Phase 269 W4 — 2-tier sched-context C workspace. [tiers.high]/[tiers.low] + [[node_overrides]]
-# bake nros_cpp_create_sched_context + nros_cpp_node_create_ex into the generated entry;
-# ctrl_node binds to the high-priority sched context (10 ms), telem_node to the low-priority
-# sched context (100 ms). Consumed by tests/realtime_tiers_c_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-c-native-realtime"
 platform = "native"
@@ -3431,3 +3344,74 @@ bringup = "src/demo_bringup"
 entry = "native_mixed_custom_msg_listener_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
+
+# phase-331 W4 (RFC-0066) — the consolidated E2E-safety workspace. Its system
+# declares `features = ["safety"]`; a system carries exactly ONE feature set, so
+# the validated listener (which needs a CRC to validate) cannot live in
+# `features/`. Own build dir: safety-e2e changes probed ABI sizes.
+
+[[workspace_fixture]]
+id = "workspace-safety-c-talker"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/safety"
+bringup = "src/demo_bringup"
+entry = "native_c_safety_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-safety-c-listener"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/safety"
+bringup = "src/demo_bringup"
+entry = "native_c_safety_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-safety-cpp-talker"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/safety"
+bringup = "src/demo_bringup"
+entry = "native_cpp_safety_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-safety-cpp-listener"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/safety"
+bringup = "src/demo_bringup"
+entry = "native_cpp_safety_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-safety-rust-talker"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/safety"
+bringup = "src/demo_bringup"
+entry = "native_rust_safety_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+target_dir = "target-safety"
+
+[[workspace_fixture]]
+id = "workspace-safety-rust-listener"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/safety"
+bringup = "src/demo_bringup"
+entry = "native_rust_safety_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+target_dir = "target-safety"

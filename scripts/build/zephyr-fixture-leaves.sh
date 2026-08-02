@@ -580,7 +580,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     fi
 
     # phase-276 W4 — the E2E-SAFETY (CRC) Rust workspace Entry
-    # (examples/workspaces/ws-safety-rust/src/zephyr_entry): the
+    # (examples/workspaces/safety/src/zephyr_rust_safety_entry): the
     # safety-on-embedded coverage cell. The system declares
     # [system].features = ["safety"] → the zenoh backend attaches the E2E CRC +
     # sequence number on publish and validates on receive; the on-target
@@ -593,7 +593,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     wss_rmw="zenoh"
     wss_build_name="build-ws-rs-safety-entry-zenoh"
     wss_build_dir="$build_root/$wss_build_name"
-    wss_src="workspaces/ws-safety-rust/src/zephyr_entry"
+    wss_src="workspaces/safety/src/zephyr_rust_safety_entry"
     wss_src_dir="$nros_root/examples/$wss_src"
     wss_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
     wss_zenoh_locator="tcp/127.0.0.1:7490"
