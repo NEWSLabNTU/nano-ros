@@ -21,6 +21,9 @@ host-only-reason = "build-script helper library, runs on the host"
 [dependencies]
 cbindgen = "0.29"
 cc = "1"
+# issue 0383 — strict C diagnostics (implicit-function-declaration,
+# int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
+nros-cc-flags = { path = "../nros-cc-flags" }
 nros-sizes-build = { workspace = true }
 
 [lints]

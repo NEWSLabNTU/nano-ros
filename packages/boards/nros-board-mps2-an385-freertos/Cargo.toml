@@ -54,6 +54,9 @@ panic-semihosting = "0.6"
 # issue 0288 — `host_probe::skip_cross_build` (see build.rs).
 nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }
 cc = "1"
+# issue 0383 — strict C diagnostics (implicit-function-declaration,
+# int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
+nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 # Phase 208.B Track A — repo-relative path resolver.
 nros-build-paths = { path = "../../tooling/nros-build-paths" }
 

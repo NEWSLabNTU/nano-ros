@@ -28,6 +28,26 @@
 //! idiom and then a third (CLAUDE.md, "fix the CLASS"). One helper, one
 //! spelling, one place to widen the set.
 //!
+//! # Do not add `-w` next to this
+//!
+//! On gcc <= 13 — i.e. the PINNED arm-none-eabi-gcc 13.2 — `-w` silently wins
+//! over `-Werror=implicit-function-declaration`, in either order:
+//!
+//! ```text
+//! arm-none-eabi-gcc -w -Werror=implicit-function-declaration -fsyntax-only x.c  # rc=0
+//! arm-none-eabi-gcc -Werror=implicit-function-declaration -w -fsyntax-only x.c  # rc=0
+//! arm-none-eabi-gcc -Werror=implicit-function-declaration    -fsyntax-only x.c  # rc=1
+//! ```
+//!
+//! and nothing re-enables the diagnostic afterwards. A gcc >= 14 host hides
+//! this, because there the construct is a default error that `-w` cannot
+//! suppress — so the gate would look healthy on the host that needs it least.
+//!
+//! `cc::Build::warnings(false)` is fine and used at most call sites: it only
+//! makes cc-rs OMIT `-Wall`/`-Wextra`, it passes no `-w`, and both diagnostics
+//! are on by default in gcc. Verified on the compile lines cc-rs actually
+//! emits — the only `-W` flags on a vendored lwIP TU are these two.
+//!
 //! # Scope
 //!
 //! C only. Both diagnostics are C-language options; a C++ compile rejects the

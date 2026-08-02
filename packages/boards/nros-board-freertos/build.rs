@@ -258,6 +258,11 @@ fn configure_cflags(build: &mut cc::Build) {
         .flag("-ffunction-sections")
         .flag("-fdata-sections")
         .warnings(false);
+    // issue 0383 — implicit-function-declaration / int-conversion as ERRORS.
+    // Safe next to `warnings(false)`: that only makes cc-rs OMIT `-Wall`/
+    // `-Wextra`, it passes no `-w`, and gcc enables both diagnostics by
+    // default — so the gate is live on the pinned arm-none-eabi-gcc 13.2.
+    nros_cc_flags::strict_decls(build);
     // Phase 195 audit (b) — the cortex-m3 default only fits a thumbv7m
     // (Cortex-M3) target. For any other ARM-M target (thumbv7em = M4/M7,
     // thumbv6m = M0, …) silently applying cortex-m3 flags yields a

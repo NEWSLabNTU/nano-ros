@@ -82,6 +82,9 @@ fn vendored_build() {
     let gen_dir = out_dir.join("cyclonedds-types");
     std::fs::create_dir_all(&gen_dir).expect("mkdir gen");
     let mut cc_c = cc::Build::new();
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    // C only; the `cc_cpp` build below rejects both constructs by language.
+    nros_cc_flags::strict_decls(&mut cc_c);
     cc_c.include(&ddsc_include)
         .include(&gen_dir)
         .flag_if_supported("-Wno-unused-parameter");

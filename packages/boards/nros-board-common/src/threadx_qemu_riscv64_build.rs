@@ -350,6 +350,10 @@ fn configure_riscv64(build: &mut cc::Build) {
         // canonical override (per nxd_bsd.h:144 comment).
         .define("NX_BSD_ENABLE_NATIVE_API", None);
     build.warnings(false);
+    // issue 0383 — implicit-function-declaration / int-conversion as ERRORS.
+    // Safe next to `warnings(false)`: cc-rs only omits `-Wall`/`-Wextra` there,
+    // it passes no `-w`, so the gate stays live (see nros_cc_flags docs).
+    nros_cc_flags::strict_decls(build);
 
     // picolibc provides C standard library headers (string.h, stdint.h, etc.)
     // picolibc's <machine/endian.h> defines htonl as __bswap32 on LE, which is

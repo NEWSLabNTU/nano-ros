@@ -193,6 +193,9 @@ fn configure(build: &mut cc::Build) {
         .define("TX_INCLUDE_USER_DEFINE_FILE", None)
         .define("NX_INCLUDE_USER_DEFINE_FILE", None)
         .warnings(false);
+    // issue 0383 — implicit-function-declaration / int-conversion as errors
+    // (`warnings(false)` only omits `-Wall`/`-Wextra`; cc-rs passes no `-w`).
+    nros_cc_flags::strict_decls(build);
     // RISC-V cross-compile env. Detect by target triple, NOT by
     // THREADX_PORT, so a host-tooled `cargo check` doesn't
     // accidentally pick up the cross compiler.

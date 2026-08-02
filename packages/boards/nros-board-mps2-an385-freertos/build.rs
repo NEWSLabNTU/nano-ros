@@ -209,6 +209,9 @@ fn configure_arm_cm3(build: &mut cc::Build) {
         .flag("-ffunction-sections")
         .flag("-fdata-sections")
         .warnings(false);
+    // issue 0383 — implicit-function-declaration / int-conversion as errors
+    // (`-w` above does not defeat an explicit `-Werror=`).
+    nros_cc_flags::strict_decls(build);
 
     let cflags = env::var("FREERTOS_CFLAGS").unwrap_or_else(|_| {
         // Backward-compat default for MPS2-AN385 consumers that

@@ -26,6 +26,12 @@ members = [
     # repo-relative paths without `just`/`.envrc`. Lets bare `cargo
     # build` succeed in a fresh shell (the audit blocker P1).
     "packages/tooling/nros-build-paths",
+    # issue 0383 — the C diagnostics every nano-ros C compile treats as errors
+    # (implicit-function-declaration, int-conversion). One spelling shared by
+    # the ~30 `cc::Build` sites; the pinned arm-none-eabi-gcc 13.2 only warns
+    # on them, so without this the class is invisible until someone builds on a
+    # gcc >= 14 host.
+    "packages/tooling/nros-cc-flags",
     # Phase 221.A.2 — shared build-script helpers for nros-c/nros-cpp.
     "packages/tooling/nros-build-helpers",
     # Phase 149.5 — shared build-script helpers (manifest parser +

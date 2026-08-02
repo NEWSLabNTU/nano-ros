@@ -75,7 +75,7 @@ platform-posix = ["dep:nros-platform", "nros-platform/platform-posix"]
 # Phase 214.S.1 promoted this to a default — kept as a named feature
 # so external CMake / Zephyr consumers can opt out via
 # `default-features = false`.
-vendored = ["dep:cyclonedds-sys", "dep:cc"]
+vendored = ["dep:cyclonedds-sys", "dep:cc", "dep:nros-cc-flags"]
 
 # issue 0287 — HOST-ONLY. `just check-workspace-embedded` builds the whole
 # workspace for a thumb target, and cargo unifies features across ALL members
@@ -104,6 +104,9 @@ nros-platform = { version = "0.5.0", path = "../../../platform/nros-platform", d
 
 [build-dependencies]
 cc = { version = "1.0", optional = true }
+# issue 0383 — strict C diagnostics (implicit-function-declaration,
+# int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
+nros-cc-flags = { path = "../../../tooling/nros-cc-flags", optional = true }
 nros-build-paths = { path = "../../../tooling/nros-build-paths" }
 
 [lints]

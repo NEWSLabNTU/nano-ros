@@ -412,6 +412,7 @@ version = "0.5.0"
 dependencies = [
  "cc",
  "nros-build-paths",
+ "nros-cc-flags",
  "serde",
  "toml 0.8.23",
 ]
@@ -427,6 +428,13 @@ dependencies = [
  "heapless",
  "nros-core",
  "nros-serdes",
+]
+
+[[package]]
+name = "nros-cc-flags"
+version = "0.5.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -553,6 +561,7 @@ name = "nros-platform-cffi"
 version = "0.5.0"
 dependencies = [
  "cc",
+ "nros-cc-flags",
  "nros-platform-api",
 ]
 
@@ -571,6 +580,7 @@ name = "nros-rmw-cffi"
 version = "0.5.0"
 dependencies = [
  "cc",
+ "nros-cc-flags",
  "nros-rmw",
  "portable-atomic",
 ]
@@ -624,6 +634,7 @@ dependencies = [
  "cc",
  "nros-board-common",
  "nros-build-paths",
+ "nros-cc-flags",
  "pkg-config",
 ]
 

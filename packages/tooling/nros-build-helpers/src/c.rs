@@ -465,6 +465,8 @@ fn emit_variant_symbol(out_dir: &str, suffix: Option<&str>) {
     )
     .expect("write nros_variant_symbol.c");
     let mut build = cc::Build::new();
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    nros_cc_flags::strict_decls(&mut build);
     build.file(&c_src).warnings(false);
     crate::shared::apply_baremetal_libc(&mut build);
     build.compile("nros_variant_symbol");

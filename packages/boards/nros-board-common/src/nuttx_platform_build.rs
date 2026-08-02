@@ -63,6 +63,8 @@ pub fn run_platform() {
         platform.flag(f);
     }
     platform.flag("-std=c11");
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    nros_cc_flags::strict_decls(&mut platform);
     platform.define("__NuttX__", None);
     platform.include(&cffi_include);
     platform.include(nuttx_dir.join("include"));
@@ -143,6 +145,8 @@ pub fn compile_run_tiers_seam(seam_src: &std::path::Path) {
         seam.flag(f);
     }
     seam.flag("-std=c11");
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    nros_cc_flags::strict_decls(&mut seam);
     seam.define("__NuttX__", None);
     seam.include(nuttx_dir.join("include"));
     for inc in &arch_includes {

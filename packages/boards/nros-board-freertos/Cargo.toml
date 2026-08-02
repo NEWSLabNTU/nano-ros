@@ -68,6 +68,9 @@ nros-board-common = { path = "../nros-board-common", features = ["build-helpers"
 # network_glue). Overlays' build.rs only need to handle their own
 # driver + linker script + libc discovery.
 cc = "1.0"
+# issue 0383 — strict C diagnostics (implicit-function-declaration,
+# int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
+nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 
 [features]
 default = []

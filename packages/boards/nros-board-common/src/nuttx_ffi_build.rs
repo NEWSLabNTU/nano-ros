@@ -157,6 +157,11 @@ pub fn run_nuttx() {
             .flag("-fdata-sections")
             .define("NROS_PLATFORM_NUTTX", None)
             .warnings(false);
+        // issue 0383 — C only; a C++ TU rejects both constructs anyway and gcc
+        // just warns that the option does not apply to the language.
+        if !want_cpp {
+            nros_cc_flags::strict_decls(build);
+        }
         for f in &arch_cflags {
             build.flag(f);
         }

@@ -21,6 +21,9 @@ host-only-reason = "host build-script helper for zenoh-pico"
 [dependencies]
 cbindgen = "0.29"
 cc = "1.0"
+# issue 0383 — strict C diagnostics (implicit-function-declaration,
+# int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
+nros-cc-flags = { path = "../../../tooling/nros-cc-flags" }
 nros-board-common = { path = "../../../boards/nros-board-common", features = ["build-helpers"] }
 nros-build-paths = { path = "../../../tooling/nros-build-paths" }
 pkg-config = "0.3"

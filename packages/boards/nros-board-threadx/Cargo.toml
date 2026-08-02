@@ -66,6 +66,9 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = f
 # RISC-V=full NetX-Duo + virtio-net).
 nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }
 cc = "1.0"
+# issue 0383 — strict C diagnostics (implicit-function-declaration,
+# int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
+nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 
 [features]
 default = []

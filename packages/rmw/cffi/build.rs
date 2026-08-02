@@ -110,7 +110,8 @@ fn maybe_build_c_stub() {
         return;
     }
 
-    cc::Build::new()
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    nros_cc_flags::strict_decls(&mut cc::Build::new())
         .file("tests/c_stubs/c_stub_transport.c")
         .include("tests/c_stubs")
         .warnings(true)
@@ -122,7 +123,7 @@ fn maybe_build_c_stub() {
     // mirror. Its Rust counterpart is the `abi_layout` const-assert
     // block in `src/lib.rs`. If either side's layout drifts, exactly
     // one guard fails the build. Compiled against the public headers.
-    cc::Build::new()
+    nros_cc_flags::strict_decls(&mut cc::Build::new())
         .file("tests/c_stubs/abi_layout_check.c")
         .include("../nros-rmw-abi/include")
         .warnings(true)

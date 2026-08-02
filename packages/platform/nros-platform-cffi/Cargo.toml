@@ -21,20 +21,23 @@ threading = []
 # per-category counters. Only the in-crate integration test
 # (`tests/c_stub_platform.rs`) consumes this; regular consumers
 # never enable it.
-c-stub-test = ["dep:cc"]
+c-stub-test = ["dep:cc", "dep:nros-cc-flags"]
 # Phase 121.3.posix / 123.A.1.x.2 — compile the sibling `nros-platform-posix`
 # crate's `src/platform.c` into a static lib that supplies every
 # `nros_platform_*` symbol with a real POSIX implementation. The
 # in-crate integration test `tests/c_port_posix.rs` consumes it.
 # Mutually exclusive with `c-stub-test` (both would supply
 # definitions for the same symbols).
-posix-c-port = ["dep:cc"]
+posix-c-port = ["dep:cc", "dep:nros-cc-flags"]
 
 [dependencies]
 nros-platform-api = { version = "0.5.0", path = "../nros-platform-api" }
 
 [build-dependencies]
 cc = { version = "1", optional = true }
+# issue 0383 — strict C diagnostics (implicit-function-declaration,
+# int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
+nros-cc-flags = { path = "../../tooling/nros-cc-flags", optional = true }
 
 [dev-dependencies]
 # Required by the `posix-c-port` integration test for pthread_mutex_t /

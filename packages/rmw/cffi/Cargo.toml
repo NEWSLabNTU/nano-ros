@@ -27,6 +27,9 @@ portable-atomic = { version = "1", default-features = false }
 # the compiled stub is gated behind the `c-stub-test` feature so a
 # default `cargo build` of consumers doesn't need a C toolchain.
 cc = "1"
+# issue 0383 — strict C diagnostics (implicit-function-declaration,
+# int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
+nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 
 [features]
 default = []

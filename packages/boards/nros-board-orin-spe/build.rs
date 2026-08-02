@@ -59,7 +59,10 @@ fn main() {
     // (`_dtoa_r`, `fmaf128`, `__divtf3`, …) that BSP `platform/print.c`
     // would otherwise pull through `printf("%d %s\r\n", …)` call sites.
     println!("cargo:rerun-if-changed=c/printf_shim.c");
-    cc::Build::new()
+    let mut printf_shim = cc::Build::new();
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    nros_cc_flags::strict_decls(&mut printf_shim);
+    printf_shim
         .file("c/printf_shim.c")
         .flag("-march=armv7-r")
         .flag("-mcpu=cortex-r5")

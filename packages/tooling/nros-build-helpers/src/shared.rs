@@ -75,6 +75,8 @@ pub fn compile_c_stub(
     let path = manifest_dir.join(rel_path);
     println!("cargo:rerun-if-changed={}", path.display());
     let mut build = cc::Build::new();
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    nros_cc_flags::strict_decls(&mut build);
     build
         .file(&path)
         .warnings(true)

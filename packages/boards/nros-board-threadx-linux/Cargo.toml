@@ -31,6 +31,9 @@ nros-board-threadx = { path = "../nros-board-threadx", default-features = false 
 
 [build-dependencies]
 cc = "1"
+# issue 0383 — strict C diagnostics (implicit-function-declaration,
+# int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
+nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 # Phase 152.2.B — shared ThreadX kernel + port source helpers.
 nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }
 

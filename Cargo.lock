@@ -1678,6 +1678,7 @@ version = "0.5.0"
 dependencies = [
  "cc",
  "nros-build-paths",
+ "nros-cc-flags",
  "serde",
  "tempfile",
  "toml 0.8.23",
@@ -1722,6 +1723,7 @@ version = "0.5.0"
 dependencies = [
  "cbindgen",
  "cc",
+ "nros-cc-flags",
  "nros-sizes-build",
 ]
 
@@ -1774,6 +1776,13 @@ dependencies = [
  "paste",
  "portable-atomic",
  "zpico-alloc",
+]
+
+[[package]]
+name = "nros-cc-flags"
+version = "0.5.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -1945,6 +1954,7 @@ version = "0.5.0"
 dependencies = [
  "cc",
  "libc",
+ "nros-cc-flags",
  "nros-node",
  "nros-platform-api",
 ]
@@ -2035,6 +2045,7 @@ name = "nros-rmw-cffi"
 version = "0.5.0"
 dependencies = [
  "cc",
+ "nros-cc-flags",
  "nros-rmw",
  "portable-atomic",
 ]
@@ -2057,6 +2068,7 @@ dependencies = [
  "cc",
  "cyclonedds-sys",
  "nros-build-paths",
+ "nros-cc-flags",
  "nros-platform",
  "nros-rmw-cffi",
  "nros-rmw-cyclonedds",
@@ -2076,6 +2088,7 @@ name = "nros-rmw-xrce-cffi"
 version = "0.5.0"
 dependencies = [
  "cc",
+ "nros-cc-flags",
  "nros-rmw-cffi",
 ]
 
@@ -2192,6 +2205,7 @@ dependencies = [
  "cc",
  "nros-board-common",
  "nros-build-paths",
+ "nros-cc-flags",
  "pkg-config",
 ]
 

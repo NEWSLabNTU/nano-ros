@@ -32,7 +32,8 @@ fn main() {
     );
 
     #[cfg(feature = "c-stub-test")]
-    cc::Build::new()
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    nros_cc_flags::strict_decls(&mut cc::Build::new())
         .file("tests/c_stubs/platform_stubs.c")
         .include("tests/c_stubs")
         .warnings(true)
@@ -41,7 +42,8 @@ fn main() {
 
     #[cfg(feature = "posix-c-port")]
     {
-        cc::Build::new()
+        // issue 0383 — implicit-function-declaration / int-conversion as errors.
+        nros_cc_flags::strict_decls(&mut cc::Build::new())
             .file("../nros-platform-posix/src/platform.c")
             .file("../nros-platform-posix/src/net.c")
             .file("../nros-platform-posix/src/timer.c")

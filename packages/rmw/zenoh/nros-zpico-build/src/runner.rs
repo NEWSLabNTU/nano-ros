@@ -604,6 +604,8 @@ pub fn run() {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let nros_platform_cffi_include = nros_build_paths::nros_platform_cffi_include();
         let mut alias_build = cc::Build::new();
+        // issue 0383 — implicit-function-declaration / int-conversion as errors.
+        nros_cc_flags::strict_decls(&mut alias_build);
         alias_build
             .file(manifest_dir.join("c/zpico/platform_aliases.c"))
             .include(&nros_platform_cffi_include)
@@ -637,6 +639,8 @@ pub fn run() {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let nros_platform_cffi_include = nros_build_paths::nros_platform_cffi_include();
         let mut alias_build = cc::Build::new();
+        // issue 0383 — implicit-function-declaration / int-conversion as errors.
+        nros_cc_flags::strict_decls(&mut alias_build);
         alias_build
             .file(manifest_dir.join("c/zpico/platform_aliases.c"))
             .include(&nros_platform_cffi_include)
@@ -798,6 +802,8 @@ fn probe_net_type_sizes(
     use_threadx: bool,
 ) {
     let mut build = cc::Build::new();
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    nros_cc_flags::strict_decls(&mut build);
     build.file(c_dir.join("size_probe.c"));
     build.include(zenoh_pico_include);
     // Issue #135 — the ZENOH_GENERIC branches below used to find
@@ -1174,6 +1180,8 @@ fn build_c_shim(
     shim: &ShimConfig,
 ) {
     let mut build = cc::Build::new();
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    nros_cc_flags::strict_decls(&mut build);
 
     // Include paths
     //
@@ -1322,6 +1330,10 @@ fn build_zenoh_pico_unified(
     }
 
     let mut build = cc::Build::new();
+    // issue 0383 — implicit-function-declaration / int-conversion as errors.
+    // This is the zenoh-pico library compile: the TWO calls that made 0383 a
+    // real outage (`_z_open_serial_from_*`, `_z_open_custom`) are in this tree.
+    nros_cc_flags::strict_decls(&mut build);
 
     // Step 2 — version header (shared with embedded path).
     let version_include_dir = out_dir.join("zenoh-pico-version");

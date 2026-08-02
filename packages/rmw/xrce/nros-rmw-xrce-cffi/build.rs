@@ -128,6 +128,9 @@ fn main() {
     generate_uxr_config(&out_dir, &microxrce, feat_zephyr, is_posix);
 
     let mut build = cc::Build::new();
+    // issue 0383 — implicit-function-declaration / int-conversion as errors
+    // (`warnings(false)` only omits `-Wall`/`-Wextra`; cc-rs passes no `-w`).
+    nros_cc_flags::strict_decls(&mut build);
     build
         .std("c99")
         .warnings(false)
@@ -318,6 +321,8 @@ fn main() {
     if is_posix {
         let posix_src = workspace.join("packages/platform/nros-platform-posix/src");
         let mut posix_build = cc::Build::new();
+        // issue 0383 — implicit-function-declaration / int-conversion as errors.
+        nros_cc_flags::strict_decls(&mut posix_build);
         posix_build
             .std("c11")
             .warnings(false)
