@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#395** — phase-331 W6 (`a92778843`) retargeted the `workspace-cpp-freertos-realtime` fixture from
+`ws-realtime-cpp-mps2/src/demo_bringup` onto `realtime-cpp/src/deploy_bringup`, which does not exist
+— `check-fixtures-manifest` fails. Retargeting it at `demo_bringup` would make the gate pass and the
+fixture MEANINGLESS: that bringup declares no `[tiers.*.freertos]` at all, and the row exists to
+exercise one RTOS task per tier (prio 5/2). The model-dims baseline confirms the loss independently
+— `high.freertos.priority` was recorded for `realtime-c` and `realtime-cpp` and now survives only in
+`orchestration_tiers_freertos`. Issue-0380 shape: a declaration lost in a move, visible only because
+a gate remembered it. Do NOT re-record the baseline until the tiers are back. Same commit also
+deleted `realtime-cpp-subnode-portable`'s README (restored from `a92778843^`). See `0395-*`.
+(2026-08-03)
+
 Recently resolved (2026-08-02): **#393** — the fixture BUILD ignored the CI lane that the staleness
 gate and the test run already agreed on: `build-test-fixtures` took no lane and fanned out over all
 nine platform families, so tier 1 built all 337 manifest rows to run the 180 native ones. RESOLVED:
