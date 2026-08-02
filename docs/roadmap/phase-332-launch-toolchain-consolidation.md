@@ -83,13 +83,21 @@ phase doc.
 Starts only after play_launch phase-55 W1 has landed, since the pinned commit
 must already contain the merged directories.
 
-- [ ] Repoint `packages/cli/third-party/ros-launch-resolve` at the
-      `play_launch` repository (submodule URL + path)
-- [ ] `packages/cli/nros-launch-resolve/Cargo.toml`: update the two path
-      dependencies (`ros-launch-resolve`, `play_launch_parser`) to the new
-      in-repo locations
-- [ ] `just setup-launch-resolve` (justfile ~2784–2839): update the crate path
-      it builds
+- [x] Repointed: the submodule is now `packages/cli/third-party/play_launch`
+      (url `github.com/NEWSLabNTU/play_launch`, pinned 402dfe9) — URL + path both
+      changed. Init is NON-recursive (layer 2 = regular files; layer-3 runtime
+      submodules stay uninitialised).
+- [x] `nros-launch-resolve/Cargo.toml`: `ros-launch-resolve` →
+      `../third-party/play_launch/src/ros-launch-resolve/resolve`,
+      `play_launch_parser` → `.../src/ros-launch-resolve/parser/crates/play_launch_parser`.
+- [x] `just setup-launch-resolve`: existence check, init hint, and the freshness
+      probe (`git -C … ls-files src/ros-launch-resolve`, no `--recurse-submodules`)
+      all repointed; `just doctor` (`workspace.just`) + `ws.rs` message + CLAUDE/
+      AGENTS/README docs updated to the new path + non-recursive init.
+
+**W1 verified** (2026-08-03, no ROS sourced): the isolated `nros-launch-resolve`
+workspace builds — `ros-launch-resolve` + `play_launch_parser` from the merged
+play_launch layout; `just setup-launch-resolve` + `just setup-cli` succeed.
 
 **Acceptance:** `just setup-launch-resolve` succeeds on a machine with no ROS
 sourced, and the resulting binary shows zero `rcl`/`rmw`/`ament` entries in
@@ -99,11 +107,16 @@ under test.
 
 ## W2 — `ros-launch-manifest` by tag
 
-- [ ] Depend on `ros-launch-manifest` by git tag rather than through the
-      nested submodule path (`packages/cli/third-party/ros-launch-resolve/
-      third-party/ros-launch-manifest`)
-- [ ] Coordinate the tag with play_launch — both link these crates and must
-      move together, or pin an older tag deliberately
+- [x] All seven `ros-launch-manifest-{types,model,sched,check}` deps (nros-macros,
+      nros-orchestration-ir, nros-cli-core, nros-tests) are now
+      `{ git = "…/ros-launch-manifest.git", tag = "v0.1.0" }`; the nested rlm
+      submodule and the last stray top-level vendored rlm copy are gone.
+- [x] Tag coordinated: **v0.1.0** = the SAME tag play_launch pins → both resolve
+      to rev `172aa538`, one copy. Both workspaces `cargo check --locked` green.
+
+**W2 verified.** This closes phase-332 (W0+W1+W2). W3 in the play_launch phase-55
+already dropped their rlm submodule; nano-ros no longer nests anything under the
+launch pin — the three-level nesting that motivated this phase is gone.
 
 This is the step that actually removes the nesting from nano-ros's side. W1
 alone shortens the chain; W2 flattens it.
