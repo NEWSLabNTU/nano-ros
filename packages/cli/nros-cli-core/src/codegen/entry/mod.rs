@@ -955,6 +955,10 @@ contracts: {}
                 preempt_threshold: None,
                 time_slice_us: None,
                 sched_class: None,
+                core: None,
+                deadline_us: None,
+                budget_us: None,
+                period_us: None,
             }),
             ..Default::default()
         };
@@ -966,6 +970,10 @@ contracts: {}
                 preempt_threshold: None,
                 time_slice_us: None,
                 sched_class: None,
+                core: None,
+                deadline_us: None,
+                budget_us: None,
+                period_us: None,
             }),
             ..Default::default()
         };
@@ -1082,6 +1090,10 @@ contracts: {}
                     preempt_threshold: None,
                     time_slice_us: None,
                     sched_class: None,
+                    core: None,
+                    deadline_us: None,
+                    budget_us: None,
+                    period_us: None,
                 }),
                 ..Default::default()
             },
@@ -1096,6 +1108,10 @@ contracts: {}
                     preempt_threshold: None,
                     time_slice_us: None,
                     sched_class: None,
+                    core: None,
+                    deadline_us: None,
+                    budget_us: None,
+                    period_us: None,
                 }),
                 ..Default::default()
             },

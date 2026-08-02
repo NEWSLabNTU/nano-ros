@@ -1437,6 +1437,7 @@ mod probe_target_tests {
                 version: 1,
                 package: "talker_pkg".into(),
                 component: "talker".into(),
+                class: None,
                 language: ComponentLanguage::Cpp,
                 linkage: ComponentLinkage::default(),
                 metadata: ComponentMetadataConfig {

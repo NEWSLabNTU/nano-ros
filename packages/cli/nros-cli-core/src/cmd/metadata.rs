@@ -217,6 +217,7 @@ mod tests {
                 version: 1,
                 package: "demo_pkg".into(),
                 component: "demo_pkg::talker".into(),
+                class: None,
                 language: ComponentLanguage::Rust,
                 linkage: ComponentLinkage {
                     crate_name: Some("demo_pkg".into()),
@@ -272,6 +273,7 @@ mod tests {
                 version: 1,
                 package: "demo_pkg".into(),
                 component: "demo_pkg::talker".into(),
+                class: None,
                 language: ComponentLanguage::Rust,
                 linkage: ComponentLinkage::default(), // no [linkage] table
                 metadata: ComponentMetadataConfig {

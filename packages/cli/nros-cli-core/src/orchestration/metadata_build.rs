@@ -563,7 +563,9 @@ mod probe_blocker_tests {
 /// Load the SDK index from the nano-ros workspace root, or `None` if it is
 /// absent / unparseable — a missing index must never turn a build failure into
 /// a panic; the #0390 remedy hint is best-effort.
-fn load_source_index(nano_ros_workspace: &Path) -> Option<crate::orchestration::sdk_index::SdkIndex> {
+fn load_source_index(
+    nano_ros_workspace: &Path,
+) -> Option<crate::orchestration::sdk_index::SdkIndex> {
     crate::orchestration::sdk_index::SdkIndex::load(&nano_ros_workspace.join("nros-sdk-index.toml"))
         .ok()
 }
@@ -598,16 +600,20 @@ mod tests {
             .expect("nros-sdk-index.toml above the crate");
         let idx = load_source_index(root).expect("index loads");
 
+        // Synthetic cargo output. The prefix is deliberately not a home-directory
+        // path:
+        // `check-absolute-paths` scans tracked sources textually and cannot tell
+        // a fixture string from a real baked-in build-host path.
         let nuttx = "error: failed to load source for dependency `libc`\n  \
                      Caused by: unable to update \
-                     /home/x/repos/nano-ros/third-party/nuttx/libc";
+                     /wsroot/third-party/nuttx/libc";
         assert_eq!(
             missing_source_remedy(nuttx, &idx).as_deref(),
             Some("run: nros setup --source nuttx-libc")
         );
 
         let xrce = "nros-rmw-xrce-cffi: vendored `micro-xrce-dds-client` source root \
-                    /home/x/nano-ros/packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/src/c \
+                    /wsroot/packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/src/c \
                     is missing";
         assert_eq!(
             missing_source_remedy(xrce, &idx).as_deref(),
