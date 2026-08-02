@@ -513,8 +513,13 @@ static inline void _zpico_notify_spin(struct zpico_session* s) {
 static int _zpico_threadx_locked_read(struct zpico_session* s) {
     if (s->threadx_read_mutex_initialized) {
         if (_z_mutex_try_lock(&s->threadx_read_mutex) != 0) {
-            /* Another tier is mid-read — it drains the data. */
-            return ZPICO_ERR_TIMEOUT;
+            /* Another tier is mid-read — it drains the data. This is a
+             * benign "no work this round" outcome, NOT a transport failure:
+             * return 0 (Ok) so the executor's `consecutive_io_failures`
+             * counter is not incremented. Returning a negative here made
+             * the nros-c `spin_period` bail after SPIN_ERROR_TOLERANCE idle
+             * rounds (issue 0387 / the issue-0355 "idle never counts" rule). */
+            return 0;
         }
         int r = zp_read(z_session_loan_mut(&s->session), NULL);
         _z_mutex_unlock(&s->threadx_read_mutex);
@@ -2026,7 +2031,17 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
     // below; the frame-loss half of the bug is fixed in zenoh-pico itself
     // (`87f7a84d` — the polled read drains every buffered frame).
     int fd = get_session_fd(s);
-    int ret = ZPICO_ERR_TIMEOUT;
+    // issue 0387 — start at 0 (Ok "no work this round"), NOT a negative
+    // timeout code. An idle select (`ready == 0`, no inbound frame) is the
+    // steady state on a live-but-quiet session; every other multi-threaded
+    // backend (FreeRTOS/Zephyr/POSIX/NuttX, below) returns 0 there. Returning
+    // ZPICO_ERR_TIMEOUT made each idle spin increment the executor's
+    // `consecutive_io_failures`, so nros-c's `nros_executor_spin_period` bailed
+    // after SPIN_ERROR_TOLERANCE (16) quiet rounds and killed the session
+    // (issue-0355's "idle spins must NEVER accumulate session_io_failures").
+    // Only a genuine select error (`ready < 0`) or a real `zp_read` failure
+    // still returns a negative code below.
+    int ret = 0;
     if (timeout_ms > 0) {
         z_sleep_ms(timeout_ms);
     }
