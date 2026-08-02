@@ -4,7 +4,7 @@ meta:
   - path: launch/system.launch.xml
     sha256: 263292326cd1f0847e622d705fefdc259c519b5f4d32240960e7223dd4156c25
   - path: system.toml
-    sha256: 26e84b703581d5b5234fe94233d8841a9f34a013418ec38f6ea8ac4a68444bed
+    sha256: 44965fa72df13d3c31a6144d0fa0637d7cf16eaaed1d5a24e871c4f432c165a7
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -26,7 +26,6 @@ structure:
 execution:
   deploy:
     /ctrl_node:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -34,7 +33,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /telem_node:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -42,14 +40,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
   tiers:
-    # phase-296 W5.8 follow-up — mirror of the ws-realtime-rust W5.5 EDF
-    # exercise, for the C/C++ arm: `high` is real_time with a ZEPHYR-SCOPED
-    # `deadline_us`, so the Zephyr C/C++ image's boot tier fires the W5.8
-    # kernel-EDF path (`zephyr_apply_tier_deadline`: tier_class=="real_time"
-    # && deadline_us>0 ⇒ k_thread_deadline_set + the `nros: EDF deadline set
-    # tier=` marker, printed only when CONFIG_SCHED_DEADLINE applied it).
-    # The generic `class` head with NO generic deadline/budget/period lowers
-    # to None (Fifo, byte-identical) on posix/nuttx.
     high:
       class: real_time
       spin_period_us: 10000
@@ -60,11 +50,6 @@ execution:
         deadline_us: 10000
       nuttx:
         priority: 110
-        # phase-296 W5.9 — NUTTX-SCOPED sporadic policy: with class real_time
-        # this arms the kernel sporadic server (SCHED_SPORADIC) when the
-        # kernel has CONFIG_SCHED_SPORADIC, else the boot logs the loud
-        # "executor SchedContext only" note. Other platforms' bakes see no
-        # budget/period (sub-table scoped — no cooperative gating flips).
         budget_us: 5000
         period_us: 10000
     low:

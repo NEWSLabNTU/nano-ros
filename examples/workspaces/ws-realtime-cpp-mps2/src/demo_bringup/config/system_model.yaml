@@ -4,7 +4,7 @@ meta:
   - path: launch/system.launch.xml
     sha256: 048d971aae2ee56baa8b3004ae8e2d24e1aad233b7d2d98fc29d697d22afbb38
   - path: system.toml
-    sha256: a15e034aa5e060144b904ab13617178b79140ddfb1c1ef4a5f4b66c2b9c5f3a8
+    sha256: 0be35247804e01cdac8fbe922d7db9af6e9496d38a83257f7ab00d2568e10d01
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -42,11 +42,6 @@ execution:
         priority: 10
       freertos:
         priority: 2
-        # phase-296 W5.11 — placement dim on FreeRTOS: pin the LOW (spawned)
-        # tier to core 0. The mps2-an385 target is uniprocessor (no
-        # configUSE_CORE_AFFINITY), so the board seam logs the LOUD "core pin
-        # FAILED" note and the tier runs unpinned (RFC-0052 fail-loud — before
-        # W5.11 this was a SILENT (void)task). An SMP build flips it to accept.
         core: 0
     mid:
       spin_period_us: 50000
