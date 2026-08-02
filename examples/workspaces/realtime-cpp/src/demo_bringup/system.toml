@@ -39,6 +39,13 @@ deadline_us = 10000
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
 # priority; verbatim into pthread_attr_setschedparam). `[tiers.*.nuttx]` flips the
 # C++ codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
+# phase-331 W6 / issue 0395 — RAW FreeRTOS priority (0–7 for
+# configMAX_PRIORITIES=8 on MPS2). Restored: the W6 consolidation retargeted the
+# `workspace-cpp-freertos-realtime` fixture onto this bringup but left these
+# behind, so the freertos bake had no tier priorities at all.
+[tiers.high.freertos]
+priority = 5
+
 [tiers.high.nuttx]
 priority = 110
 # NUTTX-SCOPED sporadic policy (both fields required).
@@ -49,6 +56,13 @@ period_us = 10000
 spin_period_us = 100000
 [tiers.low.posix]
 priority = 10
+# FREERTOS-SCOPED SMP core pin. `tests/freertos_core_pin_applied.rs` asserts
+# this exact dim reaches the tier spawn — "the realtime-cpp `low` tier pins to
+# core 0" — so dropping it silently is the failure that test exists to catch.
+[tiers.low.freertos]
+priority = 2
+core = 0
+
 [tiers.low.zephyr]
 priority = 10
 [tiers.low.nuttx]

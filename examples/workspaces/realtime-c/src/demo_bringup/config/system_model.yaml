@@ -4,7 +4,7 @@ meta:
   - path: launch/system.launch.xml
     sha256: 6b18a20f70c6a57aa9e0546c58ebb09badfcd8d0ba1bcb89e3663d86b3cc4eba
   - path: system.toml
-    sha256: 25848d04fd0e4b5bee042185323833146b6f1a527462f13f9358642db9ba4369
+    sha256: 384e2b277ddf8f43371a7770094db00142fa24e799713afc6d3afffc71c5dd11
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -45,6 +45,8 @@ execution:
       spin_period_us: 10000
       posix:
         priority: 80
+      freertos:
+        priority: 5
       zephyr:
         priority: 5
         deadline_us: 10000
@@ -54,6 +56,8 @@ execution:
       spin_period_us: 100000
       posix:
         priority: 10
+      freertos:
+        priority: 2
       zephyr:
         priority: 10
       nuttx:

@@ -45,6 +45,11 @@ deadline_us = 10000
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
 # priority; verbatim into pthread_attr_setschedparam). `[tiers.*.nuttx]` flips the
 # C codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
+# phase-331 W6 / issue 0395 — RAW FreeRTOS priority, restored with the C arm's
+# freertos bake (same consolidation dropped it here).
+[tiers.high.freertos]
+priority = 5
+
 [tiers.high.nuttx]
 priority = 110
 
@@ -52,6 +57,9 @@ priority = 110
 spin_period_us = 100000
 [tiers.low.posix]
 priority = 10
+[tiers.low.freertos]
+priority = 2
+
 [tiers.low.zephyr]
 priority = 10
 [tiers.low.nuttx]

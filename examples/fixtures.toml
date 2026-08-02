@@ -817,7 +817,9 @@ platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
-bringup = "src/deploy_bringup"
+# issue 0395 — W6 renamed the dir but pointed this at a bringup that does not
+# exist here (`deploy_bringup` belongs to realtime-cpp-subnode-portable).
+bringup = "src/demo_bringup"
 entry = "freertos_entry"
 build_subdir = "build-workspace-fixtures-freertos"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8091", CMAKE_BUILD_TYPE = "Release" }

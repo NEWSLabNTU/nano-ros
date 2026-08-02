@@ -2,6 +2,62 @@ set working-directory := '..'
 
 default:
     @just --list --justfile {{source_file()}}
+# Diagnose the Docker setup (read-only).
+#
+# Every recipe in this module shells out to `docker` and assumes both the client
+# and a reachable daemon. Without this, a missing daemon surfaces as whatever
+# `docker build` happens to print, several layers into a QEMU test run. The
+# other modules (cyclonedds, rmw_zenoh, esp_idf) each carry a `doctor`; this one
+# did not.
+[group("setup")]
+doctor:
+    #!/usr/bin/env bash
+    set +e
+    missing=0
+    if command -v docker >/dev/null 2>&1; then
+        echo "  [OK]      docker client:  $(docker --version 2>/dev/null | head -1)"
+    else
+        echo "  [MISSING] docker not on PATH — install Docker Engine or Desktop"
+        echo "            (this module's build/shell/test-qemu recipes all need it)"
+        missing=1
+    fi
+    # Client without daemon is the common failure: `docker --version` succeeds
+    # and every real command then fails on the socket.
+    if command -v docker >/dev/null 2>&1; then
+        if docker info >/dev/null 2>&1; then
+            echo "  [OK]      docker daemon:  reachable"
+        else
+            echo "  [MISSING] docker daemon not reachable (client is installed)"
+            echo "            start it (e.g. \`systemctl --user start docker\` or Docker Desktop),"
+            echo "            or add yourself to the \`docker\` group and re-login"
+            missing=1
+        fi
+        # `up`/`down` use compose v2 (a docker subcommand), not docker-compose.
+        if docker compose version >/dev/null 2>&1; then
+            echo "  [OK]      docker compose: $(docker compose version --short 2>/dev/null)"
+        else
+            echo "  [MISSING] \`docker compose\` (v2) unavailable — needed by: just docker up/down/test-qemu"
+            missing=1
+        fi
+    fi
+    # The build inputs are tracked, so absence means a bad checkout rather than
+    # a missing install — report separately from the tooling above.
+    for f in tests/qemu-baremetal/Dockerfile \
+             tests/qemu-baremetal/docker-compose.yml \
+             docker/docker-compose.yml; do
+        if [ -f "$f" ]; then
+            echo "  [OK]      $f"
+        else
+            echo "  [MISSING] $f — expected in the checkout"
+            missing=1
+        fi
+    done
+    if [ "$missing" -ne 0 ]; then
+        echo "  docker: NOT ready — see above."
+    else
+        echo "  docker: ready."
+    fi
+
 # Build Docker image for QEMU ARM development
 [group("main")]
 build:

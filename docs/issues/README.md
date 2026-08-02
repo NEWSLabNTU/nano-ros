@@ -51,16 +51,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#395** — phase-331 W6 (`a92778843`) retargeted the `workspace-cpp-freertos-realtime` fixture from
-`ws-realtime-cpp-mps2/src/demo_bringup` onto `realtime-cpp/src/deploy_bringup`, which does not exist
-— `check-fixtures-manifest` fails. Retargeting it at `demo_bringup` would make the gate pass and the
-fixture MEANINGLESS: that bringup declares no `[tiers.*.freertos]` at all, and the row exists to
-exercise one RTOS task per tier (prio 5/2). The model-dims baseline confirms the loss independently
-— `high.freertos.priority` was recorded for `realtime-c` and `realtime-cpp` and now survives only in
-`orchestration_tiers_freertos`. Issue-0380 shape: a declaration lost in a move, visible only because
-a gate remembered it. Do NOT re-record the baseline until the tiers are back. Same commit also
-deleted `realtime-cpp-subnode-portable`'s README (restored from `a92778843^`). See `0395-*`.
-(2026-08-03)
+**#395** (RESOLVED 2026-08-03) — phase-331 W6 dropped the `[tiers.*.freertos]` declarations when it retargeted the `workspace-cpp-freertos-realtime` fixture onto `realtime-cpp`, and pointed the row at a `deploy_bringup` that belongs to a different workspace. Restored from `a92778843^` (high=5, low=2, cpp low core=0 — the dim `tests/freertos_core_pin_applied.rs` asserts), row repointed at `src/demo_bringup`. Two further baseline entries turned out to be W6 RENAME errors rather than losses: the `fast`/`bulk` dims were intact under `realtime-cpp-subnode-portable`, and the `mid.*` three-tier system was deliberately dropped (`aux_pkg` is now unreferenced — follow-up).
 
 Recently resolved (2026-08-02): **#393** — the fixture BUILD ignored the CI lane that the staleness
 gate and the test run already agreed on: `build-test-fixtures` took no lane and fanned out over all

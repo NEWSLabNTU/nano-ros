@@ -2,7 +2,7 @@
 id: 395
 title: phase-331 W6 consolidated ws-realtime-cpp-mps2 into realtime-cpp but left the
   freertos tiers behind — the freertos fixture row points at a bringup that does not exist
-status: open
+status: resolved  # fixed 2026-08-03
 type: bug
 area: testing
 related: [rfc-0066, phase-331, phase-330, 0380]
@@ -54,7 +54,39 @@ under the new name, so `check-example-matrix` failed. Restored from
 `a92778843^` with the `ws-` prefixes updated — content is the original author's,
 not invented.
 
-## Fix
+## Fixed 2026-08-03
+
+The `[tiers.*.freertos]` blocks are restored into BOTH bringups, with the values
+recovered from `a92778843^` rather than guessed:
+
+| | `realtime-c` | `realtime-cpp` |
+| --- | --- | --- |
+| `high.freertos.priority` | 5 | 5 |
+| `low.freertos.priority` | 2 | 2 |
+| `low.freertos.core` | — | 0 |
+
+`tests/freertos_core_pin_applied.rs` is what settled the shape: its own header
+says "the realtime-cpp `low` tier pins to core 0", so that dim has a live
+consumer and the two-tier reading is the right one.
+
+The fixture row now points at `src/demo_bringup` (the bringup that exists).
+
+**Two baseline entries were W6 rename errors, not losses**, and are corrected by
+the re-record:
+
+* `realtime-cpp/src/deploy_bringup` — the `fast`/`bulk` dims are intact under
+  `realtime-cpp-subnode-portable/src/deploy_bringup`; only the recorded PARENT
+  was wrong;
+* `mid.*` on `realtime-cpp/src/demo_bringup` — the three-tier mps2 system
+  (ctrl/aux/telem) that W6 chose not to keep. No test consumes a `mid` tier and
+  the fixture row's own comment describes two, so this one is a deliberate drop
+  rather than an accident. `aux_pkg` still sits in the workspace unreferenced —
+  worth a follow-up decision, not a silent restore.
+
+Baseline re-recorded only after the genuine losses were back: 91 dims across 8
+models, up from 80.
+
+## Original fix plan
 
 1. Decide where the mps2 freertos realtime system now lives — either restore
    `[tiers.high.freertos]` / `[tiers.low.freertos]` into
