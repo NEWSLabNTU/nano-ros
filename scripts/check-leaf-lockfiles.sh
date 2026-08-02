@@ -68,7 +68,11 @@ check_lock_tracking_invariant() {
         gen="$(git ls-files "$leaf/generated" "$leaf/src/*/generated" | head -1)"
         [ -n "$gen" ] && continue
         # message deps declared by the leaf or any of its workspace members
-        msgdeps="$(grep -rhE "^($MSG_CRATES) = " \
+        # -h, NOT -rh: every argument here is an explicit file path, so `-r`
+        # never recursed — it only tripped `check-no-tracked-file-find`, which
+        # reads the flag and not the arguments (correctly: the flag is the part
+        # that turns into a walk the day someone passes a directory).
+        msgdeps="$(grep -hE "^($MSG_CRATES) = " \
             "$leaf/Cargo.toml" "$leaf"/src/*/Cargo.toml 2>/dev/null | wc -l)"
         [ "$msgdeps" -eq 0 ] && continue
         echo "FAIL: $lock is tracked, but this leaf's message deps come from a" >&2
