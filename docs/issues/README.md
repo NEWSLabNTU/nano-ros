@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#391** — ThreadX-RV64 C/C++ fixture build only works incrementally. Bare
+`fixtures-build.sh threadx-riscv64 {c,cpp} zenoh` (without the recipe's riscv64 board config +
+`-DCMAKE_TOOLCHAIN_FILE`) configures the ThreadX kernel with host `/usr/bin/cc` → `Error: no such
+instruction: csrrci %rax,mstatus`, and `configure_if_needed` caches the broken configure (recover
+only via `rm -rf build-zenoh`). Separately (issue-0196 class): the prebuilt-fixture freshness gate
+watches the ELF, not the cargo-nested `zpico.o`, so the 0387 `zpico.c` fix never recompiled into the
+riscv fixture and `rtos_e2e` ran a museum binary re-showing the fixed bug. See `0391-*`. (2026-08-02)
+
 **#390** — `nros setup <board> --rmw <x>` provisions ONE board's sources, but the build stage needs
 the union: `just test` builds `--workspace` (so every RMW's vendored C must exist) and
 `build-test-fixtures` refreshes metadata for every component (so `third-party/nuttx/libc` must exist
