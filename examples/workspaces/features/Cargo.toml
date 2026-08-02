@@ -1,0 +1,18 @@
+# phase-331 W2 (RFC-0066 R2) — the rust half of the capability-demo workspace.
+# Native only; see CMakeLists.txt for why.
+[workspace]
+resolver = "2"
+members = [
+    "src/rust_qos_talker_pkg",
+    "src/rust_qos_listener_pkg",
+    "src/rust_param_talker_pkg",
+    "src/rust_lifecycle_talker_pkg",
+    "src/rust_reading_talker_pkg",
+    "src/rust_reading_listener_pkg",
+    "src/rust_remap_talker_pkg",
+    "src/native_rust_qos_entry",
+    "src/native_rust_params_entry",
+    "src/native_rust_lifecycle_entry",
+    "src/native_rust_custom_msg_entry",
+    "src/native_rust_remap_entry",
+]

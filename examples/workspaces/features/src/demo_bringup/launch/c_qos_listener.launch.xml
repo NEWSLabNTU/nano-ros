@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="c_qos_listener_pkg" exec="c_qos_listener" name="qos_listener"/>
+</launch>

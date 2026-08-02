@@ -1,0 +1,29 @@
+# Phase 270 (#103) — wrapper-managed C++ lifecycle node.
+#
+# NO `[lifecycle]` block: unlike demo_bringup (which asks the entry codegen to
+# emit `nros_cpp_lifecycle_autostart`), the ManagedTalker node manages its own
+# REP-2002 machine with the `nros::LifecycleNode` wrapper — it calls
+# register_services() + autostart(Active) from its install hook. The entry just
+# boots + spins; there is no entry-side lifecycle wiring to avoid double
+# registration.
+
+[system]
+# phase-331 W2 — the MANUAL-transition lifecycle demo. `lifecycle` WITHOUT an
+# `[lifecycle] autostart` block: the 5 REP-2002 services are registered and
+# linked (`nros_cpp_register_lifecycle_services`), but nothing drives
+# Configure->Activate at boot. That distinction is the whole point of this
+# workspace, and it is why it cannot share `features/`'s system.
+name = "cpp_managed_lifecycle_demo"
+rmw = "zenoh"
+domain_id = 0
+features = ["lifecycle"]
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "cpp_lifecycle_talker_pkg"
+class = "cpp_lifecycle_talker_pkg::ManagedTalker"
+name = "managed_talker"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

@@ -1,0 +1,34 @@
+meta:
+  version: 1
+  inputs:
+  - path: launch/c_qos_listener.launch.xml
+    sha256: 9dafb94acf71e0beb0fedc91315a6331869b6229d2538473cb518a2cec94f002
+  - path: system.toml
+    sha256: 712932b44d84f8bff41a4a0845fa1d263bc26ac631c70b06e5d13a540ebb99c5
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
+structure:
+  scopes:
+    c_qos_listener.launch.xml:
+      file: c_qos_listener.launch.xml
+  nodes:
+    /qos_listener:
+      scope: c_qos_listener.launch.xml
+      pkg: c_qos_listener_pkg
+      exec: c_qos_listener
+      lifecycle_autostart: active
+      node_name: qos_listener
+execution:
+  deploy:
+    /qos_listener:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  features:
+  - param_services
+  - lifecycle

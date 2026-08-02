@@ -1,0 +1,34 @@
+meta:
+  version: 1
+  inputs:
+  - path: launch/c_custom_msg_talker.launch.xml
+    sha256: dc21f486a7c31dd5196f9cb9f6c2c59f2de2dc368c2920c1d17c0bb26947ef39
+  - path: system.toml
+    sha256: 712932b44d84f8bff41a4a0845fa1d263bc26ac631c70b06e5d13a540ebb99c5
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
+structure:
+  scopes:
+    c_custom_msg_talker.launch.xml:
+      file: c_custom_msg_talker.launch.xml
+  nodes:
+    /reading_talker:
+      scope: c_custom_msg_talker.launch.xml
+      pkg: c_reading_talker_pkg
+      exec: c_reading_talker
+      lifecycle_autostart: active
+      node_name: reading_talker
+execution:
+  deploy:
+    /reading_talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  features:
+  - param_services
+  - lifecycle

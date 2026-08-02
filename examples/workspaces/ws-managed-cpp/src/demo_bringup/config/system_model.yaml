@@ -1,0 +1,32 @@
+meta:
+  version: 1
+  inputs:
+  - path: launch/system.launch.xml
+    sha256: 6780bf4c027311e87b366c981b45a88a024413fc7dee6ef1127c7d4422e3992f
+  - path: system.toml
+    sha256: 957ff06dfd545c0884df584b0434cfd13f78da9fcb738dc57f9776419f9c6ee6
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
+structure:
+  scopes:
+    system.launch.xml:
+      file: system.launch.xml
+  nodes:
+    /managed_talker:
+      scope: system.launch.xml
+      pkg: cpp_lifecycle_talker_pkg
+      exec: cpp_managed_talker
+      node_name: managed_talker
+execution:
+  deploy:
+    /managed_talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  features:
+  - lifecycle

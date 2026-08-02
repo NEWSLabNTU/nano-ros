@@ -1,0 +1,190 @@
+# phase-331 W2 (RFC-0066 R2) — the capability-demo workspace.
+#
+# NATIVE ONLY, deliberately: `[param_services]` and `[lifecycle]` are
+# alloc-gated, and the platform layer requires an embedded image to opt into
+# them explicitly. Collecting the demos here keeps the language workspaces
+# ({rust,c,cpp}) free of capabilities so their embedded entries stay clean.
+#
+# ONE system, because rust cannot hold two: `nros sync` will not emit selection
+# facades for a multi-system workspace (phase-315 W1). `managed_bringup` is a
+# second system and is C++-only for that reason.
+
+[system]
+name = "features_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "c_params.launch.xml"
+# phase-261 form: the typed [param_services]/[lifecycle] blocks are deprecated.
+features = ["param_services", "lifecycle"]
+
+[lifecycle]
+autostart = "active"
+
+[[component]]
+pkg = "c_reading_listener_pkg"
+class = "c_reading_listener_pkg::ReadingListener"
+name = "c_custom_msg_listener_reading_listener"
+
+[[component]]
+pkg = "c_reading_talker_pkg"
+class = "c_reading_talker_pkg::ReadingTalker"
+name = "c_custom_msg_talker_reading_talker"
+
+[[component]]
+pkg = "c_lifecycle_talker_pkg"
+class = "c_lifecycle_talker_pkg::Talker"
+name = "c_lifecycle_talker"
+
+[[component]]
+pkg = "c_param_talker_pkg"
+class = "c_param_talker_pkg::Talker"
+name = "c_params_param_talker"
+
+[[component]]
+pkg = "c_qos_listener_pkg"
+class = "c_qos_listener_pkg::QosListener"
+name = "c_qos_listener_qos_listener"
+
+[[component]]
+pkg = "c_qos_talker_pkg"
+class = "c_qos_talker_pkg::QosTalker"
+name = "c_qos_talker_qos_talker"
+
+[[component]]
+pkg = "cpp_reading_listener_pkg"
+class = "cpp_reading_listener_pkg::ReadingListener"
+name = "cpp_custom_msg_listener_reading_listener"
+
+[[component]]
+pkg = "cpp_reading_talker_pkg"
+class = "cpp_reading_talker_pkg::ReadingTalker"
+name = "cpp_custom_msg_talker_reading_talker"
+
+[[component]]
+pkg = "cpp_lifecycle_talker_pkg"
+class = "cpp_lifecycle_talker_pkg::LifecycleTalker"
+name = "cpp_lifecycle_talker"
+
+[[component]]
+pkg = "cpp_param_talker_pkg"
+class = "cpp_param_talker_pkg::ParamTalker"
+name = "cpp_params_param_talker"
+
+[[component]]
+pkg = "cpp_qos_listener_pkg"
+class = "cpp_qos_listener_pkg::QosListener"
+name = "cpp_qos_listener_qos_listener"
+
+[[component]]
+pkg = "cpp_qos_talker_pkg"
+class = "cpp_qos_talker_pkg::QosTalker"
+name = "cpp_qos_talker_qos_talker"
+
+[[component]]
+pkg = "rust_reading_talker_pkg"
+class = "rust_reading_talker_pkg::ReadingTalker"
+name = "rust_custom_msg_reading_talker"
+
+[[component]]
+pkg = "rust_reading_listener_pkg"
+class = "rust_reading_listener_pkg::ReadingListener"
+name = "rust_custom_msg_reading_listener"
+
+[[component]]
+pkg = "rust_lifecycle_talker_pkg"
+class = "rust_lifecycle_talker_pkg::Talker"
+name = "rust_lifecycle_talker"
+
+[[component]]
+pkg = "rust_param_talker_pkg"
+class = "rust_param_talker_pkg::ParamTalker"
+name = "rust_params_param_talker"
+
+[[component]]
+pkg = "rust_qos_talker_pkg"
+class = "rust_qos_talker_pkg::ReliableTalker"
+name = "rust_qos_reliable_talker"
+
+[[component]]
+pkg = "rust_qos_listener_pkg"
+class = "rust_qos_listener_pkg::QosListener"
+name = "rust_qos_qos_listener"
+
+[[component]]
+pkg = "rust_remap_talker_pkg"
+class = "rust_remap_talker_pkg::RemapTalker"
+name = "rust_remap_remap_talker"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
+
+# phase-331 W2 — one model per theme launch (phase-330 W4.0 `[[model]]`).
+
+[[model]]
+launch = "c_custom_msg_listener.launch.xml"
+out    = "c_custom_msg_listener_model.yaml"
+
+[[model]]
+launch = "c_custom_msg_talker.launch.xml"
+out    = "c_custom_msg_talker_model.yaml"
+
+[[model]]
+launch = "c_lifecycle.launch.xml"
+out    = "c_lifecycle_model.yaml"
+
+[[model]]
+launch = "c_params.launch.xml"
+out    = "c_params_model.yaml"
+
+[[model]]
+launch = "c_qos_listener.launch.xml"
+out    = "c_qos_listener_model.yaml"
+
+[[model]]
+launch = "c_qos_talker.launch.xml"
+out    = "c_qos_talker_model.yaml"
+
+[[model]]
+launch = "cpp_custom_msg_listener.launch.xml"
+out    = "cpp_custom_msg_listener_model.yaml"
+
+[[model]]
+launch = "cpp_custom_msg_talker.launch.xml"
+out    = "cpp_custom_msg_talker_model.yaml"
+
+[[model]]
+launch = "cpp_lifecycle.launch.xml"
+out    = "cpp_lifecycle_model.yaml"
+
+[[model]]
+launch = "cpp_params.launch.xml"
+out    = "cpp_params_model.yaml"
+
+[[model]]
+launch = "cpp_qos_listener.launch.xml"
+out    = "cpp_qos_listener_model.yaml"
+
+[[model]]
+launch = "cpp_qos_talker.launch.xml"
+out    = "cpp_qos_talker_model.yaml"
+
+[[model]]
+launch = "rust_custom_msg.launch.xml"
+out    = "rust_custom_msg_model.yaml"
+
+[[model]]
+launch = "rust_lifecycle.launch.xml"
+out    = "rust_lifecycle_model.yaml"
+
+[[model]]
+launch = "rust_params.launch.xml"
+out    = "rust_params_model.yaml"
+
+[[model]]
+launch = "rust_qos.launch.xml"
+out    = "rust_qos_model.yaml"
+
+[[model]]
+launch = "rust_remap.launch.xml"
+out    = "rust_remap_model.yaml"

@@ -1,0 +1,21 @@
+[package]
+name = "rust_qos_talker_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — publishes std_msgs/Int32 on /qos_chatter with reliable + transient-local QoS."
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "rust_qos_talker_pkg::ReliableTalker"
+name = "reliable_talker"
+default_namespace = "/"
+
+[dependencies]
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+] }
+std_msgs = { version = "*", default-features = false }

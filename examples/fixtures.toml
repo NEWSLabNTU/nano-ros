@@ -94,23 +94,6 @@ entry = "native_entry"
 target_dir = "target-fixtures"
 
 [[workspace_fixture]]
-id = "workspace-rust-native-params"
-platform = "native"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-params-rust"
-bringup = "src/demo_bringup"
-entry = "native_entry"
-target_dir = "target-fixtures"
-
-# phase-267 W-B (test wave) — the declarative cross-RMW bridge entry. Config-driven
-# (no codegen_out → pure-cargo `nros::main!` + `run_from_config_str`); `nros sync`
-# generates `nros-bridge.toml` with the forwarded type's field schema, and the entry
-# links BOTH backends (zenoh ingress + cyclonedds egress, vendored C++ Cyclone — so
-# this row is gated on the cyclonedds submodule, like the imperative bridge bin).
-# Consumed by tests/declarative_bridge_zenoh_to_cyclonedds.rs: zenoh talker → this
-# entry → a nano cyclone listener receives the forwarded `std_msgs/Int32`.
-[[workspace_fixture]]
 id = "workspace-rust-native-bridge"
 platform = "native"
 lang = "rust"
@@ -266,53 +249,6 @@ target_dir = "target-fixtures"
 # cell): a sink on /remapped_out must receive, one on the unremapped expansion
 # /island/remap_talker/out must stay silent — proving the launch/model remap
 # reaches the WIRE.
-[[workspace_fixture]]
-id = "workspace-rust-native-remap"
-platform = "native"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-remap-rust"
-bringup = "src/demo_bringup"
-entry = "native_entry"
-target_dir = "target-fixtures"
-
-# issue #52 / 0303 / 0306 — the QoS workspace on NATIVE (the C/C++ projections
-# already had native rows; the Rust one was zephyr-only, which is part of why
-# the dropped-per-entity-QoS bug went unseen). The committed model overrides the
-# talker publisher's RELIABILITY to best_effort — a value the code never asks
-# for — so a peer reporting the advertised profile proves the plan override
-# reached the live entity. Consumed by tests/qos_override_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-rust-native-qos"
-platform = "native"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-qos-rust"
-bringup = "src/demo_bringup"
-entry = "native_entry"
-target_dir = "target-fixtures"
-
-# phase-263 A3 (Track D) — the managed (lifecycle) workspace. `[lifecycle] autostart =
-# "active"` + the entry's `nros/lifecycle-services` feature; `nros::main!` registers the
-# 5 REP-2002 services and drives Configure→Activate at boot. Consumed by
-# tests/workspace_features_e2e.rs (ROS 2 interop lane): `ros2 lifecycle get` asserts the
-# managed node reached `active` via autostart, with no manual transition. Skips where the
-# distro `rmw_zenoh_cpp` is absent (needs `just rmw_zenoh setup`).
-[[workspace_fixture]]
-id = "workspace-rust-native-lifecycle"
-platform = "native"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-lifecycle-rust"
-bringup = "src/demo_bringup"
-entry = "native_entry"
-target_dir = "target-fixtures"
-
-# phase-326 — per-host entries baked from the committed per-host models
-# (`multihost_robot<N>_model.yaml`, resolved with `host:=robot<N>`; talker on
-# robot1, listener on robot2). Same workspace + shared target-fixtures dir as
-# `workspace-rust-native`; consumed by tests/multihost_e2e.rs (native_rust cell) which
-# boots both as two processes and asserts cross-host /chatter delivery.
 [[workspace_fixture]]
 id = "workspace-rust-native-robot1"
 platform = "native"
@@ -621,170 +557,6 @@ build_subdir = "build-workspace-fixtures"
 # the decoded `sequence`/`temperature` fields. They run as TWO entries (issue 0096). Consumed by
 # tests/workspace_features_e2e.rs (the listener prints the custom-msg field it receives).
 [[workspace_fixture]]
-id = "workspace-c-native-custom-msg-talker"
-platform = "native"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-custom-msg-c"
-bringup = "src/demo_bringup"
-entry = "native_talker_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-[[workspace_fixture]]
-id = "workspace-c-native-custom-msg-listener"
-platform = "native"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-custom-msg-c"
-bringup = "src/demo_bringup"
-entry = "native_listener_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-# phase-263 B4 (QoS, C) — the per-entity QoS-override cross-process demo (C projection of
-# ws-qos-rust). A C talker publishes `std_msgs/Int32` on /chatter with a NON-DEFAULT QoS profile
-# (reliable + transient-local + keep-last-10, set in code — not via launch `qos_overrides`); a C
-# listener subscribes with the SAME profile + prints `Received: N`. QoS is a per-entity contract
-# both endpoints must match to connect. They run as TWO entries (issue 0096). Consumed by
-# tests/workspace_features_e2e.rs (the listener receives the QoS-matched stream cross-process).
-[[workspace_fixture]]
-id = "workspace-c-native-qos-talker"
-platform = "native"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-qos-c"
-bringup = "src/demo_bringup"
-entry = "native_talker_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-[[workspace_fixture]]
-id = "workspace-c-native-qos-listener"
-platform = "native"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-qos-c"
-bringup = "src/demo_bringup"
-entry = "native_listener_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-# phase-263 Track-B language matrix — the C++ + MIXED projections of the C qos/custom-msg demos.
-# Same per-entity QoS-override + workspace-local custom-message shape; the cpp rows use C++
-# components (the `nros::QoS` builder / raw-CDR), the mixed rows reuse the C node pkgs verbatim
-# with a C++ TYPED entry carrier. Two single-node entries each (cross-process, issue 0096).
-
-# phase-263 B4 (QoS, C++) — C++ talker publishes std_msgs/Int32 on /chatter with a NON-DEFAULT
-# QoS profile (reliable + transient-local + keep-last-10) via the nros::QoS builder; a C++ listener
-# subscribes with the SAME profile + prints `Received: N`. Consumed by tests/workspace_features_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-cpp-native-qos-talker"
-platform = "native"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-qos-cpp"
-bringup = "src/demo_bringup"
-entry = "native_talker_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-[[workspace_fixture]]
-id = "workspace-cpp-native-qos-listener"
-platform = "native"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-qos-cpp"
-bringup = "src/demo_bringup"
-entry = "native_listener_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-# phase-263 B4 (QoS, MIXED) — the C qos node pkgs (reused verbatim from ws-qos-c, non-default QoS
-# in code) driven by a C++ TYPED entry carrier. Consumed by tests/workspace_features_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-mixed-native-qos-talker"
-platform = "native"
-lang = "mixed"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-qos-mixed"
-bringup = "src/demo_bringup"
-entry = "native_talker_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-[[workspace_fixture]]
-id = "workspace-mixed-native-qos-listener"
-platform = "native"
-lang = "mixed"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-qos-mixed"
-bringup = "src/demo_bringup"
-entry = "native_listener_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-# phase-263 B6 (custom-msg, C++) — C++ talker/listener for the in-workspace custom_msgs/Reading
-# via the raw-CDR idiom (no generated interface link). Consumed by
-# tests/workspace_features_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-cpp-native-custom-msg-talker"
-platform = "native"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-custom-msg-cpp"
-bringup = "src/demo_bringup"
-entry = "native_talker_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-[[workspace_fixture]]
-id = "workspace-cpp-native-custom-msg-listener"
-platform = "native"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-custom-msg-cpp"
-bringup = "src/demo_bringup"
-entry = "native_listener_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-# phase-263 B6 (custom-msg, MIXED) — the C reading node pkgs (reused verbatim from ws-custom-msg-c)
-# driven by a C++ TYPED entry carrier. Consumed by tests/workspace_features_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-mixed-native-custom-msg-talker"
-platform = "native"
-lang = "mixed"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-custom-msg-mixed"
-bringup = "src/demo_bringup"
-entry = "native_talker_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-[[workspace_fixture]]
-id = "workspace-mixed-native-custom-msg-listener"
-platform = "native"
-lang = "mixed"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-custom-msg-mixed"
-bringup = "src/demo_bringup"
-entry = "native_listener_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-# phase-263 C2a (issue 0097) — the FIRST C/C++ workspace EMBEDDED entry:
-# `nano_ros_entry(BOARD threadx-linux LAUNCH …)` on the ThreadX-on-Linux host sim
-# (builds AND runs natively, no QEMU). Distinct `build_subdir` because a CMake
-# workspace builds ONE platform per configure (one board per CMakeCache); the
-# posix rows own `build-workspace-fixtures`. `cmake_defs` selects the platform +
-# board and bakes a loopback connect locator into the entry — the nsos-netx BSD
-# shim forwards `nx_bsd_connect` to a real host `connect()`, so the host sim
-# reaches `tcp/127.0.0.1:<port>` with NO veth bridge / root (unlike the 192.0.3.x
-# bridge the Rust threadx examples dial). No `codegen_out`: the entry's
-# `nano_ros_entry(LAUNCH)` configure shells the per-entry codegen itself.
-# Consumed by tests/entry_e2e.rs (threadx_linux_c cell) (cross-process /chatter delivery).
-[[workspace_fixture]]
 id = "workspace-c-threadx-linux"
 platform = "threadx-linux"
 lang = "c"
@@ -985,95 +757,6 @@ build_subdir = "build-workspace-fixtures"
 # Phase 269 W1 — parameterised C workspace. [param_services] bakes nros_cpp_declare_param
 # calls into the generated entry; the C component reads the live value via
 # nros_cpp_get_param_integer. Consumed by tests/cpp_c_param_live_read_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-c-native-params"
-platform = "native"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-params-c"
-bringup = "src/demo_bringup"
-entry = "native_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-# Phase 269 W1 — parameterised C++ workspace. [param_services] bakes nros_cpp_declare_param
-# calls into the generated entry; the C++ component reads the live value via
-# nros_cpp_get_param_integer on the executor handle (node.executor_handle() saved at configure).
-# Consumed by tests/cpp_c_param_live_read_e2e.rs.
-[[workspace_fixture]]
-id = "workspace-cpp-native-params"
-platform = "native"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-params-cpp"
-bringup = "src/demo_bringup"
-entry = "native_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-# Phase 269 W2 — managed-node (lifecycle) C workspace. [lifecycle] autostart = "active" bakes
-# nros_cpp_lifecycle_autostart(executor, 2u) into the generated entry (emit_c.rs W2); the five
-# REP-2002 services are registered and Configure→Activate is driven at boot. Consumed by
-# tests/workspace_features_e2e.rs: `ros2 lifecycle get /talker` → active.
-[[workspace_fixture]]
-id = "workspace-c-native-lifecycle"
-platform = "native"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-lifecycle-c"
-bringup = "src/demo_bringup"
-entry = "native_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-# Phase 269 W2 — managed-node (lifecycle) C++ workspace. [lifecycle] autostart = "active" bakes
-# nros_cpp_lifecycle_autostart(__exec, 2u) into the generated entry (emit_cpp.rs W2); the five
-# REP-2002 services are registered and Configure→Activate is driven at boot. Consumed by
-# tests/workspace_features_e2e.rs: `ros2 lifecycle get /talker` → active.
-[[workspace_fixture]]
-id = "workspace-cpp-native-lifecycle"
-platform = "native"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-lifecycle-cpp"
-bringup = "src/demo_bringup"
-entry = "native_entry"
-codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
-
-# Phase 270 (#103) — the SAME ws-lifecycle-cpp workspace, second entry: a managed node
-# written with the `nros::LifecycleNode` C++ wrapper (ManagedTalker). Its managed_bringup
-# has NO [lifecycle] block — the node self-drives REP-2002 (register_services +
-# autostart(Active)) via the wrapper, printing LC:on_configure / LC:on_activate /
-# LC:state markers + gated `Published:` lines. Consumed by
-# tests/cpp_lifecycle_node_wrapper_e2e.rs. Shares the workspace cmake build dir with the
-# phase-269 native_entry (one configure, distinct targets/codegen).
-[[workspace_fixture]]
-id = "workspace-cpp-native-lifecycle-managed"
-platform = "native"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-lifecycle-cpp"
-bringup = "src/managed_bringup"
-entry = "native_managed_entry"
-codegen_out = "build-workspace-codegen/managed_bringup"
-# issue 0257 — the managed bringup registers 6 callback entities (the REP-2002
-# service surface on top of the node's own), over the default table of 4, and
-# `codegen-system` fail-louds rather than silently truncating. Found by the
-# first full native sweep to reach this row.
-#
-# The bigger table probes a DIFFERENT executor size, and the generated
-# `nros_config_generated.h` is per-build-tree: sharing `build-workspace-fixtures`
-# with the sibling `workspace-cpp-native-lifecycle` row made the two disagree and
-# trip the sizes-mirror guard. Own build tree, same reason the repo gives every
-# feature variant its own `--target-dir`.
-build_subdir = "build-workspace-fixtures-managed"
-env = { NROS_EXECUTOR_MAX_CBS = "8" }
-
-# Phase 269 W3 — E2E-safety C workspace (talker half). `[system].features = ["safety"]`
-# lowers to NANO_ROS_SAFETY_E2E=ON; the C talker publishes CRC-annotated /chatter frames.
-# Cross-process split (issue #0096); paired with workspace-c-native-safety-listener.
-# Consumed by tests/workspace_features_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-c-native-safety-talker"
 platform = "native"
@@ -3493,3 +3176,211 @@ builder = "cxx-syntax"
 [[compile_check_fixture]]
 id = "spin_until_future_complete"
 builder = "cxx-syntax"
+
+# phase-331 W2 (RFC-0066 R2) — the capability-demo workspace. Native only:
+# param_services/lifecycle are alloc-gated and an embedded image opts in
+# explicitly, which is why these left the language workspaces.
+
+[[workspace_fixture]]
+id = "workspace-features-c-qos-talker"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_c_qos_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-c-qos-listener"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_c_qos_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-c-params"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_c_params_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-c-lifecycle"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_c_lifecycle_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-c-custom-msg-talker"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_c_custom_msg_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-c-custom-msg-listener"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_c_custom_msg_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-cpp-qos-talker"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_cpp_qos_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-cpp-qos-listener"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_cpp_qos_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-cpp-params"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_cpp_params_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-cpp-lifecycle"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_cpp_lifecycle_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-cpp-custom-msg-talker"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_cpp_custom_msg_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-cpp-custom-msg-listener"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_cpp_custom_msg_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+# phase-331 W2 — the MANUAL-transition lifecycle demo. It cannot live in
+# `features/`: that workspace's system declares `[lifecycle] autostart`, and one
+# system cannot host both the autostart and the manual variant. Rust's
+# one-system-per-workspace limit (phase-315 W1) makes a second bringup in
+# `features/` impossible, so this is its own small workspace.
+[[workspace_fixture]]
+id = "workspace-managed-cpp-native"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-managed-cpp"
+bringup = "src/demo_bringup"
+entry = "native_managed_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+env = { NROS_EXECUTOR_MAX_CBS = "8" }
+
+[[workspace_fixture]]
+id = "workspace-features-rust-qos"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_rust_qos_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+target_dir = "target-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-rust-params"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_rust_params_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+target_dir = "target-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-rust-lifecycle"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_rust_lifecycle_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+target_dir = "target-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-rust-custom-msg"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_rust_custom_msg_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+target_dir = "target-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-rust-remap"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_rust_remap_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+target_dir = "target-fixtures"

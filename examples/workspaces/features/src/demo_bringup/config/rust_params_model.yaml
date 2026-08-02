@@ -1,0 +1,36 @@
+meta:
+  version: 1
+  inputs:
+  - path: launch/rust_params.launch.xml
+    sha256: 2946c6deca11eb16f5f3cee9274ef28cef36a32c5081480811cd572815a6a4dc
+  - path: system.toml
+    sha256: 712932b44d84f8bff41a4a0845fa1d263bc26ac631c70b06e5d13a540ebb99c5
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
+structure:
+  scopes:
+    rust_params.launch.xml:
+      file: rust_params.launch.xml
+  nodes:
+    /param_talker:
+      scope: rust_params.launch.xml
+      pkg: rust_param_talker_pkg
+      exec: param_talker
+      lifecycle_autostart: active
+      params:
+        publish_period_ms: 250
+      node_name: param_talker
+execution:
+  deploy:
+    /param_talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  features:
+  - param_services
+  - lifecycle

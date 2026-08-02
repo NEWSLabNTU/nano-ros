@@ -1,0 +1,34 @@
+meta:
+  version: 1
+  inputs:
+  - path: launch/c_lifecycle.launch.xml
+    sha256: f6bae65b5af1f59cd0e166417f907127350a255707fc90cd5520b533f1373272
+  - path: system.toml
+    sha256: 712932b44d84f8bff41a4a0845fa1d263bc26ac631c70b06e5d13a540ebb99c5
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
+structure:
+  scopes:
+    c_lifecycle.launch.xml:
+      file: c_lifecycle.launch.xml
+  nodes:
+    /talker:
+      scope: c_lifecycle.launch.xml
+      pkg: c_lifecycle_talker_pkg
+      exec: c_talker
+      lifecycle_autostart: active
+      node_name: talker
+execution:
+  deploy:
+    /talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  features:
+  - param_services
+  - lifecycle
