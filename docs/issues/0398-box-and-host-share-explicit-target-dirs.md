@@ -51,6 +51,24 @@ and failing loudly when it is absent. The justfile recipes above are unfixed.
 Worth sweeping for the rest of the class: any script or recipe that pairs a
 `cargo build` with a hand-built `target/…` path.
 
+### Third instance, and this one has no one-sided fix
+
+`nros-launch-resolve` builds into its own `packages/cli/nros-launch-resolve/target/`,
+outside the redirect, and `nros sync` invokes it by absolute path (issue 0285).
+A host build links `libpython3.14.so` (Arch); in the box that is
+
+    error while loading shared libraries: libpython3.14.so.1.0: cannot open shared object file
+
+and a box build links `libpython3.10.so`, which the HOST then cannot load.
+Unlike the CLI — where glibc's backward compatibility makes the box build
+usable on both sides, which is why `nros_box_publish` works — the Python
+soname is not compatible in either direction, so ONE binary cannot serve both.
+It needs either a per-side path (a target dir that honours CARGO_TARGET_DIR,
+as everything else here) or abi3 linkage.
+
+Today the loser is whoever ran second: `just build-test-fixtures lane=native`
+dies in `generate-bindings` mid-sync.
+
 ## Repro
 
 ```sh
