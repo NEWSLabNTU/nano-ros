@@ -655,7 +655,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         // INCLUDED by another launch file is an entry, and gets
         // `<stem>_model.yaml`. Includes are pulled in by their parent's
         // resolve, so resolving them separately would bake a fragment as if it
-        // were a system (`ws-launch-rust`'s `sensors.launch.xml` is exactly
+        // were a system (`launch`'s `sensors.launch.xml` is exactly
         // that case).
         //
         // Binding variants (`<stem>_<binding>_model.yaml`) are NOT derivable —
@@ -2336,7 +2336,7 @@ fn execution_tier_dims(yaml: &str) -> BTreeSet<String> {
 /// documented procedure — which is the one case it most needs to catch.
 ///
 /// Verified before fixing: with the file deleted first, `nros sync` on
-/// ws-realtime-rust took the model from 20 dims to 10 and exited 0.
+/// realtime-rust took the model from 20 dims to 10 and exited 0.
 fn prior_model_dims(model: &Path) -> BTreeSet<String> {
     if let Ok(s) = std::fs::read_to_string(model) {
         return execution_tier_dims(&s);

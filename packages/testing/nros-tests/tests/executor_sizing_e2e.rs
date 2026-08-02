@@ -1,7 +1,7 @@
 //! phase-307 W6 lane 2 (issue 0257) — a metadata-derived executor capacity
 //! actually BOOTS, and delivers.
 //!
-//! The `ws-sizing-rust` node registers six timers and no subscription. Launch
+//! The `sizing` node registers six timers and no subscription. Launch
 //! wiring has no timer entity, so the SystemModel names ZERO callback entities
 //! for it while the runtime needs six slots; the executor's table defaults to
 //! four. Sized from the model alone `nros::main!` emits no sizing at all and

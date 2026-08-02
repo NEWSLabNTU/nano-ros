@@ -94,7 +94,7 @@ build-examples:
     # kernel). Same release profile (lto=true) as the Rust entry. Consumed by
     # tests/entry_e2e.rs (nuttx_arm_c cell) (cross-process /chatter delivery, baked slirp locator 8330).
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
-    # phase-281 W3-nuttx — the C++ realtime tiers workspace (ws-realtime-cpp nuttx entry),
+    # phase-281 W3-nuttx — the C++ realtime tiers workspace (realtime-cpp nuttx entry),
     # consumed by realtime_tiers_e2e (nuttx_arm_cpp cell). Was previously built by no verb (only its
     # e2e builder triggered it); build it here alongside the rust + c workspace lanes.
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx cpp
@@ -269,7 +269,7 @@ build-riscv-c-workspaces:
         NROS_CARGO_PROFILE=release \
         bash scripts/build/workspace-fixtures-build.sh nuttx-riscv cpp
 
-# phase-285 W5 — build the rv-virt RUST workspace Entry (ws-realtime-rust/
+# phase-285 W5 — build the rv-virt RUST workspace Entry (realtime-rust/
 # src/riscv_nuttx_entry). Provisions the rv-virt kernel export itself (same
 # reconfigure preamble as build-riscv-c) — deliberately NOT a dependency on
 # build-riscv-c: the rust Entry needs only the kernel/staging export. (The

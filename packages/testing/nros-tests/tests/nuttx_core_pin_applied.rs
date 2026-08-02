@@ -1,6 +1,6 @@
 //! phase-296 W5.11 — the NuttX SMP core-pin (`placement` dim, RFC-0052) is
 //! NEVER silently dropped: a tier that declares a nuttx-scoped `core` (the
-//! ws-realtime-rust `low` tier pins to CPU 0) must produce, at boot, EITHER the
+//! realtime-rust `low` tier pins to CPU 0) must produce, at boot, EITHER the
 //! kernel-accept marker (`pthread_setaffinity_np` honored —
 //! [`NUTTX_CORE_PIN_MARKER`]) OR the honest fallback note (the image lacks
 //! `CONFIG_SMP`, so there is no affinity API to honor it —
@@ -51,7 +51,7 @@ fn nuttx_core_pin_never_silently_dropped() {
     qemu.kill();
     let log = log.unwrap_or_else(|e| {
         panic!(
-            "the ws-realtime-rust `low` tier declares a nuttx-scoped `core` but boot \
+            "the realtime-rust `low` tier declares a nuttx-scoped `core` but boot \
              produced NEITHER the kernel-accept marker (`{NUTTX_CORE_PIN_MARKER}`) NOR \
              the honest fallback note (`{NUTTX_CORE_PIN_FALLBACK_MARKER}`) — the \
              placement dim was silently dropped (RFC-0052 fail-loud violation). err: {e:?}"

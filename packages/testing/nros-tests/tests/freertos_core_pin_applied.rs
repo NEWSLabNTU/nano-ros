@@ -1,6 +1,6 @@
 //! phase-296 W5.11 — the FreeRTOS core-pin (`placement` dim, RFC-0052) is NEVER
 //! silently dropped: a tier that declares a freertos-scoped `core` (the
-//! ws-realtime-cpp-mps2 `low` tier pins to core 0) must produce, at tier
+//! realtime-cpp `low` tier pins to core 0) must produce, at tier
 //! creation, EITHER the kernel-accept marker (`vTaskCoreAffinitySet` on a
 //! `configUSE_CORE_AFFINITY` build — [`FREERTOS_CORE_PIN_MARKER`]) OR the honest
 //! fallback note (a uniprocessor build has no affinity API —
@@ -47,7 +47,7 @@ fn freertos_core_pin_never_silently_dropped() {
     qemu.kill();
     let log = log.unwrap_or_else(|e| {
         panic!(
-            "the ws-realtime-cpp-mps2 `low` tier declares a freertos-scoped `core` but \
+            "the realtime-cpp `low` tier declares a freertos-scoped `core` but \
              boot produced NEITHER the accept marker (`{FREERTOS_CORE_PIN_MARKER}`) NOR \
              the honest fallback note (`{FREERTOS_CORE_PIN_FALLBACK_MARKER}`) — the \
              placement dim was silently dropped (RFC-0052 fail-loud violation). err: {e:?}"

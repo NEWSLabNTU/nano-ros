@@ -1,0 +1,115 @@
+[system]
+name = "realtime_c_demo"
+rmw = "zenoh"
+domain_id = 0
+
+# Phase 269 W4 (RFC-0015 §4.2) — C two-tier realtime demo.
+# The ctrl node publishes /ctrl every 10 ms (high tier);
+# the telem node publishes /telem every 100 ms (low tier).
+# Phase 273 W2 (RFC-0047): group→tier binding moved from [[node_overrides]] to
+# [[component]].group_tiers (deployment config, not package manifest).
+# CALLBACK_GROUPS in cmake declares the group IDs; group_tiers here assigns
+# them to the named tiers. nros codegen emits nros_cpp_create_sched_context +
+# nros_cpp_bind_group_sched to bind each group to its priority tier.
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Ctrl"
+name = "ctrl_node"
+group_tiers = { ctrl = "high" }
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+group_tiers = { telem = "low" }
+
+[tiers.high]
+# phase-330 / issue 0380 — authored HERE, not in the generated model. Commit
+# 15a72db8e restored `class` and the Zephyr `deadline_us` into
+# config/system_model.yaml after a re-resolve stripped them, but the model is
+# GENERATED: nothing declared them in the inputs, so the next regeneration would
+# have stripped them again. Declaring them closes that loop (W1 made both
+# expressible).
+class = "real_time"
+spin_period_us = 10000
+[tiers.high.posix]
+priority = 80
+# phase-281 W3c — RAW Zephyr priority (preemptive; lower number = higher priority).
+# Consumed by the zephyr_entry projection: [tiers.*.zephyr] flips the C codegen onto
+# ZephyrBoard::run_tiers (RFC-0015 Model 1), one k_thread per tier.
+[tiers.high.zephyr]
+priority = 5
+# ZEPHYR-SCOPED: kernel EDF here (k_thread_deadline_set); lowers to None (Fifo)
+# on posix/nuttx, so the other bakes are byte-identical.
+deadline_us = 10000
+# phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
+# priority; verbatim into pthread_attr_setschedparam). `[tiers.*.nuttx]` flips the
+# C codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
+[tiers.high.nuttx]
+priority = 110
+
+[tiers.low]
+spin_period_us = 100000
+[tiers.low.posix]
+priority = 10
+[tiers.low.zephyr]
+priority = 10
+[tiers.low.nuttx]
+priority = 100
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
+
+# phase-281 W3c — the Zephyr (native_sim) embedded deploy target. Both [posix] and
+# [zephyr] tier tables let the same bringup deploy to native (Phase 269 W4) or embedded
+# Zephyr (this wave) by changing the BOARD cmake variable.
+[deploy.zephyr]
+kind = "embedded"
+board = "native_sim/native/64"
+
+# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) embedded deploy target. The
+# `[tiers.*.nuttx]` tables let the same bringup deploy to native, embedded Zephyr,
+# or embedded NuttX by changing the BOARD cmake variable.
+[deploy.nuttx]
+kind = "embedded"
+board = "nuttx-qemu-arm"
+
+# phase-315 — the embedded BOARD BUILDS of this system.
+#
+# Not placements: `kind = "self"` blocks are machines and PARTITION the nodes;
+# a `kind = "embedded"` block is the whole system compiled for another board,
+# running every node. The resolver excludes embedded blocks from placement.
+#
+# Missing while entries named them, which was invisible until the SystemModel
+# started carrying real `execution.deploy` — then those entries failed with
+# "places no nodes on board <x>". Ids are the DEPLOY values the entries pass.
+
+[deploy.nuttx-qemu-arm]
+kind = "embedded"
+board = "nuttx-qemu-arm"
+
+[deploy.nuttx-qemu-riscv]
+kind = "embedded"
+board = "nuttx-qemu-riscv"
+
+# phase-331 W6 — folded in from the retired ws-realtime-c-mps2. The board was
+# never a separate workspace: its ctrl_pkg was byte-identical to this one and
+# only a CMAKE_TOOLCHAIN_FILE block separated them.
+[deploy.freertos]
+kind = "embedded"
+board = "mps2-an385-freertos"
+
+# phase-315 — the embedded BOARD BUILDS of this system.
+#
+# Not placements: `kind = "self"` blocks are machines and PARTITION the nodes;
+# a `kind = "embedded"` block is the whole system compiled for another board,
+# running every node. The resolver excludes embedded blocks from placement.
+#
+# Missing while entries named them, which was invisible until the SystemModel
+# started carrying real `execution.deploy` — then those entries failed with
+# "places no nodes on board <x>". Ids are the DEPLOY values the entries pass.
+
+[deploy.mps2-an385-freertos]
+kind = "embedded"
+board = "mps2-an385-freertos"

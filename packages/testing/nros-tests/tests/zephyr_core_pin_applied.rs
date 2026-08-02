@@ -1,6 +1,6 @@
 //! phase-296 W5.11 — the Zephyr CPU-pin (`placement` dim, RFC-0052) is NEVER
 //! silently dropped: a tier that declares a zephyr-scoped `core` (the
-//! ws-realtime-rust `low` tier pins to CPU 0) must produce, at boot, EITHER the
+//! realtime-rust `low` tier pins to CPU 0) must produce, at boot, EITHER the
 //! kernel-accept marker (`k_thread_cpu_pin` honored — [`ZEPHYR_CORE_PIN_MARKER`])
 //! OR the honest fallback note (the image lacks `CONFIG_SCHED_CPU_MASK_PIN_ONLY`
 //! / SMP so the pin cannot be honored — [`ZEPHYR_CORE_PIN_FALLBACK_MARKER`]).
@@ -27,7 +27,7 @@ use std::time::Duration;
 #[test]
 fn zephyr_core_pin_never_silently_dropped() {
     let entry = build_zephyr_workspace_rust_realtime_entry()
-        .unwrap_or_else(|e| nros_tests::skip!("ws-realtime-rust zephyr fixture unavailable: {e}"));
+        .unwrap_or_else(|e| nros_tests::skip!("realtime-rust zephyr fixture unavailable: {e}"));
 
     // The core-pin apply runs at tier setup, but the boot tier's setup only
     // proceeds after the session opens — the baked locator needs a live router
@@ -53,7 +53,7 @@ fn zephyr_core_pin_never_silently_dropped() {
     let fallback = log.contains(ZEPHYR_CORE_PIN_FALLBACK_MARKER);
     assert!(
         accepted || fallback,
-        "the ws-realtime-rust `low` tier declares a zephyr-scoped `core` but boot \
+        "the realtime-rust `low` tier declares a zephyr-scoped `core` but boot \
          produced NEITHER the kernel-accept marker (`{ZEPHYR_CORE_PIN_MARKER}`) NOR \
          the honest fallback note (`{ZEPHYR_CORE_PIN_FALLBACK_MARKER}`) — the \
          placement dim was silently dropped (RFC-0052 fail-loud violation). log:\n{log}"

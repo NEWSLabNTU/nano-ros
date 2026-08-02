@@ -1,5 +1,5 @@
 //! phase-296 #0266 — the ThreadX round-robin time slice (the time-slicing dim)
-//! is honored end-to-end: the ws-realtime-rust `low`/boot tier declares
+//! is honored end-to-end: the realtime-rust `low`/boot tier declares
 //! `threadx.time_slice_us: 5000`, and the board prints the trace marker when the
 //! slice is applied (`tx_thread_time_slice_change` on the boot thread /
 //! `tx_thread_create` slice param on spawned tiers). ThreadX honors a per-thread

@@ -97,7 +97,7 @@ doctor:
 build-fvp-all: build-fvp-aemv8r-cyclonedds build-fvp-aemv8r-cyclonedds-rust build-fvp-ws-entry
 
 # phase-292 W1.a — the FVP WORKSPACE C++ RT-tiers Entry
-# (examples/workspaces/ws-realtime-cpp-fvp/src/fvp_entry): proves the ASI
+# (examples/workspaces/realtime-cpp/src/fvp_entry): proves the ASI
 # reference consumer's exact shape in-tree — `nano_ros_use_board(fvp-aemv8r-smp)`
 # + `find_package(nano_ros)` (287-W6 verbs) + one
 # `nano_ros_add_executable(BOARD zephyr LAUNCH … TYPED)` in a single west
@@ -136,10 +136,10 @@ build-fvp-ws-entry:
     # run_armfvp target (Zephyr armfvp.cmake reads ARMFVP_EXTRA_FLAGS at
     # configure; last -C wins over the board default =1). AEMv8-R only.
     export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
-    echo "Building examples/workspaces/ws-realtime-cpp-fvp/src/fvp_entry (board from nano_ros_use_board)..."
+    echo "Building examples/workspaces/realtime-cpp/src/fvp_entry (board from nano_ros_use_board)..."
     west build \
         -d build-fvp-ws-entry -p auto \
-        "$nros_root/examples/workspaces/ws-realtime-cpp-fvp/src/fvp_entry" \
+        "$nros_root/examples/workspaces/realtime-cpp/src/fvp_entry" \
         -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
     echo "phase-292 W1.a FVP AEMv8-R workspace-Entry (cpp/cyclonedds) build smoke OK"
 
@@ -338,7 +338,7 @@ run-fvp-aemv8r-cyclonedds-rust:
     export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     west fvp run -d build-fvp-aemv8r-cyclonedds-rust-talker
 
-# phase-298 W3.1 (issue 0232) — run the ws-realtime-cpp-fvp workspace Entry
+# phase-298 W3.1 (issue 0232) — run the realtime-cpp workspace Entry
 # (the canonical ASI-consumption mirror: nano_ros_use_board + MODEL +
 # run_tiers) on the FVP via `west fvp run`. The publish-success markers are
 # `[ctrl] tick=` / `[telem] tick=` (printed only on publish().ok());

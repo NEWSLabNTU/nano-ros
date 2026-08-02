@@ -677,7 +677,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     fi
 
     # phase-276 W2 / issue #128 half 2 — the RT-TIERS Rust workspace Entry
-    # (examples/workspaces/ws-realtime-rust/src/zephyr_entry): the
+    # (examples/workspaces/realtime-rust/src/zephyr_entry): the
     # tiers-on-embedded coverage cell. system.toml declares two [tiers.*]
     # with [tiers.*.zephyr] priorities, so the macro emits
     # ZephyrBoard::run_tiers — one k_thread per tier over ONE shared session
@@ -691,7 +691,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     wst_rmw="zenoh"
     wst_build_name="build-ws-rs-realtime-entry-zenoh"
     wst_build_dir="$build_root/$wst_build_name"
-    wst_src="workspaces/ws-realtime-rust/src/zephyr_entry"
+    wst_src="workspaces/realtime-rust/src/zephyr_entry"
     wst_src_dir="$nros_root/examples/$wst_src"
     wst_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
     wst_zenoh_locator="tcp/127.0.0.1:7491"
@@ -726,7 +726,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     fi
 
     # phase-281 W3b — the RT-TIERS C++ workspace Entry
-    # (examples/workspaces/ws-realtime-cpp/src/zephyr_entry): the FIRST full west
+    # (examples/workspaces/realtime-cpp/src/zephyr_entry): the FIRST full west
     # link + runtime proof of the W3a ZephyrBoard::run_tiers seam. The C++ sibling
     # of the rust realtime entry above; demo_bringup/system.toml declares two
     # [tiers.*] with [tiers.*.zephyr] priorities, so the C++ codegen emits a plain
@@ -742,7 +742,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     wscpprt_rmw="zenoh"
     wscpprt_build_name="build-ws-cpp-realtime-entry-zenoh"
     wscpprt_build_dir="$build_root/$wscpprt_build_name"
-    wscpprt_src="workspaces/ws-realtime-cpp/src/zephyr_entry"
+    wscpprt_src="workspaces/realtime-cpp/src/zephyr_entry"
     wscpprt_src_dir="$nros_root/examples/$wscpprt_src"
     wscpprt_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
     wscpprt_zenoh_locator="tcp/127.0.0.1:7691"
@@ -777,7 +777,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     fi
 
     # phase-281 W3c — the RT-TIERS C workspace Entry
-    # (examples/workspaces/ws-realtime-c/src/zephyr_entry): the FIRST full west link +
+    # (examples/workspaces/realtime-c/src/zephyr_entry): the FIRST full west link +
     # runtime proof of the W3a ZephyrBoard::run_tiers seam for a C node (the C sibling of the
     # wscpprt cpp realtime entry above; closes the c×zephyr cell). demo_bringup/system.toml
     # declares two [tiers.*] with [tiers.*.zephyr] priorities, so the C codegen emits a plain
@@ -793,7 +793,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     wscrt_rmw="zenoh"
     wscrt_build_name="build-ws-c-realtime-entry-zenoh"
     wscrt_build_dir="$build_root/$wscrt_build_name"
-    wscrt_src="workspaces/ws-realtime-c/src/zephyr_entry"
+    wscrt_src="workspaces/realtime-c/src/zephyr_entry"
     wscrt_src_dir="$nros_root/examples/$wscrt_src"
     wscrt_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
     wscrt_zenoh_locator="tcp/127.0.0.1:7591"

@@ -204,13 +204,13 @@ two-layer scheme. Every workspace has its own README; one line each:
 | `c/` | base starter: C Node pkgs + C native Entry |
 | `cpp/` | base starter: C++ Node pkgs + C++ native Entry |
 | `mixed/` | base starter: mixed-language Node pkgs + C++ native Entry |
-| `ws-bridge-rust` | declarative `[[bridge]]`: `/chatter` zenoh → cyclonedds in one process, no user bridge code |
-| `ws-bridge-xrce-rust` | same declarative bridge, XRCE variant (zenoh → XRCE agent → DDS) |
+| `bridge-cyclonedds` | declarative `[[bridge]]`: `/chatter` zenoh → cyclonedds in one process, no user bridge code |
+| `bridge-xrce` | same declarative bridge, XRCE variant (zenoh → XRCE agent → DDS) |
 | `ws-custom-msg-c` | in-workspace `custom_msgs/Reading` interface pkg, raw-CDR pub/sub on `/reading` |
 | `ws-custom-msg-cpp` | C++ projection of the custom-msg demo (`bind_timer` / `bind_subscription_raw`) |
 | `ws-custom-msg-mixed` | C custom-msg node pkgs (verbatim from `-c`) under a C++ TYPED entry carrier |
 | `ws-custom-msg-rust` | custom interface pkg used via the typed pub/sub path |
-| `ws-launch-rust` | advanced launch composition — topology lives in the launch XML (launch v1) |
+| `launch` | advanced launch composition — topology lives in the launch XML (launch v1) |
 | `ws-lifecycle-c` | `[lifecycle] autostart="active"` bakes REP-2002 services + Configure→Activate at boot |
 | `ws-lifecycle-cpp` | both flavors: baked autostart (`demo_bringup`) and self-managed `LifecycleNode` wrapper (`managed_bringup`) |
 | `ws-lifecycle-rust` | `nros::main!` REP-2002 autostart=active; inspect via `ros2 lifecycle get` |
@@ -221,17 +221,17 @@ two-layer scheme. Every workspace has its own README; one line each:
 | `ws-qos-cpp` | same QoS contract via the `nros::QoS` fluent builder |
 | `ws-qos-mixed` | C QoS node pkgs (verbatim) under a C++ TYPED entry carrier |
 | `ws-qos-rust` | QoS-override showcase via the declarative `*_with_qos` API |
-| `ws-realtime-c` | two nodes on two scheduling tiers (`/ctrl` 10 ms high, `/telem` 100 ms low) from config |
-| `ws-realtime-cpp` | C++ base of the two-tier demo (configure-shape components) |
-| `ws-realtime-cpp-mps2` | the same demo cross-compiled to FreeRTOS/QEMU MPS2 (`freertos_entry`, no native entry) |
-| `ws-realtime-cpp-rclcpp` | same tiers, rclcpp-shape `ComponentNode` IS-A-node subclasses (RFC-0047) |
-| `ws-realtime-cpp-subnode` | ONE node, two callback groups mapped to two tiers |
-| `ws-realtime-cpp-subnode-portable` | identical SubNode under tiers renamed `fast`/`bulk` — tier names are deployment-owned |
-| `ws-realtime-rust` | scheduling-tiers differentiator in Rust (control + telemetry priorities via config) |
+| `realtime-c` | two nodes on two scheduling tiers (`/ctrl` 10 ms high, `/telem` 100 ms low) from config |
+| `realtime-cpp` | C++ base of the two-tier demo (configure-shape components) |
+| `realtime-cpp` | the same demo cross-compiled to FreeRTOS/QEMU MPS2 (`freertos_entry`, no native entry) |
+| `realtime-cpp` | same tiers, rclcpp-shape `ComponentNode` IS-A-node subclasses (RFC-0047) |
+| `realtime-cpp` | ONE node, two callback groups mapped to two tiers |
+| `realtime-cpp` | identical SubNode under tiers renamed `fast`/`bulk` — tier names are deployment-owned |
+| `realtime-rust` | scheduling-tiers differentiator in Rust (control + telemetry priorities via config) |
 | `ws-remap-rust` | model `<remap>` + `~` private name: `~/out` under `/island` hits the wire as `/remapped_out` |
-| `ws-safety-c` | E2E safety: auto CRC-32 + seq on `/chatter`, validated subscription reports faults on `/safe_ok` |
-| `ws-safety-cpp` | typed safety API `create_subscription_with_safety<Int32>()` with integrity status |
-| `ws-safety-rust` | E2E-safety declared once in `system.toml`, lowered to the Rust nodes |
+| `safety` | E2E safety: auto CRC-32 + seq on `/chatter`, validated subscription reports faults on `/safe_ok` |
+| `safetypp` | typed safety API `create_subscription_with_safety<Int32>()` with integrity status |
+| `safety` | E2E-safety declared once in `system.toml`, lowered to the Rust nodes |
 
 ### `templates/` — multi-platform copy-out recipes
 

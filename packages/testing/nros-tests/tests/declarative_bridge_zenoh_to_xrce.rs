@@ -2,7 +2,7 @@
 //!
 //! The declarative sibling of `bridge_mixed_rmw::test_zenoh_to_xrce_bridge_e2e`
 //! (which drives the hand-written `bridge-zenoh-to-xrce-fwd` bin). Here the bridge
-//! is the `ws-bridge-xrce-rust` `native_entry` — a PLAIN `nros::main!` whose
+//! is the `bridge-xrce` `native_entry` — a PLAIN `nros::main!` whose
 //! `system.toml` declares a `[[bridge]]` to `xrce:agent`. `nros sync` bakes
 //! `nros-bridge.toml` (the xrce egress node carries the agent locator), the macro
 //! emits `run_from_config_str` + the backend `register()` calls, and the runtime
@@ -58,7 +58,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
     let bridge_bin = match build_native_workspace_rust_bridge_xrce_entry() {
         Ok(p) => p.to_path_buf(),
         Err(e) => nros_tests::skip!(
-            "ws-bridge-xrce-rust native_entry fixture not prebuilt ({e}); run \
+            "bridge-xrce native_entry fixture not prebuilt ({e}); run \
              `just native build-workspace-fixtures`"
         ),
     };
@@ -87,7 +87,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
             format!("NROS_BRIDGE_{XRCE_NODE}_DOMAIN"),
             domain.to_string(),
         );
-    let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "ws-bridge-xrce-rust-native_entry")
+    let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "bridge-xrce-native_entry")
         .expect("spawn declarative xrce bridge entry");
     std::thread::sleep(Duration::from_secs(2));
 
@@ -143,7 +143,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
     assert!(
         received >= 2,
         "expected ≥ 2 bridged samples to reach the xrce listener \
-         (zenoh → declarative ws-bridge-xrce-rust entry → xrce agent), got {received}.\n\
+         (zenoh → declarative bridge-xrce entry → xrce agent), got {received}.\n\
          Full listener output:\n{listener_output}"
     );
 }

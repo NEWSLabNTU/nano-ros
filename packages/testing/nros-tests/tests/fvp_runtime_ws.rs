@@ -1,4 +1,4 @@
-//! phase-298 W3.2 (issue 0232) — FVP runtime gate over the ws-realtime-cpp-fvp
+//! phase-298 W3.2 (issue 0232) — FVP runtime gate over the realtime-cpp
 //! workspace Entry, the in-tree mirror of the ASI consumption shape
 //! (`nano_ros_use_board(fvp-aemv8r-smp)` + `find_package(nano_ros)` +
 //! `nano_ros_add_executable(BOARD zephyr MODEL … TYPED DEPLOY zephyr)` driving

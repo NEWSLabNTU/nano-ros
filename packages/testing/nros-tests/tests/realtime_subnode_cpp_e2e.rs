@@ -1,8 +1,8 @@
 //! Phase 273 W4 — runtime E2E for the sub-node 2-group C++ workspace
-//! (`ws-realtime-cpp-subnode`, nros↔nros, no ROS 2 required).
+//! (`realtime-cpp`, nros↔nros, no ROS 2 required).
 //!
 //! **What this proves (RFC-0047 core capability):**
-//! `examples/workspaces/ws-realtime-cpp-subnode` declares ONE C++ component:
+//! `examples/workspaces/realtime-cpp` declares ONE C++ component:
 //! `subnode_pkg::SubNode`, a `nros::ComponentNode` subclass that creates TWO
 //! callback groups in its constructor:
 //!
@@ -72,7 +72,7 @@ fn realtime_subnode_cpp_two_groups_on_two_tiers(zenohd_unique: ZenohRouter) {
     let entry = build_native_workspace_cpp_subnode_realtime_entry()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| {
-            nros_tests::skip!("ws-realtime-cpp-subnode entry fixture not built: {e}")
+            nros_tests::skip!("realtime-cpp entry fixture not built: {e}")
         });
     let locator = zenohd_unique.locator();
 

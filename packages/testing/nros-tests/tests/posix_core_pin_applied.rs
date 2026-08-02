@@ -3,7 +3,7 @@
 //! (zephyr/nuttx/freertos/threadx), whose realtime fixtures are all
 //! uniprocessor and therefore only ever exercise the fallback note, a Linux
 //! host is genuinely multi-core and `sched_setaffinity` needs no privilege — so
-//! the ws-realtime-rust `high` tier's `posix.core: 0` pins for real. This is the
+//! the realtime-rust `high` tier's `posix.core: 0` pins for real. This is the
 //! FIRST runtime accept-arm proof of the core-pin consumer.
 //!
 //! Boots the native (posix) rust realtime entry as a host process on an
@@ -43,7 +43,7 @@ fn posix_core_pin_applied_at_runtime() {
         .unwrap_or_else(|e| {
             guest.kill();
             panic!(
-                "the ws-realtime-rust `high` tier declares `posix.core` but the native \
+                "the realtime-rust `high` tier declares `posix.core` but the native \
                  boot produced NEITHER the accept marker (`{POSIX_CORE_PIN_MARKER}`) NOR \
                  the fallback note (`{POSIX_CORE_PIN_FALLBACK_MARKER}`) — the placement \
                  dim was silently dropped (RFC-0052 fail-loud violation). err: {e:?}"

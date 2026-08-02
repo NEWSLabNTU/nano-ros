@@ -1,9 +1,9 @@
 //! Phase 273 W4 — portability E2E for the sub-node 2-group C++ workspace
-//! (`ws-realtime-cpp-subnode-portable`, RFC-0047 portability proof).
+//! (`realtime-cpp`, RFC-0047 portability proof).
 //!
 //! **What this proves (RFC-0047 portability):**
 //! The `subnode_pkg::SubNode` component is IDENTICAL to the sub-node fixture
-//! (`ws-realtime-cpp-subnode`) but this workspace uses DIFFERENT tier names:
+//! (`realtime-cpp`) but this workspace uses DIFFERENT tier names:
 //!
 //!   - `[tiers.fast]` (10 ms, priority 80)  instead of `[tiers.high]`
 //!   - `[tiers.bulk]` (100 ms, priority 10) instead of `[tiers.low]`
@@ -59,7 +59,7 @@ fn realtime_subnode_cpp_portable_two_groups_bind_renamed_tiers(zenohd_unique: Ze
     let entry = build_native_workspace_cpp_subnode_portable_entry()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| {
-            nros_tests::skip!("ws-realtime-cpp-subnode-portable entry fixture not built: {e}")
+            nros_tests::skip!("realtime-cpp entry fixture not built: {e}")
         });
     let locator = zenohd_unique.locator();
 

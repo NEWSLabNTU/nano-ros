@@ -308,13 +308,13 @@ static THREADX_LINUX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new
 static FREERTOS_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-281 W3-nuttx — cached path to the 2-tier C++ realtime NuttX entry
-/// (`ws-realtime-cpp` nuttx_entry), run by `realtime_tiers_cpp_nuttx_e2e.rs`.
+/// (`realtime-cpp` nuttx_entry), run by `realtime_tiers_cpp_nuttx_e2e.rs`.
 static NUTTX_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-281 W3-nuttx — cached path to the 2-tier C realtime NuttX entry
-/// (`ws-realtime-c` nuttx_entry), run by `realtime_tiers_c_nuttx_e2e.rs`.
+/// (`realtime-c` nuttx_entry), run by `realtime_tiers_c_nuttx_e2e.rs`.
 static NUTTX_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-281 W3-nuttx — cached path to the 2-tier **Rust** realtime NuttX entry
-/// (`ws-realtime-rust` nuttx_entry), run by `realtime_tiers_rust_nuttx_e2e.rs`.
+/// (`realtime-rust` nuttx_entry), run by `realtime_tiers_rust_nuttx_e2e.rs`.
 static NUTTX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_RISCV_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -323,11 +323,11 @@ static NUTTX_RISCV_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = Onc
 static THREADX_LINUX_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-274 W3 (#126) — cached path to the 2-tier C++ realtime FreeRTOS entry
-/// (`ws-realtime-cpp-mps2`), run by `realtime_tiers_cpp_freertos_e2e.rs`.
+/// (`realtime-cpp`), run by `realtime_tiers_cpp_freertos_e2e.rs`.
 static FREERTOS_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-281 W2 — cached path to the 2-tier C realtime FreeRTOS entry
-/// (`ws-realtime-c-mps2`), run by `realtime_tiers_c_freertos_e2e.rs`.
+/// (`realtime-c`), run by `realtime_tiers_c_freertos_e2e.rs`.
 static FREERTOS_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 C2c — cached path to the MIXED (C + C++ + Rust) threadx-linux embedded entry.
@@ -1178,7 +1178,7 @@ pub fn build_native_workspace_rust_qos_entry() -> TestResult<&'static Path> {
 }
 
 /// phase-307 W6 lane 2 (issue 0257) — the executor-sizing showcase Entry
-/// (`ws-sizing-rust`). Its node registers six timers the SystemModel cannot
+/// (`sizing`). Its node registers six timers the SystemModel cannot
 /// count; the entry only links if `nros::main!` read the source-metadata
 /// sidecar and derived a table bigger than the four-slot default.
 pub fn build_native_workspace_rust_sizing_entry() -> TestResult<&'static Path> {
@@ -1186,14 +1186,14 @@ pub fn build_native_workspace_rust_sizing_entry() -> TestResult<&'static Path> {
         .get_or_try_init(|| {
             build_workspace_rust_entry(
                 "workspace-rust-native-sizing",
-                "ws-sizing-rust",
+                "sizing",
                 "native_entry",
             )
         })
         .map(|p| p.as_path())
 }
 
-/// phase-267 W-B — the declarative cross-RMW bridge Entry (`ws-bridge-rust`,
+/// phase-267 W-B — the declarative cross-RMW bridge Entry (`bridge-cyclonedds`,
 /// cached). Config-driven pure-cargo `nros::main!` + `run_from_config_str`; the
 /// entry links zenoh ingress + cyclonedds egress. Gated on the cyclonedds
 /// submodule (the build compiles vendored C++ Cyclone), so the fixture is absent
@@ -1203,7 +1203,7 @@ pub fn build_native_workspace_rust_bridge_entry() -> TestResult<&'static Path> {
         .get_or_try_init(|| {
             build_workspace_rust_entry(
                 "workspace-rust-native-bridge",
-                "ws-bridge-rust",
+                "bridge-cyclonedds",
                 "native_entry",
             )
         })
@@ -1211,7 +1211,7 @@ pub fn build_native_workspace_rust_bridge_entry() -> TestResult<&'static Path> {
 }
 
 /// phase-267 (xrce variant) — the declarative `zenoh↔xrce` bridge Entry
-/// (`ws-bridge-xrce-rust`, cached). Config-driven pure-cargo `nros::main!`; links
+/// (`bridge-xrce`, cached). Config-driven pure-cargo `nros::main!`; links
 /// zenoh + xrce backends (no cyclonedds submodule gate). The runtime e2e needs a
 /// Micro-XRCE-DDS Agent (`XrceAgent`).
 pub fn build_native_workspace_rust_bridge_xrce_entry() -> TestResult<&'static Path> {
@@ -1219,7 +1219,7 @@ pub fn build_native_workspace_rust_bridge_xrce_entry() -> TestResult<&'static Pa
         .get_or_try_init(|| {
             build_workspace_rust_entry(
                 "workspace-rust-native-bridge-xrce",
-                "ws-bridge-xrce-rust",
+                "bridge-xrce",
                 "native_entry",
             )
         })
@@ -1325,7 +1325,7 @@ pub fn build_native_workspace_rust_realtime_entry() -> TestResult<&'static Path>
         .get_or_try_init(|| {
             build_workspace_rust_entry(
                 "workspace-rust-native-realtime",
-                "ws-realtime-rust",
+                "realtime-rust",
                 "native_entry",
             )
         })
@@ -1882,7 +1882,7 @@ pub fn build_nuttx_workspace_c_entry() -> TestResult<&'static Path> {
 }
 
 /// phase-281 W3-nuttx — the 2-tier **C++** realtime NuttX (QEMU arm-virt) entry
-/// (`ws-realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++
+/// (`realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++
 /// nodes over ONE shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1,
 /// one pthread per tier). The FIRST full nuttx link + runtime proof of the
 /// W3(nuttx) `nros_board_nuttx_run_tiers` seam. Kernel-linked via cargo
@@ -1895,7 +1895,7 @@ pub fn build_nuttx_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
         .get_or_try_init(|| {
             build_workspace_cmake_entry_in(
                 "workspace-cpp-nuttx-realtime",
-                "ws-realtime-cpp",
+                "realtime-cpp",
                 "build-workspace-fixtures-nuttx",
                 "nuttx_entry",
             )
@@ -1904,7 +1904,7 @@ pub fn build_nuttx_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
 }
 
 /// phase-281 W3-nuttx — the 2-tier **C** realtime NuttX (QEMU arm-virt) entry
-/// (`ws-realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes
+/// (`realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes
 /// over ONE shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1, one
 /// pthread per tier). The C sibling of the C++ `build_nuttx_workspace_cpp_realtime_entry`
 /// and of the pure-C `build_nuttx_workspace_c_entry`. Kernel-linked via cargo
@@ -1917,7 +1917,7 @@ pub fn build_nuttx_workspace_c_realtime_entry() -> TestResult<&'static Path> {
         .get_or_try_init(|| {
             build_workspace_cmake_entry_in(
                 "workspace-c-nuttx-realtime",
-                "ws-realtime-c",
+                "realtime-c",
                 "build-workspace-fixtures-nuttx",
                 "nuttx_entry",
             )
@@ -1926,7 +1926,7 @@ pub fn build_nuttx_workspace_c_realtime_entry() -> TestResult<&'static Path> {
 }
 
 /// #199 follow-up — the 2-tier **C++** realtime NuttX rv-virt (riscv32) entry
-/// (`ws-realtime-cpp/src/riscv_nuttx_entry`), the riscv sibling of the arm
+/// (`realtime-cpp/src/riscv_nuttx_entry`), the riscv sibling of the arm
 /// `workspace-cpp-nuttx-realtime` entry. Built by `just nuttx
 /// build-riscv-c-workspaces`; consumed by `realtime_tiers_cpp_riscv_nuttx_e2e`.
 pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
@@ -1935,7 +1935,7 @@ pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static P
         .get_or_try_init(|| {
             build_workspace_cmake_entry_in(
                 "workspace-cpp-nuttx-riscv-realtime",
-                "ws-realtime-cpp",
+                "realtime-cpp",
                 "build-workspace-fixtures-nuttx-riscv",
                 "riscv_nuttx_entry",
             )
@@ -1944,7 +1944,7 @@ pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static P
 }
 
 /// #199 follow-up — the 2-tier **C** realtime NuttX rv-virt (riscv32) entry
-/// (`ws-realtime-c/src/riscv_nuttx_entry`), the riscv sibling of
+/// (`realtime-c/src/riscv_nuttx_entry`), the riscv sibling of
 /// [`build_nuttx_workspace_c_realtime_entry`]. Built by `just nuttx
 /// build-riscv-c-workspaces`; consumed by `realtime_tiers_c_riscv_nuttx_e2e`.
 pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Path> {
@@ -1953,7 +1953,7 @@ pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Pat
         .get_or_try_init(|| {
             build_workspace_cmake_entry_in(
                 "workspace-c-nuttx-riscv-realtime",
-                "ws-realtime-c",
+                "realtime-c",
                 "build-workspace-fixtures-nuttx-riscv",
                 "riscv_nuttx_entry",
             )
@@ -1962,7 +1962,7 @@ pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Pat
 }
 
 /// phase-281 W3-nuttx — the 2-tier **Rust** realtime NuttX (QEMU arm-virt) entry
-/// (`ws-realtime-rust/src/nuttx_entry`): ctrl (high tier, 10 ms) + telem (low
+/// (`realtime-rust/src/nuttx_entry`): ctrl (high tier, 10 ms) + telem (low
 /// tier, 100 ms) Rust nodes over ONE shared session via `<QemuArmVirt>::run_tiers`
 /// (RFC-0015 Model 1, one `std::thread` per tier — NuttX is `std` + zenoh-pico
 /// `Z_FEATURE_MULTI_THREAD = 1`). Closes the LAST cell (rust×nuttx) of the
@@ -1973,14 +1973,14 @@ pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Pat
 /// `release` profile — the 177.8.c CGU-miscompile dodge the NuttX cargo lane forces.
 /// Built by `just nuttx build-examples` (→ `workspace-fixtures-build.sh nuttx rust`).
 /// phase-285 W6 (issue #165) — the rv-virt (riscv32) sibling of the arm entry
-/// above: `ws-realtime-rust/src/riscv_nuttx_entry`, built by the
+/// above: `realtime-rust/src/riscv_nuttx_entry`, built by the
 /// `workspace-rust-nuttx-riscv-realtime` fixture row (`just nuttx
 /// build-riscv-rust`).
 pub fn build_nuttx_riscv_workspace_rust_realtime_entry() -> TestResult<&'static Path> {
     NUTTX_RISCV_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
             let fixture_id = "workspace-rust-nuttx-riscv-realtime";
-            let example_dir = workspace_example_dir("ws-realtime-rust")?;
+            let example_dir = workspace_example_dir("realtime-rust")?;
             let target_dir = example_dir.join("target-fixtures/nuttx-riscv");
             let binary_path =
                 target_dir.join("riscv32imac-unknown-nuttx-elf/release/riscv_nuttx_entry");
@@ -2012,7 +2012,7 @@ pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> 
     NUTTX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
             let fixture_id = "workspace-rust-nuttx-realtime";
-            let example_dir = workspace_example_dir("ws-realtime-rust")?;
+            let example_dir = workspace_example_dir("realtime-rust")?;
             let target_dir = example_dir.join("target-fixtures/nuttx");
             let binary_path = target_dir.join("armv7a-nuttx-eabihf/release/nuttx_entry");
             require_prebuilt_workspace_binary(
@@ -2025,7 +2025,7 @@ pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> 
 }
 
 /// phase-297 W5 (RFC-0053) — the 2-tier **Rust** realtime ThreadX-Linux entry
-/// (`ws-realtime-rust/src/threadx_entry`): ctrl (high tier, 10 ms) + telem
+/// (`realtime-rust/src/threadx_entry`): ctrl (high tier, 10 ms) + telem
 /// (low tier, 100 ms) Rust nodes over ONE shared session via
 /// `<ThreadxLinux>::run_tiers` (one ThreadX thread per tier, stacks from the
 /// shared byte pool — `nros_threadx_create_task`). Hosted simulation: a plain
@@ -2039,7 +2039,7 @@ pub fn build_threadx_workspace_rust_realtime_entry() -> TestResult<&'static Path
     THREADX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
             let fixture_id = "workspace-rust-threadx-linux-realtime";
-            let example_dir = workspace_example_dir("ws-realtime-rust")?;
+            let example_dir = workspace_example_dir("realtime-rust")?;
             let target_dir = example_dir.join("target-fixtures/threadx-linux");
             let binary_path = target_dir.join(format!(
                 "x86_64-unknown-linux-gnu/{}/threadx_entry",
@@ -2083,14 +2083,14 @@ pub fn build_freertos_workspace_cpp_entry() -> TestResult<&'static Path> {
 }
 
 /// phase-274 W3 (#126) — the 2-tier C++ realtime FreeRTOS/mps2 entry
-/// (`ws-realtime-cpp-mps2`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms)
+/// (`realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms)
 /// over one shared session via `FreertosBoard::run_tiers` (RFC-0015 Model 1).
 pub fn build_freertos_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
     FREERTOS_WORKSPACE_CPP_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry_in(
                 "workspace-cpp-freertos-realtime",
-                "ws-realtime-cpp-mps2",
+                "realtime-cpp",
                 "build-workspace-fixtures-freertos",
                 "freertos_entry",
             )
@@ -2099,7 +2099,7 @@ pub fn build_freertos_workspace_cpp_realtime_entry() -> TestResult<&'static Path
 }
 
 /// phase-281 W2 — the 2-tier **C** realtime FreeRTOS/mps2 entry
-/// (`ws-realtime-c-mps2`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms)
+/// (`realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms)
 /// over one shared session via `FreertosBoard::run_tiers` → the shared C
 /// `nros_board_freertos_run_tiers` glue (RFC-0015 Model 1). Proves that shared
 /// C run_tiers impl drives a C *node*, not only a C++ one.
@@ -2108,7 +2108,7 @@ pub fn build_freertos_workspace_c_realtime_entry() -> TestResult<&'static Path> 
         .get_or_try_init(|| {
             build_workspace_cmake_entry_in(
                 "workspace-c-freertos-realtime",
-                "ws-realtime-c-mps2",
+                "realtime-c",
                 "build-workspace-fixtures-freertos",
                 "freertos_entry",
             )
@@ -2172,7 +2172,7 @@ pub fn build_native_workspace_cpp_params_entry() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Phase 269 W2 — the managed-node (lifecycle) C++ workspace Entry pkg fixture (`ws-managed-cpp`).
+/// Phase 269 W2 — the managed-node (lifecycle) C++ workspace Entry pkg fixture (`managed`).
 /// Boots the talker node to `active` via `nros_cpp_lifecycle_autostart`; consumed by
 /// tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_lifecycle_entry() -> TestResult<&'static Path> {
@@ -2187,7 +2187,7 @@ pub fn build_native_workspace_cpp_lifecycle_entry() -> TestResult<&'static Path>
         .map(|p| p.as_path())
 }
 
-/// Phase 270 (#103) — the wrapper-managed C++ lifecycle entry (`ws-managed-cpp`,
+/// Phase 270 (#103) — the wrapper-managed C++ lifecycle entry (`managed`,
 /// `native_managed_entry`). Boots `ManagedTalker`, which drives REP-2002 itself via
 /// `nros::LifecycleNode` (register_services + autostart(Active)); consumed by
 /// tests/cpp_lifecycle_node_wrapper_e2e.rs.
@@ -2203,7 +2203,7 @@ pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'stat
             // `build-workspace-fixtures-managed` — resolve the entry from there.
             build_workspace_cmake_entry_in(
                 "workspace-managed-cpp-native",
-                "ws-managed-cpp",
+                "managed",
                 "build-workspace-fixtures",
                 "native_managed_entry",
             )
@@ -2252,7 +2252,7 @@ pub fn build_native_workspace_c_realtime_entry() -> TestResult<&'static Path> {
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
                 "workspace-c-native-realtime",
-                "ws-realtime-c",
+                "realtime-c",
                 "native_entry",
             )
         })
@@ -2268,7 +2268,7 @@ pub fn build_native_workspace_cpp_realtime_entry() -> TestResult<&'static Path> 
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime",
-                "ws-realtime-cpp",
+                "realtime-cpp",
                 "native_entry",
             )
         })
@@ -2276,7 +2276,7 @@ pub fn build_native_workspace_cpp_realtime_entry() -> TestResult<&'static Path> 
 }
 
 /// Phase 272 W3 (RFC-0047, issue #124) — the rclcpp-shape 2-tier realtime workspace
-/// entry (cached). Same tier config as ws-realtime-cpp (ctrl_node 10 ms high,
+/// entry (cached). Same tier config as realtime-cpp (ctrl_node 10 ms high,
 /// telem_node 100 ms low) but components are IS-A-node `nros::ComponentNode`
 /// subclasses (SHAPE rclcpp). Tier binding via the W2-seeded `node_name →
 /// sched_context` table — the runtime proof that #124 is dissolved.
@@ -2286,7 +2286,7 @@ pub fn build_native_workspace_cpp_rclcpp_realtime_entry() -> TestResult<&'static
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime-rclcpp",
-                "ws-realtime-cpp-rclcpp",
+                "realtime-cpp",
                 "native_entry",
             )
         })
@@ -2304,7 +2304,7 @@ pub fn build_native_workspace_cpp_subnode_realtime_entry() -> TestResult<&'stati
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime-subnode",
-                "ws-realtime-cpp-subnode",
+                "realtime-cpp",
                 "native_entry",
             )
         })
@@ -2322,7 +2322,7 @@ pub fn build_native_workspace_cpp_subnode_portable_entry() -> TestResult<&'stati
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime-subnode-portable",
-                "ws-realtime-cpp-subnode-portable",
+                "realtime-cpp",
                 "native_entry",
             )
         })
@@ -3059,7 +3059,7 @@ pub fn build_zephyr_workspace_rust_multihost_robot1_entry() -> TestResult<PathBu
 }
 
 /// phase-276 W2 / issue #128 half 2 — the Zephyr (native_sim) RT-TIERS Rust
-/// workspace Entry (`ws-realtime-rust/src/zephyr_entry`): `system.toml`
+/// workspace Entry (`realtime-rust/src/zephyr_entry`): `system.toml`
 /// declares two `[tiers.*]` with `[tiers.*.zephyr]` priorities, so the macro
 /// emits `ZephyrBoard::run_tiers` — one k_thread per tier over ONE shared
 /// session; ctrl (10 ms, high) publishes `/ctrl`, telem (100 ms, low)
@@ -3073,7 +3073,7 @@ pub fn build_zephyr_workspace_rust_realtime_entry() -> TestResult<PathBuf> {
 }
 
 /// phase-281 W3b — the Zephyr (native_sim) RT-TIERS C++ workspace Entry
-/// (`ws-realtime-cpp/src/zephyr_entry`): the FIRST full west link + runtime proof of
+/// (`realtime-cpp/src/zephyr_entry`): the FIRST full west link + runtime proof of
 /// the W3a `ZephyrBoard::run_tiers` seam. `demo_bringup/system.toml` declares two
 /// `[tiers.*]` with `[tiers.*.zephyr]` priorities, so the C++ codegen emits a plain
 /// `int main(void)` calling `ZephyrBoard::run_tiers` (`nros_board_zephyr_run_tiers`) —
@@ -3088,7 +3088,7 @@ pub fn build_zephyr_workspace_cpp_realtime_entry() -> TestResult<PathBuf> {
 }
 
 /// phase-281 W3c — the Zephyr (native_sim) RT-TIERS C workspace Entry
-/// (`ws-realtime-c/src/zephyr_entry`): the FIRST full west link + runtime proof of the
+/// (`realtime-c/src/zephyr_entry`): the FIRST full west link + runtime proof of the
 /// W3a `ZephyrBoard::run_tiers` seam for a C node (closes the c×zephyr cell).
 /// `demo_bringup/system.toml` declares two `[tiers.*]` with `[tiers.*.zephyr]` priorities,
 /// so the C codegen emits a plain `int main(void)` calling `ZephyrBoard::run_tiers`

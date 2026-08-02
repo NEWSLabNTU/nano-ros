@@ -1,5 +1,5 @@
 //! phase-296 W5.10 — the ThreadX preemption threshold (the RFC-0052
-//! `non_preempt_scope` dim) is honored end-to-end: the ws-realtime-rust
+//! `non_preempt_scope` dim) is honored end-to-end: the realtime-rust
 //! `high` tier declares `threadx.preempt_threshold: 3`, and the board prints
 //! the trace marker ONLY when the kernel actually accepted the threshold
 //! (`tx_thread_create` at spawn / `tx_thread_preemption_change` on the boot

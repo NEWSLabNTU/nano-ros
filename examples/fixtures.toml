@@ -88,7 +88,7 @@ id = "workspace-rust-native-sizing"
 platform = "native"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-sizing-rust"
+dir = "examples/workspaces/sizing"
 bringup = "src/demo_bringup"
 entry = "native_entry"
 target_dir = "target-fixtures"
@@ -98,7 +98,7 @@ id = "workspace-rust-native-bridge"
 platform = "native"
 lang = "rust"
 rmw = "cyclonedds"
-dir = "examples/workspaces/ws-bridge-rust"
+dir = "examples/workspaces/bridge-cyclonedds"
 bringup = "src/demo_bringup"
 entry = "native_entry"
 target_dir = "target-fixtures"
@@ -113,7 +113,7 @@ id = "workspace-rust-native-bridge-xrce"
 platform = "native"
 lang = "rust"
 rmw = "xrce"
-dir = "examples/workspaces/ws-bridge-xrce-rust"
+dir = "examples/workspaces/bridge-xrce"
 bringup = "src/demo_bringup"
 entry = "native_entry"
 target_dir = "target-fixtures"
@@ -209,7 +209,7 @@ id = "workspace-rust-native-realtime"
 platform = "native"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-rust"
+dir = "examples/workspaces/realtime-rust"
 bringup = "src/demo_bringup"
 entry = "native_entry"
 target_dir = "target-fixtures"
@@ -361,7 +361,7 @@ skip_probe = true
 env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8230", NROS_DOMAIN_ID = "0" }
 
 # phase-281 W3-nuttx (RFC-0015 Model 1) — the 2-tier RT-tiers Rust NuttX (QEMU
-# arm-virt) Entry (`ws-realtime-rust/src/nuttx_entry`): `system.toml` declares two
+# arm-virt) Entry (`realtime-rust/src/nuttx_entry`): `system.toml` declares two
 # `[tiers.*]` with `[tiers.*.nuttx]` priorities, so the macro's generic OwnedSpin
 # arm emits `<QemuArmVirt>::run_tiers` — one `std::thread` per tier over ONE shared
 # session (NuttX is `std` + zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`); ctrl (10 ms,
@@ -372,7 +372,7 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std
 # nightly + build-std + NUTTX_DIR recipe env. Consumed by
 # tests/realtime_tiers_rust_nuttx_e2e.rs. Closes the LAST matrix cell (rust×nuttx).
 # phase-285 W5 (RFC-0015 Model 1, issue #165) — the rv-virt (riscv32) sibling of the
-# arm row above: `ws-realtime-rust/src/riscv_nuttx_entry`, deploy = "nuttx-riscv" →
+# arm row above: `realtime-rust/src/riscv_nuttx_entry`, deploy = "nuttx-riscv" →
 # `<QemuRvVirt>::run_tiers`. Built at `--release` (same 177.8.c-class opt-level dodge
 # as arm until proven otherwise) against the LOCAL riscv32imac-unknown-nuttx-elf.json
 # spec (ws root; resolved relative to the ws dir, needs -Z json-target-spec via env).
@@ -386,7 +386,7 @@ id = "workspace-rust-nuttx-riscv-realtime"
 platform = "nuttx-riscv"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-rust"
+dir = "examples/workspaces/realtime-rust"
 bringup = "src/demo_bringup"
 entry = "riscv_nuttx_entry"
 codegen_out = "build-fixtures/demo_bringup"
@@ -403,7 +403,7 @@ id = "workspace-rust-nuttx-realtime"
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-rust"
+dir = "examples/workspaces/realtime-rust"
 bringup = "src/demo_bringup"
 entry = "nuttx_entry"
 codegen_out = "build-fixtures/demo_bringup"
@@ -413,7 +413,7 @@ skip_probe = true
 env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8291", NROS_DOMAIN_ID = "0" }
 
 # phase-297 W5 (RFC-0053) — the 2-tier RT-tiers Rust ThreadX-Linux Entry
-# (`ws-realtime-rust/src/threadx_entry`): the model's
+# (`realtime-rust/src/threadx_entry`): the model's
 # `execution.tiers.*.threadx` sub-tables route the macro onto
 # `<ThreadxLinux>::run_tiers` — one ThreadX thread (pthread-backed) per tier
 # over ONE shared zenoh session, stacks from the shared byte pool
@@ -428,7 +428,7 @@ id = "workspace-rust-threadx-linux-realtime"
 platform = "threadx-linux"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-rust"
+dir = "examples/workspaces/realtime-rust"
 bringup = "src/demo_bringup"
 entry = "threadx_entry"
 codegen_out = "build-fixtures/demo_bringup"
@@ -575,7 +575,7 @@ build_subdir = "build-workspace-fixtures-nuttx"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C++ RT-TIERS workspace entry
-# (`ws-realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++ nodes over ONE
+# (`realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++ nodes over ONE
 # shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1, one pthread per tier). The FIRST
 # full nuttx link + runtime proof of the W3(nuttx) run_tiers seam (commit 37cfaf728) — the C++
 # sibling of both workspace-c-nuttx and the Zephyr workspace-realtime-entry-cpp. Kernel-linked
@@ -587,7 +587,7 @@ id = "workspace-cpp-nuttx-realtime"
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-cpp"
+dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 entry = "nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx"
@@ -602,14 +602,14 @@ id = "workspace-cpp-nuttx-riscv-realtime"
 platform = "nuttx-riscv"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-cpp"
+dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 entry = "riscv_nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx-riscv"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8891" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-TIERS workspace entry
-# (`ws-realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes over ONE
+# (`realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes over ONE
 # shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1, one pthread per tier). The C
 # sibling of workspace-cpp-nuttx-realtime and of the pure-C workspace-c-nuttx. Kernel-linked
 # via cargo nros-nuttx-ffi; dials the host router through the slirp gateway 10.0.2.2 at the
@@ -620,7 +620,7 @@ id = "workspace-c-nuttx-realtime"
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-c"
+dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 entry = "nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx"
@@ -637,7 +637,7 @@ id = "workspace-c-nuttx-riscv-realtime"
 platform = "nuttx-riscv"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-c"
+dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 entry = "riscv_nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx-riscv"
@@ -735,7 +735,7 @@ id = "workspace-c-native-realtime"
 platform = "native"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-c"
+dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 entry = "native_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
@@ -750,13 +750,13 @@ id = "workspace-cpp-native-realtime"
 platform = "native"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-cpp"
+dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 entry = "native_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
-# Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape variant of ws-realtime-cpp.
+# Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape variant of realtime-cpp.
 # Same 2-tier scheduling (ctrl_node → high 10 ms, telem_node → low 100 ms) but
 # components are IS-A-node ComponentNode subclasses (SHAPE rclcpp). The bind_node_name_sched
 # table (W1+W2) covers the rclcpp ctor path without NodeHandle change.
@@ -766,9 +766,9 @@ id = "workspace-cpp-native-realtime-rclcpp"
 platform = "native"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-cpp-rclcpp"
+dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+entry = "native_rclcpp_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
@@ -782,9 +782,9 @@ id = "workspace-cpp-native-realtime-subnode"
 platform = "native"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-cpp-subnode"
+dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+entry = "native_subnode_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
@@ -798,7 +798,7 @@ id = "workspace-cpp-native-realtime-subnode-portable"
 platform = "native"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-cpp-subnode-portable"
+dir = "examples/workspaces/realtime-cpp-subnode-portable"
 bringup = "src/deploy_bringup"
 entry = "native_entry"
 codegen_out = "build-workspace-codegen/deploy_bringup"
@@ -816,8 +816,8 @@ id = "workspace-cpp-freertos-realtime"
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-cpp-mps2"
-bringup = "src/demo_bringup"
+dir = "examples/workspaces/realtime-cpp"
+bringup = "src/deploy_bringup"
 entry = "freertos_entry"
 build_subdir = "build-workspace-fixtures-freertos"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8091", CMAKE_BUILD_TYPE = "Release" }
@@ -838,7 +838,7 @@ id = "workspace-c-freertos-realtime"
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-c-mps2"
+dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 entry = "freertos_entry"
 build_subdir = "build-workspace-fixtures-freertos"
@@ -3236,7 +3236,7 @@ id = "workspace-managed-cpp-native"
 platform = "native"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/workspaces/ws-managed-cpp"
+dir = "examples/workspaces/managed"
 bringup = "src/demo_bringup"
 entry = "native_managed_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"

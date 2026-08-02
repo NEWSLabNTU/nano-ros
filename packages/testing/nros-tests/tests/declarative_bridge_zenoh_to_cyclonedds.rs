@@ -2,7 +2,7 @@
 //!
 //! The declarative sibling of `bridge_zenoh_to_cyclonedds.rs` (which drives the
 //! hand-written `bridge-zenoh-to-cyclonedds-fwd` bin). Here the bridge is the
-//! `ws-bridge-rust` `native_entry` — a PLAIN `nros::main!` whose
+//! `bridge-cyclonedds` `native_entry` — a PLAIN `nros::main!` whose
 //! `demo_bringup/system.toml` declares a `[[bridge]]`. `nros sync` bakes
 //! `nros-bridge.toml` (incl. the `std_msgs/Int32` field schema), the macro emits
 //! `run_from_config_str` + the backend `register()` calls, and the runtime stages
@@ -92,7 +92,7 @@ fn spawn_zenoh_talker(bin: &Path, locator: &str) -> ManagedProcess {
     talker
 }
 
-/// zenoh talker → `ws-bridge-rust` declarative bridge → nano cyclone listener.
+/// zenoh talker → `bridge-cyclonedds` declarative bridge → nano cyclone listener.
 /// Asserts the listener RECEIVES the forwarded `std_msgs/Int32` — the full
 /// declarative path (descriptor staged from the config field schema, raw publish
 /// accepted, sample delivered), no ROS 2 install needed.
@@ -106,7 +106,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
     let bridge_bin = match build_native_workspace_rust_bridge_entry() {
         Ok(p) => p.to_path_buf(),
         Err(e) => nros_tests::skip!(
-            "ws-bridge-rust native_entry fixture not prebuilt ({e}); run \
+            "bridge-cyclonedds native_entry fixture not prebuilt ({e}); run \
              `just native build-workspace-fixtures` (needs `just cyclonedds setup`)"
         ),
     };
@@ -135,7 +135,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
             format!("NROS_BRIDGE_{CYCLONE_NODE}_DOMAIN"),
             domain.to_string(),
         );
-    let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "ws-bridge-rust-native_entry")
+    let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "bridge-cyclonedds-native_entry")
         .expect("spawn declarative bridge entry");
     std::thread::sleep(Duration::from_secs(2));
 
@@ -163,7 +163,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
     assert!(
         received >= 2,
         "expected ≥ 2 bridged samples to reach the nano cyclone listener \
-         (zenoh → declarative ws-bridge-rust entry → cyclonedds), got {received}.\n\
+         (zenoh → declarative bridge-cyclonedds entry → cyclonedds), got {received}.\n\
          Full listener output:\n{listener_output}"
     );
 }
@@ -184,7 +184,7 @@ fn declarative_zenoh_to_cyclonedds_nested_header_to_ros2() {
     }
     let bridge_bin = match build_native_workspace_rust_bridge_entry() {
         Ok(p) => p.to_path_buf(),
-        Err(e) => nros_tests::skip!("ws-bridge-rust native_entry fixture not prebuilt ({e})"),
+        Err(e) => nros_tests::skip!("bridge-cyclonedds native_entry fixture not prebuilt ({e})"),
     };
     let talker_bin = match build_native_talker_header() {
         Ok(p) => p.to_path_buf(),
@@ -214,7 +214,7 @@ fn declarative_zenoh_to_cyclonedds_nested_header_to_ros2() {
             domain.to_string(),
         );
     let mut bridge =
-        ManagedProcess::spawn_command(bridge_cmd, "ws-bridge-rust-native_entry-nested")
+        ManagedProcess::spawn_command(bridge_cmd, "bridge-cyclonedds-native_entry-nested")
             .expect("spawn declarative bridge entry");
     std::thread::sleep(Duration::from_secs(2));
 
