@@ -2743,11 +2743,20 @@ fn registry_style_dep_names(body: &str) -> Vec<String> {
     let Ok(doc) = body.parse::<DocumentMut>() else {
         return Vec::new();
     };
+    // NOTE: deliberately different from `collect_extra_patch_names`'s local
+    // `is_registry_style` — here `path` + `version` must NOT count: cargo
+    // resolves such a dep from the path (never the registry), so a narrower
+    // patch table cannot strand it. It is the RFC-0067 recommended spelling
+    // (`path = "…", version = "0.0.0"`), and counting it made the narrowing
+    // guard refuse legitimate narrowing for path-migrated local interface
+    // pkgs (issue 0395).
     fn is_registry_style(item: &Item) -> bool {
         match item {
             Item::Value(Value::String(_)) => true,
-            Item::Value(Value::InlineTable(t)) => t.contains_key("version"),
-            Item::Table(t) => t.contains_key("version"),
+            Item::Value(Value::InlineTable(t)) => {
+                t.contains_key("version") && !t.contains_key("path")
+            }
+            Item::Table(t) => t.contains_key("version") && !t.contains_key("path"),
             _ => false,
         }
     }

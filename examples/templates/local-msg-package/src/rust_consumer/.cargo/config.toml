@@ -1,6 +1,4 @@
 include = ["../../../../../../nros-patch.toml"]
 [patch.crates-io]
-extra_msgs = { path = "../../generated/extra_msgs" }  # nros-managed
-local_msgs = { path = "../../generated/local_msgs" }  # nros-managed
 nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }  # nros-managed
 nros-platform = { path = "../../../../../packages/platform/nros-platform" }  # nros-managed

@@ -18,5 +18,5 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
     "alloc",
     "rmw-cffi",
 ] }
-custom_msgs = "*"
+custom_msgs = { path = "../../generated/custom_msgs", version = "0.0.0", default-features = false }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }
