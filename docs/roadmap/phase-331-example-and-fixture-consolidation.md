@@ -35,7 +35,7 @@ Establish the baseline the RFC deliberately does not assert.
       `-safety-listener`, `-managed`).
 - [ ] Per-workspace `nros sync` + CMake-configure time for the four large
       workspaces and for a representative themed one.
-- [ ] Record cell counts from `lane-coords tier1 --cells` and the
+- [x] Record cell counts from `lane-coords tier1 --cells` and the
       `matrix_fixture_coverage` output.
 
 **Acceptance:** a committed baseline table. Without it W5 cannot say whether
@@ -198,11 +198,11 @@ Rules:
 4. **Same node set everywhere.** Close the gaps (c/cpp gain `esp32_entry`,
    cpp gains `nuttx_entry`) or record the exception in the workspace README.
 
-- [ ] Rename node pkgs to the role vocabulary, per language.
-- [ ] Drop the `c_`/`cpp_` prefixes in the single-language workspaces.
-- [ ] Unify entry names to the platform vocabulary.
-- [ ] Close (or document) the coverage gaps.
-- [ ] Update `fixtures.toml` entries, launch `pkg=`/`exec=`, bringup catalogs,
+- [x] Rename node pkgs to the role vocabulary, per language.
+- [x] Drop the `c_`/`cpp_` prefixes in the single-language workspaces.
+- [x] Unify entry names to the platform vocabulary.
+- [x] Close (or document) the coverage gaps.
+- [x] Update `fixtures.toml` entries, launch `pkg=`/`exec=`, bringup catalogs,
       `_ws_subdirs` / cargo `members`, and every test naming a renamed package.
 
 **Acceptance:** `diff -r examples/workspaces/c/src examples/workspaces/rust/src`
@@ -212,30 +212,40 @@ lists only per-language files (`*.c` vs `*.rs`, `CMakeLists.txt` vs
 **Sequencing:** after W2 (`features/` exists, so the capability demos are out of
 the way) and BEFORE W3 (the deletions), so the renames land once.
 
+**Done 2026-08-02** — `db14b54e4` (W2, `features/`), `dc5d0a955` (W2b, parallel
+layout). W2b's acceptance held: the three language workspaces now carry the same
+node set under one vocabulary, which is what makes them a comparison rather than
+three unrelated trees.
+
 ### W3 — Delete the folded directories and their fixture rows
 
-- [ ] Remove `ws-qos-{c,cpp,rust,mixed}`, `ws-params-{c,cpp,rust}`,
+- [x] Remove `ws-qos-{c,cpp,rust,mixed}`, `ws-params-{c,cpp,rust}`,
       `ws-lifecycle-{c,cpp,rust}`, `ws-custom-msg-{c,cpp,rust,mixed}`,
       `ws-remap-rust` (17 directories; `ws-launch-rust` is KEPT -- it is the only
       coverage of the launch v1 language surface, RFC-0066 open question answered).
-- [ ] Remove their `[[workspace_fixture]]` rows.
-- [ ] Re-point every test that named a deleted workspace at the large one.
-- [ ] `matrix_fixture_coverage` green — this is the gate that the deletion
+- [x] Remove their `[[workspace_fixture]]` rows.
+- [x] Re-point every test that named a deleted workspace at the large one.
+- [x] `matrix_fixture_coverage` green — this is the gate that the deletion
       dropped no cell.
 
 **Acceptance:** no test references a deleted path; coverage gates green; a
 `git grep` for each deleted workspace name returns only historical docs.
 
+**Done 2026-08-02** — `8ad9ac6e6` deleted 15 themed micro-workspaces;
+`ed819f7ff` carried phase-330 W4's hand-authored params across so the fold lost
+no declaration; `5c4690587` recorded the `ws-managed-cpp` split.
+`matrix_fixture_coverage` green (8 tests).
+
 ### W4 — Make configuration an axis (rmw AND feature set)
 
-- [ ] Declare workspace fixtures as `(workspace) x (rmw) x (feature set)`,
+- [x] Declare workspace fixtures as `(workspace) x (rmw) x (feature set)`,
       replacing hand-written near-duplicate rows.
-- [ ] Add the missing RMW coverage: `cyclonedds` and `xrce` on
+- [x] Add the missing RMW coverage: `cyclonedds` and `xrce` on
       `workspaces/{c,cpp,rust}`, which do not exist today (84 of 86 workspace
       rows were zenoh).
-- [ ] Keep `mixed` at zenoh only — its value is the language seam, not the RMW
+- [x] Keep `mixed` at zenoh only — its value is the language seam, not the RMW
       seam. State that in the manifest so it reads as a decision, not a gap.
-- [ ] **Fold `safety` into the feature-set column.** `workspaces/{c,cpp,rust} x
+- [x] **Fold `safety` into the feature-set column.** `workspaces/{c,cpp,rust} x
       {default, safety-e2e}` replaces `ws-safety-{c,cpp,rust}` entirely.
 
       Evidence: the safety TALKER is the plain talker. Its own doc says that
@@ -254,7 +264,7 @@ the way) and BEFORE W3 (the deletions), so the renames land once.
       Caveat: `safety-e2e` changes probed ABI sizes, so the variant needs its
       own `target_dir` / build subdir or it trips the sizes-mirror guard. The
       `target-safety/` precedent already exists.
-- [ ] **Do not add a `uorb` axis value.** uORB models neither services nor
+- [x] **Do not add a `uorb` axis value.** uORB models neither services nor
       actions (RFC-0011) while the large workspaces contain both, so the cell is
       unbuildable, not merely expensive. PX4 is a `CarveOut` with zero
       `platform = "px4"` rows; phase-325 owns that surface.
@@ -262,6 +272,16 @@ the way) and BEFORE W3 (the deletions), so the renames land once.
 **Acceptance:** the new RMW and safety cells build and pass;
 `matrix_fixture_coverage` shows the added coordinates; `ws-safety-*` deleted; no
 `uorb` cell appears.
+
+**Done 2026-08-02** — `1ac0e92eb` (safety 3 -> 1 workspace), `de05f89df` (the
+RMW axis reaches the language workspaces), `9083e4c4f` (the six workspace RMW
+cells declared in `matrix::CELLS`, so the coverage gate sees them).
+
+Safety is 1 workspace, not 0. The talker side folded to a build axis exactly as
+predicted; the LISTENER's `register_validated` API is a distinct surface, and the
+one-system-per-workspace limit (phase-315 W1) blocks it from living in
+`features/` — so `safety/` survives as a workspace. RFC-0066's inventory says
+"zero"; that line is the prediction, this is the outcome.
 
 ### W5 — Re-measure and record
 
@@ -273,6 +293,10 @@ the way) and BEFORE W3 (the deletions), so the renames land once.
 
 **Acceptance:** RFC-0066's cost section carries real numbers.
 
+**Not started — this wave is the maintainer's.** W6 landed before it, which
+contaminates the re-measure it exists to protect; note that when reading the
+delta.
+
 ### W6 — Consolidate realtime and bridge
 
 Runs AFTER W5, so the re-measure is not contaminated.
@@ -282,14 +306,14 @@ and not a set of cases: one system (ctrl @10 ms high tier, telem @100 ms low
 tier) projected onto each RTOS's native scheduler via
 `[tiers.high.{posix,zephyr,nuttx,threadx}]`.
 
-- [ ] Fold `ws-realtime-{c,cpp}-mps2` back as `freertos_entry`, and
+- [x] Fold `ws-realtime-{c,cpp}-mps2` back as `freertos_entry`, and
       `ws-realtime-cpp-fvp` as `fvp_entry`. These are unambiguous duplication:
       `ws-realtime-c-mps2/src/ctrl_pkg` is **byte-identical** to the base, and
       the only thing separating them is a `CMAKE_TOOLCHAIN_FILE` block that
       `workspaces/c` already carries and `ws-realtime-c` never got.
-- [ ] Fold `-rclcpp`, `-subnode`, `-subnode-portable` in as additional cpp
+- [x] Fold `-rclcpp`, `-subnode`, `-subnode-portable` in as additional cpp
       entries (+ `subnode_pkg`).
-- [ ] Rename to `realtime-{c,cpp,rust}`.
+- [x] Rename to `realtime-{c,cpp,rust}`.
 
 **bridge: 2 -> 1.** `ws-bridge-rust` / `ws-bridge-xrce-rust` differ only in
 which RMW they bridge to — the W4 axis, expressed as two directories.
@@ -306,6 +330,16 @@ makes models build artifacts, at which point the risk largely evaporates.
 
 **Acceptance:** 22 -> 12 workspaces; all fixtures green;
 `matrix_fixture_coverage` green; no `ws-` prefix remains.
+
+**Done 2026-08-03** — `a92778843` (realtime 8 -> 3 + 1, bridge 2 -> 1, `ws-`
+prefix dropped), with fallout fixed in `d460c1a43`/`306dd2d26`/`fb0b1636c`
+(issue 0395 — the freertos tiers and the `mid` tier the fold dropped) and
+`c678c3cdf` (two west-built leaves lost their repo-root exclude; now gated by
+`check-nested-workspace-excludes`).
+
+**Measured end state:** 15 workspace directories (from 35), 93 workspace fixture
+rows, tier1 = 10 coordinates. `git grep 'examples/workspaces/ws-'` outside
+`docs/` returns nothing.
 
 ## Target workspace inventory (end state)
 
