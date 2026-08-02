@@ -64,7 +64,7 @@ doctor:
     if command -v qemu-system-riscv64 &>/dev/null; then
         echo "  [OK] qemu-system-riscv64"
     else
-        echo "  [MISSING] qemu-system-riscv64 (run: just workspace apt-packages)"
+        echo "  [MISSING] qemu-system-riscv64 (run: nros setup --tool qemu — prebuilt, no sudo; or just threadx_riscv64 setup) — 0368 F2"
         fail=1
     fi
     # Host `idlc` (Cyclone DDS IDL compiler) — needed only for the Cyclone

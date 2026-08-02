@@ -60,7 +60,7 @@ doctor:
     if command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         echo "  [OK] arm-none-eabi-gcc"
     else
-        echo "  [MISSING] arm-none-eabi-gcc (run: just workspace apt-packages)"
+        echo "  [MISSING] arm-none-eabi-gcc (run: nros setup --tool arm-none-eabi-gcc — prebuilt, no sudo; or apt gcc-arm-none-eabi) — 0368 F2"
         fail=1
     fi
     if [ -n "${NV_SPE_FSP_DIR:-}" ] && [ -d "$NV_SPE_FSP_DIR/lib" ]; then

@@ -36,7 +36,7 @@ doctor:
     if command -v arm-none-eabi-gcc &>/dev/null; then
         echo "  [OK] arm-none-eabi-gcc"
     else
-        echo "  [MISSING] arm-none-eabi-gcc (run: just workspace apt-packages)"
+        echo "  [MISSING] arm-none-eabi-gcc (run: nros setup --tool arm-none-eabi-gcc — prebuilt, no sudo; or apt gcc-arm-none-eabi) — 0368 F2"
         fail=1
     fi
     exit $fail
@@ -193,7 +193,7 @@ build-fixture-extras:
     if command -v idlc >/dev/null 2>&1 || [ -x build/cyclonedds/bin/idlc ]; then
       echo "  → freertos rust cyclonedds fixtures retired (Phase 220.C path B — pure-cargo only; BSP gate 214.S.5.b)"
     else
-      echo "  → freertos cyclonedds fixtures skipped (no idlc on PATH — install a ROS 2 / CycloneDDS idlc, or set IDLC_EXECUTABLE)"
+      echo "  → freertos cyclonedds fixtures skipped (no idlc on PATH — run: nros setup --tool cyclonedds — the dist ships bin/idlc; or a ROS 2 / CycloneDDS install, or set IDLC_EXECUTABLE) — 0368 F2"
     fi
     # Phase 181.5.b — collapsed-shape FreeRTOS C / C++ examples from the SSOT
     # manifest (examples/fixtures.toml). Zenoh-only (no DDS C/C++ siblings
