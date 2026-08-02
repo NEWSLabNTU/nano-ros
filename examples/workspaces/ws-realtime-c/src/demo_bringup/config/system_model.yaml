@@ -4,7 +4,7 @@ meta:
   - path: launch/system.launch.xml
     sha256: 6b18a20f70c6a57aa9e0546c58ebb09badfcd8d0ba1bcb89e3663d86b3cc4eba
   - path: system.toml
-    sha256: 5fdcf33dab7580132123a0e1402dd507e5063618a2b46b547f41a9254e950a6f
+    sha256: 14ffef2bb0f66dd527236a6c3626c8578b7367795db4233f1fc10fbc35770ee3
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -26,7 +26,6 @@ structure:
 execution:
   deploy:
     /ctrl_node:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -34,7 +33,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
     /telem_node:
-      target: linux
       domain: 0
       rmw: zenoh
       extra:
@@ -42,11 +40,6 @@ execution:
         kind: self
         target: x86_64-unknown-linux-gnu
   tiers:
-    # phase-296 W5.8 follow-up — kernel-EDF exercise for the C arm (see the
-    # ws-realtime-cpp/rust siblings): `high` is real_time with a
-    # ZEPHYR-SCOPED deadline_us; the Zephyr image's boot tier fires
-    # zephyr_apply_tier_deadline (k_thread_deadline_set + marker, only when
-    # CONFIG_SCHED_DEADLINE applied it). posix/nuttx lower to Fifo unchanged.
     high:
       class: real_time
       spin_period_us: 10000
