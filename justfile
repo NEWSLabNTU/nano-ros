@@ -1502,14 +1502,28 @@ build-test-fixtures-leaves lane="all":
         printf '.DELETE_ON_ERROR:\n'
         printf '.PHONY: all %s\n' "$lane_platforms"
         printf 'all: %s\n\n' "$lane_platforms"
+        # The banner's "zephyr (solo)" promise is enforced by an ORDER-ONLY
+        # prerequisite (`| zephyr`): every other family waits for zephyr to
+        # finish before starting, so zephyr really does run alone with the
+        # full budget instead of concurrently with 4 sibling families
+        # (~2x oversubscription, observed in the 2026-08-03 jobs audit).
+        zephyr_prereq=""
+        if in_lane zephyr; then zephyr_prereq=" | zephyr"; fi
         for platform in $lane_platforms; do
             child_jobs="$inner"
+            prereq="$zephyr_prereq"
             if [ "$platform" = "zephyr" ]; then
                 child_jobs="$budget"
+                prereq=""
             fi
             log="$log_dir/$platform.log"
-            printf '%s:\n' "$platform"
-            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status); log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"\n\n' \
+            printf '%s:%s\n' "$platform" "$prereq"
+            # `env -u MAKEFLAGS -u CARGO_MAKEFLAGS`: this outer make's own
+            # jobserver (make_jobs tokens — a LAUNCHER width, not a build
+            # budget) must not leak into the children, where a bare ninja or
+            # cargo would join the tiny pool instead of using the explicit
+            # NROS_BUILD_JOBS split it was handed (same audit).
+            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env -u MAKEFLAGS -u CARGO_MAKEFLAGS NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status); log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"\n\n' \
                 "$platform" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform"
         done
     } > "$makefile"
