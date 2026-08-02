@@ -309,7 +309,13 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
     let host = host_triple();
     let manifest = o.harness_dir.join("Cargo.toml");
     let target_dir = o.harness_dir.join("target");
-    let status = Command::new("cargo")
+    // #0390 — capture stderr (still echoed live below) so a harness that dies
+    // because a vendored `[source.*]` tree is absent can be translated from cargo's
+    // raw four-`Caused by:` path error into `nros setup --source <name>`, the
+    // vocabulary a CLI-provisioned user actually has. stdout stays inherited, so
+    // only stderr is buffered (spawn + wait_with_output, not `.output()`, which
+    // would pipe stdout too).
+    let child = Command::new("cargo")
         // phase-307 W1 — cargo discovers `.cargo/config.toml` by walking up
         // from its CWD, and a Node pkg's generated interface deps
         // (`example_interfaces = { version = "*" }` and friends) exist ONLY as
@@ -331,15 +337,38 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         // `rust-toolchain.toml` elsewhere can't force a re-resolve.
         .env_remove("RUSTUP_TOOLCHAIN")
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
+        .stderr(Stdio::piped())
+        .spawn()
         .wrap_err_with(|| format!("run metadata-mode harness for '{}'", o.component_id))?;
-    if !status.success() {
-        bail!(
-            "metadata-mode harness failed (exit {}) for component '{}'",
-            status.code().unwrap_or(-1),
-            o.component_id
-        );
+    let out = child
+        .wait_with_output()
+        .wrap_err_with(|| format!("run metadata-mode harness for '{}'", o.component_id))?;
+    // Echo the captured stderr so the harness's own diagnostics are not lost.
+    {
+        use std::io::Write;
+        let _ = std::io::stderr().write_all(&out.stderr);
+    }
+    if !out.status.success() {
+        let code = out.status.code().unwrap_or(-1);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        // #0390 — if the failure is a missing vendored `[source.*]` tree, name
+        // the remedy in the user's vocabulary rather than leaving cargo's raw
+        // path error. Index-driven (dest → package name), so it stays correct
+        // as sources are added — never hand-written per build script.
+        match load_source_index(&o.nano_ros_workspace)
+            .as_ref()
+            .and_then(|idx| missing_source_remedy(&stderr, idx))
+        {
+            Some(remedy) => bail!(
+                "metadata-mode harness failed (exit {code}) for component '{}'\n  \
+                 → a vendored source it resolves is not provisioned — {remedy}",
+                o.component_id
+            ),
+            None => bail!(
+                "metadata-mode harness failed (exit {code}) for component '{}'",
+                o.component_id
+            ),
+        }
     }
     if !o.output_path.is_file() {
         bail!(
@@ -531,9 +560,62 @@ mod probe_blocker_tests {
     }
 }
 
+/// Load the SDK index from the nano-ros workspace root, or `None` if it is
+/// absent / unparseable — a missing index must never turn a build failure into
+/// a panic; the #0390 remedy hint is best-effort.
+fn load_source_index(nano_ros_workspace: &Path) -> Option<crate::orchestration::sdk_index::SdkIndex> {
+    crate::orchestration::sdk_index::SdkIndex::load(&nano_ros_workspace.join("nros-sdk-index.toml"))
+        .ok()
+}
+
+/// #0390 — scan a metadata-harness stderr for the first `[source.*]` `dest` path
+/// that appears and return `run: nros setup --source <name>`. cargo names the
+/// ABSOLUTE path; `dest` is its workspace-relative suffix, so `contains`
+/// matches. `None` when no known source path is implicated. Index-driven, so it
+/// stays correct as sources are added — never hand-written per build script.
+fn missing_source_remedy(
+    stderr: &str,
+    index: &crate::orchestration::sdk_index::SdkIndex,
+) -> Option<String> {
+    index.source.iter().find_map(|(name, src)| {
+        let dest = src.dest.as_deref()?;
+        (!dest.is_empty() && stderr.contains(dest))
+            .then(|| format!("run: nros setup --source {name}"))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_source_remedy_names_the_setup_command() {
+        // Loads the REAL shipped index, so this also asserts the dest→package
+        // mapping matches the sources #0390 hit (nuttx-libc, xrce).
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .find(|p| p.join("nros-sdk-index.toml").is_file())
+            .expect("nros-sdk-index.toml above the crate");
+        let idx = load_source_index(root).expect("index loads");
+
+        let nuttx = "error: failed to load source for dependency `libc`\n  \
+                     Caused by: unable to update \
+                     /home/x/repos/nano-ros/third-party/nuttx/libc";
+        assert_eq!(
+            missing_source_remedy(nuttx, &idx).as_deref(),
+            Some("run: nros setup --source nuttx-libc")
+        );
+
+        let xrce = "nros-rmw-xrce-cffi: vendored `micro-xrce-dds-client` source root \
+                    /home/x/nano-ros/packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/src/c \
+                    is missing";
+        assert_eq!(
+            missing_source_remedy(xrce, &idx).as_deref(),
+            Some("run: nros setup --source micro-xrce-dds-client")
+        );
+
+        assert!(missing_source_remedy("error: some unrelated failure", &idx).is_none());
+    }
 
     fn opts() -> MetadataBuildOptions {
         MetadataBuildOptions {
