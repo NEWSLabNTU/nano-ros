@@ -470,7 +470,13 @@ fn generate_lib_rs(src_dir: &Path, package: &Package) -> Result<()> {
     content.push_str("//!\n");
     content.push_str("//! This crate is `no_std` compatible.\n\n");
     content.push_str("#![no_std]\n");
-    content.push_str("#![allow(dead_code)]\n\n");
+    content.push_str("#![allow(dead_code)]\n");
+    // Generated code is not lint-groomed: consumers build it under
+    // `clippy -D warnings` lanes (the zephyr fixture's run_rust_clippy), and
+    // a stylistic lint in EMITTED code fails builds nobody can fix by hand
+    // (the file is regenerated). Suppress clippy wholesale here — lint the
+    // GENERATOR's templates, not its output.
+    content.push_str("#![allow(clippy::all)]\n\n");
 
     if !package.interfaces.messages.is_empty() {
         content.push_str("pub mod msg;\n");
