@@ -153,6 +153,15 @@ pub struct PackageMetadataNros {
     /// doesn't break the moment a board author authors the table.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub embedded: Option<toml::Value>,
+    /// Issue #391 / phase-333 — generated message crates carry a constant
+    /// cargo `version = "0.0.0"`; the UPSTREAM interface version
+    /// (`4.9.2`, …) moved here. Emitted by the msg codegen into every
+    /// generated crate's manifest; this reader must accept it or any
+    /// workspace containing a generated tree fails metadata parsing
+    /// (codegen-system died on `unknown field ament_version` — the emitter
+    /// landed without extending this schema).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ament_version: Option<String>,
 }
 
 impl PackageMetadataNros {
