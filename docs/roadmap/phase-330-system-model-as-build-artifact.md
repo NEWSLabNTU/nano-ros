@@ -60,7 +60,8 @@ useful partial progress on W3–W5 without it.
 | --- | --- |
 | Tracked `*/config/*model.yaml`, repo-wide | **120** |
 | …in `examples/workspaces/` | 80 (36 `system_model.yaml` + 44 variants) |
-| …in `packages/testing/.../fixtures/` | 40 |
+| …in STANDALONE copy-out examples | **24** |
+| …in `packages/` (test fixtures) | 16 |
 | Models carrying `execution.tiers` dims | **11** (86 dims) |
 
 The 11 dim-carrying models are the *migration risk*; the other 109 are the
@@ -146,7 +147,9 @@ Two findings:
 
 ### W3 — Relocate the artifact
 
-- [ ] **W3.a** Decide the location. This is the phase's central open question,
+- [x] **W3.a** DECIDED 2026-08-02 — see "The W3.a decision" below.
+
+      ~~Decide the location.~~ This is the phase's central open question,
       and it is wider than the model — **the model is not the only derived
       artifact living in `src/`**:
 
@@ -177,6 +180,61 @@ Two findings:
       wrong, resolution falls through to a third party's crate on crates.io.
       Sequence `generated/` deliberately, or scope W3 to the model and leave
       the other two where they are with a recorded reason.
+## The W3.a decision (2026-08-02)
+
+**There is no single directory, and looking for one was the wrong question.**
+
+Every consumer derives the model the same way today — `<bringup source
+dir>/config/system_model.yaml`:
+
+| Consumer | How it resolves the path |
+| --- | --- |
+| `nros-macros` (proc-macro) | `pkg_index.resolve_pkg(bringup).join("config/system_model.yaml")` |
+| `nros-build` (build-script lib) | `bringup_dir.join("config/system_model.yaml")` |
+| `cmake/NanoRosEntry.cmake` | takes `MODEL <path>` explicitly, defaulting to the same |
+
+So the relocation is not "move a file"; it is **"change the anchor from the
+bringup's SOURCE dir to the active build's OUTPUT dir"** — and each build
+system already has such a dir:
+
+- **CMake** — `CMAKE_BINARY_DIR`. `NanoRosEntry` is already parameterized
+  (`MODEL <path>`), so this side needs a default change, not a redesign.
+- **Cargo** — `OUT_DIR`. An entry crate's `build.rs` resolves the model into
+  `OUT_DIR`; the proc-macro reads `OUT_DIR` at expansion. Idiomatic, and it is
+  how generated code normally reaches a macro.
+- **Workspace-level `build/`** — what `nros build` (RFC-0065) owns, for the
+  case where several entries share one bringup and should share one
+  regeneration.
+
+**The decision: the model is generated into the ACTIVE BUILD's output dir, and
+consumers RECEIVE its path rather than deriving it.** The workspace-level
+`build/` is then an optimization (shared regeneration across entries), not the
+mechanism — which is what makes W3.c answerable at all.
+
+Consequences worth stating:
+
+- `OUT_DIR` is per-CRATE while a model is per-BRINGUP, so two entry crates
+  sharing a bringup each regenerate it. Correct but wasteful; the workspace
+  build root is the fix when a builder owns it, not a reason to reject
+  `OUT_DIR`.
+- `metadata/` and `generated/` should follow the same rule for the same
+  reason — but `generated/`'s 110 msg redirects are RELATIVE paths in each
+  leaf's `.cargo/config.toml`, so it moves on its own schedule (issue 0378 is
+  the reminder of what a wrong redirect costs).
+
+### W3.c — standalone copy-out examples: ANSWERED
+
+**24 of the 120 committed models live in standalone copy-out trees**
+(`examples/<platform>/<lang>/<example>/config/system_model.yaml`), which by
+RFC-0026 have no workspace to walk up to.
+
+Under the decision above they need nothing special: `OUT_DIR` and
+`CMAKE_BINARY_DIR` exist for a single-package build exactly as they do inside a
+workspace. That is the argument FOR anchoring on the per-toolchain build dir
+rather than a workspace-level `build/` — a workspace-relative answer would have
+forced copy-out examples to keep a committed model, splitting the contract in
+two.
+
 - [ ] **W3.b** Update the consumers. Ten files resolve the path today:
 
       | Consumer | Why it is awkward |
@@ -188,11 +246,19 @@ Two findings:
       | `scripts/build/compile-check-fixtures.sh` | fixture staging |
       | `examples/workspaces/ws-realtime-rust/src/threadx_entry/src/main.rs` | an EXAMPLE source references it |
 
-- [ ] **W3.c** Standalone copy-out examples (CLAUDE.md: no workspace walk-up)
-      must still work: a copied-out example has to generate its own model from
-      its own inputs, which means the resolver must be reachable from a
-      copied-out tree or the example must ship a pre-generated model. Decide
-      which; this is the constraint most likely to force a change to W3.a.
+      **Not started.** Ordering: phase-331's W2–W3 fold should land first (it
+      deletes 18 workspaces and 29 of these models), and W3.b must stay outside
+      phase-331's W1→W5 measurement window. The cmake half is small — the
+      argument already exists; the cargo half needs a `build.rs` seam per entry
+      crate plus the proc-macro reading `OUT_DIR`, which is the real work.
+
+- [x] **W3.c** ANSWERED — see above. 24 of the 120 models are in standalone
+      copy-out trees, and under the W3.a decision they need no special case:
+      `OUT_DIR` / `CMAKE_BINARY_DIR` exist for a single-package build too. The
+      remaining question is not WHERE but WHO RUNS THE RESOLVER in a copied-out
+      tree — `build.rs` can invoke it, but `nros-launch-resolve` must then be
+      on the copied-out machine (`just setup-launch-resolve`). Sequence that
+      with W3.b.
 
 ### W4 — Delete the committed models
 
