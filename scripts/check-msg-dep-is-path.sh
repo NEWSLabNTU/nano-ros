@@ -57,6 +57,46 @@ while IFS= read -r manifest; do
     done <<<"$hits"
 done < <(git ls-files '*/Cargo.toml' 'Cargo.toml')
 
+# A path dep can still point at the WRONG path, and the gate that only checks
+# "not a registry name" waves that through — which is how phase-333 W1 shipped 26
+# broken workspace members: the sweep wrote `path = "generated/<crate>"` for every
+# leaf, but a colcon workspace MEMBER shares ONE `generated/` tree at the
+# workspace root (`regenerate-bindings.sh`: "Member pkgs must NOT each get a
+# per-package generated/"), so the correct spelling there is
+# `../../generated/<crate>`. Nothing failed until the fixture build reached
+# metadata refresh and died on a path that never existed.
+#
+# Layout decides the spelling, so check it: a manifest at <root>/src/<member>/
+# whose sibling <root>/Cargo.toml exists is a member and must reach UP; anything
+# else owns its tree and must not.
+while IFS= read -r manifest; do
+    dir="$(dirname "$manifest")"
+    parent="$(dirname "$dir")"
+    # A manifest INSIDE a generated/ tree is a generated crate itself. Its
+    # message deps are siblings in that same tree (`../builtin_interfaces`) —
+    # a third layout, correct as emitted, and not a consumer's dep line.
+    case "$manifest" in */generated/*) continue ;; esac
+    if [ "$(basename "$parent")" = "src" ] && [ -f "$(dirname "$parent")/Cargo.toml" ]; then
+        want='\.\./\.\./generated/'; role="workspace member (shared root tree)"
+    else
+        want='generated/'; role="standalone leaf (own tree)"
+    fi
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        crate="$(printf '%s' "$line" | grep -oE "($MSG_CRATES)" | head -1)"
+        spec="$(printf '%s' "$line" | grep -oE 'path = "[^"]*"' | head -1)"
+        case "$spec" in
+            *'"'"$(printf '%s' "$want" | sed 's/\\//g')"*) ;;
+            *)
+                echo "FAIL: $manifest — \`$crate\` path is wrong for a $role." >&2
+                echo "      got: $spec" >&2
+                echo "      want a path under: $(printf '%s' "$want" | sed 's/\\//g')$crate" >&2
+                status=1
+                ;;
+        esac
+    done <<<"$(grep -E "^($MSG_CRATES) = \{ path" "$manifest" 2>/dev/null || true)"
+done < <(git ls-files '*/Cargo.toml' 'Cargo.toml')
+
 # The patch entries are retired with the registry names: a path dep needs none,
 # and a leftover entry makes cargo warn about an unused patch.
 patch_leftovers="$(git grep -nE "^($MSG_CRATES) = .*# nros-managed" -- '*config.toml' || true)"

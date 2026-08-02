@@ -21,4 +21,4 @@ nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi",
 ] }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }

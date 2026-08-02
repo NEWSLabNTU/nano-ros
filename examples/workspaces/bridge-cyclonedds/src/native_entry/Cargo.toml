@@ -40,4 +40,4 @@ nros-rmw-cyclonedds-sys = { path = "../../../../../packages/rmw/cyclonedds/nros-
 # crate that provides the `M: Message` (std_msgs/Header). `nros sync` resolves
 # `std_msgs` through the generated-crate `[patch.crates-io]`.
 nros-rmw-cyclonedds = { path = "../../../../../packages/rmw/cyclonedds/nros-rmw-cyclonedds", features = ["std"] }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }

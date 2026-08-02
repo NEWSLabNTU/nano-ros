@@ -17,7 +17,7 @@ std = ["nros-core/std", "nros-serdes/std", "std_msgs/std"]
 
 [dependencies]
 # Message bindings (patched to local generated via .cargo/config.toml)
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }
 
 # nros runtime (patched via .cargo/config.toml)
 nros-core = { version = "*", default-features = false }
