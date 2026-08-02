@@ -1177,6 +1177,36 @@ _nextest-slow-tests junit="target/nextest/default/junit.xml" limit="20":
 # Default dev tier — workspace unit tests + integration tests, with
 # heavy QEMU / Zephyr / ROS-2-interop groups skipped. Does NOT run
 # Miri (use `test-miri` or `test-all` for that).
+# issue 0389 — the ONE cell that exercises the multi-session zpico paths.
+#
+# `ZPICO_MAX_SESSIONS` defaults to 1, which is correct for a shipped target: the
+# C shim's session pool and the Rust shim's session-indexed SERVICE_BUFFERS /
+# REPLY_WAKERS (phase-328 / issues 0348, 0376) collapse to a single entry and the
+# static footprint stays minimal. But with nothing in the tree raising it,
+# `two_sessions_deliver_cross_session_through_router` skipped on every host in
+# every tier, so the code those two issues added was never executed by CI.
+#
+# Raising it globally is the wrong fix twice over: cargo MERGES .cargo/config.toml
+# up the directory tree, so an `[env]` at the repo root reaches the in-tree
+# examples too (verified) — every embedded example would double those tables.
+# So: one lane, one env, and its OWN target dir, because the value is a build
+# input (`rerun-if-env-changed`) and sharing `target/` with the default-1 tiers
+# would rebuild the shim back and forth on every alternation.
+[group("test")]
+test-zpico-multisession verbose="": build-zenohd
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    export CARGO_TARGET_DIR=target-zpico-multisession
+    export ZPICO_MAX_SESSIONS=2
+    args=(-p nros-rmw-zenoh --features platform-posix --test zenoh_integration
+          -E 'test(~two_sessions)' --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+
 #
 # Heavy groups are skipped via a CLI `-E` predicate keyed off nextest
 # test-groups (`qemu-{baremetal,freertos,nuttx,threadx-riscv,esp32,zephyr}`,
@@ -1186,7 +1216,7 @@ _nextest-slow-tests junit="target/nextest/default/junit.xml" limit="20":
 # (nextest 0.9.133+), so the list lives here rather than under a
 # `[profile.fast]` default-filter.
 [group("main")]
-test verbose="": build-zenohd
+test verbose="": build-zenohd test-zpico-multisession
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
