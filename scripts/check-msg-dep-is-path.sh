@@ -66,9 +66,26 @@ done < <(git ls-files '*/Cargo.toml' 'Cargo.toml')
 # `../../generated/<crate>`. Nothing failed until the fixture build reached
 # metadata refresh and died on a path that never existed.
 #
-# Layout decides the spelling, so check it: a manifest at <root>/src/<member>/
-# whose sibling <root>/Cargo.toml exists is a member and must reach UP; anything
-# else owns its tree and must not.
+# Layout decides the spelling, so check it — with the SAME rule `nros sync`
+# uses, which is the only rule that decides where `generated/` actually lands.
+# `ws.rs`: "colcon-mode iff `<root>/src/` exists AND at least one immediate
+# subdir contains `package.xml`". No `Cargo.toml` anywhere in that sentence.
+#
+# This gate first spelled it as "<root>/Cargo.toml exists", which is a DIFFERENT
+# rule that agrees with ws.rs only for workspaces that happen to have a root
+# cargo manifest. 19 colcon roots do not — every C/C++ workspace and six
+# templates — so a Rust member under one was classified standalone and the gate
+# demanded the spelling that points nowhere. It flagged upstream's correct
+# `../../generated/` in `templates/multi-package-workspace` as the error, and
+# waved through `generated/` in `templates/local-msg-package` and
+# `testing_workspaces/complex_workspace`, which is the real one.
+#
+# Verified rather than reasoned: with the per-leaf tree moved aside,
+# `nros sync examples/templates/multi-package-workspace` recreates the ROOT
+# `generated/` and does not recreate the leaf one. The leaf trees still on disk
+# are fossils from a pre-sweep pass (May 24), gitignored, and they are why the
+# wrong spelling still resolved on a developer's tree while failing on a fresh
+# clone.
 while IFS= read -r manifest; do
     dir="$(dirname "$manifest")"
     parent="$(dirname "$dir")"
@@ -76,7 +93,12 @@ while IFS= read -r manifest; do
     # message deps are siblings in that same tree (`../builtin_interfaces`) —
     # a third layout, correct as emitted, and not a consumer's dep line.
     case "$manifest" in */generated/*) continue ;; esac
-    if [ "$(basename "$parent")" = "src" ] && [ -f "$(dirname "$parent")/Cargo.toml" ]; then
+    # colcon member iff the manifest sits at <root>/src/<member>/ and some
+    # immediate subdir of that <root>/src carries a package.xml — ws.rs's test,
+    # applied at the root the way ws.rs applies it. A cargo-only member (a west
+    # entry, say) is still a member: what matters is the WORKSPACE's mode, not
+    # whether this particular leaf is an ament package.
+    if [ "$(basename "$parent")" = "src" ] && compgen -G "$parent/*/package.xml" >/dev/null; then
         want='\.\./\.\./generated/'; role="workspace member (shared root tree)"
     else
         want='generated/'; role="standalone leaf (own tree)"

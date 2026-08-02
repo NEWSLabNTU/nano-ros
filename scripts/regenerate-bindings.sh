@@ -44,7 +44,16 @@ while IFS= read -r member_pxml; do
     src_dir="$(dirname "$member_dir")"       # <root>/src
     [ "$(basename "$src_dir")" = "src" ] || continue
     root="$(dirname "$src_dir")"             # <root>
-    [ -f "$root/Cargo.toml" ] || continue
+    # NO `[ -f "$root/Cargo.toml" ]` test. The comment above already says the
+    # distinction is LAYOUT and names ws.rs's rule — "colcon-mode iff <root>/src/
+    # exists AND at least one immediate subdir contains package.xml" — but the
+    # code carried a second, narrower rule, and 19 colcon roots have no root
+    # cargo manifest (every C/C++ workspace, six templates). Those fell through
+    # to the standalone loop below, which generated a PER-LEAF `generated/` that
+    # `nros sync` neither writes nor reads: the fossils dated 2026-05-24 under
+    # `templates/{multi-package-workspace,local-msg-package}` came from exactly
+    # this path, and they masked the wrong dep spelling by making it resolve on
+    # a developer tree while failing on a fresh clone.
     ws_roots+=("$(cd "$root" && pwd)")
 # `git ls-files`, NOT `find`. A `package.xml` is tracked, so this is an index
 # lookup rather than a filesystem walk, and the difference is not marginal:
@@ -69,7 +78,9 @@ while IFS= read -r member_pxml; do
 # It also drops the untracked `package.xml` COPIES that live under staged
 # fixture dirs, which the old scan reached whenever a `build*` prune missed
 # them.
-done < <(git ls-files 'examples/*/src/*/package.xml')
+# Two depths: `examples/<ws>/src/<member>` and `examples/templates/<t>/src/<member>`.
+# The single-depth glob silently skipped every template workspace.
+done < <(git ls-files 'examples/*/src/*/package.xml' 'examples/*/*/src/*/package.xml')
 # de-duplicate (one entry per workspace, not per member)
 if [ "${#ws_roots[@]}" -gt 0 ]; then
     mapfile -t ws_roots < <(printf '%s\n' "${ws_roots[@]}" | sort -u)
