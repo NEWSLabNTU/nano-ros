@@ -21,6 +21,7 @@ just build                 # workspace + transports (fast inner loop)
 just build-examples        # + every example
 just build-all             # + test fixtures (everything test-all consumes)
 just build-test-fixtures   # just the fixtures + writes the test-all stamp
+just build-test-fixtures lane=native   # only what tier 1 (`just ci`) runs
 
 just test-unit             # ~5s          ⊂
 just test-integration      # ~30s         ⊂
@@ -140,9 +141,13 @@ build and the probe use identical options (no feature-thrash).
 A prebuilt fixture that's silently stale would let `test-all` run against the
 wrong binary. The discipline:
 
-- **Presence gate.** `build-test-fixtures` stamps `target/nextest/.fixtures-built`;
-  `test-all`'s `_require-fixtures` fast-fails (~1 s) with a hint if it's absent
-  (bypass: `NROS_SKIP_FIXTURE_CHECK=1`).
+- **Coverage gate.** `build-test-fixtures` stamps `target/nextest/.fixtures-built`
+  with the **lane and the fixture coordinates it built**, not just a timestamp;
+  `test-all`'s `_require-fixtures` fast-fails (~1 s) if the stamp is absent *or
+  does not cover* the lane named by `NROS_FIXTURE_LANE` (bypass:
+  `NROS_SKIP_FIXTURE_CHECK=1`). So a `lane=native` build satisfies `just ci`
+  (tier 1) and is correctly rejected by an unscoped `test-all`. A pre-issue-0393
+  timestamp-only stamp is read as `lane=all`, which is what it meant.
 - **Rust cells.** `scripts/test/rust-fixture-stale.sh` reuses cargo's own
   fingerprint — `cargo build … --message-format=json` reports `"fresh":false`
   for a stale unit, so the probe both detects **and** self-heals.

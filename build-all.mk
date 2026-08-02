@@ -56,10 +56,11 @@ endef
 # `.fixtures-built` stamp the public `build-test-fixtures` writes (justfile)
 # so the `_require-fixtures` preflight lets `test-all` run after `build-all`
 # — build-all builds every fixture, so it must vouch for them too.
+# Issue 0393 — the stamp is written by the shared helper, not a third private
+# copy of `date -u > …`. It now records lane + coordinates so `_require-fixtures`
+# can check coverage; build-all is always the whole matrix, hence lane=all.
 all: build-example-extras $(FIXTURES)
-	@mkdir -p target/nextest
-	@date -u +%Y-%m-%dT%H:%M:%SZ > target/nextest/.fixtures-built
-	@echo "build-all: stamped target/nextest/.fixtures-built"
+	@bash -c 'source scripts/build/fixture-lane.sh && nros_fixtures_stamp_write all'
 
 # Serial prerequisites every parallel target needs. Each `+just` shares
 # the jobserver, so the cargo/cc inside still parallelizes against the pool.

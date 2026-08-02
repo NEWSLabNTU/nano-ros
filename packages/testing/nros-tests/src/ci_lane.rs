@@ -268,6 +268,49 @@ mod tests {
         }
     }
 
+    /// Issue 0393 — `build-test-fixtures-leaves` narrows its fan-out by FILTERING
+    /// a hardcoded, deliberately-ordered platform list (zephyr first and solo,
+    /// because it wants the whole job budget). Order is a scheduling property, so
+    /// the list stays; but a module that a lane can select and the list does not
+    /// name would be filtered out silently — the lane would build less than it
+    /// gates, and the run would fail "Binary not found" with no clue why.
+    ///
+    /// So: the justfile's list must be a SUPERSET of every module the matrix can
+    /// produce. Adding a platform to `matrix::CELLS` without adding it there
+    /// fails here instead of in a sweep three hours later.
+    #[test]
+    fn build_fanout_names_every_module_the_matrix_can_select() {
+        let justfile = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../justfile");
+        let Ok(text) = std::fs::read_to_string(justfile) else {
+            return; // out-of-tree checkout; nothing to gate
+        };
+        // The canonical ordered list — the one the make graph filters.
+        let line = text
+            .lines()
+            .map(str::trim)
+            .find(|l| l.starts_with("for platform in zephyr native qemu"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "justfile: canonical fixture platform list not found — if it was \
+                     renamed or reordered, update this gate rather than deleting it"
+                )
+            });
+        let listed: BTreeSet<&str> = line
+            .trim_start_matches("for platform in")
+            .trim_end_matches("; do")
+            .split_whitespace()
+            .collect();
+
+        let needed: BTreeSet<&str> = PlatformId::ALL.iter().map(|p| p.just_module()).collect();
+        let missing: Vec<&&str> = needed.difference(&listed).collect();
+        assert!(
+            missing.is_empty(),
+            "justfile `build-test-fixtures-leaves` does not name {missing:?}; a lane \
+             selecting that module would build nothing for it.\n  listed:  {listed:?}\n  \
+             matrix:  {needed:?}"
+        );
+    }
+
     /// The regression this whole module exists for: adding a platform (or RMW, or
     /// language) to the matrix must extend the lane, not be silently skipped.
     #[test]

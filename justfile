@@ -229,7 +229,8 @@ build-all:
     # stamp in place and `_require-fixtures` waved `test-all` through on it.
     # Same discipline `compile-check-fixtures.sh` already applies to each
     # per-fixture `.compile-ok` one level down.
-    rm -f target/nextest/.fixtures-built
+    source scripts/build/fixture-lane.sh
+    nros_fixtures_stamp_clear
     if [ -z "${NROS_NO_JOBSERVER:-}" ] \
        && [ -x third-party/make/make ] \
        && third-party/make/make --version | head -1 | grep -q "4.4" \
@@ -243,9 +244,8 @@ build-all:
     just build-test-fixtures-leaves
     # Stamp like the public `build-test-fixtures` so `_require-fixtures` lets
     # `test-all` run after `build-all` (the `-leaves` recipe doesn't stamp).
-    mkdir -p target/nextest
-    date -u +%Y-%m-%dT%H:%M:%SZ > target/nextest/.fixtures-built
-    echo "build-all: stamped target/nextest/.fixtures-built"
+    # `build-all` is unconditionally the whole matrix, hence lane=all.
+    nros_fixtures_stamp_write all
     echo "All builds completed (workspace + examples + test fixtures)."
 
 # Phase 176 — `build-all` under one GNU-make fifo jobserver shared across
@@ -1177,7 +1177,7 @@ _nextest-slow-tests junit="target/nextest/default/junit.xml" limit="20":
 # Default dev tier — workspace unit tests + integration tests, with
 # heavy QEMU / Zephyr / ROS-2-interop groups skipped. Does NOT run
 # Miri (use `test-miri` or `test-all` for that).
-# issue 0389 — the ONE cell that exercises the multi-session zpico paths.
+# issue 0393 — the ONE cell that exercises the multi-session zpico paths.
 #
 # `ZPICO_MAX_SESSIONS` defaults to 1, which is correct for a shipped target: the
 # C shim's session pool and the Rust shim's session-indexed SERVICE_BUFFERS /
@@ -1282,15 +1282,17 @@ test verbose="": _require-fixtures _check-fixtures-stale build-zenohd test-zpico
 # `unable to update generated/builtin_interfaces`. Make the dep
 # explicit so `just build-test-fixtures` (and `just test-all` via
 # the bench fixtures it consumes) is self-contained.
+#
+# `lane` (issue 0393) narrows the build to one CI lane's fixture coordinates —
+# `all` (default, every row), `tier1`, `tier2`, `tier2-nightly`. The selection
+# comes from `lane-coords`, the same binary `_lane-gate` uses, so the build, the
+# staleness gate and the test run derive from ONE computation, which is what
+# `ci_lane.rs` already claimed and only two of the three actually did.
 [group("full-matrix")]
-build-test-fixtures: generate-bindings setup-launch-resolve build-zenoh-posix-fixture build-test-fixtures-leaves
+build-test-fixtures lane="all": _clear-fixture-stamp generate-bindings setup-launch-resolve build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
     #!/usr/bin/env bash
     set -e
-    # phase-319 W1 (issue 0351) — clear the stamp BEFORE building, so a failed or
-    # interrupted run leaves none and `_require-fixtures` fails with its build
-    # hint. Previously the stamp survived a failure and certified a build stage
-    # that had stopped working (issue 0350 hid this way for three days).
-    rm -f target/nextest/.fixtures-built
+    source scripts/build/fixture-lane.sh
     # Compile-check fixtures (issue 0034): build-stage `cargo check` of small
     # template crates whose tests only prove they compile — the test asserts the
     # `.compile-ok` stamp instead of running cargo at run time.
@@ -1299,22 +1301,78 @@ build-test-fixtures: generate-bindings setup-launch-resolve build-zenoh-posix-fi
     # fast-fail with a build hint instead of letting the suite run and
     # surface dozens of "Binary not found" failures. The body only runs
     # after every dependency above succeeds. Phase 177.9.
-    mkdir -p target/nextest
-    date -u +%Y-%m-%dT%H:%M:%SZ > target/nextest/.fixtures-built
-    echo "build-test-fixtures: stamped target/nextest/.fixtures-built"
+    #
+    # Issue 0393 — the stamp records the LANE AND ITS COORDINATES, not just a
+    # timestamp, so the preflight can ask "does what was built cover what I am
+    # about to run?" instead of "did a build finish?".
+    nros_fixtures_stamp_write "$(nros_lane_arg "{{lane}}")"
+
+# phase-319 W1 (issue 0351) — clear the stamp BEFORE building, so a failed or
+# interrupted run leaves none and `_require-fixtures` fails with its build hint
+# instead of certifying a build stage that had stopped working.
+#
+# A DEPENDENCY, not a line in `build-test-fixtures`'s body: that body runs AFTER
+# its dependencies, and the dependencies are what do the building. The clear was
+# in the body, so 0351's "clear before building" held for `build-all` (which
+# builds in its own body) and was defeated here — observed 2026-08-02, when a
+# failing native fixture build left a three-day-old stamp in place, exactly the
+# state 0351 was filed about. Dependencies run left-to-right, so first is first.
+[private]
+_clear-fixture-stamp:
+    @bash -c 'source scripts/build/fixture-lane.sh && nros_fixtures_stamp_clear'
 
 # Internal fixture fan-out without root prereqs. Public `build-test-fixtures`
 # keeps the self-contained UX; aggregate paths that already ran `build` use
 # this to avoid repeating `generate-bindings` and `build-zenoh-posix-fixture`.
 [private]
-build-test-fixtures-leaves:
+build-test-fixtures-leaves lane="all":
     #!/usr/bin/env bash
     set -e
-    # Phase 177.9 — compute the shared fixture-input hash once and export it
-    # so the per-platform/per-cell builds (and their child build steps)
-    # reuse it instead of re-hashing the workspace for every cell.
-    source scripts/build/fixture-matrix.sh
-    export NROS_FIXTURE_SHARED_SIG="$(nros_fixture_shared_sig)"
+    # (The phase-177.9 `NROS_FIXTURE_SHARED_SIG` export lived here until
+    # 2026-08-02. Phase 181.7c deliberately retired the content-hash staleness
+    # mechanism in favour of the `cmake --build` self-heal probe and deleted
+    # `nros_fixture_shared_sig` along with every consumer — but left this
+    # producer behind, so every fixture build printed
+    # `nros_fixture_shared_sig: command not found` to stderr and exported an
+    # empty string nothing read. `set -e` never caught it because `export
+    # V="$(cmd)"` takes the exit status of the `export` builtin, not of the
+    # substitution — a plain `V="$(cmd)"` would have aborted the recipe on the
+    # first run. Nothing else in this recipe used `fixture-matrix.sh`, so the
+    # `source` went with it.)
+    # Issue 0393 — lane narrowing, in two layers that have to agree:
+    #
+    #   modules  which `just <mod> build-fixtures` runs at all (the big saving:
+    #            tier 1 drops eight of nine cross families outright)
+    #   coords   which manifest ROWS each surviving module builds, via
+    #            NROS_FIXTURE_COORDS -> fixtures-build.sh / workspace-fixtures-
+    #            build.sh -> fixtures-manifest.py --coords-from
+    #
+    # Both derive from `lane-coords`, so they cannot select different sets.
+    source scripts/build/fixture-lane.sh
+    lane="$(nros_lane_arg "{{lane}}")"
+    lane_modules=""
+    if [ "$lane" != "all" ]; then
+        lane_modules="$(nros_lane_modules "$lane")"
+        [ -n "$lane_modules" ] || {
+            echo "build-test-fixtures: lane $lane selected zero modules — refusing to build nothing" >&2
+            exit 2
+        }
+        # `native` is module-level (build every native row); the tier lanes also
+        # narrow the ROWS each surviving module builds.
+        coords_file="$(nros_lane_coords_file "$lane")"
+        if [ -n "$coords_file" ]; then
+            export NROS_FIXTURE_COORDS="$(cd "$(dirname "$coords_file")" && pwd)/$(basename "$coords_file")"
+            echo "build-test-fixtures: lane=$lane coords=$(wc -l < "$NROS_FIXTURE_COORDS")"
+        fi
+        echo "build-test-fixtures: lane=$lane modules=$(echo $lane_modules | tr '\n' ' ')"
+    fi
+    # Keep the canonical ORDER (zephyr first / solo with the full budget) and
+    # filter it, rather than iterating the lane's set — scheduling is a property
+    # of the platform, not of the lane.
+    in_lane() {
+        if [ -z "$lane_modules" ]; then return 0; fi
+        printf '%s\n' "$lane_modules" | grep -qx "$1"
+    }
     # Phase 226.C — direct fallback fixture fan-out uses a temporary make graph
     # instead of GNU parallel or a raw Zephyr background lane. The pinned fifo
     # jobserver path enters through build-all; this fallback still centralizes
@@ -1342,8 +1400,12 @@ build-test-fixtures-leaves:
     budget="${NROS_BUILD_JOBS}"
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
         echo "build-test-fixtures: NROS_JOBSERVER=1 — serial launcher; child tools inherit fifo tokens"
-        run_stage zephyr just zephyr build-fixtures
+        # `in_lane … && run_stage …` would abort the recipe under `set -e` when
+        # the module is filtered OUT (a false compound command is a failure), so
+        # the skip is an explicit `if`.
+        if in_lane zephyr; then run_stage zephyr just zephyr build-fixtures; fi
         for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4; do
+            in_lane "$platform" || continue
             run_stage "$platform" just "$platform" build-fixtures
         done
         exit 0
@@ -1363,13 +1425,26 @@ build-test-fixtures-leaves:
     inner=$(( budget / outer )); [ "$inner" -lt 1 ] && inner=1
     make_jobs=$((outer + 1))
     echo "build-test-fixtures: budget=$budget, make-jobs=$make_jobs, pool=$outer×$inner + zephyr=$budget (solo)"
+    # Issue 0393 — the lane-filtered platform list, computed ONCE. The graph
+    # names its targets in three places (.PHONY, `all:`, the rule loop) and they
+    # must agree, so they read one variable rather than three copies of the
+    # literal list.
+    lane_platforms=""
+    for platform in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4; do
+        if in_lane "$platform"; then lane_platforms="$lane_platforms $platform"; fi
+    done
+    lane_platforms="${lane_platforms# }"
+    [ -n "$lane_platforms" ] || {
+        echo "build-test-fixtures: lane $lane selected zero platforms — refusing to build nothing" >&2
+        exit 2
+    }
     {
         printf 'SHELL := /bin/bash\n'
         printf '.SHELLFLAGS := -eu -o pipefail -c\n'
         printf '.DELETE_ON_ERROR:\n'
-        printf '.PHONY: all zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4\n'
-        printf 'all: zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4\n\n'
-        for platform in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4; do
+        printf '.PHONY: all %s\n' "$lane_platforms"
+        printf 'all: %s\n\n' "$lane_platforms"
+        for platform in $lane_platforms; do
             child_jobs="$inner"
             if [ "$platform" = "zephyr" ]; then
                 child_jobs="$budget"
@@ -1465,20 +1540,20 @@ test-failed verbose="":
 # of "Binary not found" failures. The stamp is written by build-test-fixtures.
 # Bypass with NROS_SKIP_FIXTURE_CHECK=1 if fixtures were built another way
 # (e.g. scoped `just <plat> build-fixtures`). Phase 177.9.
+#
+# Issue 0393 — the check is COVERAGE, not existence. `NROS_FIXTURE_LANE` names
+# the lane this run needs (set by `ci` / `ci-matrix` / `ci-matrix-nightly`;
+# `all` by default), and the stamp records the lane + coordinates the build
+# actually produced. A tier-1 stamp therefore no longer waves a tier-3 run
+# through, and a tier-3 stamp still satisfies every lane.
 [private]
 _require-fixtures:
     #!/usr/bin/env bash
     if [ "${NROS_SKIP_FIXTURE_CHECK:-0}" != "0" ]; then
         exit 0
     fi
-    if [ ! -f target/nextest/.fixtures-built ]; then
-        echo "ERROR: test fixtures not built — 'just test' / 'just test-all' would mass-fail with 'Binary not found'." >&2
-        echo "" >&2
-        echo "  Run:  just build-test-fixtures" >&2
-        echo "" >&2
-        echo "  (built them another way? bypass with  NROS_SKIP_FIXTURE_CHECK=1 just <tier> )" >&2
-        exit 1
-    fi
+    source scripts/build/fixture-lane.sh
+    nros_fixtures_stamp_require "${NROS_FIXTURE_LANE:-all}"
 
 # Warn (non-fatal) about prebuilt fixture cells whose inputs changed since the
 # binary was built — sources edited without re-running build-fixtures. Runs the
@@ -1684,9 +1759,25 @@ rust-rtos-link-check:
 #   just ci-matrix        tier 2 — when the diff touches packages/core, codegen, cmake/
 #   just ci-matrix-nightly       — the pairwise cover, nightly
 #   just ci-full          tier 3 — pre-release, on demand (the former `ci`)
+#
+# Issue 0393 — tier 1's BUILD narrows too, not just its gate and its run:
+#
+#     just build-test-fixtures lane=native   # one module, ~180 of 337 rows
+#     just ci
+#
+# `NROS_FIXTURE_LANE=native` makes `_require-fixtures` accept that scoped build
+# and — the other half — REJECT it for an unscoped `test-all`, so a tier-1 stamp
+# can no longer vouch for a tier-3 run.
+#
+# Why `native` and not `tier1`: this lane scopes its run with
+# `NROS_TEST_SCOPE=native`, which selects every native test BINARY. That is a
+# broader set than `coords(Tier1)` (10 of 47 coordinates), so building only the
+# tier-1 coordinates would leave the remaining native binaries absent and the
+# run would mass-fail "Binary not found". The build set has to cover the run
+# set, not the gate set.
 [group("ci")]
 ci:
-    @NROS_FIXTURE_SCOPE=native NROS_TEST_SCOPE=native just check rust-rtos-link-check test-all
+    @NROS_FIXTURE_SCOPE=native NROS_TEST_SCOPE=native NROS_FIXTURE_LANE=native just check rust-rtos-link-check test-all
     @echo "CI passed (tier 1 — host only; platform coverage needs `just ci-matrix`)!"
 
 # Tier 2 — phase-318 W4.d. Gate exactly the fixture COORDINATES the lane selected.
@@ -1704,6 +1795,13 @@ ci:
 #
 # Note the gate and the BUILD read the same coordinate file, so they cannot
 # disagree about what this lane covers.
+#
+# Issue 0393 — this lane's BUILD is deliberately still `all`. Unlike tier 1 it
+# does not scope its run (`test-all` with no `NROS_TEST_SCOPE`), so every test
+# binary executes and every fixture must exist. The tier-2 saving is in the
+# staleness GATE, which insists only the lane's coordinates are fresh. Narrowing
+# the build here would need the run narrowed to match first; until then, saying
+# so beats a lane that silently under-builds.
 [group("ci")]
 ci-matrix:
     #!/usr/bin/env bash

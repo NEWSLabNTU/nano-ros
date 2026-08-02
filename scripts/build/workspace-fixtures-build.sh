@@ -79,10 +79,23 @@ else
     export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-${NROS_BUILD_JOBS:-8}}"
 fi
 
+# Issue 0393 — same lane narrowing as scripts/build/fixtures-build.sh. Workspace
+# fixtures are 79 of the manifest's 337 rows, so leaving them unfiltered would
+# have made a "lane" build most of the expensive half anyway. `list-workspaces`
+# already accepts `--coords-from` (check-fixtures-stale.sh:140 gates on it).
+coords_args=()
+if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
+    if [ ! -s "${NROS_FIXTURE_COORDS}" ]; then
+        echo "workspace-fixtures-build.sh: NROS_FIXTURE_COORDS=${NROS_FIXTURE_COORDS} is empty or absent" >&2
+        exit 2
+    fi
+    coords_args=(--coords-from "$NROS_FIXTURE_COORDS")
+fi
+
 manifest() {
     python3 "$repo_root/scripts/build/fixtures-manifest.py" list-workspaces \
         --platform "$platform" ${lang_filter:+--lang "$lang_filter"} \
-        ${id_filter:+--id "$id_filter"}
+        ${id_filter:+--id "$id_filter"} "${coords_args[@]}"
 }
 
 profile_dir="$(nros_cargo_target_profile_dir)"

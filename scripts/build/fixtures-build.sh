@@ -19,6 +19,10 @@
 #
 # Honors NROS_JOBSERVER=1 (serial; tools inherit fifo tokens) and otherwise
 # runs manifest rows through a temporary makefile. No GNU parallel dependency.
+#
+# Honors NROS_FIXTURE_COORDS (issue 0393): a `lane-coords` file restricting the
+# build to one CI lane's `platform,lang,rmw` coordinates. Unset = build every
+# matching row.
 set -euo pipefail
 
 usage="usage: fixtures-build.sh <platform> [lang] [rmw] [--id <id>] [--core-only]"
@@ -81,10 +85,28 @@ done
 # shellcheck source=/dev/null
 source scripts/build/cargo.sh
 
+# Issue 0393 — `NROS_FIXTURE_COORDS` narrows the build to one CI lane's
+# coordinates, the SAME file `check-fixtures-stale.sh` gates on and
+# `fixtures-manifest.py --coords-from` already knew how to filter by. Read from
+# the env rather than an argument because every per-platform `build-fixtures`
+# recipe calls this script with its own positional args; an env var is one edit
+# here instead of ten in just/*.just, and it matches how the gate consumes it.
+# Unset (the default) = no filtering, i.e. pre-0393 behavior.
+coords_args=()
+if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
+    if [ ! -s "${NROS_FIXTURE_COORDS}" ]; then
+        echo "fixtures-build.sh: NROS_FIXTURE_COORDS=${NROS_FIXTURE_COORDS} is empty or absent" >&2
+        echo "                   (a silent fallthrough would build everything and look like a lane)" >&2
+        exit 2
+    fi
+    coords_args=(--coords-from "$NROS_FIXTURE_COORDS")
+fi
+
 manifest() {
     python3 scripts/build/fixtures-manifest.py list \
         --platform "$platform" --lang "$lang" ${rmw:+--rmw "$rmw"} \
-        ${fixture_id:+--id "$fixture_id"} ${core_only:+--core-only}
+        ${fixture_id:+--id "$fixture_id"} ${core_only:+--core-only} \
+        "${coords_args[@]}"
 }
 
 run_with_make() {
