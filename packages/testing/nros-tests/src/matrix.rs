@@ -592,6 +592,17 @@ pub const CELLS: &[Cell] = &[
     cell(Native, C,     Zenoh, EntryPubsub, Workspace, Runtime),
     cell(Native, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
     cell(Native, Mixed, Zenoh, EntryPubsub, Workspace, Runtime),
+    // phase-331 W4 (RFC-0066) — the RMW AXIS over the language workspaces.
+    // Before this the workspace rows were 85/87 zenoh: the RMW seam was
+    // exercised by single-node examples and essentially never by a workspace.
+    // `mixed` is deliberately absent — its value is the language seam, not the
+    // RMW seam. The rust cells already existed; only c/cpp were missing.
+    cell(Native, Rust, Cyclonedds, EntryPubsub, Workspace, Runtime),
+    cell(Native, C,    Cyclonedds, EntryPubsub, Workspace, Runtime),
+    cell(Native, Cpp,  Cyclonedds, EntryPubsub, Workspace, Runtime),
+    cell(Native, Rust, Xrce,       EntryPubsub, Workspace, Runtime),
+    cell(Native, C,    Xrce,       EntryPubsub, Workspace, Runtime),
+    cell(Native, Cpp,  Xrce,       EntryPubsub, Workspace, Runtime),
     cell(ZephyrNativeSim, Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ZephyrNativeSim, C,     Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ZephyrNativeSim, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
@@ -726,8 +737,6 @@ pub const CELLS: &[Cell] = &[
     cell(Native, Mixed, Zenoh, Action,  Workspace, Runtime),
 
     // Workspace RMW variants (thin today: 80/82 rows are zenoh — issue #233).
-    cell(Native, Rust, Cyclonedds, EntryPubsub, Workspace, Runtime),
-    cell(Native, Rust, Xrce,       EntryPubsub, Workspace, Runtime),
 
     // ── Interop & Bridge kinds — issue 0352 / phase-324 ────────────────
     // These cells carry a nano side that is BUILT plus an ephemeral PEER and a
