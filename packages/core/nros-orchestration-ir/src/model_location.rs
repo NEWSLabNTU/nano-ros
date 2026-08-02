@@ -114,28 +114,46 @@ mod tests {
     #[test]
     fn committed_location_is_the_fallback() {
         with_env(&[("NROS_MODEL_DIR", None), ("OUT_DIR", None)], || {
-            let p = resolve_model_path(Path::new("/ws/src/demo_bringup"), "config/system_model.yaml");
-            assert_eq!(p, PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml"));
+            let p = resolve_model_path(
+                Path::new("/ws/src/demo_bringup"),
+                "config/system_model.yaml",
+            );
+            assert_eq!(
+                p,
+                PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml")
+            );
         });
     }
 
     #[test]
     fn build_output_outranks_committed_and_drops_the_config_level() {
-        with_env(&[("NROS_MODEL_DIR", None), ("OUT_DIR", Some("/build/out"))], || {
-            let c = model_search_paths(Path::new("/ws/src/demo_bringup"), "config/system_model.yaml");
-            assert_eq!(
-                c[0],
-                PathBuf::from("/build/out/nros/demo_bringup/system_model.yaml")
-            );
-            assert_eq!(c[1], PathBuf::from("/build/out/nros/system_model.yaml"));
-            assert_eq!(c[2], PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml"));
-        });
+        with_env(
+            &[("NROS_MODEL_DIR", None), ("OUT_DIR", Some("/build/out"))],
+            || {
+                let c = model_search_paths(
+                    Path::new("/ws/src/demo_bringup"),
+                    "config/system_model.yaml",
+                );
+                assert_eq!(
+                    c[0],
+                    PathBuf::from("/build/out/nros/demo_bringup/system_model.yaml")
+                );
+                assert_eq!(c[1], PathBuf::from("/build/out/nros/system_model.yaml"));
+                assert_eq!(
+                    c[2],
+                    PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml")
+                );
+            },
+        );
     }
 
     #[test]
     fn shared_model_dir_outranks_out_dir() {
         with_env(
-            &[("NROS_MODEL_DIR", Some("/build/nros")), ("OUT_DIR", Some("/build/out"))],
+            &[
+                ("NROS_MODEL_DIR", Some("/build/nros")),
+                ("OUT_DIR", Some("/build/out")),
+            ],
             || {
                 let c = model_search_paths(Path::new("/ws/b"), "config/system_model.yaml");
                 assert_eq!(c[0], PathBuf::from("/build/nros/b/system_model.yaml"));
@@ -154,9 +172,15 @@ mod tests {
 
     #[test]
     fn missing_everywhere_reports_the_committed_path() {
-        with_env(&[("NROS_MODEL_DIR", Some("/nope")), ("OUT_DIR", Some("/nope2"))], || {
-            let p = resolve_model_path(Path::new("/ws/b"), "config/system_model.yaml");
-            assert_eq!(p, PathBuf::from("/ws/b/config/system_model.yaml"));
-        });
+        with_env(
+            &[
+                ("NROS_MODEL_DIR", Some("/nope")),
+                ("OUT_DIR", Some("/nope2")),
+            ],
+            || {
+                let p = resolve_model_path(Path::new("/ws/b"), "config/system_model.yaml");
+                assert_eq!(p, PathBuf::from("/ws/b/config/system_model.yaml"));
+            },
+        );
     }
 }

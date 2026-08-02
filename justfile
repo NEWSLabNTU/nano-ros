@@ -387,9 +387,17 @@ check-fast: \
 check-test-targets:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo check --quiet --workspace --all-targets --no-default-features {{HOST_UNCHECKABLE}}
-    cargo check --quiet --manifest-path packages/cli/Cargo.toml --workspace --all-targets
-    echo "test targets compile (root + cli)."
+    # clippy, not `cargo check`: it COMPILES the same targets, so linting here
+    # costs nothing extra over the compile this gate already needed, and it
+    # closes the second half of the same blind spot — a lint in code you just
+    # wrote could only be seen by the build tier. `-D warnings` on both, which
+    # the host clippy did not previously enforce (the embedded one always did).
+    cargo clippy --quiet --workspace --all-targets --no-default-features \
+        {{HOST_UNCHECKABLE}} -- -D warnings
+    # The CLI is its own workspace (own manifest + lock) and its exclusions have
+    # a single home in `check-cli-clippy` — call it rather than restate them.
+    just check-cli-clippy
+    echo "clippy + test targets clean (root + cli)."
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
 # embedded clippy, feature combos, riscv32 no_std, nros-tests source gates,
@@ -402,7 +410,7 @@ check-build: \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-dep-chain \
     check-embedded-feature-unification \
-    check-c check-cpp check-rmw-cyclonedds check-cli-tests check-cli-clippy check-feature-set-ssot \
+    check-c check-cpp check-rmw-cyclonedds check-cli-tests check-feature-set-ssot \
     check-no-tracked-file-find \
     native::check
     @echo "Build checks passed!"
@@ -2225,7 +2233,8 @@ check-cli-fmt:
 [private]
 check-workspace:
     cargo +{{NIGHTLY}} fmt --check
-    cargo clippy --quiet --workspace --no-default-features {{HOST_UNCHECKABLE}}
+    # Host clippy moved to `check-test-targets` (fast tier) — it runs there with
+    # `--all-targets` and `-D warnings`, a strict superset of what ran here.
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build

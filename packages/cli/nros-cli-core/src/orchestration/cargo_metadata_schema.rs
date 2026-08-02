@@ -531,20 +531,8 @@ pub struct AmentMaintainer {
 ///   | "flash" | …`).
 /// * `[[domain]]` — optional per-system domain routing.
 /// * `[[bridge]]` — optional cross-RMW bridges.
-/// phase-330 W4.0 — one `[[model]]` entry: which launch file, with which
-/// argument bindings, produces which model file.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SystemModelEntry {
-    /// Launch file name, relative to the bringup's `launch/`.
-    pub launch: String,
-    /// Output model file name (`<stem>_<binding>_model.yaml` by convention).
-    pub out: String,
-    /// Launch argument bindings, passed as `key:=value`.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub args: BTreeMap<String, String>,
-}
-
+/// * `[[model]]` — phase-330 W4.0: a model this bringup produces from a launch
+///   file plus argument bindings (see [`SystemModelEntry`]).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SystemToml {
@@ -605,6 +593,20 @@ pub struct SystemToml {
     // is intentionally absent, so `deny_unknown_fields` REJECTS a
     // `[param_persistence]` block until the backends land. The runtime `ParamStore`
     // seam (`nros-params`) + the codegen path are kept dormant for re-enable.
+}
+
+/// phase-330 W4.0 — one `[[model]]` entry: which launch file, with which
+/// argument bindings, produces which model file.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemModelEntry {
+    /// Launch file name, relative to the bringup's `launch/`.
+    pub launch: String,
+    /// Output model file name (`<stem>_<binding>_model.yaml` by convention).
+    pub out: String,
+    /// Launch argument bindings, passed as `key:=value`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub args: BTreeMap<String, String>,
 }
 
 /// Phase 256 Wave 1 — `[lifecycle]` in `system.toml`. `autostart` ∈
