@@ -89,6 +89,13 @@ impl ZpicoError {
             -6 => ZpicoError::Full,
             -7 => ZpicoError::Invalid,
             -8 => ZpicoError::Publish,
+            // ZPICO_ERR_TIMEOUT. Added to zpico.h without extending this
+            // mirror, so -9 fell into the Generic catch-all — an idle
+            // spin_once (the ThreadX poll branch's normal quiet tick)
+            // became ConnectionFailed and fed the executor's session-death
+            // counter (issue 0387: quiet C talkers died at
+            // SPIN_ERROR_TOLERANCE × period).
+            -9 => ZpicoError::Timeout,
             _ => ZpicoError::Generic,
         }
     }

@@ -658,7 +658,23 @@ impl Session for ZenohSession {
     }
 
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
-        let res = self.spin_once(timeout_ms as u32);
+        // Idle deadline expiry is the transport's normal quiet state, not an
+        // I/O failure. The polled shim branches (ThreadX, single-threaded
+        // select) report "no inbound data before the timeout" as
+        // ZPICO_ERR_TIMEOUT, while the condvar/semaphore branches return 0 —
+        // without this mapping the executor's session-death counter (issue
+        // 0355) grows on every quiet tick, and the C spin wrappers bail at
+        // SPIN_ERROR_TOLERANCE: a quiet ThreadX C talker died after
+        // 16×period (issue 0387; the Rust entry loops never read the
+        // counter, which is why only the C arms fell over).
+        let res = match self.spin_once(timeout_ms as u32) {
+            Err(TransportError::Timeout) => Ok(0),
+            r => r,
+        };
+        #[cfg(feature = "std")]
+        if let Err(ref e) = res {
+            std::eprintln!("DBG drive_io err: {:?}", e);
+        }
         // Phase 124.B.3 — when zenoh's spin_once observed any work
         // (n > 0), call the runtime-supplied wake callback so the
         // executor's `wake_cv` is signalled (flag-write +
