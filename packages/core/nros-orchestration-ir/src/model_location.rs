@@ -40,12 +40,24 @@ pub fn model_search_paths(bringup_dir: &Path, model_rel: &str) -> Vec<PathBuf> {
         .file_name()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("system_model.yaml"));
+    // The bringup's own directory name namespaces the build-output copies. A
+    // flat layout collides whenever a workspace has two bringups (both emit
+    // `system_model.yaml`), and the loser vanishes silently.
+    let bringup = bringup_dir.file_name().map(PathBuf::from);
     let mut out = Vec::new();
     if let Some(dir) = std::env::var_os("NROS_MODEL_DIR") {
-        out.push(Path::new(&dir).join(&name));
+        let dir = Path::new(&dir);
+        if let Some(b) = &bringup {
+            out.push(dir.join(b).join(&name));
+        }
+        out.push(dir.join(&name));
     }
     if let Some(dir) = std::env::var_os("OUT_DIR") {
-        out.push(Path::new(&dir).join("nros").join(&name));
+        let dir = Path::new(&dir).join("nros");
+        if let Some(b) = &bringup {
+            out.push(dir.join(b).join(&name));
+        }
+        out.push(dir.join(&name));
     }
     out.push(bringup_dir.join(model_rel));
     out
@@ -111,8 +123,12 @@ mod tests {
     fn build_output_outranks_committed_and_drops_the_config_level() {
         with_env(&[("NROS_MODEL_DIR", None), ("OUT_DIR", Some("/build/out"))], || {
             let c = model_search_paths(Path::new("/ws/src/demo_bringup"), "config/system_model.yaml");
-            assert_eq!(c[0], PathBuf::from("/build/out/nros/system_model.yaml"));
-            assert_eq!(c[1], PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml"));
+            assert_eq!(
+                c[0],
+                PathBuf::from("/build/out/nros/demo_bringup/system_model.yaml")
+            );
+            assert_eq!(c[1], PathBuf::from("/build/out/nros/system_model.yaml"));
+            assert_eq!(c[2], PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml"));
         });
     }
 
@@ -122,8 +138,8 @@ mod tests {
             &[("NROS_MODEL_DIR", Some("/build/nros")), ("OUT_DIR", Some("/build/out"))],
             || {
                 let c = model_search_paths(Path::new("/ws/b"), "config/system_model.yaml");
-                assert_eq!(c[0], PathBuf::from("/build/nros/system_model.yaml"));
-                assert_eq!(c[1], PathBuf::from("/build/out/nros/system_model.yaml"));
+                assert_eq!(c[0], PathBuf::from("/build/nros/b/system_model.yaml"));
+                assert_eq!(c[1], PathBuf::from("/build/nros/system_model.yaml"));
             },
         );
     }
@@ -132,7 +148,7 @@ mod tests {
     fn variant_models_keep_their_own_name() {
         with_env(&[("NROS_MODEL_DIR", Some("/b")), ("OUT_DIR", None)], || {
             let c = model_search_paths(Path::new("/ws/b"), "config/talker_model.yaml");
-            assert_eq!(c[0], PathBuf::from("/b/talker_model.yaml"));
+            assert_eq!(c[0], PathBuf::from("/b/b/talker_model.yaml"));
         });
     }
 

@@ -692,7 +692,14 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                         .file_name()
                         .map(std::path::PathBuf::from)
                         .unwrap_or_else(|| std::path::PathBuf::from("system_model.yaml"));
-                    (launch, dir.join(name))
+                    // NAMESPACE BY BRINGUP. A flat output dir collides the
+                    // moment a workspace has two bringups: `ws-lifecycle-cpp`
+                    // has `demo_bringup` and `managed_bringup`, both producing
+                    // `system_model.yaml`, and the second silently overwrote the
+                    // first. It presented as "regeneration dropped a node",
+                    // which is exactly the kind of false loss that would have
+                    // made W4.a look unsafe for the wrong reason.
+                    (launch, dir.join(&pkg.name).join(name))
                 })
                 .collect(),
         };

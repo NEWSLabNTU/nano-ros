@@ -448,7 +448,54 @@ actually move — editing it now would describe a state the tree is not in.
       | **LOSS** | 13 | committed content the regenerate does NOT reproduce |
       | **SYNCFAIL** | 24 | sync errors before producing anything |
 
-      **The 13 LOSS cases are the blocker**, and they are the W1 pattern again:
+      **UPDATE 2026-08-02 — 13 became 3. Ten were measurement artifacts, and one
+      of those was a bug in this phase's own code.**
+
+      The sweep compared TEXT LINES, which cannot tell reformatting from data
+      loss. Re-comparing PARSED YAML (`tmp/semantic_cmp.py`, provenance
+      stripped) reclassifies them:
+
+      | Cause | Count | Real? |
+      | --- | --- | --- |
+      | `structure.nodes.<n>.scope` / `scopes./` | 18 diffs | **no** — committed is stale |
+      | `execution.deploy.<n>.target` | 4 | **no** — issue 0356 removal |
+      | list indentation (`  - x` vs `    - x`) | — | **no** — formatting |
+      | flat `--model-dir` COLLISION | 1 bringup | **no** — my bug, fixed |
+      | genuinely hand-authored content | **3** | **YES** |
+
+      `scope` is the biggest and the most clearly stale: rlm documents the field
+      as "STRUCTURAL — the launch file the scope corresponds to … NOT a
+      namespace", so the current `scope: system.launch.xml` is right and the
+      committed `scope: /` predates it. Nothing in nros reads `.scope`.
+
+      **The collision was mine.** `--model-dir` wrote every model FLAT, so a
+      workspace with two bringups (`ws-lifecycle-cpp`: `demo_bringup` +
+      `managed_bringup`) had one `system_model.yaml` silently overwrite the
+      other — which presented as "regeneration dropped a node". Output is now
+      namespaced `<dir>/<bringup>/<model>`, and `model_location` searches the
+      namespaced path before the flat one.
+
+      **The 3 that remain are real, and are the W1 pattern:**
+
+      | Bringup | Hand-authored content absent from every input |
+      | --- | --- |
+      | `ws-params-rust` | `params_files` + a second `param_sources` entry |
+      | `ws-qos-rust` | node `params` (`qos_overrides.…`) |
+      | `ws-sizing-rust` | `structure.topics` |
+
+      Each was verified against the launch file: `ws-qos-rust`'s launch declares
+      NO `<param>`, yet its model carries a `qos_overrides` param;
+      `ws-params-rust`'s launch declares the inline param (which resolves) but
+      not the file source. So these were typed into the artifact, exactly like
+      the 17 tier dims of issue 0380.
+
+      Fixing them means teaching the resolver to accept the declarations —
+      per-node `params`/`params_files` and `topics` from `system.toml` — which
+      is a change to the vendored `ros-launch-manifest` fork, the same shape as
+      `75d57f59b`'s `[param_services]` fix. Left for a session that can push the
+      fork branches.
+
+      ~~**The 13 LOSS cases are the blocker**, and they are the W1 pattern again:~~
       content only a human put there. `lifecycle_autostart: active`
       (ws-lifecycle-{cpp,rust}), resolved parameter tables (ws-params-rust), and
       fields in the safety/sizing/qos demos. Deleting would silently drop them
