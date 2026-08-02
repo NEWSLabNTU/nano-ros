@@ -102,7 +102,43 @@ the submodule pointer never moved, so `git status` in the superproject was clean
 A fork commit is not landed until the fork is PUSHED and the pointer bumped —
 until then a routine checkout can silently revert it.
 
-**Sweep result (unchanged):** `-fsyntax-only -Werror=implicit-function-declaration
+**Full vendored-C sweep (2026-08-03) — the class is confined to zenoh-pico.**
+
+Two complementary methods, because neither alone covers the tree:
+
+1. `scripts/dev/sweep-vendored-c-decls.sh` — `-fsyntax-only` per TU with both
+   diagnostics as errors. Catches sites reachable without build context, which
+   is where zenoh-pico's two lived.
+
+   | tree | hits | compiled | needs build ctx |
+   | --- | --- | --- | --- |
+   | mbedtls | 0 | 159 | 7 |
+   | micro-xrce-dds-client | 0 | 3 | 52 |
+   | cyclonedds | 2 (both non-build) | 3 | 253 |
+   | ThreadX | 0 | 17 | 2153 |
+
+   The two cyclonedds hits are `docs/manual/_static/security_by_qos.c` (a manual
+   snippet) and `etc/coverity-model.c` (a static-analysis model) — neither is
+   compiled by any build. mbedtls is the only tree this method genuinely covers;
+   for the rest most TUs need a generated config or a port header.
+
+2. Building the `-sys` crates in their REAL configuration, which is the coverage
+   method 1 cannot reach. On gcc >= 14 both diagnostics are errors by default,
+   so a clean build on a current compiler proves the class absent for whatever
+   configuration that build selects:
+
+   ```
+   CFLAGS="-Werror=implicit-function-declaration -Werror=int-conversion" \
+       cargo build -p zpico-sys -p cyclonedds-sys -p nros-rmw-xrce-cffi
+   ```
+
+   All three build clean on gcc 16.1.1 — including `zpico-sys` itself, which is
+   the regression check for the two fixes above.
+
+Not swept: FreeRTOS/lwIP and NetX Duo are not provisioned on this host, so their
+vendored C has never met a gcc >= 14. They are the remaining exposure.
+
+**Original zenoh-pico sweep (unchanged):** `-fsyntax-only -Werror=implicit-function-declaration
 -Werror=int-conversion` over all 128 host-compilable zenoh-pico TUs, in both the
 shipped config and with every `Z_FEATURE_LINK_*` forced on, reports zero further
 sites. The other vendored C (mbedtls, micro-xrce-dds-client, FreeRTOS/lwIP,
