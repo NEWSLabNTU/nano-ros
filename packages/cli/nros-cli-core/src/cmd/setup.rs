@@ -59,6 +59,15 @@ pub struct Args {
     #[arg(long = "source")]
     pub sources: Vec<String>,
 
+    /// #0390 — provision the whole build-stage source UNION the repo's
+    /// `just test` / `build-test-fixtures` need (every RMW's `-sys` source + the
+    /// platform sources the workspace graph path-deps), independent of the
+    /// per-board `nros setup <board>` slice. The index's top-level `build_sources`
+    /// is the SSOT. With `--check`, only VERIFY they are present and name
+    /// `nros setup --source <name>` per missing — the preflight the two recipes run.
+    #[arg(long = "build-sources")]
+    pub build_sources: bool,
+
     /// Install prefix override (only with `--tool`): place the tool here instead
     /// of the shared store, e.g. `--prefix build/qemu` so the test harness finds
     /// it where it already looks. Layout is identical (`<prefix>/bin/…`).
@@ -186,6 +195,17 @@ pub fn run(args: Args) -> Result<()> {
     }
     if args.system {
         return run_system(&index, args.check, args.sudo);
+    }
+    // #0390 — must precede the generic `--check` below: `--build-sources --check`
+    // is its own preflight, not the all-deps doctor pass.
+    if args.build_sources {
+        return run_build_sources(
+            &index,
+            &args.index,
+            args.check,
+            args.dry_run,
+            shallow_override(&args),
+        );
     }
     if args.check {
         return run_check_all(&index);
@@ -706,6 +726,79 @@ fn provision_named_sources(
         );
     }
     Ok(())
+}
+
+/// #0390 — is a `[source.*]` provisioned on disk? An uninitialised submodule is
+/// an absent or EMPTY directory; a provisioned one has entries. `dest` is
+/// workspace-relative.
+fn source_present(src: &crate::orchestration::sdk_index::SourcePackage, workspace: &Path) -> bool {
+    let Some(dest) = src.dest.as_deref() else {
+        return false;
+    };
+    std::fs::read_dir(workspace.join(dest))
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false)
+}
+
+/// #0390 — provision (or with `check`, VERIFY) the repo build stage's source
+/// UNION (the index's top-level `build_sources`). `just test` links every RMW's
+/// `-sys` and `build-test-fixtures` resolves graphs path-depping platform
+/// sources, so the contributor build needs the whole set regardless of the
+/// per-board slice `nros setup <board>` provisions. The `--check` mode is the
+/// preflight those recipes run: it names `nros setup --source <name>` per missing
+/// and exits non-zero, instead of letting the build die deep in a raw cargo /
+/// build-script error naming a path with no mention of setup.
+fn run_build_sources(
+    index: &SdkIndex,
+    index_path: &Path,
+    check: bool,
+    dry_run: bool,
+    shallow: Option<bool>,
+) -> Result<()> {
+    if index.build_sources.is_empty() {
+        bail!("nros setup --build-sources: the index declares no top-level `build_sources`");
+    }
+    // A name in `build_sources` with no `[source.*]` is a data bug — catch it
+    // before it looks like a provisioning miss.
+    for name in &index.build_sources {
+        if !index.source.contains_key(name.as_str()) {
+            bail!(
+                "nros setup --build-sources: `{name}` is in `build_sources` but has no [source.{name}]"
+            );
+        }
+    }
+
+    if check {
+        let workspace = index_workspace(index_path);
+        let missing: Vec<&str> = index
+            .build_sources
+            .iter()
+            .filter(|n| !source_present(&index.source[n.as_str()], &workspace))
+            .map(String::as_str)
+            .collect();
+        if missing.is_empty() {
+            eprintln!(
+                "nros setup --build-sources: all {} build-stage source(s) present",
+                index.build_sources.len()
+            );
+            return Ok(());
+        }
+        eprintln!(
+            "nros setup: {} build-stage source(s) not provisioned — the workspace build needs them:",
+            missing.len()
+        );
+        for name in &missing {
+            eprintln!("  [MISSING] {name}    run: nros setup --source {name}");
+        }
+        eprintln!("  (or provision them all:  nros setup --build-sources)");
+        bail!(
+            "{} build-stage source(s) missing — see the `nros setup --source` line(s) above",
+            missing.len()
+        );
+    }
+
+    let names: Vec<String> = index.build_sources.clone();
+    provision_named_sources(index, index_path, &names, dry_run, shallow)
 }
 
 /// Phase 187.6 — lazy install support: resolve the

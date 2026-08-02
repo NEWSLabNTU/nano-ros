@@ -1229,7 +1229,7 @@ test-zpico-multisession verbose="": build-zenohd
 # (nextest 0.9.133+), so the list lives here rather than under a
 # `[profile.fast]` default-filter.
 [group("main")]
-test verbose="": _require-fixtures _check-fixtures-stale build-zenohd test-zpico-multisession
+test verbose="": _require-build-sources _require-fixtures _check-fixtures-stale build-zenohd test-zpico-multisession
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
@@ -1302,7 +1302,7 @@ test verbose="": _require-fixtures _check-fixtures-stale build-zenohd test-zpico
 # staleness gate and the test run derive from ONE computation, which is what
 # `ci_lane.rs` already claimed and only two of the three actually did.
 [group("full-matrix")]
-build-test-fixtures lane="all": _clear-fixture-stamp generate-bindings setup-launch-resolve build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
+build-test-fixtures lane="all": _require-build-sources _clear-fixture-stamp generate-bindings setup-launch-resolve build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
     #!/usr/bin/env bash
     set -e
     source scripts/build/fixture-lane.sh
@@ -1567,6 +1567,22 @@ _require-fixtures:
     fi
     source scripts/build/fixture-lane.sh
     nros_fixtures_stamp_require "${NROS_FIXTURE_LANE:-all}"
+
+# issue 0390 — preflight: the repo's build stage needs the UNION of vendored
+# `[source.*]` (every RMW's `-sys` source + the platform sources the workspace
+# graph path-deps), NOT the per-board slice `nros setup <board>` provisions. Fail
+# fast, naming `nros setup --source <name>` per missing, instead of dying deep in
+# a raw cargo / build-script error naming a path with no mention of setup. The
+# union is the index's top-level `build_sources`. Bypass with
+# NROS_SKIP_BUILD_SOURCE_CHECK=1.
+[private]
+_require-build-sources:
+    #!/usr/bin/env bash
+    if [ "${NROS_SKIP_BUILD_SOURCE_CHECK:-0}" != "0" ]; then
+        exit 0
+    fi
+    source scripts/build/cargo.sh
+    "$(nros_cli_bin)" setup --build-sources --check
 
 # Warn (non-fatal) about prebuilt fixture cells whose inputs changed since the
 # binary was built — sources edited without re-running build-fixtures. Runs the

@@ -12,6 +12,26 @@
 #
 # host keys: linux-x86_64 · linux-arm64 · macos-arm64  (matches sdk_index::host_key)
 
+# --- the repo's own build-stage source union (issue 0390) ---
+# The `[source.*]` names `just test` (links every RMW's `-sys`) and
+# `just build-test-fixtures` (resolves component graphs that path-dep platform
+# sources even for a native component) need present, regardless of which board
+# or rmw was provisioned. `nros setup --build-sources` provisions them all;
+# `nros setup --build-sources --check` is the preflight the two recipes run.
+# Curated from what the ROOT workspace + metadata refresh actually touch on the
+# host — NOT the cross-only trees (freertos/threadx/nuttx kernels, px4-autopilot,
+# rosidl), which only a target build for that board pulls in.
+build_sources = [
+    "zenoh-pico",             # zpico-sys build.rs (root member)
+    "mbedtls",                # zpico-sys TLS build (root member)
+    "cyclonedds-src",         # cyclonedds-sys build.rs (root member)
+    "micro-xrce-dds-client",  # nros-rmw-xrce-cffi build.rs (root member)
+    "micro-cdr",              # nros-rmw-xrce-cffi build.rs (root member)
+    "px4-rs",                 # px4-sitl-tests is a root cargo path-dep — the
+                              # workspace cannot even LOAD without it
+    "nuttx-libc",             # build-test-fixtures metadata refresh path-deps it
+]
+
 # --- prebuilt host tools (target-agnostic) ---
 
 # The `nros` CLI is NOT an index tool. It lives in-tree at `packages/cli/`

@@ -47,6 +47,16 @@ pub struct SdkIndex {
     /// NOT by `nros setup`.
     #[serde(default)]
     pub reference: BTreeMap<String, ReferenceEntry>,
+    /// #0390 — the `[source.*]` the REPO's OWN build stage needs, as a UNION
+    /// (distinct from the per-board/per-rmw `build_sources`, which cover building
+    /// an APP for one target). `just test` links every RMW's `-sys` crate, and
+    /// `build-test-fixtures` resolves graphs that path-dep platform sources
+    /// (`nuttx-libc`, `px4-rs`) even for a native component — so the contributor
+    /// build needs this whole set regardless of which board/rmw was provisioned.
+    /// `nros setup --build-sources` provisions them; `--build-sources --check` is
+    /// the preflight `just test` / `build-test-fixtures` run before building.
+    #[serde(default)]
+    pub build_sources: Vec<String>,
     /// phase-327 W1 (RFC-0062) — OS packages by ABSTRACT key, mapped per
     /// package manager. The class `apt-packages` + every module's ad-hoc
     /// prereq probe moves into. `nros setup --system` composes the detected
