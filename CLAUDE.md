@@ -113,12 +113,15 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 - **Codegen + orchestration CLI lives in-tree at `packages/cli/`** (a sub-workspace, own
   `Cargo.toml`/`Cargo.lock`). Edits to codegen / `colcon_nano_ros` / orchestration land there; build
   via `just setup-cli`. The retired `packages/codegen` submodule is fully gone (no stray leftover).
-  `packages/cli/` nests `third-party/ros-launch-resolve` + `testing_workspaces/ros2_rust_examples`.
-- **Launch toolchain (RFC-0060, amended to TWO repositories — phase-332):** `ros-launch-manifest`
-  (spec) is folding INTO `play_launch`; nano-ros pins the resolver (`ros-launch-resolve`,
-  launch tree → SystemModel; needs CPython, NOT ROS/colcon), through which rlm arrives
-  transitively — ONE copy of the spec (the 0285 double-vendoring is gone). `nros` never links
-  the Linux runtime layer. The `nros-launch-resolve` helper is built by
+  `packages/cli/` nests `third-party/play_launch` + `testing_workspaces/ros2_rust_examples`.
+- **Launch toolchain (RFC-0060, amended to TWO repositories — phase-332 W1/W2 landed):** nano-ros
+  pins the **`play_launch`** repo at `packages/cli/third-party/play_launch`; layer 2 (the resolver,
+  launch tree → SystemModel, needs CPython NOT ROS/colcon) is REGULAR FILES at
+  `src/ros-launch-resolve`. Init NON-recursively (`git submodule update --init
+  packages/cli/third-party/play_launch`) — layer-3 runtime submodules (`src/vendor/*`, container,
+  msgs) are never built by nano-ros. `ros-launch-manifest` (spec) is a git-TAG cargo dep (`v0.1.0`),
+  no longer nested — ONE copy of the spec (the 0285 double-vendoring is gone), and the old
+  `--recursive` landmine is retired. The `nros-launch-resolve` helper is built by
   `just setup-launch-resolve` and invoked by ABSOLUTE PATH, never `$PATH` (issue 0285).
 - **Don’t modify vendored/generated:** `third-party/`, `packages/interfaces/*/generated/`, build
   output — unless the task explicitly requires regeneration. Preserve worktree changes.

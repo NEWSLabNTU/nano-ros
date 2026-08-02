@@ -2971,40 +2971,35 @@ setup-launch-resolve:
     root="{{justfile_directory()}}"
     crate="$root/packages/cli/nros-launch-resolve"
     bin="$crate/target/release/nros-launch-resolve"
-    if [ ! -f "$crate/../third-party/ros-launch-resolve/resolve/Cargo.toml" ]; then
-        echo "[setup-launch-resolve] SKIP: ros-launch-resolve submodule not initialised"
-        echo "  git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve"
+    if [ ! -f "$crate/../third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
+        echo "[setup-launch-resolve] SKIP: play_launch submodule not initialised"
+        # NON-recursive on purpose (RFC-0060): layer 2 (resolve + parser) is
+        # regular files inside play_launch; its layer-3 submodules (vendor/*,
+        # container, msgs) are never built by nano-ros and must stay uninitialised.
+        echo "  git submodule update --init packages/cli/third-party/play_launch"
         exit 0
     fi
     # `find -newer` errors when the reference file is absent, and `set -e`
     # would abort the very first build — check existence before comparing.
     #
-    # The probe MUST watch the vendored tree too, not just this crate: the
-    # binary compiles `third-party/ros-launch-resolve` (and its nested
-    # ros-launch-manifest) in, and those advance by SUBMODULE PIN. Watching only
-    # `$crate` meant a pin bump left the old binary in place — a fix that had
-    # landed upstream, with a regression test for it, kept failing here, and the
-    # symptom (`node '/listener' is not placed`) looked like a code regression on
-    # main rather than a museum binary. Same class as issue 0196: a build-side
-    # probe that misses an input the build consumes.
+    # The probe MUST watch the vendored resolver tree too, not just this crate:
+    # the binary compiles `play_launch/src/ros-launch-resolve` in, and that
+    # advances by the play_launch SUBMODULE PIN. Watching only `$crate` meant a
+    # pin bump left the old binary in place — a fix that had landed upstream,
+    # with a regression test for it, kept failing here, and the symptom
+    # (`node '/listener' is not placed`) looked like a code regression on main
+    # rather than a museum binary. Same class as issue 0196: a build-side probe
+    # that misses an input the build consumes.
     if [ -x "$bin" ]; then
-        # `git ls-files` + mtime walk, not `find`. The vendored resolver tree
-        # is a SUBMODULE, so `git ls-files` must be run inside it — from the
-        # superproject the index holds only the gitlink, which would silently
-        # match nothing and make every pin bump look current. That is the exact
-        # museum-binary failure this probe exists to catch, so it is checked
-        # explicitly rather than assumed.
-        #
-        # `--recurse-submodules` is load-bearing for the same reason one level
-        # down: ros-launch-manifest is nested INSIDE ros-launch-resolve, and a
-        # plain `ls-files` on the outer tree lists only the inner gitlink. The
-        # first version of this conversion omitted it, so an edit to
-        # ros-launch-manifest's system_config.rs left a binary a full day older
-        # than its source and the probe called it fresh — the resolver fix
-        # appeared not to work, which reads as a code bug rather than a stale
-        # binary. `find` had this right by accident (it walks directories and
-        # neither knows nor cares about submodule boundaries); the index does
-        # not, so it must be asked.
+        # `git ls-files` + mtime walk, not `find`. The resolver tree lives inside
+        # the play_launch SUBMODULE, so `git ls-files` is run inside it (`-C`) —
+        # from the superproject the index holds only the gitlink, which would
+        # silently match nothing and make every pin bump look current, the exact
+        # museum-binary failure this probe exists to catch. Scoped to the layer-2
+        # subdir (`src/ros-launch-resolve`), which is regular files — no
+        # `--recurse-submodules`: ros-launch-manifest is no longer nested (it is a
+        # tag-pinned cargo git dep since phase-332 W2), and play_launch's layer-3
+        # submodules are deliberately uninitialised.
         #
         # phase-318 W1.b builds `scripts/build/resolve-fingerprint.sh` on top of
         # this probe: it hashes the MODELS this binary emits, cached by the
@@ -3013,13 +3008,21 @@ setup-launch-resolve:
         # stable fingerprint, every fixture reported fresh indefinitely. This
         # probe is the only thing standing between the two, so its blind spots
         # become that mechanism's blind spots.
-        _res="$root/packages/cli/third-party/ros-launch-resolve"
+        # Layer 2 (resolve + parser) is REGULAR FILES under
+        # `play_launch/src/ros-launch-resolve` (phase-332: folded into the
+        # play_launch repo). No `--recurse-submodules` — ros-launch-manifest is
+        # no longer nested here; it is a tag-pinned cargo git dep (RFC-0060
+        # amendment / phase-332 W2), so its staleness is gated by the tag + the
+        # lock, not by a source-tree walk. Scope the ls-files to the layer-2
+        # subdir so play_launch's UNINITIALISED layer-3 submodules (vendor/*,
+        # container, msgs) are neither walked nor required.
+        _pl="$root/packages/cli/third-party/play_launch"
         stale_src=""
         while IFS= read -r _f; do
             if [ "$_f" -nt "$bin" ]; then stale_src="$_f"; break; fi
         done < <( { git ls-files "$crate" | grep -E '\.rs$|Cargo\.toml$'
-                    git -C "$_res" ls-files --recurse-submodules | grep -E '\.rs$|Cargo\.toml$' \
-                        | sed "s|^|$_res/|" ; } )
+                    git -C "$_pl" ls-files "src/ros-launch-resolve" | grep -E '\.rs$|Cargo\.toml$' \
+                        | sed "s|^|$_pl/|" ; } )
         if [ -z "$stale_src" ]; then
             exit 0
         fi

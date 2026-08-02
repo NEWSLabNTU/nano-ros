@@ -7,10 +7,12 @@
 # `nros-launch-resolve` makes that collision impossible in both directions: we
 # cannot be shadowed, and we never shadow a user's real `play_launch`.
 #
-# Its OWN workspace on purpose. It links `play_launch`, which path-deps its own
-# vendored `ros-launch-manifest`; `nros-cli-core` path-deps nano-ros's separate
-# copy. Two crates of the same name in one cargo graph is an error, so this
-# crate is excluded from the `packages/cli` workspace and carries its own lock.
+# Its OWN workspace on purpose. It links layer 2 from the `play_launch` repo,
+# whose `ros-launch-resolve` git-deps `ros-launch-manifest` by tag (v0.1.0);
+# `nros-cli-core` deps the SAME rlm tag. Both resolve to one rev, but keeping
+# this crate excluded from the `packages/cli` workspace (its own lock) preserves
+# the separation the old two-copies layout needed and stays robust if the two
+# ever diverge on a pin.
 [package]
 name = "nros-launch-resolve"
 version = "0.5.0"
@@ -30,8 +32,8 @@ path = "src/main.rs"
 # `default = ["runtime"]` could undo. CPython is still required — the launch
 # parser embeds it via pyo3 — which is why this stays a separately built helper
 # instead of being linked into the portable `nros` binary.
-ros-launch-resolve = { path = "../third-party/ros-launch-resolve/resolve" }
+ros-launch-resolve = { path = "../third-party/play_launch/src/ros-launch-resolve/resolve" }
 clap = { version = "4", features = ["derive"] }
 eyre = "0.6"
-play_launch_parser = { path = "../third-party/ros-launch-resolve/parser/crates/play_launch_parser" }
+play_launch_parser = { path = "../third-party/play_launch/src/ros-launch-resolve/parser/crates/play_launch_parser" }
 serde_json = "1"

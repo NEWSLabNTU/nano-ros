@@ -935,8 +935,8 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
             "sync: {} SystemModel(s) need resolving but `nros-launch-resolve` \
              is not next to the `nros` binary:\n{}\n\n\
              Build it:  just setup-launch-resolve\n\
-             (If the submodule is missing:  git submodule update --init --recursive \
-             packages/cli/third-party/ros-launch-resolve)\n\n\
+             (If the submodule is missing:  git submodule update --init \
+             packages/cli/third-party/play_launch)\n\n\
              Refusing to continue with stale models — a museum SystemModel builds \
              clean and then places nodes wrong at runtime.",
             blocked.len(),

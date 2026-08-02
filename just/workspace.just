@@ -299,9 +299,9 @@ doctor:
     nlr_bin="{{justfile_directory()}}/packages/cli/nros-launch-resolve/target/release/nros-launch-resolve"
     if [ -x "$nlr_bin" ]; then
         echo "  [OK] nros-launch-resolve (packages/cli/nros-launch-resolve/target/release)"
-    elif [ ! -f "{{justfile_directory()}}/packages/cli/third-party/ros-launch-resolve/resolve/Cargo.toml" ]; then
-        echo "  [MISSING] ros-launch-resolve submodule — nros sync cannot resolve SystemModels"
-        echo "            run: git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve"
+    elif [ ! -f "{{justfile_directory()}}/packages/cli/third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
+        echo "  [MISSING] play_launch submodule — nros sync cannot resolve SystemModels"
+        echo "            run: git submodule update --init packages/cli/third-party/play_launch"
         fail=1
     else
         echo "  [MISSING] nros-launch-resolve (run: just setup-launch-resolve)"

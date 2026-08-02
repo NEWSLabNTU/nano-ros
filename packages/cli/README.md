@@ -30,7 +30,7 @@ installing rustup if needed:
 Equivalent by hand (same build, same binary):
 
 ```bash
-git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve
+git submodule update --init packages/cli/third-party/play_launch
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 ```
 
