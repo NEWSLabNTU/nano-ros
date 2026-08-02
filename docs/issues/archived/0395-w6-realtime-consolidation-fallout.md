@@ -98,3 +98,47 @@ models, up from 80.
 
 Until (1) is answered the baseline should NOT be re-recorded as-is: writing it
 now accepts the loss silently, which is what the gate is meant to prevent.
+
+## Follow-up (2026-08-03) — the `mid` tier DOES have a consumer
+
+The fix above restored two tiers and left `aux_pkg` unreferenced, on the reading
+that "no test consumes a mid tier and the row's own comment describes two". The
+comment was stale; the test is not:
+
+```rust
+// packages/testing/nros-tests/tests/realtime_tiers_e2e.rs — case::freertos_cpp
+// THREE tiers — [aux] (50 ms, spawned BY a spawned tier) is the #144
+// chained-spawn regression signal ...
+proof: Proof::SerialTicks(&["ctrl", "aux", "telem"]),
+```
+
+Before W6 the row pointed at `ws-realtime-cpp-mps2/src/demo_bringup`, whose
+launch is 3-node and whose `system.toml` carried `[tiers.mid]` — so the fixture
+really did run three tiers, and the two-tier comment beside the row described
+the OTHER workspace. Landing the two-tier reading would have left the #144
+signal quietly unexercised: `SerialTicks` waits for an `aux` tick that a
+two-tier image never emits, so the failure surfaces a QEMU tier away, which is
+the distance issue 0380 is about.
+
+Restored: `[tiers.mid]` (50 ms, posix 40, freertos 3) and the `aux_node`
+component bound to it via `group_tiers = { aux = "mid" }`.
+
+`aux_pkg` builds only on the mps2 board, so the shared `system.launch.xml` stays
+2-node and the 3-node resolve is a VARIANT — `launch/freertos_system.launch.xml`
+-> `config/freertos_system_model.yaml`, declared as a `[[model]]` block, which is
+the pattern the `rclcpp` / `subnode` entries in this same bringup already use.
+`freertos_entry` consumes that model. No second bringup, so the fold W6 made
+still holds.
+
+Verified: the generated `NativeTierSpec` table is three entries with the
+spawn-parent chain the #144 fix serializes —
+
+```
+{ "high", …, 5LL, 0u,  10000ull, …, parent 0u }
+{ "mid",  …, 3LL, 0u,  50000ull, …, parent 0u }   // spawned by high
+{ "low",  …, 2LL, 0u, 100000ull, …, parent 1u }   // spawned by mid — two hops
+```
+
+Baseline re-recorded with the new model tracked first (the gate enumerates via
+`git ls-files`, so an untracked model is invisible to it): 118 dims across 9
+models.

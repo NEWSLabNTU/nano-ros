@@ -4,12 +4,13 @@ meta:
   - path: launch/subnode_system.launch.xml
     sha256: cf0adad5e1ba8b071ba62df40b084d2df2d6b91ba15a123a9b182085b33913f0
   - path: system.toml
-    sha256: b8cd55ad5265cfdab7ab1e01cdb2bc8d92ff56085fba4d56620a0310b4bdbc5c
+    sha256: 40fde3beb3d12ba296bcfe72891802c2106e7385ae3da17839e2245ba30b7e00
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
   diagnostics:
   - 'system config: [[component]] ''ctrl_node'' has group_tiers but no matching launch node (absent in this variant?)'
+  - 'system config: [[component]] ''aux_node'' has group_tiers but no matching launch node (absent in this variant?)'
   - 'system config: [[component]] ''telem_node'' has group_tiers but no matching launch node (absent in this variant?)'
 structure:
   scopes:
@@ -56,3 +57,9 @@ execution:
         priority: 10
       nuttx:
         priority: 100
+    mid:
+      spin_period_us: 50000
+      posix:
+        priority: 40
+      freertos:
+        priority: 3

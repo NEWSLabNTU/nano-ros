@@ -51,7 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#395** (RESOLVED 2026-08-03) — phase-331 W6 dropped the `[tiers.*.freertos]` declarations when it retargeted the `workspace-cpp-freertos-realtime` fixture onto `realtime-cpp`, and pointed the row at a `deploy_bringup` that belongs to a different workspace. Restored from `a92778843^` (high=5, low=2, cpp low core=0 — the dim `tests/freertos_core_pin_applied.rs` asserts), row repointed at `src/demo_bringup`. Two further baseline entries turned out to be W6 RENAME errors rather than losses: the `fast`/`bulk` dims were intact under `realtime-cpp-subnode-portable`, and the `mid.*` three-tier system was deliberately dropped (`aux_pkg` is now unreferenced — follow-up).
+**#395** (RESOLVED 2026-08-03) — phase-331 W6 dropped the `[tiers.*.freertos]` declarations when it retargeted the `workspace-cpp-freertos-realtime` fixture onto `realtime-cpp`, and pointed the row at a `deploy_bringup` that belongs to a different workspace. Restored from `a92778843^` (high=5, low=2, cpp low core=0 — the dim `tests/freertos_core_pin_applied.rs` asserts), row repointed at `src/demo_bringup`. Two further baseline entries turned out to be W6 RENAME errors rather than losses: the `fast`/`bulk` dims were intact under `realtime-cpp-subnode-portable`, and the `mid.*` three-tier system was deliberately dropped (`aux_pkg` unreferenced — REVERSED by the follow-up below).
+
+Follow-up on the same day: the two-tier restore left `aux_pkg` unreferenced on the reading that
+no test consumes a `mid` tier. `realtime_tiers_e2e`'s `freertos_cpp` cell does —
+`Proof::SerialTicks(["ctrl", "aux", "telem"])`, the #144 chained-spawn signal — and the row's
+"2-tier" comment described the OTHER workspace (the pre-W6 row pointed at the 3-node mps2
+bringup). `[tiers.mid]` + the `aux_node` binding are back; because `aux_pkg` builds only on the
+mps2 board, the 3-node resolve is a VARIANT model (`freertos_system.launch.xml` ->
+`freertos_system_model.yaml`, the pattern the rclcpp/subnode entries already use) rather than a
+second bringup, so W6's fold holds. Generated `NativeTierSpec` is three entries with the
+two-hop spawn chain. Baseline 118 dims / 9 models.
 
 Recently resolved: **#396** (filed as #395; renumbered — id collision) — features +
 local-msg-package couldn't `nros sync`: the phase-333 migration narrowed the patch table while the

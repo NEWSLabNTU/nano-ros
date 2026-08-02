@@ -1,32 +1,42 @@
 meta:
   version: 1
   inputs:
-  - path: launch/system.launch.xml
-    sha256: 263292326cd1f0847e622d705fefdc259c519b5f4d32240960e7223dd4156c25
+  - path: launch/freertos_system.launch.xml
+    sha256: 1d631ec2fad8328a1f9a18329054e90beb7b1c2f8695d37be310c9e3d1232507
   - path: system.toml
     sha256: 40fde3beb3d12ba296bcfe72891802c2106e7385ae3da17839e2245ba30b7e00
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
-  diagnostics:
-  - 'system config: [[component]] ''aux_node'' has group_tiers but no matching launch node (absent in this variant?)'
 structure:
   scopes:
-    system.launch.xml:
-      file: system.launch.xml
+    freertos_system.launch.xml:
+      file: freertos_system.launch.xml
   nodes:
+    /aux_node:
+      scope: freertos_system.launch.xml
+      pkg: aux_pkg
+      exec: aux
+      node_name: aux_node
     /ctrl_node:
-      scope: system.launch.xml
+      scope: freertos_system.launch.xml
       pkg: ctrl_pkg
       exec: ctrl
       node_name: ctrl_node
     /telem_node:
-      scope: system.launch.xml
+      scope: freertos_system.launch.xml
       pkg: telem_pkg
       exec: telem
       node_name: telem_node
 execution:
   deploy:
+    /aux_node:
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
     /ctrl_node:
       domain: 0
       rmw: zenoh
@@ -74,5 +84,6 @@ execution:
       freertos:
         priority: 3
   bindings:
+    /aux_node/aux: mid
     /ctrl_node/ctrl: high
     /telem_node/telem: low

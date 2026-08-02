@@ -3,6 +3,24 @@
 # disappearing line is data loss, not a refresh.
 #
 # Regenerate deliberately:  bash scripts/check-model-dims.sh --write
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	high.class
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	high.freertos.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	high.nuttx.budget_us
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	high.nuttx.period_us
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	high.nuttx.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	high.posix.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	high.spin_period_us
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	high.zephyr.deadline_us
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	high.zephyr.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	low.freertos.core
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	low.freertos.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	low.nuttx.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	low.posix.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	low.spin_period_us
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	low.zephyr.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	mid.freertos.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	mid.posix.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/freertos_system_model.yaml	mid.spin_period_us
 examples/workspaces/realtime-cpp/src/demo_bringup/config/rclcpp_system_model.yaml	high.class
 examples/workspaces/realtime-cpp/src/demo_bringup/config/rclcpp_system_model.yaml	high.freertos.priority
 examples/workspaces/realtime-cpp/src/demo_bringup/config/rclcpp_system_model.yaml	high.nuttx.budget_us
@@ -18,6 +36,9 @@ examples/workspaces/realtime-cpp/src/demo_bringup/config/rclcpp_system_model.yam
 examples/workspaces/realtime-cpp/src/demo_bringup/config/rclcpp_system_model.yaml	low.posix.priority
 examples/workspaces/realtime-cpp/src/demo_bringup/config/rclcpp_system_model.yaml	low.spin_period_us
 examples/workspaces/realtime-cpp/src/demo_bringup/config/rclcpp_system_model.yaml	low.zephyr.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/rclcpp_system_model.yaml	mid.freertos.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/rclcpp_system_model.yaml	mid.posix.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/rclcpp_system_model.yaml	mid.spin_period_us
 examples/workspaces/realtime-cpp/src/demo_bringup/config/subnode_system_model.yaml	high.class
 examples/workspaces/realtime-cpp/src/demo_bringup/config/subnode_system_model.yaml	high.freertos.priority
 examples/workspaces/realtime-cpp/src/demo_bringup/config/subnode_system_model.yaml	high.nuttx.budget_us
@@ -33,6 +54,9 @@ examples/workspaces/realtime-cpp/src/demo_bringup/config/subnode_system_model.ya
 examples/workspaces/realtime-cpp/src/demo_bringup/config/subnode_system_model.yaml	low.posix.priority
 examples/workspaces/realtime-cpp/src/demo_bringup/config/subnode_system_model.yaml	low.spin_period_us
 examples/workspaces/realtime-cpp/src/demo_bringup/config/subnode_system_model.yaml	low.zephyr.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/subnode_system_model.yaml	mid.freertos.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/subnode_system_model.yaml	mid.posix.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/subnode_system_model.yaml	mid.spin_period_us
 examples/workspaces/realtime-cpp/src/demo_bringup/config/system_model.yaml	high.class
 examples/workspaces/realtime-cpp/src/demo_bringup/config/system_model.yaml	high.freertos.priority
 examples/workspaces/realtime-cpp/src/demo_bringup/config/system_model.yaml	high.nuttx.budget_us
@@ -48,6 +72,9 @@ examples/workspaces/realtime-cpp/src/demo_bringup/config/system_model.yaml	low.n
 examples/workspaces/realtime-cpp/src/demo_bringup/config/system_model.yaml	low.posix.priority
 examples/workspaces/realtime-cpp/src/demo_bringup/config/system_model.yaml	low.spin_period_us
 examples/workspaces/realtime-cpp/src/demo_bringup/config/system_model.yaml	low.zephyr.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/system_model.yaml	mid.freertos.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/system_model.yaml	mid.posix.priority
+examples/workspaces/realtime-cpp/src/demo_bringup/config/system_model.yaml	mid.spin_period_us
 examples/workspaces/realtime-cpp-subnode-portable/src/deploy_bringup/config/system_model.yaml	bulk.posix.priority
 examples/workspaces/realtime-cpp-subnode-portable/src/deploy_bringup/config/system_model.yaml	bulk.spin_period_us
 examples/workspaces/realtime-cpp-subnode-portable/src/deploy_bringup/config/system_model.yaml	fast.posix.priority

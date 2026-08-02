@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!-- Phase 274.W3 / phase-144 (#144) — 3-node, 3-tier C++ entry on
+     FreeRTOS/mps2. Node `name`s must match system.toml [[component]].name
+     (RFC-0032 §7). aux_node is the mid tier (spawned by a spawned tier) that
+     proves the #144 chained-spawn fix.
+
+     Its own launch, not the shared 2-node `system.launch.xml`: aux_pkg builds
+     only on the mps2 board (see the workspace CMakeLists), so the native
+     entries cannot run it. phase-331 W6 folded the workspaces together and the
+     3-node shape came with the fold — this is the variant-model pattern the
+     rclcpp / subnode entries already use, not a second bringup. -->
+<launch>
+    <node pkg="ctrl_pkg" exec="ctrl" name="ctrl_node"/>
+    <node pkg="aux_pkg" exec="aux" name="aux_node"/>
+    <node pkg="telem_pkg" exec="telem" name="telem_node"/>
+</launch>

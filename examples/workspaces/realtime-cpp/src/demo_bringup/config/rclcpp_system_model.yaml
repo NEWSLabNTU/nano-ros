@@ -4,10 +4,12 @@ meta:
   - path: launch/rclcpp_system.launch.xml
     sha256: c7cf84499ffd7717324dfc8d6d9ac114e769f5fe70b4911525d7f8279b595690
   - path: system.toml
-    sha256: b8cd55ad5265cfdab7ab1e01cdb2bc8d92ff56085fba4d56620a0310b4bdbc5c
+    sha256: 40fde3beb3d12ba296bcfe72891802c2106e7385ae3da17839e2245ba30b7e00
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
+  diagnostics:
+  - 'system config: [[component]] ''aux_node'' has group_tiers but no matching launch node (absent in this variant?)'
 structure:
   scopes:
     rclcpp_system.launch.xml:
@@ -65,6 +67,12 @@ execution:
         priority: 10
       nuttx:
         priority: 100
+    mid:
+      spin_period_us: 50000
+      posix:
+        priority: 40
+      freertos:
+        priority: 3
   bindings:
     /ctrl_node/ctrl: high
     /telem_node/telem: low
