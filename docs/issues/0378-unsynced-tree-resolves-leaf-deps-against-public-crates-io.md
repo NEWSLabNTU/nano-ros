@@ -4,7 +4,7 @@ title: "A host set up by the documented flow cannot reach tier-1 ci — and the 
 status: open
 type: bug
 area: build
-related: [rfc-0048, issue-0363, issue-0368, issue-0373, phase-218]
+related: [rfc-0048, rfc-0067, issue-0363, issue-0368, issue-0373, phase-218, phase-333]
 ---
 
 # Unsynced leaves resolve against public crates.io; tier-1 ci is unreachable
@@ -132,6 +132,27 @@ leaves.
 
 Still open: the `--manifest-path`-from-elsewhere hole, which needs the layout
 decision above.
+
+## Study + design (2026-08-02) — RFC-0067 / phase-333
+
+Investigated the fix space with the maintainer. Rejected: enumerated stub crates
+(not SSoT — only `package.xml` is) and an `nros-`prefix (still a squattable
+crates.io name). The maintainer surfaced the deeper coupling: the message crate's
+committed identity has TWO env-varying axes — the **ament version** (→ committed
+lock drifts across distros under `--locked`; observed pinning 4.9.1 / 4.9.0 /
+5.3.6) and the **crates.io registry source** (→ this exposure). `0.0.0`-constant
+alone makes the exposure worse (`std_msgs = "0.0.0"` is a real squatted crate).
+
+Decision (RFC-0067): make BOTH axes env-invariant from `package.xml` — message
+deps become `path` deps (no crates.io name anywhere → fails closed, never the
+registry) and the generated crate stays `version = "0.0.0"` (ament → metadata),
+so a committed lock is byte-identical across distros. Prototype-validated on
+`int32-sink`: builds, unifies to one copy, lock pins `std_msgs 0.0.0` (no
+registry source), and from the repo ROOT resolves to `path+file://…` not
+crates.io — closing the `--manifest-path`-from-elsewhere hole this issue declared
+unclosable. **This refutes the "no repo-side config can fix that one" claim
+below.** Implementation: phase-333 (W1/W2 close the exposure with no ROS env; W3
+regen → `0.0.0` needs a ROS host).
 
 ## Direction
 
