@@ -51,12 +51,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#389** — `ZPICO_MAX_SESSIONS` defaults to 1 and no in-tree build raises it, so
-`two_sessions_deliver_cross_session_through_router` — the e2e proof for the multi-session work
-closed this cycle as #348/#376 — skips on every host, in every tier, always. The session-scoped
-tables #376 added (`service.rs:99-112`) collapse to the old layout at the default, so those fixes
-are unverified by CI. Silent-lane class (#0202, #0319, #0379): the test exists, so it looks covered.
-See `0389-*`. (2026-08-02)
+Recently resolved: **#389** — `ZPICO_MAX_SESSIONS` defaulted to 1 with nothing raising it, so the
+cross-session test — the only e2e proof for the #348/#376 multi-session work — skipped on every host
+in every tier, always. RESOLVED (2026-08-02, `b1db98829`): `just test-zpico-multisession` builds the
+shim at 2 in its own target dir and is a dependency of `just test`; the test PASSES, its first
+execution ever. Global default stays 1 — a root `[env]` would leak into in-tree examples via cargo's
+config merging (verified) and double their session tables. See `0389-*`. (2026-08-02)
 
 Recently resolved: **#388** — `just test-unit` claimed "no external deps" but two tests hardcoded
 `build/zenohd/zenohd`, bypassing the harness's own resolver, so a host provisioned by the documented
