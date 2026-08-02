@@ -582,6 +582,8 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
             class,
             name: inst_name,
             group_tiers: std::collections::BTreeMap::new(),
+            params: Default::default(),
+            params_files: Vec::new(),
         });
     } else {
         // Phase 212.N.12 in-flight — read the multi-shape via the
@@ -599,6 +601,8 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
                 class,
                 name: inst_name,
                 group_tiers: std::collections::BTreeMap::new(),
+                params: Default::default(),
+                params_files: Vec::new(),
             });
         }
     }

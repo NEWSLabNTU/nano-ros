@@ -150,6 +150,8 @@ mod tests {
             class: "ctrl_pkg::Ctrl".to_string(),
             name: "ctrl_node".to_string(),
             group_tiers: gt,
+            params: Default::default(),
+            params_files: Vec::new(),
         }];
         let map = collect_callback_groups(&cfg, &components);
         let decls = map.get("ctrl_node").expect("ctrl_node must be in map");

@@ -886,7 +886,12 @@ impl SystemHeader {
 }
 
 /// `[[component]]` row.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Eq` is deliberately absent: `params` holds `toml::Value`, which is only
+/// `PartialEq` (floats). Nothing needs `Eq` here — the parent `SystemToml` is
+/// `PartialEq` too — and a parameter's value type is worth more than a trait
+/// no caller uses.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SystemComponentEntry {
     pub pkg: String,
@@ -899,6 +904,19 @@ pub struct SystemComponentEntry {
     /// `callback_groups` tier (deprecated path — move to `group_tiers`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub group_tiers: BTreeMap<String, String>,
+    /// phase-330 W4 — deployment-time parameter values for this component's
+    /// node, equivalent to an inline `<param>` in the launch file.
+    ///
+    /// nano-ros does not consume these directly: the RESOLVER projects them
+    /// onto `structure.nodes` (`apply_params_to_nodes`, rlm v0.1.1). They are
+    /// declared here so this parser, which denies unknown fields, does not
+    /// reject a bringup that uses them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, toml::Value>,
+    /// phase-330 W4 — parameter FILE contents for this component's node, same
+    /// shape as a `<param from=…>` launch entry. Resolver-consumed, as `params`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub params_files: Vec<String>,
 }
 
 /// `[deploy.<target>]` block.
