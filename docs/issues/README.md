@@ -61,13 +61,14 @@ very check), and one launch resolving an uninstalled package. Also records the s
 that were NOT bugs — a wsroot bug in the probe, and `@NANO_ROS_ROOT@` templates that are
 materialised before use — so nobody re-investigates them. See `0392-*`. (2026-08-02)
 
-**#391** — ThreadX-RV64 C/C++ fixture build only works incrementally. Bare
-`fixtures-build.sh threadx-riscv64 {c,cpp} zenoh` (without the recipe's riscv64 board config +
-`-DCMAKE_TOOLCHAIN_FILE`) configures the ThreadX kernel with host `/usr/bin/cc` → `Error: no such
-instruction: csrrci %rax,mstatus`, and `configure_if_needed` caches the broken configure (recover
-only via `rm -rf build-zenoh`). Separately (issue-0196 class): the prebuilt-fixture freshness gate
-watches the ELF, not the cargo-nested `zpico.o`, so the 0387 `zpico.c` fix never recompiled into the
-riscv fixture and `rtos_e2e` ran a museum binary re-showing the fixed bug. See `0391-*`. (2026-08-02)
+Recently resolved: **#391** — ThreadX-RV64 C fixture lane built wrong-from-clean + a museum binary
+passed the staleness gate. RESOLVED (2026-08-02, `8ef697c95`): (1) the cmake configure helpers now
+`rm -rf` a build dir whose cached `CMAKE_TOOLCHAIN_FILE` differs from the requested one — CMake pins
+the compiler at first configure and won't swap it on re-configure, so a host-cc-poisoned cache used
+to persist (RISC-V kernel → x86 assembler, `csrrci %rax`); the lane self-heals now. (2)
+`require_prebuilt_binary_fresh_cmake` also walks `zpico-sys/c/**` (the cargo-nested C shim invisible
+to `ninja -t deps`) for zenoh fixtures, so a `zpico.c` edit trips STALE instead of running a museum
+binary (issue-0196 class). See `archived/0391-*`. (2026-08-02)
 
 **#390** — `nros setup <board> --rmw <x>` provisions ONE board's sources, but the build stage needs
 the union: `just test` builds `--workspace` (so every RMW's vendored C must exist) and

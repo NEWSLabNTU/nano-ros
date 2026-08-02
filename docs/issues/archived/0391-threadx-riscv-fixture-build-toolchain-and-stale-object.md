@@ -2,10 +2,11 @@
 id: 391
 title: ThreadX-RV64 C/C++ fixture build only works incrementally — bare
   fixtures-build.sh uses host cc, and a stale zpico.o survives the freshness gate
-status: open
+status: resolved
 type: tech-debt
 area: testing
 related: [rfc-0061, 0196, 0387]
+resolved_in: 8ef697c95
 ---
 
 ## Problem
@@ -80,3 +81,38 @@ bash scripts/build/fixtures-build.sh threadx-riscv64 c zenoh   # host cc → csr
 # vs the working path:
 just threadx_riscv64 build-fixture-extras                      # riscv cross, green
 ```
+
+## Resolution
+
+Both gaps fixed; neither needed the bigger "toolchain intrinsic to the target"
+refactor — the recipe already supplies the toolchain, so the fixes make the
+mechanism robust rather than move where the toolchain is declared.
+
+**Gap 1 (cache poisoning) — root was subtler than "no toolchain passed".** The
+configure helpers (`nros_cmake_configure_if_needed`,
+`nros_cmake_fixture_build`) DO arg-stamp and reconfigure when the
+`-DCMAKE_TOOLCHAIN_FILE` arg changes. But CMake pins `CMAKE_C/CXX_COMPILER` at
+the FIRST configure and a re-configure of an existing cache CANNOT swap the
+compiler — it reads a toolchain file only against a fresh cache. So once any
+invocation (e.g. a bare `fixtures-build.sh`) wrote a host-cc cache, every later
+correct invocation kept host cc. Fix: both helpers now compare the requested
+`CMAKE_TOOLCHAIN_FILE` against the cached one and `rm -rf` the build dir on a
+mismatch (mirrors the existing generator-switch wipe). The lane self-heals — a
+poisoned cache is corrected on the next correct build, no manual
+`rm -rf build-zenoh`. No-op on the happy path (want == cached, verified against a
+real fixture cache) and for native fixtures (empty both sides).
+
+**Gap 2 (stale cargo-nested C) — fixed in the test-side gate.**
+`require_prebuilt_binary_fresh_cmake` → `cmake_dep_info_newer_source` now also
+walks `packages/rmw/zenoh/zpico-sys/c/**` and compares each `.c`/`.h` mtime to
+the fixture binary, gated on the `build-zenoh` marker (cyclone fixtures don't
+link zpico → no false stale). Verified: `touch zpico.c` now trips the gate
+("STALE — newer: …/zpico.c") in 0.13 s where it previously passed a museum
+binary.
+
+Not addressed (deliberately, low value): the bare `fixtures-build.sh
+<cross-platform> c` footgun still defaults to host cc from a truly clean tree —
+but it fails LOUDLY (csrrci assembler errors), the recipe is the sanctioned
+entry point, and gap-1's self-heal means a bare-call poisoning no longer
+persists. Making the per-platform toolchain intrinsic to `fixtures-build.sh`
+would need the manifest to carry it; out of scope here.
