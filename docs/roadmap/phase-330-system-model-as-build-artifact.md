@@ -290,6 +290,44 @@ two.
 
 ### W4 — Delete the committed models
 
+**Generator landed 2026-08-02; deletion NOT done — two prerequisites remain.**
+
+`nros sync --model-dir <DIR>` writes resolved models there instead of into each
+bringup's `config/`, closing the loop with W3.b's search order. Proven
+end-to-end on `ws-realtime-rust`, positively and negatively:
+
+* generate into `build/nros/`, DELETE the committed model, build `native_entry`
+  with `NROS_MODEL_DIR` → **rc=0**;
+* the same build without the override → fails with "SystemModel not found",
+  naming the committed path.
+
+So a build can run from a generated model alone. What still blocks W4.a:
+
+- [ ] **W4.0 — the VARIANT SET must become derivable from inputs.** `nros sync`
+      decides which variant models to refresh by SCANNING `config/` for
+      existing `*_model.yaml`, so those committed files are not just the
+      artifact — they are the DECLARATION of which variants exist. Delete them
+      and the defaults still regenerate (that target is unconditional) while
+      every variant silently stops.
+
+      Measured across 76 bringups: 70 are exactly 1:1 launch↔model; the four
+      large workspaces are `launch + 1` (each launch file's variant plus the
+      default's `system_model.yaml`); and **two have a launch file with
+      deliberately NO model** — `ws-launch-rust`'s `sensors.launch.xml` and
+      `n9_workspace`'s `sim.launch.xml`, both alongside a `system.launch.xml`.
+      So "one model per launch file" is nearly right and would over-generate
+      for those two, which look like includes rather than entries. The rule
+      needs either include-analysis (the resolver already records included
+      files in `meta.inputs`) or an explicit declaration in `system.toml`.
+
+- [ ] **W4.0b — every build path must pass the model dir.** Only a direct cargo
+      build was proven. The cmake fixtures, `fixtures.toml` rows and the `just`
+      recipes all still point at committed models; each needs `--model-dir` on
+      the sync side and `NROS_MODEL_DIR` on the build side.
+
+**W4.b (issue 0320's staleness text) is deliberately deferred** until the models
+actually move — editing it now would describe a state the tree is not in.
+
 > **Coordinate with phase-331 (RFC-0066) — added 2026-08-02.** That phase folds
 > 18 themed workspaces into the four large ones and deletes them. **29 of the
 > 120 models below live inside those 18**, plus 10 workspace-root

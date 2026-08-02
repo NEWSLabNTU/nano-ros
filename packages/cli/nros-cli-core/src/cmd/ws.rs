@@ -130,6 +130,14 @@ pub struct SyncArgs {
     #[arg(short, long)]
     pub verbose: bool,
 
+    /// phase-330 W4 (RFC-0063) — write resolved SystemModels HERE instead of
+    /// into each bringup's `config/`, making them build output rather than
+    /// committed source. Consumers find them through the same search order
+    /// (`nros_orchestration_ir::model_location`): export `NROS_MODEL_DIR` to
+    /// the same path for the build.
+    #[arg(long)]
+    pub model_dir: Option<PathBuf>,
+
     /// phase-307 W2 — skip the source-metadata refresh. The refresh compiles a
     /// host probe per Node pkg, which is the slow part of a cold sync; skipping
     /// it leaves any existing sidecars untouched and makes bakes fall back to
@@ -363,7 +371,7 @@ fn model_recorded_args(model_path: &Path) -> Vec<(String, String)> {
     model.meta.args.into_iter().collect()
 }
 
-fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
+fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>) -> Result<()> {
     // Issue 0285 — resolve the helper by ABSOLUTE PATH, never through PATH.
     //
     // This used to run `play_launch` by bare name. `play_launch` is also an
@@ -515,6 +523,24 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
                 }
             }
         }
+        // phase-330 W4 — redirect outputs to the build location when asked. The
+        // target LIST is still derived from the committed `config/` scan: which
+        // variants exist is declared by those files today, which is the second
+        // prerequisite W4 still owes (see the phase doc). Only the destination
+        // moves here.
+        let targets: Vec<(std::path::PathBuf, std::path::PathBuf)> = match model_dir {
+            None => targets,
+            Some(dir) => targets
+                .into_iter()
+                .map(|(launch, model)| {
+                    let name = model
+                        .file_name()
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|| std::path::PathBuf::from("system_model.yaml"));
+                    (launch, dir.join(name))
+                })
+                .collect(),
+        };
         for (launch, model) in targets {
             // Issue 0320 — staleness is BOTH mtime AND content-addressed. The
             // mtime gate watches only `launch/*.xml` + `system.toml`, but a
@@ -549,8 +575,9 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
                 ));
                 continue;
             };
-            std::fs::create_dir_all(&cfg_dir)
-                .wrap_err_with(|| format!("sync: create {}", cfg_dir.display()))?;
+            let dest_dir = model.parent().unwrap_or(&cfg_dir).to_path_buf();
+            std::fs::create_dir_all(&dest_dir)
+                .wrap_err_with(|| format!("sync: create {}", dest_dir.display()))?;
             let mut cmd = std::process::Command::new(pl);
             cmd.arg(&launch);
             // phase-326 (issue 0364) — replay the exact binding the committed
@@ -1129,7 +1156,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // entry's `nros_bridge::run_from_config` consumes at runtime.
     // R-code UX — resolve/refresh each bringup's committed SystemModel first
     // (the canonical input; bridge planning below consumes it).
-    resolve_system_models(&scan, args.verbose)?;
+    resolve_system_models(&scan, args.verbose, args.model_dir.as_deref())?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
     generate_facade_crates(&ws_root, &scan, &build_root, args.verbose)?;
 
