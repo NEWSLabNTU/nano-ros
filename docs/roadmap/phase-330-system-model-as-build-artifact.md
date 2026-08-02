@@ -107,6 +107,16 @@ committed under `src/`.
       have now been distorted by that stale binary — re-measure after
       `just setup-launch-resolve`, not before.
 
+      **CORRECTION (2026-08-02, from the W4.a dry run): the conclusion below
+      was too strong.** `nros sync` SKIPS a model that is not stale
+      (`if !stale(&model) && provenance.is_none() { continue; }`), so re-running
+      sync over an INTACT tree leaves most models untouched — "byte-identical"
+      there means "never re-resolved", not "reproduced". The real test is
+      regeneration with the committed copy ABSENT, and under that test 13 of 76
+      bringups lose content. W2.b's finding holds for what it actually measured
+      (nothing got WORSE on refresh; four committed copies are stale), but it is
+      not evidence that regeneration is lossless.
+
       **So `resolve(inputs)` is total for the structure and deploy layers.** The
       only thing regeneration could not reproduce was the execution dims, which
       W1 fixed. That is the premise RFC-0063 needs, now measured rather than
@@ -291,8 +301,8 @@ two.
 ### W4 — Delete the committed models
 
 **Generator landed 2026-08-02. Both prerequisites (W4.0, W4.0b) are now
-DONE — W4.a (the deletion itself) is unblocked but deliberately not taken in the
-same commit as the machinery that makes it safe.**
+DONE; W4.a is BLOCKED by 13 bringups whose content regeneration cannot
+reproduce — measured, see W4.a.**
 
 `nros sync --model-dir <DIR>` writes resolved models there instead of into each
 bringup's `config/`, closing the loop with W3.b's search order. Proven
@@ -425,7 +435,32 @@ actually move — editing it now would describe a state the tree is not in.
 > moving model generation moves fixture build wall-clock, and W5's delta would
 > then mix two causes.
 
-- [ ] **W4.a** Remove all **120** tracked `*/config/*model.yaml` (80 under
+- [ ] **W4.a — BLOCKED. Measured 2026-08-02; do not delete yet.**
+
+      W4.0 and W4.0b are done, so I ran the deletion as a DRY RUN over every
+      bringup: move `config/` aside, regenerate from inputs alone, compare set
+      and content, restore. 76 bringups:
+
+      | Result | Count | Meaning |
+      | --- | --- | --- |
+      | **OK** | 51 | reproduced exactly |
+      | **RICHER** | 4 | generated has MORE — the committed copy is stale |
+      | **LOSS** | 13 | committed content the regenerate does NOT reproduce |
+      | **SYNCFAIL** | 24 | sync errors before producing anything |
+
+      **The 13 LOSS cases are the blocker**, and they are the W1 pattern again:
+      content only a human put there. `lifecycle_autostart: active`
+      (ws-lifecycle-{cpp,rust}), resolved parameter tables (ws-params-rust), and
+      fields in the safety/sizing/qos demos. Deleting would silently drop them
+      exactly as issue 0380 dropped 17 tier dims. Each needs the W1 treatment —
+      become expressible in `system.toml` — before its model can go.
+
+      The 24 SYNCFAIL are a mix: three layouts sync does not accept
+      (`bins/entry-poc`, `qemu-baremetal-main-e2e`, an `orchestration_e2e`
+      pkg), two `system.toml` parse errors, and `refresh source metadata`
+      failures. Each needs triage; none is necessarily a model problem.
+
+      Original item: **W4.a** Remove all **120** tracked `*/config/*model.yaml` (80 under
       `examples/workspaces/`, 40 under test fixtures); add the build location
       to `.gitignore`.
 - [ ] **W4.b** Update issue 0320's staleness text: a per-build artifact does not
