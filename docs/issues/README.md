@@ -51,6 +51,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#390** — `nros setup <board> --rmw <x>` provisions ONE board's sources, but the build stage needs
+the union: `just test` builds `--workspace` (so every RMW's vendored C must exist) and
+`build-test-fixtures` refreshes metadata for every component (so `third-party/nuttx/libc` must exist
+even for a native one). Both failures name no remedy — the NuttX one is a raw cargo dep-resolution
+error four `Caused by:` layers deep. Hit in sequence on an Arch host following the book. See
+`0390-*`. (2026-08-02)
+
 Recently resolved: **#389** — `ZPICO_MAX_SESSIONS` defaulted to 1 with nothing raising it, so the
 cross-session test — the only e2e proof for the #348/#376 multi-session work — skipped on every host
 in every tier, always. RESOLVED (2026-08-02, `b1db98829`): `just test-zpico-multisession` builds the

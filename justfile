@@ -1216,7 +1216,7 @@ test-zpico-multisession verbose="": build-zenohd
 # (nextest 0.9.133+), so the list lives here rather than under a
 # `[profile.fast]` default-filter.
 [group("main")]
-test verbose="": build-zenohd test-zpico-multisession
+test verbose="": _require-fixtures _check-fixtures-stale build-zenohd test-zpico-multisession
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
@@ -1472,11 +1472,11 @@ _require-fixtures:
         exit 0
     fi
     if [ ! -f target/nextest/.fixtures-built ]; then
-        echo "ERROR: test fixtures not built — 'just test-all' would mass-fail with 'Binary not found'." >&2
+        echo "ERROR: test fixtures not built — 'just test' / 'just test-all' would mass-fail with 'Binary not found'." >&2
         echo "" >&2
         echo "  Run:  just build-test-fixtures" >&2
         echo "" >&2
-        echo "  (built them another way? bypass with  NROS_SKIP_FIXTURE_CHECK=1 just test-all )" >&2
+        echo "  (built them another way? bypass with  NROS_SKIP_FIXTURE_CHECK=1 just <tier> )" >&2
         exit 1
     fi
 
@@ -2926,6 +2926,19 @@ setup-launch-resolve:
         fi
     fi
     echo "[setup-launch-resolve] building nros-launch-resolve…"
+    # The vendored resolver embeds pyo3 (RFC-0060 layer 2 needs CPython), pinned
+    # at 0.24, whose maximum supported interpreter is 3.13. A rolling distro
+    # outruns that — Arch ships Python 3.14 and nothing older, so the build dies:
+    #
+    #   error: the configured Python interpreter version (3.14) is newer than
+    #          PyO3's maximum supported version (3.13)
+    #
+    # This is pyo3's own documented remedy for exactly that case: build against
+    # the stable ABI instead. The variable ONLY suppresses the too-new check, so
+    # it is inert on a host whose interpreter pyo3 already supports (Ubuntu
+    # 22.04's 3.10, 24.04's 3.12) — no need to detect the version and no second
+    # code path to keep in step. Revisit when the vendored pin moves past 0.24.
+    export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
     cargo build --release --manifest-path "$crate/Cargo.toml"
     touch "$bin"
     echo "[setup-launch-resolve] built: $bin"
