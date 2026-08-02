@@ -62,17 +62,17 @@ embedded image must opt into explicitly. Rust made it unbuildable outright —
 Build ONE new native-only workspace instead. Order: scaffold it, then move the
 C packages (already proven), then C++, then Rust.
 
-- [ ] **Revert the R1 folds already landed in `workspaces/{c,cpp}`** — the
+- [x] **Revert the R1 folds already landed in `workspaces/{c,cpp}`** — the
       qos / params / lifecycle / custom-msg packages, their renamed entries, the
       `lifecycle_bringup` split, the capability stanzas, and `cpp`'s
       `SYSTEM demo_bringup` line (keep that last one: it is a genuine
       pre-existing gap, see the checklist).
-- [ ] Scaffold `examples/workspaces/features/` — one `demo_bringup` declaring
+- [x] Scaffold `examples/workspaces/features/` — one `demo_bringup` declaring
       `[param_services]` + `[lifecycle] autostart = "active"`, native entries
       only, NO embedded entry packages.
-- [ ] Move the C, then C++, then Rust feature packages in, applying the
+- [x] Move the C, then C++, then Rust feature packages in, applying the
       per-fold checklist below.
-- [ ] `managed_bringup` joins as the second (manual-transition) system. Its
+- [x] ~~`managed_bringup` joins as the second system~~ -> became `ws-managed-cpp`. Its
       entries are C++ only; a rust managed entry would hit the phase-315 limit.
 - [x] Confirm `custom_msgs` stays workspace-local — **done**: all copies are
       byte-identical and workspaces build independently, so one copy lives in
@@ -255,7 +255,7 @@ shows the added coordinates; no `uorb` cell appears.
 
 ## Target workspace inventory (end state)
 
-32 workspace directories become **12**:
+32 workspace directories become **13**:
 
 | # | workspace | shape | languages | platforms |
 |---|---|---|---|---|
@@ -267,6 +267,7 @@ shows the added coordinates; no `uorb` cell appears.
 | 12 | `ws-sizing-rust` | executor sizing: launch names zero callback entities, runtime needs six (issue 0257) | rust | native |
 | — | `ws-launch-rust` | the launch v1 LANGUAGE surface | rust | native |
 | — | `ws-bridge-rust`, `ws-bridge-xrce-rust` | bridge topology; the only non-zenoh workspace rows | rust | native |
+| 13 | `ws-managed-cpp` | MANUAL-transition lifecycle. Split out of `features/` in W2: a second bringup there would make it two-system and break rust's selection facades (the limit is per WORKSPACE, not per language) | cpp | native |
 
 (The last three rows are the remaining outliers; counting them individually the
 total is 15 directories, 12 distinct *shapes*.)

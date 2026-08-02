@@ -26,7 +26,7 @@ This RFC inverts both:
 - a **configuration** (RMW, feature set) is a **fixture axis over the large
   workspaces**, not a directory.
 
-Net: 32 workspace directories become 12, and the RMW axis reaches workspaces
+Net: 32 workspace directories become 13, and the RMW axis reaches workspaces
 for the first time.
 
 > **Revision 2 (2026-08-02).** R1 folded each theme into the same-language large
@@ -170,15 +170,29 @@ packages exist to demonstrate capabilities, which is a different axis from
 "which language binds the API" — and because the alternative violates the
 embedded opt-in rule above.
 
-`managed_bringup` still gives this workspace **two systems**, which C/C++ can
-carry but rust cannot. Its entries are C++ only today, so the constraint is not
-hit; if a rust managed entry is ever wanted, it needs the phase-315 limit lifted
-(see Open questions).
+**Correction (W2, 2026-08-02): `managed_bringup` cannot live here.** The
+assumption above — that C++-only entries dodge the limit — is wrong. The
+one-system rule is per WORKSPACE, not per language: a second bringup makes
+`features/` two-system and `nros sync` then refuses selection facades for its
+RUST entries, regardless of which language the second system's entries use.
+
+The manual-transition demo therefore became its own workspace,
+`ws-managed-cpp`, joining the behavioural outliers. It duplicates
+`cpp_lifecycle_talker_pkg`, because that single package carries BOTH
+`LifecycleTalker` (autostart) and `ManagedTalker` (manual) and one system cannot
+express both. Cost: a 13th workspace and one duplicated package, against this
+RFC's stated goal of fewer workspaces. Accepted, because the alternative is
+deleting manual-lifecycle coverage.
+
+The split is verified behaviourally rather than by exit code: `features/`
+emits `nros_cpp_lifecycle_autostart`, `ws-managed-cpp` emits none while still
+linking `nros_cpp_register_lifecycle_services` — a bare `lifecycle` capability
+registers the REP-2002 services without driving Configure->Activate.
 
 Seventeen directories are deleted (`ws-launch-rust` is kept — see Open
 questions): `ws-qos-{c,cpp,rust,mixed}`, `ws-params-{c,cpp,rust}`,
 `ws-lifecycle-{c,cpp,rust}`, `ws-custom-msg-{c,cpp,rust,mixed}`,
-`ws-remap-rust`. Net workspace count: 32 → 12 (11 kept + the new `features`).
+`ws-remap-rust`. Net workspace count: 32 → 13 (11 kept + `features` + `ws-managed-cpp`).
 
 ### Behavioural outliers stay separate
 
