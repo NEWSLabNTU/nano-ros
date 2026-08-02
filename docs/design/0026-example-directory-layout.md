@@ -122,6 +122,16 @@ Two rules, by who owns the dependency graph:
   absent directory: it fails CLOSED (`failed to read …/generated/std_msgs/
   Cargo.toml`) until `nros sync`, and therefore cannot commit a meaningful lock —
   the same reasoning that gitignores `examples/**`, reached from the other side.
+  **Settled 2026-08-03:** ten such locks were tracked and were deleted; a leaf's
+  `generated/` tree belongs to the USER (it is generated from THEIR ament
+  packages), so the fix is always to drop the lock, never to commit a
+  `generated/` tree in order to keep one. The exception that proves the rule is
+  `packages/interfaces/*`: those message crates are pre-generated INTO the repo
+  under `nros-`prefixed names — the prefix exists so core code can depend on them
+  before any user codegen runs, without colliding with a user package of the same
+  ROS name — so they resolve from a bare clone and their consumers may pin a real
+  version. `check-leaf-lockfiles` enforces the whole invariant:
+  **tracked lock ⟺ (no message deps) ∨ (committed `generated/`)**.
 
 **Tooling agrees with the policy by construction (issue 0386):** the `--locked`
 shim keys off `git check-ignore Cargo.lock`, so it forces `--locked` exactly for

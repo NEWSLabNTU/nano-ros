@@ -142,8 +142,15 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   W3 seam landed; W4 flips the default) — treat model yamls as resolver output.
 - **Message deps are PATH deps pinned `0.0.0` (RFC-0067 / phase-333)** — never registry-name a
   message crate (`std_msgs = "*"`) in a leaf manifest; #378 showed a bare name resolving against
-  the PUBLIC crates.io. `testing/{nros-bench,…}` leaves TRACK their `Cargo.lock` (all of them —
-  the one untracked lock broke `--locked` builds on a version bump).
+  the PUBLIC crates.io. **A leaf tracks `Cargo.lock` IFF a fresh clone can resolve it**: no message
+  deps at all (boards/drivers/smoke), or its `generated/` tree is COMMITTED — which the core
+  `packages/interfaces/*` crates are, pre-generated under `nros-`prefixed names so they exist
+  before any user codegen and never collide with a user's msg packages. A leaf whose `generated/`
+  comes from the USER's `nros sync` must NOT commit a lock: at clone time those crates don't exist,
+  so every cargo command there fails (that combination made `build-test-fixtures` unrunnable on a
+  fresh host, 2026-08-03; ten such locks were deleted). `check-leaf-lockfiles` enforces it. The old
+  "track all of them" rule predates the shim keying on TRACKED rather than ignored (#386) — an
+  untracked lock no longer forces `--locked`.
 - **Messages are generated** (`nros generate-rust` from `package.xml`) — never hand-write. Detail
   → RFC-0023 + [docs/guides/message-generation.md](docs/guides/message-generation.md).
 - Unused vars: `_name` + comment, or `#[allow(dead_code)]` for test struct fields.

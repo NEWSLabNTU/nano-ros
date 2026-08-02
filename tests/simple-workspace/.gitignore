@@ -4,3 +4,4 @@
 /src/talker/generated/
 /src/listener/generated/
 /log/
+/Cargo.lock

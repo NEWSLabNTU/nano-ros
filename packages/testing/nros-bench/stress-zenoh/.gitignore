@@ -2,3 +2,4 @@
 /target-large-buf/
 /generated/
 /build/
+/Cargo.lock

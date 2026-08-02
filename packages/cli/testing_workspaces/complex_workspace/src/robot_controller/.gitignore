@@ -1,0 +1,6 @@
+# RFC-0067 / RFC-0026 — this leaf resolves its message deps from a `generated/`
+# tree the USER produces (`nros sync`), so a committed lock would name crates
+# that do not exist in a fresh clone. The lock is a local artifact.
+/Cargo.lock
+/generated/
+/target/
