@@ -7,10 +7,67 @@ repository-level answer to the same problem RFC-0059 framed at crate level.
 platform's fixture build), issue 0293 (two parsers for one file), and the
 submodule drift that bit three times during the 0285 work.
 
+## Amendment (2026-08-02) — two repositories, not three
+
+**The three LAYERS and the linking rule are unchanged and not in question. The
+repository COUNT changes: layer 2 (`ros-launch-resolve`) folds into the
+`play_launch` repository as a separate cargo WORKSPACE.** The toolchain is now
+**two repositories** — `play_launch` (layers 2 + 3, two cargo workspaces) and
+`ros-launch-manifest` (layer 1, the shared schema) — across **three cargo
+workspaces**. Everywhere below that says "three repositories", read "three
+workspaces, two repositories".
+
+**Why the repository boundary was the part not paying for itself.** The
+isolation this RFC actually depends on comes from two other boundaries, both of
+which survive folding:
+
+- **Cargo workspace** — `play_launch`'s root manifest `exclude`s layer 2, so the
+  `rclrs` / `rosidl_runtime_rs` patches and the colcon-generated crates never
+  enter the resolver's dependency graph (this IS Invariant 1 below).
+- **Process** — the resolver is a binary (`nros-launch-resolve`), so `libpython`
+  never enters the `nros` link. This is what keeps the shipped `nros` libc-only.
+
+What did NOT survive was the three-level submodule nesting the split created
+(`play_launch` → `ros-launch-resolve` → {`play_launch_parser`,
+`ros-launch-manifest`}): during the 2026-07-31 `machine=` removal it produced a
+dropped pointer bump, two agents racing on one submodule tree, and three commits
+whose only content was moving a pointer — the exact drift class (issue 0285)
+this RFC cited as motivation, reproduced one level deeper. Measured from a clean
+clone, ROS env stripped (play_launch side, 2026-08-02): `ros-launch-resolve-cli`
+has **0 of 294 deps** from `rclrs`/`rosidl`, builds in **11.6 s**, links **0**
+ROS/rcl/rmw/ament shared libs, links `libpython3.10` (required for `.launch.py`),
+and resolves both `.launch.xml` and `.launch.py` with no ROS sourced — the
+workspace + process boundaries alone keep the resolver ROS-free. `$(find-pkg-share)`
+still needs `AMENT_PREFIX_PATH` at runtime, a launch-file property unchanged by any
+of this.
+
+**Reject-reasons considered and cleared (the "any is sufficient to reject" gate,
+2026-08-02):**
+
+- *Independent release cadence* — layers 2 and 3 already move together (both link
+  rlm, and layer 3 depends on layer 2); a shared repo matches how they change.
+- *Access control* — same maintainers on both; no boundary being protected.
+- *CI cost* — `cargo build -p ros-launch-resolve-cli` touches only layer 2's
+  workspace; play_launch's C++ container, `play_launch_msgs` and web UI are never
+  built by a resolver build.
+- *A bigger pinned tree* — pinning `play_launch` vendors those runtime dirs
+  alongside the resolver, so the checkout grows. Nothing builds them; the cost is
+  inert disk. Weighed against a recurring, agent-tripping drift class, accepted.
+
+None is blocking → **accepted.** rlm stays its own repository (the shared schema,
+publish still deferred per the 2026-07-28 decision below).
+
+**Sequencing (phase-332).** play_launch phase-55 W1 lands the merged tree FIRST
+(layer 2 inside play_launch); then nano-ros repoints
+`packages/cli/third-party/ros-launch-resolve` at the `play_launch` repo (W1) and
+depends `ros-launch-manifest` by tag to flatten the nesting (W2). Status stays
+**Stable** — this narrows the repository count, not the design.
+
 ## Summary
 
-Split the launch toolchain into three repositories along the line of **what a
-consumer must be able to link**:
+Split the launch toolchain into three **layers** along the line of **what a
+consumer must be able to link** — housed in two repositories (see the Amendment
+above; layer 2 lives in the `play_launch` repo as an excluded cargo workspace):
 
 ```
 ros-launch-manifest      spec, theory, proofs, and the algorithms over them
@@ -104,7 +161,7 @@ produced issue 0293.
 ROS-coupled parser is `play_launch_parser` (launch XML / `.launch.py`, pyo3),
 which is a layer-2 concern.
 
-### Layer 2 — `ros-launch-resolve` (new)
+### Layer 2 — `ros-launch-resolve` (new; a cargo workspace in the play_launch repo per the Amendment)
 
 The ROS-coupled adapter: a launch tree in, a checked `SystemModel` out. Needs
 CPython for `.launch.py`; needs no ROS graph, no generated messages, no colcon.
@@ -126,7 +183,7 @@ That this is separable is not a guess: the `runtime` feature gate added on
 real launch files with no ROS environment present. The feature flag becomes
 unnecessary once the boundary is a crate boundary — it was simulating one.
 
-### Layer 3 — `play_launch` (existing repo, narrowed)
+### Layer 3 — `play_launch` (existing repo, narrowed — now also hosts layer 2's workspace)
 
 The Linux runtime and its binary, focused on ROS execution:
 

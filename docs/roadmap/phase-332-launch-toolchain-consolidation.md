@@ -62,17 +62,21 @@ RFC-0060 is Stable. This phase contradicts its repository count, so the RFC
 moves first — per `AGENTS.md`, rationale lives in an RFC, never only in a
 phase doc.
 
-- [ ] Amend RFC-0060: keep the three layers, the linking rule ("nano-ros
-      depends on layers 1–2 and never on layer 3"), and the process boundary.
-      Replace "three repositories" with "three workspaces; two repositories
-      plus the shared schema repository".
-- [ ] Update the matching `ARCHITECTURE.md` section in the same commit (drift
-      rule).
-- [ ] Decide explicitly whether the repository boundary is wanted for reasons
-      outside play_launch's view — independent release cadence, access
-      control, CI cost, or simply not wanting nano-ros's build to pin a repo
-      that also contains a C++ container and a web UI. **Any of those is a
-      sufficient reason to reject**, in which case close this phase.
+- [x] Amend RFC-0060 (2026-08-02): added the "## Amendment — two repositories,
+      not three" section — keeps the three layers, the linking rule, and the
+      process boundary; folds layer 2 into the play_launch repo as an
+      `exclude`d cargo workspace; Status stays Stable.
+- [x] `ARCHITECTURE.md` — no matching section exists (the 3-layer text lives in
+      `CLAUDE.md`, which describes LAYERS, still accurate post-amendment; the
+      repo count is not asserted there). No edit needed; the `CLAUDE.md`
+      "pins only layer 2" mechanics update belongs to W1 (the actual repoint).
+- [x] **Decision: ACCEPT** (maintainer, 2026-08-02). The four reject-reasons —
+      release cadence, access control, CI cost, bigger pinned tree — were each
+      considered and cleared; recorded in the RFC-0060 Amendment. None blocking:
+      the recurring three-level-submodule drift cost outweighs the inert
+      tree-size cost.
+
+**W0 COMPLETE — play_launch phase-55 W1 is unblocked.**
 
 ## W1 — Repoint at the merged tree
 
