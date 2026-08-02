@@ -1,4 +1,4 @@
-# ws-sizing-rust — the executor-sizing showcase (issue 0257)
+# sizing — the executor-sizing showcase (issue 0257)
 
 A workspace whose node the SystemModel cannot count.
 
@@ -14,8 +14,8 @@ and the entry opens the executor at the derived size.
 
 ```sh
 source ./activate.sh
-nros sync examples/workspaces/ws-sizing-rust     # produces the sidecar
-cargo build --manifest-path examples/workspaces/ws-sizing-rust/Cargo.toml
+nros sync examples/workspaces/sizing     # produces the sidecar
+cargo build --manifest-path examples/workspaces/sizing/Cargo.toml
 NROS_ENTRY_SPIN_MS=3000 ./target/debug/native_entry
 ```
 

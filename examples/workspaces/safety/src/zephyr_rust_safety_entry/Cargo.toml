@@ -1,7 +1,7 @@
 # Entry pkg — boots the E2E-safety (CRC) `demo_bringup` system on Zephyr.
 #
 # phase-276 W4 (#102 H1, issue #128) — the safety-on-embedded projection of
-# `ws-safety-rust`: the same one-line `nros::main!(launch = ...)` entry as the
+# `safety`: the same one-line `nros::main!(launch = ...)` entry as the
 # native sibling, deployed as a Zephyr `west build` app (`staticlib` exporting
 # `rust_main`, consumed by zephyr-lang-rust's `rust_cargo_application()`).
 # The system declares `[system].features = ["safety"]`; on the Rust side that
@@ -102,7 +102,7 @@ debug = false
 # Message-binding + intra-repo crate resolution. Excluded from the parent
 # workspace, so it does NOT inherit the parent's `[patch.crates-io]`; the
 # generated message crates live at the workspace-root `generated/` (provisioned
-# by `nros sync` at `examples/workspaces/ws-safety-rust/`).
+# by `nros sync` at `examples/workspaces/safety/`).
 [patch.crates-io]
 builtin_interfaces = { path = "../../generated/builtin_interfaces" }
 std_msgs = { path = "../../generated/std_msgs" }

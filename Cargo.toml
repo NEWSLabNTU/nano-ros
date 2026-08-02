@@ -332,19 +332,17 @@ exclude = [
     # root). Without this repo-root exclude, cargo's workspace walker
     # would otherwise leak it up to the repo-root workspace and error.
     "examples/workspaces/rust/src/zephyr_entry",
-    # phase-276 W1 (#128) — the parameterised workspace's Zephyr Entry, same
-    # west-built shape (and same repo-root-exclude rationale) as above.
-    "examples/workspaces/ws-params-rust/src/zephyr_entry",
-    # phase-276 W3 (#128) — the managed (lifecycle) workspace's Zephyr Entry.
-    "examples/workspaces/ws-lifecycle-rust/src/zephyr_entry",
-    # phase-276 W5 — the QoS-override workspace's Zephyr Entry.
-    "examples/workspaces/ws-qos-rust/src/zephyr_entry",
-    # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry.
-    "examples/workspaces/ws-safety-rust/src/zephyr_entry",
     # phase-276 W6 — the multihost robot1 (talker) Zephyr Entry.
     "examples/workspaces/rust/src/zephyr_entry_robot1",
-    # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry.
-    "examples/workspaces/ws-realtime-rust/src/zephyr_entry",
+    # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry
+    # (phase-331 W6 renamed the workspace ws-realtime-rust -> realtime-rust).
+    "examples/workspaces/realtime-rust/src/zephyr_entry",
+    # phase-276 W4 -> phase-331 W4 — the E2E-safety (CRC) Zephyr Entry, now a
+    # leaf of the consolidated `safety` workspace.
+    "examples/workspaces/safety/src/zephyr_rust_safety_entry",
+    # The params / lifecycle / qos entries that used to be listed here moved
+    # into `features/` in phase-331 W3 and are excluded below under their new
+    # paths — the ws-* ones were deleted with their workspaces.
     # phase-331 W3 — the capability-demo (features) workspace's Zephyr
     # Entries: same west-built shape; excluded from the features workspace
     # AND needing this repo-root exclude, else cargo's walker leaks them up

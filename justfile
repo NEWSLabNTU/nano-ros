@@ -356,6 +356,7 @@ check-fast: \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-model-dims \
+    check-nested-workspace-excludes \
     check-cargo-profile-mirror \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
@@ -751,6 +752,17 @@ check-leaf-lockfiles:
 [private]
 check-msg-dep-is-path:
     @bash scripts/check-msg-dep-is-path.sh
+
+# A nested workspace's `exclude` needs a matching repo-root exclude, or cargo
+# run from INSIDE the excluded leaf dies with "current package believes it's in
+# a workspace when it's not" — the west-built zephyr entries are all in this
+# shape. phase-331's renames left five root excludes pointing at deleted `ws-*`
+# paths and two live leaves unprotected, and nothing caught it: the root
+# resolves fine, so the break only shows up in the embedded lane. Pure text, no
+# cargo invocation. Buildless.
+[private]
+check-nested-workspace-excludes:
+    @bash scripts/check-nested-workspace-excludes.sh
 
 # issue 0380 — a committed SystemModel must not silently LOSE `execution.tiers`
 # dims. They are hand-authored (the resolver's inputs cannot express them), so

@@ -1,7 +1,7 @@
 # Entry pkg — boots the RT-tiers `demo_bringup` system on Zephyr.
 #
 # phase-276 W2 (#102 H1, issue #128 half 2) — the tiers-on-embedded projection
-# of `ws-realtime-rust`: the same one-line `nros::main!(launch = ...)` entry as
+# of `realtime-rust`: the same one-line `nros::main!(launch = ...)` entry as
 # the native sibling, deployed as a Zephyr `west build` app (`staticlib`
 # exporting `rust_main`, consumed by zephyr-lang-rust's
 # `rust_cargo_application()`). `system.toml` declares two `[tiers.*]` with
@@ -98,7 +98,7 @@ debug = false
 # Message-binding + intra-repo crate resolution. Excluded from the parent
 # workspace, so it does NOT inherit the parent's `[patch.crates-io]`; the
 # generated message crates live at the workspace-root `generated/` (provisioned
-# by `nros sync` at `examples/workspaces/ws-realtime-rust/`).
+# by `nros sync` at `examples/workspaces/realtime-rust/`).
 [patch.crates-io]
 builtin_interfaces = { path = "../../generated/builtin_interfaces" }
 std_msgs = { path = "../../generated/std_msgs" }

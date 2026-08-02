@@ -43,7 +43,7 @@ ThreadX) they are real task priorities.
 
 ```bash
 source ./activate.sh
-cd examples/workspaces/ws-realtime-rust
+cd examples/workspaces/realtime-rust
 nros setup native
 nros sync
 cargo run -p native_entry
