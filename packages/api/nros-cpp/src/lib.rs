@@ -2207,9 +2207,11 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
                 .into_owned()
         };
 
+        let tier_name_in_thread = tier_name.clone();
         let handle = std::thread::Builder::new()
             .name(std::format!("nros-tier-{tier_name}"))
             .spawn(move || {
+                let tier_name = tier_name_in_thread;
                 // Open borrowed executor (shares the session — does NOT open
                 // a new RMW session and does NOT close it on drop).
                 let sh = session_usize.0 as *mut c_void;
@@ -2221,6 +2223,9 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
                     nros_cpp_executor_open_over_session(sh, core::ptr::null(), domain_id_copy, tptr)
                 };
                 if rc != NROS_CPP_RET_OK {
+                    std::eprintln!(
+                        "nros: tier '{tier_name}' FAILED to open its borrowed executor (rc={rc}) — tier will not run"
+                    );
                     return;
                 }
 
@@ -2233,6 +2238,9 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
                 if let Some(setup) = setup_fn {
                     let setup_rc = unsafe { setup(tptr) };
                     if setup_rc != 0 {
+                        std::eprintln!(
+                            "nros: tier '{tier_name}' setup FAILED (rc={setup_rc}) — tier will not run"
+                        );
                         // Drop borrowed executor (no session close).
                         unsafe { core::ptr::drop_in_place(tptr as *mut CppContext) };
                         return;
@@ -2244,6 +2252,9 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
                 while !shutdown_clone.load(Ordering::Relaxed) {
                     let rc = unsafe { nros_cpp_spin_once(tptr, 10) };
                     if rc != NROS_CPP_RET_OK {
+                        std::eprintln!(
+                            "nros: tier '{tier_name}' spin_once returned rc={rc} — tier loop EXITING"
+                        );
                         break;
                     }
                     std::thread::sleep(period);
