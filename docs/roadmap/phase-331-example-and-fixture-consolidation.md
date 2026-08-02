@@ -155,6 +155,63 @@ R1 result, for the record: `c` reached 18 → 30 source dirs with 7/7 fixtures
 green and `cpp` 8/8, before R2 superseded the approach. Those builds are what
 produced items 1–12.
 
+### W2b — Normalise the language-workspace layout
+
+`{rust,c,cpp}` are read SIDE BY SIDE as a language comparison, so their node
+sets must be diffable. Today they are not — measured at HEAD 2026-08-02:
+
+| | pubsub | service | action | prefix |
+|---|---|---|---|---|
+| rust | `talker_pkg` `listener_pkg` | `service_{server,client}_pkg` | `action_{server,client}_pkg` | none |
+| c | `c_talker_pkg` `c_listener_pkg` | `c_add_{server,client}_pkg` | `c_fib_{server,client}_pkg` | all |
+| cpp | `talker_pkg` `listener_pkg` | `cpp_add_{server,client}_pkg` | `cpp_fib_{server,client}_pkg` | mixed |
+
+Three inconsistencies: rust names ROLES while c/cpp name DEMOS (`add`/`fib`);
+prefixing is all / none / half; entry names diverge (`qemu_freertos_entry` vs
+`freertos_entry`; `threadx_linux_entry` vs `native_threadx_entry` vs
+`threadx_entry`). Coverage differs too — rust alone has `native_showcase_entry`,
+`native_service_inprocess_entry`, `esp32_entry`, `zephyr_entry_robot1`; only `c`
+has `nuttx_entry`.
+
+**Target — identical structure, only the language differs:**
+
+```
+examples/workspaces/<lang>/src/          # <lang> in {rust, c, cpp}
+  talker_pkg  listener_pkg
+  service_server_pkg  service_client_pkg      # AddTwoInts payload
+  action_server_pkg   action_client_pkg       # Fibonacci payload
+  demo_bringup/
+  native_entry
+  native_service_{server,client}_entry
+  native_action_{server,client}_entry
+  native_entry_robot1  native_entry_robot2
+  freertos_entry  nuttx_entry  threadx_entry  zephyr_entry  esp32_entry
+```
+
+Rules:
+1. **No language prefix** in a single-language workspace — the directory says it.
+   Prefixes stay in `mixed` and `features`, where languages coexist.
+2. **Role names, not demo names.** `service_server_pkg`, not `add_server_pkg`:
+   AddTwoInts is the payload, the role is the concept being compared.
+3. **One platform vocabulary** — `freertos` / `nuttx` / `threadx` / `zephyr` /
+   `esp32`, with no `qemu_` or `native_` qualifier.
+4. **Same node set everywhere.** Close the gaps (c/cpp gain `esp32_entry`,
+   cpp gains `nuttx_entry`) or record the exception in the workspace README.
+
+- [ ] Rename node pkgs to the role vocabulary, per language.
+- [ ] Drop the `c_`/`cpp_` prefixes in the single-language workspaces.
+- [ ] Unify entry names to the platform vocabulary.
+- [ ] Close (or document) the coverage gaps.
+- [ ] Update `fixtures.toml` entries, launch `pkg=`/`exec=`, bringup catalogs,
+      `_ws_subdirs` / cargo `members`, and every test naming a renamed package.
+
+**Acceptance:** `diff -r examples/workspaces/c/src examples/workspaces/rust/src`
+lists only per-language files (`*.c` vs `*.rs`, `CMakeLists.txt` vs
+`Cargo.toml`) — no structural differences. All fixtures green.
+
+**Sequencing:** after W2 (`features/` exists, so the capability demos are out of
+the way) and BEFORE W3 (the deletions), so the renames land once.
+
 ### W3 — Delete the folded directories and their fixture rows
 
 - [ ] Remove `ws-qos-{c,cpp,rust,mixed}`, `ws-params-{c,cpp,rust}`,
@@ -195,6 +252,33 @@ shows the added coordinates; no `uorb` cell appears.
       keeping a regression.
 
 **Acceptance:** RFC-0066's cost section carries real numbers.
+
+## Target workspace inventory (end state)
+
+32 workspace directories become **12**:
+
+| # | workspace | shape | languages | platforms |
+|---|---|---|---|---|
+| 1-3 | `rust` / `c` / `cpp` | language comparison — IDENTICAL node sets (W2b) | one each | native + 5 embedded |
+| 4 | `mixed` | the language SEAM: one entry, components from several languages | c + cpp + rust | native + 3 embedded |
+| 5 | `features` | capability demos (params, lifecycle, qos, custom-msg, remap) | all three, prefixed | **native only** |
+| 6-8 | `ws-safety-{c,cpp,rust}` | `safety-e2e` build feature; cross-process pair | one each | native |
+| 9-11 | `ws-realtime-{c,cpp,rust}` (+ `-rclcpp`, `-subnode`, `-subnode-portable`, `-mps2` variants) | own toolchain pin; the only multi-platform theme | one each | native, nuttx, nuttx-riscv, freertos |
+| 12 | `ws-sizing-rust` | executor sizing: launch names zero callback entities, runtime needs six (issue 0257) | rust | native |
+| — | `ws-launch-rust` | the launch v1 LANGUAGE surface | rust | native |
+| — | `ws-bridge-rust`, `ws-bridge-xrce-rust` | bridge topology; the only non-zenoh workspace rows | rust | native |
+
+(The last three rows are the remaining outliers; counting them individually the
+total is 15 directories, 12 distinct *shapes*.)
+
+Naming rules, applied consistently:
+
+- **single-language workspace** -> no prefix (`talker_pkg`);
+- **multi-language workspace** (`mixed`, `features`) -> language prefix
+  (`c_talker_pkg`), because the languages coexist;
+- **roles, not payloads** (`service_server_pkg`, not `add_server_pkg`);
+- **one platform vocabulary** for entries (`freertos_entry`, `nuttx_entry`,
+  `threadx_entry`, `zephyr_entry`, `esp32_entry`).
 
 ## Explicitly out of scope
 

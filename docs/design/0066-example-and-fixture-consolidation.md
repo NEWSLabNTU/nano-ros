@@ -193,6 +193,31 @@ configuration axis inside a directory:
 | `ws-sizing-rust` | its value **is** that the launch names zero callback entities while the runtime needs six (issue 0257). Folding into a many-node workspace destroys the property under test |
 | `ws-bridge-rust`, `ws-bridge-xrce-rust` | the only non-zenoh workspace rows in the tree; bridge topology, not node API |
 
+### The language workspaces are a comparison, so their layout must be parallel
+
+`{rust,c,cpp}` are read side by side — a reader compares how the same system is
+expressed in three languages. That only works if the node sets are diffable, and
+today they are not: rust names ROLES (`service_server_pkg`) while c/cpp name
+PAYLOADS (`add_server_pkg`); prefixing is all (`c_`) / none (rust) / half (cpp,
+which has unprefixed `talker_pkg` beside prefixed `cpp_add_client_pkg`); entry
+names diverge three ways for the same board.
+
+The rule this RFC adopts:
+
+- **single-language workspace → no prefix.** The directory already names the
+  language. Prefixes stay in `mixed` and `features`, where languages coexist and
+  the prefix carries information.
+- **roles, not payloads.** `service_server_pkg`, not `add_server_pkg` —
+  AddTwoInts is what the demo sends, the role is what is being compared.
+- **one platform vocabulary** for entries: `freertos` / `nuttx` / `threadx` /
+  `zephyr` / `esp32`, no `qemu_` or `native_` qualifier.
+- **the same node set in each**, with any exception recorded in the workspace
+  README rather than left implicit.
+
+Target: `diff -r workspaces/c/src workspaces/rust/src` shows only per-language
+files. phase-331 W2b carries it out, after `features/` exists and before the
+deletions, so the renames land once.
+
 ### Configuration becomes an axis
 
 Workspace fixtures are declared as a product, not as hand-written rows:
