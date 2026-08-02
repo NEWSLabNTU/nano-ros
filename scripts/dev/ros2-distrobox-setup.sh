@@ -30,6 +30,13 @@ if [ "${VERSION_ID:-}" != "22.04" ]; then
     exit 1
 fi
 
+# `clang`/`libclang-dev`: bindgen needs libclang AND its resource headers —
+# without them z3-sys fails at `/usr/include/stdio.h: 'stddef.h' file not
+# found`, which looks like a broken libc rather than a missing compiler.
+# `libz3-dev`: `nros-launch-resolve` deps `z3-sys`, whose bindgen step needs
+# `z3.h`. Without it the resolver cannot be built INSIDE the box, and a
+# host-built one is unusable here (it links the host's libpython) — so
+# `just build-test-fixtures` dies mid-sync with a dynamic-loader error.
 # `python3-tomli`: Ubuntu 22.04 ships Python 3.10, which predates `tomllib`
 # (3.11+). `just check-cargo-profile-mirror` reads Cargo.toml with tomllib and
 # falls back to tomli — on a bare box NEITHER exists and tier 1 dies there with
@@ -40,7 +47,7 @@ sudo apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg lsb-release software-properties-common \
     git build-essential pkg-config cmake ninja-build \
     python3 python3-pip python3-venv python3-dev \
-    python3-tomli
+    python3-tomli libz3-dev clang libclang-dev
 
 echo "=== [2/4] ROS 2 apt repository"
 sudo install -d -m 0755 /etc/apt/keyrings
