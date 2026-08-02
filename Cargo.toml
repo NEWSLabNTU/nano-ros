@@ -345,6 +345,13 @@ exclude = [
     "examples/workspaces/rust/src/zephyr_entry_robot1",
     # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry.
     "examples/workspaces/ws-realtime-rust/src/zephyr_entry",
+    # phase-331 W3 — the capability-demo (features) workspace's Zephyr
+    # Entries: same west-built shape; excluded from the features workspace
+    # AND needing this repo-root exclude, else cargo's walker leaks them up
+    # here and errors ("believes it's in a workspace when it's not").
+    "examples/workspaces/features/src/zephyr_rust_qos_entry",
+    "examples/workspaces/features/src/zephyr_rust_params_entry",
+    "examples/workspaces/features/src/zephyr_rust_lifecycle_entry",
     # `examples/zephyr/rust/service-client-async` dropped 2026-06-02 per
     # Phase 212.M-F.5 — pending async-`Component` trait decision.
     # Zephyr XRCE examples (require Zephyr workspace + XRCE Agent)
