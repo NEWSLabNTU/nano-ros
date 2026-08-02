@@ -3415,3 +3415,74 @@ bringup = "src/demo_bringup"
 entry = "native_rust_safety_listener_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 target_dir = "target-safety"
+
+# phase-331 W4 (RFC-0066) — the RMW AXIS over the language workspaces. Before
+# this, 85 of 87 workspace rows were zenoh: the RMW seam was exercised almost
+# entirely by single-node micro-examples, never by a workspace. Each cell gets
+# its own build dir — a different RMW is a different `nros_config_generated.h`,
+# and sharing one would trip the sizes-mirror guard.
+[[workspace_fixture]]
+id = "workspace-c-native-cyclonedds"
+platform = "native"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures-cyclonedds"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-cyclonedds"
+platform = "native"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures-cyclonedds"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-xrce"
+platform = "native"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures-xrce"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-cyclonedds"
+platform = "native"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+target_dir = "target-fixtures-cyclonedds"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-xrce"
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+target_dir = "target-fixtures-xrce"
+
+[[workspace_fixture]]
+id = "workspace-c-native-xrce"
+platform = "native"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures-xrce"
