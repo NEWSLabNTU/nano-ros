@@ -46,6 +46,12 @@ LOG_DIR := "test-logs"
 # is never duplicated into build scripts.
 NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
 
+# Crates that cannot be checked for the HOST: `no_std` staticlibs (no
+# panic_handler, unwinding unsupported) and build-time helpers. Defined once so
+# `check-workspace` and `check-test-targets` cannot drift apart — a bare
+# `--workspace` check fails on these with "`#[panic_handler]` function required".
+HOST_UNCHECKABLE := "--exclude nros-c --exclude nros-cpp --exclude nros-rmw-zenoh-staticlib --exclude nros-rmw-xrce-cffi --exclude nros-rmw-xrce-cffi-staticlib --exclude nros-build-helpers --exclude nros-zpico-build --exclude nros-build-paths"
+
 import "just/sdk-env.just"
 
 # =============================================================================
@@ -357,7 +363,7 @@ check-fast: \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-model-dims \
     check-nested-workspace-excludes \
-    check-cargo-profile-mirror \
+    check-cargo-profile-mirror check-test-targets \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -366,6 +372,24 @@ check-fast: \
     check-cpp-freestanding-includes check-fixtures-manifest check-sysdep-remedies \
     check-activate-shells
     @echo "Fast checks passed!"
+
+# Compile the TEST targets. Buildless gates never touch `#[cfg(test)]` code, and
+# neither does `check-workspace`'s clippy (no `--all-targets`), so a field added
+# to a shared struct can leave every test initializer broken while `check-fast`
+# stays green. That happened twice in one session — `TierRtosSpec` gained four
+# fields (phase-330 W1.a) and `ComponentConfig` gained `class` (issue 0392 B) —
+# and both landed green with seven initializers unbuildable.
+#
+# `cargo check`, not `cargo test`: this is about COMPILING the test targets;
+# running them belongs to `test-all`. Warm cost ~13s (root) + ~19s (CLI); the
+# first run on a cold target dir is minutes, like any other compile here.
+[private]
+check-test-targets:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo check --quiet --workspace --all-targets --no-default-features {{HOST_UNCHECKABLE}}
+    cargo check --quiet --manifest-path packages/cli/Cargo.toml --workspace --all-targets
+    echo "test targets compile (root + cli)."
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
 # embedded clippy, feature combos, riscv32 no_std, nros-tests source gates,
@@ -2201,14 +2225,7 @@ check-cli-fmt:
 [private]
 check-workspace:
     cargo +{{NIGHTLY}} fmt --check
-    cargo clippy --quiet --workspace --no-default-features \
-        --exclude nros-c --exclude nros-cpp \
-        --exclude nros-rmw-zenoh-staticlib \
-        --exclude nros-rmw-xrce-cffi \
-        --exclude nros-rmw-xrce-cffi-staticlib \
-        --exclude nros-build-helpers \
-        --exclude nros-zpico-build \
-        --exclude nros-build-paths \
+    cargo clippy --quiet --workspace --no-default-features {{HOST_UNCHECKABLE}}
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build

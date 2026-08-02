@@ -513,7 +513,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // nothing generating into the build dir yet, this resolves exactly as
         // `bringup_dir.join(&model_rel)` did.
         let model_path =
-            nros_orchestration_ir::model_location::resolve_model_path(&bringup_dir, &model_rel);
+            nros_orchestration_ir::model_location::resolve_model_path(bringup_dir, &model_rel);
         tracked.push(model_path.clone());
         if !model_path.exists() {
             return Err(syn::Error::new(
