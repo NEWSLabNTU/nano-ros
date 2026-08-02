@@ -490,7 +490,7 @@ fn generate_lib_rs(src_dir: &Path, package: &Package) -> Result<()> {
 fn generate_cargo_toml(
     output_dir: &Path,
     package_name: &str,
-    package_version: &str,
+    ament_version: &str,
     dependencies: &HashSet<String>,
     has_actions: bool,
 ) -> Result<()> {
@@ -507,11 +507,32 @@ fn generate_cargo_toml(
 
     // Use crates.io version specifiers for nros crates.
     // For development, use .cargo/config.toml [patch.crates-io] to point to local paths.
+    // issue 0391 — the crate version is a CONSTANT, and the real (ament) version
+    // is recorded as metadata instead.
+    //
+    // A generated msg crate is produced per host from whatever interface source
+    // that host has: `/opt/ros/<distro>` where ROS 2 is installed, the vendored
+    // `packages/cli/interfaces/` where it is not. Those disagree — humble ships
+    // action_msgs 1.2.2, the vendored copy is 1.2.3 — so writing the source
+    // version here put the GENERATOR'S ENVIRONMENT into every consumer's
+    // Cargo.lock. Tracked leaf locks then flip whenever a contributor with a
+    // different interface source rebuilds, which `--locked` (issues 0359/0378)
+    // turns into a hard build failure for everyone else. The executor-fairness
+    // lock had already been refreshed, reverted and refreshed again over it.
+    //
+    // Consumers depend on these crates by PATH through `[patch.crates-io]` and
+    // declare `version = "*"`, so the constant costs nothing at resolution time.
     let mut cargo_toml = format!(
         r#"[package]
 name = "{}"
-version = "{}"
+version = "0.0.0"
 edition = "2021"
+
+# Version of the interface package this was generated FROM. Informational: it
+# varies by host (ROS install vs vendored interfaces) and must never reach the
+# `version` field above, or it lands in consumers' lockfiles.
+[package.metadata.nros]
+ament_version = "{}"
 
 [features]
 default = []
@@ -524,7 +545,7 @@ nros-serdes = {{ version = "*", default-features = false }}
 heapless = "0.8"
 "#,
         package_name,
-        package_version,
+        ament_version,
         std_features = std_feature_list,
     );
 
@@ -975,7 +996,22 @@ mod tests {
         let cargo_toml =
             fs::read_to_string(output_dir.join("nano_msgs").join("Cargo.toml")).unwrap();
         assert!(cargo_toml.contains("name = \"nano_msgs\""));
-        assert!(cargo_toml.contains("version = \"1.0.0\""));
+        // issue 0391 — the crate version is the CONSTANT, and the package.xml
+        // version survives only as metadata. Asserting both directions matters:
+        // a regression that puts the ament version back in `version` is exactly
+        // what put the generator's environment into consumers' lockfiles.
+        assert!(
+            cargo_toml.contains("version = \"0.0.0\""),
+            "generated crate must carry the constant version, got:\n{cargo_toml}"
+        );
+        assert!(
+            cargo_toml.contains("ament_version = \"1.0.0\""),
+            "package.xml version must survive as [package.metadata.nros] ament_version, got:\n{cargo_toml}"
+        );
+        assert!(
+            !cargo_toml.contains("\nversion = \"1.0.0\""),
+            "the ament version must NOT be the crate version, got:\n{cargo_toml}"
+        );
         assert!(cargo_toml.contains("nros-core"));
         assert!(cargo_toml.contains("nros-serdes"));
         assert!(cargo_toml.contains("heapless"));
