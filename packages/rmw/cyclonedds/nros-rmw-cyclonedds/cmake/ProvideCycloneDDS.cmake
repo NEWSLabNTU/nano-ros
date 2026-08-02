@@ -57,6 +57,20 @@ macro(nros_provide_cyclonedds)
             # direct compile when sccache is absent. Only set when the caller has
             # not already chosen a launcher.
             if(NOT DEFINED CMAKE_C_COMPILER_LAUNCHER)
+                # `find_program` caches, and CMake never revalidates a cached
+                # path. A build dir configured on the host and re-entered from
+                # a container (the ROS distrobox — see
+                # docs/development/ros2-on-non-ubuntu.md) then keeps the host's
+                # `/usr/bin/sccache` as the compiler launcher, and every Cyclone
+                # TU dies at `Error 127` — `/bin/sh: 1: /usr/bin/sccache: not
+                # found` — which reads as a broken build, not a stale cache.
+                # Drop the entry when it no longer resolves and search again.
+                if(NROS_SCCACHE AND NOT EXISTS "${NROS_SCCACHE}")
+                    message(STATUS
+                        "nano-ros: cached sccache at ${NROS_SCCACHE} is gone "
+                        "(different host or container) — re-detecting")
+                    unset(NROS_SCCACHE CACHE)
+                endif()
                 find_program(NROS_SCCACHE sccache)
                 if(NROS_SCCACHE)
                     set(CMAKE_C_COMPILER_LAUNCHER "${NROS_SCCACHE}")
