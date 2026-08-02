@@ -2,7 +2,7 @@
 id: 392
 title: Six bringups cannot `nros sync` at all — two legacy `system.toml` schemas,
   two components with no `class`, one launch needing an uninstalled package
-status: open  # A and B fixed 2026-08-02; C + the metadata-path finding remain
+status: open  # A, B and the metadata-path finding fixed 2026-08-02; C remains
 type: bug
 area: testing
 related: [rfc-0063, phase-330, 0387, 0380]
@@ -149,7 +149,27 @@ to break.
     has carried `class` since phase-307 W1; only the legacy form could not
     express it.
 
-## New finding — `nros sync` writes host-absolute paths into tracked metadata
+## New finding — FIXED 2026-08-02
+
+`source.artifact` is now recorded relative to the component package
+(`src/lib.rs`), so a sync no longer rewrites the tracked file with the syncing
+user's home directory. Normalisation happens where the harness output lands, in
+`build_metadata`.
+
+Two approaches were possible and the choice matters:
+
+  * `--remap-path-prefix` via `RUSTFLAGS` would fix it at the source, but that
+    env var REPLACES any `[build] rustflags` from the workspace's
+    `.cargo/config.toml` — which the embedded packages here depend on. Rejected.
+  * a textual prefix strip on the emitted JSON, chosen, and deliberately NOT a
+    parse-and-reserialise: reserialising would silently reformat every generated
+    metadata file the first time it ran.
+
+**Separately, regeneration shows the committed `talker.json` is STALE** — 122
+inserted lines, and `id` moves `node_talker` → `talker`. That is a real refresh,
+not a path issue, and it is test-visible, so it was left out of the path fix.
+
+## The original finding — `nros sync` writes host-absolute paths into tracked metadata
 
 Making `orchestration_e2e` syncable exposed the next problem: sync regenerates
 `src/demo_pkg/metadata/talker.json` with
@@ -171,9 +191,9 @@ A and B are done. What remains:
   * **C** — `o5_nav2_compat_smoke` needs `secondary_node` built and sourced
     before its launch resolves. Arguably not a defect; decide whether sync
     should be runnable on it at all.
-  * **the metadata path finding above** — give the metadata writer the same
-    relative-path treatment `--bringup-root` gave models, or stop tracking the
-    generated `metadata/*.json`.
+  * **refresh the stale `orchestration_e2e` metadata** — regeneration produces
+    122 more lines and renames a node id; needs its tests run, so it is its own
+    change.
   * `n9_workspace` still cannot complete a sync IN PLACE, but only because of
     the `@NANO_ROS_ROOT@` template placeholder documented below — its own
     schema defect is fixed.

@@ -347,6 +347,53 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
             o.output_path.display()
         );
     }
+    relativise_source_artifacts(&o.output_path, &o.component_dir)?;
+    Ok(())
+}
+
+/// Rewrite absolute source paths in the harness output to be relative to the
+/// component package.
+///
+/// `SourceLocation::caller()` records `core::panic::Location::caller().file()`,
+/// and rustc emits that ABSOLUTE whenever the recording crate is compiled as a
+/// path dependency from a different working directory — which is exactly how
+/// the harness builds it. So the JSON lands with the recording user's HOME
+/// directory baked into `source.artifact` — in a TRACKED file, so anyone who
+/// syncs the workspace dirties the tree with their own paths.
+/// `check-absolute-paths` catches it, but only after the fact.
+///
+/// This is the issue-0320 class one layer over: models were taught to record
+/// relative paths by passing `--bringup-root` to the resolver, and the metadata
+/// writer never got the same treatment.
+///
+/// Done as a textual prefix strip rather than a parse/reserialise so the
+/// harness keeps sole ownership of the file's formatting — reserialising would
+/// silently reformat every generated metadata file the first time this ran.
+/// `--remap-path-prefix` via `RUSTFLAGS` would fix it at the source, but the
+/// env var REPLACES any `[build] rustflags` from the workspace's
+/// `.cargo/config.toml`, which the embedded packages here rely on.
+fn relativise_source_artifacts(output_path: &Path, component_dir: &Path) -> Result<()> {
+    let text = std::fs::read_to_string(output_path)
+        .wrap_err_with(|| format!("read source metadata {}", output_path.display()))?;
+    // Both spellings: the recorded path may or may not be canonicalised.
+    let mut prefixes: Vec<String> = Vec::new();
+    if let Ok(canon) = component_dir.canonicalize() {
+        prefixes.push(format!("{}/", canon.display()));
+    }
+    let plain = format!("{}/", component_dir.display());
+    if !prefixes.contains(&plain) {
+        prefixes.push(plain);
+    }
+    let mut out = text.clone();
+    for prefix in &prefixes {
+        // Only inside JSON string values, so a prefix appearing bare in some
+        // other context is left alone.
+        out = out.replace(&format!("\"{prefix}"), "\"");
+    }
+    if out != text {
+        std::fs::write(output_path, &out)
+            .wrap_err_with(|| format!("write source metadata {}", output_path.display()))?;
+    }
     Ok(())
 }
 
