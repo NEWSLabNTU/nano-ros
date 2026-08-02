@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-02): **#393** — the fixture BUILD ignored the CI lane that the staleness
+gate and the test run already agreed on: `build-test-fixtures` took no lane and fanned out over all
+nine platform families, so tier 1 built all 337 manifest rows to run the 180 native ones. RESOLVED:
+`just build-test-fixtures lane=<all|native|tier1|tier2|tier2-nightly>` narrows both the module
+fan-out and the manifest rows from one `lane-coords` computation, and `.fixtures-built` now records
+`lane=` + one `coord=` per coordinate so `_require-fixtures` checks COVERAGE, not existence (the
+scope half of #0351). Also fixed: the stamp survived a failed build (the clear ran after the
+dependencies that build), three copies of the stamp writer, and a dead `NROS_FIXTURE_SHARED_SIG`
+export whose failure `export` was masking. See `archived/0393-*`. (2026-08-02)
+
 **#392** — Six bringups cannot `nros sync` AT ALL (not "produce a different model" — fail before
 writing anything), so each is a phase-330 W4.a blocker: a bringup that cannot sync cannot regenerate
 its deleted model. Two legacy `[system]` schemas (`n9_workspace` missing the required `name`;
