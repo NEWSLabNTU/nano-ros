@@ -1960,6 +1960,14 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
     unsafe {
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), executor);
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).domain_id), domain_id);
+        // Issue 0387 — the CppContext is `MaybeUninit`; the reentrancy guard
+        // `in_dispatch` (added by #0290) MUST be initialized here or `spin_once`
+        // reads uninitialized garbage as "already dispatching" and returns
+        // REENTRANT on the first call. That silently killed every borrowed-tier
+        // executor (C/C++ multi-tier entries: `nros_board_native_run_tiers`),
+        // e.g. a low-tier `/telem` publisher that never ran. Mirror
+        // `nros_cpp_init`'s init.
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
     }
     NROS_CPP_RET_OK
 }

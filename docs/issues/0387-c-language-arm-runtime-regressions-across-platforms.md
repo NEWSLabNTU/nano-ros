@@ -110,3 +110,34 @@ no QEMU — `realtime_tiers case_02_native_c` or the param C arm), run under
 from the passing Rust/Cpp arm (session open? publisher create? sample send?
 sched-context apply?). Likely a small number of latent C-runtime bugs in the
 newly-run cells, not one fix. The entry-codegen path is CLEARED.
+
+## ROOT CAUSE + FIX (2026-08-02) — the tier class
+
+Instrumented `nros_board_native_run_tiers`'s per-tier thread on the native C
+realtime fixture (`ws-realtime-c`): the low `/telem` tier's `open_over_session`
+rc=0, `set_active_groups` ok, **`setup` rc=0** (node + publisher + timer all
+created), then the FIRST `nros_cpp_spin_once` returns **-15 =
+`NROS_CPP_RET_REENTRANT`** → the tier loop's `if rc != OK break` kills the tier
+before it ever spins. Telem: 0 ticks; ctrl (boot tier, primary executor): fine.
+
+`spin_once` returns REENTRANT when the `in_dispatch` guard is already set.
+`nros_cpp_executor_open_over_session` builds a borrowed executor into a
+`MaybeUninit<CppContext>` but wrote only `.executor` + `.domain_id` — it left
+**`.in_dispatch` UNINITIALIZED**, so the guard read garbage-true and every first
+spin on a borrowed-tier executor spuriously returned REENTRANT. `in_dispatch`
+was added by **#0290** (the C++ reentrancy guard); that change updated
+`nros_cpp_init` but NOT the borrowed-executor open path — which is why this is
+NEW (the guard is recent) and why C/C++ fail (both go through the C-ABI
+`CppContext`) while Rust passes (its tier path never touches this field).
+
+**Fix:** `nros_cpp_executor_open_over_session` now writes `.in_dispatch = false`,
+mirroring `nros_cpp_init`. Verified on `ws-realtime-c` native C: telem went 0 →
+54 ticks in 6 s. This covers the whole tier class — native C/C++/rclcpp realtime
+and the EDF-deadline cells (all use `nros_board_native_run_tiers` →
+`open_over_session`).
+
+**Still open (likely SEPARATE roots, not this fix):** the embedded C
+pubsub/action/service cells (ThreadX/NuttX single-tier, no borrowed executor →
+this bug does not apply) and `cpp_c_param_live_read_e2e` (single-node param, no
+tiers). Re-run the confirmed set; the tier + EDF rows should flip green, and
+whatever remains is a distinct root to chase next.
