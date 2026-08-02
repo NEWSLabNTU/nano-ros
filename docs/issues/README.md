@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#392** — Six bringups cannot `nros sync` AT ALL (not "produce a different model" — fail before
+writing anything), so each is a phase-330 W4.a blocker: a bringup that cannot sync cannot regenerate
+its deleted model. Two legacy `[system]` schemas (`n9_workspace` missing the required `name`;
+`multi_pkg_workspace_freertos` spelling `launch`/`components`/`zenoh_locator` — its header says a
+BSP `build.rs` also reads it via `NROS_SYSTEM_TOML`, so migrating it blind trades a sync failure for
+a FreeRTOS build failure), two components declaring no `class` (possibly NEGATIVE fixtures for that
+very check), and one launch resolving an uninstalled package. Also records the six W4.a failures
+that were NOT bugs — a wsroot bug in the probe, and `@NANO_ROS_ROOT@` templates that are
+materialised before use — so nobody re-investigates them. See `0392-*`. (2026-08-02)
+
 **#391** — ThreadX-RV64 C/C++ fixture build only works incrementally. Bare
 `fixtures-build.sh threadx-riscv64 {c,cpp} zenoh` (without the recipe's riscv64 board config +
 `-DCMAKE_TOOLCHAIN_FILE`) configures the ThreadX kernel with host `/usr/bin/cc` → `Error: no such

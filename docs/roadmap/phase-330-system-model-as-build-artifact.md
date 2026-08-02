@@ -540,10 +540,22 @@ actually move — editing it now would describe a state the tree is not in.
       exactly as issue 0380 dropped 17 tier dims. Each needs the W1 treatment —
       become expressible in `system.toml` — before its model can go.
 
-      The 24 SYNCFAIL are a mix: three layouts sync does not accept
-      (`bins/entry-poc`, `qemu-baremetal-main-e2e`, an `orchestration_e2e`
-      pkg), two `system.toml` parse errors, and `refresh source metadata`
-      failures. Each needs triage; none is necessarily a model problem.
+      **SYNCFAIL triaged 2026-08-02 → issue 0392. It is 12, not 24** — the
+      sweep script emitted two lines per failure (an old and a new format), and
+      I read the line count as the case count.
+
+      | Cause | Count | Verdict |
+      | --- | --- | --- |
+      | probe walked up one level too far | 3 | **not a bug** — sync is `rc=0` in the right dir |
+      | `@NANO_ROS_ROOT@` unsubstituted template | 3 | **not a bug** — templates are materialised before use |
+      | legacy `[system]` schema | 3 (2 files) | **real** — 0392 A |
+      | component declares no `class` | 2 | **real or negative fixture** — 0392 B |
+      | launch needs an uninstalled package | 1 | environment — 0392 C |
+
+      So six are real W4.a blockers, not 24: a bringup that cannot sync cannot
+      regenerate its model. Detail, evidence and the "do not migrate blind"
+      warning on the FreeRTOS descriptor are in
+      [issue 0392](../issues/0392-sync-blocked-fixtures.md).
 
       Original item: **W4.a** Remove all **120** tracked `*/config/*model.yaml` (80 under
       `examples/workspaces/`, 40 under test fixtures); add the build location
