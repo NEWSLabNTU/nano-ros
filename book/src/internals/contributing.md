@@ -14,6 +14,15 @@ just setup all           # all supported SDKs/services
 source ./activate.sh
 ```
 
+> **The test and fixture stages need the vendored-source UNION, not one board.**
+> `nros setup <board> --rmw <x>` provisions one board+rmw's sources — right for
+> *building an app* for that board. But `just test` links every RMW's `-sys`
+> crate and `just build-test-fixtures` resolves component graphs that path-dep
+> platform sources (e.g. `nuttx/libc`) even for a native component, so the
+> contributor build needs the whole set. Both recipes preflight it and, if a
+> source is missing, name the exact remedy — `nros setup --source <name>`, or
+> `nros setup --build-sources` to provision the union at once (issue 0390).
+
 Build the entire workspace including examples:
 
 ```bash

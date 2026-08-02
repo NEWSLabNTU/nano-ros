@@ -1,7 +1,7 @@
 ---
 id: 390
 title: "`nros setup <board> --rmw <x>` provisions one board's sources, but the build stage needs the UNION — and the failures name no remedy"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0368, issue-0373, issue-0378, issue-0388, rfc-0014]
@@ -94,22 +94,35 @@ a broken one.
   nros-rmw-xrce-cffi (micro-xrce-dds-client, micro-cdr), cyclonedds-sys
   (cyclonedds-src), nros-zpico-build (zenoh-pico, mbedtls) (`1ba7b23ee`).
 
-**Direction 1 (declare + preflight the build-stage source union) — STILL OPEN.**
-Scoped during the above: the index model already has `RmwEntry.build_sources` +
-`BoardEntry.build_sources` (per-rmw / per-board `[source.*]` the app links), but
-they are (a) consumed by `tools/setup.sh`, NOT `nros setup`, and (b) **not
-populated in `nros-sdk-index.toml`** (the field carries a comment that it "needs
-an nros-cli schema change first"). So the union the REPO's own build stage needs
-(`just test --workspace` links every RMW's `-sys`; `build-test-fixtures` refreshes
-metadata for every component, resolving graphs that name platform sources like
-`nuttx-libc`) is not declared anywhere. Remaining work:
-1. Declare it — a top-level `[profile.contributor]`/`build_sources` union in the
-   index, or populate + union the per-rmw/board `build_sources`.
-2. A preflight (`nros` subcommand or `just` recipe, mirroring `_require-fixtures`)
-   that checks each present + names `nros setup --source <name>` per missing,
-   wired into `just test` + `just build-test-fixtures`.
-3. Verify on a genuinely clean host (this dev box is fully provisioned;
-   `just probe bootstrap` runs book blocks in a clean container).
+**Direction 1 (declare + preflight the build-stage source union) — DONE.** The
+per-rmw/board `build_sources` were unpopulated + `tools/setup.sh`-only, so the
+repo build's own union was declared nowhere. Fixed:
+1. **Declared** — a top-level `build_sources` union in `nros-sdk-index.toml`
+   (`SdkIndex.build_sources`), curated from what the ROOT workspace + metadata
+   refresh touch on the host: the 5 RMW `-sys` sources (zenoh-pico, mbedtls,
+   cyclonedds-src, micro-xrce-dds-client, micro-cdr) + `px4-rs` (a root cargo
+   path-dep — the workspace won't even LOAD without it) + `nuttx-libc`. NOT the
+   cross-only trees (freertos/threadx/nuttx kernels, px4-autopilot, rosidl).
+2. **Preflight** — `nros setup --build-sources` provisions the union;
+   `--build-sources --check` verifies each present and names `nros setup --source
+   <name>` per missing (exit non-zero). Wired as `_require-build-sources`, the
+   first dep of `just test` + `just build-test-fixtures`
+   (NROS_SKIP_BUILD_SOURCE_CHECK=1 bypass).
+3. Verified BOTH ways locally: all 7 present → green; hiding `nuttx-libc` →
+   `[MISSING] nuttx-libc  run: nros setup --source nuttx-libc` + exit 1, through
+   the recipe. The clean-host end-to-end (`just probe bootstrap`) is the only
+   remaining confidence check — the fire path itself is proven by the
+   simulated-missing run.
+
+**Direction 3 (book) — DONE.** `book/src/internals/contributing.md` now states
+the test/fixture stages need the source union, not one board, and names the
+preflight remedy.
+
+**RESOLVED.** All three directions landed (Direction 2 `e7bdacef7`/`1ba7b23ee`;
+Direction 1 `f63bf71bd`; Direction 3 with this commit). The reported symptom —
+build-stage failures naming no `nros` remedy — is fixed at the source (the
+preflight fails fast + names it) and at each failure site (metadata-refresh
+translation + the `-sys` gate messages).
 
 ## Direction
 

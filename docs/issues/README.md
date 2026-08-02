@@ -110,12 +110,15 @@ to persist (RISC-V kernel → x86 assembler, `csrrci %rax`); the lane self-heals
 to `ninja -t deps`) for zenoh fixtures, so a `zpico.c` edit trips STALE instead of running a museum
 binary (issue-0196 class). See `archived/0391-*`. (2026-08-02)
 
-**#390** — `nros setup <board> --rmw <x>` provisions ONE board's sources, but the build stage needs
-the union: `just test` builds `--workspace` (so every RMW's vendored C must exist) and
-`build-test-fixtures` refreshes metadata for every component (so `third-party/nuttx/libc` must exist
-even for a native one). Both failures name no remedy — the NuttX one is a raw cargo dep-resolution
-error four `Caused by:` layers deep. Hit in sequence on an Arch host following the book. See
-`0390-*`. (2026-08-02)
+(#390 resolved 2026-08-03 — see `archived/0390-*`: `nros setup <board> --rmw <x>` provisions one
+board+rmw slice, but the repo build stage needs the UNION of vendored `[source.*]` (`just test`
+links every RMW's `-sys`; `build-test-fixtures` metadata-refresh path-deps platform sources like
+`nuttx-libc`), and the failures named no `nros` remedy. Fixed three ways: (Dir 2) the metadata-refresh
+harness translates a missing-source cargo error into `nros setup --source <name>` (index-driven) and
+every `-sys` gate leads with the same (`e7bdacef7`/`1ba7b23ee`); (Dir 1) a top-level `build_sources`
+union in the index + `nros setup --build-sources[ --check]` + a `_require-build-sources` preflight on
+`just test`/`build-test-fixtures` (`f63bf71bd`); (Dir 3) the book contributor section says so.
+Verified locally both ways incl. a simulated-missing run.)
 
 Recently resolved: **#389** — `ZPICO_MAX_SESSIONS` defaulted to 1 with nothing raising it, so the
 cross-session test — the only e2e proof for the #348/#376 multi-session work — skipped on every host
