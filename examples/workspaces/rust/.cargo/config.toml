@@ -97,5 +97,4 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 # Path is relative to the workspace root (this dir).
 [patch.crates-io]
 libc = { path = "../../../third-party/nuttx/libc" }
-nros-rmw = { path = "../../../packages/core/nros-rmw" }  # nros-managed
 nros-zephyr-build = { path = "../../../packages/tooling/nros-zephyr-build" }  # nros-managed

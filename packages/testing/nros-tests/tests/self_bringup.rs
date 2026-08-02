@@ -15,34 +15,15 @@
 //! 3. `nros_plan_self_bringup_uses_launch_synth_when_absent` — confirm
 //!    L.6 synth fires for an L.7 self-bringup pkg w/ no `launch/` dir.
 
-use std::{
-    fs,
-    path::Path,
-    process::{Command, Stdio},
-};
+use std::{fs, path::Path, process::Command};
 
-fn play_launch_parser_available() -> bool {
-    Command::new("play_launch_parser")
-        .arg("--help")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
+// issue 0381 — the pre-296 `play_launch_parser_available()` gate is GONE:
+// `nros plan`'s self-bringup path synthesises the model in-process
+// (plan.rs `synthesise_self_model`) and never shells to the parser, so a
+// parser-availability skip only hid these tests on every host without it.
 fn require_nros_cli_only() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
-    }
-}
-
-fn require_tools() {
-    require_nros_cli_only();
-    if !play_launch_parser_available() {
-        nros_tests::skip!(
-            "play_launch_parser not on PATH (pip install play-launch-parser, or build its binary)"
-        );
     }
 }
 
@@ -108,7 +89,7 @@ locator = "tcp/127.0.0.1:7447"
 /// derived from the synth XML.
 #[test]
 fn nros_plan_self_bringup_emits_plan_json() {
-    require_tools();
+    require_nros_cli_only();
     let td = tempfile::tempdir().expect("tempdir");
     stage_self_bringup_component_pkg(td.path());
 
@@ -228,7 +209,7 @@ fn nros_codegen_system_self_bringup_bakes_system_config() {
 /// rather than a Path A no-launch error.
 #[test]
 fn nros_plan_self_bringup_uses_launch_synth_when_absent() {
-    require_tools();
+    require_nros_cli_only();
     let td = tempfile::tempdir().expect("tempdir");
     stage_self_bringup_component_pkg(td.path());
     // Sanity: no launch dir exists.
