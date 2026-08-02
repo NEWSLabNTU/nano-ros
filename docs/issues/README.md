@@ -111,6 +111,12 @@ very check), and one launch resolving an uninstalled package. Also records the s
 that were NOT bugs — a wsroot bug in the probe, and `@NANO_ROS_ROOT@` templates that are
 materialised before use — so nobody re-investigates them. See `0392-*`. (2026-08-02)
 
+**#399** — `qemu-esp32-baremetal` declares `packages = []`, so no C toolchain is installed for it and
+cc-rs falls back to a guessed `riscv32-unknown-elf-gcc` that nothing provides — `just check-examples`
+cannot build the esp32 talker/listener on a host provisioned exactly as documented (`nros setup`
+gives `riscv-none-elf-gcc`, and no `CC_riscv32imc-*` bridges the name). Green on CI only because its
+image happens to carry a matching binary. See `0399-*`. (2026-08-03)
+
 **#398** — A distrobox run and a host run share `target-embedded/`: `check-workspace-embedded`
 hard-sets a RELATIVE `CARGO_TARGET_DIR`, which escapes the box env's redirect, so the box re-runs a
 host-built `build-script-build` and dies on `GLIBC_2.39 not found` while naming an unrelated crate
