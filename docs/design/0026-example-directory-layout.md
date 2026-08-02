@@ -102,6 +102,27 @@ Two rules, by who owns the dependency graph:
   `--locked`.) Per-example `.gitignore` files keep their own `/Cargo.lock` line
   so the ignore travels with a copy-out.
 
+- **In-tree testing/bench leaves → `Cargo.lock` MAY be tracked, iff the leaf
+  commits its `generated/` tree** (RFC-0067 / phase-333). This third class did
+  not exist while a leaf's message identity varied with the host: the crate
+  version was the ament version (`std_msgs` 4.9.1 on jazzy, 5.3.6 on rolling)
+  and the reference was a registry name rescued by `[patch.crates-io]`, so a
+  committed lock recorded WHICH ROS install produced it and every other distro's
+  `--locked` build failed as drift. Observed in practice: locks under
+  `packages/testing/**` pinning 4.9.1, 4.9.0 and 5.3.6 — three distros — and one
+  lock refreshed, reverted and refreshed again by hosts disagreeing.
+
+  RFC-0067 removes both variables: message deps are `path` deps (D1) and the
+  generated crate's version is the constant `0.0.0`, with the ament version
+  demoted to `[package.metadata.nros] ament_version` (D2). A path-dep lock entry
+  carries no `source` line and records `0.0.0` on every host, so such a lock is
+  byte-identical across distros — a genuine promise, and `--locked` holds for it.
+
+  A testing/bench leaf that does NOT commit `generated/` keeps a path dep to an
+  absent directory: it fails CLOSED (`failed to read …/generated/std_msgs/
+  Cargo.toml`) until `nros sync`, and therefore cannot commit a meaningful lock —
+  the same reasoning that gitignores `examples/**`, reached from the other side.
+
 **Tooling agrees with the policy by construction (issue 0386):** the `--locked`
 shim keys off `git check-ignore Cargo.lock`, so it forces `--locked` exactly for
 the tracked (core) locks and skips it exactly for the ignored (example/leaf)

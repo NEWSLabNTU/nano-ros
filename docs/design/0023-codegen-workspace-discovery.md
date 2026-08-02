@@ -11,6 +11,10 @@ superseded-by: null
 
 # Codegen — workspace / AMENT discovery — design + revision plan
 
+> **Generated crate identity is env-invariant (RFC-0067 / phase-333).** The emitted crate carries
+> `version = "0.0.0"`, with the source package version demoted to `[package.metadata.nros]
+> ament_version`, so a committed consumer lock never records which ROS install produced it.
+
 **Goal.** A msg package authored against the ROS 2 convention (verbatim
 `package.xml` + `msg/*.msg` + the standard `rosidl_generate_interfaces(...)`
 CMakeLists block) builds **unmodified** against nano-ros, whether it lives

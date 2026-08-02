@@ -1,7 +1,8 @@
 ---
 id: 378
 title: "A host set up by the documented flow cannot reach tier-1 ci — and the unsynced leaf crates resolve their message deps against the PUBLIC crates.io"
-status: open
+status: resolved
+resolved_in: 93aa02016 (phase-333 W1-W3)
 type: bug
 area: build
 related: [rfc-0048, rfc-0067, issue-0363, issue-0368, issue-0373, phase-218, phase-333]
@@ -176,3 +177,36 @@ Arch Linux, x86_64, 2026-08-01, checkout at `3de28c939`, host provisioned by
 `bootstrap.sh` + `nros setup native --rmw zenoh` only. Nine leaves fail:
 `nros-bench/{executor-fairness,large-msg-baremetal,large-msg-xrce,stress-xrce,stress-zenoh,wcet-cycles-qemu}`,
 `nros-tests/bins/cdr-roundtrip-qemu`, and two more listed in the run log.
+
+## Resolved (2026-08-02, `93aa02016` — RFC-0067 / phase-333 W1–W3)
+
+Closed structurally rather than mitigated.
+
+**P1 (registry exposure).** Every in-tree reference to a generated message crate
+is now a `path` dep — 113 inline-table lines plus 13 bare-string ones across 138
+manifests — and the message entries in `[patch.crates-io]` are retired (18 in
+manifests, 305 across 105 `.cargo/config.toml`), with `nros sync` no longer
+emitting them. Cargo never consults a registry for a path dep, from any cwd, so
+the `--manifest-path`-from-elsewhere hole this issue declared unclosable by
+repo-side config is gone by construction: verified from the repo ROOT, every
+message package id resolves as `path+file://…`, never `registry+…`. On an
+unsynced tree the target directory is absent and cargo fails CLOSED, which is
+the correct outcome and never a fall-through to a stranger's crate.
+
+`check-msg-dep-is-path` (replacing the interim `check-msg-dep-redirect`) asserts
+the property instead of the mitigation, needs no config-chain walk, and is
+therefore immune to the same cwd problem. Green over 408 manifests, in
+`check-fast`.
+
+**P2 (`--locked` drift).** Generated crates now carry the constant
+`version = "0.0.0"` with the ament version demoted to
+`[package.metadata.nros] ament_version`; 25 committed generated manifests were
+converted and 16 leaf locks re-resolved. A message entry in a committed lock now
+has no `source` line and the same version on every host, so the lock is
+byte-identical across ROS distros.
+
+**Still open, tracked elsewhere:** the same cwd-dependent patch problem remains
+for `nros-core` / `nros-serdes`, which generated crates still reach by registry
+name — from the repo root a config-patched leaf fails `no matching package named
+nros-core`. That is RFC-0067 Open question 1 ("fold into D1, or a later pass?"),
+and the evidence now favours folding it in.

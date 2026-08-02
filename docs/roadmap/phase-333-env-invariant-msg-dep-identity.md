@@ -1,5 +1,25 @@
 # Phase 333 — Env-invariant message-dependency identity (path deps + 0.0.0)
 
+> **W1–W5 landed 2026-08-02** (`93aa02016` + the docs commit that follows it).
+> Two premises changed under contact and are worth reading before the next pass:
+>
+> - **D2 needed a code change after all.** The RFC says "no codegen change is
+>   required" because `cargo_nros.toml.jinja` already emits `0.0.0` — but a
+>   SECOND emitter, `rosidl-bindgen`'s `generate_cargo_toml`, still wrote the
+>   ament version, and it produced the `4.9.1` crates W3 found. Fixed in
+>   `c673faa40`.
+> - **W3 did not need a ROS host.** Every leaf with a committed `generated/`
+>   tree uses bundled interface packages, so codegen produced `0.0.0` on a
+>   ROS-less Arch host. Leaves without a `package.xml` cannot be reached by
+>   `nros sync` at all; their manifests were edited mechanically and verified
+>   byte-identical to the generator's own output.
+>
+> Left open deliberately: RFC-0067 Q1 (`nros-core`/`nros-serdes` still reached
+> by registry name + a cwd-dependent config patch — from the repo root a
+> config-patched leaf still fails `no matching package named nros-core`), and
+> the two unsynced leaves whose tracked locks are now stale-by-construction
+> (`tests/simple-workspace`, `packages/cli/testing_workspaces/complex_workspace`).
+
 **Implements:** RFC-0067. **Closes:** issue 0378 (and retires its interim
 `check-msg-dep-redirect`). **Touches:** RFC-0026 §Cargo.lock (adds the
 testing/bench committed-lock class), RFC-0048 W9 (retires the message-crate

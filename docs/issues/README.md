@@ -112,13 +112,14 @@ pubsub/service/action; only nros-c consults the counter, so Rust/Cpp passed). `c
 was a flake (`921eb1a0a`: stale sink skip miscounted + entry outlived by the wait). All QEMU-confirmed.
 Residual `rtic-action`/`zephyr-rust-params` are pre-tagged load flakes, not the C class.)
 
-**#378** — a host set up by the DOCUMENTED flow (bootstrap + activate + `nros setup native`) cannot
-reach tier-1 ci: `check-leaf-lockfiles` fails for 9 leaves because neither `generated/` (needs
-`nros generate-rust` → needs ROS 2) nor the root `nros-patch.toml` (needs `nros sync`, gitignored)
-exists, and the gate names no remedy. Worse, with the RFC-0048 patch targets absent, cargo resolved
-`std_msgs = "*"` against the **public crates.io** and matched a stranger's crate — it failed only
-because that version is yanked. nano-ros publishes nothing to crates.io, so the bare registry names
-in leaf manifests are protected solely by a generated, gitignored file. See `0378-*`. (2026-08-01)
+Recently resolved: **#378** — leaf message deps resolved against the PUBLIC crates.io whenever the
+`[patch.crates-io]` redirect was not in the loaded config chain (cwd-dependent), and committed leaf
+locks pinned whichever ROS distro generated them. RESOLVED (2026-08-02, `93aa02016`, RFC-0067 /
+phase-333 W1–W3): message deps are PATH deps repo-wide (138 manifests; 323 patch entries retired,
+`nros sync` no longer emits them), generated crates are `version = "0.0.0"` with the ament version
+as metadata, and `check-msg-dep-is-path` asserts the property rather than the mitigation. From the
+repo root every message id now resolves `path+file://…`, never `registry+…`. Still open as RFC-0067
+Q1: `nros-core`/`nros-serdes` keep the cwd-dependent patch. See `0378-*`. (2026-08-02)
 
 **#374** (filed as #373; renumbered) — `nros setup native --rmw zenoh` source-builds zenohd
 (`[tool.zenohd]` has no `dist.linux-x86_64`; assets never seeded) and pulls a SECOND rust toolchain
