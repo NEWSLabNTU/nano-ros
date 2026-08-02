@@ -1153,26 +1153,26 @@ pub fn build_native_workspace_rust_entry() -> TestResult<&'static Path> {
 }
 
 /// Phase 264 W4c — the parameterised native Rust workspace Entry pkg fixture
-/// (`ws-params-rust`, built via the pure-cargo `nros::main!` path).
+/// (`features`, built via the pure-cargo `nros::main!` path).
 pub fn build_native_workspace_rust_params_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry(
-                "workspace-rust-native-params",
-                "ws-params-rust",
-                "native_entry",
+                "workspace-features-rust-params",
+                "features",
+                "native_rust_params_entry",
             )
         })
         .map(|p| p.as_path())
 }
 
 /// issue #52 / 0303 / 0304 — the QoS workspace Entry pkg on native
-/// (`ws-qos-rust`). Its committed model overrides the talker publisher's
+/// (`features`). Its committed model overrides the talker publisher's
 /// reliability to `best_effort`, which the node's code never asks for.
 pub fn build_native_workspace_rust_qos_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_QOS_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_rust_entry("workspace-rust-native-qos", "ws-qos-rust", "native_entry")
+            build_workspace_rust_entry("workspace-features-rust-qos", "features", "native_rust_qos_entry")
         })
         .map(|p| p.as_path())
 }
@@ -1309,9 +1309,9 @@ pub fn build_native_workspace_rust_lifecycle_entry() -> TestResult<&'static Path
     NATIVE_WORKSPACE_RUST_LIFECYCLE_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry(
-                "workspace-rust-native-lifecycle",
-                "ws-lifecycle-rust",
-                "native_entry",
+                "workspace-features-rust-lifecycle",
+                "features",
+                "native_rust_lifecycle_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1333,7 +1333,7 @@ pub fn build_native_workspace_rust_realtime_entry() -> TestResult<&'static Path>
 }
 
 /// phase-306 W4 (issue 0255) — the remap/private-name native Rust workspace
-/// Entry pkg fixture (`ws-remap-rust`, cached; pure-cargo
+/// Entry pkg fixture (`features`, cached; pure-cargo
 /// `nros::main!(model = …)`). The model namespaces the node under `/island`
 /// and remaps its PRIVATE `~/out` to `/remapped_out` — the wire-name proof
 /// lane consumed by `workspace_features_e2e` (native_rust_remap).
@@ -1341,9 +1341,9 @@ pub fn build_native_workspace_rust_remap_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_REMAP_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry(
-                "workspace-rust-native-remap",
-                "ws-remap-rust",
-                "native_entry",
+                "workspace-features-rust-remap",
+                "features",
+                "native_rust_remap_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1411,27 +1411,27 @@ pub fn build_native_workspace_c_entry() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Phase 269 W1 — the parameterised C workspace Entry pkg fixture (`ws-params-c`).
+/// Phase 269 W1 — the parameterised C workspace Entry pkg fixture (`features`).
 /// Reads live `publish_period_ms` via `nros_cpp_get_param_integer`; consumed by
 /// tests/cpp_c_param_live_read_e2e.rs.
 pub fn build_native_workspace_c_params_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_PARAMS_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-c-native-params", "ws-params-c", "native_entry")
+            build_workspace_cmake_entry("workspace-features-c-params", "features", "native_c_params_entry")
         })
         .map(|p| p.as_path())
 }
 
-/// Phase 269 W2 — the managed-node (lifecycle) C workspace Entry pkg fixture (`ws-lifecycle-c`).
+/// Phase 269 W2 — the managed-node (lifecycle) C workspace Entry pkg fixture (`features`).
 /// Boots the talker node to `active` via `nros_cpp_lifecycle_autostart`; consumed by
 /// tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_c_lifecycle_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_LIFECYCLE_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-c-native-lifecycle",
-                "ws-lifecycle-c",
-                "native_entry",
+                "workspace-features-c-lifecycle",
+                "features",
+                "native_c_lifecycle_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1540,9 +1540,9 @@ pub fn build_native_workspace_c_custom_msg_talker_entry() -> TestResult<&'static
     NATIVE_WORKSPACE_C_CUSTOM_MSG_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-c-native-custom-msg-talker",
-                "ws-custom-msg-c",
-                "native_talker_entry",
+                "workspace-features-c-custom-msg-talker",
+                "features",
+                "native_c_custom_msg_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1554,9 +1554,9 @@ pub fn build_native_workspace_c_custom_msg_listener_entry() -> TestResult<&'stat
     NATIVE_WORKSPACE_C_CUSTOM_MSG_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-c-native-custom-msg-listener",
-                "ws-custom-msg-c",
-                "native_listener_entry",
+                "workspace-features-c-custom-msg-listener",
+                "features",
+                "native_c_custom_msg_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1570,9 +1570,9 @@ pub fn build_native_workspace_c_qos_talker_entry() -> TestResult<&'static Path> 
     NATIVE_WORKSPACE_C_QOS_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-c-native-qos-talker",
-                "ws-qos-c",
-                "native_talker_entry",
+                "workspace-features-c-qos-talker",
+                "features",
+                "native_c_qos_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1584,9 +1584,9 @@ pub fn build_native_workspace_c_qos_listener_entry() -> TestResult<&'static Path
     NATIVE_WORKSPACE_C_QOS_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-c-native-qos-listener",
-                "ws-qos-c",
-                "native_listener_entry",
+                "workspace-features-c-qos-listener",
+                "features",
+                "native_c_qos_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1600,9 +1600,9 @@ pub fn build_native_workspace_cpp_qos_talker_entry() -> TestResult<&'static Path
     NATIVE_WORKSPACE_CPP_QOS_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-cpp-native-qos-talker",
-                "ws-qos-cpp",
-                "native_talker_entry",
+                "workspace-features-cpp-qos-talker",
+                "features",
+                "native_cpp_qos_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1614,9 +1614,9 @@ pub fn build_native_workspace_cpp_qos_listener_entry() -> TestResult<&'static Pa
     NATIVE_WORKSPACE_CPP_QOS_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-cpp-native-qos-listener",
-                "ws-qos-cpp",
-                "native_listener_entry",
+                "workspace-features-cpp-qos-listener",
+                "features",
+                "native_cpp_qos_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1629,9 +1629,9 @@ pub fn build_native_workspace_mixed_qos_talker_entry() -> TestResult<&'static Pa
     NATIVE_WORKSPACE_MIXED_QOS_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-mixed-native-qos-talker",
-                "ws-qos-mixed",
-                "native_talker_entry",
+                "workspace-features-mixed-qos-talker",
+                "features",
+                "native_mixed_qos_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1643,9 +1643,9 @@ pub fn build_native_workspace_mixed_qos_listener_entry() -> TestResult<&'static 
     NATIVE_WORKSPACE_MIXED_QOS_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-mixed-native-qos-listener",
-                "ws-qos-mixed",
-                "native_listener_entry",
+                "workspace-features-mixed-qos-listener",
+                "features",
+                "native_mixed_qos_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1658,9 +1658,9 @@ pub fn build_native_workspace_cpp_custom_msg_talker_entry() -> TestResult<&'stat
     NATIVE_WORKSPACE_CPP_CUSTOM_MSG_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-cpp-native-custom-msg-talker",
-                "ws-custom-msg-cpp",
-                "native_talker_entry",
+                "workspace-features-cpp-custom-msg-talker",
+                "features",
+                "native_cpp_custom_msg_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1672,9 +1672,9 @@ pub fn build_native_workspace_cpp_custom_msg_listener_entry() -> TestResult<&'st
     NATIVE_WORKSPACE_CPP_CUSTOM_MSG_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-cpp-native-custom-msg-listener",
-                "ws-custom-msg-cpp",
-                "native_listener_entry",
+                "workspace-features-cpp-custom-msg-listener",
+                "features",
+                "native_cpp_custom_msg_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1687,9 +1687,9 @@ pub fn build_native_workspace_mixed_custom_msg_talker_entry() -> TestResult<&'st
     NATIVE_WORKSPACE_MIXED_CUSTOM_MSG_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-mixed-native-custom-msg-talker",
-                "ws-custom-msg-mixed",
-                "native_talker_entry",
+                "workspace-features-mixed-custom-msg-talker",
+                "features",
+                "native_mixed_custom_msg_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -1701,9 +1701,9 @@ pub fn build_native_workspace_mixed_custom_msg_listener_entry() -> TestResult<&'
     NATIVE_WORKSPACE_MIXED_CUSTOM_MSG_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-mixed-native-custom-msg-listener",
-                "ws-custom-msg-mixed",
-                "native_listener_entry",
+                "workspace-features-mixed-custom-msg-listener",
+                "features",
+                "native_mixed_custom_msg_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2156,7 +2156,7 @@ pub fn build_native_workspace_cpp_entry() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Phase 269 W1 — the parameterised C++ workspace Entry pkg fixture (`ws-params-cpp`).
+/// Phase 269 W1 — the parameterised C++ workspace Entry pkg fixture (`features`).
 /// Reads live `publish_period_ms` via `nros_cpp_get_param_integer` (executor handle
 /// saved from `node.executor_handle()` at configure time); consumed by
 /// tests/cpp_c_param_live_read_e2e.rs.
@@ -2164,30 +2164,30 @@ pub fn build_native_workspace_cpp_params_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_PARAMS_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-cpp-native-params",
-                "ws-params-cpp",
-                "native_entry",
+                "workspace-features-cpp-params",
+                "features",
+                "native_cpp_params_entry",
             )
         })
         .map(|p| p.as_path())
 }
 
-/// Phase 269 W2 — the managed-node (lifecycle) C++ workspace Entry pkg fixture (`ws-lifecycle-cpp`).
+/// Phase 269 W2 — the managed-node (lifecycle) C++ workspace Entry pkg fixture (`ws-managed-cpp`).
 /// Boots the talker node to `active` via `nros_cpp_lifecycle_autostart`; consumed by
 /// tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_lifecycle_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_LIFECYCLE_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-cpp-native-lifecycle",
-                "ws-lifecycle-cpp",
-                "native_entry",
+                "workspace-features-cpp-lifecycle",
+                "features",
+                "native_cpp_lifecycle_entry",
             )
         })
         .map(|p| p.as_path())
 }
 
-/// Phase 270 (#103) — the wrapper-managed C++ lifecycle entry (`ws-lifecycle-cpp`,
+/// Phase 270 (#103) — the wrapper-managed C++ lifecycle entry (`ws-managed-cpp`,
 /// `native_managed_entry`). Boots `ManagedTalker`, which drives REP-2002 itself via
 /// `nros::LifecycleNode` (register_services + autostart(Active)); consumed by
 /// tests/cpp_lifecycle_node_wrapper_e2e.rs.
@@ -2202,9 +2202,9 @@ pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'stat
             // guard), so `fixtures.toml` gives this row its own
             // `build-workspace-fixtures-managed` — resolve the entry from there.
             build_workspace_cmake_entry_in(
-                "workspace-cpp-native-lifecycle-managed",
-                "ws-lifecycle-cpp",
-                "build-workspace-fixtures-managed",
+                "workspace-managed-cpp-native",
+                "ws-managed-cpp",
+                "build-workspace-fixtures",
                 "native_managed_entry",
             )
         })
@@ -3001,7 +3001,7 @@ pub fn build_zephyr_workspace_mixed_entry() -> TestResult<PathBuf> {
 }
 
 /// phase-276 W1 (#128) — the Zephyr (native_sim) PARAMETERISED Rust workspace Entry
-/// (`ws-params-rust/src/zephyr_entry`): the param_talker node + the six ROS 2 parameter
+/// (`features/src/zephyr_rust_params_entry`): the param_talker node + the six ROS 2 parameter
 /// services (the #128 fix made the `Framework::Zephyr` macro arm emit that registration).
 /// Built by the west lane into `<zephyr-build-root>/build-ws-rs-params-entry-zenoh/zephyr/
 /// zephyr.exe`; consumed by `tests/entry_e2e.rs` (zephyr_rust_params cell).
@@ -3011,7 +3011,7 @@ pub fn build_zephyr_workspace_rust_params_entry() -> TestResult<PathBuf> {
 }
 
 /// phase-276 W3 (#128) — the Zephyr (native_sim) MANAGED (lifecycle) Rust workspace Entry
-/// (`ws-lifecycle-rust/src/zephyr_entry`): the talker node + the five REP-2002 lifecycle
+/// (`features/src/zephyr_rust_lifecycle_entry`): the talker node + the five REP-2002 lifecycle
 /// services with boot autostart (the #128 `Framework::Zephyr` `apply_lifecycle` emit).
 /// Built by the west lane into `<zephyr-build-root>/build-ws-rs-lifecycle-entry-zenoh/
 /// zephyr/zephyr.exe`; consumed by `tests/entry_e2e.rs` (zephyr_rust_lifecycle cell).
@@ -3022,7 +3022,7 @@ pub fn build_zephyr_workspace_rust_lifecycle_entry() -> TestResult<PathBuf> {
 }
 
 /// phase-276 W5 — the Zephyr (native_sim) QOS-OVERRIDE Rust workspace Entry
-/// (`ws-qos-rust/src/zephyr_entry`): reliable_talker publishes `/qos_chatter` with a
+/// (`features/src/zephyr_rust_qos_entry`): reliable_talker publishes `/qos_chatter` with a
 /// non-default profile (reliable + transient_local) and qos_listener subscribes with the
 /// byte-identical profile, republishing the matched receive count on `/qos_ok`. Built by
 /// the west lane into `<zephyr-build-root>/build-ws-rs-qos-entry-zenoh/zephyr/zephyr.exe`;

@@ -3384,3 +3384,50 @@ bringup = "src/demo_bringup"
 entry = "native_rust_remap_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 target_dir = "target-fixtures"
+
+# phase-331 W3 — the capability x LANGUAGE-SEAM demos: C node pkgs driven by a
+# C++ TYPED entry carrier. Folded in from ws-qos-mixed / ws-custom-msg-mixed.
+
+[[workspace_fixture]]
+id = "workspace-features-mixed-qos-talker"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_mixed_qos_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-mixed-qos-listener"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_mixed_qos_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-mixed-custom-msg-talker"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_mixed_custom_msg_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-features-mixed-custom-msg-listener"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "native_mixed_custom_msg_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"

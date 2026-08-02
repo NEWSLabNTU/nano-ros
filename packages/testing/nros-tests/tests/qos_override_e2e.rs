@@ -69,7 +69,7 @@ fn the_committed_model_declares_a_reliability_override_that_lowers() {
 
     let model_path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../../examples/workspaces/ws-qos-rust/src/demo_bringup/config/system_model.yaml"
+        "/../../../examples/workspaces/features/src/demo_bringup/config/rust_qos_model.yaml"
     );
     let raw = std::fs::read_to_string(model_path)
         .unwrap_or_else(|e| panic!("committed model missing at {model_path}: {e}"));

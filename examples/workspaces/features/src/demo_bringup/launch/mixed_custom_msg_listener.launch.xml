@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="mixed_reading_listener_pkg" exec="mixed_reading_listener" name="reading_listener"/>
+</launch>

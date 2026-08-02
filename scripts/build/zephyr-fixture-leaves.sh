@@ -436,7 +436,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     fi
 
     # phase-276 W1 (#128) — the PARAMETERISED Rust workspace Entry
-    # (examples/workspaces/ws-params-rust/src/zephyr_entry): the params-on-embedded
+    # (examples/workspaces/features/src/zephyr_rust_params_entry): the params-on-embedded
     # coverage cell. Same native_sim/NSOS west path as the base Rust workspace
     # entry above; `system.toml [param_services]` + the entry's
     # `nros/param-services` feature make the (#128-fixed) Framework::Zephyr emit
@@ -450,7 +450,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     wsp_rmw="zenoh"
     wsp_build_name="build-ws-rs-params-entry-zenoh"
     wsp_build_dir="$build_root/$wsp_build_name"
-    wsp_src="workspaces/ws-params-rust/src/zephyr_entry"
+    wsp_src="workspaces/features/src/zephyr_rust_params_entry"
     wsp_src_dir="$nros_root/examples/$wsp_src"
     wsp_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
     wsp_zenoh_locator="tcp/127.0.0.1:7470"
@@ -485,7 +485,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     fi
 
     # phase-276 W3 (#128) — the MANAGED (lifecycle) Rust workspace Entry
-    # (examples/workspaces/ws-lifecycle-rust/src/zephyr_entry): the
+    # (examples/workspaces/features/src/zephyr_rust_lifecycle_entry): the
     # lifecycle-on-embedded coverage cell. `system.toml [lifecycle]
     # autostart = "active"` + the entry's `nros/lifecycle-services` feature make
     # the (#128-fixed) Framework::Zephyr emit register the five REP-2002
@@ -498,7 +498,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     wsl_rmw="zenoh"
     wsl_build_name="build-ws-rs-lifecycle-entry-zenoh"
     wsl_build_dir="$build_root/$wsl_build_name"
-    wsl_src="workspaces/ws-lifecycle-rust/src/zephyr_entry"
+    wsl_src="workspaces/features/src/zephyr_rust_lifecycle_entry"
     wsl_src_dir="$nros_root/examples/$wsl_src"
     wsl_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
     wsl_zenoh_locator="tcp/127.0.0.1:7480"
@@ -533,7 +533,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     fi
 
     # phase-276 W5 — the QOS-OVERRIDE Rust workspace Entry
-    # (examples/workspaces/ws-qos-rust/src/zephyr_entry): the qos-on-embedded
+    # (examples/workspaces/features/src/zephyr_rust_qos_entry): the qos-on-embedded
     # coverage cell. The QoS profiles are declared per-entity in node code
     # (RFC-0041, reliable + transient_local on /qos_chatter); the on-target
     # QoS-matched pair republishes its receive count on /qos_ok. Distinct zenohd
@@ -545,7 +545,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     wsq_rmw="zenoh"
     wsq_build_name="build-ws-rs-qos-entry-zenoh"
     wsq_build_dir="$build_root/$wsq_build_name"
-    wsq_src="workspaces/ws-qos-rust/src/zephyr_entry"
+    wsq_src="workspaces/features/src/zephyr_rust_qos_entry"
     wsq_src_dir="$nros_root/examples/$wsq_src"
     wsq_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
     wsq_zenoh_locator="tcp/127.0.0.1:7460"

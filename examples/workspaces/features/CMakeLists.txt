@@ -46,7 +46,16 @@ set(_ws_subdirs
     src/native_cpp_params_entry
     src/native_cpp_lifecycle_entry
     src/native_cpp_custom_msg_talker_entry
-    src/native_cpp_custom_msg_listener_entry)
+    src/native_cpp_custom_msg_listener_entry
+    # --- mixed (C node pkgs driven by C++ TYPED entry carriers) -----------
+    src/mixed_qos_talker_pkg
+    src/mixed_qos_listener_pkg
+    src/mixed_reading_talker_pkg
+    src/mixed_reading_listener_pkg
+    src/native_mixed_qos_talker_entry
+    src/native_mixed_qos_listener_entry
+    src/native_mixed_custom_msg_talker_entry
+    src/native_mixed_custom_msg_listener_entry)
 
 nano_ros_workspace(
     BACKEND  zenoh

@@ -265,22 +265,22 @@ build-fixtures:
     # `nros::main!` path: `nros sync` provisions generated/ + the patch table; NO
     # codegen-system (the proc-macro bakes the system + the launch `<param>`
     # initials, same as the native ws-params lane).
-    if [ -d examples/workspaces/ws-params-rust/src/zephyr_entry ]; then
+    if [ -d examples/workspaces/features/src/zephyr_rust_params_entry ]; then
         echo "  → ws-params workspace-entry prep (nros sync)"
-        ( cd examples/workspaces/ws-params-rust
+        ( cd examples/workspaces/features
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
     # phase-276 W3 (#128) — the managed (lifecycle) workspace's Zephyr Entry.
     # Same pure-cargo `nros::main!` path as ws-params: `nros sync` only.
-    if [ -d examples/workspaces/ws-lifecycle-rust/src/zephyr_entry ]; then
+    if [ -d examples/workspaces/features/src/zephyr_rust_lifecycle_entry ]; then
         echo "  → ws-lifecycle workspace-entry prep (nros sync)"
-        ( cd examples/workspaces/ws-lifecycle-rust
+        ( cd examples/workspaces/features
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
     # phase-276 W5 — the QoS-override workspace's Zephyr Entry (nros sync only).
-    if [ -d examples/workspaces/ws-qos-rust/src/zephyr_entry ]; then
+    if [ -d examples/workspaces/features/src/zephyr_rust_qos_entry ]; then
         echo "  → ws-qos workspace-entry prep (nros sync)"
-        ( cd examples/workspaces/ws-qos-rust
+        ( cd examples/workspaces/features
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
     # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry (nros sync only).

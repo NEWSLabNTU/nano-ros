@@ -1,0 +1,34 @@
+meta:
+  version: 1
+  inputs:
+  - path: launch/mixed_qos_listener.launch.xml
+    sha256: e9bb5f7c088a9727bcda0fed66c7c8d800036dc9aaea0b1a75baafe4065f4424
+  - path: system.toml
+    sha256: 98b05fa759c6416f0d191da1891e863b2dca773d66b9114e11306c8ebc7552d1
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
+structure:
+  scopes:
+    mixed_qos_listener.launch.xml:
+      file: mixed_qos_listener.launch.xml
+  nodes:
+    /qos_listener:
+      scope: mixed_qos_listener.launch.xml
+      pkg: mixed_qos_listener_pkg
+      exec: mixed_qos_listener
+      lifecycle_autostart: active
+      node_name: qos_listener
+execution:
+  deploy:
+    /qos_listener:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  features:
+  - param_services
+  - lifecycle

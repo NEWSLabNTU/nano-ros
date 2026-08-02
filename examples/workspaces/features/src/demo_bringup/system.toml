@@ -188,3 +188,19 @@ out    = "rust_qos_model.yaml"
 [[model]]
 launch = "rust_remap.launch.xml"
 out    = "rust_remap_model.yaml"
+
+[[model]]
+launch = "mixed_qos_talker.launch.xml"
+out    = "mixed_qos_talker_model.yaml"
+
+[[model]]
+launch = "mixed_qos_listener.launch.xml"
+out    = "mixed_qos_listener_model.yaml"
+
+[[model]]
+launch = "mixed_custom_msg_talker.launch.xml"
+out    = "mixed_custom_msg_talker_model.yaml"
+
+[[model]]
+launch = "mixed_custom_msg_listener.launch.xml"
+out    = "mixed_custom_msg_listener_model.yaml"
