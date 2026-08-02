@@ -2393,6 +2393,7 @@ fn write_patch_block(
         pkgs,
         nano_ros_path,
         extra_runtime_crates,
+        requested,
     )?;
     // #272 — how this leaf reaches the central trio (`nros`/`nros-core`/
     // `nros-serdes`) depends on whether it lives INSIDE the nano-ros checkout:
@@ -2848,6 +2849,7 @@ fn render_managed_entries(
     pkgs: &[String],
     nano_ros_path: Option<&Path>,
     extra_runtime_crates: &[String],
+    registry_named: &HashSet<String>,
 ) -> Result<Vec<(String, String)>> {
     let authority_dir = authority.parent().unwrap();
     let mut out: Vec<(String, String)> = Vec::new();
@@ -2855,21 +2857,30 @@ fn render_managed_entries(
     // failing on the first, so one run reports every stale mapping.
     let mut stale_paths: Vec<(String, String)> = Vec::new();
 
-    // 1) Generated msg crates: NO patch entry (RFC-0067 D1, phase-333 W1).
+    // 1) Generated msg crates: a patch entry ONLY for names a consumer still
+    //    declares registry-style (RFC-0067 D1, phase-333 W1).
     //
-    // Consumers now declare message crates as PATH deps
-    // (`std_msgs = { path = "generated/std_msgs" }`), so a `[patch.crates-io]`
-    // redirect is both redundant and harmful: redundant because a path dep never
-    // consults a registry, harmful because the patch was the ONLY thing standing
-    // between a bare `std_msgs = "*"` and the third party who owns that name on
-    // crates.io — and it silently stopped applying whenever the config chain that
-    // held it was not loaded (cwd-dependent, issue 0378). A path dep is safe from
-    // every cwd, by construction. Leaving the entries would also make cargo warn
-    // about unused patches now that nothing names these crates by registry.
+    // A PATH dep (`std_msgs = { path = "generated/std_msgs" }`) needs no patch —
+    // it never consults a registry, from any cwd — and leaving one would make
+    // cargo warn about an unused patch. Emitting nothing at all was wrong in the
+    // other direction, and broke `examples/workspaces/features`: `custom_msgs` is
+    // a WORKSPACE-LOCAL msg package whose consumers still say `custom_msgs = "*"`,
+    // because the phase-333 sweep converted a fixed list of standard ROS names
+    // and cannot know a user's own package names. It is also the copy-out
+    // contract (RFC-0026): a user's project declares registry-style and relies on
+    // this block, and `nros sync` must keep working for them.
     //
-    // `nros-core` / `nros-serdes` below KEEP their patch entries — generated
-    // crates still reach those by registry name (RFC-0067 Open questions).
-    let _ = (pkgs, build_root, authority_dir);
+    // So the emitted set follows the CONSUMER's spelling: registry name in, patch
+    // out; path dep in, nothing. Self-healing — a leaf converted to path deps
+    // simply stops receiving an entry on its next sync.
+    for pkg in pkgs {
+        if !registry_named.contains(pkg) {
+            continue;
+        }
+        let crate_root = build_root.join(pkg);
+        let rel = pathdiff::diff_paths(&crate_root, authority_dir).unwrap_or(crate_root);
+        out.push((pkg.clone(), rel.display().to_string()));
+    }
 
     if let Some(nrp) = nano_ros_path {
         let mut wanted: Vec<String> = vec!["nros-core".to_string(), "nros-serdes".to_string()];
