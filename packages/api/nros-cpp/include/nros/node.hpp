@@ -84,6 +84,7 @@ template <typename A> class ActionClient;
 // Phase 122.3.d.b — L1 polling-mode action wrappers.
 template <typename A> class PollingActionServer;
 template <typename A> class PollingActionClient;
+template <typename M> class PollingSubscription;
 // Phase 242.1 (RFC-0044) — rclcpp-faithful IS-A-node base. It wraps an owned
 // `Node` and creates that node against an executor-bound handle in its ctor, so
 // it needs friend access to set `executor_handle_` + call `Node::create`
@@ -476,6 +477,15 @@ class Node {
     /// Phase 122.3.d.b — Create an L1 polling-mode action client.
     template <typename A>
     Result create_polling_action_client(PollingActionClient<A>& out, const char* action_name);
+
+    /// Issue 0278 — Create a latest-value polling subscription (the nano-ros
+    /// analog of `autoware_utils::InterProcessPollingSubscriber`): a poll-mode
+    /// subscription plus a retained last value, read repeatably via
+    /// `PollingSubscription<M>::take_data()` / `take_new_data()`. See
+    /// `polling_subscription.hpp`.
+    template <typename M>
+    Result create_polling_subscription(PollingSubscription<M>& out, const char* topic,
+                                       const QoS& qos = QoS::default_profile());
 
     /// Create a repeating timer.
     ///

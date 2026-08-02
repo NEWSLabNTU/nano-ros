@@ -2370,6 +2370,18 @@ check-cpp: check-cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/spin_verbs.cpp
+    # issue 0278 — PollingSubscription<M> (latest-value polling subscriber)
+    # instantiation: the wrapper bodies (drain/take_data/take_new_data/take)
+    # and the create_polling_subscription factory path are type-checked against
+    # a generated-shape message type.
+    echo "  - PollingSubscription instantiation (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/polling_subscription.cpp
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
     # executed (counting allocator in the TU; asserts zero live allocations
     # across dtor / move-assign / clear / reserve-relocation of a two-level

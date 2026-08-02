@@ -36,6 +36,7 @@
 #include "nros/action_client.hpp"
 #include "nros/polling_action_server.hpp"
 #include "nros/polling_action_client.hpp"
+#include "nros/polling_subscription.hpp"
 #include "nros/parameter.hpp"
 #include "nros/tick_ctx.hpp"
 #include "nros/lifecycle.hpp"

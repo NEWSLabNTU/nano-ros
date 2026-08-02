@@ -26,6 +26,27 @@ Two upstream idioms have no nano-ros equivalent:
 - Bounded-wait service call usable inside executor context, or an async
   callback-continuation form the compat layer can express.
 
+## Progress
+
+**Half A LANDED (2026-08-02) — `nros::PollingSubscription<M>`.** A C++ wrapper
+(`polling_subscription.hpp`, `Node::create_polling_subscription`) that owns a
+poll-mode `Subscription<M>` plus a retained latest value, read repeatably via
+`take_data()` (cached-or-new latest), `take_new_data()` (only if new this call),
+`take(M&)`, `peek()`. Each accessor drains to the newest pending sample (a burst
+collapses to its last element, matching `InterProcessPollingSubscriber::takeData`)
+then answers from the cache. Pure wrapper over the existing consuming `try_recv`
+— zero C/Rust/executor ABI change; directly replaces the hand-rolled
+`topic_state_monitor.cpp` cache pattern. Instantiation gated by a `-fsyntax-only`
+compile test (`tests/compile/polling_subscription.cpp`) in `just check-cpp`.
+
+**Half B (bounded service call inside a callback) — design open.** #0290 fixed
+the safety hole (in-callback bounded wait now returns `Reentrant` instead of
+aliasing `&mut Executor`). The tractable path is an L1 (executor-free) service
+client with a self-driven `call(req, resp, timeout)` — an L1 poll client already
+exists (`nros_client_init_polling` / `RawServiceClient`); the open question is
+whether it can drive its own transport I/O from inside a callback without
+re-entering the shared session the executor is mid-spin on. Being de-risked.
+
 ## Correction + current state (2026-07-26)
 
 Re-checked both halves against the code. Two things in the original write-up
