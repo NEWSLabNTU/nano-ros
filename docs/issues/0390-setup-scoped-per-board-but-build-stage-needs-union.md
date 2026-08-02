@@ -77,6 +77,40 @@ That matters most for the exact population it hits: someone on a non-Ubuntu host
 following the book for the first time, who cannot tell an unprovisioned tree from
 a broken one.
 
+## Progress (2026-08-03) — Direction 2 landed; Direction 1 scoped
+
+**Direction 2 (failures name the remedy) — DONE.**
+- `build_metadata` (the metadata-refresh harness, the NuttX-libc worst case that
+  named *nothing*) now captures the harness stderr and, on failure, scans it for
+  any index `[source.*]` `dest` path; if one is implicated it appends
+  `run: nros setup --source <name>`. Index-driven (dest → package name),
+  unit-tested against the real shipped index (`e7bdacef7`). NOTE: could not run
+  the unit test end-to-end locally — the nros-cli-core lib-test build was
+  transiently red from a concurrent phase-333 schema migration (`class` field on
+  `ComponentConfig`, `TierRtosSpec` fields); the change itself compiles (lib
+  `check` green) and the test passes once that clears.
+- The vendored-source presence gates now lead with `nros setup --source <name>`
+  instead of only `git submodule update --init` — fixed the whole class:
+  nros-rmw-xrce-cffi (micro-xrce-dds-client, micro-cdr), cyclonedds-sys
+  (cyclonedds-src), nros-zpico-build (zenoh-pico, mbedtls) (`1ba7b23ee`).
+
+**Direction 1 (declare + preflight the build-stage source union) — STILL OPEN.**
+Scoped during the above: the index model already has `RmwEntry.build_sources` +
+`BoardEntry.build_sources` (per-rmw / per-board `[source.*]` the app links), but
+they are (a) consumed by `tools/setup.sh`, NOT `nros setup`, and (b) **not
+populated in `nros-sdk-index.toml`** (the field carries a comment that it "needs
+an nros-cli schema change first"). So the union the REPO's own build stage needs
+(`just test --workspace` links every RMW's `-sys`; `build-test-fixtures` refreshes
+metadata for every component, resolving graphs that name platform sources like
+`nuttx-libc`) is not declared anywhere. Remaining work:
+1. Declare it — a top-level `[profile.contributor]`/`build_sources` union in the
+   index, or populate + union the per-rmw/board `build_sources`.
+2. A preflight (`nros` subcommand or `just` recipe, mirroring `_require-fixtures`)
+   that checks each present + names `nros setup --source <name>` per missing,
+   wired into `just test` + `just build-test-fixtures`.
+3. Verify on a genuinely clean host (this dev box is fully provisioned;
+   `just probe bootstrap` runs book blocks in a clean container).
+
 ## Direction
 
 1. **Declare the build stage's requirement.** A `[profile.contributor]`-style
