@@ -141,3 +141,45 @@ pubsub/action/service cells (ThreadX/NuttX single-tier, no borrowed executor →
 this bug does not apply) and `cpp_c_param_live_read_e2e` (single-node param, no
 tiers). Re-run the confirmed set; the tier + EDF rows should flip green, and
 whatever remains is a distinct root to chase next.
+
+## ROOT CAUSE + FIX (2026-08-02) — the ThreadX embedded pubsub/service class
+
+Reproduced the `rtos_e2e` ThreadxLinux C pubsub cell directly (zenohd on the
+baked port 9100, the prebuilt `c_talker` + `c_listener`, `NROS_RMW_TRACE_OPEN=1`):
+the session opens (`open: ... ret=0 mode=0`), the talker publishes 1-2 samples,
+then BOTH processes print `Executor spin failed: -2` and exit — listener 0
+received.
+
+`-2 = NROS_RET_TIMEOUT`, returned by `nros_executor_spin_period` when it bails on
+`session_io_failures() >= SPIN_ERROR_TOLERANCE` (16). The counter
+(`Executor::consecutive_io_failures`) increments on every `drive_io` `Err` and
+resets on `Ok`. Traced the `Err` to the C shim: `zpico_spin_once`'s
+`#elif defined(ZENOH_THREADX)` arm initialised `int ret = ZPICO_ERR_TIMEOUT;`
+(-9) and left it there whenever the round did no work — `select` returned
+`ready == 0` (no inbound frame, the steady state on a live-but-quiet session), or
+the multi-tier read try-lock (`_zpico_threadx_locked_read`) was already held.
+Every OTHER multi-threaded backend (FreeRTOS/Zephyr/POSIX/NuttX) returns 0 there.
+So each of the 16 quiet spins counted as a transport failure and the node killed
+its own session — the exact "idle spins must NEVER accumulate
+session_io_failures" rule from issue 0355.
+
+**Why Rust/C++ passed the identical cells:** their spin loops never consult the
+counter. `nros-node::Executor::spin_period` loops until its halt flag;
+`nros_cpp_spin_once` always returns OK. Only the nros-c `spin_period` gates on
+`session_io_failures`, so only the C arm died. NEW because #356 added the
+`[deploy.threadx-linux]` tables — first time these C cells ran.
+
+**Fix (`4b8c63b36`):** `zpico_spin_once` ThreadX arm now initialises `ret = 0`
+and returns 0 on the try-lock-miss; negatives are reserved for a genuine `select`
+error or a real `zp_read` failure. Same block covers the Linux (`select`) and
+NetX (`nx_bsd_select`) ThreadX arms. Verified: `rtos_e2e` ThreadxLinux C pubsub
+0 -> 14 messages, service 0 -> 1 response — both green. This should also flip the
+ThreadxRiscv64 C pubsub + service cells (same ThreadX poll path).
+
+**Still open — ThreadX C ACTION (distinct root):** with the session now alive,
+`nros_action_send_goal` still returns `-2` after its full 15 s wall-clock budget
+— the SendGoal acceptance reply never arrives (`accepted=false`). Plain service
+call/reply works on the same cell, so this is action-specific (SendGoal
+queryable discovery / hash / entity-id on the ThreadX C path), NOT the idle-spin
+bug. `cpp_c_param_live_read_e2e` and NuttX C (generic MT path, returns 0 — not
+this bug) also remain to chase.
