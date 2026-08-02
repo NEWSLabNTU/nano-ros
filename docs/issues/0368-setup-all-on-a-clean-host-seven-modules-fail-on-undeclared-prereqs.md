@@ -22,7 +22,7 @@ rmw_zenoh esp_idf`), and the doctor pass then flagged **10**. The orchestrator
 itself behaved well — honest per-module failure list, honest non-zero exit,
 per-item remedies in doctor. The failures cluster into a few classes.
 
-## Status (2026-08-03) — F1 + F2 RESOLVED
+## Status (2026-08-03) — F1–F3, F5–F8 RESOLVED; only F4 remains
 
 - **F1 DONE (phase-327 W2, verified).** `just workspace setup` now runs every
   sudo-less installer FIRST and the system step LAST, and `apt-packages`
@@ -39,9 +39,27 @@ per-item remedies in doctor. The failures cluster into a few classes.
   remedy: only `kconfig-frontends-nox` has no index tool, so it correctly stays
   apt.
 
-Still open: F3 (qemu dist libslirp), F4 (incomplete interface bundle — overlaps
-the phase-333 msg-dep work), F5 (pyo3/z3/libclang build deps undeclared), F6
-(verus unpinned), F7 (python3-venv — now in `[system.*]`, see F1 output).
+**Full finding status (audited 2026-08-03):**
+- **F1 DONE** — phase-327 W2 (verified).
+- **F2 DONE** — phase-327 W3 + class-straggler fixes this cycle.
+- **F3 DONE (in-repo part)** — `[tool.qemu].system = ["libslirp"]` + `[system.libslirp]`
+  (phase-327 W4); `nros setup --tool` names the system dep before the smoke
+  check. The dist RELINK (rpath `$ORIGIN/../lib`) is an out-of-repo sdk-repo
+  release, but the declaration + check that F3 asked for are in.
+- **F5 DONE** — `[system.]{python3-dev, libz3, libclang-dev, clang}` (phase-327 W4).
+- **F6 DONE** — `scripts/setup-verus.sh` pins `release/0.2026.06.28.1847ab3` with
+  a glibc guard (phase-327 W6).
+- **F7 DONE** — `[system.]{aria2, gnu-parallel, python3-venv, python3-pip}`,
+  `[rust.cargo-tool.nextest]`, `[python.]{colcon, clang-format}` (phase-327 W4/W5).
+- **F8 DONE** — `ci-matrix{,-nightly}` now set `NROS_FIXTURE_LANE=tier2{,-nightly}`
+  so the inner `_require-fixtures` requires the SAME lane `_lane-gate` proved,
+  instead of the `all` stamp (this cycle).
+
+**Only F4 remains open** — the bundled `packages/cli/interfaces/` is incomplete
+(needs example_interfaces, action_msgs, unique_identifier_msgs) + sync must
+refuse to NARROW a leaf patch table on generation failure. Deliberately DEFERRED:
+it overlaps the active phase-333 / RFC-0067 message-dependency migration; folding
+it in there (where the msg-crate shape is being reworked) avoids a collision.
 
 ## Findings
 
