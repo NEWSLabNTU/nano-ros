@@ -22,4 +22,4 @@ nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh", featu
 # cargo builds (no CMake glue) enable the feature so the library's
 # `build.rs` compiles the C port into the binary.
 nros-platform-cffi = { path = "../../../../packages/platform/nros-platform-cffi", features = ["posix-c-port"] }
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }

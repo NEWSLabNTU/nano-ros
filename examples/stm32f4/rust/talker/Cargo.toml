@@ -48,7 +48,7 @@ nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble
 # board BoardEntry boot scaffold — this crate only registers its Logger handle.
 nros-log = { version = "*", default-features = false }
 # Generated message types (from package.xml via `nros generate-rust`).
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 
 # Bare-metal Cortex-M entry: `nros::main!()` emits `#[cortex_m_rt::entry]` for
 # the `stm32f4` deploy; the reset trampoline halts via `cortex_m::asm`.

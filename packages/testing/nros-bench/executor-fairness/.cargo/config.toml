@@ -1,8 +1,3 @@
 include = ["../../../../../nros-patch.toml"]
 [patch.crates-io]
-action_msgs = { path = "generated/action_msgs" }  # nros-managed
-builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
-example_interfaces = { path = "generated/example_interfaces" }  # nros-managed
 nros-rmw = { path = "../../../core/nros-rmw" }  # nros-managed
-std_msgs = { path = "generated/std_msgs" }  # nros-managed
-unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }  # nros-managed

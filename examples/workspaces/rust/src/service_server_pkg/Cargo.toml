@@ -22,4 +22,4 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
     "alloc",
     "rmw-cffi",
 ] }
-example_interfaces = { version = "*", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }

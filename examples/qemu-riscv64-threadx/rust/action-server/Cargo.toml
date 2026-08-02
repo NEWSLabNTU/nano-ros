@@ -47,7 +47,7 @@ gateway = "10.0.2.2"
 nros-board-threadx-qemu-riscv64 = { version = "*" }
 nros = { version = "*", default-features = false, features = ["rmw-cffi", "ros-humble"] }
 nros-platform = { version = "*", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
-example_interfaces = { version = "*", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }
 # Demo-parity log lines route through the `log` facade; the platform entry
 # runtime owns the sink.
 log = "0.4"

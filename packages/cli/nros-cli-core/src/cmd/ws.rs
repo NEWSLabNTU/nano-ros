@@ -1473,10 +1473,19 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     let mut authority_to_requested: HashMap<PathBuf, HashSet<String>> = HashMap::new();
     for c in &rust_consumers {
         let authority = find_patch_authority(&c.dir, &ws_root)?;
+        // phase-333 W1 — only deps this consumer declares BY REGISTRY NAME can be
+        // stranded by a narrower patch block; a path dep resolves without one.
+        // `c.deps` comes from package.xml `<depend>` rows, which name every
+        // message package the leaf uses whether or not its Cargo.toml resolves
+        // them via the registry, so intersect the two.
+        let registry_named: HashSet<String> =
+            std::fs::read_to_string(c.dir.join("Cargo.toml"))
+                .map(|body| registry_style_dep_names(&body).into_iter().collect())
+                .unwrap_or_default();
         authority_to_requested
             .entry(authority.clone())
             .or_default()
-            .extend(c.deps.iter().cloned());
+            .extend(c.deps.iter().filter(|d| registry_named.contains(*d)).cloned());
         // Workspace mode keeps the locked shared-root topology (`3f07dd9f7`):
         // every consumer's authority carries the full emitted set. Single-pkg
         // mode is dependency-aware — only the msg crates this consumer
@@ -2715,6 +2724,42 @@ fn extract_consumer_registry_nros_deps(body: &str) -> Vec<String> {
 
 /// True iff `name` is a crate the patch-block writer knows a workspace
 /// path for. Restricts the 220.E extension surface to vetted names.
+/// Names this manifest declares REGISTRY-style (a `version` key), regardless of
+/// whether they are nros-managed. Used by the narrowing guard: only a dep the
+/// consumer resolves by registry name can fall through to crates.io if its
+/// `[patch.crates-io]` entry disappears. A PATH dep (RFC-0067 D1, phase-333 W1)
+/// cannot — it names a directory, so dropping its patch is intentional and safe.
+///
+/// Without this distinction the guard reads `package.xml`'s `<depend>` rows —
+/// which still list `std_msgs` because the leaf genuinely depends on those
+/// messages — and blocks the very narrowing phase-333 performs.
+fn registry_style_dep_names(body: &str) -> Vec<String> {
+    use toml_edit::{DocumentMut, Item, Value};
+    let Ok(doc) = body.parse::<DocumentMut>() else {
+        return Vec::new();
+    };
+    fn is_registry_style(item: &Item) -> bool {
+        match item {
+            Item::Value(Value::String(_)) => true,
+            Item::Value(Value::InlineTable(t)) => t.contains_key("version"),
+            Item::Table(t) => t.contains_key("version"),
+            _ => false,
+        }
+    }
+    let mut out = Vec::new();
+    let root = doc.as_table();
+    for kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        if let Some(tbl) = root.get(kind).and_then(|i| i.as_table_like()) {
+            for (name, item) in tbl.iter() {
+                if is_registry_style(item) {
+                    out.push(name.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
 fn is_managed_runtime_crate_name(name: &str) -> bool {
     nros_crate_path_lookup().iter().any(|(n, _)| *n == name)
         // RFC-0040 D-Q3 — board crates are managed too (a scaffolded embedded
@@ -2806,12 +2851,21 @@ fn render_managed_entries(
     // failing on the first, so one run reports every stale mapping.
     let mut stale_paths: Vec<(String, String)> = Vec::new();
 
-    // 1) Generated msg crates (path = generated/<pkg>).
-    for pkg in pkgs {
-        let crate_root = build_root.join(pkg);
-        let rel = pathdiff::diff_paths(&crate_root, authority_dir).unwrap_or(crate_root);
-        out.push((pkg.clone(), rel.display().to_string()));
-    }
+    // 1) Generated msg crates: NO patch entry (RFC-0067 D1, phase-333 W1).
+    //
+    // Consumers now declare message crates as PATH deps
+    // (`std_msgs = { path = "generated/std_msgs" }`), so a `[patch.crates-io]`
+    // redirect is both redundant and harmful: redundant because a path dep never
+    // consults a registry, harmful because the patch was the ONLY thing standing
+    // between a bare `std_msgs = "*"` and the third party who owns that name on
+    // crates.io — and it silently stopped applying whenever the config chain that
+    // held it was not loaded (cwd-dependent, issue 0378). A path dep is safe from
+    // every cwd, by construction. Leaving the entries would also make cargo warn
+    // about unused patches now that nothing names these crates by registry.
+    //
+    // `nros-core` / `nros-serdes` below KEEP their patch entries — generated
+    // crates still reach those by registry name (RFC-0067 Open questions).
+    let _ = (pkgs, build_root, authority_dir);
 
     if let Some(nrp) = nano_ros_path {
         let mut wanted: Vec<String> = vec!["nros-core".to_string(), "nros-serdes".to_string()];

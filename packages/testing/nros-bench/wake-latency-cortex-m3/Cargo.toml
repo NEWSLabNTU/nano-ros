@@ -68,7 +68,7 @@ nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh", featu
     "platform-freertos",
     "ros-humble",
 ] }
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 # Phase 230 (#0317) — was pulled transitively via `nros-node/platform-freertos`;
 # now a direct dep for the semihosting `debug::exit` at scenario end.

@@ -18,4 +18,4 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
     "alloc",
     "rmw-cffi",
 ] }
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }

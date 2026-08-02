@@ -29,7 +29,7 @@ nros-board-native = { version = "*", default-features = false, features = ["rmw-
 nros-rmw-zenoh = { version = "*", default-features = false, features = ["std", "platform-posix", "ros-humble"] }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { version = "*" }
-example_interfaces = { version = "*", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }
 heapless = "0.8"
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone

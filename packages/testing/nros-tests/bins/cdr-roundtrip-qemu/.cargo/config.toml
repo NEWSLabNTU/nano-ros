@@ -6,8 +6,6 @@ target = "thumbv7m-none-eabi"
 DEFMT_LOG = "trace"
 
 [patch.crates-io]
-builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
-std_msgs = { path = "generated/std_msgs" }  # nros-managed
 
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic -semihosting-config enable=on,target=native -kernel"

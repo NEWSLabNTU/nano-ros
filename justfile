@@ -355,7 +355,7 @@ check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
-    check-leaf-lockfiles check-msg-dep-redirect check-cargo-locked check-model-dims \
+    check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-model-dims \
     check-cargo-profile-mirror \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
@@ -741,15 +741,16 @@ check-cli-fresh:
 check-leaf-lockfiles:
     @bash scripts/check-leaf-lockfiles.sh
 
-# issue 0378 — a message dep reached by REGISTRY NAME must carry a committed
-# `[patch.crates-io]` redirect. Those names are published on crates.io by THIRD
-# PARTIES (`std_msgs = "0.0.0"`, `builtin_interfaces = "0.0.0"`); nano-ros
-# publishes nothing there, so an unredirected one resolves to a stranger's
-# crate. It fails today only because that published version is yanked, and a
-# yank is not a security control. Buildless (reads manifests + configs).
+# RFC-0067 D1 / phase-333 W2 — a generated message crate must be referenced as a
+# PATH dep, never by registry name. Replaces the interim `check-msg-dep-redirect`,
+# which could only assert that SOME `[patch.crates-io]` redirect existed up the
+# config chain — a mitigation cargo ignores when it loads config from a different
+# cwd (`--manifest-path` from the repo root), the hole issue 0378 called
+# unclosable. A path dep has no registry in its resolution at all, from any cwd.
+# Also fails on leftover retired message patch entries. Buildless.
 [private]
-check-msg-dep-redirect:
-    @bash scripts/check-msg-dep-redirect.sh
+check-msg-dep-is-path:
+    @bash scripts/check-msg-dep-is-path.sh
 
 # issue 0380 — a committed SystemModel must not silently LOSE `execution.tiers`
 # dims. They are hand-authored (the resolver's inputs cannot express them), so

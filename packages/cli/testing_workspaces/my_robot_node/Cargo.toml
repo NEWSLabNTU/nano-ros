@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 rclrs = "0.6"
-std_msgs = "*"
-geometry_msgs = "*"
+std_msgs = { path = "generated/std_msgs" }
+geometry_msgs = { path = "generated/geometry_msgs" }

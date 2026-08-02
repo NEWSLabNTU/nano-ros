@@ -53,6 +53,6 @@ nros-platform = { version = "*", default-features = false, features = ["platform
 # [patch.crates-io] block below.
 local_msgs = "*"
 extra_msgs = "*"
-std_msgs = "*"
-geometry_msgs = "*"
-sensor_msgs = "*"
+std_msgs = { path = "generated/std_msgs" }
+geometry_msgs = { path = "generated/geometry_msgs" }
+sensor_msgs = { path = "generated/sensor_msgs" }

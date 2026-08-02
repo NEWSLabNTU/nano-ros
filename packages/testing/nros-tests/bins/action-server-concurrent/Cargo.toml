@@ -37,15 +37,19 @@ nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-featur
 nros-rmw-xrce-cffi = { path = "../../../../rmw/xrce/nros-rmw-xrce-cffi", default-features = false, features = [
     "std",
 ], optional = true }
-example_interfaces = { version = "*", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }
 log = "0.4"
 env_logger = "0.11"
 heapless = "0.8"
 
 [patch.crates-io]
-action_msgs = { path = "generated/action_msgs" }
-builtin_interfaces = { path = "generated/builtin_interfaces" }
-example_interfaces = { path = "generated/example_interfaces" }
-unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }
 nros-core = { path = "../../../../core/nros-core" }
 nros-serdes = { path = "../../../../core/nros-serdes" }
+# The generated action package declares these nros crates by registry name
+# (`nros-rmw` unconditionally for RosAction protocol types, `nros-rmw-cyclonedds`
+# as an optional feature dep), and nano-ros publishes nothing to crates.io — so
+# without a redirect any RE-resolution fails `no matching package named
+# nros-rmw-cyclonedds`. The committed lock predated the optional dep and hid it.
+# RFC-0067 D1 retires the MESSAGE-crate patches only; nros-* keep theirs.
+nros-rmw = { path = "../../../../core/nros-rmw" }
+nros-rmw-cyclonedds = { path = "../../../../rmw/cyclonedds/nros-rmw-cyclonedds" }

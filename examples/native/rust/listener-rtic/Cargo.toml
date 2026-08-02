@@ -41,7 +41,7 @@ nros-rmw-cyclonedds-sys = { version = "*", features = ["platform-posix"], option
 nros-rmw-xrce-cffi = { version = "*", default-features = false, features = ["std"], optional = true }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { version = "*" }
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

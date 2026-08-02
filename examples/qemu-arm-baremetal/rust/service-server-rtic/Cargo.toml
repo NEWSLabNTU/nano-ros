@@ -42,7 +42,7 @@ netmask = "255.255.255.0"
 
 [dependencies]
 # Node deps folded in from the former service_server_rtic_pkg (issue 0100).
-example_interfaces = { version = "*", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }
 # nros Executor API + bare-metal platform glue.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the

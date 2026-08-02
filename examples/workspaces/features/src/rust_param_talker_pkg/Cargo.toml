@@ -38,4 +38,4 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
     # Entry unifies the feature in.
     "param-services",
 ] }
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }

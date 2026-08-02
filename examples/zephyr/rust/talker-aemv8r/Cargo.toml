@@ -50,7 +50,7 @@ nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi
 # for the Rust link map. NOT the agnostic-forbidden `nros platform-*`.
 nros-platform = { version = "*", default-features = false, features = ["platform-zephyr"] }
 
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 
 [build-dependencies]
 zephyr-build = "0.1.0"

@@ -28,4 +28,4 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
     "rmw-cffi",
     "safety-e2e",
 ] }
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }

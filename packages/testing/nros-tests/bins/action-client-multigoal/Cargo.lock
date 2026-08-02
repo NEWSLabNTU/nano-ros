@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "action_msgs"
-version = "1.2.2"
+version = "0.0.0"
 dependencies = [
  "builtin_interfaces",
  "heapless",
@@ -110,7 +110,7 @@ checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
 name = "builtin_interfaces"
-version = "1.2.2"
+version = "0.0.0"
 dependencies = [
  "heapless",
  "nros-core",
@@ -192,6 +192,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
+name = "critical-section"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
+
+[[package]]
 name = "defmt"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -263,12 +269,13 @@ dependencies = [
 
 [[package]]
 name = "example_interfaces"
-version = "0.9.3"
+version = "0.0.0"
 dependencies = [
  "action_msgs",
  "builtin_interfaces",
  "heapless",
  "nros-core",
+ "nros-rmw-cyclonedds",
  "nros-serdes",
  "unique_identifier_msgs",
 ]
@@ -611,6 +618,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-rmw-cyclonedds"
+version = "0.5.0"
+dependencies = [
+ "critical-section",
+ "heapless",
+ "nros-rmw",
+ "nros-serdes",
+ "spin",
+]
+
+[[package]]
 name = "nros-rmw-xrce-cffi"
 version = "0.5.0"
 dependencies = [
@@ -904,6 +922,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1078,7 +1102,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "unique_identifier_msgs"
-version = "2.2.1"
+version = "0.0.0"
 dependencies = [
  "heapless",
  "nros-core",

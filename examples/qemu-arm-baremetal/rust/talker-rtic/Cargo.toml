@@ -48,7 +48,7 @@ nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble
 # board boot scaffold — this crate only registers its Logger handle.
 nros-log = { version = "*", default-features = false }
 # Generated message types (from package.xml via `nros generate-rust`).
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 
 # MPS2-AN385 PAC (interrupt bindings for RTIC dispatchers)
 mps2-an385-pac = { version = "*" }

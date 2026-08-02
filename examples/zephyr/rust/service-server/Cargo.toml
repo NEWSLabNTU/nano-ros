@@ -49,7 +49,7 @@ nros-platform = { version = "*", default-features = false, features = ["platform
 nros-rmw-zenoh = { version = "*", optional = true, default-features = false, features = ["platform-zephyr"] }
 nros-rmw-xrce-cffi = { version = "*", optional = true, default-features = false }
 
-example_interfaces = { version = "*", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }
 
 [build-dependencies]
 zephyr-build = "0.1.0"

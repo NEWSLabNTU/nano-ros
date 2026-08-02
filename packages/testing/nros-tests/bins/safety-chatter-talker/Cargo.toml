@@ -29,12 +29,10 @@ nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-featur
     # so it must be enabled directly or no CRC goes on the wire.
     "safety-e2e",
 ] }
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 log = "0.4"
 env_logger = "0.11"
 
 [patch.crates-io]
-builtin_interfaces = { path = "generated/builtin_interfaces" }
-std_msgs = { path = "generated/std_msgs" }
 nros-core = { path = "../../../../core/nros-core" }
 nros-serdes = { path = "../../../../core/nros-serdes" }

@@ -37,7 +37,7 @@ nros-rmw-cyclonedds-sys = { version = "*", features = ["platform-posix"], option
 nros-rmw-xrce-cffi = { version = "*", default-features = false, features = ["std"], optional = true }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { version = "*" }
-example_interfaces = { version = "*", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }
 tokio = { version = "1", features = ["rt", "macros", "time"] }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone

@@ -25,7 +25,5 @@ ZPICO_SUBSCRIBER_LARGE_SIZE = "4096"
 build-std = ["core", "alloc"]
 
 [patch.crates-io]
-builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
 nros-board-esp32-qemu = { path = "../../../../packages/boards/nros-board-esp32-qemu" }  # nros-managed
-std_msgs = { path = "generated/std_msgs" }  # nros-managed
 

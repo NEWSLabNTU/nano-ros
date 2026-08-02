@@ -1,3 +1,4 @@
+include = ["../../../../../nros-patch.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 

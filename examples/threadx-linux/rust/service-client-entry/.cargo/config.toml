@@ -5,10 +5,6 @@ include = ["../../../../../nros-patch.toml"]
 target = "x86_64-unknown-linux-gnu"
 
 [patch.crates-io]
-action_msgs = { path = "generated/action_msgs" }  # nros-managed
-builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
-example_interfaces = { path = "generated/example_interfaces" }  # nros-managed
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }  # nros-managed
 nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
 nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed
-unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }  # nros-managed

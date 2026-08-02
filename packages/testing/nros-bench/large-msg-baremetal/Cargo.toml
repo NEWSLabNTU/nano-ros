@@ -32,7 +32,7 @@ nros = { path = "../../../../packages/api/nros", default-features = false, featu
 nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
 
 # Generated message types
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 
 # Panic handler
 panic-semihosting = { version = "0.6", features = ["exit"] }

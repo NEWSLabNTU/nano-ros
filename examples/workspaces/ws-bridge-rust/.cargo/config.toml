@@ -1,4 +1,2 @@
 include = ["../../../../nros-patch.toml"]
 [patch.crates-io]
-builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
-std_msgs = { path = "generated/std_msgs" }  # nros-managed

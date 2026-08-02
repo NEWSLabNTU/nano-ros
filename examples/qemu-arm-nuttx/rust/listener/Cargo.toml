@@ -12,7 +12,7 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
 nros-platform = { version = "*", default-features = false, features = ["platform-nuttx"] }
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 # phase-277 W4 — chatter log lines (`Publishing:` / `I heard:`) route through
 # the `log` facade; the platform entry runtime owns the sink.
 log = "0.4"

@@ -39,7 +39,7 @@ netmask = "255.255.255.0"
 [dependencies]
 # Node deps folded in from the former talker_rtic_mixed_pkg (issue 0100).
 nros-log = { version = "*", default-features = false }
-std_msgs = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 # nros Executor API + bare-metal platform glue.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # RTIC board entry: brings up hardware + network, opens the executor, builds
