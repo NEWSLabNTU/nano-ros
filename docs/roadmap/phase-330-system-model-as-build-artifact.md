@@ -235,7 +235,35 @@ rather than a workspace-level `build/` — a workspace-relative answer would hav
 forced copy-out examples to keep a committed model, splitting the contract in
 two.
 
-- [ ] **W3.b** Update the consumers. Ten files resolve the path today:
+- [x] **W3.b** SEAM LANDED 2026-08-02 (the default has NOT flipped — that is W4).
+
+      `nros_orchestration_ir::model_location` is now the ONE definition of the
+      search order, and all three consumer families call it:
+
+      | Order | Location | Set by |
+      | --- | --- | --- |
+      | 1 | `$NROS_MODEL_DIR/<name>` | RFC-0065's builder, for a shared regeneration |
+      | 2 | `$OUT_DIR/nros/<name>` (cargo) / `${CMAKE_BINARY_DIR}/nros/<name>` | the active build |
+      | 3 | `<bringup>/<model_rel>` | the committed copy — still authoritative |
+
+      Landable on its own precisely because nothing generates into (1) or (2)
+      yet, so every consumer resolves exactly as before. Verified both ways on
+      `ws-realtime-rust`'s `native_entry`:
+
+      * fallback — builds clean with no override (rc=0);
+      * override — with `NROS_MODEL_DIR` pointing at a model whose `low` tier
+        was removed, the build fails with "callback group `telem_node/telem`
+        names tier `low`, which has no `[tiers.low]` definition". That error is
+        only reachable if the proc-macro read the OVERRIDE, which is the
+        positive proof the seam redirects rather than the negative proof that
+        nothing broke.
+
+      Not-yet-verified: the cmake branch is exercised only by a fixture build,
+      which was not run here. Its logic mirrors the Rust order and is guarded by
+      `if(EXISTS ...)`, so its failure mode is "keeps using MODEL as passed".
+
+      Remaining for W4: something must GENERATE into (2), and the ten consumers
+      below stop needing the committed copy. Ten files resolve the path today:
 
       | Consumer | Why it is awkward |
       | --- | --- |

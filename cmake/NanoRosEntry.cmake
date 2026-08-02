@@ -210,6 +210,22 @@ function(nano_ros_entry)
         # Phase 257 (W0-A) — TYPED now supports LANG c too: the generated C TU
         # routes each node to the real executor via its `NROS_C_COMPONENT`
         # factory/configure seam + `nros_board_native_run_components`.
+        # phase-330 W3.b (RFC-0063) — prefer a BUILD-OUTPUT model over the
+        # committed one the caller pointed at. Same order the Rust consumers use
+        # via `nros_orchestration_ir::model_location`: an explicit shared dir
+        # (`NROS_MODEL_DIR`, set by RFC-0065's builder) beats the per-build
+        # `${CMAKE_BINARY_DIR}/nros/`, which beats the source copy. With nothing
+        # generating into either, `MODEL` is used exactly as passed.
+        if(_NRA_MODEL)
+            get_filename_component(_nra_model_name "${_NRA_MODEL}" NAME)
+            if(DEFINED ENV{NROS_MODEL_DIR} AND
+               EXISTS "$ENV{NROS_MODEL_DIR}/${_nra_model_name}")
+                set(_NRA_MODEL "$ENV{NROS_MODEL_DIR}/${_nra_model_name}")
+            elseif(EXISTS "${CMAKE_BINARY_DIR}/nros/${_nra_model_name}")
+                set(_NRA_MODEL "${CMAKE_BINARY_DIR}/nros/${_nra_model_name}")
+            endif()
+        endif()
+
         _nros_entry_invoke_codegen(
             NAME      "${_NRA_NAME}"
             LANG      "${_NRA_LANG}"

@@ -174,7 +174,13 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         .and_then(Path::parent)
         .map(Path::to_path_buf)
         .unwrap_or_else(|| opts.workspace_root.clone());
-    let model_path = bringup_dir.join("config/system_model.yaml");
+    // phase-330 W3.b — same search order as the proc-macro and cmake, from the
+    // one place that defines it. Build-output copy wins; the committed one is
+    // the fallback until W4 removes it.
+    let model_path = nros_cli_core::orchestration::model_location::resolve_model_path(
+        &bringup_dir,
+        "config/system_model.yaml",
+    );
     if !model_path.exists() {
         eyre::bail!(
             "nros-build: `{}` has no committed SystemModel at `{}` — the \

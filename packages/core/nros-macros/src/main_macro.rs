@@ -507,7 +507,13 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             .resolve_pkg(&bringup_name)
             .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
         let model_rel = file_override.unwrap_or_else(|| "config/system_model.yaml".to_string());
-        let model_path = bringup_dir.join(&model_rel);
+        // phase-330 W3.b — prefer the BUILD OUTPUT copy over the committed one.
+        // The order lives in `nros_orchestration_ir::model_location` so the
+        // proc-macro, `nros-build` and cmake cannot disagree about it. With
+        // nothing generating into the build dir yet, this resolves exactly as
+        // `bringup_dir.join(&model_rel)` did.
+        let model_path =
+            nros_orchestration_ir::model_location::resolve_model_path(&bringup_dir, &model_rel);
         tracked.push(model_path.clone());
         if !model_path.exists() {
             return Err(syn::Error::new(

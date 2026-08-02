@@ -17,6 +17,10 @@ pub mod manifest;
 // W5.13 follow-up — relocated to nros-orchestration-ir (shared with the macro);
 // re-exported so `crate::orchestration::mapper_input::…` paths keep resolving.
 pub use nros_orchestration_ir::mapper_input;
+// phase-330 W3.b — the shared SystemModel search order, re-exported the same
+// way as the other orchestration-ir modules so consumers reach it through
+// `orchestration::`.
+pub use nros_orchestration_ir::model_location;
 pub mod metadata_build;
 pub mod metadata_probe_cmake;
 pub mod metadata_refresh;
