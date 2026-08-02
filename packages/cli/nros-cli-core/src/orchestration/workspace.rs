@@ -329,7 +329,12 @@ impl Workspace {
                 out.push(ComponentDeclaration {
                     package_root: pkg.root.clone(),
                     manifest_path: manifest_path.clone(),
-                    class: None,
+                    // phase-330 / issue 0392 B — honour the manifest's `class`
+                    // instead of always discarding it. This was `None`, which
+                    // forced the harness to guess the type from the component
+                    // id and made any legacy manifest with a bare instance name
+                    // unsyncable.
+                    class: config.class.clone(),
                     crate_name: Some(config.linkage.resolved_crate_name(&config.package)),
                     deploy_bound: false,
                     header: None,
@@ -397,6 +402,7 @@ fn cmake_summary_to_component_config(summary: &CmakeNodeSummary) -> ComponentCon
         version: 1,
         package: summary.package.clone(),
         component: summary.component.clone(),
+        class: None,
         language: summary.language.clone(),
         linkage: ComponentLinkage::default(),
         metadata: ComponentMetadataConfig {
@@ -419,6 +425,7 @@ fn cargo_summary_to_component_config(summary: &CargoComponentSummary) -> Compone
         version: 1,
         package: summary.package.clone(),
         component: summary.component.clone(),
+        class: None,
         language: ComponentLanguage::Rust,
         linkage: ComponentLinkage {
             crate_name: Some(summary.crate_name.clone()),

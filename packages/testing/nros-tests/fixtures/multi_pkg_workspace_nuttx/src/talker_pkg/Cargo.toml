@@ -11,8 +11,13 @@ crate-type = ["staticlib"]
 
 [dependencies]
 
-[package.metadata.nros.node]
-default_namespace = "/"
+# phase-330 / issue 0392 B — no `[package.metadata.nros.node]` here. This
+# package is a C-ABI STUB (`#[no_mangle] nros_node_listener`), not a Rust
+# component: there is no type for `class` to name. Declaring the block made
+# `nros sync` run the metadata harness, which then failed with "declares no
+# `class`". The block also only restated the default namespace, so removing it
+# changes nothing else. The multi_pkg_workspace_freertos siblings, which sync
+# clean, declare no such block either.
 
 [package.metadata.ament]
 build_depend = ["std_msgs"]

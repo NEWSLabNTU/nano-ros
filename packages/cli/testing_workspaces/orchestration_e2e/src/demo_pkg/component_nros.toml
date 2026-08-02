@@ -5,6 +5,12 @@
 version = 1
 package = "demo_pkg"
 component = "talker"
+# phase-330 / issue 0392 B — the component type, without which the metadata
+# harness cannot name what it registers ("declares no `class` and its id is
+# not `crate::module`"). The fallback builds `<crate>::<module>::Component`
+# from a `crate::module` id; this id is the bare instance name `talker`, so
+# the type has to be stated.
+class = "demo_pkg::talker::Component"
 language = "rust"
 
 [linkage]

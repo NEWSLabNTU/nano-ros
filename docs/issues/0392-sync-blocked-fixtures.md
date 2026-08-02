@@ -2,7 +2,7 @@
 id: 392
 title: Six bringups cannot `nros sync` at all — two legacy `system.toml` schemas,
   two components with no `class`, one launch needing an uninstalled package
-status: open
+status: open  # A and B fixed 2026-08-02; C + the metadata-path finding remain
 type: bug
 area: testing
 related: [rfc-0063, phase-330, 0387, 0380]
@@ -108,9 +108,72 @@ unable to update …/src/ctrl_pkg/@NANO_ROS_ROOT@/packages/api/nros
 templates materialised into a build directory before use, so syncing the
 template in place cannot work. Sync them post-configure, or not at all.
 
+## Status — A and B fixed (2026-08-02)
+
+| Case | Was | Now |
+| --- | --- | --- |
+| `multi_pkg_workspace_freertos` (A) | parse error | **syncs, rc=0** |
+| `n9_workspace` (A) | parse error | **parses; model regenerates correctly** |
+| `multi_pkg_workspace_nuttx` (B) | harness failure | **syncs, rc=0** |
+| `orchestration_e2e` (B) | harness failure | **syncs, rc=0** |
+
+All regenerate models that differ from the committed copies only in the
+known-stale `scope` field.
+
+**A — the schema needs three fields, and reports them one at a time.**
+`n9_workspace` was missing `name`, `rmw` AND `domain_id`; each attempt named
+only the next one, so the gap revealed itself one line per run.
+`multi_pkg_workspace_freertos` was migrated off the phase-212 spelling
+(`launch` → `default_launch`, `zenoh_locator` → `locator`, `components`
+dropped — the node set comes from the launch file).
+
+**The `NROS_SYSTEM_TOML` warning in this issue was WRONG.** I wrote that a BSP
+`build.rs` might depend on the legacy spelling. Grepping the tree for
+`NROS_SYSTEM_TOML` returns NOTHING — that reader no longer exists, and the
+comment claiming it does is itself stale. The migration had no second consumer
+to break.
+
+**B — two different causes under one error message.**
+
+  * `multi_pkg_workspace_nuttx`'s packages are C-ABI STUBS
+    (`#[no_mangle] nros_node_listener`) that declared
+    `[package.metadata.nros.node]`. There is no Rust type for `class` to name,
+    so the block was removed — it only restated the default namespace anyway,
+    and the `multi_pkg_workspace_freertos` siblings that sync clean declare no
+    such block.
+  * `orchestration_e2e/demo_pkg` has a REAL component
+    (`demo_pkg::talker::Component`) and no way to say so: the legacy whole-file
+    manifest schema had no `class` field, and `Workspace::discover` hardcoded
+    `class: None`. Fixed in code — `ComponentConfig` gains `class` and discover
+    honours it — plus the declaration in the fixture. The Cargo-metadata form
+    has carried `class` since phase-307 W1; only the legacy form could not
+    express it.
+
+## New finding — `nros sync` writes host-absolute paths into tracked metadata
+
+Making `orchestration_e2e` syncable exposed the next problem: sync regenerates
+`src/demo_pkg/metadata/talker.json` with
+
+```
+"artifact": "/home/aeon/repos/nano-ros/packages/cli/testing_workspaces/…/src/lib.rs"
+```
+
+which `check-absolute-paths` rejects. The file is TRACKED, so anyone who syncs
+that workspace dirties the tree with their own home directory. This is the
+issue-0320 class one layer over: models were taught to record relative paths via
+`--bringup-root`, the metadata writer never was. The regenerated file was
+restored rather than committed.
+
 ## Direction
 
-A and B are the ones that need a decision. C is arguably not a defect. Whoever
-takes A must trace the `NROS_SYSTEM_TOML` reader before touching the FreeRTOS
-descriptor — the sync failure is the visible symptom, and the second consumer is
-the risk.
+A and B are done. What remains:
+
+  * **C** — `o5_nav2_compat_smoke` needs `secondary_node` built and sourced
+    before its launch resolves. Arguably not a defect; decide whether sync
+    should be runnable on it at all.
+  * **the metadata path finding above** — give the metadata writer the same
+    relative-path treatment `--bringup-root` gave models, or stop tracking the
+    generated `metadata/*.json`.
+  * `n9_workspace` still cannot complete a sync IN PLACE, but only because of
+    the `@NANO_ROS_ROOT@` template placeholder documented below — its own
+    schema defect is fixed.

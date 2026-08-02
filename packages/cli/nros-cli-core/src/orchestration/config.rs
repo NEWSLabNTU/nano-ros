@@ -11,6 +11,18 @@ pub struct ComponentConfig {
     pub version: u32,
     pub package: String,
     pub component: String,
+    /// phase-330 / issue 0392 B — the registered type's fully-qualified path
+    /// (`demo_pkg::talker::Component`).
+    ///
+    /// The Cargo-metadata form has carried this since phase-307 W1; the legacy
+    /// whole-file manifest had no field for it and `Workspace::discover`
+    /// hardcoded `class: None`, so the metadata harness fell back to guessing
+    /// `<crate>::<module>::Component` from the component id. That guess only
+    /// works when the id IS `crate::module`; for a bare instance name like
+    /// `talker` it fails with "declares no `class` and its id is not
+    /// `crate::module`" and the whole sync dies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class: Option<String>,
     pub language: ComponentLanguage,
     // W.3 (Phase 172): an absent `[linkage]` is legal — the fields are derived
     // from the package/component name + crate convention (see `ComponentLinkage`

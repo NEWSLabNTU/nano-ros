@@ -4,4 +4,12 @@
 # picks when no explicit `:filename` is supplied.
 
 [system]
+# phase-330 / issue 0392 A — `name`, `rmw` and `domain_id` are all REQUIRED by
+# the schema; this file declared none of them, so `nros sync` could not parse it
+# and the bringup could never regenerate its model. The parser reports one
+# missing field per attempt, so the gap only shows itself one line at a time.
+# `zenoh` + domain 0 match the other native fixtures.
+name = "n9_demo"
+rmw = "zenoh"
+domain_id = 0
 default_launch = "system.launch.xml"
