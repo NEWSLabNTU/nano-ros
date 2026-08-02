@@ -39,13 +39,38 @@ then answers from the cache. Pure wrapper over the existing consuming `try_recv`
 `topic_state_monitor.cpp` cache pattern. Instantiation gated by a `-fsyntax-only`
 compile test (`tests/compile/polling_subscription.cpp`) in `just check-cpp`.
 
-**Half B (bounded service call inside a callback) — design open.** #0290 fixed
-the safety hole (in-callback bounded wait now returns `Reentrant` instead of
-aliasing `&mut Executor`). The tractable path is an L1 (executor-free) service
-client with a self-driven `call(req, resp, timeout)` — an L1 poll client already
-exists (`nros_client_init_polling` / `RawServiceClient`); the open question is
-whether it can drive its own transport I/O from inside a callback without
-re-entering the shared session the executor is mid-spin on. Being de-risked.
+**Half B (bounded service call inside a callback) — shared-session question
+DE-RISKED (2026-08-02).** #0290 fixed the safety hole (in-callback bounded wait
+now returns `Reentrant` instead of aliasing `&mut Executor`). The tractable path
+is an L1 (executor-free) service client with a bounded `call(req, resp, timeout)`.
+
+The reentrancy worry was: the L1 client **shares the node's session**
+(`nros_client_init_polling` → `resolve_session_and_domain(node)`), so wouldn't a
+callback-side call re-enter the session the executor is mid-spin on? Answer: no,
+because `RawServiceClient` is pure **send + poll-a-queue** (`send_request_raw`,
+`try_recv_reply_raw`) — it never *drives* the session's I/O. The reentrancy
+resolves entirely on HOW the reply reaches the queue, which is platform-split:
+
+- **Multi-threaded backends (zenoh MT, cyclone):** a background read task
+  delivers the reply into the client's queue asynchronously — the zpico read
+  task runs `pending_get_reply_handler` → fills the pending-get slot + fires
+  `reply_waker`, independent of the executor's `spin_once` (verified against the
+  #348/#376 reply path). A callback-side `call(timeout)` is `send_request_raw` +
+  a wall-clock loop of `try_recv_reply_raw` + a short sleep — it touches ONLY the
+  client's own reply queue, never re-drives the shared session, so it is **safe
+  from inside a callback**. The naive `Promise::wait` failed precisely because
+  it called `spin_once` (reentrancy); the L1 path must NOT — it sleeps + polls
+  and lets the read task deliver.
+- **Single-threaded / polled backends (bare-metal smoltcp/serial, zenoh-pico
+  single-thread):** rx is spin-driven — the reply can only land when `spin_once`
+  drives the session, which the callback is *blocking*. So a blocking call from a
+  callback is **fundamentally impossible** there; send-and-poll (the current
+  mrm_handler weakening) is the correct design.
+
+**Design for Half B:** add a bounded `call_polling(req, resp, timeout)` to the L1
+`RawServiceClient` (send + sleep-poll `try_recv_reply_raw`, never `spin_once`) +
+the C/C++ wrappers; document it as multi-threaded-backend-only and keep
+send-and-poll as the single-threaded fallback. No reentrant executor needed.
 
 ## Correction + current state (2026-07-26)
 
