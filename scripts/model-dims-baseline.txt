@@ -51,9 +51,11 @@ examples/workspaces/ws-realtime-cpp-subnode/src/demo_bringup/config/system_model
 examples/workspaces/ws-realtime-cpp-subnode/src/demo_bringup/config/system_model.yaml	high.spin_period_us
 examples/workspaces/ws-realtime-cpp-subnode/src/demo_bringup/config/system_model.yaml	low.posix.priority
 examples/workspaces/ws-realtime-cpp-subnode/src/demo_bringup/config/system_model.yaml	low.spin_period_us
+examples/workspaces/ws-realtime-c/src/demo_bringup/config/system_model.yaml	high.class
 examples/workspaces/ws-realtime-c/src/demo_bringup/config/system_model.yaml	high.nuttx.priority
 examples/workspaces/ws-realtime-c/src/demo_bringup/config/system_model.yaml	high.posix.priority
 examples/workspaces/ws-realtime-c/src/demo_bringup/config/system_model.yaml	high.spin_period_us
+examples/workspaces/ws-realtime-c/src/demo_bringup/config/system_model.yaml	high.zephyr.deadline_us
 examples/workspaces/ws-realtime-c/src/demo_bringup/config/system_model.yaml	high.zephyr.priority
 examples/workspaces/ws-realtime-c/src/demo_bringup/config/system_model.yaml	low.nuttx.priority
 examples/workspaces/ws-realtime-c/src/demo_bringup/config/system_model.yaml	low.posix.priority

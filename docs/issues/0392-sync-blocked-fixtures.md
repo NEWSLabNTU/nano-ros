@@ -2,7 +2,7 @@
 id: 392
 title: Six bringups cannot `nros sync` at all — two legacy `system.toml` schemas,
   two components with no `class`, one launch needing an uninstalled package
-status: open  # A, B and the metadata-path finding fixed 2026-08-02; C remains
+status: resolved  # A, B, C and the metadata-path finding all fixed 2026-08-02
 type: bug
 area: testing
 related: [rfc-0063, phase-330, 0387, 0380]
@@ -74,7 +74,34 @@ Needs a decision before a fix: is this a genuine defect in the fixtures, or are
 they NEGATIVE fixtures that exist to exercise this very error path? The error is
 raised deliberately and reads like a designed check.
 
-### C. A launch file needs a package that is not installed (1 bringup)
+### C — FIXED 2026-08-02
+
+`nros sync` now synthesises a throwaway ament prefix over the workspace's own
+packages (`<tmp>/share/<pkg>` symlinked to each source dir), PREPENDED to any
+existing `AMENT_PREFIX_PATH`, so `$(find-pkg-share <pkg>)` resolves with no
+install step and a real ROS install still answers everything else.
+
+This restores a mechanism that used to exist: the fixture's launch file still
+carries a comment describing the planner synthesising exactly this, but that
+path went with the launch-XML parser in phase-296 R4 and nothing replaced it for
+the resolver — `AMENT_PREFIX_PATH` appears nowhere in `nros-cli-core` today.
+
+Verified: syncing `demo_entry` resolves BOTH nodes (`/robot1/primary`,
+`/secondary`) with `frame_id: map_frame`, which proves the `<arg>` pass-through
+through `$(find-pkg-share)` works rather than the include merely being found.
+
+Also fixed alongside: includes are now collected WORKSPACE-WIDE rather than per
+package. A nav2-style bringup includes its fragment from ANOTHER package, so a
+sibling-only scan could not see it, and the fragment's own package then looked
+like a bringup earning a spurious `system_model.yaml` that bakes a fragment as if
+it were a system.
+
+**Residual, not a defect in sync**: `o5_nav2_compat_smoke` keeps its bringup
+(`demo_entry`) OUTSIDE `src/`, so a colcon-mode scan from the fixture root never
+sees it — sync must be run from the bringup. Syncing from the root still emits
+the spurious `secondary_node` model for that reason.
+
+### C (original report). A launch file needs a package that is not installed
 
 `packages/testing/nros-tests/fixtures/o5_nav2_compat_smoke/demo_entry`:
 
@@ -188,9 +215,6 @@ restored rather than committed.
 
 A and B are done. What remains:
 
-  * **C** — `o5_nav2_compat_smoke` needs `secondary_node` built and sourced
-    before its launch resolves. Arguably not a defect; decide whether sync
-    should be runnable on it at all.
   * **refresh the stale `orchestration_e2e` metadata** — regeneration produces
     122 more lines and renames a node id; needs its tests run, so it is its own
     change.

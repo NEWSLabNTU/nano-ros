@@ -462,6 +462,57 @@ fn model_recorded_args(model_path: &Path) -> Vec<(String, String)> {
     model.meta.args.into_iter().collect()
 }
 
+/// phase-330 / issue 0392 C — a throwaway ament prefix over the workspace's own
+/// packages, so `$(find-pkg-share <pkg>)` resolves WITHOUT an install step.
+///
+/// A nav2-style launch file includes its sibling by
+/// `$(find-pkg-share secondary_node)/launch/…`, which the resolver answers
+/// through `AMENT_PREFIX_PATH` — i.e. from INSTALLED packages. The fixture's
+/// packages exist only as sources, so the resolve died with "Package
+/// 'secondary_node' not found. Ensure the package is installed and sourced."
+///
+/// The planner used to synthesise exactly this (the fixture's launch file still
+/// carries a comment describing it), but that path went with the launch-XML
+/// parser in phase-296 R4 and nothing replaced it for the resolver. This
+/// restores it: `<tmp>/share/<pkg>` symlinks to each package's source dir,
+/// PREPENDED to any existing `AMENT_PREFIX_PATH` so a real ROS install is still
+/// found for everything else.
+///
+/// The directory lives as long as the returned handle; the caller holds it for
+/// the duration of the sync.
+#[cfg(unix)]
+fn synth_ament_prefix(scan: &[WsPkg]) -> Option<(tempfile::TempDir, std::ffi::OsString)> {
+    let dir = tempfile::TempDir::new().ok()?;
+    let share = dir.path().join("share");
+    std::fs::create_dir_all(&share).ok()?;
+    let mut linked = 0usize;
+    for pkg in scan {
+        let dest = share.join(&pkg.name);
+        if dest.exists() {
+            continue;
+        }
+        if std::os::unix::fs::symlink(&pkg.dir, &dest).is_ok() {
+            linked += 1;
+        }
+    }
+    if linked == 0 {
+        return None;
+    }
+    let mut value = std::ffi::OsString::from(dir.path());
+    if let Some(existing) = std::env::var_os("AMENT_PREFIX_PATH")
+        && !existing.is_empty()
+    {
+        value.push(":");
+        value.push(existing);
+    }
+    Some((dir, value))
+}
+
+#[cfg(not(unix))]
+fn synth_ament_prefix(_scan: &[WsPkg]) -> Option<(tempfile::TempDir, std::ffi::OsString)> {
+    None
+}
+
 fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>) -> Result<()> {
     // Issue 0285 — resolve the helper by ABSOLUTE PATH, never through PATH.
     //
@@ -495,6 +546,35 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
     // nothing. `blocked` collects everything that DID need the helper so one
     // error names them all rather than the user fixing them one run at a time.
     let play_launch = launch_resolver_path();
+    // Held for the whole function: dropping the TempDir removes the symlinks.
+    let ament = synth_ament_prefix(scan);
+    // phase-330 / issue 0392 C — includes are collected WORKSPACE-WIDE, not per
+    // package. A nav2-style bringup includes its fragment from another package
+    // (`$(find-pkg-share secondary_node)/launch/secondary.launch.xml`), so a
+    // scan limited to sibling launch files does not see it — and the fragment's
+    // own package then looks like a bringup whose single launch file is its
+    // default, earning a spurious `system_model.yaml` that bakes a fragment as
+    // if it were a system.
+    let workspace_included: std::collections::HashSet<String> = scan
+        .iter()
+        .flat_map(|p| {
+            let dir = p.dir.join("launch");
+            let mut names = Vec::new();
+            if let Ok(rd) = std::fs::read_dir(&dir) {
+                for e in rd.flatten() {
+                    let path = e.path();
+                    if path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.ends_with(".launch.xml"))
+                    {
+                        names.extend(launch_include_names(&path));
+                    }
+                }
+            }
+            names
+        })
+        .collect();
     let mut blocked: Vec<String> = Vec::new();
     for pkg in scan {
         let launch_dir = pkg.dir.join("launch");
@@ -555,6 +635,13 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                 })
                 .or_else(|| (launches.len() == 1).then(|| launches[0].clone()))
         };
+        // …and the same applies to the DEFAULT: if a package's only launch file
+        // is an include fragment, it has no system to resolve at all.
+        let default_launch = default_launch.filter(|dl| {
+            dl.file_name()
+                .and_then(|n| n.to_str())
+                .is_none_or(|n| !workspace_included.contains(n))
+        });
         if let Some(dl) = &default_launch {
             targets.push((dl.clone(), cfg_dir.join("system_model.yaml")));
         }
@@ -578,6 +665,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         let included: std::collections::HashSet<String> = launches
             .iter()
             .flat_map(|lf| launch_include_names(lf))
+            .chain(workspace_included.iter().cloned())
             .collect();
         // A launch file with `[[model]]` declarations is fully described by
         // them: `multihost.launch.xml` exists only to be resolved as
@@ -741,6 +829,9 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
             std::fs::create_dir_all(&dest_dir)
                 .wrap_err_with(|| format!("sync: create {}", dest_dir.display()))?;
             let mut cmd = std::process::Command::new(pl);
+            if let Some((_, prefix)) = &ament {
+                cmd.env("AMENT_PREFIX_PATH", prefix);
+            }
             cmd.arg(&launch);
             // phase-326 (issue 0364) — replay the exact binding the committed
             // model records, so a variant model refreshes as ITSELF rather
