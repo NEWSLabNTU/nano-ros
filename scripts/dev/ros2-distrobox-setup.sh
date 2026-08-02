@@ -30,12 +30,17 @@ if [ "${VERSION_ID:-}" != "22.04" ]; then
     exit 1
 fi
 
+# `python3-tomli`: Ubuntu 22.04 ships Python 3.10, which predates `tomllib`
+# (3.11+). `just check-cargo-profile-mirror` reads Cargo.toml with tomllib and
+# falls back to tomli — on a bare box NEITHER exists and tier 1 dies there with
+# a bare `ModuleNotFoundError`, long after the ROS parts it came here for.
 echo "=== [1/4] base tooling + the book's host prerequisites"
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg lsb-release software-properties-common \
     git build-essential pkg-config cmake ninja-build \
-    python3 python3-pip python3-venv python3-dev
+    python3 python3-pip python3-venv python3-dev \
+    python3-tomli
 
 echo "=== [2/4] ROS 2 apt repository"
 sudo install -d -m 0755 /etc/apt/keyrings

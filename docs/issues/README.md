@@ -111,6 +111,13 @@ very check), and one launch resolving an uninstalled package. Also records the s
 that were NOT bugs — a wsroot bug in the probe, and `@NANO_ROS_ROOT@` templates that are
 materialised before use — so nobody re-investigates them. See `0392-*`. (2026-08-02)
 
+**#398** — A distrobox run and a host run share `target-embedded/`: `check-workspace-embedded`
+hard-sets a RELATIVE `CARGO_TARGET_DIR`, which escapes the box env's redirect, so the box re-runs a
+host-built `build-script-build` and dies on `GLIBC_2.39 not found` while naming an unrelated crate
+(`nros-rmw-cffi`). The recipe's own hint points at a different cause ("declare the new crate
+host-only"), which is what makes it expensive. Same shape for `target-zenoh`, `target-xrce`,
+`target-tls` and the ros-edition dirs. See `0398-*`. (2026-08-03)
+
 Recently resolved: **#391** — ThreadX-RV64 C fixture lane built wrong-from-clean + a museum binary
 passed the staleness gate. RESOLVED (2026-08-02, `8ef697c95`): (1) the cmake configure helpers now
 `rm -rf` a build dir whose cached `CMAKE_TOOLCHAIN_FILE` differs from the requested one — CMake pins
