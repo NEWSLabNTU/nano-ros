@@ -522,6 +522,20 @@ pub struct AmentMaintainer {
 ///   | "flash" | …`).
 /// * `[[domain]]` — optional per-system domain routing.
 /// * `[[bridge]]` — optional cross-RMW bridges.
+/// phase-330 W4.0 — one `[[model]]` entry: which launch file, with which
+/// argument bindings, produces which model file.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemModelEntry {
+    /// Launch file name, relative to the bringup's `launch/`.
+    pub launch: String,
+    /// Output model file name (`<stem>_<binding>_model.yaml` by convention).
+    pub out: String,
+    /// Launch argument bindings, passed as `key:=value`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub args: BTreeMap<String, String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SystemToml {
@@ -536,6 +550,18 @@ pub struct SystemToml {
     pub domains: Vec<SystemDomainEntry>,
     #[serde(default, rename = "bridge", skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<SystemBridgeEntry>,
+    /// phase-330 W4.0 (RFC-0063) — `[[model]]`: a SystemModel this bringup
+    /// produces from a launch file plus ARGUMENT BINDINGS.
+    ///
+    /// Plain models need no entry: `nros sync` derives one per launch file that
+    /// is neither the default nor `<include>`d by another. Bindings are the
+    /// case that cannot be derived — `multihost.launch.xml host:=robot1` is a
+    /// different system from `host:=robot2`, and nothing in the launch tree
+    /// says which bindings matter. That fact used to live only in the committed
+    /// model's own `meta.args`, i.e. inside the artifact the model is supposed
+    /// to be regenerated from; declaring it here moves it into the inputs.
+    #[serde(default, rename = "model", skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<SystemModelEntry>,
     /// Phase 228.A (RFC-0015 §4.2) — `[tiers.<name>]` priority/scheduling tiers.
     /// The system owner maps the symbolic tier names a node's callback groups
     /// reference to per-RTOS task knobs. Empty → the single-tier degenerate case.

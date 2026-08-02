@@ -110,3 +110,19 @@ kind = "self"
 target = "x86_64-unknown-linux-gnu"
 launch = "multihost.launch.xml"
 nodes = ["/listener"]
+
+# phase-330 W4.0 (RFC-0063) — binding variants declared as INPUTS.
+# These resolves take launch ARGUMENTS, which nothing in the launch tree
+# records; until now the only machine-readable trace was the committed
+# model's own `meta.args` — the artifact W4 deletes. Declaring them here
+# lets the variant set survive that deletion.
+
+[[model]]
+launch = "multihost.launch.xml"
+out    = "multihost_robot1_model.yaml"
+args   = { host = "robot1" }
+
+[[model]]
+launch = "multihost.launch.xml"
+out    = "multihost_robot2_model.yaml"
+args   = { host = "robot2" }

@@ -290,7 +290,9 @@ two.
 
 ### W4 — Delete the committed models
 
-**Generator landed 2026-08-02; deletion NOT done — two prerequisites remain.**
+**Generator landed 2026-08-02. Both prerequisites (W4.0, W4.0b) are now
+DONE — W4.a (the deletion itself) is unblocked but deliberately not taken in the
+same commit as the machinery that makes it safe.**
 
 `nros sync --model-dir <DIR>` writes resolved models there instead of into each
 bringup's `config/`, closing the loop with W3.b's search order. Proven
@@ -303,7 +305,62 @@ end-to-end on `ws-realtime-rust`, positively and negatively:
 
 So a build can run from a generated model alone. What still blocks W4.a:
 
-- [ ] **W4.0 — the VARIANT SET must become derivable from inputs.** `nros sync`
+- [x] **W4.0 — DONE 2026-08-02. The variant set now comes from inputs.**
+
+      Classifying all 120 models showed 112 were already derivable and 8 were
+      not:
+
+      | Class | Count | From |
+      | --- | --- | --- |
+      | `system_model.yaml` | 76 | `default_launch` |
+      | `<stem>_model.yaml` | 36 | a non-included launch file |
+      | **binding** (`multihost_robot{1,2}`) | **8** | a launch ARGUMENT — not derivable |
+
+      **The 8 were the whole problem, and they were worse than "not derivable".**
+      `multihost.launch.xml host:=robot1` is a different system from
+      `host:=robot2`, and the only machine-readable record of which bindings
+      matter was `meta.args` INSIDE each committed model — the very artifact W4
+      deletes. `sync` read it back to replay the binding (issue 0364), so
+      deleting the models would have destroyed the instructions for
+      regenerating them.
+
+      So the rule is derive-plus-declare:
+
+      * **derive** — every launch file that is neither the default nor
+        `<include>`d by another gets `<stem>_model.yaml`. Includes are pulled in
+        by their parent's resolve; baking one separately would treat a fragment
+        as a system (`ws-launch-rust`'s `sensors.launch.xml`).
+      * **declare** — `[[model]] { launch, out, args }` in `system.toml`, now a
+        real field on `SystemToml`. Migrated the 8 mechanically out of their own
+        `meta.args`.
+      * a launch file WITH declarations is fully described by them, so
+        declarations REPLACE derivation for it — otherwise `multihost`'s unbound
+        resolve gets baked too, and its `all` default leaves nodes the deploy
+        blocks cannot place (that failure was observed, not theorised).
+
+      **Verified with the committed `config/` MOVED ASIDE** — the set is
+      reproduced from inputs alone, and the CONTENT matches:
+
+      | Workspace | Generated | Committed | Non-`sha256` diff lines |
+      | --- | --- | --- | --- |
+      | `c` | 7 | 7 | **0** |
+      | `cpp` | 7 | 7 | **0** |
+      | `mixed` | 7 | 7 | **0** |
+      | `rust` | 9 | 9 | **0** |
+      | `ws-launch-rust` | 1 | 1 | — (include correctly skipped) |
+
+      The only differences are `meta.inputs[].sha256` for `system.toml`, which
+      MUST move because `system.toml` is what gained the declarations.
+
+      Known over-generation, accepted: `n9_workspace`'s `sim.launch.xml` is
+      neither included nor declared, so the rule bakes a `sim_model.yaml` that
+      has no committed counterpart. It is a leftover from the
+      `nros::main!(launch = …)` form that phase-296 R4 removed — referenced only
+      by archived phase docs. As build output rather than a committed file, one
+      spurious model costs a resolve and nothing else; deleting the dead launch
+      file is the real fix and belongs with phase-331.
+
+      ~~The VARIANT SET must become derivable from inputs.~~ `nros sync`
       decides which variant models to refresh by SCANNING `config/` for
       existing `*_model.yaml`, so those committed files are not just the
       artifact — they are the DECLARATION of which variants exist. Delete them

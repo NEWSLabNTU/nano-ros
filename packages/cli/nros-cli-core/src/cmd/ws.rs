@@ -361,6 +361,97 @@ fn model_provenance_stale(model_path: &Path, bringup_dir: &Path) -> Option<Strin
 /// (`multihost_robot1_model.yaml`, resolved with `host:=robot1`) re-resolved
 /// without its binding would silently become the default configuration.
 /// Unparsable/missing model ⇒ empty binding (the plain resolve).
+/// phase-330 W4.0 — file names referenced by `<include file="…">` in a launch
+/// file.
+///
+/// A targeted scan, not a full parse: `parse_launch_file` resolves
+/// substitutions and needs a `PkgIndex`, and all this decision needs is "is
+/// this launch file pulled in by another one". Only the file NAME is compared,
+/// so a `$(find-pkg-share …)` prefix does not defeat it.
+fn launch_include_names(path: &Path) -> Vec<String> {
+    let Ok(raw) = std::fs::read(path) else {
+        return Vec::new();
+    };
+    let mut reader = quick_xml::Reader::from_reader(raw.as_slice());
+    let mut buf = Vec::new();
+    let mut out = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(quick_xml::events::Event::Eof) | Err(_) => break,
+            Ok(quick_xml::events::Event::Start(e) | quick_xml::events::Event::Empty(e)) => {
+                if e.name().as_ref() == b"include" {
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"file" {
+                            if let Ok(v) = attr.unescape_value() {
+                                if let Some(n) =
+                                    Path::new(v.as_ref()).file_name().and_then(|s| s.to_str())
+                                {
+                                    out.push(n.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+    out
+}
+
+/// phase-330 W4.0 — a `[[model]]` declaration in a bringup's `system.toml`.
+///
+/// Binding variants exist because a launch file takes ARGUMENTS
+/// (`multihost.launch.xml host:=robot1`). Nothing in the launch tree records
+/// which bindings matter: today that fact lives in the committed model's
+/// `meta.args`, i.e. in the artifact W4.a wants to delete. Declaring it here
+/// moves the fact into the INPUTS, which is RFC-0063's whole thesis applied one
+/// level deeper.
+///
+/// ```toml
+/// [[model]]
+/// launch = "multihost.launch.xml"
+/// out    = "multihost_robot1_model.yaml"
+/// args   = { host = "robot1" }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ModelDecl {
+    pub launch: String,
+    pub out: String,
+    pub args: Vec<(String, String)>,
+}
+
+/// Read `[[model]]` declarations from a bringup's `system.toml`. A malformed or
+/// absent table yields none — the derived defaults still apply.
+fn system_toml_model_decls(system_toml: &Path) -> Vec<ModelDecl> {
+    let Ok(raw) = std::fs::read_to_string(system_toml) else {
+        return Vec::new();
+    };
+    let Ok(val) = toml::from_str::<toml::Value>(&raw) else {
+        return Vec::new();
+    };
+    let Some(arr) = val.get("model").and_then(|m| m.as_array()) else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|e| {
+            let launch = e.get("launch")?.as_str()?.to_string();
+            let out = e.get("out")?.as_str()?.to_string();
+            let args = e
+                .get("args")
+                .and_then(|a| a.as_table())
+                .map(|t| {
+                    t.iter()
+                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            Some(ModelDecl { launch, out, args })
+        })
+        .collect()
+}
+
 fn model_recorded_args(model_path: &Path) -> Vec<(String, String)> {
     let Ok(raw) = std::fs::read_to_string(model_path) else {
         return Vec::new();
@@ -466,6 +557,70 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         };
         if let Some(dl) = &default_launch {
             targets.push((dl.clone(), cfg_dir.join("system_model.yaml")));
+        }
+        // phase-330 W4.0 — DERIVE the plain variants from the launch tree
+        // instead of from the committed `config/` scan below. Until this, the
+        // committed `*_model.yaml` files were not merely the artifact, they
+        // were the DECLARATION of which variants exist, so W4.a could not
+        // delete them without silently stopping variant regeneration.
+        //
+        // The rule: every launch file that is not the default and is not
+        // INCLUDED by another launch file is an entry, and gets
+        // `<stem>_model.yaml`. Includes are pulled in by their parent's
+        // resolve, so resolving them separately would bake a fragment as if it
+        // were a system (`ws-launch-rust`'s `sensors.launch.xml` is exactly
+        // that case).
+        //
+        // Binding variants (`<stem>_<binding>_model.yaml`) are NOT derivable —
+        // they come from launch ARGUMENTS (`host:=robot1`) that only the
+        // committed model's `meta.args` records — so they stay declarative and
+        // are read from `[[model]]` below.
+        let included: std::collections::HashSet<String> = launches
+            .iter()
+            .flat_map(|lf| launch_include_names(lf))
+            .collect();
+        // A launch file with `[[model]]` declarations is fully described by
+        // them: `multihost.launch.xml` exists only to be resolved as
+        // `host:=robot1` and `host:=robot2`, and its unbound resolve is not a
+        // system anyone deploys — the `all` default leaves nodes that the
+        // deploy blocks then fail to place. So declarations REPLACE derivation
+        // for their launch file rather than adding to it.
+        let declared_launches: std::collections::HashSet<String> =
+            system_toml_model_decls(&system_toml)
+                .into_iter()
+                .map(|d| d.launch)
+                .collect();
+        for lf in &launches {
+            if Some(lf) == default_launch.as_ref() {
+                continue;
+            }
+            let Some(fname) = lf.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if included.contains(fname) || declared_launches.contains(fname) {
+                continue;
+            }
+            let stem = fname.trim_end_matches(".launch.xml");
+            if stem.is_empty() {
+                continue;
+            }
+            let out = cfg_dir.join(format!("{stem}_model.yaml"));
+            if !targets.iter().any(|(_, m)| *m == out) {
+                targets.push((lf.clone(), out));
+            }
+        }
+        // phase-330 W4.0 — `[[model]]` declarations: the binding variants,
+        // moved OUT of the committed filenames and into `system.toml` so the
+        // inputs carry them. `launch` + `out` + `args`.
+        for decl in system_toml_model_decls(&system_toml) {
+            let lf = launch_dir.join(&decl.launch);
+            if !lf.is_file() {
+                continue;
+            }
+            let out = cfg_dir.join(&decl.out);
+            if !targets.iter().any(|(_, m)| *m == out) {
+                targets.push((lf, out));
+            }
         }
         // Committed variant models stay opt-in: only refreshed, never
         // created. Two spellings per launch `<stem>.launch.xml`:
@@ -583,7 +738,27 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
             // phase-326 (issue 0364) — replay the exact binding the committed
             // model records, so a variant model refreshes as ITSELF rather
             // than as the default configuration.
-            for (k, v) in model_recorded_args(&model) {
+            // phase-330 W4.0 — a `[[model]]` declaration is authoritative; the
+            // committed model's own `meta.args` is the FALLBACK, kept so a
+            // tree with no declarations still refreshes its variants exactly as
+            // before. Once W4.a deletes the committed copies, only the
+            // declaration remains — which is the point.
+            let declared_args: Vec<(String, String)> = model
+                .file_name()
+                .and_then(|s| s.to_str())
+                .and_then(|name| {
+                    system_toml_model_decls(&system_toml)
+                        .into_iter()
+                        .find(|d| d.out == name)
+                        .map(|d| d.args)
+                })
+                .unwrap_or_default();
+            let args = if declared_args.is_empty() {
+                model_recorded_args(&model)
+            } else {
+                declared_args
+            };
+            for (k, v) in args {
                 cmd.arg(format!("{k}:={v}"));
             }
             // Issue 0320 — state the bringup package root explicitly so
