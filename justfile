@@ -1881,7 +1881,16 @@ ci-matrix:
     #!/usr/bin/env bash
     set -euo pipefail
     just _lane-gate tier2
-    just check rust-rtos-link-check test-all
+    # issue 0368 F8 — tell the inner `_require-fixtures` (inside test-all) that
+    # this run needs the tier-2 lane, not the default `all`. Without it the two
+    # fixture gates DISAGREE: `_lane-gate tier2` (content-based, over the tier-2
+    # coordinates) passes a per-family tier-2 build, then `_require-fixtures`
+    # demands the `all`/tier-3 stamp and dies telling you to run the very build
+    # the tier ladder said to avoid. Provably safe: an `all` build still covers
+    # tier-2 (stamp-require returns 0 for `have=all`), so this only STOPS
+    # rejecting a valid tier-2 build. Mirrors how `just ci` sets
+    # NROS_FIXTURE_LANE=native.
+    NROS_FIXTURE_LANE=tier2 just check rust-rtos-link-check test-all
     echo "CI passed (tier 2 — 1-wise cover; pairwise interactions need \`just ci-matrix-nightly\`)!"
 
 # Tier 2 nightly — the pairwise cover over platform x lang x rmw x kind (33 of 47
@@ -1900,7 +1909,10 @@ ci-matrix-nightly:
     #!/usr/bin/env bash
     set -euo pipefail
     just _lane-gate tier2-nightly
-    just check rust-rtos-link-check test-all test-ignored
+    # issue 0368 F8 (same class as ci-matrix) — require the tier2-nightly lane so
+    # the inner `_require-fixtures` accepts a per-family build instead of
+    # demanding the `all` stamp the lane ladder said to avoid.
+    NROS_FIXTURE_LANE=tier2-nightly just check rust-rtos-link-check test-all test-ignored
     echo "CI passed (tier 2 nightly — pairwise cover)!"
 
 # Run the staleness gate over exactly one lane's fixture coordinates.
