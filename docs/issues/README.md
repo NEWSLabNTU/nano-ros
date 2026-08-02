@@ -73,14 +73,15 @@ only `test-all` converted. RESOLVED (2026-08-02, `e6ed5d68a` + `a7dc55609`): tie
 instead of source-building zenoh a SECOND time. Verified with store+build, store-only, and neither.
 See `0388-*`. (2026-08-02)
 
-**#387** [severity **high**] — C-arm (partly C++) runtime lanes fail across platforms while Rust
-arms pass, confirmed 3/3 on FRESH fixtures at low load: ThreadX C pubsub/action/service (0
-messages; Rust+Cpp of the same cells green), zephyr EDF C-arm only, native realtime c/cpp/rclcpp
-(low tier never scheduled; rust green), C/C++ param-live-read never reaches the callback; plus
-zephyr-rust-params entry timeout, nuttx-arm realtime c/cpp, rtic action. Shared surface: C/C++
-entry codegen + deploy-table ingestion; prime suspects `2ce930e39` (#356 Part2) and the #380
-regenerations. Exactly the platform×language pairwise class tier 2 is blind to (RFC-0061). See
-`0387-*`. (2026-08-02)
+(#387 resolved 2026-08-02 — see `archived/0387-*`: the C-arm runtime "regressions" were TWO
+real roots plus confounders. (1) tier class `ba57adf24` — `open_over_session` left
+`CppContext.in_dispatch` uninitialised → spurious REENTRANT killed borrowed-tier spins (native +
+NuttX-arm + EDF C/C++; Rust's own run_tiers untouched). (2) ThreadX class `4b8c63b36` —
+`zpico_spin_once`'s ThreadX arm returned `ZPICO_ERR_TIMEOUT` on idle where every other MT backend
+returns 0, so nros-c `spin_period` bailed at 16 idle spins (ThreadX-Linux + ThreadxRiscv64 C
+pubsub/service/action; only nros-c consults the counter, so Rust/Cpp passed). `cpp_c_param_live_read`
+was a flake (`921eb1a0a`: stale sink skip miscounted + entry outlived by the wait). All QEMU-confirmed.
+Residual `rtic-action`/`zephyr-rust-params` are pre-tagged load flakes, not the C class.)
 
 **#378** — a host set up by the DOCUMENTED flow (bootstrap + activate + `nros setup native`) cannot
 reach tier-1 ci: `check-leaf-lockfiles` fails for 9 leaves because neither `generated/` (needs

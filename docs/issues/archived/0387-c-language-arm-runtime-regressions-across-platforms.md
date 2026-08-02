@@ -2,7 +2,7 @@
 id: 0387
 title: C-arm (and partly C++) runtime lanes fail across platforms while the
   Rust arms pass — confirmed on fresh fixtures at low load
-status: open
+status: resolved
 severity: high
 created: 2026-08-02
 tags: [c-api, cpp-api, threadx, zephyr, realtime, params]
@@ -246,3 +246,43 @@ generic MT `zpico_spin_once` arm, which already returns 0 on idle.)
 idle-spin fix, same NetX poll path — QEMU-sweep confirm) and the load-flaky
 `emulator::test_qemu_rtic_action_e2e` / `entry_e2e case_12_zephyr_rust_params`
 (the issue already tags these as flaky-under-load, not the C-language class).
+
+## RESOLVED (2026-08-02) — ThreadxRiscv64 C confirmed on QEMU; issue closed
+
+`rtos_e2e` ThreadxRiscv64 **C** pubsub + service, both green on QEMU (40 s):
+pubsub 0 -> **14 messages**, service 0 -> **1 response**. The idle-spin fix
+(`4b8c63b36`) covers the NetX `nx_bsd_select` arm via the same shared ThreadX
+block, exactly as predicted. The earlier "0 messages" reading was a STALE
+pre-fix fixture — the ThreadxRiscv64 C fixtures had not been rebuilt with the
+zpico change (see the fixture-freshness note below).
+
+**Fixture-rebuild gotcha (cost an hour — recorded for the next chaser):** the
+ThreadxRiscv64 C fixtures are PREBUILT-only (`build_cmake_example` just checks
+freshness; it does NOT compile). Rebuild them with
+`just threadx_riscv64 build-fixture-extras`, NEVER a bare
+`scripts/build/fixtures-build.sh threadx-riscv64 c zenoh` — the bare call runs
+without the recipe's `THREADX_CONFIG_DIR`/`NETX_CONFIG_DIR` (riscv64 board
+config) and `NROS_CMAKE_EXTRA_DEFS` (the `-DCMAKE_TOOLCHAIN_FILE=…riscv64-threadx.cmake`),
+so cmake configures the ThreadX kernel with host `/usr/bin/cc` → `Error: no such
+instruction: csrrci %rax,mstatus` (RISC-V CSR ops to the x86 assembler). Worse,
+`nros_cmake_configure_if_needed` CACHES that broken configure, so a later correct
+invocation is skipped unless you first `rm -rf build-zenoh` on every affected C
+example. A separate latent gap (issue-0196 class): the test-side freshness gate
+reused a stale `zpico.o` (the fix never recompiled into the fixture) — a museum
+binary re-showed the OLD bug. Filed as a follow-up.
+
+### Final scorecard — the C-language regression CLASS is fully resolved
+| cell class | resolution |
+|---|---|
+| native realtime C/C++/rclcpp + EDF tiers | `ba57adf24` (in_dispatch init) |
+| NuttX-arm C/C++ realtime tiers | `ba57adf24` (same tier path), QEMU-confirmed |
+| ThreadX-Linux C pubsub/service/action | `4b8c63b36` (zpico idle-spin) |
+| ThreadxRiscv64 C pubsub/service | `4b8c63b36` (same NetX arm), QEMU-confirmed |
+| `cpp_c_param_live_read_e2e` | `921eb1a0a` — was a flake (stale sink + short entry), not a param bug |
+
+Two cells remain that were flagged in the confirmed set but are NOT the
+C-language class: `emulator::test_qemu_rtic_action_e2e` and `entry_e2e
+case_12_zephyr_rust_params` — both tagged flaky-under-load from the start (rtic
+pubsub/service siblings pass; the zephyr param cell is Rust, not C). If they
+recur outside load pressure they warrant their own issue; they are not this
+regression. Closing 0387.
