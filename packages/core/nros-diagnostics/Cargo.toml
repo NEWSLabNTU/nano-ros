@@ -15,5 +15,11 @@ std = ["nros-diagnostic-msgs/std"]
 # This requirement still named the ament version (4.9.1), which after that
 # change can never be satisfied — it broke resolution for the ROOT workspace,
 # not just for consumers of this crate.
-nros-diagnostic-msgs = { version = "0.0.0", path = "../../interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs", default-features = false }
+# PATH-ONLY, no version (RFC-0067 D1). A generated crate's version is the
+# constant `0.0.0`, so pinning ANY value here re-couples this manifest to
+# codegen output: the first spelling named the ament version (4.9.1) and broke
+# the ROOT workspace when the constant landed (0394); the second named 0.0.0 and
+# broke again when the core crates were briefly reverted. A path dep with no
+# version cannot be wrong in either direction.
+nros-diagnostic-msgs = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs", default-features = false }
 heapless = "0.8"

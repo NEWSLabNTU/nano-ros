@@ -152,7 +152,9 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   **Exception: the core pre-generated msg packages** (`packages/interfaces/*`), committed under
   `nros-`prefixed names because core crates need those messages BEFORE any codegen runs and the
   prefix keeps them from colliding with a user package of the same ROS name. They resolve from a
-  bare clone, so they keep real versions (NOT `0.0.0`) and their consumers may pin one.
+  bare clone, so their LOCKS are tracked — but their crate version is still the constant `0.0.0`
+  like every generated crate, and consumers must path-dep them with NO version (pinning either
+  spelling broke root-workspace resolution twice, #394).
   Invariant, enforced by `check-leaf-lockfiles`: **tracked lock ⟺ (no message deps) ∨ (committed
   `generated/`)** — boards/drivers/smoke qualify via the first arm. (The old "track all of them"
   rule predates the shim keying on TRACKED rather than ignored, #386.)

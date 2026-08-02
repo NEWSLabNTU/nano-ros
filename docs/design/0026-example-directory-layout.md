@@ -129,8 +129,11 @@ Two rules, by who owns the dependency graph:
   `packages/interfaces/*`: those message crates are pre-generated INTO the repo
   under `nros-`prefixed names — the prefix exists so core code can depend on them
   before any user codegen runs, without colliding with a user package of the same
-  ROS name — so they resolve from a bare clone and their consumers may pin a real
-  version. `check-leaf-lockfiles` enforces the whole invariant:
+  ROS name — so they resolve from a bare clone and their locks are tracked. Their
+  crate VERSION is still the `0.0.0` constant, and consumers path-dep them with no
+  version: the generator emits the constant unconditionally, so any pinned value
+  is re-broken by the next regeneration (issue 0394 hit this twice, once per
+  spelling). `check-leaf-lockfiles` enforces the whole invariant:
   **tracked lock ⟺ (no message deps) ∨ (committed `generated/`)**.
 
 **Tooling agrees with the policy by construction (issue 0386):** the `--locked`
