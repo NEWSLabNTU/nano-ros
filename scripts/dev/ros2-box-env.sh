@@ -26,6 +26,25 @@
 
 _nros_box_root="$(cd -P "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd -P)"
 
+# distrobox mounts the whole host filesystem at /run/host AND translates the
+# entry cwd into it, so the SAME checkout is reachable inside the box by two
+# paths — /run/host/mnt/… and the bind-mounted /mnt/… — and which one you land
+# on depends on how you entered. Either is a working tree; only one matches the
+# host's own absolute path, and the mismatch is the issue-0375 hazard for real:
+# `nros sync` writes absolute paths, and cargo/cmake caches key on them, so a
+# box build under /run/host/… and a host build under /mnt/… silently disagree.
+# Strip the prefix when the stripped path is the same checkout.
+case "$_nros_box_root" in
+    /run/host/*)
+        _nros_box_stripped="${_nros_box_root#/run/host}"
+        if [ -d "$_nros_box_stripped/packages/cli" ]; then
+            _nros_box_root="$_nros_box_stripped"
+            cd "$_nros_box_root" || return 1
+        fi
+        unset _nros_box_stripped
+        ;;
+esac
+
 export NROS_HOME="${NROS_HOME:-$HOME/.nros-box}"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target-box}"
 export CARGO_INSTALL_ROOT="${CARGO_INSTALL_ROOT:-$HOME/.local-box}"
@@ -38,6 +57,12 @@ cd "$_nros_box_root" || return 1
 # box build to that path; being the older-glibc binary it keeps working on the
 # host too. A host-side `cargo build` of the CLI overwrites it with a host
 # binary and breaks the box again — re-run this after that happens.
+# The root is exported, NOT read from `$_nros_box_root`: that variable is unset
+# at the end of this file, so a function closing over it silently resolved to
+# "" and installed to /packages/cli/… — which fails, while the second install
+# still returned 0 and the function reported success.
+export NROS_BOX_REPO="$_nros_box_root"
+
 nros_box_publish() {
     local built="$CARGO_TARGET_DIR/release/nros"
     if [ ! -x "$built" ]; then
@@ -45,9 +70,10 @@ nros_box_publish() {
         echo "  cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros" >&2
         return 1
     fi
-    mkdir -p "$CARGO_INSTALL_ROOT/bin" "$_nros_box_root/packages/cli/target/release"
-    install -m755 "$built" "$_nros_box_root/packages/cli/target/release/nros"
-    install -m755 "$built" "$CARGO_INSTALL_ROOT/bin/nros"
+    mkdir -p "$CARGO_INSTALL_ROOT/bin" "$NROS_BOX_REPO/packages/cli/target/release"
+    install -m755 "$built" "$NROS_BOX_REPO/packages/cli/target/release/nros" || return 1
+    install -m755 "$built" "$CARGO_INSTALL_ROOT/bin/nros" || return 1
+    echo "box CLI published: $NROS_BOX_REPO/packages/cli/target/release/nros + $CARGO_INSTALL_ROOT/bin/nros"
 }
 
 # BEFORE activate.sh: it sources scripts/sdk-env.sh, which shells out to `just`,
