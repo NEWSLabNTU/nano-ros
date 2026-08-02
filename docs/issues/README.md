@@ -53,13 +53,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 **#395** (RESOLVED 2026-08-03) — phase-331 W6 dropped the `[tiers.*.freertos]` declarations when it retargeted the `workspace-cpp-freertos-realtime` fixture onto `realtime-cpp`, and pointed the row at a `deploy_bringup` that belongs to a different workspace. Restored from `a92778843^` (high=5, low=2, cpp low core=0 — the dim `tests/freertos_core_pin_applied.rs` asserts), row repointed at `src/demo_bringup`. Two further baseline entries turned out to be W6 RENAME errors rather than losses: the `fast`/`bulk` dims were intact under `realtime-cpp-subnode-portable`, and the `mid.*` three-tier system was deliberately dropped (`aux_pkg` is now unreferenced — follow-up).
 
-**#396** (filed as #395; renumbered — id collision with parallel sessions) [severity **high**] — features + local-msg-package cannot `nros sync` on main: the
-phase-333 migration narrowed the sync patch-table generation and the workspace-LOCAL interface
-crates (custom_msgs/local_msgs/extra_msgs — still registry-name + patch) lost their entries; the
-phase-327 narrowing guard correctly refuses the write. The two workspaces are the only exercisers
-of local interface pkgs, which is exactly why the migration missed them. Fix direction: migrate
-local pkgs to the RFC-0067 path-dep shape (then the guard learns path-dep ≠ dropped), or restore
-their entries. See `0396-*`. (2026-08-03)
+Recently resolved: **#396** (filed as #395; renumbered — id collision) — features +
+local-msg-package couldn't `nros sync`: the phase-333 migration narrowed the patch table while the
+workspace-LOCAL interface crates were still registry-named, and the phase-327 narrowing guard
+correctly refused the write. RESOLVED (2026-08-03): direction A — the local crates moved to the
+RFC-0067 path-dep spelling, and `registry_style_dep_names` learned that path+version is a PATH dep
+(cargo never consults the registry for it), so legitimate narrowing passes while the
+registry-strand protection stays. See `archived/0396-*`.
 
 Recently resolved (2026-08-02): **#393** — the fixture BUILD ignored the CI lane that the staleness
 gate and the test run already agreed on: `build-test-fixtures` took no lane and fanned out over all
