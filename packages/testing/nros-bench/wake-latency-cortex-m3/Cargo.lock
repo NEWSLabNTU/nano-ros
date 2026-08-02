@@ -708,7 +708,8 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "ros-launch-manifest-model"
-version = "0.5.0"
+version = "0.1.0"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.0#172aa538bf22158a9ce463e39db2003ba95b39e4"
 dependencies = [
  "ros-launch-manifest-sched",
  "serde",
@@ -719,7 +720,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-sched"
-version = "0.5.0"
+version = "0.1.0"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.0#172aa538bf22158a9ce463e39db2003ba95b39e4"
 dependencies = [
  "serde",
  "serde_yaml_ng",
