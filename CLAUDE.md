@@ -114,19 +114,36 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   `Cargo.toml`/`Cargo.lock`). Edits to codegen / `colcon_nano_ros` / orchestration land there; build
   via `just setup-cli`. The retired `packages/codegen` submodule is fully gone (no stray leftover).
   `packages/cli/` nests `third-party/ros-launch-resolve` + `testing_workspaces/ros2_rust_examples`.
-- **Launch toolchain is THREE layers (RFC-0060), and nano-ros pins only layer 2:**
-  `ros-launch-manifest` (spec/theory/proofs/algorithms — no ROS, no Python) ← `ros-launch-resolve`
-  (launch tree → SystemModel; needs CPython, NOT ROS/colcon) ← `play_launch` (Linux runtime).
-  rlm arrives transitively through the resolver, so there is ONE copy of the spec — the
-  double-vendoring that drifted three times during issue 0285 is gone. `nros` never links
-  layer 3. The `nros-launch-resolve` helper is built by `just setup-launch-resolve` and
-  invoked by ABSOLUTE PATH, never `$PATH` (issue 0285: an unrelated ROS 2 `play_launch`
-  won the PATH race and broke every platform's fixture build).
+- **Launch toolchain (RFC-0060, amended to TWO repositories — phase-332):** `ros-launch-manifest`
+  (spec) is folding INTO `play_launch`; nano-ros pins the resolver (`ros-launch-resolve`,
+  launch tree → SystemModel; needs CPython, NOT ROS/colcon), through which rlm arrives
+  transitively — ONE copy of the spec (the 0285 double-vendoring is gone). `nros` never links
+  the Linux runtime layer. The `nros-launch-resolve` helper is built by
+  `just setup-launch-resolve` and invoked by ABSOLUTE PATH, never `$PATH` (issue 0285).
 - **Don’t modify vendored/generated:** `third-party/`, `packages/interfaces/*/generated/`, build
   output — unless the task explicitly requires regeneration. Preserve worktree changes.
 - **Examples are standalone copy-out projects** (`examples/<plat>/<lang>/<example>/`); no workspace
   walk-up. Non-example bins live under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`.
   Detail → RFC-0026 + `examples/README.md` coverage matrix.
+- **Workspace examples follow RFC-0066 (phase-331, in flight): a FEATURE is a node package,
+  a CONFIGURATION is a fixture axis — never a new directory.** Feature demos (params/lifecycle/
+  qos/custom-msg/remap) live as node pkgs in the native-only `workspaces/features/`; RMW ×
+  feature-set variants are `fixtures.toml` rows over the four large workspaces
+  (`workspaces/{rust,c,cpp,mixed}`); the themed `ws-*` dirs are being DELETED (W3) — don't add
+  one, don't extend one. Naming rules (no language prefixes in single-language workspaces,
+  role-not-payload pkg names, one platform vocabulary for entries) →
+  `examples/workspaces/README-layout.md`. West-built zephyr entry leaves need BOTH the nested
+  workspace `exclude` AND a repo-root `Cargo.toml` exclude, and their dep keys must match the
+  generated `<entry>_nros_selection` package name (phase-331 fallout class, 2026-08-03).
+- **System-model dims are authored in `system.toml`, NEVER hand-edited into the committed
+  `config/system_model.yaml`** (phase-330 / issue 0380: regeneration deletes anything the
+  resolver inputs can't express — it happened four separate times). The committed model is
+  transitioning to a BUILD ARTIFACT generated into the active build's output dir (phase-330
+  W3 seam landed; W4 flips the default) — treat model yamls as resolver output.
+- **Message deps are PATH deps pinned `0.0.0` (RFC-0067 / phase-333)** — never registry-name a
+  message crate (`std_msgs = "*"`) in a leaf manifest; #378 showed a bare name resolving against
+  the PUBLIC crates.io. `testing/{nros-bench,…}` leaves TRACK their `Cargo.lock` (all of them —
+  the one untracked lock broke `--locked` builds on a version bump).
 - **Messages are generated** (`nros generate-rust` from `package.xml`) — never hand-write. Detail
   → RFC-0023 + [docs/guides/message-generation.md](docs/guides/message-generation.md).
 - Unused vars: `_name` + comment, or `#[allow(dead_code)]` for test struct fields.
@@ -137,6 +154,12 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 - **No compilation inside tests** — never `cargo`/`cmake`/`idf.py`/`west build` at run time. Compile in
   the build stage (`build-test-fixtures` + `examples/fixtures.toml`); the test consumes the prebuilt
   fixture. "Does it compile?" intent → make it a build-step fixture and assert the artifact. → AGENTS.md Testing.
+- **Fixture builds are LANE-SCOPED (#393):** `just build-test-fixtures lane=<all|native|tier1|tier2|tier2-nightly>`
+  narrows both the platform-family fan-out and the manifest rows; the `.fixtures-built` stamp
+  records `lane=` + per-coordinate rows, and `_require-fixtures` checks COVERAGE against the run's
+  lane. Build the lane you'll test — tier 1 doesn't need all 337 rows. New runtime tests join a
+  matrix: cells in `matrix::CELLS` / `interop::CELLS` (RFC-0051; phase-331 W4 put workspace RMW
+  cells there too), not new hand-coordinated files — the consolidation plan is phase-329.
 - **Fixture mtime treadmill:** any pull/rebase — and any `git stash push`/`pop`, which rewrites
   tracked files just the same — refreshes source mtimes → EVERY prebuilt fixture
   reads STALE. Rebase once → rebuild affected fixtures → test WITHOUT pulling again. Core-crate
