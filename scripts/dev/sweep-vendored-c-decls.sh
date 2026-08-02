@@ -90,9 +90,28 @@ sweep_tree "cyclonedds" "third-party/dds/cyclonedds" \
     "third-party/dds/cyclonedds/src/ddsrt/include" \
     "third-party/dds/cyclonedds/src/core/ddsi/include"
 
-sweep_tree "threadx" "third-party/threadx" \
-    "third-party/threadx/common/inc" \
-    "third-party/threadx/ports/linux/gnu/inc"
+sweep_tree "threadx" "third-party/threadx/kernel" \
+    "third-party/threadx/kernel/common/inc" \
+    "third-party/threadx/kernel/ports/linux/gnu/inc"
+
+# FreeRTOS / lwIP / NetX Duo — provisioned via `nros setup --source
+# {freertos-kernel,lwip,threadx-netxduo}`. Their ports need a per-target
+# `FreeRTOSConfig.h` / `lwipopts.h` / `nx_user.h`, so expect most TUs in the
+# needs-context bucket; the portable cores still compile.
+sweep_tree "freertos-kernel" "third-party/freertos/kernel" \
+    "third-party/freertos/kernel/include" \
+    "third-party/freertos/kernel/portable/GCC/ARM_CM3" \
+    "third-party/freertos/kernel/portable/ThirdParty/GCC/Posix"
+
+sweep_tree "lwip" "third-party/freertos/lwip" \
+    "third-party/freertos/lwip/src/include" \
+    "third-party/freertos/lwip/contrib/ports/unix/port/include"
+
+sweep_tree "netxduo" "third-party/threadx/netxduo" \
+    "third-party/threadx/netxduo/common/inc" \
+    "third-party/threadx/netxduo/ports/linux/gnu/inc" \
+    "third-party/threadx/kernel/common/inc" \
+    "third-party/threadx/kernel/ports/linux/gnu/inc"
 
 echo
 echo "diagnostics (if any) -> tmp/sweep-hits.txt"

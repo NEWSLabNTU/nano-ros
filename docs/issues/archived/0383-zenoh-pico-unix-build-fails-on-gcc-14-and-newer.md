@@ -135,8 +135,35 @@ Two complementary methods, because neither alone covers the tree:
    All three build clean on gcc 16.1.1 — including `zpico-sys` itself, which is
    the regression check for the two fixes above.
 
-Not swept: FreeRTOS/lwIP and NetX Duo are not provisioned on this host, so their
-vendored C has never met a gcc >= 14. They are the remaining exposure.
+**FreeRTOS / lwIP / NetX Duo (provisioned + swept, 2026-08-03).**
+
+| tree | hits | compiled | needs build ctx |
+| --- | --- | --- | --- |
+| NetX Duo | 0 | 550 | 463 |
+| lwIP core/api/netif (synthetic `lwipopts.h`) | 0 | 85 | 0 |
+| FreeRTOS kernel core (synthetic `FreeRTOSConfig.h`) | 0 | 7 | — |
+| ThreadX kernel | 93 — none in our build path | 669 | 395 |
+
+lwIP's three raw hits are `contrib/Coverity/coverity.c` and two `doc/` samples;
+no build compiles them, same shape as the cyclonedds pair.
+
+**The 93 ThreadX hits are real code but not OUR code.** They sit in
+`utility/rtos_compatibility_layers/posix` (16), `ports_smp/linux/gnu` (12),
+`ports/win32/vs_2019` (6), `ports_arch/ARMv8-M` (6) and the `ports_module/
+cortex_m{23,33}/{gnu,iar,ac6}` set — ports and an optional POSIX compatibility
+utility that nano-ros never compiles (`build.rs` selects `ports/<tx_port>`, and
+nothing references the compat layer). Confirmed positively rather than by
+inspection alone: `threadx-netx-sys` builds clean with both diagnostics as
+errors on gcc 16.1.1, i.e. OUR port selection is free of the class. Upstream may
+still want them; they are not a nano-ros exposure.
+
+**The structural exposure that remains is the toolchain, not the code.** The
+embedded C is compiled by the pinned `arm-none-eabi-gcc 13.2`, which only WARNS
+on implicit declarations and int-conversion. So an instance introduced in a
+FreeRTOS/lwIP/NetX path would not fail any embedded build — the same latency
+that let the two zenoh-pico bugs live for years. Options: bump the pinned cross
+gcc, or add `-Werror=implicit-function-declaration -Werror=int-conversion` to
+the embedded C flags, which costs nothing on a compiler that only warns today.
 
 **Original zenoh-pico sweep (unchanged):** `-fsyntax-only -Werror=implicit-function-declaration
 -Werror=int-conversion` over all 128 host-compilable zenoh-pico TUs, in both the
