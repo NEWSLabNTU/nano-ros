@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#387** [severity **high**] — C-arm (partly C++) runtime lanes fail across platforms while Rust
+arms pass, confirmed 3/3 on FRESH fixtures at low load: ThreadX C pubsub/action/service (0
+messages; Rust+Cpp of the same cells green), zephyr EDF C-arm only, native realtime c/cpp/rclcpp
+(low tier never scheduled; rust green), C/C++ param-live-read never reaches the callback; plus
+zephyr-rust-params entry timeout, nuttx-arm realtime c/cpp, rtic action. Shared surface: C/C++
+entry codegen + deploy-table ingestion; prime suspects `2ce930e39` (#356 Part2) and the #380
+regenerations. Exactly the platform×language pairwise class tier 2 is blind to (RFC-0061). See
+`0387-*`. (2026-08-02)
+
 **#378** — a host set up by the DOCUMENTED flow (bootstrap + activate + `nros setup native`) cannot
 reach tier-1 ci: `check-leaf-lockfiles` fails for 9 leaves because neither `generated/` (needs
 `nros generate-rust` → needs ROS 2) nor the root `nros-patch.toml` (needs `nros sync`, gitignored)
