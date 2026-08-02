@@ -2,8 +2,6 @@ include = ["../../../../../nros-patch.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 
-[patch.crates-io]
-
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [

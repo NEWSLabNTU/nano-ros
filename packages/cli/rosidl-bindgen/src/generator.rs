@@ -517,9 +517,7 @@ fn generate_lib_rs(src_dir: &Path, package: &Package) -> Result<()> {
 /// the registry form so behaviour is unchanged rather than emitting a path that
 /// cannot resolve.
 fn nros_dep_line(crate_name: &str, package_output: &Path) -> String {
-    let registry = format!(
-        r#"{crate_name} = {{ version = "*", default-features = false }}"#
-    );
+    let registry = format!(r#"{crate_name} = {{ version = "*", default-features = false }}"#);
     let Some(root) = std::env::var_os("NROS_REPO_DIR").map(PathBuf::from) else {
         return registry;
     };

@@ -10,5 +10,10 @@ default = []
 std = ["nros-diagnostic-msgs/std"]
 
 [dependencies]
-nros-diagnostic-msgs = { version = "4.9.1", path = "../../interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs", default-features = false }
+# phase-333 / issue 0394 — a generated msg crate carries the CONSTANT version
+# `0.0.0`; its ament version moved to `[package.metadata.nros] ament_version`.
+# This requirement still named the ament version (4.9.1), which after that
+# change can never be satisfied — it broke resolution for the ROOT workspace,
+# not just for consumers of this crate.
+nros-diagnostic-msgs = { version = "0.0.0", path = "../../interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs", default-features = false }
 heapless = "0.8"

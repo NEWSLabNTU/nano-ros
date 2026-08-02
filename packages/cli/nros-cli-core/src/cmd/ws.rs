@@ -1478,14 +1478,18 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         // `c.deps` comes from package.xml `<depend>` rows, which name every
         // message package the leaf uses whether or not its Cargo.toml resolves
         // them via the registry, so intersect the two.
-        let registry_named: HashSet<String> =
-            std::fs::read_to_string(c.dir.join("Cargo.toml"))
-                .map(|body| registry_style_dep_names(&body).into_iter().collect())
-                .unwrap_or_default();
+        let registry_named: HashSet<String> = std::fs::read_to_string(c.dir.join("Cargo.toml"))
+            .map(|body| registry_style_dep_names(&body).into_iter().collect())
+            .unwrap_or_default();
         authority_to_requested
             .entry(authority.clone())
             .or_default()
-            .extend(c.deps.iter().filter(|d| registry_named.contains(*d)).cloned());
+            .extend(
+                c.deps
+                    .iter()
+                    .filter(|d| registry_named.contains(*d))
+                    .cloned(),
+            );
         // Workspace mode keeps the locked shared-root topology (`3f07dd9f7`):
         // every consumer's authority carries the full emitted set. Single-pkg
         // mode is dependency-aware — only the msg crates this consumer

@@ -3279,6 +3279,28 @@ doctor tier="":
     else
         echo "  [MISSING] clang-format — run: just setup-clang-format"
     fi
+    # phase-333 / issue 0394 — a `generated/` msg crate left over from before
+    # constant versioning still carries the ament version of whatever interface
+    # source THIS host had (`std_msgs 4.9.1`, `action_msgs 1.2.2`, …). It is
+    # gitignored, so a fresh clone never sees it and CI cannot catch it, but on
+    # a long-lived checkout it breaks any leaf whose lock is TRACKED: cargo
+    # wants to re-resolve and `--locked` refuses, with an error that names the
+    # lock and says nothing about the real cause. Report the remedy here rather
+    # than let the next person debug a lockfile that was never wrong.
+    stale_gen=$(find "{{justfile_directory()}}/packages" "{{justfile_directory()}}/examples" \
+        -path "*/generated/*/Cargo.toml" -not -path "*/target/*" 2>/dev/null \
+        | while read -r f; do
+              v=$(grep -m1 '^version' "$f" 2>/dev/null | cut -d'"' -f2)
+              [ -n "$v" ] && [ "$v" != "0.0.0" ] && echo "$f"
+          done | sed 's|/generated/.*||' | sort -u)
+    if [ -n "$stale_gen" ]; then
+        n=$(printf '%s\n' "$stale_gen" | wc -l)
+        echo "  [WARN] $n workspace(s) carry PRE-0.0.0 generated msg crates (env-baked versions)."
+        echo "         Harmless where the lock is untracked; breaks \`--locked\` where it is not."
+        echo "         Re-sync the ones that fail to build:  cd <dir> && nros sync"
+    else
+        echo "  [OK] generated msg crates: all constant-versioned (0.0.0)"
+    fi
     # Compiler cache. `RUSTC_WRAPPER` above auto-uses sccache when it's on PATH,
     # which roughly halves clean/CI rebuilds (measured ~46%, see
     # docs/development/build-ux-audit.md). Surface its absence so it's a known

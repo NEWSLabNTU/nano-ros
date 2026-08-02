@@ -1749,7 +1749,7 @@ dependencies = [
 
 [[package]]
 name = "nros-builtin-interfaces-diag"
-version = "1.2.2"
+version = "0.0.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-core",
@@ -1806,7 +1806,7 @@ dependencies = [
 
 [[package]]
 name = "nros-diagnostic-msgs"
-version = "4.9.1"
+version = "0.0.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-core",
@@ -2141,7 +2141,7 @@ dependencies = [
 
 [[package]]
 name = "nros-std-msgs-diag"
-version = "4.9.1"
+version = "0.0.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-builtin-interfaces-diag",
