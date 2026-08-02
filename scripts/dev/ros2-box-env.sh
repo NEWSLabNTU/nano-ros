@@ -4,6 +4,11 @@
 #
 #     distrobox enter ros2 -- bash -c '. scripts/dev/ros2-box-env.sh; <cmd>'
 #
+# On a host with BOTH docker and podman, prefix that with
+# `DBX_CONTAINER_MANAGER=docker` (or podman) — distrobox prefers podman when it
+# is present, and against a docker-created box it reports `no such container`
+# and offers to create an empty Fedora one instead of finding yours.
+#
 # GLIBC DIRECTION IS THE WHOLE STORY. glibc is backward compatible: a binary
 # linked against the box's OLDER glibc runs on a newer host, never the reverse.
 # So artifacts built IN THE BOX work on both sides, and everything the host

@@ -46,6 +46,19 @@ prerequisites, `rmw_cyclonedds_cpp`, `rmw_fastrtps_cpp`, `domain_bridge`,
 distrobox enter ros2 -- bash -c '. scripts/dev/ros2-box-env.sh; <command>'
 ```
 
+**If both docker and podman are installed, say which one holds the box:**
+
+```sh
+DBX_CONTAINER_MANAGER=docker distrobox enter ros2 -- ...
+```
+
+distrobox picks podman when it finds it, so on a host that gained podman AFTER
+the box was created under docker, a plain `distrobox enter ros2` does not fail —
+it reports `no such container "ros2"` and OFFERS TO CREATE a fresh Fedora one.
+Answering yes gets you a second, empty box with no ROS in it while the real box
+is still running. Check with `docker ps -a` / `podman ps -a` before believing
+the box is gone. Export the variable for the shell if you use one manager only.
+
 `ros2-box-env.sh` sources `activate.sh` and adds the box-local overrides.
 
 One-time per box. Every cargo-INSTALLED tool has to be reinstalled here: the

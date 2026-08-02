@@ -8,6 +8,9 @@
 # Run INSIDE the box, from the checkout:
 #     distrobox enter ros2 -- bash scripts/dev/ros2-distrobox-setup.sh
 #
+# (prefix with DBX_CONTAINER_MANAGER=docker if the host has podman too, else
+# distrobox looks for the box under the wrong manager — see ros2-box-env.sh)
+#
 # `sudo` here is the CONTAINER's root, not the host's — the box is disposable
 # (`distrobox rm ros2`) and nothing outside it is touched. $HOME is shared with
 # the host by design, which is what the NROS_HOME / CARGO_TARGET_DIR notes at
