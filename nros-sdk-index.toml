@@ -104,7 +104,10 @@ upstream = "0.8.2" # = source.ref (mozilla/sccache release tag, without the `v`)
 [tool.sccache.source]
 git = "https://github.com/mozilla/sccache"
 ref = "v0.8.2"
-install = "cargo install --path . --root {prefix} --locked"
+# vendored-openssl: the default features pull openssl-sys, which hard-fails
+# on any host without libssl-dev (observed 2026-08-03; the RFC-0062 class —
+# an undeclared system dep). Vendoring removes the system dep entirely.
+install = "cargo install --path . --root {prefix} --locked --features vendored-openssl"
 
 [tool.openocd]
 version = "0.12.0-nros1"
