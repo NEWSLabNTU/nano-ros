@@ -70,8 +70,15 @@ distrobox enter ros2 -- bash -c '. scripts/dev/ros2-box-env.sh; just test-unit'
 distrobox enter ros2 -- bash -c '. scripts/dev/ros2-box-env.sh; just test-all'
 ```
 
-The test harness reads `build/zenohd/zenohd`, not the SDK store — `just zenohd
-setup` populates it (`test-all` depends on `build-zenohd` already).
+The test harness reads `build/zenohd/zenohd`, **not** the SDK store, so
+`nros setup --rmw zenoh` alone is not enough: run `just zenohd setup` too, or two
+zenoh tests in `test-unit` fail with `zenohd binary missing at …/build/zenohd/
+zenohd`. (`test-all` depends on `build-zenohd` and provisions it for you.)
+
+Reading the result: `just test-unit` runs bare `cargo nextest`, which counts a
+`nros_tests::skip!` panic as a FAILURE — only `test-all`'s junit rewrite turns
+those back into skips. A "failure" whose output starts with `[SKIPPED]` is a
+skipped precondition, not a defect.
 
 ## Why the overrides exist — glibc direction
 
@@ -123,6 +130,10 @@ is the same checkout, so `NROS_REPO_DIR` matches the host either way.
   your environment untouched and looks exactly like a broken activation.
 
 ## Verified on this route
+
+`just test-unit` in the box: **817 tests, 816 passed, 2 skipped**, plus one
+`[SKIPPED] second session refused — shim built with ZPICO_MAX_SESSIONS=1`
+reported as a failure by the bare-nextest quirk above. No box-specific failures.
 
 Arch host (glibc 2.44) + Ubuntu 22.04.5 box (glibc 2.35), 2026-08-01:
 `nros setup` for zenoh and cyclonedds, `nros sync`, a cyclone-backed
