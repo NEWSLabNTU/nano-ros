@@ -1,10 +1,39 @@
 ---
 id: 278
 title: "No polling subscriber / blocking service futures — mrm_handler-class nodes must weaken to cache-latest + send-and-poll"
-status: open
+status: resolved
 type: enhancement
 area: nros-cpp
 related: [0254, 0290]
+resolved_in: phase-278-polling-primitives
+---
+
+## Resolution (2026-08-02)
+
+Both idioms now have a nano-ros equivalent:
+
+- **`nros::PollingSubscription<M>`** (`polling_subscription.hpp`,
+  `Node::create_polling_subscription`) — latest-value polling subscriber
+  (`take_data`/`take_new_data`/`take`/`peek`, drain-to-latest cache). Replaces
+  the hand-rolled "callback caches latest + has_ flag" pattern. Zero ABI change.
+- **`nros::Client<Svc>::call_polling(req, resp, timeout_ms)`** — a bounded
+  service call that does NOT spin the executor (send + sleep-poll via
+  `nros_platform_sleep_ms`, never `spin_once`), so it is safe from inside a
+  subscription/timer callback where `call()`/`Future::wait` return `Reentrant`
+  (#0290). Built on the existing `nros_cpp_service_client_call_raw` (which
+  already had the send + sleep-poll shape); this added a caller `timeout_ms`
+  parameter and the C++ method. **Callback-safe only on multi-threaded backends**
+  (zenoh MT, cyclonedds), where the backend read task delivers the reply into
+  the client's queue while the loop yields; on single-threaded/polled backends
+  the reply needs a `spin_once` the callback blocks, so it times out there — use
+  `call()` from the main loop. Keep the timeout short (it blocks the dispatch
+  thread).
+
+Both gated by `-fsyntax-only` instantiation compile tests
+(`tests/compile/{polling_subscription,service_client_call_polling}.cpp`) in
+`just check-cpp`. See the mrm_handler usage in the standalone-vs-workspace
+examples. Not done here (follow-ups): a native-Rust parallel of
+`PollingSubscription`, and porting the real Autoware `mrm_handler`.
 ---
 
 ## Finding (autoware-safety-island-example ports, 2026-07-24 — porting-notes 14)

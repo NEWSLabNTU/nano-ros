@@ -461,6 +461,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     resp_data: *mut u8,
     resp_capacity: usize,
     resp_len: *mut usize,
+    timeout_ms: u32,
 ) -> nros_cpp_ret_t {
     if storage.is_null() || req_data.is_null() || resp_data.is_null() || resp_len.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -470,10 +471,17 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     let req_slice = unsafe { core::slice::from_raw_parts(req_data, req_len) };
     let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp_data, resp_capacity) };
 
-    // Blocking C API kept for source compat; phase-301 deleted the RMW
-    // call_raw slot, so this now composes the async pair — send, then poll
-    // try_recv_reply_raw with the same 5 s budget the old slot used. The
-    // session's drive_io runs on the executor; between polls we only yield.
+    // Bounded blocking call that NEVER drives the executor (issue 0278 Half B):
+    // send, then poll `try_recv_reply_raw` sleeping `nros_platform_sleep_ms`
+    // between attempts until `timeout_ms` elapses. Because it does not call
+    // `spin_once`, it is safe to invoke from inside a subscription/timer
+    // callback (which runs while the executor is exclusively borrowed) — on a
+    // MULTI-THREADED backend the reply is delivered into the client's queue by
+    // the backend's own read task, so this loop only reads that queue and
+    // yields. On a single-threaded/polled backend the reply can only arrive via
+    // `spin_once` (which the callback is blocking), so the call times out there
+    // — use the executor-driven `Client::call` from the main loop instead.
+    // phase-301 deleted the RMW call_raw slot, so this composes the async pair.
     use nros_rmw::ClientTrait as _;
     unsafe extern "C" {
         // Portable platform sleep (nros-platform-api platform.h) — linked
@@ -483,7 +491,6 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     if client.send_request_raw(req_slice).is_err() {
         return NROS_CPP_RET_TIMEOUT;
     }
-    const BUDGET_MS: u32 = 5_000;
     const STEP_MS: u32 = 5;
     let mut waited_ms: u32 = 0;
     loop {
@@ -495,7 +502,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
                 return NROS_CPP_RET_OK;
             }
             Ok(None) => {
-                if waited_ms >= BUDGET_MS {
+                if waited_ms >= timeout_ms {
                     return NROS_CPP_RET_TIMEOUT;
                 }
                 unsafe { nros_platform_sleep_ms(STEP_MS as usize) };

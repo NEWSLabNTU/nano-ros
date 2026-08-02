@@ -103,6 +103,43 @@ template <typename S> class Client {
         return fut.wait(executor_, timeout_ms, resp);
     }
 
+    /// Issue 0278 (Half B) — send a request and block up to `timeout_ms` for the
+    /// reply WITHOUT spinning the executor, so this is safe to call from inside
+    /// a subscription/timer callback (where `call()`/`Future::wait` would return
+    /// `Reentrant`, issue 0290). It sends then sleep-polls the reply queue.
+    ///
+    /// CONSTRAINT: usable from a callback only on a MULTI-THREADED backend
+    /// (zenoh MT, cyclonedds), where the backend's own read task delivers the
+    /// reply into the client's queue while this loop yields. On a
+    /// single-threaded / polled backend the reply can only arrive via
+    /// `spin_once` — which the callback is blocking — so it will TIME OUT; use
+    /// `call()` from the main loop there. Keep `timeout_ms` SHORT (tens of ms):
+    /// this blocks the executor's dispatch thread for its duration.
+    ///
+    /// @param req          Request to send.
+    /// @param resp         Output response struct (filled on success).
+    /// @param timeout_ms   Maximum wait (default 100ms).
+    /// @return success on a received reply; ErrorCode::Timeout on no reply in
+    ///         time; NotInitialized / Error otherwise.
+    Result call_polling(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 100) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        uint8_t req_buf[RequestType::SERIALIZED_SIZE_MAX];
+        size_t req_len = 0;
+        if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
+            return Result(ErrorCode::Error);
+        }
+        uint8_t resp_buf[ResponseType::SERIALIZED_SIZE_MAX];
+        size_t resp_len = 0;
+        nros_cpp_ret_t ret = nros_cpp_service_client_call_raw(
+            storage_, req_buf, req_len, resp_buf, sizeof(resp_buf), &resp_len, timeout_ms);
+        if (ret != 0) return Result(ret);
+        if (resp_len == 0) return Result(ErrorCode::Timeout);
+        if (ResponseType::ffi_deserialize(resp_buf, resp_len, &resp) != 0) {
+            return Result(ErrorCode::Error);
+        }
+        return Result::success();
+    }
+
     /// Check if the client is initialized and valid.
     bool is_valid() const { return initialized_; }
 

@@ -1317,7 +1317,8 @@ nros_cpp_ret_t nros_cpp_service_client_call_raw(void *storage,
                                                 size_t req_len,
                                                 uint8_t *resp_data,
                                                 size_t resp_capacity,
-                                                size_t *resp_len);
+                                                size_t *resp_len,
+                                                uint32_t timeout_ms);
 
 /**
  * Phase 189.M3.3.f — send a request on a callback-style (arena-registered)

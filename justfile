@@ -2382,6 +2382,18 @@ check-cpp: check-cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/polling_subscription.cpp
+    # issue 0278 Half B — Client<Svc>::call_polling (callback-safe bounded
+    # service call, no executor spin) instantiation: the method body
+    # (serialize -> nros_cpp_service_client_call_raw(..., timeout_ms) ->
+    # deserialize) is type-checked against a generated-shape service type.
+    echo "  - Client::call_polling instantiation (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/service_client_call_polling.cpp
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
     # executed (counting allocator in the TU; asserts zero live allocations
     # across dtor / move-assign / clear / reserve-relocation of a two-level
