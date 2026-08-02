@@ -36,7 +36,11 @@ fn skip_dir(name: &str) -> bool {
         || name.starts_with("build-")
         || matches!(
             name,
-            ".git" | "node_modules" | "generated" | ".cargo" | "cmake-build-debug"
+            ".git"
+                | "node_modules"
+                | "generated"
+                | ".cargo"
+                | "cmake-build-debug"
                 | "cmake-build-release"
         )
 }
