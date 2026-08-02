@@ -51,6 +51,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#389** — `ZPICO_MAX_SESSIONS` defaults to 1 and no in-tree build raises it, so
+`two_sessions_deliver_cross_session_through_router` — the e2e proof for the multi-session work
+closed this cycle as #348/#376 — skips on every host, in every tier, always. The session-scoped
+tables #376 added (`service.rs:99-112`) collapse to the old layout at the default, so those fixes
+are unverified by CI. Silent-lane class (#0202, #0319, #0379): the test exists, so it looks covered.
+See `0389-*`. (2026-08-02)
+
+**#388** — `just test-unit` is documented as "unit tests only (no external deps)" but two of its
+tests need a built `build/zenohd/zenohd` (NOT the SDK store — a host with zenohd installed still
+fails), and a third red is really a `nros_tests::skip!` that only `test-all`'s junit rewrite
+converts. So tier 1, the tier everyone is told to run, cannot go green on a correctly provisioned
+host and its red does not distinguish "missing binary" from "you broke something". See `0388-*`.
+(2026-08-02)
+
 **#387** [severity **high**] — C-arm (partly C++) runtime lanes fail across platforms while Rust
 arms pass, confirmed 3/3 on FRESH fixtures at low load: ThreadX C pubsub/action/service (0
 messages; Rust+Cpp of the same cells green), zephyr EDF C-arm only, native realtime c/cpp/rclcpp
