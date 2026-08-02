@@ -73,3 +73,40 @@ change, and against a pre-2ce930e39 fixture build if needed.
 
 The param_live_read pair and the native realtime C/C++ arms likely fall
 out of the same fix; re-run the confirmed set after.
+
+## Investigation (2026-08-02) — the entry-codegen hypothesis is REFUTED
+
+Reproduced the threadx-linux C pubsub codegen directly
+(`nros codegen entry --lang c --typed --board threadx-linux --model
+.../c/src/demo_bringup/config/system_model.yaml --metadata <ws>/nros-metadata.json`)
+and compared:
+
+- **The generated entry is well-formed** — it creates BOTH nodes (listener +
+  talker) and calls each C component's `__nros_c_component_<pkg>_configure`. The
+  "empty tier table / publisher never spawns" theory does NOT hold; the entry
+  places the publisher. (The earlier `grep nros_cpp_node_create` "0 nodes" was a
+  false alarm — the C++ emitter uses `::nros::create_node`.)
+- **The entry is byte-identical from the OLD (pre-2ce930e39) vs NEW (regenerated)
+  model** — the only near-here model delta the regen made is dropping a
+  top-level `target: linux` on nodes, which the entry codegen never consumes. So
+  the model regeneration did NOT change the C entry.
+- Routing an embedded C board (`--lang c` + `board_is_embedded`) to the **C++**
+  emitter with the C component seam (`__nros_c_component_*` +
+  `ThreadxBoard::run_components`) is BY DESIGN (`cmd/codegen.rs:287-291`).
+
+**Reframing: not a regression — newly-EXERCISED code.** `2ce930e39` *added*
+`[deploy.{threadx-linux,freertos,nuttx}]` to the C/C++ workspaces, enabling
+C-embedded cells that had no fixtures before; the pairwise sweep is the first
+time they RAN (matches the RFC-0061 tier-2 blindness note). And the NATIVE C
+failures (`realtime_tiers case_02_native_c`, `cpp_c_param_live_read_e2e`) use the
+*pure-C native* runner (`nros_board_native_run_components`), NOT the embedded C++
+runner — so the shared root is NOT the entry emitter but the **C-component
+runtime path / the baked config the C path consumes at runtime**, common to
+native + embedded C.
+
+**Next step is RUNTIME, not codegen.** Build one failing C cell (start native,
+no QEMU — `realtime_tiers case_02_native_c` or the param C arm), run under
+`NROS_RMW_TRACE_OPEN=1` + component prints, and find where the C path diverges
+from the passing Rust/Cpp arm (session open? publisher create? sample send?
+sched-context apply?). Likely a small number of latent C-runtime bugs in the
+newly-run cells, not one fix. The entry-codegen path is CLEARED.
