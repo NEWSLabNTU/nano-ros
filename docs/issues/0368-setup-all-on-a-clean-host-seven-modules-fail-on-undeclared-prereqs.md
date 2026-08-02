@@ -22,6 +22,27 @@ rmw_zenoh esp_idf`), and the doctor pass then flagged **10**. The orchestrator
 itself behaved well — honest per-module failure list, honest non-zero exit,
 per-item remedies in doctor. The failures cluster into a few classes.
 
+## Status (2026-08-03) — F1 + F2 RESOLVED
+
+- **F1 DONE (phase-327 W2, verified).** `just workspace setup` now runs every
+  sudo-less installer FIRST and the system step LAST, and `apt-packages`
+  delegates to `nros setup --system`, which DEGRADES: it exits 0 and PRINTS the
+  missing packages + `sudo apt-get install …` (opt-in `--sudo` to run) instead of
+  aborting the module. Verified: `nros setup --system` → exit 0, lists the 2
+  unconfirmed apt entries.
+- **F2 DONE (phase-327 W3 for the 2 named sites + this cycle for the class).**
+  phase-327 pointed the riscv-gcc (threadx_riscv64) and idlc (cyclonedds) doctor
+  remedies at `nros setup --tool <name>`. This cycle fixed the SIBLINGS the
+  original left on apt/ROS — `arm-none-eabi-gcc` (orin-spe, qemu-baremetal,
+  nuttx, freertos), `qemu-system-riscv64` (threadx_riscv64), `idlc` in freertos —
+  each now leads with `nros setup --tool <name>`. Audited every remaining apt
+  remedy: only `kconfig-frontends-nox` has no index tool, so it correctly stays
+  apt.
+
+Still open: F3 (qemu dist libslirp), F4 (incomplete interface bundle — overlaps
+the phase-333 msg-dep work), F5 (pyo3/z3/libclang build deps undeclared), F6
+(verus unpinned), F7 (python3-venv — now in `[system.*]`, see F1 output).
+
 ## Findings
 
 **F1 — one sudo step gates a chain of sudo-less installers (the big one).**
