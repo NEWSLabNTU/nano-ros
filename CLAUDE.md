@@ -142,15 +142,20 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   W3 seam landed; W4 flips the default) — treat model yamls as resolver output.
 - **Message deps are PATH deps pinned `0.0.0` (RFC-0067 / phase-333)** — never registry-name a
   message crate (`std_msgs = "*"`) in a leaf manifest; #378 showed a bare name resolving against
-  the PUBLIC crates.io. **A leaf tracks `Cargo.lock` IFF a fresh clone can resolve it**: no message
-  deps at all (boards/drivers/smoke), or its `generated/` tree is COMMITTED — which the core
-  `packages/interfaces/*` crates are, pre-generated under `nros-`prefixed names so they exist
-  before any user codegen and never collide with a user's msg packages. A leaf whose `generated/`
-  comes from the USER's `nros sync` must NOT commit a lock: at clone time those crates don't exist,
-  so every cargo command there fails (that combination made `build-test-fixtures` unrunnable on a
-  fresh host, 2026-08-03; ten such locks were deleted). `check-leaf-lockfiles` enforces it. The old
-  "track all of them" rule predates the shim keying on TRACKED rather than ignored (#386) — an
-  untracked lock no longer forces `--locked`.
+  the PUBLIC crates.io.
+- **`generated/` in examples/fixtures/tests is USER-side — never commit it, and therefore never
+  commit their `Cargo.lock`.** Those trees are codegen'd from the USER's own msg packages, so they
+  don't exist in a fresh clone; a lock committed beside one names crates nobody has and every cargo
+  command in that leaf fails (this made `build-test-fixtures` unrunnable on a fresh host,
+  2026-08-03 — ten such locks deleted). Tell users to run `nros sync`. When a lock and a missing
+  `generated/` collide, DELETE THE LOCK — never commit a `generated/` tree to keep one.
+  **Exception: the core pre-generated msg packages** (`packages/interfaces/*`), committed under
+  `nros-`prefixed names because core crates need those messages BEFORE any codegen runs and the
+  prefix keeps them from colliding with a user package of the same ROS name. They resolve from a
+  bare clone, so they keep real versions (NOT `0.0.0`) and their consumers may pin one.
+  Invariant, enforced by `check-leaf-lockfiles`: **tracked lock ⟺ (no message deps) ∨ (committed
+  `generated/`)** — boards/drivers/smoke qualify via the first arm. (The old "track all of them"
+  rule predates the shim keying on TRACKED rather than ignored, #386.)
 - **Messages are generated** (`nros generate-rust` from `package.xml`) — never hand-write. Detail
   → RFC-0023 + [docs/guides/message-generation.md](docs/guides/message-generation.md).
 - Unused vars: `_name` + comment, or `#[allow(dead_code)]` for test struct fields.
