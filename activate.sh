@@ -104,6 +104,22 @@ fi
 #     NROS_CARGO_FLAGS= just <recipe>      # or: just lock-update <crate>
 : "${NROS_CARGO_FLAGS=--locked}"
 export NROS_CARGO_FLAGS
+
+# pyo3 0.24 (vendored by `nros-launch-resolve`, RFC-0060 layer 2) refuses an
+# interpreter newer than 3.13, and a rolling distro outruns that — Arch ships
+# 3.14 and nothing older:
+#
+#   error: the configured Python interpreter version (3.14) is newer than
+#          PyO3's maximum supported version (3.13)
+#
+# pyo3's own remedy is to build against the stable ABI. This lived only in
+# `just setup-launch-resolve`, so every OTHER lane that builds the resolver
+# — `check-cli-clippy`, `check-test-targets`, … — still died on a 3.14 host.
+# One export here covers all of them; it is inert where the interpreter is
+# already supported (Ubuntu 22.04's 3.10, 24.04's 3.12), so there is no version
+# probe and no second code path. Revisit when the pin moves past 0.24.
+: "${PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1}"
+export PYO3_USE_ABI3_FORWARD_COMPATIBILITY
 case ":$PATH:" in
     *":$_nros_root/scripts/bin:"*) ;;
     *) export PATH="$_nros_root/scripts/bin:$PATH" ;;

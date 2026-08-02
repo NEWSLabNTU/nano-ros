@@ -17,6 +17,11 @@ set -gx NROS_REPO_DIR $_nros_root
 # CMake's <pkg>_ROOT env var — a sourced shell then needs no -Dnano_ros_ROOT.
 set -gx nano_ros_ROOT $_nros_root
 
+# pyo3 0.24 caps the interpreter at 3.13; a rolling distro ships 3.14 and the
+# resolver build dies. Build against the stable ABI instead — inert where the
+# interpreter is already supported. Mirror of activate.sh.
+set -q PYO3_USE_ABI3_FORWARD_COMPATIBILITY; or set -gx PYO3_USE_ABI3_FORWARD_COMPATIBILITY 1
+
 # ROS 2 Humble — fish needs `bass` or a hand-port of setup.bash. The
 # user `source setup.fish` if their ROS install ships one; otherwise
 # we leave AMENT/CMAKE prefix paths unset. The recipes that need ROS
