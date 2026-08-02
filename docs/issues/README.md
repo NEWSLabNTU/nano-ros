@@ -58,12 +58,13 @@ tables #376 added (`service.rs:99-112`) collapse to the old layout at the defaul
 are unverified by CI. Silent-lane class (#0202, #0319, #0379): the test exists, so it looks covered.
 See `0389-*`. (2026-08-02)
 
-**#388** — `just test-unit` is documented as "unit tests only (no external deps)" but two of its
-tests need a built `build/zenohd/zenohd` (NOT the SDK store — a host with zenohd installed still
-fails), and a third red is really a `nros_tests::skip!` that only `test-all`'s junit rewrite
-converts. So tier 1, the tier everyone is told to run, cannot go green on a correctly provisioned
-host and its red does not distinguish "missing binary" from "you broke something". See `0388-*`.
-(2026-08-02)
+Recently resolved: **#388** — `just test-unit` claimed "no external deps" but two tests hardcoded
+`build/zenohd/zenohd`, bypassing the harness's own resolver, so a host provisioned by the documented
+`nros setup --rmw zenoh` failed with zenohd installed; a third red was a `nros_tests::skip!` that
+only `test-all` converted. RESOLVED (2026-08-02, `e6ed5d68a` + `a7dc55609`): tier 1 honours
+[SKIPPED], both files use `zenohd_binary_path()`, and `just zenohd setup` symlinks the store copy
+instead of source-building zenoh a SECOND time. Verified with store+build, store-only, and neither.
+See `0388-*`. (2026-08-02)
 
 **#387** [severity **high**] — C-arm (partly C++) runtime lanes fail across platforms while Rust
 arms pass, confirmed 3/3 on FRESH fixtures at low load: ThreadX C pubsub/action/service (0

@@ -1,7 +1,8 @@
 ---
 id: 388
 title: "`just test-unit` is documented as needing no external deps, but two of its tests require a built `zenohd` — and their skips are reported as failures"
-status: open
+status: resolved
+resolved_in: e6ed5d68a + a7dc55609
 type: bug
 area: testing
 related: [issue-0357, rfc-0051, rfc-0061]
@@ -91,10 +92,30 @@ Verified both directions in the distrobox, which has a real `[SKIPPED]`
 `<skipped>` and exited 0; an injected `assert!(false)` in a zpico-alloc unit test
 gave `ERROR: 1 real (non-[SKIPPED]) test failure(s)` and exit 1.
 
-**D1 remains open** — the two tests needing `build/zenohd/zenohd` while the
-recipe advertises "no external deps". That is a tier-ladder decision (move them
-to `just test`, or make `test-unit` depend on `build-zenohd` and drop the
-claim), not a mechanical fix.
+## D1 + D3 fixed (2026-08-02, `a7dc55609`)
+
+D1 turned out not to need a tier decision at all — the dependency was avoidable.
+Reviewing setup → build → test end to end showed the harness already has ONE
+resolver, `nros_tests::process::zenohd_binary_path()` (build/zenohd → the nros
+store, NROS_HOME-honoured → PATH), and `zenoh_integration.rs` used it; only
+`status_events_matrix.rs` and `cffi_smoke.rs` re-implemented a narrower spelling
+that saw the repo-local path alone. Both now call the shared resolver, so a host
+provisioned by the documented `nros setup <board> --rmw zenoh` satisfies the
+whole tier with **no `build/zenohd` at all**.
+
+A second link was worse: `just zenohd setup` provisioned a SECOND copy via
+`nros setup --tool zenohd --prefix build/zenohd`, which plans against that prefix
+alone — and since zenohd has no prebuilt on any host (#374), that meant
+source-building zenoh again for a binary already in the store at the same pinned
+version. It now symlinks the store copy (0.035 s instead of minutes) and records
+`source = "nros-store"`; build/zenohd remains the override slot.
+
+D3 closed with it: `zenoh_event_matrix` no longer prints "tests will skip" and
+then panics — it uses `nros_tests::skip!`, which tier 1 honours since the D2 fix.
+
+Verified across every state of the chain in the distrobox: store + build/zenohd
+→ exit 0; store only → exit 0 with 816 passed and the matrix test passing FROM
+THE STORE; neither → exit 0 with both zenoh tests reporting `[SKIPPED]`.
 
 ## Evidence
 
