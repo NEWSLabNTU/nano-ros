@@ -223,3 +223,26 @@ works.
 ThreadX idle bug) + ThreadxRiscv64 C pubsub/service (expected green from the
 idle-spin fix; QEMU-sweep confirm). Native realtime C/C++ + EDF cells covered by
 the tier fix; ThreadX C pubsub/service/action covered by the idle-spin fix.
+
+## CONFIRMED GREEN (2026-08-02) — NuttX-arm C/C++ realtime tiers (tier fix already covered them)
+
+The two "NuttX" cells in the confirmed set — `realtime_tiers_e2e`
+`case_09_nuttx_arm_c` and `case_08_nuttx_arm_cpp` (`[TX] TIMEOUT: no completion`,
+rust `case_10` flaky-pass) — are the TIER class, not a distinct NuttX root. The
+NuttX-arm tier board (`packages/boards/nros-board-nuttx-qemu-arm/c/nuttx_run_tiers.c:329`)
+opens each non-boot tier via `nros_cpp_executor_open_over_session`, the exact call
+the tier fix (`ba57adf24`) patched — so the same uninitialised-`in_dispatch`
+REENTRANT bug killed the NuttX C/C++ tiers while Rust (its own `run_tiers`, no
+CppContext) passed. The confirmed set was captured before `ba57adf24` landed.
+
+Verified on QEMU after rebuilding the nuttx realtime fixtures
+(`workspace-fixtures-build.sh nuttx {c,cpp}`): `case_09_nuttx_arm_c` PASS (16.7 s),
+`case_08_nuttx_arm_cpp` PASS (16.8 s). No new code — the tier fix already covered
+them; the cells only needed prebuilt fixtures. (The rtos_e2e NuttX C
+pubsub/service/action cells were never in the failing set — that path is the
+generic MT `zpico_spin_once` arm, which already returns 0 on idle.)
+
+**Remaining in #387:** ThreadxRiscv64 C pubsub/service (expected green from the
+idle-spin fix, same NetX poll path — QEMU-sweep confirm) and the load-flaky
+`emulator::test_qemu_rtic_action_e2e` / `entry_e2e case_12_zephyr_rust_params`
+(the issue already tags these as flaky-under-load, not the C-language class).
