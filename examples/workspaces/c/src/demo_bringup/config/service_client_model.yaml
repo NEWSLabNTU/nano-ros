@@ -2,9 +2,9 @@ meta:
   version: 1
   inputs:
   - path: launch/service_client.launch.xml
-    sha256: 8cce8136abc52bbc15fe2d28cf9d5f77ec42d2a814fdbd3eb26b118659ab936f
+    sha256: daaa4b3d983e1d21fc3e59f85eb733d094754fe1fd640a0d44dfcd742458a017
   - path: system.toml
-    sha256: f5b5f670aa707f96eefeb50e4e126ea91966fdf02c98a3d661d618b6954e0279
+    sha256: cca0a561c85937d8b1cce9b18cf321e7c7c1e8e299aec8e7cfc5b848cd9e1fe7
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -18,7 +18,7 @@ structure:
   nodes:
     /add_client:
       scope: service_client.launch.xml
-      pkg: c_add_client_pkg
+      pkg: service_client_pkg
       exec: add_client
       node_name: add_client
 execution:

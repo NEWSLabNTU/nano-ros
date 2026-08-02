@@ -1,4 +1,4 @@
 <launch>
-  <node pkg="c_talker_pkg" exec="talker" name="talker"/>
-  <node pkg="c_listener_pkg" exec="listener" name="listener"/>
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+  <node pkg="listener_pkg" exec="listener" name="listener"/>
 </launch>

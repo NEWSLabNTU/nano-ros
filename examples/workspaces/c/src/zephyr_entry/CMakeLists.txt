@@ -28,11 +28,11 @@ project(nros_zephyr_workspace_entry_c)
 # nano-ros west module (find_package(Zephyr)) already provides NanoRos::*.
 find_package(nano_ros REQUIRED)
 
-# The launch XML (demo_bringup:system.launch.xml) names c_talker_pkg + c_listener_pkg.
+# The launch XML (demo_bringup:system.launch.xml) names talker_pkg + listener_pkg.
 # Build their component libs here (their `nano_ros_node_register` has no DEPLOY, so they
 # stay component-only — no per-pkg carrier entry); the entry's sidecar links them into app.
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../c_talker_pkg" c_talker_pkg)
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../c_listener_pkg" c_listener_pkg)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../talker_pkg" talker_pkg)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../listener_pkg" listener_pkg)
 
 nano_ros_add_executable(zephyr_entry
     BOARD   zephyr

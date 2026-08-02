@@ -23,13 +23,13 @@ name = "listener"
 # phase-263 A1 (services, C++) — AddTwoInts round-trip components (catalog only; run as the two
 # native_service_{server,client}_entry processes — issue 0096).
 [[component]]
-pkg = "cpp_add_server_pkg"
-class = "cpp_add_server_pkg::AddServer"
+pkg = "service_server_pkg"
+class = "service_server_pkg::AddServer"
 name = "add_server"
 
 [[component]]
-pkg = "cpp_add_client_pkg"
-class = "cpp_add_client_pkg::AddClient"
+pkg = "service_client_pkg"
+class = "service_client_pkg::AddClient"
 name = "add_client"
 
 # phase-263 A4 (actions, C++) — Fibonacci action round-trip components (catalog only; run as the
@@ -37,13 +37,13 @@ name = "add_client"
 # (order=10) on /fibonacci; fib_server accepts, computes 0,1,1,2,3,5,8,13,21,34,55, and completes
 # the goal; the client prints the result's last element (55).
 [[component]]
-pkg = "cpp_fib_server_pkg"
-class = "cpp_fib_server_pkg::FibServer"
+pkg = "action_server_pkg"
+class = "action_server_pkg::FibServer"
 name = "fib_server"
 
 [[component]]
-pkg = "cpp_fib_client_pkg"
-class = "cpp_fib_client_pkg::FibClient"
+pkg = "action_client_pkg"
+class = "action_client_pkg::FibClient"
 name = "fib_client"
 
 [deploy.native]

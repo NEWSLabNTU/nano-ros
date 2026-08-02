@@ -2,9 +2,9 @@ meta:
   version: 1
   inputs:
   - path: launch/service_server.launch.xml
-    sha256: d923cb61925eac87edbbc659cb64f0f6fa6e4960c51fcfc4e27ec38591d38416
+    sha256: e6cd18479fc3c73c4d53500cf54b2f354986e6eac2f3687c07bdd45fbcbc63f5
   - path: system.toml
-    sha256: f5b5f670aa707f96eefeb50e4e126ea91966fdf02c98a3d661d618b6954e0279
+    sha256: cca0a561c85937d8b1cce9b18cf321e7c7c1e8e299aec8e7cfc5b848cd9e1fe7
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -18,7 +18,7 @@ structure:
   nodes:
     /add_server:
       scope: service_server.launch.xml
-      pkg: c_add_server_pkg
+      pkg: service_server_pkg
       exec: add_server
       node_name: add_server
 execution:

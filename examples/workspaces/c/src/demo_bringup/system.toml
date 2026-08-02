@@ -5,13 +5,13 @@ domain_id = 0
 default_launch = "system.launch.xml"
 
 [[component]]
-pkg = "c_talker_pkg"
-class = "c_talker_pkg::Talker"
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
 name = "talker"
 
 [[component]]
-pkg = "c_listener_pkg"
-class = "c_listener_pkg::Listener"
+pkg = "listener_pkg"
+class = "listener_pkg::Listener"
 name = "listener"
 
 # phase-263 A1 (services, C) — AddTwoInts round-trip components. Listed in the catalog; the
@@ -20,13 +20,13 @@ name = "listener"
 # one-node launch (service_{server,client}.launch.xml). add_client calls add_server on
 # /add_two_ints each tick (a=0,1,2…, b=1 → sums 1,2,3…) and republishes the sum on /sum.
 [[component]]
-pkg = "c_add_server_pkg"
-class = "c_add_server_pkg::AddServer"
+pkg = "service_server_pkg"
+class = "service_server_pkg::AddServer"
 name = "add_server"
 
 [[component]]
-pkg = "c_add_client_pkg"
-class = "c_add_client_pkg::AddClient"
+pkg = "service_client_pkg"
+class = "service_client_pkg::AddClient"
 name = "add_client"
 
 # phase-263 A4 (actions, C) — Fibonacci action round-trip components. Listed in the catalog;
@@ -36,13 +36,13 @@ name = "add_client"
 # fib_server accepts, computes 0,1,1,2,3,5,8,13,21,34,55, and completes the goal; the client
 # prints the result's last element (55).
 [[component]]
-pkg = "c_fib_server_pkg"
-class = "c_fib_server_pkg::FibServer"
+pkg = "action_server_pkg"
+class = "action_server_pkg::FibServer"
 name = "fib_server"
 
 [[component]]
-pkg = "c_fib_client_pkg"
-class = "c_fib_client_pkg::FibClient"
+pkg = "action_client_pkg"
+class = "action_client_pkg::FibClient"
 name = "fib_client"
 
 [deploy.native]

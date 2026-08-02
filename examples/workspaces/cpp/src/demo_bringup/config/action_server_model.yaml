@@ -2,9 +2,9 @@ meta:
   version: 1
   inputs:
   - path: launch/action_server.launch.xml
-    sha256: 148a80d27eaffe922a6c16831792f617ae8dd61172784a30fba9b6b0a76c1613
+    sha256: 12fb9b5ba9354a17d71d1e5619f93ed077128377bcf260f11d3e50145d6de91f
   - path: system.toml
-    sha256: cb9a76f08230c5928980029aa343dc60221864c01d93b5b75d78543bbc1ddfab
+    sha256: e8cd44d5eb0ef74391eda8ce11e959c46133b49d7a05f4840e364305d5588c48
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -18,7 +18,7 @@ structure:
   nodes:
     /fib_server:
       scope: action_server.launch.xml
-      pkg: cpp_fib_server_pkg
+      pkg: action_server_pkg
       exec: fib_server
       node_name: fib_server
 execution:

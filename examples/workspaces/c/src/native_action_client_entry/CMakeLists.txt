@@ -8,7 +8,7 @@ find_package(nano_ros REQUIRED)
 
 # phase-263 A4 (actions, C) — single-node CLIENT entry. Cross-process topology (issue 0096):
 # the server + client run as two processes, so each is its own one-node launch + entry. The
-# auto-link sidecar pulls c_fib_client_pkg's component from action_client.launch.xml.
+# auto-link sidecar pulls action_client_pkg's component from action_client.launch.xml.
 nano_ros_add_executable(native_action_client_entry
     SOURCES src/main.c
     BOARD   native

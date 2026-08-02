@@ -8,7 +8,7 @@ find_package(nano_ros REQUIRED)
 
 # phase-263 A1 (services, C) — single-node SERVER entry. Cross-process topology (issue 0096):
 # the server + client run as two processes, so each is its own one-node launch + entry. The
-# auto-link sidecar pulls c_add_server_pkg's component from service_server.launch.xml.
+# auto-link sidecar pulls service_server_pkg's component from service_server.launch.xml.
 nano_ros_add_executable(native_service_server_entry
     SOURCES src/main.c
     BOARD   native

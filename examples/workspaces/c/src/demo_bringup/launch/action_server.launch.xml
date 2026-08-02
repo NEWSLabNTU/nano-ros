@@ -1,4 +1,4 @@
 <?xml version="1.0"?>
 <launch>
-  <node pkg="c_fib_server_pkg" exec="fib_server" name="fib_server"/>
+  <node pkg="action_server_pkg" exec="fib_server" name="fib_server"/>
 </launch>

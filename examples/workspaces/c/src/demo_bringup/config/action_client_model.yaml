@@ -2,9 +2,9 @@ meta:
   version: 1
   inputs:
   - path: launch/action_client.launch.xml
-    sha256: 27c8a0725b4ada39067574ca661db9c937423924a6f064eaf46d86c8bcbbac00
+    sha256: 101307ea5bd41555bf03330675d82fca01325b7aefc0aa0de1034f307413e335
   - path: system.toml
-    sha256: f5b5f670aa707f96eefeb50e4e126ea91966fdf02c98a3d661d618b6954e0279
+    sha256: cca0a561c85937d8b1cce9b18cf321e7c7c1e8e299aec8e7cfc5b848cd9e1fe7
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -18,7 +18,7 @@ structure:
   nodes:
     /fib_client:
       scope: action_client.launch.xml
-      pkg: c_fib_client_pkg
+      pkg: action_client_pkg
       exec: fib_client
       node_name: fib_client
 execution:

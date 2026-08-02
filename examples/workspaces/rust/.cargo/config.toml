@@ -27,7 +27,7 @@ rustflags = [
 
 # Phase 225.O follow-up (known-issue #18) — NuttX QEMU ARM virt
 # (Cortex-A7) Entry link flags. Only applies when
-# `--target armv7a-nuttx-eabihf` is selected (the `qemu_nuttx_entry`
+# `--target armv7a-nuttx-eabihf` is selected (the `nuttx_entry`
 # fixture row), so it is inert for the native / freertos / threadx /
 # esp32 rows. `-Z build-std=std,panic_abort` arrives per-row via the
 # `CARGO_UNSTABLE_BUILD_STD` env in fixtures.toml so the shared workspace

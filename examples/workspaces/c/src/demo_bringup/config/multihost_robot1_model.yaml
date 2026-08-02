@@ -4,9 +4,9 @@ meta:
     host: robot1
   inputs:
   - path: launch/multihost.launch.xml
-    sha256: b1f4910f1f8c015972dbd324ca7b49d7c2e911f37020339d7ebcb17ea98da144
+    sha256: de6cdfb8a4ef9894ec699e3ecdc4e9a47c7689c84fa20d60ed6b9316b02e0e2c
   - path: system.toml
-    sha256: f5b5f670aa707f96eefeb50e4e126ea91966fdf02c98a3d661d618b6954e0279
+    sha256: cca0a561c85937d8b1cce9b18cf321e7c7c1e8e299aec8e7cfc5b848cd9e1fe7
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -21,7 +21,7 @@ structure:
   nodes:
     /talker:
       scope: multihost.launch.xml
-      pkg: c_talker_pkg
+      pkg: talker_pkg
       exec: talker
       node_name: talker
 execution:

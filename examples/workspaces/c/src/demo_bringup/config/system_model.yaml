@@ -2,9 +2,9 @@ meta:
   version: 1
   inputs:
   - path: launch/system.launch.xml
-    sha256: da30e28be9c2846424414464acef2c6def3f40c170961e4a0fd3100ce4846d98
+    sha256: 67dec34584a216841c924346fbc829ca5305a1b9cfdaea29576192a8189f31ad
   - path: system.toml
-    sha256: f5b5f670aa707f96eefeb50e4e126ea91966fdf02c98a3d661d618b6954e0279
+    sha256: cca0a561c85937d8b1cce9b18cf321e7c7c1e8e299aec8e7cfc5b848cd9e1fe7
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0
@@ -15,12 +15,12 @@ structure:
   nodes:
     /listener:
       scope: system.launch.xml
-      pkg: c_listener_pkg
+      pkg: listener_pkg
       exec: listener
       node_name: listener
     /talker:
       scope: system.launch.xml
-      pkg: c_talker_pkg
+      pkg: talker_pkg
       exec: talker
       node_name: talker
 execution:

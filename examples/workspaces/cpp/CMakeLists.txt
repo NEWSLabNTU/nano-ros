@@ -39,12 +39,12 @@ if(NANO_ROS_PLATFORM STREQUAL "posix")
     list(APPEND _ws_subdirs
         # phase-263 A1 (services, C++) — AddTwoInts server/client pkgs + their two single-node
         # entries (cross-process, issue 0096). Node pkgs before entries. Native-only.
-        src/cpp_add_server_pkg
-        src/cpp_add_client_pkg
+        src/service_server_pkg
+        src/service_client_pkg
         # phase-263 A4 (actions, C++) — the Fibonacci server/client Node pkgs + their two
         # single-node entries (cross-process, issue 0096). Node pkgs before entries.
-        src/cpp_fib_server_pkg
-        src/cpp_fib_client_pkg
+        src/action_server_pkg
+        src/action_client_pkg
         src/native_entry
         src/native_entry_robot1
         src/native_entry_robot2

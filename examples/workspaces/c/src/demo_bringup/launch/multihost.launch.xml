@@ -9,8 +9,8 @@
      the retired `<node machine=…>` form was ROS 1 syntax ROS 2 rejects. -->
 <launch>
   <arg name="host" default="all"/>
-  <node pkg="c_talker_pkg" exec="talker" name="talker"
+  <node pkg="talker_pkg" exec="talker" name="talker"
         if="$(eval '&quot;$(var host)&quot; in (&quot;robot1&quot;, &quot;all&quot;)')"/>
-  <node pkg="c_listener_pkg" exec="listener" name="listener"
+  <node pkg="listener_pkg" exec="listener" name="listener"
         if="$(eval '&quot;$(var host)&quot; in (&quot;robot2&quot;, &quot;all&quot;)')"/>
 </launch>

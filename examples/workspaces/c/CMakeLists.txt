@@ -29,20 +29,20 @@ if(NOT NANO_ROS_PLATFORM)
 endif()
 
 set(_ws_subdirs
-    src/c_talker_pkg
-    src/c_listener_pkg)
+    src/talker_pkg
+    src/listener_pkg)
 
 if(NANO_ROS_PLATFORM STREQUAL "posix")
     list(APPEND _ws_subdirs
         # phase-263 A1 (services, C) — the AddTwoInts server/client Node pkgs + their two
         # single-node Entries (cross-process round-trip, issue 0096). Node pkgs BEFORE entries
         # so the entry codegen sees their nano_ros_node_register metadata. Native-only.
-        src/c_add_server_pkg
-        src/c_add_client_pkg
+        src/service_server_pkg
+        src/service_client_pkg
         # phase-263 A4 (actions, C) — the Fibonacci server/client Node pkgs + their two
         # single-node Entries (cross-process round-trip, issue 0096). Node pkgs BEFORE entries.
-        src/c_fib_server_pkg
-        src/c_fib_client_pkg
+        src/action_server_pkg
+        src/action_client_pkg
         src/native_entry
         src/native_entry_robot1
         src/native_entry_robot2
@@ -51,7 +51,7 @@ if(NANO_ROS_PLATFORM STREQUAL "posix")
         src/native_action_server_entry
         src/native_action_client_entry)
 elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
-    list(APPEND _ws_subdirs src/native_threadx_entry)
+    list(APPEND _ws_subdirs src/threadx_entry)
 elseif(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
     list(APPEND _ws_subdirs src/freertos_entry)
 elseif(NANO_ROS_BOARD STREQUAL "nuttx-qemu-arm")
