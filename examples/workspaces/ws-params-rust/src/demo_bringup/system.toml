@@ -21,6 +21,9 @@ default_launch = "system.launch.xml"
 pkg = "param_talker_pkg"
 class = "param_talker_pkg::ParamTalker"
 name = "param_talker"
+# phase-330 W4 — the parameter FILE content was typed into the resolved
+# model by hand; re-resolving dropped it. Declared here it round-trips.
+params_files = ["param_talker:\n  ros__parameters:\n    publish_period_ms: 120\n/**:\n  ros__parameters:\n    publish_period_ms: 999\n"]
 
 [deploy.native]
 kind = "self"

@@ -489,7 +489,45 @@ actually move — editing it now would describe a state the tree is not in.
       not the file source. So these were typed into the artifact, exactly like
       the 17 tier dims of issue 0380.
 
-      Fixing them means teaching the resolver to accept the declarations —
+      **RESOLVED 2026-08-02 (2 of 3 in the fork; the third was not a gap).**
+
+      | Bringup | Outcome |
+      | --- | --- |
+      | `ws-qos-rust` | FIXED — `[[component]] params` |
+      | `ws-params-rust` | FIXED — `[[component]] params_files` |
+      | `ws-sizing-rust` | NOT A GAP — see below |
+
+      The fork gains `[[component]] params` / `params_files`, projected onto
+      `structure.nodes` by `apply_params_to_nodes` — a structure-layer entry
+      point beside the execution-layer `apply_to`, exactly where `[lifecycle]
+      autostart` already lives. Launch values win over declared ones (the launch
+      description is the more specific statement), unmatched component names are
+      diagnostics rather than errors, and `ComponentBlock` has no
+      `deny_unknown_fields`, so an OLDER resolver ignores the new keys instead
+      of failing — which is why the declarations can land here before the fork
+      does.
+
+      Verified by re-resolving both workspaces against their committed models:
+      the only differences left are the known-stale `scope` (and, for
+      `ws-qos-rust`, committed `execution: {}` versus an omitted empty map —
+      the same value).
+
+      **`ws-sizing-rust` is not a resolver gap.** It is the ONLY model in the
+      tree with `structure.topics`, and it spells the endpoints `publishers` /
+      `subscribers` while `TopicWiring` renames them to `pub` / `sub`. Those
+      keys therefore do not deserialize into the current schema at all — the
+      block is already inert data, not content the resolver fails to produce.
+      Fixing it means regenerating it in the current spelling or dropping it,
+      not teaching the resolver anything. Left for whoever owns
+      `executor_sizing_e2e`.
+
+      **Fork branches are committed but NOT pushed, and the superproject pointer
+      is deliberately NOT bumped** — it would name commits no one else can
+      fetch. Branch `nros-330-component-params` in both
+      `ros-launch-resolve` (`9499034`) and its nested `ros-launch-manifest`
+      (`17ba4af`), ready to fast-forward.
+
+      ~~Fixing them means teaching the resolver to accept the declarations —~~
       per-node `params`/`params_files` and `topics` from `system.toml` — which
       is a change to the vendored `ros-launch-manifest` fork, the same shape as
       `75d57f59b`'s `[param_services]` fix. Left for a session that can push the
