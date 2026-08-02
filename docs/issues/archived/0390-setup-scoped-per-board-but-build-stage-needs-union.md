@@ -77,6 +77,38 @@ That matters most for the exact population it hits: someone on a non-Ubuntu host
 following the book for the first time, who cannot tell an unprovisioned tree from
 a broken one.
 
+## Instance 3 — Corrosion, and it is worse than friction (2026-08-03)
+
+The native C fixture build died four layers down:
+
+```
+FAILED: … corrosion-populate-prefix/src/corrosion-populate-stamp/corrosion-populate-download
+CMake Error at /usr/share/cmake/Modules/FetchContent.cmake:1933 (message)
+    'https://github.com/corrosion-rs/corrosion.git'
+```
+
+The index HAS this tool — `[tool.corrosion]`, pinned `0.5.1-nros1`, installed by
+`nros setup --tool corrosion` — but the root `CMakeLists.txt` called
+`FetchContent_Declare(Corrosion GIT_TAG v0.6.1)` UNCONDITIONALLY, so:
+
+- the provisioned, pinned copy was never consulted;
+- every cmake configure required network access, and failed outright on a host
+  whose git credential helper was unhealthy (an expired `gh` token was enough);
+- the version actually built was `v0.6.1` from upstream, NOT the `0.5.1-nros1`
+  the index pins.
+
+That last point makes this a **reproducibility hole, not just a setup gap**: two
+hosts could build against different Corrosion versions and neither would know,
+because the pin that was supposed to prevent it was bypassed by the fetch.
+
+Fixed by preferring the store (`$NROS_HOME/sdk/corrosion/*` on `CMAKE_PREFIX_PATH`
+→ `find_package(Corrosion QUIET)`), falling back to the fetch with a message
+naming `nros setup --tool corrosion`. Verified: the configure now reports
+`using provisioned Corrosion (…/0.5.1-nros1/lib/cmake/Corrosion)`.
+
+Worth generalising: any other `FetchContent` of a tool the index already pins has
+the same shape. That is the sweep this issue should carry.
+
 ## Progress (2026-08-03) — Direction 2 landed; Direction 1 scoped
 
 **Direction 2 (failures name the remedy) — DONE.**

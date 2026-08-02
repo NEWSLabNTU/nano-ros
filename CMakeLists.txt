@@ -59,12 +59,42 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/bootstrap.cmake")
 # ---------------------------------------------------------------------------
 # Corrosion — integrates Rust/Cargo into CMake
 # ---------------------------------------------------------------------------
-include(FetchContent)
-FetchContent_Declare(Corrosion
-    GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
-    GIT_TAG        v0.6.1
-)
-FetchContent_MakeAvailable(Corrosion)
+# Issue 0390 — PREFER the provisioned copy; fetch only as a fallback.
+#
+# `[tool.corrosion]` in `nros-sdk-index.toml` pins 0.5.1-nros1 and
+# `nros setup --tool corrosion` installs it into the SDK store, but this block
+# used to FetchContent unconditionally — so the pinned tool was ignored, every
+# cmake configure needed network, and the build resolved whatever
+# `corrosion-rs/corrosion@v0.6.1` happened to be. On a host where the git
+# credential helper is unhealthy the clone fails outright and the C fixture
+# build dies four layers down in `corrosion-populate-download`, which is how
+# this was found.
+#
+# Look in the store first (the same `$NROS_HOME` the CLI writes), then let
+# `find_package` see a system install, and only then fall back to the network.
+if(DEFINED ENV{NROS_HOME})
+    set(_nros_store "$ENV{NROS_HOME}/sdk")
+else()
+    set(_nros_store "$ENV{HOME}/.nros/sdk")
+endif()
+file(GLOB _corrosion_prefixes "${_nros_store}/corrosion/*")
+if(_corrosion_prefixes)
+    list(APPEND CMAKE_PREFIX_PATH ${_corrosion_prefixes})
+endif()
+find_package(Corrosion QUIET)
+if(Corrosion_FOUND)
+    message(STATUS "nano-ros: using provisioned Corrosion (${Corrosion_DIR})")
+else()
+    message(STATUS
+        "nano-ros: Corrosion not provisioned — fetching from git. "
+        "Install it offline-safe with:  nros setup --tool corrosion")
+    include(FetchContent)
+    FetchContent_Declare(Corrosion
+        GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+        GIT_TAG        v0.6.1
+    )
+    FetchContent_MakeAvailable(Corrosion)
+endif()
 
 # ---------------------------------------------------------------------------
 # Core libraries — always built EXCEPT on tier-3 cross targets (NuttX).
