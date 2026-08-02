@@ -1,3 +1,24 @@
+# WHICH EMITTER IS THIS? (read before "fixing" a version or a dep here)
+#
+# There are TWO generated-manifest emitters and this is NOT the one production
+# uses. `nros sync` / `nros generate-rust` write the on-disk Cargo.toml through
+# `rosidl-bindgen::generate_cargo_toml`, which OVERWRITES whatever this template
+# rendered. This template's output reaches a file only in
+# `rosidl-codegen/tests/integration_test.rs`, which writes it and asserts the
+# file exists — it never builds it.
+#
+# That duplication has already cost real time: RFC-0067 recorded "no codegen
+# change is required for D2" because THIS file emits `version = "0.0.0"`, while
+# the production emitter still wrote the ament version — the drift only surfaced
+# when phase-333 W3 found 4.9.1 crates in the tree (fixed in c673faa40).
+#
+# So: message deps below are PATH deps (RFC-0067 D1), which needs no context
+# because generated crates are siblings. The nros runtime crates keep a registry
+# form here because this template has no way to know where the checkout is, and
+# its output never resolves anyway; the production emitter path-deps them
+# (RFC-0067 Q1). Do not treat the two as interchangeable — change both or
+# neither.
+
 [package]
 name = "{{ package_name }}"
 # Issue 0378 — CONSTANT, deliberately not the ament package version.
@@ -48,5 +69,5 @@ heapless = "0.8"
 nros-rmw = { version = "*", default-features = false }
 {%- endif %}
 {%- for dep in dependencies %}
-{{ dep }} = { version = "*", default-features = false }
+{{ dep }} = { path = "../{{ dep }}", default-features = false }
 {%- endfor %}
