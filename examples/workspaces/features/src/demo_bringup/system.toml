@@ -99,11 +99,27 @@ name = "rust_lifecycle_talker"
 pkg = "rust_param_talker_pkg"
 class = "rust_param_talker_pkg::ParamTalker"
 name = "rust_params_param_talker"
+# phase-330 W4 (ported by phase-331 W3 from the retired ws-params-rust) — the
+# parameter FILE content was typed into the resolved model by hand; re-resolving
+# dropped it. Declared here it round-trips.
+#
+# COMMENTED OUT, not discarded: the `params_files` / `params` schema lives in
+# phase-330's `nros-330-component-params` fork branch, which is committed but
+# NOT pushed, so the in-tree CLI rejects the field ("unknown field
+# `params_files`"). Upstream landed the declarations against a parser nobody can
+# fetch yet. Re-enable both lines when that branch merges -- the content is kept
+# verbatim here so phase-330 does not have to reconstruct it a third time
+# (issue 0380 is the same data being lost twice already).
+# [PENDING phase-330 fork merge] params_files = ["param_talker:\n  ros__parameters:\n    publish_period_ms: 120\n/**:\n  ros__parameters:\n    publish_period_ms: 999\n"]
 
 [[component]]
 pkg = "rust_qos_talker_pkg"
 class = "rust_qos_talker_pkg::ReliableTalker"
 name = "rust_qos_reliable_talker"
+# phase-330 W4 (ported by phase-331 W3 from the retired ws-qos-rust) — this QoS
+# override was typed straight into the resolved model, so every re-resolve
+# dropped it. Declared here it survives regeneration.
+# [PENDING phase-330 fork merge] params = { "qos_overrides./qos_chatter.publisher.reliability" = "best_effort" }
 
 [[component]]
 pkg = "rust_qos_listener_pkg"
