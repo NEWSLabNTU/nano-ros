@@ -311,7 +311,9 @@ pub fn run() {
     // Check if zenoh-pico submodule is present (not needed with system-zenohpico)
     if !use_system && !zenoh_pico_src.join("include").exists() {
         panic!(
-            "zenoh-pico submodule not found at {:?}. Run: git submodule update --init",
+            "zenoh-pico source not provisioned at {:?}. Run: nros setup --source \
+             zenoh-pico (or git submodule update --init \
+             packages/rmw/zenoh/zpico-sys/zenoh-pico). — #0390",
             zenoh_pico_src
         );
     }
@@ -1484,7 +1486,8 @@ fn build_zenoh_pico_unified(
                 let mbedtls_library = mbedtls_dir.join("library");
                 if !mbedtls_include.exists() {
                     panic!(
-                        "mbedTLS submodule not found at {:?}. Run: git submodule update --init",
+                        "mbedTLS source not provisioned at {:?}. Run: nros setup \
+                         --source mbedtls (or git submodule update --init). — #0390",
                         mbedtls_include
                     );
                 }

@@ -55,12 +55,17 @@ fn main() {
         (
             "micro-xrce-dds-client",
             microxrce.join("src/c"),
-            "git submodule update --init packages/rmw/xrce/xrce-sys/micro-xrce-dds-client",
+            // #0390 — lead with the `nros setup` vocabulary a CLI-provisioned
+            // user has; the label IS the `[source.*]` name. git line kept as the
+            // underlying mechanism.
+            "nros setup --source micro-xrce-dds-client  \
+             (or: git submodule update --init packages/rmw/xrce/xrce-sys/micro-xrce-dds-client)",
         ),
         (
             "micro-cdr",
             microcdr.join("src/c"),
-            "git submodule update --init packages/rmw/xrce/xrce-sys/micro-cdr",
+            "nros setup --source micro-cdr  \
+             (or: git submodule update --init packages/rmw/xrce/xrce-sys/micro-cdr)",
         ),
         (
             "nros-rmw-xrce",

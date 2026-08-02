@@ -22,9 +22,10 @@ fn main() {
     println!("cargo:rerun-if-changed={}", src.display());
     if !src.join("CMakeLists.txt").is_file() {
         panic!(
-            "cyclonedds-sys: source dir {} has no CMakeLists.txt — \
-             submodule not initialised? Run `git submodule update --init \
-             third-party/dds/cyclonedds` or set CYCLONEDDS_SOURCE_DIR.",
+            "cyclonedds-sys: source dir {} has no CMakeLists.txt — source not \
+             provisioned. Run `nros setup --source cyclonedds-src` (or \
+             `git submodule update --init third-party/dds/cyclonedds`, or set \
+             CYCLONEDDS_SOURCE_DIR). — #0390",
             src.display(),
         );
     }
