@@ -77,6 +77,33 @@ committed under `src/`.
 - [ ] **W2.c** Any dim that cannot round-trip is a W1 schema gap, not an
       exception to grant. Record it; do not special-case it.
 
+**W2.a status (2026-08-02): 7 of 11 round-trip PASS.**
+`ws-realtime-rust` (wave 1), `-c`, `-c-mps2`, `-cpp-fvp`, `-cpp-rclcpp`,
+`-cpp-subnode`, `-cpp-subnode-portable`. Not yet run: `ws-realtime-cpp`,
+`-cpp-mps2`, and the two `orchestration_tiers_*` fixtures.
+
+The dim gap was far smaller than assumed: **9 of 11 already carried their dims
+in `system.toml`**; only 5 dims across 2 workspaces needed authoring, and they
+were exactly the fields W1.a enabled.
+
+Two findings:
+
+1. **The mps2 failures were a STALE RESOLVER, not a schema gap.** They failed
+   with "node '/ctrl_node' is not placed — with multiple [deploy.*] blocks every
+   node needs a `nodes = [..]` entry", yet the fork's source already contains the
+   fix, in a comment naming `ws-realtime-c-mps2` and `ws-realtime-cpp-mps2`
+   explicitly. `just setup-launch-resolve` rebuilt it and `-c-mps2` passed. This
+   is issue 0363 C's lagging-resolver class, live.
+
+2. **Regeneration is not byte-identical, and the committed models look STALE.**
+   Re-resolving `ws-realtime-c` and `-cpp` drops `execution.deploy.<node>.target:
+   linux` (and the long doc comments, which is expected — those moved into
+   `system.toml` with the dims). The dim gate does not see this: it watches
+   `execution.tiers` only. Either the committed copies predate a resolver
+   placement change, or regeneration loses deploy content — W2.b must answer
+   which BEFORE W4 deletes anything. Restored to committed state pending that
+   answer, rather than folded into an unrelated commit.
+
 ### W3 — Relocate the artifact
 
 - [ ] **W3.a** Decide the location. This is the phase's central open question,

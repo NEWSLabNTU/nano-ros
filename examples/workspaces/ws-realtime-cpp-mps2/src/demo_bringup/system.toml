@@ -51,6 +51,8 @@ spin_period_us = 100000
 priority = 10
 [tiers.low.freertos]
 priority = 2
+# phase-330 W2 — FREERTOS-SCOPED SMP core pin (authored here, not in the model).
+core = 0
 
 [deploy.freertos]
 kind = "embedded"

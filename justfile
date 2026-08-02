@@ -356,6 +356,7 @@ check-fast: \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-msg-dep-redirect check-cargo-locked check-model-dims \
+    check-cargo-profile-mirror \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -767,6 +768,15 @@ check-model-dims:
 [private]
 check-cargo-locked:
     @bash scripts/check-cargo-locked.sh
+
+# A cargo profile defined in BOTH `Cargo.toml` and `.cargo/config.toml` must
+# agree. Both are load-bearing — the manifest one applies to the root
+# workspace, the config one to the ~48 leaf crates outside it — so editing one
+# silently gives half the tree different optimization settings, with no error
+# anywhere. Buildless.
+[private]
+check-cargo-profile-mirror:
+    @bash scripts/check-cargo-profile-mirror.sh
 
 # THE sanctioned way to change a lockfile (issue 0359 / 0378).
 #

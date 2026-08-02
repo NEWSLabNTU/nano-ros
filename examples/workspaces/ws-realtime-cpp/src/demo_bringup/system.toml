@@ -24,6 +24,8 @@ name = "telem_node"
 group_tiers = { telem = "low" }
 
 [tiers.high]
+# phase-330 W2 (RFC-0063) — authored HERE, not in the generated model.
+class = "real_time"
 spin_period_us = 10000
 [tiers.high.posix]
 priority = 80
@@ -32,11 +34,16 @@ priority = 80
 # ZephyrBoard::run_tiers (RFC-0015 Model 1), one k_thread per tier.
 [tiers.high.zephyr]
 priority = 5
+# ZEPHYR-SCOPED: kernel EDF here, lowers to None (Fifo) elsewhere.
+deadline_us = 10000
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
 # priority; verbatim into pthread_attr_setschedparam). `[tiers.*.nuttx]` flips the
 # C++ codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
 [tiers.high.nuttx]
 priority = 110
+# NUTTX-SCOPED sporadic policy (both fields required).
+budget_us = 5000
+period_us = 10000
 
 [tiers.low]
 spin_period_us = 100000
