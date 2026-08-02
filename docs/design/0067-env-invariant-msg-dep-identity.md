@@ -133,10 +133,27 @@ Reverted cleanly; no code landed. Implementation is **phase-333**.
 
 ## Open questions
 
-- `nros-core` / `nros-serdes` are reached by registry name + patch inside
-  generated crates. Same class as message crates (own-name crates.io exposure),
-  lower risk (nano-ros's names). Fold into D1 (path deps) or leave to a later
-  pass?
+- ~~`nros-core` / `nros-serdes` are reached by registry name + patch inside
+  generated crates.~~ **ANSWERED 2026-08-03 — folded into D1.** The deciding
+  evidence came from phase-333's own acceptance run: after the message half
+  landed, a CONFIG-patched leaf still failed from the repo root with `no matching
+  package named nros-core`, because `.cargo/config.toml` is discovered from the
+  cwd. So the nros crates reproduced the original bug exactly, one crate set
+  over.
+
+  Generated manifests now emit `nros-core` / `nros-serdes` / `nros-rmw` /
+  `nros-rmw-cyclonedds` as PATH deps. The asymmetry with message crates is that
+  these live in the CHECKOUT rather than beside the generated crate, so the
+  emitted path is **relative when the generated tree is inside the checkout**
+  (host-invariant, safe to commit) and **absolute only for a copy-out project
+  outside it** (regenerated per host by that user's own `nros sync`, exactly like
+  the central `nros-patch.toml` it replaces). Emitting an absolute path into a
+  committed tree would have re-introduced the issue-0375/0391 class this RFC
+  removes.
+
+  Result: every package in a converted leaf — the whole transitive nros graph
+  plus the message crates — resolves `path+file://…` from the repo root, and no
+  unused-patch warnings appear.
 - Should EVERY in-tree testing/bench leaf commit its `generated/` tree (so it can
   build + commit a lock without a ROS host), or only those that need offline
   reproducibility? Trade-off: committed `generated/` is edition-pinned content in

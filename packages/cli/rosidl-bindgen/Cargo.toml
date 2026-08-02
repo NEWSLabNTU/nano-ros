@@ -25,6 +25,10 @@ serde.workspace = true
 serde_json.workspace = true
 rosidl-codegen.workspace = true
 rosidl-parser.workspace = true
+# RFC-0067 Q1 / D1 — relative path from a generated crate to the checkout's
+# nros-core / nros-serdes, so the emitted dep is a path dep and stays
+# host-invariant for a committed `generated/` tree.
+pathdiff = "0.2"
 
 [dev-dependencies]
 tempfile = "3.8"

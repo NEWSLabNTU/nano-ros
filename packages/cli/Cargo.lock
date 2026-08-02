@@ -1362,6 +1362,7 @@ dependencies = [
  "askama",
  "clap",
  "eyre",
+ "pathdiff",
  "rosidl-codegen",
  "rosidl-parser",
  "serde",

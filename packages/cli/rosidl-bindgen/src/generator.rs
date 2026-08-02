@@ -487,6 +487,68 @@ fn generate_lib_rs(src_dir: &Path, package: &Package) -> Result<()> {
 }
 
 /// Generate Cargo.toml for nros
+/// How a generated crate should reference an nros runtime crate.
+///
+/// RFC-0067 Q1 — folding `nros-core` / `nros-serdes` into D1. They used to be
+/// registry names (`version = "*"`) rescued by `[patch.crates-io]`, which has
+/// the same two defects the message crates had:
+///
+///   * cargo loads `.cargo/config.toml` by walking up from the CURRENT
+///     DIRECTORY, so `cargo --manifest-path <leaf>` from the repo root never
+///     loaded the patch and resolution failed `no matching package named
+///     nros-core` (measured on a config-patched leaf after phase-333 W1 fixed
+///     the message half);
+///   * nano-ros publishes nothing to crates.io, so an unpatched resolution is
+///     a bare name in a registry namespace nano-ros does not own.
+///
+/// A path dep has neither. The asymmetry with message crates is that these live
+/// in the CHECKOUT rather than beside the generated crate, so the emitted path
+/// must be:
+///
+///   * RELATIVE when the generated tree is inside the checkout — a committed
+///     `generated/` tree must not carry a host-specific absolute path (that is
+///     the issue-0375 / 0391 class this same phase just removed);
+///   * ABSOLUTE for a copy-out project outside the checkout, where no stable
+///     relative path exists. That content is regenerated per host by the user's
+///     own `nros sync`, exactly like the central `nros-patch.toml` it replaces,
+///     so a host path is correct there.
+///
+/// With no `NROS_REPO_DIR` (codegen invoked outside a workspace), fall back to
+/// the registry form so behaviour is unchanged rather than emitting a path that
+/// cannot resolve.
+fn nros_dep_line(crate_name: &str, package_output: &Path) -> String {
+    let registry = format!(
+        r#"{crate_name} = {{ version = "*", default-features = false }}"#
+    );
+    let Some(root) = std::env::var_os("NROS_REPO_DIR").map(PathBuf::from) else {
+        return registry;
+    };
+    // Subpath per crate: most live under packages/core, the RMW backends do not.
+    // Mirrors `nros_crate_path_lookup` on the sync side; kept small deliberately,
+    // since only the crates a GENERATED manifest can name need an entry.
+    let subpath = match crate_name {
+        "nros-core" | "nros-serdes" | "nros-rmw" => format!("packages/core/{crate_name}"),
+        "nros-rmw-cyclonedds" => "packages/rmw/cyclonedds/nros-rmw-cyclonedds".to_string(),
+        _ => format!("packages/core/{crate_name}"),
+    };
+    let target = root.join(subpath);
+    if !target.is_dir() {
+        return registry;
+    }
+    let out_abs = package_output
+        .canonicalize()
+        .unwrap_or_else(|_| package_output.to_path_buf());
+    let spec = if out_abs.starts_with(&root) {
+        match pathdiff::diff_paths(&target, &out_abs) {
+            Some(rel) => rel.display().to_string(),
+            None => target.display().to_string(),
+        }
+    } else {
+        target.display().to_string()
+    };
+    format!(r#"{crate_name} = {{ path = "{spec}", default-features = false }}"#)
+}
+
 fn generate_cargo_toml(
     output_dir: &Path,
     package_name: &str,
@@ -539,14 +601,15 @@ default = []
 std = [{std_features}]
 
 [dependencies]
-# nros crates (patched to local via .cargo/config.toml during development)
-nros-core = {{ version = "*", default-features = false }}
-nros-serdes = {{ version = "*", default-features = false }}
+{nros_core_dep}
+{nros_serdes_dep}
 heapless = "0.8"
 "#,
         package_name,
         ament_version,
         std_features = std_feature_list,
+        nros_core_dep = nros_dep_line("nros-core", output_dir),
+        nros_serdes_dep = nros_dep_line("nros-serdes", output_dir),
     );
 
     // issue #234 — action packages register their fixed `action_msgs` protocol
@@ -563,7 +626,7 @@ heapless = "0.8"
     // via the workspace `[patch.crates-io]` that `nros sync` writes (see
     // `nros_crate_path_lookup` — `nros-rmw` → `packages/core/nros-rmw`).
     if has_actions {
-        cargo_toml.push_str("nros-rmw = { version = \"*\", default-features = false }\n");
+        cargo_toml.push_str(&format!("{}\n", nros_dep_line("nros-rmw", output_dir)));
     }
 
     // Add cross-package dependencies
