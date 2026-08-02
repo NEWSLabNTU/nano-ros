@@ -2,7 +2,8 @@
 id: 0396
 title: features + local-msg-package cannot sync — the phase-333 migration
   drops workspace-LOCAL interface crates from the patch table
-status: open
+status: resolved
+resolved_in: 0a94e9946 + d460c1a43
 severity: high
 created: 2026-08-03
 tags: [codegen, sync, phase-333-fallout]
