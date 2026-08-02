@@ -20,6 +20,10 @@ structure:
       lifecycle_autostart: active
       params:
         publish_period_ms: 250
+      param_sources:
+      - kind: inline
+        name: publish_period_ms
+        value: 250
       node_name: param_talker
 execution:
   deploy:
