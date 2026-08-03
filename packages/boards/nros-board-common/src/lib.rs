@@ -40,6 +40,12 @@
 pub mod threadx_config;
 pub use threadx_config::ThreadxConfig;
 
+// phase-337 W1.b — the `{mac, ip, netmask, gateway, locator, domain_id}` core
+// twelve board `Config` structs re-declare. ADDITIVE: no board adopts it yet;
+// each board wave migrates its own `Config` as that wave's first step.
+pub mod base_config;
+pub use base_config::BaseConfig;
+
 #[cfg(feature = "build-helpers")]
 pub mod arch_flags;
 #[cfg(feature = "build-helpers")]

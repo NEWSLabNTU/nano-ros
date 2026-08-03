@@ -1679,6 +1679,7 @@ dependencies = [
  "cc",
  "nros-build-paths",
  "nros-cc-flags",
+ "nros-platform",
  "serde",
  "tempfile",
  "toml 0.8.23",

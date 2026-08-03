@@ -160,10 +160,26 @@ def main():
         # board-support.toml itself, which is the registry, not a board.
         if len(parts) > 1:
             on_disk.add(parts[0])
+    # phase-337 W1.c — rows are keyed by (crate, matrix_platform), not by crate.
+    #
+    # One crate may serve several WITNESSES at different tiers: after W3 a single
+    # `nuttx-qemu` crate carries arm (tier 1) and riscv (tier 2), and after W9
+    # one `nros-board-zephyr` carries three. Tier is a per-row promise — "`just
+    # ci` exercises it" is true of the arm witness and false of the riscv one —
+    # so those cannot share a row, and a list-valued `matrix_platform` would
+    # force them to. What must stay unique is the PAIR: two rows claiming the
+    # same crate on the same platform are a genuine duplicate.
+    #
+    # Every crate on disk must still appear at least once; that completeness
+    # check is the reason this registry exists.
     listed = [e.get("crate", "<no crate key>") for e in reg]
-    dupes = {c for c in listed if listed.count(c) > 1}
-    for c in sorted(dupes):
-        errors.append(f"{c}: listed more than once in the registry")
+    keys = [(e.get("crate", "<no crate key>"), e.get("matrix_platform")) for e in reg]
+    dupes = {k for k in keys if keys.count(k) > 1}
+    for c, plat in sorted(dupes, key=lambda k: (k[0], k[1] or "")):
+        errors.append(
+            f"{c}: listed more than once for matrix_platform {plat!r}. "
+            "A crate MAY appear on several rows, one per witness it serves "
+            "(phase-337 W1.c), but not twice for the same one")
     missing = on_disk - set(listed)
     for c in sorted(missing):
         errors.append(

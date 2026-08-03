@@ -36,6 +36,9 @@ nros-build-paths = { path = "../../tooling/nros-build-paths", optional = true }
 # issue 0383 — the shared strict-C-diagnostics helper applied at every
 # `cc::Build` this crate drives (nuttx ffi/platform, threadx qemu riscv64).
 nros-cc-flags = { path = "../../tooling/nros-cc-flags", optional = true }
+# phase-337 W1.b — only for `BaseConfig::apply_overlay` (feature
+# `deploy-overlay`); `default-features = false` keeps it no_std.
+nros-platform = { path = "../../platform/nros-platform", default-features = false, optional = true }
 
 [features]
 # `BoardInit` trait is always available (no deps) and no_std. This crate is
@@ -45,6 +48,12 @@ nros-cc-flags = { path = "../../tooling/nros-cc-flags", optional = true }
 # on their `[build-dependencies]` edge — so a forgotten flag fails toward no_std
 # instead of silently pulling `std` into an embedded build (issue 0077).
 default = []
+# phase-337 W1.b — `BaseConfig::apply_overlay`, the `DeployOverlay` -> `Config`
+# merge that four board crates had each written out. Optional so the default
+# stays no_std and dep-free: `BaseConfig` itself needs nothing, and only the
+# merge needs the overlay type. Board crates already depend on `nros-platform`,
+# and it does not depend on this crate, so there is no cycle.
+deploy-overlay = ["dep:nros-platform"]
 
 # Pull the manifest parser + link-feature policy + ThreadX
 # source helpers. Pulls serde + toml + cc transitively. Required
