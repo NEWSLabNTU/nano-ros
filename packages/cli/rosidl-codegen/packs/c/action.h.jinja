@@ -37,7 +37,7 @@ extern "C" {
 /// {{ action_name }} goal structure
 typedef struct {{ goal_struct_name }} {
 {%- for field in goal_fields %}
-    {{ field.c_type }} {{ field.name }}{{ field.array_suffix }};
+    {{ field | c_type }} {{ field.name }}{{ field | c_array_suffix }};
 {%- endfor %}
 {%- if not has_goal_fields %}
     uint8_t _dummy; // Empty struct placeholder
@@ -71,7 +71,7 @@ int32_t {{ goal_struct_name }}_deserialize({{ goal_struct_name }}* msg, const ui
 /// {{ action_name }} result structure
 typedef struct {{ result_struct_name }} {
 {%- for field in result_fields %}
-    {{ field.c_type }} {{ field.name }}{{ field.array_suffix }};
+    {{ field | c_type }} {{ field.name }}{{ field | c_array_suffix }};
 {%- endfor %}
 {%- if not has_result_fields %}
     uint8_t _dummy; // Empty struct placeholder
@@ -105,7 +105,7 @@ int32_t {{ result_struct_name }}_deserialize({{ result_struct_name }}* msg, cons
 /// {{ action_name }} feedback structure
 typedef struct {{ feedback_struct_name }} {
 {%- for field in feedback_fields %}
-    {{ field.c_type }} {{ field.name }}{{ field.array_suffix }};
+    {{ field | c_type }} {{ field.name }}{{ field | c_array_suffix }};
 {%- endfor %}
 {%- if not has_feedback_fields %}
     uint8_t _dummy; // Empty struct placeholder

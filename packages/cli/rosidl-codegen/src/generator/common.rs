@@ -3,12 +3,11 @@ use crate::{
     templates::{CField, CppFfiField, CppField, FieldKind, NrosField, SequenceStructDef},
     types::{
         C_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_STRING_CAPACITY,
-        NrosCodegenMode, c_array_suffix_for_field, c_array_suffix_for_field_with_capacity,
-        c_cdr_read_method, c_cdr_write_method, c_type_for_field, c_type_for_field_heap,
-        c_type_for_field_with_capacity, cpp_array_suffix_for_field, cpp_type_for_field,
-        cpp_type_for_field_heap, cpp_type_for_field_with_capacity, escape_keyword,
-        nros_type_for_field_heap, nros_type_for_field_with_capacity, nros_type_for_field_with_mode,
-        repr_c_type_for_field, repr_c_type_for_field_with_capacity, to_c_package_name,
+        NrosCodegenMode, c_cdr_read_method, c_cdr_write_method, c_type_for_field_heap,
+        cpp_array_suffix_for_field, cpp_type_for_field, cpp_type_for_field_heap,
+        cpp_type_for_field_with_capacity, escape_keyword, nros_type_for_field_heap,
+        nros_type_for_field_with_capacity, nros_type_for_field_with_mode, repr_c_type_for_field,
+        repr_c_type_for_field_with_capacity, to_c_package_name,
     },
     utils::to_snake_case,
 };
@@ -592,29 +591,31 @@ pub(super) fn build_c_field(
     let mut borrowed_c_type = String::new();
     let mut borrowed_read_fn = String::new();
     let mut owned_seq_cap: Option<usize> = None;
-    let (c_type, array_suffix) = if let Some(kind) = cap_kind {
+    // phase-335 step 2 — resolve storage for the FLAGS + the capacity the
+    // `c_type` / `c_array_suffix` pack filters need; the type STRING is composed
+    // in the pack from `field_type` + these facts, not pre-baked here.
+    let is_configurable = cap_kind.is_some();
+    let mut cap: usize = 0;
+    if let Some(kind) = cap_kind {
         let package = current_package.unwrap_or("");
         let storage =
             pre_storage.unwrap_or_else(|| resolver.resolve(package, message_name, name, kind));
+        cap = storage.cap;
         match storage.mode {
             StorageMode::Owned => {
                 if matches!(field_type, FieldType::Sequence { .. }) {
                     owned_seq_cap = Some(storage.cap);
                 }
-                (
-                    c_type_for_field_with_capacity(field_type, current_package, storage.cap),
-                    c_array_suffix_for_field_with_capacity(field_type, storage.cap),
-                )
             }
-            StorageMode::Heap => match c_type_for_field_heap(field_type, current_package) {
-                // Heap-backed `{ T* data; size_t size, capacity; }` — no suffix,
-                // unbounded. Mallocs on deserialize; freed by `_fini`.
-                Some(ty) => {
-                    is_heap = true;
-                    (ty, String::new())
+            StorageMode::Heap => {
+                // Heap is only bridgeable for shapes `c_type_for_field_heap`
+                // supports — validate here (the filter assumes it holds), reject
+                // otherwise, preserving the pre-step-2 error behaviour.
+                if c_type_for_field_heap(field_type, current_package).is_none() {
+                    return Err(unsupported("heap"));
                 }
-                None => return Err(unsupported("heap")),
-            },
+                is_heap = true;
+            }
             // RFC-0033 `borrowed` (Phase 235, issue 0021): the owned `{Msg}`
             // struct keeps its resolved-capacity container for the publish path;
             // the emitted `{Msg}_View` borrows this field zero-copy (see
@@ -627,18 +628,9 @@ pub(super) fn build_c_field(
                 if matches!(field_type, FieldType::Sequence { .. }) {
                     owned_seq_cap = Some(storage.cap);
                 }
-                (
-                    c_type_for_field_with_capacity(field_type, current_package, storage.cap),
-                    c_array_suffix_for_field_with_capacity(field_type, storage.cap),
-                )
             }
         }
-    } else {
-        (
-            c_type_for_field(field_type, current_package),
-            c_array_suffix_for_field(field_type),
-        )
-    };
+    }
 
     // Determine type characteristics
     let (is_primitive, primitive_type) = match field_type {
@@ -726,8 +718,10 @@ pub(super) fn build_c_field(
 
     Ok(CField {
         name: escaped_name,
-        c_type,
-        array_suffix,
+        field_type: field_type.clone(),
+        is_configurable,
+        cap,
+        current_package: current_package.unwrap_or("").to_string(),
         cdr_write_method,
         cdr_read_method,
         element_cdr_write_method,

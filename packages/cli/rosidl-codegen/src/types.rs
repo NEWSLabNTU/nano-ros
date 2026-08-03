@@ -1196,6 +1196,49 @@ pub fn c_array_suffix_for_field_with_capacity(field_type: &FieldType, cap: usize
 
 /// Get the C array suffix for a field type (e.g., "[256]" for strings, "[3]" for arrays)
 /// This comes after the field name in C declarations: `char name[256];`
+/// RFC-0068 Stage 3 — the C `c_type` spelling, as a function a pack filter can
+/// call (phase-335 step 2). Reproduces `build_c_field`'s branch exactly from the
+/// neutral facts a `CField` now carries, so the type STRING is composed in the
+/// pack (via the `c_type` filter) rather than pre-baked by the builder.
+pub fn c_type_spelling(
+    field_type: &FieldType,
+    is_configurable: bool,
+    is_heap: bool,
+    cap: usize,
+    current_package: Option<&str>,
+) -> String {
+    if is_configurable {
+        if is_heap {
+            // Heap is only reached for shapes `c_type_for_field_heap` supports;
+            // the builder validated that, so `unwrap_or_default` never fires.
+            c_type_for_field_heap(field_type, current_package).unwrap_or_default()
+        } else {
+            c_type_for_field_with_capacity(field_type, current_package, cap)
+        }
+    } else {
+        c_type_for_field(field_type, current_package)
+    }
+}
+
+/// RFC-0068 Stage 3 — the C `array_suffix` spelling (companion to
+/// [`c_type_spelling`]).
+pub fn c_array_suffix_spelling(
+    field_type: &FieldType,
+    is_configurable: bool,
+    is_heap: bool,
+    cap: usize,
+) -> String {
+    if is_configurable {
+        if is_heap {
+            String::new()
+        } else {
+            c_array_suffix_for_field_with_capacity(field_type, cap)
+        }
+    } else {
+        c_array_suffix_for_field(field_type)
+    }
+}
+
 pub fn c_array_suffix_for_field(field_type: &FieldType) -> String {
     match field_type {
         FieldType::String => format!("[{}]", C_DEFAULT_STRING_CAPACITY),

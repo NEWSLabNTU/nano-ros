@@ -164,7 +164,7 @@
 {%- if field.is_borrowed %}
     {{ field.borrowed_c_type }} {{ field.name }};
 {%- else %}
-    {{ field.c_type }} {{ field.name }}{{ field.array_suffix }};
+    {{ field | c_type }} {{ field.name }}{{ field | c_array_suffix }};
 {%- endif %}
 {%- endmacro -%}
 

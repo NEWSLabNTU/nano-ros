@@ -32,7 +32,7 @@ extern "C" {
 /// {{ message_name }} message structure
 typedef struct {{ struct_name }} {
 {%- for field in fields %}
-    {{ field.c_type }} {{ field.name }}{{ field.array_suffix }};
+    {{ field | c_type }} {{ field.name }}{{ field | c_array_suffix }};
 {%- endfor %}
 {%- if not has_fields %}
     uint8_t _dummy; // Empty struct placeholder

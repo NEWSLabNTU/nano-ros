@@ -405,11 +405,16 @@ pub struct ActionNrosTemplate<'a> {
 #[derive(Clone, serde::Serialize)]
 pub struct CField {
     pub name: String,
-    /// Base C type (e.g., "int32_t", "char", "struct foo_msg")
-    pub c_type: String,
-    /// Array suffix for the field declaration (e.g., "[256]" for strings, "[3]" for arrays)
-    /// This comes after the field name in C: `char name[256];`
-    pub array_suffix: String,
+    /// RFC-0068 Stage 3 — the neutral facts the `c_type` / `c_array_suffix` pack
+    /// filters compose the C type string from (phase-335 step 2), replacing the
+    /// pre-baked `c_type` / `array_suffix` strings. `field_type` is the parsed
+    /// type; `is_configurable` marks an unbounded string/sequence whose storage
+    /// was resolved; `cap` is that resolved capacity; `current_package` is the
+    /// generating package (the `NamespacedType { package: None }` fallback).
+    pub field_type: rosidl_parser::FieldType,
+    pub is_configurable: bool,
+    pub cap: usize,
+    pub current_package: String,
     /// CDR write method name (e.g., "write_i32")
     pub cdr_write_method: String,
     /// CDR read method name (e.g., "read_i32")
@@ -464,8 +469,7 @@ pub struct CConstant {
     pub value: String,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "message_c.h.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct MessageCHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
@@ -484,8 +488,7 @@ pub struct MessageCHeaderTemplate<'a> {
     pub has_borrowed: bool,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "message_c.c.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct MessageCSourceTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
@@ -498,8 +501,7 @@ pub struct MessageCSourceTemplate<'a> {
     pub has_borrowed: bool,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "service_c.h.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ServiceCHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub service_name: &'a str,
@@ -524,8 +526,7 @@ pub struct ServiceCHeaderTemplate<'a> {
     pub has_borrowed_response: bool,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "service_c.c.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ServiceCSourceTemplate<'a> {
     pub package_name: &'a str,
     pub service_name: &'a str,
@@ -545,8 +546,7 @@ pub struct ServiceCSourceTemplate<'a> {
     pub has_borrowed_response: bool,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "action_c.h.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ActionCHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,
@@ -576,8 +576,7 @@ pub struct ActionCHeaderTemplate<'a> {
     pub has_borrowed_feedback: bool,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "action_c.c.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ActionCSourceTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,

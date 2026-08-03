@@ -11,7 +11,19 @@
 
 use std::sync::LazyLock;
 
-use minijinja::Environment;
+use minijinja::{Environment, value::ViaDeserialize};
+
+/// The neutral facts a `CField` carries for the C-type pack filters (RFC-0068
+/// step 2). Deserialized from the field's serialized form; extra CField keys are
+/// ignored.
+#[derive(serde::Deserialize)]
+struct CTypeSpell {
+    field_type: rosidl_parser::FieldType,
+    is_configurable: bool,
+    is_heap: bool,
+    cap: usize,
+    current_package: String,
+}
 
 /// One environment holding every converted pack, keyed by a stable template
 /// name (`"message.h"`, `"message_rmw.rs"`, …). Shared macros are registered
@@ -23,6 +35,17 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     env.set_keep_trailing_newline(false);
     // Custom filter parity with the askama path (`templates::filters::snake_case`).
     env.add_filter("snake_case", |s: &str| crate::utils::to_snake_case(s));
+    // RFC-0068 step 2 — the C type spelling composed in the pack from a CField's
+    // neutral facts (was pre-baked as `CField.c_type` / `.array_suffix`).
+    env.add_filter("c_type", |v: ViaDeserialize<CTypeSpell>| {
+        let c = &v.0;
+        let cp = (!c.current_package.is_empty()).then_some(c.current_package.as_str());
+        crate::types::c_type_spelling(&c.field_type, c.is_configurable, c.is_heap, c.cap, cp)
+    });
+    env.add_filter("c_array_suffix", |v: ViaDeserialize<CTypeSpell>| {
+        let c = &v.0;
+        crate::types::c_array_suffix_spelling(&c.field_type, c.is_configurable, c.is_heap, c.cap)
+    });
 
     // --- C pack (packs/c) ---
     env.add_template("_field.jinja", include_str!("../packs/c/_field.jinja"))
