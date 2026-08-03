@@ -89,6 +89,13 @@ tools/*
 # Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed
 examples/**/target-*/
 
+# cmake build dirs in the standalone examples. `examples/**/target-*/` above
+# covered the cargo side and many leaves carry their own `/build/` line, but
+# the west/cmake entry leaves (qemu-arm-freertos, qemu-arm-nuttx,
+# threadx-linux) had neither, so 18 build trees showed up untracked after a
+# fixture sweep. No `examples/**/build/` path is tracked, here or anywhere.
+examples/**/build/
+
 # Phase 277 W7 — standalone example/workspace Cargo.locks are never committed.
 # They are not reproducibility-critical (scripts/build/cargo.sh prefetch
 # refreshes them without --locked) and committed copies go stale (known-issue
@@ -117,6 +124,12 @@ examples/**/metadata/*.json
 packages/core/*/include/nros/.*.tmp.*
 # Catch-all for the same pattern anywhere else a generated header is staged.
 .*.tmp.[0-9]*
+
+# Same class, different writer: `nros sync` stages each leaf `.cargo/config.toml`
+# as `.config.toml.nros-sync-tmp.<pid>` next to the destination and renames it
+# into place. A sync killed in between (a full disk did it here) leaves the temp
+# behind, in a directory where SOURCE `.cargo/config.toml` files also live.
+.*.nros-sync-tmp.[0-9]*
 
 # RFC-0061 / phase-318 W1 — per-binary codegen-fingerprint cache.
 .nros-cache/

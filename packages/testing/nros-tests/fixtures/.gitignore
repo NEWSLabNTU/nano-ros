@@ -1,0 +1,28 @@
+# Test fixtures are USER-side workspaces: the tests run `nros sync` /
+# `nros codegen-system` / cmake inside them, so each one accumulates the same
+# three artifact kinds. Several leaves carried their own `/build/` line; the
+# rest did not, which is why a fixture sweep leaves a dozen untracked trees
+# behind. One rule per kind here instead of one file per fixture.
+
+# cmake / west build trees.
+**/build/
+
+# Codegen output. These are generated from the HOST's message packages, so
+# they do not exist in a fresh clone and must never be committed — which is
+# also why no `Cargo.lock` beside them may be committed (it would name crates
+# nobody has). Enforced by `check-leaf-lockfiles`; this keeps them from being
+# staged by accident in the first place.
+**/generated/
+
+# `nros sync` writes a one-line `include = ["…/nros-patch.toml"]` into each
+# leaf `.cargo/`, pointing at a gitignored, host-specific central patch file.
+**/.cargo/config.toml
+
+# …except these three, which are hand-authored SOURCE: they select the
+# cross-compilation target for a FreeRTOS entry (`[build] target =
+# thumbv7m-none-eabi`), not sync output. `nros sync` appends its patch block to
+# them, so they show as modified during a run — that is expected, and they stay
+# tracked.
+!multi_pkg_workspace_freertos/firmware/.cargo/config.toml
+!n_board_agnostic_run_plan/freertos_entry/.cargo/config.toml
+!orchestration_tiers_freertos/.cargo/config.toml

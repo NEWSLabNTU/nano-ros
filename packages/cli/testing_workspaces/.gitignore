@@ -1,0 +1,13 @@
+# The CLI's testing workspaces are USER-side too: the tests run `nros sync` /
+# `nros deploy` inside them. Several workspaces carry their own `.gitignore`
+# with `/build/` and `**/target/`; this covers the kinds none of them named.
+
+# `nros sync` writes a one-line `include = ["…/nros-patch.toml"]` into each
+# leaf `.cargo/`, pointing at a gitignored, host-specific central patch file.
+**/.cargo/config.toml
+
+# Codegen output — generated from the HOST's message packages, absent from a
+# fresh clone. No `Cargo.lock` may be committed beside one either (it would
+# name crates nobody has); `check-leaf-lockfiles` enforces that, and this stops
+# either from being staged by accident.
+**/generated/
