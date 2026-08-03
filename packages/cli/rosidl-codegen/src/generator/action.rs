@@ -405,7 +405,8 @@ pub fn generate_nros_action_package(
         feedback_message_schema_fields_block: envelopes.feedback_message.fields_block,
         feedback_message_schema_type_name: envelopes.feedback_message.nros_type_name,
     };
-    let action_rs = action_template.render()?;
+    let action_rs = crate::render::render("action_nros.rs", &action_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     Ok(GeneratedNrosActionPackage {
         cargo_toml,
@@ -605,7 +606,8 @@ pub fn generate_nros_inline_action(
         feedback_message_schema_type_name: envelopes.feedback_message.nros_type_name,
     };
 
-    Ok(template.render()?)
+    Ok(crate::render::render("action_nros.rs", &template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?)
 }
 
 /// Generated C action package

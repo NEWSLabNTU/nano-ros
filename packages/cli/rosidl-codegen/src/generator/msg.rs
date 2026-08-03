@@ -231,7 +231,8 @@ pub fn generate_nros_message_package(
         schema_fields_block: schema.fields_block,
         schema_type_name: schema.nros_type_name,
     };
-    let message_rs = message_template.render()?;
+    let message_rs = crate::render::render("message_nros.rs", &message_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     Ok(GeneratedNrosPackage {
         cargo_toml,
@@ -290,7 +291,8 @@ pub fn generate_nros_inline_message(
         schema_type_name: schema.nros_type_name,
     };
 
-    Ok(template.render()?)
+    Ok(crate::render::render("message_nros.rs", &template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?)
 }
 
 /// Generated C message package

@@ -21,6 +21,8 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     // Generated sources carry their own trailing newline in the template body;
     // do not let the engine append another.
     env.set_keep_trailing_newline(false);
+    // Custom filter parity with the askama path (`templates::filters::snake_case`).
+    env.add_filter("snake_case", |s: &str| crate::utils::to_snake_case(s));
 
     // --- C pack (packs/c) ---
     env.add_template("_field.jinja", include_str!("../packs/c/_field.jinja"))
@@ -54,6 +56,28 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
         include_str!("../packs/rmw/action.rs.jinja"),
     )
     .expect("packs/rmw/action.rs.jinja must parse");
+
+    // --- nros embedded Rust pack (packs/nros) ---
+    env.add_template(
+        "nros_field.jinja",
+        include_str!("../packs/nros/nros_field.jinja"),
+    )
+    .expect("packs/nros/nros_field.jinja must parse");
+    env.add_template(
+        "message_nros.rs",
+        include_str!("../packs/nros/message.rs.jinja"),
+    )
+    .expect("packs/nros/message.rs.jinja must parse");
+    env.add_template(
+        "service_nros.rs",
+        include_str!("../packs/nros/service.rs.jinja"),
+    )
+    .expect("packs/nros/service.rs.jinja must parse");
+    env.add_template(
+        "action_nros.rs",
+        include_str!("../packs/nros/action.rs.jinja"),
+    )
+    .expect("packs/nros/action.rs.jinja must parse");
 
     env
 });

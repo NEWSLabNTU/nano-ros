@@ -161,7 +161,7 @@ pub struct ActionIdiomaticTemplate<'a> {
 // ============================================================================
 
 /// Field metadata for nros code generation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct NrosField {
     pub name: String,
     pub rust_type: String,
@@ -203,7 +203,7 @@ pub struct NrosField {
     pub borrowed_read_expr: String,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "message_nros.rs.jinja", escape = "none")]
 pub struct MessageNrosTemplate<'a> {
     pub package_name: &'a str,
@@ -236,7 +236,7 @@ pub struct MessageNrosTemplate<'a> {
     pub schema_type_name: String,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "service_nros.rs.jinja", escape = "none")]
 pub struct ServiceNrosTemplate<'a> {
     pub package_name: &'a str,
@@ -305,7 +305,7 @@ pub struct LibNrosRsTemplate {
     pub has_actions: bool,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "action_nros.rs.jinja", escape = "none")]
 pub struct ActionNrosTemplate<'a> {
     pub package_name: &'a str,

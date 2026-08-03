@@ -1,0 +1,179 @@
+{%- import "nros_field.jinja" as f -%}
+// nros message type - pure Rust, no_std compatible
+// Package: {{ package_name }}
+// Message: {{ message_name }}
+{%- if inline_mode %}
+
+use nros_core::{RosMessage, Serialize, Deserialize};
+use nros_core::{CdrReader, CdrWriter, SerError, DeserError};
+{%- else %}
+
+use nros_core::{RosMessage, Serialize, Deserialize};
+use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+{%- endif %}
+
+{%- for constant in constants %}
+pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+
+/// {{ message_name }} message type
+{%- if has_large_array %}
+#[derive(Debug, Clone, PartialEq)]
+{%- else %}
+#[derive(Debug, Clone, Default, PartialEq)]
+{%- endif %}
+pub struct {{ message_name }} {
+{%- for field in fields %}
+    pub {{ field.name }}: {{ field.rust_type }},
+{%- endfor %}
+}
+{%- if has_large_array %}
+
+impl Default for {{ message_name }} {
+    fn default() -> Self {
+        Self {
+{%- for field in fields %}
+{%- if field.is_large_array %}
+            {{ field.name }}: [Default::default(); {{ field.array_size }}],
+{%- else %}
+            {{ field.name }}: Default::default(),
+{%- endif %}
+{%- endfor %}
+        }
+    }
+}
+{%- endif %}
+
+impl Serialize for {{ message_name }} {
+{%- if has_fields %}
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap for XCDR2 appendable structs.
+        // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
+        let __dh = writer.begin_dheader()?;
+{%- for field in fields %}
+{%- if field.is_primitive %}
+        writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
+{%- elif field.is_string %}
+        writer.write_string(self.{{ field.name }}.as_str())?;
+{%- elif field.is_array %}
+        for item in &self.{{ field.name }} {
+{%- if field.is_primitive_element %}
+            writer.write_{{ field.element_primitive_method }}(*item)?;
+{%- elif field.is_string_element %}
+            writer.write_string(item.as_str())?;
+{%- else %}
+            item.serialize(writer)?;
+{%- endif %}
+        }
+{%- elif field.is_sequence %}
+        writer.write_u32(self.{{ field.name }}.len() as u32)?;
+        for item in &self.{{ field.name }} {
+{%- if field.is_primitive_element %}
+            writer.write_{{ field.element_primitive_method }}(*item)?;
+{%- elif field.is_string_element %}
+            writer.write_string(item.as_str())?;
+{%- else %}
+            item.serialize(writer)?;
+{%- endif %}
+        }
+{%- else %}
+        self.{{ field.name }}.serialize(writer)?;
+{%- endif %}
+{%- endfor %}
+        writer.end_dheader(__dh)?;
+        Ok(())
+    }
+{%- else %}
+    // Empty message — under XCDR2 an appendable struct still carries a DHEADER
+    // (size 0); under XCDR1 this is a no-op (byte-identical: nothing written).
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        let __dh = writer.begin_dheader()?;
+        writer.end_dheader(__dh)?;
+        Ok(())
+    }
+{%- endif %}
+}
+
+impl Deserialize for {{ message_name }} {
+{%- if has_fields %}
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        // phase-303 W4 (#0267) — read the XCDR2 DHEADER (no-op under XCDR1);
+        // end_dheader skips any unknown trailing members (forward compat).
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+{%- for field in fields %}
+{{- f.deser_field(field, inline_mode) }}
+{%- endfor %}
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+{%- else %}
+    // Empty message — read/skip the XCDR2 DHEADER (no-op under XCDR1).
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        reader.end_dheader(__dh)?;
+        Ok(Self {})
+    }
+{%- endif %}
+}
+
+impl RosMessage for {{ message_name }} {
+    const TYPE_NAME: &'static str = "{{ package_name }}::msg::dds_::{{ message_name }}_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+{%- if stamp_offset is not none %}
+    // RFC-0052 W3a — Header/Time-leading type: `stamp.sec` at CDR byte
+    // {{ stamp_offset }} (raw-buffer peek for on-target max_age monitors).
+    const STAMP_OFFSET: Option<usize> = Some({{ stamp_offset }});
+{%- endif %}
+}
+{%- if has_borrowed %}
+
+// ── RFC-0033 `borrowed` storage mode (Phase 229.6, issue 0007) ──────────────
+// Zero-copy view: fields marked `mode = "borrowed"` slice directly into the
+// receive buffer (no `heapless::Vec`/`String` copy). Other fields are copied.
+// The view is valid only for the subscription-callback scope (lifetime `'a`).
+// Subscribe with `node.create_subscription_borrowed::<{{ message_name }}Borrow, _>()`.
+
+/// Borrowed (zero-copy) view of [`{{ message_name }}`].
+pub struct {{ message_name }}View<'a> {
+{%- for field in fields %}
+{{- f.view_field_decl(field) }}
+{%- endfor %}
+}
+
+impl<'a> nros_core::DeserializeBorrowed<'a> for {{ message_name }}View<'a> {
+    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+{%- for field in fields %}
+{{- f.borrowed_deser_field(field, inline_mode) }}
+{%- endfor %}
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+}
+
+/// Zero-sized borrowed-family marker for [`{{ message_name }}`] (Phase 229.6).
+pub struct {{ message_name }}Borrow;
+
+impl nros_core::BorrowedMessage for {{ message_name }}Borrow {
+    type View<'a> = {{ message_name }}View<'a>;
+    const TYPE_NAME: &'static str = "{{ package_name }}::msg::dds_::{{ message_name }}_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+{%- endif %}
+
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
+
+{{ schema_helper_consts -}}
+
+impl ::nros_serdes::Message for {{ message_name }} {
+    const TYPE_NAME: &'static str = "{{ schema_type_name }}";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+{{ schema_fields_block -}}
+    ];
+}

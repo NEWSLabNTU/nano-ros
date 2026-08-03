@@ -300,7 +300,8 @@ pub fn generate_nros_service_package(
         resp_schema_fields_block: resp_schema.fields_block,
         resp_schema_type_name: resp_schema.nros_type_name,
     };
-    let service_rs = service_template.render()?;
+    let service_rs = crate::render::render("service_nros.rs", &service_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     Ok(GeneratedNrosServicePackage {
         cargo_toml,
@@ -426,7 +427,8 @@ pub fn generate_nros_inline_service(
         resp_schema_type_name: resp_schema.nros_type_name,
     };
 
-    Ok(template.render()?)
+    Ok(crate::render::render("service_nros.rs", &template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?)
 }
 
 /// Generated C service package
