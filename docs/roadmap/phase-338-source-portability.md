@@ -233,7 +233,7 @@ examples are free to change.
 |---|---|---|---|---|
 | `declarative_bridge_zenoh_to_cyclonedds` | 72 | `SUB_TYPE` | **C** listener | keep — C affordance is a declared permanent exception |
 | `declarative_bridge_zenoh_to_cyclonedds` | 82 | `PUB_TYPE` | rust talker | an Int32 talker bin |
-| `declarative_bridge_zenoh_to_xrce` | 103 | `SUB_TYPE` | **C** listener | keep |
+| `declarative_bridge_zenoh_to_xrce` | 103 | `SUB_TYPE` | **rust** listener, XRCE build | **BLOCKED** — see below |
 | `declarative_bridge_zenoh_to_xrce` | 116 | `PUB_TYPE` | rust talker | an Int32 talker bin |
 | `esp32_emulator` | 514 | `SUB_TYPE` | rust listener | `bins/int32-sink` |
 | `zephyr` | 1611 | `SUB_TYPE` | rust listener | `bins/int32-sink` |
@@ -244,6 +244,24 @@ prints `LISTENER_LOG_PREFIX` (`"I heard:"`) in every mode; `int32-sink` prints
 `INT32_LISTENER_LOG_PREFIX` (`"Received:"`). Every repointed assertion must move
 to the matching constant — `esp32_emulator` alone has ~6 sites. Never a literal
 (CLAUDE.md).
+
+**Step 1 status (2026-08-04): 2 of 8 sites done; one is BLOCKED.**
+
+- **DONE** — both bridge `PUB_TYPE` sites now spawn `bins/header-chatter-talker`
+  (it publishes Int32 on `/chatter` natively) instead of the example with
+  `NROS_PUB_TYPE=int32`, and their readiness wait moved
+  `TALKER_LOG_PREFIX` → `INT32_TALKER_LOG_PREFIX` because that bin prints
+  `"Published:"`, not `"Publishing:"`. Compiles clean.
+- **Re-counted: 8 sites, not 7.** `declarative_bridge_zenoh_to_xrce:103` drives
+  `xrce_listener_binary`, which resolves to `build_example_rmw("native/rust/
+  listener", …, Rmw::Xrce)` — the **rust** listener, not the C one. It was
+  mis-attributed by analogy with the cyclonedds file.
+- **BLOCKER for that site:** `bins/int32-sink` is hardcoded to zenoh (a direct
+  `nros-rmw-zenoh` dep, no rmw feature axis), so it cannot stand in for an XRCE
+  listener. **Step 1 cannot complete, and therefore step 2 cannot strip the
+  listener's branching, until `int32-sink` gains the same `rmw-{zenoh,xrce,
+  cyclonedds}` feature axis the examples already have** — plus a fixture row and
+  resolver per RMW. Mechanical, but it is prerequisite work nobody had costed.
 
 **Step 2 — strip the branching** from `examples/native/rust/{talker,listener}`.
 Two-thirds of the talker's 91 lines is the same demo written three times

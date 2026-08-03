@@ -42,7 +42,6 @@ use nros_tests::{
         DEFAULT_ROS_DISTRO, ManagedProcess, Rmw, Ros2DdsProcess, ZenohRouter,
         build_native_c_example_rmw, build_native_talker_header,
         build_native_workspace_rust_bridge_entry, require_ros2_cyclonedds, require_zenohd,
-        talker_binary,
     },
 };
 use rstest::rstest;
@@ -78,14 +77,15 @@ fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
 fn spawn_zenoh_talker(bin: &Path, locator: &str) -> ManagedProcess {
     let mut cmd = Command::new(bin);
     // Match the Int32 bridge/listener (issue #183): publish std_msgs/Int32.
-    cmd.env("RUST_LOG", "info")
-        .env("NROS_PUB_TYPE", "int32")
-        .env("NROS_LOCATOR", locator);
+    // phase-338 W3 — this used the native rust talker with `NROS_PUB_TYPE=int32`;
+    // that switch moved to `bins/header-chatter-talker`, which publishes Int32 on
+    // /chatter natively, so the example can drop its test-only branching.
+    cmd.env("RUST_LOG", "info").env("NROS_LOCATOR", locator);
     let mut talker = ManagedProcess::spawn_command(cmd, "native-rs-talker-declarative-bridge")
         .expect("spawn talker");
     talker
         .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
+            nros_tests::output::INT32_TALKER_LOG_PREFIX,
             Duration::from_secs(8),
         )
         .expect("talker did not publish first sample");
@@ -97,7 +97,7 @@ fn spawn_zenoh_talker(bin: &Path, locator: &str) -> ManagedProcess {
 /// declarative path (descriptor staged from the config field schema, raw publish
 /// accepted, sample delivered), no ROS 2 install needed.
 #[rstest]
-fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBuf) {
+fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener() {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
@@ -139,6 +139,10 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
         .expect("spawn declarative bridge entry");
     std::thread::sleep(Duration::from_secs(2));
 
+    let talker_binary = match build_native_talker_header() {
+        Ok(p) => p.to_path_buf(),
+        Err(e) => nros_tests::skip!("talker `header` fixture not prebuilt ({e})"),
+    };
     let mut talker = spawn_zenoh_talker(&talker_binary, &zenoh_locator);
 
     let listener_output = listener

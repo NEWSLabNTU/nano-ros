@@ -32,8 +32,9 @@ use std::{path::PathBuf, process::Command, time::Duration};
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, XrceAgent, ZenohRouter, build_native_workspace_rust_bridge_xrce_entry,
-        require_xrce_agent, require_zenohd, talker_binary, xrce_listener_binary, zenohd_unique,
+        ManagedProcess, XrceAgent, ZenohRouter, build_native_talker_header,
+        build_native_workspace_rust_bridge_xrce_entry, require_xrce_agent, require_zenohd,
+        xrce_listener_binary, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -46,7 +47,6 @@ const XRCE_NODE: &str = "S1";
 #[rstest]
 fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
     zenohd_unique: ZenohRouter,
-    talker_binary: PathBuf,
     xrce_listener_binary: PathBuf,
 ) {
     if !require_zenohd() {
@@ -109,17 +109,23 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
         .wait_for_output_pattern("Waiting for", Duration::from_secs(8))
         .expect("xrce listener did not become ready");
 
+    let talker_binary = match build_native_talker_header() {
+        Ok(p) => p.to_path_buf(),
+        Err(e) => nros_tests::skip!("talker `header` fixture not prebuilt ({e})"),
+    };
     let mut talker_cmd = Command::new(&talker_binary);
     // Match the Int32 bridge/listener (issue #183): publish std_msgs/Int32.
+    // phase-338 W3 — this used the native rust talker with `NROS_PUB_TYPE=int32`;
+    // that switch moved to `bins/header-chatter-talker`, which publishes Int32 on
+    // /chatter natively, so the example can drop its test-only branching.
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("NROS_PUB_TYPE", "int32")
         .env("NROS_LOCATOR", &zenoh_locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-xrce-bridge")
         .expect("spawn talker");
     talker
         .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
+            nros_tests::output::INT32_TALKER_LOG_PREFIX,
             Duration::from_secs(8),
         )
         .expect("talker did not publish first sample");
