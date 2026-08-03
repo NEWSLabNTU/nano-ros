@@ -535,6 +535,38 @@ pub fn detect_riscv_compiler(build: &mut cc::Build) {
             return;
         }
     }
+
+    // issue 0399, second half — when NOTHING matched, this returned quietly and
+    // left cc-rs to derive a name from the target triple
+    // (`riscv32-unknown-elf-gcc`). No board installs that name, so the build
+    // died naming a compiler nobody configured, with nothing pointing at the
+    // real problem — a toolchain that was never provisioned:
+    //
+    //     error occurred in cc-rs: failed to find tool "riscv32-unknown-elf-gcc"
+    //
+    // Fail here instead, naming the remedy. A host where cc-rs's own default
+    // DOES exist was already working, so it keeps working.
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let cc_rs_default = if target.starts_with("riscv64") {
+        "riscv64-unknown-elf-gcc"
+    } else {
+        "riscv32-unknown-elf-gcc"
+    };
+    if Command::new(cc_rs_default)
+        .arg("--version")
+        .output()
+        .is_ok()
+    {
+        return;
+    }
+
+    panic!(
+        "no RISC-V cross-compiler found for TARGET={target}. Tried \
+         {RISCV_GCC_CANDIDATES:?} and cc-rs's default `{cc_rs_default}`. Install the \
+         toolchain this repo provisions:\n\
+         \n    nros setup --tool riscv-none-elf-gcc\n\
+         \n(or `nros setup <board>` for the board you are building)"
+    );
 }
 
 /// Get the picolibc sysroot path for RISC-V.
