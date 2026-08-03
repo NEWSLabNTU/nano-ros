@@ -291,8 +291,8 @@ pub fn generate_nros_inline_message(
         schema_type_name: schema.nros_type_name,
     };
 
-    Ok(crate::render::render("message_nros.rs", &template)
-        .map_err(|e| GeneratorError::RenderError(e.to_string()))?)
+    crate::render::render("message_nros.rs", &template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))
 }
 
 /// Generated C message package

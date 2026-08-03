@@ -427,8 +427,8 @@ pub fn generate_nros_inline_service(
         resp_schema_type_name: resp_schema.nros_type_name,
     };
 
-    Ok(crate::render::render("service_nros.rs", &template)
-        .map_err(|e| GeneratorError::RenderError(e.to_string()))?)
+    crate::render::render("service_nros.rs", &template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))
 }
 
 /// Generated C service package

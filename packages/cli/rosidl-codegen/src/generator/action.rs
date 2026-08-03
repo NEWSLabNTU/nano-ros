@@ -606,8 +606,8 @@ pub fn generate_nros_inline_action(
         feedback_message_schema_type_name: envelopes.feedback_message.nros_type_name,
     };
 
-    Ok(crate::render::render("action_nros.rs", &template)
-        .map_err(|e| GeneratorError::RenderError(e.to_string()))?)
+    crate::render::render("action_nros.rs", &template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))
 }
 
 /// Generated C action package
