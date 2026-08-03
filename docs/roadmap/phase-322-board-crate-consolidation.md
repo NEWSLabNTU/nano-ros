@@ -85,7 +85,8 @@ of truth"), so a merge costs 1–3 string edits and breaks no Entry package.
       verdict:** `embassy-stm32f4` is a self-declared skeleton that drops the
       peripheral handle (`let _p = embassy_stm32::init(…)`) and has no transport
       bringup — delete it and re-add as a feature when someone wires `embassy_net`.
-- [ ] **W1.d** **MPS2-AN385 — fold `rtic-mps2-an385` into `mps2-an385`** behind an
+- [x] **W1.d — DONE as [phase-337](phase-337-board-support-matrix.md) W6.a
+      (2026-08-04).** **MPS2-AN385 — fold `rtic-mps2-an385` into `mps2-an385`** behind an
       `rtic` feature; it already depends on the base crate and calls its
       `init_hardware` / `exit_success` / `enable_wfi_idle`. Deletes ~120 duplicated
       lines including a second `mask_to_prefix` and the divergent config defaults.

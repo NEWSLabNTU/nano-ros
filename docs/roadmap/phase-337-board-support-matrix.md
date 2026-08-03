@@ -316,12 +316,64 @@ mechanical.
 
 ## W6 — Bare-metal MPS2: fold RTIC in as a feature
 
-- [ ] **W6.a** Fold `nros-board-rtic-mps2-an385` into `nros-board-mps2-an385`
-      behind an `rtic` feature — it already depends on the base crate and calls its
-      `init_hardware` / `exit_success` / `enable_wfi_idle`. Deletes ~120 duplicated
-      lines including a second `mask_to_prefix` and the **divergent config defaults**
-      (`10.0.2.10` vs `192.0.3.10`) that are invisible until runtime.
+- [x] **W6.a — LANDED 2026-08-04.** Fold `nros-board-rtic-mps2-an385` into
+      `nros-board-mps2-an385` behind an `rtic` feature — it already depends on the
+      base crate and calls its `init_hardware` / `exit_success` / `enable_wfi_idle`.
+      Deletes ~120 duplicated lines including a second `mask_to_prefix` and the
+      **divergent config defaults** (`10.0.2.10` vs `192.0.3.10`) that are invisible
+      until runtime.
       *Verify:* the `qemu` lane's baremetal cells.
+
+      **How it landed.** Board crates **27 → 26**. The old crate was 463 lines
+      (416 `src/lib.rs` + 47 `Cargo.toml`); it lands as 393 lines of
+      `src/rtic.rs` + 24 lines of manifest (deps + the two features) + 51 lines
+      of `Config::qemu_slirp` (20 code, 31 doc). So **~46 lines of duplicated
+      CODE are gone** (`qemu_config` 14, `qemu_config_with_overlay` 21,
+      `parse_decimal_u32` 14, `mask_to_prefix` 5, minus the preset that replaces
+      them) against a near-flat total line count — the phase's "~120 lines"
+      estimate counted the manifest and the doc comments the fold *adds*. The win
+      is one crate fewer and one `Default`-shaped function fewer, not LOC.
+
+      * **Both `mask_to_prefix` copies are gone.** The shared spelling is
+        `nros_board_common::prefix_from_netmask`, the sibling of the existing
+        `netmask_from_prefix` and the body `BaseConfig::prefix()` already had
+        (leading-run, not popcount — a discontiguous mask now reports `/8`, not
+        `/16`). No in-tree deploy block sets a discontiguous netmask, so this is a
+        strictly-better spelling, not a behaviour change.
+      * **The divergent defaults were NOT silently merged.** `Config::default()`
+        keeps the bridge plan (`192.0.3.10/24`, `tcp/192.0.3.1:7447`) — which is
+        also exactly `BaseConfig::default()`, so the board stays aligned with W1.b's
+        shared default. The slirp plan the RTIC path needs became a NAMED preset,
+        `Config::qemu_slirp()` (`10.0.2.10/24`, gw `10.0.2.2`,
+        `tcp/10.0.2.2:7450`, `NROS_LOCATOR`/`NROS_DOMAIN_ID` build-env overrides),
+        documenting which `QemuProcess::start_*` runner each plan matches. Rationale:
+        the two values are not drift — they are two QEMU launch modes the firmware
+        cannot observe — so the defect was that one of them lived in a sibling crate
+        as a second `Default`-shaped function. Naming it removes the invisibility
+        while keeping the wave behaviour-neutral. Actively *moving* the default is
+        also not free: `baremetal_run_plan_runtime` asserts an `Executor::open`
+        FAILURE banner from a fixture with no deploy overlay, so pointing the
+        unpinned default at a reachable slirp gateway could make that test hang.
+      * **The crate is gone but the deploy key is not.** `rtic-mps2-an385` /
+        `qemu-rtic-mps2-an385` still name the RTIC entry shape; `board_path_for` and
+        the proc-macro's `take_dispatch_consumer` now resolve into
+        `::nros_board_mps2_an385::`, which re-exports the folded surface at its root.
+      * **Known consequence:** the merged crate deliberately carries no
+        `[package.metadata.nros.board] framework = "rtic"` — framework is now a
+        feature, not a crate fact, and declaring it unconditionally would make
+        `nros ws check` reject `dispatch = "inline"` on every direct-exec Entry pkg.
+        Cost: the RTIC-requires-Deferred lint no longer fires for a path-dep'd RTIC
+        workspace. No in-tree workspace path-deps this board.
+      * **Runtime proof** (`just qemu build-fixtures`, then
+        `binary(emulator) or binary(baremetal_run_plan_runtime)`, 17 tests):
+        `baremetal_board_run_executes_run_plan`, `test_qemu_bsp_pubsub_e2e`,
+        `test_qemu_rtic_pubsub_e2e` (the platform's only `Runtime` cell),
+        `test_qemu_rtic_service_e2e`, `test_qemu_rtic_action_e2e`,
+        `test_qemu_serial_pubsub_e2e`, `test_qemu_xrce_pubsub_e2e` all pass.
+        `test_qemu_rtic_mixed_priority_pubsub_e2e` is the documented
+        LAN9118/slirp RX-stall flake: measured 3/5 solo on the folded build vs
+        **2/5 on the pre-fold HEAD binaries through the same harness**, so the fold
+        did not move it.
 
 ## W7 — Demotions (GATED on the matrix decision)
 

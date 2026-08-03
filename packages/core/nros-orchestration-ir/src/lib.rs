@@ -102,7 +102,11 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
         "zephyr" => "::nros_board_zephyr::ZephyrBoard",
         // Phase 216.B.3 — RTIC + STM32F4. Board ZST impls `RticBoardEntry`.
         "rtic-stm32f4" => "::nros_board_rtic_stm32f4::RticStm32F4",
-        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "::nros_board_rtic_mps2_an385::RticMps2An385",
+        // phase-337 W6.a — the RTIC entry surface moved INTO
+        // `nros-board-mps2-an385` (its `rtic` feature); the ZST kept its name.
+        // The deploy key stays distinct because the two entry shapes are
+        // distinct — this one routes through the RTIC framework emit.
+        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "::nros_board_mps2_an385::RticMps2An385",
         // Phase 244.D1 — pure bare-metal (no-RTOS) MPS2-AN385 direct-exec
         // board. Board ZST impls `nros_platform::BoardEntry`. Distinct from
         // `rtic-mps2-an385`, which routes through the RTIC framework emit.

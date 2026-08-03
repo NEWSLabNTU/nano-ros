@@ -5,9 +5,12 @@
 //! `{mac, ip, netmask, gateway, locator, domain_id}` core, and the
 //! `DeployOverlay` → `Config` merge written out at least four separate times.
 //! Each copy drifted on its own: `nros-board-rtic-mps2-an385` and
-//! `nros-board-mps2-an385` disagree on the default IP (`10.0.2.10` vs
+//! `nros-board-mps2-an385` disagreed on the default IP (`10.0.2.10` vs
 //! `192.0.3.10`), which is invisible until a node fails to reach the router at
-//! runtime.
+//! runtime. (phase-337 W6.a folded those two crates into one and turned the
+//! second default into the NAMED `Config::qemu_slirp()` preset — the two values
+//! are two QEMU launch modes, so the defect was that one of them lived in a
+//! sibling crate as a second `Default`-shaped function.)
 //!
 //! This type is **additive** (phase-337 W1.b): nothing adopts it yet. Each
 //! board wave migrates its own `Config` onto it as that wave's first step, so
@@ -72,22 +75,9 @@ impl Default for BaseConfig {
 }
 
 impl BaseConfig {
-    /// The netmask as a CIDR prefix length.
-    ///
-    /// Counts leading ones and stops at the first zero, so a discontiguous
-    /// mask reports the length of its leading run rather than a popcount —
-    /// `255.0.255.0` is a misconfiguration, and `/8` says so more usefully
-    /// than `/16` would.
+    /// The netmask as a CIDR prefix length. See [`prefix_from_netmask`].
     pub const fn prefix(&self) -> u8 {
-        let bits = u32::from_be_bytes(self.netmask);
-        let mut n = 0u8;
-        while n < 32 {
-            if bits & (0x8000_0000 >> n) == 0 {
-                break;
-            }
-            n += 1;
-        }
-        n
+        prefix_from_netmask(self.netmask)
     }
 
     /// Set the netmask from a CIDR prefix length. `prefix > 32` saturates to
@@ -122,6 +112,30 @@ impl BaseConfig {
             self.domain_id = domain_id;
         }
     }
+}
+
+/// A dotted-quad netmask as a CIDR prefix length.
+///
+/// Counts leading ones and stops at the first zero, so a discontiguous mask
+/// reports the length of its leading run rather than a popcount —
+/// `255.0.255.0` is a misconfiguration, and `/8` says so more usefully than
+/// `/16` would.
+///
+/// Free function as well as [`BaseConfig::prefix`] because the boards that
+/// think in CIDR need the conversion where they have a bare `[u8; 4]` and no
+/// `BaseConfig` — `nros-board-mps2-an385`'s deploy-overlay merge, for one.
+/// Both MPS2 crates had grown their own popcount `mask_to_prefix` (phase-337
+/// W6); this is the one spelling they now share.
+pub const fn prefix_from_netmask(netmask: [u8; 4]) -> u8 {
+    let bits = u32::from_be_bytes(netmask);
+    let mut n = 0u8;
+    while n < 32 {
+        if bits & (0x8000_0000 >> n) == 0 {
+            break;
+        }
+        n += 1;
+    }
+    n
 }
 
 /// A CIDR prefix length as a dotted-quad netmask. Saturates at `/32`.

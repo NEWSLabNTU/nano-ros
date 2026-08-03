@@ -29,10 +29,10 @@ dispatch = "deferred"
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
-nros-board-rtic-mps2-an385 = { version = "*", features = ["e2e-synthetic-callback"] }
-# Plain MPS2-AN385 board — the node calls its `exit_success()` to signal the
-# QEMU semihosting E2E pass (was a transitive dep via the node pkg).
-nros-board-mps2-an385 = { version = "*" }
+# phase-337 W6.a — one board crate: the `rtic` feature is the RTIC entry
+# surface (formerly `nros-board-rtic-mps2-an385`), and the same crate's
+# `exit_success()` is what the node calls to signal the semihosting E2E pass.
+nros-board-mps2-an385 = { version = "*", features = ["rtic", "e2e-synthetic-callback"] }
 mps2-an385-pac = { version = "*" }
 rtic = { version = "2.1", features = ["thumbv7-backend"] }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }

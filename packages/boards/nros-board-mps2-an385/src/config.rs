@@ -14,7 +14,7 @@
 ///
 /// # Default Configuration (Talker)
 ///
-/// - **TAP mode** (default): Connects directly to host TAP interface
+/// - **TAP / bridge mode** (default): Connects directly to host TAP interface
 ///   - IP: 192.0.3.10/24
 ///   - Gateway: 192.0.3.1
 ///   - Zenoh: tcp/192.0.3.1:7447
@@ -23,6 +23,15 @@
 ///   - IP: 192.168.100.10/24
 ///   - Gateway: 192.168.100.1
 ///   - Zenoh: tcp/172.20.0.2:7447
+///
+/// - **QEMU user-mode / slirp** ([`Config::qemu_slirp`], NOT the default):
+///   - IP: 10.0.2.10/24
+///   - Gateway: 10.0.2.2
+///   - Zenoh: tcp/10.0.2.2:7450
+///
+/// Slirp's NAT subnet is fixed by how QEMU was launched, which the firmware
+/// cannot observe — so the plan is a named preset, never an implicit default.
+/// See [`Config::qemu_slirp`].
 #[derive(Clone)]
 pub struct Config {
     // -- Ethernet-specific fields --
@@ -178,6 +187,56 @@ impl Config {
     #[cfg(feature = "ethernet")]
     pub fn talker() -> Self {
         Self::default()
+    }
+
+    /// The QEMU **user-mode (slirp)** address plan: `10.0.2.10/24`, gateway
+    /// `10.0.2.2`, locator `tcp/10.0.2.2:7450`.
+    ///
+    /// # Why this is not `Default`
+    ///
+    /// The board has two address plans and they are not interchangeable —
+    /// which one is right depends on how QEMU was launched, a fact the
+    /// firmware cannot observe:
+    ///
+    /// - [`Config::default`] / [`Config::listener`] are the **bridge** plan
+    ///   (`192.0.3.0/24`, gateway `192.0.3.1`), matching
+    ///   `nros_tests::qemu::QemuProcess::start_mps2_an385_freertos_slirp`'s
+    ///   `-nic user,model=lan9118,net=192.0.3.0/24,host=192.0.3.1` and the
+    ///   historical TAP bridge. It is also `nros_board_common::BaseConfig`'s
+    ///   default, i.e. the value the other emulated boards share.
+    /// - This preset is the plan `QemuProcess::start_mps2_an385_networked`
+    ///   gives you — plain `-nic user,model=lan9118`, whose slirp NAT is
+    ///   fixed at `10.0.2.0/24` with the host at `10.0.2.2`.
+    ///
+    /// phase-337 W6 folded `nros-board-rtic-mps2-an385` into this crate; this
+    /// preset is that crate's `qemu_config()`, which was a second `Default`-
+    /// shaped function in a sibling crate — the divergence was invisible until
+    /// a node failed to reach the router at runtime. Naming it is the fix: the
+    /// two plans now sit three lines apart with the runner each one matches
+    /// written down.
+    ///
+    /// `NROS_LOCATOR` / `NROS_DOMAIN_ID` at BUILD time override the locator and
+    /// domain (bare-metal has no host `getenv`, so these are baked, not read).
+    #[cfg(feature = "ethernet")]
+    pub fn qemu_slirp() -> Self {
+        Self {
+            mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
+            ip: [10, 0, 2, 10],
+            prefix: 24,
+            gateway: [10, 0, 2, 2],
+            #[cfg(feature = "serial")]
+            uart_base: cmsdk_uart::UART0_BASE,
+            #[cfg(feature = "serial")]
+            baudrate: 115200,
+            zenoh_locator: option_env!("NROS_LOCATOR").unwrap_or("tcp/10.0.2.2:7450"),
+            domain_id: match option_env!("NROS_DOMAIN_ID") {
+                Some(s) => match parse_u32(s) {
+                    Some(d) => d,
+                    None => 0,
+                },
+                None => 0,
+            },
+        }
     }
 
     /// Builder: set MAC address

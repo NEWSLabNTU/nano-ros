@@ -52,12 +52,6 @@ impl BoardExit for Mps2An385 {
     }
 }
 
-/// Convert a dotted netmask (`255.255.255.0`) to a CIDR prefix length.
-#[cfg(feature = "ethernet")]
-fn mask_to_prefix(mask: [u8; 4]) -> u8 {
-    mask.iter().map(|b| b.count_ones() as u8).sum()
-}
-
 /// The board's boot [`Config`] before any deploy overlay. Ethernet is the
 /// default link; a board built `serial`-only (no `ethernet`) boots the UART
 /// link (`Config::serial_default`, locator `serial/UART_0#…`) — phase-244.D1
@@ -91,7 +85,9 @@ fn config_with_overlay(deploy: &DeployOverlay) -> Config {
             cfg.gateway = gateway;
         }
         if let Some(netmask) = deploy.netmask {
-            cfg.prefix = mask_to_prefix(netmask);
+            // phase-337 W6.a — was a local popcount `mask_to_prefix`, one of
+            // two copies (the other in the folded RTIC crate). One spelling.
+            cfg.prefix = nros_board_common::prefix_from_netmask(netmask);
         }
     }
     if let Some(domain_id) = deploy.domain_id {
@@ -127,7 +123,7 @@ where
     // zenoh backend into the CFFI vtable here, before `Executor::open`.
     // Bare-metal (`target_os = "none"`) is linkme-blind + runs no `.init_array`,
     // so the auto-register section is a no-op; this explicit, idempotent call is
-    // the registration path (mirrors `nros-board-rtic-mps2-an385::init_with_config`).
+    // the registration path (mirrors `crate::rtic::init_with_config`).
     // Gated on the board's own `rmw-zenoh` feature so DDS-/XRCE-only builds drop it.
     #[cfg(feature = "rmw-zenoh")]
     if let Err(err) = nros_rmw_zenoh::register() {

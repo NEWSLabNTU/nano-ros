@@ -26,7 +26,8 @@ nros-platform-api = { path = "../../platform/nros-platform-api" }
 # concrete zenoh backend directly (optional, behind `rmw-zenoh`) so the board
 # OWNS linking + registering it, instead of a pure marker that needs a consumer
 # to bring the backend. Bare-metal (`target_os = "none"`) is linkme-blind, so the
-# board registers it explicitly in `entry::boot` (mirrors `nros-board-rtic-mps2-an385`).
+# board registers it explicitly in `entry::boot` (and, for the `rtic` feature, in
+# `rtic::init_with_config`).
 nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-bare-metal",
     "ros-humble",
@@ -72,6 +73,10 @@ nros = { path = "../../api/nros", default-features = false, features = ["alloc",
 # so declarative nodes can `nros_info!` without a per-example boot closure.
 nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
 
+# phase-337 W6.a — SPSC queue behind the `rtic` feature's deferred-callback
+# dispatch surface (was a dep of the folded `nros-board-rtic-mps2-an385`).
+heapless = { version = "0.8", optional = true }
+
 # Embedded dependencies
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
@@ -99,6 +104,23 @@ safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # `nros` umbrella (executor + node-runtime). Off by default: legacy
 # `run(Config, closure)` examples don't need it.
 board-entry = ["dep:nros", "dep:nros-log"]
+# phase-337 W6.a — the RTIC entry surface (`src/rtic.rs`), formerly the separate
+# `nros-board-rtic-mps2-an385` crate. Independent of `board-entry`: the two are
+# different entry shapes on one board (RTIC owns its own reset vector + deferred
+# dispatch; `board-entry` is the direct-exec inline spin), so an Entry pkg picks
+# exactly one. Pulls the same dep set the folded crate had.
+#
+# NOTE: this crate deliberately carries NO `[package.metadata.nros.board]
+# framework = "rtic"` (the folded crate had one). Framework is no longer a
+# crate-level fact here — it is which of `rtic` / `board-entry` the Entry pkg
+# turns on — and declaring `rtic` unconditionally would make `nros ws check`
+# reject `dispatch = "inline"` on every DIRECT-EXEC Entry pkg that path-deps
+# this board. The cost is that the RTIC-requires-Deferred lint no longer fires
+# for a path-dep'd RTIC workspace; no in-tree workspace path-deps this board.
+rtic = ["dep:heapless", "dep:mps2-an385-pac", "dep:nros", "dep:nros-log"]
+# phase-337 W6.a — synthetic callback enqueued at RTIC `#[init]`, so the
+# run-plan E2E fixture proves deferred dispatch without a live peer.
+e2e-synthetic-callback = []
 # Ethernet transport via LAN9118 + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
 # Serial transport via CMSDK UART. The `_z_socket_*` symbols

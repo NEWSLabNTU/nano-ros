@@ -4,7 +4,7 @@
 //! platform/RMW-agnostic Node: `register()` declares node + action server (goal /
 //! cancel / accepted callbacks); `on_callback` runs the goal/cancel decisions;
 //! `tick()` walks active goals, publishes feedback, completes them. The entry
-//! crate's `nros::main!()` + the RTIC board (`nros-board-rtic-mps2-an385`) own
+//! crate's `nros::main!()` + the RTIC board (`nros-board-mps2-an385`) own
 //! hardware/network bring-up, executor open, RMW registration, and the RTIC
 //! dispatch loop. Locator/domain live in the entry's
 //! `[package.metadata.nros.deploy.rtic-mps2-an385]` — never here.

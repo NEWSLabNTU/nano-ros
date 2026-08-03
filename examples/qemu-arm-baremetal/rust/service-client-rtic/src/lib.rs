@@ -8,7 +8,7 @@
 //! the task structure stays alive, but only one request is ever issued (the
 //! timer retries until the first call succeeds — that doubles as discovery
 //! warm-up). The entry crate's `nros::main!()` + the RTIC board
-//! (`nros-board-rtic-mps2-an385`) own hardware/network bring-up, executor
+//! (`nros-board-mps2-an385`) own hardware/network bring-up, executor
 //! open, RMW registration, and the RTIC dispatch loop. Locator/domain live in
 //! the entry's `[package.metadata.nros.deploy.rtic-mps2-an385]` — never here.
 

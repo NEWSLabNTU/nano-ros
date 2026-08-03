@@ -6,7 +6,7 @@
 //! feedback/result callbacks land via `on_callback` once codegen wires the
 //! result-future + feedback-stream + `GoalStatusArray` subscribers through to
 //! dispatch. The entry crate's `nros::main!()` + the RTIC board
-//! (`nros-board-rtic-mps2-an385`) own hardware/network bring-up, executor open,
+//! (`nros-board-mps2-an385`) own hardware/network bring-up, executor open,
 //! RMW registration, and the RTIC dispatch loop. Locator/domain live in the
 //! entry's `[package.metadata.nros.deploy.rtic-mps2-an385]` — never here.
 

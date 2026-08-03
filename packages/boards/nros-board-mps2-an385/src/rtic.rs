@@ -1,17 +1,23 @@
-//! RTIC board-entry support for QEMU MPS2-AN385.
+//! RTIC board-entry surface for QEMU MPS2-AN385 — the `rtic` feature.
 //!
-//! This crate exists so Phase 216.B can be validated end-to-end in an
-//! emulator. It reuses the direct-exec `nros-board-mps2-an385` hardware
-//! bringup, then adds the framework-owned RTIC entry surface and deferred
-//! callback SPSC queue expected by `nros::main!()`.
-
-#![no_std]
+//! phase-337 W6.a folded `nros-board-rtic-mps2-an385` in here. That crate was
+//! never independent: it depended on this one and called its `init_hardware` /
+//! `exit_success` / `exit_failure` / `enable_wfi_idle`, so all it added was the
+//! framework-owned entry surface — the deferred-callback SPSC queue, the
+//! [`RticBoardEntry`] impl, and the CMSDK TIMER0 tick. What it *also* carried
+//! was a second board `Config` builder and a second `mask_to_prefix`, which
+//! drifted from this crate's (see [`crate::Config::qemu_slirp`]).
+//!
+//! The [`RticMps2An385`] ZST stays a distinct type from [`crate::Mps2An385`]:
+//! they are two entry shapes on one board (RTIC owns its own reset vector and
+//! dispatch; direct-exec spins inline), and `board_path_for("rtic-mps2-an385")`
+//! names this one.
 
 use core::{
     fmt::Arguments,
     sync::atomic::{AtomicBool, Ordering},
 };
-// Only the synthetic-callback E2E path uses these.
+// Only the synthetic-callback E2E path uses this.
 #[cfg(feature = "e2e-synthetic-callback")]
 use core::mem::MaybeUninit;
 
@@ -19,12 +25,11 @@ use heapless::spsc::{Consumer, Producer, Queue};
 #[cfg(feature = "e2e-synthetic-callback")]
 use nros::PublisherResolver;
 use nros_platform::{
-    BoardExit, BoardInit, BoardPrint, DispatchStrategy, NodeDispatchRuntime, RticBoardEntry,
-    SignaledCallback,
+    BoardExit, BoardInit, BoardPrint, DeployOverlay, DispatchStrategy, NodeDispatchRuntime,
+    RticBoardEntry, SignaledCallback,
 };
 
-pub use cortex_m_rt::entry;
-pub use nros_board_mps2_an385;
+use crate::Config;
 
 pub const QUEUE_CAPACITY: usize = 32;
 
@@ -142,53 +147,25 @@ impl BoardPrint for RticMps2An385 {
 
 impl BoardExit for RticMps2An385 {
     fn exit_success() -> ! {
-        nros_board_mps2_an385::exit_success()
+        crate::exit_success()
     }
 
     fn exit_failure() -> ! {
-        nros_board_mps2_an385::exit_failure()
-    }
-}
-
-fn parse_decimal_u32(s: &str) -> Option<u32> {
-    let mut result = 0u32;
-    let mut any = false;
-    for b in s.as_bytes() {
-        match b {
-            b'0'..=b'9' => {
-                result = result.checked_mul(10)?.checked_add((*b - b'0') as u32)?;
-                any = true;
-            }
-            _ => return None,
-        }
-    }
-    any.then_some(result)
-}
-
-fn qemu_config() -> nros_board_mps2_an385::Config {
-    let locator = option_env!("NROS_LOCATOR").unwrap_or("tcp/10.0.2.2:7450");
-    let domain_id = option_env!("NROS_DOMAIN_ID")
-        .and_then(parse_decimal_u32)
-        .unwrap_or(0);
-    nros_board_mps2_an385::Config {
-        mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
-        ip: [10, 0, 2, 10],
-        prefix: 24,
-        gateway: [10, 0, 2, 2],
-        zenoh_locator: locator,
-        domain_id,
+        crate::exit_failure()
     }
 }
 
 /// Phase 244.D1 — overlay a `[package.metadata.nros.deploy.rtic-mps2-an385]`
-/// block onto [`qemu_config`], so each RTIC Entry pkg can pin its own
+/// block onto [`Config::qemu_slirp`], so each RTIC Entry pkg can pin its own
 /// ip / locator / gateway (required when the talker-rtic + listener-rtic
 /// pub/sub pair share this board on one QEMU network). `None` fields keep the
 /// baked default.
-fn qemu_config_with_overlay(
-    deploy: &nros_platform::DeployOverlay,
-) -> nros_board_mps2_an385::Config {
-    let mut config = qemu_config();
+///
+/// phase-337 W6.a — the netmask→prefix step was a hand-rolled popcount here
+/// AND in [`crate::entry`]; both now call
+/// [`nros_board_common::prefix_from_netmask`].
+fn config_with_overlay(deploy: &DeployOverlay) -> Config {
+    let mut config = Config::qemu_slirp();
     if let Some(locator) = deploy.locator {
         config.zenoh_locator = locator;
     }
@@ -199,7 +176,7 @@ fn qemu_config_with_overlay(
         config.gateway = gateway;
     }
     if let Some(netmask) = deploy.netmask {
-        config.prefix = netmask.iter().map(|b| b.count_ones() as u8).sum();
+        config.prefix = nros_board_common::prefix_from_netmask(netmask);
     }
     if let Some(domain_id) = deploy.domain_id {
         config.domain_id = domain_id;
@@ -226,18 +203,15 @@ pub struct RticBoot {
 /// the no-deploy code path.  Issue #98 / RFC-0045 — node name comes from
 /// `deploy.boot_config` (the baked `.nros_boot_config`), falling back to the
 /// board-historical default `"nros-rtic-mps2"`.
-fn init_with_config(
-    config: nros_board_mps2_an385::Config,
-    deploy: Option<&nros_platform::DeployOverlay>,
-) -> (RticBoot, RticRuntime) {
-    nros_board_mps2_an385::init_hardware(&config);
+fn init_with_config(config: Config, deploy: Option<&DeployOverlay>) -> (RticBoot, RticRuntime) {
+    crate::init_hardware(&config);
 
     // Phase 289 (#191 class) — install the agnostic `nros_log` dispatcher so
     // the Node pkgs' `nros_info!` marker lines (`Publishing:` / `I heard:`)
-    // reach the semihosting console. The direct-exec board does this in its
-    // `BoardEntry` boot (`nros-board-mps2-an385/src/entry.rs`); the RTIC
-    // entry never did — nodes registered their `Logger` against an
-    // uninitialized dispatcher and every record was silently dropped.
+    // reach the semihosting console. The direct-exec entry does this in its
+    // `BoardEntry` boot (`crate::entry`); the RTIC entry never did — nodes
+    // registered their `Logger` against an uninitialized dispatcher and every
+    // record was silently dropped.
     nros_log::init(nros_log::sinks::default());
 
     // Phase 289 (#178 layer 3) — arm CMSDK TIMER0 as the periodic tick that
@@ -256,7 +230,7 @@ fn init_with_config(
     match nros_rmw_zenoh::register() {
         Ok(()) => {}
         Err(_) => {
-            nros_board_mps2_an385::exit_failure();
+            crate::exit_failure();
         }
     }
 
@@ -311,7 +285,7 @@ const TICK_RELOAD: u32 = 25_000;
 fn arm_tick_timer() {
     // SAFETY: CMSDK TIMER0 MMIO, single-core, called once during `#[init]`
     // before any task runs; same raw-MMIO discipline as the UART/LAN9118
-    // bring-up in `nros-board-mps2-an385`.
+    // bring-up in `crate::node`.
     unsafe {
         core::ptr::write_volatile((CMSDK_TIMER0_BASE + TIMER_RELOAD) as *mut u32, TICK_RELOAD);
         core::ptr::write_volatile(
@@ -338,15 +312,15 @@ impl RticBoardEntry for RticMps2An385 {
     const DISPATCHERS: &'static [&'static str] = &["UARTRX0", "UARTTX0"];
 
     fn init_hardware(_device: Self::Pac, _core: Self::Core) -> (Self::Boot, Self::Runtime) {
-        init_with_config(qemu_config(), None)
+        init_with_config(Config::qemu_slirp(), None)
     }
 
     fn init_hardware_with_deploy(
         _device: Self::Pac,
         _core: Self::Core,
-        deploy: &nros_platform::DeployOverlay,
+        deploy: &DeployOverlay,
     ) -> (Self::Boot, Self::Runtime) {
-        init_with_config(qemu_config_with_overlay(deploy), Some(deploy))
+        init_with_config(config_with_overlay(deploy), Some(deploy))
     }
 
     /// #178 — the blocking executor open, called from the RTIC run task.
@@ -356,7 +330,7 @@ impl RticBoardEntry for RticMps2An385 {
             .node_name(boot.node_name);
         match ::nros::Executor::open(&exec_config) {
             Ok(e) => e,
-            Err(_) => nros_board_mps2_an385::exit_failure(),
+            Err(_) => crate::exit_failure(),
         }
     }
 
@@ -373,7 +347,7 @@ impl RticBoardEntry for RticMps2An385 {
     /// never delivers the handshake packets (#178 layer 2).
     fn on_interrupts_live() {
         #[cfg(feature = "ethernet")]
-        nros_board_mps2_an385::enable_wfi_idle();
+        crate::enable_wfi_idle();
     }
 }
 
@@ -410,7 +384,10 @@ fn enqueue_e2e_callback(runtime: &mut RticRuntime) {
 
 pub mod prelude {
     pub use crate::{
-        RticMps2An385, RticRuntime, SignaledCallbackEnvelope, entry, take_dispatch_consumer,
-        take_dispatch_queue,
+        entry,
+        rtic::{
+            RticMps2An385, RticRuntime, SignaledCallbackEnvelope, take_dispatch_consumer,
+            take_dispatch_queue,
+        },
     };
 }

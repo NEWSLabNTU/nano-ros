@@ -28,7 +28,7 @@ default_namespace = "/"
 dispatch = "deferred"
 
 # Phase 244.D1 — this example's own net, overlaid onto the board's baked
-# qemu_config by `RticBoardEntry::init_hardware_with_deploy`. talker and
+# `Config::qemu_slirp` by `RticBoardEntry::init_hardware_with_deploy`. talker and
 # listener must NOT share an ip on the QEMU network.
 [package.metadata.nros.deploy.rtic-mps2-an385]
 locator = "tcp/10.0.2.2:10200"
@@ -41,7 +41,9 @@ netmask = "255.255.255.0"
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # RTIC board entry: brings up hardware + network, opens the executor, builds
 # the RTIC dispatch runtime consumed by the generated `#[rtic::app]`.
-nros-board-rtic-mps2-an385 = { version = "*" }
+# phase-337 W6.a — the RTIC entry surface is the base board crate's `rtic`
+# feature; `nros-board-rtic-mps2-an385` no longer exists.
+nros-board-mps2-an385 = { version = "*", features = ["rtic"] }
 # Linked RMW backend (registered by the board boot scaffold).
 nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the

@@ -664,7 +664,7 @@ numbers measured 2026-08-04.
 | 4 | `nros-board-nuttx-qemu` | 1 / 2 | ARMv7-A · riscv32 | **DONE** (phase-337 W3) — merge of `-qemu-arm` + `-qemu-riscv`: 3350 → 2054 lines (−1296, −39 %), two `[[board]]` witnesses in one descriptor, `Config` on `BaseConfig` |
 | 5 | `nros-board-threadx-linux` | 1 | x86_64, NSOS shim | thins to overlay |
 | 6 | `nros-board-threadx-qemu-riscv64` | 2 | riscv64, real NetX Duo | thins to overlay |
-| 7 | `nros-board-mps2-an385` | 2 | bare-metal floor | absorbs `rtic-mps2-an385` as a feature (W1.d) |
+| 7 | `nros-board-mps2-an385` | 2 | bare-metal floor | **DONE** (phase-337 W6.a) — absorbed `rtic-mps2-an385` as the `rtic` feature |
 | 8 | `nros-board-esp32-qemu` | 2 | Xtensa, vendor SDK | unchanged |
 | 9–16 | infra: `common`, `cffi`, `freertos`, `nuttx`, `threadx`, **`threadx-port-riscv64`** (NEW, layer 2), `mps2-an385-pac`, descriptors | — | — | `bare-metal` deleted (W1.h) |
 

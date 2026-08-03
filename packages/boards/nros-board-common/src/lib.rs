@@ -44,7 +44,7 @@ pub use threadx_config::ThreadxConfig;
 // twelve board `Config` structs re-declare. ADDITIVE: no board adopts it yet;
 // each board wave migrates its own `Config` as that wave's first step.
 pub mod base_config;
-pub use base_config::BaseConfig;
+pub use base_config::{BaseConfig, netmask_from_prefix, prefix_from_netmask};
 
 #[cfg(feature = "build-helpers")]
 pub mod arch_flags;

@@ -53,6 +53,30 @@ suffix — this is the bare-metal variant) which provides:
 - LAN9118 driver for smoltcp
 - `BoardIdle::wfi()` for cooperative wait
 
+### Direct-exec or RTIC — one crate, two entry shapes
+
+The same crate serves both bare-metal entry models; you pick with a
+Cargo feature, not a different board crate:
+
+| Entry pkg wants | `deploy =` | board dep |
+|---|---|---|
+| direct-exec (inline spin loop) | `"qemu-mps2-an385"` | `nros-board-mps2-an385 = { version = "*", features = ["board-entry"] }` |
+| RTIC (framework-owned `#[rtic::app]`, deferred dispatch) | `"rtic-mps2-an385"` | `nros-board-mps2-an385 = { version = "*", features = ["rtic"] }` |
+
+The RTIC surface used to be a separate `nros-board-rtic-mps2-an385`
+crate; phase-337 W6.a folded it in, because it depended on this crate
+and re-declared its `Config` — the two copies had drifted to different
+default IPs, which nothing catches until a node fails to reach the
+router.
+
+Which network the defaults describe is now explicit rather than
+implied. `Config::default()` is the bridge plan (`192.0.3.10/24`,
+gateway `192.0.3.1`); `Config::qemu_slirp()` is QEMU's user-mode NAT
+(`10.0.2.10/24`, gateway `10.0.2.2`) and is what the RTIC entry boots
+from. Either way, an Entry pkg that sets `ip`/`gateway`/`locator` in
+its `[package.metadata.nros.deploy.<board>]` block overrides the
+default — which every in-tree example does, and which you should too.
+
 ## Configure
 
 Deploy config lives in the app's `Cargo.toml` and is baked at compile

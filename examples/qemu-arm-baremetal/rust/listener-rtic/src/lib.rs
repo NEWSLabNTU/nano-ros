@@ -4,7 +4,7 @@
 //! subscription on `/chatter` bound to the `on_message` callback; each typed
 //! `std_msgs/String` delivery logs `I heard: [Hello World: N]`. The boot scaffold
 //! (reset → RTIC `#[init]` → `RticBoardEntry::init_hardware_with_deploy` →
-//! executor → spin) is owned by `nros::main!()` + `nros-board-rtic-mps2-an385`
+//! executor → spin) is owned by `nros::main!()` + `nros-board-mps2-an385`
 //! (Phase 244.D1 enabler) — none of it appears here. The old hand-written
 //! `#[rtic::app]` (Config, RMW register, `net_poll` + `listen` tasks, manual
 //! `try_recv` loop) folds into the boot scaffold; only the declarative node

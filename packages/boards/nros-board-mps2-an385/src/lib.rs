@@ -38,6 +38,11 @@ mod entry;
 #[cfg(feature = "ethernet")]
 pub mod network;
 mod node;
+// phase-337 W6.a — the RTIC entry surface, formerly the separate
+// `nros-board-rtic-mps2-an385` crate. Behind a feature so the direct-exec
+// consumers don't pull heapless / the PAC / the `nros` umbrella.
+#[cfg(feature = "rtic")]
+pub mod rtic;
 // Phase 207.2 — XRCE custom-transport callbacks bound to the CMSDK UART0.
 // Off by default; opt in via `features = ["xrce-transport"]` from an XRCE
 // example (forwards through to `serial`).
@@ -72,6 +77,16 @@ pub use config::Config;
 pub use node::{Mps2An385, init_hardware, run_bare};
 pub use nros_platform::BoardConfig;
 pub use nros_platform_mps2_an385::timing::{CycleCounter, MonotonicClock};
+
+// phase-337 W6.a — the folded RTIC surface at the crate root, so
+// `board_path_for("rtic-mps2-an385")` and the proc-macro's
+// `take_dispatch_consumer` path stay one segment deep (they were
+// `::nros_board_rtic_mps2_an385::{RticMps2An385, take_dispatch_consumer}`).
+#[cfg(feature = "rtic")]
+pub use rtic::{
+    QUEUE_CAPACITY, RticBoot, RticMps2An385, RticRuntime, SignaledCallbackEnvelope,
+    take_dispatch_consumer, take_dispatch_queue,
+};
 
 // Phase 127.D — re-export nros-smoltcp so RTIC examples can read the
 // poll/RX diagnostic counters without adding a direct dep.

@@ -2891,7 +2891,9 @@ fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
         "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => (
             "mps2_an385_pac",
             &["UARTRX0", "UARTTX0"][..],
-            "::nros_board_rtic_mps2_an385::take_dispatch_consumer",
+            // phase-337 W6.a — folded into `nros-board-mps2-an385`'s `rtic`
+            // feature, which re-exports the queue accessors at the crate root.
+            "::nros_board_mps2_an385::take_dispatch_consumer",
             Some("TIMER0"),
         ),
         _ => return None,

@@ -112,13 +112,7 @@ matrix_platform = "QemuBaremetal"
 nightly_token = "qemu"
 tier = 2
 maintainers = []
-
-[[board]]
-crate = "nros-board-rtic-mps2-an385"
-matrix_platform = "QemuBaremetal"
-nightly_token = "qemu"
-tier = 2
-maintainers = []
+notes = "phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` feature — one crate, two entry shapes (direct-exec + RTIC), one witness row."
 
 [[board]]
 crate = "nros-board-esp32-qemu"

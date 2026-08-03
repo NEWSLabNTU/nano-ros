@@ -28,7 +28,7 @@ default_namespace = "/"
 dispatch = "deferred"
 
 # Phase 244.D1 — per-example net overlay applied onto the board's baked
-# `qemu_config`. This listener must NOT share its ip with the talker on the
+# `Config::qemu_slirp`. This listener must NOT share its ip with the talker on the
 # QEMU slirp net (carried over verbatim from the old hand-written `Config`).
 [package.metadata.nros.deploy.rtic-mps2-an385]
 locator = "tcp/10.0.2.2:10510"
@@ -45,7 +45,9 @@ std_msgs = { path = "generated/std_msgs", default-features = false }
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "ffi-sync"] }
 
 # RTIC board Entry (RticBoardEntry) — owns the `#[rtic::app]` boot scaffold.
-nros-board-rtic-mps2-an385 = { version = "*" }
+# phase-337 W6.a — the RTIC entry surface is the base board crate's `rtic`
+# feature; `nros-board-rtic-mps2-an385` no longer exists.
+nros-board-mps2-an385 = { version = "*", features = ["rtic"] }
 
 # RMW backend (zenoh-pico) linked + registered by the board Entry.
 nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
