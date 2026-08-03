@@ -68,7 +68,8 @@ The 11 dim-carrying models are the *migration risk*; the other 109 are the
 *migration work*. Both have to move — every one of them is a derived artifact
 committed under `src/`.
 
-- [ ] **W2.a** Round-trip W1.c across the 11 dim-carrying models: the nine
+- [x] **W2.a** (superseded by W2.b's 121-model sweep, which covered all 11 —
+      see the status note below) Round-trip W1.c across the 11 dim-carrying models: the nine
       `ws-realtime-*` workspaces plus the two `orchestration_tiers_{native,
       freertos}` test fixtures. `scripts/model-dims-baseline.txt` is the oracle.
 - [x] **W2.b** Round-trip the remaining models — **DONE (2026-08-02).** All
@@ -125,7 +126,10 @@ committed under `src/`.
 **W2.a is complete at 11/11.** The sweep regenerated every dim-carrying model;
 the four non-identical diffs touch `target:`/`sha256`/comments/`inputs` only —
 no `execution.tiers` line moved in any of them.
-- [ ] **W2.c** Any dim that cannot round-trip is a W1 schema gap, not an
+- [x] **W2.c** (all gaps recorded, none special-cased: `[[model]]` declarations
+      for arg-bound variants, `[[component]] params`/`params_files` in the
+      resolver fork — shipped in the rlm tags — and `ws-sizing`'s legacy
+      `structure.topics` classified inert, see W4.a) Any dim that cannot round-trip is a W1 schema gap, not an
       exception to grant. Record it; do not special-case it.
 
 **W2.a status (2026-08-02): 11 of 11 — see W2.b's sweep, which supersedes this.**
@@ -440,8 +444,16 @@ actually move — editing it now would describe a state the tree is not in.
 > moving model generation moves fixture build wall-clock, and W5's delta would
 > then mix two causes.
 
-- [ ] **W4.a — BLOCKED. Re-measured 2026-08-03 against the post-phase-331
-      layout; do not delete yet.** The census is now **111 models / 55
+- [x] **W4.a — EXECUTED 2026-08-03 (`c6535536e`): all 112 tracked models
+      `git rm`'d, regeneration verified for both the workspace and standalone
+      classes, `check-no-tracked-models` gates the ban.** The blockers below
+      resolved first: the SYNCFAIL class closed as issue 0392 (fixed
+      2026-08-02), the resolver-side gaps shipped in the rlm/resolver fork
+      tags (consumed at v0.1.4), and the known-stale committed-copy diffs
+      (`scope`, issue-0356 `target`) died with the committed copies. The
+      measurement record below is kept as the evidence trail.
+      ~~BLOCKED. Re-measured 2026-08-03 against the post-phase-331
+      layout; do not delete yet.~~ The census is now **111 models / 55
       bringups** (was 120/76 — phase-331 deleted 15 themed workspaces). A fresh
       dry run (move `config/` aside, regenerate from inputs, compare parsed
       YAML, restore) gives:
@@ -709,21 +721,36 @@ completed:
 
 ### W6 — Documentation
 
-- [ ] **W6.a** Book: where the model lands, how to read it, that it is output.
-- [ ] **W6.b** CLAUDE.md: the model line currently implies a committed file.
-- [ ] **W6.c** Mark RFC-0063 `Stable` and close issue 0380.
+- [x] **W6.a** (2026-08-03 — workspace-bringup, workspace-entry-pkg,
+      workspace-cpp, component-and-entry-pkg pages carry the `launch =` /
+      `BRINGUP`+`LAUNCH` spellings and the build/nros/models location) Book: where the model lands, how to read it, that it is output.
+- [x] **W6.b** (2026-08-03 — CLAUDE.md bullet rewritten to the build-artifact
+      rule) CLAUDE.md: the model line currently implies a committed file.
+- [x] **W6.c** (2026-08-03 — RFC-0063 `Stable`; issue 0380 resolved +
+      archived) Mark RFC-0063 `Stable` and close issue 0380.
 
 ## Acceptance
 
-- [ ] No tracked `*/config/*model.yaml` remains (120 today).
-- [ ] A clean checkout builds every `ws-realtime-*` workspace and the generated
+- [x] No tracked `*/config/*model.yaml` remains (112 at deletion time;
+      `check-no-tracked-models` in check-fast enforces it).
+- [ ] A clean checkout builds every realtime workspace (post-331 names:
+      `realtime-{rust,c,cpp,cpp-subnode-portable}`) and the generated
       models carry all 86 dims (`nros ws model-dims` against the retired
-      baseline as the oracle).
-- [ ] Deleting a build directory and rebuilding reproduces byte-identical
-      models — the property that makes it a cache.
+      baseline as the oracle). *Pending: the tier-2 validation round.*
+- [ ] Deleting a build directory and rebuilding reproduces **semantically
+      identical** models (parsed-YAML compare — the W4.a dry run's oracle;
+      byte-identity against the *committed* copies was impossible by
+      construction: stale `scope`, issue-0356 `target`). A
+      rebuild-vs-rebuild byte check has not been run; semantic identity is
+      the property the cache actually needs.
 - [ ] The realtime e2e family (the ~17 tests that lost their subject in 0380)
-      passes against generated models.
-- [ ] A copied-out standalone example still builds (W3.c).
+      passes against generated models. *Pending: the tier-2 validation round
+      (fixture build fully green in round 24; ci-matrix reached its final
+      check stage).*
+- [x] A copied-out standalone example still builds (W3.c) — the esp32 /
+      freertos / native standalone families built green in the round-24
+      fixture sweep, and the compile-check forms (W7.g) cover the
+      `launch =` spellings.
 
 ## Risks
 
