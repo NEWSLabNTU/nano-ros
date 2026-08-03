@@ -51,7 +51,15 @@ case "$_nros_box_root" in
 esac
 
 export NROS_HOME="${NROS_HOME:-$HOME/.nros-box}"
-export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target-box}"
+# Beside the CHECKOUT, not in $HOME. A second full target tree is tens of GB
+# (40 GB when this bit here), and $HOME is commonly on a small root filesystem
+# while the checkout sits on a big data disk — which is exactly how this box
+# filled a 235 GB root to 0 bytes and killed a tier run with
+# `No space left on device`, in a lane that had nothing to do with disk.
+# Keeping it next to the repo puts the box's build tree on the same filesystem
+# that already holds the host's `target/`, so whoever sized that disk sized
+# this too. Override CARGO_TARGET_DIR to move it elsewhere.
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(cd -P "$_nros_box_root/.." && pwd -P)/.cargo-target-box}"
 export CARGO_INSTALL_ROOT="${CARGO_INSTALL_ROOT:-$HOME/.local-box}"
 
 cd "$_nros_box_root" || return 1
