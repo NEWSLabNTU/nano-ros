@@ -809,18 +809,12 @@ check-msg-dep-is-path:
 check-nested-workspace-excludes:
     @bash scripts/check-nested-workspace-excludes.sh
 
-# issue 0380 — a committed SystemModel must not silently LOSE `execution.tiers`
-# dims. They are hand-authored (the resolver's inputs cannot express them), so
-# regeneration DELETES them: that happened twice and surfaced a QEMU tier later
-# as ~17 realtime e2e tests reporting the fail-loud violation they exist to
-# catch. `nros sync` now refuses to shrink a model; this catches a strip by any
-# other means, at check-fast speed. Buildless (reads YAML via the CLI).
-[private]
 # phase-330 W7.e — committed SystemModels are BANNED: the model is a build
 # artifact (generated into <ws>/build/nros/models by `nros sync`); tracking
 # one re-opens the issue-0380 hand-edit/regeneration conflict. Supersedes
 # check-model-dims (W5.b: the dim baseline protected committed files that no
 # longer exist; `nros ws model-dims` remains for inspection).
+[private]
 check-no-tracked-models:
     @bash scripts/check-no-tracked-models.sh
 
