@@ -805,6 +805,7 @@ pub fn example_bin_rmw(name: &str, edition: &str, rmw: Rmw) -> std::path::PathBu
         .join("examples/native/rust")
         .join(name)
         .join(format!(
+            // profile-literal-ok: unprofiled: ros-edition fixtures are built with a plain `cargo build`
             "target-ros-edition-{edition}-{}/debug/{name}",
             rmw.as_str()
         ))

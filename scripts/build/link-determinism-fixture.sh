@@ -38,6 +38,7 @@ mkdir -p "$out_dir"
 # machine image. Issue 0400 is the same class in the justfile recipes.
 target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
 case "$target_dir" in /*) ;; *) target_dir="$repo_root/$target_dir" ;; esac
+# profile-literal-ok: unprofiled: the determinism fixture builds with a plain `cargo build`
 built="$target_dir/debug/libnros_c.a"
 [ -f "$built" ] || { echo "no archive at $built (CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-unset})" >&2; exit 1; }
 cp "$built" "$out_dir/"

@@ -229,6 +229,7 @@ build_in_tree_cli() {
         return 1
     fi
     run_cmd "building in-tree nros CLI (packages/cli/)" \
+        # profile-literal-ok: host tool: builds the CLI before any profile machinery exists
         cargo build --release --manifest-path "${REPO_ROOT}/packages/cli/Cargo.toml" --bin nros \
         || return 0
     export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"

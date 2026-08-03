@@ -147,6 +147,7 @@ stage_and_build() {
     # default `demo_entry` (O.3 builds `posix_entry`).
     ( cd "$staged" && cargo build -p "$pkg" --manifest-path "$manifest_dir/Cargo.toml" )
     date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
+    # profile-literal-ok: dir vocabulary: echoes the manifest's target-directory name
     echo "   built $staged/$manifest_dir/target/debug/$pkg"
 }
 
@@ -229,6 +230,7 @@ stage_and_cross_build() {
     local profile
     for profile in ${profiles//,/ }; do
         local profile_flag=()
+        # profile-literal-ok: dir vocabulary: `profile` here is a manifest target-directory name
         [ "$profile" = "release" ] && profile_flag=(--release)
         echo "   -- profile: $profile"
         ( cd "$staged/$subdir" \

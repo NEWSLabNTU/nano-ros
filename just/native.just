@@ -418,14 +418,33 @@ check JOBS="75%":
     fi
     echo "All examples check passed!"
 
-# Show embedded example binary sizes
+# Show embedded example binary sizes.
+#
+# phase-336 — the paths follow the profile `build-examples` actually used. They
+# were pinned to `release/` while the builder had moved to a different profile,
+# and the `|| echo "build failed"` fallback reported that as a build failure
+# rather than a wrong path: the exact silent shape this phase removes.
 size: build-examples
-    @echo ""
-    @echo "Binary sizes (release):"
-    @echo "======================="
-    @size packages/reference/stm32f4-porting/rtic/target/thumbv7em-none-eabihf/release/stm32f4-rs-rtic-example 2>/dev/null || echo "RTIC: build failed"
-    @size packages/reference/stm32f4-porting/polling/target/thumbv7em-none-eabihf/release/stm32f4-rs-polling-example 2>/dev/null || echo "Polling: build failed"
-    @size packages/testing/nros-smoke/stm32f4-smoltcp-echo/target/thumbv7em-none-eabihf/release/stm32f4-rs-smoltcp 2>/dev/null || echo "stm32f4-smoltcp-echo: build failed"
+    #!/usr/bin/env bash
+    set -e
+    # phase-336 — the paths follow the profile `build-examples` actually used.
+    # They were pinned to `release/` while the builder had moved off it, and the
+    # `|| echo "build failed"` fallback reported a wrong path as a broken build.
+    source scripts/build/cargo.sh
+    pdir="$(nros_cargo_target_profile_dir)"
+    echo ""
+    echo "Binary sizes ($pdir):"
+    echo "======================="
+    for img in \
+        "packages/reference/stm32f4-porting/rtic/target/thumbv7em-none-eabihf/$pdir/stm32f4-rs-rtic-example" \
+        "packages/reference/stm32f4-porting/polling/target/thumbv7em-none-eabihf/$pdir/stm32f4-rs-polling-example" \
+        "packages/testing/nros-smoke/stm32f4-smoltcp-echo/target/thumbv7em-none-eabihf/$pdir/stm32f4-rs-smoltcp"; do
+        if [ -f "$img" ]; then
+            size "$img"
+        else
+            echo "MISSING: $img"
+        fi
+    done
 
 # Clean native example build artifacts.
 [group("main")]
@@ -740,6 +759,11 @@ test-c-xrce verbose="":
 # performance profile by name, which is what `release` means since phase-336
 # (opt-level 3). It is not the ambient build profile, and following that would
 # make the numbers depend on how the tree happened to be configured.
+# `--release` is deliberate and stays literal: a benchmark wants the
+# performance profile BY NAME, which is what `release` means since phase-336
+# (opt-level 3). Following the ambient profile would make the numbers depend on
+# how the tree happened to be configured.
+# profile-literal-ok: benchmark: wants the performance profile by name
 bench-fairness:
     cd packages/testing/nros-bench/executor-fairness && \
         RUST_LOG=warn cargo run --release

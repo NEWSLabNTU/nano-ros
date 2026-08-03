@@ -331,6 +331,7 @@ format: format-workspace native::format format-c format-cpp format-python
 [group("main")]
 profile dir="." flags="":
     @cargo build -q -p nros-build-profile --bin nros-build-profile
+    # profile-literal-ok: unprofiled: the build PROFILER tool (phase-251), built by a plain `cargo build`
     @"{{justfile_directory()}}/target/debug/nros-build-profile" {{dir}} {{flags}}
 
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
@@ -363,7 +364,7 @@ check-fast: \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
     check-nested-workspace-excludes \
-    check-cargo-profile-mirror check-test-targets \
+    check-cargo-profile-mirror check-build-profile-literals check-test-targets \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -835,6 +836,14 @@ check-cargo-locked:
 check-cargo-profile-mirror:
     @bash scripts/check-cargo-profile-mirror.sh
 
+# phase-336 — no build site may NAME a cargo profile: the flag and the artifact
+# path both come from `nros profile`. The failure this prevents is silent (the
+# builder writes one directory, the reader looks in another), which is why it
+# is a gate and not a convention.
+[private]
+check-build-profile-literals:
+    @bash scripts/check-build-profile-literals.sh
+
 # THE sanctioned way to change a lockfile (issue 0359 / 0378).
 #
 # A lockfile exists so someone else's build resolves what yours did, so its
@@ -966,6 +975,7 @@ check-fixture-id-guard:
 # `cargo build -p nros-rmw-zenoh-staticlib --release`.
 [group("debug")]
 check-zenoh-archive:
+    # profile-literal-ok: symbol fixture: the archive built by build-zenoh-posix-fixture
     @bash scripts/check-zenoh-archive-symbols.sh target/release/libnros_rmw_zenoh_staticlib.a
 
 # Phase 104.A.4 — assert `nros` + `nros-node` Cargo deps stay free of
@@ -1581,6 +1591,7 @@ build-test-fixtures-leaves lane="all":
 # pinning both sides to one built-in profile is the stable choice.
 [group("full-matrix")]
 build-zenoh-posix-fixture:
+    # profile-literal-ok: symbol fixture: path asserted by zenoh_archive_symbols + the parity script
     cargo build --release \
         -p nros-rmw-zenoh-staticlib \
         --features platform-posix \
@@ -2106,6 +2117,7 @@ acceptance: setup-cli
     cd accept_app
     NROS_REPO_DIR="$repo" "$nros" sync
     cargo build
+    # profile-literal-ok: unprofiled: accept_app is a plain `cargo build` smoke binary
     timeout 10 target/debug/accept_app 2>&1 | grep -q "accept_app"
     echo "acceptance OK."
 
@@ -3068,6 +3080,7 @@ setup-cli:
         exit 0
     fi
     echo "[setup-cli] building nros CLI (packages/cli)…"
+    # profile-literal-ok: host tool: builds the nros CLI itself
     cargo build --release --manifest-path "$root/packages/cli/Cargo.toml" --bin nros
     # phase-302 W5 added this to stop mtime-based scans flagging the CLI stale
     # FOREVER when cargo skipped a relink. Issue 0363 removed that need — those
@@ -3119,6 +3132,7 @@ setup-launch-resolve:
     # about a HOST binary sitting at the old path — and since that binary links
     # the host's libpython, `nros sync` inside the box then died with
     # `libpython3.14.so.1.0: cannot open shared object file`. Issue 0400.
+    # profile-literal-ok: host tool: the launch resolver's own binary
     bin="${CARGO_TARGET_DIR:-$crate/target}/release/nros-launch-resolve"
     if [ ! -f "$crate/../third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
         # issue 0409 — FAIL, do not skip. This recipe's job is to produce the
@@ -3214,6 +3228,7 @@ setup-launch-resolve:
     # 22.04's 3.10, 24.04's 3.12) — no need to detect the version and no second
     # code path to keep in step. Revisit when the vendored pin moves past 0.24.
     export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+    # profile-literal-ok: host tool: builds nros-launch-resolve
     cargo build --release --manifest-path "$crate/Cargo.toml"
     touch "$bin"
     echo "[setup-launch-resolve] built: $bin"

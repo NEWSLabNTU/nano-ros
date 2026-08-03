@@ -59,6 +59,7 @@ build-fixture distro="jazzy":
         ( cd "$FIX" && "$NROS" generate-rust --force )
     fi
     ( cd "$FIX" && cargo build )
+    # profile-literal-ok: unprofiled: the docker edition fixtures build with a plain `cargo build`
     echo "build-fixture {{distro}}: $FIX/target/debug/ros-edition-pose-pub"
 
 # Build the six native example nodes (talker/listener/service-{server,client}/
@@ -99,6 +100,7 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
         ( cd "$DIR" && cargo build --no-default-features --features "$FEATURE ros-$ED" \
             --target-dir "target-ros-edition-{{distro}}-{{rmw}}" )
     done
+    # profile-literal-ok: unprofiled: same lane as above — plain `cargo build`, so debug/ IS the derived dir
     echo "build-e2e-fixtures {{distro}} {{rmw}}: 6 binaries under examples/native/rust/*/target-ros-edition-{{distro}}-{{rmw}}/debug/ (ros-$ED)"
 
 # Composite: build the edition image + run the gated harness lanes (peer smoke,

@@ -345,12 +345,14 @@ trace example="talker":
     fi
 
     # Build tband-cli if needed (before cd to trace dir)
+    # profile-literal-ok: vendored: tband-cli is built --release above, in a third-party workspace
     TBAND_CLI="third-party/tracing/Tonbandgeraet/tools/target/release/tband-cli"
     if [ ! -f "$TBAND_CLI" ]; then
         echo "Building tband-cli..."
         # Host tool from a vendored third-party workspace — outside the
         # propagation graph, and it has no nros-* profile defined. `--release`
         # stays literal here (phase-336 allow-list).
+        # profile-literal-ok: vendored: third-party workspace defines no nros-* profile
         (cd "third-party/tracing/Tonbandgeraet/tools" && cargo build --release -p tband-cli)
     fi
 

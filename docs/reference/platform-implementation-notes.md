@@ -5,6 +5,30 @@ stays a thin router. This is **reference** material (how the current impl behave
 rationale — for the *why*, see the RFCs under [docs/design/](../design/). Pitfall one-liners
 that agents need hot stay indexed in `CLAUDE.md`; the detail is here.
 
+## Build-profile constraints (phase-336)
+
+Two platforms cannot use whatever profile the build resolved. Both are named
+constants in `packages/tooling/nros-cargo-profile` (`NUTTX_RUST_PROFILE`,
+`FREERTOS_QEMU_PROFILE`, reachable from shell as `nros profile carve-out
+<name>`) so the builder and every fixture resolver read one value — when they
+were separate literals, a test looked for a binary in a directory the builder
+never wrote to (#156).
+
+- **NuttX Rust images require `lto = "fat"`.** At `lto = "off"` a
+  non-deterministic `armv7a-nuttx-eabihf` cross-CGU miscompile corrupts the std
+  `lang_start` main-closure fat pointer: the image reboots before `main` with no
+  console output. Never root-caused (phase-177.8.c; phase-285 W5 rode the same
+  dodge for nuttx-riscv).
+- **FreeRTOS QEMU (Cortex-M3) images require real optimization.** Not a
+  miscompile — a timing floor. `qemu-system-arm` emulating an M3 is slow enough
+  that a lightly-optimized zenoh-pico misses its session handshake window, and
+  the image boots but never connects. Issue #126 is the C-side face of the same
+  constraint (fixture rows pin `CMAKE_BUILD_TYPE=Release`).
+
+Both resolve to `nros-minsizerel`, which carries the settings `[profile.release]`
+had before phase-336 split size from speed — so these images are unchanged by
+that phase.
+
 ## Spin / yield
 
 `zpico_spin_once` event-driven wake:
