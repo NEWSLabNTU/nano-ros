@@ -7,11 +7,11 @@ build-std = ["std", "panic_abort"]
 build-std-features = ["compiler-builtins-mem"]
 
 # #127 — STATIC image-link args only (board-centric link convention,
-# RFC-0032 "third leg"; SSoT: nros-board-nuttx-qemu-arm/nros-board.toml
+# RFC-0032 "third leg"; SSoT: nros-board-nuttx-qemu/nros-board.toml
 # `cargo_config`). The dynamic pieces (processed dramboot.ld in the board
 # OUT_DIR, the vectortab+builtins-stub boot archive, the -L search dirs
 # for OUT_DIR / $NUTTX_DIR/staging / arch/arm/src/board) PROPAGATE from
-# `nros-board-nuttx-qemu-arm`'s build.rs. ZERO entry build.rs.
+# `nros-board-nuttx-qemu`'s build.rs. ZERO entry build.rs.
 # The cpu flags make the gcc driver pick the cortex-a7 hard-float multilib,
 # so the trailing `-lgcc` resolves the ARM intrinsics without an absolute
 # `-print-libgcc-file-name` path. `-Tdramboot.ld` is by NAME — GNU ld
@@ -60,5 +60,5 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 # invocation cwd (this example dir), not the config file. Untagged (no
 # `# nros-managed` suffix), so `nros sync` preserves it as a user key.
 libc = { path = "../../../../third-party/nuttx/libc" }
-nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm" }  # nros-managed
+nros-board-nuttx-qemu = { path = "../../../../packages/boards/nros-board-nuttx-qemu" }  # nros-managed
 nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed

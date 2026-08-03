@@ -122,6 +122,32 @@ nros_lane_modules() {
     cargo run -q -p nros-tests --bin lane-coords -- "$lane" --modules
 }
 
+# Does the RUN IN PROGRESS need fixtures for `<platform-token>`?
+#
+# Issue #405 / phase-337 W3.f. `lane-coords --modules` schedules `just <module>
+# build-fixtures`, and a module may own SEVERAL fixture platforms (`nuttx` owns
+# `nuttx` and `nuttx-riscv`; `esp32` owns `esp32` and `qemu-esp32-baremetal`).
+# Such a module has to build the ones its lane asked for and skip the ones it
+# did not — a riscv NuttX build costs an arm↔rv-virt kernel reconfigure, so
+# "always build both" is not free, and "never build the second" is issue #405.
+#
+# `NROS_FIXTURE_COORDS` is exported by `build-test-fixtures-leaves` for the tier
+# lanes and UNSET for `lane=all` / a bare `just <module> build-fixtures`. Unset
+# therefore means "no narrowing" — i.e. yes, build it — which is the same
+# reading `fixtures-build.sh` gives the variable.
+#
+# One helper rather than a `grep` open-coded per module: the second spelling is
+# how this class of bug comes back (CLAUDE.md, fix-the-class).
+nros_lane_wants_platform() {
+    local platform="${1:?usage: nros_lane_wants_platform <fixtures.toml platform token>}"
+    [ -n "${NROS_FIXTURE_COORDS:-}" ] || return 0
+    [ -s "${NROS_FIXTURE_COORDS}" ] || {
+        echo "fixture-lane: NROS_FIXTURE_COORDS=${NROS_FIXTURE_COORDS} is empty or absent" >&2
+        return 2
+    }
+    grep -q "^${platform}," "$NROS_FIXTURE_COORDS"
+}
+
 # --- the stamp -------------------------------------------------------------
 #
 # Format (line-oriented, greppable):

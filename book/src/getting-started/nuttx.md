@@ -19,7 +19,10 @@ The NuttX platform uses:
 - **zenoh-pico** -- Zenoh transport over NuttX sockets (same code path as POSIX)
 - **virtio-net** -- NuttX built-in Ethernet driver (no custom driver needed)
 
-Board crate: `nros-board-nuttx-qemu-arm` (in `packages/boards/`).
+Board crate: `nros-board-nuttx-qemu` (in `packages/boards/`) — ONE crate serves
+both QEMU NuttX boards, arm virt and rv-virt. Everything that differs between
+them is data (a defconfig, a toolchain file, a target triple); nothing in the
+Rust or C sources is arch-conditional.
 
 ### Why NuttX Is Simpler Than FreeRTOS
 
@@ -112,7 +115,10 @@ just nuttx build-riscv-c        # C example fixtures
 just nuttx build-riscv-rust     # Rust example fixtures
 ```
 
-Board crate: `nros-board-nuttx-qemu-riscv` (in `packages/boards/`).
+Board crate: `nros-board-nuttx-qemu` (in `packages/boards/`) — the same crate as
+the arm board above, selected by `deploy = "nuttx-riscv"`, which picks the
+rv-virt `[[board]]` entry of its `nros-board.toml` (riscv toolchain, riscv
+defconfig, `riscv32imac-unknown-nuttx-elf`).
 The C pub/sub pair is exercised end-to-end under
 `qemu-system-riscv32`, and Rust / C / C++ realtime-tiers workspace
 runtime lanes cover the multi-tier scheduling path on this board.
@@ -145,7 +151,7 @@ NuttX QEMU instances use the same IP scheme as other QEMU board crates:
 
 ### Board Crate
 
-The `nros-board-nuttx-qemu-arm` board crate follows the standard `Config` / `run()` pattern documented in the [Custom Board Package](../porting/custom-board.md) guide. It provides network and node configuration presets (`talker()`, `listener()`, `server()`, `client()`).
+The `nros-board-nuttx-qemu` board crate follows the standard `Config` / `run()` pattern documented in the [Custom Board Package](../porting/custom-board.md) guide. It provides network and node configuration presets (`talker()`, `listener()`, `server()`, `client()`).
 
 Unlike bare-metal and FreeRTOS board crates, there is no custom hardware
 initialization, no network stack setup, and no task creation. NuttX's kernel
@@ -156,7 +162,8 @@ before `main()` runs. Because NuttX supports Rust `std`, examples use standard
 ### NuttX Defconfig
 
 The QEMU board configuration lives in
-`packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/` and enables:
+`packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig`
+(the rv-virt one sits beside it under `riscv/`) and enables:
 
 - `CONFIG_NET` -- networking subsystem
 - `CONFIG_NET_TCP` / `CONFIG_NET_UDP` -- TCP/UDP protocols

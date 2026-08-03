@@ -213,7 +213,7 @@ steps:
 1. **Swap in the nano-ros board defconfig.** Stock NuttX
    `qemu-armv7a/nsh` ships without `CONFIG_NET=y`, virtio-net, or
    `TLS_NELEM`. The board defconfig
-   `packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig`
+   `packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig`
    already carries the full networking + TLS stack zenoh-pico
    needs; copy it to `$NUTTX_DIR/.config` and run
    `make olddefconfig`.

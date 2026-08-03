@@ -389,7 +389,7 @@ class ZephyrBoard {
 /// Phase 238 — embedded NuttX board adapter, sibling to `ZephyrBoard`.
 ///
 /// NuttX brings up `eth0` (virtio-net) during kernel boot **before** the
-/// app entry runs (see `nros-board-nuttx-qemu-arm::entry_212n` —
+/// app entry runs (see `nros-board-nuttx-qemu::entry_212n` —
 /// "NuttX brings up eth0 during kernel boot before main"), so — like the
 /// Zephyr `CONFIG_NET_CONFIG_AUTO_INIT` path — no explicit network wait is
 /// needed; the weak `nros_board_network_wait()` default no-op is correct.
@@ -463,7 +463,7 @@ class NuttxBoard {
     /// phase-281 W3 (nuttx) (RFC-0015 Model 1) — multi-tier NuttX embedded entry.
     ///
     /// Delegates to `nros_board_nuttx_run_tiers` (defined in
-    /// nros-board-nuttx-qemu-arm, compiled into the NuttX kernel image by the
+    /// nros-board-nuttx-qemu, compiled into the NuttX kernel image by the
     /// board's build.rs seam) which opens ONE RMW session on the caller's
     /// thread, spawns one `pthread` per non-boot tier (each with a **borrowed**
     /// executor sharing the session), and runs per-tier `setup` + `spin_once`

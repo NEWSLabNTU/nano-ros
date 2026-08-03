@@ -3,7 +3,7 @@
 //! Phase 225.O follow-up (known-issue #18) — the body is the SAME
 //! one-line `nros::main!(model = …)` the native / freertos / threadx /
 //! zephyr / esp32 entries use. `[package.metadata.nros.entry] deploy =
-//! "nuttx"` maps the board to `nros_board_nuttx_qemu_arm::QemuArmVirt`
+//! "nuttx"` maps the board to `nros_board_nuttx_qemu::QemuArmVirt`
 //! and (since NuttX rides `Framework::OwnedSpin`) emits a hosted
 //! `fn main()` that:
 //!   1. resolves `demo_bringup` via the workspace pkg-index,
@@ -18,7 +18,7 @@
 //!
 //! The NuttX flat-build init task calls `CONFIG_INIT_ENTRYPOINT="nsh_main"`,
 //! NOT this `fn main` directly. The board crate
-//! (`nros-board-nuttx-qemu-arm`'s `entry.rs`) exports a
+//! (`nros-board-nuttx-qemu`'s `entry.rs`) exports a
 //! `#[no_mangle] nsh_main` that runs `nsh_initialize()` (virtio FDT
 //! discovery + network bringup) and then calls the Rust `main`
 //! lang-start symbol — so the kernel reaches this `fn main()`.

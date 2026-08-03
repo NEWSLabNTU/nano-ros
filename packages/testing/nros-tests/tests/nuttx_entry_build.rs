@@ -2,7 +2,7 @@
 //!
 //! The six `examples/qemu-arm-nuttx/rust/{role}-entry` demos (each a
 //! standalone `nros::main!` Entry pkg that bakes board + zenoh RMW through
-//! the `nros-board-nuttx-qemu-arm` shim) were the last uncovered Phase 275
+//! the `nros-board-nuttx-qemu` shim) were the last uncovered Phase 275
 //! W1 slice: their standalone `[[bin]]` link used to fail on unresolved
 //! NuttX libc/syscall symbols (issue #127). The board-centric image link
 //! (RFC-0032 "third leg": dynamic link pieces propagate from the board

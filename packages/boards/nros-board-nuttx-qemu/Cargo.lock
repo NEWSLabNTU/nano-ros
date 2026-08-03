@@ -259,7 +259,9 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "libc"
-version = "0.2.183"
+version = "0.2.189"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
 name = "linux-raw-sys"
@@ -321,10 +323,11 @@ dependencies = [
  "nros",
  "nros-board-common",
  "nros-platform",
+ "nros-rmw-zenoh",
 ]
 
 [[package]]
-name = "nros-board-nuttx-qemu-riscv"
+name = "nros-board-nuttx-qemu"
 version = "0.4.0"
 dependencies = [
  "nros-board-common",
@@ -333,34 +336,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-build-helpers"
-version = "0.5.0"
-dependencies = [
- "cbindgen",
- "cc",
- "nros-cc-flags",
- "nros-sizes-build",
-]
-
-[[package]]
 name = "nros-build-paths"
 version = "0.5.0"
-
-[[package]]
-name = "nros-c"
-version = "0.5.0"
-dependencies = [
- "nros",
- "nros-build-helpers",
- "nros-core",
- "nros-log",
- "nros-node",
- "nros-platform",
- "nros-rmw",
- "nros-rmw-zenoh",
- "paste",
- "portable-atomic",
-]
 
 [[package]]
 name = "nros-cc-flags"
@@ -376,20 +353,6 @@ dependencies = [
  "heapless",
  "log",
  "nros-serdes",
-]
-
-[[package]]
-name = "nros-cpp"
-version = "0.5.0"
-dependencies = [
- "nros",
- "nros-build-helpers",
- "nros-c",
- "nros-log",
- "nros-node",
- "nros-platform",
- "nros-rmw",
- "nros-rmw-zenoh",
 ]
 
 [[package]]
@@ -440,17 +403,6 @@ dependencies = [
  "nros-serdes",
  "portable-atomic",
  "portable-atomic-util",
-]
-
-[[package]]
-name = "nros-nuttx-riscv-ffi"
-version = "0.4.0"
-dependencies = [
- "nros-board-common",
- "nros-board-nuttx-qemu-riscv",
- "nros-c",
- "nros-cpp",
- "nros-rmw-zenoh",
 ]
 
 [[package]]
@@ -546,14 +498,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-sizes-build"
-version = "0.5.0"
-dependencies = [
- "object",
- "serde_json",
-]
-
-[[package]]
 name = "nros-smoltcp"
 version = "0.5.0"
 dependencies = [
@@ -572,15 +516,6 @@ dependencies = [
  "nros-build-paths",
  "nros-cc-flags",
  "pkg-config",
-]
-
-[[package]]
-name = "object"
-version = "0.39.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b"
-dependencies = [
- "memchr",
 ]
 
 [[package]]

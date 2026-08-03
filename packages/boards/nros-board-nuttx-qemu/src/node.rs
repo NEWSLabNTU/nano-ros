@@ -1,4 +1,4 @@
-//! Platform entry point for NuttX QEMU ARM virt.
+//! Board hardware init for the NuttX QEMU boards (arm virt + rv-virt).
 //!
 //! NuttX is POSIX-compatible with `std` support, so this is much simpler than
 //! bare-metal board crates. NuttX boots the kernel, initializes hardware
@@ -12,9 +12,9 @@ use crate::config::Config;
 /// On NuttX, the kernel handles most hardware and network initialization
 /// before `main()` runs (NETINIT_IPADDR baked into the kernel
 /// defconfig). This function:
-///   * re-seeds `/dev/urandom` from `config.ip` so two QEMU instances
+///   * re-seeds `/dev/urandom` from `Config::ip()` so two QEMU instances
 ///     don't collide on Zenoh ZID / DDS GUID prefix;
-///   * pushes `config.ip` into the live `eth0` interface via
+///   * pushes `Config::ip()` into the live `eth0` interface via
 ///     `SIOCSIFADDR` so each instance overrides the kernel-baked IP
 ///     (otherwise both default to 10.0.2.30 from defconfig and DDS
 ///     SPDP source-IP collides; Phase 97.4.nuttx).
@@ -27,7 +27,7 @@ pub fn init_hardware(config: &Config) {
     {
         use std::io::Write;
         if let Ok(mut f) = std::fs::OpenOptions::new().write(true).open("/dev/urandom") {
-            let _ = f.write_all(&config.ip);
+            let _ = f.write_all(&config.ip());
         }
     }
 
@@ -92,7 +92,7 @@ fn apply_ip_config(config: &Config) {
         ifr_addr: sockaddr_in {
             sin_family: AF_INET as u16,
             sin_port: 0,
-            sin_addr: pack(config.ip),
+            sin_addr: pack(config.ip()),
             sin_zero: [0; 8],
         },
     };
@@ -101,7 +101,7 @@ fn apply_ip_config(config: &Config) {
     }
 
     let mask = {
-        let bits = config.prefix.min(32);
+        let bits = config.prefix().min(32);
         if bits == 0 {
             0
         } else if bits == 32 {
@@ -116,7 +116,7 @@ fn apply_ip_config(config: &Config) {
         ioctl(fd, SIOCSIFNETMASK, &mut req);
     }
 
-    req.ifr_addr.sin_addr = pack(config.gateway);
+    req.ifr_addr.sin_addr = pack(config.gateway());
     unsafe {
         ioctl(fd, SIOCSIFDSTADDR, &mut req);
     }
@@ -128,6 +128,6 @@ fn apply_ip_config(config: &Config) {
 
 // Phase 313 W-nuttx (#0243) — the legacy free `run(Config, closure)` (a session
 // opener over the retired `nros_board_common::board_init` traits) is GONE. The
-// live entry is `<QemuArmVirt as nros_platform::board::BoardEntry>::run`
+// live entry is `<NuttxQemu as nros_platform::board::BoardEntry>::run`
 // (entry_212n.rs), used by `nros::main!`; NuttX dispatches the logging/init-only
 // fixtures' plain `fn main` directly via `nsh_main`, so they need no board entry.

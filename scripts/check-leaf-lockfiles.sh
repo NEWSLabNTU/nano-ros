@@ -18,7 +18,7 @@
 # WHY A BASELINE RATHER THAN A HARD FAIL
 #
 # 27 leaves are drifted today and cannot be fixed by regenerating: the manifests
-# GREW, so `nros-board-nuttx-qemu-arm` alone comes back with 86 packages added
+# GREW, so `nros-board-nuttx-qemu` alone comes back with 86 packages added
 # and 0 removed. Regenerating pins 86 registry crates at whatever resolves that
 # minute, on embedded targets — a supply-chain decision, not a cleanup, and
 # deliberately out of scope here (see 0359 for the pinning options).

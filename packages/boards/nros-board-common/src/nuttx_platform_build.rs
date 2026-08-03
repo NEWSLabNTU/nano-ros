@@ -1,7 +1,7 @@
 //! 194.3c.2 — shared NuttX platform-lib build (the C platform port:
 //! `nros-platform-posix/src/{platform.c,net.c}` compiled against the board's
 //! NuttX export). This was per-board, arm-hardcoded in
-//! `nros-board-nuttx-qemu-arm/build.rs` (compiler `arm-none-eabi-gcc`, cflags
+//! `nros-board-nuttx-qemu/build.rs` (compiler `arm-none-eabi-gcc`, cflags
 //! `-mcpu=cortex-a7 …`, includes `arch/arm/src/{chip,common,armv7-a}`). Hoisted
 //! here and parameterized so a new-arch NuttX board (riscv) reuses it with its
 //! own `NUTTX_*` env. Defaults reproduce the arm build byte-for-byte.
@@ -52,7 +52,7 @@ pub fn run_platform() {
     // Emit the link directives by hand (below) instead of letting cc emit the
     // default `cargo:rustc-link-lib=static=nros_platform_nuttx` — that default
     // is `+bundle`, which folds the platform objects INTO the consuming crate's
-    // rlib (`libnros_board_nuttx_qemu_arm.rlib`). On the final link line that
+    // rlib (`libnros_board_nuttx_qemu.rlib`). On the final link line that
     // rlib precedes the `nros_platform_*` REFERENCERS (`libnros_rmw_zenoh`,
     // `libzpico_sys`), so GNU ld's single archive pass drops the platform
     // members (nothing references them yet) and the referencers then fail with

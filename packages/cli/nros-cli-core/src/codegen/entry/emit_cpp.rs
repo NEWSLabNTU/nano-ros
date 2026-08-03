@@ -149,7 +149,7 @@ pub(crate) fn board_is_freertos_embedded(board: &str) -> bool {
 
 /// phase-281 W3 (nuttx) — NuttX embedded boards support `run_tiers` (one pthread
 /// per tier over one shared session). Like `FreertosBoard`, `NuttxBoard` has a C
-/// `nros_board_nuttx_run_tiers` implementation (nros-board-nuttx-qemu-arm) that
+/// `nros_board_nuttx_run_tiers` implementation (nros-board-nuttx-qemu) that
 /// mirrors the Rust `run_tiers_entry`; NuttX being POSIX, each non-boot tier is a
 /// `pthread` (SCHED_FIFO at the tier's raw priority). The generated entry uses
 /// the `nros_app_main` + `NROS_APP_MAIN_REGISTER_VOID` shape (the NuttX startup

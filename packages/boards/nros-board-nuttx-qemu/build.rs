@@ -1,9 +1,13 @@
 // 194.3c.2 — the NuttX C platform-port compile (platform.c/net.c) is a
-// shared, parameterized helper in `nros-board-common`. This board sets no
-// `NUTTX_*` env, so the helper's arm defaults (compiler `arm-none-eabi-gcc`,
-// `-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4`, `arch/arm/src/*`
-// includes) reproduce the previous hand-written build byte-for-byte. A
-// new-arch NuttX board reuses the same helper with its own env.
+// shared, parameterized helper in `nros-board-common`. The helper's DEFAULTS
+// are arm (compiler `arm-none-eabi-gcc`, `-mcpu=cortex-a7 -mfloat-abi=hard
+// -mfpu=neon-vfpv4`, `arch/arm/src/*` includes); the riscv witness overrides
+// them through the `NUTTX_*` env in its `[[board]]` entry of `nros-board.toml`
+// (and, for a cmake-driven build, the riscv FFI subcrate's `.cargo/config.toml`
+// `[env]`, which cargo applies to the whole build graph and so reaches here).
+//
+// phase-337 W3 — ONE crate, two witnesses. This file is arch-agnostic on
+// purpose: the arch delta is env + defconfig data, never a `cfg` here.
 //
 // #127 — board-centric image link (RFC-0032 "third leg"). The shared
 // `nuttx_image_link` helper stages the dynamic link pieces (processed
@@ -21,11 +25,13 @@ use std::path::Path;
 
 fn main() {
     // issue 0288 — skip the NuttX cross-compile when host tooling builds this
-    // crate (the source-metadata probe). `arm-none-eabi-gcc` is invoked
-    // regardless of target and rejects the host's `-m64`.
+    // crate (the source-metadata probe of a deploy-bound standalone example).
+    // The cross gcc is invoked regardless of target and rejects the host's
+    // flags. Both witnesses' target prefixes are listed, so a host `cargo
+    // check`/probe stays buildable for either.
     if nros_board_common::host_probe::skip_cross_build(
-        "nros-board-nuttx-qemu-arm",
-        &["arm", "thumb"],
+        "nros-board-nuttx-qemu",
+        &["arm", "thumb", "riscv"],
     ) {
         return;
     }

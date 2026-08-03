@@ -24,7 +24,7 @@ nros-log = { path = "../../../../core/nros-log" }
 # build.rs. The static link args live in `.cargo/config.toml`. The board's
 # `entry.rs` `nsh_main` (nsh_initialize → Rust `main`) is the init
 # entrypoint; `#[used]` + fat LTO (`lto = true` below) keep it in the image.
-nros-board-nuttx-qemu-arm = { path = "../../../../boards/nros-board-nuttx-qemu-arm" }
+nros-board-nuttx-qemu = { path = "../../../../boards/nros-board-nuttx-qemu" }
 
 [profile.release]
 opt-level = "s"

@@ -13,7 +13,7 @@
 //!    `-T<name>` by-name lookup through the propagated `-L OUT_DIR`;
 //! 2. compile the board's builtins stub (empty `g_builtins` table — blocks
 //!    libapps' contaminated `builtin_list.o`; see the stub's header in
-//!    `nros-board-nuttx-qemu-arm/c/nuttx_builtins_stub.c`);
+//!    `nros-board-nuttx-qemu/c/nuttx_builtins_stub.c`);
 //! 3. archive the arch vector-table object + the stub into
 //!    `libnros_nuttx_boot.a` and link it `-bundle,+whole-archive` (both
 //!    members always pulled; the ld script's section placement pins the

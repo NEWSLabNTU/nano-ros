@@ -11,7 +11,7 @@
 # _SC_HOST_NAME_MAX for NuttX target`) plus the rest of the
 # NuttX-specific symbols needed by `-Z build-std`.
 #
-# `packages/boards/nros-board-nuttx-qemu-arm/nros-board.toml` declares
+# `packages/boards/nros-board-nuttx-qemu/nros-board.toml` declares
 # the libc `[patch.crates-io]` line as part of its `cargo_config`
 # template, but `nros` 0.3.7's `nros sync` drops the `[patch.crates-io]`
 # section when it renders the file. Until the upstream CLI bug is

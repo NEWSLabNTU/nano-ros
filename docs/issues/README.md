@@ -72,12 +72,17 @@ so and passes; an id in NO table is always fatal; an unfiltered empty coordinate
 `threadx-linux/mixed` legitimately has 0 rows). Gated by `check-fixture-id-guard` in `check-fast`.
 See `archived/0406-*`.
 
-**#405** — the tier2 lane gate demands `workspace-c-nuttx-riscv-realtime`, but nothing the tier2
-builder runs can produce it: `lane-coords` maps the `nuttx-riscv,c,zenoh` coordinate to the `nuttx`
-module, whose `build-fixtures` recipe builds only the arm side — the riscv workspaces live in
+**#405** — the tier2 lane gate demanded `workspace-c-nuttx-riscv-realtime`, but nothing the tier2
+builder ran could produce it: `lane-coords` maps the `nuttx-riscv,c,zenoh` coordinate to the `nuttx`
+module, whose `build-fixtures` recipe built only the arm side — the riscv workspaces lived in
 separate `full-matrix` recipes (shared kernel tree, one board config at a time). Masked until
-phase-331 W6's `ws-realtime-c` → `realtime-c` rename orphaned the old artifact. Workaround: run
-`just nuttx build-riscv-c-workspaces` between the lane build and `ci-matrix`. See `0405-*`. (2026-08-04)
+phase-331 W6's `ws-realtime-c` → `realtime-c` rename orphaned the old artifact. RESOLVED (phase-337
+W3.f): `just nuttx build-fixtures` is now `build-fixtures-arm` then `build-fixtures-riscv` — one
+stage, serial, with the riscv half gated on the run's own coordinates by the shared
+`nros_lane_wants_platform` helper. The issue-0196 half is
+`every_fixture_token_is_producible_by_the_module_that_owns_it`, which walks each module's recipe
+graph from `build-fixtures` and fails when a fixture token that module OWNS is produced by no recipe
+on that path. See `archived/0405-*`.
 
 **#404** — no schema for DECLARING a measured WCET. `MapperPath.exec_ms` is `Option<f64>` and nothing
 outside rlm's own tests ever sets it, so rlm v0.1.4's `ChainFeasibleWithoutWcet` (issue 0259) now

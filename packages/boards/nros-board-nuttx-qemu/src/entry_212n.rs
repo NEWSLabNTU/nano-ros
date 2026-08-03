@@ -1,16 +1,16 @@
 //! Phase 212.N.3 — `nros_platform::Board*` trait impls + `BoardEntry::run`.
 //!
 //! Mirrors the legacy `nros_board_common::Board{Init,Print,Exit}` impls in
-//! [`crate::QemuRvVirt`] onto the new platform-level trait family living at
+//! [`crate::NuttxQemu`] onto the new platform-level trait family living at
 //! `packages/platform/nros-platform/src/board/`. Codegen-emitted Entry pkg
 //! `main.rs` (Phase 212.N.4) can then call:
 //!
 //! ```ignore
-//! use nros_board_nuttx_qemu_riscv::QemuRvVirt;
+//! use nros_board_nuttx_qemu::NuttxQemu;
 //! use nros_platform::BoardEntry;
 //!
 //! fn main() -> Result<(), MyError> {
-//!     <QemuRvVirt as BoardEntry>::run(|runtime| {
+//!     <NuttxQemu as BoardEntry>::run(|runtime| {
 //!         // codegen-emitted (Phase 212.N.4)
 //!         run_plan(runtime)
 //!     })
@@ -36,14 +36,14 @@
 //! untouched (per Phase 212.N.3 spec: "keep legacy impls untouched"). The new
 //! impls and the `BoardEntry::run` body are isolated here so the two trait
 //! families coexist during the 212.N transition; `lib.rs` re-exports
-//! [`QemuRvVirt`] for the platform-level path.
+//! [`NuttxQemu`] for the platform-level path.
 
-use crate::QemuRvVirt;
+use crate::NuttxQemu;
 
-impl nros_platform::BoardInit for QemuRvVirt {
+impl nros_platform::BoardInit for NuttxQemu {
     /// Phase 212.N.3 — no-arg `init_hardware`.
     ///
-    /// The legacy `<QemuRvVirt as nros_board_common::BoardInit>` body
+    /// The legacy `<NuttxQemu as nros_board_common::BoardInit>` body
     /// re-seeds `/dev/urandom` from `Config.ip` and pushes `Config.ip`
     /// into `eth0` via `SIOCSIFADDR` — both config-dependent. The new
     /// platform-level trait is parameterless (config moves to
@@ -61,9 +61,9 @@ impl nros_platform::BoardInit for QemuRvVirt {
     }
 }
 
-impl nros_platform::BoardPrint for QemuRvVirt {
+impl nros_platform::BoardPrint for NuttxQemu {
     /// Routes through hosted stdlib — same primitive the legacy
-    /// `<QemuRvVirt as nros_board_common::BoardPrint>` impl uses.
+    /// `<NuttxQemu as nros_board_common::BoardPrint>` impl uses.
     /// NuttX ships `std`; `println!` ultimately bottoms out in
     /// `write(2)` on the NuttX serial console.
     fn println(args: core::fmt::Arguments<'_>) {
@@ -71,14 +71,14 @@ impl nros_platform::BoardPrint for QemuRvVirt {
     }
 }
 
-impl nros_platform::BoardExit for QemuRvVirt {
+impl nros_platform::BoardExit for NuttxQemu {
     /// Mirrors the legacy `nros_board_common::BoardExit` body.
     ///
     /// NuttX's shell task-dispatch loop reclaims the task on a normal
     /// return from `main`, but `BoardEntry::run`'s contract for
     /// non-NuttX siblings diverges via `exit_*`. We keep
     /// `std::process::exit(...)` here so a caller invoking
-    /// `<QemuRvVirt as BoardExit>::exit_success()` directly behaves
+    /// `<NuttxQemu as BoardExit>::exit_success()` directly behaves
     /// identically across families.
     fn exit_success() -> ! {
         std::process::exit(0)
@@ -103,24 +103,17 @@ impl nros_platform::BoardExit for QemuRvVirt {
 /// ## cfg gate
 ///
 /// `nros_board_nuttx::run_entry` itself is gated
-/// `#[cfg(any(feature = "reference-qemu-arm", target_os = "nuttx"))]`.
-/// Enabling `reference-qemu-arm` from this crate would pull
-/// `nros-board-nuttx-qemu-arm` (this crate) back as an optional dep,
+/// `#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]`.
+/// Enabling `reference-qemu` from this crate would pull
+/// `nros-board-nuttx-qemu` (this crate) back as an optional dep,
 /// which cargo rejects as a cyclic package dependency. So we mirror
 /// the `target_os = "nuttx"` half of the gate here: the `BoardEntry`
 /// impl exists only when actually targeting NuttX, which is the only
-/// target where `<QemuRvVirt as BoardEntry>::run` is reachable in a
+/// target where `<NuttxQemu as BoardEntry>::run` is reachable in a
 /// production build anyway. Host `cargo check` still validates the
 /// `BoardInit` / `BoardPrint` / `BoardExit` impls above.
 #[cfg(target_os = "nuttx")]
-impl nros_platform::BoardEntry for QemuRvVirt {
-    /// Phase-285 W3 — like the arm sibling (issue #130), push the guest IP
-    /// into `eth0` before the family driver opens the executor; see
-    /// [`entry_net_init`]. rv-virt's defconfig `NETINIT` already brings the
-    /// interface up with the same slirp defaults at kernel boot, so with no
-    /// overlay this is an idempotent re-push — but it is what lets a
-    /// `DeployOverlay` (sibling guests with distinct IPs) actually take
-    /// effect on the entry path.
+impl nros_platform::BoardEntry for NuttxQemu {
     fn run<F, E>(setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
@@ -136,6 +129,9 @@ impl nros_platform::BoardEntry for QemuRvVirt {
     /// continue to be baked at compile time via `NROS_LOCATOR` / `NROS_DOMAIN_ID`
     /// (the `BAKED_LOCATOR` / `BAKED_DOMAIN` constants in `run_entry`); only the
     /// node-name originates from `deploy.boot_config` here.
+    ///
+    /// Issue #130 — additionally push the (overlay-merged) guest IP into `eth0`
+    /// before the family driver opens the executor; see [`entry_net_init`].
     fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
@@ -146,15 +142,21 @@ impl nros_platform::BoardEntry for QemuRvVirt {
     }
 }
 
-/// Phase-285 W4 (RFC-0015 Model 1) — the multi-tier inherent entry the
-/// `nros::main!` generic OwnedSpin arm targets, mirroring
-/// `nros-board-nuttx-qemu-arm/src/entry_212n.rs` (phase-281 W3-nuttx): push
-/// the (overlay-merged) guest IP into `eth0`, then delegate to the NuttX
-/// family driver's [`nros_board_nuttx::run_tiers`], which opens the ONE
-/// session and runs one executor per tier over it (a `std::thread` per tier —
-/// NuttX is `std` + zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`).
+/// phase-281 W3-nuttx (RFC-0015 Model 1) — the multi-tier inherent entry the
+/// `nros::main!` generic OwnedSpin arm targets. For a multi-tier plan the macro
+/// emits `<NuttxQemu>::run_tiers(&deploy, TIERS, closure)` (exactly as it does
+/// `PosixBoard::run_tiers` for native); this pushes the guest IP into `eth0`
+/// (issue #130 — same [`entry_net_init`] the single-tier `run{,_with_deploy}`
+/// paths use) and then delegates to the NuttX family driver's
+/// [`nros_board_nuttx::run_tiers`], which opens the ONE session and runs one
+/// executor per tier over it (a `std::thread` per tier — NuttX is `std` +
+/// zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`).
+///
+/// Gated `target_os = "nuttx"` for the same reason as the [`nros_platform::BoardEntry`]
+/// impl below: `entry_net_init` + `nros_board_nuttx::run_tiers` are NuttX-only,
+/// and the multi-tier entry is reachable only in a real NuttX build.
 #[cfg(target_os = "nuttx")]
-impl QemuRvVirt {
+impl NuttxQemu {
     pub fn run_tiers<F, E>(
         deploy: &nros_platform::DeployOverlay,
         tiers: &[nros_platform::TierSpec<'_>],
@@ -169,14 +171,18 @@ impl QemuRvVirt {
     }
 }
 
-/// Phase-285 W3 — the Entry-path twin of the legacy role path's
+/// Issue #130 — the Entry-path twin of the legacy role path's
 /// [`crate::node::init_hardware`]: re-seed `/dev/urandom` from the guest IP and
-/// push it into `eth0` via `SIOCSIFADDR` (+ netmask/gateway). rv-virt's
-/// defconfig `NETINIT` (`IPADDR=10.0.2.15`, `DRIPADDR=10.0.2.2`) brings the
-/// interface up at kernel boot with these same defaults, so an un-overridden
-/// entry behaves identically with or without the push — the push exists so
-/// `[package.metadata.nros.deploy.*]` `ip`/`netmask`/`gateway` overrides work
-/// on the entry path (sibling guests need distinct IPs).
+/// push it into `eth0` via `SIOCSIFADDR` (+ netmask/gateway). Without the push
+/// the guest never reaches slirp's `10.0.2.2` and every networked entry image
+/// dies in `Executor::open` with `Transport(ConnectionFailed)` — the role
+/// fixtures always performed this step; the 212.N.3 parameterless
+/// `BoardInit::init_hardware` couldn't.
+///
+/// Defaults are the slirp e2e values (`10.0.2.30/24` via `10.0.2.2`, the same
+/// address the known-good role fixtures push); `[package.metadata.nros.deploy.
+/// nuttx]` `ip` / `netmask` / `gateway` keys override per entry so sibling
+/// guests can differ.
 #[cfg(target_os = "nuttx")]
 fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) {
     let ip = deploy.and_then(|d| d.ip).unwrap_or(SLIRP_DEFAULT_IP);
@@ -188,24 +194,44 @@ fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) {
     configure_entry_eth0(ip, prefix, gateway);
 }
 
-/// Slirp e2e defaults — matching the rv-virt defconfig `NETINIT` values
-/// (`10.0.2.15/24` via `10.0.2.2`; note the arm sibling uses `.30`).
+/// Slirp e2e default guest address — **the one per-arch semantic value in this
+/// crate** (phase-322 W1.a measured the whole rest of the two former board
+/// crates as byte-identical; phase-337 W3 merged them on that finding).
+///
+/// It is per-arch because it mirrors each board's own kernel defconfig
+/// `NETINIT` address, so an un-overridden entry keeps whatever the kernel
+/// already brought `eth0` up with and the push below is an idempotent re-push:
+///
+/// | board | defconfig | address |
+/// | --- | --- | --- |
+/// | arm virt | `nuttx-config/arm/defconfig` | `10.0.2.30/24` |
+/// | rv-virt | `nuttx-config/riscv/defconfig` | `10.0.2.15/24` |
+///
+/// A `DeployOverlay` (`[package.metadata.nros.deploy.*]` `ip`/`netmask`/
+/// `gateway`) overrides it, which is how sibling guests get distinct IPs.
+/// Every guest runs behind its own QEMU slirp, so the two values never meet.
+#[cfg(target_arch = "riscv32")]
 pub const SLIRP_DEFAULT_IP: [u8; 4] = [10, 0, 2, 15];
+/// See the riscv arm of this constant for why it is per-arch.
+#[cfg(not(target_arch = "riscv32"))]
+pub const SLIRP_DEFAULT_IP: [u8; 4] = [10, 0, 2, 30];
 pub const SLIRP_DEFAULT_GATEWAY: [u8; 4] = [10, 0, 2, 2];
 pub const SLIRP_DEFAULT_PREFIX: u8 = 24;
 
-/// Phase-285 W3 — the single public eth0-config entry point for the riscv
-/// NuttX Entry paths (Rust `nros::main!` via [`entry_net_init`]; a future C
-/// `nano_ros_entry LAUNCH` path would call it from the FFI `main`).
-/// Delegates to the sole [`crate::node::init_hardware`] implementation — no
-/// second `SIOCSIFADDR` call site.
+/// Issue #130 — the single public eth0-config entry point for BOTH NuttX Entry
+/// paths: the Rust `nros::main!` path (via [`entry_net_init`] → the `BoardEntry`
+/// wrappers above) AND the C `nano_ros_entry LAUNCH` path (via the
+/// `nros-nuttx-ffi` `main` before `app_main()`). Re-seeds `/dev/urandom` from
+/// the IP and pushes it into `eth0` via `SIOCSIFADDR` (+ netmask/gateway) by
+/// delegating to the sole [`crate::node::init_hardware`] implementation — no
+/// second `SIOCSIFADDR` call site. Without this push the guest keeps its
+/// defconfig address, never reaches slirp's `10.0.2.2`, and every networked
+/// entry image dies in `Executor::open` with `Transport(ConnectionFailed)`.
 #[cfg(target_os = "nuttx")]
 pub fn configure_entry_eth0(ip: [u8; 4], prefix: u8, gateway: [u8; 4]) {
-    let cfg = crate::config::Config {
-        ip,
-        prefix,
-        gateway,
-        ..Default::default()
-    };
+    let cfg = crate::config::Config::default()
+        .with_ip(ip)
+        .with_prefix(prefix)
+        .with_gateway(gateway);
     crate::node::init_hardware(&cfg);
 }

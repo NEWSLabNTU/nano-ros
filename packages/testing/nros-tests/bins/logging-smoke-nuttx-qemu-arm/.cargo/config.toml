@@ -6,11 +6,11 @@ build-std = ["std", "panic_abort"]
 build-std-features = ["compiler-builtins-mem"]
 
 # #127 — STATIC image-link args only (board-centric link convention,
-# RFC-0032 "third leg"; SSoT: nros-board-nuttx-qemu-arm/nros-board.toml
+# RFC-0032 "third leg"; SSoT: nros-board-nuttx-qemu/nros-board.toml
 # `cargo_config`). The dynamic pieces (processed dramboot.ld in the board
 # OUT_DIR, the vectortab+builtins-stub boot archive, the -L search dirs
 # for OUT_DIR / $NUTTX_DIR/staging / arch/arm/src/board) PROPAGATE from
-# the `nros-board-nuttx-qemu-arm` dep's build.rs. ZERO build.rs here.
+# the `nros-board-nuttx-qemu` dep's build.rs. ZERO build.rs here.
 [target.armv7a-nuttx-eabihf]
 linker = "arm-none-eabi-gcc"
 rustflags = [

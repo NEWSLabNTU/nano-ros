@@ -40,7 +40,7 @@ bench = false
 
 # Entry pkg metadata — `deploy = "nuttx"` routes the `nros::main!()`
 # proc-macro onto the `Framework::Nuttx` emit branch (board ->
-# `nros_board_nuttx_qemu_arm::QemuArmVirt`) and feeds `nros check`.
+# `nros_board_nuttx_qemu::QemuArmVirt`) and feeds `nros check`.
 [package.metadata.nros.entry]
 deploy = "nuttx"
 
@@ -68,7 +68,7 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
 # C shim (compiled by its own build.rs) + (via `nros-board-nuttx`)
 # `platform-nuttx` and `nros/std`. `rmw-zenoh` feature → the board links
 # `nros-rmw-zenoh` (platform-nuttx) and its `run_entry` explicitly registers it.
-nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm" }
+nros-board-nuttx-qemu = { path = "../../../../../packages/boards/nros-board-nuttx-qemu" }
 # Concrete platform impl — also pulled by the board; kept explicit for the link
 # map. NOT the agnostic-forbidden `nros/platform-*`.
 nros-platform = { path = "../../../../../packages/platform/nros-platform", default-features = false, features = ["platform-nuttx"] }

@@ -100,9 +100,30 @@ build-examples:
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx cpp
     echo "NuttX QEMU examples built!"
 
-# Build all example binaries used as test fixtures (Rust + C + C++).
+# Issue #405 / phase-337 W3.f. `PlatformId::just_module()` maps both `NuttxArm`
+# and `NuttxRiscv` to this module, so `lane-coords --modules` schedules `just
+# nuttx build-fixtures` and nothing else for a lane containing `nuttx-riscv,*`
+# — but the riscv fixtures were built only by the separate `build-riscv-*`
+# recipes, so tier 2 demanded a fixture its own builder could not produce and
+# `_lane-gate` failed on a green build. The two halves stay separate RECIPES
+# because the shared NuttX kernel tree holds one board config at a time (arm ↔
+# rv-virt needs a distclean + reconfigure), but they are now one STAGE, run
+# serially, exactly as the issue's preferred fix direction says.
+#
+# Gated by `nros_lane_wants_platform`, so a lane that names no riscv coordinate
+# does not pay for a kernel reconfigure it will not use.
+#
+# Build every NuttX test fixture the run's lane needs (arm, then riscv).
 [group("full-matrix")]
-build-fixtures:
+build-fixtures: build-fixtures-arm build-fixtures-riscv
+
+# `just nuttx test` depends on THIS rather than on `build-fixtures`: the
+# `nuttx_qemu` suite is arm-only, and pulling the riscv half in would make the
+# dev loop pay for an arm<->rv-virt kernel reconfigure round trip every run.
+#
+# Build the arm (QEMU arm virt) NuttX test fixtures.
+[group("full-matrix")]
+build-fixtures-arm:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
@@ -166,7 +187,7 @@ build-fixtures:
     nros_cargo_ensure_codegen_c
     codegen="$(nros_cargo_codegen_c_bin)"
     toolchain="$(pwd)/cmake/toolchain/armv7a-nuttx-eabi.cmake"
-    nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi"
+    nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu/nros-nuttx-ffi"
     # Phase 181.5.c — collapsed-shape NuttX C / C++ examples from the SSOT
     # manifest (Zenoh only; Cyclone on NuttX is gated on a hosted
     # socket/runtime port). Per-cell RMW + build-subdir come from the
@@ -199,6 +220,30 @@ build-fixtures:
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx cpp
 
+# The riscv (QEMU rv-virt) half of this module's fixture stage — issue #405.
+#
+# Runs AFTER `build-fixtures-arm` and only when the run's lane actually names a
+# `nuttx-riscv` coordinate (or names none at all, i.e. `lane=all`, which means
+# "everything"). The three recipes below are still separate because each has to
+# reconfigure the shared kernel tree; calling them from here is what makes this
+# module able to PRODUCE every coordinate `lane-coords` attributes to it, which
+# is what `every_fixture_token_is_producible_by_the_module_that_owns_it` gates.
+#
+# Build the riscv (QEMU rv-virt) NuttX test fixtures, if the lane wants them.
+[group("full-matrix")]
+build-fixtures-riscv:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/fixture-lane.sh
+    if ! nros_lane_wants_platform nuttx-riscv; then
+        echo "NuttX riscv: no nuttx-riscv coordinate in this run's lane — skipping"
+        exit 0
+    fi
+    # Serial, same stage: they share ONE kernel tree, so they cannot overlap.
+    just nuttx build-riscv-c
+    just nuttx build-riscv-c-workspaces
+    just nuttx build-riscv-rust
+
 # Phase 212.M-F.16 — the legacy Phase 157.C `build-fixtures-make`
 # recipe (native external-app make path that produced the
 # `nuttx_make_e2e` kernel ELF) was retired here. The Phase 212.H.2
@@ -225,7 +270,7 @@ build-riscv-c:
         echo "NuttX riscv skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu-riscv/nuttx-config/defconfig"
+    rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
     # Provision the rv-virt export (reconfigures the shared tree if it was arm).
     NUTTX_DEFCONFIG="$rv_defconfig" \
         NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
@@ -235,7 +280,7 @@ build-riscv-c:
     nros_cargo_ensure_codegen_c
     codegen="$(nros_cargo_codegen_c_bin)"
     toolchain="$(pwd)/cmake/toolchain/riscv32imac-nuttx-elf.cmake"
-    nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu-riscv/nros-nuttx-ffi"
+    nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu/nros-nuttx-riscv-ffi"
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DNUTTX_DIR=$nuttx_dir -DNUTTX_FFI_CRATE_DIR=$nuttx_ffi -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx-riscv c zenoh
     unset NROS_CMAKE_EXTRA_DEFS
@@ -257,7 +302,7 @@ build-riscv-c-workspaces:
         echo "NuttX riscv skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu-riscv/nuttx-config/defconfig"
+    rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
     NUTTX_DEFCONFIG="$rv_defconfig" \
         NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
         bash scripts/nuttx/build-nuttx.sh
@@ -287,7 +332,7 @@ build-riscv-rust:
         echo "NuttX riscv skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu-riscv/nuttx-config/defconfig"
+    rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
     # Provision the rv-virt export (reconfigures the shared tree if it was arm).
     NUTTX_DEFCONFIG="$rv_defconfig" \
         NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
@@ -305,13 +350,19 @@ build-riscv-rust:
     NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx-riscv rust
 
 # Build every NuttX tier. `build-all-full` removed.
+#
+# The riscv recipes are NOT listed again: `build-fixtures` now runs them itself
+# (issue #405), and with no lane narrowing `nros_lane_wants_platform` answers
+# yes, so `build-all` still means both witnesses.
+#
+# Build every NuttX tier — kernel, examples, and both witnesses' fixtures.
 [group("full-matrix")]
-build-all: build build-examples build-fixtures build-riscv-c build-riscv-c-workspaces build-riscv-rust
+build-all: build build-examples build-fixtures
     @echo "NuttX build-all completed."
 
-# Run NuttX QEMU integration tests
+# Run NuttX QEMU integration tests (arm; the riscv e2e lives in rtos_e2e).
 [group("main")]
-test verbose="": build-fixtures
+test verbose="": build-fixtures-arm
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$NUTTX_DIR/include" ]; then

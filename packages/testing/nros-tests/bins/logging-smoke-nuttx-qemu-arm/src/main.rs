@@ -1,7 +1,7 @@
 //! Phase 88.15.c — NuttX QEMU ARM nros-log smoke fixture.
 //!
 //! Boots NuttX through the board crate's `nsh_main` override
-//! (`nros-board-nuttx-qemu-arm/src/entry.rs`: NuttX init → `nsh_main` →
+//! (`nros-board-nuttx-qemu/src/entry.rs`: NuttX init → `nsh_main` →
 //! `nsh_initialize()` → Rust `main`), then drives every severity through
 //! `nros-log`. The NuttX C platform path routes records through syslog so
 //! the QEMU harness can assert the captured UART output.
@@ -15,7 +15,7 @@
 // Link-anchor the board crate: its `entry.rs` `nsh_main` (the NuttX
 // `CONFIG_INIT_ENTRYPOINT`) and its build.rs's propagating image-link
 // directives are the whole point of the dependency.
-use nros_board_nuttx_qemu_arm as _;
+use nros_board_nuttx_qemu as _;
 use nros_log::{
     Logger, Severity, init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn,
     register_logger, sinks,

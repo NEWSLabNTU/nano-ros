@@ -200,7 +200,7 @@ width have **never** run — and `nros-platform-zephyr/src/net_wait.c:53`'s
       helper.
       *Verify:* the three new Runtime cells deliver; native_sim stays green.
 
-## W3 — NuttX: two crates → one (closes #405)
+## W3 — NuttX: two crates → one (closes #405) — **LANDED 2026-08-04**
 
 Both upper layers come from upstream NuttX — kernel *and* arch ports, with the
 link list **discovered** by scanning `$NUTTX_DIR/staging` for `lib*.a` rather than
@@ -209,30 +209,50 @@ are literally the same four calls.
 
 **Blocked by W1.c** (one crate, two tiers).
 
-- [ ] **W3.a** Adopt `BaseConfig` (W1.b) in both crates first, so the merge is a
-      move rather than a reconciliation.
-- [ ] **W3.b** Move the **1059 byte-identical lines** into the existing
+**Measured:** 3350 → 2054 lines across the board crates (−1296, −39 %), counting
+every tracked file except `Cargo.lock`, the two NuttX defconfigs and the upstream
+patches (vendor data, and the two defconfigs are exactly what the merge keeps two
+of). 27 board crates → 26.
+
+- [x] **W3.a** Adopt `BaseConfig` (W1.b) in both crates first, so the merge is a
+      move rather than a reconciliation. — `Config` now composes
+      `BaseConfig` (`pub base`), with the prefix↔netmask conversion taken from
+      the shared type instead of a per-board field; the fields became accessors,
+      which is why `src/config.rs` grew 261 → 321 (it also gained four unit tests
+      it never had).
+- [x] **W3.b** Move the **1059 byte-identical lines** into the existing
       `nros-board-nuttx` (both boards already depend on it):
       `c/nuttx_run_tiers.c` (587), `src/config.rs` (261), `src/node.rs` (133),
-      `src/entry.rs` (43), `c/nuttx_builtins_stub.c` (35).
-- [ ] **W3.c** Collapse to one board crate; the per-arch delta stays **data**:
-      `nuttx-config/defconfig`, `<arch>-nuttx-toolchain.cmake`, the nine `NUTTX_*`
-      values in `nros-board.toml [env]`, `nros-nuttx-ffi/.cargo/config.toml`
-      (+ the riscv target JSON). Keep both ZST type names as aliases — phase-322
-      verified the entire semantic difference is one `SLIRP_DEFAULT_IP`, which
-      `DeployOverlay` already overrides.
-- [ ] **W3.d** Registry rows per W1.c: one crate, two witnesses, two tiers.
-- [ ] **W3.e** Fixtures: the 30 `nuttx` + 4 `nuttx-riscv` rows keep their
-      coordinates; point the build recipes at the merged crate.
-- [ ] **W3.f — Close issue #405 here.** `lane-coords` maps `nuttx-riscv,c,zenoh`
-      to the `nuttx` module, but `just nuttx build-fixtures` builds only the arm
-      side — the riscv workspaces are separate `full-matrix` recipes, so tier 2
-      demands a fixture its own builder cannot produce. Fix it in this wave: the
-      nuttx stage honours its coords and appends the riscv recipes (serial, same
-      stage — they share one kernel tree). Add the coverage check issue-0196 asks
-      for: what the gate demands must be producible by the recipes the lane runs.
-      *Verify:* `just build-test-fixtures lane=tier2` then `just ci-matrix`, with
-      no manual `build-riscv-c-workspaces` step.
+      `src/entry.rs` (43), `c/nuttx_builtins_stub.c` (35). — done by W3.c's
+      collapse rather than by hoisting into the family crate: with ONE board crate
+      those 1059 lines already exist once, and moving them up a layer would have
+      put board-overlay code (the `SIOCSIFADDR` push, the `nsh_main` override) in
+      the family driver, which is the wrong owner.
+- [x] **W3.c** Collapse to one board crate; the per-arch delta stays **data**:
+      `nuttx-config/<arch>/defconfig`, `<arch>-nuttx-toolchain.cmake`, the nine
+      `NUTTX_*` values in each `[[board]]`'s `[env]`, the two FFI subcrates'
+      `.cargo/config.toml` (+ the riscv target JSON). Both ZST names kept as
+      `pub type` aliases of `NuttxQemu`. The one semantic delta phase-322 named,
+      `SLIRP_DEFAULT_IP`, is kept per-arch behind `cfg(target_arch)` — NOT
+      unified: each value mirrors its own board's defconfig `NETINIT` address, so
+      it is an arch fact like the defconfig itself, and unifying it would have
+      changed the rv-virt guest's address in a wave that is meant to move code.
+- [x] **W3.d** Registry rows per W1.c: one crate, two witnesses, two tiers.
+- [x] **W3.e** Fixtures: the 30 `nuttx` + 4 `nuttx-riscv` rows keep their
+      coordinates; the build recipes point at the merged crate. Cells unchanged
+      in both directions.
+- [x] **W3.f — Closed issue #405 here.** `lane-coords` maps `nuttx-riscv,c,zenoh`
+      to the `nuttx` module, but `just nuttx build-fixtures` built only the arm
+      side — the riscv workspaces were separate `full-matrix` recipes, so tier 2
+      demanded a fixture its own builder could not produce. `just nuttx
+      build-fixtures` is now `build-fixtures-arm` + `build-fixtures-riscv` (one
+      stage, serial — they share one kernel tree), with the riscv half gated on
+      the run's own coords by the new shared `nros_lane_wants_platform` helper in
+      `scripts/build/fixture-lane.sh`. The issue-0196 coverage check is
+      `every_fixture_token_is_producible_by_the_module_that_owns_it`, which walks
+      each module's recipe graph from `build-fixtures` and fails when a fixture
+      token the module OWNS is produced by no recipe on that path; removing the
+      new dependency edge makes it fail with #405's exact symptom.
 
 ## W4 — ThreadX: extract the arch port (do NOT merge the boards)
 

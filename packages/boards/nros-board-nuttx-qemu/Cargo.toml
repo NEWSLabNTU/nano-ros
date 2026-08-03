@@ -8,15 +8,15 @@
 [workspace]
 
 [package]
-name = "nros-board-nuttx-qemu-arm"
+name = "nros-board-nuttx-qemu"
 version = "0.4.0"
 publish = false
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "NuttX QEMU ARM virt board crate for nros (Cortex-A7 + virtio-net)"
+description = "NuttX QEMU board crate for nros — arm virt (Cortex-A7) and rv-virt (rv32imac), both virtio-net"
 
 [lib]
-name = "nros_board_nuttx_qemu_arm"
+name = "nros_board_nuttx_qemu"
 
 [dependencies]
 # No platform crate needed — NuttX is POSIX-compatible, zenoh-pico reuses unix/ platform.
@@ -33,8 +33,8 @@ nros-board-common = { path = "../nros-board-common" }
 # Entry pkg `main.rs`.
 nros-platform = { path = "../../platform/nros-platform", default-features = false }
 # Phase 212.N.3 — `BoardEntry::run` delegates to the NuttX family
-# driver's `run_entry`. We do NOT enable `reference-qemu-arm` here:
-# that feature flag pulls `nros-board-nuttx-qemu-arm` as an optional
+# driver's `run_entry`. We do NOT enable `reference-qemu` here:
+# that feature flag pulls `nros-board-nuttx-qemu` as an optional
 # dep of `nros-board-nuttx`, which IS this crate — cargo flags it as
 # a cyclic package dependency. The `run_entry` symbol is also gated
 # `target_os = "nuttx"`, which is the gate we rely on (matched by the
@@ -47,7 +47,7 @@ nros-board-nuttx = { path = "../nros-board-nuttx" }
 rmw-zenoh = ["nros-board-nuttx/rmw-zenoh"]
 # Phase 252 (issue 0072) — forward a declared [safety] axis through the nuttx family
 # crate to the zenoh backend's safety-e2e (CRC attach/validate). The descriptor
-# (`nros-board-nuttx-qemu-arm`) advertises this via capability_features.
+# (both `[[board]]` entries of `nros-board.toml`) advertises this via capability_features.
 safety-e2e = ["nros-board-nuttx/safety-e2e"]
 
 [build-dependencies]

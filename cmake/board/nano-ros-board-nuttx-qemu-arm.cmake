@@ -4,7 +4,7 @@
 # under NuttX. Mirrors the legacy
 # `packages/api/nros-c/cmake/nuttx-support.cmake` shape, with the
 # FFI-crate path pointed at the in-tree (Phase-144.6-relocated)
-# location under `packages/boards/nros-board-nuttx-qemu-arm/`.
+# location under `packages/boards/nros-board-nuttx-qemu/`.
 #
 # Loaded by `cmake/platform/nano-ros-nuttx.cmake` when
 # NANO_ROS_BOARD=nuttx-qemu-arm.
@@ -17,7 +17,7 @@
 # What this overlay does:
 #
 #   * Sets `NUTTX_FFI_CRATE_DIR` to the in-tree
-#     `packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi/`
+#     `packages/boards/nros-board-nuttx-qemu/nros-nuttx-ffi/`
 #     unless already set by the caller.
 #
 #   * Validates NUTTX_DIR via `nros_nuttx_validate`.
@@ -61,7 +61,7 @@ set(_NROS_BOARD_NUTTX_QEMU_ARM_INCLUDED TRUE)
 # ---------------------------------------------------------------------------
 set(_NROS_BOARD_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 set(_NROS_NUTTX_BOARD_DIR
-    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-nuttx-qemu-arm")
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-nuttx-qemu")
 set(_NROS_NUTTX_FFI_CRATE_DIR_DEFAULT
     "${_NROS_NUTTX_BOARD_DIR}/nros-nuttx-ffi")
 
@@ -73,7 +73,7 @@ set(_NROS_NUTTX_FFI_CRATE_DIR_DEFAULT
 # (a new-arch board overrides the defconfig, reusing the shared script).
 set(NROS_NUTTX_PROVISION_SCRIPT "${_NROS_BOARD_ROOT}/scripts/nuttx/build-nuttx.sh"
     CACHE FILEPATH "NuttX export provisioning script (make export), run before the example build")
-set(NROS_NUTTX_DEFCONFIG "${_NROS_NUTTX_BOARD_DIR}/nuttx-config/defconfig"
+set(NROS_NUTTX_DEFCONFIG "${_NROS_NUTTX_BOARD_DIR}/nuttx-config/arm/defconfig"
     CACHE FILEPATH "Board NuttX defconfig consumed by the provisioning script")
 
 if(NOT DEFINED NUTTX_FFI_CRATE_DIR AND DEFINED ENV{NUTTX_FFI_CRATE_DIR})

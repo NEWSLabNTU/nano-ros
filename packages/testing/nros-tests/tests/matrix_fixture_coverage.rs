@@ -216,6 +216,182 @@ fn every_just_module_is_declared_by_the_justfile() {
 }
 
 // ============================================================================
+// Issue #405 / phase-337 W3.f — PRODUCIBILITY.
+//
+// The issue-0196 rule, applied to the fixture BUILD: what a lane's gate demands
+// must be producible by the recipes that lane actually runs.
+//
+// Two layers narrow a lane and they derive from one `lane-coords` computation,
+// so they cannot select different SETS — but below the module level they stopped
+// agreeing. `lane-coords --modules` maps `nuttx-riscv,c,zenoh` to the `nuttx`
+// module (correctly: `PlatformId::just_module` says `nuttx` owns both NuttX
+// witnesses), while `just nuttx build-fixtures` built only the arm side. The
+// riscv fixtures lived in `build-riscv-*` recipes nothing on the lane's path
+// invoked, so `just build-test-fixtures lane=tier2` finished green and
+// `_lane-gate` then failed on a fixture no builder in that run could create.
+//
+// This gate reads the recipe graph the lane really walks — `build-fixtures` plus
+// everything reachable from it through `just` dependencies and `just <module>
+// <recipe>` calls in recipe BODIES (comments stripped: a `# … just nuttx
+// build-riscv-c …` note is documentation, not an edge) — and asserts every
+// fixture token the module owns is passed to one of the two fixture builders
+// somewhere in it.
+// ============================================================================
+
+/// A parsed `just/<module>.just`: recipe name -> (dependencies, body lines).
+fn parse_just_module(text: &str) -> std::collections::BTreeMap<String, (Vec<String>, String)> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut current: Option<String> = None;
+    for raw in text.lines() {
+        let is_body = raw.starts_with(' ') || raw.starts_with('\t') || raw.trim().is_empty();
+        if is_body {
+            if let Some(name) = &current {
+                // Full-line comments are prose about other recipes as often as
+                // about this one; treating them as edges made this gate pass on
+                // the very tree that motivated it.
+                if !raw.trim_start().starts_with('#') {
+                    let e: &mut (Vec<String>, String) = out.get_mut(name).unwrap();
+                    e.1.push_str(raw);
+                    e.1.push('\n');
+                }
+            }
+            continue;
+        }
+        if raw.starts_with('#') || raw.starts_with('[') || raw.starts_with('@') {
+            continue; // attribute or comment; keep the current recipe context out of it
+        }
+        // `name [params…]: [deps…]` — but not `NAME := value`.
+        let Some(colon) = raw.find(':') else {
+            current = None;
+            continue;
+        };
+        if raw[colon..].starts_with(":=") {
+            current = None;
+            continue;
+        }
+        let head = &raw[..colon];
+        let Some(name) = head.split_whitespace().next() else {
+            current = None;
+            continue;
+        };
+        if !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            current = None;
+            continue;
+        }
+        let deps: Vec<String> = raw[colon + 1..]
+            .split_whitespace()
+            .map(|d| d.trim_matches(|c| c == '(' || c == ')').to_string())
+            .collect();
+        out.insert(name.to_string(), (deps, String::new()));
+        current = Some(name.to_string());
+    }
+    out
+}
+
+/// Fixture platform tokens produced by the recipe graph rooted at
+/// `build-fixtures` in `just/<file>` for module `module`.
+fn producible_tokens(module: &str, file: &std::path::Path) -> BTreeSet<String> {
+    let text = std::fs::read_to_string(file).unwrap_or_default();
+    let recipes = parse_just_module(&text);
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut stack = vec!["build-fixtures".to_string()];
+    let mut tokens = BTreeSet::new();
+    while let Some(name) = stack.pop() {
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+        let Some((deps, body)) = recipes.get(&name) else {
+            continue;
+        };
+        stack.extend(deps.iter().cloned());
+        for line in body.lines() {
+            // `[workspace-]fixtures-build.sh <platform> …`
+            for marker in ["fixtures-build.sh "] {
+                let mut rest = line;
+                while let Some(i) = rest.find(marker) {
+                    rest = &rest[i + marker.len()..];
+                    if let Some(tok) = rest.split_whitespace().next() {
+                        tokens.insert(tok.to_string());
+                    }
+                }
+            }
+            // `just <module> <recipe>` — an edge to a sibling recipe.
+            let call = format!("just {module} ");
+            if let Some(i) = line.find(&call) {
+                if let Some(next) = line[i + call.len()..].split_whitespace().next() {
+                    stack.push(next.to_string());
+                }
+            }
+        }
+    }
+    tokens
+}
+
+#[test]
+fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
+    let Ok(justfile) = std::fs::read_to_string(project_root().join("justfile")) else {
+        return; // packaged crate — not a failure
+    };
+    // module -> just/<file>, read from the `mod` lines rather than hardcoded, so
+    // a renamed module file fails as a missing edge, not as a silent pass.
+    let mut files = std::collections::BTreeMap::new();
+    for line in justfile.lines() {
+        if let Some(rest) = line.strip_prefix("mod ") {
+            let mut it = rest.split('\'');
+            let name = it.next().unwrap_or("").trim().to_string();
+            if let Some(path) = it.next() {
+                files.insert(name, path.to_string());
+            }
+        }
+    }
+
+    let mut missing = Vec::new();
+    for &p in PlatformId::ALL {
+        // Platforms whose fixtures are NOT produced through the two manifest
+        // builders. Same exemption set as `every_runtime_cell_has_a_fixture_row`
+        // above, and for the same reason — each names its real build channel:
+        //   - ZephyrNativeSim / Fvp: the west leaves lane
+        //     (`scripts/build/zephyr-fixture-leaves.sh`, `just zephyr build-fvp-*`),
+        //     which carries its own staleness signature and no fixtures.toml row.
+        //   - Px4: a CarveOut on every cell; no runner builds SITL, so no recipe
+        //     can produce it and demanding one would be the inverse lie.
+        if matches!(
+            p,
+            PlatformId::ZephyrNativeSim | PlatformId::Fvp | PlatformId::Px4
+        ) {
+            continue;
+        }
+        let module = p.just_module();
+        let Some(file) = files.get(module) else {
+            missing.push(format!(
+                "{p:?}: justfile declares no `mod {module}` — nothing can build it"
+            ));
+            continue;
+        };
+        let produced = producible_tokens(module, &project_root().join(file));
+        for &token in p.fixture_tokens() {
+            if !produced.contains(token) {
+                missing.push(format!(
+                    "{p:?}: `just {module} build-fixtures` cannot produce fixture platform \
+                     `{token}` — the recipe graph rooted there builds {produced:?}. A lane that \
+                     selects this coordinate schedules that module and nothing else, so the \
+                     build finishes green and the staleness gate then fails on a fixture no \
+                     recipe in the run could create (issue #405)"
+                ));
+            }
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "lane coordinates that no recipe on the lane's own path can produce:\n{}",
+        missing.join("\n")
+    );
+}
+
+// ============================================================================
 // Issue 0352 / phase-324 — interop/bridge cell↔test binding gates.
 //
 // `matrix::CELLS` is baked-only; interop/bridge cells live in `interop::CELLS`

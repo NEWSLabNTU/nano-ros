@@ -58,10 +58,10 @@ nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", defa
 # before invoking the user `setup` closure + spins forever
 # afterwards. NuttX ships `std`; the actual RMW backend
 # (`nros-rmw-zenoh`, ...) must be linked by the per-board overlay
-# (`nros-board-nuttx-qemu-arm`, ...) so `Executor::open` resolves a
+# (`nros-board-nuttx-qemu`, ...) so `Executor::open` resolves a
 # backend at boot.
 nros = { path = "../../api/nros", default-features = false, features = ["std", "rmw-cffi"] }
-nros-board-nuttx-qemu-arm = { path = "../nros-board-nuttx-qemu-arm", optional = true }
+nros-board-nuttx-qemu = { path = "../nros-board-nuttx-qemu", optional = true }
 # Phase 225.O — explicit RMW backend registration on NuttX. The unified-RMW
 # `nros_rmw_register_backend!` macro is a NO-OP on NuttX (linkme has no
 # NuttX support — see nros-rmw-zenoh/src/lib.rs), and the NuttX flat image
@@ -77,7 +77,7 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = f
 [features]
 default = []
 # Reference QEMU ARM virt (Cortex-A7 + virtio-net) configuration.
-reference-qemu-arm = ["dep:nros-board-nuttx-qemu-arm"]
+reference-qemu = ["dep:nros-board-nuttx-qemu"]
 # Link + explicitly register the zenoh RMW backend in `run_entry`.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 # Phase 252 (issue 0072) — forward a declared [safety] axis to the zenoh backend's

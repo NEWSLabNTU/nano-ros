@@ -661,7 +661,7 @@ numbers measured 2026-08-04.
 | 1 | `nros-board-linux` | 1 | x86_64 host | **merge** of `native` + `posix`; renamed (W1.e) |
 | 2 | `nros-board-zephyr` | 1 / 2 / 3 | native_sim · **QEMU Cortex-M** · FVP | conf bundles, not crates; absorbs `fvp-aemv8r-smp` |
 | 3 | `nros-board-mps2-an385-freertos` | 1 | ARMv7-M, nanoros-owned | templated (step 13) |
-| 4 | `nros-board-nuttx-qemu` | 1 / 2 | ARMv7-A · riscv32 | **merge** of `-qemu-arm` + `-qemu-riscv` (W1.a) |
+| 4 | `nros-board-nuttx-qemu` | 1 / 2 | ARMv7-A · riscv32 | **DONE** (phase-337 W3) — merge of `-qemu-arm` + `-qemu-riscv`: 3350 → 2054 lines (−1296, −39 %), two `[[board]]` witnesses in one descriptor, `Config` on `BaseConfig` |
 | 5 | `nros-board-threadx-linux` | 1 | x86_64, NSOS shim | thins to overlay |
 | 6 | `nros-board-threadx-qemu-riscv64` | 2 | riscv64, real NetX Duo | thins to overlay |
 | 7 | `nros-board-mps2-an385` | 2 | bare-metal floor | absorbs `rtic-mps2-an385` as a feature (W1.d) |

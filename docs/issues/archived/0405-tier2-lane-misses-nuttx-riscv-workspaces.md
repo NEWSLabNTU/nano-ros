@@ -1,10 +1,10 @@
 ---
 id: 405
 title: "tier2 lane gate demands nuttx-riscv workspace fixtures the lane build never produces"
-status: open
+status: resolved
 type: bug
 area: build
-related: [issue-0393, issue-0196, phase-318, phase-331]
+related: [issue-0393, issue-0196, phase-318, phase-331, phase-337]
 ---
 
 ## Symptom
@@ -43,7 +43,7 @@ the rename orphaned any previously built
 `build-workspace-fixtures-nuttx-riscv` tree, so the stale-but-present
 artifact that used to satisfy the gate disappeared.
 
-## Workaround
+## Workaround (pre-fix)
 
 Run the full-matrix recipe by hand between the lane build and the gate:
 
@@ -71,3 +71,44 @@ linking the stale list.
 
 Either way, add the check the issue-0196 rule asks for: the set of coords the
 gate demands must be producible by the recipes the lane actually runs.
+
+## Resolution — phase-337 W3.f (2026-08-04)
+
+Fix direction 1, as written above.
+
+**The stage.** `just nuttx build-fixtures` is now an aggregate of two recipes:
+`build-fixtures-arm` (the previous body, unchanged) and `build-fixtures-riscv`,
+which calls `build-riscv-c`, `build-riscv-c-workspaces` and `build-riscv-rust`
+in that order. They stay separate RECIPES because the shared kernel tree holds
+one board config at a time and each reconfigures it; they are now one STAGE,
+serial, so the module can produce every coordinate `lane-coords` attributes to
+it. `just nuttx test` depends on `build-fixtures-arm` instead, because the
+`nuttx_qemu` suite is arm-only and should not pay for an arm↔rv-virt kernel
+round trip. `build-all` drops the three riscv recipes from its dependency list —
+`build-fixtures` runs them itself now.
+
+**The gate on the cost.** A lane that names no riscv coordinate must not pay for
+a kernel reconfigure, so the riscv half is gated on
+`nros_lane_wants_platform nuttx-riscv` — a new helper in
+`scripts/build/fixture-lane.sh` that reads the run's `NROS_FIXTURE_COORDS`
+(unset = no narrowing = yes, the same reading `fixtures-build.sh` gives it). It
+is a shared helper rather than a `grep` open-coded in one module because `esp32`
+owns two fixture platforms too, and a second spelling is how this class returns.
+
+**The issue-0196 half.** `every_fixture_token_is_producible_by_the_module_that_owns_it`
+(`packages/testing/nros-tests/tests/matrix_fixture_coverage.rs`) parses each
+`just/<module>.just`, walks the recipe graph rooted at `build-fixtures` through
+`just` dependencies and `just <module> <recipe>` calls in recipe bodies
+(full-line comments stripped — a comment mentioning `just nuttx build-riscv-c`
+is prose, not an edge, and treating it as one made the first draft of this gate
+pass on the broken tree), and asserts every fixture token the module OWNS is
+passed to `fixtures-build.sh` / `workspace-fixtures-build.sh` somewhere on that
+path. Exempt: `ZephyrNativeSim`/`Fvp` (west leaves lane, own staleness
+signature) and `Px4` (CarveOut everywhere, no runner builds SITL) — the same
+exemption set, for the same reasons, as `every_runtime_cell_has_a_fixture_row`
+in the same file.
+
+Falsifiability check: removing `build-fixtures-riscv` from the aggregate's
+dependency list makes the gate fail with exactly this issue's symptom
+("`just nuttx build-fixtures` cannot produce fixture platform `nuttx-riscv` —
+the recipe graph rooted there builds {\"nuttx\"}").

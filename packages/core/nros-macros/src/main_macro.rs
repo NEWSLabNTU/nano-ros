@@ -2953,7 +2953,7 @@ enum Framework {
 // Phase 225.O follow-up (known-issue #18) — NOTE on NuttX. NuttX does
 // NOT get its own `Framework` variant: it rides `Framework::OwnedSpin`.
 // The NuttX flat-build init task calls `CONFIG_INIT_ENTRYPOINT="nsh_main"`,
-// but the board crate (`nros-board-nuttx-qemu-arm`'s `entry.rs`) already
+// but the board crate (`nros-board-nuttx-qemu`'s `entry.rs`) already
 // exports a `#[no_mangle] nsh_main` that runs `nsh_initialize()` (virtio
 // FDT discovery + network bringup) and then calls the Rust `main`
 // lang-start symbol. OwnedSpin emits exactly that `fn main()` (NuttX is

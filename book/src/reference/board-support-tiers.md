@@ -18,7 +18,7 @@ For **procurement guidance on parts that have no crate in this tree** (Nordic, N
 |---|---|---|---|
 | `nros-board-mps2-an385-freertos` | FreertosMps2 | *unassigned* |  |
 | `nros-board-native` | Native | *unassigned* | The reference platform: the densest Runtime coverage of any target, all three RMWs. |
-| `nros-board-nuttx-qemu-arm` | NuttxArm | *unassigned* |  |
+| `nros-board-nuttx-qemu` | NuttxArm | *unassigned* |  |
 | `nros-board-posix` | Native | *unassigned* | Family driver behind nros-board-native; `board_path_for` maps both keys to one ZST. |
 | `nros-board-threadx-linux` | ThreadxLinux | *unassigned* |  |
 | `nros-board-zephyr` | ZephyrNativeSim | *unassigned* | CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board is built by anything. |
@@ -31,7 +31,7 @@ Asserted runtime coverage and a nightly lane, but not in `just ci`. Breakage is 
 |---|---|---|---|
 | `nros-board-esp32-qemu` | Esp32Qemu | *unassigned* | Real two-way QEMU e2e (esp32_emulator.rs). |
 | `nros-board-mps2-an385` | QemuBaremetal | *unassigned* |  |
-| `nros-board-nuttx-qemu-riscv` | NuttxRiscv | *unassigned* | HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly. |
+| `nros-board-nuttx-qemu` | NuttxRiscv | *unassigned* | HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly. |
 | `nros-board-rtic-mps2-an385` | QemuBaremetal | *unassigned* |  |
 | `nros-board-threadx-qemu-riscv64` | ThreadxRiscv64 | *unassigned* | All three Action rows are BuildOnly by a deliberate wall-clock choice (182.5), not by breakage. |
 
@@ -67,7 +67,7 @@ Shared traits, family drivers, ABI mirrors, PACs, and descriptor directories. No
 | `nros-board-cffi` | — | *unassigned* | Header ABI mirror with ZERO in-tree C consumers; kept alive by its own drift gate. Spec artifact, not a library. |
 | `nros-board-common` | — | *unassigned* | Build-helper library plus one trait; 2180 of 2252 code lines are behind `build-helpers`. |
 | `nros-board-freertos` | — | *unassigned* | Real family driver: the MPS2 overlay is `pub use nros_board_freertos::Config` and carries zero config code. The pattern the forked boards should copy. |
-| `nros-board-nuttx` | — | *unassigned* | Façade over the two NuttX boards; phase-322 W1.a absorbs it. |
+| `nros-board-nuttx` | — | *unassigned* | NuttX FAMILY DRIVER, not a façade: owns run_entry / run_tiers / the tier spin loops, which the one board overlay (nros-board-nuttx-qemu) delegates to. phase-337 W3 merged the two board crates below it; this layer stays. |
 | `nros-board-threadx` | — | *unassigned* | Real family driver: a 1120-line generic entry.py both ThreadX boards call into. |
 | `posix` | — | *unassigned* | nros-board.toml descriptor directory, not a crate. phase-321 W2 moves these out of packages/boards/. |
 | `zephyr` | — | *unassigned* | nros-board.toml descriptor directory, not a crate. |

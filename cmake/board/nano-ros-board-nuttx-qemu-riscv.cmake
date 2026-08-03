@@ -20,15 +20,17 @@ set(_NROS_BOARD_NUTTX_QEMU_RISCV_INCLUDED TRUE)
 
 set(_NROS_BOARD_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 set(_NROS_NUTTX_BOARD_DIR
-    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-nuttx-qemu-riscv")
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-nuttx-qemu")
+# phase-337 W3 — the two witnesses share one board crate, so their FFI
+# subcrates sit side by side inside it and the riscv one is name-qualified.
 set(_NROS_NUTTX_FFI_CRATE_DIR_DEFAULT
-    "${_NROS_NUTTX_BOARD_DIR}/nros-nuttx-ffi")
+    "${_NROS_NUTTX_BOARD_DIR}/nros-nuttx-riscv-ffi")
 
 # 194.4 self-provision + 194.3c riscv inputs: the board supplies its defconfig
 # AND its per-arch Make.defs path to the shared provisioning script.
 set(NROS_NUTTX_PROVISION_SCRIPT "${_NROS_BOARD_ROOT}/scripts/nuttx/build-nuttx.sh"
     CACHE FILEPATH "NuttX export provisioning script (make export), run before the example build")
-set(NROS_NUTTX_DEFCONFIG "${_NROS_NUTTX_BOARD_DIR}/nuttx-config/defconfig"
+set(NROS_NUTTX_DEFCONFIG "${_NROS_NUTTX_BOARD_DIR}/nuttx-config/riscv/defconfig"
     CACHE FILEPATH "Board NuttX defconfig consumed by the provisioning script")
 set(NROS_NUTTX_BOARD_MAKEDEFS "boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs"
     CACHE STRING "Board Make.defs path (relative to NUTTX_DIR) for the provisioning script")

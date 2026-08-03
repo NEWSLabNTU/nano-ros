@@ -5,7 +5,7 @@
 # `ws-realtime-rust`: the SAME one-line `nros::main!(launch = ...)` entry as the
 # native / zephyr / arm-nuttx siblings, deployed as a NuttX flat-build kernel
 # image on the rv-virt board. `deploy = "nuttx-riscv"` routes the macro onto
-# `nros_board_nuttx_qemu_riscv::QemuRvVirt` (OwnedSpin); `system.toml`'s
+# `nros_board_nuttx_qemu::QemuRvVirt` (OwnedSpin); `system.toml`'s
 # `[tiers.*.nuttx]` priorities flip the generic multi-tier arm onto
 # `<QemuRvVirt>::run_tiers` — one `std::thread` per tier over ONE shared zenoh
 # session, exactly the arm seam mirrored (phase-281 W3-nuttx).
@@ -35,7 +35,7 @@ test = false
 bench = false
 
 # Entry pkg metadata — `deploy = "nuttx-riscv"` routes the `nros::main!()`
-# proc-macro onto the rv-virt board (`nros_board_nuttx_qemu_riscv::QemuRvVirt`,
+# proc-macro onto the rv-virt board (`nros_board_nuttx_qemu::QemuRvVirt`,
 # OwnedSpin) and feeds `nros check`.
 [package.metadata.nros.entry]
 deploy = "nuttx-riscv"
@@ -59,7 +59,7 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
 # `BoardEntry` + `run_tiers`, gated `target_os = "nuttx"`) + the NuttX platform
 # shim. `rmw-zenoh` → the board links `nros-rmw-zenoh` and its
 # `run_{entry,tiers}` register it.
-nros-board-nuttx-qemu-riscv = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-riscv" }
+nros-board-nuttx-qemu = { path = "../../../../../packages/boards/nros-board-nuttx-qemu" }
 # Concrete platform impl — also pulled by the board; kept explicit for the link map.
 nros-platform = { path = "../../../../../packages/platform/nros-platform", default-features = false, features = ["platform-nuttx"] }
 

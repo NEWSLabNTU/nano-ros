@@ -1796,7 +1796,7 @@ env = { CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc" }
 
 # #127 (Phase 275 W1 tail) — the per-role Entry-pkg demos. Each Entry pkg
 # bakes board + zenoh RMW through `nros::main!` + the
-# `nros-board-nuttx-qemu-arm` shim; the bootable-image link is
+# `nros-board-nuttx-qemu` shim; the bootable-image link is
 # board-centric (RFC-0032 "third leg"): the dynamic pieces (processed
 # dramboot.ld, vectortab+builtins-stub boot archive, -L search dirs)
 # propagate from the board dep's build.rs

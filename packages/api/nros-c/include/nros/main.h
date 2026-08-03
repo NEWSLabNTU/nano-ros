@@ -145,7 +145,7 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t dom
  * owns boot + networking (the board FFI main brings up eth0 before app_main,
  * phase-280), so there is no network bring-up. `locator` is the connect
  * endpoint; `domain_id` is the ROS domain id; `session_name` names the primary
- * session. Defined in nros-board-nuttx-qemu-arm (compiled by the board's
+ * session. Defined in nros-board-nuttx-qemu (compiled by the board's
  * build.rs via `nuttx_platform_build::compile_run_tiers_seam`). */
 NROS_PUBLIC int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id,
                                                const char* session_name,

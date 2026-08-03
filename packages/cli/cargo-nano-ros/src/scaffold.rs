@@ -128,7 +128,7 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
             },
         },
         "nuttx" => PlatformSpec {
-            board_crate: "nros-board-nuttx-qemu-arm",
+            board_crate: "nros-board-nuttx-qemu",
             deploy_token: "nuttx",
             kind: PlatformKind::Deferred {
                 reason: "the tracked shape is a split node-lib + `*-entry` bin pair; \

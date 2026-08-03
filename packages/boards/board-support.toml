@@ -76,8 +76,12 @@ link_check_example = "examples/qemu-arm-freertos/rust/talker"
 tier = 1
 maintainers = []
 
+# phase-337 W3.d — ONE crate, TWO witnesses, TWO tiers. This row and the
+# `NuttxRiscv` row below are the reason W1.c re-keyed the registry by
+# (crate, matrix_platform): tier is a per-witness promise ("`just ci` exercises
+# it" is true of arm and false of rv-virt), so they cannot share a row.
 [[board]]
-crate = "nros-board-nuttx-qemu-arm"
+crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxArm"
 nightly_token = "nuttx"
 link_check_example = "examples/qemu-arm-nuttx/rust/talker"
@@ -125,7 +129,7 @@ maintainers = []
 notes = "Real two-way QEMU e2e (esp32_emulator.rs)."
 
 [[board]]
-crate = "nros-board-nuttx-qemu-riscv"
+crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxRiscv"
 nightly_token = "nuttx"
 tier = 2
@@ -214,7 +218,7 @@ notes = "Real family driver: the MPS2 overlay is `pub use nros_board_freertos::C
 crate = "nros-board-nuttx"
 tier = "infra"
 maintainers = []
-notes = "Façade over the two NuttX boards; phase-322 W1.a absorbs it."
+notes = "NuttX FAMILY DRIVER, not a façade: owns run_entry / run_tiers / the tier spin loops, which the one board overlay (nros-board-nuttx-qemu) delegates to. phase-337 W3 merged the two board crates below it; this layer stays."
 
 [[board]]
 crate = "nros-board-threadx"

@@ -34,7 +34,7 @@ set -euo pipefail
 # location. PROJECT_ROOT resolves two levels up (scripts/nuttx → repo root).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DEFCONFIG="${NUTTX_DEFCONFIG:-$PROJECT_ROOT/packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig}"
+DEFCONFIG="${NUTTX_DEFCONFIG:-$PROJECT_ROOT/packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig}"
 
 # --- Auto-resolve paths from project root if not set ---
 

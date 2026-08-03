@@ -4,8 +4,8 @@
 //! `app_main()` defined in C/C++ code (linked by CMake).
 
 // Force-link crates so their symbols are available to C/C++ code.
-// nros_board_nuttx_qemu_arm provides the NuttX kernel + board startup code.
-extern crate nros_board_nuttx_qemu_arm;
+// nros_board_nuttx_qemu provides the NuttX kernel + board startup code.
+extern crate nros_board_nuttx_qemu;
 extern crate nros_c;
 extern crate nros_cpp;
 extern crate nros_rmw_zenoh;
@@ -49,7 +49,7 @@ fn main() {
     // baked per-entry via `option_env!` (channel mirrors `NROS_ENTRY_LOCATOR`);
     // absent a bake, the slirp e2e defaults (`10.0.2.30/24` via `10.0.2.2`)
     // apply so an un-overridden C entry still connects.
-    use nros_board_nuttx_qemu_arm::{
+    use nros_board_nuttx_qemu::{
         SLIRP_DEFAULT_GATEWAY, SLIRP_DEFAULT_IP, SLIRP_DEFAULT_PREFIX, configure_entry_eth0,
     };
     let ip = baked_ipv4(option_env!("NROS_IP"), SLIRP_DEFAULT_IP);
