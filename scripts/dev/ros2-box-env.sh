@@ -62,6 +62,14 @@ export NROS_HOME="${NROS_HOME:-$HOME/.nros-box}"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(cd -P "$_nros_box_root/.." && pwd -P)/.cargo-target-box}"
 export CARGO_INSTALL_ROOT="${CARGO_INSTALL_ROOT:-$HOME/.local-box}"
 
+# `nros sync` runs the launch resolver by ABSOLUTE path (issue 0285) and its
+# default is `packages/cli/nros-launch-resolve/target/release/…` — one location
+# for two incompatible binaries. The host links libpython3.14, the box
+# libpython3.10, and NEITHER loads on the other side, so whoever built last
+# broke the other (issue 0400). The CLI already honours an explicit override,
+# so point it at the box's own build, which lands under CARGO_TARGET_DIR above.
+export NROS_LAUNCH_RESOLVE="${NROS_LAUNCH_RESOLVE:-$CARGO_TARGET_DIR/release/nros-launch-resolve}"
+
 cd "$_nros_box_root" || return 1
 
 # `nros` discovery expects packages/cli/target/release/nros — activate.sh puts

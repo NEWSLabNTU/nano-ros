@@ -3070,7 +3070,13 @@ setup-launch-resolve:
     set -e
     root="{{justfile_directory()}}"
     crate="$root/packages/cli/nros-launch-resolve"
-    bin="$crate/target/release/nros-launch-resolve"
+    # Honour CARGO_TARGET_DIR: cargo writes there, so the staleness check and
+    # the reported path must look there too. Hardcoding `$crate/target` made a
+    # box build land in the redirected dir while this recipe declared success
+    # about a HOST binary sitting at the old path — and since that binary links
+    # the host's libpython, `nros sync` inside the box then died with
+    # `libpython3.14.so.1.0: cannot open shared object file`. Issue 0400.
+    bin="${CARGO_TARGET_DIR:-$crate/target}/release/nros-launch-resolve"
     if [ ! -f "$crate/../third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
         echo "[setup-launch-resolve] SKIP: play_launch submodule not initialised"
         # NON-recursive on purpose (RFC-0060): layer 2 (resolve + parser) is
