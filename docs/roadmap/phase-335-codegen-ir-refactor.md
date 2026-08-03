@@ -8,7 +8,41 @@
 [RFC-0067](../design/0067-env-invariant-msg-dep-identity.md)/phase-333 (resolve-only deps),
 [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md) (fingerprint gains pack inputs)
 
-**Status.** NOT STARTED — waves below.
+**Status.** IN PROGRESS. **W1 landed** (rosidl-resolve + rosidl-lower crates, the
+Resolved/Lowered IR, the production hash path routed through the IR, hash-once/lower-
+per-target golden). **W2 landed** (the full C backend — message + service + action —
+renders from minijinja data packs under `packs/c/`, byte-identical, proven by the
+codegen golden + C compile + comparison tests). **W3 in progress** — see the
+easy/hard split note below.
+
+### Learnings that refine the remaining plan (2026-08 W2)
+
+1. **The askama templates were ALREADY `.jinja`** and most view structs are flat
+   data, so a backend converts by: copy template → mechanical dialect deltas
+   (`else if`→`elif`, `&&`→`and`, `||`→`or`, `!x`→`not x`, `{% call m::f %}`→
+   `{{ m.f() }}`, import rename) → derive `Serialize` on the view struct → render
+   via `render::render_c`-style call. **Operator substitution MUST be scoped to
+   `{% %}` lines** — emitted C/Rust `||`/`&&` (NULL checks, boolean ops) are plain
+   text and get corrupted by a blanket sed.
+2. **minijinja whitespace matched askama byte-for-byte** for the C templates — no
+   normalization commit was needed (W3.e may still be needed for a backend that
+   uses askama-specific whitespace).
+3. **W3 backends split by difficulty:**
+   - **EASY (data-only jinja, convert exactly like C):** `message_rmw` /
+     `service_rmw` / `action_rmw` (the RRR/rmw Rust backend), and the `lib` /
+     `lib_nros` / `build` / `cargo` / `cargo_nros` scaffolding templates. Only
+     `{{ var }}` + `{% for/if %}`; the `.foo()`/`::` in them are in the EMITTED
+     code, not jinja.
+   - **HARD (askama filters + method calls in jinja):** `*_idiomatic` (168/112/56
+     askama-isms), `*_nros` (86/40/20), `message_cpp_types` (71), `*_cpp` /
+     `cpp_exports`. These call context methods and custom filters
+     (`templates::filters::snake_case`) inside `{{ }}`, which minijinja cannot do
+     against a data context. Each needs its method-call values PRE-COMPUTED into
+     the serde context (extend the view struct) and its filters REGISTERED on the
+     minijinja `Environment` — real per-template work, not a sed.
+4. **W1 sizing-helper deletion deferred:** `compute_serialized_size_max` etc. in
+   `types.rs` are still used by the un-converted cpp backend; delete them when cpp
+   converts (folds into W6), not before.
 
 ## Goal
 
@@ -42,17 +76,17 @@ allowed to change bytes is a deliberate, reviewed formatting normalization, call
 
 ### W1 — the IR stages (BLOCKS EVERYTHING)
 
-- [ ] **W1.a** New crate `rosidl-resolve`. Define `ResolvedType` = `Ast` + fully-qualified type
+- [x] **W1.a** New crate `rosidl-resolve`. Define `ResolvedType` = `Ast` + fully-qualified type
       refs + RIHS hash + type-description closure. Relocate the RIHS engine out of
       `rosidl-codegen/rihs.rs` into this crate (it is already self-contained). `serde`-derive.
-- [ ] **W1.b** New crate `rosidl-lower`. Define `TargetProfile` (`ptr_width`, `enum_width` /
+- [x] **W1.b** New crate `rosidl-lower`. Define `TargetProfile` (`ptr_width`, `enum_width` /
       `short_enums`, alignment rules) and `LoweredType` = `ResolvedType ⊗ CodegenConfig ⊗
       TargetProfile`, carrying per field: `storage` (Fixed/Bounded/Heap/Inline from the existing
       `CapacityResolver`), `plain`, `align`, `repr_c_field_order`, `serialized_size_max`,
       `cdr_op`. Move the sizing/layout logic out of `rosidl-codegen/types.rs` into here.
 - [ ] **W1.c** Rewire the existing (askama) backends to consume `LoweredType` instead of
       recomputing from `Ast`. No new engine yet, no output change.
-- [ ] **W1.d** Golden test: `ResolvedType` hash values pinned against the same REP-2011 vectors
+- [x] **W1.d** Golden test: `ResolvedType` hash values pinned against the same REP-2011 vectors
       `rihs.rs` pins today; `LoweredType` layout pinned for x86_64 AND an armv7a short-enum
       `TargetProfile` (guards the arm-short-enums class, project memory).
 - **Acceptance:** `just ci` green; codegen golden corpus byte-identical; `rihs.rs` and the sizing
@@ -60,11 +94,11 @@ allowed to change bytes is a deliberate, reviewed formatting normalization, call
 
 ### W2 — prove the data-driven render on ONE backend (C)
 
-- [ ] **W2.a** Add `minijinja` (runtime engine) + the `LanguagePack` loader: `packs/<lang>/`
+- [x] **W2.a** Add `minijinja` (runtime engine) + the `LanguagePack` loader: `packs/<lang>/`
       with `spelling.toml` + `pack.toml` + `*.jinja`, bundled via `include_dir!`.
-- [ ] **W2.b** Author `packs/c/` reproducing the current C output from `LoweredType`. C first: no
+- [x] **W2.b** Author `packs/c/` reproducing the current C output from `LoweredType`. C first: no
       move semantics, simplest storage rules.
-- [ ] **W2.c** Assert the pack-rendered C is **byte-identical** to the askama C over the golden
+- [x] **W2.c** Assert the pack-rendered C is **byte-identical** to the askama C over the golden
       corpus; then delete the Rust C templates + the C `*_type_for_field` helpers.
 - **Acceptance:** C messages/services/actions emitted with ZERO C-specific Rust; corpus
   byte-identical; **the per-language-burden claim is now disproven for one language.**
