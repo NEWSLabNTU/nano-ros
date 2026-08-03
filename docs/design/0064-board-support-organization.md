@@ -4,7 +4,7 @@ title: "Board support organization: nano-ros as an embeddable library, not a boa
 status: Draft (LIVE — under active exploration)
 since: 2026-07
 last-reviewed: 2026-08-04
-implements-tracked-by: []          # candidates: revive phase-201; extend RFC-0012 Layer 3
+implements-tracked-by: [phase-337]  # R3's matrix, one board family per wave
 supersedes: []
 superseded-by: null
 ---
