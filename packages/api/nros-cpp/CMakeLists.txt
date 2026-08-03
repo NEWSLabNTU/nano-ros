@@ -44,14 +44,25 @@ nros_feature_set(_cpp_features
     CAPABILITIES "${_caps}")
 
 # ---- Build nros-cpp via Corrosion ----
+# phase-336 — PROFILE is passed explicitly. Without it Corrosion falls back to
+# its own CMAKE_BUILD_TYPE mapping (Debug→dev, EVERYTHING else→release), so a
+# Debug or MinSizeRel build of the C/C++ half still got a fat-LTO cargo build.
+# Relative to THIS file, like the FeatureSet include above — a raw
+# `add_subdirectory(<repo>)` consumer never defines NANO_ROS_ROOT.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosCargoProfile.cmake")
+nros_resolve_cargo_profile()
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"
     CRATES        nros-cpp
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
     FEATURES      ${_cpp_features}
+    PROFILE       ${NROS_CARGO_PROFILE}
     LOCKED
 )
+# The preset's definition, so the crate resolves `--profile nros-…` without a
+# `[profile.*]` block of its own. No-op for a user-owned profile.
+nros_cargo_profile_env(nros_cpp-static)
 
 # ---- Header-only C++ interface library ----
 add_library(nros-cpp-headers INTERFACE)

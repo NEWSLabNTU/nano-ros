@@ -1,4 +1,8 @@
 #[=======================================================================[.rst:
+# phase-336 — the shared cargo-profile resolver (`nros profile`), included
+# at FILE scope so a function body never include()s inside its own frame.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
+
 nros_generate_interfaces (Zephyr)
 ---------------------------------
 
@@ -63,7 +67,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCodegenCore.cmake")
 # Cargo profile changes. Prefer it over the internal cache so existing Zephyr
 # build directories do not keep pointing at an old/nonexistent codegen binary
 # such as target/release/nros-codegen after the default profile moved to
-# nros-fast-release.
+# the profile the build resolved (phase-336).
 if(DEFINED _NANO_ROS_CODEGEN_TOOL AND NOT _NANO_ROS_CODEGEN_TOOL STREQUAL "")
   if(NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
     message(FATAL_ERROR
@@ -382,17 +386,10 @@ function(nros_generate_interfaces target)
       # Detect Rust target for cross-compilation
       nros_detect_rust_target()
 
-      set(_nros_cargo_profile "$ENV{NROS_CARGO_PROFILE}")
-      if(_nros_cargo_profile STREQUAL "")
-        set(_nros_cargo_profile "nros-fast-release")
-      endif()
-      if(_nros_cargo_profile STREQUAL "dev")
-        set(_nros_cargo_profile_dir "debug")
-      elseif(_nros_cargo_profile STREQUAL "release")
-        set(_nros_cargo_profile_dir "release")
-      else()
-        set(_nros_cargo_profile_dir "${_nros_cargo_profile}")
-      endif()
+      # phase-336 — profile + target dir from the shared table.
+      nros_resolve_cargo_profile()
+      set(_nros_cargo_profile "${NROS_CARGO_PROFILE}")
+      set(_nros_cargo_profile_dir "${NROS_CARGO_PROFILE_DIR}")
 
       if(NROS_RUST_TARGET)
         set(_ffi_lib "${_ffi_target_dir}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/libnano_ros_cpp_ffi_${target}.a")
@@ -409,19 +406,10 @@ function(nros_generate_interfaces target)
         "${_ffi_crate_dir}/Cargo.toml"
         @ONLY
       )
-      if(_nros_cargo_profile STREQUAL "nros-fast-release")
-        file(APPEND "${_ffi_crate_dir}/Cargo.toml"
-"
-[profile.nros-fast-release]
-inherits = \"release\"
-opt-level = 2
-codegen-units = 16
-incremental = true
-debug = 1
-lto = \"off\"
-panic = \"abort\"
-")
-      endif()
+      # phase-336 — no appended `[profile.*]` mirror. The preset's definition
+      # reaches this generated crate as `CARGO_PROFILE_*` environment variables
+      # (NROS_CARGO_PROFILE_ENV, set on the cargo command below), which works
+      # for EVERY nros-* profile rather than the one name this branch knew.
 
       # Generate lib.rs: the de-duplicated dep closure + own files, each
       # include!()d into one flat module scope. De-dup + emission live in the
@@ -468,9 +456,15 @@ targets = [\"${NROS_RUST_TARGET}\"]
         RUST_TARGET "${NROS_RUST_TARGET}"
         BUILD_STD "${_zephyr_build_std}")
 
+      # phase-336 — carry the preset definition; this generated crate is its own
+      # workspace root and no longer appends a `[profile.*]` block.
+      set(_ffi_env "")
+      if(NOT NROS_CARGO_PROFILE_ENV STREQUAL "")
+        set(_ffi_env ${CMAKE_COMMAND} -E env ${NROS_CARGO_PROFILE_ENV})
+      endif()
       add_custom_command(
         OUTPUT "${_ffi_lib}"
-        COMMAND cargo ${_cargo_ffi_args}
+        COMMAND ${_ffi_env} cargo ${_cargo_ffi_args}
         DEPENDS "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
         WORKING_DIRECTORY "${_ffi_crate_dir}"
         COMMENT "Building Rust FFI glue for ${target} C++ bindings"

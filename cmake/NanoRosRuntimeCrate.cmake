@@ -30,6 +30,9 @@ set(_NROS_RUNTIME_CRATE_INCLUDED TRUE)
 # `nros_rmw_dispatch(<rmw>)` so the synthesized runtime crate's cffi feature can never
 # drift from the Rust SSoT / the cmake link extras.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
+# phase-336 — the cargo-profile resolver. File scope, so the function below
+# does not include() inside its own frame.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCargoProfile.cmake")
 
 # Map PLATFORM -> (nros-cpp platform feature ; std|alloc tier).
 #
@@ -127,18 +130,10 @@ nros-cpp = { path = \"${NANO_ROS_ROOT}/packages/api/nros-cpp\", default-features
 ${_dep_lines}
 [workspace]
 
-# Mirror the repo-root `[profile.nros-fast-release]` (Cargo.toml). This umbrella is its
-# own workspace root, so the fixture build's `--profile nros-fast-release` (justfile
-# default NROS_CARGO_PROFILE) resolves here — without it cargo errors
-# `profile \`nros-fast-release\` is not defined`. Keep in sync with root + cpp_ffi crates.
-[profile.nros-fast-release]
-inherits = \"release\"
-opt-level = 2
-codegen-units = 16
-incremental = true
-debug = 1
-lto = \"off\"
-panic = \"abort\"
+# phase-336 — NO mirrored `[profile.*]` block. This umbrella is its own
+# workspace root, so a custom profile used to have to be redeclared here or
+# cargo errored `profile \`nros-…\` is not defined`; the import now injects the
+# definition through `CARGO_PROFILE_*` instead, which is one fewer copy to drift.
 ")
 
     # phase-263 C2c — on an embedded cross target the umbrella crate itself must be no_std
@@ -265,11 +260,17 @@ function(nros_synth_runtime_umbrella)
     # baked into the `nros-cpp` dependency's `features = [...]` line above (with
     # `default-features = false`). So import with no FEATURES; passing nros-cpp's features
     # to this package fails ("does not contain these features").
+    # phase-336 — the profile is passed, not left to Corrosion's build-type
+    # default, and its definition is injected so the SYNTHESIZED manifest needs
+    # no `[profile.*]` block of its own (this file used to mirror one).
+    nros_resolve_cargo_profile()
     corrosion_import_crate(
         MANIFEST_PATH "${_crate_dir}/Cargo.toml"
         CRATES        nros_ws_runtime
         CRATE_TYPES   staticlib
+        PROFILE       ${NROS_CARGO_PROFILE}
     )
+    nros_cargo_profile_env(nros_ws_runtime-static)
     if(NOT TARGET nros_ws_runtime-static)
         message(FATAL_ERROR
             "nros_synth_runtime_umbrella: Corrosion did not create "

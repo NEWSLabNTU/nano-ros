@@ -5,6 +5,10 @@
 # Provides CMake functions for building Rust crates from the nros workspace
 # and bridging Kconfig values to Cargo environment variables.
 
+# phase-336 — the shared cargo-profile resolver (`nros profile`), included at
+# FILE scope so a function body never include()s inside its own frame.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
+
 # =============================================================================
 # nros_detect_rust_target()
 #
@@ -263,19 +267,12 @@ function(nros_cargo_build)
     string(REPLACE "-" "_" LIB_STEM ${ARG_PACKAGE})
     set(LIB_NAME "lib${LIB_STEM}.a")
 
-    # Build the crate. NROS_CARGO_PROFILE defaults to nros-fast-release
-    # for quicker release-like fixture builds.
-    set(_nros_cargo_profile "$ENV{NROS_CARGO_PROFILE}")
-    if(_nros_cargo_profile STREQUAL "")
-        set(_nros_cargo_profile "nros-fast-release")
-    endif()
-    if(_nros_cargo_profile STREQUAL "dev")
-        set(_nros_cargo_profile_dir "debug")
-    elseif(_nros_cargo_profile STREQUAL "release")
-        set(_nros_cargo_profile_dir "release")
-    else()
-        set(_nros_cargo_profile_dir "${_nros_cargo_profile}")
-    endif()
+    # phase-336 — the profile and its target directory come from the shared
+    # table (`nros profile`). This block used to be a fourth copy of the
+    # mapping, defaulting to a literal that outlived the name it referred to.
+    nros_resolve_cargo_profile()
+    set(_nros_cargo_profile "${NROS_CARGO_PROFILE}")
+    set(_nros_cargo_profile_dir "${NROS_CARGO_PROFILE_DIR}")
 
     if(NROS_RUST_TARGET)
         set(LIB_PATH ${CARGO_TARGET_DIR}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/${LIB_NAME})
@@ -406,11 +403,15 @@ function(nros_cargo_build)
         list(APPEND _nros_knob_env "${_knob}=${NROS_RESOLVED_${_knob}}")
     endforeach()
 
+    # phase-336 — the preset's definition rides on the command, so a crate whose
+    # own manifest declares no `nros-*` profile still resolves the name. Empty
+    # for a user-owned profile, whose manifest governs.
     add_custom_target(${_target_name}_build
         COMMAND ${CMAKE_COMMAND} -E env
             ${_rustup_override}
             ${_cc_env}
             ${_nros_knob_env}
+            ${NROS_CARGO_PROFILE_ENV}
             NROS_PLATFORM_CFFI_INCLUDE=$ENV{NROS_PLATFORM_CFFI_INCLUDE}
             cargo ${CARGO_ARGS}
         BYPRODUCTS ${_cargo_byproducts}

@@ -64,7 +64,7 @@ fn test_zenoh_to_xrce_bridge_e2e(
         Ok(p) => p.to_path_buf(),
         Err(e) => {
             nros_tests::skip!(
-                "bridge-zenoh-to-xrce-fwd binary not prebuilt ({e}); run `cargo build --profile nros-fast-release` inside \
+                "bridge-zenoh-to-xrce-fwd binary not prebuilt ({e}); run `cargo build --profile nros-relwithdebinfo` inside \
                  packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd/"
             );
         }

@@ -171,11 +171,11 @@ fn find_dep_rlib_filesystem(crate_name: &str, symbol_prefix: &str) -> Result<Pat
     let triple = env::var("TARGET").ok();
     let host = env::var("HOST").ok();
     // Issue 0111 — use the real profile *directory* name (e.g.
-    // `nros-fast-release`), NOT the `PROFILE` env var. cargo only ever sets
+    // `nros-relwithdebinfo`), NOT the `PROFILE` env var. cargo only ever sets
     // `PROFILE` to `debug`/`release`, but a custom profile writes its
     // artifacts to a target subdir named after the profile itself — so
     // `PROFILE` misdirects this search (it would look in `release/deps` while
-    // the rlib lives in `nros-fast-release/deps`). `OUT_DIR` carries the true
+    // the rlib lives in `nros-relwithdebinfo/deps`). `OUT_DIR` carries the true
     // profile dir as the path component before `build`, mirrored from
     // `cargo_target_dir`. Fall back to `PROFILE` only when `OUT_DIR` is absent.
     let profile = profile_dir_name()

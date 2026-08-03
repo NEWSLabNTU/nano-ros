@@ -78,6 +78,9 @@ set(_NROS_BOARD_RISCV64_QEMU_INCLUDED TRUE)
 # Resolve in-tree asset paths.
 # ---------------------------------------------------------------------------
 set(_NROS_BOARD_ROOT  "${CMAKE_CURRENT_LIST_DIR}/../..")
+# phase-336 — the cargo-profile resolver, included at FILE scope (an
+# include() inside the app function would pop with its frame).
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosCargoProfile.cmake")
 set(_NROS_BOARD_DIR
     "${_NROS_BOARD_ROOT}/packages/boards/nros-board-threadx-qemu-riscv64")
 set(_NROS_BOARD_CONFIG_DIR "${_NROS_BOARD_DIR}/config")
@@ -505,12 +508,17 @@ function(nros_threadx_rv64_rust_cyclone_app target)
     endif()
     string(REPLACE "-" "_" _crate_target "${_A_CRATE}")
 
+    # phase-336 — explicit profile + its definition (Corrosion would otherwise
+    # map any non-Debug build type onto `release`).
+    nros_resolve_cargo_profile()
     corrosion_import_crate(
         MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
         CRATES "${_A_CRATE}"
         CRATE_TYPES staticlib
         NO_DEFAULT_FEATURES
+        PROFILE ${NROS_CARGO_PROFILE}
         FEATURES rmw-cyclonedds)
+    nros_cargo_profile_env(${_crate_target}-static)
 
     # Issue #214 — DOMAIN bake for the Rust `Config::default()` (drives the
     # Executor/Cyclone participant; mirrors the C fixtures' `-DNROS_DOMAIN_ID`).

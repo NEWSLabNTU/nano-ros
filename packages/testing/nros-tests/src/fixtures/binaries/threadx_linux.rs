@@ -108,8 +108,8 @@ pub fn build_threadx_action_client() -> TestResult<&'static Path> {
 /// `fixtures-build.sh threadx-linux rust`, which runs `nros sync` + cargo).
 /// Unlike the role examples above — flat `target-zenoh/<profile>/` — each
 /// Entry pkg pins the host triple via `.cargo/config` `[build] target`, so the
-/// artifact lands under `target/x86_64-unknown-linux-gnu/<profile>/`. The
-/// fixture profile is `nros-fast-release`. `role` is hyphenated
+/// artifact lands under `target/x86_64-unknown-linux-gnu/<profile>/`, where
+/// `<profile>` is whatever the build ran at (phase-336). `role` is hyphenated
 /// (`"service-server"`); `bin` is the `[[bin]]` name
 /// (`"threadx_linux_rs_service_server_entry"`).
 pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
@@ -121,7 +121,8 @@ pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
         )));
     }
     let bin_path = dir.join(format!(
-        "target/x86_64-unknown-linux-gnu/nros-fast-release/{bin}"
+        "target/x86_64-unknown-linux-gnu/{}/{bin}",
+        super::cargo_target_profile_dir()
     ));
     super::require_prebuilt_binary_fresh(&bin_path)
 }

@@ -994,7 +994,7 @@ build_subdir = "build-workspace-fixtures-freertos"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8130" }
 
 # ===========================================================================
-# native — Rust (host, profile nros-fast-release)
+# native — Rust (host, the ambient profile — see phase-336 / `nros profile`)
 # ===========================================================================
 
 # Collapsed role examples — default features, default target dir.

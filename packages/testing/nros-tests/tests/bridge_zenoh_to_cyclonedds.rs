@@ -114,7 +114,7 @@ fn test_zenoh_to_cyclonedds_bridge_e2e(zenohd_unique: ZenohRouter, talker_binary
         Err(e) => {
             nros_tests::skip!(
                 "bridge-zenoh-to-cyclonedds-fwd binary not prebuilt ({e}); run `cargo build \
-                 --profile nros-fast-release` inside \
+                 --profile nros-relwithdebinfo` inside \
                  packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd/"
             );
         }

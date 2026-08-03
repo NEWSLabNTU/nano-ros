@@ -231,7 +231,7 @@ endfunction()
 # AFTER the optional `+<toolchain>` prefix, which the caller prepends). Shared
 # skeleton: `build --manifest-path … --target-dir …` plus, conditionally:
 #   PROFILE     `dev` → no flag (cargo's default debug); `release` → --release;
-#               anything else (e.g. nros-fast-release) → --profile <name>.
+#               anything else (e.g. nros-relwithdebinfo) → --profile <name>.
 #   RUST_TARGET non-empty → --target <triple>.
 #   BUILD_STD   non-empty → -Z build-std=<comma-list> (tier-2/3 embedded triples
 #               that ship no precompiled std).

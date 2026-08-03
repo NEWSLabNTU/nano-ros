@@ -12,7 +12,14 @@ crate-type = ["staticlib"]
 [dependencies]
 nros-serdes = { path = "@SERDES_DIR@", default-features = false }
 
+# phase-336 — this crate is its own workspace root, so a profile it is built
+# with must be defined HERE or injected. The `nros-*` presets arrive as
+# `CARGO_PROFILE_*` environment variables from `nros_cargo_profile_env()`, so
+# only the built-in cargo profiles need a block, and `release` is spelled to
+# match the root workspace's (opt-level 3 since the profile split; `panic =
+# "abort"` is required — a staticlib that unwinds cannot link into the
+# `panic_abort` images this glue ends up in).
 [profile.release]
-opt-level = "s"
+opt-level = 3
 lto = true
 panic = "abort"

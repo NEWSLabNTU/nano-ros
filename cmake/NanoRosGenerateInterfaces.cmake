@@ -69,17 +69,14 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 # Locate the nros-codegen tool
 # =========================================================================
 
-set(NROS_CODEGEN_CARGO_PROFILE "$ENV{NROS_CARGO_PROFILE}" CACHE STRING
-    "Cargo profile whose target directory is searched for nros-codegen")
-if(NROS_CODEGEN_CARGO_PROFILE STREQUAL "")
-  set(NROS_CODEGEN_CARGO_PROFILE "nros-fast-release" CACHE STRING
-      "Cargo profile whose target directory is searched for nros-codegen" FORCE)
-endif()
-if(NROS_CODEGEN_CARGO_PROFILE STREQUAL "dev")
-  set(_NROS_CODEGEN_TARGET_PROFILE_DIR "debug")
-else()
-  set(_NROS_CODEGEN_TARGET_PROFILE_DIR "${NROS_CODEGEN_CARGO_PROFILE}")
-endif()
+# phase-336 — the profile and its target directory come from the shared table
+# (`nros profile`), so this file no longer carries a default literal or its own
+# `dev → debug` special case.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCargoProfile.cmake")
+nros_resolve_cargo_profile()
+set(NROS_CODEGEN_CARGO_PROFILE "${NROS_CARGO_PROFILE}" CACHE STRING
+    "Cargo profile whose target directory is searched for nros-codegen" FORCE)
+set(_NROS_CODEGEN_TARGET_PROFILE_DIR "${NROS_CARGO_PROFILE_DIR}")
 
 # Phase 218: the `nros` CLI lives in-tree at packages/cli/ (built by
 # `just setup-cli`; `source ./activate.sh` puts it on PATH). Cross-compile
@@ -414,14 +411,19 @@ function(nros_generate_interfaces target)
           set(_serdes_dir "${_NANO_ROS_PREFIX}/packages/core/nros-serdes")
       endif()
 
+      # phase-336 — the artifact lands under the ACTIVE profile's directory, not
+      # a hardcoded `release/`. This pair of literals was the reason a
+      # non-release build could configure fine and then fail to find its own
+      # staticlib.
+      nros_resolve_cargo_profile()
       # Cross-compilation: when Rust_CARGO_TARGET is set (e.g. by a CMake
       # toolchain file), pass --target to cargo and adjust the output path.
       if(DEFINED Rust_CARGO_TARGET)
         set(_ffi_rust_target "${Rust_CARGO_TARGET}")
-        set(_ffi_lib "${_ffi_target_dir}/${Rust_CARGO_TARGET}/release/libnano_ros_cpp_ffi_${target}.a")
+        set(_ffi_lib "${_ffi_target_dir}/${Rust_CARGO_TARGET}/${NROS_CARGO_PROFILE_DIR}/libnano_ros_cpp_ffi_${target}.a")
       else()
         set(_ffi_rust_target "")
-        set(_ffi_lib "${_ffi_target_dir}/release/libnano_ros_cpp_ffi_${target}.a")
+        set(_ffi_lib "${_ffi_target_dir}/${NROS_CARGO_PROFILE_DIR}/libnano_ros_cpp_ffi_${target}.a")
       endif()
 
       file(MAKE_DIRECTORY "${_ffi_crate_src}")
@@ -483,20 +485,27 @@ function(nros_generate_interfaces target)
         set(_ffi_rust_target "")
       endif()
 
-      # Assemble cargo args via the shared core (Phase 246.3). Canonical always
-      # builds --release; build-std for nuttx comes from .cargo/config.toml above
-      # (not an inline -Z), so no BUILD_STD here. The `+<toolchain>` prefix stays
-      # separate (prepended in the COMMAND).
+      # Assemble cargo args via the shared core (Phase 246.3). phase-336: the
+      # profile is the ACTIVE one, not a hardcoded `release`. build-std for nuttx
+      # comes from .cargo/config.toml above (not an inline -Z), so no BUILD_STD
+      # here. The `+<toolchain>` prefix stays separate (prepended in the COMMAND).
       _nros_ffi_cargo_args(_ffi_cargo_args
         MANIFEST "${_ffi_crate_dir}/Cargo.toml"
         TARGET_DIR "${_ffi_target_dir}"
-        PROFILE release
+        PROFILE "${NROS_CARGO_PROFILE}"
         RUST_TARGET "${_ffi_rust_target}")
 
       # Build the FFI staticlib after codegen runs
+      # The preset's definition has to ride ON the command: this is a plain
+      # custom command, so `corrosion_set_env_vars` cannot reach it. Empty for a
+      # user-owned profile, where the crate's own manifest governs.
+      set(_ffi_env "")
+      if(NOT NROS_CARGO_PROFILE_ENV STREQUAL "")
+        set(_ffi_env ${CMAKE_COMMAND} -E env ${NROS_CARGO_PROFILE_ENV})
+      endif()
       add_custom_command(
         OUTPUT "${_ffi_lib}"
-        COMMAND cargo ${_ffi_cargo_prefix} ${_ffi_cargo_args}
+        COMMAND ${_ffi_env} cargo ${_ffi_cargo_prefix} ${_ffi_cargo_args}
         DEPENDS ${_generated_rs_files} "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
         WORKING_DIRECTORY "${_ffi_crate_dir}"
         COMMENT "Building Rust FFI glue for ${target} C++ bindings"

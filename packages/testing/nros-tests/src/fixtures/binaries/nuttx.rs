@@ -199,12 +199,17 @@ pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
             dir.display()
         )));
     }
-    let release = dir.join(format!("target/armv7a-nuttx-eabihf/release/{bin}"));
-    let bin_path = if release.exists() {
-        release
+    // Same carve-out as `require_example_binary` above — prefer the profile the
+    // builder forces, fall back to the ambient one with the artifact that a
+    // local hand-build would have left.
+    let carve_out = nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE);
+    let forced = dir.join(format!("target/armv7a-nuttx-eabihf/{carve_out}/{bin}"));
+    let bin_path = if forced.exists() {
+        forced
     } else {
         dir.join(format!(
-            "target/armv7a-nuttx-eabihf/nros-fast-release/{bin}"
+            "target/armv7a-nuttx-eabihf/{}/{bin}",
+            super::cargo_target_profile_dir()
         ))
     };
     super::require_prebuilt_binary_fresh(&bin_path)

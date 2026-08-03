@@ -44,14 +44,19 @@ else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM}")
 endif()
 
+# phase-336 — explicit profile + its definition; see NanoRosCargoProfile.cmake.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosCargoProfile.cmake")
+nros_resolve_cargo_profile()
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"
     CRATES        nros-rmw-zenoh-staticlib
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
     FEATURES      ros-humble ${_platform_features}
+    PROFILE       ${NROS_CARGO_PROFILE}
     LOCKED
 )
+nros_cargo_profile_env(nros_rmw_zenoh_staticlib-static)
 
 # _lib_name retained above for reference only — the in-tree consumer
 # links the Corrosion staticlib target directly under the

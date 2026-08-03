@@ -12,7 +12,7 @@
 #     from this directory tree — including the ~48 LEAF crates that live
 #     outside the root workspace (board crates, drivers, bench/test bins).
 #
-# So a leaf built with `--profile nros-fast-release` reads the config copy and
+# So a leaf built with `--profile nros-relwithdebinfo` reads the config copy and
 # never sees the manifest one. Editing one and not the other silently gives
 # half the tree different optimization settings, with no error anywhere: both
 # files stay valid, both builds succeed, and the difference shows up only as a
@@ -29,6 +29,11 @@
 # For every profile name present in BOTH files, the key/value bodies must be
 # identical. A profile present in only one file is fine and intentional:
 # `Cargo.toml` carries `release`/`dev` overrides the leaves do not need.
+#
+# phase-336 added a THIRD copy — `packages/tooling/nros-cargo-profile`, the
+# table cmake/bash/just read through `nros profile`. Its own tests check both
+# files against it, so this gate (buildless, in `check-fast`) and those tests
+# (behind a build) cover the same triangle from different sides.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
