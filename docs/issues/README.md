@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#402** — message codegen has no language-neutral IR: parse / dependency-resolution / RIHS hashing /
+sizing are entangled with per-language emission in `rosidl-codegen`, so each language re-walks the same
+structures and derived facts (hash, plainness, storage mode) live in the emission pass instead of a
+shared, inspectable IR. Idea: a neutral IR (SSoT) that thin per-language templates consume — but the
+serialization format is undecided (need NOT be JSON; in-process trait boundary is an option) and the IR
+MUST carry embedded constraints (fixed-capacity sizing, alignment/plainness, target-parameterized
+layout) or it is useless for our `no_std` C/C++ targets. Records the tradeoffs; likely an RFC amending
+RFC-0023. See `0402-*`. (2026-08-03)
+
 **#398** — `[[component]] name` no longer matches the launch node name, so every per-node projection
 keyed on it silently binds NOTHING. phase-331's consolidation gave component names workspace-unique
 prefixes (`rust_params_param_talker`) while launch files kept the plain node name (`param_talker`):

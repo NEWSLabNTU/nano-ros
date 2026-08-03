@@ -69,6 +69,35 @@ as everything else here) or abi3 linkage.
 Today the loser is whoever ran second: `just build-test-fixtures lane=native`
 dies in `generate-bindings` mid-sync.
 
+#### Recommended direction: abi3 (stable-ABI) linkage, not a per-side path
+
+The per-side-path option (route the resolver's target dir through
+`CARGO_TARGET_DIR`) only makes host and box each build+keep their OWN resolver.
+That works but doubles a slow pyo3 build and leaves a resolver that still cannot
+be COPIED between machines — every consumer needs the matching interpreter.
+
+Prefer **abi3**: build the resolver's pyo3 against the CPython *stable ABI* so ONE
+binary loads whatever `libpython3` the running side provides, instead of pinning
+a minor-version soname (`libpython3.14.so.1.0` vs `libpython3.10.so.1.0`). The
+resolver embeds CPython via `pyo3` with `auto-initialize`
+(`.../ros-launch-resolve/resolve/Cargo.toml`, pyo3 0.24); adding the `abi3-py3N`
+feature (floor = the lowest interpreter any target box ships, e.g. 3.10) makes
+the compiled binary limited-API and version-agnostic across CPython ≥ floor —
+the same one-artifact-serves-both property glibc already gives the CLI.
+
+Caveats to verify before committing:
+
+* the pyo3 dep lives in the **play_launch repo** (submodule), so enabling abi3 is
+  an upstream/coordinated change, not a nano-ros-only edit;
+* abi3 restricts pyo3 to the limited API — confirm neither pyo3's embedding path
+  (`auto-initialize`) nor the launch parser's Python usage needs a
+  non-limited symbol at the chosen floor;
+* embedding still needs SOME `libpython3` present at runtime on each side; abi3
+  removes the *soname/minor-version* coupling, not the runtime dependency.
+
+If abi3 proves infeasible for the embedding path, fall back to the per-side
+target dir (route `nros-launch-resolve`'s build through `CARGO_TARGET_DIR`).
+
 ## Repro
 
 ```sh
