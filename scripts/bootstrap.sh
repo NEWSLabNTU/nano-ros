@@ -189,16 +189,19 @@ ensure_just() {
 # third-party dep — NOT a blanket `--init --recursive` over the whole repo, which
 # would drag in the gitignored platform SDKs (zenoh, cyclonedds, …).
 #
-# RFC-0060 (issue 0336): the pin is `ros-launch-RESOLVE`, which itself nests
-# ros-launch-manifest + parser one level deeper, so the scoped init MUST stay
-# `--recursive` (the CLI's path deps resolve THROUGH the resolver — see
-# packages/cli/nros-cli-core/Cargo.toml). This function previously named the
-# retired `ros-launch-manifest` path and guarded on a file that can never appear,
-# so it silently did nothing and a fresh clone failed to build the CLI.
+# RFC-0060 as amended by phase-332: the launch pin is `play_launch`; layer 2
+# (the resolver `nros-launch-resolve` compiles in) is REGULAR FILES at
+# `src/ros-launch-resolve` inside it, and ros-launch-manifest is a git-tag
+# cargo dep — nothing nests, so the init is NON-recursive. `--recursive`
+# would drag in play_launch's layer-3 runtime submodules, which nano-ros
+# never builds. (This function has drifted on every rename — 0336 named the
+# retired `ros-launch-manifest`, then this spelling named the retired
+# `ros-launch-resolve` — so the retired paths are gated by
+# scripts/check-retired-submodule-refs.sh.)
 ensure_cli_submodules() {
-    local sub="packages/cli/third-party/ros-launch-resolve"
-    # Already populated (has the resolver manifest the build reads)? No-op.
-    if [[ -f "${REPO_ROOT}/${sub}/resolve/Cargo.toml" ]]; then
+    local sub="packages/cli/third-party/play_launch"
+    # Already populated (has the resolver manifest setup-launch-resolve reads)?
+    if [[ -f "${REPO_ROOT}/${sub}/src/ros-launch-resolve/resolve/Cargo.toml" ]]; then
         return 0
     fi
     if ! command -v git >/dev/null 2>&1; then
@@ -206,7 +209,7 @@ ensure_cli_submodules() {
         return 1
     fi
     run_cmd "initializing in-tree CLI submodule (${sub})" \
-        git -C "${REPO_ROOT}" submodule update --init --recursive "${sub}" \
+        git -C "${REPO_ROOT}" submodule update --init "${sub}" \
         || return 1
 }
 

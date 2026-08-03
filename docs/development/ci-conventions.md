@@ -42,7 +42,7 @@ hand-init step:
 ```yaml
 - name: Build the nros CLI (source, per-checkout)
   run: |
-    git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve
+    git submodule update --init packages/cli/third-party/play_launch
     cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
     echo "$PWD/packages/cli/target/release" >> "$GITHUB_PATH"
 # board's whole toolchain + source set:

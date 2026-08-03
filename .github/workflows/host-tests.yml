@@ -66,7 +66,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
-          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-resolve
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
@@ -117,7 +117,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
-          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-resolve
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 

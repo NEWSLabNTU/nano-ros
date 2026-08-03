@@ -231,7 +231,7 @@ shell.
 
 Already have cargo? The equivalent by hand (same build, same binary):
 ```sh
-git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve
+git submodule update --init packages/cli/third-party/play_launch
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 export PATH="$PWD/packages/cli/target/release:$PATH"
 ```

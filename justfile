@@ -2225,11 +2225,11 @@ format-cli:
 # the root workspace that `check-workspace`'s `cargo fmt --check` covers).
 #
 # issue 0337 — `rustfmt` DIRECTLY, not `cargo fmt`, for the same reason as
-# `check-example-fmt`: `cargo fmt` runs `cargo metadata`, which here has to
-# resolve `ros-launch-manifest-model` through the NESTED submodule
-# `third-party/ros-launch-resolve/third-party/ros-launch-manifest`. This gate
-# is in `check-fast`, which is source-free and inits no submodules, so on CI's
-# push lane that manifest is absent and the gate died before formatting
+# `check-example-fmt`: `cargo fmt` runs `cargo metadata`, which has to resolve
+# `ros-launch-manifest-model` (historically through a nested launch submodule;
+# since phase-332 a git-tag dep that needs a network fetch). This gate is in
+# `check-fast`, which is source-free — inits no submodules, fetches nothing —
+# so on CI's push lane resolution failed and the gate died before formatting
 # anything. Formatting needs no dependency graph.
 #
 # Scope matches what `cargo fmt` covered: the workspace MEMBERS only. Test

@@ -99,7 +99,7 @@ jobs:
       # and the build fails at path resolution rather than anywhere informative.
       # `--recursive` is load-bearing: the manifest sits inside the resolver.
       - name: Fetch the resolver submodule (nros-tests -> nros -> rlm)
-        run: git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-resolve
+        run: git submodule update --init --depth 1 packages/cli/third-party/play_launch
 
       - id: lane
         run: |
@@ -250,7 +250,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
-          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-resolve
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
@@ -421,7 +421,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
-          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-resolve
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
@@ -507,7 +507,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
-          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-resolve
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
@@ -573,7 +573,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
-          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-resolve
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 

@@ -69,7 +69,7 @@ cd nano-ros
 The script installs rustup if needed and builds the CLI from source —
 nano-ros is a source distribution (there is no prebuilt `nros`).
 Equivalent, if you already have cargo:
-`git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve &&
+`git submodule update --init packages/cli/third-party/play_launch &&
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`.
 
 ### 2. Activate the workspace (every new shell)

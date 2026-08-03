@@ -21,7 +21,7 @@ source ./activate.sh        # OR: direnv allow / source ./activate.fish
 ```
 
 Equivalent, if you already have cargo (same build, same binary):
-`git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve`
+`git submodule update --init packages/cli/third-party/play_launch`
 then `cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`
 (bootstrap runs both for you; `just setup-cli` is the internal alias).
 

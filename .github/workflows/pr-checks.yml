@@ -137,7 +137,7 @@ jobs:
       - name: Build nros CLI + provision build-tier sources (non-push)
         if: ${{ github.event_name != 'push' }}
         run: |
-          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-resolve
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" setup \
@@ -201,7 +201,7 @@ jobs:
       # ros-launch-manifest-types from it (reached THROUGH ros-launch-resolve,
       # which vendors rlm — phase-312/RFC-0060). Init it before the recipe.
       - name: Init CLI launch-manifest submodule
-        run: git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-resolve
+        run: git submodule update --init --depth 1 packages/cli/third-party/play_launch
 
       - name: just scaffold-journey
         run: |

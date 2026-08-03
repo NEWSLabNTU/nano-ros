@@ -22,8 +22,15 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # path-regex : what replaced it
 RETIRED=(
-    "packages/cli/third-party/ros-launch-manifest|packages/cli/third-party/ros-launch-resolve (which nests it — a scoped init must be --recursive)"
-    "packages/cli/third-party/play_launch_parser|the ros-launch-resolve pin (RFC-0060); play_launch_parser is a TEST-tier tool from ~/.nros/sdk"
+    "packages/cli/third-party/ros-launch-manifest|a git-tag cargo dep on ros-launch-manifest (phase-332 W2; it no longer nests anywhere)"
+    "packages/cli/third-party/play_launch_parser|the play_launch pin (RFC-0060/phase-332); play_launch_parser is a TEST-tier tool from ~/.nros/sdk"
+    # phase-332 W1 — the launch pin was repointed from the ros-launch-resolve
+    # repo to play_launch (layer 2 is regular files at src/ros-launch-resolve
+    # inside it; init NON-recursively — no --recursive, no nested rlm). The
+    # rename shipped with this gate still one generation behind, so bootstrap,
+    # activate hints, README, nine book pages, ci-conventions, and nine
+    # workflow init lines all kept the retired path — 0336's exact shape again.
+    "packages/cli/third-party/ros-launch-resolve|packages/cli/third-party/play_launch, init NON-recursively: git submodule update --init packages/cli/third-party/play_launch (phase-332 W1)"
     # phase-321 W2.d — the RMW backends were regrouped under packages/rmw/.
     # These are here because the cyclonedds move SHIPPED with two live stale
     # refs (`root.join("packages/dds")` in nros-tests/src/zephyr.rs): the
