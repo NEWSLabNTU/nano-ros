@@ -1,0 +1,128 @@
+// Auto-generated ROS 2 Rust bindings
+// TEMPLATE_VERSION: 2025-01-29-v2-with-clone-bounds
+
+// Stub trait definitions for rosidl_runtime_rs
+pub mod rosidl_runtime_rs {
+    /// Trait for types that can be used in sequences - establishes idiomatic ↔ RMW type relationship
+    pub trait SequenceElement {
+        type RmwType;
+    }
+
+    pub trait SequenceAlloc {
+        fn sequence_init(seq: &mut Sequence<Self>, size: usize) -> bool where Self: Sized;
+        fn sequence_fini(seq: &mut Sequence<Self>) where Self: Sized;
+        fn sequence_copy(in_seq: &Sequence<Self>, out_seq: &mut Sequence<Self>) -> bool where Self: Sized;
+    }
+
+    pub trait Message {
+        type RmwMsg;
+        fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg>
+        where
+            Self: Sized + Clone,
+            Self::RmwMsg: Clone;
+        fn from_rmw_message(msg: Self::RmwMsg) -> Self where Self: Sized;
+    }
+
+    pub trait RmwMessage where Self: Sized {
+        const TYPE_NAME: &'static str;
+        fn get_type_support() -> *const std::ffi::c_void;
+    }
+
+    pub trait Service {
+        type Request;
+        type Response;
+        fn get_type_support() -> *const std::ffi::c_void;
+    }
+
+    pub trait Action {
+        type Goal;
+        type Result;
+        type Feedback;
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Sequence<T> { _phantom: std::marker::PhantomData<T> }
+
+    /// ROS string type (stub - actual implementation in real rosidl_runtime_rs)
+    #[repr(C)]
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct String { _phantom: std::marker::PhantomData<u8> }
+
+    // Stub conversions between Sequence and Vec (for compilation only - replace with real rosidl_runtime_rs)
+    impl<T> From<Sequence<T>> for Vec<T> {
+        fn from(_seq: Sequence<T>) -> Self {
+            panic!("Stub implementation - use real rosidl_runtime_rs crate")
+        }
+    }
+
+    impl<T> From<Vec<T>> for Sequence<T> {
+        fn from(_vec: Vec<T>) -> Self {
+            panic!("Stub implementation - use real rosidl_runtime_rs crate")
+        }
+    }
+
+    // Stub conversion for String
+    impl From<String> for std::string::String {
+        fn from(_s: String) -> Self {
+            panic!("Stub implementation - use real rosidl_runtime_rs crate")
+        }
+    }
+
+    impl From<std::string::String> for String {
+        fn from(_s: std::string::String) -> Self {
+            panic!("Stub implementation - use real rosidl_runtime_rs crate")
+        }
+    }
+}
+
+// FFI layer at package root (conflict-free)
+pub mod ffi {
+    use super::rosidl_runtime_rs;
+
+    {% if has_messages %}
+    pub mod msg {
+        use super::*;
+        pub mod rmw;
+        pub use rmw::*;
+    }
+    {% endif %}
+
+    {% if has_services %}
+    pub mod srv {
+        use super::*;
+        pub mod rmw;
+        pub use rmw::*;
+    }
+    {% endif %}
+
+    {% if has_actions %}
+    pub mod action {
+        use super::*;
+        pub mod rmw;
+        pub use rmw::*;
+    }
+    {% endif %}
+}
+
+// Idiomatic layer at package root
+{% if has_messages %}
+pub mod msg {
+    use super::rosidl_runtime_rs;
+    // Idiomatic message modules will be added here
+}
+{% endif %}
+
+{% if has_services %}
+pub mod srv {
+    use super::rosidl_runtime_rs;
+    // Idiomatic service modules will be added here
+}
+{% endif %}
+
+{% if has_actions %}
+pub mod action {
+    use super::rosidl_runtime_rs;
+    // Idiomatic action modules will be added here
+}
+{% endif %}

@@ -16,7 +16,6 @@ categories = ["development-tools::build-utils"]
 [dependencies]
 serde.workspace = true
 toml.workspace = true
-askama = { version = "0.12", features = ["config"] }
 # phase-304 W1 (RFC-0056) — REP-2011 RIHS01 type-hash (SHA-256 of the canonical
 # type description). Host-side codegen only.
 sha2 = "0.10"

@@ -16,7 +16,6 @@ use crate::{
     },
     utils::{extract_dependencies, needs_big_array, to_snake_case},
 };
-use askama::Template;
 use rosidl_parser::{FieldType, Message};
 use std::collections::HashSet;
 
@@ -53,11 +52,13 @@ pub fn generate_message_package(
         dependencies: &all_deps,
         needs_big_array: needs_big_array_feature,
     };
-    let cargo_toml = cargo_toml_template.render()?;
+    let cargo_toml = crate::render::render("cargo.toml", &cargo_toml_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate build.rs
     let build_rs_template = BuildRsTemplate;
-    let build_rs = build_rs_template.render()?;
+    let build_rs = crate::render::render("build.rs", &build_rs_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate lib.rs
     let lib_rs_template = LibRsTemplate {
@@ -65,7 +66,8 @@ pub fn generate_message_package(
         has_services: false,
         has_actions: false,
     };
-    let lib_rs = lib_rs_template.render()?;
+    let lib_rs = crate::render::render("lib.rs", &lib_rs_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate RMW layer message
     let rmw_fields: Vec<RmwField> = message
@@ -186,7 +188,8 @@ pub fn generate_nros_message_package(
         dependencies: &all_deps,
         has_actions: false,
     };
-    let cargo_toml = cargo_toml_template.render()?;
+    let cargo_toml = crate::render::render("cargo_nros.toml", &cargo_toml_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate lib.rs
     let lib_rs_template = LibNrosRsTemplate {
@@ -194,7 +197,8 @@ pub fn generate_nros_message_package(
         has_services: false,
         has_actions: false,
     };
-    let lib_rs = lib_rs_template.render()?;
+    let lib_rs = crate::render::render("lib_nros.rs", &lib_rs_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // phase-335 W1.c — storage from the lowered IR (byte-identical), resolved once.
     let fields = build_nros_fields(

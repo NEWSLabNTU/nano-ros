@@ -5,9 +5,10 @@
 //! nothing about a language lives in Rust here. Templates are bundled at build
 //! time via `include_str!` (fast, no I/O) and rendered from a view struct.
 //!
-//! Migration note (phase-335 W2/W3): backends move off the compile-time askama
-//! templates one at a time. This module renders the converted ones (C, then the
-//! rmw Rust backend) while askama still serves the rest.
+//! Every backend AND the per-package scaffolding (Cargo/lib/build) render through
+//! this one `Environment` now — askama is fully removed (phase-335 W6). Type
+//! spelling that used to be pre-baked in the builders is composed here by the
+//! registered `*_type` / `c_type` / `cpp_*` filters (RFC-0068 step 2).
 
 use std::sync::LazyLock;
 
@@ -264,6 +265,27 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
         include_str!("../packs/cpp/action.hpp.jinja"),
     )
     .expect("packs/cpp/action.hpp.jinja must parse");
+
+    // --- scaffolding pack (packs/scaffold) — per-package Cargo/lib/build ---
+    env.add_template(
+        "cargo.toml",
+        include_str!("../packs/scaffold/cargo.toml.jinja"),
+    )
+    .expect("packs/scaffold/cargo.toml.jinja must parse");
+    env.add_template(
+        "cargo_nros.toml",
+        include_str!("../packs/scaffold/cargo_nros.toml.jinja"),
+    )
+    .expect("packs/scaffold/cargo_nros.toml.jinja must parse");
+    env.add_template("build.rs", include_str!("../packs/scaffold/build.rs.jinja"))
+        .expect("packs/scaffold/build.rs.jinja must parse");
+    env.add_template("lib.rs", include_str!("../packs/scaffold/lib.rs.jinja"))
+        .expect("packs/scaffold/lib.rs.jinja must parse");
+    env.add_template(
+        "lib_nros.rs",
+        include_str!("../packs/scaffold/lib_nros.rs.jinja"),
+    )
+    .expect("packs/scaffold/lib_nros.rs.jinja must parse");
 
     env
 });

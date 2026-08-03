@@ -15,7 +15,6 @@ use crate::{
     },
     utils::{extract_dependencies, needs_big_array, to_snake_case},
 };
-use askama::Template;
 use rosidl_parser::{Action, FieldType, Message};
 use std::collections::HashSet;
 
@@ -58,11 +57,13 @@ pub fn generate_action_package(
         dependencies: &all_deps,
         needs_big_array: needs_big_array_feature,
     };
-    let cargo_toml = cargo_toml_template.render()?;
+    let cargo_toml = crate::render::render("cargo.toml", &cargo_toml_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate build.rs
     let build_rs_template = BuildRsTemplate;
-    let build_rs = build_rs_template.render()?;
+    let build_rs = crate::render::render("build.rs", &build_rs_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate lib.rs
     let lib_rs_template = LibRsTemplate {
@@ -70,7 +71,8 @@ pub fn generate_action_package(
         has_services: false,
         has_actions: true,
     };
-    let lib_rs = lib_rs_template.render()?;
+    let lib_rs = crate::render::render("lib.rs", &lib_rs_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Helper functions to convert Message to field vectors
     let message_to_rmw_fields = |msg: &Message| {
@@ -212,7 +214,8 @@ pub fn generate_nros_action_package(
         dependencies: &all_deps,
         has_actions: true,
     };
-    let cargo_toml = cargo_toml_template.render()?;
+    let cargo_toml = crate::render::render("cargo_nros.toml", &cargo_toml_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate lib.rs
     let lib_rs_template = LibNrosRsTemplate {
@@ -220,7 +223,8 @@ pub fn generate_nros_action_package(
         has_services: false,
         has_actions: true,
     };
-    let lib_rs = lib_rs_template.render()?;
+    let lib_rs = crate::render::render("lib_nros.rs", &lib_rs_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     let goal_msg = format!("{action_name}_Goal");
     let result_msg = format!("{action_name}_Result");

@@ -14,8 +14,6 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum GeneratorError {
     #[error("Template rendering failed: {0}")]
-    TemplateError(#[from] askama::Error),
-    #[error("Template rendering failed: {0}")]
     RenderError(String),
 
     #[error("Invalid message structure: {0}")]

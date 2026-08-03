@@ -1,28 +1,18 @@
-use askama::Template;
+//! Codegen view structs — the serde context each pack template renders from
+//! (RFC-0068 Stage 3). No askama: every backend renders via `crate::render`
+//! (minijinja) over these structs.
 
-// Custom Askama filters
-pub mod filters {
-    use crate::utils::to_snake_case;
-
-    pub fn snake_case(s: &str) -> ::askama::Result<String> {
-        Ok(to_snake_case(s))
-    }
-}
-
-#[derive(Template)]
-#[template(path = "cargo.toml.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct CargoTomlTemplate<'a> {
     pub package_name: &'a str,
     pub dependencies: &'a [String],
     pub needs_big_array: bool,
 }
 
-#[derive(Template)]
-#[template(path = "build.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct BuildRsTemplate;
 
-#[derive(Template)]
-#[template(path = "lib.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct LibRsTemplate {
     pub has_messages: bool,
     pub has_services: bool,
@@ -286,8 +276,7 @@ pub struct ServiceNrosTemplate<'a> {
     pub has_borrowed_response: bool,
 }
 
-#[derive(Template)]
-#[template(path = "cargo_nros.toml.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct CargoNrosTomlTemplate<'a> {
     pub package_name: &'a str,
     pub package_version: &'a str,
@@ -303,8 +292,7 @@ pub struct CargoNrosTomlTemplate<'a> {
     pub has_actions: bool,
 }
 
-#[derive(Template)]
-#[template(path = "lib_nros.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct LibNrosRsTemplate {
     pub has_messages: bool,
     pub has_services: bool,
