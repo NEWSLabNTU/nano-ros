@@ -184,3 +184,108 @@ mod tests {
         );
     }
 }
+
+/// phase-330 W7 — map the INPUT coordinates of a system to the model's
+/// bringup-relative path.
+///
+/// The user-facing input is `(bringup, launch file, launch args)`; the model
+/// is a build artifact nobody names. This is the ONE mapping from the former
+/// to the latter, shared by `nros::main!(launch = …)`, `nros-build` and (via
+/// the CLI) `nano_ros_entry(LAUNCH …)` — the same one-home rule as
+/// [`model_search_paths`] above.
+///
+/// Rules (phase-330 W4.0 derive-plus-declare):
+/// 1. `args` non-empty → a `[[model]]` declaration in `system.toml` matching
+///    `(launch, args)` MUST exist (declarations are the SSoT for which
+///    bindings exist); its `out` names the model.
+/// 2. A declaration matching `(launch, no args)` also wins when present.
+/// 3. No declaration: the DEFAULT launch (explicit `[system] default_launch`,
+///    or the conventional `system.launch.xml`) maps to
+///    `config/system_model.yaml`; any other launch maps to
+///    `config/<stem>_model.yaml` (stem = file name minus `.launch.xml`).
+///
+/// Returns the bringup-relative path (`config/<name>`), which
+/// [`resolve_model_path`] then locates (build dir first, committed fallback
+/// until W4.a deletes it). Errors are strings naming what the USER must fix.
+pub fn launch_to_model_rel(
+    bringup_dir: &Path,
+    launch_file: Option<&str>,
+    args: &[(String, String)],
+) -> Result<String, String> {
+    let system_toml = bringup_dir.join("system.toml");
+    let doc: Option<toml::Table> = std::fs::read_to_string(&system_toml)
+        .ok()
+        .and_then(|raw| raw.parse::<toml::Table>().ok());
+
+    let default_launch = doc
+        .as_ref()
+        .and_then(|d| d.get("system"))
+        .and_then(|s| s.get("default_launch"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("system.launch.xml")
+        .to_string();
+    let launch = launch_file.unwrap_or(&default_launch);
+
+    // [[model]] declarations for this launch file.
+    let decls: Vec<(Vec<(String, String)>, String)> = doc
+        .as_ref()
+        .and_then(|d| d.get("model"))
+        .and_then(|m| m.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|e| {
+                    let decl_launch = e.get("launch")?.as_str()?;
+                    if decl_launch != launch {
+                        return None;
+                    }
+                    let out = e.get("out")?.as_str()?.to_string();
+                    let mut decl_args: Vec<(String, String)> = e
+                        .get("args")
+                        .and_then(|a| a.as_table())
+                        .map(|t| {
+                            t.iter()
+                                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    decl_args.sort();
+                    Some((decl_args, out))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut want: Vec<(String, String)> = args.to_vec();
+    want.sort();
+    if let Some((_, out)) = decls.iter().find(|(a, _)| *a == want) {
+        let out_rel = if out.contains('/') {
+            out.clone()
+        } else {
+            format!("config/{out}")
+        };
+        return Ok(out_rel);
+    }
+    if !want.is_empty() {
+        let known: Vec<String> = decls
+            .iter()
+            .map(|(a, out)| format!("{out} (args {a:?})"))
+            .collect();
+        return Err(format!(
+            "no `[[model]]` declaration in `{}` matches launch `{launch}` with args {want:?} — \
+             binding variants must be DECLARED (phase-330 W4.0). Declared for this launch: [{}]",
+            system_toml.display(),
+            known.join(", "),
+        ));
+    }
+
+    // Derive rule.
+    if launch == default_launch {
+        return Ok("config/system_model.yaml".to_string());
+    }
+    let stem = launch
+        .strip_suffix(".launch.xml")
+        .or_else(|| launch.strip_suffix(".xml"))
+        .unwrap_or(launch);
+    let stem = stem.rsplit('/').next().unwrap_or(stem);
+    Ok(format!("config/{stem}_model.yaml"))
+}

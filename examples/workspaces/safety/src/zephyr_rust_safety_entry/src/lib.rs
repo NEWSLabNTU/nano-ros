@@ -22,7 +22,7 @@
 // in so the kernel's Rust glue (`set_logger`, allocator hookup) links.
 extern crate zephyr;
 
-// phase-331: the consolidated safety bringup is multi-language; a Rust entry
-// must walk a RUST-ONLY model (the features-workspace pattern) or the macro
-// dies on the C node pkgs ("no Cargo.toml at …/c_safety_listener_pkg").
-nros::main!(model = "demo_bringup:config/rust_safety_model.yaml");
+// phase-331: the consolidated safety bringup is multi-language, so this Rust
+// entry names the RUST-ONLY launch; phase-330 W7 maps it to the resolved
+// model (a build artifact — config/rust_safety_model.yaml until W4.a).
+nros::main!(launch = "demo_bringup:rust_safety.launch.xml");

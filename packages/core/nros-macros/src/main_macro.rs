@@ -223,8 +223,9 @@ impl Parse for MainArgs {
         if out.launch.is_some() && out.model.is_some() {
             return Err(syn::Error::new(
                 Span::call_site(),
-                "nros::main!: `launch` and `model` are mutually exclusive — `model` is the \
-                 canonical resolved-artifact path, `launch` the transitional one",
+                "nros::main!: `launch` and `model` are mutually exclusive — `launch` names \
+                 your input (phase-330 W7, the canonical spelling); `model` names the \
+                 resolved artifact directly (expert override, deprecated)",
             ));
         }
         Ok(out)
@@ -327,7 +328,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
 /// failed), fall back to `Span::call_site()`.
 type MacroResult<T> = std::result::Result<T, syn::Error>;
 
-fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
+fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // CARGO_MANIFEST_DIR is set by cargo when compiling proc-macro
     // consumers; if missing we fail loud — proc-macros without a
     // manifest dir would have no way to find Cargo.toml or workspace
@@ -344,6 +345,62 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // can emit `include_bytes!` rebuild stamps below. Always
     // canonicalised so the paths survive cargo's relocation tricks.
     let mut tracked: Vec<PathBuf> = Vec::new();
+
+    // --- phase-330 W7: `launch = "<bringup>[:<file.launch.xml>]"` is the
+    // INPUT-ADDRESSED spelling — the user names their launch file, never the
+    // model artifact. Normalize it here into the `model =` flow: map
+    // (launch, args) to the model's bringup-relative path via the ONE shared
+    // rule (`nros_orchestration_ir::model_location::launch_to_model_rel` —
+    // [[model]] declarations for arg-bound variants, derive rule otherwise)
+    // and let the existing model arm resolve/consume it (build dir first,
+    // committed fallback until W4.a). This is NOT the phase-296-deleted parse
+    // path: no launch XML is parsed here — the launch file only ADDRESSES the
+    // resolver output the build layer produced.
+    if let Some(launch_lit) = args.launch.take() {
+        let launch_value = launch_lit.value();
+        let (bringup_name, launch_file) = match launch_value.split_once(':') {
+            Some((b, f)) => (b.trim().to_string(), Some(f.trim().to_string())),
+            None => (launch_value.trim().to_string(), None),
+        };
+        if bringup_name.is_empty() {
+            return Err(syn::Error::new(
+                launch_lit.span(),
+                "nros::main!: empty bringup pkg name in `launch = \"...\"`",
+            ));
+        }
+        let workspace_root = nros_pkg_index::detect_workspace_root(&manifest_dir).map_err(|e| {
+            syn::Error::new(
+                launch_lit.span(),
+                format!("nros::main!: detect_workspace_root: {e}"),
+            )
+        })?;
+        let pkg_index = nros_pkg_index::build_pkg_index(&workspace_root).map_err(|e| {
+            syn::Error::new(
+                launch_lit.span(),
+                format!("nros::main!: build_pkg_index: {e}"),
+            )
+        })?;
+        let bringup_dir = pkg_index
+            .resolve_pkg(&bringup_name)
+            .map_err(|e| syn::Error::new(launch_lit.span(), format!("nros::main!: {e}")))?;
+        // Rebuild when the USER'S inputs change: the launch file and
+        // system.toml are what the mapping (and the resolver behind it) read.
+        if let Some(f) = &launch_file {
+            tracked.push(bringup_dir.join("launch").join(f));
+        }
+        tracked.push(bringup_dir.join("system.toml"));
+        let launch_args: Vec<(String, String)> = args.args.clone();
+        let model_rel = nros_orchestration_ir::model_location::launch_to_model_rel(
+            bringup_dir,
+            launch_file.as_deref(),
+            &launch_args,
+        )
+        .map_err(|e| syn::Error::new(launch_lit.span(), format!("nros::main!: {e}")))?;
+        args.model = Some(LitStr::new(
+            &format!("{bringup_name}:{model_rel}"),
+            launch_lit.span(),
+        ));
+    }
 
     // --- Board resolution ---
     // `deploy` is `Some(...)` only when the macro had to read the
@@ -957,22 +1014,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 vec![Ident::new(&crate_ident, Span::call_site())]
             }
             Some(launch_lit) => {
-                // phase-296 R-code.1 — the launch arm is REMOVED. The canonical
-                // path bakes from a resolved SystemModel committed in the
-                // bringup pkg. Resolve one and swap the argument:
-                //   nros-launch-resolve <bringup>/launch/<file>.launch.xml \
-                //       [--system <bringup>/system.toml] \
-                //       -o <bringup>/config/system_model.yaml
-                //   nros::main!(model = "<bringup>");
+                // Unreachable: phase-330 W7 normalizes `launch = …` into the
+                // `model = …` arm (and `.take()`s it) before this match.
                 return Err(syn::Error::new(
                     launch_lit.span(),
-                    "nros::main!: the `launch = …` arm was removed (phase-296 R4) — \
-                     the canonical input is a resolved SystemModel. \
-                     Resolve one (`nros-launch-resolve <bringup>/launch/<file> \
-                     [--system <bringup>/system.toml] -o \
-                     <bringup>/config/system_model.yaml`), commit it, and use \
-                     `nros::main!(model = \"<bringup>\")` \
-                     (`model = \"<bringup>:config/<file>.yaml\"` for variants).",
+                    "nros::main!: internal error — `launch` survived W7 normalization",
                 ));
             }
         }

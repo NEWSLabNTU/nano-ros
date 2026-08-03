@@ -25,6 +25,10 @@ serde = { version = "1", features = ["derive"] }
 # cannot dep nros-cli-core for the typed schema, and a mirrored struct would be
 # the drift this crate exists to prevent.
 serde_json = "1"
+# phase-330 W7 — `model_location::launch_to_model_rel` reads the bringup's
+# `system.toml` ([system] default_launch + [[model]] declarations) to map the
+# user-facing (launch, args) input to the model artifact path. Host-only crate.
+toml = "0.8"
 thiserror = { workspace = true }
 # RFC-0052 — the shared SystemModel tier schema. Both consumers of this crate
 # (the CLI's codegen-system and the nros::main! proc-macro) resolve tiers from
