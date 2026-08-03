@@ -102,3 +102,24 @@ and should print a different remedy.
 Found while running tier 1 in the box for the issue-0383 `-Werror` work
 (2026-08-03). Not caused by that change; it predates it and reproduces on a
 clean tree.
+
+### This issue was filed as 0398 first — `git log` still says so
+
+`just issue-new` could not reach origin (auth), so it fell back to
+local-max+1 and picked an id another session had already reserved and pushed
+(#398, component/node name decoupling). Renumbered to 400 in `2f6f7b9ba`, with
+`refs/issue-ids/0400` properly reserved.
+
+Three commits landed before the renumber and their SUBJECTS still say 0398.
+They belong to THIS issue:
+
+    73ca1b0e2  docs(0398): box needs python3-tomli; file the shared-target-dir collision
+    223622478  fix(0398): link-determinism fixture must copy from CARGO_TARGET_DIR
+    d4e1abc0a  docs(0398): third instance — the launch resolver cannot serve both sides
+
+They are not amended because they are pushed to shared `main`, which several
+sessions track; rewriting those subjects would mean a force-push that
+invalidates every fetched copy — a worse trade than three misleading subjects
+with this mapping recorded next to them. `git log --grep=0398` finds both this
+issue's commits and the other one's, so read the mapping above before assuming
+which is meant.

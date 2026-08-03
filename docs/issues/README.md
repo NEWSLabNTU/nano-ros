@@ -122,7 +122,9 @@ hard-sets a RELATIVE `CARGO_TARGET_DIR`, which escapes the box env's redirect, s
 host-built `build-script-build` and dies on `GLIBC_2.39 not found` while naming an unrelated crate
 (`nros-rmw-cffi`). The recipe's own hint points at a different cause ("declare the new crate
 host-only"), which is what makes it expensive. Same shape for `target-zenoh`, `target-xrce`,
-`target-tls` and the ros-edition dirs. See `0400-*`. (2026-08-03)
+`target-tls` and the ros-edition dirs. Filed as 0398 first (a racy fallback id that collided with
+the entry above) and renumbered — three commit subjects still read `0398`, mapped in the issue.
+See `0400-*`. (2026-08-03)
 
 Recently resolved: **#391** — ThreadX-RV64 C fixture lane built wrong-from-clean + a museum binary
 passed the staleness gate. RESOLVED (2026-08-02, `8ef697c95`): (1) the cmake configure helpers now
