@@ -158,7 +158,7 @@ stop.
 | # | layer | symptom | status |
 | --- | --- | --- | --- |
 | 1 | ungated Rust `asm!` in board crates | `invalid register \`r0\`` | **fixed** — `cfg(target_arch)` |
-| 2 | build scripts cross-compile C/asm unconditionally | `riscv64-unknown-elf-gcc … .S`, then `no such instruction: csrrci` | **fixed for ThreadX** |
+| 2 | build scripts cross-compile C/asm unconditionally | `riscv64-unknown-elf-gcc … .S`, then `no such instruction: csrrci` | **fixed for every board an example deps** (prereq 1 done 2026-08-03; orin-spe parked, no example deps it) |
 | 3 | `no_std` component + host default `panic = "unwind"` | `unwinding panics are not supported without std` | **fixed** — harness sets `panic = "abort"` |
 | 4 | the probe SKIPS deploy-bound packages by declaration | reported `unsupported`, never attempted | **open, deliberately** |
 
@@ -186,6 +186,28 @@ wrong direction. The prerequisites, in order:
 3. then make deploy-bound failure best-effort and remove the skip.
 
 Only after (1) and (2) does (3) pay for itself.
+
+**Prerequisite 1 DONE (2026-08-03).** `freertos`/`mps2-an385-freertos`/
+`nuttx-qemu-arm` were already host-gated (`host_probe::skip_cross_build`);
+`nuttx-qemu-riscv` was the one left — its `build.rs` called `run_platform()`
+with no guard and cross-compiled with `riscv*-elf-gcc` on a host with
+`NUTTX_DIR` set. Added the same `skip_cross_build(…, &["riscv"])` guard, verified
+it fires on `--target x86_64-unknown-linux-gnu`. `threadx-linux` needs no guard —
+it is a host board (x86_64) and already `cargo build`s for the host.
+`orin-spe` stays PARKED: its `fsp` feature deps `nvidia-ivc`, whose build.rs
+needs the NVIDIA SDK (unverifiable here) and fails BEFORE the board's own gate
+could run — and NO standalone example deps `orin-spe`, so it is not in the
+affected population. So every board a deploy-bound example actually deps now
+host-builds; prereq 1 is effectively complete.
+
+**Note on prereq 2 with layer 2 done:** the negative cache's motivation was the
+"full failing cargo build per sync" for un-host-buildable boards. With prereq 1
+done, no deploy-bound EXAMPLE's board fails host-build anymore, so that cost is
+~zero — prereq 2 is now defensive (a genuine component error, or a future
+un-gated board) rather than load-bearing. Flipping layer 4 (prereq 3) is
+therefore mostly unblocked; the remaining cost is the POSITIVE one — the first
+sync after this would host-probe all ~48 deploy-bound examples (cached by
+`sidecar_is_fresh` afterward). That perf/behaviour change is the open decision.
 
 ### Also fixed on the way
 
