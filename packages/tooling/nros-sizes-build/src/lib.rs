@@ -270,7 +270,14 @@ fn find_dep_rlib_filesystem(crate_name: &str, symbol_prefix: &str) -> Result<Pat
 fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let target = env::var("TARGET").map_err(|_| Error::MalformedMetadata("TARGET"))?;
-    let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+    // phase-336 — the probe must compile at the SAME profile as the outer
+    // build. `PROFILE` only ever says `debug` or `release` (cargo reports the
+    // INHERITED base for a custom profile), so a `nros-relwithdebinfo` outer
+    // build made this probe run a full extra `--release` compile of the crate
+    // under test. `profile_dir_name()` recovers the real one from `OUT_DIR`.
+    let profile = profile_dir_name()
+        .or_else(|| env::var("PROFILE").ok())
+        .unwrap_or_else(|| "debug".to_string());
 
     // Phase 118.E.2 (rustc isolation): include a slug derived from
     // `rustc -V` in the probe target dir name. Without it, switching
@@ -304,8 +311,10 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
         // when target=host).
         .arg("--no-default-features")
         .arg("--message-format=json-render-diagnostics");
-    if profile == "release" {
-        cmd.arg("--release");
+    // Flags from the shared table, keyed by the target-directory name we
+    // recovered above (see `nros_cargo_profile::build_args_for_dir`).
+    for flag in nros_cargo_profile::build_args_for_dir(&profile) {
+        cmd.arg(flag);
     }
 
     // NuttX build-std targets (`*-nuttx-*`) have NO precompiled `std`/`core`
@@ -1015,6 +1024,7 @@ mod tests {
         assert_eq!(profile_dir_name().as_deref(), Some("nros-fast-release"));
         // Host build (no triple component): still finds the profile dir.
         unsafe {
+            // profile-literal-ok: dir vocabulary: test data for profile_dir_name()
             env::set_var("OUT_DIR", "/w/target/release/build/nros-deadbeef/out");
         }
         assert_eq!(profile_dir_name().as_deref(), Some("release"));

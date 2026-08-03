@@ -210,6 +210,17 @@ pub fn target_dir(profile: &str) -> String {
     }
 }
 
+/// `cargo build` flags for a profile identified by its `target/` DIRECTORY
+/// name rather than its profile name — the form a build script can recover from
+/// `OUT_DIR` when cargo's own `PROFILE` variable cannot help (it only ever says
+/// `debug` or `release`, never the custom name that is actually in effect).
+pub fn build_args_for_dir(target_dir_name: &str) -> Vec<String> {
+    match target_dir_name {
+        "debug" => Vec::new(),
+        other => build_args(other),
+    }
+}
+
 /// The profile's definition as `CARGO_PROFILE_<NAME>_<KEY>` pairs — empty for
 /// any profile nano-ros does not own, which is what keeps a user's own
 /// definition authoritative (env beats manifest).
@@ -298,6 +309,26 @@ mod tests {
     fn nextest_has_no_release_shorthand() {
         assert!(nextest_args("dev").is_empty());
         assert_eq!(nextest_args("release"), vec!["--cargo-profile", "release"]);
+    }
+
+    #[test]
+    fn dir_names_round_trip_to_flags() {
+        // `debug` is `dev`'s directory, so it takes no flag; every other
+        // directory name IS the profile name.
+        assert!(build_args_for_dir("debug").is_empty());
+        assert_eq!(build_args_for_dir("release"), vec!["--release"]);
+        assert_eq!(
+            build_args_for_dir("nros-relwithdebinfo"),
+            vec!["--profile", "nros-relwithdebinfo"]
+        );
+        for preset in PRESETS {
+            assert_eq!(
+                build_args_for_dir(&target_dir(preset.name)),
+                build_args(preset.name),
+                "dir round-trip broke for {}",
+                preset.name
+            );
+        }
     }
 
     #[test]

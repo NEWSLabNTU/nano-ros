@@ -21,6 +21,9 @@ host-only-reason = "host build-script that probes runtime type sizes"
 [dependencies]
 object = { version = "0.39", default-features = false, features = ["read", "archive", "elf", "macho", "coff", "std"] }
 serde_json = "1"
+# phase-336 — the profile the nested size probe compiles at must match the
+# outer build's; the mapping lives in the shared table, not here.
+nros-cargo-profile = { path = "../nros-cargo-profile" }
 
 [lints]
 workspace = true

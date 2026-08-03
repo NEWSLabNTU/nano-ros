@@ -43,6 +43,9 @@
 # carve-out in `nros-cargo-profile` (nuttx-rust, freertos-qemu) so the builder
 # and every resolver read one constant.
 #
+# `nros-cargo-profile` itself is excluded: it is the one place that MAY name a
+# profile, since defining the mapping is what it is for.
+#
 # Buildless and source-free, so it belongs in `check-fast`.
 
 set -uo pipefail
@@ -88,11 +91,17 @@ scan() {
 
 # 1. Cargo profile flags. `rustup --profile minimal` is a different tool's flag,
 #    and a line that already asks the table is the fix, not the problem.
+# Rust build scripts are in scope too: `nros-sizes-build` spawned a nested
+# `cargo build --release` from a `PROFILE == "release"` comparison, so a
+# custom-profile outer build ran a whole extra release compile at a DIFFERENT
+# optimization level than the crate it was measuring (phase-336 W7).
 scan "hardcoded cargo profile flag" < <(
     git grep -nE -- '(--release|--profile[= ]+[a-z][a-z0-9-]*)' \
         -- justfile 'just/*.just' 'scripts/build/*.sh' 'scripts/bootstrap.sh' \
+           'packages/tooling/*/src/**' 'packages/testing/nros-tests/src/**' \
     | grep -v 'rustup' \
     | grep -vE 'nros_cargo_profile|nros profile|profile_arg|profile_args|PROFILE_FLAGS|_profile"' \
+    | grep -v '^packages/tooling/nros-cargo-profile/' \
     || true)
 
 # 2. Profile-named directory segments in artifact paths.
@@ -100,7 +109,9 @@ scan "hardcoded profile directory" < <(
     git grep -nE 'target[^ "]*/(release|debug)/' \
         -- justfile 'just/*.just' 'scripts/build/*.sh' 'scripts/test/*.sh' \
            'cmake/**' 'zephyr/cmake/**' 'packages/testing/nros-tests/src/**' \
+           'packages/tooling/*/src/**' \
     | grep -vE 'packages/cli/target/release/nros|nros-launch-resolve/target/release' \
+    | grep -v '^packages/tooling/nros-cargo-profile/' \
     || true)
 
 if [ "$fail" -ne 0 ]; then
