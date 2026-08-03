@@ -537,11 +537,10 @@ pub fn rust_type_for_constant(field_type: &FieldType) -> String {
 // nros Type Mapping
 // ============================================================================
 
-/// Default string capacity for nros heapless strings
-pub const NROS_DEFAULT_STRING_CAPACITY: usize = 256;
-
-/// Default sequence capacity for nros heapless vectors
-pub const NROS_DEFAULT_SEQUENCE_CAPACITY: usize = 64;
+// The nros capacity defaults moved to the Lower stage's config (RFC-0068 /
+// phase-335 W1.b) — capacity resolution is a Lower input. Re-exported so
+// existing `crate::types::NROS_DEFAULT_*` references are unchanged.
+pub use rosidl_lower::config::{NROS_DEFAULT_SEQUENCE_CAPACITY, NROS_DEFAULT_STRING_CAPACITY};
 
 /// Configuration for nros code generation mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

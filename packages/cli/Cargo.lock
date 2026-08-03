@@ -1375,6 +1375,7 @@ version = "0.5.0"
 dependencies = [
  "askama",
  "criterion",
+ "rosidl-lower",
  "rosidl-parser",
  "rosidl-resolve",
  "serde",
@@ -1384,6 +1385,18 @@ dependencies = [
  "thiserror 1.0.69",
  "toml",
  "walkdir",
+]
+
+[[package]]
+name = "rosidl-lower"
+version = "0.5.0"
+dependencies = [
+ "rosidl-parser",
+ "rosidl-resolve",
+ "serde",
+ "tempfile",
+ "thiserror 1.0.69",
+ "toml",
 ]
 
 [[package]]

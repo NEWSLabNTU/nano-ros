@@ -1,4 +1,6 @@
-pub mod config;
+// Capacity/storage config relocated to the Lower stage (RFC-0068 / phase-335
+// W1.b); re-exported so `rosidl_codegen::config::…` paths are unchanged.
+pub use rosidl_lower::config;
 // RFC-0061 / phase-318 W1 — the tool answers "would I emit different bytes?"
 pub mod fingerprint;
 pub mod generator;

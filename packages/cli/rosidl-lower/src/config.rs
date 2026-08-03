@@ -22,7 +22,12 @@ use std::{
 
 use serde::Deserialize;
 
-use crate::types::{NROS_DEFAULT_SEQUENCE_CAPACITY, NROS_DEFAULT_STRING_CAPACITY};
+/// Default string capacity for nros heapless strings (the global fallback when
+/// no per-field / per-type / per-package config entry applies).
+pub const NROS_DEFAULT_STRING_CAPACITY: usize = 256;
+
+/// Default sequence capacity for nros heapless vectors.
+pub const NROS_DEFAULT_SEQUENCE_CAPACITY: usize = 64;
 
 /// How a field's local storage is realized. See RFC-0033 "Storage modes".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]

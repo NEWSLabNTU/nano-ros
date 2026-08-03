@@ -22,6 +22,7 @@ askama = { version = "0.12", features = ["config"] }
 sha2 = "0.10"
 rosidl-parser.workspace = true
 rosidl-resolve.workspace = true
+rosidl-lower.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
