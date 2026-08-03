@@ -1,12 +1,12 @@
 use super::common::{
-    GeneratorError, PayloadLang, build_c_field, build_nros_schema_for_struct, determine_field_kind,
-    ensure_supported_storage_for_payload, field_to_nros_field, field_to_nros_field_with_mode,
+    GeneratorError, PayloadLang, build_c_field, build_nros_fields, build_nros_schema_for_struct,
+    determine_field_kind, ensure_supported_storage_for_payload,
 };
 use crate::{
     config::CapacityResolver,
     templates::{
         BuildRsTemplate, CConstant, CField, CargoNrosTomlTemplate, CargoTomlTemplate,
-        IdiomaticField, LibNrosRsTemplate, LibRsTemplate, MessageConstant, NrosField, RmwField,
+        IdiomaticField, LibNrosRsTemplate, LibRsTemplate, MessageConstant, RmwField,
         ServiceCHeaderTemplate, ServiceCSourceTemplate, ServiceIdiomaticTemplate,
         ServiceNrosTemplate, ServiceRmwTemplate,
     },
@@ -220,12 +220,13 @@ pub fn generate_nros_service_package(
     )?;
 
     // Generate request fields
-    let request_fields: Vec<NrosField> = service
-        .request
-        .fields
-        .iter()
-        .map(|f| field_to_nros_field(f, package_name, &request_msg, resolver, None))
-        .collect::<Result<_, _>>()?;
+    let request_fields = build_nros_fields(
+        package_name,
+        &request_msg,
+        &service.request,
+        resolver,
+        NrosCodegenMode::Crate,
+    )?;
 
     let request_constants: Vec<MessageConstant> = service
         .request
@@ -239,12 +240,13 @@ pub fn generate_nros_service_package(
         .collect();
 
     // Generate response fields
-    let response_fields: Vec<NrosField> = service
-        .response
-        .fields
-        .iter()
-        .map(|f| field_to_nros_field(f, package_name, &response_msg, resolver, None))
-        .collect::<Result<_, _>>()?;
+    let response_fields = build_nros_fields(
+        package_name,
+        &response_msg,
+        &service.response,
+        resolver,
+        NrosCodegenMode::Crate,
+    )?;
 
     let response_constants: Vec<MessageConstant> = service
         .response
@@ -346,12 +348,8 @@ pub fn generate_nros_inline_service(
         resolver,
     )?;
 
-    let request_fields: Vec<NrosField> = service
-        .request
-        .fields
-        .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &request_msg, resolver, mode, None))
-        .collect::<Result<_, _>>()?;
+    let request_fields =
+        build_nros_fields(package_name, &request_msg, &service.request, resolver, mode)?;
 
     let request_constants: Vec<MessageConstant> = service
         .request
@@ -364,14 +362,13 @@ pub fn generate_nros_inline_service(
         })
         .collect();
 
-    let response_fields: Vec<NrosField> = service
-        .response
-        .fields
-        .iter()
-        .map(|f| {
-            field_to_nros_field_with_mode(f, package_name, &response_msg, resolver, mode, None)
-        })
-        .collect::<Result<_, _>>()?;
+    let response_fields = build_nros_fields(
+        package_name,
+        &response_msg,
+        &service.response,
+        resolver,
+        mode,
+    )?;
 
     let response_constants: Vec<MessageConstant> = service
         .response

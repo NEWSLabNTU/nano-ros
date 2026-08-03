@@ -1,6 +1,6 @@
 use super::common::{
-    GeneratorError, build_c_field, build_nros_message_schema, determine_field_kind,
-    field_to_nros_field, field_to_nros_field_with_mode,
+    GeneratorError, build_c_field, build_nros_fields, build_nros_message_schema,
+    determine_field_kind,
 };
 use crate::{
     config::CapacityResolver,
@@ -8,7 +8,7 @@ use crate::{
         BuildRsTemplate, CConstant, CField, CargoNrosTomlTemplate, CargoTomlTemplate,
         IdiomaticField, LibNrosRsTemplate, LibRsTemplate, MessageCHeaderTemplate,
         MessageCSourceTemplate, MessageConstant, MessageIdiomaticTemplate, MessageNrosTemplate,
-        MessageRmwTemplate, NrosField, RmwField,
+        MessageRmwTemplate, RmwField,
     },
     types::{
         NrosCodegenMode, c_type_for_constant, constant_value_to_rust, escape_keyword,
@@ -194,31 +194,14 @@ pub fn generate_nros_message_package(
     };
     let lib_rs = lib_rs_template.render()?;
 
-    // Generate message fields. phase-335 W1.c — lower the message once and read
-    // each field's storage from the IR (LoweredField), rather than resolving
-    // capacity a second time inside the builder. `lower_fields` calls the same
-    // `CapacityResolver` with the same keys, so the result is byte-identical.
-    let lowered = rosidl_lower::lower_fields(
+    // phase-335 W1.c — storage from the lowered IR (byte-identical), resolved once.
+    let fields = build_nros_fields(
         package_name,
         message_name,
         message,
         resolver,
-        &rosidl_lower::TargetProfile::host(),
-    );
-    let fields: Vec<NrosField> = message
-        .fields
-        .iter()
-        .zip(lowered.iter())
-        .map(|(f, lf)| {
-            field_to_nros_field(
-                f,
-                package_name,
-                message_name,
-                resolver,
-                Some(lf.storage.as_field_storage()),
-            )
-        })
-        .collect::<Result<_, _>>()?;
+        NrosCodegenMode::Crate,
+    )?;
 
     // Generate constants
     let constants: Vec<MessageConstant> = message
@@ -274,12 +257,13 @@ pub fn generate_nros_inline_message(
     type_hash: &str,
     resolver: &CapacityResolver,
 ) -> Result<String, GeneratorError> {
-    let mode = NrosCodegenMode::Inline;
-    let fields: Vec<NrosField> = message
-        .fields
-        .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, message_name, resolver, mode, None))
-        .collect::<Result<_, _>>()?;
+    let fields = build_nros_fields(
+        package_name,
+        message_name,
+        message,
+        resolver,
+        NrosCodegenMode::Inline,
+    )?;
 
     let constants: Vec<MessageConstant> = message
         .constants

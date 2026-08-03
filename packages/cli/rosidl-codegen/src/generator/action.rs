@@ -1,7 +1,6 @@
 use super::common::{
-    GeneratorError, PayloadLang, build_action_envelope_schemas, build_c_field,
+    GeneratorError, PayloadLang, build_action_envelope_schemas, build_c_field, build_nros_fields,
     build_nros_schema_for_struct, determine_field_kind, ensure_supported_storage_for_payload,
-    field_to_nros_field, field_to_nros_field_with_mode,
 };
 use crate::{
     config::CapacityResolver,
@@ -9,7 +8,7 @@ use crate::{
         ActionCHeaderTemplate, ActionCSourceTemplate, ActionIdiomaticTemplate, ActionNrosTemplate,
         ActionRmwTemplate, BuildRsTemplate, CConstant, CField, CargoNrosTomlTemplate,
         CargoTomlTemplate, IdiomaticField, LibNrosRsTemplate, LibRsTemplate, MessageConstant,
-        NrosField, RmwField,
+        RmwField,
     },
     types::{
         NrosCodegenMode, c_type_for_constant, constant_value_to_rust, escape_keyword,
@@ -255,13 +254,13 @@ pub fn generate_nros_action_package(
     )?;
 
     // Generate goal fields
-    let goal_fields: Vec<NrosField> = action
-        .spec
-        .goal
-        .fields
-        .iter()
-        .map(|f| field_to_nros_field(f, package_name, &goal_msg, resolver, None))
-        .collect::<Result<_, _>>()?;
+    let goal_fields = build_nros_fields(
+        package_name,
+        &goal_msg,
+        &action.spec.goal,
+        resolver,
+        NrosCodegenMode::Crate,
+    )?;
 
     let goal_constants: Vec<MessageConstant> = action
         .spec
@@ -276,13 +275,13 @@ pub fn generate_nros_action_package(
         .collect();
 
     // Generate result fields
-    let result_fields: Vec<NrosField> = action
-        .spec
-        .result
-        .fields
-        .iter()
-        .map(|f| field_to_nros_field(f, package_name, &result_msg, resolver, None))
-        .collect::<Result<_, _>>()?;
+    let result_fields = build_nros_fields(
+        package_name,
+        &result_msg,
+        &action.spec.result,
+        resolver,
+        NrosCodegenMode::Crate,
+    )?;
 
     let result_constants: Vec<MessageConstant> = action
         .spec
@@ -297,13 +296,13 @@ pub fn generate_nros_action_package(
         .collect();
 
     // Generate feedback fields
-    let feedback_fields: Vec<NrosField> = action
-        .spec
-        .feedback
-        .fields
-        .iter()
-        .map(|f| field_to_nros_field(f, package_name, &feedback_msg, resolver, None))
-        .collect::<Result<_, _>>()?;
+    let feedback_fields = build_nros_fields(
+        package_name,
+        &feedback_msg,
+        &action.spec.feedback,
+        resolver,
+        NrosCodegenMode::Crate,
+    )?;
 
     let feedback_constants: Vec<MessageConstant> = action
         .spec
@@ -457,13 +456,8 @@ pub fn generate_nros_inline_action(
         resolver,
     )?;
 
-    let goal_fields: Vec<NrosField> = action
-        .spec
-        .goal
-        .fields
-        .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &goal_msg, resolver, mode, None))
-        .collect::<Result<_, _>>()?;
+    let goal_fields =
+        build_nros_fields(package_name, &goal_msg, &action.spec.goal, resolver, mode)?;
 
     let goal_constants: Vec<MessageConstant> = action
         .spec
@@ -477,13 +471,13 @@ pub fn generate_nros_inline_action(
         })
         .collect();
 
-    let result_fields: Vec<NrosField> = action
-        .spec
-        .result
-        .fields
-        .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &result_msg, resolver, mode, None))
-        .collect::<Result<_, _>>()?;
+    let result_fields = build_nros_fields(
+        package_name,
+        &result_msg,
+        &action.spec.result,
+        resolver,
+        mode,
+    )?;
 
     let result_constants: Vec<MessageConstant> = action
         .spec
@@ -497,15 +491,13 @@ pub fn generate_nros_inline_action(
         })
         .collect();
 
-    let feedback_fields: Vec<NrosField> = action
-        .spec
-        .feedback
-        .fields
-        .iter()
-        .map(|f| {
-            field_to_nros_field_with_mode(f, package_name, &feedback_msg, resolver, mode, None)
-        })
-        .collect::<Result<_, _>>()?;
+    let feedback_fields = build_nros_fields(
+        package_name,
+        &feedback_msg,
+        &action.spec.feedback,
+        resolver,
+        mode,
+    )?;
 
     let feedback_constants: Vec<MessageConstant> = action
         .spec

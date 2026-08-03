@@ -489,21 +489,44 @@ pub(super) fn field_to_nros_field_with_mode(
 }
 
 /// Convert a Message field to NrosField (crate mode).
-pub(super) fn field_to_nros_field(
-    field: &rosidl_parser::Field,
-    package_name: &str,
-    message_name: &str,
+/// Per-field storage decisions for `msg`, read from the lowered IR (phase-335
+/// W1.c). A generator computes this once and hands each builder the matching
+/// entry (`Some(store[i])`) so no builder resolves capacity a second time.
+/// `lower_fields` calls the same `CapacityResolver` with the same keys, so the
+/// result is byte-identical to an inline `resolver.resolve`.
+pub(super) fn lowered_storages(
+    package: &str,
+    message: &str,
+    msg: &rosidl_parser::Message,
     resolver: &CapacityResolver,
-    pre_storage: Option<FieldStorage>,
-) -> Result<NrosField, GeneratorError> {
-    field_to_nros_field_with_mode(
-        field,
-        package_name,
-        message_name,
+) -> Vec<FieldStorage> {
+    rosidl_lower::lower_fields(
+        package,
+        message,
+        msg,
         resolver,
-        NrosCodegenMode::Crate,
-        pre_storage,
+        &rosidl_lower::TargetProfile::host(),
     )
+    .iter()
+    .map(|lf| lf.storage.as_field_storage())
+    .collect()
+}
+
+/// Build every nros field of `msg`, sourcing each field's storage from the
+/// lowered IR once (phase-335 W1.c) — no field builder resolves capacity.
+pub(super) fn build_nros_fields(
+    package: &str,
+    message: &str,
+    msg: &rosidl_parser::Message,
+    resolver: &CapacityResolver,
+    mode: NrosCodegenMode,
+) -> Result<Vec<NrosField>, GeneratorError> {
+    let store = lowered_storages(package, message, msg, resolver);
+    msg.fields
+        .iter()
+        .zip(store.iter())
+        .map(|(f, s)| field_to_nros_field_with_mode(f, package, message, resolver, mode, Some(*s)))
+        .collect()
 }
 
 /// Build a CField from a field type.
