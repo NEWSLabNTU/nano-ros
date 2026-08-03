@@ -58,8 +58,8 @@ use nros_tests::{
         build_native_workspace_rust_service_client_entry,
         build_native_workspace_rust_service_server_entry, require_zenohd,
     },
+    matrix::{Cell as MCell, Kind as MK, Lang as ML, Tier as MT, Workload as MW},
 };
-use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
 
 // =============================================================================
@@ -92,16 +92,103 @@ enum Proof {
 
 type Resolver = fn() -> TestResult<PathBuf>;
 
-/// One roundtrip matrix cell (all native — see the module doc).
-struct Cell {
-    lang: &'static str,
-    workload: &'static str,
+/// The per-cell EXECUTION data for one roundtrip matrix cell (all native — see
+/// the module doc). The coordinate lives in `matrix::Cell`; this carries only
+/// server/client resolvers + the proof style. Keyed by coordinate in
+/// [`exec_for`].
+struct Exec {
     server: Resolver,
     client: Resolver,
     proof: Proof,
     /// Provenance / nuance — folded into failure messages so a red cell
     /// still names the seam it pins.
     note: &'static str,
+}
+
+/// Map a native workspace `(lang, workload∈{Service,Action})` coordinate to its
+/// execution data. An unmapped coordinate is a HARD panic: adding such a cell to
+/// `matrix::CELLS` forces an arm here (phase-329 W1).
+fn exec_for(lang: ML, workload: MW) -> Exec {
+    match (lang, workload) {
+        (ML::Rust, MW::Service) => Exec {
+            server: || build_native_workspace_rust_service_server_entry().map(|p| p.to_path_buf()),
+            client: || build_native_workspace_rust_service_client_entry().map(|p| p.to_path_buf()),
+            proof: Proof::ListenerSums,
+            note: "phase-263 A1: declarative AddTwoInts chain — client `call_for_name` → \
+                   server `on_callback` sum → reply → client republish on /sum",
+        },
+        (ML::Rust, MW::Action) => Exec {
+            server: || build_native_workspace_rust_action_server_entry().map(|p| p.to_path_buf()),
+            client: || build_native_workspace_rust_action_client_entry().map(|p| p.to_path_buf()),
+            proof: Proof::ListenerFibLast,
+            note: "phase-263 A4: declarative Fibonacci chain — send_goal → accept in \
+                   on_callback → feedback+result in tick → auto-delivered result callback \
+                   republishes the last element on /fib_result",
+        },
+        (ML::C, MW::Service) => Exec {
+            server: || build_native_workspace_c_service_server_entry().map(|p| p.to_path_buf()),
+            client: || build_native_workspace_c_service_client_entry().map(|p| p.to_path_buf()),
+            proof: Proof::ClientSums,
+            note: "phase-263 A1 C projection: c_add_server_pkg + c_add_client_pkg over the \
+                   poll-model client (nros_cpp_service_client_send_request + try_recv_reply)",
+        },
+        (ML::C, MW::Action) => Exec {
+            server: || build_native_workspace_c_action_server_entry().map(|p| p.to_path_buf()),
+            client: || build_native_workspace_c_action_client_entry().map(|p| p.to_path_buf()),
+            proof: Proof::ClientFibLast,
+            note: "phase-263 A4 C projection: c_fib_server_pkg + c_fib_client_pkg over the \
+                   poll-model action client (send_goal_async / get_result_async / poll)",
+        },
+        (ML::Cpp, MW::Service) => Exec {
+            server: || build_native_workspace_cpp_service_server_entry().map(|p| p.to_path_buf()),
+            client: || build_native_workspace_cpp_service_client_entry().map(|p| p.to_path_buf()),
+            proof: Proof::ClientSums,
+            note: "phase-263 A1 C++ projection: cpp_add_server_pkg + cpp_add_client_pkg over \
+                   the poll-model service client",
+        },
+        (ML::Cpp, MW::Action) => Exec {
+            server: || build_native_workspace_cpp_action_server_entry().map(|p| p.to_path_buf()),
+            client: || build_native_workspace_cpp_action_client_entry().map(|p| p.to_path_buf()),
+            proof: Proof::ClientFibLast,
+            note: "phase-263 A4 C++ projection: cpp_fib_server_pkg + cpp_fib_client_pkg over \
+                   the raw poll-model action client (create_action_client_raw + set_callbacks)",
+        },
+        (ML::Mixed, MW::Service) => Exec {
+            server: || build_native_workspace_mixed_service_server_entry().map(|p| p.to_path_buf()),
+            client: || build_native_workspace_mixed_service_client_entry().map(|p| p.to_path_buf()),
+            proof: Proof::ClientSums,
+            note: "phase-263 A1 MIXED projection: genuinely cross-LANGUAGE since #203 closed — \
+                   C server (c_add_server_pkg) + C++ client (cpp_add_client_pkg)",
+        },
+        (ML::Mixed, MW::Action) => Exec {
+            server: || build_native_workspace_mixed_action_server_entry().map(|p| p.to_path_buf()),
+            client: || build_native_workspace_mixed_action_client_entry().map(|p| p.to_path_buf()),
+            proof: Proof::ClientFibLast,
+            note: "phase-263 A4 MIXED projection: reuses the pure-C Fibonacci pkgs verbatim \
+                   (cpp variant blocked on the action_msgs cpp-codegen gap); cross-language \
+                   lives at the workspace level (C talker + C++ listener + Rust heartbeat)",
+        },
+        (l, w) => panic!(
+            "roundtrip_xprocess_e2e: no execution mapping for matrix cell {l:?}/{w:?} — add an \
+             `exec_for` arm (phase-329 W1: a new native workspace Service/Action cell must wire \
+             its server+client here)"
+        ),
+    }
+}
+
+fn lang_str(l: ML) -> &'static str {
+    match l {
+        ML::Rust => "rust",
+        ML::C => "c",
+        ML::Cpp => "cpp",
+        ML::Mixed => "mixed",
+    }
+}
+fn wl_str(w: MW) -> &'static str {
+    match w {
+        MW::Action => "action",
+        _ => "service",
+    }
 }
 
 // =============================================================================
@@ -156,99 +243,77 @@ fn spawn_listener(topic: &'static str, locator: &str) -> ManagedProcess {
 // The parametrized matrix consumer
 // =============================================================================
 
-/// One cross-process roundtrip cell: boot the workspace's server + client
-/// entries as two processes and prove the server-computed values come back
-/// per the cell's [`Proof`]. Case names carry `<platform>_<lang>_<workload>`
-/// so nextest `test(...)` filters can slice (e.g. `test(native_c_service)`).
-#[rstest]
-// Rust — declarative dispatch, third-process observer (phase-263 A1/A4).
-#[case::native_rust_service(Cell {
-    lang: "rust", workload: "service",
-    server: || build_native_workspace_rust_service_server_entry().map(|p| p.to_path_buf()),
-    client: || build_native_workspace_rust_service_client_entry().map(|p| p.to_path_buf()),
-    proof: Proof::ListenerSums,
-    note: "phase-263 A1: declarative AddTwoInts chain — client `call_for_name` → \
-           server `on_callback` sum → reply → client republish on /sum",
-})]
-#[case::native_rust_action(Cell {
-    lang: "rust", workload: "action",
-    server: || build_native_workspace_rust_action_server_entry().map(|p| p.to_path_buf()),
-    client: || build_native_workspace_rust_action_client_entry().map(|p| p.to_path_buf()),
-    proof: Proof::ListenerFibLast,
-    note: "phase-263 A4: declarative Fibonacci chain — send_goal → accept in \
-           on_callback → feedback+result in tick → auto-delivered result callback \
-           republishes the last element on /fib_result",
-})]
-// C — poll-model component surfaces, client-stdout proof.
-#[case::native_c_service(Cell {
-    lang: "c", workload: "service",
-    server: || build_native_workspace_c_service_server_entry().map(|p| p.to_path_buf()),
-    client: || build_native_workspace_c_service_client_entry().map(|p| p.to_path_buf()),
-    proof: Proof::ClientSums,
-    note: "phase-263 A1 C projection: c_add_server_pkg + c_add_client_pkg over the \
-           poll-model client (nros_cpp_service_client_send_request + try_recv_reply)",
-})]
-#[case::native_c_action(Cell {
-    lang: "c", workload: "action",
-    server: || build_native_workspace_c_action_server_entry().map(|p| p.to_path_buf()),
-    client: || build_native_workspace_c_action_client_entry().map(|p| p.to_path_buf()),
-    proof: Proof::ClientFibLast,
-    note: "phase-263 A4 C projection: c_fib_server_pkg + c_fib_client_pkg over the \
-           poll-model action client (send_goal_async / get_result_async / poll)",
-})]
-// C++ — poll-model component surfaces, client-stdout proof.
-#[case::native_cpp_service(Cell {
-    lang: "cpp", workload: "service",
-    server: || build_native_workspace_cpp_service_server_entry().map(|p| p.to_path_buf()),
-    client: || build_native_workspace_cpp_service_client_entry().map(|p| p.to_path_buf()),
-    proof: Proof::ClientSums,
-    note: "phase-263 A1 C++ projection: cpp_add_server_pkg + cpp_add_client_pkg over \
-           the poll-model service client",
-})]
-#[case::native_cpp_action(Cell {
-    lang: "cpp", workload: "action",
-    server: || build_native_workspace_cpp_action_server_entry().map(|p| p.to_path_buf()),
-    client: || build_native_workspace_cpp_action_client_entry().map(|p| p.to_path_buf()),
-    proof: Proof::ClientFibLast,
-    note: "phase-263 A4 C++ projection: cpp_fib_server_pkg + cpp_fib_client_pkg over \
-           the raw poll-model action client (create_action_client_raw + set_callbacks)",
-})]
-// Mixed workspace — cross-language where the codegen allows it.
-#[case::native_mixed_service(Cell {
-    lang: "mixed", workload: "service",
-    server: || build_native_workspace_mixed_service_server_entry().map(|p| p.to_path_buf()),
-    client: || build_native_workspace_mixed_service_client_entry().map(|p| p.to_path_buf()),
-    proof: Proof::ClientSums,
-    note: "phase-263 A1 MIXED projection: genuinely cross-LANGUAGE since #203 closed — \
-           C server (c_add_server_pkg) + C++ client (cpp_add_client_pkg)",
-})]
-#[case::native_mixed_action(Cell {
-    lang: "mixed", workload: "action",
-    server: || build_native_workspace_mixed_action_server_entry().map(|p| p.to_path_buf()),
-    client: || build_native_workspace_mixed_action_client_entry().map(|p| p.to_path_buf()),
-    proof: Proof::ClientFibLast,
-    note: "phase-263 A4 MIXED projection: reuses the pure-C Fibonacci pkgs verbatim \
-           (cpp variant blocked on the action_msgs cpp-codegen gap); cross-language \
-           lives at the workspace level (C talker + C++ listener + Rust heartbeat)",
-})]
-fn roundtrip_xprocess(#[case] cell: Cell) {
+/// THE cross-process roundtrip matrix consumer (phase-329 W1). Iterates every
+/// `Workspace`/`Service`|`Action`/`Runtime` cell of `matrix::CELLS` (all
+/// native) — the case list is DERIVED — and runs each in one process, catching
+/// per-cell skips/failures so one missing fixture never aborts the rest.
+#[test]
+fn roundtrip_xprocess() {
+    let cells: Vec<&MCell> = nros_tests::matrix::CELLS
+        .iter()
+        .filter(|c| {
+            matches!(c.kind, MK::Workspace)
+                && matches!(c.workload, MW::Service | MW::Action)
+                && matches!(c.tier, MT::Runtime)
+        })
+        .collect();
+    assert!(
+        !cells.is_empty(),
+        "matrix regression: no Workspace Service/Action runtime cells for this consumer"
+    );
+
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let mut skipped: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+    for c in &cells {
+        let label = format!("{}/{}", lang_str(c.lang), wl_str(c.workload));
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
+        if let Err(p) = res {
+            let msg = p
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "<non-string panic>".to_string());
+            if msg.contains("[SKIPPED]") {
+                skipped.push(format!("{label}: {msg}"));
+            } else {
+                failed.push(format!("{label}: {msg}"));
+            }
+        }
+    }
+    std::panic::set_hook(prev_hook);
+
+    assert!(
+        failed.is_empty(),
+        "roundtrip_xprocess: {} of {} cell(s) FAILED:\n  {}",
+        failed.len(),
+        cells.len(),
+        failed.join("\n  ")
+    );
+    if skipped.len() == cells.len() {
+        nros_tests::skip!(
+            "all {} roundtrip cell(s) skipped:\n  {}",
+            skipped.len(),
+            skipped.join("\n  ")
+        );
+    }
+}
+
+/// Boot the workspace's server + client entries as two processes and prove the
+/// server-computed values come back per the cell's [`Proof`]. Panics with
+/// `[SKIPPED] …` on an unmet precondition; the caller classifies.
+fn run_cell(pcell: &MCell) {
+    let lang = lang_str(pcell.lang);
+    let workload = wl_str(pcell.workload);
+    let cell = exec_for(pcell.lang, pcell.workload);
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
-    let server = (cell.server)().unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "{} {} server entry not built: {e}",
-            cell.lang,
-            cell.workload
-        )
-    });
-    let client = (cell.client)().unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "{} {} client entry not built: {e}",
-            cell.lang,
-            cell.workload
-        )
-    });
+    let server = (cell.server)()
+        .unwrap_or_else(|e| nros_tests::skip!("{} {} server entry not built: {e}", lang, workload));
+    let client = (cell.client)()
+        .unwrap_or_else(|e| nros_tests::skip!("{} {} client entry not built: {e}", lang, workload));
 
     // Native-only family: every cell gets an ephemeral router.
     let router = ZenohRouter::start_unique()
@@ -285,7 +350,7 @@ fn roundtrip_xprocess(#[case] cell: Cell) {
                         panic!(
                             "[{} {}] {topic} subscriber never saw 3 server-computed sums — \
                              the cross-process round-trip did not complete ({})",
-                            cell.lang, cell.workload, cell.note
+                            lang, workload, cell.note
                         )
                     });
                 cli.kill();
@@ -299,8 +364,8 @@ fn roundtrip_xprocess(#[case] cell: Cell) {
                         out.contains(expected.as_str()),
                         "[{} {}] expected server-computed sum line {expected:?} on {topic} \
                          ({}); got:\n{out}",
-                        cell.lang,
-                        cell.workload,
+                        lang,
+                        workload,
                         cell.note
                     );
                 }
@@ -316,7 +381,7 @@ fn roundtrip_xprocess(#[case] cell: Cell) {
                         panic!(
                             "[{} {}] {topic} never saw the server-computed result (55) — \
                              the cross-process round-trip did not complete ({})",
-                            cell.lang, cell.workload, cell.note
+                            lang, workload, cell.note
                         )
                     });
                 cli.kill();
@@ -326,8 +391,8 @@ fn roundtrip_xprocess(#[case] cell: Cell) {
                     out.contains(expected.as_str()),
                     "[{} {}] expected the Fibonacci result last element 55 on {topic} \
                      ({}); got:\n{out}",
-                    cell.lang,
-                    cell.workload,
+                    lang,
+                    workload,
                     cell.note
                 );
             }
@@ -346,7 +411,7 @@ fn roundtrip_xprocess(#[case] cell: Cell) {
                 srv.kill();
                 panic!(
                     "[{} {}] server never became ready ({})",
-                    cell.lang, cell.workload, cell.note
+                    lang, workload, cell.note
                 )
             });
             let mut cli = spawn_c_entry(&client, "roundtrip-client", &locator);
@@ -361,7 +426,7 @@ fn roundtrip_xprocess(#[case] cell: Cell) {
                         panic!(
                             "[{} {}] client never received 3 server-computed sums — the \
                              cross-process service round-trip did not work ({})",
-                            cell.lang, cell.workload, cell.note
+                            lang, workload, cell.note
                         )
                     });
                 cli.kill();
@@ -375,8 +440,8 @@ fn roundtrip_xprocess(#[case] cell: Cell) {
                         out.contains(expected.as_str()),
                         "[{} {}] client output missing `{expected}` — server-side compute \
                          or round-trip wrong ({}).\n{out}",
-                        cell.lang,
-                        cell.workload,
+                        lang,
+                        workload,
                         cell.note
                     );
                 }
@@ -384,8 +449,8 @@ fn roundtrip_xprocess(#[case] cell: Cell) {
                 assert!(
                     n >= 3,
                     "[{} {}] expected ≥3 service round-trips, got {n}",
-                    cell.lang,
-                    cell.workload
+                    lang,
+                    workload
                 );
             } else {
                 let expected = nros_tests::output::ws_action_result_last_line(55);
@@ -397,7 +462,7 @@ fn roundtrip_xprocess(#[case] cell: Cell) {
                         panic!(
                             "[{} {}] client never received the server-computed Fibonacci \
                              result — the cross-process action round-trip did not work ({})",
-                            cell.lang, cell.workload, cell.note
+                            lang, workload, cell.note
                         )
                     });
                 cli.kill();
@@ -407,8 +472,8 @@ fn roundtrip_xprocess(#[case] cell: Cell) {
                     out.contains(expected.as_str()),
                     "[{} {}] client output missing `{expected}` — server-side compute or \
                      round-trip wrong ({}).\n{out}",
-                    cell.lang,
-                    cell.workload,
+                    lang,
+                    workload,
                     cell.note
                 );
             }
