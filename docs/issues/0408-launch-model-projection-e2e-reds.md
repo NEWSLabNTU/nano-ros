@@ -101,31 +101,65 @@ Worth a separate fork fix: the EINVAL retry is a zenoh-pico robustness bug — a
 failed connect leaves the socket unusable and the next candidate address needs a
 new one. A dual-stack host talking to an IPv4-only peer is not exotic.
 
-## Bridge — root cause identified, NOT fixed
+## Bridge — ROOT CAUSE FOUND (a metadata-precedence regression), not fixed
 
-`declarative_zenoh_to_cyclonedds_nested_header_to_ros2` expects a `Header` on
-`/header` to cross the bridge. It cannot, as configured:
+CORRECTION to the first pass below: `/header` IS declared. It is not in the
+node's CODE, it is in `talker_pkg/Cargo.toml`:
 
-- `bridge-cyclonedds`'s `system.toml` declares ONE component,
-  `talker_pkg::Talker`, which publishes `std_msgs/Int32` on `/chatter` only —
-  no `/header` anywhere in the workspace, before OR after the phase-331 W6
-  rename (`ws-bridge-rust` -> `bridge-cyclonedds`, verified against the
-  pre-rename tree).
-- the generated model's `execution.bridges` carries no topic list, and
-  `bridge_gen.rs` states the planner "only forwards declared topics"
-  (`expect("planner only forwards declared topics")`).
-- observed: with the router at `RUST_LOG=zenoh=debug`, the bridge declares
-  exactly ONE subscriber, `0/chatter/std_msgs::msg::dds_::Int32_/*`. No
-  `/header` subscriber, and no `/header` resource is registered at all — even
-  though the `header-chatter-talker` fixture logs `Published Header: N`.
+```toml
+[[package.metadata.nros.node.publishes]]
+topic = "/chatter"
+type = "std_msgs/msg/Int32"
 
-So either the relay is meant to forward undeclared topics (and regressed to
-declared-only), or the test's premise needs the workspace to declare `/header`.
-Archived issue #0183 records this exact lane PASSING on 2026-07-15, so it did
-work once — that is the thread to pull.
+# phase-267 (non-flat types) — a NESTED message …
+[[package.metadata.nros.node.publishes]]
+topic = "/header"
+type = "std_msgs/msg/Header"
+```
 
-The last point deserves attention on its own: the talker reports publishing
-Headers that never reach the router as a resource.
+phase-267 W1c added that second entry for exactly this test: a topic the bridge
+must relay whose type the node never constructs, "so the planner resolves the
+`[[bridge]]`'s topic NAME to its ROS type pre-build (no sidecar, no build)".
+
+The chain that now drops it:
+
+1. `planner.rs` (~line 93) appends the manifest-derived SYNTHETIC metadata
+   AFTER the sidecar JSON artifacts, deliberately: "so the file artifacts win
+   the `(package, component)` dedup … a package shipping both an authoritative
+   metadata JSON and a stub component table keeps the file's richer data".
+2. `schema_components` dedups by `package::component` and keeps the FIRST — the
+   sidecar.
+3. The sidecar is now produced by the METADATA PROBE, which records what the
+   code actually creates: `nodes[0].publishers = [/chatter]` and nothing else.
+   A declaration-only topic is precisely the data a probe CANNOT have.
+4. `forwarded_topics` reads `nodes[].entities`, so it yields `["/chatter"]`.
+5. The plan's bridge gets `topics: ["/chatter"]` (verified in
+   `generated/demo_bringup/nros-bridge-plan/nros-plan.json`), and the generated
+   relay declares exactly one subscriber — confirmed against a
+   `RUST_LOG=zenoh=debug` router: `0/chatter/std_msgs::msg::dds_::Int32_/*`.
+6. `/header` is published to zenoh by the test's talker (the router registers
+   `0/header/std_msgs::msg::dds_::Header_`), crosses no bridge, and the ros2
+   cyclone subscriber sees nothing.
+
+So the phase-267 declarations were silently demoted from "authoritative
+pre-build" to "ignored" the moment the probe started emitting a sidecar for
+these components. That is why #0183 could record this lane green on 2026-07-15
+and why it is red now with no change to the workspace or the test.
+
+### Fix direction
+
+The precedence rule is right for overlapping data and wrong for disjoint data.
+A declared topic endpoint the probe cannot observe should be UNIONed into the
+winning artifact rather than dropped — merge same-id artifacts' topic endpoints
+by topic name, keeping the sidecar's richer fields where both describe the same
+endpoint.
+
+Not landed here deliberately: this is the planner's metadata precedence, and
+phase-330 / phase-335 are actively rewriting that area in parallel sessions. A
+precedence change wants to land with whoever owns that work, plus a regression
+test (`a declared-only publish survives a probe sidecar`). The sibling lane
+`declarative_zenoh_to_cyclonedds_bridge_to_nano_listener` passes, so the bridge
+runtime itself is healthy — this is purely what the planner tells it to relay.
 
 ## Evidence
 
