@@ -26,10 +26,25 @@ type ShimConfig = crate::ShimConfig;
 type ZenohBufferConfig = crate::ZenohBufferConfig;
 
 fn shim_config_from_env() -> ShimConfig {
+    // issue 0406 — these tables are STATIC arrays in the C shim, so every slot
+    // costs RAM whether or not it is used. 8 is an embedded budget, and it was
+    // applied to hosted targets too, where the same RAM argument does not hold.
+    //
+    // A service server IS a queryable. An entry that enables the ROS parameter
+    // services (6) and the REP-2002 lifecycle services (6) needs twelve before
+    // the application declares anything of its own, so on a hosted target the
+    // 8-slot table overflowed at boot and every entry in
+    // `examples/workspaces/features` died with a bare
+    // `Transport(ServiceServerCreationFailed)`.
+    //
+    // Hosted targets get headroom; `target_os = "none"` keeps the embedded
+    // budget exactly as before. Override with the env var on either side.
+    let hosted = std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("none");
+    let queryable_default = if hosted { 32 } else { 8 };
     ShimConfig {
         max_publishers: env_usize("ZPICO_MAX_PUBLISHERS", 8),
         max_subscribers: env_usize("ZPICO_MAX_SUBSCRIBERS", 8),
-        max_queryables: env_usize("ZPICO_MAX_QUERYABLES", 8),
+        max_queryables: env_usize("ZPICO_MAX_QUERYABLES", queryable_default),
         max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", 16),
         max_pending_gets: env_usize("ZPICO_MAX_PENDING_GETS", 4),
         max_sessions: env_usize("ZPICO_MAX_SESSIONS", 1),

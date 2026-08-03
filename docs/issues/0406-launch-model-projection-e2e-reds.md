@@ -1,22 +1,21 @@
 ---
 id: 406
-title: Eight native e2e tests fail on main — per-node projection (params, remap,
+title: Seven native e2e tests fail on main — per-node projection (params, remap,
   qos, component order) does not reach the wire
 status: open
 type: bug
 area: orchestration
-related: [0398, phase-330, rfc-0066, 0401]
+related: [0398, 0382, phase-330, rfc-0066, 0401]
 ---
 
 ## Problem
 
-Eight tests fail on `main` (`55a2df1e0`), reproducibly, **serially, against
+Seven tests fail on `main` (`55a2df1e0`), reproducibly, **serially, against
 fixtures rebuilt from that exact tree**. They are not flakes and not stale
 fixtures — both of those were ruled out by re-running (see Evidence).
 
 | Test | Message |
 | --- | --- |
-| `cpp_multi_node_entry::multi_node_workspace_cpp_typed_configures_and_builds` | `component order doesn't match launch XML` (0.13 s, pure assertion) |
 | `cpp_c_param_live_read_e2e::c_param_live_read_publishes_baked_initial` | C component never published live-read baked param (250) on `/chatter` — `nros_cpp_get_param_integer` did not reach the callback |
 | `param_live_read_e2e::param_live_read_publishes_resolved_value` | subscriber saw no `/chatter` value at all — the live param read never reached the wire |
 | `workspace_features_e2e::case_01_native_c_custom_msg` | `reading_listener` never received 3 custom-msg samples |
@@ -25,9 +24,19 @@ fixtures — both of those were ruled out by re-running (see Evidence).
 | `declarative_bridge_zenoh_to_cyclonedds::declarative_zenoh_to_cyclonedds_nested_header_to_ros2` | stock ros2 cyclone subscriber received no bridged Header on `/header` |
 | `nano2nano::test_tls_talker_listener_communication` | Listener: expected at least 1 received messages, got 0 |
 
-## Why these look like ONE fault, not eight
+## Already filed separately: component order
 
-Six of the eight are per-node projections of a launch/model: component ORDER,
+`cpp_multi_node_entry::multi_node_workspace_cpp_typed_configures_and_builds`
+(`component order doesn't match launch XML`) was in the original list of eight
+and is **#0382**, open since 2026-08-01 with the root cause already identified:
+the resolver serializes `structure.nodes` alphabetically, so launch declaration
+order is lost and the entry emitter iterates file order. Not re-filed here.
+
+That leaves SEVEN failures below.
+
+## Why these look like ONE fault, not seven
+
+Five of the seven are per-node projections of a launch/model: component ORDER,
 per-node PARAMS (both the C and the Rust path), REMAP, and QoS. That is exactly
 the surface #0398 describes — "`[[component]] name` no longer matches the launch
 node name, so every per-node projection keyed on it silently does nothing" —
@@ -57,7 +66,7 @@ Three runs, narrowing the cause each time:
    serially** — 2 passed, 9 failed. The 2 that passed
    (`realtime_tiers::case_01_native_rust`, `large_msg::test_xrce_e2e_integrity`)
    were load flakes in run 1. Of the 9, one is a lane-coverage gap (#0407);
-   the other 8 are the table above, with real diagnostics rather than fixture
+   the other 7 are the table above, plus #0382, with real diagnostics rather than fixture
    complaints.
 
 Serial execution matters: run 1 was a full parallel sweep, which is where this

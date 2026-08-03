@@ -311,6 +311,22 @@ impl ZenohServiceServer {
         let local = NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_add(1, Ordering::SeqCst);
         if local >= ZPICO_MAX_QUERYABLES {
             NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_sub(1, Ordering::SeqCst);
+            // issue 0406 — this table is the reason, and the bare
+            // `ServiceServerCreationFailed` never said so. A service server IS a
+            // queryable, and the ROS parameter services (6) plus the REP-2002
+            // lifecycle services (6) consume twelve slots before an application
+            // declares anything, so an entry enabling both overflowed an 8-slot
+            // table AT BOOT and reported only "creation failed" — which reads as
+            // a transport or naming fault, not a capacity limit. Name the knob.
+            #[cfg(feature = "std")]
+            log::error!(
+                "service server rejected: ZPICO_MAX_QUERYABLES={} exhausted for \
+                 session {} (a service server is a queryable; ROS param services \
+                 use 6 and lifecycle services use 6). Raise ZPICO_MAX_QUERYABLES \
+                 and rebuild.",
+                ZPICO_MAX_QUERYABLES,
+                session_index,
+            );
             return Err(TransportError::ServiceServerCreationFailed);
         }
         let buffer_index = session_index * ZPICO_MAX_QUERYABLES + local;
