@@ -120,6 +120,41 @@ nothing silently regresses.
 
 ## W2 — Migrate the plain Rust examples onto the `-entry` shape
 
+> **Measured 2026-08-04, and it changes this wave's shape. Read before starting.**
+>
+> The ceremony is **not** spread across the plain examples. Four of the six
+> group-A platforms — freertos, nuttx, esp32-baremetal, threadx-linux — already
+> have ceremony-free node packages whose `lib.rs` bodies are byte-identical. Only
+> **two** platforms carry it, and each for a structural reason:
+>
+> * **threadx-riscv64** has no `-entry` package. Its `src/main.rs` is already the
+>   clean `nros::main!()` form, but `src/lib.rs` additionally ends in
+>   `cyclonedds_app_main!(register)` because the **CycloneDDS/CMake path builds
+>   the lib as a staticlib** and needs an `app_main` symbol — `main.rs` is never
+>   compiled on that path. Real requirement, wrong location.
+> * **zephyr** likewise has no `-entry` package, so its `lib.rs` carries
+>   `extern crate zephyr`, the two `force_link_backend!` arms and
+>   `zephyr_component_main!`.
+>
+> Only three platforms ship `-entry` packages at all (freertos, nuttx,
+> threadx-linux). So the naive fix — give every platform an `-entry` package —
+> would *add* example directories, which cuts against W6.
+>
+> **The rule this suggests instead: node logic and entry glue live in separate
+> files, and the gate compares the LOGIC file.** Every platform already
+> separates them except where noted: baremetal is `lib.rs` (logic) + `main.rs`
+> (glue), the `-entry` platforms are node pkg + entry pkg, threadx-riscv64 mixes
+> glue into `lib.rs`, and native mixes everything into `main.rs`. Portability is
+> a property of the logic; the glue is platform-specific by nature and the point
+> is to **isolate** it, not to pretend it can vanish.
+>
+> **Open design question, for the maintainer — do not decide this unilaterally.**
+> Either (a) every platform gains a committed `-entry` package (uniform, but more
+> directories), or (b) the entry glue is a declared per-platform file inside the
+> same package (fewer directories, and the gate's subject becomes the logic file).
+> (b) fits W6's direction; (a) fits the existing three platforms. W2's remaining
+> items are written for whichever wins.
+
 The ceremony moves into the generated entry, where `nros::init`, executor open,
 RMW registration and the spin loop already live.
 
