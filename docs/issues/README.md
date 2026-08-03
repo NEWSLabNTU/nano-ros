@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#409** — `just setup-launch-resolve` exits **0** without building when the `play_launch` submodule
+is uninitialised, so `nros sync` resolves with whatever stale `nros-launch-resolve` is on disk. A
+binary predating phase-332 has no `apply_params_to_nodes`, so **every `[[component]].params` /
+`params_files` declaration silently vanishes from the generated model** — issue 0380's class, with
+no gate watching it (`check-model-dims` covers `execution.tiers`, not `structure.nodes[].params`).
+Found via `just ci-matrix`: 25 failures clustered in `features/`, e.g. qos_override_e2e panicking
+"the fixture's whole point is this override; model params: {}" while `system.toml` declared it.
+Initialising the submodule and rebuilding changed 22 models (+108 lines) — the committed models
+were wrong in the repo, not just locally. See `0409-*`. (2026-08-04)
+
 Recently resolved (2026-08-04): **#410** — a git worktree inside the checkout is claimed by the OUTER
 workspace. `.claude/worktrees/agent-*` sits under the main checkout, so cargo's walk-up from a package
 there escapes the worktree and lands on the root `Cargo.toml`, whose `exclude` paths are relative and
