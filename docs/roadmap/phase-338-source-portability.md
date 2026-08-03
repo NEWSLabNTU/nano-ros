@@ -154,8 +154,39 @@ a 34-line `lib.rs`.
 - [ ] **W3.b** Bring native onto the entry shape so the body is the same 34 lines,
       with the hosted/embedded difference living entirely in the generated `main`
       that `emit_rust.rs` **already** emits in both shapes.
-      *Result:* `rust/talker` reaches ONE body across all 9 platforms — the
+      *Result:* `rust/talker` reaches ONE body across **group A** (below) — the
       portability claim, demonstrated rather than asserted.
+
+**Correction, measured 2026-08-04 — there are THREE groups, not one plus Zephyr.**
+An earlier draft of this phase claimed all 9 platforms converge. Diffing
+bare-metal against the RTOS body shows that is wrong, and the difference is not
+ceremony:
+
+```rust
+// qemu-arm-baremetal, vs the RTOS body
+const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
+fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
+static LOGGER: Logger = Logger::new("talker");   // nros_log, not `log`
+```
+
+Bare-metal has **no RTOS scheduler**, so it uses deferred dispatch plus an
+explicit tick loop, and it cannot use the `log` facade. That is a real execution
+model, not a portability defect. So the target is:
+
+| group | platforms | why it is its own group |
+|---|---|---|
+| **A — scheduled** | native, threadx-linux, freertos, nuttx (arm+riscv), threadx-riscv64 | an RTOS/OS scheduler runs callbacks |
+| **B — bare-metal** | qemu-arm-baremetal, qemu-esp32-baremetal | deferred dispatch + explicit `tick()`, `nros_log` facade |
+| **C — Zephyr** | zephyr | component authoring shape (`Talker.c`/`.hpp`) |
+
+Part of B's delta *is* reducible — the `log` vs `nros_log` split is a facade
+problem, and `DISPATCH`/`tick` could carry defaults. W3.c measures how much;
+whatever survives is a declared group, not a defect.
+
+- [ ] **W3.c** Measure B's irreducible delta after unifying the logging facade and
+      defaulting `DISPATCH`/`tick`. Record the remainder as group B's declared
+      reason. **Do not force B into A** — an execution-model difference expressed
+      as one body with cfg branches is worse than two honest bodies.
 
 ## W4 — Arch portability: the FreeRTOS Cortex-M4F/M7 panic
 
@@ -227,8 +258,9 @@ every later wave is unverifiable and every fold is a leap.
 ## Acceptance
 
 - [ ] The gate exists and passes, with every exception carrying a written reason.
-- [ ] `rust/talker` and `rust/listener` are ONE body across all non-exception
-      platforms (from 4 bodies and 2 near-misses today).
+- [ ] `rust/talker` and `rust/listener` are ONE body **per group** — A, B and C —
+      where today group A alone is split across 4 bodies plus 2 near-misses.
+      Three groups is the honest target; one is not.
 - [ ] No example source contains `force_link_backend!`, `*_app_main!` or
       `extern crate <board> as _` — the generated entry owns all of it.
 - [ ] A `thumbv7em-none-eabihf` FreeRTOS build does not panic.
