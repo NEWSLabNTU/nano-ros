@@ -575,6 +575,75 @@ actually move — editing it now would describe a state the tree is not in.
       models unprotected; a guard left behind fails on files that no longer
       exist.
 
+### W7 — Input-addressed entries: `launch =` replaces `model =` (2026-08-03)
+
+**Decision (maintainer, 2026-08-03): the model is TRANSPARENT to users.** A
+user writes a launch file and a `system.toml`; the build system carries them
+end-to-end to the image. The resolved SystemModel is an intermediate artifact
+— interested users find it under the build dir; nobody references it, and
+NOTHING under `src/` commits it. This closes the last visible seam W3/W4 left:
+entries still NAME the artifact (`nros::main!(model = "bringup[:file.yaml]")`),
+which is what keeps the artifact user-facing.
+
+**Sequencing: W7 lands BEFORE W4.a.** Entries must stop naming models before
+the committed models vanish, or the deletion breaks every entry site.
+
+The input contract — the user-facing coordinates of a system are
+`(bringup, launch file, launch args)`:
+
+```rust
+nros::main!(launch = "demo_bringup");                         // default_launch
+nros::main!(launch = "demo_bringup:rust_safety.launch.xml");  // named launch
+nros::main!(launch = "demo_bringup:multihost.launch.xml", args(host = "robot1"));
+```
+
+```cmake
+nano_ros_entry(NAME robot1_entry
+    LAUNCH demo_bringup:multihost.launch.xml ARGS host=robot1 ...)
+```
+
+This is NOT the phase-296-deleted parse path returning: no consumer parses
+launch XML. The `launch =` spelling is resolved to a model by the BUILD layer
+and the entry consumes the model from the build dir — the W3.a decision,
+completed:
+
+- **Cargo**: `nros-build` (the entry's build.rs) maps `(bringup, launch,
+  args)` → model path: `$NROS_MODEL_DIR/<bringup>/<stem>_model.yaml` when the
+  workspace build (nros sync) already resolved it, else invoke
+  `nros-launch-resolve` into `OUT_DIR` (the standalone copy-out path — the
+  resolver is a declared setup artifact, W3.c). The macro reads the model
+  path from build.rs via env, never a source-tree path.
+- **CMake**: `nano_ros_entry(LAUNCH <bringup>:<file> [ARGS ...])` resolves at
+  configure into `${CMAKE_BINARY_DIR}/nros/models/<bringup>/`, dependency-
+  tracked on the launch file + `system.toml`; passes the generated path where
+  `MODEL` flowed before. `MODEL <path>` stays as the expert override.
+- **Variants**: an entry with `args(...)` must match a `[[model]]` declaration
+  (W4.0 derive-plus-declare) — the declaration is the SSoT for which bindings
+  exist; the entry's `args` select one.
+
+- [ ] **W7.a** `nros-macros`: accept `launch = "<bringup>[:<file>]"` +
+      `args(k = "v", ...)`; deprecation-warn on `model =` (one release, then
+      remove). Internally both converge on "resolve to a model path via
+      nros-build".
+- [ ] **W7.b** `nros-build`: the launch→model mapping above (env from the
+      workspace build, OUT_DIR resolve fallback), emitting
+      `cargo:rerun-if-changed` for the launch file + system.toml so edits
+      re-resolve.
+- [ ] **W7.c** `NanoRosEntry.cmake`: `LAUNCH`/`ARGS` keywords; configure-time
+      resolve into the binary dir with dependency tracking; keep `MODEL` as
+      override; case-normalize per the cmake pitfall rule.
+- [ ] **W7.d** Migrate the ~90 in-tree entry sites `model =` → `launch =`
+      (mechanical; the 8 multihost entries read their binding from the
+      existing `[[model]]` declarations). First case:
+      `safety/src/zephyr_rust_safety_entry` (today
+      `model = "demo_bringup:config/rust_safety_model.yaml"` →
+      `launch = "demo_bringup:rust_safety.launch.xml"`).
+- [ ] **W7.e** Gate the contract: `check-fast` fails on any tracked
+      `*_model.yaml` (the no-committed-models invariant) AND on any
+      `model =` in a non-test entry after the deprecation window.
+- [ ] **W7.f** Then W4.a (delete the 120 committed models) + W5 (retire the
+      transitional guards) proceed as written.
+
 ### W6 — Documentation
 
 - [ ] **W6.a** Book: where the model lands, how to read it, that it is output.
