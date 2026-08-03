@@ -40,6 +40,17 @@ impl RustTypeSpell {
     }
 }
 
+/// Neutral facts the `cpp_type` / `cpp_array_suffix` pack filters compose the
+/// C++ header type from.
+#[derive(serde::Deserialize)]
+struct CppTypeSpell {
+    field_type: rosidl_parser::FieldType,
+    is_borrowed: bool,
+    is_heap: bool,
+    cap: Option<usize>,
+    current_package: String,
+}
+
 /// Neutral facts the `nros_type` pack filter composes the nros Rust type from.
 #[derive(serde::Deserialize)]
 struct NrosTypeSpell {
@@ -79,6 +90,16 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     });
     env.add_filter("rust_type_idiomatic", |v: ViaDeserialize<RustTypeSpell>| {
         crate::types::rust_type_for_field(&v.0.field_type, false, v.0.pkg())
+    });
+    // RFC-0068 step 2 — C++ header type spelling in the pack, was pre-baked as
+    // `CppField.cpp_type` / `.array_suffix`.
+    env.add_filter("cpp_type", |v: ViaDeserialize<CppTypeSpell>| {
+        let c = &v.0;
+        let cp = (!c.current_package.is_empty()).then_some(c.current_package.as_str());
+        crate::types::cpp_type_spelling(&c.field_type, c.is_borrowed, c.is_heap, c.cap, cp)
+    });
+    env.add_filter("cpp_array_suffix", |v: ViaDeserialize<CppTypeSpell>| {
+        crate::types::cpp_array_suffix_spelling(&v.0.field_type, v.0.is_borrowed)
     });
     // RFC-0068 step 2 — nros embedded Rust type spelling in the pack (storage +
     // codegen-mode dependent), was pre-baked as `NrosField.rust_type`.

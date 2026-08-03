@@ -672,12 +672,14 @@ pub struct CppFfiField {
 #[derive(Clone, serde::Serialize)]
 pub struct CppField {
     pub name: String,
-    /// C++ type (e.g., "int32_t", "nros::FixedString<256>"). For a borrowed
-    /// field this is the **owned** type kept by the `{Msg}` struct (publish
-    /// path); the view type is in [`borrowed_cpp_type`](Self::borrowed_cpp_type).
-    pub cpp_type: String,
-    /// Array suffix (e.g., "[3]" for fixed arrays)
-    pub array_suffix: String,
+    /// RFC-0068 step 2 — the `cpp_type` / `cpp_array_suffix` pack filters compose
+    /// the C++ header type from these neutral facts (was the pre-baked `cpp_type`
+    /// / `array_suffix`). `cap = Some(n)` is an owned-with-capacity string/seq;
+    /// `is_heap` the heap bridge; `current_package` the self-ref fallback.
+    pub field_type: rosidl_parser::FieldType,
+    pub is_heap: bool,
+    pub cap: Option<usize>,
+    pub current_package: String,
     /// RFC-0033 `mode = "borrowed"` (Phase 235): emitted in `{Msg}View`.
     pub is_borrowed: bool,
     /// Borrowed view type for `{Msg}View` (`nros::StringView` / `Span<T>` /
@@ -700,8 +702,7 @@ pub struct SequenceStructDef {
     pub is_heap: bool,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "message_cpp.hpp.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct MessageCppHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
@@ -729,8 +730,7 @@ pub struct MessageCppHeaderTemplate<'a> {
 /// crate-mangled items — repr(C) structs, sequence helpers, plain
 /// `serialize_/deserialize_/teardown_*_fields` fns — safe to duplicate across
 /// per-package FFI crates.
-#[derive(Template, serde::Serialize)]
-#[template(path = "message_cpp_types.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct MessageCppTypesTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
@@ -762,8 +762,7 @@ pub struct MessageCppTypesTemplate<'a> {
 /// `#[unsafe(no_mangle)]` `nros_cpp_{publish,serialize,deserialize}_*` C-ABI
 /// wrappers. Included solely by the OWNING package's crate so each symbol is
 /// defined exactly once across any combination of interface archives.
-#[derive(Template, serde::Serialize)]
-#[template(path = "message_cpp_exports.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct MessageCppExportsTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
@@ -790,8 +789,7 @@ pub struct MessageCppExportsTemplate<'a> {
     pub ffi_deserialize_borrowed_fn: String,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "service_cpp.hpp.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ServiceCppHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub service_name: &'a str,
@@ -816,8 +814,7 @@ pub struct ServiceCppHeaderTemplate<'a> {
     pub response_serialized_size_max: usize,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "action_cpp.hpp.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ActionCppHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,

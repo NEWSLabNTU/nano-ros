@@ -1528,6 +1528,55 @@ pub fn repr_c_type_for_field_with_capacity(
 ///
 /// Unlike C where strings use array suffix, C++ uses `FixedString<N>` which
 /// doesn't need a suffix. Only fixed arrays need the suffix.
+/// RFC-0068 Stage 3 — the C++ header `cpp_type` spelling as a function a pack
+/// filter calls (phase-335 step 2). Reproduces `build_cpp_field`'s branch from
+/// the neutral facts a `CppField` now carries. `cap = Some(n)` marks an
+/// owned-with-capacity string/sequence; `None` is the plain/non-configurable case.
+pub fn cpp_type_spelling(
+    field_type: &FieldType,
+    is_borrowed: bool,
+    is_heap: bool,
+    cap: Option<usize>,
+    current_package: Option<&str>,
+) -> String {
+    let owned_or_plain = |cap: Option<usize>| match cap {
+        Some(c) => cpp_type_for_field_with_capacity(field_type, current_package, c),
+        None => cpp_type_for_field(field_type, current_package),
+    };
+    if is_borrowed {
+        // Owned struct keeps its resolved-capacity container (publish path).
+        return owned_or_plain(cap);
+    }
+    let cpp_type = if is_heap {
+        cpp_type_for_field_heap(field_type, current_package)
+            .expect("resolve_cap_override only yields Heap for bridgeable shapes")
+    } else {
+        owned_or_plain(cap)
+    };
+    // Fixed-size arrays split the `[N]` off into the suffix; the base type is the
+    // element type. Everything else keeps `cpp_type` whole.
+    if !cpp_array_suffix_for_field(field_type).is_empty() {
+        match field_type {
+            FieldType::Array { element_type, .. } => {
+                cpp_type_for_field(element_type, current_package)
+            }
+            _ => cpp_type,
+        }
+    } else {
+        cpp_type
+    }
+}
+
+/// RFC-0068 Stage 3 — the C++ header `array_suffix` (companion to
+/// [`cpp_type_spelling`]); empty for a borrowed field.
+pub fn cpp_array_suffix_spelling(field_type: &FieldType, is_borrowed: bool) -> String {
+    if is_borrowed {
+        String::new()
+    } else {
+        cpp_array_suffix_for_field(field_type)
+    }
+}
+
 pub fn cpp_array_suffix_for_field(field_type: &FieldType) -> String {
     match field_type {
         FieldType::Array { element_type, size } => {

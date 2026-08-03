@@ -39,7 +39,7 @@ namespace {{ cpp_package }} { namespace msg {
 /// {{ message_name }} message structure (repr(C) compatible)
 struct {{ message_name }} {
 {%- for field in fields %}
-    {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }} = {};
+    {{ field | cpp_type }} {{ field.name }}{{ field | cpp_array_suffix }} = {};
 {%- endfor %}
 {%- if not has_fields %}
     uint8_t _dummy; // Empty struct placeholder
@@ -86,7 +86,7 @@ struct {{ message_name }}View {
 {%- if field.is_borrowed %}
     {{ field.borrowed_cpp_type }} {{ field.name }};
 {%- else %}
-    {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }} = {};
+    {{ field | cpp_type }} {{ field.name }}{{ field | cpp_array_suffix }} = {};
 {%- endif %}
 {%- endfor %}
 

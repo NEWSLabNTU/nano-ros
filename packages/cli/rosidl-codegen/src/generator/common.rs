@@ -4,8 +4,7 @@ use crate::{
     types::{
         C_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_STRING_CAPACITY,
         NrosCodegenMode, c_cdr_read_method, c_cdr_write_method, c_type_for_field_heap,
-        cpp_array_suffix_for_field, cpp_type_for_field, cpp_type_for_field_heap,
-        cpp_type_for_field_with_capacity, escape_keyword, repr_c_type_for_field,
+        cpp_type_for_field_heap, escape_keyword, repr_c_type_for_field,
         repr_c_type_for_field_with_capacity, to_c_package_name,
     },
     utils::to_snake_case,
@@ -920,55 +919,39 @@ pub(super) fn build_cpp_field(
     storage: CppStorage,
 ) -> CppField {
     let escaped_name = escape_keyword(name);
-    // RFC-0033 borrowed (Phase 235): the owned `{Msg}` struct keeps a
-    // fixed-capacity container (publish path), while `{Msg}View` uses the
-    // zero-copy view type (`nros::StringView` / `Span<T>` / `LeSpan<T>`).
-    if let CppStorage::Borrowed(b, cap) = storage {
-        let owned = match cap {
-            Some(c) => cpp_type_for_field_with_capacity(field_type, current_package, c),
-            None => cpp_type_for_field(field_type, current_package),
-        };
-        return CppField {
+    // phase-335 step 2 — CppField carries the NEUTRAL facts; the `cpp_type` /
+    // `cpp_array_suffix` pack filters compose the C++ type string. The borrowed
+    // VIEW type (`nros::StringView` / `Span<T>` / `LeSpan<T>`) stays computed here
+    // (it derives from the CppBorrowKind, not `field_type`).
+    let cp = current_package.unwrap_or("").to_string();
+    match storage {
+        CppStorage::Borrowed(b, cap) => CppField {
             name: escaped_name,
-            cpp_type: owned,
-            array_suffix: String::new(),
+            field_type: field_type.clone(),
+            is_heap: false,
+            cap,
+            current_package: cp,
             is_borrowed: true,
             borrowed_cpp_type: b.cpp_view_type(),
-        };
-    }
-    let cpp_type = match storage {
-        CppStorage::Owned(Some(cap)) => {
-            cpp_type_for_field_with_capacity(field_type, current_package, cap)
-        }
-        CppStorage::Owned(None) => cpp_type_for_field(field_type, current_package),
-        CppStorage::Heap => cpp_type_for_field_heap(field_type, current_package)
-            .expect("resolve_cap_override only yields Heap for bridgeable shapes"),
-        CppStorage::Borrowed(..) => unreachable!("handled above"),
-    };
-    let array_suffix = cpp_array_suffix_for_field(field_type);
-
-    // For arrays, the cpp_type already contains the base type, and array_suffix has [N]
-    // For FixedString/FixedSequence, cpp_type is the full type, no suffix needed
-    // But for fixed-size arrays of primitives, cpp_type is "int32_t[3]" — split it
-    let (final_type, final_suffix) = if !array_suffix.is_empty() {
-        // Array field: base type is without the [N] suffix
-        let base = match field_type {
-            FieldType::Array { element_type, .. } => {
-                cpp_type_for_field(element_type, current_package)
-            }
-            _ => cpp_type,
-        };
-        (base, array_suffix)
-    } else {
-        (cpp_type, String::new())
-    };
-
-    CppField {
-        name: escaped_name,
-        cpp_type: final_type,
-        array_suffix: final_suffix,
-        is_borrowed: false,
-        borrowed_cpp_type: String::new(),
+        },
+        CppStorage::Owned(cap) => CppField {
+            name: escaped_name,
+            field_type: field_type.clone(),
+            is_heap: false,
+            cap,
+            current_package: cp,
+            is_borrowed: false,
+            borrowed_cpp_type: String::new(),
+        },
+        CppStorage::Heap => CppField {
+            name: escaped_name,
+            field_type: field_type.clone(),
+            is_heap: true,
+            cap: None,
+            current_package: cp,
+            is_borrowed: false,
+            borrowed_cpp_type: String::new(),
+        },
     }
 }
 
