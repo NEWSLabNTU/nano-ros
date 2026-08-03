@@ -423,6 +423,35 @@ string<=8    str_bounded
     }
 
     #[test]
+    fn same_resolved_message_lowers_differently_per_target() {
+        // "hash once, lower per target" (RFC-0068): one ResolvedMessage, two
+        // TargetProfiles. A nested field's payload alignment follows the
+        // target's pointer width — 8 on host, 4 on arm-eabi — while the hash
+        // (a Resolve fact) is identical across both lowerings.
+        let inner = parse_message("int32 a\n").unwrap();
+        let outer = parse_message("test_msgs/Inner child\nint32 tag\n").unwrap();
+        let resolve = |fqn: &str| -> Option<rosidl_parser::Message> {
+            if fqn.ends_with("/Inner") || fqn == "test_msgs/Inner" {
+                Some(inner.clone())
+            } else {
+                None
+            }
+        };
+        let r = ResolvedMessage::resolve("test_msgs/msg/Outer", &outer, resolve).unwrap();
+
+        let host = lower(&r, &CapacityResolver::empty(), &TargetProfile::host());
+        let arm = lower(&r, &CapacityResolver::empty(), &TargetProfile::arm_eabi());
+
+        // Hash is a Resolve fact — same for both targets.
+        assert_eq!(host.type_hash, arm.type_hash);
+        // The nested field's alignment tracks the target pointer width.
+        assert_eq!(field(&host, "child").align, 8);
+        assert_eq!(field(&arm, "child").align, 4);
+        // Neither is plain (a nested field is never plain).
+        assert!(!host.plain && !arm.plain);
+    }
+
+    #[test]
     fn struct_not_plain_when_mixed_alignment_or_strings() {
         // Shapes has strings/sequences → not plain.
         assert!(!lower_shapes().plain);
