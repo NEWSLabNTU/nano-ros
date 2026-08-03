@@ -438,15 +438,72 @@ waves is that by here, folding destroys nothing.
       component shape (`Talker.c` / `.hpp`) is the convention Zephyr users expect,
       not a portability failure. Same for any other shape exception W1.b records.
 
+## W7 — One logging facade in user source
+
+**Filed 2026-08-04 from the W3 blocker; option (c) of the three recorded there.**
+W3 took option (a) — `nros-board-posix` now bridges `log` alongside its
+`nros_log` init — which unblocks the migration but leaves the underlying split
+in place. This wave removes it.
+
+### The split, measured
+
+| board | inits `nros_log` sink | bridges `log` |
+|---|---|---|
+| posix / native | yes | **yes, since W3 (a)** |
+| mps2-an385 (bare-metal) | yes | no |
+| freertos | no | yes |
+| nuttx | no | yes |
+| threadx | no | yes |
+
+The node bodies inherit it exactly: the four scheduled-platform standalone
+copies use `log::info!` because their boards bridge `log`; bare-metal uses
+`nros_log::nros_info!` because its board inits that sink. **The logging facade
+is a board property leaking into user source** — the same defect class this
+phase exists to remove, and it is why a Node body copied to native compiled,
+ran and printed nothing until W3 (a).
+
+It is also a live group boundary: `example_portability`'s group B declares "uses
+the `nros_log` facade because `log` needs std" as one of its two reasons for
+being a separate group. Removing the split removes one of them.
+
+- [ ] **W7.a** Add `nros_log::init(sinks::default())` to the freertos, nuttx and
+      threadx boards, beside their existing `log` bridges, so both facades work
+      everywhere before any body moves.
+- [ ] **W7.b** Move the node bodies to `nros_log::nros_info!`. **The asserted
+      markers survive** — the format strings do not change, only the macro that
+      emits them, so `TALKER_LOG_PREFIX` / `LISTENER_LOG_PREFIX` still match.
+      Verify that claim per platform rather than assuming it; a facade that
+      prefixes or reformats would break every e2e grep at once.
+- [ ] **W7.c** Retire the now-unused `log` bridges, or keep them and document
+      `log` as a supported-but-secondary facade. Decide explicitly — leaving both
+      undocumented is how the split happened.
+- [ ] **W7.d** Re-run the group-B reason in the gate: with the facade unified,
+      B's remaining difference is the execution model alone
+      (`DispatchStrategy::Deferred` + explicit `tick()`). Update the declared
+      reason, and re-measure whether B still needs to be its own group.
+
+**Sequencing:** after W3 completes. Doing it first would change three boards,
+five bodies and the reference platform's examples in one step with the native
+lane as the only witness.
+
+**Risk:** every e2e that greps a talker/listener marker depends on the emitted
+line surviving the facade change. W7.b is the whole risk of this wave and it is
+verifiable per platform before landing.
+
 ---
 
 ## Sequencing
 
 ```
-W1 (gate)  ──►  W2 (rust ceremony)  ──►  W3 (native split)  ──►  W6 (fold)
-W4 (arch panic)   ─ independent, small, unblocks phase-337's industrial claim
-W5 (board branches) ─ independent; W5.b BLOCKS phase-337 W7.b
+W1 (gate) ─► W2 (rust ceremony) ─► W3 (native split) ─► W6 (fold)
+                                        └────────────► W7 (one log facade)
+W4 (arch panic)     ─ independent, small; unblocks phase-337's industrial claim
+W5 (board branches) ─ independent; W5.b orders phase-337 W7.b
 ```
+
+W7 follows W3 rather than blocking it: W3 took option (a) (the posix board
+bridges `log`), which unblocks the migration and leaves the two-stack split for
+W7 to remove properly.
 
 W1 first is the load-bearing choice: it is cheap, it stands alone, and without it
 every later wave is unverifiable and every fold is a leap.
@@ -462,6 +519,8 @@ every later wave is unverifiable and every fold is a leap.
 - [ ] A `thumbv7em-none-eabihf` FreeRTOS build does not panic.
 - [ ] No cmake or build-script decision branches on a board *name* where a
       capability or platform is what it means.
+- [ ] ONE logging facade appears in node source, and no board's choice of sink
+      decides which one an example may use (W7).
 - [ ] The book can state "the same source runs on every supported target" with the
       gate as its citation.
 
