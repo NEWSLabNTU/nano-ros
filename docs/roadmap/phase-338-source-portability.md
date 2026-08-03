@@ -267,6 +267,45 @@ to the matching constant — `esp32_emulator` alone has ~6 sites. Never a litera
 Two-thirds of the talker's 91 lines is the same demo written three times
 (Header / Int32 / String); what remains is ~30 lines against the group's 36.
 
+**Step 3 status (2026-08-04): ATTEMPTED on the talker, REVERTED, blocked on two
+findings that only a real run surfaced.** The migration itself is easy — the
+manifest swap (`[lib]` + `.entry` + `.node`, mirroring
+`qemu-arm-baremetal/rust/talker`) and the body copy both worked first try, and it
+compiled. Then:
+
+1. **The generated hosted `main` does not spin by default.** `nros::main!()`
+   emits `__nros_hosted_spin_if_requested`, an env-gated BOUNDED spin, so the
+   process printed `application complete` and exited having published nothing.
+   Fixed by `nros::main!(spin = "forever")` (issue 0274), which is what the
+   imperative version's `spin_blocking(SpinOptions::default())` did. Not a
+   blocker — just undocumented for standalone examples.
+
+2. **BLOCKER — nothing installs a hosted logger.** With the spin fixed the
+   process ran but emitted **no output at all**. The group's Node body logs via
+   `log::info!`, and on native neither `nros-board-native` nor `nros-board-posix`
+   installs a `log` sink; the imperative example called `env_logger::init()`
+   itself, and a Node body has nowhere to put that because `nros::main!()` owns
+   `main`. Every test asserting `TALKER_LOG_PREFIX` would go silent.
+
+   Note the facades already disagree, which the gate could not see because
+   native was not comparable: the four group-A standalone copies use
+   `log::info!`, while `workspaces/rust/src/talker_pkg` uses
+   `nros_log::nros_info!(&DEFAULT_LOGGER, …)` — and *that* one works on native
+   with no init, which is why the workspace fixture is green today.
+
+   **Three ways out, and this is a product decision:**
+   (a) `nros-board-native`'s `BoardEntry::run` installs the hosted logger, which
+   mirrors embedded exactly (the ThreadX family driver already calls
+   `install_uart_logger::<B>()`); (b) the macro emits `env_logger::init()` for
+   hosted deploys; (c) every Node body moves to `nros_log`, unifying the facade
+   across standalone and workspace — arguably the real fix, since `log` needs a
+   hosted init and `nros_log` does not, but it touches the four group-A copies
+   and their asserted markers.
+
+   (a) is the smallest and most consistent. Whichever wins, it changes the board
+   or macro layer for *every* native entry, so it is not a change to slip into an
+   example migration.
+
 **Step 3 — migrate the six** (`talker`, `listener`, `service-{client,server}`,
 `action-{client,server}`): `src/main.rs` becomes `src/lib.rs` carrying the Node
 trait impls plus a one-line `src/main.rs` (`nros::main!();`), and `Cargo.toml`
