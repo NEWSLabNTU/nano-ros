@@ -20,4 +20,7 @@
 // in so the kernel's Rust glue (`set_logger`, allocator hookup) links.
 extern crate zephyr;
 
-nros::main!(launch = "demo_bringup:multihost.launch.xml", args = [("host", "robot1")]);
+nros::main!(
+    launch = "demo_bringup:multihost.launch.xml",
+    args = [("host", "robot1")]
+);

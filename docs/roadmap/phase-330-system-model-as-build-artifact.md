@@ -435,7 +435,36 @@ actually move — editing it now would describe a state the tree is not in.
 > moving model generation moves fixture build wall-clock, and W5's delta would
 > then mix two causes.
 
-- [ ] **W4.a — BLOCKED. Measured 2026-08-02; do not delete yet.**
+- [ ] **W4.a — BLOCKED. Re-measured 2026-08-03 against the post-phase-331
+      layout; do not delete yet.** The census is now **111 models / 55
+      bringups** (was 120/76 — phase-331 deleted 15 themed workspaces). A fresh
+      dry run (move `config/` aside, regenerate from inputs, compare parsed
+      YAML, restore) gives:
+
+      | Result | Count |
+      | --- | --- |
+      | OK — reproduced exactly | **38** |
+      | DIFF | 9 |
+      | SYNCFAIL — sync errors before producing anything | 8 |
+
+      Of the 9 DIFF, 14 of 17 individual diffs are the known-stale
+      `structure.nodes.<n>.scope` (rlm documents it as a launch-file id, not a
+      namespace; nothing in nros reads it). The three that are not:
+      `features/` `param_sources: len 2 vs 1` (the REGENERATED side is richer —
+      the committed model predates the fork merge, so it is a stale commit, not
+      a loss), `sizing/` `structure.topics` (the one legacy block in the tree,
+      spelled `publishers`/`subscribers` where `TopicWiring` emits `pub`/`sub`,
+      so it does not deserialize into the current schema at all), and
+      `orchestration_e2e` `meta.args` (a no-op binding — `talker_name`'s default
+      IS `talker`, so the structure is identical and only the provenance record
+      differs; that workspace uses a root `nros.toml`, so `[[model]]` does not
+      apply to it).
+
+      **The 8 SYNCFAIL are the real blocker** and are unchanged in kind from
+      issue 0392: a bringup that cannot sync cannot regenerate what W4.a
+      deletes.
+
+      ~~BLOCKED. Measured 2026-08-02; do not delete yet.~~
 
       W4.0 and W4.0b are done, so I ran the deletion as a DRY RUN over every
       bringup: move `config/` aside, regenerate from inputs alone, compare set
@@ -641,6 +670,29 @@ completed:
 - [ ] **W7.e** Gate the contract: `check-fast` fails on any tracked
       `*_model.yaml` (the no-committed-models invariant) AND on any
       `model =` in a non-test entry after the deprecation window.
+- [ ] **W7.g — the compile-check FORM GENERATOR also names models** (found
+      2026-08-03, handing over). `scripts/build/compile-check-fixtures.sh`
+      GENERATES two of the `nros::main!` forms it proves:
+
+          n9_form3: nros::main!(model = "demo_bringup");
+          n9_form4: nros::main!(board = …, model = "demo_bringup:config/system_model.yaml");
+
+      W7.d swept the in-tree entry SOURCES; this script writes its forms at
+      build time, so it was not in that sweep. It stages with
+      `cp -r <template>/. <staged>/` — which copies the template's committed
+      model — and never runs `nros sync`. Once W4.a deletes the committed
+      models the staged trees hold no model, both forms fail to compile, and
+      `check-fast`'s compile-check goes red.
+
+      The fix is a DECISION, not a rewrite: forms 3/4 exist to prove the
+      DEPRECATED `model =` still compiles during its window. Either the staging
+      gains a resolve step (keeps that coverage working with no committed
+      model), or the forms move to `launch =` and the deprecated-form coverage
+      ends early. Whoever owns W7.e/W4.a should pick.
+
+      Same shape as the other W4.a blockers: the committed model is not just an
+      artifact, it is something else's INPUT — here, a compile proof's.
+
 - [ ] **W7.f** Then W4.a (delete the 120 committed models) + W5 (retire the
       transitional guards) proceed as written.
 

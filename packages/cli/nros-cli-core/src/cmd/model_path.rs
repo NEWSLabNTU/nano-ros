@@ -54,8 +54,7 @@ pub fn run(args: Args) -> Result<()> {
         &launch_args,
     )
     .map_err(|e| eyre::eyre!(e))?;
-    let path =
-        nros_orchestration_ir::model_location::resolve_model_path(&bringup_dir, &model_rel);
+    let path = nros_orchestration_ir::model_location::resolve_model_path(&bringup_dir, &model_rel);
     println!("{}", path.display());
     Ok(())
 }
