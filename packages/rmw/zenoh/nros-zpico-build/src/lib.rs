@@ -463,18 +463,14 @@ pub fn apply_arch(arch: &manifest::ArchEntry, build: &mut cc::Build, out_dir: &P
 }
 
 /// Returns `true` when the `[arch.*]` predicates allow the current target triple.
+///
+/// phase-338 W4 — the predicate now has ONE spelling, in `nros_board_common`
+/// beside [`manifest::ArchEntry`] itself. This is kept as the name every zpico
+/// caller already uses; it must never regrow a body (CLAUDE.md: add one shared
+/// helper, never a second spelling — the class that produced the sizes-header
+/// mirror six times).
 pub fn arch_matches(arch: &manifest::ArchEntry, target: &str) -> bool {
-    if let Some(needle) = arch.target_match.as_deref()
-        && !target.contains(needle)
-    {
-        return false;
-    }
-    if let Some(needle) = arch.target_exclude.as_deref()
-        && target.contains(needle)
-    {
-        return false;
-    }
-    true
+    nros_board_common::arch_flags::arch_matches(arch, target)
 }
 
 /// Add the zenoh-pico core source set to a `cc::Build`.

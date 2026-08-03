@@ -34,6 +34,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use nros_board_common::arch_flags;
+
+/// The platform whose `[arch.*]` profiles supply this board family's cflags —
+/// `config/freertos-lwip/nros-platform.toml`.
+const PLATFORM: &str = "freertos-lwip";
+
 fn main() {
     // issue 0288 — the FREERTOS_DIR guard below does NOT cover host tooling:
     // an example's `.cargo/config.toml [env]` sets that var for a host probe
@@ -263,26 +269,51 @@ fn configure_cflags(build: &mut cc::Build) {
     // `-Wextra`, it passes no `-w`, and gcc enables both diagnostics by
     // default — so the gate is live on the pinned arm-none-eabi-gcc 13.2.
     nros_cc_flags::strict_decls(build);
-    // Phase 195 audit (b) — the cortex-m3 default only fits a thumbv7m
-    // (Cortex-M3) target. For any other ARM-M target (thumbv7em = M4/M7,
-    // thumbv6m = M0, …) silently applying cortex-m3 flags yields a
-    // wrong-CPU / wrong-FPU-ABI binary. Fail loud: the consumer board MUST
-    // set FREERTOS_CFLAGS (its `.cargo/config.toml [env]`) to match the arch.
-    // Non-`thumb*` targets (host `cargo check`) skip the guard — the default
-    // is irrelevant there (no embedded cc compile of substance).
+    // Phase 195 audit (b) — applying cortex-m3 flags to any other ARM-M target
+    // (thumbv7em = M4/M7, thumbv6m = M0, …) yields a wrong-CPU / wrong-FPU-ABI
+    // binary, so a mismatch must never be silent.
+    //
+    // phase-338 W4 — but it must not be a PANIC either. `config/freertos-lwip/
+    // nros-platform.toml` already declares the arch profiles with their cflags
+    // (`arch = ["cortex-m3", "cortex-m7"]`), and this function used to ignore
+    // them and hard-fail for anything that was not thumbv7m — so FreeRTOS+lwIP
+    // stayed unbuildable on Cortex-M4F/M7 *after* the M7 profile had been
+    // added. Every industrial FreeRTOS board this project targets is M4F/M7
+    // (the NXP S32K344 is an M7), so the panic was the whole blocker.
+    //
+    // Resolution order, so the ladder still runs board-over-platform:
+    //   1. `FREERTOS_CFLAGS` — the board's explicit override (RFC-0049 rung 1).
+    //   2. the matching `[arch.*]` profile for this TARGET.
+    //   3. loud failure naming the profiles that exist and what they admit.
+    // A non-`thumb*` target (host `cargo check`, the source-metadata probe)
+    // skips all of it — there is no embedded compile of substance there.
     let cflags = match env::var("FREERTOS_CFLAGS") {
         Ok(v) => v,
         Err(_) => {
             let target = env::var("TARGET").unwrap_or_default();
-            if target.starts_with("thumb") && !target.starts_with("thumbv7m") {
-                panic!(
-                    "nros-board-freertos: FREERTOS_CFLAGS unset but TARGET=`{target}` is not \
-                     thumbv7m (Cortex-M3); the cortex-m3 default would mis-compile for this arch. \
-                     Set FREERTOS_CFLAGS in the board's .cargo/config.toml [env] to match — e.g. \
-                     `-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard` for a Cortex-M4F."
-                );
+            if !target.starts_with("thumb") {
+                "-mcpu=cortex-m3 -mthumb".to_string()
+            } else {
+                let config_root = arch_flags::config_root().unwrap_or_else(|| {
+                    panic!(
+                        "nros-board-freertos: TARGET=`{target}` needs arch cflags but the \
+                         nano-ros config/ tree was not found walking up from CARGO_MANIFEST_DIR. \
+                         Out-of-tree consumer? Set FREERTOS_CFLAGS explicitly."
+                    )
+                });
+                match arch_flags::cflags_for_target(&config_root, PLATFORM, &target) {
+                    Ok(Some(flags)) => flags.join(" "),
+                    Ok(None) => panic!(
+                        "nros-board-freertos: no [arch.*] profile of platform `{PLATFORM}` \
+                         admits TARGET=`{target}`.\n  declared: {}\n  Either add an [arch.*] \
+                         block to config/{PLATFORM}/nros-platform.toml, or set FREERTOS_CFLAGS \
+                         in the board's .cargo/config.toml [env] — e.g. `-mcpu=cortex-m4 \
+                         -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard` for a Cortex-M4F.",
+                        arch_flags::describe_profiles(&config_root, PLATFORM)
+                    ),
+                    Err(e) => panic!("nros-board-freertos: reading arch profiles: {e}"),
+                }
             }
-            "-mcpu=cortex-m3 -mthumb".to_string()
         }
     };
     for flag in cflags.split_whitespace() {

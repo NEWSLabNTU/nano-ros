@@ -41,6 +41,8 @@ pub mod threadx_config;
 pub use threadx_config::ThreadxConfig;
 
 #[cfg(feature = "build-helpers")]
+pub mod arch_flags;
+#[cfg(feature = "build-helpers")]
 pub mod manifest;
 #[cfg(feature = "build-helpers")]
 pub mod nuttx_ffi_build;
