@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<!-- phase-331 (safety consolidation) — the RUST arm's COMBINED launch for the
+     embedded (Zephyr) safety entry. The native demo splits talker/listener
+     across two processes (issue 0096: no in-process node-to-node delivery on
+     one zenoh session), but the Zephyr image runs BOTH nodes in one image —
+     intra-image delivery works there via Z_FEATURE_LOCAL_SUBSCRIBER=1 (the
+     pre-consolidation ws-safety-rust zephyr_entry shape). A per-language
+     launch keeps the multi-language bringup's C/C++ pkgs out of the Rust
+     entry's nros::main! walk (a Rust entry cannot link C node pkgs). -->
+<launch>
+  <node pkg="rust_safety_talker_pkg" exec="talker" name="talker"/>
+  <node pkg="rust_safety_listener_pkg" exec="safe_listener" name="safe_listener"/>
+</launch>
