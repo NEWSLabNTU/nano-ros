@@ -49,6 +49,11 @@ pub enum Verb {
     /// Print the `target/` subdirectory this profile's artifacts land in.
     Dir { profile: String },
 
+    /// Print the profile a named carve-out forces (e.g. `nuttx-rust`, whose
+    /// images miscompile at `lto = "off"`). Errors on an unknown name rather
+    /// than falling back, so a typo cannot silently build the broken profile.
+    CarveOut { name: String },
+
     /// Print this profile's definition as `KEY=VALUE` environment lines —
     /// empty unless nano-ros owns the profile.
     Env {
@@ -80,6 +85,19 @@ pub fn run(args: Args) -> Result<()> {
         }
         Verb::Dir { profile } => {
             println!("{}", nros_cargo_profile::target_dir(&profile));
+        }
+        Verb::CarveOut { name } => {
+            let profile = nros_cargo_profile::carve_out(&name).ok_or_else(|| {
+                eyre::eyre!(
+                    "no build-profile carve-out named `{name}` (known: {})",
+                    nros_cargo_profile::CARVE_OUTS
+                        .iter()
+                        .map(|(n, _)| *n)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })?;
+            println!("{profile}");
         }
         Verb::Env { profile, cmake } => {
             let vars: Vec<String> = nros_cargo_profile::env(&profile)

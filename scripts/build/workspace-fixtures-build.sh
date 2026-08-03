@@ -242,15 +242,19 @@ build_workspace() {
         if [ "$lang" = "rust" ]; then
             local profile_args=("${cargo_profile_args[@]}")
             local row_profile_dir="$profile_dir"
-            # The NuttX standalone flat image miscompiles at the
-            # `nros-fast-release` opt-level (it boots to `main` but the
-            # runtime never functions — no transport, zero output;
-            # `release` opt-level 3 works). Build the NuttX workspace
-            # Entry with `--release` until that profile issue is root-caused.
-            # phase-285 W5 — nuttx-riscv rides the same release-profile dodge.
+            # The NuttX standalone flat image miscompiles at any `lto = "off"`
+            # profile (it boots to `main` but the runtime never functions — no
+            # transport, zero output). Build the NuttX workspace Entry at the
+            # carve-out profile until that is root-caused. phase-285 W5 —
+            # nuttx-riscv rides the same dodge. The profile NAME comes from the
+            # table (`nros_cargo_profile::NUTTX_RUST_PROFILE`) because the
+            # test-side resolvers read the same constant; when the two were
+            # separate literals they drifted (#156).
             if [ "$platform" = "nuttx" ] || [ "$platform" = "nuttx-riscv" ]; then
-                profile_args=(--release)
-                row_profile_dir="release"
+                local nuttx_profile
+                nuttx_profile="$(nros_cargo_nuttx_profile)"
+                mapfile -t profile_args < <(_nros_profile_query args "$nuttx_profile")
+                row_profile_dir="$(_nros_profile_query dir "$nuttx_profile")"
             fi
             local cargo_args=(build "${profile_args[@]}" -p "$entry")
             if [ -n "$target_dir" ]; then

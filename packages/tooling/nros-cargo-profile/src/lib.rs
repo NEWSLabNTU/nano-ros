@@ -74,6 +74,30 @@ pub const MINSIZEREL: Preset = Preset {
 /// Every preset nano-ros owns. A name outside this list is the user's.
 pub const PRESETS: &[Preset] = &[RELWITHDEBINFO, MINSIZEREL];
 
+/// The profile NuttX Rust images must be built at.
+///
+/// Phase 177.8.c: at `lto = "off"` a non-deterministic `armv7a-nuttx-eabihf`
+/// cross-CGU miscompile corrupts the std `lang_start` main-closure fat pointer
+/// and the image reboots before `main` with no console output. Fat LTO merges
+/// the codegen units and the bug disappears. Never root-caused (phase-285 W5
+/// rode the same dodge for nuttx-riscv).
+///
+/// It is a constant rather than a literal because the builder and THREE test-side
+/// resolvers have to agree on it — when they disagreed, a test looked for the
+/// binary in a directory the builder never wrote to and reported the fixture
+/// missing (#156).
+pub const NUTTX_RUST_PROFILE: &str = MINSIZEREL.name;
+
+/// Platforms that cannot use the ambient profile, and what they use instead.
+/// Reachable by name so the shell builders read the same value the Rust
+/// resolvers do.
+pub const CARVE_OUTS: &[(&str, &str)] = &[("nuttx-rust", NUTTX_RUST_PROFILE)];
+
+/// The profile a named carve-out forces, if there is one.
+pub fn carve_out(name: &str) -> Option<&'static str> {
+    CARVE_OUTS.iter().find(|(n, _)| *n == name).map(|(_, p)| *p)
+}
+
 /// The profile used when nothing selects one.
 pub const DEFAULT_PROFILE: &str = RELWITHDEBINFO.name;
 
@@ -344,35 +368,33 @@ mod tests {
         Some(out)
     }
 
-    #[test]
-    fn root_manifest_matches_this_table() {
-        // The presets exist in TWO places by necessity: here (so cmake, bash
-        // and the tests can read them without parsing TOML) and in the root
-        // `Cargo.toml` (so a bare `cargo build --profile nros-minsizerel` in
-        // this repo works without the environment injection). This test is what
-        // makes the second copy safe — the mirror-drift class CLAUDE.md names.
-        let manifest = include_str!("../../../../Cargo.toml");
+    /// Assert a manifest's `[profile.<preset>]` blocks say exactly what this
+    /// table says — same keys, same values, no extras.
+    fn assert_mirrors(manifest: &str, what: &str) {
         for preset in PRESETS {
             let block = profile_block(manifest, preset.name)
-                .unwrap_or_else(|| panic!("root Cargo.toml has no [profile.{}]", preset.name));
+                .unwrap_or_else(|| panic!("{what} has no [profile.{}]", preset.name));
             for setting in preset.settings {
                 let want = toml_value(setting);
                 let got = block
                     .iter()
                     .find(|(k, _)| k == setting.key)
                     .unwrap_or_else(|| {
-                        panic!("[profile.{}] is missing `{}`", preset.name, setting.key)
+                        panic!(
+                            "{what} [profile.{}] is missing `{}`",
+                            preset.name, setting.key
+                        )
                     });
                 assert_eq!(
                     got.1, want,
-                    "[profile.{}] {} = {} in Cargo.toml, {want} in PRESETS",
+                    "{what} [profile.{}] {} = {} , PRESETS says {want}",
                     preset.name, setting.key, got.1
                 );
             }
             assert_eq!(
                 block.len(),
                 preset.settings.len(),
-                "[profile.{}] in Cargo.toml has settings this table does not: {:?}",
+                "{what} [profile.{}] has settings this table does not: {:?}",
                 preset.name,
                 block
                     .iter()
@@ -381,5 +403,27 @@ mod tests {
                     .collect::<Vec<_>>()
             );
         }
+    }
+
+    #[test]
+    fn config_toml_matches_this_table() {
+        // `.cargo/config.toml` carries the presets so a bare `cargo build
+        // --profile nros-…` in any leaf under this checkout resolves through
+        // cargo's config walk-up, without the env injection the build scripts
+        // add. Third copy, same gate.
+        assert_mirrors(
+            include_str!("../../../../.cargo/config.toml"),
+            ".cargo/config.toml",
+        );
+    }
+
+    #[test]
+    fn root_manifest_matches_this_table() {
+        // The presets exist in TWO places by necessity: here (so cmake, bash
+        // and the tests can read them without parsing TOML) and in the root
+        // `Cargo.toml` (so a bare `cargo build --profile nros-minsizerel` in
+        // this repo works without the environment injection). This test is what
+        // makes the second copy safe — the mirror-drift class CLAUDE.md names.
+        assert_mirrors(include_str!("../../../../Cargo.toml"), "root Cargo.toml");
     }
 }

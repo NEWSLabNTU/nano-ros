@@ -8,11 +8,15 @@ LOG_DIR := "test-logs"
 QEMU_PREFIX := absolute_path("build/qemu")
 QEMU_BIN := QEMU_PREFIX / "bin/qemu-system-arm"
 
-# Cargo target profile subdir (e.g. `nros-fast-release`, `release`, `debug`) — the
-# fixture ELFs land under target/<triple>/<PROFILE_DIR>/. Must track the profile
-# `build`/`build-fixtures` use (NROS_CARGO_PROFILE, default nros-fast-release), not
-# a hardcoded `release` (the test-basic/wcet/lan9118 paths drifted from it).
-PROFILE_DIR := `bash -c 'source scripts/build/cargo.sh && nros_cargo_target_profile_dir' 2>/dev/null || echo nros-fast-release`
+# Cargo target profile subdir (e.g. `nros-relwithdebinfo`, `release`, `debug`) —
+# the fixture ELFs land under target/<triple>/<PROFILE_DIR>/. Must track the
+# profile `build`/`build-fixtures` use, not a hardcoded `release` (the
+# test-basic/wcet/lan9118 paths drifted from it once).
+#
+# phase-336: no literal fallback. A wrong-but-plausible default here sends every
+# QEMU recipe at a path that does not exist and reports it as a missing fixture;
+# the resolver failing loudly names the real problem (no CLI built yet).
+PROFILE_DIR := `bash -c 'source scripts/build/cargo.sh && nros_cargo_target_profile_dir'`
 
 # Provision the project-local patched qemu-system-arm under build/qemu.
 #

@@ -632,28 +632,23 @@ pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<Pa
     Ok(resolved)
 }
 
+// phase-336 — the profile table is `nros-cargo-profile`, shared with the CLI
+// verb the build scripts and cmake call. These three used to re-implement it,
+// which is how a test could look for a fixture in a directory the builder never
+// wrote to.
 fn cargo_profile_name() -> String {
-    env::var("NROS_CARGO_PROFILE").unwrap_or_else(|_| "nros-fast-release".to_string())
+    env::var("NROS_CARGO_PROFILE")
+        .unwrap_or_else(|_| nros_cargo_profile::DEFAULT_PROFILE.to_string())
 }
 
-fn cargo_target_profile_dir() -> String {
-    match cargo_profile_name().as_str() {
-        "dev" => "debug".to_string(),
-        "release" => "release".to_string(),
-        profile => profile.to_string(),
-    }
+pub(crate) fn cargo_target_profile_dir() -> String {
+    nros_cargo_profile::target_dir(&cargo_profile_name())
 }
 
 fn cargo_build_args() -> Vec<String> {
-    match cargo_profile_name().as_str() {
-        "dev" => vec!["build".to_string()],
-        "release" => vec!["build".to_string(), "--release".to_string()],
-        profile => vec![
-            "build".to_string(),
-            "--profile".to_string(),
-            profile.to_string(),
-        ],
-    }
+    let mut args = vec!["build".to_string()];
+    args.extend(nros_cargo_profile::build_args(&cargo_profile_name()));
+    args
 }
 
 pub fn build_example(
@@ -2452,16 +2447,15 @@ pub fn build_test_fixture(
         )));
     }
 
-    // #156 — NuttX Rust fixtures are ALWAYS built at the `release` profile, not
-    // the default `nros-fast-release`: `nros-fast-release` (lto=off) hits a
-    // non-deterministic armv7a-nuttx-eabihf cross-CGU miscompile (reboot before
-    // `main`), so `fixtures-build.sh nuttx rust` forces `NROS_CARGO_PROFILE=release`
-    // (the nuttx entry resolvers hardcode `release` for the same reason). This
-    // generic resolver used the env-default profile dir and so looked in
-    // `nros-fast-release/` for a binary the build wrote to `release/` — the fixture
-    // read as stale/absent even though a fresh, working image existed.
+    // #156 — NuttX Rust fixtures are ALWAYS built at the carve-out profile (see
+    // `nros_cargo_profile::NUTTX_RUST_PROFILE` for the miscompile it dodges), so
+    // this resolver must look where the BUILDER wrote rather than where the
+    // ambient profile would put it. Before the constant existed, the two
+    // disagreed and a fresh, working image read as stale/absent.
     let profile_dir = match target {
-        Some("armv7a-nuttx-eabihf") => "release".to_string(),
+        Some("armv7a-nuttx-eabihf") => {
+            nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE)
+        }
         _ => cargo_target_profile_dir(),
     };
     let binary_path = if let Some(target) = target {

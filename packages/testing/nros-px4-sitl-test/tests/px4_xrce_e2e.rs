@@ -79,9 +79,15 @@ fn agent_binary() -> PathBuf {
 }
 
 fn probe_binary() -> PathBuf {
-    // Built by `just px4 build-fixtures` (nros-fast-release profile / target-xrce).
+    // Built by `just px4 build-fixtures` (the ambient profile / target-xrce).
+    // phase-336: the ambient default is resolved, not spelled; the rest are the
+    // profiles a hand-run build might have left behind.
     let base = project_root().join("examples/px4/rust/companion/px4-probe/target-xrce");
-    for profile in ["nros-fast-release", "release", "debug"] {
+    for profile in [
+        nros_cargo_profile::DEFAULT_PROFILE,
+        "release",
+        "debug",
+    ] {
         let p = base.join(profile).join("px4-probe");
         if p.is_file() {
             return p;

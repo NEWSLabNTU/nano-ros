@@ -2088,6 +2088,7 @@ dependencies = [
  "duct",
  "libc",
  "nros",
+ "nros-cargo-profile",
  "nros-core",
  "nros-log",
  "nros-node",

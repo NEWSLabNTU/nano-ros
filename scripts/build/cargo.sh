@@ -2,10 +2,15 @@
 
 # Shared Cargo build knobs for broad build recipes.
 #
-# NROS_CARGO_PROFILE controls optimization profile. Use:
-#   release          -> cargo build --release
-#   nros-fast-release -> cargo build --profile nros-fast-release
-#   dev              -> cargo build
+# NROS_CARGO_PROFILE names the cargo profile; unset means the development
+# default. The profile -> flags / target-dir derivations are NOT spelled here —
+# phase-336 moved them behind `nros profile`, because this file, nros-tests and
+# a just literal each carried their own copy and they were free to drift.
+#
+#   nros profile resolve --build-type <T>   CMAKE_BUILD_TYPE -> profile
+#   nros profile args    <profile>          cargo build flags
+#   nros profile dir     <profile>          target/ subdirectory
+#   nros profile env     <profile>          the definition, as env pairs
 #
 # NROS_CARGO_FRONTENDS caps independent Cargo frontend processes. The
 # compiler work inside each frontend still uses Cargo/rustc's native
@@ -27,66 +32,67 @@ nros_scoped_target_dir() {
     printf '%s' "${CARGO_TARGET_DIR:-$PWD/target}-$1"
 }
 
-nros_cargo_profile_name() {
-    printf '%s\n' "${NROS_CARGO_PROFILE:-nros-fast-release}"
+# Ask the CLI, once per (verb, argument) pair — every helper below is called
+# repeatedly inside build loops and the answer cannot change mid-run.
+declare -A _NROS_PROFILE_CACHE 2>/dev/null || true
+_nros_profile_query() {
+    local key="$*"
+    if [ -n "${_NROS_PROFILE_CACHE[$key]+set}" ]; then
+        printf '%s\n' "${_NROS_PROFILE_CACHE[$key]}"
+        return 0
+    fi
+    local bin out
+    bin="$(nros_cli_bin)" || return 1
+    out="$("$bin" profile "$@")" || return 1
+    _NROS_PROFILE_CACHE[$key]="$out"
+    printf '%s\n' "$out"
 }
 
+nros_cargo_profile_name() {
+    if [ -n "${NROS_CARGO_PROFILE:-}" ]; then
+        printf '%s\n' "$NROS_CARGO_PROFILE"
+        return 0
+    fi
+    # No profile named and no CMake build type in play -> the development
+    # default, which only the table knows.
+    _nros_profile_query resolve --build-type "${CMAKE_BUILD_TYPE:-}"
+}
+
+# Word-split form, for `cargo build "${args[@]}"`. Empty for `dev`.
 nros_cargo_profile_args() {
-    local profile
-    profile="$(nros_cargo_profile_name)"
-    case "$profile" in
-        dev)
-            ;;
-        release)
-            printf '%s\n' "--release"
-            ;;
-        *)
-            printf '%s\n' "--profile" "$profile"
-            ;;
-    esac
+    local flags
+    flags="$(_nros_profile_query args "$(nros_cargo_profile_name)")" || return 1
+    [ -n "$flags" ] && printf '%s\n' $flags
+    return 0
 }
 
 nros_cargo_nextest_args() {
-    local profile
-    profile="$(nros_cargo_profile_name)"
-    case "$profile" in
-        dev)
-            ;;
-        *)
-            printf '%s\n' "--cargo-profile" "$profile"
-            ;;
-    esac
+    local flags
+    flags="$(_nros_profile_query args --nextest "$(nros_cargo_profile_name)")" || return 1
+    [ -n "$flags" ] && printf '%s\n' $flags
+    return 0
 }
 
+# Single-string form, for callers that splice into a command line.
 nros_cargo_profile_arg_string() {
-    local profile
-    profile="$(nros_cargo_profile_name)"
-    case "$profile" in
-        dev)
-            ;;
-        release)
-            printf '%s\n' "--release"
-            ;;
-        *)
-            printf '%s\n' "--profile $profile"
-            ;;
-    esac
+    _nros_profile_query args "$(nros_cargo_profile_name)"
 }
 
 nros_cargo_target_profile_dir() {
-    local profile
-    profile="$(nros_cargo_profile_name)"
-    case "$profile" in
-        dev)
-            printf '%s\n' "debug"
-            ;;
-        release)
-            printf '%s\n' "release"
-            ;;
-        *)
-            printf '%s\n' "$profile"
-            ;;
-    esac
+    _nros_profile_query dir "$(nros_cargo_profile_name)"
+}
+
+# The profile a platform carve-out forces, ignoring the ambient one. Same
+# constant the Rust fixture resolvers read — see `nros profile carve-out`.
+nros_cargo_nuttx_profile() {
+    _nros_profile_query carve-out nuttx-rust
+}
+
+# The profile's DEFINITION as `KEY=VALUE` lines — empty unless nano-ros owns
+# the profile (see the ownership rule in `nros-cargo-profile`). Callers export
+# these so a workspace with no `[profile.*]` block still resolves the name.
+nros_cargo_profile_env() {
+    _nros_profile_query env "$(nros_cargo_profile_name)"
 }
 
 nros_cargo_frontend_jobs() {

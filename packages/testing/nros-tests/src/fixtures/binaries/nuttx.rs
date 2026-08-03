@@ -89,37 +89,42 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         )));
     }
 
-    // Phase 177.8.c — NuttX Rust fixtures are built at the `release` profile
-    // (lto=true) to dodge the armv7a-nuttx-eabihf cross-CGU codegen miscompile
-    // that the default `nros-fast-release` (lto=off) hits. Prefer the `release`
-    // artifact; fall back to `nros-fast-release` only if that's all that's
-    // present (a fresh `release` build is always picked over a stale broken one).
+    // Phase 177.8.c — NuttX Rust fixtures are built at the carve-out profile
+    // (`nros_cargo_profile::NUTTX_RUST_PROFILE`, fat LTO) to dodge the
+    // armv7a-nuttx-eabihf cross-CGU codegen miscompile that any `lto = "off"`
+    // profile hits. Prefer that artifact; fall back to the ambient profile only
+    // if it is all that is present (a fresh carve-out build always wins over a
+    // stale broken one).
+    let carve_out = nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE);
     let release_binary_path = example_dir.join(format!(
-        "target/armv7a-nuttx-eabihf/release/{}",
-        binary_name
+        "target/armv7a-nuttx-eabihf/{}/{}",
+        carve_out, binary_name
     ));
     let binary_path = if release_binary_path.exists() {
         release_binary_path
     } else {
-        // Phase 177 / G4 — the `nros-fast-release` binary hits the 177.8.c CGU
-        // codegen miscompile (reboot loop before `main`, zero console output),
-        // which surfaces as a "readiness pattern never observed" boot failure
-        // with no diagnostics. Warn loudly so a stale/partial local build is
-        // recognised instead of silently exercising the known-broken profile.
-        // CI builds `release` via `just nuttx build-fixtures`, so this path is
-        // a local-dev fallback only.
+        // Phase 177 / G4 — an image built at the ambient (lto=off) profile hits
+        // the 177.8.c CGU miscompile: reboot loop before `main`, zero console
+        // output, surfacing as "readiness pattern never observed" with no
+        // diagnostics. Warn loudly so a stale/partial local build is recognised
+        // instead of silently exercising the known-broken profile. CI builds the
+        // carve-out via `just nuttx build-fixtures`, so this is local-dev only.
+        let ambient = super::cargo_target_profile_dir();
         eprintln!(
-            "[nros-tests] WARNING: no `release` build of NuttX Rust fixture `{}` \
-             found at {}; falling back to the `nros-fast-release` profile, which \
-             hits the 177.8.c armv7a-nuttx-eabihf codegen bug (reboot loop before \
-             main → no output → boot-readiness failure). Run `just nuttx \
-             build-fixtures` to produce the `release` build.",
+            "[nros-tests] WARNING: no `{}` build of NuttX Rust fixture `{}` \
+             found at {}; falling back to the `{}` profile, which hits the \
+             177.8.c armv7a-nuttx-eabihf codegen bug (reboot loop before main → \
+             no output → boot-readiness failure). Run `just nuttx \
+             build-fixtures` to produce the `{}` build.",
+            carve_out,
             binary_name,
             release_binary_path.display(),
+            ambient,
+            carve_out,
         );
         example_dir.join(format!(
-            "target/armv7a-nuttx-eabihf/nros-fast-release/{}",
-            binary_name
+            "target/armv7a-nuttx-eabihf/{}/{}",
+            ambient, binary_name
         ))
     };
     super::require_prebuilt_binary_fresh(&binary_path)

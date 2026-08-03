@@ -39,3 +39,6 @@ path = "tests/px4_uorb_interop_e2e.rs"
 # absence on a fresh clone is a build-time error here only, not a
 # root-workspace-load error everywhere else.
 px4-sitl-tests = { path = "../../../third-party/px4/px4-rs/tests/sitl" }
+# phase-336 — the ambient build profile, so the probe looks where the builder
+# wrote instead of naming a profile that can be renamed out from under it.
+nros-cargo-profile = { path = "../../tooling/nros-cargo-profile" }

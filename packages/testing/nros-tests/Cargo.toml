@@ -33,6 +33,10 @@ serde_json = "1.0"
 # cannot drift from what the entry would emit. Host-only, like every dep here.
 serde_yaml_ng = "0.10"
 nros-orchestration-ir = { workspace = true }
+# phase-336 — the shared build-profile table. The fixture resolvers derive
+# `target/<triple>/<profile>/` from it instead of re-implementing the mapping
+# the builder used.
+nros-cargo-profile = { path = "../../tooling/nros-cargo-profile" }
 ros-launch-manifest-model = { git = "https://github.com/NEWSLabNTU/ros-launch-manifest.git", tag = "v0.1.4" }
 # Phase 212.M.11 + M.12 — TOML parsing for the example-canonical-shape
 # + pre-212-file regression tests. Reads

@@ -73,14 +73,14 @@ build-examples:
     # the shared builder. No +nightly override — each example pins its nightly
     # via rust-toolchain.toml (cargo picks it up per dir). Phase 181.4.e.
     #
-    # Phase 177.8.c — NuttX Rust nodes are built at the `release` profile
-    # (lto=true), NOT the default `nros-fast-release` (lto=off). The latter
+    # Phase 177.8.c — NuttX Rust nodes are built at `nros-minsizerel`
+    # (lto=fat), NOT the default `nros-relwithdebinfo` (lto=off). The latter
     # triggers a non-deterministic armv7a-nuttx-eabihf cross-CGU codegen bug
     # that corrupts the std `lang_start` main-closure fat pointer → `bx` to
     # ~NULL → reboot loop before `main` (silent). Fat LTO merges the codegen
     # units, eliminating the cross-CGU miscompile, while keeping optimization
     # (opt-level="s"). Verified: talker boots reliably under `release`.
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/fixtures-build.sh nuttx rust
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/fixtures-build.sh nuttx rust
     # Phase 225.O follow-up (known-issue #18) — workspace Entry fixture
     # (`examples/workspaces/rust/src/qemu_nuttx_entry`). Same workspace
     # workflow as native/freertos/threadx/esp32: `nros sync`,
@@ -89,15 +89,15 @@ build-examples:
     # crate's build.rs and the entry's build.rs.
     export NUTTX_DIR="$nuttx_dir"
     export NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$(dirname "$nuttx_dir")/nuttx-apps}"
-    NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx rust
+    NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx rust
     # phase-263 C2b — the multi-node C workspace Entry (talker + listener linked into the NuttX
     # kernel). Same release profile (lto=true) as the Rust entry. Consumed by
     # tests/entry_e2e.rs (nuttx_arm_c cell) (cross-process /chatter delivery, baked slirp locator 8330).
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx c
     # phase-281 W3-nuttx — the C++ realtime tiers workspace (realtime-cpp nuttx entry),
     # consumed by realtime_tiers_e2e (nuttx_arm_cpp cell). Was previously built by no verb (only its
     # e2e builder triggered it); build it here alongside the rust + c workspace lanes.
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx cpp
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx cpp
     echo "NuttX QEMU examples built!"
 
 # Issue #405 / phase-337 W3.f. `PlatformId::just_module()` maps both `NuttxArm`
@@ -130,10 +130,12 @@ build-fixtures-arm:
     source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
-    # Phase 177.8.c — NuttX Rust nodes miscompile under nros-fast-release
+    # Phase 177.8.c — NuttX Rust nodes miscompile under nros-relwithdebinfo
     # (lto=off): a non-deterministic armv7a-nuttx-eabihf cross-CGU codegen bug
     # corrupts the std lang_start main-closure fat pointer → reboot loop before
-    # main. Build the Rust fixtures at `release` (lto=true) instead — fat LTO
+    # main. Build the Rust fixtures at `nros-minsizerel` (lto=fat) instead —
+    # phase-336 note: this pin was `release`, which carried these exact settings
+    # before the profile split, so the images are unchanged. Fat LTO
     # merges CGUs and eliminates the bug while keeping optimization. C/C++
     # fixtures keep cargo_profile_args (unaffected by the bug).
     cargo_frontends="$(nros_cargo_frontend_jobs)"
@@ -168,7 +170,7 @@ build-fixtures-arm:
     # logging-smoke fixture and any per-cell env. Keep the NuttX-only release
     # profile override here so `fixtures-build.sh` computes the same profile args
     # as the former manual loop.
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/fixtures-build.sh nuttx rust
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/fixtures-build.sh nuttx rust
     # Phase 160.D — NuttX C/C++ examples now build via cmake. The
     # tier-3 nros-c cross-Corrosion problem (no `-Z build-std`) is
     # sidestepped by:
@@ -216,9 +218,9 @@ build-fixtures-arm:
     # matching build is a fast no-op). Own NUTTX_APPS_DIR + release profile (the cross-CGU LTO note).
     export NUTTX_DIR="$nuttx_dir"
     export NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$(dirname "$nuttx_dir")/nuttx-apps}"
-    NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx rust
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx cpp
+    NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx rust
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx c
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx cpp
 
 # The riscv (QEMU rv-virt) half of this module's fixture stage — issue #405.
 #
@@ -308,10 +310,10 @@ build-riscv-c-workspaces:
         bash scripts/nuttx/build-nuttx.sh
     export NUTTX_DIR="$nuttx_dir"
     CC_riscv32imac_unknown_nuttx_elf=riscv-none-elf-gcc \
-        NROS_CARGO_PROFILE=release \
+        NROS_CARGO_PROFILE=nros-minsizerel \
         bash scripts/build/workspace-fixtures-build.sh nuttx-riscv c
     CC_riscv32imac_unknown_nuttx_elf=riscv-none-elf-gcc \
-        NROS_CARGO_PROFILE=release \
+        NROS_CARGO_PROFILE=nros-minsizerel \
         bash scripts/build/workspace-fixtures-build.sh nuttx-riscv cpp
 
 # phase-285 W5 — build the rv-virt RUST workspace Entry (realtime-rust/
@@ -347,7 +349,7 @@ build-riscv-rust:
     export NUTTX_LD_SCRIPT="boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"
     export NUTTX_VECTORTAB=""
     export NUTTX_BOARD_LIB_DIR="arch/risc-v/src/board"
-    NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx-riscv rust
+    NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx-riscv rust
 
 # Build every NuttX tier. `build-all-full` removed.
 #

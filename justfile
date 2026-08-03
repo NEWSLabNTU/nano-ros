@@ -30,10 +30,12 @@ export SCCACHE_CACHE_SIZE := "30G"
 # budget (no platform-count × inner-jobs oversubscription).
 export NROS_BUILD_JOBS := env_var_or_default("NROS_BUILD_JOBS", `nproc 2>/dev/null || echo 8`)
 
-# Cargo build profile for broad build recipes. `nros-fast-release` is
-# faster while retaining release-like optimization; set
-# NROS_CARGO_PROFILE=release for the historical profile.
-export NROS_CARGO_PROFILE := env_var_or_default("NROS_CARGO_PROFILE", "nros-fast-release")
+# Cargo build profile for broad build recipes. Deliberately EMPTY by default
+# (phase-336): the default lives in the profile table behind `nros profile`, and
+# `scripts/build/cargo.sh` resolves it there. A literal here would be a fourth
+# copy — and it would have to be evaluated at justfile PARSE time, so a wrong
+# value could not even be corrected by the recipe that builds the CLI.
+export NROS_CARGO_PROFILE := env_var_or_default("NROS_CARGO_PROFILE", "")
 
 # User-local tools installed by setup modules (for example PlatformIO via
 # pipx/pip --user) should be visible to all just-driven tests.

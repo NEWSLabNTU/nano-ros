@@ -10,13 +10,24 @@
 [build]
 rustflags = ["-C", "symbol-mangling-version=v0"]
 
-[profile.nros-fast-release]
+# phase-336 — the nano-ros presets, so a bare `cargo build --profile
+# nros-relwithdebinfo` in any leaf UNDER this checkout resolves without the
+# environment injection the build scripts use. Mirrors the root `Cargo.toml`;
+# `nros-cargo-profile`'s `config_toml_matches_this_table` test fails on drift.
+[profile.nros-relwithdebinfo]
 inherits = "release"
 opt-level = 2
-codegen-units = 16
-incremental = true
 debug = 1
 lto = "off"
+codegen-units = 16
+incremental = true
+panic = "abort"
+
+[profile.nros-minsizerel]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
 panic = "abort"
 
 # Phase 212.M.7 — riscv32imc (esp32c3 / esp32c2 under ESP-IDF) has no
