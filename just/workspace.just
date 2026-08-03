@@ -161,7 +161,10 @@ install-corrosion:
     #!/usr/bin/env bash
     set -euo pipefail
     want="{{CORROSION_VERSION}}"
-    prefix="$HOME/.nros/sdk/corrosion"
+    # Honour NROS_HOME: the ROS distrobox points it at its own store, and a
+    # binary installed into the HOST store is invisible to activate.sh there
+    # (it reads ${NROS_HOME:-$HOME/.nros}). Issue 0400 family.
+    prefix="${NROS_HOME:-$HOME/.nros}/sdk/corrosion"
     stamp="$prefix/.installed-version"
     if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
         echo "[corrosion] $want already installed ($prefix)"
@@ -202,7 +205,8 @@ install-play-launch-parser:
     #!/usr/bin/env bash
     set -euo pipefail
     want="{{PLAY_LAUNCH_PARSER_VERSION}}"
-    prefix="$HOME/.nros/sdk/play_launch_parser"
+    # Honour NROS_HOME — see the corrosion recipe above.
+    prefix="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser"
     stamp="$prefix/.installed-version"
     if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
         echo "[play_launch_parser] $want already installed ($prefix)"
@@ -281,7 +285,7 @@ doctor:
     fi
 
     # --- Corrosion (cmake ↔ Rust bridge, Phase 212) ---
-    corrosion_stamp="$HOME/.nros/sdk/corrosion/.installed-version"
+    corrosion_stamp="${NROS_HOME:-$HOME/.nros}/sdk/corrosion/.installed-version"
     if [ -f "$corrosion_stamp" ] && [ "$(cat "$corrosion_stamp" 2>/dev/null)" = "{{CORROSION_VERSION}}" ]; then
         echo "  [OK] corrosion {{CORROSION_VERSION}} (~/.nros/sdk/corrosion)"
     else
@@ -321,7 +325,7 @@ doctor:
     # ./activate.sh` (the script that PATH-prepends
     # `~/.nros/sdk/play_launch_parser/bin/`). Tailored hints distinguish
     # the two failure modes.
-    plp_stamp="$HOME/.nros/sdk/play_launch_parser/.installed-version"
+    plp_stamp="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/.installed-version"
     plp_bin="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/bin/play_launch_parser"
     plp_install_ok=0
     if [ -f "$plp_stamp" ] && [ "$(cat "$plp_stamp" 2>/dev/null)" = "{{PLAY_LAUNCH_PARSER_VERSION}}" ] && [ -x "$plp_bin" ]; then
