@@ -452,7 +452,7 @@ fn examples_dir() -> PathBuf {
 
 /// `examples/<platform>/<lang>/<program>/src/**` — a bounded walk that never
 /// descends into a program's `build*/` or `target*/` output.
-fn collect_sources() -> BTreeMap<(String, String, String), String> {
+fn collect_sources() -> SourceMap {
     let mut out = BTreeMap::new();
     let root = examples_dir();
     let Ok(platforms) = fs::read_dir(&root) else {
@@ -563,11 +563,14 @@ fn is_known(lang: &str, program: &str, platform: &str) -> bool {
         .any(|d| d.lang == lang && d.program == program && d.platform == platform)
 }
 
+/// `(lang, program, platform)` -> normalized body.
+type SourceMap = BTreeMap<(String, String, String), String>;
+/// `(lang, program, group)` -> the `(platform, body)` copies in that group.
+type GroupedCopies = BTreeMap<(String, String, &'static str), Vec<(String, String)>>;
+
 /// Group the copies of one `(lang, program)` by group name, dropping platforms
 /// that are not in any declared group.
-fn by_group(
-    sources: &BTreeMap<(String, String, String), String>,
-) -> BTreeMap<(String, String, &'static str), Vec<(String, String)>> {
+fn by_group(sources: &SourceMap) -> GroupedCopies {
     let mut out: BTreeMap<_, Vec<(String, String)>> = BTreeMap::new();
     for ((lang, program, platform), body) in sources {
         let Some(group) = group_of(platform) else {
@@ -713,13 +716,13 @@ fn no_stale_divergence_entries() {
         let peer = members
             .iter()
             .find(|(p, _)| p != d.platform && !is_known(d.lang, d.program, p));
-        if let Some((peer_plat, peer_body)) = peer {
-            if peer_body == this_body {
-                stale.push(format!(
-                    "{}/{} on {} now matches {} — delete its KNOWN_DIVERGENCE entry",
-                    d.lang, d.program, d.platform, peer_plat
-                ));
-            }
+        if let Some((peer_plat, peer_body)) = peer
+            && peer_body == this_body
+        {
+            stale.push(format!(
+                "{}/{} on {} now matches {} — delete its KNOWN_DIVERGENCE entry",
+                d.lang, d.program, d.platform, peer_plat
+            ));
         }
     }
     assert!(
