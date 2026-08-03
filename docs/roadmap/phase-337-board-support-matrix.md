@@ -77,7 +77,13 @@ error.
 The point of W1 is that the cross-cutting work becomes *additive*, so each board
 adopts it inside its own wave instead of one flag-day commit.
 
-- [ ] **W1.a — Finish the Cortex-M4F/M7 unblock.** RFC-0064 sequencing step 0
+- [ ] **W1.a — MOVED to [phase-338](phase-338-source-portability.md) W4.a.** It is
+      a source-portability defect (one source failing to reach an arch), so it
+      lives with the rest of them and has one owner. Still the thing that gates
+      this phase's *claim* about industrial FreeRTOS boards — track it, do not
+      duplicate it. Original text kept below for context.
+
+      ~~**Finish the Cortex-M4F/M7 unblock.**~~ RFC-0064 sequencing step 0
       fixed the config half (`config/freertos-lwip/nros-platform.toml` now lists
       `arch = ["cortex-m3", "cortex-m7"]`), but
       `packages/boards/nros-board-freertos/build.rs:273-287` still **hard-panics**
@@ -258,7 +264,9 @@ the test axis, which is what makes them safe once decided.
       provably free here. **`orin-spe` first needs untangling**: it is load-bearing
       as a pseudo-platform in link-feature selection
       (`nros-zpico-build/src/runner.rs:225,419-420,528-529` +
-      `config/orin-spe/nros-platform.toml`). Untangle, then delete — never blind.
+      `config/orin-spe/nros-platform.toml`). **The untangling is
+      [phase-338](phase-338-source-portability.md) W5.b — this wave is BLOCKED on
+      it.** Untangle there, delete here; never blind.
 - [ ] **W7.c** Delete `nros-board-bare-metal` (phase-322 W1.h): 161 lines of which
       135 are a doc comment describing a family driver no board opted into.
 
