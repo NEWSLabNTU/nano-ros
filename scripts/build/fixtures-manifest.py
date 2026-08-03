@@ -33,6 +33,12 @@ except ModuleNotFoundError:  # 3.10 and earlier
 
 DEFAULT_MANIFEST = "examples/fixtures.toml"
 
+# The launch file a bringup resolves to when it declares no
+# `[system].default_launch`. Mirrors the fallback in
+# `nros_orchestration_ir::model_location::launch_to_model_rel`, which is the
+# SSoT for the rule — see the note in `validate_workspace_fixture`.
+DEFAULT_LAUNCH_FILE = "system.launch.xml"
+
 
 def load(path):
     with open(path, "rb") as f:
@@ -384,27 +390,33 @@ def validate_workspace_fixture(entry):
 
     system_toml = bringup_dir / "system.toml"
     _require_file(entry, system_toml, "bringup system.toml")
-    # A bringup declares its topology EITHER the launch way (`[system].
-    # default_launch` + that file) or the model way (`config/system_model.yaml`).
-    # phase-296 R4 retired the launch bake — `nros::main!(launch = …)` is a
-    # compile error — so demanding `default_launch` unconditionally required a
-    # pointer to a retired path, and failed every model-path bringup. Accept
-    # either; require at least one, so a bringup that declares NEITHER is still
-    # caught.
-    default_launch = _system_default_launch(entry, system_toml)
-    model = bringup_dir / "config" / "system_model.yaml"
-    if default_launch:
-        _require_file(
-            entry,
-            bringup_dir / "launch" / default_launch,
-            "default launch file",
-        )
-    elif not model.is_file():
-        _fail(
-            entry,
-            f"{system_toml}: bringup declares neither [system].default_launch "
-            f"nor a resolved model at {model}",
-        )
+    # A bringup declares its topology through LAUNCH, and only through launch.
+    #
+    # This used to accept a second way — a `config/system_model.yaml` on disk —
+    # because phase-296 R4 had retired the launch bake. phase-330 reversed
+    # that: the SystemModel is a BUILD ARTIFACT, `check-no-tracked-models`
+    # rejects a committed one, and W7 deleted the last of them. That left the
+    # model arm satisfiable only by an untracked build leftover, so this gate
+    # passed or failed depending on whether someone had run `nros sync` in the
+    # tree — and disagreed with `check-no-tracked-models` about the very file
+    # it was accepting. A gate a stale artifact can satisfy is worse than no
+    # gate.
+    #
+    # The default launch resolves the way the real consumers resolve it:
+    # explicit `[system].default_launch`, else the conventional
+    # `system.launch.xml`. That fallback is SSoT'd in
+    # `nros_orchestration_ir::model_location::launch_to_model_rel` (shared by
+    # `nros::main!(launch = …)`, `nros-build` and `nano_ros_entry(LAUNCH …)`) —
+    # keep this line in step with it. It cannot delegate: that function is a
+    # pure name mapping and never touches the filesystem, and existence is
+    # exactly what this gate is for.
+    default_launch = _system_default_launch(entry, system_toml) or DEFAULT_LAUNCH_FILE
+    _require_file(
+        entry,
+        bringup_dir / "launch" / default_launch,
+        f"default launch file (declare `[system].default_launch` in "
+        f"{system_toml} to name a different one)",
+    )
 
     entry_dir = root / "src" / entry["entry"]
     _require_dir(entry, entry_dir, "entry dir")
