@@ -118,6 +118,33 @@ bucket. Note the present hazard: a tight-deadline path marked `criticality:
 low` currently sorts BELOW a slack path marked `high` — priority inversion by
 adjective.
 
+## Re-verified 2026-08-03 — every claim still holds
+
+Checked against the current tree, not assumed from the write-up:
+
+* `rtos_realizer.rs` still hardcodes both dims — its own module doc now states
+  it: "`non_preempt_scope` and `placement` are `NotRequested`".
+* **`exec_ms` is `Some(..)` in TEST CODE ONLY** (`rtos_realizer.rs:514`,
+  `sched/src/chain.rs:336/379`). Nothing on the production path populates a
+  WCET, so the budget arm is inert exactly as described.
+* The unsoundness is visible in one line of `chain_aware_mapper.rs`:
+
+  ```rust
+  ChainElement::Boundary { period_ms, exec_ms, .. } => Some(period_ms + exec_ms.unwrap_or(0.0)),
+  ```
+
+  A missing WCET is counted as **zero cost**, there is no blocking term, and
+  the result is a bare `feasible: bool` that discloses neither assumption. So a
+  chain is reported feasible on the strength of inputs nobody supplied.
+
+**A cheap step exists that needs none of the three prerequisites:** make the
+verdict stop overclaiming. `ChainFeasibility` could record that it assumed zero
+execution time (and for which elements), surfaced through `meta.diagnostics` the
+way unmatched components already are. That does not make the analysis sound — it
+makes it honest about what it did not model, which is the difference between "no
+headroom problem" and "no headroom evidence". Worth doing before, and
+independently of, staged step 1.
+
 ## Prerequisites (blocking, in order)
 
 1. **Per-callback WCET** in the node manifest (measured). Without it, budget +
