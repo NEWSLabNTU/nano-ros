@@ -68,6 +68,10 @@ ros-launch-manifest-sched = { git = "https://github.com/NEWSLabNTU/ros-launch-ma
 # `nros::main!()` proc-macro consumes, so tier resolution can't drift between
 # the CLI bake path and the codegen path.
 nros-orchestration-ir = { path = "../../core/nros-orchestration-ir" }
+# phase-336 — the build-profile table behind `nros profile`. Path dep across
+# the workspace boundary, same as nros-orchestration-ir above: ONE table, read
+# by this verb, by nros-tests, and (through the verb) by cmake and bash.
+nros-cargo-profile = { path = "../../tooling/nros-cargo-profile" }
 # phase-290 W4 — the RFC-0049 platform/board knob resolver for `nros config explain`.
 nros-board-common = { path = "../../boards/nros-board-common", features = ["build-helpers"] }
 

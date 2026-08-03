@@ -1704,6 +1704,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-cargo-profile"
+version = "0.5.0"
+
+[[package]]
 name = "nros-cc-flags"
 version = "0.5.0"
 dependencies = [

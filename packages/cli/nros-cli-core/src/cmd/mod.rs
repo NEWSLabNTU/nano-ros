@@ -30,6 +30,7 @@ pub mod new;
 pub mod new_platform;
 pub mod new_system;
 pub mod plan;
+pub mod profile;
 pub mod scaffold_deploy;
 pub mod setup;
 pub mod version;
@@ -102,6 +103,12 @@ pub enum Cmd {
     /// (bringup, launch, args). The cmake bridge for `nano_ros_entry(LAUNCH …)`.
     #[command(name = "model-path")]
     ModelPath(model_path::Args),
+
+    /// phase-336 — the cargo build-profile table (CMAKE_BUILD_TYPE mapping,
+    /// flags, artifact dir, env-injected definitions). The bridge cmake/bash
+    /// use so the derivations are not re-spelled per language.
+    #[command(subcommand_negates_reqs = true)]
+    Profile(profile::Args),
 
     /// Collect component source metadata for orchestration planning
     Metadata(metadata::Args),

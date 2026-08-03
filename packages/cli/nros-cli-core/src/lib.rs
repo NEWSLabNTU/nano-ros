@@ -92,6 +92,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Codegen(args) => cmd::codegen::run(args),
         cmd::Cmd::CodegenSystem(args) => cmd::codegen_system::run(args),
         cmd::Cmd::ModelPath(args) => cmd::model_path::run(args),
+        cmd::Cmd::Profile(args) => cmd::profile::run(args),
         cmd::Cmd::Metadata(args) => cmd::metadata::run(args),
         cmd::Cmd::Plan(args) => cmd::plan::run(args),
         cmd::Cmd::Check(args) => cmd::check::run(args),

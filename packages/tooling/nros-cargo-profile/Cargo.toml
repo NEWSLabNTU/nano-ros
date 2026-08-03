@@ -1,0 +1,20 @@
+[package]
+name        = "nros-cargo-profile"
+version.workspace = true
+edition     = "2024"
+publish     = false
+description = "The nano-ros cargo build-profile table: CMAKE_BUILD_TYPE mapping, cargo flags, artifact dir, and environment-injected preset definitions."
+license     = "MIT OR Apache-2.0"
+
+# HOST-ONLY, for the same reason as nros-build-paths (issue 0287): this is
+# build-orchestration data consumed by the CLI, the fixture scripts and cmake —
+# nothing on a target links it, and a host-only member left in the embedded
+# workspace lane turns `std` on for everything.
+[package.metadata.nros]
+host-only = true
+host-only-reason = "build-profile table, consumed by the CLI and the build scripts"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]

@@ -26,6 +26,11 @@ members = [
     # repo-relative paths without `just`/`.envrc`. Lets bare `cargo
     # build` succeed in a fresh shell (the audit blocker P1).
     "packages/tooling/nros-build-paths",
+    # phase-336 — the build-profile table (CMAKE_BUILD_TYPE mapping, cargo
+    # flags, artifact dir, env-injected preset definitions). One implementation
+    # behind `nros profile`, so bash/cmake/just/Rust stop each spelling their
+    # own copy.
+    "packages/tooling/nros-cargo-profile",
     # issue 0383 — the C diagnostics every nano-ros C compile treats as errors
     # (implicit-function-declaration, int-conversion). One spelling shared by
     # the ~30 `cc::Build` sites; the pinned arm-none-eabi-gcc 13.2 only warns
@@ -620,8 +625,20 @@ unconditional_recursion = "deny"
 large_stack_arrays = "warn"
 large_types_passed_by_value = "warn"
 
+# ---------------------------------------------------------------------------
+# Build profiles (phase-336). The table these mirror lives in
+# `packages/tooling/nros-cargo-profile`, which cmake/bash/just reach through
+# `nros profile` — its `root_manifest_matches_this_table` test fails if these
+# blocks and that table disagree. `[profile.dev]` and `[profile.release]` are
+# cargo built-ins and are NOT in that table (nano-ros owns only `nros-*`).
+#
+# Selection: `CMAKE_BUILD_TYPE` maps here (Debug→dev, RelWithDebInfo→
+# nros-relwithdebinfo, MinSizeRel→nros-minsizerel, Release→release), or
+# `NROS_CARGO_PROFILE` names one directly.
+# ---------------------------------------------------------------------------
+
 [profile.release]
-opt-level = "s"      # Optimize for size
+opt-level = 3        # Performance. Size lives in `nros-minsizerel`.
 # Phase 234 (issue 0023): LTO is on. The `nros-sizes-build` probe used to
 # require `lto = "off"` because it read `__NROS_SIZE_*` static *byte sizes*
 # via the `object` crate, which can't parse the LLVM-bitcode rlib members LTO
@@ -637,13 +654,24 @@ panic = "abort"      # Smaller binary, no unwinding
 [profile.dev]
 opt-level = 1        # Some optimization even in dev for embedded
 
-[profile.nros-fast-release]
+# The development default: fast to build, still optimized enough to run under
+# QEMU's timing floors. Was `nros-fast-release` before phase-336.
+[profile.nros-relwithdebinfo]
 inherits = "release"
 opt-level = 2
-codegen-units = 16
-incremental = true
 debug = 1
 lto = "off"
+codegen-units = 16
+incremental = true
+panic = "abort"
+
+# Size. These are the settings `[profile.release]` carried before phase-336, so
+# an image built here is byte-identical to yesterday's `--release` build.
+[profile.nros-minsizerel]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
 panic = "abort"
 
 # Patches for generated crates that use version = "*"
