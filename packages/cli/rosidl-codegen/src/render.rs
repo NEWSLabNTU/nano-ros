@@ -79,6 +79,23 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     )
     .expect("packs/nros/action.rs.jinja must parse");
 
+    // --- idiomatic Rust pack (packs/rust) ---
+    env.add_template(
+        "message_idiomatic.rs",
+        include_str!("../packs/rust/message.rs.jinja"),
+    )
+    .expect("packs/rust/message.rs.jinja must parse");
+    env.add_template(
+        "service_idiomatic.rs",
+        include_str!("../packs/rust/service.rs.jinja"),
+    )
+    .expect("packs/rust/service.rs.jinja must parse");
+    env.add_template(
+        "action_idiomatic.rs",
+        include_str!("../packs/rust/action.rs.jinja"),
+    )
+    .expect("packs/rust/action.rs.jinja must parse");
+
     env
 });
 

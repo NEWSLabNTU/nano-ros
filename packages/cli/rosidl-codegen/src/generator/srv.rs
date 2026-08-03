@@ -135,7 +135,9 @@ pub fn generate_service_package(
         response_fields: message_to_idiomatic_fields(&service.response),
         response_constants: message_to_constants(&service.response, false),
     };
-    let service_idiomatic = service_idiomatic_template.render()?;
+    let service_idiomatic =
+        crate::render::render("service_idiomatic.rs", &service_idiomatic_template)
+            .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     Ok(GeneratedServicePackage {
         cargo_toml,

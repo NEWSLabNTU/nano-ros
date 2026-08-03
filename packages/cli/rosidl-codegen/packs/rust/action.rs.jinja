@@ -1,0 +1,655 @@
+// Idiomatic Rust layer - user-friendly types
+// Package: {{ package_name }}
+// Action: {{ action_name }}
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+// Goal message
+pub mod goal {
+    #[cfg(feature = "serde")]
+    use super::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, PartialEq)]
+    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+    pub struct {{ action_name }}Goal {
+        {% for field in goal_fields %}
+        pub {{ field.name }}: {{ field.rust_type }},
+        {% endfor %}
+    }
+
+    impl {{ action_name }}Goal {
+        {% if goal_constants %}
+        // Goal constants (matches C++/Python conventions)
+        {% for constant in goal_constants %}
+        pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+        {% endfor %}
+
+        {% endif %}
+        pub fn new() -> Self {
+            Self::default()
+        }
+    }
+
+    impl Default for {{ action_name }}Goal {
+        fn default() -> Self {
+            // Leverage FFI message's C init function to get correct default values
+            <Self as crate::rosidl_runtime_rs::Message>::from_rmw_message(crate::action::rmw::{{ action_name }}Goal::default())
+        }
+    }
+
+    // Conversion from FFI layer
+    impl From<crate::action::rmw::{{ action_name }}Goal> for {{ action_name }}Goal {
+        #[allow(unused_variables)]
+        fn from(rmw: crate::action::rmw::{{ action_name }}Goal) -> Self {
+            Self {
+                {% for field in goal_fields %}
+                {% if field.kind == "Primitive" %}
+                {{ field.name }}: rmw.{{ field.name }},
+                {% elif field.kind == "UnboundedString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "BoundedString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "UnboundedWString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "BoundedWString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "NestedMessage" %}
+                {{ field.name }}: (&rmw.{{ field.name }}).into(),
+                {% elif field.kind == "PrimitiveArray" %}
+                {{ field.name }}: rmw.{{ field.name }}.clone(),
+                {% elif field.kind == "UnboundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "BoundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "UnboundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "BoundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "NestedMessageArray" %}
+                {{ field.name }}: std::array::from_fn(|i| (&rmw.{{ field.name }}[i]).into()),
+                {% elif field.kind == "LargeArray" %}
+                {{ field.name }}: rmw.{{ field.name }}.clone(),
+                {% elif field.kind == "BoundedPrimitiveSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().to_vec(),
+                {% elif field.kind == "BoundedUnboundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedBoundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedUnboundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedBoundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedNestedMessageSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.into()).collect(),
+                {% elif field.kind == "UnboundedPrimitiveSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().to_vec(),
+                {% elif field.kind == "UnboundedUnboundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedBoundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedUnboundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedBoundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedNestedMessageSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.into()).collect(),
+                {% endif %}
+                {% endfor %}
+            }
+        }
+    }
+
+    // Conversion to FFI layer
+    impl From<{{ action_name }}Goal> for crate::action::rmw::{{ action_name }}Goal {
+        #[allow(unused_variables)]
+        fn from(idiomatic: {{ action_name }}Goal) -> Self {
+            Self {
+                {% for field in goal_fields %}
+                {% if field.kind == "Primitive" %}
+                {{ field.name }}: idiomatic.{{ field.name }},
+                {% elif field.kind == "UnboundedString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::String::from(idiomatic.{{ field.name }}.as_str()),
+                {% elif field.kind == "BoundedString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedString::try_from(idiomatic.{{ field.name }}.as_str()).unwrap(),
+                {% elif field.kind == "UnboundedWString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::WString::from(idiomatic.{{ field.name }}.as_str()),
+                {% elif field.kind == "BoundedWString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedWString::try_from(idiomatic.{{ field.name }}.as_str()).unwrap(),
+                {% elif field.kind == "NestedMessage" %}
+                {{ field.name }}: (&idiomatic.{{ field.name }}).into(),
+                {% elif field.kind == "PrimitiveArray" %}
+                {{ field.name }}: idiomatic.{{ field.name }}.clone(),
+                {% elif field.kind == "UnboundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::String::from(idiomatic.{{ field.name }}[i].as_str())),
+                {% elif field.kind == "BoundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::BoundedString::try_from(idiomatic.{{ field.name }}[i].as_str()).unwrap()),
+                {% elif field.kind == "UnboundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::WString::from(idiomatic.{{ field.name }}[i].as_str())),
+                {% elif field.kind == "BoundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::BoundedWString::try_from(idiomatic.{{ field.name }}[i].as_str()).unwrap()),
+                {% elif field.kind == "NestedMessageArray" %}
+                {{ field.name }}: std::array::from_fn(|i| (&idiomatic.{{ field.name }}[i]).into()),
+                {% elif field.kind == "LargeArray" %}
+                {{ field.name }}: idiomatic.{{ field.name }}.clone(),
+                {% elif field.kind == "BoundedPrimitiveSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(idiomatic.{{ field.name }}.clone()).unwrap(),
+                {% elif field.kind == "BoundedUnboundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::String::from(item.as_str())).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedBoundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedUnboundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::WString::from(item.as_str())).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedBoundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedWString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedNestedMessageSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| item.into()).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "UnboundedPrimitiveSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(idiomatic.{{ field.name }}.clone()),
+                {% elif field.kind == "UnboundedUnboundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::String::from(item.as_str())).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedBoundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedUnboundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::WString::from(item.as_str())).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedBoundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedWString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedNestedMessageSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| item.into()).collect::<Vec<_>>()
+                ),
+                {% endif %}
+                {% endfor %}
+            }
+        }
+    }
+
+    // Message trait implementation for rosidl_runtime_rs
+    impl crate::rosidl_runtime_rs::Message for {{ action_name }}Goal {
+        type RmwMsg = crate::action::rmw::{{ action_name }}Goal;
+
+        fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+            std::borrow::Cow::Owned(msg_cow.into_owned().into())
+        }
+
+        fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+            msg.into()
+        }
+    }
+}
+
+// Result message
+pub mod result {
+    #[cfg(feature = "serde")]
+    use super::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, PartialEq)]
+    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+    pub struct {{ action_name }}Result {
+        {% for field in result_fields %}
+        pub {{ field.name }}: {{ field.rust_type }},
+        {% endfor %}
+    }
+
+    impl {{ action_name }}Result {
+        {% if result_constants %}
+        // Result constants (matches C++/Python conventions)
+        {% for constant in result_constants %}
+        pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+        {% endfor %}
+
+        {% endif %}
+        pub fn new() -> Self {
+            Self::default()
+        }
+    }
+
+    impl Default for {{ action_name }}Result {
+        fn default() -> Self {
+            <Self as crate::rosidl_runtime_rs::Message>::from_rmw_message(crate::action::rmw::{{ action_name }}Result::default())
+        }
+    }
+
+    impl From<crate::action::rmw::{{ action_name }}Result> for {{ action_name }}Result {
+        #[allow(unused_variables)]
+        fn from(rmw: crate::action::rmw::{{ action_name }}Result) -> Self {
+            Self {
+                {% for field in result_fields %}
+                {% if field.kind == "Primitive" %}
+                {{ field.name }}: rmw.{{ field.name }},
+                {% elif field.kind == "UnboundedString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "BoundedString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "UnboundedWString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "BoundedWString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "NestedMessage" %}
+                {{ field.name }}: (&rmw.{{ field.name }}).into(),
+                {% elif field.kind == "PrimitiveArray" %}
+                {{ field.name }}: rmw.{{ field.name }}.clone(),
+                {% elif field.kind == "UnboundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "BoundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "UnboundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "BoundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "NestedMessageArray" %}
+                {{ field.name }}: std::array::from_fn(|i| (&rmw.{{ field.name }}[i]).into()),
+                {% elif field.kind == "LargeArray" %}
+                {{ field.name }}: rmw.{{ field.name }}.clone(),
+                {% elif field.kind == "BoundedPrimitiveSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().to_vec(),
+                {% elif field.kind == "BoundedUnboundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedBoundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedUnboundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedBoundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedNestedMessageSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.into()).collect(),
+                {% elif field.kind == "UnboundedPrimitiveSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().to_vec(),
+                {% elif field.kind == "UnboundedUnboundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedBoundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedUnboundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedBoundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedNestedMessageSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.into()).collect(),
+                {% endif %}
+                {% endfor %}
+            }
+        }
+    }
+
+    impl From<{{ action_name }}Result> for crate::action::rmw::{{ action_name }}Result {
+        #[allow(unused_variables)]
+        fn from(idiomatic: {{ action_name }}Result) -> Self {
+            Self {
+                {% for field in result_fields %}
+                {% if field.kind == "Primitive" %}
+                {{ field.name }}: idiomatic.{{ field.name }},
+                {% elif field.kind == "UnboundedString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::String::from(idiomatic.{{ field.name }}.as_str()),
+                {% elif field.kind == "BoundedString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedString::try_from(idiomatic.{{ field.name }}.as_str()).unwrap(),
+                {% elif field.kind == "UnboundedWString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::WString::from(idiomatic.{{ field.name }}.as_str()),
+                {% elif field.kind == "BoundedWString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedWString::try_from(idiomatic.{{ field.name }}.as_str()).unwrap(),
+                {% elif field.kind == "NestedMessage" %}
+                {{ field.name }}: (&idiomatic.{{ field.name }}).into(),
+                {% elif field.kind == "PrimitiveArray" %}
+                {{ field.name }}: idiomatic.{{ field.name }}.clone(),
+                {% elif field.kind == "UnboundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::String::from(idiomatic.{{ field.name }}[i].as_str())),
+                {% elif field.kind == "BoundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::BoundedString::try_from(idiomatic.{{ field.name }}[i].as_str()).unwrap()),
+                {% elif field.kind == "UnboundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::WString::from(idiomatic.{{ field.name }}[i].as_str())),
+                {% elif field.kind == "BoundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::BoundedWString::try_from(idiomatic.{{ field.name }}[i].as_str()).unwrap()),
+                {% elif field.kind == "NestedMessageArray" %}
+                {{ field.name }}: std::array::from_fn(|i| (&idiomatic.{{ field.name }}[i]).into()),
+                {% elif field.kind == "LargeArray" %}
+                {{ field.name }}: idiomatic.{{ field.name }}.clone(),
+                {% elif field.kind == "BoundedPrimitiveSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(idiomatic.{{ field.name }}.clone()).unwrap(),
+                {% elif field.kind == "BoundedUnboundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::String::from(item.as_str())).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedBoundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedUnboundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::WString::from(item.as_str())).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedBoundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedWString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedNestedMessageSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| item.into()).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "UnboundedPrimitiveSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(idiomatic.{{ field.name }}.clone()),
+                {% elif field.kind == "UnboundedUnboundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::String::from(item.as_str())).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedBoundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedUnboundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::WString::from(item.as_str())).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedBoundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedWString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedNestedMessageSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| item.into()).collect::<Vec<_>>()
+                ),
+                {% endif %}
+                {% endfor %}
+            }
+        }
+    }
+
+    impl crate::rosidl_runtime_rs::Message for {{ action_name }}Result {
+        type RmwMsg = crate::action::rmw::{{ action_name }}Result;
+
+        fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+            std::borrow::Cow::Owned(msg_cow.into_owned().into())
+        }
+
+        fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+            msg.into()
+        }
+    }
+}
+
+// Feedback message
+pub mod feedback {
+    #[cfg(feature = "serde")]
+    use super::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, PartialEq)]
+    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+    pub struct {{ action_name }}Feedback {
+        {% for field in feedback_fields %}
+        pub {{ field.name }}: {{ field.rust_type }},
+        {% endfor %}
+    }
+
+    impl {{ action_name }}Feedback {
+        {% if feedback_constants %}
+        // Feedback constants (matches C++/Python conventions)
+        {% for constant in feedback_constants %}
+        pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+        {% endfor %}
+
+        {% endif %}
+        pub fn new() -> Self {
+            Self::default()
+        }
+    }
+
+    impl Default for {{ action_name }}Feedback {
+        fn default() -> Self {
+            <Self as crate::rosidl_runtime_rs::Message>::from_rmw_message(crate::action::rmw::{{ action_name }}Feedback::default())
+        }
+    }
+
+    impl From<crate::action::rmw::{{ action_name }}Feedback> for {{ action_name }}Feedback {
+        #[allow(unused_variables)]
+        fn from(rmw: crate::action::rmw::{{ action_name }}Feedback) -> Self {
+            Self {
+                {% for field in feedback_fields %}
+                {% if field.kind == "Primitive" %}
+                {{ field.name }}: rmw.{{ field.name }},
+                {% elif field.kind == "UnboundedString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "BoundedString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "UnboundedWString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "BoundedWString" %}
+                {{ field.name }}: rmw.{{ field.name }}.to_string(),
+                {% elif field.kind == "NestedMessage" %}
+                {{ field.name }}: (&rmw.{{ field.name }}).into(),
+                {% elif field.kind == "PrimitiveArray" %}
+                {{ field.name }}: rmw.{{ field.name }}.clone(),
+                {% elif field.kind == "UnboundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "BoundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "UnboundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "BoundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
+                {% elif field.kind == "NestedMessageArray" %}
+                {{ field.name }}: std::array::from_fn(|i| (&rmw.{{ field.name }}[i]).into()),
+                {% elif field.kind == "LargeArray" %}
+                {{ field.name }}: rmw.{{ field.name }}.clone(),
+                {% elif field.kind == "BoundedPrimitiveSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().to_vec(),
+                {% elif field.kind == "BoundedUnboundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedBoundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedUnboundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedBoundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "BoundedNestedMessageSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.into()).collect(),
+                {% elif field.kind == "UnboundedPrimitiveSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().to_vec(),
+                {% elif field.kind == "UnboundedUnboundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedBoundedStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedUnboundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedBoundedWStringSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.to_string()).collect(),
+                {% elif field.kind == "UnboundedNestedMessageSequence" %}
+                {{ field.name }}: rmw.{{ field.name }}.as_slice().iter().map(|item| item.into()).collect(),
+                {% endif %}
+                {% endfor %}
+            }
+        }
+    }
+
+    impl From<{{ action_name }}Feedback> for crate::action::rmw::{{ action_name }}Feedback {
+        #[allow(unused_variables)]
+        fn from(idiomatic: {{ action_name }}Feedback) -> Self {
+            Self {
+                {% for field in feedback_fields %}
+                {% if field.kind == "Primitive" %}
+                {{ field.name }}: idiomatic.{{ field.name }},
+                {% elif field.kind == "UnboundedString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::String::from(idiomatic.{{ field.name }}.as_str()),
+                {% elif field.kind == "BoundedString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedString::try_from(idiomatic.{{ field.name }}.as_str()).unwrap(),
+                {% elif field.kind == "UnboundedWString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::WString::from(idiomatic.{{ field.name }}.as_str()),
+                {% elif field.kind == "BoundedWString" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedWString::try_from(idiomatic.{{ field.name }}.as_str()).unwrap(),
+                {% elif field.kind == "NestedMessage" %}
+                {{ field.name }}: (&idiomatic.{{ field.name }}).into(),
+                {% elif field.kind == "PrimitiveArray" %}
+                {{ field.name }}: idiomatic.{{ field.name }}.clone(),
+                {% elif field.kind == "UnboundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::String::from(idiomatic.{{ field.name }}[i].as_str())),
+                {% elif field.kind == "BoundedStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::BoundedString::try_from(idiomatic.{{ field.name }}[i].as_str()).unwrap()),
+                {% elif field.kind == "UnboundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::WString::from(idiomatic.{{ field.name }}[i].as_str())),
+                {% elif field.kind == "BoundedWStringArray" %}
+                {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::BoundedWString::try_from(idiomatic.{{ field.name }}[i].as_str()).unwrap()),
+                {% elif field.kind == "NestedMessageArray" %}
+                {{ field.name }}: std::array::from_fn(|i| (&idiomatic.{{ field.name }}[i]).into()),
+                {% elif field.kind == "LargeArray" %}
+                {{ field.name }}: idiomatic.{{ field.name }}.clone(),
+                {% elif field.kind == "BoundedPrimitiveSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(idiomatic.{{ field.name }}.clone()).unwrap(),
+                {% elif field.kind == "BoundedUnboundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::String::from(item.as_str())).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedBoundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedUnboundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::WString::from(item.as_str())).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedBoundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedWString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "BoundedNestedMessageSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(
+                    idiomatic.{{ field.name }}.iter().map(|item| item.into()).collect::<Vec<_>>()
+                ).unwrap(),
+                {% elif field.kind == "UnboundedPrimitiveSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(idiomatic.{{ field.name }}.clone()),
+                {% elif field.kind == "UnboundedUnboundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::String::from(item.as_str())).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedBoundedStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedUnboundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::WString::from(item.as_str())).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedBoundedWStringSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| crate::rosidl_runtime_rs::BoundedWString::try_from(item.as_str()).unwrap()).collect::<Vec<_>>()
+                ),
+                {% elif field.kind == "UnboundedNestedMessageSequence" %}
+                {{ field.name }}: crate::rosidl_runtime_rs::Sequence::from(
+                    idiomatic.{{ field.name }}.iter().map(|item| item.into()).collect::<Vec<_>>()
+                ),
+                {% endif %}
+                {% endfor %}
+            }
+        }
+    }
+
+    impl crate::rosidl_runtime_rs::Message for {{ action_name }}Feedback {
+        type RmwMsg = crate::action::rmw::{{ action_name }}Feedback;
+
+        fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+            std::borrow::Cow::Owned(msg_cow.into_owned().into())
+        }
+
+        fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+            msg.into()
+        }
+    }
+}
+
+// Re-export for convenience
+pub use goal::{{ action_name }}Goal;
+pub use result::{{ action_name }}Result;
+pub use feedback::{{ action_name }}Feedback;
+
+// Action struct (zero-sized type)
+pub struct {{ action_name }};
+
+impl crate::rosidl_runtime_rs::Action for {{ action_name }} {
+    type Goal = {{ action_name }}Goal;
+    type Result = {{ action_name }}Result;
+    type Feedback = {{ action_name }}Feedback;
+    type FeedbackMessage = crate::action::rmw::{{ action_name }}FeedbackMessage;
+    type SendGoalService = crate::action::rmw::{{ action_name }}_SendGoal;
+    type GetResultService = crate::action::rmw::{{ action_name }}_GetResult;
+    type CancelGoalService = action_msgs::srv::rmw::CancelGoal;
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::get_type_support()
+    }
+
+    fn create_goal_request(
+        goal_id: &[u8; 16],
+        goal: crate::action::rmw::{{ action_name }}Goal,
+    ) -> crate::action::rmw::{{ action_name }}_SendGoal_Request {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::create_goal_request(goal_id, goal)
+    }
+
+    fn split_goal_request(
+        request: crate::action::rmw::{{ action_name }}_SendGoal_Request,
+    ) -> ([u8; 16], crate::action::rmw::{{ action_name }}Goal) {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::split_goal_request(request)
+    }
+
+    fn create_goal_response(
+        accepted: bool,
+        stamp: (i32, u32),
+    ) -> crate::action::rmw::{{ action_name }}_SendGoal_Response {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::create_goal_response(accepted, stamp)
+    }
+
+    fn get_goal_response_accepted(response: &crate::action::rmw::{{ action_name }}_SendGoal_Response) -> bool {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::get_goal_response_accepted(response)
+    }
+
+    fn get_goal_response_stamp(response: &crate::action::rmw::{{ action_name }}_SendGoal_Response) -> (i32, u32) {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::get_goal_response_stamp(response)
+    }
+
+    fn create_feedback_message(
+        goal_id: &[u8; 16],
+        feedback: crate::action::rmw::{{ action_name }}Feedback,
+    ) -> crate::action::rmw::{{ action_name }}FeedbackMessage {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::create_feedback_message(goal_id, feedback)
+    }
+
+    fn split_feedback_message(
+        feedback: crate::action::rmw::{{ action_name }}FeedbackMessage,
+    ) -> ([u8; 16], crate::action::rmw::{{ action_name }}Feedback) {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::split_feedback_message(feedback)
+    }
+
+    fn create_result_request(goal_id: &[u8; 16]) -> crate::action::rmw::{{ action_name }}_GetResult_Request {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::create_result_request(goal_id)
+    }
+
+    fn get_result_request_uuid(request: &crate::action::rmw::{{ action_name }}_GetResult_Request) -> &[u8; 16] {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::get_result_request_uuid(request)
+    }
+
+    fn create_result_response(
+        status: i8,
+        result: crate::action::rmw::{{ action_name }}Result,
+    ) -> crate::action::rmw::{{ action_name }}_GetResult_Response {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::create_result_response(status, result)
+    }
+
+    fn split_result_response(
+        response: crate::action::rmw::{{ action_name }}_GetResult_Response,
+    ) -> (i8, crate::action::rmw::{{ action_name }}Result) {
+        <crate::action::rmw::{{ action_name }} as crate::rosidl_runtime_rs::Action>::split_result_response(response)
+    }
+}

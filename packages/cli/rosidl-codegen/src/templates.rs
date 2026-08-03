@@ -39,7 +39,7 @@ pub struct MessageRmwTemplate<'a> {
     pub constants: Vec<MessageConstant>,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "message_idiomatic.rs.jinja", escape = "none")]
 pub struct MessageIdiomaticTemplate<'a> {
     pub package_name: &'a str,
@@ -58,7 +58,7 @@ pub struct RmwField {
 
 /// Exhaustive enum representing all possible ROS 2 IDL field types
 /// This ensures compile-time checking that all cases are handled in templates
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum FieldKind {
     // Scalar types (single values)
     Primitive,
@@ -94,6 +94,7 @@ pub enum FieldKind {
     UnboundedNestedMessageSequence,
 }
 
+#[derive(Clone, serde::Serialize)]
 pub struct IdiomaticField {
     pub name: String,
     pub rust_type: String,
@@ -119,7 +120,7 @@ pub struct ServiceRmwTemplate<'a> {
     pub response_constants: Vec<MessageConstant>,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "service_idiomatic.rs.jinja", escape = "none")]
 pub struct ServiceIdiomaticTemplate<'a> {
     pub package_name: &'a str,
@@ -143,7 +144,7 @@ pub struct ActionRmwTemplate<'a> {
     pub feedback_constants: Vec<MessageConstant>,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "action_idiomatic.rs.jinja", escape = "none")]
 pub struct ActionIdiomaticTemplate<'a> {
     pub package_name: &'a str,

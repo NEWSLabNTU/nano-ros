@@ -143,7 +143,8 @@ pub fn generate_action_package(
         feedback_fields: message_to_idiomatic_fields(&action.spec.feedback),
         feedback_constants: message_to_constants(&action.spec.feedback, false),
     };
-    let action_idiomatic = action_idiomatic_template.render()?;
+    let action_idiomatic = crate::render::render("action_idiomatic.rs", &action_idiomatic_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     Ok(GeneratedActionPackage {
         cargo_toml,

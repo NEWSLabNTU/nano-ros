@@ -138,7 +138,9 @@ pub fn generate_message_package(
         fields: idiomatic_fields,
         constants: idiomatic_constants,
     };
-    let message_idiomatic = message_idiomatic_template.render()?;
+    let message_idiomatic =
+        crate::render::render("message_idiomatic.rs", &message_idiomatic_template)
+            .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     Ok(GeneratedPackage {
         cargo_toml,
