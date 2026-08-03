@@ -224,12 +224,29 @@ function(nano_ros_entry)
                     "nano_ros_entry: `nros model-path` failed for LAUNCH "
                     "'${_NRA_LAUNCH}' (bringup ${_NRA_BRINGUP}):\n${_nra_mp_err}")
             endif()
-            # Re-resolve when the USER'S inputs change.
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                "${_NRA_BRINGUP}/system.toml")
-            if(NOT _NRA_LAUNCH STREQUAL "default")
+            # Re-resolve when the USER'S inputs change. DEDUPED: several
+            # entries share one bringup (workspaces/c has 7), and a duplicate
+            # CMAKE_CONFIGURE_DEPENDS entry becomes a duplicate OUTPUT on the
+            # generated missing-inputs phony rule — pinned ninja 1.13 hard-
+            # errors "defined as an output multiple times" (1.10 tolerated it).
+            # NORMALIZED paths: each entry spells the shared bringup via its
+            # own ${CMAKE_CURRENT_SOURCE_DIR}/../…, so string-dedupe alone
+            # still emits N distinct spellings of ONE file — which ninja
+            # normalizes into duplicate outputs on the missing-inputs phony
+            # rule (pinned 1.13 hard-errors; 1.10 tolerated it).
+            file(REAL_PATH "${_NRA_BRINGUP}/system.toml" _nra_dep_toml)
+            get_property(_nra_cfg_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
+            if(NOT "${_nra_dep_toml}" IN_LIST _nra_cfg_deps)
                 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                    "${_NRA_BRINGUP}/launch/${_NRA_LAUNCH}")
+                    "${_nra_dep_toml}")
+            endif()
+            if(NOT _NRA_LAUNCH STREQUAL "default")
+                file(REAL_PATH "${_NRA_BRINGUP}/launch/${_NRA_LAUNCH}" _nra_dep_launch)
+                get_property(_nra_cfg_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
+                if(NOT "${_nra_dep_launch}" IN_LIST _nra_cfg_deps)
+                    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                        "${_nra_dep_launch}")
+                endif()
             endif()
             set(_NRA_LAUNCH "")
         endif()
