@@ -399,7 +399,7 @@ pub struct ActionNrosTemplate<'a> {
 // ============================================================================
 
 /// Field information for C code generation
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize)]
 pub struct CField {
     pub name: String,
     /// Base C type (e.g., "int32_t", "char", "struct foo_msg")
@@ -454,13 +454,14 @@ pub struct CField {
 }
 
 /// Constant for C code generation
+#[derive(Clone, serde::Serialize)]
 pub struct CConstant {
     pub name: String,
     pub c_type: String,
     pub value: String,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "message_c.h.jinja", escape = "none")]
 pub struct MessageCHeaderTemplate<'a> {
     pub package_name: &'a str,
@@ -480,7 +481,7 @@ pub struct MessageCHeaderTemplate<'a> {
     pub has_borrowed: bool,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "message_c.c.jinja", escape = "none")]
 pub struct MessageCSourceTemplate<'a> {
     pub package_name: &'a str,

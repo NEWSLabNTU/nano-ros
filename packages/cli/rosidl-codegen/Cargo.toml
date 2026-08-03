@@ -23,6 +23,8 @@ sha2 = "0.10"
 rosidl-parser.workspace = true
 rosidl-resolve.workspace = true
 rosidl-lower.workspace = true
+minijinja.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

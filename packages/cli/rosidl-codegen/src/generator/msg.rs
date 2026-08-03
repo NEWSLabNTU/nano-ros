@@ -414,7 +414,10 @@ pub fn generate_c_message_package(
         has_fields,
         has_borrowed,
     };
-    let header = header_template.render()?;
+    // RFC-0068 Stage 3 (phase-335 W2): C message emission renders from the
+    // minijinja data pack (packs/c/) instead of the compile-time askama path.
+    let header = crate::render::render_c("message.h", &header_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate source
     let source_template = MessageCSourceTemplate {
@@ -427,7 +430,8 @@ pub fn generate_c_message_package(
         has_fields,
         has_borrowed,
     };
-    let source = source_template.render()?;
+    let source = crate::render::render_c("message.c", &source_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     Ok(GeneratedCPackage {
         header,
