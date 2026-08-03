@@ -760,9 +760,127 @@ pub fn runtime_cells() -> impl Iterator<Item = &'static Cell> {
     CELLS.iter().filter(|c| matches!(c.tier, Tier::Runtime))
 }
 
+/// The five RFC-0051 "matrix consumer" test files (phase-329 W1). Each Runtime
+/// cell a W1 consumer runs is CLAIMED by exactly one of these; the consumer's
+/// test DERIVES its cases from `CELLS.filter(|c| w1_consumer_of(c) == Some(..))`
+/// instead of hand-listing `Cell{}` literals, so adding a cell to `CELLS` makes
+/// it run in the right consumer.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum W1Consumer {
+    /// `tests/multihost_e2e.rs` — every `Multihost` cell.
+    Multihost,
+    /// `tests/roundtrip_xprocess_e2e.rs` — native workspace `Service`/`Action`.
+    Roundtrip,
+    /// `tests/realtime_tiers_e2e.rs` — every `RealtimeTiers` cell.
+    RealtimeTiers,
+    /// `tests/entry_e2e.rs` — the RTOS `EntryPubsub` subset + zephyr-rust
+    /// feature entries.
+    Entry,
+    /// `tests/workspace_features_e2e.rs` — native feature workspaces.
+    WorkspaceFeatures,
+}
+
+/// Which W1 consumer owns this cell's runtime lane, if any. THE authoritative
+/// claim partition — disjoint by construction (one match arm each). `None` =
+/// covered by a not-yet-converted platform-e2e file (phase-329 W4) or a
+/// non-matrix suite, NOT a W1 consumer's responsibility.
+///
+/// `Multihost`, `RealtimeTiers`, and workspace `Service`/`Action` are FULLY
+/// owned (G5 asserts every Runtime cell of them is claimed). `EntryPubsub` and
+/// the native feature workloads are SHARED with W4 files, so only the subset a
+/// W1 consumer actually runs is claimed here.
+pub fn w1_consumer_of(cell: &Cell) -> Option<W1Consumer> {
+    use W1Consumer::*;
+    match (cell.platform, cell.lang, cell.workload, cell.kind) {
+        // multihost_e2e — every Multihost cell.
+        (_, _, Workload::Multihost, _) => Some(Multihost),
+        // realtime_tiers_e2e — every RealtimeTiers cell.
+        (_, _, Workload::RealtimeTiers, _) => Some(RealtimeTiers),
+        // roundtrip_xprocess_e2e — workspace service/action (all native today).
+        (_, _, Workload::Service | Workload::Action, Kind::Workspace) => Some(Roundtrip),
+        // entry_e2e — the RTOS EntryPubsub subset it actually boots (threadx /
+        // freertos / zephyr are C/C++/mixed; nuttx-arm is C + rust). The rust
+        // EntryPubsub cells on threadx/freertos/zephyr, nuttx-riscv, esp32, and
+        // native EntryPubsub are OTHER consumers — deliberately not claimed.
+        (PlatformId::ThreadxLinux, Lang::C | Lang::Cpp | Lang::Mixed, Workload::EntryPubsub, _) => {
+            Some(Entry)
+        }
+        (PlatformId::FreertosMps2, Lang::C | Lang::Cpp | Lang::Mixed, Workload::EntryPubsub, _) => {
+            Some(Entry)
+        }
+        (
+            PlatformId::ZephyrNativeSim,
+            Lang::C | Lang::Cpp | Lang::Mixed,
+            Workload::EntryPubsub,
+            _,
+        ) => Some(Entry),
+        (PlatformId::NuttxArm, Lang::C | Lang::Rust, Workload::EntryPubsub, _) => Some(Entry),
+        // entry_e2e — zephyr-rust feature-workspace entries.
+        (
+            PlatformId::ZephyrNativeSim,
+            Lang::Rust,
+            Workload::Params | Workload::Qos | Workload::Lifecycle | Workload::Safety,
+            Kind::Workspace,
+        ) => Some(Entry),
+        // workspace_features_e2e — native feature workspaces (Params is a
+        // separate W4 file, deliberately excluded).
+        (
+            PlatformId::Native,
+            _,
+            Workload::CustomMsg
+            | Workload::Logging
+            | Workload::Qos
+            | Workload::Lifecycle
+            | Workload::Safety
+            | Workload::Remap,
+            Kind::Workspace,
+        ) => Some(WorkspaceFeatures),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-329 W1 gate G5 — the consumer-claim partition is sound.
+    ///
+    /// (1) Every Runtime cell of a FULLY-OWNED workload (`Multihost`,
+    /// `RealtimeTiers`, workspace `Service`/`Action`) is claimed by a W1
+    /// consumer — so adding such a cell to `CELLS` can never leave it un-run
+    /// (the "adding a row adds no test" defect). (2) Every consumer still claims
+    /// at least one Runtime cell — a tripwire against a workload/platform set
+    /// silently vanishing from `CELLS`. Exec-arm totality over each claim is
+    /// enforced at runtime (a claimed cell with no `exec_for` arm panics loudly
+    /// in the consumer), since exec tables live in the per-test binaries.
+    #[test]
+    fn g5_w1_consumers_claim_their_owned_workloads() {
+        for c in runtime_cells() {
+            let fully_owned = matches!(c.workload, Workload::Multihost | Workload::RealtimeTiers)
+                || (matches!(c.workload, Workload::Service | Workload::Action)
+                    && matches!(c.kind, Kind::Workspace));
+            if fully_owned {
+                assert!(
+                    w1_consumer_of(c).is_some(),
+                    "G5: Runtime cell {c:?} is in a W1-owned workload but no consumer claims it \
+                     — add it to `w1_consumer_of` and the consumer's `exec_for`"
+                );
+            }
+        }
+        for cons in [
+            W1Consumer::Multihost,
+            W1Consumer::Roundtrip,
+            W1Consumer::RealtimeTiers,
+            W1Consumer::Entry,
+            W1Consumer::WorkspaceFeatures,
+        ] {
+            assert!(
+                runtime_cells().any(|c| w1_consumer_of(c) == Some(cons)),
+                "G5: consumer {cons:?} claims no Runtime cell — its workload/platform set \
+                 vanished from CELLS (a consumer file would silently run nothing)"
+            );
+        }
+    }
 
     /// `Mixed` is a workspace-only axis value.
     #[test]
