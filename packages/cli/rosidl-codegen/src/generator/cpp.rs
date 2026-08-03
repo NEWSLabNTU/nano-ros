@@ -90,13 +90,21 @@ fn build_fields(
     let mut ffi_fields = Vec::new();
     let mut seq_structs = Vec::new();
 
-    for field in fields {
+    // phase-335 W1.c — storage from the lowered IR (byte-identical), resolved once.
+    let store = super::common::lowered_storages(
+        current_package.unwrap_or(""),
+        message_name,
+        fields,
+        resolver,
+    );
+    for (field, s) in fields.iter().zip(store.iter()) {
         let storage = resolve_cap_override(
             &field.name,
             &field.field_type,
             current_package,
             message_name,
             resolver,
+            Some(*s),
         )?;
         cpp_fields.push(build_cpp_field(
             &field.name,

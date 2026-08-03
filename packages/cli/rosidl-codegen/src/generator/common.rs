@@ -368,7 +368,12 @@ pub(super) fn build_c_fields(
     msg: &rosidl_parser::Message,
     resolver: &CapacityResolver,
 ) -> Result<Vec<CField>, GeneratorError> {
-    let store = lowered_storages(current_package.unwrap_or(""), message, msg, resolver);
+    let store = lowered_storages(
+        current_package.unwrap_or(""),
+        message,
+        &msg.fields,
+        resolver,
+    );
     msg.fields
         .iter()
         .zip(store.iter())
@@ -522,13 +527,13 @@ pub(super) fn field_to_nros_field_with_mode(
 pub(super) fn lowered_storages(
     package: &str,
     message: &str,
-    msg: &rosidl_parser::Message,
+    fields: &[rosidl_parser::Field],
     resolver: &CapacityResolver,
 ) -> Vec<FieldStorage> {
     rosidl_lower::lower_fields(
         package,
         message,
-        msg,
+        fields,
         resolver,
         &rosidl_lower::TargetProfile::host(),
     )
@@ -546,7 +551,7 @@ pub(super) fn build_nros_fields(
     resolver: &CapacityResolver,
     mode: NrosCodegenMode,
 ) -> Result<Vec<NrosField>, GeneratorError> {
-    let store = lowered_storages(package, message, msg, resolver);
+    let store = lowered_storages(package, message, &msg.fields, resolver);
     msg.fields
         .iter()
         .zip(store.iter())
@@ -881,6 +886,8 @@ pub(super) fn resolve_cap_override(
     current_package: Option<&str>,
     message_name: &str,
     resolver: &CapacityResolver,
+    // phase-335 W1.c — storage from the IR when the caller already lowered it.
+    pre_storage: Option<FieldStorage>,
 ) -> Result<CppStorage, GeneratorError> {
     let kind = match field_type {
         FieldType::String | FieldType::WString => CapFieldKind::String,
@@ -894,7 +901,8 @@ pub(super) fn resolve_cap_override(
         field: name.to_string(),
         mode,
     };
-    let storage = resolver.resolve(package, message_name, name, kind);
+    let storage =
+        pre_storage.unwrap_or_else(|| resolver.resolve(package, message_name, name, kind));
     match storage.mode {
         StorageMode::Owned => Ok(CppStorage::Owned(Some(storage.cap))),
         StorageMode::Heap => {

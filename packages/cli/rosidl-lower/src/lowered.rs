@@ -6,7 +6,7 @@
 //! op, and the field order. Language spelling is NOT here — a template maps the
 //! neutral facts to `u32`/`uint32_t`/`write_u32`/… (RFC-0068 Stage 3).
 
-use rosidl_parser::ast::{FieldType, Message, PrimitiveType};
+use rosidl_parser::ast::{FieldType, PrimitiveType};
 use rosidl_resolve::ResolvedMessage;
 
 use crate::config::{CapacityResolver, FieldKind, FieldStorage, StorageMode};
@@ -223,7 +223,7 @@ pub fn lower(
 ) -> LoweredType {
     // `pkg/msg/Name` → (pkg, Name) for the config lookup keys.
     let (package, message) = split_type_name(&resolved.type_name);
-    let fields = lower_fields(package, message, &resolved.parsed, config, target);
+    let fields = lower_fields(package, message, &resolved.parsed.fields, config, target);
 
     let align = fields.iter().map(|f| f.align).max().unwrap_or(1).max(1);
     // Plain iff every field is plain AND all fields share one alignment (uniform
@@ -250,11 +250,11 @@ pub fn lower(
 pub fn lower_fields(
     package: &str,
     message: &str,
-    msg: &Message,
+    fields: &[rosidl_parser::ast::Field],
     config: &CapacityResolver,
     target: &TargetProfile,
 ) -> Vec<LoweredField> {
-    msg.fields
+    fields
         .iter()
         .map(|f| lower_field(&f.name, &f.field_type, package, message, config, target))
         .collect()
