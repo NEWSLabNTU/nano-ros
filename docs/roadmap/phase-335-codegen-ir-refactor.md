@@ -38,7 +38,7 @@ separate `nros-msg-to-idl` `.em` mechanism, outside this migration.
 hashes bundled pack content, a smoke test proves override+fallback, and the internals doc
 (`codegen-packs.md`) covers changing/overriding/adding a pack.
 
-**Remaining:** W5 (resolve-only msg deps, #378 tension) and W6 close-out (RFC-0068 → Stable,
+**Remaining:** W6 close-out (RFC-0068 → Stable,
 archive #402; the residual Rust type string is SequenceStructDef's element repr, documented).
 
 ### Learnings that refine the remaining plan (2026-08 W2)
@@ -156,11 +156,30 @@ allowed to change bytes is a deliberate, reviewed formatting normalization, call
 
 ### W5 — resolve-only dependency packages
 
-- [ ] **W5.a** At the Resolve seam, support resolve-only dep packages (hash deps without emitting)
+- [x] **W5.a** At the Resolve seam, support resolve-only dep packages (hash deps without emitting)
       and evaluate a single shared `*_msgs` crate against per-package `0.0.0` crates for the #378
       / RFC-0067 tension. Land whichever the RFC-0067 owners endorse.
 - **Acceptance:** stdlib msg deps resolve for correct hashes without emitting; leaf lockfile /
       registry-resolution behavior unchanged or improved vs phase-333 baseline.
+
+**W5 landed — the seam already had the mechanism; W5 pinned it and recorded the settled axis.**
+
+- **Resolve-only is a property of the seam, not a new feature.** `Resolved{Message,Service,
+  Action}::resolve(closure)` reaches every cross-package nested type ONLY through the caller's
+  `Fn(&str) -> Option<Message>`: the closure pulls the dependency's type-description into the RIHS
+  DAG so the hash is correct, and the seam emits nothing for it. Production wires this as
+  `ws.rs::ament_msg_resolver` (the ament index, hash-only); a dependency becomes a crate only when
+  it is *structurally embedded*, decided later by the emit walk — never by the hash resolver.
+- **The shared-vs-per-package axis was already decided by RFC-0067 / phase-333 (landed
+  `93aa02016`, 2026-08-02): per-package `0.0.0` path crates, #378 resolved.** W5 does NOT re-open
+  it — a structurally-embedded dep gets its own `0.0.0` crate; the resolve-only closure is the
+  orthogonal hash-time channel. "Whichever the owners endorse" = per-package, already in tree.
+- **Pinned by tests** (the two acceptance halves that were unguarded):
+  `resolved.rs::cross_package_dep_reaches_the_hash_only_through_the_resolver` (the closure IS the
+  dep channel and IS consulted) + `…::unresolvable_cross_package_dep_is_a_hard_error_not_a_wrong_hash`
+  (a missing nested type FAILS loudly — a wrong hash silently breaks discovery), and the
+  non-emission assertion added to `generator.rs::jazzy_emits_real_rihs01_hash_for_nested_message`
+  (the resolved `builtin_interfaces` dep is never written to the output tree).
 
 ### W6 — close out
 

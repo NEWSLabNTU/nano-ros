@@ -148,6 +148,7 @@ impl ResolvedAction {
 mod tests {
     use super::*;
     use rosidl_parser::parse_message;
+    use std::cell::Cell;
 
     fn no_deps(_: &str) -> Option<Message> {
         None
@@ -163,5 +164,52 @@ mod tests {
         // The wrapper's hash must equal the direct engine call it stands in for.
         let td = rihs::build_type_description("test_msgs/msg/Point", &msg, no_deps).unwrap();
         assert_eq!(r.type_hash, rihs::rihs01(&td));
+    }
+
+    // phase-335 W5 — the resolve-only contract of the Resolve seam.
+    //
+    // A cross-package dependency reaches the hash ONLY through the `resolve`
+    // closure: the seam pulls the nested type's description into the DAG so the
+    // hash is correct, but it produces no artifact for that dependency — emitting
+    // a crate for it is the caller's later, separate decision (see phase-333 /
+    // RFC-0067, which settled that a structurally-embedded dep gets its own
+    // `0.0.0` path crate). These tests pin the two halves: the closure IS the dep
+    // channel, and an ABSENT closure is a hard error, never a plausible-but-wrong
+    // hash on the wire.
+
+    #[test]
+    fn cross_package_dep_reaches_the_hash_only_through_the_resolver() {
+        // std_msgs/Header references builtin_interfaces/Time — a cross-package
+        // nested type the seam cannot see except through the closure.
+        let header = parse_message("builtin_interfaces/Time stamp\nstring frame_id\n").unwrap();
+        let consulted = Cell::new(false);
+        let resolve = |fqn: &str| -> Option<Message> {
+            if fqn == "builtin_interfaces/msg/Time" {
+                consulted.set(true);
+                parse_message("int32 sec\nuint32 nanosec\n").ok()
+            } else {
+                None
+            }
+        };
+        let r = ResolvedMessage::resolve("std_msgs/msg/Header", &header, resolve).unwrap();
+        assert!(
+            consulted.get(),
+            "the resolver is the ONLY channel a cross-package dep enters the DAG — it must be consulted"
+        );
+        assert!(r.type_hash.starts_with("RIHS01_"));
+        assert_eq!(r.type_hash.len(), 71);
+    }
+
+    #[test]
+    fn unresolvable_cross_package_dep_is_a_hard_error_not_a_wrong_hash() {
+        // Same Header, but the closure cannot supply Time. A missing nested type
+        // must FAIL loudly — a wrong hash silently breaks discovery on the wire.
+        let header = parse_message("builtin_interfaces/Time stamp\nstring frame_id\n").unwrap();
+        let err = ResolvedMessage::resolve("std_msgs/msg/Header", &header, no_deps)
+            .expect_err("an unresolvable nested type must be an error, never a hash");
+        assert!(
+            err.contains("cannot resolve nested type"),
+            "expected the loud unresolved-nested error, got: {err}"
+        );
     }
 }

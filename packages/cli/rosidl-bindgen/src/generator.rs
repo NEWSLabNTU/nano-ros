@@ -874,6 +874,13 @@ mod tests {
             )),
             "Jazzy Header (nested Time) must carry the real captured RIHS01 hash, got:\n{rs}"
         );
+        // phase-335 W5 — resolve-only: the cross-package dep was pulled into the
+        // hash DAG through the resolver, but no crate is emitted for it. Only the
+        // target package appears in the output tree.
+        assert!(
+            !out.join("builtin_interfaces").exists(),
+            "the resolved dep builtin_interfaces must NOT be emitted — it is hash-only"
+        );
     }
 
     #[test]
