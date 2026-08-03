@@ -32,6 +32,12 @@ broken=0
 # `git grep` over tracked files only: the enumeration SSoT, and structurally
 # immune to build trees (an unfiltered walk here takes minutes and finds
 # vendored copies).
+#
+# THIS FILE IS EXCLUDED from its own scan. The comment above names the dead
+# `0062-` path as the worked example of what this gate catches, so scanning
+# itself makes the gate fail on its own documentation — which is what it did
+# the moment it landed. A gate that cannot describe the bug it prevents is
+# worse than one that quietly skips one file.
 while IFS= read -r hit; do
     src="${hit%%:*}"
     rest="${hit#*:}"
@@ -46,7 +52,8 @@ while IFS= read -r hit; do
     fi
     echo "  $src:$line -> $ref" >&2
     broken=$((broken + 1))
-done < <(git grep -onE "docs/(design|issues)/[0-9]{4}-[a-z0-9-]+\.md" -- . 2>/dev/null)
+done < <(git grep -onE "docs/(design|issues)/[0-9]{4}-[a-z0-9-]+\.md" -- . \
+    ':!scripts/check-doc-refs.sh' 2>/dev/null)
 
 if [ "$broken" -ne 0 ]; then
     {

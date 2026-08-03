@@ -26,7 +26,7 @@
 
 use log::{error, info};
 use nros::prelude::*;
-use std_msgs::msg::{Int32, String as StringMsg};
+use std_msgs::msg::String as StringMsg;
 
 fn main() {
     // Register the RMW backend the build linked (idempotent; must run before
@@ -47,47 +47,33 @@ fn main() {
         .build()
         .expect("Failed to build node");
     let topic = "/chatter";
-    // The message type is baked into the wire keyexpr, so the subscriber's
-    // type must match the publisher's. Default is `std_msgs/String` (the
-    // canonical talker demo); `NROS_SUB_TYPE=int32` observes the workspace
-    // Int32 demo (`talker_pkg`) instead — used by the ws-entry E2E, whose
-    // Entry publishes Int32 on `/chatter`.
-    let sub_type = std::env::var("NROS_SUB_TYPE").unwrap_or_default();
-    if sub_type.eq_ignore_ascii_case("int32") {
-        executor
-            .node_mut(nid)
-            .subscription(topic)
-            .typed::<Int32>()
-            .build(move |msg| {
-                info!("I heard: [{}]", msg.data);
-            })
-            .expect("Failed to add subscription");
-    } else {
-        executor
-            .node_mut(nid)
-            .subscription(topic)
-            .typed::<StringMsg>()
-            .message_info()
-            .build(move |msg, info| {
-                info!("I heard: [{}]", msg.data);
-                if let Some(info) = info {
-                    let gid = info.publisher_gid();
-                    log::trace!(
-                        "seq={} gid={:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ",
-                        info.publication_sequence_number(),
-                        gid[0],
-                        gid[1],
-                        gid[2],
-                        gid[3],
-                        gid[4],
-                        gid[5],
-                        gid[6],
-                        gid[7],
-                    );
-                }
-            })
-            .expect("Failed to add subscription");
-    }
+    // phase-338 W3 — this had an `NROS_SUB_TYPE` switch subscribing Int32 or
+    // String for test convenience. The Int32 observer lives in
+    // `nros-tests/bins/int32-sink`; the example is the official ROS 2 demo.
+    executor
+        .node_mut(nid)
+        .subscription(topic)
+        .typed::<StringMsg>()
+        .message_info()
+        .build(move |msg, info| {
+            info!("I heard: [{}]", msg.data);
+            if let Some(info) = info {
+                let gid = info.publisher_gid();
+                log::trace!(
+                    "seq={} gid={:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ",
+                    info.publication_sequence_number(),
+                    gid[0],
+                    gid[1],
+                    gid[2],
+                    gid[3],
+                    gid[4],
+                    gid[5],
+                    gid[6],
+                    gid[7],
+                );
+            }
+        })
+        .expect("Failed to add subscription");
     info!("Subscriber created for topic: {topic}");
     info!("Waiting for messages on {topic}...");
 
