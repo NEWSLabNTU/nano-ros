@@ -11,9 +11,9 @@ pub struct {{ message_name }} {
     {% for field in fields %}
     {% if field.kind == "LargeArray" %}
     #[cfg_attr(feature = "serde", serde(with = "serde_big_array::BigArray"))]
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | rust_type_idiomatic }},
     {% else %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | rust_type_idiomatic }},
     {% endif %}
     {% endfor %}
 }

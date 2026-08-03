@@ -29,8 +29,7 @@ pub struct LibRsTemplate {
     pub has_actions: bool,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "message_rmw.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct MessageRmwTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
@@ -39,8 +38,7 @@ pub struct MessageRmwTemplate<'a> {
     pub constants: Vec<MessageConstant>,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "message_idiomatic.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct MessageIdiomaticTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
@@ -52,7 +50,10 @@ pub struct MessageIdiomaticTemplate<'a> {
 #[derive(Clone, serde::Serialize)]
 pub struct RmwField {
     pub name: String,
-    pub rust_type: String,
+    /// RFC-0068 step 2 — the `rust_type_rmw` pack filter composes the Rust type
+    /// string from these neutral facts (was the pre-baked `rust_type`).
+    pub field_type: rosidl_parser::FieldType,
+    pub current_package: String,
     pub default_value: String,
 }
 
@@ -97,7 +98,9 @@ pub enum FieldKind {
 #[derive(Clone, serde::Serialize)]
 pub struct IdiomaticField {
     pub name: String,
-    pub rust_type: String,
+    /// RFC-0068 step 2 — composed by the `rust_type_idiomatic` pack filter.
+    pub field_type: rosidl_parser::FieldType,
+    pub current_package: String,
     pub default_value: String,
     pub kind: FieldKind,
 }
@@ -109,8 +112,7 @@ pub struct MessageConstant {
     pub value: String,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "service_rmw.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ServiceRmwTemplate<'a> {
     pub package_name: &'a str,
     pub service_name: &'a str,
@@ -120,8 +122,7 @@ pub struct ServiceRmwTemplate<'a> {
     pub response_constants: Vec<MessageConstant>,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "service_idiomatic.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ServiceIdiomaticTemplate<'a> {
     pub package_name: &'a str,
     pub service_name: &'a str,
@@ -131,8 +132,7 @@ pub struct ServiceIdiomaticTemplate<'a> {
     pub response_constants: Vec<MessageConstant>,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "action_rmw.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ActionRmwTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,
@@ -144,8 +144,7 @@ pub struct ActionRmwTemplate<'a> {
     pub feedback_constants: Vec<MessageConstant>,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "action_idiomatic.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ActionIdiomaticTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,

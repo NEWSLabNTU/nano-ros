@@ -15,7 +15,7 @@ pub mod request {
     #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub struct {{ service_name }}_Request {
         {% for field in request_fields %}
-        pub {{ field.name }}: {{ field.rust_type }},
+        pub {{ field.name }}: {{ field | rust_type_idiomatic }},
         {% endfor %}
     }
 
@@ -259,7 +259,7 @@ pub mod response {
     #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub struct {{ service_name }}_Response {
         {% for field in response_fields %}
-        pub {{ field.name }}: {{ field.rust_type }},
+        pub {{ field.name }}: {{ field | rust_type_idiomatic }},
         {% endfor %}
     }
 

@@ -11,7 +11,7 @@ use crate::{
     },
     types::{
         NrosCodegenMode, c_type_for_constant, constant_value_to_rust, escape_keyword,
-        nros_type_for_constant, rust_type_for_constant, rust_type_for_field, to_c_package_name,
+        nros_type_for_constant, rust_type_for_constant, to_c_package_name,
     },
     utils::{extract_dependencies, needs_big_array, to_snake_case},
 };
@@ -75,7 +75,8 @@ pub fn generate_service_package(
             .iter()
             .map(|f| RmwField {
                 name: escape_keyword(&f.name),
-                rust_type: rust_type_for_field(&f.field_type, true, Some(package_name)),
+                field_type: f.field_type.clone(),
+                current_package: package_name.to_string(),
                 default_value: f
                     .default_value
                     .as_ref()
@@ -90,7 +91,8 @@ pub fn generate_service_package(
             .iter()
             .map(|f| IdiomaticField {
                 name: escape_keyword(&f.name),
-                rust_type: rust_type_for_field(&f.field_type, false, Some(package_name)),
+                field_type: f.field_type.clone(),
+                current_package: package_name.to_string(),
                 default_value: f
                     .default_value
                     .as_ref()

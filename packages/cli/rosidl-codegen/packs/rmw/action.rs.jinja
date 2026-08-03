@@ -47,7 +47,7 @@ extern "C" {
 #[derive(Debug, Clone, PartialEq)]
 pub struct {{ action_name }}Goal {
     {% for field in goal_fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | rust_type_rmw }},
     {% endfor %}
 }
 
@@ -124,7 +124,7 @@ extern "C" {
 #[derive(Debug, Clone, PartialEq)]
 pub struct {{ action_name }}Result {
     {% for field in result_fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | rust_type_rmw }},
     {% endfor %}
 }
 
@@ -201,7 +201,7 @@ extern "C" {
 #[derive(Debug, Clone, PartialEq)]
 pub struct {{ action_name }}Feedback {
     {% for field in feedback_fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | rust_type_rmw }},
     {% endfor %}
 }
 

@@ -14,7 +14,7 @@ pub mod goal {
     #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub struct {{ action_name }}Goal {
         {% for field in goal_fields %}
-        pub {{ field.name }}: {{ field.rust_type }},
+        pub {{ field.name }}: {{ field | rust_type_idiomatic }},
         {% endfor %}
     }
 
@@ -205,7 +205,7 @@ pub mod result {
     #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub struct {{ action_name }}Result {
         {% for field in result_fields %}
-        pub {{ field.name }}: {{ field.rust_type }},
+        pub {{ field.name }}: {{ field | rust_type_idiomatic }},
         {% endfor %}
     }
 
@@ -392,7 +392,7 @@ pub mod feedback {
     #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub struct {{ action_name }}Feedback {
         {% for field in feedback_fields %}
-        pub {{ field.name }}: {{ field.rust_type }},
+        pub {{ field.name }}: {{ field | rust_type_idiomatic }},
         {% endfor %}
     }
 

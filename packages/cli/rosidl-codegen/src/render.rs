@@ -25,6 +25,21 @@ struct CTypeSpell {
     current_package: String,
 }
 
+/// Neutral facts the Rust-type pack filters (`rust_type_rmw` / `rust_type_idiomatic`)
+/// compose the Rust type string from. `current_package` drives the self-ref
+/// (`crate::` vs `pkg::`) choice inside `rust_type_for_field`.
+#[derive(serde::Deserialize)]
+struct RustTypeSpell {
+    field_type: rosidl_parser::FieldType,
+    current_package: String,
+}
+
+impl RustTypeSpell {
+    fn pkg(&self) -> Option<&str> {
+        (!self.current_package.is_empty()).then_some(self.current_package.as_str())
+    }
+}
+
 /// One environment holding every converted pack, keyed by a stable template
 /// name (`"message.h"`, `"message_rmw.rs"`, …). Shared macros are registered
 /// under the name their importers use (`_field.jinja`).
@@ -45,6 +60,14 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     env.add_filter("c_array_suffix", |v: ViaDeserialize<CTypeSpell>| {
         let c = &v.0;
         crate::types::c_array_suffix_spelling(&c.field_type, c.is_configurable, c.is_heap, c.cap)
+    });
+    // RFC-0068 step 2 — Rust type spelling in the pack (rmw layer = true,
+    // idiomatic layer = false), was pre-baked as `RmwField/IdiomaticField.rust_type`.
+    env.add_filter("rust_type_rmw", |v: ViaDeserialize<RustTypeSpell>| {
+        crate::types::rust_type_for_field(&v.0.field_type, true, v.0.pkg())
+    });
+    env.add_filter("rust_type_idiomatic", |v: ViaDeserialize<RustTypeSpell>| {
+        crate::types::rust_type_for_field(&v.0.field_type, false, v.0.pkg())
     });
 
     // --- C pack (packs/c) ---

@@ -36,7 +36,7 @@ extern "C" {
 #[derive(Debug, Clone, PartialEq)]
 pub struct {{ service_name }}Request {
     {% for field in request_fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | rust_type_rmw }},
     {% endfor %}
 }
 
@@ -113,7 +113,7 @@ extern "C" {
 #[derive(Debug, Clone, PartialEq)]
 pub struct {{ service_name }}Response {
     {% for field in response_fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | rust_type_rmw }},
     {% endfor %}
 }
 

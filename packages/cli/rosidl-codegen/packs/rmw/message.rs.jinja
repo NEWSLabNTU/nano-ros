@@ -31,7 +31,7 @@ extern "C" {
 #[derive(Debug, Clone, PartialEq)]
 pub struct {{ message_name }} {
     {% for field in fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | rust_type_rmw }},
     {% endfor %}
 }
 
