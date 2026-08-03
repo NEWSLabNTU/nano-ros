@@ -14,6 +14,12 @@ superseded-by: null
 > **Generated crate identity is env-invariant (RFC-0067 / phase-333).** The emitted crate carries
 > `version = "0.0.0"`, with the source package version demoted to `[package.metadata.nros]
 > ament_version`, so a committed consumer lock never records which ROS install produced it.
+>
+> **The generator is a four-stage pipeline (RFC-0068 / phase-335, Stable).** This RFC's discovery +
+> CMake call shape feed **parse → resolve → lower → render**: parse the ROS interface, resolve the
+> dependency graph + RIHS hashes once, lower to a target-parameterized IR, then render each language
+> from runtime `minijinja` data packs. Adding a target language is dropping a pack, not editing Rust
+> — see `book/src/internals/codegen-packs.md`.
 
 **Goal.** A msg package authored against the ROS 2 convention (verbatim
 `package.xml` + `msg/*.msg` + the standard `rosidl_generate_interfaces(...)`

@@ -1,94 +1,48 @@
 ---
 id: 402
 title: "Message codegen has no language-neutral IR — parse/resolve/hash/sizing logic is entangled with per-language emission"
-status: open
+status: resolved
 type: enhancement
 area: codegen
 related: [rfc-0068, phase-335, rfc-0023, issue-0378, phase-333]
+resolved_in: phase-335 (RFC-0068)
 ---
 
-> **Designed in [RFC-0068](../design/0068-language-neutral-codegen-ir.md); implemented in waves by
-> [phase-335](../roadmap/phase-335-codegen-ir-refactor.md).** This issue records the problem +
-> tradeoffs; the RFC records the decision; the phase records the migration.
+> **Designed in [RFC-0068](../../design/0068-language-neutral-codegen-ir.md) (Stable); implemented
+> in waves by [phase-335](../../roadmap/phase-335-codegen-ir-refactor.md).**
 
-## Idea
+## Problem (as filed)
 
-Introduce a **language-neutral intermediate representation** for messages/services/
-actions: parse the ROS interface once, resolve the dependency graph once, compute
-RIHS type hashes once, decide layout/sizing once — emit that as a self-contained
-IR — and let each target backend (Rust / C / C++ / …) be a **thin template that
-consumes the IR** rather than re-deriving any of it.
+Parse / dependency-resolution / RIHS hashing / sizing were entangled with per-language emission
+in `rosidl-codegen`: each language re-walked the same structures, and derived facts (hash,
+plainness, storage mode) lived in the emission pass instead of a shared, inspectable IR. A second
+backend could not reuse resolution/hashing without linking our Rust codegen.
 
-The IR is the single source of truth; a backend that wants to add a language should
-only have to write templates over the IR, never re-implement hashing, dependency
-resolution, or sizing.
+## Resolution — the four-stage pipeline (RFC-0068), landed by phase-335
 
-## Where we are today
+**parse → resolve → lower → render**, byte-identical-output-preserving until the final wave:
 
-We already have the *inputs* of this idea, but not the boundary:
+- **Resolve** (`rosidl-resolve`): `Resolved{Message,Service,Action}` carries the fully-qualified
+  name, the canonical REP-2011 type-description closure, and the RIHS01 hash — computed once, via a
+  single hasher/resolver. Cross-package deps reach the DAG only through a caller closure and are
+  **resolve-only** (hashed, never emitted); a structurally-embedded dep becomes its own `0.0.0`
+  path crate per RFC-0067/phase-333 (issue-0378 settled the identity axis, not re-opened here).
+- **Lower** (`rosidl-lower`): `LoweredType = ResolvedType ⊗ CodegenConfig ⊗ TargetProfile` — the
+  embedded, target-parameterized constraints our `no_std` C/C++ emitters need (storage/sizing mode,
+  alignment/plainness, `heapless` vs alloc), never host-64-bit literals baked in.
+- **Render**: every backend (C / RMW-Rust / idiomatic-Rust / nros / C++ + scaffolding) renders from
+  runtime `minijinja` **data packs** (`packs/{c,rmw,rust,nros,cpp,scaffold}/`). No backend spells a
+  type itself — the type strings are composed in the pack by registered spelling filters. Askama is
+  gone. Adding a language is dropping a pack (+ a spelling filter if needed), no Rust rewrite:
+  external packs load via `NROS_TEMPLATE_DIR` / `set_template_dir` with no rebuild, the fingerprint
+  hashes bundled pack content, a smoke test proves override+fallback. See
+  `book/src/internals/codegen-packs.md`.
 
-* `rosidl-parser` produces an in-process AST (`ast.rs`: `PrimitiveType`, `FieldType`,
-  `Field`, `Message`) — a parsed IR, but Rust-in-process only, not a serializable
-  artifact a non-Rust backend could consume.
-* `rosidl-codegen` holds the resolver, `rihs.rs` (hashing), `idl_generator.rs`, and
-  `templates.rs` — parsing/resolution/hashing/sizing and the per-language *emission*
-  are entangled in one Rust crate. Each language path re-walks the same structures.
+**Consumer-set decision (open question #1):** the boundary is an **in-process trait boundary**
+(the `Resolved*`/`Lowered*` IR types the Rust backends consume directly), not a serialized JSON-IR
+— no serialize→parse→render round-trip in the build path. A non-Rust consumer would be reached via
+a thin export, not adopted speculatively.
 
-So the derived facts (type hash, dependency closure, storage/sizing mode, plainness)
-live inside the emission pass instead of in a shared, inspectable IR. Adding or
-changing a language means touching the entangled path; a second backend cannot reuse
-the resolution/hashing without linking our Rust codegen.
-
-## Why it's worth doing
-
-* **One hasher / one resolver.** RIHS and dependency resolution computed exactly once;
-  no risk of a second language computing a subtly different hash (the drift class this
-  repo keeps closing — cf. the sizes-header mirror, issue-0378 identity work).
-* **Backends become dumb fillers.** New language = templates over the IR. Lowers the
-  cost of the C/C++/(future) story and keeps them byte-identical by construction.
-* **Inspectable + testable.** A materialized IR can be golden-tested and diffed
-  independently of any emitter.
-* Naturally carries the **"resolve-only dependency packages"** idea: the IR records
-  dep type-descriptions (for correct hashes) without emitting code for them — relevant
-  to the `0.0.0` path-dep tension (issue-0378 / RFC-0067 / phase-333).
-
-## Consequences / open questions (this is why it's an issue, not a patch)
-
-1. **Serialization format is NOT decided — and need not be JSON.** A serialized neutral
-   IR (JSON / MessagePack / a stable Rust-native encoding) buys language-agnostic
-   consumers and golden tests, but costs a serialize→parse→render round-trip per build.
-   The alternative is an in-process **trait boundary** (a stable `Ir` type the Rust
-   backends consume directly, non-Rust backends reached via a thin export) — no I/O
-   cost, but no non-Rust consumer without an export step. Decide per the actual
-   consumer set; do not assume JSON.
-
-2. **The IR must encode EMBEDDED constraints, or it is useless to us.** Unlike a
-   hosted generator, our targets are `no_std` with fixed-capacity buffers. The IR has
-   to carry: storage/sizing mode (bounded vs unbounded, fixed-capacity), alignment and
-   **plainness** (is a struct a POD blit candidate — all fields plain AND single uniform
-   alignment, else repr(C) padding forbids the fast path), `heapless` vs alloc choice,
-   and per-target size classing. An IR that only models the ROS type system (like a
-   hosted stack's) would drop exactly the facts our C/C++ embedded emitters need.
-
-3. **Performance.** Codegen already runs in the build path (CONFIGURE_DEPENDS, stale
-   probes). A heavier parse+serialize+render pipeline must not regress incremental
-   build time; measure against `rosidl-codegen/benches/generation_benchmark.rs`.
-
-4. **Target-platform compat.** The same IR feeds a host tool AND drives C/C++ that
-   compiles for ARM short-enums / 32-bit targets. Layout facts in the IR must be
-   target-parameterized (or target-free with the emitter applying target rules), never
-   host-64-bit literals baked in (the `generated.rs` layout-literal footgun, RFC-0054).
-
-## Direction (to be designed, not prescribed here)
-
-Extract the parse→resolve→hash→size stages behind a neutral IR type with the embedded
-fields above; make the Rust/C/C++ emitters consume the IR; decide the
-serialized-vs-in-process boundary from the consumer set. Fold in resolve-only deps.
-Designed as RFC-0068 (four stages: parse → resolve → lower → render; render is a runtime-templated
-data-pack consumer); migrated in waves by phase-335, byte-identical-output-preserving until the
-final wave.
-
-## Not doing
-
-No specific serialization format is chosen by this issue. No new language is added by
-this issue — it only refactors the seam so adding one is cheap.
+**Sole residual:** the Rust-side `SequenceStructDef` element repr (`elem_repr_c`) is still spelled
+in the builder — it feeds a Rust mirror struct, not a language-selectable output; documented in
+`generator/common.rs`.

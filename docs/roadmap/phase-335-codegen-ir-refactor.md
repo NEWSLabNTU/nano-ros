@@ -8,7 +8,7 @@
 [RFC-0067](../design/0067-env-invariant-msg-dep-identity.md)/phase-333 (resolve-only deps),
 [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md) (fingerprint gains pack inputs)
 
-**Status.** IN PROGRESS. **W1 landed** (rosidl-resolve + rosidl-lower crates, the
+**Status.** COMPLETE (2026-08-04). RFC-0068 is Stable; #402 archived. **W1 landed** (rosidl-resolve + rosidl-lower crates, the
 Resolved/Lowered IR, the production hash path routed through the IR, hash-once/lower-
 per-target golden). **W2 landed** (C backend on minijinja packs, byte-identical).
 **W3 substantially landed** — ALL FIVE type-emission backends now render from
@@ -38,8 +38,14 @@ separate `nros-msg-to-idl` `.em` mechanism, outside this migration.
 hashes bundled pack content, a smoke test proves override+fallback, and the internals doc
 (`codegen-packs.md`) covers changing/overriding/adding a pack.
 
-**Remaining:** W6 close-out (RFC-0068 → Stable,
-archive #402; the residual Rust type string is SequenceStructDef's element repr, documented).
+**W6 close-out landed** — RFC-0068 `Draft → Stable`; #402 flipped `resolved` and moved to
+`docs/issues/archived/`; RFC-0023 now points at the four-stage pipeline. No dead per-language
+emit fn remains: the `*_type_for_field` spelling functions back the pack filters (0 builder
+callers for c/cpp/nros/rust), the `*_heap` variants are capability guards not string emission,
+and the sole residual Rust type string is `SequenceStructDef`'s element repr (`elem_repr_c`),
+documented in `generator/common.rs`.
+
+**Remaining:** none — phase complete.
 
 ### Learnings that refine the remaining plan (2026-08 W2)
 
@@ -183,11 +189,22 @@ allowed to change bytes is a deliberate, reviewed formatting normalization, call
 
 ### W6 — close out
 
-- [ ] **W6.a** Delete any remaining dead per-language Rust in `rosidl-codegen`.
-- [ ] **W6.b** RFC-0068 `Draft → Stable`; resolve issue #402 (move to `archived/`).
-- [ ] **W6.c** Update RFC-0023 to point at the four-stage pipeline as the current shape.
-- **Acceptance:** `rg` finds no `*_type_for_field`-style per-language emit fn in the codegen crate;
-      #402 archived; RFC-0068 Stable.
+- [x] **W6.a** Delete any remaining dead per-language Rust in `rosidl-codegen`.
+- [x] **W6.b** RFC-0068 `Draft → Stable`; resolve issue #402 (move to `archived/`).
+- [x] **W6.c** Update RFC-0023 to point at the four-stage pipeline as the current shape.
+- **Acceptance (restated — the literal `rg` form was wrong, learning #4):** the `*_type_for_field`
+      functions are NOT dead and cannot be deleted — after the step-2 spelling move they are the
+      IMPLEMENTATION of the pack spelling filters (`c_type`/`cpp_type`/`nros_type`/`rust_type_*`
+      registered on the render `Environment`). The real acceptance is that no builder pre-bakes a
+      per-language type STRING into a view struct: verified — 0 builder/template callers of
+      `c_type_for_field`/`cpp_type_for_field`/`nros_type_for_field`; the `*_type_for_field_heap`
+      calls are capability GUARDS (`.is_some()`/`.is_none()`), not emission; the one remaining
+      `repr_c_type_for_field` builder call is `elem_repr_c` (the Rust-side `SequenceStructDef`
+      element repr, documented). #402 archived; RFC-0068 Stable.
+
+**W6.a is satisfied in spirit, not by the letter.** The per-language type logic lives behind the
+pack + filter seam (what vs how), which is the phase's goal — the functions surviving as filter
+backends is the intended end state, not residue to delete.
 
 ## Out of scope
 

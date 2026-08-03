@@ -87,14 +87,14 @@ data on the same stream, and only the data is machine-shaped. Same failure as 02
 with conditions recorded, and a dead counter is a HARD failure emitting no numbers at all. See
 `0403-*`. (2026-08-03)
 
-**#402** — message codegen has no language-neutral IR: parse / dependency-resolution / RIHS hashing /
-sizing are entangled with per-language emission in `rosidl-codegen`, so each language re-walks the same
-structures and derived facts (hash, plainness, storage mode) live in the emission pass instead of a
-shared, inspectable IR. Idea: a neutral IR (SSoT) that thin per-language templates consume — but the
-serialization format is undecided (need NOT be JSON; in-process trait boundary is an option) and the IR
-MUST carry embedded constraints (fixed-capacity sizing, alignment/plainness, target-parameterized
-layout) or it is useless for our `no_std` C/C++ targets. Records the tradeoffs; likely an RFC amending
-RFC-0023. See `0402-*`. (2026-08-03)
+Recently resolved (2026-08-04): **#402** — message codegen had no language-neutral IR: parse /
+dependency-resolution / RIHS hashing / sizing were entangled with per-language emission in
+`rosidl-codegen`. RESOLVED by RFC-0068 (Stable) / phase-335: a four-stage pipeline **parse → resolve
+→ lower → render**, byte-identical until the final wave. Resolve (`rosidl-resolve`) hashes once and
+carries the type-description closure; Lower (`rosidl-lower`) adds target-parameterized embedded
+constraints for the `no_std` C/C++ emitters; Render drives every backend from runtime `minijinja`
+data packs — adding a language is dropping a pack, not editing Rust (askama gone). Boundary is an
+in-process trait, not a serialized JSON-IR. See `archived/0402-*` + `book/src/internals/codegen-packs.md`.
 
 **#398** — `[[component]] name` no longer matches the launch node name, so every per-node projection
 keyed on it silently binds NOTHING. phase-331's consolidation gave component names workspace-unique

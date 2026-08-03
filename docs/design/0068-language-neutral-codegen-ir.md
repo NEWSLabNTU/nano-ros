@@ -1,9 +1,9 @@
 ---
 rfc: 0068
 title: "Language-neutral codegen IR — parse → resolve → lower → render"
-status: Draft
+status: Stable
 since: 2026-08
-last-reviewed: 2026-08
+last-reviewed: 2026-08-04
 implements-tracked-by: [phase-335]
 supersedes: []
 superseded-by: null
