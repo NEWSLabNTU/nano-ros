@@ -144,9 +144,17 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "rust",
         program: "action-client",
         platform: "native",
-        reason: "W3 — hosted `main.rs` (register_linked_rmw + env_logger + banner + \
-                 init/executor-open) against the group's `lib.rs`; all of it is \
-                 ceremony the generated entry already owns on embedded.",
+        reason: "CLASS DIFFERENCE, not a portability gap — measured 2026-08-04. EVERY \
+                 native rust example is `[package.metadata.nros.application]` \
+                 (imperative Executor API) and ZERO are \
+                 `[package.metadata.nros.node]`, while every embedded copy is \
+                 Node-class (declarative `ExecutableNode` + `nros::node!`). \
+                 `example_shape.rs` enforces the Node XOR Application split \
+                 deliberately. Comparing them is a category error. C has no \
+                 such divide — `c/talker` is identical across native and 5 \
+                 embedded platforms. Awaiting a maintainer decision (phase-338 \
+                 W3): give native a Node-class sibling, or accept two Rust \
+                 authoring APIs as intended.",
     },
     Divergence {
         lang: "rust",
@@ -183,9 +191,17 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "rust",
         program: "action-server",
         platform: "native",
-        reason: "W3 — hosted `main.rs` (register_linked_rmw + env_logger + banner + \
-                 init/executor-open) against the group's `lib.rs`; all of it is \
-                 ceremony the generated entry already owns on embedded.",
+        reason: "CLASS DIFFERENCE, not a portability gap — measured 2026-08-04. EVERY \
+                 native rust example is `[package.metadata.nros.application]` \
+                 (imperative Executor API) and ZERO are \
+                 `[package.metadata.nros.node]`, while every embedded copy is \
+                 Node-class (declarative `ExecutableNode` + `nros::node!`). \
+                 `example_shape.rs` enforces the Node XOR Application split \
+                 deliberately. Comparing them is a category error. C has no \
+                 such divide — `c/talker` is identical across native and 5 \
+                 embedded platforms. Awaiting a maintainer decision (phase-338 \
+                 W3): give native a Node-class sibling, or accept two Rust \
+                 authoring APIs as intended.",
     },
     Divergence {
         lang: "rust",
@@ -231,9 +247,17 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "rust",
         program: "listener",
         platform: "native",
-        reason: "W3 — hosted `main.rs` (register_linked_rmw + env_logger + banner + \
-                 init/executor-open) against the group's `lib.rs`; all of it is \
-                 ceremony the generated entry already owns on embedded.",
+        reason: "CLASS DIFFERENCE, not a portability gap — measured 2026-08-04. EVERY \
+                 native rust example is `[package.metadata.nros.application]` \
+                 (imperative Executor API) and ZERO are \
+                 `[package.metadata.nros.node]`, while every embedded copy is \
+                 Node-class (declarative `ExecutableNode` + `nros::node!`). \
+                 `example_shape.rs` enforces the Node XOR Application split \
+                 deliberately. Comparing them is a category error. C has no \
+                 such divide — `c/talker` is identical across native and 5 \
+                 embedded platforms. Awaiting a maintainer decision (phase-338 \
+                 W3): give native a Node-class sibling, or accept two Rust \
+                 authoring APIs as intended.",
     },
     Divergence {
         lang: "rust",
@@ -271,9 +295,17 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "rust",
         program: "service-client",
         platform: "native",
-        reason: "W3 — hosted `main.rs` (register_linked_rmw + env_logger + banner + \
-                 init/executor-open) against the group's `lib.rs`; all of it is \
-                 ceremony the generated entry already owns on embedded.",
+        reason: "CLASS DIFFERENCE, not a portability gap — measured 2026-08-04. EVERY \
+                 native rust example is `[package.metadata.nros.application]` \
+                 (imperative Executor API) and ZERO are \
+                 `[package.metadata.nros.node]`, while every embedded copy is \
+                 Node-class (declarative `ExecutableNode` + `nros::node!`). \
+                 `example_shape.rs` enforces the Node XOR Application split \
+                 deliberately. Comparing them is a category error. C has no \
+                 such divide — `c/talker` is identical across native and 5 \
+                 embedded platforms. Awaiting a maintainer decision (phase-338 \
+                 W3): give native a Node-class sibling, or accept two Rust \
+                 authoring APIs as intended.",
     },
     Divergence {
         lang: "rust",
@@ -319,9 +351,17 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "rust",
         program: "service-server",
         platform: "native",
-        reason: "W3 — hosted `main.rs` (register_linked_rmw + env_logger + banner + \
-                 init/executor-open) against the group's `lib.rs`; all of it is \
-                 ceremony the generated entry already owns on embedded.",
+        reason: "CLASS DIFFERENCE, not a portability gap — measured 2026-08-04. EVERY \
+                 native rust example is `[package.metadata.nros.application]` \
+                 (imperative Executor API) and ZERO are \
+                 `[package.metadata.nros.node]`, while every embedded copy is \
+                 Node-class (declarative `ExecutableNode` + `nros::node!`). \
+                 `example_shape.rs` enforces the Node XOR Application split \
+                 deliberately. Comparing them is a category error. C has no \
+                 such divide — `c/talker` is identical across native and 5 \
+                 embedded platforms. Awaiting a maintainer decision (phase-338 \
+                 W3): give native a Node-class sibling, or accept two Rust \
+                 authoring APIs as intended.",
     },
     Divergence {
         lang: "rust",
@@ -367,9 +407,17 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "rust",
         program: "talker",
         platform: "native",
-        reason: "W3 — hosted `main.rs` (register_linked_rmw + env_logger + banner + \
-                 init/executor-open) against the group's `lib.rs`; all of it is \
-                 ceremony the generated entry already owns on embedded.",
+        reason: "CLASS DIFFERENCE, not a portability gap — measured 2026-08-04. EVERY \
+                 native rust example is `[package.metadata.nros.application]` \
+                 (imperative Executor API) and ZERO are \
+                 `[package.metadata.nros.node]`, while every embedded copy is \
+                 Node-class (declarative `ExecutableNode` + `nros::node!`). \
+                 `example_shape.rs` enforces the Node XOR Application split \
+                 deliberately. Comparing them is a category error. C has no \
+                 such divide — `c/talker` is identical across native and 5 \
+                 embedded platforms. Awaiting a maintainer decision (phase-338 \
+                 W3): give native a Node-class sibling, or accept two Rust \
+                 authoring APIs as intended.",
     },
     Divergence {
         lang: "rust",

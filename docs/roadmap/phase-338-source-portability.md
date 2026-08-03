@@ -178,6 +178,38 @@ RMW registration and the spin loop already live.
 
 ## W3 — Close the native/embedded Rust split
 
+> **Measured 2026-08-04, and the premise was wrong. Read before starting.**
+>
+> This wave assumed native's 91-line `main.rs` was an *unsplit* version of the
+> group's 36-line body — logic plus ceremony the generated entry already owns.
+> It is not. Native's rust examples are a **different example class**:
+>
+> * **Every** native rust example declares `[package.metadata.nros.application]`
+>   and uses the imperative Executor API (`Executor::open`, `create_node`,
+>   `register_timer`). **Zero** are Node-class.
+> * **Every** embedded copy declares `[package.metadata.nros.node]` and uses the
+>   declarative API (`impl ExecutableNode`, `nros::node!`).
+> * `example_shape.rs` asserts this "Node XOR Application classification"
+>   deliberately — it is a designed distinction, not drift.
+>
+> So closing the split as written would **rewrite the reference platform's
+> examples from one public API to another**, which is a product decision, not a
+> portability fix. The 6 native rust divergences are reclassified in the gate as
+> a class difference with that reasoning recorded.
+>
+> **Note what this does NOT excuse.** C has no such divide: `c/talker` is one
+> 89-line body across native and five embedded platforms. So the two-API split
+> is specific to Rust, and it is fair to ask whether it should exist — a Rust
+> user reading the native talker and then the FreeRTOS talker sees two different
+> ways to write the same node.
+>
+> **Open decision, for the maintainer:**
+> (a) give native a Node-class sibling example so the group has a peer and both
+>     APIs stay documented; (b) migrate the native examples to Node-class and
+>     keep the imperative API for genuinely application-shaped demos only;
+> (c) accept two Rust authoring APIs as intended and keep the exception
+>     permanent. Nothing here is blocked on the answer except W3 itself.
+
 C already proves this gap is closable: `c/talker` shares one 89-line body across
 native *and* five embedded platforms. Rust splits a 91-line hosted `main.rs` from
 a 34-line `lib.rs`.
