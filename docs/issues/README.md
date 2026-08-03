@@ -51,6 +51,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#405** — the tier2 lane gate demands `workspace-c-nuttx-riscv-realtime`, but nothing the tier2
+builder runs can produce it: `lane-coords` maps the `nuttx-riscv,c,zenoh` coordinate to the `nuttx`
+module, whose `build-fixtures` recipe builds only the arm side — the riscv workspaces live in
+separate `full-matrix` recipes (shared kernel tree, one board config at a time). Masked until
+phase-331 W6's `ws-realtime-c` → `realtime-c` rename orphaned the old artifact. Workaround: run
+`just nuttx build-riscv-c-workspaces` between the lane build and `ci-matrix`. See `0405-*`. (2026-08-04)
+
 **#404** — no schema for DECLARING a measured WCET. `MapperPath.exec_ms` is `Option<f64>` and nothing
 outside rlm's own tests ever sets it, so rlm v0.1.4's `ChainFeasibleWithoutWcet` (issue 0259) now
 reports missing evidence with nowhere to put it. Open questions: keying (board id / platform family /
