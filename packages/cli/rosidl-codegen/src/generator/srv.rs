@@ -122,7 +122,9 @@ pub fn generate_service_package(
         response_fields: message_to_rmw_fields(&service.response),
         response_constants: message_to_constants(&service.response, true),
     };
-    let service_rmw = service_rmw_template.render()?;
+    // RFC-0068 Stage 3 (phase-335 W3): rmw Rust service from the minijinja pack.
+    let service_rmw = crate::render::render("service_rmw.rs", &service_rmw_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate idiomatic layer service
     let service_idiomatic_template = ServiceIdiomaticTemplate {

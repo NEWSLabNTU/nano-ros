@@ -101,7 +101,9 @@ pub fn generate_message_package(
         fields: rmw_fields,
         constants: rmw_constants,
     };
-    let message_rmw = message_rmw_template.render()?;
+    // RFC-0068 Stage 3 (phase-335 W3): rmw Rust message from the minijinja pack.
+    let message_rmw = crate::render::render("message_rmw.rs", &message_rmw_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate idiomatic layer message
     let idiomatic_fields: Vec<IdiomaticField> = message

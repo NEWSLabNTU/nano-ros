@@ -1,26 +1,28 @@
 //! RFC-0068 Stage 3 — Render.
 //!
 //! A runtime (`minijinja`) template engine over data packs. A language backend
-//! is a directory of `.jinja` templates plus a data context; nothing about a
-//! language lives in Rust here. Templates are bundled at build time via
-//! `include_str!` (fast, no I/O) and rendered from a `serde`-serializable
-//! context (a lowered/view struct).
+//! is a set of `.jinja` templates plus a `serde`-serializable data context;
+//! nothing about a language lives in Rust here. Templates are bundled at build
+//! time via `include_str!` (fast, no I/O) and rendered from a view struct.
 //!
-//! Migration note (phase-335 W2): backends move off the compile-time askama
-//! templates one at a time; this module renders the ones already converted (C
-//! first) while askama still serves the rest.
+//! Migration note (phase-335 W2/W3): backends move off the compile-time askama
+//! templates one at a time. This module renders the converted ones (C, then the
+//! rmw Rust backend) while askama still serves the rest.
 
 use std::sync::LazyLock;
 
 use minijinja::Environment;
 
-/// The C-backend template pack, bundled. Templates are authored in the
-/// `minijinja` dialect under `packs/c/`.
-static C_ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
+/// One environment holding every converted pack, keyed by a stable template
+/// name (`"message.h"`, `"message_rmw.rs"`, …). Shared macros are registered
+/// under the name their importers use (`_field.jinja`).
+static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     let mut env = Environment::new();
-    // The generated sources carry their own trailing newline in the template
-    // body, so do not let the engine append another one.
+    // Generated sources carry their own trailing newline in the template body;
+    // do not let the engine append another.
     env.set_keep_trailing_newline(false);
+
+    // --- C pack (packs/c) ---
     env.add_template("_field.jinja", include_str!("../packs/c/_field.jinja"))
         .expect("packs/c/_field.jinja must parse");
     env.add_template("message.h", include_str!("../packs/c/message.h.jinja"))
@@ -35,10 +37,33 @@ static C_ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
         .expect("packs/c/action.h.jinja must parse");
     env.add_template("action.c", include_str!("../packs/c/action.c.jinja"))
         .expect("packs/c/action.c.jinja must parse");
+
+    // --- rmw Rust pack (packs/rmw) — RRR-compatible message layer ---
+    env.add_template(
+        "message_rmw.rs",
+        include_str!("../packs/rmw/message.rs.jinja"),
+    )
+    .expect("packs/rmw/message.rs.jinja must parse");
+    env.add_template(
+        "service_rmw.rs",
+        include_str!("../packs/rmw/service.rs.jinja"),
+    )
+    .expect("packs/rmw/service.rs.jinja must parse");
+    env.add_template(
+        "action_rmw.rs",
+        include_str!("../packs/rmw/action.rs.jinja"),
+    )
+    .expect("packs/rmw/action.rs.jinja must parse");
+
     env
 });
 
-/// Render a C-pack template with the given serializable context.
+/// Render a bundled pack template with the given serializable context.
+pub fn render(template: &str, ctx: impl serde::Serialize) -> Result<String, minijinja::Error> {
+    ENV.get_template(template)?.render(ctx)
+}
+
+/// Back-compat alias for the C call sites (phase-335 W2).
 pub fn render_c(template: &str, ctx: impl serde::Serialize) -> Result<String, minijinja::Error> {
-    C_ENV.get_template(template)?.render(ctx)
+    render(template, ctx)
 }

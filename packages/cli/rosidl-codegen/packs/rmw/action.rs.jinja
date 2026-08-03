@@ -1,0 +1,756 @@
+// RMW (ROS Middleware) layer - C-compatible FFI types
+// Package: {{ package_name }}
+// Action: {{ action_name }}
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+// Goal constants
+pub mod goal_constants {
+    {% for constant in goal_constants %}
+    pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+    {% endfor %}
+}
+
+// Result constants
+pub mod result_constants {
+    {% for constant in result_constants %}
+    pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+    {% endfor %}
+}
+
+// Feedback constants
+pub mod feedback_constants {
+    {% for constant in feedback_constants %}
+    pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+    {% endfor %}
+}
+
+// FFI bindings to C libraries for Goal
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_Goal() -> *const std::ffi::c_void;
+}
+
+#[link(name = "{{ package_name }}__rosidl_generator_c")]
+#[allow(improper_ctypes)]
+extern "C" {
+    fn {{ package_name }}__action__{{ action_name }}_Goal__init(msg: *mut {{ action_name }}Goal) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_Goal__Sequence__init(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}Goal>, size: usize) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_Goal__Sequence__fini(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}Goal>);
+    fn {{ package_name }}__action__{{ action_name }}_Goal__Sequence__copy(in_seq: &rosidl_runtime_rs::Sequence<{{ action_name }}Goal>, out_seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}Goal>) -> bool;
+}
+
+// Goal message type
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ action_name }}Goal {
+    {% for field in goal_fields %}
+    pub {{ field.name }}: {{ field.rust_type }},
+    {% endfor %}
+}
+
+impl {{ action_name }}Goal {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for {{ action_name }}Goal {
+    fn default() -> Self {
+        unsafe {
+            let mut msg = std::mem::zeroed();
+            if !{{ package_name }}__action__{{ action_name }}_Goal__init(&mut msg as *mut _) {
+                panic!("Call to {{ package_name }}__action__{{ action_name }}_Goal__init() failed");
+            }
+            msg
+        }
+    }
+}
+
+impl rosidl_runtime_rs::SequenceAlloc for {{ action_name }}Goal {
+    fn sequence_init(seq: &mut rosidl_runtime_rs::Sequence<Self>, size: usize) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_Goal__Sequence__init(seq as *mut _, size) }
+    }
+
+    fn sequence_fini(seq: &mut rosidl_runtime_rs::Sequence<Self>) {
+        unsafe { {{ package_name }}__action__{{ action_name }}_Goal__Sequence__fini(seq as *mut _) }
+    }
+
+    fn sequence_copy(in_seq: &rosidl_runtime_rs::Sequence<Self>, out_seq: &mut rosidl_runtime_rs::Sequence<Self>) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_Goal__Sequence__copy(in_seq, out_seq as *mut _) }
+    }
+}
+
+impl rosidl_runtime_rs::Message for {{ action_name }}Goal {
+    type RmwMsg = Self;
+
+    fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+        msg_cow
+    }
+
+    fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+        msg
+    }
+}
+
+impl rosidl_runtime_rs::RmwMessage for {{ action_name }}Goal where Self: Sized {
+    const TYPE_NAME: &'static str = "{{ package_name }}/action/{{ action_name }}_Goal";
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_Goal() }
+    }
+}
+
+// FFI bindings to C libraries for Result
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_Result() -> *const std::ffi::c_void;
+}
+
+#[link(name = "{{ package_name }}__rosidl_generator_c")]
+#[allow(improper_ctypes)]
+extern "C" {
+    fn {{ package_name }}__action__{{ action_name }}_Result__init(msg: *mut {{ action_name }}Result) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_Result__Sequence__init(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}Result>, size: usize) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_Result__Sequence__fini(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}Result>);
+    fn {{ package_name }}__action__{{ action_name }}_Result__Sequence__copy(in_seq: &rosidl_runtime_rs::Sequence<{{ action_name }}Result>, out_seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}Result>) -> bool;
+}
+
+// Result message type
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ action_name }}Result {
+    {% for field in result_fields %}
+    pub {{ field.name }}: {{ field.rust_type }},
+    {% endfor %}
+}
+
+impl {{ action_name }}Result {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for {{ action_name }}Result {
+    fn default() -> Self {
+        unsafe {
+            let mut msg = std::mem::zeroed();
+            if !{{ package_name }}__action__{{ action_name }}_Result__init(&mut msg as *mut _) {
+                panic!("Call to {{ package_name }}__action__{{ action_name }}_Result__init() failed");
+            }
+            msg
+        }
+    }
+}
+
+impl rosidl_runtime_rs::SequenceAlloc for {{ action_name }}Result {
+    fn sequence_init(seq: &mut rosidl_runtime_rs::Sequence<Self>, size: usize) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_Result__Sequence__init(seq as *mut _, size) }
+    }
+
+    fn sequence_fini(seq: &mut rosidl_runtime_rs::Sequence<Self>) {
+        unsafe { {{ package_name }}__action__{{ action_name }}_Result__Sequence__fini(seq as *mut _) }
+    }
+
+    fn sequence_copy(in_seq: &rosidl_runtime_rs::Sequence<Self>, out_seq: &mut rosidl_runtime_rs::Sequence<Self>) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_Result__Sequence__copy(in_seq, out_seq as *mut _) }
+    }
+}
+
+impl rosidl_runtime_rs::Message for {{ action_name }}Result {
+    type RmwMsg = Self;
+
+    fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+        msg_cow
+    }
+
+    fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+        msg
+    }
+}
+
+impl rosidl_runtime_rs::RmwMessage for {{ action_name }}Result where Self: Sized {
+    const TYPE_NAME: &'static str = "{{ package_name }}/action/{{ action_name }}_Result";
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_Result() }
+    }
+}
+
+// FFI bindings to C libraries for Feedback
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_Feedback() -> *const std::ffi::c_void;
+}
+
+#[link(name = "{{ package_name }}__rosidl_generator_c")]
+#[allow(improper_ctypes)]
+extern "C" {
+    fn {{ package_name }}__action__{{ action_name }}_Feedback__init(msg: *mut {{ action_name }}Feedback) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_Feedback__Sequence__init(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}Feedback>, size: usize) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_Feedback__Sequence__fini(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}Feedback>);
+    fn {{ package_name }}__action__{{ action_name }}_Feedback__Sequence__copy(in_seq: &rosidl_runtime_rs::Sequence<{{ action_name }}Feedback>, out_seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}Feedback>) -> bool;
+}
+
+// Feedback message type
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ action_name }}Feedback {
+    {% for field in feedback_fields %}
+    pub {{ field.name }}: {{ field.rust_type }},
+    {% endfor %}
+}
+
+impl {{ action_name }}Feedback {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for {{ action_name }}Feedback {
+    fn default() -> Self {
+        unsafe {
+            let mut msg = std::mem::zeroed();
+            if !{{ package_name }}__action__{{ action_name }}_Feedback__init(&mut msg as *mut _) {
+                panic!("Call to {{ package_name }}__action__{{ action_name }}_Feedback__init() failed");
+            }
+            msg
+        }
+    }
+}
+
+impl rosidl_runtime_rs::SequenceAlloc for {{ action_name }}Feedback {
+    fn sequence_init(seq: &mut rosidl_runtime_rs::Sequence<Self>, size: usize) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_Feedback__Sequence__init(seq as *mut _, size) }
+    }
+
+    fn sequence_fini(seq: &mut rosidl_runtime_rs::Sequence<Self>) {
+        unsafe { {{ package_name }}__action__{{ action_name }}_Feedback__Sequence__fini(seq as *mut _) }
+    }
+
+    fn sequence_copy(in_seq: &rosidl_runtime_rs::Sequence<Self>, out_seq: &mut rosidl_runtime_rs::Sequence<Self>) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_Feedback__Sequence__copy(in_seq, out_seq as *mut _) }
+    }
+}
+
+impl rosidl_runtime_rs::Message for {{ action_name }}Feedback {
+    type RmwMsg = Self;
+
+    fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+        msg_cow
+    }
+
+    fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+        msg
+    }
+}
+
+impl rosidl_runtime_rs::RmwMessage for {{ action_name }}Feedback where Self: Sized {
+    const TYPE_NAME: &'static str = "{{ package_name }}/action/{{ action_name }}_Feedback";
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_Feedback() }
+    }
+}
+
+// FFI bindings to C libraries for FeedbackMessage
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_FeedbackMessage() -> *const std::ffi::c_void;
+}
+
+#[link(name = "{{ package_name }}__rosidl_generator_c")]
+#[allow(improper_ctypes)]
+extern "C" {
+    fn {{ package_name }}__action__{{ action_name }}_FeedbackMessage__init(msg: *mut {{ action_name }}FeedbackMessage) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_FeedbackMessage__Sequence__init(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}FeedbackMessage>, size: usize) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_FeedbackMessage__Sequence__fini(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}FeedbackMessage>);
+    fn {{ package_name }}__action__{{ action_name }}_FeedbackMessage__Sequence__copy(in_seq: &rosidl_runtime_rs::Sequence<{{ action_name }}FeedbackMessage>, out_seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}FeedbackMessage>) -> bool;
+}
+
+// FeedbackMessage type (wraps feedback with goal UUID)
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ action_name }}FeedbackMessage {
+    pub goal_id: unique_identifier_msgs::msg::rmw::UUID,
+    pub feedback: {{ action_name }}Feedback,
+}
+
+impl {{ action_name }}FeedbackMessage {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for {{ action_name }}FeedbackMessage {
+    fn default() -> Self {
+        unsafe {
+            let mut msg = std::mem::zeroed();
+            if !{{ package_name }}__action__{{ action_name }}_FeedbackMessage__init(&mut msg as *mut _) {
+                panic!("Call to {{ package_name }}__action__{{ action_name }}_FeedbackMessage__init() failed");
+            }
+            msg
+        }
+    }
+}
+
+impl rosidl_runtime_rs::SequenceAlloc for {{ action_name }}FeedbackMessage {
+    fn sequence_init(seq: &mut rosidl_runtime_rs::Sequence<Self>, size: usize) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_FeedbackMessage__Sequence__init(seq as *mut _, size) }
+    }
+
+    fn sequence_fini(seq: &mut rosidl_runtime_rs::Sequence<Self>) {
+        unsafe { {{ package_name }}__action__{{ action_name }}_FeedbackMessage__Sequence__fini(seq as *mut _) }
+    }
+
+    fn sequence_copy(in_seq: &rosidl_runtime_rs::Sequence<Self>, out_seq: &mut rosidl_runtime_rs::Sequence<Self>) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_FeedbackMessage__Sequence__copy(in_seq, out_seq as *mut _) }
+    }
+}
+
+impl rosidl_runtime_rs::Message for {{ action_name }}FeedbackMessage {
+    type RmwMsg = Self;
+
+    fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+        msg_cow
+    }
+
+    fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+        msg
+    }
+}
+
+impl rosidl_runtime_rs::RmwMessage for {{ action_name }}FeedbackMessage where Self: Sized {
+    const TYPE_NAME: &'static str = "{{ package_name }}/action/{{ action_name }}_FeedbackMessage";
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_FeedbackMessage() }
+    }
+}
+
+// FFI bindings to C libraries for SendGoal_Request
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_SendGoal_Request() -> *const std::ffi::c_void;
+}
+
+#[link(name = "{{ package_name }}__rosidl_generator_c")]
+#[allow(improper_ctypes)]
+extern "C" {
+    fn {{ package_name }}__action__{{ action_name }}_SendGoal_Request__init(msg: *mut {{ action_name }}_SendGoal_Request) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_SendGoal_Request__Sequence__init(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_SendGoal_Request>, size: usize) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_SendGoal_Request__Sequence__fini(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_SendGoal_Request>);
+    fn {{ package_name }}__action__{{ action_name }}_SendGoal_Request__Sequence__copy(in_seq: &rosidl_runtime_rs::Sequence<{{ action_name }}_SendGoal_Request>, out_seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_SendGoal_Request>) -> bool;
+}
+
+// SendGoal_Request type
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ action_name }}_SendGoal_Request {
+    pub goal_id: unique_identifier_msgs::msg::rmw::UUID,
+    pub goal: {{ action_name }}Goal,
+}
+
+impl {{ action_name }}_SendGoal_Request {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for {{ action_name }}_SendGoal_Request {
+    fn default() -> Self {
+        unsafe {
+            let mut msg = std::mem::zeroed();
+            if !{{ package_name }}__action__{{ action_name }}_SendGoal_Request__init(&mut msg as *mut _) {
+                panic!("Call to {{ package_name }}__action__{{ action_name }}_SendGoal_Request__init() failed");
+            }
+            msg
+        }
+    }
+}
+
+impl rosidl_runtime_rs::SequenceAlloc for {{ action_name }}_SendGoal_Request {
+    fn sequence_init(seq: &mut rosidl_runtime_rs::Sequence<Self>, size: usize) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_SendGoal_Request__Sequence__init(seq as *mut _, size) }
+    }
+
+    fn sequence_fini(seq: &mut rosidl_runtime_rs::Sequence<Self>) {
+        unsafe { {{ package_name }}__action__{{ action_name }}_SendGoal_Request__Sequence__fini(seq as *mut _) }
+    }
+
+    fn sequence_copy(in_seq: &rosidl_runtime_rs::Sequence<Self>, out_seq: &mut rosidl_runtime_rs::Sequence<Self>) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_SendGoal_Request__Sequence__copy(in_seq, out_seq as *mut _) }
+    }
+}
+
+impl rosidl_runtime_rs::Message for {{ action_name }}_SendGoal_Request {
+    type RmwMsg = Self;
+
+    fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+        msg_cow
+    }
+
+    fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+        msg
+    }
+}
+
+impl rosidl_runtime_rs::RmwMessage for {{ action_name }}_SendGoal_Request where Self: Sized {
+    const TYPE_NAME: &'static str = "{{ package_name }}/action/{{ action_name }}_SendGoal_Request";
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_SendGoal_Request() }
+    }
+}
+
+// FFI bindings to C libraries for SendGoal_Response
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_SendGoal_Response() -> *const std::ffi::c_void;
+}
+
+#[link(name = "{{ package_name }}__rosidl_generator_c")]
+#[allow(improper_ctypes)]
+extern "C" {
+    fn {{ package_name }}__action__{{ action_name }}_SendGoal_Response__init(msg: *mut {{ action_name }}_SendGoal_Response) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_SendGoal_Response__Sequence__init(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_SendGoal_Response>, size: usize) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_SendGoal_Response__Sequence__fini(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_SendGoal_Response>);
+    fn {{ package_name }}__action__{{ action_name }}_SendGoal_Response__Sequence__copy(in_seq: &rosidl_runtime_rs::Sequence<{{ action_name }}_SendGoal_Response>, out_seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_SendGoal_Response>) -> bool;
+}
+
+// SendGoal_Response type
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ action_name }}_SendGoal_Response {
+    pub accepted: bool,
+    pub stamp: builtin_interfaces::msg::rmw::Time,
+}
+
+impl {{ action_name }}_SendGoal_Response {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for {{ action_name }}_SendGoal_Response {
+    fn default() -> Self {
+        unsafe {
+            let mut msg = std::mem::zeroed();
+            if !{{ package_name }}__action__{{ action_name }}_SendGoal_Response__init(&mut msg as *mut _) {
+                panic!("Call to {{ package_name }}__action__{{ action_name }}_SendGoal_Response__init() failed");
+            }
+            msg
+        }
+    }
+}
+
+impl rosidl_runtime_rs::SequenceAlloc for {{ action_name }}_SendGoal_Response {
+    fn sequence_init(seq: &mut rosidl_runtime_rs::Sequence<Self>, size: usize) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_SendGoal_Response__Sequence__init(seq as *mut _, size) }
+    }
+
+    fn sequence_fini(seq: &mut rosidl_runtime_rs::Sequence<Self>) {
+        unsafe { {{ package_name }}__action__{{ action_name }}_SendGoal_Response__Sequence__fini(seq as *mut _) }
+    }
+
+    fn sequence_copy(in_seq: &rosidl_runtime_rs::Sequence<Self>, out_seq: &mut rosidl_runtime_rs::Sequence<Self>) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_SendGoal_Response__Sequence__copy(in_seq, out_seq as *mut _) }
+    }
+}
+
+impl rosidl_runtime_rs::Message for {{ action_name }}_SendGoal_Response {
+    type RmwMsg = Self;
+
+    fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+        msg_cow
+    }
+
+    fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+        msg
+    }
+}
+
+impl rosidl_runtime_rs::RmwMessage for {{ action_name }}_SendGoal_Response where Self: Sized {
+    const TYPE_NAME: &'static str = "{{ package_name }}/action/{{ action_name }}_SendGoal_Response";
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_SendGoal_Response() }
+    }
+}
+
+// SendGoal service type support
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_service_type_support_handle__{{ package_name }}__action__{{ action_name }}_SendGoal() -> *const std::ffi::c_void;
+}
+
+// SendGoal service struct
+#[allow(non_camel_case_types)]
+pub struct {{ action_name }}_SendGoal;
+
+impl rosidl_runtime_rs::Service for {{ action_name }}_SendGoal {
+    type Request = {{ action_name }}_SendGoal_Request;
+    type Response = {{ action_name }}_SendGoal_Response;
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_service_type_support_handle__{{ package_name }}__action__{{ action_name }}_SendGoal() }
+    }
+}
+
+// FFI bindings to C libraries for GetResult_Request
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_GetResult_Request() -> *const std::ffi::c_void;
+}
+
+#[link(name = "{{ package_name }}__rosidl_generator_c")]
+#[allow(improper_ctypes)]
+extern "C" {
+    fn {{ package_name }}__action__{{ action_name }}_GetResult_Request__init(msg: *mut {{ action_name }}_GetResult_Request) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_GetResult_Request__Sequence__init(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_GetResult_Request>, size: usize) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_GetResult_Request__Sequence__fini(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_GetResult_Request>);
+    fn {{ package_name }}__action__{{ action_name }}_GetResult_Request__Sequence__copy(in_seq: &rosidl_runtime_rs::Sequence<{{ action_name }}_GetResult_Request>, out_seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_GetResult_Request>) -> bool;
+}
+
+// GetResult_Request type
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ action_name }}_GetResult_Request {
+    pub goal_id: unique_identifier_msgs::msg::rmw::UUID,
+}
+
+impl {{ action_name }}_GetResult_Request {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for {{ action_name }}_GetResult_Request {
+    fn default() -> Self {
+        unsafe {
+            let mut msg = std::mem::zeroed();
+            if !{{ package_name }}__action__{{ action_name }}_GetResult_Request__init(&mut msg as *mut _) {
+                panic!("Call to {{ package_name }}__action__{{ action_name }}_GetResult_Request__init() failed");
+            }
+            msg
+        }
+    }
+}
+
+impl rosidl_runtime_rs::SequenceAlloc for {{ action_name }}_GetResult_Request {
+    fn sequence_init(seq: &mut rosidl_runtime_rs::Sequence<Self>, size: usize) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_GetResult_Request__Sequence__init(seq as *mut _, size) }
+    }
+
+    fn sequence_fini(seq: &mut rosidl_runtime_rs::Sequence<Self>) {
+        unsafe { {{ package_name }}__action__{{ action_name }}_GetResult_Request__Sequence__fini(seq as *mut _) }
+    }
+
+    fn sequence_copy(in_seq: &rosidl_runtime_rs::Sequence<Self>, out_seq: &mut rosidl_runtime_rs::Sequence<Self>) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_GetResult_Request__Sequence__copy(in_seq, out_seq as *mut _) }
+    }
+}
+
+impl rosidl_runtime_rs::Message for {{ action_name }}_GetResult_Request {
+    type RmwMsg = Self;
+
+    fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+        msg_cow
+    }
+
+    fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+        msg
+    }
+}
+
+impl rosidl_runtime_rs::RmwMessage for {{ action_name }}_GetResult_Request where Self: Sized {
+    const TYPE_NAME: &'static str = "{{ package_name }}/action/{{ action_name }}_GetResult_Request";
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_GetResult_Request() }
+    }
+}
+
+// FFI bindings to C libraries for GetResult_Response
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_GetResult_Response() -> *const std::ffi::c_void;
+}
+
+#[link(name = "{{ package_name }}__rosidl_generator_c")]
+#[allow(improper_ctypes)]
+extern "C" {
+    fn {{ package_name }}__action__{{ action_name }}_GetResult_Response__init(msg: *mut {{ action_name }}_GetResult_Response) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_GetResult_Response__Sequence__init(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_GetResult_Response>, size: usize) -> bool;
+    fn {{ package_name }}__action__{{ action_name }}_GetResult_Response__Sequence__fini(seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_GetResult_Response>);
+    fn {{ package_name }}__action__{{ action_name }}_GetResult_Response__Sequence__copy(in_seq: &rosidl_runtime_rs::Sequence<{{ action_name }}_GetResult_Response>, out_seq: *mut rosidl_runtime_rs::Sequence<{{ action_name }}_GetResult_Response>) -> bool;
+}
+
+// GetResult_Response type
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ action_name }}_GetResult_Response {
+    pub status: i8,
+    pub result: {{ action_name }}Result,
+}
+
+impl {{ action_name }}_GetResult_Response {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for {{ action_name }}_GetResult_Response {
+    fn default() -> Self {
+        unsafe {
+            let mut msg = std::mem::zeroed();
+            if !{{ package_name }}__action__{{ action_name }}_GetResult_Response__init(&mut msg as *mut _) {
+                panic!("Call to {{ package_name }}__action__{{ action_name }}_GetResult_Response__init() failed");
+            }
+            msg
+        }
+    }
+}
+
+impl rosidl_runtime_rs::SequenceAlloc for {{ action_name }}_GetResult_Response {
+    fn sequence_init(seq: &mut rosidl_runtime_rs::Sequence<Self>, size: usize) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_GetResult_Response__Sequence__init(seq as *mut _, size) }
+    }
+
+    fn sequence_fini(seq: &mut rosidl_runtime_rs::Sequence<Self>) {
+        unsafe { {{ package_name }}__action__{{ action_name }}_GetResult_Response__Sequence__fini(seq as *mut _) }
+    }
+
+    fn sequence_copy(in_seq: &rosidl_runtime_rs::Sequence<Self>, out_seq: &mut rosidl_runtime_rs::Sequence<Self>) -> bool {
+        unsafe { {{ package_name }}__action__{{ action_name }}_GetResult_Response__Sequence__copy(in_seq, out_seq as *mut _) }
+    }
+}
+
+impl rosidl_runtime_rs::Message for {{ action_name }}_GetResult_Response {
+    type RmwMsg = Self;
+
+    fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+        msg_cow
+    }
+
+    fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+        msg
+    }
+}
+
+impl rosidl_runtime_rs::RmwMessage for {{ action_name }}_GetResult_Response where Self: Sized {
+    const TYPE_NAME: &'static str = "{{ package_name }}/action/{{ action_name }}_GetResult_Response";
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__action__{{ action_name }}_GetResult_Response() }
+    }
+}
+
+// GetResult service type support
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_service_type_support_handle__{{ package_name }}__action__{{ action_name }}_GetResult() -> *const std::ffi::c_void;
+}
+
+// GetResult service struct
+#[allow(non_camel_case_types)]
+pub struct {{ action_name }}_GetResult;
+
+impl rosidl_runtime_rs::Service for {{ action_name }}_GetResult {
+    type Request = {{ action_name }}_GetResult_Request;
+    type Response = {{ action_name }}_GetResult_Response;
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_service_type_support_handle__{{ package_name }}__action__{{ action_name }}_GetResult() }
+    }
+}
+
+// Action type support
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_action_type_support_handle__{{ package_name }}__action__{{ action_name }}() -> *const std::ffi::c_void;
+}
+
+// Action struct (zero-sized type)
+pub struct {{ action_name }};
+
+impl rosidl_runtime_rs::Action for {{ action_name }} {
+    type Goal = {{ action_name }}Goal;
+    type Result = {{ action_name }}Result;
+    type Feedback = {{ action_name }}Feedback;
+    type FeedbackMessage = {{ action_name }}FeedbackMessage;
+    type SendGoalService = {{ action_name }}_SendGoal;
+    type GetResultService = {{ action_name }}_GetResult;
+    type CancelGoalService = action_msgs::srv::rmw::CancelGoal;
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_action_type_support_handle__{{ package_name }}__action__{{ action_name }}() }
+    }
+
+    fn create_goal_request(goal_id: &[u8; 16], goal: {{ action_name }}Goal) -> {{ action_name }}_SendGoal_Request {
+        {{ action_name }}_SendGoal_Request {
+            goal_id: unique_identifier_msgs::msg::rmw::UUID { uuid: *goal_id },
+            goal,
+        }
+    }
+
+    fn split_goal_request(request: {{ action_name }}_SendGoal_Request) -> ([u8; 16], {{ action_name }}Goal) {
+        (request.goal_id.uuid, request.goal)
+    }
+
+    fn create_goal_response(accepted: bool, stamp: (i32, u32)) -> {{ action_name }}_SendGoal_Response {
+        {{ action_name }}_SendGoal_Response {
+            accepted,
+            stamp: builtin_interfaces::msg::rmw::Time { sec: stamp.0, nanosec: stamp.1 },
+        }
+    }
+
+    fn get_goal_response_accepted(response: &{{ action_name }}_SendGoal_Response) -> bool {
+        response.accepted
+    }
+
+    fn get_goal_response_stamp(response: &{{ action_name }}_SendGoal_Response) -> (i32, u32) {
+        (response.stamp.sec, response.stamp.nanosec)
+    }
+
+    fn create_feedback_message(goal_id: &[u8; 16], feedback: {{ action_name }}Feedback) -> {{ action_name }}FeedbackMessage {
+        {{ action_name }}FeedbackMessage {
+            goal_id: unique_identifier_msgs::msg::rmw::UUID { uuid: *goal_id },
+            feedback,
+        }
+    }
+
+    fn split_feedback_message(feedback: {{ action_name }}FeedbackMessage) -> ([u8; 16], {{ action_name }}Feedback) {
+        (feedback.goal_id.uuid, feedback.feedback)
+    }
+
+    fn create_result_request(goal_id: &[u8; 16]) -> {{ action_name }}_GetResult_Request {
+        {{ action_name }}_GetResult_Request {
+            goal_id: unique_identifier_msgs::msg::rmw::UUID { uuid: *goal_id },
+        }
+    }
+
+    fn get_result_request_uuid(request: &{{ action_name }}_GetResult_Request) -> &[u8; 16] {
+        &request.goal_id.uuid
+    }
+
+    fn create_result_response(status: i8, result: {{ action_name }}Result) -> {{ action_name }}_GetResult_Response {
+        {{ action_name }}_GetResult_Response {
+            status,
+            result,
+        }
+    }
+
+    fn split_result_response(response: {{ action_name }}_GetResult_Response) -> (i8, {{ action_name }}Result) {
+        (response.status, response.result)
+    }
+}

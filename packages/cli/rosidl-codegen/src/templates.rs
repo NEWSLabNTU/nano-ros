@@ -29,7 +29,7 @@ pub struct LibRsTemplate {
     pub has_actions: bool,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "message_rmw.rs.jinja", escape = "none")]
 pub struct MessageRmwTemplate<'a> {
     pub package_name: &'a str,
@@ -49,6 +49,7 @@ pub struct MessageIdiomaticTemplate<'a> {
     pub constants: Vec<MessageConstant>,
 }
 
+#[derive(Clone, serde::Serialize)]
 pub struct RmwField {
     pub name: String,
     pub rust_type: String,
@@ -100,13 +101,14 @@ pub struct IdiomaticField {
     pub kind: FieldKind,
 }
 
+#[derive(Clone, serde::Serialize)]
 pub struct MessageConstant {
     pub name: String,
     pub rust_type: String,
     pub value: String,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "service_rmw.rs.jinja", escape = "none")]
 pub struct ServiceRmwTemplate<'a> {
     pub package_name: &'a str,
@@ -128,7 +130,7 @@ pub struct ServiceIdiomaticTemplate<'a> {
     pub response_constants: Vec<MessageConstant>,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "action_rmw.rs.jinja", escape = "none")]
 pub struct ActionRmwTemplate<'a> {
     pub package_name: &'a str,

@@ -128,7 +128,9 @@ pub fn generate_action_package(
         feedback_fields: message_to_rmw_fields(&action.spec.feedback),
         feedback_constants: message_to_constants(&action.spec.feedback, true),
     };
-    let action_rmw = action_rmw_template.render()?;
+    // RFC-0068 Stage 3 (phase-335 W3): rmw Rust action from the minijinja pack.
+    let action_rmw = crate::render::render("action_rmw.rs", &action_rmw_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate idiomatic layer action
     let action_idiomatic_template = ActionIdiomaticTemplate {
