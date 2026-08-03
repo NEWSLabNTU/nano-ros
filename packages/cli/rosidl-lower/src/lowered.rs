@@ -6,10 +6,10 @@
 //! op, and the field order. Language spelling is NOT here — a template maps the
 //! neutral facts to `u32`/`uint32_t`/`write_u32`/… (RFC-0068 Stage 3).
 
-use rosidl_parser::ast::{FieldType, PrimitiveType};
+use rosidl_parser::ast::{FieldType, Message, PrimitiveType};
 use rosidl_resolve::ResolvedMessage;
 
-use crate::config::{CapacityResolver, FieldKind, StorageMode};
+use crate::config::{CapacityResolver, FieldKind, FieldStorage, StorageMode};
 
 /// A build target's layout parameters. CDR scalar sizes are wire-fixed and do
 /// not vary by target; what varies is pointer width and how a `repr(C)` enum is
@@ -136,6 +136,34 @@ pub enum LoweredStorage {
     Borrowed { cap: usize },
 }
 
+impl LoweredStorage {
+    /// Recover the `(mode, cap)` a `CapacityResolver::resolve` would have
+    /// produced for a configurable (unbounded string / sequence) field. Lets a
+    /// codegen builder read the storage decision from the IR instead of calling
+    /// the resolver a second time (phase-335 W1.c). `Inline` is not a
+    /// configurable-storage field and maps to `(Owned, 0)` defensively.
+    pub fn as_field_storage(&self) -> FieldStorage {
+        match *self {
+            LoweredStorage::Inline => FieldStorage {
+                cap: 0,
+                mode: StorageMode::Owned,
+            },
+            LoweredStorage::Fixed { cap } | LoweredStorage::Bounded { cap } => FieldStorage {
+                cap,
+                mode: StorageMode::Owned,
+            },
+            LoweredStorage::Heap => FieldStorage {
+                cap: 0,
+                mode: StorageMode::Heap,
+            },
+            LoweredStorage::Borrowed { cap } => FieldStorage {
+                cap,
+                mode: StorageMode::Borrowed,
+            },
+        }
+    }
+}
+
 /// The shape class of a field — what the renderer branches on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldShape {
@@ -195,13 +223,7 @@ pub fn lower(
 ) -> LoweredType {
     // `pkg/msg/Name` → (pkg, Name) for the config lookup keys.
     let (package, message) = split_type_name(&resolved.type_name);
-
-    let fields: Vec<LoweredField> = resolved
-        .parsed
-        .fields
-        .iter()
-        .map(|f| lower_field(&f.name, &f.field_type, package, message, config, target))
-        .collect();
+    let fields = lower_fields(package, message, &resolved.parsed, config, target);
 
     let align = fields.iter().map(|f| f.align).max().unwrap_or(1).max(1);
     // Plain iff every field is plain AND all fields share one alignment (uniform
@@ -220,6 +242,22 @@ pub fn lower(
         plain,
         target: target.clone(),
     }
+}
+
+/// Lower every field of `msg` (named `package` / `message` for the config
+/// lookup keys) to its concrete facts. Exposed so a codegen builder can read
+/// per-field storage from the IR rather than re-resolving it (phase-335 W1.c).
+pub fn lower_fields(
+    package: &str,
+    message: &str,
+    msg: &Message,
+    config: &CapacityResolver,
+    target: &TargetProfile,
+) -> Vec<LoweredField> {
+    msg.fields
+        .iter()
+        .map(|f| lower_field(&f.name, &f.field_type, package, message, config, target))
+        .collect()
 }
 
 fn lower_field(

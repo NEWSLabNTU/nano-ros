@@ -260,7 +260,7 @@ pub fn generate_nros_action_package(
         .goal
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, &goal_msg, resolver))
+        .map(|f| field_to_nros_field(f, package_name, &goal_msg, resolver, None))
         .collect::<Result<_, _>>()?;
 
     let goal_constants: Vec<MessageConstant> = action
@@ -281,7 +281,7 @@ pub fn generate_nros_action_package(
         .result
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, &result_msg, resolver))
+        .map(|f| field_to_nros_field(f, package_name, &result_msg, resolver, None))
         .collect::<Result<_, _>>()?;
 
     let result_constants: Vec<MessageConstant> = action
@@ -302,7 +302,7 @@ pub fn generate_nros_action_package(
         .feedback
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, &feedback_msg, resolver))
+        .map(|f| field_to_nros_field(f, package_name, &feedback_msg, resolver, None))
         .collect::<Result<_, _>>()?;
 
     let feedback_constants: Vec<MessageConstant> = action
@@ -462,7 +462,7 @@ pub fn generate_nros_inline_action(
         .goal
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &goal_msg, resolver, mode))
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &goal_msg, resolver, mode, None))
         .collect::<Result<_, _>>()?;
 
     let goal_constants: Vec<MessageConstant> = action
@@ -482,7 +482,7 @@ pub fn generate_nros_inline_action(
         .result
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &result_msg, resolver, mode))
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &result_msg, resolver, mode, None))
         .collect::<Result<_, _>>()?;
 
     let result_constants: Vec<MessageConstant> = action
@@ -502,7 +502,9 @@ pub fn generate_nros_inline_action(
         .feedback
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &feedback_msg, resolver, mode))
+        .map(|f| {
+            field_to_nros_field_with_mode(f, package_name, &feedback_msg, resolver, mode, None)
+        })
         .collect::<Result<_, _>>()?;
 
     let feedback_constants: Vec<MessageConstant> = action

@@ -17,4 +17,5 @@ mod lowered;
 
 pub use lowered::{
     CdrOp, FieldShape, LoweredField, LoweredStorage, LoweredType, TargetProfile, lower,
+    lower_fields,
 };

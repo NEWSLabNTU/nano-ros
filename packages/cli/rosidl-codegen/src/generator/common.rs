@@ -1,5 +1,5 @@
 use crate::{
-    config::{CapacityResolver, FieldKind as CapFieldKind, StorageMode},
+    config::{CapacityResolver, FieldKind as CapFieldKind, FieldStorage, StorageMode},
     templates::{CField, CppFfiField, CppField, FieldKind, NrosField, SequenceStructDef},
     types::{
         C_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_STRING_CAPACITY,
@@ -366,6 +366,11 @@ pub(super) fn field_to_nros_field_with_mode(
     message_name: &str,
     resolver: &CapacityResolver,
     mode: NrosCodegenMode,
+    // phase-335 W1.c — when the caller already lowered this field, its resolved
+    // storage is read from the IR instead of resolving a second time. `None`
+    // keeps the resolver path (callers not yet migrated). Only consulted for a
+    // configurable (unbounded string / sequence) field; ignored otherwise.
+    pre_storage: Option<FieldStorage>,
 ) -> Result<NrosField, GeneratorError> {
     let name = escape_keyword(&field.name);
 
@@ -381,7 +386,8 @@ pub(super) fn field_to_nros_field_with_mode(
     let mut borrowed_rust_type = String::new();
     let mut borrowed_read_expr = String::new();
     let rust_type = if let Some(kind) = cap_kind {
-        let storage = resolver.resolve(package_name, message_name, &field.name, kind);
+        let storage = pre_storage
+            .unwrap_or_else(|| resolver.resolve(package_name, message_name, &field.name, kind));
         match storage.mode {
             StorageMode::Owned => nros_type_for_field_with_capacity(
                 &field.field_type,
@@ -488,6 +494,7 @@ pub(super) fn field_to_nros_field(
     package_name: &str,
     message_name: &str,
     resolver: &CapacityResolver,
+    pre_storage: Option<FieldStorage>,
 ) -> Result<NrosField, GeneratorError> {
     field_to_nros_field_with_mode(
         field,
@@ -495,6 +502,7 @@ pub(super) fn field_to_nros_field(
         message_name,
         resolver,
         NrosCodegenMode::Crate,
+        pre_storage,
     )
 }
 

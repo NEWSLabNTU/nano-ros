@@ -224,7 +224,7 @@ pub fn generate_nros_service_package(
         .request
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, &request_msg, resolver))
+        .map(|f| field_to_nros_field(f, package_name, &request_msg, resolver, None))
         .collect::<Result<_, _>>()?;
 
     let request_constants: Vec<MessageConstant> = service
@@ -243,7 +243,7 @@ pub fn generate_nros_service_package(
         .response
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, &response_msg, resolver))
+        .map(|f| field_to_nros_field(f, package_name, &response_msg, resolver, None))
         .collect::<Result<_, _>>()?;
 
     let response_constants: Vec<MessageConstant> = service
@@ -350,7 +350,7 @@ pub fn generate_nros_inline_service(
         .request
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &request_msg, resolver, mode))
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &request_msg, resolver, mode, None))
         .collect::<Result<_, _>>()?;
 
     let request_constants: Vec<MessageConstant> = service
@@ -368,7 +368,9 @@ pub fn generate_nros_inline_service(
         .response
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &response_msg, resolver, mode))
+        .map(|f| {
+            field_to_nros_field_with_mode(f, package_name, &response_msg, resolver, mode, None)
+        })
         .collect::<Result<_, _>>()?;
 
     let response_constants: Vec<MessageConstant> = service

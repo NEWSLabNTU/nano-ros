@@ -194,11 +194,30 @@ pub fn generate_nros_message_package(
     };
     let lib_rs = lib_rs_template.render()?;
 
-    // Generate message fields
+    // Generate message fields. phase-335 W1.c — lower the message once and read
+    // each field's storage from the IR (LoweredField), rather than resolving
+    // capacity a second time inside the builder. `lower_fields` calls the same
+    // `CapacityResolver` with the same keys, so the result is byte-identical.
+    let lowered = rosidl_lower::lower_fields(
+        package_name,
+        message_name,
+        message,
+        resolver,
+        &rosidl_lower::TargetProfile::host(),
+    );
     let fields: Vec<NrosField> = message
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, message_name, resolver))
+        .zip(lowered.iter())
+        .map(|(f, lf)| {
+            field_to_nros_field(
+                f,
+                package_name,
+                message_name,
+                resolver,
+                Some(lf.storage.as_field_storage()),
+            )
+        })
         .collect::<Result<_, _>>()?;
 
     // Generate constants
@@ -259,7 +278,7 @@ pub fn generate_nros_inline_message(
     let fields: Vec<NrosField> = message
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, message_name, resolver, mode))
+        .map(|f| field_to_nros_field_with_mode(f, package_name, message_name, resolver, mode, None))
         .collect::<Result<_, _>>()?;
 
     let constants: Vec<MessageConstant> = message
