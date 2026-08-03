@@ -1,21 +1,30 @@
 ---
-rfc: 0062
+rfc: 0064
 title: "Board support organization: nano-ros as an embeddable library, not a board framework"
 status: Draft (LIVE — under active exploration)
 since: 2026-07
-last-reviewed: 2026-08-01
+last-reviewed: 2026-08-04
 implements-tracked-by: []          # candidates: revive phase-201; extend RFC-0012 Layer 3
 supersedes: []
 superseded-by: null
 ---
 
-# RFC-0062 — Board support organization
+# RFC-0064 — Board support organization
 
 > **Live document.** Written while bringing the Autoware safety island up on an
 > NXP MR-CANHUBK3 (S32K344 + FreeRTOS) — a board that is out-of-tree by
 > necessity. **[OPEN]** marks unresolved points. The **Exploration log** records
-> what was checked and what it showed; body claims should trace to it. Number
-> 0062 is provisional.
+> what was checked and what it showed; body claims should trace to it.
+> (Renumbered 0062 → 0064 on 2026-08-01 after an id collision with
+> unified-dependency-ssot; 0064 is now the settled id.)
+>
+> **Revision 3 (2026-08-04)** adds "The supported matrix" — the witness set, the
+> `net_stack` cost axis it keys on, the `native`→`linux` naming decision, and the
+> `matrix::CELLS` consequences. R3 changes no R2 principle; it applies them to
+> pick a shippable set. It also closes three R2 [OPEN]s with measurement: the net
+> ABI is per-platform not per-board (ThreadX runs one `net.c` over two backings),
+> `net_stack` has no build-responsibility consumer, and the three "selected by no
+> caller" board modules are confirmed to contribute zero test cells.
 >
 > **Revision 2 (2026-08-01)** replaced revision 1's central proposal. R1 modelled
 > a board by *enumerating support dimensions* in the descriptor (image ownership,
@@ -393,6 +402,187 @@ ships an artifact by hand, the generator does not overwrite it and the drift gat
 does not flag it.** That makes generated glue adoptable file by file rather than
 as a flag day.
 
+## The supported matrix (revision 3, 2026-08-04)
+
+The ladder above says how a user customizes. This says **what we ship as bases
+and what we promise about each** — the set chosen so that most users start from
+a witness that already resembles their hardware, and so that the maintained
+surface stays small enough to actually run per task.
+
+### The axis that decides cost: who owns NIC + IP bring-up
+
+Every board falls into one of two classes, and the classes differ by an order of
+magnitude in per-board cost. The descriptor **already declares this** —
+`net_stack = "rtos-owned" | "nanoros-owned"` in `nros-board.toml`, typed as
+`NetStack` at `nros-cli-core/src/orchestration/board_descriptor.rs:77-82`. It has
+no consumer today; it should become the spine of this matrix.
+
+| Class | Who supplies boot/driver/stack | Per-board cost | Members |
+|---|---|---|---|
+| **rtos-owned** | the host ecosystem (Zephyr, NuttX, ESP-IDF, a vendor SDK) | a config bundle — **0–160 lines, nearly all data** | zephyr, nuttx-*, esp32-qemu, s32ds shell |
+| **nanoros-owned** | nano-ros supplies stack *and* MAC driver | **~60–80 lines + a driver crate**, irreducible | mps2-an385{,-freertos}, threadx-*, stm32f4, orin-spe |
+
+Measured, not assumed. `nros-board-fvp-aemv8r-smp` — a real non-native Zephyr
+board — is **160 lines** and self-describes as "a thin Cargo + config bundle";
+Zephyr owns boot, MMU, net stack and the ethernet driver. Against that, the
+FreeRTOS MPS2 crate is ~1600 lines plus a 727-line `startup.c`, of which the
+irreducible board delta is only ~60–80 (vector table 19, memory map 3 numbers,
+CPU clock 1, cflags 1, netif registration 4, driver reference). The remainder is
+copy-paste that templating removes — see "Defects" below.
+
+**The strategic consequence:** breadth is bought in the rtos-owned class, where
+it is nearly free, and NOT by adding nanoros-owned board crates. An industrial
+FreeRTOS user almost always has a vendor SDK (ESP-IDF, S32DS, MCUXpresso,
+STM32Cube) and therefore belongs in the rtos-owned class via an integration
+shell — which is exactly what `integrations/s32ds/` already demonstrates for the
+MR-CANHUBK3, contributing **zero** files to this tree.
+
+### The witnesses
+
+Chosen by *(integration shape × arch)*, not by board. A shape with no witness is
+a shape we cannot claim; a second board of a shape we already witness earns its
+keep only if it adds an arch.
+
+| Tier | Witness | Shape | Arch |
+|---|---|---|---|
+| 1 | linux (host process) | hosted, reference — all three RMWs | x86_64 |
+| 1 | Zephyr native_sim | rtos-owned, NSOS host sockets | x86_64 |
+| 1 | NuttX qemu-arm | rtos-owned, cross | ARMv7-A |
+| 1 | FreeRTOS mps2-an385 | nanoros-owned (the no-SDK reference) | ARMv7-M |
+| 1 | ThreadX-linux | nanoros-owned via NSOS shim | x86_64 |
+| 2 | **Zephyr on QEMU Cortex-M — NEW** | rtos-owned, *real* in-kernel net stack | ARMv7-M, 32-bit |
+| 2 | NuttX qemu-riscv | rtos-owned, cross | riscv32 |
+| 2 | ThreadX qemu-riscv64 | nanoros-owned, real NetX Duo | riscv64 |
+| 2 | esp32-qemu | vendor SDK owns image | Xtensa |
+| 2 | bare-metal mps2 (+ one RTIC witness) | no-RTOS floor; executor shape | ARMv7-M |
+| 3 | fvp-aemv8r-smp | rtos-owned, license-gated model | AArch64 / Cortex-R |
+
+Leaving the matrix:
+
+- **`stm32f4` + `rtic-stm32f4`** — tier 3, hardware-only, **zero Runtime cells**;
+  a lane that can never gate anything. Cortex-M is already witnessed by MPS2 in
+  QEMU. These serve users far better as the book's worked customization example
+  than as in-tree crates nobody can boot in CI.
+- **The four scaffolds** (`embassy-stm32f4`, `esp32s3`, `s32z270dc2-r52`,
+  `orin-spe`) — they contribute **zero cells to the test matrix**, so deleting
+  them costs no coverage at all. They are precisely the boards this RFC says
+  should arrive through integration shells. **Caveat on `orin-spe`:** despite
+  being nominally a scaffold it is load-bearing in link-feature selection
+  (`CARGO_FEATURE_ORIN_SPE`, `LinkPolicy::orin_spe()`, `zpico_backend="orin-spe"`
+  — `nros-zpico-build/src/runner.rs:225,419-420,528-529`). It is modelled as a
+  pseudo-platform, so it needs untangling, not a blind delete.
+
+### Why the new Zephyr Cortex-M witness is the one real addition
+
+It closes a coverage hole, not a marketing gap. **All 28 Zephyr runtime configs
+target `native_sim/native/64`**, and `cmake/zephyr/native-sim-line-*.conf` sets
+`CONFIG_NET_SOCKETS_OFFLOAD=y` with `CONFIG_ETH_NATIVE_TAP=n` — chosen so tests
+need no TAP device or root. So **every Zephyr test nano-ros runs bypasses
+Zephyr's own IP stack**, using host sockets, at 64-bit pointer width. There is
+zero coverage of Zephyr's in-kernel net stack, of a real driver, or of 32-bit
+Zephyr. `nros-platform-zephyr/src/net_wait.c:53` carries an
+`#ifdef CONFIG_BOARD_NATIVE_SIM` whose *other* branch has never run in CI.
+
+The cost is unusually low: the harness already boots
+`qemu-system-arm -machine mps2-an385 -nic user,model=lan9118` for the FreeRTOS
+and bare-metal lanes (`nros-tests/src/qemu.rs:242`), and Zephyr is the cheapest
+family in the tier-2 build (~200 s against FreeRTOS's ~1370 s).
+
+**[OPEN]** Which QEMU-able Zephyr board carries a usable Ethernet driver —
+`mps2/an385` via `smsc911x`, or SLIP/TAP on `qemu_cortex_m3`. Not verifiable
+from this tree (no Zephyr checkout on the authoring host); it is the first thing
+the implementing phase must settle.
+
+### `native` vs `posix` vs `linux` — the name follows the promise
+
+Today there are **two crates and two names for one implementation**:
+`board_path_for` maps *both* `"native"` and `"posix"` to
+`::nros_board_native::NativeBoard` (`nros-orchestration-ir/src/lib.rs:78`), so
+`nros-board-posix` (549 lines) is never named by any generated entry — the
+observation phase-322 W1.e already made.
+
+What is actually supported, measured:
+
+| Claim | Evidence |
+|---|---|
+| Windows | none — no `_WIN32` anywhere in the tree |
+| macOS | *contemplated but unbuilt*: `nros-platform-posix/src/platform.c` carries five `__APPLE__` branches (a `pthread_cond` fallback for absent unnamed `sem_t`), **but** `src/timer.c:72` calls `timer_create(CLOCK_MONOTONIC, SIGEV_THREAD)` with no fallback, and macOS does not implement POSIX timers |
+| *BSD | plausible — the only other OS gate is `#ifdef __linux__` for `MSG_NOSIGNAL` (`net.c:216`) with a portable `else`; FreeBSD/NetBSD have `timer_create`, OpenBSD does not |
+| Linux | the only thing tested — **all 19 CI jobs are `ubuntu-*`** |
+
+So "native" is the least accurate of the three: it implies any general-purpose
+OS, and Windows/macOS do not build. "posix" describes the *source* honestly but
+promises BSD and macOS that nothing tests and `timer_create` partly breaks.
+
+**Decision: separate the two layers, which is what the rest of the tree already
+does.**
+
+- **Platform stays `posix`** — `nros-platform-posix` is a genuine portability
+  seam written to POSIX, and the platform layer names software-stack facts
+  (RFC-0049's duty rule).
+- **The board/target becomes `linux`** — the board layer names the concrete
+  thing we claim to support, and a tier-1 promise means "`just ci` exercises
+  it", which only Linux does.
+- **`native` is retired** as a public spelling; `nros-board-native` and
+  `nros-board-posix` merge (phase-322 W1.e) into the single `linux` board.
+
+This buys the same thing the rest of the matrix buys: `macos` and `freebsd` can
+later join as tier-3 (build-only) or tier-2 boards on the *unchanged* `posix`
+platform, which is the one-source-many-targets model applied to hosted OSes.
+Prerequisite for either: a `timer_create` fallback (dispatch-source or
+`pthread_cond` timed wait).
+
+### What this does to the test matrix
+
+`matrix::CELLS` today is **202 cells — 174 Runtime, 17 BuildOnly, 11 CarveOut**:
+
+| Platform | Runtime | BuildOnly | CarveOut | total |
+|---|---|---|---|---|
+| Native | 72 | 2 | 0 | 74 |
+| ZephyrNativeSim | 39 | 0 | 0 | 39 |
+| ThreadxLinux | 18 | 0 | 0 | 18 |
+| FreertosMps2 | 15 | 1 | 1 | 17 |
+| NuttxArm | 14 | 1 | 2 | 17 |
+| ThreadxRiscv64 | 9 | 3 | 0 | 12 |
+| NuttxRiscv | 4 | 3 | 2 | 9 |
+| Esp32Qemu | 2 | 2 | 2 | 6 |
+| QemuBaremetal | 1 | 0 | 2 | 3 |
+| Stm32F4 | **0** | 3 | 0 | 3 |
+| Fvp | **0** | 2 | 1 | 3 |
+| Px4 | **0** | 0 | 1 | 1 |
+
+The matrix barely moves, which is the point — the proposal removes promises and
+files, not coverage:
+
+1. **`PlatformId::Native` → `PlatformId::Linux`.** A rename across the enum, its
+   `index()` band, and `fixture_tokens()` (`native` → `linux`). Because
+   `fixture_tokens` is the one-way SSoT for that vocabulary and
+   `fixture_token_mapping_round_trips` gates it, this is a mechanical rename with
+   a gate that proves it landed everywhere. `examples/fixtures.toml`'s 187
+   `platform = "native"` rows move with it.
+2. **`Stm32F4` leaves** — 3 BuildOnly cells, **0 Runtime**, so no runtime
+   coverage is lost. Its 8 `fixtures.toml` rows go with it.
+3. **The 4 scaffolds** contribute **no cells at all** — invisible to the matrix,
+   so their removal is provably free on this axis.
+4. **`Fvp` and `Px4` are unchanged** — already 0 Runtime, already carrying their
+   reasons, which is exactly what `Tier::BuildOnly`/`CarveOut` exist to record.
+5. **One new `PlatformId::ZephyrQemuCortexM`** with a starter cell group
+   (pubsub × {rust, c, cpp} × zenoh as Runtime; service/action BuildOnly until
+   they run). Adding it extends the allocator's port/domain bands, and the
+   injectivity gate re-proves collision-freedom automatically.
+
+On the fixture side the new witness follows the **existing Zephyr exemption**
+rather than growing `fixtures.toml`: `every_runtime_cell_has_a_fixture_row`
+already exempts ZephyrNativeSim examples and non-Rust workspaces because they are
+built by the west leaves lane (`scripts/build/zephyr-fixture-leaves.sh`) with its
+own staleness signature. The Cortex-M witness is the same shape — a west build
+with a `boards/<board>.conf` overlay — so it joins that exemption with its board
+named, and the gate keeps holding in both directions.
+
+Net effect on the numbers: 202 cells → ~202; 27 board crates → ~15–16 (phase-322
+takes 27→19, the demotions above take out 6 more); ~60 files naming a single
+board become the RFC-0064 target of near-zero for anything rtos-owned.
+
 ## Defects found along the way
 
 These are independent of which model wins; all were verified.
@@ -520,6 +710,34 @@ vendor reads. Fix regardless of everything else here.
    `-mfpu` hardcoded by revision 2 is the standing debt this pays off.
 9. Fix `vendor-overlay.md` vs RFC-0040 D1.
 
+Revision 3 adds the matrix work, ordered by value per unit of risk:
+
+10. **Finish the Cortex-M4F/M7 unblock.** Step 0 fixed the *config* half
+    (`config/freertos-lwip/nros-platform.toml` now lists
+    `arch = ["cortex-m3", "cortex-m7"]`), but `nros-board-freertos/build.rs:273-287`
+    still **hard-panics** on any `thumb*` target that is not `thumbv7m` unless
+    `FREERTOS_CFLAGS` is set. Every industrial FreeRTOS board this RFC wants to
+    reach (S32K344 is a Cortex-M7) trips it. Small, and it gates the rest.
+11. **phase-322 W1.a + W1.g** — merge the NuttX board crates (1059 byte-identical
+    lines, into the `nros-board-nuttx` crate that already exists and that both
+    boards already depend on) and add the shared runtime `Config`. W1.g first, or
+    the merges re-fork.
+12. **Add the Zephyr QEMU Cortex-M witness** — settle the `[OPEN]` board choice,
+    add `PlatformId::ZephyrQemuCortexM` + its cell group, join the west-lane
+    fixture exemption.
+13. **Template the FreeRTOS per-board files** so a second nanoros-owned board is
+    ~80 lines: hoist the 299 lines of config headers (2 board-specific values) to
+    shared defaults, delete the `configure_arm_cm3` / `emit_nros_app_config`
+    duplication in `build.rs`, retire the 727-line `startup.c` shadow copy, and
+    drop the ~180-line LAN9118 diagnostic duplicated into both C files.
+14. **Rename `native` → `linux`** (platform stays `posix`); merge
+    `nros-board-native` + `nros-board-posix` per phase-322 W1.e.
+15. **Make `net_stack` a real axis** — the tier registry and the matrix key off
+    it instead of it being documentation-grade metadata.
+16. **Demote**: `stm32f4`/`rtic-stm32f4` out of the matrix and into the book's
+    customization example; delete the scaffolds, untangling `orin-spe`'s
+    pseudo-platform role first.
+
 Note what is *not* here any more: R1's "generate the per-board mirrors" work.
 Under R2 most of those files should not exist for new targets at all, so
 generating them would be automating something that ought to be deleted. Keep
@@ -530,8 +748,11 @@ generation on the table only for whatever survives step 2.
 - **[OPEN]** Is a vendor SDK build (S32DS/RTD) row 1 or row 2? The single most
   consequential question here; step 2 answers it.
 - **[OPEN]** What is the mandatory subset of the 92-function platform ABI?
-- **[OPEN]** Does anything read `net_stack` for build-responsibility rather than
-  stack identity?
+- ~~**[OPEN]** Does anything read `net_stack` for build-responsibility rather than
+  stack identity?~~ **ANSWERED (R3, 2026-08-04): nothing reads it at all.** Its
+  only consumer is the `NetStack` field of the descriptor struct
+  (`board_descriptor.rs:77-82`) — documentation-grade metadata. R3 proposes
+  promoting it to the matrix's cost axis (sequencing step 15).
 - **[OPEN]** `[board.fvp-aemv8r-smp] platform = "bare-metal"` in the index vs its
   Zephyr `board.cmake` — drift, or does the index's `platform` mean
   "provisioning family"? If the latter, the field is misnamed.
@@ -540,6 +761,16 @@ generation on the table only for whatever survives step 2.
 - **[OPEN]** Three in-tree board modules — `esp32-c3`, `mps2-an385`,
   `stm32f4-nucleo` — are selected by no caller found. **Not** a deadness claim;
   phase-321's retro is explicit about that failure mode. Needs checking.
+  *(R3 partial answer: on the test axis the question is settled — `Stm32F4`
+  carries 3 BuildOnly and **0 Runtime** cells, and the four scaffold board crates
+  contribute zero cells of any tier. That bounds what removing them can cost;
+  it does not by itself prove no build-side caller exists.)*
+- **[OPEN]** Which QEMU-able Zephyr board carries a usable Ethernet driver for
+  the new Cortex-M witness (`mps2/an385` + `smsc911x`, versus SLIP/TAP on
+  `qemu_cortex_m3`)? Blocks sequencing step 12; not answerable from this tree.
+- **[OPEN]** Does a hosted non-Linux target (macOS, FreeBSD) earn a tier-3 row
+  once `timer_create` has a fallback, or is `linux` the only hosted board we ever
+  claim? R3 makes either possible without renaming the platform.
 - **[OPEN]** Should there be a `integrations/generic-cmake/` shell — the fallback
   for "my RTOS has a CMake build and nothing else"? It would be the honest
   default for the long tail.
@@ -780,3 +1011,100 @@ Not yet checked:
 - Whether an `integrations/<vendor-sdk>/` shell is viable for S32DS specifically:
   it is a make-driven Eclipse CDT project, closer to NuttX's make path than to
   IDF's CMake path.
+
+### 2026-08-04 — seventh pass: the supported matrix (revision 3)
+
+Written to answer "which platform/board/arch set covers most users while easing
+the maintainer's burden", and to test the maintainer's principle that one source
+should serve many SoCs via build options. Everything below was measured in-tree.
+
+**The net seam is already generic — this was the load-bearing check.** The 92
+platform functions split `platform.h` 58 / `platform_net.h` 29 / `platform_timer.h`
+4 / `platform_zephyr.h` 1, and networking is deliberately isolated in its own
+header so stackless targets can omit it. There is **one net implementation file
+per platform, never per board**. Per-board deltas are expressed as (a) weak C
+symbols — `nros_board_init_eth`, `nros_board_register_netif`,
+`nros_board_poll_netif`; (b) a macro argument naming the MAC driver —
+`define_network_state!(NETWORK_STATE: Lan9118, …)`; (c) descriptor data.
+
+The decisive case is ThreadX, because it is exactly the maintainer's worry
+(host-offloaded sockets versus a real driver): `nros-platform-threadx/src/net.c`
+is **one file with two backings** — on threadx-linux the NetX-Duo BSD calls
+resolve to a shim over host POSIX sockets (`drivers/net/nsos-netx/src/nsos_netx.c:218`),
+on threadx-qemu-riscv64 they are real NetX Duo over virtio-net. The switch is
+which archive the board's `build.rs` links. No `#ifdef`, no branch. Adding a
+board on an existing platform edits no `net.c`/`net.rs` anywhere.
+
+The only two board-shaped compile-time branches in the tree are `orin-spe`
+(modelled as a pseudo-platform in link-feature selection) and a ThreadX std/no_std
+libc-tier split in `NanoRosFeatureSet.cmake:116-128`. Neither is networking.
+
+**Conclusion: portability is not the blocker; per-board FILES are.** The seam was
+built right and the board crates were never factored down to the data it needs.
+
+**Zephyr is already board-neutral, and its coverage is narrower than it looks.**
+`cmake/platform/nano-ros-zephyr.cmake` (53 lines) names no board — Zephyr's own
+`BOARD=` owns it, via `zephyr/cmake/nano_ros_use_board.cmake:50-59`.
+`nros-board-zephyr` (540 lines) implements only `NetworkWait` over `net_if.h`.
+A real non-native Zephyr board already exists at 160 lines
+(`nros-board-fvp-aemv8r-smp`, Cortex-R52, tier 3 only because the model is
+license-gated), structured as `boards/<board>.conf` + `.overlay` + `prj.conf` +
+a `Config` — i.e. the thin-overlay shape, already proven twice.
+
+But all 28 Zephyr runtime configs are `native_sim/native/64`, and the overlay
+sets `CONFIG_NET_SOCKETS_OFFLOAD=y` / `CONFIG_ETH_NATIVE_TAP=n` so no TAP device
+or root is needed. So Zephyr's own IP stack, a real driver, and 32-bit pointer
+width have **never** been exercised. `nros-platform-zephyr/src/net_wait.c:53`
+guards the NSOS path with `#ifdef CONFIG_BOARD_NATIVE_SIM`; its else-branch is
+untested. This is what makes the Cortex-M witness a coverage fix rather than a
+breadth claim, and the QEMU side is free — `nros-tests/src/qemu.rs:242` already
+boots `-machine mps2-an385 -nic user,model=lan9118` for two other families.
+
+**NuttX per-board delta is already data; the files just were not moved.** The
+shared helpers take `NUTTX_CROSS`, `NUTTX_ARCH_CFLAGS`, `NUTTX_LIBGCC_FLAGS`,
+`NUTTX_ARCH`, `NUTTX_VECTORTAB_OBJ`, `NUTTX_LINKER_SCRIPT`, `NUTTX_ARCH_INCLUDES`,
+`NUTTX_DIR`, and the staging link list is **discovered by scanning
+`$NUTTX_DIR/staging` for `lib*.a`** rather than hardcoded per board. Both board
+crates' `build.rs` bodies are the same four calls. Yet 1059 lines are
+byte-identical duplicates (`c/nuttx_run_tiers.c` 587, `src/config.rs` 261,
+`src/node.rs` 133, `src/entry.rs` 43, `c/nuttx_builtins_stub.c` 35), and the
+crate to hold them (`nros-board-nuttx`) exists with both boards already depending
+on it. A move, not a design change — phase-322 W1.a.
+
+**FreeRTOS: ~80 % parameterizable, and the residue is small.** Classified
+`startup.c` (727) and `c/board_mps2.c` (346): genuine non-optional silicon is
+~42 lines in the former (vector table 19 + `Reset_Handler` 17 + ~6 LAN9118 config)
+and ~23 in the latter. The single largest "silicon" block —
+`nros_freertos_diag_network`, ~180 lines of raw LAN9118 CSR reads and
+hand-assembled ARP frames — is a diagnostic nothing calls on the working path,
+and it is duplicated into **both** files. `startup.c` itself is a pre-152.1.B
+monolith: ~575 of its 727 lines are a live copy of code already lifted into
+`nros-board-freertos`, kept alive only because the CMake lane compiles it while
+the cargo lane compiles `board_mps2.c`. `config/lwipopts.h` (133) and
+`config/arch/cc.h` (55) have **zero** board-specific content;
+`config/FreeRTOSConfig.h` (111) has two lines; the linker script has three
+numbers. The shared crate already owns the kernel/lwIP build and a 973-line
+family driver over a working weak-hook seam.
+
+**Naming.** `board_path_for` maps both `"native"` and `"posix"` to
+`::nros_board_native::NativeBoard` (`nros-orchestration-ir/src/lib.rs:78`) — two
+names, one implementation, and `nros-board-posix` (549 lines) is never named by
+any generated entry. On portability: no `_WIN32` anywhere; five `__APPLE__`
+branches in `nros-platform-posix/src/platform.c` (a `pthread_cond` fallback for
+absent unnamed `sem_t`) but `src/timer.c:72` calls `timer_create` with no
+fallback and macOS has no POSIX timers; the only other OS gate is
+`#ifdef __linux__` for `MSG_NOSIGNAL` (`net.c:216`) with a portable else. All 19
+CI jobs are `ubuntu-*`. Hence: platform `posix` (the seam), board `linux` (the
+promise), `native` retired.
+
+**Matrix cost of the proposal, counted.** `matrix::CELLS` = 202 (174 Runtime,
+17 BuildOnly, 11 CarveOut). `Stm32F4` has 0 Runtime cells and the four scaffolds
+have zero cells of any tier, so both removals are free on the test axis. The one
+addition is the Zephyr Cortex-M cell group, which joins the existing west-lane
+exemption in `every_runtime_cell_has_a_fixture_row` rather than growing
+`fixtures.toml`.
+
+Not verified here, and carried as [OPEN]: which QEMU-able Zephyr board has a
+usable Ethernet driver (no Zephyr checkout on the authoring host); whether a
+build-side caller exists for the three unreferenced board modules (the test axis
+is settled, the build axis is not).
