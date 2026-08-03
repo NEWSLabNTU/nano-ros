@@ -1269,10 +1269,18 @@ fn build_c_shim(
 
         // RISC-V cross-compilation flags (ESP32-C3)
         if target.contains("riscv32imc") {
+            // issue 0399 — pick the riscv cross-compiler explicitly. Without
+            // this, cc-rs derives `riscv32-unknown-elf-gcc` from the triple —
+            // a name nothing installs — and the shim build dies on a host
+            // provisioned exactly as documented (`nros setup` ships
+            // `riscv-none-elf-gcc`). `detect_riscv_compiler` walks
+            // `RISCV_GCC_CANDIDATES`, which now includes it. Mirrors the
+            // manifest-driven lib path (`apply_arch` → `detect_riscv_compiler`).
+            crate::detect_riscv_compiler(&mut build);
             build.flag("-march=rv32imc").flag("-mabi=ilp32");
 
             // picolibc provides C standard library headers (stdint.h, etc.)
-            // for the system riscv64-unknown-elf-gcc toolchain
+            // for the detected riscv cross toolchain
             if has_picolibc_specs() {
                 build.flag("--specs=picolibc.specs");
             }

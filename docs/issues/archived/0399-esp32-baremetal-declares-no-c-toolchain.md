@@ -2,7 +2,7 @@
 id: 399
 title: qemu-esp32-baremetal declares no C toolchain, so cc-rs guesses
   `riscv32-unknown-elf-gcc` and the example cannot build on a provisioned host
-status: open
+status: resolved
 type: bug
 area: build
 related: [0368, 0400]
@@ -64,3 +64,47 @@ same hole.
 Found while running tier 1 in the ROS distrobox for the issue-0383 `-Werror`
 work (2026-08-03). NOT caused by that change: it reproduces identically with
 `NROS_CC_STRICT_DECLS=0`, which disables the new flag helper entirely.
+
+## RESOLVED (2026-08-03)
+
+The board is `riscv32` bare-metal, and `nros setup` already ships
+`riscv-none-elf-gcc` (xPack multilib, rv32imc/ilp32 capable). So `riscv-none-elf-gcc`
+is the intended compiler — the fix is to *say so* and make zpico's own detection
+look for it, rather than pinning a per-example `CC_*` env.
+
+The root was the CLASS, not one env var: `nros-zpico-build`'s three riscv probes
+(`detect_riscv_compiler`, `get_picolibc_sysroot`, `has_picolibc_specs`) each
+hard-coded the SAME two-name candidate list
+(`["riscv64-unknown-elf-gcc", "riscv32-esp-elf-gcc"]`) and all three omitted the
+provisioned toolchain. And the shim build path (`runner.rs` `build_c_shim`,
+`if target.contains("riscv32imc")`) set `-march`/`-mabi` but NEVER set the
+compiler, so cc-rs derived `riscv32-unknown-elf-gcc` from the triple — a name
+nothing installs.
+
+Fix (`packages/rmw/zenoh/nros-zpico-build/src/{lib,runner}.rs`,
+`nros-sdk-index.toml`):
+
+1. one shared `RISCV_GCC_CANDIDATES` const (the three probes now reference it,
+   so they can never diverge again) with `riscv-none-elf-gcc` appended;
+2. `build_c_shim`'s riscv32imc branch now calls `detect_riscv_compiler(&mut build)`,
+   mirroring the manifest-driven lib path (`apply_arch`) — so BOTH C-build paths
+   pick a real compiler instead of letting cc-rs guess;
+3. `[board.qemu-esp32-baremetal] packages = ["riscv-none-elf-gcc"]` so
+   `nros setup qemu-esp32-baremetal` provisions exactly what the detection looks
+   for.
+
+No per-example `CC_*` env — detection is the single place that names the compiler.
+
+**Verified.** `examples/qemu-esp32-baremetal/rust/talker` builds clean on this
+host (riscv64 present, picked first → no regression), and a forced
+`CC_riscv32imc_unknown_none_elf=riscv-none-elf-gcc` clean build (simulating a
+documented-provisioned-only host, since riscv64 lives in both `/usr/bin` and
+`/bin` here and can't be PATH-hidden without breaking coreutils) compiles the
+zpico C shim + the whole example — proving the provisioned toolchain works
+end-to-end.
+
+The other `packages = []` boards are NOT the same hole: `native`/`posix` take
+their daemon from the RMW axis (no cross toolchain), and `zephyr` is west-built.
+`qemu-esp32-baremetal` was the only genuine miss.
+
+Fixed in `packages/rmw/zenoh/nros-zpico-build/src/{lib,runner}.rs` + `nros-sdk-index.toml`.

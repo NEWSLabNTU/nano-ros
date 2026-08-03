@@ -498,7 +498,12 @@ packages = ["threadx", "threadx-netxduo"]
 [board.qemu-esp32-baremetal]
 arch = "riscv32"
 platform = "bare-metal"
-packages = []
+# issue 0399 — the board compiles zpico C for riscv32imc and needs a riscv
+# cross gcc. `riscv-none-elf-gcc` is the xPack multilib toolchain (rv32imc /
+# ilp32 capable); declaring it here means `nros setup qemu-esp32-baremetal`
+# provisions the compiler zpico-build's detection now looks for, instead of
+# leaving a documented-provisioned host unable to build the example.
+packages = ["riscv-none-elf-gcc"]
 
 [board.orin-spe]
 arch = "cortex-r5"

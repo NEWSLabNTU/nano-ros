@@ -515,9 +515,21 @@ pub fn add_c_sources_recursive(build: &mut cc::Build, dir: &Path) {
     }
 }
 
+/// RISC-V bare-metal GCC binary names tried, in preference order, wherever
+/// zpico compiles C for a riscv target. `riscv-none-elf-gcc` is the xPack
+/// multilib toolchain `nros setup` provisions (rv32imc/ilp32 capable); its
+/// omission (issue 0399) meant a host provisioned exactly as documented fell
+/// through to cc-rs's guessed `riscv32-unknown-elf-gcc` and failed to build.
+/// One list so the detect / sysroot / picolibc-specs probes can never diverge.
+pub const RISCV_GCC_CANDIDATES: &[&str] = &[
+    "riscv64-unknown-elf-gcc",
+    "riscv32-esp-elf-gcc",
+    "riscv-none-elf-gcc",
+];
+
 /// Detect and set the RISC-V cross-compiler for cc::Build.
 pub fn detect_riscv_compiler(build: &mut cc::Build) {
-    for cc_name in &["riscv64-unknown-elf-gcc", "riscv32-esp-elf-gcc"] {
+    for cc_name in RISCV_GCC_CANDIDATES {
         if Command::new(cc_name).arg("--version").output().is_ok() {
             build.compiler(cc_name);
             return;
@@ -527,7 +539,7 @@ pub fn detect_riscv_compiler(build: &mut cc::Build) {
 
 /// Get the picolibc sysroot path for RISC-V.
 pub fn get_picolibc_sysroot() -> Option<PathBuf> {
-    for cc_name in &["riscv64-unknown-elf-gcc", "riscv32-esp-elf-gcc"] {
+    for cc_name in RISCV_GCC_CANDIDATES {
         if let Ok(output) = Command::new(cc_name)
             .args([
                 "-march=rv32imc",
@@ -556,7 +568,7 @@ pub fn get_picolibc_sysroot() -> Option<PathBuf> {
 
 /// Check if the RISC-V GCC supports picolibc specs.
 pub fn has_picolibc_specs() -> bool {
-    for cc in &["riscv64-unknown-elf-gcc", "riscv32-esp-elf-gcc"] {
+    for cc in RISCV_GCC_CANDIDATES {
         if let Ok(status) = Command::new(cc)
             .args([
                 "-march=rv32imc",
