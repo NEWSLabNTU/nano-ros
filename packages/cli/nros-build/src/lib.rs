@@ -174,19 +174,42 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         .and_then(Path::parent)
         .map(Path::to_path_buf)
         .unwrap_or_else(|| opts.workspace_root.clone());
-    // phase-330 W3.b — same search order as the proc-macro and cmake, from the
-    // one place that defines it. Build-output copy wins; the committed one is
-    // the fallback until W4 removes it.
-    let model_path = nros_cli_core::orchestration::model_location::resolve_model_path(
+    // phase-330 W7.b — the launch file, not a hardcoded model name, selects the
+    // model. `launch_to_model_rel` is the ONE mapping (W7.a): a `[[model]]`
+    // declaration wins for arg-bound variants, the derive rule covers the rest.
+    // A build script that names `config/system_model.yaml` would silently pick
+    // the DEFAULT model for an entry whose launch file is a variant.
+    let launch_name = opts
+        .launch_file
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(str::to_string);
+    let model_rel = nros_cli_core::orchestration::model_location::launch_to_model_rel(
         &bringup_dir,
-        "config/system_model.yaml",
-    );
+        launch_name.as_deref(),
+        &[],
+    )
+    .map_err(|e| eyre::eyre!("nros-build: {e}"))?;
+    // phase-330 W7.b — the model is BUILD OUTPUT, so cargo has to re-run this
+    // script when its inputs move. Without these the entry keeps a stale bake
+    // after a launch edit, which is the fixture-staleness class one layer up.
+    println!("cargo:rerun-if-changed={}", opts.launch_file.display());
+    let system_toml_dep = bringup_dir.join("system.toml");
+    if system_toml_dep.is_file() {
+        println!("cargo:rerun-if-changed={}", system_toml_dep.display());
+    }
+    println!("cargo:rerun-if-env-changed=NROS_MODEL_DIR");
+    // Same search order as the proc-macro and cmake (W3.b): build output first,
+    // the committed copy last.
+    let model_path =
+        nros_cli_core::orchestration::model_location::resolve_model_path(&bringup_dir, &model_rel);
     if !model_path.exists() {
         eyre::bail!(
-            "nros-build: `{}` has no committed SystemModel at `{}` — the \
-             launch-XML parse path was removed (phase-296 R4). Resolve one \
-             and commit it:\n  nros-launch-resolve {} [--system \
-             {}/system.toml] -o {}",
+            "nros-build: no SystemModel for `{}` at `{}`.\n\
+             The model is BUILD OUTPUT (phase-330), not a file to commit: run \
+             `nros sync` in the workspace, or point `NROS_MODEL_DIR` at the \
+             build dir that holds it. To resolve one by hand:\n  \
+             nros-launch-resolve {} [--system {}/system.toml] -o {}",
             opts.launch_file.display(),
             model_path.display(),
             opts.launch_file.display(),

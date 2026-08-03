@@ -81,110 +81,6 @@ pub fn resolve_model_path(bringup_dir: &Path, model_rel: &str) -> PathBuf {
         .unwrap_or_else(|| bringup_dir.join(model_rel))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Env is process-global, so these run under one lock and restore what they
-    // set — a leaked NROS_MODEL_DIR would silently reorder every later test.
-    fn with_env<T>(pairs: &[(&str, Option<&str>)], f: impl FnOnce() -> T) -> T {
-        use std::sync::{Mutex, OnceLock};
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _g = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-        let saved: Vec<(String, Option<std::ffi::OsString>)> = pairs
-            .iter()
-            .map(|(k, _)| ((*k).to_string(), std::env::var_os(k)))
-            .collect();
-        for (k, v) in pairs {
-            match v {
-                Some(v) => unsafe { std::env::set_var(k, v) },
-                None => unsafe { std::env::remove_var(k) },
-            }
-        }
-        let out = f();
-        for (k, v) in saved {
-            match v {
-                Some(v) => unsafe { std::env::set_var(&k, v) },
-                None => unsafe { std::env::remove_var(&k) },
-            }
-        }
-        out
-    }
-
-    #[test]
-    fn committed_location_is_the_fallback() {
-        with_env(&[("NROS_MODEL_DIR", None), ("OUT_DIR", None)], || {
-            let p = resolve_model_path(
-                Path::new("/ws/src/demo_bringup"),
-                "config/system_model.yaml",
-            );
-            assert_eq!(
-                p,
-                PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml")
-            );
-        });
-    }
-
-    #[test]
-    fn build_output_outranks_committed_and_drops_the_config_level() {
-        with_env(
-            &[("NROS_MODEL_DIR", None), ("OUT_DIR", Some("/build/out"))],
-            || {
-                let c = model_search_paths(
-                    Path::new("/ws/src/demo_bringup"),
-                    "config/system_model.yaml",
-                );
-                assert_eq!(
-                    c[0],
-                    PathBuf::from("/build/out/nros/demo_bringup/system_model.yaml")
-                );
-                assert_eq!(c[1], PathBuf::from("/build/out/nros/system_model.yaml"));
-                assert_eq!(
-                    c[2],
-                    PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml")
-                );
-            },
-        );
-    }
-
-    #[test]
-    fn shared_model_dir_outranks_out_dir() {
-        with_env(
-            &[
-                ("NROS_MODEL_DIR", Some("/build/nros")),
-                ("OUT_DIR", Some("/build/out")),
-            ],
-            || {
-                let c = model_search_paths(Path::new("/ws/b"), "config/system_model.yaml");
-                assert_eq!(c[0], PathBuf::from("/build/nros/b/system_model.yaml"));
-                assert_eq!(c[1], PathBuf::from("/build/nros/system_model.yaml"));
-            },
-        );
-    }
-
-    #[test]
-    fn variant_models_keep_their_own_name() {
-        with_env(&[("NROS_MODEL_DIR", Some("/b")), ("OUT_DIR", None)], || {
-            let c = model_search_paths(Path::new("/ws/b"), "config/talker_model.yaml");
-            assert_eq!(c[0], PathBuf::from("/b/b/talker_model.yaml"));
-        });
-    }
-
-    #[test]
-    fn missing_everywhere_reports_the_committed_path() {
-        with_env(
-            &[
-                ("NROS_MODEL_DIR", Some("/nope")),
-                ("OUT_DIR", Some("/nope2")),
-            ],
-            || {
-                let p = resolve_model_path(Path::new("/ws/b"), "config/system_model.yaml");
-                assert_eq!(p, PathBuf::from("/ws/b/config/system_model.yaml"));
-            },
-        );
-    }
-}
-
 /// phase-330 W7 — map the INPUT coordinates of a system to the model's
 /// bringup-relative path.
 ///
@@ -288,4 +184,108 @@ pub fn launch_to_model_rel(
         .unwrap_or(launch);
     let stem = stem.rsplit('/').next().unwrap_or(stem);
     Ok(format!("config/{stem}_model.yaml"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Env is process-global, so these run under one lock and restore what they
+    // set — a leaked NROS_MODEL_DIR would silently reorder every later test.
+    fn with_env<T>(pairs: &[(&str, Option<&str>)], f: impl FnOnce() -> T) -> T {
+        use std::sync::{Mutex, OnceLock};
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _g = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let saved: Vec<(String, Option<std::ffi::OsString>)> = pairs
+            .iter()
+            .map(|(k, _)| ((*k).to_string(), std::env::var_os(k)))
+            .collect();
+        for (k, v) in pairs {
+            match v {
+                Some(v) => unsafe { std::env::set_var(k, v) },
+                None => unsafe { std::env::remove_var(k) },
+            }
+        }
+        let out = f();
+        for (k, v) in saved {
+            match v {
+                Some(v) => unsafe { std::env::set_var(&k, v) },
+                None => unsafe { std::env::remove_var(&k) },
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn committed_location_is_the_fallback() {
+        with_env(&[("NROS_MODEL_DIR", None), ("OUT_DIR", None)], || {
+            let p = resolve_model_path(
+                Path::new("/ws/src/demo_bringup"),
+                "config/system_model.yaml",
+            );
+            assert_eq!(
+                p,
+                PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml")
+            );
+        });
+    }
+
+    #[test]
+    fn build_output_outranks_committed_and_drops_the_config_level() {
+        with_env(
+            &[("NROS_MODEL_DIR", None), ("OUT_DIR", Some("/build/out"))],
+            || {
+                let c = model_search_paths(
+                    Path::new("/ws/src/demo_bringup"),
+                    "config/system_model.yaml",
+                );
+                assert_eq!(
+                    c[0],
+                    PathBuf::from("/build/out/nros/demo_bringup/system_model.yaml")
+                );
+                assert_eq!(c[1], PathBuf::from("/build/out/nros/system_model.yaml"));
+                assert_eq!(
+                    c[2],
+                    PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml")
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn shared_model_dir_outranks_out_dir() {
+        with_env(
+            &[
+                ("NROS_MODEL_DIR", Some("/build/nros")),
+                ("OUT_DIR", Some("/build/out")),
+            ],
+            || {
+                let c = model_search_paths(Path::new("/ws/b"), "config/system_model.yaml");
+                assert_eq!(c[0], PathBuf::from("/build/nros/b/system_model.yaml"));
+                assert_eq!(c[1], PathBuf::from("/build/nros/system_model.yaml"));
+            },
+        );
+    }
+
+    #[test]
+    fn variant_models_keep_their_own_name() {
+        with_env(&[("NROS_MODEL_DIR", Some("/b")), ("OUT_DIR", None)], || {
+            let c = model_search_paths(Path::new("/ws/b"), "config/talker_model.yaml");
+            assert_eq!(c[0], PathBuf::from("/b/b/talker_model.yaml"));
+        });
+    }
+
+    #[test]
+    fn missing_everywhere_reports_the_committed_path() {
+        with_env(
+            &[
+                ("NROS_MODEL_DIR", Some("/nope")),
+                ("OUT_DIR", Some("/nope2")),
+            ],
+            || {
+                let p = resolve_model_path(Path::new("/ws/b"), "config/system_model.yaml");
+                assert_eq!(p, PathBuf::from("/ws/b/config/system_model.yaml"));
+            },
+        );
+    }
 }
