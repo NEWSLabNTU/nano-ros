@@ -9,6 +9,10 @@ pub mod idl_generator;
 /// `rosidl-resolve` crate (RFC-0068 Stage 1 / phase-335 W1.a); re-exported here
 /// so `rosidl_codegen::rihs::…` paths (incl. rosidl-bindgen's) are unchanged.
 pub use rosidl_resolve::rihs;
+
+// RFC-0068 Stage 1 IR, re-exported so consumers (rosidl-bindgen) reach it
+// through the crate they already depend on (phase-335 W1.c).
+pub use rosidl_resolve::{ResolvedAction, ResolvedMessage, ResolvedService};
 pub mod templates;
 pub mod types;
 pub mod utils;

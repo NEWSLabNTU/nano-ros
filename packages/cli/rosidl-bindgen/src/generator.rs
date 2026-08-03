@@ -13,7 +13,6 @@ use eyre::{Result, WrapErr};
 use rosidl_codegen::{
     CapacityResolver, RosEdition, generate_nros_action_package, generate_nros_message_package,
     generate_nros_service_package,
-    rihs::{build_type_description, rihs01},
     utils::{extract_dependencies, to_snake_case},
 };
 use rosidl_parser::Message;
@@ -86,10 +85,13 @@ fn compute_msg_type_hash(
     if !edition.uses_type_hash() {
         return Ok(edition.type_hash().to_string());
     }
-    let desc = build_type_description(fqn, message, |f| resolve(f)).map_err(|e| {
-        eyre::eyre!("RIHS01 type-hash computation failed for {fqn} ({edition:?}): {e}")
-    })?;
-    Ok(rihs01(&desc))
+    // RFC-0068 Stage 1: resolve the message into the neutral IR and read its
+    // hash, instead of calling the RIHS primitives directly (phase-335 W1.c).
+    let resolved =
+        rosidl_codegen::ResolvedMessage::resolve(fqn, message, |f| resolve(f)).map_err(|e| {
+            eyre::eyre!("RIHS01 type-hash computation failed for {fqn} ({edition:?}): {e}")
+        })?;
+    Ok(resolved.type_hash)
 }
 
 /// Compute the three REP-2011 hashes a service emits (`_Request`, `_Response`,
@@ -107,32 +109,17 @@ fn compute_service_type_hashes(
         let p = edition.type_hash().to_string();
         return Ok((p.clone(), p.clone(), p));
     }
-    let r = |f: &str| resolve(f);
-    let req = rosidl_codegen::rihs::service_member_type_description(
-        package,
-        srv_name,
-        "_Request",
-        &service.request,
-        r,
-    )
-    .map_err(|e| eyre::eyre!("RIHS01 {package}/srv/{srv_name}_Request ({edition:?}): {e}"))?;
-    let resp = rosidl_codegen::rihs::service_member_type_description(
-        package,
-        srv_name,
-        "_Response",
-        &service.response,
-        r,
-    )
-    .map_err(|e| eyre::eyre!("RIHS01 {package}/srv/{srv_name}_Response ({edition:?}): {e}"))?;
-    let svc = rosidl_codegen::rihs::build_service_type_description(
-        package,
-        srv_name,
-        &service.request,
-        &service.response,
-        r,
-    )
-    .map_err(|e| eyre::eyre!("RIHS01 {package}/srv/{srv_name} ({edition:?}): {e}"))?;
-    Ok((rihs01(&req), rihs01(&resp), rihs01(&svc)))
+    // RFC-0068 Stage 1: one ResolvedService carries the request/response/service
+    // hashes; same REP-2011 computation as the three primitive calls it replaces
+    // (phase-335 W1.c).
+    let resolved =
+        rosidl_codegen::ResolvedService::resolve(package, srv_name, service, |f| resolve(f))
+            .map_err(|e| eyre::eyre!("RIHS01 {package}/srv/{srv_name} ({edition:?}): {e}"))?;
+    Ok((
+        resolved.request_hash,
+        resolved.response_hash,
+        resolved.type_hash,
+    ))
 }
 
 /// Compute the nine REP-2011 hashes an action emits. Humble → the placeholder
@@ -161,15 +148,12 @@ fn compute_action_type_hashes(
             get_result_service: p,
         });
     }
-    rosidl_codegen::rihs::action_type_hashes(
-        package,
-        action_name,
-        &action.spec.goal,
-        &action.spec.result,
-        &action.spec.feedback,
-        |f| resolve(f),
-    )
-    .map_err(|e| eyre::eyre!("RIHS01 {package}/action/{action_name} ({edition:?}): {e}"))
+    // RFC-0068 Stage 1: ResolvedAction carries the full §3b hash bundle
+    // (phase-335 W1.c).
+    let resolved =
+        rosidl_codegen::ResolvedAction::resolve(package, action_name, action, |f| resolve(f))
+            .map_err(|e| eyre::eyre!("RIHS01 {package}/action/{action_name} ({edition:?}): {e}"))?;
+    Ok(resolved.hashes)
 }
 
 /// Generate nros Rust bindings for a ROS 2 package
