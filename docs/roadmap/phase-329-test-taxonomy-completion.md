@@ -3,8 +3,10 @@
 **Implements:** RFC-0051 (the unfinished half), RFC-0058 (edition axis stays
 separate), RFC-0061 (tier mapping)
 **Informed by:** the 2026-08-01 full-tree inventory (156 test files, 454 test
-fns, ~587 executed cases) and the first complete `test-all` triage on a
-product-provisioned host (issues 0380–0382).
+fns, ~587 executed cases), the first complete `test-all` triage on a
+product-provisioned host (issues 0380–0382), and a 2026-08-04 4-agent full-tree
+re-sweep that added the build-cost surface (344 fixture build rows) and W8
+(see "Validated inventory" + W8 below).
 
 ## Problem
 
@@ -163,6 +165,77 @@ prebuilt fixture).
   matrix = tier 3. Today the mapping exists only as lane filters; write it
   into the tables so `ci_lane` selection reads it.
 
+### W8 — cut the BUILD, not just the file count (added 2026-08-04)
+
+W0–W7 consolidate the *consumer* side (fewer files, one table per bucket) but
+barely move build wall-clock — the same fixtures still build. This wave attacks
+the fixture-BUILD burden directly. It is NEW scope: none of W0–W7 touches a
+`fixtures.toml` row, the edition sweep, or the tier-2 build set. Independent of
+W1–W7; can land first (it is the relief the tier-2 block of 2026-08-04 needed).
+
+- [ ] **W8.a — drop the `target-zenoh` twins.** ~27 rows re-build a bare
+  default-feature row's identical code into an isolated `target-zenoh/` dir; the
+  bare row already IS the zenoh coordinate (its default = `["rmw-zenoh"]`).
+  `fixtures-build.sh --core-only` (#29) already models skipping them. Delete the
+  twins (native rust `fixtures.toml:1286+`, the threadx-linux + qemu-riscv64
+  equivalents) after proving no test greps a `target-zenoh` path and the bare
+  row's artifact is byte-equivalent. Keep `target-xrce`/`target-cyclonedds` —
+  genuinely distinct RMWs. Biggest single build cut; removes EXPENSIVE
+  QEMU-cross twins too (W8.b subset).
+- [ ] **W8.b — the expensive build-only twins go first.** qemu-riscv64-threadx
+  action lanes are build-only since 182.5 (README:106) yet carry zenoh twins — a
+  QEMU-cross build with no runtime consumer for the duplicate. Drop those before
+  the cheap native ones.
+- [ ] **W8.c — shrink the edition sweep to its unique signal.** The 18–19
+  `ros_editions_e2e` cases re-run example nodes already covered by baked Example
+  cells + interop cells (agent-mapped triple-coverage: `matrix.rs:400` ≡
+  `interop.rs:221` ≡ `ros_editions_e2e.rs:141`). The edition axis's ONLY unique
+  signal is the per-edition RIHS01 type-hash tail, which varies by EDITION, not
+  by workload×dir. Reduce to one (workload,dir) smoke per (edition,rmw) that
+  proves the hash match; let baked+interop carry workload/direction. Removes
+  redundant container spawns and 2 of 3 edition RMW build passes
+  (`ros-editions.just:123`). Edition stays a per-run global (RFC-0058, W3) — this
+  shrinks it, does not fold it into a cell.
+- [ ] **W8.d — make `ci-matrix` build what its gate scopes.** Tier 2 still builds
+  `all` and runs full `test-all` (`justfile:1904-1909`); only the staleness gate
+  is coordinate-scoped, so the advertised 26% is gate-only fiction. Narrow the
+  build + run to `coords(Tier2)` (the `lane-coords` triples already computed).
+  Verify coverage against `_require-fixtures` before landing.
+- [ ] **W8.e — collapse same-code/different-YAML rows.** robot1/robot2 multihost
+  pairs (`fixtures.toml:225/505/708`) differ only by which
+  `multihost_robot<N>_model.yaml` the entry bakes — parameterize to one entry per
+  lang. (The server/client entry-doubling class, ~24 ws rows, is the larger prize
+  but is blocked on issue 0096 — track, do not tackle here.)
+- **Acceptance (W8):** fixture build-row count drops from 344 (251 `[[fixture]]` +
+  93 `[[workspace_fixture]]`) by ≥25 rows with NO matrix/interop cell losing its
+  fixture (the `matrix_fixture_coverage` gates stay green); the edition sweep
+  drops from ~19 cases to one-per-(edition,rmw) with the per-edition hash proof
+  intact; `just ci-matrix` builds only its lane coords, proven by a build log
+  that touches no off-coordinate platform.
+
+## Validated inventory (4-agent full-tree sweep, 2026-08-04)
+
+The 2026-08-01 numbers in "Problem" above were re-measured against the current
+tree. Refinements, so execution targets the real sites:
+
+- **matrix `CELLS` = 202** (174 Runtime / 17 BuildOnly / 11 CarveOut), `matrix.rs:388`.
+  **`interop::CELLS` = 11** (10 Runtime), `interop.rs:212`. Confirmed only 3 files
+  iterate a CELLS list (`alloc`, `ci_lane`, `zephyr.rs` count-only).
+- **Fixtures = 344 build rows** (251 `[[fixture]]` + 93 `[[workspace_fixture]]`) +
+  26 `[[compile_check_fixture]]`. Native/cheap = 187 rows; the rest are
+  QEMU/cross. This is the W8 cost surface the original phase text did not quantify.
+- **Sched-dim family = 10 files** (W2), each a per-(platform,dim) copy of one
+  boot-and-classify test; the shared form already exists for one dim
+  (`zephyr_edf_deadline_applied.rs:35 assert_edf_applied`) — generalize it.
+- **Bridge family = 4 files** (W3/W4), a copy-pasted 2×2 (imperative|declarative ×
+  cyclone|xrce); `bridge_zenoh_to_cyclonedds.rs:1` docstring names itself a
+  sibling copy. Fold using the existing `ros_env.rs` bridge helpers.
+- **8 hand-written zephyr↔native interop fns** (`zephyr.rs:806–1574`) sit beside
+  the `example_e2e(#[case])` consumer they should be rows of (W4).
+- **Exhaustive-match landmines** the file-fold must also remove:
+  `zephyr.rs:119-130/540-544/574` `unreachable!` arms panic on a new Rmw/Lang/
+  Workload; `PlatformId` needs edits in 4 places per new platform (`matrix.rs:60-161`).
+
 ## Acceptance
 
 - Adding a Runtime cell to `matrix::CELLS` with no test change fails G1;
@@ -174,6 +247,9 @@ prebuilt fixture).
   today's ~587.
 - A ROS-less host's `just test-all` reports skips grouped by matrix
   (interop / editions), not per-file.
+- **Build cost drops, not just file count (W8):** ≥25 fixture build rows gone
+  with every matrix/interop cell still covered; the edition sweep is
+  one-per-(edition,rmw); `ci-matrix` builds only its lane coords.
 
 ## Sequencing note
 
@@ -181,3 +257,11 @@ W1 and W2 touch `realtime_tiers_e2e` — land after the issue-0380 model
 restoration settles (this phase's W2 gate is 0380's structural fix).
 W4 is the long tail; it can proceed cell-family by cell-family behind the
 W1 gates without a flag day.
+
+**W8 lands FIRST and independently** — it touches `fixtures.toml` rows, the
+edition sweep, and the `ci-matrix` recipe, none of which W0–W7 touch. It is the
+direct fixture-build-time relief (the tier-2 block of 2026-08-04), needs no
+consumer-side refactor, and each of W8.a–e is a self-contained, gate-verified
+delete/narrow. Recommended order: W8.b (expensive twins) → W8.a (rest of twins)
+→ W8.d (ci-matrix narrow) → W8.c (edition shrink) → W8.e → then W2 (sched-dim
+10→1) as the first consumer-side wave.
