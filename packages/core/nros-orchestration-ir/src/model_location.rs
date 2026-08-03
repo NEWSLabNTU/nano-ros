@@ -66,10 +66,8 @@ pub fn model_search_paths(bringup_dir: &Path, model_rel: &str) -> Vec<PathBuf> {
     // in-tree flows (west entry crates have neither OUT_DIR nor
     // NROS_MODEL_DIR at macro expansion). A bringup outside that layout
     // simply contributes no candidate here.
-    if let (Some(b), Some(ws_root)) = (
-        &bringup,
-        bringup_dir.parent().and_then(|src| src.parent()),
-    ) {
+    if let (Some(b), Some(ws_root)) = (&bringup, bringup_dir.parent().and_then(|src| src.parent()))
+    {
         out.push(
             ws_root
                 .join("build")

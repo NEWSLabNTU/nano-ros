@@ -790,9 +790,12 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                     // (`talker-entry/` vs pkg `threadx_linux_rs_talker_entry`).
                     (
                         launch,
-                        dir.join(pkg.dir.file_name().map(std::path::PathBuf::from).unwrap_or_else(
-                            || std::path::PathBuf::from(&pkg.name),
-                        ))
+                        dir.join(
+                            pkg.dir
+                                .file_name()
+                                .map(std::path::PathBuf::from)
+                                .unwrap_or_else(|| std::path::PathBuf::from(&pkg.name)),
+                        )
                         .join(name),
                     )
                 })
@@ -1429,8 +1432,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // `<ws>/build/nros/models/<bringup>/<model>` — the same location the
     // consumer ladder's workspace-build-root rung reads. Committed
     // `config/*.yaml` are deleted; nothing writes into the source tree.
-    let model_dir =
-        model_dir.or_else(|| Some(ws_root.join("build").join("nros").join("models")));
+    let model_dir = model_dir.or_else(|| Some(ws_root.join("build").join("nros").join("models")));
     resolve_system_models(&scan, args.verbose, model_dir.as_deref())?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
     generate_facade_crates(&ws_root, &scan, &build_root, args.verbose)?;
@@ -2315,7 +2317,6 @@ fn execution_tier_dims(yaml: &str) -> BTreeSet<String> {
     }
     out
 }
-
 
 /// `nros ws model-dims <model.yaml>` — issue 0380's read-only door onto
 /// [`execution_tier_dims`], so the gate and the sync-time guard cannot disagree
