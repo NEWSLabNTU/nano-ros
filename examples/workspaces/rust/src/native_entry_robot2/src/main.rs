@@ -8,4 +8,4 @@
 //! cross-process through `zenohd`. (The retired `host = "…"` key partitioned
 //! at bake time from the ROS 1-ism `<node machine=…>`.)
 
-nros::main!(model = "demo_bringup:config/multihost_robot2_model.yaml");
+nros::main!(launch = "demo_bringup:multihost.launch.xml", args = [("host", "robot2")]);

@@ -46,6 +46,7 @@ fn cmd_name(cmd: &cmd::Cmd) -> &'static str {
         cmd::Cmd::Ws(_) => "ws",
         cmd::Cmd::Codegen(_) => "codegen",
         cmd::Cmd::CodegenSystem(_) => "codegen-system",
+        cmd::Cmd::ModelPath(_) => "model-path",
         cmd::Cmd::GenerateRust(_) => "generate-rust",
         cmd::Cmd::Setup(_) => "setup",
         // Everything else stays runnable on a stale binary ON PURPOSE —
@@ -89,6 +90,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::GeneratePx4Msgs(args) => cmd::generate_px4::run(args),
         cmd::Cmd::Codegen(args) => cmd::codegen::run(args),
         cmd::Cmd::CodegenSystem(args) => cmd::codegen_system::run(args),
+        cmd::Cmd::ModelPath(args) => cmd::model_path::run(args),
         cmd::Cmd::Metadata(args) => cmd::metadata::run(args),
         cmd::Cmd::Plan(args) => cmd::plan::run(args),
         cmd::Cmd::Check(args) => cmd::check::run(args),

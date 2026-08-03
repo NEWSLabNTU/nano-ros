@@ -16,4 +16,4 @@
 //! Use `model = "demo_bringup:config/<file>.yaml"` to pick a different
 //! model file from the same bringup.
 
-nros::main!(model = "demo_bringup");
+nros::main!(launch = "demo_bringup");

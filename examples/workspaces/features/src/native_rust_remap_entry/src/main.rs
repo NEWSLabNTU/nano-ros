@@ -8,4 +8,4 @@
 //! identity and resolves it through the rules — the wire topic is
 //! `/remapped_out`, with no per-app glue.
 
-nros::main!(model = "demo_bringup:config/rust_remap_model.yaml");
+nros::main!(launch = "demo_bringup:rust_remap.launch.xml");

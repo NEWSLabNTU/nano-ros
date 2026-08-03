@@ -32,5 +32,6 @@ nano_ros_entry(
     SOURCES src/main.cpp
     BOARD   native
     TYPED
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  default
     DEPLOY  native)

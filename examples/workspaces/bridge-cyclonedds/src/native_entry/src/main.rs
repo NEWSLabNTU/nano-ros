@@ -1,6 +1,6 @@
 //! Entry pkg — boots the cross-RMW bridge on the native host (phase-267 B3/W1c).
 //!
-//! Plain `nros::main!(model = "demo_bringup")` — no build.rs, no bridge code
+//! Plain `nros::main!(launch = "demo_bringup")` — no build.rs, no bridge code
 //! here. The resolved `demo_bringup/config/system_model.yaml` carries
 //! `execution.bridges` (from the bringup `[[bridge]]`) AND `nros sync` generated
 //! `demo_bringup/nros-bridge.toml`, so the macro emits a bridge entry: it
@@ -21,4 +21,4 @@
 //! `rmw_cyclonedds_cpp` subscriber receives `std_msgs/Int32` forwarded
 //! zenoh→cyclonedds.
 
-nros::main!(model = "demo_bringup");
+nros::main!(launch = "demo_bringup");

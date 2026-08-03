@@ -4,7 +4,7 @@ meta:
   - path: launch/rust_lifecycle.launch.xml
     sha256: 291cd6f9368ca73a54363667958a9a3860f1f1b2ea160f4474a21447a01f8233
   - path: system.toml
-    sha256: 8cbc553de78028b3e8ab479899d416e1b52d8f81f20375abec8fe907793ffb44
+    sha256: a81cc58a561d3118a78cecdef057c2d29bb5261efa3a6cf3b96d8969fd1e13bf
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0

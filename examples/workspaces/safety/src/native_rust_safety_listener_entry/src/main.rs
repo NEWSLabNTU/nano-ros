@@ -7,4 +7,4 @@
 //! /safe_ok. In-process node-to-node delivery does not happen (issue 0096), hence
 //! the two-process split.
 
-nros::main!(model = "demo_bringup:config/rust_safety_listener_model.yaml");
+nros::main!(launch = "demo_bringup:rust_safety_listener.launch.xml");

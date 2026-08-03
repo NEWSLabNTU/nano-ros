@@ -13,4 +13,4 @@
 // system.toml. The `deploy = "native"` metadata (Cargo.toml) picks the board
 // and the POSIX tier sub-table; the same model drives the nuttx/zephyr/riscv
 // entries against their own RTOS sub-tables.
-nros::main!(model = "demo_bringup");
+nros::main!(launch = "demo_bringup");

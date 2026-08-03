@@ -7,4 +7,4 @@
 //! so the launch file configures the node with no per-app glue and no extra `nros`
 //! feature.
 
-nros::main!(model = "demo_bringup:config/rust_params_model.yaml");
+nros::main!(launch = "demo_bringup:rust_params.launch.xml");

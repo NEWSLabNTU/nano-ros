@@ -16,6 +16,7 @@ pub mod check_workspace;
 pub mod codegen;
 pub mod codegen_cyclonedds_descriptors;
 pub mod codegen_system;
+pub mod model_path;
 pub mod completions;
 pub mod config;
 pub mod doctor;
@@ -96,6 +97,11 @@ pub enum Cmd {
     /// RTOS adapter.
     #[command(name = "codegen-system")]
     CodegenSystem(codegen_system::Args),
+
+    /// phase-330 W7 — print the resolved SystemModel path for
+    /// (bringup, launch, args). The cmake bridge for `nano_ros_entry(LAUNCH …)`.
+    #[command(name = "model-path")]
+    ModelPath(model_path::Args),
 
     /// Collect component source metadata for orchestration planning
     Metadata(metadata::Args),

@@ -94,8 +94,8 @@ function(nano_ros_entry)
     # input (RFC-0052); mutually exclusive with LAUNCH.
     cmake_parse_arguments(_NRA
         "TYPED"
-        "NAME;BOARD;LAUNCH;MODEL;LANG;HOST;LOCATOR"
-        "SOURCES;DEPLOY;ARGS"
+        "NAME;BOARD;LAUNCH;MODEL;LANG;HOST;LOCATOR;BRINGUP"
+        "SOURCES;DEPLOY;ARGS;LAUNCH_ARGS"
         ${ARGN})
     # phase-326 (issue 0364) — the bake-time host partition is gone with
     # `<node machine=>` (ROS 1 syntax). HOST stays PARSED so an old caller
@@ -186,13 +186,52 @@ function(nano_ros_entry)
         # phase-296 R-code.1 — the launch-XML bake is REMOVED; the canonical
         # input is a play_launch-resolved SystemModel.
         if(_NRA_LAUNCH)
-            message(FATAL_ERROR
-                "nano_ros_add_executable/nano_ros_entry: the LAUNCH keyword was "
-                "removed (phase-296 R4) — resolve a SystemModel and pass MODEL:\n"
-                "  play_launch resolve <bringup>/launch/<file>.launch.xml "
-                "[--system <bringup>/system.toml] -o <bringup>/config/system_model.yaml\n"
-                "  nano_ros_add_executable(... MODEL "
-                "\"\${CMAKE_CURRENT_SOURCE_DIR}/../<bringup>/config/system_model.yaml\")")
+            # phase-330 W7 — the INPUT-ADDRESSED spelling: the entry names its
+            # launch file (+ BRINGUP dir + optional LAUNCH_ARGS k=v bindings);
+            # the model is a build artifact the entry never names. The mapping
+            # rule lives ONCE in nros_orchestration_ir::model_location, reached
+            # through `nros model-path` — NOT re-implemented here (the
+            # second-spelling drift class). This is not the phase-296-deleted
+            # parse path: nothing parses launch XML at configure; the launch
+            # file ADDRESSES the resolver output the build layer produced.
+            if(NOT _NRA_BRINGUP)
+                message(FATAL_ERROR
+                    "nano_ros_entry: LAUNCH requires BRINGUP <dir> (the bringup "
+                    "package directory holding system.toml + launch/).")
+            endif()
+            if(_NRA_MODEL)
+                message(FATAL_ERROR
+                    "nano_ros_entry: LAUNCH and MODEL are mutually exclusive — "
+                    "LAUNCH names your input (canonical); MODEL names the "
+                    "resolved artifact directly (expert override, deprecated).")
+            endif()
+            set(_nra_mp_args --bringup-dir "${_NRA_BRINGUP}")
+            if(NOT _NRA_LAUNCH STREQUAL "default")
+                list(APPEND _nra_mp_args --launch "${_NRA_LAUNCH}")
+            endif()
+            foreach(_kv IN LISTS _NRA_LAUNCH_ARGS)
+                list(APPEND _nra_mp_args --arg "${_kv}")
+            endforeach()
+            nros_resolve_cli(_nra_mp_tool CONTEXT "nano_ros_entry LAUNCH")
+            execute_process(
+                COMMAND "${_nra_mp_tool}" model-path ${_nra_mp_args}
+                OUTPUT_VARIABLE _NRA_MODEL
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE _nra_mp_rc
+                ERROR_VARIABLE _nra_mp_err)
+            if(NOT _nra_mp_rc EQUAL 0)
+                message(FATAL_ERROR
+                    "nano_ros_entry: `nros model-path` failed for LAUNCH "
+                    "'${_NRA_LAUNCH}' (bringup ${_NRA_BRINGUP}):\n${_nra_mp_err}")
+            endif()
+            # Re-resolve when the USER'S inputs change.
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                "${_NRA_BRINGUP}/system.toml")
+            if(NOT _NRA_LAUNCH STREQUAL "default")
+                set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                    "${_NRA_BRINGUP}/launch/${_NRA_LAUNCH}")
+            endif()
+            set(_NRA_LAUNCH "")
         endif()
         if(NOT _NRA_LANG)
             set(_NRA_LANG cpp)

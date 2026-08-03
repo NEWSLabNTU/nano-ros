@@ -26,4 +26,4 @@
 // RFC-0052 / phase-296 R2 — canonical model bake path (see native_entry).
 // `deploy = "..."` picks the board + its RTOS tier sub-table from the SAME
 // committed `demo_bringup/config/system_model.yaml`.
-nros::main!(model = "demo_bringup");
+nros::main!(launch = "demo_bringup");

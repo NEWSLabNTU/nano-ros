@@ -5,4 +5,4 @@
 //! the generated `custom_msgs` crate they share. Run `nros sync` once first to
 //! codegen `generated/custom_msgs` from `src/custom_msgs/msg/Reading.msg`.
 
-nros::main!(model = "demo_bringup:config/rust_custom_msg_model.yaml");
+nros::main!(launch = "demo_bringup:rust_custom_msg.launch.xml");

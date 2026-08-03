@@ -6,4 +6,4 @@
 //! driving Configure → Activate at boot. `lifecycle-services` is enabled on the
 //! `nros` dep in Cargo.toml.
 
-nros::main!(model = "demo_bringup:config/rust_lifecycle_model.yaml");
+nros::main!(launch = "demo_bringup:rust_lifecycle.launch.xml");

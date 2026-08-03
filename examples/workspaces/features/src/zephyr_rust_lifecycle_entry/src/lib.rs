@@ -23,4 +23,4 @@
 // in so the kernel's Rust glue (`set_logger`, allocator hookup) links.
 extern crate zephyr;
 
-nros::main!(model = "demo_bringup:config/rust_lifecycle_model.yaml");
+nros::main!(launch = "demo_bringup:rust_lifecycle.launch.xml");

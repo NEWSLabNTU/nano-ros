@@ -28,4 +28,4 @@ use esp_backtrace as _;
 // ESP-IDF app descriptor — the second-stage bootloader scans for it.
 nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
-nros::main!(model = "demo_bringup:config/system_model.yaml");
+nros::main!(launch = "demo_bringup");

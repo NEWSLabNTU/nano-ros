@@ -23,4 +23,4 @@
 extern crate zephyr;
 
 // RFC-0052 / phase-296 R2 — canonical model bake path (see native_entry).
-nros::main!(model = "demo_bringup");
+nros::main!(launch = "demo_bringup");

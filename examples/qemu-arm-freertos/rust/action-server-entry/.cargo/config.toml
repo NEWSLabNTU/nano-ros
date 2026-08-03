@@ -21,4 +21,3 @@ rustflags = [
 [patch.crates-io]
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }  # nros-managed
 nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
-nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed

@@ -11,4 +11,4 @@
 //! broker round-trip; a cross-process subscriber on `/qos_ok` / `/qos_chatter`
 //! sees the QoS-matched stream (the Track-D runtime assertion).
 
-nros::main!(model = "demo_bringup:config/rust_qos_model.yaml");
+nros::main!(launch = "demo_bringup:rust_qos.launch.xml");

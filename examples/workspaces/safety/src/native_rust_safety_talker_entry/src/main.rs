@@ -6,4 +6,4 @@
 //! SEPARATE process (`native_safety_listener_entry`) — in-process node-to-node
 //! delivery does not happen (same zenoh session; issue 0096).
 
-nros::main!(model = "demo_bringup:config/rust_safety_talker_model.yaml");
+nros::main!(launch = "demo_bringup:rust_safety_talker.launch.xml");

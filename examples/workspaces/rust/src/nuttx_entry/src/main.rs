@@ -27,4 +27,4 @@
 //! `#![no_std] #![no_main]` freertos/esp32 entries — this is a plain
 //! `std` bin. The prebuilt NuttX kernel libs are linked by `build.rs`.
 
-nros::main!(model = "demo_bringup:config/system_model.yaml");
+nros::main!(launch = "demo_bringup");

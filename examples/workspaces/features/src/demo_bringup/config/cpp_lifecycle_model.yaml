@@ -4,7 +4,7 @@ meta:
   - path: launch/cpp_lifecycle.launch.xml
     sha256: a02e15529fa5d83b5a4b8b0eca5c0cc35ab07bf9b18fbb6ae66ff6744ce3c73a
   - path: system.toml
-    sha256: 8cbc553de78028b3e8ab479899d416e1b52d8f81f20375abec8fe907793ffb44
+    sha256: a81cc58a561d3118a78cecdef057c2d29bb5261efa3a6cf3b96d8969fd1e13bf
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0

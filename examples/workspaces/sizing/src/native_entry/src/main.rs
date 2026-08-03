@@ -11,4 +11,4 @@
 //! So this binary booting at all is the assertion: it cannot start without the
 //! sidecar being found, read, and applied.
 
-nros::main!(model = "demo_bringup");
+nros::main!(launch = "demo_bringup");
