@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#398** — `[[component]] name` no longer matches the launch node name, so every per-node projection
+keyed on it silently binds NOTHING. phase-331's consolidation gave component names workspace-unique
+prefixes (`rust_params_param_talker`) while launch files kept the plain node name (`param_talker`):
+ZERO of `features/`'s 20 component names match any of its 8 launch nodes. It stayed invisible because
+that bringup declares no `group_tiers` — the phase-330 W4 params projection is the first per-node
+projection it uses, and only its diagnostic made the failure visible at all. Worked around for params
+in rlm v0.1.2 (unambiguous `pkg` fallback); `group_tiers` still matches by bare name and will bind
+nothing the moment a consolidated workspace declares one. Direction: recouple the names, or key every
+projection on `pkg`+`class` — but ONE rule, and loud on failure. See `0398-*`. (2026-08-03)
+
 **#397** (RESOLVED 2026-08-03) — a failing `nros` CLI made `check-model-dims` report every dim of
 every model as LOST. The loop read `… 2>/dev/null || true`, so a stale-CLI refusal after a rebase
 (the common case) produced zero dims per model and a 118-line data-loss report for content that
