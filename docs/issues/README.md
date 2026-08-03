@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#406** — a fixture build narrowed to an id that matches nothing exits 0 having built nothing.
+`fixtures-build.sh native rust --id workspace-rust-native-realtime` returns rc=0 in 0.03s with no
+output: the id is real, but it names a `[[workspace_fixture]]` and that script only lists
+`[[fixture]]` rows. Same clean exit for a nonexistent id and for a typo'd platform. The sibling
+`workspace-fixtures-build.sh` prints "No workspace fixtures matched…" and then also exits 0. Same
+shape as 0351/0196 — a build step that satisfies every exit-status check without building. A fix
+must keep unfiltered zero-row runs silent and green (`threadx-linux/mixed` legitimately has 0 rows
+and the recipes sweep all four languages); the rule is that an EXPLICIT id filter matching nothing
+is always a user error. Also records the second half: the two builders spell the narrowing
+differently (`--id` vs `NROS_FIXTURE_ID`) and neither rejects the other's, which is how the silent
+no-op gets reached. See `0406-*`. (2026-08-03)
+
 **#405** — the tier2 lane gate demands `workspace-c-nuttx-riscv-realtime`, but nothing the tier2
 builder runs can produce it: `lane-coords` maps the `nuttx-riscv,c,zenoh` coordinate to the `nuttx`
 module, whose `build-fixtures` recipe builds only the arm side — the riscv workspaces live in
