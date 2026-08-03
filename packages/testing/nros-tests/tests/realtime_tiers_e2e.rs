@@ -61,9 +61,11 @@ use nros_tests::{
         build_zephyr_workspace_cpp_realtime_entry, build_zephyr_workspace_rust_realtime_entry,
         freertos, is_qemu_available, require_zenohd,
     },
-    matrix::{Lang as ML, PlatformId as MP, Workload as MW},
+    matrix::{
+        Cell as MCell, Lang as ML, PlatformId as MP, Tier as MT, W1Consumer, Workload as MW,
+        w1_consumer_of,
+    },
 };
-use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
 
 // =============================================================================
@@ -113,20 +115,191 @@ enum Proof {
 
 type Resolver = fn() -> TestResult<PathBuf>;
 
-/// One realtime-tiers matrix cell.
-struct Cell {
-    platform: &'static str,
-    lang: &'static str,
+/// The per-cell EXECUTION data for one realtime-tiers matrix cell. The
+/// coordinate lives in `matrix::Cell`; this carries the boot/resolver/proof.
+/// A coordinate may yield MORE than one `Exec` — the `(Native, Cpp)` cell runs
+/// both the component-shape and the #124 rclcpp-shape entry, a sub-variant the
+/// matrix's `(platform, lang)` axes cannot distinguish (hence [`exec_for`]
+/// returns a `Vec`). `label` is the display lang, so failure messages tell the
+/// two `cpp` variants apart.
+struct Exec {
+    label: &'static str,
     resolver: Resolver,
-    /// Baked router port — the allocator's number for the cell's
-    /// coordinate (matches the fixture's baked locator). `None` =
-    /// ephemeral (native).
+    /// Baked router port — the allocator's number for the cell's coordinate.
+    /// `None` = ephemeral (native).
     port: Option<u16>,
     boot: Boot,
     proof: Proof,
     /// Provenance / nuance — folded into failure messages so a red cell
     /// still names the seam it pins.
     note: &'static str,
+}
+
+/// Map a RealtimeTiers coordinate to its execution row(s). Non-native cells
+/// carry the allocator's baked port; `(Native, Cpp)` returns two rows, the
+/// component and rclcpp shapes. An unmapped coordinate is a HARD panic
+/// (phase-329 W1: a new RealtimeTiers cell must wire its boot here).
+fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
+    let port = if matches!(platform, MP::Native) {
+        None
+    } else {
+        Some(port_of(platform, lang, MW::RealtimeTiers))
+    };
+    match (platform, lang) {
+        (MP::Native, ML::Rust) => vec![Exec {
+            label: "rust",
+            resolver: native_rust_entry,
+            port,
+            boot: Boot::Native,
+            proof: Proof::CounterRatio3x,
+            note: "phase-263 B2 `nros::main!` run_tiers (RFC-0032 §5); #158 counter proof",
+        }],
+        (MP::Native, ML::C) => vec![Exec {
+            label: "c",
+            resolver: native_c_entry,
+            port,
+            boot: Boot::Native,
+            proof: Proof::CountRatio3x,
+            note: "phase-269 W4 C sched-context (nros_cpp_create_sched_context + node_create_ex)",
+        }],
+        (MP::Native, ML::Cpp) => vec![
+            Exec {
+                label: "cpp",
+                resolver: native_cpp_entry,
+                port,
+                boot: Boot::Native,
+                proof: Proof::CountRatio3x,
+                note: "phase-269 W4 C++ configure-shape sched-context (NodeBuilder::sched())",
+            },
+            Exec {
+                label: "cpp-rclcpp",
+                resolver: native_cpp_rclcpp_entry,
+                port,
+                boot: Boot::Native,
+                proof: Proof::CountRatio3x,
+                note: "issue #124 / phase-272 W3: IS-A-node rclcpp-shape components bind via the \
+                       node_name → sched_context table at Executor::node_builder — a miss here \
+                       means rclcpp-shape nodes lost their tier again",
+            },
+        ],
+        (MP::ZephyrNativeSim, ML::Rust) => vec![Exec {
+            label: "rust",
+            resolver: build_zephyr_workspace_rust_realtime_entry,
+            port,
+            boot: Boot::ZephyrNativeSim,
+            proof: Proof::CountStrict,
+            note: "phase-276 W2 / #128 half 2: ZephyrBoard::run_tiers (RFC-0015 Model 1)",
+        }],
+        (MP::ZephyrNativeSim, ML::Cpp) => vec![Exec {
+            label: "cpp",
+            resolver: build_zephyr_workspace_cpp_realtime_entry,
+            port,
+            boot: Boot::ZephyrNativeSim,
+            proof: Proof::CountStrict,
+            note: "phase-281 W3b: first full west link + runtime proof of the run_tiers seam",
+        }],
+        (MP::ZephyrNativeSim, ML::C) => vec![Exec {
+            label: "c",
+            resolver: build_zephyr_workspace_c_realtime_entry,
+            port,
+            boot: Boot::ZephyrNativeSim,
+            proof: Proof::CountStrict,
+            note: "phase-281 W3c: C nodes over the shared ZephyrBoard::run_tiers glue",
+        }],
+        (MP::NuttxArm, ML::Cpp) => vec![Exec {
+            label: "cpp",
+            resolver: nuttx_cpp_entry,
+            port,
+            boot: Boot::NuttxArm,
+            proof: Proof::CounterRatio3x,
+            note: "phase-281 W3-nuttx: NuttxBoard::run_tiers (commit 37cfaf728)",
+        }],
+        (MP::NuttxArm, ML::C) => vec![Exec {
+            label: "c",
+            resolver: nuttx_c_entry,
+            port,
+            boot: Boot::NuttxArm,
+            proof: Proof::CounterRatio3x,
+            note: "phase-281 W3-nuttx: pure-C lane over NuttxBoard::run_tiers",
+        }],
+        (MP::NuttxArm, ML::Rust) => vec![Exec {
+            label: "rust",
+            resolver: nuttx_rust_entry,
+            port,
+            boot: Boot::NuttxArm,
+            proof: Proof::CounterRatio3x,
+            note: "phase-281 W3-nuttx: QemuArmVirt::run_tiers (std::thread per tier), \
+                   the cell that completed the 12-cell Model-1 matrix",
+        }],
+        (MP::NuttxRiscv, ML::Rust) => vec![Exec {
+            label: "rust",
+            resolver: nuttx_riscv_rust_entry,
+            port,
+            boot: Boot::NuttxRiscv,
+            proof: Proof::CounterRatio3x,
+            note: "phase-285 W6 / #165: QemuRvVirt::run_tiers",
+        }],
+        (MP::NuttxRiscv, ML::C) => vec![Exec {
+            label: "c",
+            resolver: nuttx_riscv_c_entry,
+            port,
+            boot: Boot::NuttxRiscv,
+            proof: Proof::CounterRatio3x,
+            note: "#199 follow-up: C riscv_nuttx_entry over NuttxBoard::run_tiers",
+        }],
+        (MP::NuttxRiscv, ML::Cpp) => vec![Exec {
+            label: "cpp",
+            resolver: nuttx_riscv_cpp_entry,
+            port,
+            boot: Boot::NuttxRiscv,
+            proof: Proof::CounterRatio3x,
+            note: "#199 follow-up: C++ riscv_nuttx_entry over NuttxBoard::run_tiers",
+        }],
+        (MP::FreertosMps2, ML::Cpp) => vec![Exec {
+            label: "cpp",
+            resolver: freertos_cpp_entry,
+            port,
+            boot: Boot::FreertosMps2,
+            proof: Proof::SerialTicks(&["ctrl", "aux", "telem"]),
+            note: "phase-274 W3 (#126) + #144 chained tier spawn: ctrl(10ms)/aux(50ms)/telem(100ms)",
+        }],
+        (MP::FreertosMps2, ML::C) => vec![Exec {
+            label: "c",
+            resolver: freertos_c_entry,
+            port,
+            boot: Boot::FreertosMps2,
+            proof: Proof::SerialTicks(&["ctrl", "telem"]),
+            note: "phase-281 W2: C nodes over the SHARED nros_board_freertos_run_tiers glue \
+                   (codegen routes embedded-C via the C++ emitter + NROS_C_COMPONENT seam)",
+        }],
+        (MP::ThreadxLinux, ML::Rust) => vec![Exec {
+            label: "rust",
+            resolver: threadx_linux_rust_entry,
+            port,
+            boot: Boot::ThreadxLinux,
+            proof: Proof::CounterRatio3x,
+            note: "phase-297 W4/W5: ThreadxLinux::run_tiers over nros_threadx_create_task \
+                   (RFC-0053 byte-pool stacks); also the W2 shim's two-threads-run proof. \
+                   NOTE resolve_tiers sorts descending by raw number, so on ThreadX the \
+                   BOOT tier is `low` (telem) and `high` (ctrl) is chain-spawned",
+        }],
+        (p, l) => panic!(
+            "realtime_tiers_e2e: no execution mapping for matrix cell {p:?}/{l:?} — add an \
+             `exec_for` arm (phase-329 W1)"
+        ),
+    }
+}
+
+fn plat_str(p: MP) -> &'static str {
+    match p {
+        MP::Native => "native",
+        MP::ZephyrNativeSim => "zephyr",
+        MP::NuttxArm => "nuttx-arm",
+        MP::NuttxRiscv => "nuttx-riscv",
+        MP::FreertosMps2 => "freertos",
+        MP::ThreadxLinux => "threadx-linux",
+        _ => "?",
+    }
 }
 
 // Resolver adapters: normalize the `&'static Path` builders onto the
@@ -279,125 +452,78 @@ fn anchor_timeout(boot: Boot) -> Duration {
 // The parametrized matrix consumer
 // =============================================================================
 
-/// One realtime-tiers cell: boot the workspace entry, observe both tiers,
-/// assert the 10 ms high tier outruns the 100 ms low tier per the cell's
-/// [`Proof`]. Case names carry `<platform>_<lang>` so nextest `test(...)`
-/// filters can slice by platform (e.g. `test(nuttx_riscv)`).
-#[rstest]
-// Native (ephemeral router; posix sched contexts — RFC-0015 §4.2).
-#[case::native_rust(Cell {
-    platform: "native", lang: "rust", resolver: native_rust_entry,
-    port: None, boot: Boot::Native, proof: Proof::CounterRatio3x,
-    note: "phase-263 B2 `nros::main!` run_tiers (RFC-0032 §5); #158 counter proof",
-})]
-#[case::native_c(Cell {
-    platform: "native", lang: "c", resolver: native_c_entry,
-    port: None, boot: Boot::Native, proof: Proof::CountRatio3x,
-    note: "phase-269 W4 C sched-context (nros_cpp_create_sched_context + node_create_ex)",
-})]
-#[case::native_cpp(Cell {
-    platform: "native", lang: "cpp", resolver: native_cpp_entry,
-    port: None, boot: Boot::Native, proof: Proof::CountRatio3x,
-    note: "phase-269 W4 C++ configure-shape sched-context (NodeBuilder::sched())",
-})]
-#[case::native_cpp_rclcpp(Cell {
-    platform: "native", lang: "cpp-rclcpp", resolver: native_cpp_rclcpp_entry,
-    port: None, boot: Boot::Native, proof: Proof::CountRatio3x,
-    note: "issue #124 / phase-272 W3: IS-A-node rclcpp-shape components bind via the \
-           node_name → sched_context table at Executor::node_builder — a miss here \
-           means rclcpp-shape nodes lost their tier again",
-})]
-// Zephyr native_sim (west lane; ZephyrBoard::run_tiers, one k_thread/tier).
-#[case::zephyr_rust(Cell {
-    platform: "zephyr", lang: "rust", resolver: build_zephyr_workspace_rust_realtime_entry,
-    port: Some(port_of(MP::ZephyrNativeSim, ML::Rust, MW::RealtimeTiers)),
-    boot: Boot::ZephyrNativeSim, proof: Proof::CountStrict,
-    note: "phase-276 W2 / #128 half 2: ZephyrBoard::run_tiers (RFC-0015 Model 1)",
-})]
-#[case::zephyr_cpp(Cell {
-    platform: "zephyr", lang: "cpp", resolver: build_zephyr_workspace_cpp_realtime_entry,
-    port: Some(port_of(MP::ZephyrNativeSim, ML::Cpp, MW::RealtimeTiers)),
-    boot: Boot::ZephyrNativeSim, proof: Proof::CountStrict,
-    note: "phase-281 W3b: first full west link + runtime proof of the run_tiers seam",
-})]
-#[case::zephyr_c(Cell {
-    platform: "zephyr", lang: "c", resolver: build_zephyr_workspace_c_realtime_entry,
-    port: Some(port_of(MP::ZephyrNativeSim, ML::C, MW::RealtimeTiers)),
-    boot: Boot::ZephyrNativeSim, proof: Proof::CountStrict,
-    note: "phase-281 W3c: C nodes over the shared ZephyrBoard::run_tiers glue",
-})]
-// NuttX QEMU arm-virt (NuttxBoard::run_tiers, one SCHED_FIFO pthread/tier).
-#[case::nuttx_arm_cpp(Cell {
-    platform: "nuttx-arm", lang: "cpp", resolver: nuttx_cpp_entry,
-    port: Some(port_of(MP::NuttxArm, ML::Cpp, MW::RealtimeTiers)), boot: Boot::NuttxArm, proof: Proof::CounterRatio3x,
-    note: "phase-281 W3-nuttx: NuttxBoard::run_tiers (commit 37cfaf728)",
-})]
-#[case::nuttx_arm_c(Cell {
-    platform: "nuttx-arm", lang: "c", resolver: nuttx_c_entry,
-    port: Some(port_of(MP::NuttxArm, ML::C, MW::RealtimeTiers)), boot: Boot::NuttxArm, proof: Proof::CounterRatio3x,
-    note: "phase-281 W3-nuttx: pure-C lane over NuttxBoard::run_tiers",
-})]
-#[case::nuttx_arm_rust(Cell {
-    platform: "nuttx-arm", lang: "rust", resolver: nuttx_rust_entry,
-    port: Some(port_of(MP::NuttxArm, ML::Rust, MW::RealtimeTiers)), boot: Boot::NuttxArm, proof: Proof::CounterRatio3x,
-    note: "phase-281 W3-nuttx: QemuArmVirt::run_tiers (std::thread per tier), \
-           the cell that completed the 12-cell Model-1 matrix",
-})]
-// NuttX QEMU rv-virt riscv32 (#199 follow-ups; -icount boot profile).
-#[case::nuttx_riscv_rust(Cell {
-    platform: "nuttx-riscv", lang: "rust", resolver: nuttx_riscv_rust_entry,
-    port: Some(port_of(MP::NuttxRiscv, ML::Rust, MW::RealtimeTiers)), boot: Boot::NuttxRiscv, proof: Proof::CounterRatio3x,
-    note: "phase-285 W6 / #165: QemuRvVirt::run_tiers",
-})]
-#[case::nuttx_riscv_c(Cell {
-    platform: "nuttx-riscv", lang: "c", resolver: nuttx_riscv_c_entry,
-    port: Some(port_of(MP::NuttxRiscv, ML::C, MW::RealtimeTiers)), boot: Boot::NuttxRiscv, proof: Proof::CounterRatio3x,
-    note: "#199 follow-up: C riscv_nuttx_entry over NuttxBoard::run_tiers",
-})]
-#[case::nuttx_riscv_cpp(Cell {
-    platform: "nuttx-riscv", lang: "cpp", resolver: nuttx_riscv_cpp_entry,
-    port: Some(port_of(MP::NuttxRiscv, ML::Cpp, MW::RealtimeTiers)), boot: Boot::NuttxRiscv, proof: Proof::CounterRatio3x,
-    note: "#199 follow-up: C++ riscv_nuttx_entry over NuttxBoard::run_tiers",
-})]
-// FreeRTOS QEMU mps2-an385 (FreertosBoard::run_tiers; serial-tick proof).
-#[case::freertos_cpp(Cell {
-    platform: "freertos", lang: "cpp", resolver: freertos_cpp_entry,
-    port: Some(port_of(MP::FreertosMps2, ML::Cpp, MW::RealtimeTiers)),
-    boot: Boot::FreertosMps2,
-    // THREE tiers — [aux] (50 ms, spawned BY a spawned tier) is the #144
-    // chained-spawn regression signal: under the pre-fix loop-spawn race
-    // two tiers declared concurrently and aux's publisher write filter
-    // stayed closed (no ticks). Order matters: boot tier first.
-    proof: Proof::SerialTicks(&["ctrl", "aux", "telem"]),
-    note: "phase-274 W3 (#126) + #144 chained tier spawn: ctrl(10ms)/aux(50ms)/telem(100ms)",
-})]
-// ThreadX-Linux hosted simulation (ThreadxLinux::run_tiers, one ThreadX
-// thread per tier, byte-pool stacks — phase-297 W5 / RFC-0053 acceptance).
-#[case::threadx_linux_rust(Cell {
-    platform: "threadx-linux", lang: "rust", resolver: threadx_linux_rust_entry,
-    port: Some(port_of(MP::ThreadxLinux, ML::Rust, MW::RealtimeTiers)),
-    boot: Boot::ThreadxLinux, proof: Proof::CounterRatio3x,
-    note: "phase-297 W4/W5: ThreadxLinux::run_tiers over nros_threadx_create_task \
-           (RFC-0053 byte-pool stacks); also the W2 shim's two-threads-run proof. \
-           NOTE resolve_tiers sorts descending by raw number, so on ThreadX the \
-           BOOT tier is `low` (telem) and `high` (ctrl) is chain-spawned",
-})]
-#[case::freertos_c(Cell {
-    platform: "freertos", lang: "c", resolver: freertos_c_entry,
-    port: Some(port_of(MP::FreertosMps2, ML::C, MW::RealtimeTiers)),
-    boot: Boot::FreertosMps2,
-    proof: Proof::SerialTicks(&["ctrl", "telem"]),
-    note: "phase-281 W2: C nodes over the SHARED nros_board_freertos_run_tiers glue \
-           (codegen routes embedded-C via the C++ emitter + NROS_C_COMPONENT seam)",
-})]
-fn realtime_tiers(#[case] cell: Cell) {
+/// THE realtime-tiers matrix consumer (phase-329 W1). Iterates every cell
+/// `w1_consumer_of` assigns to `RealtimeTiers`, expands each to its execution
+/// row(s) via [`exec_for`] (the `(Native, Cpp)` cell yields two — component +
+/// #124 rclcpp), and runs each in one process, catching per-row skips/failures
+/// so one missing fixture never aborts the rest.
+#[test]
+fn realtime_tiers() {
+    let cells: Vec<&MCell> = nros_tests::matrix::CELLS
+        .iter()
+        .filter(|c| {
+            w1_consumer_of(c) == Some(W1Consumer::RealtimeTiers) && matches!(c.tier, MT::Runtime)
+        })
+        .collect();
+    assert!(
+        !cells.is_empty(),
+        "matrix regression: no RealtimeTiers runtime cells for this consumer"
+    );
+
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let mut ran = 0usize;
+    let mut skipped: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+    for c in &cells {
+        for exec in exec_for(c.platform, c.lang) {
+            ran += 1;
+            let label = format!("{}/{}", plat_str(c.platform), exec.label);
+            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_one(c, &exec)));
+            if let Err(p) = res {
+                let msg = p
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "<non-string panic>".to_string());
+                if msg.contains("[SKIPPED]") {
+                    skipped.push(format!("{label}: {msg}"));
+                } else {
+                    failed.push(format!("{label}: {msg}"));
+                }
+            }
+        }
+    }
+    std::panic::set_hook(prev_hook);
+
+    assert!(
+        failed.is_empty(),
+        "realtime_tiers: {} of {} row(s) FAILED:\n  {}",
+        failed.len(),
+        ran,
+        failed.join("\n  ")
+    );
+    if skipped.len() == ran {
+        nros_tests::skip!(
+            "all {ran} realtime-tiers row(s) skipped:\n  {}",
+            skipped.join("\n  ")
+        );
+    }
+}
+
+/// Boot the workspace entry, observe both tiers, assert the 10 ms high tier
+/// outruns the 100 ms low tier per the row's [`Proof`]. Panics with
+/// `[SKIPPED] …` on an unmet precondition; the caller classifies.
+fn run_one(pcell: &MCell, cell: &Exec) {
+    let platform = plat_str(pcell.platform);
+    let lang = cell.label;
     require_cell_env(cell.boot);
 
     let entry = (cell.resolver)().unwrap_or_else(|e| {
         nros_tests::skip!(
             "{} {} realtime workspace entry fixture not built: {e}",
-            cell.platform,
-            cell.lang
+            platform,
+            lang
         )
     });
 
@@ -424,7 +550,7 @@ fn realtime_tiers(#[case] cell: Cell) {
     // FreeRTOS: serial-tick proof, no host observers.
     if let Proof::SerialTicks(tiers) = cell.proof {
         let mut qemu = QemuProcess::start_mps2_an385_freertos_slirp(&entry)
-            .unwrap_or_else(|e| panic!("boot {} {} QEMU: {e}", cell.platform, cell.lang));
+            .unwrap_or_else(|e| panic!("boot {} {} QEMU: {e}", platform, lang));
         // The boot tier connects + publishes first (its tick proves the
         // run_tiers boot session reached the host zenohd), so it gets the
         // cold-boot budget; each subsequent tier only needs its own period.
@@ -438,7 +564,7 @@ fn realtime_tiers(#[case] cell: Cell) {
                     panic!(
                         "[{} {}] tier `{tier}` never published (`{marker}` absent) — \
                          {}.\nerr: {e:?}",
-                        cell.platform, cell.lang, cell.note
+                        platform, lang, cell.note
                     )
                 });
             assert!(out.contains(&marker));
@@ -503,7 +629,7 @@ fn realtime_tiers(#[case] cell: Cell) {
             panic!(
                 "[{} {}] low-tier /telem never reached 5 deliveries — the low tier was \
                  not scheduled ({})",
-                cell.platform, cell.lang, cell.note
+                platform, lang, cell.note
             )
         });
 
@@ -535,8 +661,8 @@ fn realtime_tiers(#[case] cell: Cell) {
                 telem_max > 0,
                 "[{} {}] low-tier /telem counter never advanced (max {telem_max}) — the \
                  low tier did not run ({})",
-                cell.platform,
-                cell.lang,
+                platform,
+                lang,
                 cell.note
             );
             assert!(
@@ -544,8 +670,8 @@ fn realtime_tiers(#[case] cell: Cell) {
                 "[{} {}] high-tier /ctrl counter {ctrl_max} is not ≥3× the low-tier \
                  /telem counter {telem_max} — the 10 ms tier is not outrunning the \
                  100 ms tier ({})",
-                cell.platform,
-                cell.lang,
+                platform,
+                lang,
                 cell.note
             );
         }
@@ -559,7 +685,7 @@ fn realtime_tiers(#[case] cell: Cell) {
                     panic!(
                         "[{} {}] high-tier /ctrl produced nothing — the high tier was \
                          not scheduled ({})",
-                        cell.platform, cell.lang, cell.note
+                        platform, lang, cell.note
                     )
                 });
             guest.kill();
@@ -571,8 +697,8 @@ fn realtime_tiers(#[case] cell: Cell) {
             assert!(
                 telem_n >= 5,
                 "[{} {}] expected ≥5 low-tier /telem deliveries, got {telem_n} ({})",
-                cell.platform,
-                cell.lang,
+                platform,
+                lang,
                 cell.note
             );
             if matches!(cell.proof, Proof::CountRatio3x) {
@@ -582,8 +708,8 @@ fn realtime_tiers(#[case] cell: Cell) {
                     ctrl_n >= telem_n * 3,
                     "[{} {}] expected the high tier (/ctrl, 10 ms) to deliver ≥3× the \
                      low tier (/telem, 100 ms): ctrl={ctrl_n} telem={telem_n} ({})",
-                    cell.platform,
-                    cell.lang,
+                    platform,
+                    lang,
                     cell.note
                 );
             } else {
@@ -591,8 +717,8 @@ fn realtime_tiers(#[case] cell: Cell) {
                     ctrl_n > telem_n,
                     "[{} {}] ctrl (10 ms tier) delivered {ctrl_n} ≤ telem's {telem_n} — \
                      the high tier is not outrunning the low tier ({})",
-                    cell.platform,
-                    cell.lang,
+                    platform,
+                    lang,
                     cell.note
                 );
             }
