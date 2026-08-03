@@ -301,8 +301,24 @@ build_workspace() {
             fi
             echo "     cmake --build $build_subdir --target $build_target"
             cmake --build "$build_subdir" --target "$build_target"
+            # The entry executable lands at the canonical
+            # `<build>/src/<entry>/<entry>` for every cmake-built workspace, so
+            # ask for it directly instead of searching. The old unpruned
+            # `find "$build_subdir"` walked the whole build tree once per
+            # fixture row — 22.8k of 24.4k files in a cpp workspace are the
+            # cargo target dir — and `sort | head -1` picked the
+            # lexicographically first match, where `cargo/` sorts BEFORE `src/`:
+            # a cargo artifact of the same name would have won over the cmake
+            # entry. The fallback (NuttX copies its kernel ELF elsewhere) prunes
+            # the three big generated subtrees.
             local built_path
-            built_path="$(find "$build_subdir" -type f -name "$entry" -perm -111 | sort | head -n 1 || true)"
+            if [ -x "$build_subdir/src/$entry/$entry" ]; then
+                built_path="$build_subdir/src/$entry/$entry"
+            else
+                built_path="$(find "$build_subdir" \
+                    \( -name cargo -o -name _deps -o -name CMakeFiles \) -prune -o \
+                    -type f -name "$entry" -perm -111 -print | sort | head -n 1 || true)"
+            fi
             if [ -n "$built_path" ]; then
                 echo "     built: $dir/$built_path"
             elif [ "$platform" = "nuttx" ] || [ "$platform" = "nuttx-riscv" ]; then
