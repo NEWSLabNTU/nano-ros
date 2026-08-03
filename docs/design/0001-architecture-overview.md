@@ -445,7 +445,7 @@ graph TD
 | `nros-board-esp32`                | ESP32-C3       | Bare-metal | smoltcp       | WiFi (esp-hal)        |
 | `nros-board-esp32-qemu`           | QEMU ESP32-C3  | Bare-metal | smoltcp       | openeth-smoltcp       |
 | `nros-board-stm32f4`              | STM32F4        | Bare-metal | smoltcp       | STM32 Ethernet        |
-| `nros-board-nuttx-qemu-arm`       | QEMU Cortex-A7 | NuttX      | NuttX sockets | virtio-net (built-in) |
+| `nros-board-nuttx-qemu`           | QEMU Cortex-A7 · rv-virt | NuttX      | NuttX sockets | virtio-net (built-in) |
 | `nros-board-threadx-qemu-riscv64` | QEMU RISC-V    | ThreadX    | NetX Duo      | virtio-net-netx       |
 
 ### Platform Primitives

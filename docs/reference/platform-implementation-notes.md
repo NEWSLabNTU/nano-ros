@@ -249,7 +249,7 @@ just feature gates). zenoh-pico C keeps per-platform system layers and
    and the standalone flat image does not run the auto-register `.init_array`.
    So `nros-board-nuttx::run_entry` calls `nros_rmw_zenoh::register()`
    explicitly before `Executor::open` (feature `rmw-zenoh`, wired entry →
-   `nros-board-nuttx-qemu-arm` → `nros-board-nuttx`) — same shape as the esp32
+   `nros-board-nuttx-qemu` → `nros-board-nuttx`) — same shape as the esp32
    board.
 5. **pthread pool.** Like Zephyr, NuttX needs enough pthread mutex/sem
    resources (zenoh-pico uses ~8+ mutexes; transport TX/RX/peer + per-publisher

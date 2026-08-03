@@ -75,7 +75,7 @@ NuttX exposes SCHED_SPORADIC via `sched_setscheduler` +
 augmented `sched_param`. Verification harness:
 
 1. NuttX QEMU build with `CONFIG_SCHED_SPORADIC=y` in the
-   board defconfig (`packages/boards/nros-board-nuttx-qemu-arm/`).
+   board defconfig (`packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/`).
 2. App pins a callback to a `Sporadic`-class SC with a known
    budget / period.
 3. Long-running BE callback in another priority slot.
@@ -144,7 +144,7 @@ Contents:
 ### 162.B — NuttX SCHED_SPORADIC verification
 
 - [ ] **162.B.1** Add `CONFIG_SCHED_SPORADIC=y` to the
-      `nros-board-nuttx-qemu-arm` defconfig.
+      `nros-board-nuttx-qemu` arm defconfig.
 - [ ] **162.B.2** Bench binary in
       `packages/testing/nros-bench/nuttx-sched-sporadic/` that
       runs the same scenario as 162.A.5 against NuttX QEMU.
@@ -215,7 +215,7 @@ acceptance items (Phase 110 line 521-522) land here.
 
 ### Modified
 
-- `packages/boards/nros-board-nuttx-qemu-arm/`: defconfig adds
+- `packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/`: defconfig adds
   `CONFIG_SCHED_SPORADIC=y`.
 - `packages/testing/nros-bench/wake-latency-cortex-m3/README.md`:
   hardware capture path, 10× baseline number.
