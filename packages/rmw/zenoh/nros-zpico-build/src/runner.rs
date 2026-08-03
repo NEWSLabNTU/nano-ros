@@ -1582,6 +1582,29 @@ fn build_zenoh_pico_unified(
 fn generate_mbedtls_pc_files(pc_dir: &Path) {
     std::fs::create_dir_all(pc_dir).unwrap();
 
+    // issue 0399 (mbedtls half) — these .pc files are FABRICATED by us, so
+    // `pkg_config::probe("mbedtls")` cannot fail: it reads back what we just
+    // wrote and reports the library present whether or not it is installed.
+    // The .pc hardcodes `includedir=/usr/include`, so on a host without the
+    // dev package the build sails past discovery and dies ~40 lines later in a
+    // vendored TU:
+    //
+    //     zenoh-pico/include/zenoh-pico/system/link/tls.h:30:10:
+    //         fatal error: mbedtls/entropy.h: No such file or directory
+    //
+    // which reads as a broken vendored tree, not a missing system package.
+    // Check the header we are about to promise before promising it.
+    if !Path::new("/usr/include/mbedtls/entropy.h").exists() {
+        panic!(
+            "TLS is enabled but mbedTLS headers are missing \
+             (/usr/include/mbedtls/entropy.h). Install the dev package:\n\
+             \n    Debian/Ubuntu:  sudo apt-get install libmbedtls-dev\n\
+             \n    Arch:           sudo pacman -S mbedtls\n\
+             \n    Fedora:         sudo dnf install mbedtls-devel\n\
+             \nor build without the `link-tls` feature."
+        );
+    }
+
     // Detect library directory (multi-arch on Debian/Ubuntu)
     let lib_dir = if Path::new("/usr/lib/x86_64-linux-gnu/libmbedtls.so").exists() {
         "/usr/lib/x86_64-linux-gnu"

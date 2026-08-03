@@ -30,6 +30,9 @@ if [ "${VERSION_ID:-}" != "22.04" ]; then
     exit 1
 fi
 
+# `libmbedtls-dev`: the zpico TLS build discovers mbedTLS through .pc files
+# nano-ros GENERATES, so discovery cannot fail — without the dev package the
+# build dies later inside a vendored TU on a missing `mbedtls/entropy.h`.
 # `clang`/`libclang-dev`: bindgen needs libclang AND its resource headers —
 # without them z3-sys fails at `/usr/include/stdio.h: 'stddef.h' file not
 # found`, which looks like a broken libc rather than a missing compiler.
@@ -47,7 +50,7 @@ sudo apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg lsb-release software-properties-common \
     git build-essential pkg-config cmake ninja-build \
     python3 python3-pip python3-venv python3-dev \
-    python3-tomli libz3-dev clang libclang-dev
+    python3-tomli libz3-dev clang libclang-dev libmbedtls-dev
 
 echo "=== [2/4] ROS 2 apt repository"
 sudo install -d -m 0755 /etc/apt/keyrings
