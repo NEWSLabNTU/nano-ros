@@ -10,10 +10,22 @@
 
 **Status.** IN PROGRESS. **W1 landed** (rosidl-resolve + rosidl-lower crates, the
 Resolved/Lowered IR, the production hash path routed through the IR, hash-once/lower-
-per-target golden). **W2 landed** (the full C backend — message + service + action —
-renders from minijinja data packs under `packs/c/`, byte-identical, proven by the
-codegen golden + C compile + comparison tests). **W3 in progress** — see the
-easy/hard split note below.
+per-target golden). **W2 landed** (C backend on minijinja packs, byte-identical).
+**W3 substantially landed** — ALL FIVE type-emission backends now render from
+minijinja data packs, each byte-identical (codegen golden + C compile + comparison +
+per-backend suites): **C** (`packs/c/`), **rmw** (`packs/rmw/`), **nros**
+(`packs/nros/`), **idiomatic** (`packs/rust/`), **C++** (`packs/cpp/`). `rosidl-codegen`
+has ONE `minijinja::Environment` holding every pack + a generic `render(name, ctx)`.
+
+W3 remainder (lower value, tracked): **scaffolding** templates (`cargo`/`lib`/`build`/
+`cargo_nros`/`lib_nros`) are per-package BOILERPLATE, not per-language type logic — still
+on askama; converting them is disambiguation-tedious (one var name holds several template
+types) with little payoff, so deferred. **idl (W3.d)** is NOT a rosidl-codegen askama
+backend: the msg→Cyclone-IDL emitter lives in the separate `nros-msg-to-idl` crate and
+uses `.em` (empy) templates, a different mechanism outside this askama→minijinja migration —
+reclassify, do not convert here. The deeper "no per-language TYPE logic in Rust" acceptance
+(moving `types.rs` `*_type_for_field` spelling into the packs / LoweredType) is the W1.c-full
++ W6 work, still pending.
 
 ### Learnings that refine the remaining plan (2026-08 W2)
 
@@ -105,10 +117,10 @@ allowed to change bytes is a deliberate, reviewed formatting normalization, call
 
 ### W3 — migrate the remaining backends
 
-- [ ] **W3.a** `packs/cpp/` (move semantics, storage-mode branching → confirm the escape hatch is
+- [x] **W3.a** `packs/cpp/` (move semantics, storage-mode branching → confirm the escape hatch is
       not needed; if it is, document why).
-- [ ] **W3.b** `packs/rust/`.
-- [ ] **W3.c** `packs/nros/` (embedded-idiomatic; heaviest storage/plainness use — the real test
+- [x] **W3.b** `packs/rust/`.
+- [x] **W3.c** `packs/nros/` (embedded-idiomatic; heaviest storage/plainness use — the real test
       of whether `LoweredType` carries enough).
 - [ ] **W3.d** `packs/idl/` (Cyclone IDL; consumes `ResolvedType`, needs no layout facts).
 - [ ] **W3.e** If a reviewed formatting normalization is unavoidable (askama vs minijinja
