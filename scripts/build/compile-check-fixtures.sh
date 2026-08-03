@@ -37,9 +37,13 @@ post_stage() {
         n9_form2)
             printf '//! n9 form 2 (board only).\n\nnros::main!(board = ::nros_board_native::NativeBoard);\n' > "$main_rs" ;;
         n9_form3)
-            printf '//! n9 form 3 (model, default file — the canonical multi-node form).\n\nnros::main!(model = "demo_bringup");\n' > "$main_rs" ;;
+            # phase-330 W7 — the canonical multi-node form is INPUT-addressed.
+            printf '//! n9 form 3 (launch, default — the canonical multi-node form).\n\nnros::main!(launch = "demo_bringup");\n' > "$main_rs" ;;
         n9_form4)
-            printf '//! n9 form 4 (all explicit: board + explicit model file).\n//! (args= is a launch-arm concept — a resolved model is early-bound.)\n\nnros::main!(\n    board = ::nros_board_native::NativeBoard,\n    model = "demo_bringup:config/system_model.yaml",\n);\n' > "$main_rs" ;;
+            # phase-330 W7.g — the ONE compile proof that the DEPRECATED
+            # `model =` arm still works during its window; resolves the BUILD
+            # artifact (the sync below materialises it) via the ladder.
+            printf '//! n9 form 4 (all explicit: board + explicit model file — DEPRECATED arm).\n\nnros::main!(\n    board = ::nros_board_native::NativeBoard,\n    model = "demo_bringup:config/system_model.yaml",\n);\n' > "$main_rs" ;;
         orch_tiers_single)
             # Strip the tier table so the macro takes the legacy single-tier
             # BoardEntry::run path (RFC-0032 §5 gate G.4).
@@ -104,6 +108,20 @@ stage_tree() {
     find "$staged" -type f -exec grep -lZ '@NANO_ROS_ROOT@' {} + 2>/dev/null \
         | xargs -0 -r sed -i "s#@NANO_ROS_ROOT@#$repo_root#g" || true
     post_stage "$id" "$staged"
+    # phase-330 W7.g — templates no longer carry committed SystemModels
+    # (W4.a); resolve them into the staged workspace's build dir the same way
+    # a user build does. AFTER post_stage, so form/tier rewrites of the
+    # INPUTS (main.rs, system.toml) are what gets resolved.
+    # Any staged pkg (package.xml) can be a bringup — system.toml is OPTIONAL
+    # to the resolver (o4's bringup is launch/ + package.xml only).
+    if find "$staged" -maxdepth 3 -name package.xml -print -quit 2>/dev/null | grep -q .; then
+        local _sync_cli="${NROS_CLI_BIN:-${NROS_CLI:-$(command -v nros || true)}}"
+        if [ -z "$_sync_cli" ]; then
+            echo "compile-check: nros CLI not found — cannot resolve staged models (just setup-cli)" >&2
+            return 2
+        fi
+        ( cd "$staged" && "$_sync_cli" sync >/dev/null )
+    fi
 }
 
 stage_and_check() {
