@@ -77,6 +77,56 @@ Verified: every entry goes from `NodeRegister("lifecycle")` to
 pass. Remaining open here: the zenoh->cyclonedds bridge and the TLS
 talker/listener cases, which are separate and unexamined.
 
+## TLS — FIXED
+
+`nano2nano::test_tls_talker_listener_communication` failed with
+"Listener: expected at least 1 received messages, got 0". The session never
+opened. `strace` on the client:
+
+    connect(::1:7922)       = ECONNREFUSED
+    connect(127.0.0.1:7922) = EINVAL
+
+The harness starts the TLS router on `tls/127.0.0.1` (IPv4 only) while clients
+reach it by NAME — `tls/localhost:<port>`, required because the self-signed test
+cert is CN=localhost. On a dual-stack host `localhost` resolves to `::1` FIRST,
+that attempt is refused, and zenoh-pico then fails the IPv4 fallback with EINVAL
+because it retries on the SAME socket instead of a fresh one. The plain-TCP
+lanes never hit this: they use a literal 127.0.0.1.
+
+Fixed by listening on `tls/[::]:<port>`, which accepts both families
+(bindv6only=0). Verified: the test passes; `openssl s_client` confirmed the
+server side was healthy all along (TLS 1.2 and 1.3, verify OK).
+
+Worth a separate fork fix: the EINVAL retry is a zenoh-pico robustness bug — a
+failed connect leaves the socket unusable and the next candidate address needs a
+new one. A dual-stack host talking to an IPv4-only peer is not exotic.
+
+## Bridge — root cause identified, NOT fixed
+
+`declarative_zenoh_to_cyclonedds_nested_header_to_ros2` expects a `Header` on
+`/header` to cross the bridge. It cannot, as configured:
+
+- `bridge-cyclonedds`'s `system.toml` declares ONE component,
+  `talker_pkg::Talker`, which publishes `std_msgs/Int32` on `/chatter` only —
+  no `/header` anywhere in the workspace, before OR after the phase-331 W6
+  rename (`ws-bridge-rust` -> `bridge-cyclonedds`, verified against the
+  pre-rename tree).
+- the generated model's `execution.bridges` carries no topic list, and
+  `bridge_gen.rs` states the planner "only forwards declared topics"
+  (`expect("planner only forwards declared topics")`).
+- observed: with the router at `RUST_LOG=zenoh=debug`, the bridge declares
+  exactly ONE subscriber, `0/chatter/std_msgs::msg::dds_::Int32_/*`. No
+  `/header` subscriber, and no `/header` resource is registered at all — even
+  though the `header-chatter-talker` fixture logs `Published Header: N`.
+
+So either the relay is meant to forward undeclared topics (and regressed to
+declared-only), or the test's premise needs the workspace to declare `/header`.
+Archived issue #0183 records this exact lane PASSING on 2026-07-15, so it did
+work once — that is the thread to pull.
+
+The last point deserves attention on its own: the talker reports publishing
+Headers that never reach the router as a resource.
+
 ## Evidence
 
 Three runs, narrowing the cause each time:

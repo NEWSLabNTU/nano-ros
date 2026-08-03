@@ -255,7 +255,28 @@ impl ZenohRouter {
     ) -> TestResult<Self> {
         kill_listeners_on_port(port);
 
-        let locator = format!("tls/127.0.0.1:{}", port);
+        // issue 0408 — listen DUAL-STACK, not IPv4-only. Clients reach this
+        // router by NAME (`tls/localhost:<port>`, matching the CN=localhost in
+        // the self-signed test cert), and on a dual-stack host `localhost`
+        // resolves to `::1` FIRST. Against an IPv4-only listener that attempt is
+        // refused, and zenoh-pico then fails the IPv4 fallback outright:
+        //
+        //     connect(::1:7922)       = ECONNREFUSED
+        //     connect(127.0.0.1:7922) = EINVAL      <- same socket, not a fresh one
+        //
+        // so the session never opens and the test reports "Listener: expected at
+        // least 1 received messages, got 0" — which reads as a delivery or
+        // discovery fault, not an address-family one. `[::]` accepts both
+        // families on Linux (bindv6only=0), so either resolution order works.
+        //
+        // The plain-TCP lanes never hit this because they connect to a literal
+        // 127.0.0.1; only the TLS lane needs a hostname, for cert verification.
+        //
+        // The EINVAL retry is a zenoh-pico robustness bug in its own right — a
+        // failed connect leaves the socket unusable and the next candidate
+        // address needs a fresh one. Worth fixing in the fork; this makes the
+        // harness stop provoking it.
+        let listen = format!("tls/[::]:{}", port);
         let cert_cfg = format!(
             "transport/link/tls/listen_certificate:\"{}\"",
             cert_path.display()
@@ -268,7 +289,7 @@ impl ZenohRouter {
         let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
         cmd.args([
             "--listen",
-            &locator,
+            &listen,
             "--no-multicast-scouting",
             "--cfg",
             &cert_cfg,
@@ -281,8 +302,10 @@ impl ZenohRouter {
         crate::process::set_new_process_group(&mut cmd);
         let mut handle = cmd.spawn()?;
 
-        // Wait for zenohd to be ready (TLS port accepting connections)
-        wait_for_router_ready(&mut handle, &locator, port)?;
+        // Readiness probes the loopback IPv4 address: the dual-stack listener
+        // accepts it, and it is what `kill_listeners_on_port` reasons about.
+        let probe = format!("tls/127.0.0.1:{}", port);
+        wait_for_router_ready(&mut handle, &probe, port)?;
 
         Ok(Self {
             handle,
