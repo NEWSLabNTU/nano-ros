@@ -130,6 +130,16 @@ examples/workspaces/**/config/*.record.json
 # from the pkg's own `Component::register` — never hand-edited, never committed.
 examples/**/metadata/*.json
 
+# Issue #0288's NEGATIVE cache, sibling to those sidecars: when a package's
+# probe fails, sync records the source digest as `<sidecar>.unprobeable` so the
+# next sync skips a known-failing cargo/cmake build until the sources change,
+# and DELETES the marker the moment a probe succeeds. It is a machine-local
+# record of a failure observed here — never a fixture, and never the same
+# across hosts (the digest mixes in the CLI version, so it moves on every CLI
+# rebuild). One had been committed, escaping the `*.json` rule above by ending
+# in `.json.unprobeable`, and it churned on every build.
+**/metadata/*.unprobeable
+
 # Orphaned generated-header temps. The atomic writers in nros-build-helpers
 # stage `.<header>.tmp.<pid>` NEXT TO the destination and then rename it into
 # place. A build killed between the write and that rename leaves the temp
