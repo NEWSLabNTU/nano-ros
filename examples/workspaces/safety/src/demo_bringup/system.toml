@@ -78,3 +78,9 @@ out    = "rust_safety_listener_model.yaml"
 [[model]]
 launch = "rust_safety_talker.launch.xml"
 out    = "rust_safety_talker_model.yaml"
+
+# The rust-only 2-node resolve `zephyr_rust_safety_entry` consumes (issue 0395's
+# shape: a fold that left an entry pointing at a model it cannot compile).
+[[model]]
+launch = "rust_system.launch.xml"
+out    = "rust_system_model.yaml"

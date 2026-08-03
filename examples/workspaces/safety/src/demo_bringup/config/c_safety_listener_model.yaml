@@ -1,0 +1,32 @@
+meta:
+  version: 1
+  inputs:
+  - path: launch/c_safety_listener.launch.xml
+    sha256: 218d163cc6ff254ca0506eda2fae534f0461b836c50eda30b39c5838074001ed
+  - path: system.toml
+    sha256: 6d9bfe0a67171339123ce996a06e9568518e05497d22b8d0be00007346be878f
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
+structure:
+  scopes:
+    c_safety_listener.launch.xml:
+      file: c_safety_listener.launch.xml
+  nodes:
+    /safe_listener:
+      scope: c_safety_listener.launch.xml
+      pkg: c_safety_listener_pkg
+      exec: c_safe_listener
+      node_name: safe_listener
+execution:
+  deploy:
+    /safe_listener:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  features:
+  - safety

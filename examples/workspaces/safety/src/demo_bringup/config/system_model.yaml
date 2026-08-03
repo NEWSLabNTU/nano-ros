@@ -1,0 +1,45 @@
+meta:
+  version: 1
+  inputs:
+  - path: launch/system.launch.xml
+    sha256: 7c8eee40e106067678d6ea66bcff2c600e50466f3c8277ce3e05afb19e911b7d
+  - path: system.toml
+    sha256: 6d9bfe0a67171339123ce996a06e9568518e05497d22b8d0be00007346be878f
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
+structure:
+  scopes:
+    system.launch.xml:
+      file: system.launch.xml
+  nodes:
+    /safe_listener:
+      scope: system.launch.xml
+      pkg: c_safety_listener_pkg
+      exec: c_safe_listener
+      node_name: safe_listener
+    /talker:
+      scope: system.launch.xml
+      pkg: c_safety_talker_pkg
+      exec: c_talker
+      node_name: talker
+execution:
+  deploy:
+    /safe_listener:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  features:
+  - safety
