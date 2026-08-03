@@ -65,7 +65,7 @@ visible from the file's location/consumer, not tribal memory:
 ## Work items
 
 ### W0 — RFC-0051 amendment (small)
-- [ ] Add the **realtime-dim matrix** and the **negative-diagnostic
+- [x] Add the **realtime-dim matrix** and the **negative-diagnostic
   registry** to RFC-0051 as first-class structures; record the resolution
   of open question 2 (Mixed stays a `Lang`) as implemented.
 

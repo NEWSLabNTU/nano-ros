@@ -3,7 +3,7 @@ rfc: 0051
 title: "Test-matrix architecture: one generated matrix, one output checker, one isolation allocator"
 status: Stable
 since: 2026-07
-last-reviewed: 2026-07-18
+last-reviewed: 2026-08-04
 implements-tracked-by: [phase-295]
 supersedes: []
 superseded-by: null
@@ -177,6 +177,56 @@ framework's, not ours:
   `weak_symbol_audit`) are explicitly NOT micro-tests — they stay.
 - In-crate unit tests (~660) are out of scope: they test code, not cells.
 
+### 6. Two more first-class tables (amendment — phase-329 W0)
+
+`matrix::CELLS` (§1) covers "does the standard node deliver on this
+coordinate". Two families the tree grew AROUND it are declared here as
+first-class tables so they stop being implicit matrices hand-listed per file:
+
+**6a. Realtime-dim matrix — `matrix::sched_dims::CELLS`.** The scheduler-dim
+"applied" family (`*_core_pin_applied` ×5, `zephyr_edf_deadline_applied`,
+`threadx_{preempt_threshold,time_slice}_applied`,
+`nuttx_{sporadic_budget,tier_priority}_applied` — 10 files, one boot each) is a
+`dim × platform × lang` matrix with no table. Declared as:
+
+```rust
+pub enum SchedDim {            // the RT knob whose honoring is asserted
+    CorePin, EdfDeadline, PreemptThreshold, TimeSlice, SporadicBudget, TierPriority,
+}
+pub struct SchedCell {
+    pub dim: SchedDim,
+    pub platform: Platform,    // reuses §1 Platform
+    pub lang: Lang,            // reuses §1 Lang
+    pub accept_marker: &'static str,   // "<dim> honored" runtime line
+    pub fallback_marker: &'static str, // the sanctioned degrade line
+    pub tier: Tier,
+}
+```
+
+The invariant is two-mode (issue 0380): the boot emits EITHER the accept marker
+(kernel took the knob) OR the fallback marker (documented degrade) — a SILENT
+drop is the failure. One `#[rstest]` over `sched_dims::CELLS` replaces the 10
+files; a build-stage gate asserts every dim a model declares has a cell, so a
+regeneration that strips a dim (0380) fails structurally instead of silently.
+The cells boot the `ws-realtime` fixtures already in `fixtures.toml`.
+
+**6b. Negative-diagnostic registry.** The E1 "no compilation/failure in tests"
+rule has one sanctioned exception: a diagnostic whose subject MUST fail to
+build/configure cannot be a passing prebuilt fixture, so it runs at test time.
+That set is now an explicit table (module or `fixtures.toml` section) — each
+entry names the tool it invokes (`cmake`/`cargo`/`cc`) and why it cannot be
+prebuilt (`cmake_node_register_misuse`, `cmake_platform_matrix`,
+`native_main_macro_misuse`, `native_orchestration_misuse`,
+`diagnostic_verbatim`, …). A gate greps `tests/` for build-tool invocations and
+fails on any file NOT in the registry (the 0196 rule: gate the class, not the
+known sites). Positive-compile checks do NOT belong here — they move to the
+fixture build stage (the phase's W5).
+
+**Open question 2 resolved (as implemented):** workspace `Mixed` is a
+first-class `Lang` value, NOT a workload — the `Lang` enum in the shipped
+`matrix.rs` is `Rust | C | Cpp | Mixed`, and coverage/allocation treat it as a
+language coordinate. (OQ2 below marked resolved.)
+
 ## Coverage debt the matrix makes visible (initial tier assignments)
 
 - cyclonedds/xrce RUNTIME cells on RTOS platforms — today interop/bridge
@@ -214,7 +264,9 @@ framework's, not ours:
    bridge cells live in `crate::interop::CELLS`, not `matrix::CELLS`, in a shape
    that carries their peer + direction; the reduced workload set (pubsub +
    service, plus lifecycle/qos where a lane exists) is enumerated there.
-2. Workspace `Mixed` lang — first-class axis value or a workload?
+2. ~~Workspace `Mixed` lang — first-class axis value or a workload?~~ —
+   RESOLVED (phase-329 W0): a first-class `Lang` value (`Rust | C | Cpp | Mixed`
+   in the shipped `matrix.rs`). See §6.
 3. How far to push cyclone/xrce runtime onto QEMU RTOS lanes vs declaring
    CarveOuts (cyclone needs POSIX+CPP; xrce needs an agent locator bake) —
    per-cell decisions live in the phase.
