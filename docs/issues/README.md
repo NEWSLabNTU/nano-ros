@@ -164,13 +164,15 @@ across zpico-build's three riscv probes (was three copies of a two-name list, al
 provisioned `riscv-none-elf-gcc`), the shim build path now calls `detect_riscv_compiler` like the
 lib path, and the board declares `packages = ["riscv-none-elf-gcc"]`. No per-example `CC_*`.)
 
-**#406** — Eight native e2e tests fail on main, reproducibly and serially, against fixtures rebuilt
-from that exact tree: component ORDER vs launch XML, per-node PARAMS (C and Rust), REMAP, QoS, plus a
-bridge and a TLS case. Six of the eight are per-node projections of a launch/model — the surface
-#398 describes and phase-330 W7 has been moving — and all fail SILENTLY at runtime with a clean
-build. Two other reds from the same sweep were load flakes and pass serially; the evidence trail
-(and the stale-fixture trap that made a middle run uninterpretable) is in the issue. See `0406-*`.
-(2026-08-04)
+**#408** — Seven native e2e tests fail on main, reproducibly and serially, against fixtures rebuilt
+from that exact tree: per-node PARAMS (C and Rust), REMAP, QoS, custom-msg, plus a bridge and a TLS
+case. ROOT CAUSE FOUND for the five workspace-feature ones: a service server IS a zenoh queryable,
+and ROS param services (6) + REP-2002 lifecycle services (6) overflow the 8-slot
+`ZPICO_MAX_QUERYABLES` table AT BOOT, so the entry exits before publishing and the test reports
+"listener received 0 messages". Fixed by scoping the default to the platform (32 hosted, 8 stays for
+`target_os = "none"`) + naming the knob on overflow instead of a bare `ServiceServerCreationFailed`.
+The bridge and TLS cases remain unexamined; component-order is #382. Evidence trail (incl. the
+stale-fixture trap that made one run uninterpretable) is in the issue. See `0408-*`. (2026-08-04)
 
 **#407** — `just ci` sets fixture lane and test scope both to `native`, but the native scope selects
 `logging_smoke`, whose fixture is a THREADX-LINUX one that `lane=native` never builds — tier 1 fails

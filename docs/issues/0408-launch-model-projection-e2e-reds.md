@@ -1,5 +1,5 @@
 ---
-id: 406
+id: 408
 title: Seven native e2e tests fail on main — per-node projection (params, remap,
   qos, component order) does not reach the wire
 status: open
@@ -50,6 +50,32 @@ the failure mode #0398 predicts.
 The bridge and TLS cases fit less well and may be separate faults; they are
 listed here because they came from the same run, not because the cause is known
 to be shared.
+
+## Root cause of the five workspace-feature failures — FIXED
+
+A service server IS a zenoh queryable, and the C shim's queryable table is a
+STATIC array of `ZPICO_MAX_QUERYABLES` slots. The ROS parameter services are 6
+and the REP-2002 lifecycle services are 6, so an entry enabling both consumes
+twelve before the application declares anything. The default was 8 on every
+target. `examples/workspaces/features` declares
+`features = ["param_services", "lifecycle"]` workspace-wide, so ALL FIVE of its
+entries overflowed the table at boot:
+
+    nros: application error: NodeRegister("lifecycle")
+
+The tests reported "listener never received N samples", which reads as a
+delivery fault. Nothing was ever published — the publisher had already exited.
+
+Fixed: the default is now 32 on hosted targets and unchanged at 8 for
+`target_os = "none"` (8 is an embedded RAM budget that had been applied to Linux
+hosts), and the overflow logs the exhausted knob plus the 6+6 arithmetic instead
+of returning a bare `ServiceServerCreationFailed` that `apply_lifecycle` then
+flattened to `()`.
+
+Verified: every entry goes from `NodeRegister("lifecycle")` to
+`application complete`; `case_01_native_c_custom_msg` and `case_08_native_c_qos`
+pass. Remaining open here: the zenoh->cyclonedds bridge and the TLS
+talker/listener cases, which are separate and unexamined.
 
 ## Evidence
 
