@@ -612,8 +612,15 @@ pub struct ActionCSourceTemplate<'a> {
 #[derive(Clone, serde::Serialize)]
 pub struct CppFfiField {
     pub name: String,
-    /// Rust #[repr(C)] type (e.g., "i32", "[u8; 256]")
-    pub repr_c_type: String,
+    /// RFC-0068 step 2 — the `cpp_repr_c_type` / `cpp_view_repr_type` pack filters
+    /// compose the Rust repr(C) type from these neutral facts (was the pre-baked
+    /// `repr_c_type` / `view_repr_type`). `struct_name` is the parent message
+    /// struct (the sequence repr is a generated `{struct}_{field}_seq_t` name);
+    /// `cap` the resolved capacity; `current_package` the nested self-ref.
+    pub field_type: rosidl_parser::FieldType,
+    pub struct_name: String,
+    pub cap: Option<usize>,
+    pub current_package: String,
     /// CDR write method (e.g., "write_i32", "write_string")
     pub cdr_write_method: String,
     /// CDR read method (e.g., "read_i32", "read_string")
@@ -663,9 +670,6 @@ pub struct CppFfiField {
     /// `true` for the `LeSpan` case — the FFI takes `.as_bytes().as_ptr()`
     /// (element count) instead of `.as_ptr()` / `.len()` (byte slice / string).
     pub borrowed_le: bool,
-    /// `{Msg}ViewRepr` field type: `nros_cpp_borrow_t` when borrowed, else the
-    /// owned [`repr_c_type`](Self::repr_c_type).
-    pub view_repr_type: String,
 }
 
 /// C++ field info for header generation (uses FixedString/FixedSequence types)

@@ -51,6 +51,27 @@ struct CppTypeSpell {
     current_package: String,
 }
 
+/// Neutral facts the `cpp_repr_c_type` / `cpp_view_repr_type` pack filters
+/// compose the C++ FFI Rust repr(C) type from.
+#[derive(serde::Deserialize)]
+struct CppReprSpell {
+    field_type: rosidl_parser::FieldType,
+    struct_name: String,
+    cap: Option<usize>,
+    current_package: String,
+    name: String,
+    is_string: bool,
+    is_sequence: bool,
+    is_heap: bool,
+    is_borrowed: bool,
+}
+
+impl CppReprSpell {
+    fn pkg(&self) -> Option<&str> {
+        (!self.current_package.is_empty()).then_some(self.current_package.as_str())
+    }
+}
+
 /// Neutral facts the `nros_type` pack filter composes the nros Rust type from.
 #[derive(serde::Deserialize)]
 struct NrosTypeSpell {
@@ -100,6 +121,35 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     });
     env.add_filter("cpp_array_suffix", |v: ViaDeserialize<CppTypeSpell>| {
         crate::types::cpp_array_suffix_spelling(&v.0.field_type, v.0.is_borrowed)
+    });
+    // RFC-0068 step 2 — C++ FFI repr(C) type spelling in the pack (was pre-baked
+    // as `CppFfiField.repr_c_type` / `.view_repr_type`).
+    env.add_filter("cpp_repr_c_type", |v: ViaDeserialize<CppReprSpell>| {
+        let c = &v.0;
+        crate::types::cpp_repr_c_type_spelling(
+            &c.field_type,
+            c.is_sequence,
+            c.is_heap,
+            c.is_string,
+            c.cap,
+            &c.struct_name,
+            &c.name,
+            c.pkg(),
+        )
+    });
+    env.add_filter("cpp_view_repr_type", |v: ViaDeserialize<CppReprSpell>| {
+        let c = &v.0;
+        crate::types::cpp_view_repr_type_spelling(
+            &c.field_type,
+            c.is_borrowed,
+            c.is_sequence,
+            c.is_heap,
+            c.is_string,
+            c.cap,
+            &c.struct_name,
+            &c.name,
+            c.pkg(),
+        )
     });
     // RFC-0068 step 2 — nros embedded Rust type spelling in the pack (storage +
     // codegen-mode dependent), was pre-baked as `NrosField.rust_type`.

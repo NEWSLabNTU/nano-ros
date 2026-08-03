@@ -52,7 +52,7 @@ pub struct {{ seq.struct_name }} {
 #[repr(C)]
 pub struct {{ repr_c_struct_name }} {
 {%- for field in fields %}
-    pub {{ field.name }}: {{ field.repr_c_type }},
+    pub {{ field.name }}: {{ field | cpp_repr_c_type }},
 {%- endfor %}
 {%- if not has_fields %}
     pub _dummy: u8,
@@ -284,7 +284,7 @@ pub struct nros_cpp_borrow_t {
 #[repr(C)]
 pub struct {{ view_repr_struct_name }} {
 {%- for field in fields %}
-    pub {{ field.name }}: {{ field.view_repr_type }},
+    pub {{ field.name }}: {{ field | cpp_view_repr_type }},
 {%- endfor %}
 }
 

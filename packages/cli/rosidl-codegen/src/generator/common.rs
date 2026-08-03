@@ -4,8 +4,7 @@ use crate::{
     types::{
         C_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_STRING_CAPACITY,
         NrosCodegenMode, c_cdr_read_method, c_cdr_write_method, c_type_for_field_heap,
-        cpp_type_for_field_heap, escape_keyword, repr_c_type_for_field,
-        repr_c_type_for_field_with_capacity, to_c_package_name,
+        cpp_type_for_field_heap, escape_keyword, repr_c_type_for_field, to_c_package_name,
     },
     utils::to_snake_case,
 };
@@ -1109,19 +1108,10 @@ pub(super) fn build_cpp_ffi_field(
         };
 
     // Compute repr(C) type
-    let repr_c_type = if is_sequence {
-        // Sequence uses named struct
-        let seq_struct_name = format!("{}_{}_seq_t", struct_name, to_snake_case(name));
-        seq_struct_name
-    } else if is_heap && is_string {
-        // Heap string → the shared pointer-trio repr (matches nros::HeapString).
-        "nros_cpp_heap_str_t".to_string()
-    } else {
-        match cap_override {
-            Some(cap) => repr_c_type_for_field_with_capacity(field_type, current_package, cap),
-            None => repr_c_type_for_field(field_type, current_package),
-        }
-    };
+    // phase-335 step 2 — `repr_c_type` / `view_repr_type` are composed in the pack
+    // by the `cpp_repr_c_type` / `cpp_view_repr_type` filters from the neutral
+    // facts below; the builder no longer spells them. `element_repr_type`
+    // (`elem_repr_c`) stays here — it also feeds the Rust-side SequenceStructDef.
 
     // The repr(C) type of a sequence element (Rust mirror). Shared by the
     // SequenceStructDef and — for heap sequences — `element_repr_type` (used for
@@ -1195,17 +1185,12 @@ pub(super) fn build_cpp_ffi_field(
         _ => 0,
     };
 
-    // `{Msg}ViewRepr` field type: borrowed → the shared `nros_cpp_borrow_t`
-    // pointer+len; everything else keeps its owned repr (copied into the view).
-    let view_repr_type = if is_borrowed {
-        "nros_cpp_borrow_t".to_string()
-    } else {
-        repr_c_type.clone()
-    };
-
     let field = CppFfiField {
         name: escaped_name,
-        repr_c_type,
+        field_type: field_type.clone(),
+        struct_name: struct_name.to_string(),
+        cap: cap_override,
+        current_package: current_package.unwrap_or("").to_string(),
         cdr_write_method,
         cdr_read_method,
         element_cdr_write_method,
@@ -1229,7 +1214,6 @@ pub(super) fn build_cpp_ffi_field(
         is_borrowed,
         borrowed_reader_call,
         borrowed_le,
-        view_repr_type,
     };
 
     (field, seq_struct)

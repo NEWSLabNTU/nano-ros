@@ -1367,6 +1367,70 @@ pub const CPP_DEFAULT_STRING_CAPACITY: usize = 256;
 pub const CPP_DEFAULT_SEQUENCE_CAPACITY: usize = 64;
 
 /// Get the Rust `#[repr(C)]` type for a field (for C++ FFI glue)
+/// RFC-0068 Stage 3 — the C++ FFI `repr_c_type` (Rust repr(C) mirror) spelling as
+/// a function a pack filter calls (phase-335 step 2). Reproduces
+/// `build_cpp_ffi_field`'s branch. A sequence maps to its generated named struct
+/// `{struct}_{field}_seq_t`; a heap string to the shared pointer-trio; otherwise
+/// the resolved-capacity / plain repr. `element_repr_type` is NOT moved — it also
+/// feeds the Rust-side `SequenceStructDef`, so it stays computed in the builder.
+#[allow(clippy::too_many_arguments)]
+pub fn cpp_repr_c_type_spelling(
+    field_type: &FieldType,
+    is_sequence: bool,
+    is_heap: bool,
+    is_string: bool,
+    cap: Option<usize>,
+    struct_name: &str,
+    field_name: &str,
+    current_package: Option<&str>,
+) -> String {
+    if is_sequence {
+        format!(
+            "{}_{}_seq_t",
+            struct_name,
+            crate::utils::to_snake_case(field_name)
+        )
+    } else if is_heap && is_string {
+        "nros_cpp_heap_str_t".to_string()
+    } else {
+        match cap {
+            Some(c) => repr_c_type_for_field_with_capacity(field_type, current_package, c),
+            None => repr_c_type_for_field(field_type, current_package),
+        }
+    }
+}
+
+/// RFC-0068 Stage 3 — the `{Msg}ViewRepr` field type: borrowed → the shared
+/// `nros_cpp_borrow_t`, else the owned `repr_c_type` (companion to
+/// [`cpp_repr_c_type_spelling`]).
+#[allow(clippy::too_many_arguments)]
+pub fn cpp_view_repr_type_spelling(
+    field_type: &FieldType,
+    is_borrowed: bool,
+    is_sequence: bool,
+    is_heap: bool,
+    is_string: bool,
+    cap: Option<usize>,
+    struct_name: &str,
+    field_name: &str,
+    current_package: Option<&str>,
+) -> String {
+    if is_borrowed {
+        "nros_cpp_borrow_t".to_string()
+    } else {
+        cpp_repr_c_type_spelling(
+            field_type,
+            is_sequence,
+            is_heap,
+            is_string,
+            cap,
+            struct_name,
+            field_name,
+            current_package,
+        )
+    }
+}
+
 pub fn repr_c_type_for_field(field_type: &FieldType, current_package: Option<&str>) -> String {
     match field_type {
         FieldType::Primitive(prim) => repr_c_primitive_type(prim).to_string(),
@@ -1603,19 +1667,11 @@ pub fn compute_serialized_size_max(fields: &[super::templates::CppFfiField]) -> 
             // Primitive: type size + alignment
             size += primitive_cdr_size(&field.cdr_write_method) + 7;
         } else if field.is_string {
-            // String: 4 (len) + capacity + 1 (null) + 3 (pad)
-            let cap = if field.repr_c_type.starts_with("[u8;") {
-                // Parse capacity from "[u8; N]"
-                field
-                    .repr_c_type
-                    .trim_start_matches("[u8; ")
-                    .trim_end_matches(']')
-                    .parse::<usize>()
-                    .unwrap_or(CPP_DEFAULT_STRING_CAPACITY)
-            } else {
-                CPP_DEFAULT_STRING_CAPACITY
-            };
-            size += 4 + cap + 1 + 3;
+            // String: 4 (len) + capacity + 1 (null) + 3 (pad). phase-335 step 2 —
+            // read the resolved `string_capacity` directly (it equals the `[u8; N]`
+            // this used to parse out of the now-filter-composed `repr_c_type`; a
+            // heap string carries the default, matching the old `else` branch).
+            size += 4 + field.string_capacity + 1 + 3;
         } else if field.is_array {
             if field.is_primitive_element {
                 let elem_size = primitive_cdr_size(&field.element_cdr_write_method);
