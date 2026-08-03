@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "rosidl-parser",
+    "rosidl-resolve",
     "rosidl-codegen",
     "rosidl-bindgen",
     "cargo-nano-ros",
@@ -50,6 +51,7 @@ cargo-nano-ros = { path = "cargo-nano-ros" }
 nros-cli-core = { path = "nros-cli-core" }
 rosidl-bindgen = { path = "rosidl-bindgen" }
 rosidl-parser = { path = "rosidl-parser" }
+rosidl-resolve = { path = "rosidl-resolve" }
 rosidl-codegen = { path = "rosidl-codegen" }
 nros-msg-to-idl = { path = "nros-msg-to-idl" }
 

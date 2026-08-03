@@ -1376,6 +1376,7 @@ dependencies = [
  "askama",
  "criterion",
  "rosidl-parser",
+ "rosidl-resolve",
  "serde",
  "sha2",
  "similar",
@@ -1394,6 +1395,15 @@ dependencies = [
  "proptest",
  "serde",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "rosidl-resolve"
+version = "0.5.0"
+dependencies = [
+ "rosidl-parser",
+ "serde",
+ "sha2",
 ]
 
 [[package]]

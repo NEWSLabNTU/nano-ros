@@ -3,8 +3,10 @@ pub mod config;
 pub mod fingerprint;
 pub mod generator;
 pub mod idl_generator;
-/// phase-304 W1 (RFC-0056) — REP-2011 RIHS01 type-hash engine.
-pub mod rihs;
+/// phase-304 W1 (RFC-0056) — REP-2011 RIHS01 type-hash engine. Relocated to the
+/// `rosidl-resolve` crate (RFC-0068 Stage 1 / phase-335 W1.a); re-exported here
+/// so `rosidl_codegen::rihs::…` paths (incl. rosidl-bindgen's) are unchanged.
+pub use rosidl_resolve::rihs;
 pub mod templates;
 pub mod types;
 pub mod utils;

@@ -1,0 +1,18 @@
+[package]
+name = "rosidl-resolve"
+version.workspace = true
+publish = false
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Stage 1 of the codegen pipeline (RFC-0068): resolve a parsed ROS interface into a language- and target-neutral IR carrying fully-qualified refs and RIHS type hashes"
+homepage.workspace = true
+documentation.workspace = true
+keywords = ["ros2", "rosidl", "codegen", "ir", "robotics"]
+categories = ["development-tools::build-utils"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+sha2 = "0.10"
+rosidl-parser.workspace = true
