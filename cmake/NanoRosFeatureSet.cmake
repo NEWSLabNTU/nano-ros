@@ -24,7 +24,10 @@ include_guard(GLOBAL)
 #     EDITION      <humble|iron|jazzy>   default: NANO_ROS_ROS_EDITION, else humble
 #     RMW          <zenoh|xrce|cyclonedds|uorb|none>
 #     PLATFORM     <posix|freertos|nuttx|threadx|esp_idf|…>
-#     BOARD        <board id>            required to disambiguate PLATFORM=threadx
+#     BOARD        <board id>            accepted but UNUSED since phase-338 W5.a
+#                                        (the threadx tier now derives from
+#                                        CMAKE_CROSSCOMPILING, not board identity);
+#                                        kept so callers need not change
 #     CAPABILITIES <param_services;lifecycle;safety;…>
 #     [NO_STD_CROSS]                     force the embedded tier regardless of
 #                                        CMAKE_CROSSCOMPILING (native_sim is a
@@ -114,17 +117,21 @@ function(nros_feature_set out_var)
     elseif(_FS_PLATFORM STREQUAL "threadx_riscv64")
         list(APPEND _feats alloc panic-halt platform-threadx)
     elseif(_FS_PLATFORM STREQUAL "threadx")
-        # The board axis is what distinguishes the tiers: the Linux sim has a
-        # host libc, the RV64 QEMU target is bare metal.
-        if(_FS_BOARD STREQUAL "threadx-linux")
-            list(APPEND _feats std platform-threadx)
-        elseif(_FS_BOARD STREQUAL "riscv64-qemu")
+        # phase-338 W5.a — what distinguishes the two ThreadX tiers is whether
+        # the target has a hosted libc, and that is exactly `_cross`: the Linux
+        # sim is a host build, the RV64 QEMU target is a cross build (its
+        # `[board.cmake] toolchain_file` sets CMAKE_SYSTEM_NAME).
+        #
+        # This used to match the board NAME and FATAL_ERROR on anything else,
+        # which meant a third ThreadX board could not exist without editing this
+        # file — a board identity standing in for a property, the defect
+        # RFC-0064 records. Deriving it from `_cross` generalizes: any future
+        # ThreadX board lands in the right tier with no edit here, and the
+        # `BOARD` argument is no longer load-bearing for this decision.
+        if(_cross)
             list(APPEND _feats alloc panic-halt platform-threadx)
         else()
-            message(FATAL_ERROR
-                "nros_feature_set: PLATFORM=threadx requires a board (set "
-                "NANO_ROS_BOARD) — one of: threadx-linux, riscv64-qemu. "
-                "Got '${_FS_BOARD}'.")
+            list(APPEND _feats std platform-threadx)
         endif()
     elseif(_cross)
         # Unknown embedded cross target: no_std + alloc, matching the board tier

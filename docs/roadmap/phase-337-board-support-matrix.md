@@ -262,11 +262,16 @@ the test axis, which is what makes them safe once decided.
 - [ ] **W7.b** Delete the scaffolds — `embassy-stm32f4`, `esp32s3`,
       `s32z270dc2-r52` contribute **zero cells of any tier**, so removal is
       provably free here. **`orin-spe` first needs untangling**: it is load-bearing
-      as a pseudo-platform in link-feature selection
-      (`nros-zpico-build/src/runner.rs:225,419-420,528-529` +
-      `config/orin-spe/nros-platform.toml`). **The untangling is
-      [phase-338](phase-338-source-portability.md) W5.b — this wave is BLOCKED on
-      it.** Untangle there, delete here; never blind.
+      as a pseudo-platform in link-feature selection. **Measured in
+      [phase-338](phase-338-source-portability.md) W5.b (2026-08-04): NOT a
+      blocker — the chain is self-contained.** The only crate enabling the
+      `orin-spe` feature is `nros-board-orin-spe` itself; no example, fixture or
+      test touches it. So this is an ORDERING: delete the crate, then in the same
+      change delete the now-dead `config/orin-spe/`, `LinkPolicy::orin_spe()`,
+      the `CARGO_FEATURE_ORIN_SPE` branches in `nros-zpico-build/src/runner.rs`,
+      the `zpico-sys` `orin-spe` feature, `nros-sdk-index.toml [board.orin-spe]`
+      and the `zpico_backend` lint value in the root `Cargo.toml`. Deleting the
+      crate alone would leave that chain as dead code.
 - [ ] **W7.c** Delete `nros-board-bare-metal` (phase-322 W1.h): 161 lines of which
       135 are a doc comment describing a family driver no board opted into.
 

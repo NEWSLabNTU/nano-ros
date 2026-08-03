@@ -210,18 +210,38 @@ Both were found while auditing the net seam (RFC-0064 R3), which is otherwise
 clean — one `net.c` per platform, per-board deltas expressed as weak symbols and
 macro arguments.
 
-- [ ] **W5.a** `cmake/NanoRosFeatureSet.cmake:116-128` matches
-      `_FS_BOARD STREQUAL "threadx-linux"` vs `"riscv64-qemu"` to pick the
-      std vs `alloc`+`panic-halt` libc tier, and `FATAL_ERROR`s otherwise — so a
-      third ThreadX board cannot exist without editing this file. The tier is a
-      **capability** (hosted libc or not), which `[board.capabilities]` in the
-      descriptor already models.
-- [ ] **W5.b** `orin-spe` is a board modelled as a pseudo-platform in link-feature
-      selection (`nros-zpico-build/src/runner.rs:225,419-420,528-529` +
-      `config/orin-spe/nros-platform.toml`) — the only place a board name reaches
-      link-feature selection. Untangle it onto the `LinkPolicy` mechanism every
-      other board uses. **phase-337 W7.b depends on this** — it cannot delete the
-      scaffold until this lands.
+- [x] **W5.a — DONE 2026-08-04.** `cmake/NanoRosFeatureSet.cmake` matched
+      `_FS_BOARD STREQUAL "threadx-linux"` vs `"riscv64-qemu"` to pick the std vs
+      `alloc`+`panic-halt` libc tier, and `FATAL_ERROR`d otherwise — so a third
+      ThreadX board could not exist without editing this file.
+
+      The tier turned out to need no new capability: it is exactly `_cross`,
+      which the function **already computes**. threadx-linux is a host build;
+      threadx-qemu-riscv64 is a cross build (its `[board.cmake] toolchain_file`
+      sets `CMAKE_SYSTEM_NAME`). Deriving from `_cross` generalizes to any future
+      ThreadX board with no edit here, and `BOARD` stops being load-bearing.
+      Verified with a standalone `cmake -P` harness: both live boards produce
+      **byte-identical** feature lists to the old branch, and a third board now
+      resolves instead of fatalling.
+
+- [x] **W5.b — MEASURED 2026-08-04; no untangling needed, and the earlier
+      "blocks phase-337 W7.b" claim was too strong.** `orin-spe` does reach
+      link-feature selection by name (`nros-zpico-build/src/runner.rs:112,240,
+      344-345,434-435,543-544` + `LinkPolicy::orin_spe()` +
+      `config/orin-spe/nros-platform.toml` + the `zpico-sys` `orin-spe` feature),
+      which is the shape RFC-0064 flagged. But the chain is **self-contained**:
+      the only crate that enables the `orin-spe` feature is
+      `nros-board-orin-spe` itself (`its Cargo.toml:81`), and no example, no
+      fixture and no test references it. The board crate's own comment already
+      says "orin-spe is a FreeRTOS board, not a platform" (phase 121.10).
+
+      So deleting the board crate makes the whole chain dead code rather than
+      breaking anything. phase-337 W7.b is an **ordering**, not a dependency:
+      delete the crate, then in the same change delete the now-dead
+      `config/orin-spe/`, `LinkPolicy::orin_spe()`, the `CARGO_FEATURE_ORIN_SPE`
+      branches, the `zpico-sys` feature, the `nros-sdk-index.toml [board.orin-spe]`
+      entry and the `zpico_backend` lint value. Recorded here so W7.b does not
+      re-derive it.
 
 ## W6 — Fold the per-platform copies (gated on W1–W3 green)
 
