@@ -70,6 +70,61 @@ fixture (the mtime treadmill).
 Write full logs to files when running background sweeps — `| tail` hides the real
 error.
 
+### Interface with [phase-329](phase-329-test-taxonomy-completion.md) (running CONCURRENTLY)
+
+329 is refactoring the *consumer* side of the same tables this phase writes rows
+into. Neither phase blocks the other, but three specific places will collide and
+one ordering is genuinely worth respecting.
+
+**Where they touch.**
+
+| Surface | 337 does | 329 does |
+|---|---|---|
+| `matrix.rs` cell rows | adds/moves/removes rows per wave (contract step 4) | leaves rows alone; changes who READS them (W1) |
+| `matrix.rs` `PlatformId` | **adds** one (W2.c), **renames** `Native`→`Linux` (W8.b) | wants the per-platform edit surface shrunk (inventory: "4 places per new platform") |
+| the 5 sched-dim test files | owns their board families (W3/W4/W5) | folds all 10 into ONE rstest (W2) |
+| `fixtures.toml` rows | −8 (stm32f4, W7.a), 187 renamed (W8.c) | concluded rows are NOT reducible (W8 verdict) |
+| `matrix_fixture_coverage` | must be green both directions per wave | ADDS G5 (files derive case sets from CELLS, W1) |
+
+**The ordering that matters: 337 W2 and W8 want 329 W1/W4 first.**
+
+W2.c adds a `PlatformId` and W8.b renames one. Today that means editing four
+matches in `matrix.rs` (`enum` :27, `index` :60, `fixture_tokens` :92, :125) and
+dodging `zephyr.rs`'s `unreachable!` arms (:129, :130, :544, :662), which panic
+on an unrecognised coordinate rather than failing to compile. 329's inventory
+names this exact landmine and W4 removes it. Doing W2/W8 first is not blocked —
+it is just paying a cost 329 is in the middle of deleting.
+
+The other direction is a real constraint: **once 329 W1 lands its G5 gate, a
+337 wave that adds a Runtime cell must add the consumer case in the SAME wave**,
+because a cell with no derived case fails G5. That tightens wave contract step 4
+and is the single change most likely to surprise a wave landing mid-flight.
+
+**The 5 sched-dim files are jointly owned.** `nuttx_{sporadic_budget,tier_priority}
+_applied.rs`, `threadx_{preempt_threshold,time_slice}_applied.rs` and
+`orchestration_tiers_freertos.rs` belong to W3/W4/W5 board families here and to
+329 W2's 10→1 fold there. Whoever lands second rebases onto the other's shape —
+in particular, if 329 W2 has landed, edit the `sched_dims` table, NOT the
+per-file copies that no longer exist.
+
+**Safe to run fully in parallel:** W3, W4, W5, W6 (board-crate work, own fixture
+rows, own cell rows) and W1.b/W1.c. Those touch board crates and one row per
+shared registry — the line-level conflicts the wave contract already expects.
+
+**Two unrelated things both called W8.** This phase's W8 is the
+`native`→`linux` rename; 329's W8 is the fixture-BUILD cut (whose row-dedup half
+is RETRACTED, leaving only W8.d). Say "337 W8" / "329 W8.d" in commits and
+issues.
+
+**Row math is compatible.** 329 verified every fixture row is load-bearing and
+that the manifest cannot be dedup'd; this phase's 344 → 336 is not dedup — it is
+`stm32f4` leaving the supported matrix (W7.a), a decision, plus renames that
+change no count. The two conclusions do not conflict.
+
+**329 W8.d helps this phase's verification.** It narrows the tier-2 RUN to lane
+coordinates so the BUILD can narrow too — which is exactly what "build your lane,
+do not rebuild the fixture set" (above) asks a wave to do by hand today.
+
 ---
 
 ## W1 — Prerequisites (ADDITIVE ONLY; no board changes shape)

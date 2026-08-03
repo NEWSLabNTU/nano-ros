@@ -5,11 +5,17 @@
 # The numbered series are referenced by PATH from prose, from issue
 # frontmatter, and — the case that motivated this — from user-facing build
 # output. `cmake/platform/nano-ros-freertos.cmake` told anyone integrating
-# nano-ros board-less to "See docs/design/0062-board-support-organization.md",
+# nano-ros board-less to "See <the board-support RFC under its OLD id 0062>",
 # a file that had not existed since that RFC was renumbered 0062 → 0064 on an
 # id collision. The renumber updated the document and every prose link; the
 # cmake string was the one reference nothing grepped, so the error message a
 # user reaches at exactly their most confused moment pointed at a 404.
+#
+# (That example is written out rather than quoted verbatim on purpose: a
+# literal stale path in this file is a reference like any other, and this gate
+# would flag itself. It did, once — because the first run happened while this
+# script was still untracked, and `git grep` cannot see what git does not
+# track. Verify a grep-based gate AFTER staging it.)
 #
 # Renumbering is rare but not exceptional — parallel sessions collide on ids
 # often enough that `just issue-new` exists to reserve them — and archiving
