@@ -186,7 +186,11 @@ if [ "$lang" = "c" ] || [ "$lang" = "cpp" ]; then
         [ -n "$target" ] && ba+=(--target "$target")
         cmake "${ba[@]}"
     }
-    export -f nros_fixture_build_cmake nros_cmake_configure_if_needed
+    # 0400's cache guard is CALLED BY nros_cmake_configure_if_needed; the
+    # exported-function fan-out must carry it (and its helpers) too, or the
+    # make workers die "nros_cmake_guard_build_dir: command not found".
+    export -f nros_fixture_build_cmake nros_cmake_configure_if_needed \
+        nros_cmake_guard_build_dir
     run nros_fixture_build_cmake
 else
     # rust cells — cargo build with the manifest's exact features/target-dir/env.
