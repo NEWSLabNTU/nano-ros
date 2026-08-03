@@ -93,6 +93,22 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     for (path, value) in workspace.synthetic_metadata_artifacts() {
         metadata.push(JsonArtifact { path, value });
     }
+    // issue 0408 — the "file artifacts win" rule above is right for OVERLAPPING
+    // data and wrong for DISJOINT data. The winning sidecar is now produced by
+    // the metadata PROBE, which records what the component's code actually
+    // creates; a `[[package.metadata.nros.node.publishes]]` entry for a topic
+    // the node never constructs is exactly the data a probe cannot observe.
+    // phase-267 W1c added such an entry so a `[[bridge]]` could resolve a
+    // relayed topic's type pre-build, and once the probe started emitting a
+    // sidecar for the same component that declaration was silently dropped: the
+    // plan's bridge lost `/header`, the relay declared one subscriber, and the
+    // nested-header lane went red with no change to the workspace or the test.
+    //
+    // So union the declared endpoints the winner does not already describe,
+    // instead of discarding them. Overlapping topics keep the sidecar's richer
+    // fields (qos, callback wiring, declaration slots) — only topics absent from
+    // the winner are added.
+    merge_declared_endpoints_into_winners(&mut metadata);
     preserve_metadata(&metadata, &metadata_dir)?;
 
     let manifest_paths = if options.manifest_files.is_empty() {
@@ -912,6 +928,114 @@ fn forwarded_topics(instances: &[Value]) -> Vec<String> {
         }
     }
     topics
+}
+
+/// issue 0408 — fold declaration-only topic endpoints into the artifact that
+/// wins `schema_components`' first-per-id dedup.
+///
+/// The winner is whichever artifact for a `package::component` comes first,
+/// which is the sidecar (probe) output; the manifest-derived synthetic artifact
+/// is appended after it precisely so the sidecar's richer data survives. That
+/// ordering also threw away endpoints only the manifest knows about, because a
+/// probe can only report what the code constructs.
+///
+/// Merges by TOPIC NAME: an endpoint whose topic the winner already describes is
+/// left alone (the sidecar's qos/callback/slot data is the better record); one
+/// the winner never mentions is appended to the winner's first node in the
+/// probe's own item shape, so the existing `collect_schema_endpoint_array` path
+/// reads it with no special-casing downstream.
+fn merge_declared_endpoints_into_winners(metadata: &mut [JsonArtifact]) {
+    fn artifact_id(value: &Value) -> String {
+        let package = string_field(value, &["package"]).unwrap_or("unknown");
+        let component = string_field(value, &["component", "executable"]).unwrap_or("unknown");
+        format!("{package}::{component}")
+    }
+
+    // Topics the winner already describes, across every node and both roles.
+    fn described_topics(value: &Value, role_key: &str) -> HashSet<String> {
+        let mut out = HashSet::new();
+        let Some(Value::Array(nodes)) = value.get("nodes") else {
+            return out;
+        };
+        for node in nodes {
+            let Some(Value::Array(items)) = node.get(role_key) else {
+                continue;
+            };
+            for item in items {
+                if let Some(t) = item
+                    .get("unresolved_topic")
+                    .and_then(|u| u.get("value"))
+                    .and_then(Value::as_str)
+                    .or_else(|| item.get("id").and_then(Value::as_str))
+                {
+                    out.insert(t.trim_start_matches('/').to_string());
+                }
+            }
+        }
+        out
+    }
+
+    // First artifact per id wins, mirroring `schema_components`.
+    let mut winner_of: HashMap<String, usize> = HashMap::new();
+    for (idx, artifact) in metadata.iter().enumerate() {
+        winner_of.entry(artifact_id(&artifact.value)).or_insert(idx);
+    }
+
+    // (winner index, role key, item to append)
+    let mut additions: Vec<(usize, &'static str, Value)> = Vec::new();
+    for (idx, artifact) in metadata.iter().enumerate() {
+        let id = artifact_id(&artifact.value);
+        let Some(&winner) = winner_of.get(&id) else {
+            continue;
+        };
+        if winner == idx {
+            continue; // this artifact IS the winner; nothing to fold in
+        }
+        for (flat_key, role_key) in [("publishers", "publishers"), ("subscribers", "subscribers")] {
+            let Some(Value::Array(decls)) = artifact.value.get(flat_key) else {
+                continue;
+            };
+            let already = described_topics(&metadata[winner].value, role_key);
+            for decl in decls {
+                let Some(topic) = decl.get("topic").and_then(Value::as_str) else {
+                    continue;
+                };
+                if already.contains(topic.trim_start_matches('/')) {
+                    continue;
+                }
+                additions.push((
+                    winner,
+                    role_key,
+                    json!({
+                        "id": topic,
+                        "interface": decl.get("type"),
+                        "unresolved_topic": { "kind": "absolute", "value": topic },
+                    }),
+                ));
+            }
+        }
+    }
+
+    for (winner, role_key, item) in additions {
+        let value = &mut metadata[winner].value;
+        let nodes = value
+            .as_object_mut()
+            .map(|o| o.entry("nodes").or_insert_with(|| json!([])));
+        let Some(Value::Array(nodes)) = nodes else {
+            continue;
+        };
+        if nodes.is_empty() {
+            nodes.push(json!({ "id": "node" }));
+        }
+        let Some(node) = nodes[0].as_object_mut() else {
+            continue;
+        };
+        let Some(Value::Array(arr)) = Some(node.entry(role_key).or_insert_with(|| json!([])))
+        else {
+            continue;
+        };
+        arr.push(item);
+    }
 }
 
 fn schema_components(metadata: &[JsonArtifact]) -> Vec<Value> {
@@ -3475,6 +3599,75 @@ mod tests {
         assert_eq!(bridges[0].connect[1].domain, 5);
         assert_eq!(bridges[0].connect[1].locator, None);
         assert_eq!(bridges[0].topics, vec!["/chatter".to_string()]);
+    }
+
+    /// issue 0408 — a declaration-only publish (a
+    /// `[[package.metadata.nros.node.publishes]]` for a topic the code never
+    /// constructs) must survive a probe sidecar for the same component.
+    ///
+    /// The sidecar wins the first-per-id dedup by design, and the probe cannot
+    /// see such a topic, so before this the declaration was dropped: the
+    /// bridge's `/header` vanished from the plan and the nested-header lane
+    /// went red with no change to the workspace or the test.
+    #[test]
+    fn declared_only_publish_survives_a_probe_sidecar() {
+        // Probe sidecar: nested `nodes[].publishers`, /chatter only.
+        let sidecar = JsonArtifact {
+            path: PathBuf::from("metadata/talker.json"),
+            value: json!({
+                "package": "talker_pkg",
+                "component": "talker",
+                "nodes": [{
+                    "id": "talker",
+                    "publishers": [{
+                        "id": "/chatter",
+                        "interface": {"kind": "message", "package": "std_msgs", "name": "Int32"},
+                        "unresolved_topic": {"kind": "absolute", "value": "/chatter"},
+                    }],
+                }],
+            }),
+        };
+        // Manifest-derived synthetic: FLAT arrays, declares both topics.
+        let synthetic = JsonArtifact {
+            path: PathBuf::from("Cargo.toml"),
+            value: json!({
+                "package": "talker_pkg",
+                "component": "talker",
+                "publishers": [
+                    {"id": "pub_chatter", "topic": "/chatter",
+                     "type": {"kind": "message", "package": "std_msgs", "name": "Int32"}},
+                    {"id": "pub_header", "topic": "/header",
+                     "type": {"kind": "message", "package": "std_msgs", "name": "Header"}},
+                ],
+            }),
+        };
+        let mut metadata = vec![sidecar, synthetic];
+        merge_declared_endpoints_into_winners(&mut metadata);
+
+        let pubs = metadata[0].value["nodes"][0]["publishers"]
+            .as_array()
+            .expect("winner keeps its nodes[].publishers array");
+        let topics: Vec<&str> = pubs
+            .iter()
+            .map(|p| p["unresolved_topic"]["value"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            topics,
+            vec!["/chatter", "/header"],
+            "the declared-only /header must be folded into the winning sidecar"
+        );
+        // /chatter was already described — the sidecar's entry is kept, not duplicated.
+        assert_eq!(
+            pubs.iter()
+                .filter(|p| p["unresolved_topic"]["value"] == "/chatter")
+                .count(),
+            1,
+            "an overlapping topic must not be duplicated"
+        );
+        assert_eq!(
+            pubs[1]["interface"]["name"], "Header",
+            "the folded endpoint carries its declared type so the bridge can resolve it"
+        );
     }
 
     /// Issue 0099 — forwarded topics are the declared pub/sub `resolved_name`s,

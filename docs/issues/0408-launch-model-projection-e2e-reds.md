@@ -101,7 +101,7 @@ Worth a separate fork fix: the EINVAL retry is a zenoh-pico robustness bug — a
 failed connect leaves the socket unusable and the next candidate address needs a
 new one. A dual-stack host talking to an IPv4-only peer is not exotic.
 
-## Bridge — ROOT CAUSE FOUND (a metadata-precedence regression), not fixed
+## Bridge — FIXED (a metadata-precedence regression)
 
 CORRECTION to the first pass below: `/header` IS declared. It is not in the
 node's CODE, it is in `talker_pkg/Cargo.toml`:
@@ -146,7 +146,31 @@ pre-build" to "ignored" the moment the probe started emitting a sidecar for
 these components. That is why #0183 could record this lane green on 2026-07-15
 and why it is red now with no change to the workspace or the test.
 
-### Fix direction
+### FIXED (2026-08-04)
+
+`merge_declared_endpoints_into_winners` in `planner.rs` folds manifest-declared
+topic endpoints into the artifact that wins the first-per-id dedup, matching by
+TOPIC NAME: an endpoint the winner already describes is left alone (the
+sidecar's qos / callback / slot data is the better record), one the winner never
+mentions is appended to its first node in the probe's own item shape, so
+`collect_schema_endpoint_array` reads it with no special-casing downstream.
+
+The "file artifacts win" rule stays intact for overlapping data; it just no
+longer discards data only the manifest can carry.
+
+Verified end to end:
+
+- `nros sync examples/workspaces/bridge-cyclonedds` -> the plan's bridge is now
+  `topics: ["/chatter", "/header"]` (was `["/chatter"]`).
+- `declarative_zenoh_to_cyclonedds_nested_header_to_ros2` PASSES, and the
+  sibling `..._bridge_to_nano_listener` still passes (no regression on the
+  overlapping-topic path).
+- unit test `declared_only_publish_survives_a_probe_sidecar` pins both halves:
+  the declared-only topic is folded in, an overlapping topic is not duplicated,
+  and the folded endpoint keeps its declared type so the bridge can resolve it.
+- the planner's 42 unit tests pass.
+
+### Fix direction (as originally recorded)
 
 The precedence rule is right for overlapping data and wrong for disjoint data.
 A declared topic endpoint the probe cannot observe should be UNIONed into the
