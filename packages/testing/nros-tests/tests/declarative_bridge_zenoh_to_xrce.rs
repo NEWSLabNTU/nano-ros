@@ -27,14 +27,14 @@
 //! Skips cleanly when `zenohd`, the XRCE Agent, the bridge entry fixture, or the
 //! xrce listener fixture is not built.
 
-use std::{path::PathBuf, process::Command, time::Duration};
+use std::{process::Command, time::Duration};
 
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, XrceAgent, ZenohRouter, build_native_talker_header,
+        ManagedProcess, XrceAgent, ZenohRouter, build_int32_sink_rmw, build_native_talker_header,
         build_native_workspace_rust_bridge_xrce_entry, require_xrce_agent, require_zenohd,
-        xrce_listener_binary, zenohd_unique,
+        zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -45,10 +45,7 @@ const ZENOH_NODE: &str = "S0";
 const XRCE_NODE: &str = "S1";
 
 #[rstest]
-fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
-    zenohd_unique: ZenohRouter,
-    xrce_listener_binary: PathBuf,
-) {
+fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
@@ -93,14 +90,23 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
 
     // xrce listener — connects to the same agent on the same domain. The
     // ws-bridge demo forwards std_msgs/Int32 on /chatter (issue #183), so the
-    // observability listener must subscribe Int32 — the Int32-typed agent topic
-    // won't match a String sub. (The Int32 branch prints the same
-    // `LISTENER_LOG_PREFIX` line, so the grep below is type-agnostic.)
+    // observability listener must subscribe Int32; the Int32-typed agent topic
+    // won't match a String sub.
+    //
+    // phase-338 W3 — this drove the EXAMPLE (`native/rust/listener`) with a
+    // test-only `NROS_SUB_TYPE=int32` switch, because `bins/int32-sink` was
+    // hardcoded to zenoh and could not serve an XRCE test. The sink now carries
+    // the same `rmw-*` axis the examples do, so the example is free of the
+    // switch. Marker moves with the binary: the sink prints "Received:"
+    // (INT32_LISTENER_LOG_PREFIX), not the example's "I heard:".
+    let xrce_listener_binary = match build_int32_sink_rmw(nros_tests::fixtures::Rmw::Xrce) {
+        Ok(p) => p.to_path_buf(),
+        Err(e) => nros_tests::skip!("int32-sink xrce fixture not prebuilt ({e})"),
+    };
     let mut listener_cmd = Command::new(&xrce_listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("ROS_DOMAIN_ID", domain.to_string())
-        .env("NROS_SUB_TYPE", "int32")
         .env("NROS_LOCATOR", format!("udp/{xrce_locator}"));
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "xrce-listener-declarative-bridge")
@@ -132,7 +138,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
 
     let listener_output = listener
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             2,
             Duration::from_secs(10),
         )
@@ -144,7 +150,10 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
     drop(agent);
 
     eprintln!("xrce listener output:\n{listener_output}");
-    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     eprintln!("xrce listener received {received} bridged sample(s)");
     assert!(
         received >= 2,

@@ -16,9 +16,10 @@ use std_msgs::msg::Int32;
 
 fn main() {
     env_logger::init();
-    // Zenoh-only fixture: register the backend explicitly (the examples route
-    // this through `nros_board_native::register_linked_rmw()`).
-    nros_rmw_zenoh::register().expect("register zenoh backend");
+    // phase-338 W3 — register whichever backend the `rmw-*` feature linked,
+    // through the same seam the examples use. Was a hardcoded
+    // `nros_rmw_zenoh::register()`, which pinned this fixture to one RMW.
+    nros_board_native::register_linked_rmw();
 
     // Banner deliberately contains "Listener": the e2e spawn helpers key
     // readiness off that word (pre-W4 they waited on the example listener's

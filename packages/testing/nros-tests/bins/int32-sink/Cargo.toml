@@ -12,6 +12,17 @@ description = "Generic std_msgs/Int32 observer fixture (extracted from the examp
 name = "int32-sink"
 path = "src/main.rs"
 
+[features]
+# phase-338 W3 — RMW selected at build time via mutually exclusive features
+# (same shape as the examples and as `action-client-multigoal`). This bin was
+# hardcoded to zenoh, which made it unusable as the XRCE half of the
+# zenoh->xrce bridge e2e and forced that test to keep driving the EXAMPLE with
+# a test-only `NROS_SUB_TYPE` env switch. A test fixture must not pin the RMW
+# any more than an example does.
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
+rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
+
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
     "std",
@@ -19,11 +30,15 @@ nros = { path = "../../../../api/nros", default-features = false, features = [
     "ros-humble",
 ] }
 nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-board-native = { path = "../../../../boards/nros-board-native", default-features = false }
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "std",
     "platform-posix",
     "ros-humble",
-] }
+], optional = true }
+nros-rmw-xrce-cffi = { path = "../../../../rmw/xrce/nros-rmw-xrce-cffi", default-features = false, features = [
+    "std",
+], optional = true }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 log = "0.4"
 env_logger = "0.11"

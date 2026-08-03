@@ -2541,17 +2541,35 @@ pub fn build_native_param_talker() -> TestResult<&'static Path> {
 /// Subscribes to `NROS_SUB_TOPIC` (default `/chatter`) typed `std_msgs/Int32`
 /// and prints `Received: N`
 /// ([`crate::output::INT32_LISTENER_LOG_PREFIX`]) per message.
+/// phase-338 W3 — resolved PER RMW. The bin was hardcoded to zenoh, which is
+/// why the zenoh->xrce declarative bridge e2e still drove the EXAMPLE with a
+/// test-only `NROS_SUB_TYPE=int32` switch; it now carries the same
+/// `rmw-{zenoh,xrce}` axis the examples do.
+pub fn build_int32_sink_rmw(rmw: Rmw) -> TestResult<&'static Path> {
+    static ZENOH_BIN: OnceCell<PathBuf> = OnceCell::new();
+    static XRCE_BIN: OnceCell<PathBuf> = OnceCell::new();
+    let cell = match rmw {
+        Rmw::Zenoh => &ZENOH_BIN,
+        Rmw::Xrce => &XRCE_BIN,
+        other => {
+            return Err(TestError::BuildFailed(format!(
+                "int32-sink has no {other:?} fixture build"
+            )));
+        }
+    };
+    cell.get_or_try_init(|| {
+        let root = project_root();
+        let dir = root.join("packages/testing/nros-tests/bins/int32-sink");
+        let profile = cargo_target_profile_dir();
+        let binary = dir.join(format!("{}/{profile}/int32-sink", rmw.target_dir()));
+        require_prebuilt_binary_fresh(&binary)
+    })
+    .map(|p| p.as_path())
+}
+
+/// The zenoh build — the default for every caller that does not care.
 pub fn build_int32_sink() -> TestResult<&'static Path> {
-    static INT32_SINK_BINARY: OnceCell<PathBuf> = OnceCell::new();
-    INT32_SINK_BINARY
-        .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/int32-sink");
-            let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/int32-sink"));
-            require_prebuilt_binary_fresh(&binary)
-        })
-        .map(|p| p.as_path())
+    build_int32_sink_rmw(Rmw::Zenoh)
 }
 
 /// Resolve the prebuilt concurrent Fibonacci action-server fixture for `rmw`

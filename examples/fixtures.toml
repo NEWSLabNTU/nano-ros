@@ -1186,7 +1186,25 @@ dir = "packages/testing/nros-tests/bins/param-chatter-talker"
 [[fixture]]
 platform = "native"
 lang = "rust"
+rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/int32-sink"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+# phase-338 W3 — the XRCE build of the same sink. The zenoh->xrce declarative
+# bridge e2e needs an Int32 listener that speaks XRCE; before this it drove the
+# EXAMPLE (`native/rust/listener`) with a test-only `NROS_SUB_TYPE=int32` env
+# switch, because this fixture was hardcoded to zenoh. A test fixture must not
+# pin the RMW any more than an example does.
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "packages/testing/nros-tests/bins/int32-sink"
+no_default_features = true
+features = ["rmw-xrce"]
+target_dir = "target-xrce"
 
 # Concurrent Fibonacci action server (phase-277 W5 — was the example
 # action-server's `NROS_ACTION_CONCURRENT` escape hatch; the example slimmed
