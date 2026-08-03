@@ -214,10 +214,62 @@ C already proves this gap is closable: `c/talker` shares one 89-line body across
 native *and* five embedded platforms. Rust splits a 91-line hosted `main.rs` from
 a 34-line `lib.rs`.
 
+### W3 execution plan — DECIDED (option b, maintainer 2026-08-04) and fully mapped
+
+**Decision:** migrate the native standalone examples to Node-class so `talker`
+means one thing everywhere, and keep the imperative API documented by one or two
+genuinely application-shaped examples (`custom-transport-*`, a host-side tool).
+
+**This finishes work phase-277 W4 started.** `bins/header-chatter-talker`'s own
+doc says it was "moved out of `examples/native/rust/talker` … so the example
+stays cfg-free", and `bins/int32-sink`'s says it was "moved out of
+`examples/native/rust/listener` in phase-277 W4". The destinations already exist;
+the `NROS_PUB_TYPE` / `NROS_SUB_TYPE` switch simply survived in the examples.
+
+**Step 1 — repoint the 7 affordance sites.** Measured; do this FIRST, so the
+examples are free to change.
+
+| test | line | env | drives | repoint to |
+|---|---|---|---|---|
+| `declarative_bridge_zenoh_to_cyclonedds` | 72 | `SUB_TYPE` | **C** listener | keep — C affordance is a declared permanent exception |
+| `declarative_bridge_zenoh_to_cyclonedds` | 82 | `PUB_TYPE` | rust talker | an Int32 talker bin |
+| `declarative_bridge_zenoh_to_xrce` | 103 | `SUB_TYPE` | **C** listener | keep |
+| `declarative_bridge_zenoh_to_xrce` | 116 | `PUB_TYPE` | rust talker | an Int32 talker bin |
+| `esp32_emulator` | 514 | `SUB_TYPE` | rust listener | `bins/int32-sink` |
+| `zephyr` | 1611 | `SUB_TYPE` | rust listener | `bins/int32-sink` |
+| `ros_editions_e2e` | 168 / 191 | both | rust talker + listener | Int32 talker bin + `int32-sink` |
+
+**The marker changes with the binary, and that is the trap.** The rust listener
+prints `LISTENER_LOG_PREFIX` (`"I heard:"`) in every mode; `int32-sink` prints
+`INT32_LISTENER_LOG_PREFIX` (`"Received:"`). Every repointed assertion must move
+to the matching constant — `esp32_emulator` alone has ~6 sites. Never a literal
+(CLAUDE.md).
+
+**Step 2 — strip the branching** from `examples/native/rust/{talker,listener}`.
+Two-thirds of the talker's 91 lines is the same demo written three times
+(Header / Int32 / String); what remains is ~30 lines against the group's 36.
+
+**Step 3 — migrate the six** (`talker`, `listener`, `service-{client,server}`,
+`action-{client,server}`): `src/main.rs` becomes `src/lib.rs` carrying the Node
+trait impls plus a one-line `src/main.rs` (`nros::main!();`), and `Cargo.toml`
+swaps `[package.metadata.nros.application]` for `[package.metadata.nros.node]`
+(with `class` / `name`) and gains a `[lib]` section. The target body already
+exists to copy: `examples/workspaces/rust/src/talker_pkg/src/lib.rs` is the same
+shape as the embedded standalone copies.
+
+**Step 4 — verify.** Native is the reference platform (72 of 174 Runtime cells),
+so this needs the native fixture family rebuilt plus the three repointed interop
+families (esp32, zephyr, ros-editions) and both bridge lanes. Do not land steps
+2–3 without it.
+
+**Not in scope:** the C listener's `NROS_SUB_TYPE`. C has no Application/Node
+divide (`c/talker` is one body across native and five embedded platforms), and
+that affordance stays a declared exception.
+
 - [ ] **W3.a** Establish why the hosted Rust example is 91 lines when its embedded
       sibling is 34 — how much is genuinely hosted-only (arg parsing, signal
       handling, `std` logging) versus ceremony the generated entry could own on
-      both sides.
+      both sides. **ANSWERED above: ~2/3 is the triple-implemented type switch.**
 - [ ] **W3.b** Bring native onto the entry shape so the body is the same 34 lines,
       with the hosted/embedded difference living entirely in the generated `main`
       that `emit_rust.rs` **already** emits in both shapes.
