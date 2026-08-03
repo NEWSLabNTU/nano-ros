@@ -65,10 +65,12 @@ use nros_tests::{
         is_qemu_available, nuttx, require_zenohd,
         threadx_linux::{is_nsos_netx_available, is_threadx_available},
     },
-    matrix::{Lang as ML, PlatformId as MP, Workload as MW},
+    matrix::{
+        Cell as MCell, Lang as ML, PlatformId as MP, Tier as MT, W1Consumer, Workload as MW,
+        w1_consumer_of,
+    },
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
 };
-use rstest::rstest;
 use std::{
     path::PathBuf,
     process::Command,
@@ -124,11 +126,10 @@ enum Proof {
 
 type Resolver = fn() -> TestResult<PathBuf>;
 
-/// One Entry-pkg matrix cell.
-struct Cell {
-    platform: &'static str,
-    lang: &'static str,
-    workload: &'static str,
+/// The per-cell EXECUTION data for one Entry-pkg matrix cell. The coordinate
+/// lives in `matrix::Cell`; this carries the resolver/port/boot/proof. Keyed by
+/// coordinate in [`exec_for`].
+struct Exec {
     resolver: Resolver,
     /// Baked router port — the allocator's number for the cell's
     /// coordinate (`alloc::port_of`), which is also what the fixture
@@ -139,6 +140,183 @@ struct Cell {
     /// Provenance / nuance — folded into failure messages so a red cell
     /// still names the seam it pins.
     note: &'static str,
+}
+
+fn plat_str(p: MP) -> &'static str {
+    match p {
+        MP::ThreadxLinux => "threadx-linux",
+        MP::FreertosMps2 => "freertos",
+        MP::ZephyrNativeSim => "zephyr",
+        MP::NuttxArm => "nuttx-arm",
+        _ => "?",
+    }
+}
+fn lang_str(l: ML) -> &'static str {
+    match l {
+        ML::Rust => "rust",
+        ML::C => "c",
+        ML::Cpp => "cpp",
+        ML::Mixed => "mixed",
+    }
+}
+fn wl_str(w: MW) -> &'static str {
+    match w {
+        MW::EntryPubsub => "entry_pubsub",
+        MW::Params => "params",
+        MW::Qos => "qos",
+        MW::Lifecycle => "lifecycle",
+        MW::Safety => "safety",
+        _ => "?",
+    }
+}
+
+/// Map an entry_e2e-claimed coordinate to its execution data. An unmapped
+/// coordinate is a HARD panic: adding a cell that `w1_consumer_of` assigns to
+/// `Entry` forces an arm here (phase-329 W1). The RTOS EntryPubsub cells the
+/// other consumers own never reach this (they are not claimed).
+fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
+    // EntryPubsub via the C `native_entry_robot2` listener (60 s/90 s cold-boot
+    // window for QEMU + native_sim; 15 s/20 s for the threadx host sim).
+    let chatter_c = |observer_spin_ms: u32, window_secs: u64| Proof::ChatterToCListener {
+        observer_spin_ms,
+        window_secs,
+    };
+    match (platform, lang, workload) {
+        (MP::ThreadxLinux, ML::C, MW::EntryPubsub) => Exec {
+            resolver: threadx_c_entry,
+            port: port_of(MP::ThreadxLinux, ML::C, MW::EntryPubsub),
+            boot: Boot::ThreadxLinux,
+            proof: chatter_c(15000, 20),
+            note: "phase-263 C2a: codegen emits nros_app_main (NOT int main — would double-main \
+                   the ThreadX startup.c); nsos-netx forwards nx_bsd_connect to a host connect()",
+        },
+        (MP::ThreadxLinux, ML::Cpp, MW::EntryPubsub) => Exec {
+            resolver: threadx_cpp_entry,
+            port: port_of(MP::ThreadxLinux, ML::Cpp, MW::EntryPubsub),
+            boot: Boot::ThreadxLinux,
+            proof: chatter_c(15000, 20),
+            note: "phase-263 C2c: C2a's per-board wiring (locator bake, header-mirror ordering) \
+                   reused verbatim through the C++ emitter",
+        },
+        (MP::ThreadxLinux, ML::Mixed, MW::EntryPubsub) => Exec {
+            resolver: threadx_mixed_entry,
+            port: port_of(MP::ThreadxLinux, ML::Mixed, MW::EntryPubsub),
+            boot: Boot::ThreadxLinux,
+            proof: chatter_c(15000, 20),
+            note: "phase-263 C2c: C talker + C++ listener + Rust heartbeat in ONE image; the \
+                   nros_ws_runtime umbrella targets the host triple (ThreadX sim = pthreads)",
+        },
+        (MP::FreertosMps2, ML::C, MW::EntryPubsub) => Exec {
+            resolver: freertos_c_entry,
+            port: port_of(MP::FreertosMps2, ML::C, MW::EntryPubsub),
+            boot: Boot::FreertosMps2,
+            proof: chatter_c(60000, 90),
+            note: "phase-263 C2b: nros_app_main + FreertosBoard::run_components; startup.c _start \
+                   spawns the app task, brings up netif + zenoh/poll tasks, dispatches app_main",
+        },
+        (MP::FreertosMps2, ML::Cpp, MW::EntryPubsub) => Exec {
+            resolver: freertos_cpp_entry,
+            port: port_of(MP::FreertosMps2, ML::Cpp, MW::EntryPubsub),
+            boot: Boot::FreertosMps2,
+            proof: chatter_c(60000, 90),
+            note: "phase-263 C2c: C2b's per-board wiring reused verbatim through the C++ emitter",
+        },
+        (MP::FreertosMps2, ML::Mixed, MW::EntryPubsub) => Exec {
+            resolver: freertos_mixed_entry,
+            port: port_of(MP::FreertosMps2, ML::Mixed, MW::EntryPubsub),
+            boot: Boot::FreertosMps2,
+            proof: chatter_c(60000, 90),
+            note: "phase-263 C2c: GENUINELY-no_std cross target (thumbv7m) — the umbrella selects \
+                   the board's alloc;panic-halt tier and Corrosion cross-compiles it",
+        },
+        (MP::ZephyrNativeSim, ML::C, MW::EntryPubsub) => Exec {
+            resolver: build_zephyr_workspace_c_entry,
+            port: port_of(MP::ZephyrNativeSim, ML::C, MW::EntryPubsub),
+            boot: Boot::ZephyrNativeSim,
+            proof: chatter_c(60000, 90),
+            note: "phase-263 C2d: generated int main driving ZephyrBoard::run_components, \
+                   whole-archived into `app` (strong main)",
+        },
+        (MP::ZephyrNativeSim, ML::Cpp, MW::EntryPubsub) => Exec {
+            resolver: build_zephyr_workspace_cpp_entry,
+            port: port_of(MP::ZephyrNativeSim, ML::Cpp, MW::EntryPubsub),
+            boot: Boot::ZephyrNativeSim,
+            proof: chatter_c(60000, 90),
+            note: "phase-263 C2c: TYPED std_msgs::msg::Int32 nodes — idempotent interface \
+                   generator, ::setvbuf (std::setvbuf absent on picolibc), if(TARGET)-guarded \
+                   interface link",
+        },
+        (MP::ZephyrNativeSim, ML::Mixed, MW::EntryPubsub) => Exec {
+            resolver: build_zephyr_workspace_mixed_entry,
+            port: port_of(MP::ZephyrNativeSim, ML::Mixed, MW::EntryPubsub),
+            boot: Boot::ZephyrNativeSim,
+            proof: chatter_c(60000, 90),
+            note: "phase-263 C2c-zephyr: NROS_WS_RUST_NODE_DIRS before find_package(Zephyr) → the \
+                   module synthesises the nros_ws_runtime umbrella (single-runtime invariant: one \
+                   nros-rmw-cffi REGISTRY) in place of plain nros-cpp",
+        },
+        (MP::NuttxArm, ML::C, MW::EntryPubsub) => Exec {
+            resolver: nuttx_c_entry,
+            port: port_of(MP::NuttxArm, ML::C, MW::EntryPubsub),
+            boot: Boot::NuttxArm,
+            proof: chatter_c(60000, 90),
+            note: "phase-263 C2b (last C2 gap): NROS_ENTRY_LOCATOR must be set BEFORE the board's \
+                   nros_platform_link_app (ferried into the cc-rs entry-TU compile at CONFIGURE \
+                   time) — the old 'console issue' was this missing bake",
+        },
+        (MP::NuttxArm, ML::Rust, MW::EntryPubsub) => Exec {
+            // #130: the nuttx rust entry historically bakes the classic Pubsub
+            // port band, not the EntryPubsub band — preserved verbatim.
+            resolver: nuttx_rust_entry,
+            port: port_of(MP::NuttxArm, ML::Rust, MW::Pubsub),
+            boot: Boot::NuttxArm,
+            proof: Proof::ChatterToRustListener { window_secs: 90 },
+            note: "#130 / phase-280 W3 (commit 703e840dd): the Rust entry path's entry_net_init \
+                   pushes the guest IP into eth0 via SIOCSIFADDR before Executor::open — without \
+                   it the image dies in Transport(ConnectionFailed)",
+        },
+        (MP::ZephyrNativeSim, ML::Rust, MW::Params) => Exec {
+            resolver: build_zephyr_workspace_rust_params_entry,
+            port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Params),
+            boot: Boot::ZephyrNativeSim,
+            proof: Proof::SinkValueLine { value: 250 },
+            note: "phase-276 W1 / #128: the Framework::Zephyr emit arm gained apply_param_services \
+                   (launch-baked initials) — before it, [param_services] was silently ignored. \
+                   #147/#278: the observer must be the TYPED int32-sink (the old String listener \
+                   only matched while its fixture was a stale pre-W4 Int32 build)",
+        },
+        (MP::ZephyrNativeSim, ML::Rust, MW::Qos) => Exec {
+            resolver: build_zephyr_workspace_rust_qos_entry,
+            port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Qos),
+            boot: Boot::ZephyrNativeSim,
+            proof: Proof::SinkCount { topic: "/qos_ok" },
+            note: "phase-276 W5 (RFC-0041): per-entity reliable+transient_local declared IN NODE \
+                   CODE on both on-target endpoints; in-image delivery rides \
+                   Z_FEATURE_LOCAL_SUBSCRIBER. The baked qos port is shared with qos_zephyr_ros2_interop_e2e \
+                   (issue #141 — the zephyr-qos-port nextest group serializes them)",
+        },
+        (MP::ZephyrNativeSim, ML::Rust, MW::Lifecycle) => Exec {
+            resolver: build_zephyr_workspace_rust_lifecycle_entry,
+            port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Lifecycle),
+            boot: Boot::ZephyrNativeSim,
+            proof: Proof::LifecycleActive,
+            note: "phase-276 W3 / #128: apply_lifecycle installs the five REP-2002 services and \
+                   drives the boot autostart (Configure→Activate) on-target — no manual set",
+        },
+        (MP::ZephyrNativeSim, ML::Rust, MW::Safety) => Exec {
+            resolver: build_zephyr_workspace_rust_safety_entry,
+            port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Safety),
+            boot: Boot::ZephyrNativeSim,
+            proof: Proof::SinkCount { topic: "/safe_ok" },
+            note: "phase-276 W4 (RFC-0028): [system].features = [\"safety\"] lowers to the \
+                   safety-e2e backend feature — CRC+seq attached per publish, validated on \
+                   receive, CallbackCtx::integrity() read on-target",
+        },
+        (p, l, w) => panic!(
+            "entry_e2e: no execution mapping for matrix cell {p:?}/{l:?}/{w:?} — add an \
+             `exec_for` arm (phase-329 W1: a cell w1_consumer_of assigns to Entry must wire here)"
+        ),
+    }
 }
 
 // Resolver adapters: normalize the `&'static Path` builders onto the
@@ -198,7 +376,7 @@ impl Guest {
 /// Historical asymmetry preserved: the qos/safety cells never probed zenohd
 /// up front (the router-start skip covers a missing zenohd) and the
 /// lifecycle cell gates on ROS 2 instead.
-fn require_cell_env(cell: &Cell) {
+fn require_cell_env(cell: &Exec) {
     match cell.proof {
         Proof::LifecycleActive => {
             if !require_ros2() {
@@ -316,7 +494,7 @@ fn spawn_int32_sink(topic: &'static str, locator: &str) -> ManagedProcess {
 }
 
 /// Boot the cell's guest image.
-fn boot_guest(cell: &Cell, entry: &PathBuf) -> Guest {
+fn boot_guest(cell: &Exec, entry: &PathBuf) -> Guest {
     match cell.boot {
         Boot::ThreadxLinux => {
             // The embedded locator is COMPILE-TIME baked, so NROS_LOCATOR is
@@ -383,155 +561,81 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 // The parametrized matrix consumer
 // =============================================================================
 
-/// One Entry-pkg cell: boot the compile-time-locator entry image against a
-/// router on its baked port and prove the workload contract per the cell's
-/// [`Proof`]. Case names carry `<platform>_<lang>[_<workload>]` so nextest
-/// `test(...)` filters can slice (e.g. `test(nuttx_arm)`,
-/// `test(zephyr_rust_qos)` — the `.config/nextest.toml` groups key on these).
-#[rstest]
-// ThreadX-on-Linux (phase-263 C2a — the FIRST embedded LAUNCH entry, issue
-// 0097): startup.c::main → tx_kernel_enter → app thread → app_main →
-// ThreadxBoard::run_components → nros::init(baked locator) → spin.
-#[case::threadx_linux_c(Cell {
-    platform: "threadx-linux", lang: "c", workload: "entry_pubsub",
-    resolver: threadx_c_entry, port: port_of(MP::ThreadxLinux, ML::C, MW::EntryPubsub), boot: Boot::ThreadxLinux,
-    proof: Proof::ChatterToCListener { observer_spin_ms: 15000, window_secs: 20 },
-    note: "phase-263 C2a: codegen emits nros_app_main (NOT int main — would double-main \
-           the ThreadX startup.c); nsos-netx forwards nx_bsd_connect to a host connect()",
-})]
-#[case::threadx_linux_cpp(Cell {
-    platform: "threadx-linux", lang: "cpp", workload: "entry_pubsub",
-    resolver: threadx_cpp_entry, port: port_of(MP::ThreadxLinux, ML::Cpp, MW::EntryPubsub), boot: Boot::ThreadxLinux,
-    proof: Proof::ChatterToCListener { observer_spin_ms: 15000, window_secs: 20 },
-    note: "phase-263 C2c: C2a's per-board wiring (locator bake, header-mirror ordering) \
-           reused verbatim through the C++ emitter",
-})]
-#[case::threadx_linux_mixed(Cell {
-    platform: "threadx-linux", lang: "mixed", workload: "entry_pubsub",
-    resolver: threadx_mixed_entry, port: port_of(MP::ThreadxLinux, ML::Mixed, MW::EntryPubsub), boot: Boot::ThreadxLinux,
-    proof: Proof::ChatterToCListener { observer_spin_ms: 15000, window_secs: 20 },
-    note: "phase-263 C2c: C talker + C++ listener + Rust heartbeat in ONE image; the \
-           nros_ws_runtime umbrella targets the host triple (ThreadX sim = pthreads)",
-})]
-// FreeRTOS QEMU mps2-an385 (phase-263 C2b/C2c — the first QEMU-cross
-// embedded entries; static 192.0.3.x lwIP, board-matching slirp net).
-#[case::freertos_c(Cell {
-    platform: "freertos", lang: "c", workload: "entry_pubsub",
-    resolver: freertos_c_entry, port: port_of(MP::FreertosMps2, ML::C, MW::EntryPubsub), boot: Boot::FreertosMps2,
-    proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
-    note: "phase-263 C2b: nros_app_main + FreertosBoard::run_components; startup.c _start \
-           spawns the app task, brings up netif + zenoh/poll tasks, dispatches app_main",
-})]
-#[case::freertos_cpp(Cell {
-    platform: "freertos", lang: "cpp", workload: "entry_pubsub",
-    resolver: freertos_cpp_entry, port: port_of(MP::FreertosMps2, ML::Cpp, MW::EntryPubsub), boot: Boot::FreertosMps2,
-    proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
-    note: "phase-263 C2c: C2b's per-board wiring reused verbatim through the C++ emitter",
-})]
-#[case::freertos_mixed(Cell {
-    platform: "freertos", lang: "mixed", workload: "entry_pubsub",
-    resolver: freertos_mixed_entry, port: port_of(MP::FreertosMps2, ML::Mixed, MW::EntryPubsub), boot: Boot::FreertosMps2,
-    proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
-    note: "phase-263 C2c: GENUINELY-no_std cross target (thumbv7m) — the umbrella selects \
-           the board's alloc;panic-halt tier and Corrosion cross-compiles it",
-})]
-// Zephyr native_sim (phase-263 C2c/C2d — west lane; nano_ros_entry's zephyr
-// branch puts the generated entry TU into `app`, the C/C++ analog of
-// zephyr-lang-rust's rust_cargo_application; CONFIG_NROS_ZENOH_LOCATOR bake).
-#[case::zephyr_c(Cell {
-    platform: "zephyr", lang: "c", workload: "entry_pubsub",
-    resolver: build_zephyr_workspace_c_entry,
-    port: port_of(MP::ZephyrNativeSim, ML::C, MW::EntryPubsub), boot: Boot::ZephyrNativeSim,
-    proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
-    note: "phase-263 C2d: generated int main driving ZephyrBoard::run_components, \
-           whole-archived into `app` (strong main)",
-})]
-#[case::zephyr_cpp(Cell {
-    platform: "zephyr", lang: "cpp", workload: "entry_pubsub",
-    resolver: build_zephyr_workspace_cpp_entry,
-    port: port_of(MP::ZephyrNativeSim, ML::Cpp, MW::EntryPubsub), boot: Boot::ZephyrNativeSim,
-    proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
-    note: "phase-263 C2c: TYPED std_msgs::msg::Int32 nodes — idempotent interface \
-           generator, ::setvbuf (std::setvbuf absent on picolibc), if(TARGET)-guarded \
-           interface link",
-})]
-#[case::zephyr_mixed(Cell {
-    platform: "zephyr", lang: "mixed", workload: "entry_pubsub",
-    resolver: build_zephyr_workspace_mixed_entry,
-    port: port_of(MP::ZephyrNativeSim, ML::Mixed, MW::EntryPubsub), boot: Boot::ZephyrNativeSim,
-    proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
-    note: "phase-263 C2c-zephyr: NROS_WS_RUST_NODE_DIRS before find_package(Zephyr) → the \
-           module synthesises the nros_ws_runtime umbrella (single-runtime invariant: one \
-           nros-rmw-cffi REGISTRY) in place of plain nros-cpp",
-})]
-// NuttX QEMU arm-virt (kernel-linked entries; slirp gateway 10.0.2.2).
-#[case::nuttx_arm_c(Cell {
-    platform: "nuttx-arm", lang: "c", workload: "entry_pubsub",
-    resolver: nuttx_c_entry, port: port_of(MP::NuttxArm, ML::C, MW::EntryPubsub), boot: Boot::NuttxArm,
-    proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
-    note: "phase-263 C2b (last C2 gap): NROS_ENTRY_LOCATOR must be set BEFORE the board's \
-           nros_platform_link_app (ferried into the cc-rs entry-TU compile at CONFIGURE \
-           time) — the old 'console issue' was this missing bake",
-})]
-#[case::nuttx_arm_rust(Cell {
-    platform: "nuttx-arm", lang: "rust", workload: "entry_pubsub",
-    resolver: nuttx_rust_entry, port: port_of(MP::NuttxArm, ML::Rust, MW::Pubsub), boot: Boot::NuttxArm,
-    proof: Proof::ChatterToRustListener { window_secs: 90 },
-    note: "#130 / phase-280 W3 (commit 703e840dd): the Rust entry path's entry_net_init \
-           pushes the guest IP into eth0 via SIOCSIFADDR before Executor::open — without \
-           it the image dies in Transport(ConnectionFailed)",
-})]
-// Zephyr feature-workspace entries (phase-276 #102 H1 — the rust ws-* cells).
-#[case::zephyr_rust_params(Cell {
-    platform: "zephyr", lang: "rust", workload: "params",
-    resolver: build_zephyr_workspace_rust_params_entry,
-    port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Params),
-    boot: Boot::ZephyrNativeSim,
-    proof: Proof::SinkValueLine { value: 250 },
-    note: "phase-276 W1 / #128: the Framework::Zephyr emit arm gained apply_param_services \
-           (launch-baked initials) — before it, [param_services] was silently ignored. \
-           #147/#278: the observer must be the TYPED int32-sink (the old String listener \
-           only matched while its fixture was a stale pre-W4 Int32 build)",
-})]
-#[case::zephyr_rust_qos(Cell {
-    platform: "zephyr", lang: "rust", workload: "qos",
-    resolver: build_zephyr_workspace_rust_qos_entry,
-    port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Qos),
-    boot: Boot::ZephyrNativeSim,
-    proof: Proof::SinkCount { topic: "/qos_ok" },
-    note: "phase-276 W5 (RFC-0041): per-entity reliable+transient_local declared IN NODE \
-           CODE on both on-target endpoints; in-image delivery rides \
-           Z_FEATURE_LOCAL_SUBSCRIBER. The baked qos port is shared with qos_zephyr_ros2_interop_e2e \
-           (issue #141 — the zephyr-qos-port nextest group serializes them)",
-})]
-#[case::zephyr_rust_lifecycle(Cell {
-    platform: "zephyr", lang: "rust", workload: "lifecycle",
-    resolver: build_zephyr_workspace_rust_lifecycle_entry,
-    port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Lifecycle),
-    boot: Boot::ZephyrNativeSim,
-    proof: Proof::LifecycleActive,
-    note: "phase-276 W3 / #128: apply_lifecycle installs the five REP-2002 services and \
-           drives the boot autostart (Configure→Activate) on-target — no manual set",
-})]
-#[case::zephyr_rust_safety(Cell {
-    platform: "zephyr", lang: "rust", workload: "safety",
-    resolver: build_zephyr_workspace_rust_safety_entry,
-    port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Safety),
-    boot: Boot::ZephyrNativeSim,
-    proof: Proof::SinkCount { topic: "/safe_ok" },
-    note: "phase-276 W4 (RFC-0028): [system].features = [\"safety\"] lowers to the \
-           safety-e2e backend feature — CRC+seq attached per publish, validated on \
-           receive, CallbackCtx::integrity() read on-target",
-})]
-fn entry_matrix(#[case] cell: Cell) {
+/// THE Entry-pkg matrix consumer (phase-329 W1). Iterates every cell
+/// `w1_consumer_of` assigns to `Entry` — the RTOS `EntryPubsub` subset it boots
+/// plus the zephyr-rust feature entries — derived from `matrix::CELLS`, and runs
+/// each in one process. Per-cell skips/failures are caught so one missing
+/// fixture never aborts the rest.
+#[test]
+fn entry_matrix() {
+    let cells: Vec<&MCell> = nros_tests::matrix::CELLS
+        .iter()
+        .filter(|c| w1_consumer_of(c) == Some(W1Consumer::Entry) && matches!(c.tier, MT::Runtime))
+        .collect();
+    assert!(
+        !cells.is_empty(),
+        "matrix regression: no Entry-claimed runtime cells for this consumer"
+    );
+
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let mut skipped: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+    for c in &cells {
+        let label = format!(
+            "{}/{}/{}",
+            plat_str(c.platform),
+            lang_str(c.lang),
+            wl_str(c.workload)
+        );
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
+        if let Err(p) = res {
+            let msg = p
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "<non-string panic>".to_string());
+            if msg.contains("[SKIPPED]") {
+                skipped.push(format!("{label}: {msg}"));
+            } else {
+                failed.push(format!("{label}: {msg}"));
+            }
+        }
+    }
+    std::panic::set_hook(prev_hook);
+
+    assert!(
+        failed.is_empty(),
+        "entry_matrix: {} of {} cell(s) FAILED:\n  {}",
+        failed.len(),
+        cells.len(),
+        failed.join("\n  ")
+    );
+    if skipped.len() == cells.len() {
+        nros_tests::skip!(
+            "all {} entry cell(s) skipped:\n  {}",
+            skipped.len(),
+            skipped.join("\n  ")
+        );
+    }
+}
+
+/// Boot the compile-time-locator entry image against a router on its baked port
+/// and prove the workload contract per the cell's [`Proof`]. Panics with
+/// `[SKIPPED] …` on an unmet precondition; the caller classifies.
+fn run_cell(pcell: &MCell) {
+    let platform = plat_str(pcell.platform);
+    let lang = lang_str(pcell.lang);
+    let workload = wl_str(pcell.workload);
+    let cell = exec_for(pcell.platform, pcell.lang, pcell.workload);
     require_cell_env(&cell);
 
     let entry = (cell.resolver)().unwrap_or_else(|e| {
         nros_tests::skip!(
             "{} {} {} entry fixture not built: {e}",
-            cell.platform,
-            cell.lang,
-            cell.workload
+            platform,
+            lang,
+            workload
         )
     });
 
@@ -568,7 +672,7 @@ fn entry_matrix(#[case] cell: Cell) {
                     panic!(
                         "[{} {}] native observer never received the entry's /chatter — the \
                          embedded LAUNCH-entry runtime delivery did not work ({})",
-                        cell.platform, cell.lang, cell.note
+                        platform, lang, cell.note
                     )
                 });
             guest.kill();
@@ -578,8 +682,8 @@ fn entry_matrix(#[case] cell: Cell) {
             assert!(
                 n >= 3,
                 "[{} {}] expected ≥3 cross-process deliveries, got {n}",
-                cell.platform,
-                cell.lang
+                platform,
+                lang
             );
         }
 
@@ -596,7 +700,7 @@ fn entry_matrix(#[case] cell: Cell) {
                     panic!(
                         "[{} {}] native observer never received the entry image's /chatter \
                          ({})",
-                        cell.platform, cell.lang, cell.note
+                        platform, lang, cell.note
                     )
                 });
             guest.kill();
@@ -606,8 +710,8 @@ fn entry_matrix(#[case] cell: Cell) {
             assert!(
                 n >= 3,
                 "[{} {}] expected ≥3 cross-process deliveries, got {n}",
-                cell.platform,
-                cell.lang
+                platform,
+                lang
             );
         }
 
@@ -628,7 +732,7 @@ fn entry_matrix(#[case] cell: Cell) {
                     panic!(
                         "[{} {} {}] subscriber never saw the live-read baked param value \
                          ({value}) — {}",
-                        cell.platform, cell.lang, cell.workload, cell.note
+                        platform, lang, workload, cell.note
                     )
                 });
             guest.kill();
@@ -638,9 +742,9 @@ fn entry_matrix(#[case] cell: Cell) {
             assert!(
                 n >= 3,
                 "[{} {} {}] expected ≥3 live-read publishes of {value}, got {n}",
-                cell.platform,
-                cell.lang,
-                cell.workload
+                platform,
+                lang,
+                workload
             );
         }
 
@@ -663,7 +767,7 @@ fn entry_matrix(#[case] cell: Cell) {
                     panic!(
                         "[{} {} {}] observer never saw 3 `{topic}` republishes from the \
                          entry — {}",
-                        cell.platform, cell.lang, cell.workload, cell.note
+                        platform, lang, workload, cell.note
                     )
                 });
             guest.kill();
@@ -690,7 +794,7 @@ fn entry_matrix(#[case] cell: Cell) {
                 panic!(
                     "[{} {} {}] `ros2 lifecycle nodes` listed no managed node — the entry's \
                      REP-2002 services are not on the wire ({}):\n{nodes_out}",
-                    cell.platform, cell.lang, cell.workload, cell.note
+                    platform, lang, workload, cell.note
                 )
             });
 
@@ -708,9 +812,9 @@ fn entry_matrix(#[case] cell: Cell) {
                 state.to_lowercase().contains("active"),
                 "[{} {} {}] expected the autostart-managed node {lifecycle_node} to be \
                  `active` at boot ({}), got:\n{state}",
-                cell.platform,
-                cell.lang,
-                cell.workload,
+                platform,
+                lang,
+                workload,
                 cell.note
             );
         }
