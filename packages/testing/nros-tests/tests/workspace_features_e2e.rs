@@ -75,12 +75,12 @@ use nros_tests::{
         build_native_workspace_rust_safety_listener_entry,
         build_native_workspace_rust_safety_talker_entry, require_zenohd,
     },
+    matrix::{Cell as MCell, Lang as ML, Tier as MT, W1Consumer, Workload as MW, w1_consumer_of},
     ros2::{
         DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator, ros2_topic_info_verbose,
         topic_endpoint_block,
     },
 };
-use rstest::rstest;
 use std::{
     path::PathBuf,
     process::Command,
@@ -142,10 +142,10 @@ enum Proof {
     RemapWireName,
 }
 
-/// One native workspace-feature matrix cell.
-struct Cell {
-    lang: &'static str,
-    workload: &'static str,
+/// The per-cell EXECUTION data for one native workspace-feature matrix cell.
+/// The coordinate lives in `matrix::Cell`; this carries the entr(y/ies) + proof.
+/// Keyed by coordinate in [`exec_for`].
+struct Exec {
     /// The (only / first-booted) entry: the logging/lifecycle entry, or
     /// the pair's TALKER (custom-msg, qos) / safety talker.
     entry: Resolver,
@@ -155,6 +155,187 @@ struct Cell {
     /// Provenance / nuance — folded into failure messages so a red cell
     /// still names the seam it pins.
     note: &'static str,
+}
+
+fn lang_str(l: ML) -> &'static str {
+    match l {
+        ML::Rust => "rust",
+        ML::C => "c",
+        ML::Cpp => "cpp",
+        ML::Mixed => "mixed",
+    }
+}
+fn wl_str(w: MW) -> &'static str {
+    match w {
+        MW::CustomMsg => "custom_msg",
+        MW::Logging => "logging",
+        MW::Qos => "qos",
+        MW::Lifecycle => "lifecycle",
+        MW::Safety => "safety",
+        MW::Remap => "remap",
+        _ => "?",
+    }
+}
+
+/// Map a native workspace-feature `(lang, workload)` coordinate to its execution
+/// data. An unmapped coordinate is a HARD panic: adding a cell that
+/// `w1_consumer_of` assigns to `WorkspaceFeatures` forces an arm here
+/// (phase-329 W1).
+fn exec_for(lang: ML, workload: MW) -> Exec {
+    match (lang, workload) {
+        (ML::C, MW::CustomMsg) => Exec {
+            entry: || build_native_workspace_c_custom_msg_talker_entry().map(|p| p.to_path_buf()),
+            peer: Some(|| {
+                build_native_workspace_c_custom_msg_listener_entry().map(|p| p.to_path_buf())
+            }),
+            proof: Proof::CustomMsgFields,
+            note: "phase-263 B6 C projection: reading_{talker,listener}_pkg carry the type name \
+                   as a string + hand-code the CDR (RFC-0043 typed-component idiom); the \
+                   differentiator is the WORKSPACE-LOCAL schema",
+        },
+        (ML::Cpp, MW::CustomMsg) => Exec {
+            entry: || build_native_workspace_cpp_custom_msg_talker_entry().map(|p| p.to_path_buf()),
+            peer: Some(|| {
+                build_native_workspace_cpp_custom_msg_listener_entry().map(|p| p.to_path_buf())
+            }),
+            proof: Proof::CustomMsgFields,
+            note: "phase-263 B6 C++ projection: raw-CDR idiom, no generated interface archive \
+                   linked — dodges any cpp codegen edge",
+        },
+        (ML::Mixed, MW::CustomMsg) => Exec {
+            entry: || {
+                build_native_workspace_mixed_custom_msg_talker_entry().map(|p| p.to_path_buf())
+            },
+            peer: Some(|| {
+                build_native_workspace_mixed_custom_msg_listener_entry().map(|p| p.to_path_buf())
+            }),
+            proof: Proof::CustomMsgFields,
+            note: "phase-263 B6 MIXED projection: the C reading pkgs reused verbatim, driven by \
+                   a C++ TYPED entry carrier",
+        },
+        (ML::Rust, MW::Logging) => Exec {
+            entry: || build_native_workspace_rust_entry().map(|p| p.to_path_buf()),
+            peer: None,
+            proof: Proof::LoggingLines(nros_tests::output::WS_RUST_LOGGING_MARKER),
+            note: "phase-263 A5 / phase-264 W3: nros-board-posix registers the default platform \
+                   sink at boot — talker_pkg's nros_info! needs no per-app init",
+        },
+        (ML::C, MW::Logging) => Exec {
+            entry: || build_native_workspace_c_entry().map(|p| p.to_path_buf()),
+            peer: None,
+            proof: Proof::LoggingLines(nros_tests::output::WS_C_LOGGING_MARKER),
+            note: "phase-263 A5 C projection: NROS_LOG_INFO(nros_log_default_logger(), …) — a \
+                   NULL logger handle DROPS the record (the A5 C/C++ finding)",
+        },
+        (ML::Cpp, MW::Logging) => Exec {
+            entry: || build_native_workspace_cpp_entry().map(|p| p.to_path_buf()),
+            peer: None,
+            proof: Proof::LoggingLines(nros_tests::output::WS_CPP_LOGGING_MARKER),
+            note: "phase-263 A5 C++ projection: same facade chain (nros_log_emit_fmt → \
+                   DEFAULT_LOGGER → lazy default sink → posix writer)",
+        },
+        (ML::Mixed, MW::Logging) => Exec {
+            entry: || build_native_workspace_mixed_entry().map(|p| p.to_path_buf()),
+            peer: None,
+            proof: Proof::LoggingLines(nros_tests::output::WS_C_LOGGING_MARKER),
+            note: "phase-263 A5 MIXED projection: the mixed ws reuses the C talker, so its cell \
+                   greps the C marker",
+        },
+        (ML::C, MW::Qos) => Exec {
+            entry: || build_native_workspace_c_qos_talker_entry().map(|p| p.to_path_buf()),
+            peer: Some(|| build_native_workspace_c_qos_listener_entry().map(|p| p.to_path_buf())),
+            proof: Proof::QosMatchedProfile { topic: "/chatter" },
+            note: "phase-263 B4 C projection: nros_cpp_qos_t by value to nros_cpp_publisher_create \
+                   (not nros_c_qos_default()); listener declares the BYTE-IDENTICAL profile",
+        },
+        (ML::Cpp, MW::Qos) => Exec {
+            entry: || build_native_workspace_cpp_qos_talker_entry().map(|p| p.to_path_buf()),
+            peer: Some(|| build_native_workspace_cpp_qos_listener_entry().map(|p| p.to_path_buf())),
+            proof: Proof::QosMatchedProfile { topic: "/chatter" },
+            note: "phase-263 B4 C++ projection: fluent nros::QoS builder \
+                   (.reliable().transient_local().keep_last(10)) into Node::create_publisher",
+        },
+        (ML::Mixed, MW::Qos) => Exec {
+            entry: || build_native_workspace_mixed_qos_talker_entry().map(|p| p.to_path_buf()),
+            peer: Some(|| {
+                build_native_workspace_mixed_qos_listener_entry().map(|p| p.to_path_buf())
+            }),
+            proof: Proof::QosMatchedProfile { topic: "/chatter" },
+            note: "phase-263 B4 MIXED projection: the C qos pkgs reused verbatim under a C++ \
+                   TYPED entry carrier (run_components)",
+        },
+        (ML::Rust, MW::Lifecycle) => Exec {
+            entry: || build_native_workspace_rust_lifecycle_entry().map(|p| p.to_path_buf()),
+            peer: None,
+            proof: Proof::LifecycleActive,
+            note: "phase-263 A3: `[lifecycle] autostart = \"active\"` + nros/lifecycle-services — \
+                   nros::main! (phase-264 W2) registers the 5 REP-2002 services and drives \
+                   Configure→Activate at boot",
+        },
+        (ML::C, MW::Lifecycle) => Exec {
+            entry: || build_native_workspace_c_lifecycle_entry().map(|p| p.to_path_buf()),
+            peer: None,
+            proof: Proof::LifecycleActive,
+            note: "phase-269 W2 C: the generated __nros_entry_setup (emit_c.rs) calls \
+                   nros_cpp_lifecycle_autostart(executor, 2u)",
+        },
+        (ML::Cpp, MW::Lifecycle) => Exec {
+            entry: || build_native_workspace_cpp_lifecycle_entry().map(|p| p.to_path_buf()),
+            peer: None,
+            proof: Proof::LifecycleActive,
+            note: "phase-269 W2 C++: __nros_entry_setup calls nros_cpp_lifecycle_autostart(__exec, \
+                   2u) via ::nros::global_handle()",
+        },
+        (ML::Rust, MW::Safety) => Exec {
+            entry: || build_native_workspace_rust_safety_talker_entry().map(|p| p.to_path_buf()),
+            peer: Some(|| {
+                build_native_workspace_rust_safety_listener_entry().map(|p| p.to_path_buf())
+            }),
+            proof: Proof::SafetyCrcCount {
+                spin_ms: 16000,
+                wait_secs: 22,
+            },
+            note: "phase-263 B1: entry bakes `safety-e2e` → backend-attached CRC-32 + seq per \
+                   publish; safe_listener validates + reads CallbackCtx::integrity() and \
+                   republishes the valid count",
+        },
+        (ML::C, MW::Safety) => Exec {
+            entry: || build_native_workspace_c_safety_talker_entry().map(|p| p.to_path_buf()),
+            peer: Some(|| {
+                build_native_workspace_c_safety_listener_entry().map(|p| p.to_path_buf())
+            }),
+            proof: Proof::SafetyCrcCount {
+                spin_ms: 20000,
+                wait_secs: 25,
+            },
+            note: "phase-269 W3 C: nros_cpp_subscription_register_validated callback receives \
+                   crc_valid == 1 per integrity-passing frame (NANO_ROS_SAFETY_E2E=ON fixture)",
+        },
+        (ML::Cpp, MW::Safety) => Exec {
+            entry: || build_native_workspace_cpp_safety_talker_entry().map(|p| p.to_path_buf()),
+            peer: Some(|| {
+                build_native_workspace_cpp_safety_listener_entry().map(|p| p.to_path_buf())
+            }),
+            proof: Proof::SafetyCrcCount {
+                spin_ms: 20000,
+                wait_secs: 25,
+            },
+            note: "phase-269 W3 C++: node.create_subscription_with_safety<M>() delivers \
+                   (const M&, const nros_cpp_integrity_status_t&) with crc_valid == 1",
+        },
+        (ML::Rust, MW::Remap) => Exec {
+            entry: || build_native_workspace_rust_remap_entry().map(|p| p.to_path_buf()),
+            peer: None,
+            proof: Proof::RemapWireName,
+            note: "phase-306 W3/W4: nros::main!(model = …) bakes the model's <remap> rules into \
+                   runtime.remaps; entity creation expands ~/out against /island/remap_talker \
+                   and resolves it to /remapped_out before it reaches the RMW",
+        },
+        (l, w) => panic!(
+            "workspace_features_e2e: no execution mapping for matrix cell {l:?}/{w:?} — add an \
+             `exec_for` arm (phase-329 W1)"
+        ),
+    }
 }
 
 // =============================================================================
@@ -253,180 +434,78 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 }
 
 /// Resolve a cell entry, skipping when the fixture is not built.
-fn resolve(r: Resolver, cell: &Cell, role: &str) -> PathBuf {
-    r().unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "{} {} {role} entry not built: {e}",
-            cell.lang,
-            cell.workload
-        )
-    })
+fn resolve(r: Resolver, lang: &str, workload: &str, role: &str) -> PathBuf {
+    r().unwrap_or_else(|e| nros_tests::skip!("{lang} {workload} {role} entry not built: {e}"))
 }
 
 // =============================================================================
 // The parametrized matrix consumer
 // =============================================================================
 
-/// One native workspace-feature cell: boot the workspace entr(y/ies) on an
-/// ephemeral router and prove the workload's contract per the cell's
-/// [`Proof`]. Case names carry `native_<lang>_<workload>` so nextest
-/// `test(...)` filters can slice (e.g. `test(native_c_qos)`).
-#[rstest]
-// CustomMsg — phase-263 B6: workspace-local `custom_msgs/Reading` schema
-// crosses processes (talker + listener entries, RFC-0043 raw-CDR idiom).
-#[case::native_c_custom_msg(Cell {
-    lang: "c", workload: "custom_msg",
-    entry: || build_native_workspace_c_custom_msg_talker_entry().map(|p| p.to_path_buf()),
-    peer: Some(|| build_native_workspace_c_custom_msg_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::CustomMsgFields,
-    note: "phase-263 B6 C projection: reading_{talker,listener}_pkg carry the type name \
-           as a string + hand-code the CDR (RFC-0043 typed-component idiom); the \
-           differentiator is the WORKSPACE-LOCAL schema",
-})]
-#[case::native_cpp_custom_msg(Cell {
-    lang: "cpp", workload: "custom_msg",
-    entry: || build_native_workspace_cpp_custom_msg_talker_entry().map(|p| p.to_path_buf()),
-    peer: Some(|| build_native_workspace_cpp_custom_msg_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::CustomMsgFields,
-    note: "phase-263 B6 C++ projection: raw-CDR idiom, no generated interface archive \
-           linked — dodges any cpp codegen edge",
-})]
-#[case::native_mixed_custom_msg(Cell {
-    lang: "mixed", workload: "custom_msg",
-    entry: || build_native_workspace_mixed_custom_msg_talker_entry().map(|p| p.to_path_buf()),
-    peer: Some(|| build_native_workspace_mixed_custom_msg_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::CustomMsgFields,
-    note: "phase-263 B6 MIXED projection: the C reading pkgs reused verbatim, driven by \
-           a C++ TYPED entry carrier",
-})]
-// Logging — phase-263 A5: a Node pkg's log call reaches the entry's OWN
-// stdout (board boot-time default sink, phase-264 W3). Process-local.
-#[case::native_rust_logging(Cell {
-    lang: "rust", workload: "logging",
-    entry: || build_native_workspace_rust_entry().map(|p| p.to_path_buf()),
-    peer: None,
-    proof: Proof::LoggingLines(nros_tests::output::WS_RUST_LOGGING_MARKER),
-    note: "phase-263 A5 / phase-264 W3: nros-board-posix registers the default platform \
-           sink at boot — talker_pkg's nros_info! needs no per-app init",
-})]
-#[case::native_c_logging(Cell {
-    lang: "c", workload: "logging",
-    entry: || build_native_workspace_c_entry().map(|p| p.to_path_buf()),
-    peer: None,
-    proof: Proof::LoggingLines(nros_tests::output::WS_C_LOGGING_MARKER),
-    note: "phase-263 A5 C projection: NROS_LOG_INFO(nros_log_default_logger(), …) — a \
-           NULL logger handle DROPS the record (the A5 C/C++ finding)",
-})]
-#[case::native_cpp_logging(Cell {
-    lang: "cpp", workload: "logging",
-    entry: || build_native_workspace_cpp_entry().map(|p| p.to_path_buf()),
-    peer: None,
-    proof: Proof::LoggingLines(nros_tests::output::WS_CPP_LOGGING_MARKER),
-    note: "phase-263 A5 C++ projection: same facade chain (nros_log_emit_fmt → \
-           DEFAULT_LOGGER → lazy default sink → posix writer)",
-})]
-#[case::native_mixed_logging(Cell {
-    lang: "mixed", workload: "logging",
-    entry: || build_native_workspace_mixed_entry().map(|p| p.to_path_buf()),
-    peer: None,
-    proof: Proof::LoggingLines(nros_tests::output::WS_C_LOGGING_MARKER),
-    note: "phase-263 A5 MIXED projection: the mixed ws reuses the C talker, so its cell \
-           greps the C marker",
-})]
-// Qos — phase-263 B4: non-default per-entity profile IN CODE on both
-// endpoints (reliable + transient_local + keep_last(10)); late joiner.
-#[case::native_c_qos(Cell {
-    lang: "c", workload: "qos",
-    entry: || build_native_workspace_c_qos_talker_entry().map(|p| p.to_path_buf()),
-    peer: Some(|| build_native_workspace_c_qos_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::QosMatchedProfile { topic: "/chatter" },
-    note: "phase-263 B4 C projection: nros_cpp_qos_t by value to nros_cpp_publisher_create \
-           (not nros_c_qos_default()); listener declares the BYTE-IDENTICAL profile",
-})]
-#[case::native_cpp_qos(Cell {
-    lang: "cpp", workload: "qos",
-    entry: || build_native_workspace_cpp_qos_talker_entry().map(|p| p.to_path_buf()),
-    peer: Some(|| build_native_workspace_cpp_qos_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::QosMatchedProfile { topic: "/chatter" },
-    note: "phase-263 B4 C++ projection: fluent nros::QoS builder \
-           (.reliable().transient_local().keep_last(10)) into Node::create_publisher",
-})]
-#[case::native_mixed_qos(Cell {
-    lang: "mixed", workload: "qos",
-    entry: || build_native_workspace_mixed_qos_talker_entry().map(|p| p.to_path_buf()),
-    peer: Some(|| build_native_workspace_mixed_qos_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::QosMatchedProfile { topic: "/chatter" },
-    note: "phase-263 B4 MIXED projection: the C qos pkgs reused verbatim under a C++ \
-           TYPED entry carrier (run_components)",
-})]
-// Lifecycle — autostart reaches `active` on its own, observed over the
-// REP-2002 service surface (ros2 CLI; requires ROS 2 + rmw_zenoh_cpp).
-#[case::native_rust_lifecycle(Cell {
-    lang: "rust", workload: "lifecycle",
-    entry: || build_native_workspace_rust_lifecycle_entry().map(|p| p.to_path_buf()),
-    peer: None,
-    proof: Proof::LifecycleActive,
-    note: "phase-263 A3: `[lifecycle] autostart = \"active\"` + nros/lifecycle-services — \
-           nros::main! (phase-264 W2) registers the 5 REP-2002 services and drives \
-           Configure→Activate at boot",
-})]
-#[case::native_c_lifecycle(Cell {
-    lang: "c", workload: "lifecycle",
-    entry: || build_native_workspace_c_lifecycle_entry().map(|p| p.to_path_buf()),
-    peer: None,
-    proof: Proof::LifecycleActive,
-    note: "phase-269 W2 C: the generated __nros_entry_setup (emit_c.rs) calls \
-           nros_cpp_lifecycle_autostart(executor, 2u)",
-})]
-#[case::native_cpp_lifecycle(Cell {
-    lang: "cpp", workload: "lifecycle",
-    entry: || build_native_workspace_cpp_lifecycle_entry().map(|p| p.to_path_buf()),
-    peer: None,
-    proof: Proof::LifecycleActive,
-    note: "phase-269 W2 C++: __nros_entry_setup calls nros_cpp_lifecycle_autostart(__exec, \
-           2u) via ::nros::global_handle()",
-})]
-// Safety — CRC-validated delivery cross-process; the listener entry
-// republishes the CRC-valid count on /safe_ok (issue 0096 topology).
-#[case::native_rust_safety(Cell {
-    lang: "rust", workload: "safety",
-    entry: || build_native_workspace_rust_safety_talker_entry().map(|p| p.to_path_buf()),
-    peer: Some(|| build_native_workspace_rust_safety_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::SafetyCrcCount { spin_ms: 16000, wait_secs: 22 },
-    note: "phase-263 B1: entry bakes `safety-e2e` → backend-attached CRC-32 + seq per \
-           publish; safe_listener validates + reads CallbackCtx::integrity() and \
-           republishes the valid count",
-})]
-#[case::native_c_safety(Cell {
-    lang: "c", workload: "safety",
-    entry: || build_native_workspace_c_safety_talker_entry().map(|p| p.to_path_buf()),
-    peer: Some(|| build_native_workspace_c_safety_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::SafetyCrcCount { spin_ms: 20000, wait_secs: 25 },
-    note: "phase-269 W3 C: nros_cpp_subscription_register_validated callback receives \
-           crc_valid == 1 per integrity-passing frame (NANO_ROS_SAFETY_E2E=ON fixture)",
-})]
-#[case::native_cpp_safety(Cell {
-    lang: "cpp", workload: "safety",
-    entry: || build_native_workspace_cpp_safety_talker_entry().map(|p| p.to_path_buf()),
-    peer: Some(|| build_native_workspace_cpp_safety_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::SafetyCrcCount { spin_ms: 20000, wait_secs: 25 },
-    note: "phase-269 W3 C++: node.create_subscription_with_safety<M>() delivers \
-           (const M&, const nros_cpp_integrity_status_t&) with crc_valid == 1",
-})]
-// Remap — phase-306 W4 (issue 0255): the model namespaces the node under
-// /island and remaps its PRIVATE `~/out` to /remapped_out; the wire topic
-// must be the REMAPPED one. Rust only — the C/C++ `nros_cpp_declare_remap`
-// emitter path is unit-tested (W3); runtime C/C++ cells are residual.
-#[case::native_rust_remap(Cell {
-    lang: "rust", workload: "remap",
-    entry: || build_native_workspace_rust_remap_entry().map(|p| p.to_path_buf()),
-    peer: None,
-    proof: Proof::RemapWireName,
-    note: "phase-306 W3/W4: nros::main!(model = …) bakes the model's <remap> rules into \
-           runtime.remaps; entity creation expands ~/out against /island/remap_talker \
-           and resolves it to /remapped_out before it reaches the RMW",
-})]
-fn workspace_features(#[case] cell: Cell) {
+/// THE native workspace-feature matrix consumer (phase-329 W1). Iterates every
+/// cell `w1_consumer_of` assigns to `WorkspaceFeatures` (native
+/// CustomMsg/Logging/Qos/Lifecycle/Safety/Remap) — derived from `matrix::CELLS`
+/// — and runs each in one process, catching per-cell skips/failures so one
+/// missing fixture never aborts the rest.
+#[test]
+fn workspace_features() {
+    let cells: Vec<&MCell> = nros_tests::matrix::CELLS
+        .iter()
+        .filter(|c| {
+            w1_consumer_of(c) == Some(W1Consumer::WorkspaceFeatures)
+                && matches!(c.tier, MT::Runtime)
+        })
+        .collect();
+    assert!(
+        !cells.is_empty(),
+        "matrix regression: no WorkspaceFeatures runtime cells for this consumer"
+    );
+
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let mut skipped: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+    for c in &cells {
+        let label = format!("{}/{}", lang_str(c.lang), wl_str(c.workload));
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
+        if let Err(p) = res {
+            let msg = p
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "<non-string panic>".to_string());
+            if msg.contains("[SKIPPED]") {
+                skipped.push(format!("{label}: {msg}"));
+            } else {
+                failed.push(format!("{label}: {msg}"));
+            }
+        }
+    }
+    std::panic::set_hook(prev_hook);
+
+    assert!(
+        failed.is_empty(),
+        "workspace_features: {} of {} cell(s) FAILED:\n  {}",
+        failed.len(),
+        cells.len(),
+        failed.join("\n  ")
+    );
+    if skipped.len() == cells.len() {
+        nros_tests::skip!(
+            "all {} workspace-feature cell(s) skipped:\n  {}",
+            skipped.len(),
+            skipped.join("\n  ")
+        );
+    }
+}
+
+/// Boot the workspace entr(y/ies) on an ephemeral router and prove the
+/// workload's contract per the cell's [`Proof`]. Panics with `[SKIPPED] …` on an
+/// unmet precondition; the caller classifies.
+fn run_cell(pcell: &MCell) {
+    let lang = lang_str(pcell.lang);
+    let workload = wl_str(pcell.workload);
+    let cell = exec_for(pcell.lang, pcell.workload);
     // Gate: lifecycle cells assert over the ros2 CLI (skip without ROS 2 +
     // rmw_zenoh_cpp — same contract as the other interop tests); everything
     // else needs only zenohd.
@@ -438,8 +517,8 @@ fn workspace_features(#[case] cell: Cell) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let entry = resolve(cell.entry, &cell, "talker/entry");
-    let peer = cell.peer.map(|r| resolve(r, &cell, "listener"));
+    let entry = resolve(cell.entry, lang, workload, "talker/entry");
+    let peer = cell.peer.map(|r| resolve(r, lang, workload, "listener"));
 
     // Native-only family: every cell gets an ephemeral router (no fixture
     // bakes a port for any of these workspaces — see the module doc).
@@ -460,7 +539,7 @@ fn workspace_features(#[case] cell: Cell) {
                 tlk.kill();
                 panic!(
                     "[{} {}] reading_talker never published ({})",
-                    cell.lang, cell.workload, cell.note
+                    lang, workload, cell.note
                 )
             });
             let peer = peer.expect("custom-msg cells carry a listener entry");
@@ -476,7 +555,7 @@ fn workspace_features(#[case] cell: Cell) {
                         "[{} {}] reading_listener never received 3 custom-msg samples — \
                          the cross-process workspace-local custom-message delivery did \
                          not work ({})",
-                        cell.lang, cell.workload, cell.note
+                        lang, workload, cell.note
                     )
                 });
             lis.kill();
@@ -489,8 +568,8 @@ fn workspace_features(#[case] cell: Cell) {
             assert!(
                 n >= 3,
                 "[{} {}] expected ≥3 custom-msg receives, got {n}.\n{out}",
-                cell.lang,
-                cell.workload
+                lang,
+                workload
             );
             // The decoded temperature field must also be present (a
             // non-trivial second field), proving the full CDR layout — not
@@ -499,8 +578,8 @@ fn workspace_features(#[case] cell: Cell) {
                 out.contains(nros_tests::output::WS_CUSTOM_MSG_TEMP_FIELD),
                 "[{} {}] listener output missing the decoded temperature field — CDR \
                  decode wrong ({}).\n{out}",
-                cell.lang,
-                cell.workload,
+                lang,
+                workload,
                 cell.note
             );
         }
@@ -508,7 +587,7 @@ fn workspace_features(#[case] cell: Cell) {
         Proof::LoggingLines(marker) => {
             // Rust's `nros::main!` hosted spin historically also got a
             // STEP_MS; the C-family entries never did — preserved.
-            let step = (cell.lang == "rust").then_some(10);
+            let step = (lang == "rust").then_some(10);
             let mut proc = spawn_spinning(&entry, "logging-entry", &locator, 8000, step);
 
             // The talker logs once per 1 Hz tick; 3 lines confirms the sink
@@ -520,7 +599,7 @@ fn workspace_features(#[case] cell: Cell) {
                     panic!(
                         "[{} {}] the workspace node's log line never reached the entry's \
                          stdout — the node-log facade chain is broken ({})",
-                        cell.lang, cell.workload, cell.note
+                        lang, workload, cell.note
                     )
                 });
             proc.kill();
@@ -536,8 +615,8 @@ fn workspace_features(#[case] cell: Cell) {
                 "[{} {}] expected ≥3 node log lines carrying `{LOG_LEVEL_TAG}` on stdout, got \
                  {n}. A line with the marker but no level tag means the record bypassed the \
                  logging facade (a direct write) or lost its metadata.\n{out}",
-                cell.lang,
-                cell.workload
+                lang,
+                workload
             );
         }
 
@@ -554,7 +633,7 @@ fn workspace_features(#[case] cell: Cell) {
                 tlk.kill();
                 panic!(
                     "[{} {}] qos_talker never published ({})",
-                    cell.lang, cell.workload, cell.note
+                    lang, workload, cell.note
                 )
             });
             let peer = peer.expect("qos cells carry a listener entry");
@@ -574,7 +653,7 @@ fn workspace_features(#[case] cell: Cell) {
                         "[{} {}] qos_listener never received 3 QoS-matched samples — the \
                          cross-process per-entity QoS-matched delivery did not work (QoS \
                          mismatch or wiring break) ({})",
-                        cell.lang, cell.workload, cell.note
+                        lang, workload, cell.note
                     )
                 });
             // Issue 0309 — the delivery count above cannot tell the DECLARED
@@ -587,10 +666,7 @@ fn workspace_features(#[case] cell: Cell) {
                     .unwrap_or_else(|e| {
                         lis.kill();
                         tlk.kill();
-                        panic!(
-                            "[{} {}] ros2 topic info failed: {e}",
-                            cell.lang, cell.workload
-                        )
+                        panic!("[{} {}] ros2 topic info failed: {e}", lang, workload)
                     });
                 // Issue 0312 (fixed) — both endpoints are asserted. The
                 // subscription used to be absent from discovery entirely: these
@@ -611,7 +687,7 @@ fn workspace_features(#[case] cell: Cell) {
                         tlk.kill();
                         panic!(
                             "[{} {}] ros2 discovered no {kind} on {topic} ({}):\n{report}",
-                            cell.lang, cell.workload, cell.note
+                            lang, workload, cell.note
                         )
                     });
                     // The workspaces declare `reliable + transient_local +
@@ -631,7 +707,7 @@ fn workspace_features(#[case] cell: Cell) {
                                 "[{} {}] the {kind} does not advertise its code-declared QoS \
                                  (`{expect}` missing) — the per-entity profile was dropped \
                                  somewhere between the node and the wire ({}):\n{block}",
-                                cell.lang, cell.workload, cell.note
+                                lang, workload, cell.note
                             );
                         }
                     }
@@ -647,8 +723,8 @@ fn workspace_features(#[case] cell: Cell) {
             assert!(
                 n >= 3,
                 "[{} {}] expected ≥3 QoS-matched receives, got {n}.\n{out}",
-                cell.lang,
-                cell.workload
+                lang,
+                workload
             );
         }
 
@@ -664,7 +740,7 @@ fn workspace_features(#[case] cell: Cell) {
                 panic!(
                     "[{} {}] `ros2 lifecycle nodes` listed no managed node — the workspace \
                      entry's REP-2002 services are not on the wire ({}):\n{nodes_out}",
-                    cell.lang, cell.workload, cell.note
+                    lang, workload, cell.note
                 )
             });
 
@@ -682,8 +758,8 @@ fn workspace_features(#[case] cell: Cell) {
                 state.to_lowercase().contains("active"),
                 "[{} {}] expected the autostart-managed node {lifecycle_node} to be \
                  `active` at boot ({}), got:\n{state}",
-                cell.lang,
-                cell.workload,
+                lang,
+                workload,
                 cell.note
             );
         }
@@ -712,7 +788,7 @@ fn workspace_features(#[case] cell: Cell) {
                         "[{} {}] /safe_ok never saw 3 CRC-validated publishes — the \
                          cross-process E2E safety path (talker → backend CRC → runtime \
                          validate → integrity-read → republish) failed ({})",
-                        cell.lang, cell.workload, cell.note
+                        lang, workload, cell.note
                     )
                 });
             tlk.kill();
@@ -723,8 +799,8 @@ fn workspace_features(#[case] cell: Cell) {
             assert!(
                 n >= 3,
                 "[{} {}] expected ≥3 CRC-validated /safe_ok publishes, got {n}\n{out}",
-                cell.lang,
-                cell.workload
+                lang,
+                workload
             );
         }
 
@@ -747,7 +823,7 @@ fn workspace_features(#[case] cell: Cell) {
                         "[{} {}] /remapped_out never received 3 samples — the launch/model \
                          <remap> did not reach the wire (the publisher is on the wrong \
                          name) ({})",
-                        cell.lang, cell.workload, cell.note
+                        lang, workload, cell.note
                     )
                 });
             entry_proc.kill();
@@ -757,8 +833,8 @@ fn workspace_features(#[case] cell: Cell) {
             assert!(
                 n >= 3,
                 "[{} {}] expected ≥3 receives on the REMAPPED topic, got {n}.\n{out}",
-                cell.lang,
-                cell.workload
+                lang,
+                workload
             );
 
             // Negative half: nothing may have leaked onto the unremapped
@@ -770,8 +846,8 @@ fn workspace_features(#[case] cell: Cell) {
                 leak.is_err(),
                 "[{} {}] the UNREMAPPED expansion /island/remap_talker/out received \
                  traffic — the remap did not take effect on the wire ({}):\n{}",
-                cell.lang,
-                cell.workload,
+                lang,
+                workload,
                 cell.note,
                 leak.unwrap_or_default()
             );
