@@ -437,6 +437,72 @@ STM32Cube) and therefore belongs in the rtos-owned class via an integration
 shell — which is exactly what `integrations/s32ds/` already demonstrates for the
 MR-CANHUBK3, contributing **zero** files to this tree.
 
+### Three layers, not two — where "one source, many arches" actually cuts
+
+The instinct to merge sibling board crates is right, but the cut is not
+board-against-board. Every RTOS family decomposes into **three** layers, and
+which of them nano-ros has to own is what really differs:
+
+| Layer | What it is | Zephyr | NuttX | ThreadX | FreeRTOS |
+|---|---|---|---|---|---|
+| 1. Family driver | RTOS-generic entry/spawn/session logic | upstream | upstream | **in-tree, exists, already board-generic** | **in-tree, exists** |
+| 2. **Arch port** | RTOS × ISA — context switch, trap, `tx_port.h` | upstream | upstream | **forked in-tree, TRAPPED inside a board crate** | upstream + cflags |
+| 3. Board overlay | memory map, net bring-up, console, exit | the whole crate (160 lines) | the whole crate | entangled with layer 2 | ~60–80 lines + a MAC driver |
+
+Verified per family:
+
+- **ThreadX — the generic lift already happened; the arch port is the problem.**
+  `nros-board-threadx/src/entry.rs` (1120 lines) is *already* parameterized over
+  the board — `run_entry::<MyBoard, Config, F, E>(cfg, setup)`, internals bounded
+  `B: BoardPrint + BoardExit` — and **both** boards already delegate to it. So
+  layer 1 is done. But `nros-board-threadx-qemu-riscv64` is 3598 lines of which
+  **~1250 are layer 2**: `tx_thread_{schedule,context_save,context_restore}.S`
+  (1002) + `config/tx_port.h` (252), a *modified copy* of
+  `third-party/threadx/kernel/ports/risc-v64/`. The fork is legitimate — upstream's
+  rv64 port types `ULONG` as 8 bytes, which breaks NetX Duo, whose packet code does
+  `ULONG *` arithmetic assuming 4-byte words; retyping `ULONG` shifts every
+  `TX_THREAD` field offset, which forces the assembly fork. `threadx-linux` has no
+  such file, because upstream's Linux port already uses a 4-byte `ULONG`.
+
+  **So merging the two ThreadX boards into one crate is the WRONG cut** — it would
+  put 1250 lines of RISC-V assembly into a crate that also serves Linux, `cfg`-gated:
+  one crate with two disjoint halves. Extract layer 2 instead. Both boards then
+  become ~150–300-line overlays, and a future riscv32 or Cortex-R ThreadX board
+  reuses the port rather than forking it a second time. `src/config.rs` is already
+  84 % identical between them (55 diff lines of 339), so W1.g's shared `BaseConfig`
+  absorbs most of the remainder.
+
+  This revises phase-322 W1.f. Its "KEEP SEPARATE" verdict is right about the crate
+  boundary, but the reasons it cites — distinct `#[panic_handler]`, hosted-vs-bare
+  link model, different net drivers — are all things the `BoardInit`/`BoardPrint`/
+  `BoardExit`/`BoardEntry` trait set *already* abstracts. The un-abstracted thing is
+  the arch port, which W1.f does not mention.
+
+- **NuttX — merge, exactly as asked.** Layers 1 and 2 both come from upstream
+  (kernel + arch ports; the link list is *discovered* by scanning
+  `$NUTTX_DIR/staging` for `lib*.a` rather than hardcoded per board), so the
+  in-tree crates are pure layer 3. Their `build.rs` bodies are literally the same
+  four calls, 1059 lines are byte-identical duplicates, and the crate to hold them
+  already exists with both boards depending on it. Per-arch difference is data: a
+  defconfig, a toolchain cmake file, nine `NUTTX_*` env values, a
+  `.cargo/config.toml`. This is phase-322 W1.a, unchanged.
+
+- **Zephyr — already there; nothing to merge.** All three layers come from Zephyr.
+  The board crate *is* layer 3 and the existing non-native one is 160 lines of
+  mostly config data. Adding an architecture is adding a `boards/<board>.conf`, not
+  a crate. **Direction:** Zephyr boards should be conf bundles under one
+  `nros-board-zephyr`, with `nros-board-fvp-aemv8r-smp` folded in as the first
+  migration once W1.g's shared `Config` lands — a per-Zephyr-board *crate* is the
+  duplication this RFC exists to prevent.
+
+**Consequence for the tier registry.** `board-support.toml` keys tier by CRATE and
+its completeness gate asserts every board directory appears exactly once. A merged
+`nuttx-qemu` crate serves *two* arches at *two different tiers* (arm tier 1, riscv
+tier 2), and a conf-bundle `nros-board-zephyr` serves three. So the registry's row
+key must become the **witness** — `(crate, matrix_platform)` — or `matrix_platform`
+must become a list. Merging without this change breaks the gate's one-row-per-board
+invariant.
+
 ### The witnesses
 
 Chosen by *(integration shape × arch)*, not by board. A shape with no witness is
@@ -583,6 +649,94 @@ Net effect on the numbers: 202 cells → ~202; 27 board crates → ~15–16 (pha
 takes 27→19, the demotions above take out 6 more); ~60 files naming a single
 board become the RFC-0064 target of near-zero for anything rtos-owned.
 
+## Target state (the thing to build toward)
+
+All three tables are the *same* decision viewed from three angles. Current
+numbers measured 2026-08-04.
+
+### Boards — the promise surface: 27 crates → 16
+
+| # | Crate | Tier(s) | Serves | Change |
+|---|---|---|---|---|
+| 1 | `nros-board-linux` | 1 | x86_64 host | **merge** of `native` + `posix`; renamed (W1.e) |
+| 2 | `nros-board-zephyr` | 1 / 2 / 3 | native_sim · **QEMU Cortex-M** · FVP | conf bundles, not crates; absorbs `fvp-aemv8r-smp` |
+| 3 | `nros-board-mps2-an385-freertos` | 1 | ARMv7-M, nanoros-owned | templated (step 13) |
+| 4 | `nros-board-nuttx-qemu` | 1 / 2 | ARMv7-A · riscv32 | **merge** of `-qemu-arm` + `-qemu-riscv` (W1.a) |
+| 5 | `nros-board-threadx-linux` | 1 | x86_64, NSOS shim | thins to overlay |
+| 6 | `nros-board-threadx-qemu-riscv64` | 2 | riscv64, real NetX Duo | thins to overlay |
+| 7 | `nros-board-mps2-an385` | 2 | bare-metal floor | absorbs `rtic-mps2-an385` as a feature (W1.d) |
+| 8 | `nros-board-esp32-qemu` | 2 | Xtensa, vendor SDK | unchanged |
+| 9–16 | infra: `common`, `cffi`, `freertos`, `nuttx`, `threadx`, **`threadx-port-riscv64`** (NEW, layer 2), `mps2-an385-pac`, descriptors | — | — | `bare-metal` deleted (W1.h) |
+
+**Deleted (12):** `native`, `posix` (→ `linux`), `nuttx-qemu-riscv` (→ merged),
+`rtic-mps2-an385` (→ feature), `fvp-aemv8r-smp` (→ conf bundle), `stm32f4`,
+`rtic-stm32f4` (→ book customization example), `embassy-stm32f4`, `esp32s3`,
+`s32z270dc2-r52`, `orin-spe` (scaffolds → integration shells), `bare-metal`.
+**Added (1):** the ThreadX riscv64 arch port.
+
+`orin-spe` cannot be deleted blind — it is load-bearing as a pseudo-platform in
+link-feature selection (`runner.rs:225,419-420,528-529`). Untangle first.
+
+### Fixtures — 344 rows → 336
+
+| `platform =` token | now | target | note |
+|---|---|---|---|
+| `native` → **`linux`** | 187 | 187 | rename only; `fixture_tokens()` gates it |
+| `threadx-linux` | 42 | 42 | — |
+| `nuttx` | 30 | 30 | one crate now builds it |
+| `freertos` | 25 | 25 | — |
+| `threadx-riscv64` | 23 | 23 | — |
+| `qemu-arm-baremetal` | 20 | 20 | — |
+| `stm32f4` | 8 | **0** | leaves with the board |
+| `nuttx-riscv` | 4 | 4 | same crate as `nuttx`, separate row |
+| `qemu-esp32-baremetal` | 3 | 3 | — |
+| `zephyr` | 1 | 1 | + Cortex-M via the **west lane**, not this file |
+| `esp32` | 1 | 1 | — |
+| **total** | **344** | **336** | |
+
+The Zephyr Cortex-M witness adds **zero** `fixtures.toml` rows: it joins the
+existing west-lane exemption in `every_runtime_cell_has_a_fixture_row`, which
+already covers ZephyrNativeSim examples and non-Rust workspaces because
+`scripts/build/zephyr-fixture-leaves.sh` builds them under its own staleness
+signature. The exemption gains the new board by name.
+
+Note what does *not* shrink: merging crates removes no fixture rows, so it buys
+**no CI time**. Build time is dominated by FreeRTOS (~1370 s) and native
+(~1300 s) per lane; `stm32f4`'s 8 rows are 2 % of the manifest. Crate merging is
+a maintenance-surface lever (duplicated lines, silent drift — the forks have
+already rotted twice unnoticed); the wall-clock lever is the tier/lane split,
+which phase-318 already delivered.
+
+### Tests — 202 cells → 208 (Runtime 174 → 177)
+
+| Platform | Runtime | BuildOnly | CarveOut | change |
+|---|---|---|---|---|
+| **Linux** (was Native) | 72 | 2 | 0 | rename of `PlatformId` + `fixture_tokens` |
+| ZephyrNativeSim | 39 | 0 | 0 | — |
+| **ZephyrQemuCortexM** | **3** | **6** | 0 | **NEW** — pubsub×{rust,c,cpp}×zenoh Runtime; service/action BuildOnly |
+| ThreadxLinux | 18 | 0 | 0 | — |
+| FreertosMps2 | 15 | 1 | 1 | — |
+| NuttxArm | 14 | 1 | 2 | — |
+| ThreadxRiscv64 | 9 | 3 | 0 | — |
+| NuttxRiscv | 4 | 3 | 2 | — |
+| Esp32Qemu | 2 | 2 | 2 | — |
+| QemuBaremetal | 1 | 0 | 2 | — |
+| ~~Stm32F4~~ | ~~0~~ | ~~3~~ | ~~0~~ | **removed** — 0 Runtime, so no coverage lost |
+| Fvp | 0 | 2 | 1 | unchanged (already build-only) |
+| Px4 | 0 | 0 | 1 | unchanged (already a carve-out) |
+| **total** | **177** | **20** | **11** | **208** |
+
+Three properties this preserves, and they are why the demotions are safe:
+
+1. **A cell is a runtime promise, so merging crates never merges cells.** One
+   source producing N arches keeps N rows and N cells — booting rv64 with real
+   NetX Duo proves something x86_64-with-a-host-socket-shim does not.
+2. **Every removal is provably free on this axis.** `Stm32F4` has **0 Runtime**
+   cells; the four scaffolds contribute **zero cells of any tier**.
+3. **Gaps stay visible.** `Fvp` and `Px4` keep their `BuildOnly`/`CarveOut` rows
+   with their reasons — RFC-0051's rule that a gap is a visible row, never an
+   absent file.
+
 ## Defects found along the way
 
 These are independent of which model wins; all were verified.
@@ -718,13 +872,24 @@ Revision 3 adds the matrix work, ordered by value per unit of risk:
     still **hard-panics** on any `thumb*` target that is not `thumbv7m` unless
     `FREERTOS_CFLAGS` is set. Every industrial FreeRTOS board this RFC wants to
     reach (S32K344 is a Cortex-M7) trips it. Small, and it gates the rest.
-11. **phase-322 W1.a + W1.g** — merge the NuttX board crates (1059 byte-identical
-    lines, into the `nros-board-nuttx` crate that already exists and that both
-    boards already depend on) and add the shared runtime `Config`. W1.g first, or
-    the merges re-fork.
+11. **phase-322 W1.g, then W1.a** — the shared runtime `Config` FIRST (12
+    hand-rolled `Config` structs, ≥9 carrying the identical
+    `{mac, ip, netmask, gateway, locator, domain_id}` core; without it every merge
+    below re-forks), then merge the NuttX board crates (1059 byte-identical lines,
+    into the `nros-board-nuttx` crate that already exists and that both boards
+    already depend on). Merging forces the tier-registry row key to become
+    `(crate, matrix_platform)` — do that in the same change or the completeness
+    gate breaks.
+11b. **Extract the ThreadX riscv64 arch port** (`tx_thread_*.S` + `tx_port.h`,
+    ~1250 lines) out of the board crate into its own layer-2 unit. Layer 1 is
+    already board-generic (`run_entry::<B, C, F, E>`), so both ThreadX boards then
+    thin to ~150–300-line overlays and a future riscv32/Cortex-R board reuses the
+    port instead of forking it again. **Do NOT merge the two ThreadX boards into
+    one crate** — see "Three layers, not two".
 12. **Add the Zephyr QEMU Cortex-M witness** — settle the `[OPEN]` board choice,
     add `PlatformId::ZephyrQemuCortexM` + its cell group, join the west-lane
-    fixture exemption.
+    fixture exemption. Then fold `nros-board-fvp-aemv8r-smp` into
+    `nros-board-zephyr` as a conf bundle, so Zephyr boards stop being crates.
 13. **Template the FreeRTOS per-board files** so a second nanoros-owned board is
     ~80 lines: hoist the 299 lines of config headers (2 board-specific values) to
     shared defaults, delete the `configure_arm_cm3` / `emit_nros_app_config`
@@ -1108,3 +1273,63 @@ Not verified here, and carried as [OPEN]: which QEMU-able Zephyr board has a
 usable Ethernet driver (no Zephyr checkout on the authoring host); whether a
 build-side caller exists for the three unreferenced board modules (the test axis
 is settled, the build axis is not).
+
+### 2026-08-04 — eighth pass: the three-layer cut, and the ThreadX arch port
+
+Prompted by the maintainer asking whether `threadx-{linux,qemu-riscv64}` could
+merge into one crate with per-arch fixtures, and the same for NuttX and Zephyr.
+Measured all three; the answer differs per family, and the useful cut turned out
+not to be board-against-board.
+
+**ThreadX layer 1 is already done.** `nros-board-threadx/src/entry.rs:1-40`
+documents the shape and the code is generic over the board:
+`run_entry::<MyBoard, Config, F, E>(cfg, setup)`, with internals bounded
+`B: BoardPrint + BoardExit` (`entry.rs:92,232,259,348,412`). Both board crates
+already delegate to it. So "lift the shared logic into a family driver" is not
+outstanding work — it shipped.
+
+**What is left in the ThreadX board crates is asymmetric, and the asymmetry is
+layer 2.** riscv64 totals 3598 lines against linux's 1191, and the delta is
+almost entirely `c/tx_thread_context_restore.S` (392),
+`c/tx_thread_schedule.S` (317), `c/tx_thread_context_save.S` (293) and
+`config/tx_port.h` (252). Their headers state the provenance: modified copies of
+`third-party/threadx/kernel/ports/risc-v64/gnu/src/`. The reason is recorded in
+`tx_port.h:1-15` and is legitimate — upstream's rv64 port types `ULONG` as
+`unsigned long` (8 bytes), but NetX Duo's packet code does `ULONG *` arithmetic
+assuming 4-byte words, so the port retypes `ULONG` to `unsigned int` "matching the
+Linux x86_64 and all AArch64 ThreadX ports". That retype shifts every `TX_THREAD`
+field offset, so the assembly had to be forked to use explicit byte offsets
+(`tx_port.h:37-56`). `threadx-linux` carries no `.S` at all, because upstream's
+Linux port already uses a 4-byte `ULONG`.
+
+That is arch-port code, not board code: a second riscv64 ThreadX board would need
+every line of it unchanged. Merging the two boards would `cfg`-gate 1250 lines of
+RISC-V assembly inside a crate that also serves Linux. Extracting layer 2 is
+strictly better and leaves both boards as overlays. Rust-side residue supports
+this: `src/config.rs` is 339 vs 330 with only 55 diff lines (~84 % identical, and
+W1.g's `BaseConfig` takes most of it), while `src/lib.rs` (284 vs 447, 443 diff)
+is exactly the `BoardInit`/`BoardPrint`/`BoardExit`/`BoardEntry` impls plus
+console/exit/panic — i.e. the trait surface that already exists to differ.
+
+This revises phase-322 W1.f: its "KEEP SEPARATE" verdict on the crate boundary
+stands, but its stated reasons (distinct `#[panic_handler]`, hosted-vs-bare link
+model, different net drivers) are all abstracted by the 212.N trait set already.
+The un-abstracted thing it does not mention is the arch port.
+
+**NuttX confirms the same model from the other side** — both upper layers come
+from upstream, so its crates are pure layer 3, which is exactly why W1.a's merge
+is straightforward while ThreadX's is not.
+
+**A merge consequence nobody had recorded:** `board-support.toml` keys tier by
+crate and gates "every board directory appears exactly once". A merged
+`nuttx-qemu` crate serves arm (tier 1) and riscv (tier 2); a conf-bundle
+`nros-board-zephyr` would serve three tiers. The registry row key must become
+`(crate, matrix_platform)`, or the merge breaks its own completeness gate.
+
+**Counted the target state** (boards 27→16, fixtures 344→336, cells 202→208 with
+Runtime 174→177) and recorded it as three views of one decision. The honest
+negative result: **crate merging buys no CI time.** Fixture rows are what cost
+wall clock, and merging removes none of them — `stm32f4`'s 8 rows are 2 % of the
+manifest against FreeRTOS's ~1370 s and native's ~1300 s per lane. Crate merging
+is a maintenance-surface lever; the wall-clock lever is the tier/lane split that
+phase-318 already shipped.
