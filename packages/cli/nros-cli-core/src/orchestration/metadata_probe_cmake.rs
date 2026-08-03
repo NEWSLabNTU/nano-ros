@@ -236,10 +236,27 @@ pub fn run_probes(probe_dir: &Path, comps: &[CmakeProbeOptions]) -> Result<Vec<P
         "workspace",
     )?;
 
+    // Build EVERY probe in one parallel invocation. One `cmake --build` per
+    // component was serial by construction, and each one links a real
+    // `libnros_cpp.a` — on a workspace with seven C/C++ components that is
+    // seven sequential link steps inside a single `nros sync`, which is what
+    // made sync look like it was hanging for minutes.
+    //
+    // On failure we fall back to the per-target loop: a batched build reports
+    // one anonymous non-zero exit, and this driver's contract is that ONE
+    // unprobeable component degrades to the sidecar-less path by NAME rather
+    // than taking the whole workspace with it.
+    let targets: Vec<String> = comps.iter().map(|c| c.probe_target()).collect();
+    let batched = build_all(&build_dir, &targets);
+
     let mut out = Vec::new();
     for c in comps {
         let target = c.probe_target();
-        let result = build_and_run_one(&build_dir, c, &target);
+        let result = if batched.is_ok() {
+            run_one(&build_dir, c, &target)
+        } else {
+            build_and_run_one(&build_dir, c, &target)
+        };
         out.push(ProbeOutcome {
             package: c.package.clone(),
             component: c.component.clone(),
@@ -247,6 +264,19 @@ pub fn run_probes(probe_dir: &Path, comps: &[CmakeProbeOptions]) -> Result<Vec<P
         });
     }
     Ok(out)
+}
+
+/// Build every probe target in ONE parallel `cmake --build`.
+fn build_all(build_dir: &Path, targets: &[String]) -> Result<()> {
+    let mut cmd = Command::new("cmake");
+    cmd.arg("--build").arg(build_dir).arg("--parallel");
+    // Multiple `--target` arguments in one invocation: CMake >= 3.15, and this
+    // project pins 3.22.
+    cmd.arg("--target");
+    for t in targets {
+        cmd.arg(t);
+    }
+    run_step(&mut cmd, "build", "all probes")
 }
 
 fn build_and_run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> {
@@ -259,6 +289,11 @@ fn build_and_run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> R
         "build",
         &format!("{}::{}", c.package, c.component),
     )?;
+    run_one(build_dir, c, target)
+}
+
+/// Run a probe that is already built, and check it wrote its sidecar.
+fn run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> {
     run_step(
         // Selecting by NAME is why the backend registers that way: the probe
         // also links the component's real backend, and with two registered and
