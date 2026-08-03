@@ -13,3 +13,8 @@
 //! and `crate::CapacityResolver` paths are unchanged.
 
 pub mod config;
+mod lowered;
+
+pub use lowered::{
+    CdrOp, FieldShape, LoweredField, LoweredStorage, LoweredType, TargetProfile, lower,
+};
