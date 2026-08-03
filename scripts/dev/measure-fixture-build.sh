@@ -72,8 +72,30 @@ set -e
 end="$(date +%s)"
 wall=$((end - start))
 
-built="$(grep -c '^ *built: ' "$LOG" || true)"
-errors="$(grep -ciE '^(error|FAILED)' "$LOG" || true)"
+# The counts live in the PER-STAGE logs, not the wrapper one: `build-test-fixtures`
+# fans out into `tmp/build-test-fixtures-<stamp>/<stage>.log` and the wrapper only
+# echoes stage banners. Grepping the wrapper reported "fixtures built 0" for a run
+# that built 72 — a measurement that reads zero and exits 0 is worse than one that
+# fails, so it counts the stage logs and refuses a zero.
+run_dir="$(ls -dt tmp/build-test-fixtures-* 2>/dev/null | head -1)"
+built=0
+errors=0
+if [ -n "$run_dir" ] && [ -d "$run_dir" ]; then
+    built="$(cat "$run_dir"/*.log 2>/dev/null | grep -c '^ *built: ' || true)"
+    errors="$(cat "$run_dir"/*.log 2>/dev/null | grep -ciE '^(error|FAILED)' || true)"
+fi
+if [ "$rc" = 0 ] && [ "$built" = 0 ]; then
+    echo "warning: build exited 0 but no 'built:' lines were found under" \
+         "${run_dir:-<no run dir>} — the count is unreliable, do not record it." >&2
+fi
+
+# Per-stage seconds, so a wall-clock delta can be attributed rather than guessed
+# (W1 recorded the native stage separately and W5 needed the same breakdown).
+stages=""
+if [ -n "$run_dir" ] && [ -f "$run_dir/build-test-fixtures.joblog" ]; then
+    stages="$(awk 'NR>1{printf "  %-14s %6s s  (status %s)\n", $1, $4, $5}' \
+        "$run_dir/build-test-fixtures.joblog")"
+fi
 
 cat <<REPORT
 
@@ -84,6 +106,8 @@ just build-test-fixtures lane=$LANE   (manifest-declared build trees wiped first
   fixtures built  $built
   errors          $errors
   log             $LOG
+  stages:
+$stages
 \`\`\`
 REPORT
 

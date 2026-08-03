@@ -345,9 +345,33 @@ Under R2 the large workspaces do not grow at all — the feature demos go to
 replaced by **one** (plus `features/`'s own build, which is larger than any
 single themed workspace but far smaller than the 11 it replaces).
 
-**This has not been measured.** Phase-331 W1 captured the baseline before any
-change — cold `just build-test-fixtures lane=native`, **7051 s (1 h 57 m)**, 64
-fixtures, on `82b82a6d6`. W5 re-measures against exactly that.
+**Measured, 2026-08-03.** Cold `just build-test-fixtures lane=native`, every
+manifest-declared build tree wiped first:
+
+| | W1 (`82b82a6d6`, before) | W5 (after) | delta |
+| --- | --- | --- | --- |
+| wall clock | 7051 s (1 h 57 m) | 6794 s (1 h 53 m) | -257 s (-3.6 %) |
+| native stage | 5912 s | 5222 s | -690 s (-11.7 %) |
+| fixtures built | 64 | 72 | +8 |
+| seconds per fixture | 92.4 | 72.5 | **-21.5 %** |
+
+The per-fixture number is the one that answers this section: the native stage
+got 11.7 % faster while building 8 MORE fixtures, because 35 `nros sync` +
+CMake-configure cycles became 15. Wall clock understates it — the non-native
+remainder grew 433 s for an unrelated reason (a `regenerate-bindings.sh` fix in
+the same session made it sync 7 template workspaces it had been silently
+skipping, which is new work rather than slower work). Netting that out, the
+attributable saving is ~9.8 %.
+
+Caveats recorded rather than smoothed over: W6 landed before W5, so the
+realtime/bridge fold is inside this number when the phase doc ordered it
+outside; and phase-330/332/333 all moved underneath between the two runs.
+Method and full breakdown:
+[`docs/roadmap/data/phase-331-w5-remeasure.md`](../roadmap/data/phase-331-w5-remeasure.md),
+reproducible via `scripts/dev/measure-fixture-build.sh`.
+
+No regression, so option (c) — a "core" and a "features" workspace per language
+— stays unused.
 
 Second cost, accepted knowingly: a QoS regression now fails inside a workspace
 that also builds the params, lifecycle and custom-msg demos. Bisection is

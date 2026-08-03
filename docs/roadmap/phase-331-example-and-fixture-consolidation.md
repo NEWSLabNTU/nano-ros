@@ -33,8 +33,13 @@ Establish the baseline the RFC deliberately does not assert.
       `fixtures-manifest.py list-workspaces`, **not** a `build-workspace-fixtures`
       glob; non-default `build_subdir` values exist: `-safety-talker`,
       `-safety-listener`, `-managed`).
-- [ ] Per-workspace `nros sync` + CMake-configure time for the four large
-      workspaces and for a representative themed one.
+- [~] Per-workspace `nros sync` + CMake-configure time for the four large
+      workspaces and for a representative themed one. **Not captured, and no
+      longer capturable:** the comparison it asked for is against "a
+      representative themed one", and W3 deleted every themed workspace. The
+      question it was meant to answer — did the fold make a cycle cheaper — is
+      answered instead by W5's seconds-per-fixture (92.4 -> 72.5), which
+      measures the same thing end to end.
 - [x] Record cell counts from `lane-coords tier1 --cells` and the
       `matrix_fixture_coverage` output.
 
@@ -285,17 +290,35 @@ one-system-per-workspace limit (phase-315 W1) blocks it from living in
 
 ### W5 — Re-measure and record
 
-- [ ] Repeat W1's measurements.
-- [ ] Record the delta in RFC-0066 (replacing "this has not been measured").
-- [ ] If the fold made things slower, say so and reconsider option (c) — a
+- [x] Repeat W1's measurements.
+- [x] Record the delta in RFC-0066 (replacing "this has not been measured").
+- [x] If the fold made things slower, say so and reconsider option (c) — a
       "core" and a "features" workspace per language — rather than quietly
       keeping a regression.
 
 **Acceptance:** RFC-0066's cost section carries real numbers.
 
-**Not started — this wave is the maintainer's.** W6 landed before it, which
-contaminates the re-measure it exists to protect; note that when reading the
-delta.
+**Done 2026-08-03** — `docs/roadmap/data/phase-331-w5-remeasure.md`; RFC-0066's
+cost section carries the numbers, replacing "this has not been measured".
+
+Cold `just build-test-fixtures lane=native`: **6794 s / 1 h 53 m** (W1: 7051 s),
+native stage **5222 s** (W1: 5912 s), **72** fixtures built (W1: 64), 0 errors.
+
+The fold paid, and per-fixture is where it shows: the native stage got 11.7 %
+faster while building 8 MORE fixtures, so seconds-per-fixture fell **21.5 %** —
+35 `nros sync` + CMake-configure cycles became 15, which is the saving RFC-0066
+predicted in the units it predicted. Wall clock understates it because the
+non-native remainder grew 433 s for an unrelated reason (a
+`regenerate-bindings.sh` fix in this session made it sync 7 template workspaces
+it had been skipping — new work, not slower work). Attributable saving ~9.8 %.
+No regression, so option (c) stays unused.
+
+**Contaminated, and said so rather than smoothed over:** W6 landed BEFORE this
+wave, which the ordering existed to prevent, and phase-330/332/333 all moved
+underneath between the two runs.
+
+The method is now `scripts/dev/measure-fixture-build.sh <lane>` — W1 left only
+its numbers, with the procedure in a prose bullet.
 
 ### W6 — Consolidate realtime and bridge
 
@@ -340,6 +363,25 @@ prefix dropped), with fallout fixed in `d460c1a43`/`306dd2d26`/`fb0b1636c`
 **Measured end state:** 15 workspace directories (from 35), 93 workspace fixture
 rows, tier1 = 10 coordinates. `git grep 'examples/workspaces/ws-'` outside
 `docs/` returns nothing.
+
+## Status — all waves landed (2026-08-03)
+
+W1 through W6 are done. What was verified, stated at the tier it was actually
+run at (RFC-0061): **tier 1**. `just check-fast` green, `matrix_fixture_coverage`
+green, and a cold `build-test-fixtures lane=native` built 72 fixtures with 0
+errors. The embedded lanes were NOT swept — the freertos realtime fixture was
+built and its generated tier table inspected by hand (issue 0395), but no tier-2
+or tier-3 run has covered this phase's changes. W6's "all fixtures green" is
+therefore claimed for native only; a `just ci-matrix` is the honest next step
+before archiving this doc.
+
+**End state is 15 workspaces, not the 12 the W6 acceptance names.** Three
+survived with reasons recorded rather than being forced to the target:
+`safety` (the listener's `register_validated` is a distinct API surface, and the
+one-system-per-workspace limit keeps it out of `features/`),
+`realtime-cpp-subnode-portable` (its whole purpose is proving a package builds
+in ANOTHER workspace — folding it in would delete the property it tests), and
+`bridge-{cyclonedds,xrce}` staying two (same limit).
 
 ## Target workspace inventory (end state)
 
