@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-04): **#410** — a git worktree inside the checkout is claimed by the OUTER
+workspace. `.claude/worktrees/agent-*` sits under the main checkout, so cargo's walk-up from a package
+there escapes the worktree and lands on the root `Cargo.toml`, whose `exclude` paths are relative and
+match nothing — "current package believes it's in a workspace when it's not", naming the outer
+manifest. Only crates that are root-`exclude`d AND carry no `[workspace]` of their own are hit (board
+crates, PACs, verification), which is why it hid: standalone copy-out examples are immune. Broke
+`check-leaf-lockfiles` (~20 untouched crates), `cargo fmt --all` and two fixture builds for two
+phase-337 agents at once, in trees whose diffs were clean — every message naming a package the agent
+never touched. RESOLVED: `exclude = [".claude", …]` in the root manifest. See `archived/0410-*`.
+
 Recently resolved (2026-08-03): **#406** — a fixture build narrowed to an id that matches nothing
 exited 0 having built nothing. `fixtures-build.sh native rust --id workspace-rust-native-realtime`
 returned rc=0 in 0.03s: the id is real, but names a `[[workspace_fixture]]` and that script lists

@@ -129,6 +129,13 @@ examples/workspaces/**/config/*.record.json
 # build artifacts (one per Node pkg, `<pkg>/metadata/<component>.json`), derived
 # from the pkg's own `Component::register` — never hand-edited, never committed.
 examples/**/metadata/*.json
+# Same artifact, same writer, other tree: the test bins and benches under
+# packages/testing/ are node packages too, so `nros metadata --build` drops
+# sidecars beside them. Nothing there is tracked, and a phase-337 wave hit one
+# as a stray untracked file. (NOT a blanket `**/metadata/*.json`: the CLI's
+# testing workspaces carry a hand-written `talker.json` as a test INPUT —
+# see the note on the `.unprobeable` rule below.)
+packages/testing/**/metadata/*.json
 
 # Issue #0288's NEGATIVE cache, sibling to those sidecars: when a package's
 # probe fails, sync records the source digest as `<sidecar>.unprobeable` so the

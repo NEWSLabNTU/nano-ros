@@ -160,6 +160,17 @@ members = [
 
 # Excluded from workspace — standalone packages and third-party forks
 exclude = [
+    # Agent worktrees (`.claude/worktrees/agent-*`) live INSIDE this checkout,
+    # so cargo's walk-up from a package in a worktree escapes that worktree and
+    # lands here. Every path in this list is relative to THIS manifest, so it
+    # matches none of them, and the outer workspace claims a package that
+    # belongs to the inner one — "current package believes it's in a workspace
+    # when it's not", with `workspace:` naming this file. That broke
+    # `cargo fmt --all`, `check-leaf-lockfiles` (21 leaves) and one fixture
+    # build for two parallel agents at once, in trees whose diffs were fine.
+    # Excluding the directory keeps a worktree's leaves resolving against the
+    # worktree's own root, which is the whole point of the worktree.
+    ".claude",
     # rcl-interfaces parent package (metadata only, no Rust targets)
     "packages/interfaces/rcl-interfaces",
     # lifecycle-msgs parent package (metadata only, no Rust targets)
