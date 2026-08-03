@@ -7,4 +7,3 @@ target = "x86_64-unknown-linux-gnu"
 [patch.crates-io]
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }  # nros-managed
 nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
-nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed

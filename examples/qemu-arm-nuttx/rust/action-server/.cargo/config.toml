@@ -29,4 +29,3 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 [patch.crates-io]
 libc = { path = "../../../../third-party/nuttx/libc" }
 nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
-nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed

@@ -1,6 +1,0 @@
-include = ["../../../../../nros-patch.toml"]
-[patch.crates-io]
-nros-board-native = { path = "../../../../packages/boards/nros-board-native" }  # nros-managed
-nros-log = { path = "../../../../packages/core/nros-log" }  # nros-managed
-nros-platform-cffi = { path = "../../../../packages/platform/nros-platform-cffi" }  # nros-managed
-nros-rmw-xrce-cffi = { path = "../../../../packages/rmw/xrce/nros-rmw-xrce-cffi" }  # nros-managed

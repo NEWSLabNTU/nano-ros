@@ -89,6 +89,21 @@ tools/*
 # Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed
 examples/**/target-*/
 
+# Leaf `.cargo/config.toml` (RFC-0048 W9). `nros sync` writes these: one
+# `include = ["…/nros-patch.toml"]` pointing at a gitignored, host-specific
+# central file, plus a `[patch.crates-io]` block of `# nros-managed` path
+# entries. A leaf whose config holds nothing else is pure sync output —
+# `nros sync` recreates it from scratch — and 54 of them were tracked, churning
+# on every sync as the patch set moved.
+#
+# It cannot be scoped by path: leaves with hand-authored content (`[build]
+# target`, a QEMU `runner`, link args) sit in the same directories, and sync
+# only refreshes the patch block INSIDE them. Those 90 stay tracked — this rule
+# does not touch them, since gitignore has no effect on tracked files — and
+# `check-cargo-config-tracked` fails if a config with hand-authored content is
+# ever left untracked, so the blanket rule cannot silently swallow a new one.
+**/.cargo/config.toml
+
 # cmake build dirs in the standalone examples. `examples/**/target-*/` above
 # covered the cargo side and many leaves carry their own `/build/` line, but
 # the west/cmake entry leaves (qemu-arm-freertos, qemu-arm-nuttx,

@@ -1,4 +1,0 @@
-include = ["../../../../nros-patch.toml"]
-
-[patch.crates-io]
-nros-zephyr-build = { path = "../../../packages/tooling/nros-zephyr-build" }  # nros-managed

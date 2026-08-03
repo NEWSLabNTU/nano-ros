@@ -369,7 +369,7 @@ check-fast: \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-sysdep-remedies \
+    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-sysdep-remedies \
     check-activate-shells
     @echo "Fast checks passed!"
 
@@ -933,6 +933,12 @@ check-example-matrix:
 check-fixtures-manifest:
     @python3 scripts/build/fixtures-manifest.py validate-workspaces
     @python3 scripts/build/fixtures-manifest.py validate-compile-checks
+
+# A leaf `.cargo/config.toml` is tracked iff it holds content `nros sync`
+# cannot regenerate. `**/.cargo/config.toml` is gitignored (most are pure sync
+# output); this is the discrimination the blanket rule cannot make.
+check-cargo-config-tracked:
+    @bash scripts/check-cargo-config-tracked.sh
 
 # A leaf that consumes its own `generated/` must be visible to
 # `scripts/regenerate-bindings.sh` (which globs tracked package.xml), or its

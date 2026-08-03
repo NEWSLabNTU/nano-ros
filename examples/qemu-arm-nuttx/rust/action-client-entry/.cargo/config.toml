@@ -62,4 +62,3 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 libc = { path = "../../../../third-party/nuttx/libc" }
 nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm" }  # nros-managed
 nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
-nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed

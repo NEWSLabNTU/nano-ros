@@ -1,4 +1,0 @@
-include = ["../../../../../../nros-patch.toml"]
-[patch.crates-io]
-nros-platform-cffi = { path = "../../../../../packages/platform/nros-platform-cffi" }  # nros-managed
-nros-rmw-xrce-cffi = { path = "../../../../../packages/rmw/xrce/nros-rmw-xrce-cffi" }  # nros-managed

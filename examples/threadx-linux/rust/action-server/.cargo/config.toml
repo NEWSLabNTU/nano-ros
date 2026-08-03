@@ -1,4 +1,0 @@
-include = ["../../../../../nros-patch.toml"]
-[patch.crates-io]
-nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
-nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed
