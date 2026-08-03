@@ -1999,7 +1999,7 @@ pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Pat
 /// convergence matrix. Unlike the C/C++ nuttx entries (kernel-linked via CMake),
 /// this is a pure-cargo cross build (`--target armv7a-nuttx-eabihf`, build-std),
 /// so it resolves the prebuilt binary directly from the row's `target_dir`
-/// (`target-fixtures/nuttx/armv7a-nuttx-eabihf/release/nuttx_entry`) at the
+/// (`target-fixtures/nuttx/armv7a-nuttx-eabihf/<carve-out profile>/nuttx_entry`) at the
 /// `release` profile — the 177.8.c CGU-miscompile dodge the NuttX cargo lane forces.
 /// Built by `just nuttx build-examples` (→ `workspace-fixtures-build.sh nuttx rust`).
 /// phase-285 W6 (issue #165) — the rv-virt (riscv32) sibling of the arm entry
@@ -2012,8 +2012,12 @@ pub fn build_nuttx_riscv_workspace_rust_realtime_entry() -> TestResult<&'static 
             let fixture_id = "workspace-rust-nuttx-riscv-realtime";
             let example_dir = workspace_example_dir("realtime-rust")?;
             let target_dir = example_dir.join("target-fixtures/nuttx-riscv");
-            let binary_path =
-                target_dir.join("riscv32imac-unknown-nuttx-elf/release/riscv_nuttx_entry");
+            // phase-336 — the NuttX carve-out profile (see NUTTX_RUST_PROFILE);
+            // `workspace-fixtures-build.sh` builds these rows at it.
+            let binary_path = target_dir.join(format!(
+                "riscv32imac-unknown-nuttx-elf/{}/riscv_nuttx_entry",
+                nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE)
+            ));
             require_prebuilt_workspace_binary(
                 fixture_id,
                 &binary_path,
@@ -2044,7 +2048,10 @@ pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> 
             let fixture_id = "workspace-rust-nuttx-realtime";
             let example_dir = workspace_example_dir("realtime-rust")?;
             let target_dir = example_dir.join("target-fixtures/nuttx");
-            let binary_path = target_dir.join("armv7a-nuttx-eabihf/release/nuttx_entry");
+            let binary_path = target_dir.join(format!(
+                "armv7a-nuttx-eabihf/{}/nuttx_entry",
+                nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE)
+            ));
             require_prebuilt_workspace_binary(
                 fixture_id,
                 &binary_path,

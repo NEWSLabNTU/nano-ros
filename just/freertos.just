@@ -92,15 +92,20 @@ build-examples:
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
     bash scripts/build/fixtures-build.sh freertos rust zenoh
-    # 275-W1/#136 debt: prebuild the 6 standalone Entry demos at --release so
+    # 275-W1/#136 debt: prebuild the 6 standalone Entry demos so
     # `freertos_run_plan_runtime.rs` LOCATES them instead of compiling in-test
     # (CLAUDE.md "no compilation inside tests"). Each Entry's `.cargo/config.toml`
     # now carries the `NROS_PLATFORM_*` env the board build.rs needs, so they
-    # build standalone; --release (built-in profile) is what the run-plan reads
-    # (a debug zenoh-pico is too slow to handshake on the emulated Cortex-M3).
+    # build standalone.
+    #
+    # phase-336: the profile is the `freertos-qemu` carve-out, not a literal —
+    # a lightly-optimized zenoh-pico misses its handshake window on the emulated
+    # Cortex-M3, and the test-side locator reads the SAME constant.
+    fr_profile="$(nros_cargo_freertos_qemu_profile)"
+    fr_args="$(nros_cargo_profile_args_for "$fr_profile")"
     for entry in talker-entry listener-entry service-server-entry \
         service-client-entry action-server-entry action-client-entry; do
-        ( cd "examples/qemu-arm-freertos/rust/$entry" && cargo build --release --quiet )
+        ( cd "examples/qemu-arm-freertos/rust/$entry" && cargo build $fr_args --quiet )
     done
     bash scripts/build/workspace-fixtures-build.sh freertos rust
     # phase-263 C2b — the embedded C workspace LAUNCH entry (issue 0097), consumed by
@@ -150,12 +155,12 @@ build-fixture-extras:
     # Issue #0317 — the wake-latency-cortex-m3 microbench (Phase 141.D), a
     # TWO-IMAGE bench (subscriber `wake-latency-cortex-m3` + publisher
     # `wake-latency-pub`) so the zenohd router delivers a real transport-arrival
-    # wake to the subscriber. Build BOTH images at `--release` (the profile the
-    # test locates) so a compile regression is caught here. The runtime
+    # wake to the subscriber. Build BOTH images at the profile the test locates
+    # so a compile regression is caught here. The runtime
     # `wake_latency_cortex_m3` test takes its intended CYCCNT skip on QEMU
     # (Cortex-M3 doesn't emulate the DWT cycle counter); the real P99 validates on
     # hardware. This lane guards the BUILD of both images.
-    ( cd packages/testing/nros-bench/wake-latency-cortex-m3 && cargo build --release )
+    ( cd packages/testing/nros-bench/wake-latency-cortex-m3 && cargo build $(nros_cargo_profile_args_for "$(nros_cargo_freertos_qemu_profile)") )
 
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
     # Phase 140 removed the `build/install/bin/nros-codegen` install
@@ -323,11 +328,17 @@ trace example="talker":
     fi
 
     echo "=== Building $EXAMPLE with tracing ==="
-    (cd "$EXAMPLE_DIR" && NROS_TRACE=1 cargo build --release --target-dir target-zenoh)
+    # phase-336 — the freertos-qemu carve-out, and the path derived from the
+    # SAME answer, so the build and the lookup cannot disagree.
+    source scripts/build/cargo.sh
+    FR_PROFILE="$(nros_cargo_freertos_qemu_profile)"
+    FR_ARGS="$(nros_cargo_profile_args_for "$FR_PROFILE")"
+    FR_DIR="$(nros_cargo_target_profile_dir_for "$FR_PROFILE")"
+    (cd "$EXAMPLE_DIR" && NROS_TRACE=1 cargo build $FR_ARGS --target-dir target-zenoh)
 
     # Find the binary name from Cargo.toml
     BINARY=$(grep '^name = ' "$EXAMPLE_DIR/Cargo.toml" | head -1 | sed 's/name = "\(.*\)"/\1/')
-    BINARY_PATH="$EXAMPLE_DIR/target-zenoh/thumbv7m-none-eabi/release/$BINARY"
+    BINARY_PATH="$EXAMPLE_DIR/target-zenoh/thumbv7m-none-eabi/$FR_DIR/$BINARY"
     if [ ! -f "$BINARY_PATH" ]; then
         echo "ERROR: Binary not found: $BINARY_PATH"
         exit 1
@@ -337,6 +348,9 @@ trace example="talker":
     TBAND_CLI="third-party/tracing/Tonbandgeraet/tools/target/release/tband-cli"
     if [ ! -f "$TBAND_CLI" ]; then
         echo "Building tband-cli..."
+        # Host tool from a vendored third-party workspace — outside the
+        # propagation graph, and it has no nros-* profile defined. `--release`
+        # stays literal here (phase-336 allow-list).
         (cd "third-party/tracing/Tonbandgeraet/tools" && cargo build --release -p tband-cli)
     fi
 
@@ -392,13 +406,16 @@ trace example="talker":
 _run-qemu example binary:
     #!/usr/bin/env bash
     set -e
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    FR_PROFILE="$(nros_cargo_freertos_qemu_profile)"
+    FR_DIR="$(nros_cargo_target_profile_dir_for "$FR_PROFILE")"
     cd "examples/qemu-arm-freertos/rust/{{example}}" && \
-        cargo build --release --target-dir target-zenoh
+        cargo build $(nros_cargo_profile_args_for "$FR_PROFILE") --target-dir target-zenoh
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
-        -kernel "target-zenoh/thumbv7m-none-eabi/release/{{binary}}" \
+        -kernel "target-zenoh/thumbv7m-none-eabi/$FR_DIR/{{binary}}" \
         -nic user,model=lan9118 &
     PID=$!
     wait $PID

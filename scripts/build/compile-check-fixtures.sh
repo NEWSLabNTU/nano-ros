@@ -221,6 +221,11 @@ stage_and_cross_build() {
     # the repo via env (the build.rs codegen + cc compile). Build every requested
     # profile into the one staged tree (debug → target/<t>/debug, release →
     # target/<t>/release).
+    #
+    # phase-336 note: `profiles` here is a manifest-supplied list of TARGET
+    # DIRECTORY names (`debug`, `release`), not cargo profile names — `debug` is
+    # the directory `dev` writes to. That is why this maps by hand instead of
+    # calling `nros profile args`, which speaks profile names.
     local profile
     for profile in ${profiles//,/ }; do
         local profile_flag=()

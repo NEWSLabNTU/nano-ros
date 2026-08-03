@@ -310,6 +310,12 @@ format:
 check JOBS="75%":
     #!/usr/bin/env bash
     set -e
+    # phase-336 — resolve the profile ONCE here, not inside check_one: that
+    # function is `export -f`d into GNU parallel's subshells, where the
+    # cargo.sh helpers are not defined. An exported variable crosses; a
+    # function does not.
+    source scripts/build/cargo.sh
+    export NROS_EXAMPLE_PROFILE_FLAGS="$(nros_cargo_profile_arg_string)"
     echo "Checking examples (parallel, JOBS={{JOBS}})..."
     if ! command -v parallel >/dev/null 2>&1; then
         echo "GNU parallel not found — falling back to serial check."
@@ -378,7 +384,9 @@ check JOBS="75%":
         local platform="$(echo "$dir" | cut -d/ -f2)"
         local flags=""
         local env_prefix=""
-        if [ "$platform" != "native" ]; then flags="--release"; fi
+        # phase-336 — embedded examples lint at the ambient profile rather than a
+        # hardcoded `--release`; resolved once above and passed in by variable.
+        if [ "$platform" != "native" ]; then flags="$NROS_EXAMPLE_PROFILE_FLAGS"; fi
         if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
         fi
@@ -728,6 +736,10 @@ test-c-xrce verbose="":
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run executor fairness benchmark (requires zenohd)
+# `--release` is deliberate and stays literal: a benchmark wants the
+# performance profile by name, which is what `release` means since phase-336
+# (opt-level 3). It is not the ambient build profile, and following that would
+# make the numbers depend on how the tree happened to be configured.
 bench-fairness:
     cd packages/testing/nros-bench/executor-fairness && \
         RUST_LOG=warn cargo run --release

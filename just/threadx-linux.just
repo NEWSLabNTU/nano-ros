@@ -216,9 +216,12 @@ ci: doctor test
 _run example:
     #!/usr/bin/env bash
     set -e
+    # phase-336 — the ambient profile (a hosted ThreadX process has no timing
+    # floor or codegen carve-out), with the run path derived from it.
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
     cd "examples/threadx-linux/rust/{{example}}"
-    cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh
-    exec target-zenoh/release/threadx-linux-{{example}}
+    cargo build $(nros_cargo_profile_arg_string) --no-default-features --features rmw-zenoh --target-dir target-zenoh
+    exec "target-zenoh/$(nros_cargo_target_profile_dir)/threadx-linux-{{example}}"
 
 # Run ThreadX Linux talker
 talker: (_run "talker")

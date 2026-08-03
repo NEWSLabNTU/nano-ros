@@ -83,9 +83,23 @@ nros_cargo_target_profile_dir() {
 }
 
 # The profile a platform carve-out forces, ignoring the ambient one. Same
-# constant the Rust fixture resolvers read — see `nros profile carve-out`.
+# constants the Rust fixture resolvers read — see `nros profile carve-out`.
 nros_cargo_nuttx_profile() {
     _nros_profile_query carve-out nuttx-rust
+}
+
+nros_cargo_freertos_qemu_profile() {
+    _nros_profile_query carve-out freertos-qemu
+}
+
+# Flags for a NAMED profile (a carve-out), rather than the ambient one.
+nros_cargo_profile_args_for() {
+    _nros_profile_query args "$1"
+}
+
+# Target subdirectory for a NAMED profile.
+nros_cargo_target_profile_dir_for() {
+    _nros_profile_query dir "$1"
 }
 
 # The profile's DEFINITION as `KEY=VALUE` lines — empty unless nano-ros owns

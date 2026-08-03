@@ -531,15 +531,20 @@ doctor:
 _run-qemu example binary:
     #!/usr/bin/env bash
     set -e
+    # phase-336 — the nuttx-rust carve-out (lto=fat; see NUTTX_RUST_PROFILE),
+    # and the kernel path below derived from the same answer.
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    NX_PROFILE="$(nros_cargo_nuttx_profile)"
+    NX_DIR="$(nros_cargo_target_profile_dir_for "$NX_PROFILE")"
     cd "examples/qemu-arm-nuttx/rust/{{example}}"
     # Nightly version pinned by examples/qemu-arm-nuttx/rust-toolchain.toml.
-    CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo build --release
+    CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo build $(nros_cargo_profile_args_for "$NX_PROFILE")
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     # -icount shift=auto: sync virtual clock with wall-clock for proper sleep/timeout
     # -device virtio-net-device: MMIO transport (NuttX virtio-net driver)
     {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -M virt -cpu cortex-a7 -nographic \
         -icount shift=auto \
-        -kernel "target/armv7a-nuttx-eabihf/release/{{binary}}" \
+        -kernel "target/armv7a-nuttx-eabihf/$NX_DIR/{{binary}}" \
         -netdev user,id=net0 -device virtio-net-device,netdev=net0 &
     PID=$!
     wait $PID

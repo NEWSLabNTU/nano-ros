@@ -79,7 +79,13 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     }
 
     let bin = format!("freertos_rs_{}_entry", name.replace('-', "_"));
-    let binary_path = example_dir.join(format!("target/thumbv7m-none-eabi/release/{bin}"));
+    // phase-336 — the carve-out profile these Entry demos are prebuilt at (the
+    // emulated Cortex-M3 misses zenoh-pico's handshake window below it). Same
+    // constant the `just freertos build-fixtures` recipe uses, so the locator
+    // cannot look somewhere the builder never wrote.
+    let profile_dir = nros_cargo_profile::target_dir(nros_cargo_profile::FREERTOS_QEMU_PROFILE);
+    let binary_path =
+        example_dir.join(format!("target/thumbv7m-none-eabi/{profile_dir}/{bin}"));
 
     // Tests must not compile fixtures — run `just build-test-fixtures` first.
     super::require_prebuilt_binary_fresh(&binary_path)

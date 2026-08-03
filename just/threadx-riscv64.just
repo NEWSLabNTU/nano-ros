@@ -340,13 +340,16 @@ _run-qemu example binary peer_index:
     #!/usr/bin/env bash
     set -e
     rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
+    # phase-336 — ambient profile, and the kernel path below derived from it.
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    TX_DIR="$(nros_cargo_target_profile_dir)"
     cd "examples/qemu-riscv64-threadx/rust/{{example}}"
-    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh
+    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build $(nros_cargo_profile_arg_string) --no-default-features --features rmw-zenoh --target-dir target-zenoh
     MAC="52:54:00:12:34:$(printf '%02x' $((0x56 + {{peer_index}})))"
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     qemu-system-riscv64 -M virt -m 256M -bios none -nographic \
         -global virtio-mmio.force-legacy=false \
-        -kernel "target-zenoh/riscv64gc-unknown-none-elf/release/{{binary}}" \
+        -kernel "target-zenoh/riscv64gc-unknown-none-elf/$TX_DIR/{{binary}}" \
         -netdev user,id=net0 \
         -device "virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac=$MAC" &
     PID=$!

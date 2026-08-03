@@ -88,10 +88,22 @@ pub const PRESETS: &[Preset] = &[RELWITHDEBINFO, MINSIZEREL];
 /// missing (#156).
 pub const NUTTX_RUST_PROFILE: &str = MINSIZEREL.name;
 
+/// The profile FreeRTOS QEMU (Cortex-M3) images must be built at.
+///
+/// Not a correctness bug like the NuttX one — a timing floor. `qemu-system-arm`
+/// emulating an M3 is slow enough that a lightly-optimized zenoh-pico misses its
+/// session handshake window, and the image "boots but never connects". Issue
+/// #126 is the C-side face of the same constraint (the fixture rows pin
+/// `CMAKE_BUILD_TYPE=Release`).
+pub const FREERTOS_QEMU_PROFILE: &str = MINSIZEREL.name;
+
 /// Platforms that cannot use the ambient profile, and what they use instead.
 /// Reachable by name so the shell builders read the same value the Rust
 /// resolvers do.
-pub const CARVE_OUTS: &[(&str, &str)] = &[("nuttx-rust", NUTTX_RUST_PROFILE)];
+pub const CARVE_OUTS: &[(&str, &str)] = &[
+    ("nuttx-rust", NUTTX_RUST_PROFILE),
+    ("freertos-qemu", FREERTOS_QEMU_PROFILE),
+];
 
 /// The profile a named carve-out forces, if there is one.
 pub fn carve_out(name: &str) -> Option<&'static str> {

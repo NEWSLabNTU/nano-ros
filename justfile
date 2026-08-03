@@ -1573,10 +1573,12 @@ build-test-fixtures-leaves lane="all":
 # and `NROS_TESTS_ZENOH_HEADER` env vars when set (out-of-tree /
 # CI override); otherwise walk this directory.
 #
-# `--release` matters: `zenoh_archive_symbols.rs` predates this
-# recipe and was written against `target/release/`. Sticking to
-# release keeps both tests symmetric and matches the archive-
-# parity script's expectation.
+# `--release` matters and stays LITERAL (phase-336 allow-list):
+# `zenoh_archive_symbols.rs` predates this recipe and was written
+# against `target/release/`, and `scripts/check-zenoh-archive-symbols.sh`
+# is invoked with that path below. This archive is a symbol-inspection
+# fixture — its optimization level is irrelevant, its PATH is not — so
+# pinning both sides to one built-in profile is the stable choice.
 [group("full-matrix")]
 build-zenoh-posix-fixture:
     cargo build --release \
