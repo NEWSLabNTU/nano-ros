@@ -406,22 +406,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     Divergence {
         lang: "rust",
         program: "talker",
-        platform: "native",
-        reason: "CLASS DIFFERENCE, not a portability gap — measured 2026-08-04. EVERY \
-                 native rust example is `[package.metadata.nros.application]` \
-                 (imperative Executor API) and ZERO are \
-                 `[package.metadata.nros.node]`, while every embedded copy is \
-                 Node-class (declarative `ExecutableNode` + `nros::node!`). \
-                 `example_shape.rs` enforces the Node XOR Application split \
-                 deliberately. Comparing them is a category error. C has no \
-                 such divide — `c/talker` is identical across native and 5 \
-                 embedded platforms. Awaiting a maintainer decision (phase-338 \
-                 W3): give native a Node-class sibling, or accept two Rust \
-                 authoring APIs as intended.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "talker",
         platform: "qemu-esp32-baremetal",
         reason: "W3.c — group B is not yet internally consistent; measure the \
                  irreducible part after the log/nros_log facade is unified and \

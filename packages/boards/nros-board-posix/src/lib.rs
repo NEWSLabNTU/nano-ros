@@ -213,6 +213,13 @@ impl PosixBoard {
         // pkg's `nros_info!` produces output without per-app `nros_log::init`.
         // Idempotent (swaps the sink list atomically).
         ::nros_log::init(::nros_log::sinks::default());
+        // phase-338 W3 — and the `log` facade's host sink, for the same reason.
+        // Four of the five scheduled-platform node bodies log via `log::info!`
+        // (their boards bridge it: threadx's `install_uart_logger`, nuttx's
+        // stdout logger); this board only ever inited `nros_log`, so such a body
+        // ran on native and printed nothing at all. Bridging both here lets ONE
+        // node body work on every board. W7 unifies the two stacks.
+        install_stdout_log_bridge();
 
         // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
         // `ExecutorNodeRuntime` so the codegen-emitted `run_plan(runtime)` body
@@ -521,6 +528,42 @@ fn spin_forever<B: BoardPrint>(
             B::println(format_args!("nros: tier `{}` spin error: {e:?}", tier.name));
         }
     }
+}
+
+/// phase-338 W3 — route the `log` facade to stdout on hosted targets.
+///
+/// Mirrors `nros-board-nuttx::install_stdout_logger`. `set_logger` may only
+/// succeed once per process, and the `is_ok()` guard makes this a NO-OP when
+/// the application installed its own (the imperative examples call
+/// `env_logger::init()` in `main` before the board ever boots) — so this adds a
+/// sink where there was none and never fights one that exists.
+fn install_stdout_log_bridge() {
+    use std::{io::Write as _, sync::Once};
+
+    struct StdoutLogger;
+    impl log::Log for StdoutLogger {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record<'_>) {
+            // The examples bake the full human line into the message
+            // (`Publishing: '...'` / `I heard: [...]`), so emit it verbatim —
+            // the e2e harness greps those markers.
+            let mut out = std::io::stdout();
+            let _ = writeln!(out, "{}", record.args());
+            let _ = out.flush();
+        }
+        fn flush(&self) {
+            let _ = std::io::stdout().flush();
+        }
+    }
+    static LOGGER: StdoutLogger = StdoutLogger;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        if log::set_logger(&LOGGER).is_ok() {
+            log::set_max_level(log::LevelFilter::Trace);
+        }
+    });
 }
 
 #[cfg(test)]

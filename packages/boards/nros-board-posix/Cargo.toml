@@ -53,6 +53,13 @@ nros = { version = "0.5.0", path = "../../api/nros", default-features = false, f
 # pkg's `nros_info!` reaches stdout/stderr without per-app `nros_log::init`
 # (board-agnostic Node pkgs can't pick the sink). Host → the platform sink.
 nros-log = { version = "0.5.0", path = "../../core/nros-log", default-features = false, features = ["std"] }
+# phase-338 W3 — the `log` facade's host sink. nano-ros has TWO logging stacks
+# split by board: posix + mps2-baremetal init `nros_log`, while freertos, nuttx
+# and threadx bridge `log`. The node bodies inherited that split, so a Node pkg
+# written against `log::info!` (what four of the five scheduled-platform copies
+# use) compiled on native, ran, and printed NOTHING. Bridging `log` here lets
+# ONE node body work on every board. Unifying the two stacks is phase-338 W7.
+log = { version = "0.4", default-features = false }
 # phase-296 W5.13 — host `sched_setaffinity` for the placement dim's POSIX
 # `Native` realization (the first RUNTIME accept-arm proof of a core pin, issue
 # #260). Host-only; the cfg-gated dep block keeps it out of the embedded

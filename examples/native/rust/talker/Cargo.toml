@@ -9,10 +9,22 @@ publish = false
 name = "talker"
 path = "src/main.rs"
 
+# phase-338 W3 — node logic moved to a lib so it can be byte-identical to every
+# other platform's copy; `main.rs` is the platform glue (`nros::main!()`).
+[lib]
+name = "native_rs_talker"
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
 # Phase 212.L.2 — Application pkg shape. Native-only deploy target.
 # `nros check` rejects any RTOS in this list.
-[package.metadata.nros.application]
-deploy = ["native"]
+[package.metadata.nros.entry]
+deploy = "native"
+
+[package.metadata.nros.node]
+class = "native_rs_talker::Talker"
+name = "talker"
+default_namespace = "/"
 
 [features]
 # Phase 118 — single source-of-truth talker. RMW selected at build
