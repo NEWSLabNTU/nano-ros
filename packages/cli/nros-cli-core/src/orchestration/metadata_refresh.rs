@@ -81,19 +81,17 @@ pub fn refresh_stale_sidecars(
         Vec::new();
 
     for decl in &declarations {
-        if decl.deploy_bound {
-            // phase-308 — a self-contained standalone example (issue 0100)
-            // declares its node AND its deploy target in one crate, so it deps
-            // a board crate (or, on zephyr, the SDK's own `zephyr` crate) and
-            // cannot compile for the host. Probing it fails on the board's
-            // inline asm, or on `DOTCONFIG must be set by wrapper` (issue
-            // 0318); reported, never silently skipped.
-            report.unsupported.push(format!(
-                "{}::{} (deploy-bound: node + deploy target in one crate)",
-                decl.config.package, decl.config.component
-            ));
-            continue;
-        }
+        // #0288 — deploy-bound standalone examples (issue 0100: node + deploy
+        // target in one crate) are no longer SKIPPED. Their board crates now
+        // host-build (the layer-2 `skip_cross_build` gates), so the host probe
+        // yields an EXACT executor size instead of the SystemModel's timer-blind
+        // lower bound — the sizing SSoT this issue was about. The ones that
+        // still cannot host-build are caught by `probe_blocker` just below;
+        // anything that fails the probe itself degrades best-effort (Rust branch
+        // further down) with a negative-cache marker so it is not rebuilt every
+        // sync. `decl.deploy_bound` only selects that best-effort branch — a
+        // REGULAR workspace package that fails to probe is a bug and still
+        // hard-fails.
         if let Some(blocker) = probe_blocker(&decl.package_root, Some(host.as_str())) {
             // Issue 0286 — the probe cannot produce a runnable binary for this
             // component. Degrade to the sidecar-less bake (SystemModel bound)
@@ -124,7 +122,18 @@ pub fn refresh_stale_sidecars(
         let sidecar = decl.source_metadata_path();
         let digest = source_digest(&decl.package_root)?;
         if sidecar_is_fresh(&sidecar, &digest) {
+            clear_unprobeable(&sidecar);
             report.fresh.push(sidecar);
+            continue;
+        }
+        // #0288 negative cache — a deploy-bound example whose probe failed at
+        // THIS source last sync is not re-attempted (a full failing build) until
+        // its sources change and the digest differs.
+        if decl.deploy_bound && is_known_unprobeable(&sidecar, &digest) {
+            report.unsupported.push(format!(
+                "{}::{} (deploy-bound: probe failed at this source last sync; unchanged)",
+                decl.config.package, decl.config.component
+            ));
             continue;
         }
         let Some(nano_ros) = nano_ros else {
@@ -143,10 +152,30 @@ pub fn refresh_stale_sidecars(
                 decl.config.package, decl.config.component
             );
         }
-        build_metadata(&build_options(decl, nano_ros, &probe_root))
-            .wrap_err_with(|| format!("refresh source metadata for `{}`", decl.config.package))?;
-        stamp_provenance(&sidecar, &digest)?;
-        report.rebuilt.push(sidecar);
+        match build_metadata(&build_options(decl, nano_ros, &probe_root)) {
+            Ok(()) => {
+                clear_unprobeable(&sidecar);
+                stamp_provenance(&sidecar, &digest)?;
+                report.rebuilt.push(sidecar);
+            }
+            // #0288 — a deploy-bound standalone example degrades best-effort:
+            // record the failure (negative cache) and fall back to the
+            // SystemModel bound, exactly as before the flip, instead of failing
+            // the whole sync. A REGULAR workspace package that fails to probe is
+            // a real bug and still hard-fails.
+            Err(why) if decl.deploy_bound => {
+                mark_unprobeable(&sidecar, &digest);
+                report.unsupported.push(format!(
+                    "{}::{} (deploy-bound probe failed: {why:#})",
+                    decl.config.package, decl.config.component
+                ));
+            }
+            Err(why) => {
+                return Err(why).wrap_err_with(|| {
+                    format!("refresh source metadata for `{}`", decl.config.package)
+                });
+            }
+        }
     }
 
     // phase-313 — one project, one configure, one runtime build; the BUILD is
@@ -305,6 +334,39 @@ fn stamp_provenance(sidecar: &Path, digest: &str) -> Result<()> {
     std::fs::write(sidecar, out).wrap_err_with(|| format!("write {}", sidecar.display()))
 }
 
+/// #0288 — the NEGATIVE cache, sibling to the sidecar. A package that DEGRADES
+/// (a deploy-bound standalone example whose probe cannot build, or a C/C++
+/// component that fails its probe) would otherwise be re-attempted — a full,
+/// failing cargo/cmake build — on EVERY sync. Recording the failed source
+/// digest lets the next sync skip it until its sources change, at which point
+/// the digest differs and it is retried. Keyed by the SAME `source_digest` the
+/// positive cache uses, so a fix (or a board becoming host-buildable) that
+/// changes no example source still retries — because the marker is cleared on
+/// any successful probe below.
+fn unprobeable_marker(sidecar: &Path) -> PathBuf {
+    PathBuf::from(format!("{}.unprobeable", sidecar.display()))
+}
+
+/// True iff a prior sync recorded THIS package unprobeable at THIS digest.
+fn is_known_unprobeable(sidecar: &Path, digest: &str) -> bool {
+    std::fs::read_to_string(unprobeable_marker(sidecar))
+        .map(|m| m.trim() == digest)
+        .unwrap_or(false)
+}
+
+/// Record that the package's probe failed at `digest`, so it is not retried
+/// until its sources change. Best-effort — a marker we cannot write just means
+/// a wasted retry next sync, never a hard error.
+fn mark_unprobeable(sidecar: &Path, digest: &str) {
+    let _ = std::fs::write(unprobeable_marker(sidecar), digest);
+}
+
+/// Drop the negative marker — the package probed successfully (or its sidecar
+/// is now current), so a stale "unprobeable" must not shadow it.
+fn clear_unprobeable(sidecar: &Path) {
+    let _ = std::fs::remove_file(unprobeable_marker(sidecar));
+}
+
 /// Content digest of every source file under a package root.
 ///
 /// FNV-1a over `(relative path, bytes)` for each file in sorted order, mixed
@@ -382,6 +444,30 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).unwrap();
         dir
+    }
+
+    #[test]
+    fn negative_cache_round_trip() {
+        // #0288 — a deploy-bound probe failure is remembered by source digest,
+        // retried when the source changes, and cleared on success.
+        let dir = tmp("negcache");
+        let sidecar = dir.join("metadata").join("comp.json");
+        std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+
+        assert!(!is_known_unprobeable(&sidecar, "d1"), "no marker yet");
+
+        mark_unprobeable(&sidecar, "d1");
+        assert!(is_known_unprobeable(&sidecar, "d1"), "recorded at d1");
+        assert!(
+            !is_known_unprobeable(&sidecar, "d2"),
+            "a source change (new digest) must retry, not stay skipped"
+        );
+
+        clear_unprobeable(&sidecar);
+        assert!(
+            !is_known_unprobeable(&sidecar, "d1"),
+            "a successful probe / fix clears the marker so it stops shadowing"
+        );
     }
 
     #[test]

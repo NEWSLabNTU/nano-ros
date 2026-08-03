@@ -1,7 +1,7 @@
 ---
 id: 288
 title: "Self-contained standalone examples cannot be metadata-probed, so exact executor sizing never applies to them"
-status: open
+status: resolved
 type: limitation
 area: build, examples
 related: [issue-0257, issue-0100, issue-0358]
@@ -160,7 +160,8 @@ stop.
 | 1 | ungated Rust `asm!` in board crates | `invalid register \`r0\`` | **fixed** — `cfg(target_arch)` |
 | 2 | build scripts cross-compile C/asm unconditionally | `riscv64-unknown-elf-gcc … .S`, then `no such instruction: csrrci` | **fixed for every board an example deps** (prereq 1 done 2026-08-03; orin-spe parked, no example deps it) |
 | 3 | `no_std` component + host default `panic = "unwind"` | `unwinding panics are not supported without std` | **fixed** — harness sets `panic = "abort"` |
-| 4 | the probe SKIPS deploy-bound packages by declaration | reported `unsupported`, never attempted | **open, deliberately** |
+| 4 | the probe SKIPS deploy-bound packages by declaration | reported `unsupported`, never attempted | **fixed** — skip lifted, best-effort + negative cache |
+| 5 | board's platform C ABI (`nros_platform_*`) is host-skipped → probe fails at LINK | `rust-lld: undefined symbol: nros_platform_alloc` | **fixed** — harness deps `nros-platform-cffi[posix-c-port]` |
 
 Layers 1–3 are verified on `examples/qemu-riscv64-threadx/rust/action-client`,
 which now host-`cargo check --lib`s after failing at each layer in turn.
@@ -256,3 +257,56 @@ target", and the predicate knowing only one is exactly the drift class this
 repo has been closing elsewhere (two `system.toml` parsers, two entry emitters,
 issue 0316's knob spellings, issue 0319's child-indexing rule). Collapsing them
 to one declaration would prevent the next instance rather than fixing it.
+
+## RESOLVED — layer 4 flipped, layer 5 cleared (2026-08-03)
+
+Prereqs 1+2 done, so prereq 3 (flip the skip) was taken. Flipping it uncovered
+one more layer under the four — a fifth, at the link step, invisible until the
+probe was allowed to reach it.
+
+**Layer 4 — flip (`metadata_refresh.rs`).** Removed the up-front
+`if decl.deploy_bound { …unsupported; continue }` skip, so a deploy-bound
+package is now probed like any other. The Rust path's `build_metadata(…)?`
+hard-fail is made best-effort **for deploy-bound packages only**: on failure it
+records the package `unsupported` (the pre-flip degrade) instead of aborting the
+sync; a regular package's failure still hard-fails. A **negative cache**
+(prereq 2) keyed by source digest — an `<sidecar>.unprobeable` marker written
+via `mark_unprobeable`, read by `is_known_unprobeable`, cleared by
+`clear_unprobeable` on any successful/fresh probe — stops a genuinely
+un-probeable package from re-spending a build every sync. Unit-tested
+(`negative_cache_round_trip`: mark → known → digest-mismatch retry → clear).
+
+**Layer 5 — the platform C ABI link wall.** With the skip lifted, the probe of
+`examples/qemu-arm-baremetal/rust/action-client-rtic` compiled all 45 objects
+(node, msgs, board, platform) and then died at LINK:
+
+```
+rust-lld: error: undefined symbol: nros_platform_alloc
+rust-lld: error: undefined symbol: nros_platform_dealloc
+```
+
+`nros-platform-cffi`'s `CffiPlatform` **calls** ~90 `nros_platform_*` extern-C
+symbols; the board crate's C build **defines** them — and that C is exactly what
+`host_probe::skip_cross_build` skips on the host. So every board example would
+link-fail and degrade, making the flip net-negative.
+
+Fix: the probe harness (`render_harness_cargo_toml`) now deps
+`nros-platform-cffi = { features = ["posix-c-port"] }`. `posix-c-port` compiles
+the host-buildable `nros-platform-posix/src/platform.c`, which DEFINES the full
+`nros_platform_*` ABI. Cargo feature-unifies it onto the same
+`nros-platform-cffi` the component already pulls, so on the host it is the
+**sole** definer (the board's C is skipped; the Rust `nros_platform_export!`
+exporters live only in embedded platform crates whose `register()` is
+cfg-gated off-target; `nros-platform-posix` has no `build.rs`, so it never
+double-compiles `platform.c`). No duplicate-symbol risk.
+
+**Verified end-to-end.** After `just setup-cli`, a fresh
+`nros sync examples/qemu-arm-baremetal/rust/action-client-rtic` reports
+`source metadata — 1 rebuilt` (was `no producer …`) and writes a real sidecar
+with `"generator": "nros-metadata-rust"` and a provenance digest — exact
+executor sizing, not the SystemModel timer-blind bound. Regular components
+(native `talker`) still sync clean; the CLI metadata suite is green (109/109,
+incl. the negative-cache test). Every deploy-bound example that host-builds now
+gets exact sizing; one that cannot degrades best-effort and is negative-cached.
+
+Fixed in `packages/cli/nros-cli-core/src/orchestration/{metadata_refresh.rs,metadata_build.rs}`.

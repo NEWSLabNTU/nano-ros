@@ -215,10 +215,25 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          path = \"src/main.rs\"\n\n\
          [dependencies]\n\
          nros = {{ path = {nros:?}, features = [\"std\"] }}\n\
+         # issue 0288 layer 5 — a deploy-bound example deps its BOARD crate,\n\
+         # whose C build provides the ~90 `nros_platform_*` extern-C ABI symbols\n\
+         # that `nros-platform-cffi`'s `CffiPlatform` calls. On the host probe the\n\
+         # board's cross-compiled C is skipped (`host_probe::skip_cross_build`), so\n\
+         # those symbols go undefined and the probe fails at LINK. `posix-c-port`\n\
+         # is the host-buildable C port that DEFINES them; depping it here makes\n\
+         # the sole provider on the host (feature-unified onto the same\n\
+         # `nros-platform-cffi` the component pulls) so the probe links and yields\n\
+         # exact executor sizing instead of degrading to the timer-blind bound.\n\
+         nros-platform-cffi = {{ path = {platform_cffi:?}, features = [\"posix-c-port\"] }}\n\
          {krate} = {{ path = {comp:?}, package = {pkg:?} }}\n",
         nros = o
             .nano_ros_workspace
             .join("packages/api/nros")
+            .display()
+            .to_string(),
+        platform_cffi = o
+            .nano_ros_workspace
+            .join("packages/platform/nros-platform-cffi")
             .display()
             .to_string(),
         comp = o.component_dir.display().to_string(),

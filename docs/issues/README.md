@@ -262,10 +262,13 @@ shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 
 (#311 resolved — no feature SSoT across languages; one `nros_feature_set()` now serves nros-c, nros-cpp and the umbrella, and 50 Rust nodes stopped naming a ROS edition. See `archived/0311-*`.)
 
-**#288** — self-contained standalone examples (node + entry in one crate) dep their board
-crate, so they cannot be host-compiled and cannot be metadata-probed. Executor sizing falls
-back to the SystemModel bound for them; issue 0257's boot failure stays reachable if a user
-grows one as a template. See `0288-*`. (renumbered from a duplicate #286)
+(#288 resolved 2026-08-03 — see `archived/0288-*`: deploy-bound standalone examples (node +
+entry in one crate) are now host-metadata-probed. The blocker was a STACK of five layers — ungated
+Rust asm, build-script cross-compiles, `no_std`+unwind, the probe's up-front deploy-bound skip, and
+finally the board's platform C ABI going undefined at LINK. All fixed: skip lifted (best-effort +
+source-digest negative cache), and the harness deps `nros-platform-cffi[posix-c-port]` so the
+`nros_platform_*` symbols are host-defined. Exact executor sizing now applies; issue 0257's boot
+failure no longer reachable for these. Renumbered from a duplicate #286.)
 
 
 (#293 resolved 2026-07-27 — see `archived/0293-*`: `system.toml` had TWO parsers with different
