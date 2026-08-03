@@ -11,7 +11,6 @@ use crate::{
     },
     utils::to_snake_case,
 };
-use askama::Template;
 use rosidl_parser::{Action, FieldType, Message, Service};
 
 /// One message-like part's split Rust FFI glue (phase-306 W1, issue 0253):
@@ -291,8 +290,10 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorErr
     };
 
     Ok(GeneratedFfiRs {
-        types_rs: types_template.render()?,
-        exports_rs: exports_template.render()?,
+        types_rs: crate::render::render("message_cpp_types.rs", &types_template)
+            .map_err(|e| GeneratorError::RenderError(e.to_string()))?,
+        exports_rs: crate::render::render("message_cpp_exports.rs", &exports_template)
+            .map_err(|e| GeneratorError::RenderError(e.to_string()))?,
         types_rs_name: format!("{}_types.rs", spec.file_stem),
         exports_rs_name: format!("{}_exports.rs", spec.file_stem),
     })
@@ -357,7 +358,8 @@ pub fn generate_cpp_message_package(
         has_borrowed,
         ffi_deserialize_borrowed_fn: format!("{}_borrowed", ffi_deserialize_fn),
     };
-    let header = header_template.render()?;
+    let header = crate::render::render("message_cpp.hpp", &header_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Render split Rust FFI glue (types + exports)
     let ffi = render_ffi_rs(FfiRenderSpec {
@@ -498,7 +500,8 @@ pub fn generate_cpp_service_package(
         request_serialized_size_max: req_serialized_size,
         response_serialized_size_max: resp_serialized_size,
     };
-    let header = header_template.render()?;
+    let header = crate::render::render("service_cpp.hpp", &header_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Render split FFI glue for request and response
     let request_ffi = render_ffi_rs(FfiRenderSpec {
@@ -677,7 +680,8 @@ pub fn generate_cpp_action_package(
         result_serialized_size_max: result.size,
         feedback_serialized_size_max: feedback.size,
     };
-    let header = header_template.render()?;
+    let header = crate::render::render("action_cpp.hpp", &header_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Render split FFI glue for each part
     let goal_ffi = render_ffi_rs(FfiRenderSpec {

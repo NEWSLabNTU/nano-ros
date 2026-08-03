@@ -96,6 +96,33 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     )
     .expect("packs/rust/action.rs.jinja must parse");
 
+    // --- C++ pack (packs/cpp) — headers + the Rust FFI glue ---
+    env.add_template(
+        "message_cpp.hpp",
+        include_str!("../packs/cpp/message.hpp.jinja"),
+    )
+    .expect("packs/cpp/message.hpp.jinja must parse");
+    env.add_template(
+        "message_cpp_types.rs",
+        include_str!("../packs/cpp/message_types.rs.jinja"),
+    )
+    .expect("packs/cpp/message_types.rs.jinja must parse");
+    env.add_template(
+        "message_cpp_exports.rs",
+        include_str!("../packs/cpp/message_exports.rs.jinja"),
+    )
+    .expect("packs/cpp/message_exports.rs.jinja must parse");
+    env.add_template(
+        "service_cpp.hpp",
+        include_str!("../packs/cpp/service.hpp.jinja"),
+    )
+    .expect("packs/cpp/service.hpp.jinja must parse");
+    env.add_template(
+        "action_cpp.hpp",
+        include_str!("../packs/cpp/action.hpp.jinja"),
+    )
+    .expect("packs/cpp/action.hpp.jinja must parse");
+
     env
 });
 

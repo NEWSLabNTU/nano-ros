@@ -606,7 +606,7 @@ pub struct ActionCSourceTemplate<'a> {
 // ============================================================================
 
 /// Field information for C++ FFI Rust code generation
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize)]
 pub struct CppFfiField {
     pub name: String,
     /// Rust #[repr(C)] type (e.g., "i32", "[u8; 256]")
@@ -666,7 +666,7 @@ pub struct CppFfiField {
 }
 
 /// C++ field info for header generation (uses FixedString/FixedSequence types)
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize)]
 pub struct CppField {
     pub name: String,
     /// C++ type (e.g., "int32_t", "nros::FixedString<256>"). For a borrowed
@@ -683,7 +683,7 @@ pub struct CppField {
 }
 
 /// Sequence helper struct definition for Rust #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize)]
 pub struct SequenceStructDef {
     /// Struct name (e.g., "std_msgs_msg_string_data_seq_t")
     pub struct_name: String,
@@ -697,7 +697,7 @@ pub struct SequenceStructDef {
     pub is_heap: bool,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "message_cpp.hpp.jinja", escape = "none")]
 pub struct MessageCppHeaderTemplate<'a> {
     pub package_name: &'a str,
@@ -726,7 +726,7 @@ pub struct MessageCppHeaderTemplate<'a> {
 /// crate-mangled items — repr(C) structs, sequence helpers, plain
 /// `serialize_/deserialize_/teardown_*_fields` fns — safe to duplicate across
 /// per-package FFI crates.
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "message_cpp_types.rs.jinja", escape = "none")]
 pub struct MessageCppTypesTemplate<'a> {
     pub package_name: &'a str,
@@ -759,7 +759,7 @@ pub struct MessageCppTypesTemplate<'a> {
 /// `#[unsafe(no_mangle)]` `nros_cpp_{publish,serialize,deserialize}_*` C-ABI
 /// wrappers. Included solely by the OWNING package's crate so each symbol is
 /// defined exactly once across any combination of interface archives.
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "message_cpp_exports.rs.jinja", escape = "none")]
 pub struct MessageCppExportsTemplate<'a> {
     pub package_name: &'a str,
@@ -787,7 +787,7 @@ pub struct MessageCppExportsTemplate<'a> {
     pub ffi_deserialize_borrowed_fn: String,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "service_cpp.hpp.jinja", escape = "none")]
 pub struct ServiceCppHeaderTemplate<'a> {
     pub package_name: &'a str,
@@ -813,7 +813,7 @@ pub struct ServiceCppHeaderTemplate<'a> {
     pub response_serialized_size_max: usize,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "action_cpp.hpp.jinja", escape = "none")]
 pub struct ActionCppHeaderTemplate<'a> {
     pub package_name: &'a str,
