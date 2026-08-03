@@ -1256,7 +1256,7 @@ test-zpico-multisession verbose="": build-zenohd
     set -euo pipefail
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    export CARGO_TARGET_DIR=target-zpico-multisession
+    export CARGO_TARGET_DIR="$(nros_scoped_target_dir zpico-multisession)"  # issue 0400: box-aware
     export ZPICO_MAX_SESSIONS=2
     args=(-p nros-rmw-zenoh --features platform-posix --test zenoh_integration
           -E 'test(~two_sessions)' --no-fail-fast)
@@ -2301,8 +2301,13 @@ check-workspace-embedded:
     # crate; each crate now declares `[package.metadata.nros] host-only = true`
     # with a reason, and the script below derives the flags.
     echo "Checking workspace for embedded target..."
+    source scripts/build/cargo.sh
     excludes="$(bash scripts/build/host-only-members.sh)"
-    if ! CARGO_TARGET_DIR=target-embedded cargo clippy --quiet --workspace \
+    # issue 0400: box-aware target dir — a relative `target-embedded` overrides
+    # the ROS distrobox's CARGO_TARGET_DIR redirect and shares build-script
+    # binaries with the host (GLIBC-mismatch crash + a misleading host-only hint).
+    emb_target="$(nros_scoped_target_dir embedded)"
+    if ! CARGO_TARGET_DIR="$emb_target" cargo clippy --quiet --workspace \
             --no-default-features --target thumbv7em-none-eabihf \
             $excludes -- -D warnings; then
         echo "" >&2
@@ -3744,9 +3749,14 @@ clean: clean-examples clean-fixtures
     # (e.g. stm32f4 leaves listener-embassy/target, fixture entry crates, …).
     # `-prune` so we don't recurse into a target we're already deleting.
     find examples packages/testing/nros-tests/fixtures -type d -name target -prune -exec rm -rf {} + 2>/dev/null || true
-    # Custom CARGO_TARGET_DIR used by the embedded clippy/check tier
-    # (`check-workspace-embedded` sets `CARGO_TARGET_DIR=target-embedded`).
-    rm -rf target-embedded
+    # Ephemeral scratch target dirs (issue 0400). Each is box-aware: the recipe
+    # that writes it roots the suffix at the active base via
+    # `nros_scoped_target_dir` (scripts/build/cargo.sh) — host `target-<suffix>`,
+    # ROS-distrobox `$CARGO_TARGET_DIR-<suffix>`. `clean` is non-shebang so it
+    # cannot source the helper; the same expansion is inlined here to remove
+    # BOTH forms (the box variant is a no-op dup of the host one when unset).
+    rm -rf target-embedded target-zpico-multisession
+    rm -rf "${CARGO_TARGET_DIR:-$PWD/target}-embedded" "${CARGO_TARGET_DIR:-$PWD/target}-zpico-multisession"
     # Build-stage outputs under build/ (SDK installs preserved — see clean-setup).
     rm -rf build/zephyr-fixtures build/esp32-qemu build/qemu-zenoh-pico
     @echo "Build artifacts cleaned (SDK installs + host nros-codegen preserved; 'just clean-setup' to remove them)"

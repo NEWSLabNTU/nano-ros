@@ -97,6 +97,44 @@ Worth checking whether the `check-workspace-embedded` hint can distinguish the
 two causes — a `GLIBC_.* not found` in the build-script output is unambiguous
 and should print a different remedy.
 
+### Ephemeral scratch dirs FIXED (2026-08-03)
+
+The reported failure (`check-workspace-embedded`, `target-embedded`) and its
+exact sibling (`test-zpico-multisession`, `target-zpico-multisession`) are the
+sub-class that is safely fixable ONE-SIDEDLY: pure clippy/test scratch dirs that
+no downstream reader opens at a fixed relative path. Both now root their suffix
+at the active base via a shared helper `nros_scoped_target_dir <suffix>`
+(`scripts/build/cargo.sh`): `${CARGO_TARGET_DIR:-$PWD/target}-<suffix>`. Host →
+`$PWD/target-<suffix>` (byte-identical to the old relative dir — recipes run at
+repo root); box → `$HOME/.cargo-target-box-<suffix>`, box-private and outside
+the shared checkout, so host and box never reuse each other's build-script
+binaries. `clean` removes both forms (it is non-shebang and cannot source the
+helper, so the same expansion is inlined, with a pointer to the helper). Chose
+the SIBLING spelling over the fix-sketch's nested `$CARGO_TARGET_DIR/target-embedded`
+so scratch clippy objects never mix into the box's main target tree, and the
+host path is unchanged. Verified: recipe exits 0 into `$repo/target-embedded` on
+host; with `CARGO_TARGET_DIR` set it resolves to `<base>-embedded`.
+
+### What REMAINS — the coupled sub-class (not one-sided fixable)
+
+The other explicit dirs are consumed at their relative path by a downstream
+reader, so making the writer box-aware without moving the reader would break the
+consumer — the same "no one-sided fix" shape as the third instance:
+
+* `target-zenoh` — `just _run` execs `target-zenoh/release/<bin>` right after
+  building (threadx-linux.just); freertos/threadx-riscv64 fixtures read it too;
+* `target-xrce` — px4 fixture binaries consumed under `.../target-xrce/`;
+* `target-ros-edition-<distro>-<rmw>` — the ros-editions fixture reader expects
+  `examples/native/rust/*/target-ros-edition-<distro>-<rmw>/debug/`;
+* `target-zenoh-fixture-posix` — `scripts/build/fixture-inventory.py` names it as
+  a `build_root` / `shared_mutation`.
+
+Each needs a COORDINATED writer+reader change (or to route through
+`fixtures-target-dir.sh`, which already emits repo-root-absolute dirs — those in
+turn are shared host/box via the checkout, a related but distinct gap). Plus the
+third instance (the `nros-launch-resolve` python soname) still needs a per-side
+path or abi3. Left open for those.
+
 ## Notes
 
 Found while running tier 1 in the box for the issue-0383 `-Werror` work

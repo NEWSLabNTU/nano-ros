@@ -11,6 +11,22 @@
 # compiler work inside each frontend still uses Cargo/rustc's native
 # jobserver when MAKEFLAGS carries one.
 
+# nros_scoped_target_dir <suffix>
+# A dedicated Cargo target dir that STAYS inside whatever base is active —
+# `$CARGO_TARGET_DIR` when set, else `$PWD/target`. issue 0400: recipes that
+# hard-set a RELATIVE dir (`CARGO_TARGET_DIR=target-embedded`) override the ROS
+# distrobox's `CARGO_TARGET_DIR=$HOME/.cargo-target-box` redirect and land back
+# in the shared checkout, so host and box reuse each other's build-script
+# binaries and die on a GLIBC mismatch. Rooting the suffix at the active base
+# keeps host (`$PWD/target-<suffix>`, unchanged) and box
+# (`$HOME/.cargo-target-box-<suffix>`, box-private) from ever sharing a tree.
+# Only for EPHEMERAL scratch dirs (clippy/test) with no consumer that reads a
+# fixed relative path — fixture dirs consumed at `target-<x>/…` are coupled and
+# not fixed this way.
+nros_scoped_target_dir() {
+    printf '%s' "${CARGO_TARGET_DIR:-$PWD/target}-$1"
+}
+
 nros_cargo_profile_name() {
     printf '%s\n' "${NROS_CARGO_PROFILE:-nros-fast-release}"
 }
