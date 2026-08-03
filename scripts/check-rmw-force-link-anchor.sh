@@ -33,11 +33,22 @@ fail=0
 for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo.toml; do
     [ -f "$manifest" ] || continue
     dir="$(dirname "$manifest")"
-    src="$dir/src/lib.rs"
-    [ -f "$src" ] || continue
+    [ -d "$dir/src" ] || continue
+
+    # phase-338 W2 — search the whole `src/` tree, not just `lib.rs`. The entry
+    # macro and its anchors now live in a dedicated glue module
+    # (`src/app_main.rs`) so the node logic in `lib.rs` stays byte-identical
+    # across platforms; a gate that only read `lib.rs` reported every migrated
+    # example as missing its anchor. Reading the crate rather than one file also
+    # makes the gate's coverage match the rule it enforces (issue-0196).
+    src_files=$(find "$dir/src" -name '*.rs' -type f | sort)
+    [ -n "$src_files" ] || continue
+    # shellcheck disable=SC2086
+    src_text=$(cat $src_files)
+    src="$dir/src"
 
     # Only examples that actually use the facade entry macro are in scope.
-    grep -q 'zephyr_component_main!' "$src" || continue
+    printf '%s' "$src_text" | grep -q 'zephyr_component_main!' || continue
 
     for pair in "rmw-zenoh:nros_rmw_zenoh:nros-rmw-zenoh" \
                 "rmw-xrce:nros_rmw_xrce_cffi:nros-rmw-xrce-cffi"; do
@@ -55,7 +66,7 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
         *) continue ;;
         esac
 
-        if ! grep -q "force_link_backend!(${krate})" "$src"; then
+        if ! printf '%s' "$src_text" | grep -q "force_link_backend!(${krate})"; then
             echo "ERROR: $src declares '${feature}' forwarding to dep:${dep}," >&2
             echo "       but never invokes nros::force_link_backend!(${krate})." >&2
             echo "       Without the anchor rustc's staticlib DCE drops" >&2

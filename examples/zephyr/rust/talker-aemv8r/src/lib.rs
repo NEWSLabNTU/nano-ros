@@ -19,7 +19,8 @@
 
 #![no_std]
 
-extern crate zephyr;
+mod app_main;
+
 
 use core::fmt::Write as _;
 
@@ -68,4 +69,3 @@ impl ExecutableNode for Talker {
 }
 
 nros::node!(Talker);
-nros::zephyr_component_main!(Talker);

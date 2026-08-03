@@ -151,15 +151,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     Divergence {
         lang: "rust",
         program: "action-client",
-        platform: "qemu-riscv64-threadx",
-        reason: "W2 — link ceremony: `extern crate alloc`, `extern crate \
-                 nros_board_threadx_qemu_riscv64 as _`, \
-                 `cyclonedds_app_main!(register)`, plus stray \
-                 `#![no_std]`/`#![no_main]`.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "action-client",
         platform: "threadx-linux",
         reason: "W2.c — node struct and NAME drifted (`ActionClient` / \"action_client\" \
                  against the group's `FibonacciClient`); pure naming, no behaviour.",
@@ -243,15 +234,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         reason: "W3 — hosted `main.rs` (register_linked_rmw + env_logger + banner + \
                  init/executor-open) against the group's `lib.rs`; all of it is \
                  ceremony the generated entry already owns on embedded.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "listener",
-        platform: "qemu-riscv64-threadx",
-        reason: "W2 — link ceremony: `extern crate alloc`, `extern crate \
-                 nros_board_threadx_qemu_riscv64 as _`, \
-                 `cyclonedds_app_main!(register)`, plus stray \
-                 `#![no_std]`/`#![no_main]`.",
     },
     Divergence {
         lang: "rust",
@@ -392,24 +374,7 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     Divergence {
         lang: "rust",
         program: "talker",
-        platform: "qemu-riscv64-threadx",
-        reason: "W2 — link ceremony: `extern crate alloc`, `extern crate \
-                 nros_board_threadx_qemu_riscv64 as _`, \
-                 `cyclonedds_app_main!(register)`, plus stray \
-                 `#![no_std]`/`#![no_main]`.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "talker",
         platform: "qemu-esp32-baremetal",
-        reason: "W3.c — group B is not yet internally consistent; measure the \
-                 irreducible part after the log/nros_log facade is unified and \
-                 DISPATCH/tick get defaults.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "talker",
-        platform: "stm32f4",
         reason: "W3.c — group B is not yet internally consistent; measure the \
                  irreducible part after the log/nros_log facade is unified and \
                  DISPATCH/tick get defaults.",
@@ -487,7 +452,76 @@ fn collect_sources() -> SourceMap {
 /// normalized and concatenated in filename order so two copies are compared
 /// as a whole rather than file by file.
 fn normalized_body(src: &Path) -> Option<String> {
-    let mut files: Vec<(String, String)> = Vec::new();
+    let files = classified_files(src)?;
+    let logic: Vec<(String, String)> = files
+        .into_iter()
+        .filter(|(name, _, kind)| {
+            let _ = name;
+            *kind == FileKind::Logic
+        })
+        .map(|(name, body, _)| (name, body))
+        .collect();
+    if logic.is_empty() {
+        return None;
+    }
+    Some(
+        logic
+            .into_iter()
+            .map(|(name, body)| format!("--- {name}\n{body}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
+/// What a source file is for.
+///
+/// **The Option B rule (phase-338, maintainer decision 2026-08-04): node logic
+/// and platform boot glue live in separate FILES.** Portability is a property
+/// of the logic; the glue is platform-specific by nature, and the goal is to
+/// isolate it rather than pretend it can vanish — a staticlib target really
+/// does need an `app_main` symbol that a hosted binary does not.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum FileKind {
+    /// The node the user writes. Must be identical within a portability group.
+    Logic,
+    /// Boot/entry glue: `#![no_main]`, the panic handler, `nros::main!()`, a
+    /// board `*_app_main!`. Platform-specific and NOT compared across
+    /// platforms — but it must contain the ceremony, and the logic must not.
+    Glue,
+}
+
+/// Rust separates the two by filename: `main.rs` is the glue file **when a
+/// `lib.rs` exists beside it**, which is the split shape Option B standardizes.
+///
+/// The `has_lib` condition is what keeps the rule honest for a package that has
+/// not been split yet — native's `talker/src/main.rs` is 91 lines of logic *and*
+/// glue fused, and calling that "glue" would silently drop the only file it has
+/// from the comparison. Un-split packages are therefore compared whole, and
+/// their divergence shows up as the W3 work it is.
+///
+/// C and C++ have no separate glue file — `main.c` *is* the program the user
+/// writes — so every file is logic there.
+fn classify(lang_ext: &str, rel: &str, has_lib: bool) -> FileKind {
+    match lang_ext {
+        "rs" if rel == "main.rs" && has_lib => FileKind::Glue,
+        // A named glue MODULE, for glue that cannot live in the `main.rs` bin
+        // target: the ThreadX RV64 CycloneDDS path links the *staticlib*, so its
+        // `#[no_mangle] app_main` must be reachable from `lib.rs`'s module tree.
+        "rs" if GLUE_MODULES.contains(&rel.trim_end_matches(".rs")) => FileKind::Glue,
+        _ => FileKind::Logic,
+    }
+}
+
+/// Modules of the lib crate that hold platform boot glue rather than node logic.
+/// Their `mod <name>;` declaration in the crate root is itself glue and is
+/// stripped by [`normalize`], so declaring one does not make the logic file
+/// diverge from platforms that need no such module.
+const GLUE_MODULES: &[&str] = &["app_main"];
+
+/// Every source file under `src/`, normalized and tagged, in filename order.
+fn classified_files(src: &Path) -> Option<Vec<(String, String, FileKind)>> {
+    let has_lib = src.join("lib.rs").is_file();
+    let mut files: Vec<(String, String, FileKind)> = Vec::new();
     let mut stack = vec![src.to_path_buf()];
     while let Some(dir) = stack.pop() {
         for entry in fs::read_dir(&dir).ok()?.flatten() {
@@ -506,21 +540,30 @@ fn normalized_body(src: &Path) -> Option<String> {
                 .to_string_lossy()
                 .to_string();
             let text = fs::read_to_string(&path).ok()?;
-            files.push((rel, normalize(&text)));
+            let kind = classify(ext, &rel, has_lib);
+            files.push((rel, normalize(&text), kind));
         }
     }
     if files.is_empty() {
         return None;
     }
-    files.sort();
-    Some(
-        files
-            .into_iter()
-            .map(|(name, body)| format!("--- {name}\n{body}"))
-            .collect::<Vec<_>>()
-            .join("\n"),
-    )
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    Some(files)
 }
+
+/// Boot ceremony that must live in a glue file, never in node logic.
+///
+/// These are the spellings the phase-338 audit found leaking into `lib.rs`:
+/// the zenoh/xrce force-link anchors, a board's `*_app_main!`, and Zephyr's
+/// `component_main!`. Each exists because rustc's staticlib DCE drops a
+/// dependency's `#[no_mangle]` export without a direct reference — a real
+/// constraint, and precisely why it belongs in a file that says so.
+const CEREMONY_MARKERS: &[&str] = &[
+    "force_link_backend!",
+    "_app_main!",
+    "component_main!",
+    "#![no_main]",
+];
 
 /// Strip what is not under test: block comments, whole-line comments (including
 /// `///` and `//!` doc comments, which is where the platform names live), blank
@@ -545,6 +588,13 @@ fn normalize(text: &str) -> String {
     for line in stripped.lines() {
         let t = line.trim();
         if t.is_empty() || t.starts_with("//") || t.starts_with('*') {
+            continue;
+        }
+        // A glue-module declaration is glue, not logic (see GLUE_MODULES).
+        if GLUE_MODULES
+            .iter()
+            .any(|m| t == format!("mod {m};") || t == format!("pub mod {m};"))
+        {
             continue;
         }
         out.push_str(&t.split_whitespace().collect::<Vec<_>>().join(" "));
@@ -730,6 +780,62 @@ fn no_stale_divergence_entries() {
         "KNOWN_DIVERGENCE has entries that are no longer true:\n  {}\n\n\
          The list is the phase's progress metric; it only ever shrinks.",
         stale.join("\n  ")
+    );
+}
+
+/// The Option B invariant: **boot ceremony never appears in node logic.**
+///
+/// This is what makes comparing only the logic file honest. Without it, the
+/// gate could be satisfied by moving a divergence into a file it does not read.
+#[test]
+fn ceremony_stays_out_of_node_logic() {
+    let root = examples_dir();
+    let mut offenders = Vec::new();
+    let Ok(platforms) = fs::read_dir(&root) else {
+        panic!("examples/ unreadable");
+    };
+    for platform in platforms.flatten() {
+        if !platform.path().is_dir() {
+            continue;
+        }
+        let plat = platform.file_name().to_string_lossy().to_string();
+        if group_of(&plat).is_none() {
+            continue;
+        }
+        for lang in LANGS {
+            let Ok(programs) = fs::read_dir(platform.path().join(lang)) else {
+                continue;
+            };
+            for program in programs.flatten() {
+                let src = program.path().join("src");
+                let Some(files) = classified_files(&src) else {
+                    continue;
+                };
+                let prog = program.file_name().to_string_lossy().to_string();
+                for (name, body, kind) in files {
+                    if kind != FileKind::Logic {
+                        continue;
+                    }
+                    for marker in CEREMONY_MARKERS {
+                        if body.contains(marker) {
+                            offenders.push(format!(
+                                "{plat}/{lang}/{prog}/src/{name} contains `{marker}` — \
+                                 move it into the glue file (src/main.rs)"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "boot ceremony found in node logic ({} site(s)).\n  {}\n\n\
+         phase-338 Option B: node logic and platform glue live in SEPARATE files. \
+         Logic is compared across platforms; glue is not. Ceremony in a logic file \
+         both breaks portability and hides from the comparison.",
+        offenders.len(),
+        offenders.join("\n  ")
     );
 }
 

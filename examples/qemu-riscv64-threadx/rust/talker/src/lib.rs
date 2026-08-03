@@ -12,12 +12,12 @@
 
 #![no_std]
 
-extern crate alloc;
+mod app_main;
+
 // Keep the board crate (panic handler + allocator + critical-section impl)
 // linked into the standalone `staticlib` even on the zenoh/cargo path, where
 // only `main.rs`'s `nros::main!()` names it (issue #205 — the per-example
 // critical-section anchor moved into the board crate).
-extern crate nros_board_threadx_qemu_riscv64 as _;
 
 use core::fmt::Write as _;
 use nros::{
@@ -77,4 +77,3 @@ nros::node!(Talker);
 // executor open, RMW registration, and the spin loop; the `nros::node!()`-emitted
 // `register` declares the Talker. No manual `Executor::open` / `register_rmw` /
 // spin loop / hardcoded locator in the example (Phase 245 / issue 0049 P1/P3/P4/P6).
-nros_board_threadx_qemu_riscv64::cyclonedds_app_main!(register);

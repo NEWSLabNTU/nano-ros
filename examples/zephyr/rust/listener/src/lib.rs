@@ -8,7 +8,8 @@
 
 #![no_std]
 
-extern crate zephyr;
+mod app_main;
+
 
 use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
 use std_msgs::msg::String as StringMsg;
@@ -57,9 +58,4 @@ nros::node!(Listener);
 // still done by `nros_app_register_backends` — this is only a DCE anchor
 // (issues 0155 / 0163). cyclonedds needs none: its register entry lives in the
 // Zephyr module's C++ lib, which the image already links.
-#[cfg(feature = "rmw-zenoh")]
-nros::force_link_backend!(nros_rmw_zenoh);
-#[cfg(feature = "rmw-xrce")]
-nros::force_link_backend!(nros_rmw_xrce_cffi);
 
-nros::zephyr_component_main!(Listener);
