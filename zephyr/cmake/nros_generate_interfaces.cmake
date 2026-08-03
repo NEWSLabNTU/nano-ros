@@ -386,10 +386,14 @@ function(nros_generate_interfaces target)
       # Detect Rust target for cross-compilation
       nros_detect_rust_target()
 
-      # phase-336 — profile + target dir from the shared table.
-      nros_resolve_cargo_profile()
-      set(_nros_cargo_profile "${NROS_CARGO_PROFILE}")
-      set(_nros_cargo_profile_dir "${NROS_CARGO_PROFILE_DIR}")
+      # phase-336 — the C++ FFI glue uses the `cpp-ffi-glue` CARVE-OUT, not the
+      # ambient profile: it is a second Rust staticlib in a link that already
+      # contains the nros-cpp archive, and at `lto = "off"` both carry std's
+      # panicking codegen unit → `multiple definition of
+      # __rustc::rust_begin_unwind`. Fat LTO internalizes it.
+      nros_resolve_carve_out_profile(cpp-ffi-glue _NROS_FFI)
+      set(_nros_cargo_profile "${_NROS_FFI_PROFILE}")
+      set(_nros_cargo_profile_dir "${_NROS_FFI_DIR}")
 
       if(NROS_RUST_TARGET)
         set(_ffi_lib "${_ffi_target_dir}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/libnano_ros_cpp_ffi_${target}.a")
@@ -459,8 +463,8 @@ targets = [\"${NROS_RUST_TARGET}\"]
       # phase-336 — carry the preset definition; this generated crate is its own
       # workspace root and no longer appends a `[profile.*]` block.
       set(_ffi_env "")
-      if(NOT NROS_CARGO_PROFILE_ENV STREQUAL "")
-        set(_ffi_env ${CMAKE_COMMAND} -E env ${NROS_CARGO_PROFILE_ENV})
+      if(NOT _NROS_FFI_ENV STREQUAL "")
+        set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV})
       endif()
       add_custom_command(
         OUTPUT "${_ffi_lib}"

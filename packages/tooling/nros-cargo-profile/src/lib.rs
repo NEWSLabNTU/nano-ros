@@ -97,12 +97,27 @@ pub const NUTTX_RUST_PROFILE: &str = MINSIZEREL.name;
 /// `CMAKE_BUILD_TYPE=Release`).
 pub const FREERTOS_QEMU_PROFILE: &str = MINSIZEREL.name;
 
+/// The profile the generated C++ FFI glue staticlib must be built at.
+///
+/// It is a SECOND Rust staticlib in a link that already contains
+/// `libnros_cpp.a`, and at `lto = "off"` each one carries its own copy of
+/// std's panicking codegen unit — so the link fails with
+/// `multiple definition of __rustc::rust_begin_unwind`. Fat LTO internalizes
+/// that symbol, which is why the glue crate's generated manifest pinned
+/// `lto = true` back when it was always built `--release`.
+///
+/// nano-ros deliberately does NOT paper over this with
+/// `--allow-multiple-definition` (RFC-0042 D3 removed that flag), so the glue
+/// keeps a profile that leaves one definition standing.
+pub const CPP_FFI_GLUE_PROFILE: &str = MINSIZEREL.name;
+
 /// Platforms that cannot use the ambient profile, and what they use instead.
 /// Reachable by name so the shell builders read the same value the Rust
 /// resolvers do.
 pub const CARVE_OUTS: &[(&str, &str)] = &[
     ("nuttx-rust", NUTTX_RUST_PROFILE),
     ("freertos-qemu", FREERTOS_QEMU_PROFILE),
+    ("cpp-ffi-glue", CPP_FFI_GLUE_PROFILE),
 ];
 
 /// The profile a named carve-out forces, if there is one.

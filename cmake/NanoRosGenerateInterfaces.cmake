@@ -411,19 +411,25 @@ function(nros_generate_interfaces target)
           set(_serdes_dir "${_NANO_ROS_PREFIX}/packages/core/nros-serdes")
       endif()
 
-      # phase-336 — the artifact lands under the ACTIVE profile's directory, not
-      # a hardcoded `release/`. This pair of literals was the reason a
-      # non-release build could configure fine and then fail to find its own
-      # staticlib.
-      nros_resolve_cargo_profile()
+      # phase-336 — the artifact lands under the profile's directory, not a
+      # hardcoded `release/`. This pair of literals was the reason a non-release
+      # build could configure fine and then fail to find its own staticlib.
+      #
+      # The glue uses the `cpp-ffi-glue` CARVE-OUT rather than the ambient
+      # profile: it is a second Rust staticlib in a link that already contains
+      # libnros_cpp.a, and at `lto = "off"` both carry std's panicking codegen
+      # unit → `multiple definition of __rustc::rust_begin_unwind`. Fat LTO
+      # internalizes it. (This is why the generated manifest pinned `lto = true`
+      # while the profile was hardcoded `release`.)
+      nros_resolve_carve_out_profile(cpp-ffi-glue _NROS_FFI)
       # Cross-compilation: when Rust_CARGO_TARGET is set (e.g. by a CMake
       # toolchain file), pass --target to cargo and adjust the output path.
       if(DEFINED Rust_CARGO_TARGET)
         set(_ffi_rust_target "${Rust_CARGO_TARGET}")
-        set(_ffi_lib "${_ffi_target_dir}/${Rust_CARGO_TARGET}/${NROS_CARGO_PROFILE_DIR}/libnano_ros_cpp_ffi_${target}.a")
+        set(_ffi_lib "${_ffi_target_dir}/${Rust_CARGO_TARGET}/${_NROS_FFI_DIR}/libnano_ros_cpp_ffi_${target}.a")
       else()
         set(_ffi_rust_target "")
-        set(_ffi_lib "${_ffi_target_dir}/${NROS_CARGO_PROFILE_DIR}/libnano_ros_cpp_ffi_${target}.a")
+        set(_ffi_lib "${_ffi_target_dir}/${_NROS_FFI_DIR}/libnano_ros_cpp_ffi_${target}.a")
       endif()
 
       file(MAKE_DIRECTORY "${_ffi_crate_src}")
@@ -486,13 +492,14 @@ function(nros_generate_interfaces target)
       endif()
 
       # Assemble cargo args via the shared core (Phase 246.3). phase-336: the
-      # profile is the ACTIVE one, not a hardcoded `release`. build-std for nuttx
-      # comes from .cargo/config.toml above (not an inline -Z), so no BUILD_STD
-      # here. The `+<toolchain>` prefix stays separate (prepended in the COMMAND).
+      # profile is the carve-out resolved above, not a hardcoded `release`.
+      # build-std for nuttx comes from .cargo/config.toml above (not an inline
+      # -Z), so no BUILD_STD here. The `+<toolchain>` prefix stays separate
+      # (prepended in the COMMAND).
       _nros_ffi_cargo_args(_ffi_cargo_args
         MANIFEST "${_ffi_crate_dir}/Cargo.toml"
         TARGET_DIR "${_ffi_target_dir}"
-        PROFILE "${NROS_CARGO_PROFILE}"
+        PROFILE "${_NROS_FFI_PROFILE}"
         RUST_TARGET "${_ffi_rust_target}")
 
       # Build the FFI staticlib after codegen runs
@@ -500,8 +507,8 @@ function(nros_generate_interfaces target)
       # custom command, so `corrosion_set_env_vars` cannot reach it. Empty for a
       # user-owned profile, where the crate's own manifest governs.
       set(_ffi_env "")
-      if(NOT NROS_CARGO_PROFILE_ENV STREQUAL "")
-        set(_ffi_env ${CMAKE_COMMAND} -E env ${NROS_CARGO_PROFILE_ENV})
+      if(NOT _NROS_FFI_ENV STREQUAL "")
+        set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV})
       endif()
       add_custom_command(
         OUTPUT "${_ffi_lib}"

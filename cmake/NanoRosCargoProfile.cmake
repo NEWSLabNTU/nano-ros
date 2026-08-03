@@ -85,6 +85,35 @@ function(nros_resolve_cargo_profile)
         "→ target/${_dir}")
 endfunction()
 
+# nros_resolve_carve_out_profile(<carve-out-name> <out-prefix>)
+#
+# Some artifacts cannot use the ambient profile at all (a codegen miscompile, a
+# QEMU timing floor, a link-level symbol clash). They name a CARVE-OUT, and the
+# table answers with the profile that artifact must use. Sets
+# <out-prefix>_PROFILE / _DIR / _ENV in the caller's scope.
+function(nros_resolve_carve_out_profile _name _prefix)
+    _nros_resolve_codegen_tool(_NANO_ROS_CODEGEN_TOOL)
+    execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" profile carve-out "${_name}"
+        OUTPUT_VARIABLE _profile ERROR_VARIABLE _err RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR "nano-ros: ${_err}")
+    endif()
+    execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" profile dir "${_profile}"
+        OUTPUT_VARIABLE _dir RESULT_VARIABLE _rc OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR "nano-ros: `nros profile dir ${_profile}` failed")
+    endif()
+    execute_process(COMMAND "${_NANO_ROS_CODEGEN_TOOL}" profile env "${_profile}" --cmake
+        OUTPUT_VARIABLE _env RESULT_VARIABLE _rc OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR "nano-ros: `nros profile env ${_profile}` failed")
+    endif()
+    set(${_prefix}_PROFILE "${_profile}" PARENT_SCOPE)
+    set(${_prefix}_DIR "${_dir}" PARENT_SCOPE)
+    set(${_prefix}_ENV "${_env}" PARENT_SCOPE)
+endfunction()
+
 # nros_cargo_profile_env(<target>)
 #
 # Give a Corrosion target the profile's definition, so the crate resolves
