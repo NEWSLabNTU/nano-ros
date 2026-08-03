@@ -28,7 +28,7 @@ pub const {{ action_name|snake_case|upper }}_GOAL_{{ constant.name }}: {{ consta
 {%- endif %}
 pub struct {{ action_name }}Goal {
 {%- for field in goal_fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | nros_type }},
 {%- endfor %}
 }
 {%- if has_goal_large_array %}
@@ -153,7 +153,7 @@ pub const {{ action_name|snake_case|upper }}_RESULT_{{ constant.name }}: {{ cons
 {%- endif %}
 pub struct {{ action_name }}Result {
 {%- for field in result_fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | nros_type }},
 {%- endfor %}
 }
 {%- if has_result_large_array %}
@@ -276,7 +276,7 @@ pub const {{ action_name|snake_case|upper }}_FEEDBACK_{{ constant.name }}: {{ co
 {%- endif %}
 pub struct {{ action_name }}Feedback {
 {%- for field in feedback_fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | nros_type }},
 {%- endfor %}
 }
 {%- if has_feedback_large_array %}

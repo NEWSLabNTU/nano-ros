@@ -24,7 +24,7 @@ pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
 {%- endif %}
 pub struct {{ service_name }}Request {
 {%- for field in request_fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | nros_type }},
 {%- endfor %}
 }
 {%- if has_request_large_array %}
@@ -144,7 +144,7 @@ pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
 {%- endif %}
 pub struct {{ service_name }}Response {
 {%- for field in response_fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | nros_type }},
 {%- endfor %}
 }
 {%- if has_response_large_array %}

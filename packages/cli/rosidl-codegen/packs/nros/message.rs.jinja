@@ -24,7 +24,7 @@ pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
 {%- endif %}
 pub struct {{ message_name }} {
 {%- for field in fields %}
-    pub {{ field.name }}: {{ field.rust_type }},
+    pub {{ field.name }}: {{ field | nros_type }},
 {%- endfor %}
 }
 {%- if has_large_array %}

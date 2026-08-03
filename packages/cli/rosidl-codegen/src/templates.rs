@@ -164,7 +164,15 @@ pub struct ActionIdiomaticTemplate<'a> {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct NrosField {
     pub name: String,
-    pub rust_type: String,
+    /// RFC-0068 step 2 — the `nros_type` pack filter composes the Rust type
+    /// string from these neutral facts (was the pre-baked `rust_type`).
+    /// `is_configurable`/`is_heap`/`cap`/`mode` pick the owned-capacity / heap /
+    /// plain spelling; `current_package` drives the self-ref choice.
+    pub field_type: rosidl_parser::FieldType,
+    pub is_configurable: bool,
+    pub cap: usize,
+    pub mode: crate::types::NrosCodegenMode,
+    pub current_package: String,
     /// CDR primitive method name (e.g., "i32", "f64", "u8") - empty if not primitive
     pub primitive_method: String,
     /// For arrays/sequences: element primitive method - empty if not primitive element
@@ -203,8 +211,7 @@ pub struct NrosField {
     pub borrowed_read_expr: String,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "message_nros.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct MessageNrosTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
@@ -236,8 +243,7 @@ pub struct MessageNrosTemplate<'a> {
     pub schema_type_name: String,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "service_nros.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ServiceNrosTemplate<'a> {
     pub package_name: &'a str,
     pub service_name: &'a str,
@@ -305,8 +311,7 @@ pub struct LibNrosRsTemplate {
     pub has_actions: bool,
 }
 
-#[derive(Template, serde::Serialize)]
-#[template(path = "action_nros.rs.jinja", escape = "none")]
+#[derive(serde::Serialize)]
 pub struct ActionNrosTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,

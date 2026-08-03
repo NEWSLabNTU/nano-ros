@@ -5,8 +5,7 @@ use crate::{
         C_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_STRING_CAPACITY,
         NrosCodegenMode, c_cdr_read_method, c_cdr_write_method, c_type_for_field_heap,
         cpp_array_suffix_for_field, cpp_type_for_field, cpp_type_for_field_heap,
-        cpp_type_for_field_with_capacity, escape_keyword, nros_type_for_field_heap,
-        nros_type_for_field_with_capacity, nros_type_for_field_with_mode, repr_c_type_for_field,
+        cpp_type_for_field_with_capacity, escape_keyword, repr_c_type_for_field,
         repr_c_type_for_field_with_capacity, to_c_package_name,
     },
     utils::to_snake_case,
@@ -414,24 +413,23 @@ pub(super) fn field_to_nros_field_with_mode(
     let mut is_borrowed = false;
     let mut borrowed_rust_type = String::new();
     let mut borrowed_read_expr = String::new();
-    let rust_type = if let Some(kind) = cap_kind {
+    // phase-335 step 2 — resolve storage for the FLAGS + the capacity the
+    // `nros_type` pack filter needs; the type STRING is composed in the pack.
+    let is_configurable = cap_kind.is_some();
+    let mut cap: usize = 0;
+    if let Some(kind) = cap_kind {
         let storage = pre_storage
             .unwrap_or_else(|| resolver.resolve(package_name, message_name, &field.name, kind));
+        cap = storage.cap;
         match storage.mode {
-            StorageMode::Owned => nros_type_for_field_with_capacity(
-                &field.field_type,
-                Some(package_name),
-                mode,
-                storage.cap,
-            ),
+            StorageMode::Owned => {}
             StorageMode::Heap => {
                 is_heap = true;
-                nros_type_for_field_heap(&field.field_type, Some(package_name), mode)
             }
             // RFC-0033 `borrowed` (Phase 229.6, issue 0007): the owned `{Msg}`
             // struct keeps a default-capacity owned container for the publish
             // path; the additionally-emitted `{Msg}View<'a>` borrows this field
-            // zero-copy (see `borrowed_rust_type` / `borrowed_read_method`).
+            // zero-copy (see `borrowed_rust_type` / `borrowed_read_expr`).
             StorageMode::Borrowed => {
                 is_borrowed = true;
                 let (bt, expr) = nros_borrowed_view_for_field(
@@ -442,17 +440,9 @@ pub(super) fn field_to_nros_field_with_mode(
                 )?;
                 borrowed_rust_type = bt;
                 borrowed_read_expr = expr;
-                nros_type_for_field_with_capacity(
-                    &field.field_type,
-                    Some(package_name),
-                    mode,
-                    storage.cap,
-                )
             }
         }
-    } else {
-        nros_type_for_field_with_mode(&field.field_type, Some(package_name), mode)
-    };
+    }
 
     // Determine field properties
     let (is_primitive, primitive_method) = match &field.field_type {
@@ -498,7 +488,11 @@ pub(super) fn field_to_nros_field_with_mode(
 
     Ok(NrosField {
         name,
-        rust_type,
+        field_type: field.field_type.clone(),
+        is_configurable,
+        cap,
+        mode,
+        current_package: package_name.to_string(),
         primitive_method,
         element_primitive_method,
         array_size,

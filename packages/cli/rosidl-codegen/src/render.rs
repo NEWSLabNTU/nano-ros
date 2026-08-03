@@ -40,6 +40,17 @@ impl RustTypeSpell {
     }
 }
 
+/// Neutral facts the `nros_type` pack filter composes the nros Rust type from.
+#[derive(serde::Deserialize)]
+struct NrosTypeSpell {
+    field_type: rosidl_parser::FieldType,
+    is_configurable: bool,
+    is_heap: bool,
+    cap: usize,
+    mode: crate::types::NrosCodegenMode,
+    current_package: String,
+}
+
 /// One environment holding every converted pack, keyed by a stable template
 /// name (`"message.h"`, `"message_rmw.rs"`, …). Shared macros are registered
 /// under the name their importers use (`_field.jinja`).
@@ -68,6 +79,20 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     });
     env.add_filter("rust_type_idiomatic", |v: ViaDeserialize<RustTypeSpell>| {
         crate::types::rust_type_for_field(&v.0.field_type, false, v.0.pkg())
+    });
+    // RFC-0068 step 2 — nros embedded Rust type spelling in the pack (storage +
+    // codegen-mode dependent), was pre-baked as `NrosField.rust_type`.
+    env.add_filter("nros_type", |v: ViaDeserialize<NrosTypeSpell>| {
+        let n = &v.0;
+        let cp = (!n.current_package.is_empty()).then_some(n.current_package.as_str());
+        crate::types::nros_type_spelling(
+            &n.field_type,
+            n.is_configurable,
+            n.is_heap,
+            n.cap,
+            n.mode,
+            cp,
+        )
     });
 
     // --- C pack (packs/c) ---

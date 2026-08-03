@@ -543,7 +543,7 @@ pub fn rust_type_for_constant(field_type: &FieldType) -> String {
 pub use rosidl_lower::config::{NROS_DEFAULT_SEQUENCE_CAPACITY, NROS_DEFAULT_STRING_CAPACITY};
 
 /// Configuration for nros code generation mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum NrosCodegenMode {
     /// Crate mode: each package is a separate crate.
     /// Self-refs use `crate::msg::Type`, cross-refs use `pkg::msg::Type`.
@@ -713,6 +713,28 @@ pub fn nros_type_for_field_with_capacity(
 /// Vec}` rather than a fixed-capacity `heapless` container. Element types keep
 /// their default (fixed-capacity) rendering. The `nros_core::heap::` path works
 /// in both crate and inline modes.
+/// RFC-0068 Stage 3 — the nros Rust type spelling as a function a pack filter
+/// calls (phase-335 step 2). Reproduces `field_to_nros_field_with_mode`'s branch
+/// from the neutral facts a `NrosField` carries.
+pub fn nros_type_spelling(
+    field_type: &FieldType,
+    is_configurable: bool,
+    is_heap: bool,
+    cap: usize,
+    mode: NrosCodegenMode,
+    current_package: Option<&str>,
+) -> String {
+    if is_configurable {
+        if is_heap {
+            nros_type_for_field_heap(field_type, current_package, mode)
+        } else {
+            nros_type_for_field_with_capacity(field_type, current_package, mode, cap)
+        }
+    } else {
+        nros_type_for_field_with_mode(field_type, current_package, mode)
+    }
+}
+
 pub fn nros_type_for_field_heap(
     field_type: &FieldType,
     current_package: Option<&str>,
