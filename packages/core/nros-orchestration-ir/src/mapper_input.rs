@@ -129,7 +129,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     fn model_with_two_nodes() -> SystemModel {
-        let mut nodes = BTreeMap::new();
+        let mut nodes = indexmap::IndexMap::new();
         nodes.insert(
             "/sensor".to_string(),
             NodeInstance {

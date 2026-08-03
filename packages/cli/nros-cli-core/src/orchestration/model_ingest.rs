@@ -732,7 +732,7 @@ mod tests {
         use ros_launch_manifest_model::{
             Contracts, NodeInstance, PathContract, Structure, SystemModel,
         };
-        let mut nodes = BTreeMap::new();
+        let mut nodes = indexmap::IndexMap::new();
         nodes.insert(
             "/ctrl".to_string(),
             NodeInstance {

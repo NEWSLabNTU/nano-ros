@@ -13,18 +13,22 @@ structure:
     system.launch.xml:
       file: system.launch.xml
   nodes:
-    /listener:
-      scope: system.launch.xml
-      pkg: listener_pkg
-      exec: listener
-      node_name: listener
     /talker:
       scope: system.launch.xml
       pkg: talker_pkg
       exec: talker
       params:
         qos_overrides./chatter.publisher.reliability: best_effort
+      param_sources:
+      - kind: inline
+        name: qos_overrides./chatter.publisher.reliability
+        value: best_effort
       node_name: talker
+    /listener:
+      scope: system.launch.xml
+      pkg: listener_pkg
+      exec: listener
+      node_name: listener
 execution:
   deploy:
     /listener:

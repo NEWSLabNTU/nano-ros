@@ -214,7 +214,7 @@ mod tests {
             scope: scope.into(),
             ..Default::default()
         };
-        let mut nodes = std::collections::BTreeMap::new();
+        let mut nodes = indexmap::IndexMap::new();
         nodes.insert("/control_node".to_string(), node("/"));
         nodes.insert("/telem_node".to_string(), node("/"));
         let mut topics = std::collections::BTreeMap::new();
