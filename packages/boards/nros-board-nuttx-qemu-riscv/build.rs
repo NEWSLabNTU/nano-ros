@@ -14,6 +14,18 @@
 use std::path::Path;
 
 fn main() {
+    // issue 0288 — skip the NuttX cross-compile when host tooling builds this
+    // crate (the source-metadata probe of a deploy-bound standalone example).
+    // `riscv*-...-elf-gcc` is invoked regardless of target and rejects the
+    // host's flags; mirrors the arm sibling's guard so a riscv NuttX example is
+    // host-probeable instead of hard-failing the probe.
+    if nros_board_common::host_probe::skip_cross_build(
+        "nros-board-nuttx-qemu-riscv",
+        &["riscv"],
+    ) {
+        return;
+    }
+
     nros_board_common::nuttx_platform_build::run_platform();
     // #199 follow-up — the C/C++ multi-tier entry seam (`nros_board_nuttx_run_tiers`),
     // whole-archived for the generated entry's `NuttxBoard::run_tiers` reference.
