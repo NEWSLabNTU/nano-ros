@@ -4,7 +4,7 @@ title: "Derived scheduling is quantitatively inert — no WCET in the model, so 
 status: open
 type: limitation
 area: orchestration
-related: [phase-296, rfc-0052]
+related: [phase-296, rfc-0052, 0403, 0404]
 ---
 
 ## Original finding (phase-296 W5.5–W5.11, 2026-07-24)
@@ -173,6 +173,43 @@ independently of, staged step 1.
 4. **Emit the resulting knobs** from `derive_execution_from_contracts` into the
    synthesized `[tiers.*]` rows so the existing board consumers fire on the
    derived path.
+
+## Step 1 landed 2026-08-03 — the verdict no longer overclaims
+
+The cheap step above is done, in `ros-launch-manifest` v0.1.4 (rlm commit
+`234a005`), and consumed here at that tag.
+
+`ChainFeasibility` now carries `boundaries_without_wcet`, and
+`chain_feasibility()` records each boundary it counted as zero instead of
+summing through a `filter_map`. A chain judged FEASIBLE on any such boundary
+raises `MapWarning::ChainFeasibleWithoutWcet`, naming them; layer 2 renders it
+in the pipeline's `"scheduling: ..."` style and, like `ChainInfeasible`, never
+treats it as fatal — an evidence gap is not a band-fit violation, so it stays
+collect-only even in Strict mode.
+
+Infeasible verdicts are deliberately left alone: a chain that fails to fit even
+at zero execution time fails for real, and that conclusion needs no evidence it
+does not have.
+
+The arithmetic is unchanged — `unwrap_or(0.0)` is still there, because the
+alternative is inventing a WCET, which is a different lie. What changed is that
+the assumption is now stated wherever the number is consumed. Notably, rlm's
+own design-doc worked example trips the warning (`/ekf/p_ekf`,
+`/planning/p_planning` carry no WCETs): it has always ranked chains on partly
+absent evidence and read as if it had not.
+
+**This closes nothing.** It makes the gap loud so the remaining work is
+visible, and splits into two follow-ups:
+
+* **0403** — the producer. `nros-bench/wcet-cycles-qemu` emits prose nothing
+  parses, and on QEMU (dead DWT) prints zeros and exits 0.
+* **0404** — the schema. There is still no syntax anywhere for a developer to
+  declare a WCET they measured, so the new warning currently reports a problem
+  with no remedy.
+
+The three prerequisites (a WCET source, a blocking model, a disclosed verdict)
+are unchanged for the quantitative work below; only the third is now partly
+met.
 
 ## Open question for RFC-0052
 

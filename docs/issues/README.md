@@ -51,6 +51,24 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#404** — no schema for DECLARING a measured WCET. `MapperPath.exec_ms` is `Option<f64>` and nothing
+outside rlm's own tests ever sets it, so rlm v0.1.4's `ChainFeasibleWithoutWcet` (issue 0259) now
+reports missing evidence with nowhere to put it. Open questions: keying (board id / platform family /
+named measurement profile — a WCET belongs to a context, not to code), unit (mapper wants ms, the bench
+measures cycles, converting needs a clock rate), granularity (mapper wants a whole callback, the bench
+measures primitives), and provenance/staleness. Blocked on 0403 — designing the schema before a
+producer emits an artifact answers the keying question by guess. Invariant: absent stays representable
+and stays the DEFAULT, else zeros get written in by hand. See `0404-*`. (2026-08-03)
+
+**#403** — the WCET bench emits prose nothing parses, and a QEMU run with a dead cycle counter reports
+zeros as if measured. `nros-bench/wcet-cycles-qemu` prints `min=/max=/avg= cycles` to a semihosting log
+with no parser, no schema and no consumer, in the `debug` group so no lane runs it. On QEMU the DWT
+never increments: the bench detects this, prints a NOTE, then measures anyway and exits 0 — warning and
+data on the same stream, and only the data is machine-shaped. Same failure as 0259 one layer earlier
+(a non-measurement entering as zero, the most optimistic WCET there is). Direction: structured artifact
+with conditions recorded, and a dead counter is a HARD failure emitting no numbers at all. See
+`0403-*`. (2026-08-03)
+
 **#402** — message codegen has no language-neutral IR: parse / dependency-resolution / RIHS hashing /
 sizing are entangled with per-language emission in `rosidl-codegen`, so each language re-walks the same
 structures and derived facts (hash, plainness, storage mode) live in the emission pass instead of a
