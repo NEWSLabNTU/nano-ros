@@ -449,6 +449,14 @@ pub fn run_nuttx() {
     // aborts the group ("cannot find -lcrypto") or drops needed archives
     // ("undefined reference to audio_register"). Order inside
     // --start-group is irrelevant.
+    //
+    // The staging dir is SHARED between configs (arm and riscv kernels both
+    // stage into third-party/nuttx/nuttx/staging), so the lib set this scan
+    // sees can change under a cached build-script output. Watch the dirs:
+    // their mtime moves when archives are added/removed, forcing a re-scan
+    // instead of linking against a lib list from the other config's kernel.
+    println!("cargo:rerun-if-changed={}", staging.display());
+    println!("cargo:rerun-if-changed={}", board_src.display());
     let mut staged: Vec<String> = std::fs::read_dir(&staging)
         .into_iter()
         .flatten()
