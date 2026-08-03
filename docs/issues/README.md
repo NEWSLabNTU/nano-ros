@@ -127,6 +127,13 @@ across zpico-build's three riscv probes (was three copies of a two-name list, al
 provisioned `riscv-none-elf-gcc`), the shim build path now calls `detect_riscv_compiler` like the
 lib path, and the board declares `packages = ["riscv-none-elf-gcc"]`. No per-example `CC_*`.)
 
+**#401** — The box's `CARGO_TARGET_DIR` (which exists so the box never re-runs a host-built build
+script against its older glibc) and the LEAF-RELATIVE fixture path contract are mutually exclusive:
+fixtures build into the box's tree, tests stat `examples/**/target/...`, and the build truthfully
+reports success for files written elsewhere. Worst case is a developer who also built on the host —
+the tests then find the HOST binary and report it STALE, which reads as a fixture-ordering bug and is
+not one. 138/1244 tests failed this way. See `0401-*`. (2026-08-03)
+
 **#400** — A distrobox run and a host run share `target-embedded/`: `check-workspace-embedded`
 hard-sets a RELATIVE `CARGO_TARGET_DIR`, which escapes the box env's redirect, so the box re-runs a
 host-built `build-script-build` and dies on `GLIBC_2.39 not found` while naming an unrelated crate
