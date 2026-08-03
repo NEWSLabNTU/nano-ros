@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Shared build-dir invalidation rules (toolchain file + compiler version).
+# shellcheck source=scripts/build/cmake-cache-guard.sh
+. "$(dirname "${BASH_SOURCE[0]}")/cmake-cache-guard.sh"
 # Shared fixture matrix primitives. Keep this file shell-only so every
 # platform just recipe can source it without pulling in Python or Rust.
 
@@ -58,19 +62,7 @@ nros_cmake_fixture_build() {
     # does not swap it (see cmake-incremental.sh for the full rationale — issue
     # 0391). Wipe on a toolchain-file mismatch so a host-cc-poisoned dir picks up
     # the cross compiler instead of feeding RISC-V/ARM to the x86 assembler.
-    if [ -f "$build_dir/CMakeCache.txt" ]; then
-        local want_tc="" cached_tc _a
-        for _a in "$@"; do
-            case "$_a" in
-                -DCMAKE_TOOLCHAIN_FILE=*) want_tc="${_a#-DCMAKE_TOOLCHAIN_FILE=}" ;;
-            esac
-        done
-        cached_tc="$(sed -n 's/^CMAKE_TOOLCHAIN_FILE:[^=]*=//p' "$build_dir/CMakeCache.txt")"
-        if [ "$want_tc" != "$cached_tc" ]; then
-            echo "  (toolchain change: '${cached_tc:-<none>}' -> '${want_tc:-<none>}' — wiping $build_dir)" >&2
-            rm -rf "$build_dir"
-        fi
-    fi
+    nros_cmake_guard_build_dir "$build_dir" "$@"
 
     mkdir -p "$build_dir"
 

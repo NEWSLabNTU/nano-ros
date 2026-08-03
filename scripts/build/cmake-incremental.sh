@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# Shared build-dir invalidation rules (toolchain file + compiler version).
+# shellcheck source=scripts/build/cmake-cache-guard.sh
+. "$(dirname "${BASH_SOURCE[0]}")/cmake-cache-guard.sh"
+
 # Configure a CMake build dir only when needed, then leave incrementality to
 # CMake + the generator (Phase 181.7b). `cmake --build` (run by the caller)
 # auto-reconfigures on CMakeLists / dependency-graph changes via
@@ -48,19 +52,7 @@ nros_cmake_configure_if_needed() {
     # arg-stamp below WOULD reconfigure on the changed toolchain arg, but the
     # reconfigure can't move the compiler. Detect a toolchain-file mismatch vs
     # the cache and WIPE so the new compiler actually takes effect (issue 0391).
-    if [ -f "$build_dir/CMakeCache.txt" ]; then
-        local want_tc="" cached_tc _a
-        for _a in "$@"; do
-            case "$_a" in
-                -DCMAKE_TOOLCHAIN_FILE=*) want_tc="${_a#-DCMAKE_TOOLCHAIN_FILE=}" ;;
-            esac
-        done
-        cached_tc="$(sed -n 's/^CMAKE_TOOLCHAIN_FILE:[^=]*=//p' "$build_dir/CMakeCache.txt")"
-        if [ "$want_tc" != "$cached_tc" ]; then
-            echo "  (toolchain change: '${cached_tc:-<none>}' -> '${want_tc:-<none>}' — wiping $build_dir)" >&2
-            rm -rf "$build_dir"
-        fi
-    fi
+    nros_cmake_guard_build_dir "$build_dir" "$@"
 
     mkdir -p "$build_dir"
 
