@@ -13,6 +13,7 @@ find_package(nano_ros REQUIRED)
 nano_ros_add_executable(native_subnode_entry
     SOURCES src/main.cpp
     BOARD   native
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/subnode_system_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  subnode_system.launch.xml
     TYPED
     DEPLOY  native)

@@ -49,7 +49,7 @@ src/native_entry/
 ├── package.xml
 ├── Cargo.toml           # [[bin]] + deps on node pkgs + board crate
 │                        # + [package.metadata.nros.entry]
-└── src/main.rs          # nros::main!(model = "demo_bringup");
+└── src/main.rs          # nros::main!(launch = "demo_bringup");
 ```
 
 No library code lives here. The Entry pkg links the Node pkg rlibs and hands
@@ -98,14 +98,14 @@ nros::main!(board = NativeBoard);
 //    committed in the Bringup pkg. Reads
 //    `<bringup>/config/system_model.yaml` by default; pass an explicit
 //    relative path after `:`.
-nros::main!(model = "demo_bringup");
-nros::main!(model = "demo_bringup:config/variant-b.yaml");
+nros::main!(launch = "demo_bringup");
+nros::main!(launch = "demo_bringup:variant_b.launch.xml");
 
 // 4. Multi-host slice: point at a PER-HOST model. The launch file gates
 //    nodes on a `host` launch argument (`if=` conditions), and the model
 //    is resolved with `host:=robot1`, so it already contains only this
 //    host's nodes — no extra macro key needed.
-nros::main!(model = "demo_bringup:config/multihost_robot1_model.yaml");
+nros::main!(launch = "demo_bringup:multihost.launch.xml", args = [("host", "robot1")]);
 
 // 5. DEPRECATED (retiring): direct launch-file forms. These re-parse the
 //    launch XML at build time instead of consuming the reviewed model;
@@ -232,7 +232,7 @@ of truth for the node set:
 
 ```rust
 // examples/workspaces/rust/src/zephyr_entry/src/lib.rs
-nros::main!(model = "demo_bringup:config/system_model.yaml");
+nros::main!(launch = "demo_bringup");
 ```
 
 ## One Entry pkg per board

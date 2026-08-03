@@ -15,6 +15,7 @@ find_package(nano_ros REQUIRED)
 # TU, and bakes the slirp locator. LAUNCH-only.
 nano_ros_add_executable(freertos_entry
     BOARD   mps2-an385-freertos
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  default
     TYPED
     DEPLOY  mps2-an385-freertos)

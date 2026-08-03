@@ -59,6 +59,40 @@ pub fn model_search_paths(bringup_dir: &Path, model_rel: &str) -> Vec<PathBuf> {
         }
         out.push(dir.join(&name));
     }
+    // phase-330 W4/W7 — the WORKSPACE build root, where `nros sync` writes by
+    // default once the committed copies are gone: `<ws>/build/nros/models/
+    // <bringup>/<name>`. Derived from the conventional `<ws>/src/<bringup>`
+    // layout (bringup_dir/../../build) so NO env wiring is needed for the
+    // in-tree flows (west entry crates have neither OUT_DIR nor
+    // NROS_MODEL_DIR at macro expansion). A bringup outside that layout
+    // simply contributes no candidate here.
+    if let (Some(b), Some(ws_root)) = (
+        &bringup,
+        bringup_dir.parent().and_then(|src| src.parent()),
+    ) {
+        out.push(
+            ws_root
+                .join("build")
+                .join("nros")
+                .join("models")
+                .join(b)
+                .join(&name),
+        );
+    }
+    // Standalone copy-out / single-pkg self-bringups (W3.c): the bringup dir
+    // IS the workspace root (`nros sync` run inside it writes
+    // `<bringup>/build/nros/models/<bringup>/…`), so the ws-layout rung above
+    // misses by two levels. Same namespacing, rooted at the bringup itself.
+    if let Some(b) = &bringup {
+        out.push(
+            bringup_dir
+                .join("build")
+                .join("nros")
+                .join("models")
+                .join(b)
+                .join(&name),
+        );
+    }
     out.push(bringup_dir.join(model_rel));
     out
 }

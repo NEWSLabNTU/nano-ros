@@ -13,6 +13,7 @@ find_package(nano_ros REQUIRED)
 nano_ros_add_executable(native_rclcpp_entry
     SOURCES src/main.cpp
     BOARD   native
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/rclcpp_system_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  rclcpp_system.launch.xml
     TYPED
     DEPLOY  native)

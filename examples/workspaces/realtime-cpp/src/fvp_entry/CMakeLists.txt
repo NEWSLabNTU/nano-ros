@@ -50,6 +50,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../telem_pkg" telem_pkg)
 
 nano_ros_add_executable(fvp_entry
     BOARD   zephyr
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  default
     TYPED
     DEPLOY  zephyr)

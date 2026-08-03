@@ -14,6 +14,8 @@ find_package(nano_ros REQUIRED)
 nano_ros_add_executable(native_entry_robot1
     SOURCES src/main.c
     BOARD   native
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/multihost_robot1_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  multihost.launch.xml
+    LAUNCH_ARGS host=robot1
     TYPED
     DEPLOY  native)

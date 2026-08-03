@@ -12,6 +12,7 @@ find_package(nano_ros REQUIRED)
 nano_ros_add_executable(native_cpp_qos_listener_entry
     SOURCES src/main.cpp
     BOARD   native
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/cpp_qos_listener_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  cpp_qos_listener.launch.xml
     TYPED
     DEPLOY  native)

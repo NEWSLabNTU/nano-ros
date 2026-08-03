@@ -24,7 +24,8 @@ nano_ros_entry(
     NAME    robot_entry
     SOURCES src/main.c
     BOARD   native
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  default
     LANG    c
     TYPED
     DEPLOY  native)

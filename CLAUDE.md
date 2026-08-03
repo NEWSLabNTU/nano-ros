@@ -138,11 +138,14 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   `examples/workspaces/README-layout.md`. West-built zephyr entry leaves need BOTH the nested
   workspace `exclude` AND a repo-root `Cargo.toml` exclude, and their dep keys must match the
   generated `<entry>_nros_selection` package name (phase-331 fallout class, 2026-08-03).
-- **System-model dims are authored in `system.toml`, NEVER hand-edited into the committed
-  `config/system_model.yaml`** (phase-330 / issue 0380: regeneration deletes anything the
-  resolver inputs can't express — it happened four separate times). The committed model is
-  transitioning to a BUILD ARTIFACT generated into the active build's output dir (phase-330
-  W3 seam landed; W4 flips the default) — treat model yamls as resolver output.
+- **SystemModels are BUILD ARTIFACTS — never committed, never referenced by entries**
+  (phase-330 W4.a/W7, landed 2026-08-03). Dims/params/capabilities are authored in
+  `system.toml` (+ launch files); `nros sync` resolves into `<ws>/build/nros/models/
+  <bringup>/`; entries name their INPUT (`nros::main!(launch = "bringup[:file]")`,
+  `nano_ros_entry(BRINGUP … LAUNCH …)`); consumers locate the artifact via
+  `nros_orchestration_ir::model_location` (never a hand-derived path). `model =`/`MODEL`
+  are deprecated expert overrides. Gate: `check-no-tracked-models` (issue 0380 was four
+  hand-edit deletions; the ban is the structural fix). Inspect with `nros ws model-dims`.
 - **Message deps are PATH deps pinned `0.0.0` (RFC-0067 / phase-333)** — never registry-name a
   message crate (`std_msgs = "*"`) in a leaf manifest; #378 showed a bare name resolving against
   the PUBLIC crates.io.

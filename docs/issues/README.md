@@ -212,14 +212,11 @@ strace -k unwinds only to the zephyr print shim. Isolation: island alone / singl
 availability flap / idle sim / EKF-odometry all survive — only the full graph + scenario churn
 kills it. TRIGGER CONFIRMED by A/B: shadowing autoware_manual_lane_change_handler out of the sim flips 7/7 aborts to VERDICT PASS. See `0371-*`. (2026-08-01)
 
-**#380** (filed as #370; renumbered — id collision with parallel sessions) — Model regeneration destroys hand-authored execution dims: the ws-realtime committed
-SystemModels carried phase-296 W5 sched/placement dims (`class: real_time`, zephyr `deadline_us`,
-nuttx sporadic, threadx preempt/time-slice, per-platform `core`) that exist NOWHERE in the resolver
-inputs; two "delete + re-resolve" commits (#320 2026-07-28, #361-gap 2026-07-31) silently stripped
-them, and ~17 realtime e2e tests lost their subject. Dims restored from git history; the class
-conflict (content-addressed regeneration vs hand-authored model SSoT) needs a decision: give the
-dims a resolver input, or an overlay file, or a sync narrowing guard — plus a bake-time gate. See
-`0380-*`. (2026-08-01)
+Recently resolved: **#380** — model regeneration destroyed hand-authored execution dims (four
+incidents). RESOLVED structurally by phase-330 (2026-08-03): dims live in `system.toml`, the
+committed model is GONE (W4.a — build artifact under `<ws>/build/nros/models/`, entries are
+input-addressed via `launch =`/`LAUNCH`, `check-no-tracked-models` bans tracked copies). With no
+committed artifact, the conflict cannot recur. See `archived/0380-*`.
 
 **#382** (filed as #372; renumbered) — The resolver serializes `structure.nodes` alphabetized, so entry construct order no
 longer follows launch declaration order (typed cpp multi-node TU builds listener before talker).

@@ -12,6 +12,7 @@ find_package(nano_ros REQUIRED)
 nano_ros_add_executable(native_c_safety_talker_entry
     SOURCES src/main.c
     BOARD   native
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/c_safety_talker_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  c_safety_talker.launch.xml
     TYPED
     DEPLOY  native)

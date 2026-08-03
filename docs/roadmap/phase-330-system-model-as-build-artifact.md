@@ -300,9 +300,14 @@ two.
 
 ### W4 — Delete the committed models
 
-**Generator landed 2026-08-02. Both prerequisites (W4.0, W4.0b) are now
-DONE; W4.a is BLOCKED by 13 bringups whose content regeneration cannot
-reproduce — measured, see W4.a.**
+**DONE 2026-08-03 (W4.a executed with W5 + W7 in one batch).** The 13
+"losses" reduced to zero (see the reclassification below + issue 0392's
+resolution), `nros sync` now DEFAULTS `--model-dir` to
+`<ws>/build/nros/models/` (namespaced by bringup DIR name — the same key the
+consumer ladder uses), the ladder gained the workspace-build-root and
+self-bringup rungs so macro-only entries resolve with NO env wiring, and all
+112 tracked models were deleted. `check-no-tracked-models` (check-fast) holds
+the invariant.
 
 `nros sync --model-dir <DIR>` writes resolved models there instead of into each
 bringup's `config/`, closing the loop with W3.b's search order. Proven
@@ -589,18 +594,18 @@ actually move — editing it now would describe a state the tree is not in.
       Original item: **W4.a** Remove all **120** tracked `*/config/*model.yaml` (80 under
       `examples/workspaces/`, 40 under test fixtures); add the build location
       to `.gitignore`.
-- [ ] **W4.b** Update issue 0320's staleness text: a per-build artifact does not
+- [x] **W4.b** (2026-08-03 — `meta.inputs` kept for inspection/staleness of the BUILD copy; provenance-as-promise retired with the committed files) Update issue 0320's staleness text: a per-build artifact does not
       need `meta.inputs[]` sha256 provenance any more than an object file needs
       it. Decide whether `meta.inputs` stays for inspection or goes.
 
 ### W5 — Retire the transitional guards
 
-- [ ] **W5.a** Remove the `nros sync` dim-loss refusal (`prior_model_dims` +
+- [x] **W5.a** (2026-08-03) Remove the `nros sync` dim-loss refusal (`prior_model_dims` +
       the drop check) — it protects a committed file that no longer exists.
-- [ ] **W5.b** Remove `check-model-dims`, `scripts/model-dims-baseline.txt` and
+- [x] **W5.b** (2026-08-03 — `nros ws model-dims` kept) Remove `check-model-dims`, `scripts/model-dims-baseline.txt` and
       the `check-fast` wiring. Keep `nros ws model-dims`: inspection is a
       REQUIREMENT of RFC-0063, not a leftover.
-- [ ] **W5.c** Do W5 in the SAME change as W4. A guard removed early leaves the
+- [x] **W5.c** (same change as W4.a, as specified) Do W5 in the SAME change as W4. A guard removed early leaves the
       models unprotected; a guard left behind fails on files that no longer
       exist.
 
@@ -650,27 +655,27 @@ completed:
   (W4.0 derive-plus-declare) — the declaration is the SSoT for which bindings
   exist; the entry's `args` select one.
 
-- [ ] **W7.a** `nros-macros`: accept `launch = "<bringup>[:<file>]"` +
+- [x] **W7.a** (2026-08-03) `nros-macros`: accept `launch = "<bringup>[:<file>]"` +
       `args(k = "v", ...)`; deprecation-warn on `model =` (one release, then
       remove). Internally both converge on "resolve to a model path via
       nros-build".
-- [ ] **W7.b** `nros-build`: the launch→model mapping above (env from the
+- [x] **W7.b** (2026-08-03 — the ladder covers macro-only entries via the workspace/self build-root rungs; nros-build tracks inputs) `nros-build`: the launch→model mapping above (env from the
       workspace build, OUT_DIR resolve fallback), emitting
       `cargo:rerun-if-changed` for the launch file + system.toml so edits
       re-resolve.
-- [ ] **W7.c** `NanoRosEntry.cmake`: `LAUNCH`/`ARGS` keywords; configure-time
+- [x] **W7.c** (2026-08-03) `NanoRosEntry.cmake`: `LAUNCH`/`ARGS` keywords; configure-time
       resolve into the binary dir with dependency tracking; keep `MODEL` as
       override; case-normalize per the cmake pitfall rule.
-- [ ] **W7.d** Migrate the ~90 in-tree entry sites `model =` → `launch =`
+- [x] **W7.d** (2026-08-03 — 40 Rust + 68 cmake sites) Migrate the ~90 in-tree entry sites `model =` → `launch =`
       (mechanical; the 8 multihost entries read their binding from the
       existing `[[model]]` declarations). First case:
       `safety/src/zephyr_rust_safety_entry` (today
       `model = "demo_bringup:config/rust_safety_model.yaml"` →
       `launch = "demo_bringup:rust_safety.launch.xml"`).
-- [ ] **W7.e** Gate the contract: `check-fast` fails on any tracked
+- [x] **W7.e** (2026-08-03 — `check-no-tracked-models` in check-fast; the `model =` source ban follows the deprecation window) Gate the contract: `check-fast` fails on any tracked
       `*_model.yaml` (the no-committed-models invariant) AND on any
       `model =` in a non-test entry after the deprecation window.
-- [ ] **W7.g — the compile-check FORM GENERATOR also names models** (found
+- [x] **W7.g — the compile-check FORM GENERATOR also names models** (found
       2026-08-03, handing over). `scripts/build/compile-check-fixtures.sh`
       GENERATES two of the `nros::main!` forms it proves:
 
@@ -693,7 +698,13 @@ completed:
       Same shape as the other W4.a blockers: the committed model is not just an
       artifact, it is something else's INPUT — here, a compile proof's.
 
-- [ ] **W7.f** Then W4.a (delete the 120 committed models) + W5 (retire the
+      **RESOLVED with W4.a (2026-08-03):** the generator now runs `nros sync`
+      in each staged workspace (materialising `build/nros/models/`), form 3
+      moved to the canonical `launch =`, and form 4 stays `model =` as the ONE
+      deprecated-arm compile proof — resolving against the BUILD artifact via
+      the ladder, no committed file involved.
+
+- [x] **W7.f** (2026-08-03) Then W4.a (delete the 120 committed models) + W5 (retire the
       transitional guards) proceed as written.
 
 ### W6 — Documentation

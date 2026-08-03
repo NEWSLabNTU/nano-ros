@@ -361,7 +361,7 @@ check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
-    check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-model-dims \
+    check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
     check-nested-workspace-excludes \
     check-cargo-profile-mirror check-test-targets \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
@@ -816,8 +816,13 @@ check-nested-workspace-excludes:
 # catch. `nros sync` now refuses to shrink a model; this catches a strip by any
 # other means, at check-fast speed. Buildless (reads YAML via the CLI).
 [private]
-check-model-dims:
-    @bash scripts/check-model-dims.sh
+# phase-330 W7.e — committed SystemModels are BANNED: the model is a build
+# artifact (generated into <ws>/build/nros/models by `nros sync`); tracking
+# one re-opens the issue-0380 hand-edit/regeneration conflict. Supersedes
+# check-model-dims (W5.b: the dim baseline protected committed files that no
+# longer exist; `nros ws model-dims` remains for inspection).
+check-no-tracked-models:
+    @bash scripts/check-no-tracked-models.sh
 
 # issue 0359/0378 — `--locked` is injected project-wide by the scripts/bin/cargo
 # PATH shim (cargo has no config/env knob for it, and per-site flags would miss

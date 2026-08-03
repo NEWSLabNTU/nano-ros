@@ -12,6 +12,7 @@ find_package(nano_ros REQUIRED)
 nano_ros_add_executable(native_action_client_entry
     SOURCES src/main.cpp
     BOARD   native
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/action_client_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  action_client.launch.xml
     TYPED
     DEPLOY  native)

@@ -15,6 +15,7 @@ find_package(nano_ros REQUIRED)
 # locator. LAUNCH-only (no hand-written `main` — the generated TU carries `nros_app_main`).
 nano_ros_add_executable(threadx_entry
     BOARD   threadx-linux
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  default
     TYPED
     DEPLOY  threadx-linux)

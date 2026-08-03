@@ -288,15 +288,21 @@ documents the exact CLI commands that are verified green today.
 
 If you have a single Entry pkg and don't plan to share the topology across
 multiple boards, fold `launch/` + `config/` directly into the Entry pkg.
-The `nros::main!` macro's `model =` argument names the bringup package:
+The `nros::main!` macro's `launch =` argument names the bringup package and,
+optionally, a launch file within it — the SAME inputs you author. The build
+resolves them to a SystemModel under `<workspace>/build/nros/models/` (run
+`nros sync`, or let the build system drive it); you never reference the
+model file, though you can inspect it there:
 
 ```rust
-// Multi-node: bakes config/system_model.yaml from demo_bringup
-// (the SystemModel `nros sync` resolves from the launch file)
-nros::main!(model = "demo_bringup");
+// Multi-node: the bringup's default launch (system.launch.xml)
+nros::main!(launch = "demo_bringup");
 
-// Explicit model file within a bringup pkg
-nros::main!(model = "demo_bringup:config/sim.yaml");
+// A named launch file in the bringup pkg
+nros::main!(launch = "demo_bringup:sim.launch.xml");
+
+// A launch-argument binding, declared as [[model]] in system.toml
+nros::main!(launch = "demo_bringup:multihost.launch.xml", args = [("host", "robot1")]);
 ```
 
 If the launch files live inside the Entry pkg itself, point at it by name. The

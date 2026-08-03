@@ -784,7 +784,17 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                     // first. It presented as "regeneration dropped a node",
                     // which is exactly the kind of false loss that would have
                     // made W4.a look unsafe for the wrong reason.
-                    (launch, dir.join(&pkg.name).join(name))
+                    // Namespace by the bringup DIR name, not pkg.name — the
+                    // consumer ladder (model_location) only knows the dir, and
+                    // the two differ for standalone self-bringups
+                    // (`talker-entry/` vs pkg `threadx_linux_rs_talker_entry`).
+                    (
+                        launch,
+                        dir.join(pkg.dir.file_name().map(std::path::PathBuf::from).unwrap_or_else(
+                            || std::path::PathBuf::from(&pkg.name),
+                        ))
+                        .join(name),
+                    )
                 })
                 .collect(),
         };
@@ -864,12 +874,11 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
             if system_toml.is_file() {
                 cmd.arg("--system").arg(&system_toml);
             }
-            // Issue 0380 — resolve to a SIDE FILE, not over the committed model.
-            // The resolver cannot reproduce hand-authored `execution.tiers`
-            // dims, so writing in place makes destruction the default and the
-            // check impossible: once the file is overwritten there is nothing
-            // left to compare against.
-            let prior_dims = prior_model_dims(&model);
+            // phase-330 W5.a — the issue-0380 dim-loss refusal is RETIRED: it
+            // protected a COMMITTED model from destructive regeneration, and
+            // committed models no longer exist (W4.a). Dims live in the
+            // resolver INPUTS (system.toml), so a re-resolve cannot lose them;
+            // the staged write remains for atomicity only.
             let staged = model.with_extension("yaml.resolving");
             cmd.arg("-o").arg(&staged);
             let out = cmd
@@ -882,33 +891,6 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                     pkg.name,
                     launch.display(),
                     String::from_utf8_lossy(&out.stderr),
-                );
-            }
-            let new_dims = std::fs::read_to_string(&staged)
-                .map(|s| execution_tier_dims(&s))
-                .unwrap_or_default();
-            let dropped: Vec<&String> = prior_dims.difference(&new_dims).collect();
-            if !dropped.is_empty() {
-                let _ = std::fs::remove_file(&staged);
-                eyre::bail!(
-                    "sync: re-resolving `{}` would DROP {} hand-authored execution dim(s) \
-                     from {}:\n{}\n\n\
-                     Those dims are the SSoT for scheduling data the resolver's inputs \
-                     (launch + system.toml) cannot express, so a re-resolve cannot put them \
-                     back — this is data loss, not a refresh (issue 0380: two such commits \
-                     stripped 17 dims and ~17 realtime e2e tests lost their subject).\n\n\
-                     To retire a dim deliberately, REMOVE IT FROM THE MODEL and re-run: \
-                     the guard compares against what the model declares, so an intended \
-                     removal is simply not a loss — and it lands as a reviewable diff \
-                     instead of a flag nobody sees.",
-                    pkg.name,
-                    dropped.len(),
-                    model.strip_prefix(&pkg.dir).unwrap_or(&model).display(),
-                    dropped
-                        .iter()
-                        .map(|d| format!("  - execution.tiers.{d}"))
-                        .collect::<Vec<_>>()
-                        .join("\n"),
                 );
             }
             std::fs::rename(&staged, &model)
@@ -1441,6 +1423,14 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
     });
+    // phase-330 W4.a — the DEFAULT flips to the workspace build root: the
+    // model is a build artifact (maintainer decision, W7), so with neither
+    // `--model-dir` nor `NROS_MODEL_DIR` given, sync writes
+    // `<ws>/build/nros/models/<bringup>/<model>` — the same location the
+    // consumer ladder's workspace-build-root rung reads. Committed
+    // `config/*.yaml` are deleted; nothing writes into the source tree.
+    let model_dir =
+        model_dir.or_else(|| Some(ws_root.join("build").join("nros").join("models")));
     resolve_system_models(&scan, args.verbose, model_dir.as_deref())?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
     generate_facade_crates(&ws_root, &scan, &build_root, args.verbose)?;
@@ -2326,41 +2316,6 @@ fn execution_tier_dims(yaml: &str) -> BTreeSet<String> {
     out
 }
 
-/// The dims a model declared BEFORE this resolve — from the working tree if the
-/// file is there, else from the last commit.
-///
-/// The git fallback is the load-bearing half. Issue 0320's documented remedy
-/// for a stale model is "delete it and re-resolve", and that is literally how
-/// both regressions happened (`6071bd150` force-regenerated by deleting the
-/// committed `system_model.yaml` and re-syncing). A guard that only compares
-/// against a file on disk sees nothing to lose the moment someone follows the
-/// documented procedure — which is the one case it most needs to catch.
-///
-/// Verified before fixing: with the file deleted first, `nros sync` on
-/// realtime-rust took the model from 20 dims to 10 and exited 0.
-fn prior_model_dims(model: &Path) -> BTreeSet<String> {
-    if let Ok(s) = std::fs::read_to_string(model) {
-        return execution_tier_dims(&s);
-    }
-    let (Some(dir), Some(name)) = (model.parent(), model.file_name().and_then(|n| n.to_str()))
-    else {
-        return BTreeSet::new();
-    };
-    // `HEAD:./name` resolves relative to the command's cwd, so no repo-root
-    // arithmetic is needed. A file that was never committed yields nothing,
-    // which is correct — there is no prior to lose.
-    let Ok(out) = std::process::Command::new("git")
-        .current_dir(dir)
-        .args(["show", &format!("HEAD:./{name}")])
-        .output()
-    else {
-        return BTreeSet::new();
-    };
-    if !out.status.success() {
-        return BTreeSet::new();
-    }
-    execution_tier_dims(&String::from_utf8_lossy(&out.stdout))
-}
 
 /// `nros ws model-dims <model.yaml>` — issue 0380's read-only door onto
 /// [`execution_tier_dims`], so the gate and the sync-time guard cannot disagree

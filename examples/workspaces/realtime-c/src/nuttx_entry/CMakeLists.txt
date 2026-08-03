@@ -27,7 +27,8 @@ find_package(nano_ros REQUIRED)
 # LAUNCH names them so the codegen sees their nano_ros_node_register metadata. LAUNCH-only.
 nano_ros_add_executable(nuttx_entry
     BOARD   nuttx-qemu-arm
-    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    LAUNCH  default
     LANG    c
     TYPED
     DEPLOY  nuttx-qemu-arm)

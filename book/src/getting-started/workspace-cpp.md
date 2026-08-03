@@ -18,7 +18,7 @@ changes language-side is the cmake-fn / macro surface.
 |---|---|---|
 | **Node pkg** | `lib.rs` with `nros::node!(MyNode)` + `[package.metadata.nros.node]` in `Cargo.toml` | `Talker.{hpp,cpp}` with a `configure(::nros::Node&)` component method (C++) / `NROS_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
-| **Entry pkg** | `src/main.rs` with `nros::main!(model = "demo_bringup:config/system_model.yaml")` | `src/main.cpp` with `NROS_MAIN(nros::board::NativeBoard, "demo_bringup:system.launch.xml")`; `CMakeLists.txt` calling `nano_ros_entry(NAME … MODEL "…/demo_bringup/config/system_model.yaml" DEPLOY native)` |
+| **Entry pkg** | `src/main.rs` with `nros::main!(launch = "demo_bringup")` | `src/main.cpp` with `NROS_MAIN(nros::board::NativeBoard, "demo_bringup:system.launch.xml")`; `CMakeLists.txt` calling `nano_ros_entry(NAME … BRINGUP "…/demo_bringup" LAUNCH default DEPLOY native)` |
 | **Workspace root** | `Cargo.toml [workspace] members = […]` | `CMakeLists.txt` calling `nano_ros_workspace(BACKEND zenoh PLATFORM posix SUBDIRS src/talker_pkg src/listener_pkg src/native_entry)` |
 | **Build** | `nros sync` + `cargo build -p native_entry` | `nros sync` + `cmake -S . -B build` + `cmake --build build` |
 | **Boot** | `cargo run -p native_entry` | `./build/.../native_entry` |

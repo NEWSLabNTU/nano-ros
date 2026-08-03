@@ -2,7 +2,8 @@
 id: 0380
 title: Model regeneration destroys hand-authored execution dims — 17 realtime
   e2e tests silently lost their subject
-status: open
+status: resolved
+resolved_in: "phase-330 (W1 schema + W4.a deletion + W7 input-addressed entries)"
 severity: high
 created: 2026-08-01
 tags: [orchestration, system-model, realtime, process]
@@ -136,3 +137,15 @@ hold hand-authored content.
 The guards here are therefore TRANSITIONAL: they protect data that will no
 longer live in a committed file, and should be removed in the same change that
 deletes the last committed model — not before.
+
+## Resolution (2026-08-03, phase-330)
+
+Fix direction A, completed structurally: every dim moved into the resolver
+INPUTS (`system.toml` — the phase-330 W1/W2 schema work proved the round-trip
+across all 11 dim-carrying models), and then the committed artifact itself was
+RETIRED (W4.a): `nros sync` resolves into `<ws>/build/nros/models/` by
+default, entries are input-addressed (`launch =` / `LAUNCH`, W7), and
+`check-no-tracked-models` bans tracked models outright. With no committed
+copy, the hand-edit/regeneration conflict this issue documents cannot recur.
+The transitional dim-loss guard and `check-model-dims` baseline retired with
+it (W5); `nros ws model-dims` remains for inspection.

@@ -86,7 +86,7 @@ src/robot_entry/
 │                       #     locator   = "tcp/127.0.0.1:7447"
 ├── package.xml         # <exec_depend>talker_pkg</exec_depend>, listener_pkg, …
 └── src/
-    └── main.rs         # one line: `nros::main!(model = "demo_bringup");`
+    └── main.rs         # one line: `nros::main!(launch = "demo_bringup");`
 ```
 
 The `nros::main!()` proc-macro (Phase 212.N.9) reads the launch file
@@ -99,8 +99,8 @@ forms; pick whichever matches your composition shape:
 ```rust,ignore
 nros::main!();                                          // single-node self-bringup (reads [..nros.entry] deploy)
 nros::main!(board = NativeBoard);                       // single-node, explicit board
-nros::main!(model = "demo_bringup");                    // multi-node (CANONICAL): resolved SystemModel
-nros::main!(model = "demo_bringup:config/sim.yaml");    // multi-node, explicit model file
+nros::main!(launch = "demo_bringup");                   // multi-node (CANONICAL): the bringup's default launch
+nros::main!(launch = "demo_bringup:sim.launch.xml");    // multi-node, a named launch file
 nros::main!(                                            // multi-host: a PER-HOST model (resolved with `host:=robot1`)
     model = "demo_bringup:config/multihost_robot1_model.yaml",
 );
@@ -147,7 +147,7 @@ my_ws/
     ├── talker_pkg/         # Node pkg (lib, nros::node!)
     ├── listener_pkg/       # Node pkg
     ├── demo_bringup/       # Bringup pkg (declarative; no Cargo.toml)
-    └── robot_entry/        # Entry pkg (bin, nros::main!(model = "demo_bringup"))
+    └── robot_entry/        # Entry pkg (bin, nros::main!(launch = "demo_bringup"))
 ```
 
 `cargo build` at the workspace root builds everything via cargo's native scheduler. `nros plan` reads `[workspace.metadata.nros] default_system` to pick the Entry pkg (or you pass `nros plan robot_entry` explicitly).
