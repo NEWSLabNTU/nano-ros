@@ -34,9 +34,12 @@ wholesale** (dep, config, imports, dead filter, error variant). `rosidl-codegen`
 render engine. **idl (W3.d)** stays reclassified — the msg→Cyclone-IDL emitter is the
 separate `nros-msg-to-idl` `.em` mechanism, outside this migration.
 
-**Remaining:** W4 (`--template-dir` external packs + CI smoke pack + pack-aware fingerprint —
-the "add a language with no rebuild" proof), W5 (resolve-only deps), and W6 close-out
-(RFC-0068 → Stable, archive #402).
+**W4 landed** — external packs via `set_template_dir` + `NROS_TEMPLATE_DIR`, the fingerprint
+hashes bundled pack content, a smoke test proves override+fallback, and the internals doc
+(`codegen-packs.md`) covers changing/overriding/adding a pack.
+
+**Remaining:** W5 (resolve-only msg deps, #378 tension) and W6 close-out (RFC-0068 → Stable,
+archive #402; the residual Rust type string is SequenceStructDef's element repr, documented).
 
 ### Learnings that refine the remaining plan (2026-08 W2)
 
@@ -142,13 +145,13 @@ allowed to change bytes is a deliberate, reviewed formatting normalization, call
 
 ### W4 — make "add a language" real
 
-- [ ] **W4.a** `fingerprint.rs` (RFC-0061) hashes pack files, so a template/spelling edit marks
+- [x] **W4.a** `fingerprint.rs` (RFC-0061) hashes pack files, so a template/spelling edit marks
       fixtures stale (a pack is a codegen input).
-- [ ] **W4.b** `--template-dir` override: an external pack dir loads with no rebuild; bundled
+- [x] **W4.b** `--template-dir` override: an external pack dir loads with no rebuild; bundled
       packs stay the default.
-- [ ] **W4.c** A CI smoke pack (a trivial toy language) proving a brand-new pack renders with zero
+- [x] **W4.c** A CI smoke pack (a trivial toy language) proving a brand-new pack renders with zero
       Rust change — the executable form of the goal.
-- [ ] **W4.d** Book/docs page: "adding a codegen language = a pack" (spelling.toml + templates).
+- [x] **W4.d** Book/docs page: "adding a codegen language = a pack" (spelling.toml + templates).
 - **Acceptance:** the smoke pack renders in CI; stale detection fires on a pack edit; docs land.
 
 ### W5 — resolve-only dependency packages
