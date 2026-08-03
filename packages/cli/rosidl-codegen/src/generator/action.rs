@@ -846,7 +846,9 @@ pub fn generate_c_action_package(
         has_result_fields,
         has_feedback_fields,
     };
-    let header = header_template.render()?;
+    // RFC-0068 Stage 3 (phase-335 W2): C action from the minijinja pack.
+    let header = crate::render::render_c("action.h", &header_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate source
     let source_template = ActionCSourceTemplate {
@@ -868,7 +870,8 @@ pub fn generate_c_action_package(
         has_result_fields,
         has_feedback_fields,
     };
-    let source = source_template.render()?;
+    let source = crate::render::render_c("action.c", &source_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     Ok(GeneratedCActionPackage {
         header,

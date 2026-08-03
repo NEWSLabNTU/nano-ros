@@ -27,6 +27,14 @@ static C_ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
         .expect("packs/c/message.h.jinja must parse");
     env.add_template("message.c", include_str!("../packs/c/message.c.jinja"))
         .expect("packs/c/message.c.jinja must parse");
+    env.add_template("service.h", include_str!("../packs/c/service.h.jinja"))
+        .expect("packs/c/service.h.jinja must parse");
+    env.add_template("service.c", include_str!("../packs/c/service.c.jinja"))
+        .expect("packs/c/service.c.jinja must parse");
+    env.add_template("action.h", include_str!("../packs/c/action.h.jinja"))
+        .expect("packs/c/action.h.jinja must parse");
+    env.add_template("action.c", include_str!("../packs/c/action.c.jinja"))
+        .expect("packs/c/action.c.jinja must parse");
     env
 });
 

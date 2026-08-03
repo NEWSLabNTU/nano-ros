@@ -495,7 +495,7 @@ pub struct MessageCSourceTemplate<'a> {
     pub has_borrowed: bool,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "service_c.h.jinja", escape = "none")]
 pub struct ServiceCHeaderTemplate<'a> {
     pub package_name: &'a str,
@@ -521,7 +521,7 @@ pub struct ServiceCHeaderTemplate<'a> {
     pub has_borrowed_response: bool,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "service_c.c.jinja", escape = "none")]
 pub struct ServiceCSourceTemplate<'a> {
     pub package_name: &'a str,
@@ -542,7 +542,7 @@ pub struct ServiceCSourceTemplate<'a> {
     pub has_borrowed_response: bool,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "action_c.h.jinja", escape = "none")]
 pub struct ActionCHeaderTemplate<'a> {
     pub package_name: &'a str,
@@ -573,7 +573,7 @@ pub struct ActionCHeaderTemplate<'a> {
     pub has_borrowed_feedback: bool,
 }
 
-#[derive(Template)]
+#[derive(Template, serde::Serialize)]
 #[template(path = "action_c.c.jinja", escape = "none")]
 pub struct ActionCSourceTemplate<'a> {
     pub package_name: &'a str,

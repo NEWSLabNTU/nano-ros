@@ -617,7 +617,9 @@ pub fn generate_c_service_package(
         has_request_fields,
         has_response_fields,
     };
-    let header = header_template.render()?;
+    // RFC-0068 Stage 3 (phase-335 W2): C service from the minijinja pack.
+    let header = crate::render::render_c("service.h", &header_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     // Generate source
     let source_template = ServiceCSourceTemplate {
@@ -635,7 +637,8 @@ pub fn generate_c_service_package(
         has_request_fields,
         has_response_fields,
     };
-    let source = source_template.render()?;
+    let source = crate::render::render_c("service.c", &source_template)
+        .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
 
     Ok(GeneratedCServicePackage {
         header,
