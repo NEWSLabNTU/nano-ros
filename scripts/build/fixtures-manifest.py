@@ -449,6 +449,12 @@ def main():
             # phase-319 W2 — the compile-check lane's inventory.
             "list-compile-checks",
             "validate-compile-checks",
+            # Issue 0406 — classify one id across ALL row kinds, so a builder
+            # that matched nothing can say WHY instead of exiting 0 silently.
+            "describe-id",
+            # Issue 0406 — the platform vocabulary, so a builder can reject a
+            # typo instead of sweeping zero rows successfully.
+            "list-platforms",
         ],
     )
     p.add_argument("--manifest", default=DEFAULT_MANIFEST)
@@ -491,6 +497,65 @@ def main():
     # lane can keep its per-builder loops.
     p.add_argument("--builder")
     a = p.parse_args()
+
+    if a.command == "list-platforms":
+        # Issue 0406. Every platform naming at least one buildable row, from
+        # both the single-node and workspace tables. Compile-check rows carry
+        # no platform.
+        platforms = set()
+        for e in load(a.manifest):
+            if e.get("platform"):
+                platforms.add(e["platform"])
+        for e in load_workspace_fixtures(a.manifest):
+            if e.get("platform"):
+                platforms.add(e["platform"])
+        for name in sorted(platforms):
+            sys.stdout.write(f"{name}\n")
+        return
+
+    if a.command == "describe-id":
+        # Issue 0406. Prints one `kind<SEP>platform<SEP>lang<SEP>rmw` line per
+        # row carrying this id, across every kind, IGNORING --platform/--lang
+        # (the caller already knows those did not match; what it needs is where
+        # the id actually lives). No output = the id exists nowhere.
+        if not a.id:
+            sys.stderr.write("fixtures-manifest.py: describe-id needs --id\n")
+            sys.exit(2)
+        for e in load(a.manifest):
+            if e.get("id") == a.id:
+                sys.stdout.write(
+                    SEP.join(
+                        (
+                            "fixture",
+                            str(e.get("platform", "")),
+                            str(e.get("lang", "")),
+                            str(e.get("rmw", "")),
+                        )
+                    )
+                    + "\n"
+                )
+        for e in load_workspace_fixtures(a.manifest):
+            if e.get("id") == a.id:
+                sys.stdout.write(
+                    SEP.join(
+                        (
+                            "workspace_fixture",
+                            str(e.get("platform", "")),
+                            str(e.get("lang", "")),
+                            str(e.get("rmw", "")),
+                        )
+                    )
+                    + "\n"
+                )
+        for e in load_compile_check_fixtures(a.manifest):
+            if e.get("id") == a.id:
+                sys.stdout.write(
+                    SEP.join(
+                        ("compile_check_fixture", "", "", str(e.get("builder", "")))
+                    )
+                    + "\n"
+                )
+        return
 
     if a.command in ("list-compile-checks", "validate-compile-checks"):
         entries = []

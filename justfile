@@ -369,7 +369,7 @@ check-fast: \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-sysdep-remedies \
+    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-sysdep-remedies \
     check-activate-shells
     @echo "Fast checks passed!"
 
@@ -933,6 +933,12 @@ check-example-matrix:
 check-fixtures-manifest:
     @python3 scripts/build/fixtures-manifest.py validate-workspaces
     @python3 scripts/build/fixtures-manifest.py validate-compile-checks
+
+# Issue 0406 — a fixture builder narrowed to an id it cannot match must FAIL,
+# not exit 0 having built nothing. Buildless: exercises the shared guard and
+# one real builder invocation that stops before any compilation.
+check-fixture-id-guard:
+    @bash scripts/check-fixture-id-guard.sh
 
 # Phase 134.5 — verify the in-tree zenoh staticlib's internal symbol
 # parity. For every defined `_z_f_link_*_<transport>` wrapper, the

@@ -82,6 +82,11 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# Issue 0406 — reject a typo'd platform before sweeping zero rows successfully.
+# shellcheck source=scripts/build/fixture-id-guard.sh
+source scripts/build/fixture-id-guard.sh
+nros_fixture_require_known_platform "$platform"
+
 # shellcheck source=/dev/null
 source scripts/build/cargo.sh
 
@@ -168,7 +173,28 @@ run() {
 }
 
 mapfile -t fixture_records < <(manifest)
-[ "${#fixture_records[@]}" -gt 0 ] || exit 0
+if [ "${#fixture_records[@]}" -eq 0 ]; then
+    # Issue 0406 — an explicit `--id` that matched nothing is a wrong
+    # invocation, not an empty sweep coordinate. Diagnose it instead of
+    # exiting 0 with no output.
+    if [ -n "$fixture_id" ]; then
+        # shellcheck source=scripts/build/fixture-id-guard.sh
+        source scripts/build/fixture-id-guard.sh
+        nros_fixture_id_no_match "$fixture_id" flag fixture "$platform" "$lang" "$rmw"
+    fi
+    # No id filter: an empty (platform, lang, rmw) is routine — the recipes
+    # iterate all four languages and not every platform has rows for each.
+    exit 0
+fi
+
+# This builder narrows with `--id`, NOT with NROS_FIXTURE_ID (which the
+# workspace and compile-check builders read). Say so rather than ignoring it
+# in silence: a run narrowed by the env var still builds every row here, and
+# the surprise otherwise lands as an unexplained rebuild.
+if [ -n "${NROS_FIXTURE_ID:-}" ] && [ -z "$fixture_id" ]; then
+    echo "fixtures: NROS_FIXTURE_ID='${NROS_FIXTURE_ID}' does not narrow single-node fixtures" \
+         "(this stage takes --id); building all ${#fixture_records[@]} ${platform}/${lang} row(s)."
+fi
 
 if [ "$lang" = "c" ] || [ "$lang" = "cpp" ]; then
     # cmake cells — configure once (Ninja via the helper) + cmake --build.

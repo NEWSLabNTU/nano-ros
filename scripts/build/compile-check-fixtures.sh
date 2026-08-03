@@ -253,6 +253,24 @@ compile_check_records() {
         --builder "$1" ${id_filter:+--id "$id_filter"}
 }
 
+# Issue 0406 — a narrowing that selects no compile-check row used to run every
+# per-builder loop over an empty list and finish "successfully". Decide once,
+# up front, whether that emptiness is a benign cross-builder sweep miss or a
+# broken invocation; the guard owns the distinction.
+if [ -n "$id_filter" ]; then
+    _cc_matched=0
+    for _cc_builder in cargo-check cargo-build cross-build cmake-configure cxx-syntax; do
+        _cc_matched=$((_cc_matched + $(compile_check_records "$_cc_builder" | wc -l)))
+    done
+    if [ "$_cc_matched" -eq 0 ]; then
+        # shellcheck source=scripts/build/fixture-id-guard.sh
+        source "$repo_root/scripts/build/fixture-id-guard.sh"
+        nros_fixture_id_no_match "$id_filter" env compile_check_fixture "" ""
+        exit 0
+    fi
+    unset _cc_matched _cc_builder
+fi
+
 
 # phase-319 W3 (issue 0351) — record the build INPUTS after a successful build.
 #

@@ -10,15 +10,55 @@
 #   cargo build -p <entry> ... OR cmake --build ... --target <entry>
 #
 # Usage, from anywhere in the repo checkout:
-#   scripts/build/workspace-fixtures-build.sh <platform> [lang]
+#   scripts/build/workspace-fixtures-build.sh <platform> [lang] [--id <id>]
 #
-# `NROS_FIXTURE_ID=<id>` narrows the run to ONE manifest row — for iterating on a
-# single fixture without rebuilding its whole lane. Sweeps leave it unset.
+# Two ways to narrow to ONE manifest row, and they do NOT mean the same thing
+# (issue 0406):
+#
+#   NROS_FIXTURE_ID=<id>   a sweep-wide narrowing. It crosses builders — the
+#                          compile-check lane reads it too, and a platform
+#                          recipe runs several stages — so a stage that matches
+#                          nothing says so and passes.
+#   --id <id>              this invocation targets THIS builder. Nothing else
+#                          will run, so matching nothing is an error.
+#
+# Either way, an id that exists in no table at all is fatal: no stage in any
+# sweep could ever build it.
 set -euo pipefail
 
-platform="${1:?usage: workspace-fixtures-build.sh <platform> [lang]}"
-lang_filter="${2:-}"
+platform="${1:?usage: workspace-fixtures-build.sh <platform> [lang] [--id <id>]}"
+shift
+lang_filter=""
+if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
+    lang_filter="$1"
+    shift
+fi
+
 id_filter="${NROS_FIXTURE_ID:-}"
+id_filter_source="env"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --id)
+            [ $# -ge 2 ] || {
+                echo "workspace-fixtures-build.sh: --id needs a value" >&2
+                exit 2
+            }
+            id_filter="$2"
+            id_filter_source="flag"
+            shift 2
+            ;;
+        --id=*)
+            id_filter="${1#--id=}"
+            id_filter_source="flag"
+            shift
+            ;;
+        *)
+            echo "workspace-fixtures-build.sh: unknown option: $1" >&2
+            echo "usage: workspace-fixtures-build.sh <platform> [lang] [--id <id>]" >&2
+            exit 2
+            ;;
+    esac
+done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
@@ -31,6 +71,12 @@ source "$repo_root/scripts/build/cmake-incremental.sh"
 source "$repo_root/scripts/build/nuttx-libc-patch.sh"
 
 cd "$repo_root"
+
+# Issue 0406 — reject a typo'd platform before the lane guards below let it
+# through to a zero-row "success".
+# shellcheck source=scripts/build/fixture-id-guard.sh
+source "$repo_root/scripts/build/fixture-id-guard.sh"
+nros_fixture_require_known_platform "$platform"
 
 # Lane-env guards (the 2026-07-23 "broken rust lanes" were missing-env
 # invocations, not repo breakage): the platform just recipes wrap this
@@ -302,7 +348,18 @@ for record in "${all_records[@]}"; do
 done
 
 if [ "${#live_records[@]}" -eq 0 ]; then
-    echo "No workspace fixtures matched platform=$platform${lang_filter:+ lang=$lang_filter}${id_filter:+ id=$id_filter}."
+    # Issue 0406 — this used to print one line and exit 0 for every reason at
+    # once, including a typo'd id that nothing could ever build. The guard
+    # keeps the benign sweep miss quiet-ish and fails the invocation errors.
+    if [ -n "$id_filter" ]; then
+        # shellcheck source=scripts/build/fixture-id-guard.sh
+        source "$repo_root/scripts/build/fixture-id-guard.sh"
+        nros_fixture_id_no_match \
+            "$id_filter" "${id_filter_source:-env}" workspace_fixture \
+            "$platform" "$lang_filter"
+        exit 0
+    fi
+    echo "No workspace fixtures matched platform=$platform${lang_filter:+ lang=$lang_filter}."
     exit 0
 fi
 
