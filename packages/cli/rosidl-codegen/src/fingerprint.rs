@@ -196,11 +196,21 @@ pub fn emit_corpus() -> BTreeMap<String, String> {
 /// emitted byte does.
 pub fn codegen_fingerprint() -> String {
     let mut h = Sha256::new();
-    h.update(b"nros-codegen-fingerprint-v1\0");
+    h.update(b"nros-codegen-fingerprint-v2\0");
     for (path, body) in emit_corpus() {
         h.update(path.as_bytes());
         h.update(b"\0");
         h.update(body.as_bytes());
+        h.update(b"\0");
+    }
+    // phase-335 W4.a — hash every bundled pack file too, so a template edit the
+    // emit corpus doesn't exercise (rmw / idiomatic / scaffolding / cpp srv+action)
+    // still moves the fingerprint and marks fixtures stale.
+    h.update(b"packs\0");
+    for (name, content) in crate::render::bundled_packs() {
+        h.update(name.as_bytes());
+        h.update(b"\0");
+        h.update(content.as_bytes());
         h.update(b"\0");
     }
     format!("{:x}", h.finalize())
