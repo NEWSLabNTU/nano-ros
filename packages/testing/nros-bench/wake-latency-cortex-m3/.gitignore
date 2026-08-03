@@ -1,2 +1,8 @@
 /target/
 /build/
+# Codegen output and the lock that names it — both USER-side, like every other
+# bench leaf. This file was the only one in nros-bench missing these two lines,
+# which is how a `generated/` tree and its `Cargo.lock` came to be committed
+# here and nowhere else.
+/generated/
+/Cargo.lock
