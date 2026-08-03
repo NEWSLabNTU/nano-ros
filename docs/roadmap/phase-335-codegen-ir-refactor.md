@@ -17,15 +17,26 @@ per-backend suites): **C** (`packs/c/`), **rmw** (`packs/rmw/`), **nros**
 (`packs/nros/`), **idiomatic** (`packs/rust/`), **C++** (`packs/cpp/`). `rosidl-codegen`
 has ONE `minijinja::Environment` holding every pack + a generic `render(name, ctx)`.
 
-W3 remainder (lower value, tracked): **scaffolding** templates (`cargo`/`lib`/`build`/
-`cargo_nros`/`lib_nros`) are per-package BOILERPLATE, not per-language type logic — still
-on askama; converting them is disambiguation-tedious (one var name holds several template
-types) with little payoff, so deferred. **idl (W3.d)** is NOT a rosidl-codegen askama
-backend: the msg→Cyclone-IDL emitter lives in the separate `nros-msg-to-idl` crate and
-uses `.em` (empy) templates, a different mechanism outside this askama→minijinja migration —
-reclassify, do not convert here. The deeper "no per-language TYPE logic in Rust" acceptance
-(moving `types.rs` `*_type_for_field` spelling into the packs / LoweredType) is the W1.c-full
-+ W6 work, still pending.
+**W1.c-full landed** — every field builder (nros, C, cpp) reads storage from the lowered
+IR (`build_nros_fields`/`build_c_fields`/`lowered_storages`); no builder resolves capacity
+twice.
+
+**Step-2 spelling landed for ALL backends** — the type STRING is composed in the packs by
+registered `minijinja` filters over neutral facts a view struct now carries, not pre-baked
+in the builders: C (`c_type`/`c_array_suffix`), rmw (`rust_type_rmw`), idiomatic
+(`rust_type_idiomatic`), nros (`nros_type`), C++ header (`cpp_type`/`cpp_array_suffix`) and
+C++ FFI (`cpp_repr_c_type`/`cpp_view_repr_type`). Only `SequenceStructDef`'s element repr
+stays Rust-side (it feeds a Rust struct, not just a template).
+
+**W6 landed (render side)** — scaffolding (`cargo`/`lib`/`build`/`cargo_nros`/`lib_nros`)
+converted to `packs/scaffold/`; the 22 dead askama templates deleted; **askama removed
+wholesale** (dep, config, imports, dead filter, error variant). `rosidl-codegen` now has ONE
+render engine. **idl (W3.d)** stays reclassified — the msg→Cyclone-IDL emitter is the
+separate `nros-msg-to-idl` `.em` mechanism, outside this migration.
+
+**Remaining:** W4 (`--template-dir` external packs + CI smoke pack + pack-aware fingerprint —
+the "add a language with no rebuild" proof), W5 (resolve-only deps), and W6 close-out
+(RFC-0068 → Stable, archive #402).
 
 ### Learnings that refine the remaining plan (2026-08 W2)
 
@@ -96,7 +107,7 @@ allowed to change bytes is a deliberate, reviewed formatting normalization, call
       TargetProfile`, carrying per field: `storage` (Fixed/Bounded/Heap/Inline from the existing
       `CapacityResolver`), `plain`, `align`, `repr_c_field_order`, `serialized_size_max`,
       `cdr_op`. Move the sizing/layout logic out of `rosidl-codegen/types.rs` into here.
-- [ ] **W1.c** Rewire the existing (askama) backends to consume `LoweredType` instead of
+- [x] **W1.c** Rewire the existing (askama) backends to consume `LoweredType` instead of
       recomputing from `Ast`. No new engine yet, no output change.
 - [x] **W1.d** Golden test: `ResolvedType` hash values pinned against the same REP-2011 vectors
       `rihs.rs` pins today; `LoweredType` layout pinned for x86_64 AND an armv7a short-enum
