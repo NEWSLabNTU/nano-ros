@@ -46,8 +46,17 @@ pub use threadx_config::ThreadxConfig;
 pub mod base_config;
 pub use base_config::{BaseConfig, netmask_from_prefix, prefix_from_netmask};
 
+// phase-337 W5.d — the FreeRTOS family's scheduling defaults, shared by the
+// runtime `Config` and the `build.rs` `NROS_APP_CONFIG` emitter so the two
+// cannot drift (they had, by 128 KiB of app stack). `no_std`, dep-free.
+pub mod freertos_config;
+pub use freertos_config::FreertosScheduling;
+
 #[cfg(feature = "build-helpers")]
 pub mod arch_flags;
+/// phase-337 W5.d — shared `build.rs` helpers for the FreeRTOS + lwIP family.
+#[cfg(feature = "build-helpers")]
+pub mod freertos_build;
 #[cfg(feature = "build-helpers")]
 pub mod manifest;
 #[cfg(feature = "build-helpers")]

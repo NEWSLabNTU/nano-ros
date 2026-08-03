@@ -9,7 +9,12 @@
 //! | `libfreertos.a`          | kernel core + port + heap_4                       |
 //! | `liblwip.a`              | core + IPv4 + API + netif + ethernet + sys_arch   |
 //! | `libnros_platform_freertos.a` | C port providing the `nros_platform_*` ABI   |
-//! | `libfreertos_glue.a`     | `c/freertos_hooks.c` + `c/network_glue.c`         |
+//! | `libfreertos_glue.a`     | `c/freertos_hooks.c` + `c/network_glue.c` + `c/freertos_run_tiers.c` |
+//!
+//! `c/freertos_c_entry.c` is deliberately NOT in that list: it is the C/C++
+//! lane's boot path (`main`), and on the cargo lane `main` is the Rust entry.
+//! The CMake board overlay compiles it via `FREERTOS_STARTUP_SOURCE`
+//! (phase-337 W5.b).
 //!
 //! Required env vars (read from the user's environment; the
 //! per-board overlay's `.cargo/config.toml [env]` block typically
@@ -23,22 +28,21 @@
 //! | `FREERTOS_CONFIG_DIR` | Directory with `FreeRTOSConfig.h` + `lwipopts.h` | yes |
 //! | `FREERTOS_CFLAGS`     | Space-separated cflags (`-mcpu=cortex-m3 -mthumb` etc.) | defaults to Cortex-M3 |
 //!
-//! The overlay's `build.rs` shrinks to: linker script write +
+//! The overlay's `build.rs` shrinks to: linker scripts into `OUT_DIR` +
 //! board driver build (LAN9118 / STM ETH / NXP ENET / …) +
-//! `c/board_<name>.c` (vector table + Reset + diag) + libc/libgcc
-//! discovery + `cargo:rustc-link-search` for any per-board search
-//! path the linker needs.
+//! `c/board_<name>.c` (vector table + Reset + netif registration) + the
+//! `NROS_APP_CONFIG` TU + libc/libgcc discovery +
+//! `cargo:rustc-link-search`. The shared helpers it calls live in
+//! `nros_board_common::freertos_build` (phase-337 W5.d).
 
-use std::{
-    env,
-    path::{Path, PathBuf},
+use std::{env, path::PathBuf};
+
+// phase-337 W5.d — cflags + include-dir setup are SHARED with the per-board
+// overlays. Two copies had already drifted (the overlay hardcoded Cortex-M3
+// while this crate resolved `[arch.*]`), so there is one spelling now.
+use nros_board_common::freertos_build::{
+    add_freertos_includes, add_lwip_includes, configure_cflags,
 };
-
-use nros_board_common::arch_flags;
-
-/// The platform whose `[arch.*]` profiles supply this board family's cflags —
-/// `config/freertos-lwip/nros-platform.toml`.
-const PLATFORM: &str = "freertos-lwip";
 
 fn main() {
     // issue 0288 — the FREERTOS_DIR guard below does NOT cover host tooling:
@@ -252,89 +256,4 @@ fn env_path(name: &str) -> PathBuf {
              `.cargo/config.toml [env]` or the user must export it"
         )
     }))
-}
-
-/// Shared cflag setup. Reads `FREERTOS_CFLAGS` env var
-/// (space-separated). Default cortex-m3 fallback matches the
-/// pre-152.1.B.3 behaviour for existing examples that haven't
-/// bumped their `.cargo/config.toml` yet.
-fn configure_cflags(build: &mut cc::Build) {
-    build
-        .opt_level(2)
-        .flag("-ffunction-sections")
-        .flag("-fdata-sections")
-        .warnings(false);
-    // issue 0383 — implicit-function-declaration / int-conversion as ERRORS.
-    // Safe next to `warnings(false)`: that only makes cc-rs OMIT `-Wall`/
-    // `-Wextra`, it passes no `-w`, and gcc enables both diagnostics by
-    // default — so the gate is live on the pinned arm-none-eabi-gcc 13.2.
-    nros_cc_flags::strict_decls(build);
-    // Phase 195 audit (b) — applying cortex-m3 flags to any other ARM-M target
-    // (thumbv7em = M4/M7, thumbv6m = M0, …) yields a wrong-CPU / wrong-FPU-ABI
-    // binary, so a mismatch must never be silent.
-    //
-    // phase-338 W4 — but it must not be a PANIC either. `config/freertos-lwip/
-    // nros-platform.toml` already declares the arch profiles with their cflags
-    // (`arch = ["cortex-m3", "cortex-m7"]`), and this function used to ignore
-    // them and hard-fail for anything that was not thumbv7m — so FreeRTOS+lwIP
-    // stayed unbuildable on Cortex-M4F/M7 *after* the M7 profile had been
-    // added. Every industrial FreeRTOS board this project targets is M4F/M7
-    // (the NXP S32K344 is an M7), so the panic was the whole blocker.
-    //
-    // Resolution order, so the ladder still runs board-over-platform:
-    //   1. `FREERTOS_CFLAGS` — the board's explicit override (RFC-0049 rung 1).
-    //   2. the matching `[arch.*]` profile for this TARGET.
-    //   3. loud failure naming the profiles that exist and what they admit.
-    // A non-`thumb*` target (host `cargo check`, the source-metadata probe)
-    // skips all of it — there is no embedded compile of substance there.
-    let cflags = match env::var("FREERTOS_CFLAGS") {
-        Ok(v) => v,
-        Err(_) => {
-            let target = env::var("TARGET").unwrap_or_default();
-            if !target.starts_with("thumb") {
-                "-mcpu=cortex-m3 -mthumb".to_string()
-            } else {
-                let config_root = arch_flags::config_root().unwrap_or_else(|| {
-                    panic!(
-                        "nros-board-freertos: TARGET=`{target}` needs arch cflags but the \
-                         nano-ros config/ tree was not found walking up from CARGO_MANIFEST_DIR. \
-                         Out-of-tree consumer? Set FREERTOS_CFLAGS explicitly."
-                    )
-                });
-                match arch_flags::cflags_for_target(&config_root, PLATFORM, &target) {
-                    Ok(Some(flags)) => flags.join(" "),
-                    Ok(None) => panic!(
-                        "nros-board-freertos: no [arch.*] profile of platform `{PLATFORM}` \
-                         admits TARGET=`{target}`.\n  declared: {}\n  Either add an [arch.*] \
-                         block to config/{PLATFORM}/nros-platform.toml, or set FREERTOS_CFLAGS \
-                         in the board's .cargo/config.toml [env] — e.g. `-mcpu=cortex-m4 \
-                         -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard` for a Cortex-M4F.",
-                        arch_flags::describe_profiles(&config_root, PLATFORM)
-                    ),
-                    Err(e) => panic!("nros-board-freertos: reading arch profiles: {e}"),
-                }
-            }
-        }
-    };
-    for flag in cflags.split_whitespace() {
-        build.flag(flag);
-    }
-}
-
-fn add_freertos_includes(
-    build: &mut cc::Build,
-    freertos_dir: &Path,
-    port_dir: &Path,
-    config_dir: &Path,
-) {
-    build
-        .include(config_dir)
-        .include(freertos_dir.join("include"))
-        .include(port_dir);
-}
-
-fn add_lwip_includes(build: &mut cc::Build, lwip_dir: &Path) {
-    build
-        .include(lwip_dir.join("src/include"))
-        .include(lwip_dir.join("contrib/ports/freertos/include"));
 }

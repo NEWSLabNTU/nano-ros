@@ -47,7 +47,7 @@ extern crate zpico_sys;
 // the generic `nros-board-freertos` crate. The overlay only
 // implements the three `BoardInit` / `BoardPrint` / `BoardExit`
 // traits + provides a thin non-generic `run()` wrapper.
-pub use nros_board_freertos::Config;
+pub use nros_board_freertos::{BaseConfig, Config};
 
 // Phase 313 W-freertos (#0243) — the legacy `nros_board_common::board_init`
 // family (`BoardInit`/`BoardPrint`/`BoardExit` + the free `run`/`init_hardware`)
@@ -230,23 +230,12 @@ impl nros_platform::BoardEntry for Mps2An385 {
 /// the deploy block omits keep the board default. Shared by the single-tier
 /// [`BoardEntry::run_with_deploy`] and the multi-tier [`Mps2An385::run_tiers`]
 /// entry paths so both stop ignoring the deploy metadata.
+/// phase-337 W5 — the field-by-field merge is
+/// [`nros_board_common::BaseConfig::apply_overlay`], which four board crates
+/// had each written out separately. The board keeps only the call.
 fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
     let mut config = Config::default();
-    if let Some(loc) = deploy.locator {
-        config.zenoh_locator = loc;
-    }
-    if let Some(ip) = deploy.ip {
-        config.ip = ip;
-    }
-    if let Some(gw) = deploy.gateway {
-        config.gateway = gw;
-    }
-    if let Some(nm) = deploy.netmask {
-        config.netmask = nm;
-    }
-    if let Some(d) = deploy.domain_id {
-        config.domain_id = d;
-    }
+    config.base.apply_overlay(deploy);
     config
 }
 

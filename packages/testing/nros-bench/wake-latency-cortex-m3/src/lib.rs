@@ -11,7 +11,7 @@
 
 #![no_std]
 
-use nros_board_mps2_an385_freertos::Config;
+use nros_board_mps2_an385_freertos::{BaseConfig, Config};
 
 /// zenohd locator. The port MUST match `nros_tests::platform::FREERTOS.zenohd_port`
 /// (= 7000 + FreertosMps2 index 2 * 400 = 7800). Slirp routes the guest's
@@ -69,12 +69,14 @@ pub const FANOUT_IDLE_SUBS: u32 = 0;
 /// distinct-seed rule for a hand-run pair).
 pub fn publisher_config() -> Config {
     Config {
-        mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x20],
-        ip: [10, 0, 2, 20],
-        netmask: [255, 255, 255, 0],
-        gateway: [10, 0, 2, 2],
-        zenoh_locator: LOCATOR,
-        domain_id: DOMAIN,
+        base: BaseConfig {
+            mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x20],
+            ip: [10, 0, 2, 20],
+            netmask: [255, 255, 255, 0],
+            gateway: [10, 0, 2, 2],
+            zenoh_locator: LOCATOR,
+            domain_id: DOMAIN,
+        },
         ..Config::default()
     }
 }
@@ -82,12 +84,14 @@ pub fn publisher_config() -> Config {
 /// Subscriber (measured) image config. IP `.21`, MAC `…:21`.
 pub fn subscriber_config() -> Config {
     Config {
-        mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x21],
-        ip: [10, 0, 2, 21],
-        netmask: [255, 255, 255, 0],
-        gateway: [10, 0, 2, 2],
-        zenoh_locator: LOCATOR,
-        domain_id: DOMAIN,
+        base: BaseConfig {
+            mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x21],
+            ip: [10, 0, 2, 21],
+            netmask: [255, 255, 255, 0],
+            gateway: [10, 0, 2, 2],
+            zenoh_locator: LOCATOR,
+            domain_id: DOMAIN,
+        },
         ..Config::default()
     }
 }

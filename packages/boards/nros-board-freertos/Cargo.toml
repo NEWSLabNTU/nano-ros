@@ -28,7 +28,12 @@ log = { version = "0.4", default-features = false }
 # 152.1.B.5 — `BoardInit` / `BoardPrint` / `BoardExit` traits the
 # generic `run<B>` is generic over. Trait-only surface; no
 # build-script transitive deps pulled.
-nros-board-common = { path = "../nros-board-common", default-features = false }
+# phase-337 W5 — `BaseConfig` (the shared network core `Config` composes) plus
+# `deploy-overlay` for `BaseConfig::apply_overlay`, the `DeployOverlay` -> config
+# merge four board crates had each written out by hand.
+nros-board-common = { path = "../nros-board-common", default-features = false, features = [
+    "deploy-overlay",
+] }
 nros-board-mps2-an385-freertos = { path = "../nros-board-mps2-an385-freertos", default-features = false, optional = true }
 # Phase 173.5 — `TransportConfig` trait the generator writes nros.toml
 # `[[transport]]` IP into. Trait-only; no_std, default-features off.

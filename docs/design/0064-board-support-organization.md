@@ -660,7 +660,7 @@ numbers measured 2026-08-04.
 |---|---|---|---|---|
 | 1 | `nros-board-linux` | 1 | x86_64 host | **merge** of `native` + `posix`; renamed (W1.e) |
 | 2 | `nros-board-zephyr` | 1 / 2 / 3 | native_sim · **QEMU Cortex-M** · FVP | conf bundles, not crates; absorbs `fvp-aemv8r-smp` |
-| 3 | `nros-board-mps2-an385-freertos` | 1 | ARMv7-M, nanoros-owned | templated (step 13) |
+| 3 | `nros-board-mps2-an385-freertos` | 1 | ARMv7-M, nanoros-owned | **DONE** (phase-337 W5) — templated: overlay 2497 → 1065 lines (−57 %); a second board measures 205 lines, of which 76 are the board delta |
 | 4 | `nros-board-nuttx-qemu` | 1 / 2 | ARMv7-A · riscv32 | **DONE** (phase-337 W3) — merge of `-qemu-arm` + `-qemu-riscv`: 3350 → 2054 lines (−1296, −39 %), two `[[board]]` witnesses in one descriptor, `Config` on `BaseConfig` |
 | 5 | `nros-board-threadx-linux` | 1 | x86_64, NSOS shim | thins to overlay |
 | 6 | `nros-board-threadx-qemu-riscv64` | 2 | riscv64, real NetX Duo | thins to overlay |
@@ -1333,3 +1333,53 @@ wall clock, and merging removes none of them — `stm32f4`'s 8 rows are 2 % of t
 manifest against FreeRTOS's ~1370 s and native's ~1300 s per lane. Crate merging
 is a maintenance-surface lever; the wall-clock lever is the tier/lane split that
 phase-318 already shipped.
+
+### 2026-08-04 — ninth pass: the FreeRTOS template, and the "~80 lines" claim measured
+
+phase-337 W5 executed the FreeRTOS half of the target state. Three results, one
+of which corrects this RFC.
+
+**The mechanical part held, and is provably a pure move.** `config/lwipopts.h`
+(133), `config/arch/cc.h` (55) and `config/FreeRTOSConfig.h` (111) hoisted into
+`nros-board-freertos/config/`, leaving 12 lines in the board (two numbers and
+three `#include`s); the 135-line linker script became a 7-line memory map that
+`INCLUDE`s a shared section layout. Proof that this changed nothing: 19 objects
+(FreeRTOS kernel, lwIP, the family glue) compiled against the pre- and post-move
+headers are **byte-identical**, and the same object linked with the old script
+and the new pair produces an identical section layout, symbol table and loadable
+image under both GNU ld and rust-lld.
+
+**The shadow copy is gone.** `startup.c` (727 lines) is deleted. Both lanes now
+compile one set of sources: the family's `freertos_hooks.c` + `network_glue.c` +
+`freertos_run_tiers.c` and the board's `board_mps2.c`, plus a new
+`freertos_c_entry.c` that carries the ~150 lines that were genuinely
+C-lane-only (semihosting stdio, the log writer, task creation, `main`). The
+drift the split was hiding was real and is recorded in that file's header: the
+shadow copy seeded the **platform** PRNG where the shared glue seeds `srand()` —
+two different generators, one of which zenoh-pico's session ID actually reads.
+
+**The "~60–80 lines for a second board" claim is HALF right, and the honest
+number is 205.** W5.f wrote the complete file set for a hypothetical S32K344
+board (`book/src/porting/freertos-board.md`) and measured it:
+
+| | lines |
+|---|---:|
+| `config/*` (4 files) | 12 |
+| `c/board_<name>.c` — vector table, reset, netif registration | 64 |
+| **per-board delta — what this RFC estimated at 60–80** | **76** |
+| `src/lib.rs` — board ZST + four trait impls | 57 |
+| `build.rs` | 45 |
+| `Cargo.toml` | 27 |
+| **total a user actually writes** | **205** |
+
+So the estimate was right about the layer it was counting (vector table, memory
+map, clock, cflags, netif registration) and silent about the Rust and Cargo
+scaffolding, which is 129 lines and is **not board-specific at all** — every
+Cortex-M FreeRTOS board writes the same `BoardPrint`/`BoardExit` semihosting
+impls and the same two-line `BoardEntry` delegations with a different type name.
+That is the next template, and it is a macro in `nros-board-freertos`, not a
+per-board file. Until it exists, quote 205.
+
+The one cost no template removes is the MAC driver: `lan9118_lwip.c` is ~507
+lines, and a board whose vendor SDK ships no lwIP netif pays that between its
+silicon and lwIP.

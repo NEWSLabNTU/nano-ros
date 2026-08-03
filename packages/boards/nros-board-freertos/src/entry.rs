@@ -183,8 +183,8 @@ where
     let exec_cfg = ::nros::ExecutorConfig::resolve(
         ::nros::BootConfig {
             node_name: baked.node_name.or(Some("nros_app")),
-            locator: Some(ctx.config.zenoh_locator),
-            domain_id: Some(ctx.config.domain_id),
+            locator: Some(ctx.config.base.zenoh_locator),
+            domain_id: Some(ctx.config.base.domain_id),
             namespace: None,
         },
         /* hosted_env = */ false,
@@ -271,8 +271,8 @@ where
 
     // Seed the platform RNG so distinct sessions get distinct xorshift output.
     {
-        let ip = &config.ip;
-        let mac = &config.mac;
+        let ip = &config.base.ip;
+        let mac = &config.base.mac;
         let mut seed = ((ip[0] as u32) << 24)
             | ((ip[1] as u32) << 16)
             | ((ip[2] as u32) << 8)
@@ -586,8 +586,8 @@ where
     let exec_cfg = ::nros::ExecutorConfig::resolve(
         ::nros::BootConfig {
             node_name: baked.node_name.or(Some("nros_app")),
-            locator: Some(ctx.config.zenoh_locator),
-            domain_id: Some(ctx.config.domain_id),
+            locator: Some(ctx.config.base.zenoh_locator),
+            domain_id: Some(ctx.config.base.domain_id),
             namespace: None,
         },
         /* hosted_env = */ false,
@@ -730,10 +730,10 @@ where
 fn init_network(config: &Config) -> FrResult<()> {
     let ret = unsafe {
         nros_freertos_init_network(
-            config.mac.as_ptr(),
-            config.ip.as_ptr(),
-            config.netmask.as_ptr(),
-            config.gateway.as_ptr(),
+            config.base.mac.as_ptr(),
+            config.base.ip.as_ptr(),
+            config.base.netmask.as_ptr(),
+            config.base.gateway.as_ptr(),
         )
     };
     if ret != 0 {
@@ -806,11 +806,16 @@ where
     B::println(format_args!("Initializing LAN9118 + lwIP..."));
     B::println(format_args!(
         "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-        config.mac[0], config.mac[1], config.mac[2], config.mac[3], config.mac[4], config.mac[5],
+        config.base.mac[0],
+        config.base.mac[1],
+        config.base.mac[2],
+        config.base.mac[3],
+        config.base.mac[4],
+        config.base.mac[5],
     ));
     B::println(format_args!(
         "  IP:  {}.{}.{}.{}",
-        config.ip[0], config.ip[1], config.ip[2], config.ip[3],
+        config.base.ip[0], config.base.ip[1], config.base.ip[2], config.base.ip[3],
     ));
 
     // Per-board pre-scheduler init. New 212.N.1 `BoardInit::init_hardware`

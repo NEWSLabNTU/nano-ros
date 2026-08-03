@@ -1,20 +1,29 @@
 //! Build script for nros-board-mps2-an385-freertos
 //!
-//! Compiles the FreeRTOS kernel, lwIP stack, lwIP FreeRTOS sys_arch,
-//! LAN9118 lwIP netif driver, and a small C startup/glue layer into
-//! a single static library linked into the final firmware.
+//! phase-337 W5 — the overlay's build script is now per-board WIRING only:
+//! linker scripts into `OUT_DIR`, the LAN9118 netif driver, the board's own C
+//! translation unit, the `NROS_APP_CONFIG` symbol, and libc/libgcc discovery.
+//! Everything generic (cflag resolution, FreeRTOS/lwIP include dirs, the
+//! `NROS_APP_CONFIG` emitter) comes from
+//! `nros_board_common::freertos_build`; the FreeRTOS kernel, lwIP,
+//! `nros-platform-freertos` and the generic C glue are compiled by
+//! `nros-board-freertos/build.rs` and propagate transitively.
 //!
-//! Required environment variables:
-//!   FREERTOS_DIR       — FreeRTOS kernel source root
-//!   FREERTOS_PORT      — portable layer, e.g. "GCC/ARM_CM3"
-//!   LWIP_DIR           — lwIP source root
-//!   FREERTOS_CONFIG_DIR — (optional) directory with FreeRTOSConfig.h + lwipopts.h
-//!                         Defaults to this crate's config/ directory.
+//! Environment: see `nros-board-freertos/build.rs` for `FREERTOS_DIR` /
+//! `FREERTOS_PORT` / `LWIP_DIR` / `FREERTOS_CONFIG_DIR` / `FREERTOS_CFLAGS`.
 
-use std::env;
-use std::fs::File;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
+
+use nros_board_common::{
+    BaseConfig, FreertosScheduling,
+    freertos_build::{
+        add_freertos_includes, add_lwip_includes, app_stack_bytes_from_build_env, configure_cflags,
+        emit_app_config_tu,
+    },
+};
 
 fn main() {
     // issue 0288 — skip the ARM cross-compile when host tooling builds this
@@ -30,14 +39,29 @@ fn main() {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let config_dir = manifest_dir.join("config");
+    // phase-337 W5.a/W5.e — the shared config headers + section layout live in
+    // the family crate; the board keeps only the numbers.
+    let shared_config_dir = manifest_dir
+        .parent()
+        .expect("workspace layout")
+        .join("nros-board-freertos/config");
 
-    // --- Linker script ---
-    File::create(out_dir.join("mps2_an385.ld"))
-        .unwrap()
-        .write_all(include_bytes!("config/mps2_an385.ld"))
-        .unwrap();
-    // Make the linker script discoverable by the final binary.
-    // The binary's .cargo/config.toml specifies `-Tmps2_an385.ld` via rustflags.
+    // --- Linker scripts ---
+    // The board script `INCLUDE`s the shared one, and `INCLUDE` resolves
+    // against the linker's search path — so BOTH land in OUT_DIR, which the
+    // `rustc-link-search` below puts on that path. The binary's
+    // `.cargo/config.toml` names `-Tmps2_an385.ld` in rustflags.
+    for (src, name) in [
+        (config_dir.join("mps2_an385.ld"), "mps2_an385.ld"),
+        (
+            shared_config_dir.join("nros-freertos-cortex-m.ld"),
+            "nros-freertos-cortex-m.ld",
+        ),
+    ] {
+        fs::copy(&src, out_dir.join(name))
+            .unwrap_or_else(|e| panic!("copying {} into OUT_DIR: {e}", src.display()));
+        println!("cargo:rerun-if-changed={}", src.display());
+    }
     println!("cargo:rustc-link-search={}", out_dir.display());
 
     // --- Environment variables ---
@@ -65,7 +89,7 @@ fn main() {
 
     // --- Build LAN9118 lwIP netif driver ---
     let mut lan9118 = cc::Build::new();
-    configure_arm_cm3(&mut lan9118);
+    configure_cflags(&mut lan9118);
     add_freertos_includes(&mut lan9118, &freertos_dir, &port_dir, &freertos_config_dir);
     add_lwip_includes(&mut lan9118, &lwip_dir);
     lan9118.include(lan9118_dir.join("include"));
@@ -78,7 +102,7 @@ fn main() {
         let trace_config_dir = manifest_dir.join("trace");
 
         let mut tband = cc::Build::new();
-        configure_arm_cm3(&mut tband);
+        configure_cflags(&mut tband);
         add_freertos_includes(&mut tband, &freertos_dir, &port_dir, &freertos_config_dir);
         tband.include(tband_dir.join("inc"));
         tband.include(&trace_config_dir);
@@ -93,11 +117,11 @@ fn main() {
 
     // --- Build startup/glue C code ---
     let mut glue = cc::Build::new();
-    configure_arm_cm3(&mut glue);
+    configure_cflags(&mut glue);
     add_freertos_includes(&mut glue, &freertos_dir, &port_dir, &freertos_config_dir);
     add_lwip_includes(&mut glue, &lwip_dir);
     glue.include(lan9118_dir.join("include"));
-    // Phase 212.M-F.10.3 — emit_nros_app_config's TU `#include <nros/app_config.h>`
+    // Phase 212.M-F.10.3 — the emitted TU `#include`s <nros/app_config.h>
     // (the canonical-path wrapper from M-F.10.1 `c8aafd6ff`).
     // Issue 0365 — nros-c moved to `packages/api/nros-c` in phase-321 W2.e; this
     // join was left at the old `core/nros-c`, so the TU could not find the header.
@@ -121,25 +145,24 @@ fn main() {
         glue.define("NROS_TRACE", "1");
     }
 
-    // Phase 152.1.B.4 — overlay glue carries only board-specific
-    // C: MPS2-AN385 vector table + Reset_Handler + LAN9118 diag +
-    // trace_dump (always compiled; stubs when NROS_TRACE off).
-    // Generic FreeRTOS / lwIP / nros-platform-freertos pieces moved
-    // to `nros-board-freertos/build.rs`.
+    // Phase 152.1.B.4 — overlay glue carries only board-specific C:
+    // MPS2-AN385 vector table + Reset_Handler + the LAN9118 netif
+    // registration + trace_dump (always compiled; stubs when NROS_TRACE off).
+    // Generic FreeRTOS / lwIP / nros-platform-freertos pieces moved to
+    // `nros-board-freertos/build.rs`.
     glue.file(manifest_dir.join("c/board_mps2.c"));
     glue.file(manifest_dir.join("trace/trace_dump.c"));
 
-    // Phase 212.M-F.10.3 — emit the universal `NROS_APP_CONFIG`
-    // symbol into the board staticlib. Values mirror
-    // `nros_board_freertos::Config::default()` so the
-    // user-facing read API (`NROS_APP_CONFIG.zenoh.locator` /
-    // `.network.ip` / `.scheduling.poll_interval_ms`) is identical
-    // regardless of whether the TU resolves the symbol via the
-    // cmake-codegen `static const` (transition path, M-F.10.5
-    // retires it) or via this `extern` definition (post-M-F.10.5,
-    // and any pure-cargo path that never invokes cmake codegen).
-    let app_config_path = emit_nros_app_config(&out_dir);
-    glue.file(&app_config_path);
+    // phase-337 W5.d — the `NROS_APP_CONFIG` symbol, emitted from the board's
+    // `BaseConfig` + `FreertosScheduling` rather than the 57-line hand-written
+    // C-string mirror this replaced (which had drifted 128 KiB on the app
+    // stack). The C/C++ application entry reads it for network bring-up and
+    // task sizing; on the pure-Rust path `Config` carries the same values.
+    let sched = FreertosScheduling {
+        app_stack_bytes: app_stack_bytes_from_build_env(),
+        ..FreertosScheduling::default()
+    };
+    glue.file(emit_app_config_tu(&out_dir, &BaseConfig::default(), &sched));
 
     glue.compile("startup");
 
@@ -173,7 +196,7 @@ fn main() {
     // --- Rerun triggers ---
     println!("cargo:rerun-if-changed=config/FreeRTOSConfig.h");
     println!("cargo:rerun-if-changed=config/lwipopts.h");
-    println!("cargo:rerun-if-changed=config/mps2_an385.ld");
+    println!("cargo:rerun-if-changed=config/arch/cc.h");
     println!("cargo:rerun-if-changed=c/board_mps2.c");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
@@ -185,143 +208,13 @@ fn main() {
     println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
 }
 
-fn env_path(name: &str) -> PathBuf {
-    PathBuf::from(
-        env::var(name).unwrap_or_else(|_| panic!("{name} not set — run `just setup-freertos`")),
-    )
-}
-
-/// Phase 152.1.B.3 — generic FreeRTOS+lwIP compiler-flag setup.
-///
-/// Reads `FREERTOS_CFLAGS` env var (space-separated flag list) +
-/// applies each via `cc::Build::flag`. The MPS2-AN385 board's
-/// reference `.cargo/config.toml` sets
-/// `FREERTOS_CFLAGS = "-mcpu=cortex-m3 -mthumb"`; future overlays
-/// (Cortex-M4F, etc.) set their own. Generic crate's build.rs
-/// (152.1.B.4) reads the same env var so kernel + lwIP + per-board
-/// glue all see consistent flags.
-///
-/// `-ffunction-sections` / `-fdata-sections` / `-O2` / `warnings off`
-/// stay built-in defaults — every FreeRTOS+lwIP consumer wants them.
-fn configure_arm_cm3(build: &mut cc::Build) {
-    build
-        .opt_level(2)
-        .flag("-ffunction-sections")
-        .flag("-fdata-sections")
-        .warnings(false);
-    // issue 0383 — implicit-function-declaration / int-conversion as errors
-    // (`-w` above does not defeat an explicit `-Werror=`).
-    nros_cc_flags::strict_decls(build);
-
-    let cflags = env::var("FREERTOS_CFLAGS").unwrap_or_else(|_| {
-        // Backward-compat default for MPS2-AN385 consumers that
-        // don't yet set the env var. Future PR removes the
-        // fallback after every example bumps its `.cargo/config.toml`.
-        "-mcpu=cortex-m3 -mthumb".to_string()
-    });
-    for flag in cflags.split_whitespace() {
-        build.flag(flag);
-    }
-}
-
-fn add_freertos_includes(
-    build: &mut cc::Build,
-    freertos_dir: &Path,
-    port_dir: &Path,
-    config_dir: &Path,
-) {
-    build
-        .include(config_dir)
-        .include(freertos_dir.join("include"))
-        .include(port_dir);
-}
-
-fn add_lwip_includes(build: &mut cc::Build, lwip_dir: &Path) {
-    build
-        .include(lwip_dir.join("src/include"))
-        .include(lwip_dir.join("contrib/ports/freertos/include"));
-}
-
-/// Phase 212.M-F.10.3 — emit the per-board `NROS_APP_CONFIG`
-/// definition into a generated TU, baked into the board staticlib.
-///
-/// Values mirror `nros_board_freertos::Config::default()` for this
-/// board (MPS2-AN385 + FreeRTOS + lwIP). The struct layout matches
-/// the `nros_app_config_t` shipped under
-/// `packages/api/nros-c/include/nros/zephyr/app_config.h`; we inline
-/// the typedef in the emitted TU so the file is self-contained (no
-/// dependency on a non-Zephyr include-path remap of that header).
-///
-/// During the M-F.10.3 → M-F.10.5 transition the cmake codegen path
-/// may still emit a per-binary `<nros/app_config.h>` with its own
-/// `static const` initialiser earlier on the include path; that TU-
-/// local symbol shadows this `extern` definition for any consumer
-/// TU compiled with the codegen header reachable. The two paths
-/// coexist until M-F.10.5 retires the codegen.
-///
-/// Returns the path to the generated `.c` file so the caller can
-/// pass it to `cc::Build::file`.
-fn emit_nros_app_config(out_dir: &Path) -> PathBuf {
-    let out_path = out_dir.join("nros_app_config_def.c");
-    // Mirrors `nros_board_freertos::Config::default()`
-    // (`packages/boards/nros-board-freertos/src/config.rs`). Keep these
-    // values in sync when the board's defaults change.
-    let body = r#"/* Auto-generated by nros-board-mps2-an385-freertos/build.rs.
- *
- * Phase 212.M-F.10.3 (Path C) — board-emitted NROS_APP_CONFIG.
- *
- * Mirrors `nros_board_freertos::Config::default()`:
- *   - MAC:     02:00:00:00:00:00
- *   - IP:      192.0.3.10 / 24
- *   - Gateway: 192.0.3.1
- *   - Locator: tcp/192.0.3.1:7447
- *   - Domain:  0
- *   - Scheduling defaults: see board-freertos config.rs
- *
- * Includes the canonical-path wrapper at
- * `nros-c/include/nros/app_config.h` (introduced by Phase
- * 212.M-F.10.1 in `c8aafd6ff`) which re-includes the shipped
- * `nros/zephyr/app_config.h` for the struct type. Keeps a single
- * source-of-truth definition; no inlined-typedef sync obligation.
- */
-
-#include <stdint.h>
-#include <nros/app_config.h>
-
-const nros_app_config_t NROS_APP_CONFIG = {
-    .zenoh = {
-        .locator   = "tcp/192.0.3.1:7447",
-        .domain_id = 0,
-    },
-    .network = {
-        .ip      = { 192, 0, 3, 10 },
-        .mac     = { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00 },
-        .gateway = { 192, 0, 3, 1 },
-        .netmask = { 255, 255, 255, 0 },
-        .prefix  = 24,
-    },
-    .scheduling = {
-        .app_priority            = 12,
-        .zenoh_read_priority     = 16,
-        .zenoh_lease_priority    = 16,
-        .poll_priority           = 16,
-        .app_stack_bytes         = 262144u,
-        .zenoh_read_stack_bytes  = 5120u,
-        .zenoh_lease_stack_bytes = 5120u,
-        .poll_interval_ms        = 5u,
-    },
-};
-"#;
-    File::create(&out_path)
-        .expect("failed to create nros_app_config_def.c")
-        .write_all(body.as_bytes())
-        .expect("failed to write nros_app_config_def.c");
-    out_path
-}
-
 fn gcc_print_file(name: &str) -> String {
     let out = std::process::Command::new("arm-none-eabi-gcc")
-        .args(["-mcpu=cortex-m3", "-mthumb", &format!("--print-file-name={name}")])
+        .args([
+            "-mcpu=cortex-m3",
+            "-mthumb",
+            &format!("--print-file-name={name}"),
+        ])
         .output()
         .expect("arm-none-eabi-gcc not found");
     let path = String::from_utf8(out.stdout).unwrap();
@@ -333,4 +226,3 @@ fn gcc_print_file(name: &str) -> String {
     );
     path
 }
-

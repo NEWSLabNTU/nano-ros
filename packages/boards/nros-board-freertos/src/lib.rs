@@ -75,7 +75,11 @@ mod error;
 // (entry.rs), which is independent of `node.rs`; the file is gone.
 
 pub use config::Config;
+// phase-337 W5 — `Config.base` is a `BaseConfig`, so consumers that build one
+// literally need the type. Re-export rather than making every leaf dep
+// `nros-board-common` directly.
 pub use entry::{run_bare, run_entry, run_tiers_entry};
+pub use nros_board_common::BaseConfig;
 
 /// Internal re-export of the `Error` + `Result` types used by
 /// per-board `node.rs` files during the 152.1.B.5 → final-lift

@@ -1,9 +1,18 @@
 //! Configuration for QEMU FreeRTOS nodes
 //!
-//! Same IP presets as the bare-metal board crate (`nros-board-mps2-an385`),
-//! designed for the TAP bridge topology used by `just test-freertos`.
+//! phase-337 W5 — the `{mac, ip, netmask, gateway, locator, domain_id}` core is
+//! [`nros_board_common::BaseConfig`], shared with every other networked board,
+//! and the scheduling defaults are [`nros_board_common::FreertosScheduling`],
+//! shared with the `build.rs` that emits the C-side `NROS_APP_CONFIG` mirror
+//! (they had drifted by 128 KiB of app stack before that). What stays here is
+//! what is genuinely FreeRTOS: the normalized-priority map and the `nros.toml`
+//! parser.
 
-/// Network and node configuration for QEMU MPS2-AN385 + FreeRTOS.
+use nros_board_common::{
+    BaseConfig, FreertosScheduling, base_config::netmask_from_prefix, freertos_config,
+};
+
+/// Network and node configuration for a FreeRTOS + lwIP board.
 ///
 /// # Default (Talker)
 ///
@@ -11,25 +20,15 @@
 /// - Zenoh: `tcp/192.0.3.1:7447`
 #[derive(Clone)]
 pub struct Config {
-    /// MAC address (default: locally administered 02:00:00:00:00:00)
-    pub mac: [u8; 6],
-    /// IP address
-    pub ip: [u8; 4],
-    /// Network mask
-    pub netmask: [u8; 4],
-    /// Gateway IP
-    pub gateway: [u8; 4],
-    /// Zenoh locator string
-    pub zenoh_locator: &'static str,
-    /// ROS 2 domain ID (default: 0)
-    pub domain_id: u32,
+    /// The shared `{mac, ip, netmask, gateway, zenoh_locator, domain_id}` core.
+    pub base: BaseConfig,
 
     // ── Scheduling ─────────────────────────────────────────────────────
     // Normalized 0–31 scale (higher = more important). Board crate maps
     // to FreeRTOS 0–(configMAX_PRIORITIES-1) via `to_freertos_priority()`.
     /// Application task priority (normalized 0–31, default 12).
     pub app_priority: u8,
-    /// Application task stack size in bytes (default 262144).
+    /// Application task stack size in bytes (default 393216).
     pub app_stack_bytes: u32,
     /// Zenoh-pico read task priority (normalized 0–31, default 16).
     pub zenoh_read_priority: u8,
@@ -45,55 +44,28 @@ pub struct Config {
     pub poll_interval_ms: u32,
 }
 
-/// Const decimal parser for the `NROS_FREERTOS_APP_STACK_KB` build env.
-const fn parse_kb(s: &str) -> u32 {
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    let mut acc: u32 = 0;
-    while i < bytes.len() {
-        let d = bytes[i];
-        if !d.is_ascii_digit() {
-            panic!("NROS_FREERTOS_APP_STACK_KB must be a decimal integer");
-        }
-        acc = acc * 10 + (d - b'0') as u32;
-        i += 1;
-    }
-    acc
-}
-
 impl Default for Config {
     fn default() -> Self {
+        // issue-0274 follow-up (sentinel 14.5): the app stack is overridable at
+        // build time — a 10-node macro entry's register pass overflows the
+        // default. One parser, shared with the `build.rs` emitter, so the two
+        // cannot disagree about what the override means.
+        let sched = FreertosScheduling {
+            app_stack_bytes: freertos_config::app_stack_bytes(option_env!(
+                "NROS_FREERTOS_APP_STACK_KB"
+            )),
+            ..FreertosScheduling::default()
+        };
         Self {
-            mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
-            ip: [192, 0, 3, 10],
-            netmask: [255, 255, 255, 0],
-            gateway: [192, 0, 3, 1],
-            zenoh_locator: "tcp/192.0.3.1:7447",
-            domain_id: 0,
-            // Scheduling defaults match the old hardcoded constants:
-            // APP_TASK_PRIORITY=3 → normalized 12 (12*7/31 ≈ 2.7 → 3)
-            // POLL_TASK_PRIORITY=4 → normalized 16 (16*7/31 ≈ 3.6 → 4)
-            // zenoh read/lease default to 4 in zenoh-pico (configMAX_PRIORITIES/2)
-            app_priority: 12,
-            // The Rust zenoh executor can exceed 160 KiB while opening a
-            // FreeRTOS session with lwIP enabled; the Phase 212 Entry /
-            // run-plan Executor open exceeds the old 256 KiB default and
-            // stack-overflows (issue #46). 384 KiB boots cleanly. The task
-            // stack is drawn from the FreeRTOS heap (heap_4), sized to match in
-            // `nros-board-freertos/build.rs`. Keep headroom so stack-overflow
-            // checks fail cleanly instead of corrupting the TCB.
-            // issue-0274 follow-up (sentinel 14.5): overridable at build
-            // time — a 10-node macro entry's register pass overflows 384 KiB.
-            app_stack_bytes: match option_env!("NROS_FREERTOS_APP_STACK_KB") {
-                Some(kb) => parse_kb(kb) * 1024,
-                None => 393216,
-            },
-            zenoh_read_priority: 16,
-            zenoh_read_stack_bytes: 5120,
-            zenoh_lease_priority: 16,
-            zenoh_lease_stack_bytes: 5120,
-            poll_priority: 16,
-            poll_interval_ms: 5,
+            base: BaseConfig::default(),
+            app_priority: sched.app_priority,
+            app_stack_bytes: sched.app_stack_bytes,
+            zenoh_read_priority: sched.zenoh_read_priority,
+            zenoh_read_stack_bytes: sched.zenoh_read_stack_bytes,
+            zenoh_lease_priority: sched.zenoh_lease_priority,
+            zenoh_lease_stack_bytes: sched.zenoh_lease_stack_bytes,
+            poll_priority: sched.poll_priority,
+            poll_interval_ms: sched.poll_interval_ms,
         }
     }
 }
@@ -102,8 +74,11 @@ impl Config {
     /// Preset for a listener/subscriber node.
     pub fn listener() -> Self {
         Self {
-            mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
-            ip: [192, 0, 3, 11],
+            base: BaseConfig {
+                mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
+                ip: [192, 0, 3, 11],
+                ..BaseConfig::default()
+            },
             ..Self::default()
         }
     }
@@ -115,25 +90,25 @@ impl Config {
 
     /// Builder: set MAC address.
     pub fn with_mac(mut self, mac: [u8; 6]) -> Self {
-        self.mac = mac;
+        self.base.mac = mac;
         self
     }
 
     /// Builder: set IP address.
     pub fn with_ip(mut self, ip: [u8; 4]) -> Self {
-        self.ip = ip;
+        self.base.ip = ip;
         self
     }
 
     /// Builder: set network mask.
     pub fn with_netmask(mut self, netmask: [u8; 4]) -> Self {
-        self.netmask = netmask;
+        self.base.netmask = netmask;
         self
     }
 
     /// Builder: set gateway.
     pub fn with_gateway(mut self, gateway: [u8; 4]) -> Self {
-        self.gateway = gateway;
+        self.base.gateway = gateway;
         self
     }
 
@@ -141,7 +116,7 @@ impl Config {
     /// through (e.g. `"tcp/192.0.3.1:7447"`,
     /// `"serial/UART_0#baudrate=115200"`).
     pub fn with_locator(mut self, locator: &'static str) -> Self {
-        self.zenoh_locator = locator;
+        self.base.zenoh_locator = locator;
         self
     }
 
@@ -156,7 +131,7 @@ impl Config {
 
     /// Builder: set ROS 2 domain ID.
     pub fn with_domain_id(mut self, domain_id: u32) -> Self {
-        self.domain_id = domain_id;
+        self.base.domain_id = domain_id;
         self
     }
 
@@ -181,7 +156,7 @@ impl Config {
     /// Map a normalized 0–31 priority to FreeRTOS priority.
     ///
     /// FreeRTOS uses 0 (idle) to `configMAX_PRIORITIES - 1` (highest).
-    /// The MPS2-AN385 FreeRTOSConfig.h sets `configMAX_PRIORITIES = 8`,
+    /// The shared `FreeRTOSConfig.h` sets `configMAX_PRIORITIES = 8`,
     /// so the output range is 0–7.
     ///
     /// Mapping: `freertos_pri = normalized * 7 / 31` (linear).
@@ -198,14 +173,13 @@ impl Config {
     /// # Supported fields
     ///
     /// ```toml
-    /// [network]
-    /// ip = "192.0.3.10"
+    /// [[transport]]
+    /// ip = "192.0.3.10/24"
     /// mac = "02:00:00:00:00:00"
     /// gateway = "192.0.3.1"
-    /// netmask = "255.255.255.0"
-    ///
-    /// [zenoh]
     /// locator = "tcp/192.0.3.1:7447"
+    ///
+    /// [node]
     /// domain_id = 0
     /// ```
     pub fn from_toml(toml: &'static str) -> Self {
@@ -248,28 +222,28 @@ impl Config {
                     ("transport", "ip") => {
                         let (addr, pfx) = value.split_once('/').unwrap_or((value, ""));
                         if let Some(ip) = parse_ipv4(addr) {
-                            config.ip = ip;
+                            config.base.ip = ip;
                         }
                         if let Some(p) = parse_u32(pfx) {
-                            config.netmask = prefix_to_netmask(p as u8);
+                            config.base.netmask = netmask_from_prefix(p as u8);
                         }
                     }
                     ("transport", "mac") => {
                         if let Some(mac) = parse_mac(value) {
-                            config.mac = mac;
+                            config.base.mac = mac;
                         }
                     }
                     ("transport", "gateway") => {
                         if let Some(gw) = parse_ipv4(value) {
-                            config.gateway = gw;
+                            config.base.gateway = gw;
                         }
                     }
                     ("transport", "locator") => {
-                        config.zenoh_locator = value;
+                        config.base.zenoh_locator = value;
                     }
                     ("node", "domain_id") => {
                         if let Some(d) = parse_u32(value) {
-                            config.domain_id = d;
+                            config.base.domain_id = d;
                         }
                     }
                     ("node.rt", "app_priority") => {
@@ -324,7 +298,7 @@ impl Config {
         // build-fixtures gives each communicating role-set its own domain and
         // concurrent fixtures don't collide. Empty/unset keeps the config value.
         if let Some(d) = option_env!("NROS_DOMAIN_ID").and_then(parse_u32) {
-            config.domain_id = d;
+            config.base.domain_id = d;
         }
 
         config
@@ -332,15 +306,6 @@ impl Config {
 }
 
 // ── Minimal no_std parsers ──────────────────────────────────────────────
-
-/// Convert a CIDR prefix length (0..=32) to a dotted netmask. Phase 172.K —
-/// the nros.toml `[[transport]]` `ip` carries the prefix as CIDR; this board
-/// stores a `netmask`.
-fn prefix_to_netmask(prefix: u8) -> [u8; 4] {
-    let p = prefix.min(32);
-    let mask: u32 = if p == 0 { 0 } else { u32::MAX << (32 - p) };
-    mask.to_be_bytes()
-}
 
 /// Parse an IPv4 address string ("192.0.3.10") into [u8; 4].
 fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
@@ -437,13 +402,7 @@ fn parse_u32(s: &str) -> Option<u32> {
 // keeps the trait's no-op default.
 impl nros_platform::BoardTransportConfig for Config {
     fn set_ipv4(&mut self, addr: [u8; 4], prefix: u8) {
-        self.ip = addr;
-        let bits = u32::from(prefix.min(32));
-        let mask = if bits == 0 {
-            0
-        } else {
-            u32::MAX << (32 - bits)
-        };
-        self.netmask = mask.to_be_bytes();
+        self.base.ip = addr;
+        self.base.netmask = netmask_from_prefix(prefix);
     }
 }

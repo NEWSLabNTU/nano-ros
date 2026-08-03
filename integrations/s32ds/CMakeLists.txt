@@ -135,15 +135,16 @@ endif()
 # `#include "lwipopts.h"` and the FreeRTOS port needs `arch/cc.h`. Both are
 # per-deployment files (buffer counts, which protocols, MEM_SIZE …), so they
 # are yours, not nano-ros's. Reference pair:
-#   packages/boards/nros-board-mps2-an385-freertos/config/lwipopts.h
-#   packages/boards/nros-board-mps2-an385-freertos/config/arch/cc.h
+#   packages/boards/nros-board-freertos/config/lwipopts.h
+#   packages/boards/nros-board-freertos/config/arch/cc.h
 if(NOT LWIP_CONFIG_DIR)
     message(FATAL_ERROR
         "nros-s32ds: -DLWIP_CONFIG_DIR=<dir> is required — a directory "
         "containing `lwipopts.h` (and `arch/cc.h` for the FreeRTOS port).\n"
         "lwIP cannot compile without them and their values are a property of "
         "YOUR deployment, not of nano-ros. Start from\n"
-        "  packages/boards/nros-board-mps2-an385-freertos/config/\n"
+        "  packages/boards/nros-board-freertos/config/ (phase-337 W5.a moved the\n"
+        "  shared defaults there; the mps2 board keeps only its own numbers)\n"
         "and size MEM_SIZE / PBUF / TCP buffers for the S32K344's 320 KB SRAM "
         "— the mps2 values assume a QEMU target with far more RAM.")
 endif()

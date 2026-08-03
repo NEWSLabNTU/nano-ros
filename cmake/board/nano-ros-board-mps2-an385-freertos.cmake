@@ -30,9 +30,16 @@
 #
 # What this overlay exports (CACHE INTERNAL):
 #
-#   FREERTOS_STARTUP_SOURCE     — list of .c files to add to the app target
+#   FREERTOS_STARTUP_SOURCE     — list of .c files to add to the app target.
+#                                 phase-337 W5.b: these are the SAME sources
+#                                 the cargo lane compiles (family glue +
+#                                 board_mps2.c), plus the C-lane-only
+#                                 `freertos_c_entry.c`. The per-board
+#                                 `startup.c` that used to sit here was a
+#                                 727-line shadow copy of them.
 #   FREERTOS_STARTUP_INCLUDES   — include dirs the startup files need
-#   FREERTOS_LINKER_SCRIPT      — full path to mps2_an385.ld
+#   FREERTOS_LINKER_SCRIPT      — full path to mps2_an385.ld (which INCLUDEs
+#                                 the shared nros-freertos-cortex-m.ld)
 #
 #   nros_board_link_app(<target>) — applied to every app target by
 #   nros_platform_link_app() after it has appended the startup sources
@@ -55,18 +62,28 @@ set(_NROS_BOARD_CONFIG_DIR "${_NROS_BOARD_DIR}/config")
 set(_NROS_LAN9118_DIR "${_NROS_BOARD_ROOT}/packages/drivers/net/lan9118-lwip")
 set(_NROS_FREERTOS_PLAT_DIR
     "${_NROS_BOARD_ROOT}/packages/platform/nros-platform-freertos")
-set(_NROS_FREERTOS_STARTUP_C
-    "${_NROS_BOARD_DIR}/startup.c")
+set(_NROS_FREERTOS_FAMILY_DIR
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-freertos")
+set(_NROS_FREERTOS_SHARED_CONFIG_DIR "${_NROS_FREERTOS_FAMILY_DIR}/config")
 set(_NROS_FREERTOS_NET_C
     "${_NROS_FREERTOS_PLAT_DIR}/src/net.c")
-# Phase 274.W3 — embedded C/C++ multi-tier entry glue. The CMake board path is a
-# separate board-support impl from the cargo `nros-board-freertos` build.rs glue;
-# `freertos_run_tiers.c` (which defines `nros_board_freertos_run_tiers`, called by
-# FreertosBoard::run_tiers) is only wired into that build.rs, so the CMake C/C++
-# entry link fails with an undefined reference. Compile it into the app target too
-# (unused function is dropped by --gc-sections for single-tier run_components apps).
-set(_NROS_FREERTOS_RUN_TIERS_C
-    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-freertos/c/freertos_run_tiers.c")
+
+# phase-337 W5.b — the C/C++ lane compiles THE SAME C the cargo lane does.
+# Until W5.b it compiled a per-board `startup.c` whose 727 lines re-implemented
+# `freertos_hooks.c` + `network_glue.c` + `board_mps2.c`; the split between the
+# lanes is precisely what let that copy drift unnoticed. The only lane-specific
+# file is `freertos_c_entry.c`, which is the C equivalent of the Rust lane's
+# `run_entry` (it defines `main`, which on the Rust lane is the Rust entry).
+#
+# `freertos_run_tiers.c` (Phase 274.W3) defines `nros_board_freertos_run_tiers`,
+# called by FreertosBoard::run_tiers for embedded C/C++ multi-tier entries; the
+# unused function is dropped by --gc-sections for single-tier apps.
+set(_NROS_FREERTOS_SHARED_C
+    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_hooks.c"
+    "${_NROS_FREERTOS_FAMILY_DIR}/c/network_glue.c"
+    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_tiers.c"
+    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_c_entry.c"
+    "${_NROS_BOARD_DIR}/c/board_mps2.c")
 
 # ---------------------------------------------------------------------------
 # Validate vendored asset presence (mirrors freertos-support.cmake's
@@ -82,10 +99,18 @@ if(NOT EXISTS "${_NROS_BOARD_CONFIG_DIR}/mps2_an385.ld")
         "nano-ros-board-mps2-an385-freertos: linker script not found at "
         "${_NROS_BOARD_CONFIG_DIR}/mps2_an385.ld.")
 endif()
-if(NOT EXISTS "${_NROS_FREERTOS_STARTUP_C}")
+foreach(_src IN LISTS _NROS_FREERTOS_SHARED_C)
+    if(NOT EXISTS "${_src}")
+        message(FATAL_ERROR
+            "nano-ros-board-mps2-an385-freertos: startup source not found at "
+            "${_src}.")
+    endif()
+endforeach()
+if(NOT EXISTS "${_NROS_FREERTOS_SHARED_CONFIG_DIR}/nros-freertos-cortex-m.ld")
     message(FATAL_ERROR
-        "nano-ros-board-mps2-an385-freertos: startup.c not found at "
-        "${_NROS_FREERTOS_STARTUP_C}.")
+        "nano-ros-board-mps2-an385-freertos: shared section layout not found at "
+        "${_NROS_FREERTOS_SHARED_CONFIG_DIR}/nros-freertos-cortex-m.ld — "
+        "mps2_an385.ld INCLUDEs it (phase-337 W5.e).")
 endif()
 if(NOT EXISTS "${_NROS_FREERTOS_NET_C}")
     message(FATAL_ERROR
@@ -144,6 +169,10 @@ if(NOT TARGET freertos_platform)
             freertos_kernel
         LINK_OPTIONS
             "-T${FREERTOS_LINKER_SCRIPT}"
+            # phase-337 W5.e — `mps2_an385.ld` carries the memory map and
+            # `INCLUDE`s the shared section layout; `INCLUDE` resolves against
+            # the linker search path, so put the shared config dir on it.
+            "-L${_NROS_FREERTOS_SHARED_CONFIG_DIR}"
             "-Wl,--gc-sections"
             "-nostartfiles"
             "--specs=nosys.specs")
@@ -155,15 +184,18 @@ endif()
 # visible to net.c.
 # ---------------------------------------------------------------------------
 set(FREERTOS_STARTUP_SOURCE
-    "${_NROS_FREERTOS_STARTUP_C}"
+    ${_NROS_FREERTOS_SHARED_C}
     "${_NROS_FREERTOS_NET_C}"
-    "${_NROS_FREERTOS_RUN_TIERS_C}"
     CACHE INTERNAL "FreeRTOS / mps2-an385 startup + net translation units")
 
 set(FREERTOS_STARTUP_INCLUDES
     ${NROS_FREERTOS_INCLUDES}
     ${NROS_FREERTOS_LWIP_INCLUDES}
     "${_NROS_LAN9118_DIR}/include"
+    # phase-337 W5.b — `freertos_c_entry.c` reads `NROS_APP_CONFIG`, declared by
+    # <nros/app_config.h>. The per-app generated header shadows this one on the
+    # include path when the carrier emits it; both spell the same type.
+    "${_NROS_BOARD_ROOT}/packages/api/nros-c/include"
     CACHE INTERNAL "Include dirs for FREERTOS_STARTUP_SOURCE TUs")
 
 # ---------------------------------------------------------------------------

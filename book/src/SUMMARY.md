@@ -79,6 +79,7 @@
 - [Overview](./porting/overview.md)
 - [The `Board` Trait Family](./porting/board-trait.md)
 - [Custom Board Package](./porting/custom-board.md)
+- [Adding a FreeRTOS Board](./porting/freertos-board.md)
 - [Vendor Overlay Board Crate](./porting/vendor-overlay.md)
 - [Importing a Board Crate](./porting/board-crate-import.md)
 - [Custom Platform](./porting/custom-platform.md)

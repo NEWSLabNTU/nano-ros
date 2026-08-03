@@ -44,8 +44,8 @@ extern "C" fn main() -> ! {
     // Phase 313 (#0243/#0317) — no-session boot wrapper (scheduler + bringup, no
     // board `Executor::open`); this image opens its OWN executor below.
     let _ = Mps2An385::run_bare(subscriber_config(), |config| {
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
+        let exec_config = ExecutorConfig::new(config.base.zenoh_locator)
+            .domain_id(config.base.domain_id)
             .node_name("wake-latency-sub");
         nros_rmw_zenoh::register().expect("Failed to register RMW backend");
         let mut executor = Executor::open(&exec_config)?;

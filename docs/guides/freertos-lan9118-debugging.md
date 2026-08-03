@@ -320,7 +320,16 @@ Requires QEMU flag: `-semihosting-config enable=on,target=native`
 
 ### Check RX FIFO immediately after TX
 
-Due to synchronous delivery (Section 3), the most reliable way to verify that the full TX-hub-backend-hub-RX path works is to check `RX_FIFO_INF` immediately after writing a TX frame, before any OS delay or yield. The diagnostic function `nros_freertos_diag_network()` demonstrates this pattern.
+Due to synchronous delivery (Section 3), the most reliable way to verify that the full TX-hub-backend-hub-RX path works is to check `RX_FIFO_INF` immediately after writing a TX frame, before any OS delay or yield.
+
+phase-337 W5.c deleted the `nros_freertos_diag_network()` helper that used to demonstrate this — ~180 lines of raw CSR pokes and a hand-assembled ARP frame, duplicated into two board C files and called from no path in either lane. The technique, which is the part worth keeping, is here:
+
+1. Read `MAC_CR` through the indirect MAC CSR at `base + 0xA4` / `0xA8` and check `RXEN` (bit 2) / `TXEN` (bit 3).
+2. Write TX Command A (`FIRST_SEG | LAST_SEG | len`) then Command B (`len << 16 | len`) to `base + 0x20`, then the frame as DWORDs.
+3. Read `RX_FIFO_INF` at `base + 0x7C` and take `(v >> 16) & 0xFF` as the RX status-entry count — **immediately**, then again after a few `wfi` iterations. A count that only appears after `wfi` means QEMU's main loop, not the driver, was the gate.
+4. `INT_STS` at `base + 0x58` before and after.
+
+Paste that into the board's C file while you are debugging and delete it again; it is a probe, not a component.
 
 ### Use QEMU monitor for hub state inspection
 

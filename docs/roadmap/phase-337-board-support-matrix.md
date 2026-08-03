@@ -283,36 +283,100 @@ assembly into a crate that also serves Linux.
       cells do not change. If a cell moves, the wave did more than it should.
       *Verify:* both ThreadX lanes, on rebuilt fixtures.
 
-## W5 — FreeRTOS: template the per-board files
+## W5 — FreeRTOS: template the per-board files — **LANDED 2026-08-04**
 
-The irreducible per-board delta measures at **~60–80 lines** (vector table 19,
+The irreducible per-board delta was estimated at **~60–80 lines** (vector table 19,
 memory map 3 numbers, CPU clock 1, cflags 1, netif registration 4, driver
 reference). The crate is ~1600 lines plus a 727-line `startup.c`. The gap is all
 mechanical.
 
-- [ ] **W5.a** Hoist the config headers to shared defaults: `config/lwipopts.h`
+**Result.** Board overlay **2497 → 1058** lines (−58 %); family crate 2715 → 3311
+(it absorbed the shared headers, the shared linker script and the C-lane entry);
+FreeRTOS family total **5212 → 4369** (−843). The W5.f measurement is below and
+it **partly disproves the estimate** — see W5.f.
+
+- [x] **W5.a** Hoist the config headers to shared defaults: `config/lwipopts.h`
       (133) and `config/arch/cc.h` (55) have **zero** board-specific content;
       `config/FreeRTOSConfig.h` (111) has two (`configCPU_CLOCK_HZ`,
       `configPRIO_BITS`). Board supplies the values, not the files.
-- [ ] **W5.b** Retire the `startup.c` shadow copy. ~575 of its 727 lines are a live
+      **Done:** all three now live in `nros-board-freertos/config/`; the board's
+      `config/` is 12 lines (two `#define`s + three relative `#include`s).
+      Relative includes rather than a second include dir, because
+      `FREERTOS_CONFIG_DIR` is a single directory read by six build scripts plus
+      CMake and turning it into a search path is a cross-cutting change.
+      *Proof of pure move:* 19 objects (FreeRTOS kernel ×8, lwIP ×9,
+      `freertos_hooks.o`, `network_glue.o`) compiled against the pre- and
+      post-move headers are **byte-identical**.
+- [x] **W5.b** Retire the `startup.c` shadow copy. ~575 of its 727 lines are a live
       duplicate of `nros-board-freertos`'s `network_glue.c` + `freertos_hooks.c` +
       the board's own `board_mps2.c`; it survives only because the CMake lane
       compiles it while the cargo lane compiles `board_mps2.c`. One source, both
       lanes.
-- [ ] **W5.c** Drop `nros_freertos_diag_network` (~180 lines of raw LAN9118 CSR
+      **Done:** `startup.c` deleted. `FREERTOS_STARTUP_SOURCE` now names the same
+      files the cargo lane compiles, plus one new C-lane-only TU,
+      `nros-board-freertos/c/freertos_c_entry.c` (the C equivalent of the Rust
+      lane's `run_entry`: semihosting stdio, log writer, task creation, `main`).
+      `Reset_Handler` calls `main` on both lanes. The drift the split was hiding
+      was real: the shadow copy seeded the **platform** PRNG while the shared
+      glue seeds `srand()` — different generators, and zenoh-pico's session ID
+      reads the platform one. `freertos_c_entry.c` carries that seeding.
+- [x] **W5.c** Drop `nros_freertos_diag_network` (~180 lines of raw LAN9118 CSR
       pokes and hand-assembled ARP frames, duplicated into **both** C files and
       called on no working path), or move it behind an explicit debug feature.
-- [ ] **W5.d** De-duplicate `build.rs`: `configure_arm_cm3` / `add_freertos_includes`
+      **Done:** deleted from both. The technique it demonstrated is written up in
+      `docs/guides/freertos-lan9118-debugging.md`, which is where a debugging aid
+      belongs.
+- [x] **W5.d** De-duplicate `build.rs`: `configure_arm_cm3` / `add_freertos_includes`
       / `add_lwip_includes` are byte-identical to the shared crate's, and
       `emit_nros_app_config` is 57 lines of hand-maintained C-string mirror of
       `nros_board_freertos::Config::default()` — fold it onto `BaseConfig`.
-- [ ] **W5.e** Linker script → template + the three numbers (`FLASH` origin/length,
+      **Done:** all four now live in `nros_board_common::freertos_build`, called
+      by both build scripts. The copies had ALREADY diverged — the family crate
+      resolved cflags from the `[arch.*]` profiles (phase-338 W4) while the
+      overlay still hardcoded Cortex-M3, so a Cortex-M7 overlay would have
+      compiled its board glue with M3 flags next to an M7 kernel. `Config` now
+      composes `BaseConfig` and reads its scheduling defaults from
+      `nros_board_common::FreertosScheduling`, shared with the emitter; that
+      closed a live 128 KiB `app_stack_bytes` drift between the Rust default
+      (393216) and the emitted C mirror (262144).
+- [x] **W5.e** Linker script → template + the three numbers (`FLASH` origin/length,
       `RAM`, `_estack`).
-- [ ] **W5.f** **Prove the claim**: write the skeleton of a second FreeRTOS board
+      **Done:** `nros-board-freertos/config/nros-freertos-cortex-m.ld` holds the
+      section layout; `mps2_an385.ld` is 7 lines and `INCLUDE`s it. `INCLUDE`
+      resolves against the linker `-L` path — `OUT_DIR` on the cargo lane, an
+      explicit `-L` in the board's CMake overlay. *Proof of pure move:* the same
+      object linked old-vs-new gives an identical section layout, symbol table
+      and loadable image, under **both** GNU ld and rust-lld.
+- [x] **W5.f** **Prove the claim**: write the skeleton of a second FreeRTOS board
       and show it is ~80 lines. It does not have to ship — the number is the
       deliverable, and it is what tells an S32K344 user whether this path is real.
       *Verify:* the freertos lane; MPS2 artefacts byte-comparable where the change
       was meant to be a pure move.
+      **Measured: 205 lines, not 80.** The complete file set for a second board
+      (NXP S32K344, Cortex-M7) is in `book/src/porting/freertos-board.md`:
+
+      | | lines |
+      |---|---:|
+      | `config/*` (4 files) | 12 |
+      | `c/board_<name>.c` — vector table, reset, netif registration | 64 |
+      | **per-board delta — what the estimate counted** | **76** |
+      | `src/lib.rs` — board ZST + four trait impls | 57 |
+      | `build.rs` | 45 |
+      | `Cargo.toml` | 27 |
+      | **total a user actually writes** | **205** |
+
+      The estimate was **right about the layer it counted** (76 against "60–80")
+      and **silent about the rest**. The 129 remaining lines are not board
+      facts: every Cortex-M FreeRTOS board writes the same semihosting
+      `BoardPrint`/`BoardExit` and the same two-line `BoardEntry` delegations
+      with a different type name. That is the next template — a declarative
+      macro in `nros-board-freertos`, deliberately NOT done here because it
+      needs `cortex-m-semihosting` + `panic-semihosting` on the family crate
+      (a dependency-edge change, i.e. a lockfile change) and W5 was scoped to be
+      artefact-neutral. Until it lands, quote **205**, not 80.
+
+      Also not removable by any template: the MAC driver. `lan9118_lwip.c` is
+      ~507 lines, and a board whose vendor SDK ships no lwIP netif pays it.
 
 ## W6 — Bare-metal MPS2: fold RTIC in as a feature
 
@@ -468,7 +532,9 @@ only in the shared registry files listed above, at one row each.
 - [ ] No wave's commit touches a board crate outside its own family.
 - [ ] `check-board-tiers`, `matrix_fixture_coverage` (both directions) and the
       allocator injectivity gate green after every wave, not only at the end.
-- [ ] A second FreeRTOS board is demonstrably ~80 lines (W5.f).
+- [x] A second FreeRTOS board is demonstrably ~80 lines (W5.f). **Measured 2026-08-04:
+      76 lines of board delta, 205 lines total — the estimate counted only the
+      C/config layer. See W5.f.**
 - [ ] `just ci-matrix` green after each wave that has tier-2 cells.
 
 ## Risks

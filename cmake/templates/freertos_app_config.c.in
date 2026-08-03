@@ -5,14 +5,19 @@
  * Phase 240.6 (RFC-0043) — in the typed C/C++ carrier the bootable ELF is
  * linked from cmake (add_executable + nros_platform_link_app); the Rust board
  * crate `nros-board-mps2-an385-freertos` (whose build.rs emits NROS_APP_CONFIG
- * into the board staticlib for the Rust path) is NOT linked. The board's
- * `startup.c` — added to the app target via FREERTOS_STARTUP_SOURCE — reads
- * `NROS_APP_CONFIG` for the LAN9118/lwIP network bring-up + the FreeRTOS task
- * priorities/stacks, so the carrier supplies the symbol here.
+ * into the board staticlib for the Rust path) is NOT linked.
+ * `nros-board-freertos/c/freertos_c_entry.c` — added to the app target via
+ * FREERTOS_STARTUP_SOURCE — reads `NROS_APP_CONFIG` for the network bring-up
+ * and the FreeRTOS task priorities/stacks, so the carrier supplies the symbol
+ * here.
  *
- * Values mirror `nros-board-mps2-an385-freertos/build.rs::emit_nros_app_config`
- * (itself mirroring `nros_board_freertos::Config::default()`). Keep in sync when
- * the board defaults change.
+ * phase-337 W5.d folded the board `build.rs`'s hand-written mirror onto
+ * `BaseConfig` + `FreertosScheduling`; this template is the ONE remaining
+ * hand-maintained copy, and it is deliberately not identical — the carrier
+ * varies `.locator` / `.domain_id` / the IP last octet per image, and its
+ * `.app_stack_bytes` is 512 KiB where the Rust default is 384 KiB. Retiring it
+ * means teaching the carrier to read the board's emitted TU; until then, keep
+ * it in sync when the board defaults change.
  *
  * `.zenoh.locator` is cosmetic on the typed C/C++ path: the connect locator the
  * runtime actually dials is baked into the generated entry TU

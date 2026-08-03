@@ -1,18 +1,20 @@
 /*
- * board_mps2.c — MPS2-AN385 board-specific startup + LAN9118 diag
+ * board_mps2.c — everything about this board that is not shared.
  *
- * Phase 152.1.B.1 — extracted from build.rs's `STARTUP_C` const.
- * Contains:
- *   - Cortex-M3 vector table (`isr_vector`)
- *   - `Reset_Handler` (data copy + bss zero + jump to Rust `main`)
+ * phase-337 W5 — this is the whole per-board C surface, and BOTH lanes (cargo
+ * and CMake) compile it. It contains, and should only ever contain:
+ *   - the Cortex-M3 vector table (`isr_vector`)
+ *   - `Reset_Handler` (data copy + bss zero + jump to `main`)
  *   - `Default_Handler` (infinite loop for unhandled IRQs)
- *   - Low-level LAN9118 register-poking diagnostic
- *     (`nros_freertos_diag_network`)
+ *   - the LAN9118 netif registration + poll (the strong overrides for
+ *     `network_glue.c`'s weak `nros_board_*` hooks)
  *
- * Stays in the per-board overlay even after the generic
- * `nros-board-freertos` crate lifts the FreeRTOS + lwIP plumbing —
- * MPS2-AN385's vector table + LAN9118 register map are
- * board-specific.
+ * W5.c removed `nros_freertos_diag_network` — ~180 lines of raw LAN9118 CSR
+ * pokes and a hand-assembled ARP frame, duplicated into the retired
+ * `startup.c` as well, and called from no path in either lane. The technique
+ * it demonstrated is written up in
+ * `docs/guides/freertos-lan9118-debugging.md`, which is where a debugging aid
+ * belongs.
  */
 
 #include <stdint.h>
@@ -47,7 +49,13 @@ void SysTick_Handler(void);  /* defined in freertos_hooks.c */
 extern void xPortPendSVHandler(void);
 extern void vPortSVCHandler(void);
 
-/* Rust entry point.
+/* Firmware entry point.
+ *
+ * phase-337 W5.b — ONE symbol for both lanes: on the Rust lane `main` is the
+ * `#[unsafe(no_mangle)] pub extern "C" fn main() -> i32` the Entry pkg emits;
+ * on the C/C++ lane it is `nros-board-freertos/c/freertos_c_entry.c::main`.
+ * The retired `startup.c` had its own `Reset_Handler` calling its own
+ * `_start`, which is exactly how the shadow copy stayed alive.
  *
  * Phase 212.M-F.15 — the firmware binary's entry point is the standard
  * `#[unsafe(no_mangle)] pub extern "C" fn main() -> i32` symbol emitted
@@ -60,9 +68,6 @@ extern void vPortSVCHandler(void);
  * Phase 212.M-F.15 fix closes.
  */
 extern int main(void);
-
-/* Semihosting helper exported by freertos_hooks.c */
-extern void semihosting_write0(const char *s);
 
 /* ---- LAN9118 netif globals (152.1.B.2 lift) ---- *
  * Phase 152.1.B.2 — these lived in `network_glue.c` until 152.1.B.1;
@@ -140,7 +145,7 @@ void Reset_Handler(void) {
     while (dst < &_ebss) {
         *dst++ = 0;
     }
-    /* Jump to Rust entry. `main` returns `i32`; ignore the value here
+    /* Jump to the firmware entry. `main` returns `i32`; ignore the value here
      * — `BoardEntry::run` is divergent in practice (FreeRTOS scheduler
      * never returns under normal operation; `exit_success`/`failure`
      * trigger semihosting exit). The trailing `for(;;)` keeps the
@@ -153,194 +158,4 @@ void Reset_Handler(void) {
 /* ---- Default handler (infinite loop) ---- */
 void Default_Handler(void) {
     for (;;) {}
-}
-
-/* ---- LAN9118 register-level diagnostic ---- */
-static void semihosting_write_int(int val) {
-    char buf[12];
-    char *p = buf + sizeof(buf) - 1;
-    *p = '\0';
-    if (val < 0) { semihosting_write0("-"); val = -val; }
-    if (val == 0) { semihosting_write0("0"); return; }
-    while (val > 0) { *--p = '0' + (val % 10); val /= 10; }
-    semihosting_write0(p);
-}
-
-/*
- * Low-level network diagnostic: send a raw ARP request via LAN9118
- * and check if packets flow through the TX/RX path.
- */
-void nros_freertos_diag_network(void) {
-    uint32_t base = LAN9118_BASE_DEFAULT;
-
-    /* Read MAC_CR via indirect MAC CSR */
-    {
-        /* Wait for MAC not busy */
-        while (*(volatile uint32_t *)(uintptr_t)(base + 0xA4) & (1u << 31)) {}
-        /* Issue read of MAC_CR (index 1) */
-        *(volatile uint32_t *)(uintptr_t)(base + 0xA4) = (1u << 31) | (1u << 30) | 1;
-        while (*(volatile uint32_t *)(uintptr_t)(base + 0xA4) & (1u << 31)) {}
-        uint32_t mac_cr = *(volatile uint32_t *)(uintptr_t)(base + 0xA8);
-        semihosting_write0("  [diag] MAC_CR: 0x");
-        {
-            static const char hex[] = "0123456789abcdef";
-            char buf[9];
-            for (int i = 7; i >= 0; i--) {
-                buf[7 - i] = hex[(mac_cr >> (i * 4)) & 0xF];
-            }
-            buf[8] = '\0';
-            semihosting_write0(buf);
-        }
-        semihosting_write0(" (RXEN=");
-        semihosting_write0((mac_cr & (1u << 2)) ? "YES" : "NO");
-        semihosting_write0(", TXEN=");
-        semihosting_write0((mac_cr & (1u << 3)) ? "YES" : "NO");
-        semihosting_write0(")\n");
-    }
-
-    /* Check TX FIFO free space */
-    uint32_t tx_inf = *(volatile uint32_t *)(uintptr_t)(base + 0x80);
-    uint32_t tx_free = tx_inf & 0xFFFF;
-    semihosting_write0("  [diag] TX FIFO free: ");
-    semihosting_write_int((int)tx_free);
-    semihosting_write0(" bytes\n");
-
-    /* Check RX FIFO status */
-    uint32_t rx_inf = *(volatile uint32_t *)(uintptr_t)(base + 0x7C);
-    uint32_t rx_used = (rx_inf >> 16) & 0xFF;
-    semihosting_write0("  [diag] RX status entries: ");
-    semihosting_write_int((int)rx_used);
-    semihosting_write0("\n");
-
-    /* Check INT_STS for TX/RX activity */
-    uint32_t int_sts = *(volatile uint32_t *)(uintptr_t)(base + 0x58);
-    semihosting_write0("  [diag] INT_STS: 0x");
-    {
-        static const char hex[] = "0123456789abcdef";
-        char buf[9];
-        for (int i = 7; i >= 0; i--) {
-            buf[7 - i] = hex[(int_sts >> (i * 4)) & 0xF];
-        }
-        buf[8] = '\0';
-        semihosting_write0(buf);
-    }
-    semihosting_write0("\n");
-
-    /* Send a raw ARP request to test TX path */
-    /* ARP request: who has 192.0.3.1? tell 192.0.3.10 */
-    uint8_t *our_mac = lan9118_netif.hwaddr;
-    semihosting_write0("  [diag] netif MAC: ");
-    {
-        static const char hex[] = "0123456789abcdef";
-        for (int i = 0; i < 6; i++) {
-            char buf[4];
-            buf[0] = hex[our_mac[i] >> 4];
-            buf[1] = hex[our_mac[i] & 0xF];
-            buf[2] = (i < 5) ? ':' : '\n';
-            buf[3] = '\0';
-            semihosting_write0(buf);
-        }
-    }
-
-    uint8_t arp_frame[42] = {
-        /* Ethernet header */
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  /* Destination: broadcast */
-        our_mac[0], our_mac[1], our_mac[2],
-        our_mac[3], our_mac[4], our_mac[5],  /* Source: our MAC */
-        0x08, 0x06,                            /* EtherType: ARP */
-        /* ARP payload */
-        0x00, 0x01,                            /* Hardware type: Ethernet */
-        0x08, 0x00,                            /* Protocol type: IPv4 */
-        0x06,                                  /* Hardware size: 6 */
-        0x04,                                  /* Protocol size: 4 */
-        0x00, 0x01,                            /* Opcode: request */
-        our_mac[0], our_mac[1], our_mac[2],
-        our_mac[3], our_mac[4], our_mac[5],  /* Sender MAC */
-        0xC0, 0x00, 0x03, 0x0A,              /* Sender IP: 192.0.3.10 */
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  /* Target MAC: unknown */
-        0xC0, 0x00, 0x03, 0x01               /* Target IP: 192.0.3.1 */
-    };
-
-    /* Write TX Command A */
-    uint32_t cmd_a = (1u << 13) | (1u << 12) | 42;  /* FIRST_SEG | LAST_SEG | len */
-    *(volatile uint32_t *)(uintptr_t)(base + 0x20) = cmd_a;
-    /* Write TX Command B */
-    uint32_t cmd_b = (42u << 16) | 42;
-    *(volatile uint32_t *)(uintptr_t)(base + 0x20) = cmd_b;
-    /* Write frame data (DWORD-aligned) */
-    uint32_t nwords = (42 + 3) / 4;
-    for (uint32_t i = 0; i < nwords; i++) {
-        uint32_t word = 0;
-        for (int b = 0; b < 4 && (i * 4 + b) < 42; b++) {
-            word |= (uint32_t)arp_frame[i * 4 + b] << (b * 8);
-        }
-        *(volatile uint32_t *)(uintptr_t)(base + 0x20) = word;
-    }
-    semihosting_write0("  [diag] ARP request sent (42 bytes) for 192.0.3.1\n");
-
-    /* Check RX immediately after TX (synchronous delivery check) */
-    rx_inf = *(volatile uint32_t *)(uintptr_t)(base + 0x7C);
-    rx_used = (rx_inf >> 16) & 0xFF;
-    semihosting_write0("  [diag] RX immediately after TX: ");
-    semihosting_write_int((int)rx_used);
-    semihosting_write0("\n");
-
-    /* Also send ARP for 10.0.2.2 (QEMU user-mode gateway) */
-    arp_frame[38] = 10; arp_frame[39] = 0; arp_frame[40] = 2; arp_frame[41] = 2;
-    cmd_a = (1u << 13) | (1u << 12) | 42;
-    *(volatile uint32_t *)(uintptr_t)(base + 0x20) = cmd_a;
-    cmd_b = (42u << 16) | 42;
-    *(volatile uint32_t *)(uintptr_t)(base + 0x20) = cmd_b;
-    for (uint32_t i = 0; i < nwords; i++) {
-        uint32_t word = 0;
-        for (int b = 0; b < 4 && (i * 4 + b) < 42; b++) {
-            word |= (uint32_t)arp_frame[i * 4 + b] << (b * 8);
-        }
-        *(volatile uint32_t *)(uintptr_t)(base + 0x20) = word;
-    }
-    semihosting_write0("  [diag] ARP request sent (42 bytes) for 10.0.2.2\n");
-
-    /* Check RX immediately after second TX (synchronous delivery check) */
-    rx_inf = *(volatile uint32_t *)(uintptr_t)(base + 0x7C);
-    rx_used = (rx_inf >> 16) & 0xFF;
-    semihosting_write0("  [diag] RX immediately after 2nd TX: ");
-    semihosting_write_int((int)rx_used);
-    semihosting_write0("\n");
-
-    /* Now wait for async delivery (WFI triggers QEMU main loop) */
-    /* Use busy-wait with WFI instead of vTaskDelay to avoid poll task consuming frames */
-    for (int i = 0; i < 200; i++) {
-        __asm__ volatile("wfi");
-        rx_inf = *(volatile uint32_t *)(uintptr_t)(base + 0x7C);
-        rx_used = (rx_inf >> 16) & 0xFF;
-        if (rx_used > 0) {
-            semihosting_write0("  [diag] RX arrived after ");
-            semihosting_write_int(i);
-            semihosting_write0(" WFI iterations: ");
-            semihosting_write_int((int)rx_used);
-            semihosting_write0(" entries\n");
-            break;
-        }
-    }
-
-    /* Final check */
-    rx_inf = *(volatile uint32_t *)(uintptr_t)(base + 0x7C);
-    rx_used = (rx_inf >> 16) & 0xFF;
-    semihosting_write0("  [diag] RX final: ");
-    semihosting_write_int((int)rx_used);
-    semihosting_write0(" entries\n");
-
-    /* TX status check */
-    int_sts = *(volatile uint32_t *)(uintptr_t)(base + 0x58);
-    semihosting_write0("  [diag] INT_STS final: 0x");
-    {
-        static const char hex[] = "0123456789abcdef";
-        char buf[9];
-        for (int i = 7; i >= 0; i--) {
-            buf[7 - i] = hex[(int_sts >> (i * 4)) & 0xF];
-        }
-        buf[8] = '\0';
-        semihosting_write0(buf);
-    }
-    semihosting_write0("\n");
 }

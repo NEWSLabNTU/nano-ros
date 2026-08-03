@@ -23,8 +23,8 @@ use wake_latency_cortex_m3::{BURST, TOPIC, publisher_config};
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {
     let _ = Mps2An385::run_bare(publisher_config(), |config| {
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
+        let exec_config = ExecutorConfig::new(config.base.zenoh_locator)
+            .domain_id(config.base.domain_id)
             .node_name("wake-latency-pub");
         nros_rmw_zenoh::register().expect("Failed to register RMW backend");
         let mut executor = Executor::open(&exec_config)?;
