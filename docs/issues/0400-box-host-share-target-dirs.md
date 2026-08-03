@@ -1,11 +1,11 @@
 ---
-id: 398
+id: 400
 title: Recipes that hard-set a relative target dir escape the distrobox's
   CARGO_TARGET_DIR, so host and box share build-script binaries
 status: open
 type: bug
 area: build
-related: [0375, 0383]
+related: [0375, 0383, 0399]
 ---
 
 ## Problem

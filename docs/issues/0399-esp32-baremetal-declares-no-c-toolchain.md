@@ -5,7 +5,7 @@ title: qemu-esp32-baremetal declares no C toolchain, so cc-rs guesses
 status: open
 type: bug
 area: build
-related: [0368, 0398]
+related: [0368, 0400]
 ---
 
 ## Problem

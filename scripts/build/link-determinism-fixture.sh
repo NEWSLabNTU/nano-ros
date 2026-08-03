@@ -35,7 +35,7 @@ mkdir -p "$out_dir"
 # `target/debug/libnros_c.a`, built by some other lane with different features,
 # and the validator failed with "did not pull the backend register entry" —
 # a link-model error message for what was really a stale file from another
-# machine image. Issue 0398 is the same class in the justfile recipes.
+# machine image. Issue 0400 is the same class in the justfile recipes.
 target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
 case "$target_dir" in /*) ;; *) target_dir="$repo_root/$target_dir" ;; esac
 built="$target_dir/debug/libnros_c.a"
