@@ -369,7 +369,7 @@ check-fast: \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-sysdep-remedies \
+    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-sysdep-remedies \
     check-activate-shells
     @echo "Fast checks passed!"
 
@@ -933,6 +933,12 @@ check-example-matrix:
 check-fixtures-manifest:
     @python3 scripts/build/fixtures-manifest.py validate-workspaces
     @python3 scripts/build/fixtures-manifest.py validate-compile-checks
+
+# A leaf that consumes its own `generated/` must be visible to
+# `scripts/regenerate-bindings.sh` (which globs tracked package.xml), or its
+# bindings freeze silently — eight test bins had frozen several phases back.
+check-generated-leaf-regenerable:
+    @bash scripts/check-generated-leaf-regenerable.sh
 
 # Issue 0406 — a fixture builder narrowed to an id it cannot match must FAIL,
 # not exit 0 having built nothing. Buildless: exercises the shared guard and

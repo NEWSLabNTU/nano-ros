@@ -1,0 +1,27 @@
+# These test bins are USER-side leaves: each one names its message crates as
+# path deps into `generated/`, which `nros generate-rust` produces from the
+# HOST's message packages (`scripts/regenerate-bindings.sh` section 3, run by
+# `just generate-bindings` — a dependency of `build-test-fixtures`, so the
+# build stage recreates them before anything is compiled).
+#
+# They used to be committed, which made a fresh clone look like it had them
+# while the contents belonged to whoever last regenerated.
+/*/generated/
+
+# A leaf's `Cargo.lock` may be tracked ONLY when it resolves from a bare clone
+# — `check-leaf-lockfiles` enforces `tracked lock <=> (no message deps) OR
+# (committed generated/)`. With `generated/` no longer committed, every leaf
+# below that has message deps falls out of both arms: its lock would name
+# crates that do not exist until codegen runs.
+#
+# The bins NOT listed here have no message deps and keep their tracked locks,
+# so this is a list rather than a blanket `*/Cargo.lock` — a blanket rule would
+# silently make a legitimate one unaddable.
+/action-client-multigoal/Cargo.lock
+/action-server-concurrent/Cargo.lock
+/declarative-safety-listener/Cargo.lock
+/header-chatter-talker/Cargo.lock
+/int32-sink/Cargo.lock
+/param-chatter-talker/Cargo.lock
+/safety-chatter-listener/Cargo.lock
+/safety-chatter-talker/Cargo.lock
