@@ -39,8 +39,12 @@
 //! (`scripts/build/zephyr-fixture-leaves.sh`). `None` = native ephemeral
 //! isolation.
 //!
-//! Run with: `cargo nextest run -p nros-tests --test multihost_e2e`
-//! (filter one cell: `-E 'binary(multihost_e2e) and test(native_mixed)'`).
+//! Run (phase-329 W1 — ONE test derived from `matrix::CELLS`, no per-cell
+//! `#[case]`): `cargo nextest run -p nros-tests --test multihost_e2e`. Every
+//! `Workload::Multihost` / `Kind::Workspace` / `Tier::Runtime` cell of the
+//! matrix runs in the single `multihost` test; adding such a cell to `CELLS`
+//! makes it run here with no edit beyond its `exec_for` execution arm (a
+//! missing arm is a hard failure, so a new cell can never silently skip).
 
 use nros_tests::{
     TestResult,
@@ -53,9 +57,8 @@ use nros_tests::{
         build_native_workspace_rust_entry_robot1, build_native_workspace_rust_entry_robot2,
         build_zephyr_workspace_rust_multihost_robot1_entry, require_zenohd,
     },
-    matrix::{Lang as ML, PlatformId as MP, Workload as MW},
+    matrix::{Cell as MCell, Kind as MK, Lang as ML, PlatformId as MP, Tier as MT, Workload as MW},
 };
-use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
 
 // =============================================================================
@@ -100,10 +103,11 @@ enum Robot2Ready {
 
 type Resolver = fn() -> TestResult<PathBuf>;
 
-/// One multihost matrix cell.
-struct Cell {
-    platform: &'static str,
-    lang: &'static str,
+/// The per-cell EXECUTION data for one multihost matrix cell. The coordinate
+/// (`platform`, `lang`, `rmw`) lives in the `matrix::Cell`; this carries only
+/// what the matrix cannot express — how the two hosts boot, resolve, and are
+/// proven. Keyed by coordinate in [`exec_for`].
+struct Exec {
     robot1: Resolver,
     robot2: Resolver,
     /// Baked router port — the allocator's number (matches the west-lane
@@ -115,6 +119,87 @@ struct Cell {
     /// Provenance / nuance — folded into failure messages so a red cell
     /// still names the seam it pins.
     note: &'static str,
+}
+
+/// Map a Multihost matrix coordinate to its execution data. A coordinate with
+/// no arm is a HARD panic: adding a `Multihost`/`Workspace`/`Runtime` cell to
+/// `matrix::CELLS` forces an arm here, so a new cell can never silently skip
+/// (phase-329 W1).
+fn exec_for(platform: MP, lang: ML) -> Exec {
+    match (platform, lang) {
+        (MP::Native, ML::Rust) => Exec {
+            robot1: || build_native_workspace_rust_entry_robot1().map(|p| p.to_path_buf()),
+            robot2: || build_native_workspace_rust_entry_robot2().map(|p| p.to_path_buf()),
+            port: None,
+            boot: Boot::Native,
+            proof: Proof::HostedSpinCallbacks,
+            ready: Robot2Ready::None,
+            note: "phase-326: per-host models (`host:=robotN` resolve) bake talker-only / \
+                   listener-only entries",
+        },
+        (MP::Native, ML::C) => Exec {
+            robot1: || build_native_workspace_c_entry_robot1().map(|p| p.to_path_buf()),
+            robot2: || build_native_workspace_c_entry_robot2().map(|p| p.to_path_buf()),
+            port: None,
+            boot: Boot::Native,
+            proof: Proof::ListenerCount3,
+            ready: Robot2Ready::Marker,
+            note: "phase-326: the C entry consumes the per-host model via \
+                   `nano_ros_add_executable(MODEL …)` — C parity with the Rust macro bake",
+        },
+        (MP::Native, ML::Cpp) => Exec {
+            robot1: || build_native_workspace_cpp_entry_robot1().map(|p| p.to_path_buf()),
+            robot2: || build_native_workspace_cpp_entry_robot2().map(|p| p.to_path_buf()),
+            port: None,
+            boot: Boot::Native,
+            proof: Proof::ListenerCount3,
+            ready: Robot2Ready::SettleMs(1500),
+            note: "phase-263 Track C: C++ per-host entries; the C++ listener prints no ready \
+                   marker (only `Received:`), hence the settle delay",
+        },
+        (MP::Native, ML::Mixed) => Exec {
+            robot1: || build_native_workspace_mixed_entry_robot1().map(|p| p.to_path_buf()),
+            robot2: || build_native_workspace_mixed_entry_robot2().map(|p| p.to_path_buf()),
+            port: None,
+            boot: Boot::Native,
+            proof: Proof::ListenerCount3,
+            ready: Robot2Ready::SettleMs(1500),
+            note: "phase-263 Track C: genuinely mixed-language multihost — robot1 bakes the C \
+                   talker + Rust heartbeat, robot2 the C++ listener",
+        },
+        (MP::ZephyrNativeSim, ML::Rust) => Exec {
+            robot1: build_zephyr_workspace_rust_multihost_robot1_entry,
+            robot2: || build_native_workspace_rust_entry_robot2().map(|p| p.to_path_buf()),
+            port: Some(port_of(MP::ZephyrNativeSim, ML::Rust, MW::Multihost)),
+            boot: Boot::ZephyrNativeSim,
+            proof: Proof::HostedSpinCallbacks,
+            ready: Robot2Ready::None,
+            note: "phase-276 W6 / #102 H1: multihost-on-embedded — the robot1 talker baked \
+                   into a Zephyr native_sim image, delivering to the native robot2 listener",
+        },
+        (p, l) => panic!(
+            "multihost_e2e: no execution mapping for matrix cell {p:?}/{l:?} — add an \
+             `exec_for` arm (phase-329 W1: a new Multihost/Workspace/Runtime cell must \
+             wire its boot+resolvers here)"
+        ),
+    }
+}
+
+/// Human coordinate strings for failure messages (were the old `Cell.platform`
+/// / `Cell.lang` string fields).
+fn plat_str(p: MP) -> &'static str {
+    match p {
+        MP::ZephyrNativeSim => "zephyr",
+        _ => "native",
+    }
+}
+fn lang_str(l: ML) -> &'static str {
+    match l {
+        ML::Rust => "rust",
+        ML::C => "c",
+        ML::Cpp => "cpp",
+        ML::Mixed => "mixed",
+    }
 }
 
 enum Guest {
@@ -165,78 +250,84 @@ fn spawn_native_entry(
 // The parametrized matrix consumer
 // =============================================================================
 
-/// One multihost cell: boot robot2 (listener) then robot1 (talker) as two
-/// processes and prove `/chatter` crosses the host boundary per the cell's
-/// [`Proof`]. Case names carry `<platform>_<lang>` so nextest `test(...)`
-/// filters can slice (e.g. `test(zephyr_rust)`).
-#[rstest]
-// Native (ephemeral router).
-#[case::native_rust(Cell {
-    platform: "native", lang: "rust",
-    robot1: || build_native_workspace_rust_entry_robot1().map(|p| p.to_path_buf()),
-    robot2: || build_native_workspace_rust_entry_robot2().map(|p| p.to_path_buf()),
-    port: None, boot: Boot::Native,
-    proof: Proof::HostedSpinCallbacks, ready: Robot2Ready::None,
-    note: "phase-326: per-host models (`host:=robotN` resolve) bake talker-only / \
-           listener-only entries",
-})]
-#[case::native_c(Cell {
-    platform: "native", lang: "c",
-    robot1: || build_native_workspace_c_entry_robot1().map(|p| p.to_path_buf()),
-    robot2: || build_native_workspace_c_entry_robot2().map(|p| p.to_path_buf()),
-    port: None, boot: Boot::Native,
-    proof: Proof::ListenerCount3, ready: Robot2Ready::Marker,
-    note: "phase-326: the C entry consumes the per-host model via \
-           `nano_ros_add_executable(MODEL …)` — C parity with the Rust macro bake",
-})]
-#[case::native_cpp(Cell {
-    platform: "native", lang: "cpp",
-    robot1: || build_native_workspace_cpp_entry_robot1().map(|p| p.to_path_buf()),
-    robot2: || build_native_workspace_cpp_entry_robot2().map(|p| p.to_path_buf()),
-    port: None, boot: Boot::Native,
-    proof: Proof::ListenerCount3, ready: Robot2Ready::SettleMs(1500),
-    note: "phase-263 Track C: C++ per-host entries; the C++ listener prints no ready \
-           marker (only `Received:`), hence the settle delay",
-})]
-#[case::native_mixed(Cell {
-    platform: "native", lang: "mixed",
-    robot1: || build_native_workspace_mixed_entry_robot1().map(|p| p.to_path_buf()),
-    robot2: || build_native_workspace_mixed_entry_robot2().map(|p| p.to_path_buf()),
-    port: None, boot: Boot::Native,
-    proof: Proof::ListenerCount3, ready: Robot2Ready::SettleMs(1500),
-    note: "phase-263 Track C: genuinely mixed-language multihost — robot1 bakes the C \
-           talker + Rust heartbeat, robot2 the C++ listener",
-})]
-// Zephyr native_sim robot1 + native robot2 (west lane).
-#[case::zephyr_rust(Cell {
-    platform: "zephyr", lang: "rust",
-    robot1: build_zephyr_workspace_rust_multihost_robot1_entry,
-    robot2: || build_native_workspace_rust_entry_robot2().map(|p| p.to_path_buf()),
-    port: Some(port_of(MP::ZephyrNativeSim, ML::Rust, MW::Multihost)),
-    boot: Boot::ZephyrNativeSim,
-    proof: Proof::HostedSpinCallbacks, ready: Robot2Ready::None,
-    note: "phase-276 W6 / #102 H1: multihost-on-embedded — the robot1 talker baked \
-           into a Zephyr native_sim image, delivering to the native robot2 listener",
-})]
-fn multihost(#[case] cell: Cell) {
+/// THE multihost matrix consumer (phase-329 W1). Iterates every
+/// `Multihost`/`Workspace`/`Runtime` cell of `matrix::CELLS` — the case list is
+/// DERIVED, not hand-written — and runs each in one process. Per-cell skips and
+/// failures are caught so one skipped fixture never aborts the rest: the test
+/// fails iff a cell genuinely failed, and skips iff every cell skipped (matching
+/// the pre-derivation per-`#[case]` skip semantics, aggregated).
+#[test]
+fn multihost() {
+    let cells: Vec<&MCell> = nros_tests::matrix::CELLS
+        .iter()
+        .filter(|c| {
+            matches!(c.workload, MW::Multihost)
+                && matches!(c.kind, MK::Workspace)
+                && matches!(c.tier, MT::Runtime)
+        })
+        .collect();
+    assert!(
+        !cells.is_empty(),
+        "matrix regression: no Multihost/Workspace/Runtime cells — this consumer must have work"
+    );
+
+    // Silence the caught per-cell panics' default backtrace noise; the loop
+    // classifies and re-reports them itself.
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let mut skipped: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+    for c in &cells {
+        let label = format!("{}/{}", plat_str(c.platform), lang_str(c.lang));
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
+        if let Err(p) = res {
+            let msg = p
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "<non-string panic>".to_string());
+            if msg.contains("[SKIPPED]") {
+                skipped.push(format!("{label}: {msg}"));
+            } else {
+                failed.push(format!("{label}: {msg}"));
+            }
+        }
+    }
+    std::panic::set_hook(prev_hook);
+
+    assert!(
+        failed.is_empty(),
+        "multihost: {} of {} cell(s) FAILED:\n  {}",
+        failed.len(),
+        cells.len(),
+        failed.join("\n  ")
+    );
+    if skipped.len() == cells.len() {
+        nros_tests::skip!(
+            "all {} multihost cell(s) skipped:\n  {}",
+            skipped.len(),
+            skipped.join("\n  ")
+        );
+    }
+}
+
+/// Boot robot2 (listener) then robot1 (talker) as two processes and prove
+/// `/chatter` crosses the host boundary per the cell's [`Proof`]. Panics with
+/// `[SKIPPED] …` (via `skip!`) on an unmet precondition; the caller classifies.
+fn run_cell(pcell: &MCell) {
+    let platform = plat_str(pcell.platform);
+    let lang = lang_str(pcell.lang);
+    let cell = exec_for(pcell.platform, pcell.lang);
     // The zephyr cell historically gates on the router START (below) rather
     // than a zenohd probe — keep that shape.
     if cell.boot == Boot::Native && !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
     let robot1 = (cell.robot1)().unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "{} {} robot1 entry fixture not built: {e}",
-            cell.platform,
-            cell.lang
-        )
+        nros_tests::skip!("{} {} robot1 entry fixture not built: {e}", platform, lang)
     });
     let robot2 = (cell.robot2)().unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "{} {} robot2 entry fixture not built: {e}",
-            cell.platform,
-            cell.lang
-        )
+        nros_tests::skip!("{} {} robot2 entry fixture not built: {e}", platform, lang)
     });
 
     // Router: ephemeral on native; otherwise the EXACT port the west-lane
@@ -278,7 +369,7 @@ fn multihost(#[case] cell: Cell) {
                 r2.kill();
                 panic!(
                     "[{} {}] robot2 listener never became ready ({})",
-                    cell.platform, cell.lang, cell.note
+                    platform, lang, cell.note
                 )
             });
         }
@@ -312,7 +403,7 @@ fn multihost(#[case] cell: Cell) {
                     r2.kill();
                     panic!(
                         "[{} {}] robot2 listener did not finish its hosted spin ({})",
-                        cell.platform, cell.lang, cell.note
+                        platform, lang, cell.note
                     )
                 });
             r1.kill();
@@ -332,7 +423,7 @@ fn multihost(#[case] cell: Cell) {
                 delivered,
                 "[{} {}] robot2 (listener) saw no /chatter callbacks from the robot1 \
                  talker — cross-host delivery failed (expected `{key}N` with N>=1; {}):\n{out}",
-                cell.platform, cell.lang, cell.note
+                platform, lang, cell.note
             );
         }
         Proof::ListenerCount3 => {
@@ -347,7 +438,7 @@ fn multihost(#[case] cell: Cell) {
                     panic!(
                         "[{} {}] robot2 (listener-only host entry) never received robot1's \
                          /chatter — the multihost host-partition delivery did not work ({})",
-                        cell.platform, cell.lang, cell.note
+                        platform, lang, cell.note
                     )
                 });
             r1.kill();
@@ -357,8 +448,8 @@ fn multihost(#[case] cell: Cell) {
             assert!(
                 n >= 3,
                 "[{} {}] expected ≥3 cross-host deliveries on robot2, got {n} ({})",
-                cell.platform,
-                cell.lang,
+                platform,
+                lang,
                 cell.note
             );
         }
