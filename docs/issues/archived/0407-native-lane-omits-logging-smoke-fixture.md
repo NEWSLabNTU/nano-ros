@@ -2,7 +2,7 @@
 id: 407
 title: Tier 1 runs a test whose fixture its own lane never builds
   (logging_smoke needs a threadx-linux fixture)
-status: open
+status: resolved
 type: bug
 area: testing
 related: [0196, 0401, 0406]
@@ -60,6 +60,32 @@ NROS_TEST_SCOPE=native cargo nextest run -p nros-tests \
 Whatever is chosen, a gate that cross-checks "every test the scope selects has
 its fixture in the lane" would catch the next instance at configure time
 instead of an hour into a sweep.
+
+## RESOLVED (2026-08-04)
+
+The test was renamed `logging_smoke_harness_captures_stderr` ->
+`logging_smoke_threadx_linux_captures_stderr`.
+
+Option (1) from above, using the mechanism already in place: `lane-filter.sh`
+excludes a platform's cases by matching platform tokens in binary AND test names
+(the #0357 resolution), and every sibling in this binary already carries one —
+`freertos_mps2`, `nuttx_qemu_arm`, `threadx_riscv64`, `esp32_qemu`. This test
+alone had none, so `not test(~threadx)` could not reach it.
+
+It HAD one: the phase-221 naming audit shortened
+`logging_smoke_threadx_linux_harness_captures_nros_log_stderr` to the generic
+name. That was reasonable at the time — the token-based lane filter did not
+exist until phase-318 — and is a good example of a rename that only becomes
+wrong when something later starts depending on the thing removed. A doc-comment
+on the test now says the token is load-bearing.
+
+Verified: with `lane-filter.sh native` applied, `cargo nextest list --test
+logging_smoke` selects 0 matching cases; unscoped it still selects 1, so the
+coverage moves to the lane that builds the fixture rather than disappearing.
+
+Not adopted: adding the row to `lane=native` (option 2) would put a
+threadx-linux fixture in the cheap tier, and making it skip (option 3) trades
+one coverage hole for a quieter one.
 
 ## Notes
 

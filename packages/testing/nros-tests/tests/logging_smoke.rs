@@ -160,8 +160,18 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
 /// `nros-log` records are written to stderr, and this test fails if
 /// `ManagedProcess::wait_for_all_output` misses the success pattern.
 /// Verifies the ThreadX Linux logging harness captures nano-ros log stderr.
+///
+/// issue 0407 — the `threadx_linux` token in the NAME is load-bearing, not
+/// decoration. `scripts/test/lane-filter.sh` excludes a platform's cases from
+/// another lane by matching platform tokens in the binary AND test names
+/// (issue 0357), and every sibling here carries one (`freertos_mps2`,
+/// `nuttx_qemu_arm`, `threadx_riscv64`, `esp32_qemu`). This one lost its token
+/// to the phase-221 naming audit — reasonable then, since the token-based
+/// filter did not exist yet — and tier 1 has been selecting a threadx-linux
+/// test ever since, whose fixture `lane=native` never builds. Do not shorten it
+/// back.
 #[test]
-fn logging_smoke_harness_captures_stderr() {
+fn logging_smoke_threadx_linux_captures_stderr() {
     if !threadx_linux::is_threadx_available() {
         panic!("[SKIPPED] THREADX_DIR not set or invalid");
     }

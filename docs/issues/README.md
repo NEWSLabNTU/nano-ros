@@ -173,10 +173,11 @@ and ROS param services (6) + REP-2002 lifecycle services (6) overflow the 8-slot
 The bridge and TLS cases remain unexamined; component-order is #382. Evidence trail (incl. the
 stale-fixture trap that made one run uninterpretable) is in the issue. See `0408-*`. (2026-08-04)
 
-**#407** — `just ci` sets fixture lane and test scope both to `native`, but the native scope selects
-`logging_smoke`, whose fixture is a THREADX-LINUX one that `lane=native` never builds — tier 1 fails
-on a fixture tier 1 declines to build. Issue-0196 class one level up: not the freshness probe
-disagreeing, the SET. See `0407-*`. (2026-08-04)
+**#407** (RESOLVED 2026-08-04) — tier 1 selected a threadx-linux test whose fixture `lane=native`
+never builds, so `just ci` failed on a fixture it declines to build. The test had lost its platform
+token to the phase-221 naming audit, which predates the token-matching lane filter (#357) that later
+made the token load-bearing; restored as `logging_smoke_threadx_linux_captures_stderr`. See
+`archived/0407-*`.
 
 **#401** — The box's `CARGO_TARGET_DIR` (which exists so the box never re-runs a host-built build
 script against its older glibc) and the LEAF-RELATIVE fixture path contract are mutually exclusive:
