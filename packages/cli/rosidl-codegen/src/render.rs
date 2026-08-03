@@ -279,7 +279,12 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
         )
     });
 
-    let override_dir = OVERRIDE_DIR.get().cloned();
+    // W4.b — the override dir comes from `set_template_dir` (a CLI flag can call
+    // it) or, with no cross-command plumbing, the `NROS_TEMPLATE_DIR` env var.
+    let override_dir = OVERRIDE_DIR
+        .get()
+        .cloned()
+        .or_else(|| std::env::var_os("NROS_TEMPLATE_DIR").map(std::path::PathBuf::from));
     env.set_loader(move |name| {
         if let Some(dir) = &override_dir {
             for cand in [dir.join(name), dir.join(format!("{name}.jinja"))] {

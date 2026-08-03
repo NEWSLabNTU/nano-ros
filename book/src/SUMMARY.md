@@ -97,6 +97,7 @@
 
 # Internals
 
+- [Codegen — the pack pipeline](./internals/codegen-packs.md)
 - [Canonical Platform C ABI](./internals/platform-c-abi.md)
 - [RMW Backends — Host-Language Policy](./internals/rmw-backends.md)
 - [RMW Zenoh Protocol](./internals/rmw-zenoh-protocol.md)
