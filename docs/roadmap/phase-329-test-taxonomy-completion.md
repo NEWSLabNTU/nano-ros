@@ -70,18 +70,30 @@ visible from the file's location/consumer, not tribal memory:
   of open question 2 (Mixed stays a `Lang`) as implemented.
 
 ### W1 — close the consumer loop (the 2026-08 defect)
-- [ ] `entry_e2e`, `realtime_tiers_e2e`, `multihost_e2e`,
-  `roundtrip_xprocess_e2e`, `workspace_features_e2e`: derive the `#[case]`
-  list FROM `matrix::CELLS` (rstest over a `const` filter of CELLS — the
-  zephyr.rs pattern, but iterating, not counting). A new Runtime row must
-  fail G1 until a case exists, and must RUN once the fixture row lands.
-- [ ] Gate: `matrix_fixture_coverage` G5 — every file whose header claims a
-  matrix role derives its case set from CELLS (assert set-equality between
-  the file's inventory and the CELLS filter it declares; count-only
-  assertions like zephyr.rs L671 upgrade to set equality).
+- [x] `entry_e2e`, `realtime_tiers_e2e`, `multihost_e2e`,
+  `roundtrip_xprocess_e2e`, `workspace_features_e2e`: derive the case list
+  FROM `matrix::CELLS`. **Landed 2026-08-04.** Each file now iterates
+  `CELLS.filter(|c| w1_consumer_of(c) == Some(<self>) && Runtime)` in ONE
+  `#[test]`; the local `Cell{}` tables became `Exec` (execution data only),
+  keyed by coordinate via `exec_for` (an unmapped claimed coordinate is a HARD
+  panic, so a new cell can't silently skip). The rstest per-case granularity
+  collapses to one loop-per-file with per-cell `catch_unwind` skip/fail
+  classification (a missing fixture skips that cell, never aborts the rest). A
+  coordinate that maps to MORE than one row (realtime's `(Native,Cpp)` →
+  component + #124 rclcpp) is preserved via `exec_for -> Vec<Exec>`, so the
+  strict derive drops NO sub-variant coverage.
+- [x] Gate G5 — **landed** as `matrix::tests::g5_w1_consumers_claim_their_owned_workloads`
+  (in `matrix.rs`, not `matrix_fixture_coverage.rs` — it gates the
+  `w1_consumer_of` PARTITION, which lives there). Asserts every Runtime cell of
+  a fully-owned workload (`Multihost`/`RealtimeTiers`/workspace `Service`|`Action`)
+  is claimed, and every consumer claims ≥1 cell. Exec-arm totality is
+  runtime-enforced (the hard panic above), since exec tables live in the test
+  binaries. `EntryPubsub` + native feature workloads are SHARED with W4 files, so
+  only the claimed subset is gated (full ownership follows once W4 converts).
 - [ ] Kill the second spelling: `platform_header_matrix.rs` local `CELLS`
   table rewritten over `matrix::PlatformId` (its cells move to the
-  compile-check fixture family in W5).
+  compile-check fixture family in W5) — **deferred to W5** (its own text ties it
+  to the compile-check fixture move).
 
 ### W2 — realtime-dim matrix
 - [ ] `matrix::sched_dims` — `SchedDim {CorePin, EdfDeadline,
