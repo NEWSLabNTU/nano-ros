@@ -23,8 +23,8 @@ use nros_tests::{
     esp32::*,
     fixtures::{
         ManagedProcess, ZenohRouter, build_esp32_qemu_listener, build_esp32_qemu_talker,
-        build_native_listener, build_native_talker, get_prebuilt_esp32_qemu_workspace_entry,
-        require_zenohd,
+        build_int32_sink, build_native_listener, build_native_talker,
+        get_prebuilt_esp32_qemu_workspace_entry, require_zenohd,
     },
     platform, wait_for_port,
 };
@@ -499,7 +499,15 @@ fn test_esp32_workspace_entry_e2e() {
     // External native listener — the observable delivery endpoint (the
     // Entry's own in-process listener sees nothing; no same-session
     // zenoh loopback).
-    let native_listener = build_native_listener().expect("Failed to build native listener");
+    // phase-338 W3 — was the EXAMPLE (`native/rust/listener`) with a test-only
+    // `NROS_SUB_TYPE=int32` switch. That switch moved to `bins/int32-sink`,
+    // which subscribes Int32 natively, so the example can drop its branching.
+    // Readiness is unchanged ("Waiting for"); the per-message marker is not —
+    // the sink prints "Received:", the example printed "I heard:".
+    let native_listener = match build_int32_sink() {
+        Ok(p) => p.to_path_buf(),
+        Err(e) => nros_tests::skip!("int32-sink fixture not prebuilt ({e})"),
+    };
     let mut listener_cmd = Command::new(native_listener);
     listener_cmd
         .env(
@@ -507,11 +515,9 @@ fn test_esp32_workspace_entry_e2e() {
             format!("tcp/127.0.0.1:{}", ESP32_WS_ENTRY_PORT),
         )
         // #190 — the workspace Entry's talker_pkg publishes std_msgs/Int32 on
-        // /chatter; the message type is baked into the wire keyexpr, so the
-        // listener's default String subscription matches NOTHING (pcap: the
-        // Entry declares `0/chatter/std_msgs::msg::dds_::Int32_/…`). The
-        // listener's own doc comment says the ws-entry E2E must set this.
-        .env("NROS_SUB_TYPE", "int32")
+        // /chatter; the message type is baked into the wire keyexpr, so a
+        // String subscription matches NOTHING (pcap: the Entry declares
+        // `0/chatter/std_msgs::msg::dds_::Int32_/…`). Hence the Int32 sink.
         .env("RUST_LOG", "info");
     let mut native_proc = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start native listener");
@@ -533,11 +539,14 @@ fn test_esp32_workspace_entry_e2e() {
     // The external listener must log at least one real `Received:` line.
     let listener_output = native_proc
         .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             Duration::from_secs(30),
         )
         .unwrap_or_default();
-    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     eprintln!("Native listener received {received} message(s) from the workspace Entry");
 
     assert!(

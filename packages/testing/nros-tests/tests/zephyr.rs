@@ -1599,16 +1599,24 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     // Entry's talker publishes `/chatter`; this listener is the observable
     // delivery endpoint (the Entry's own in-process listener sees nothing —
     // no same-session zenoh loopback).
-    let listener_path = build_native_listener().expect("Failed to build native-rs-listener");
-    use nros_tests::process::ManagedProcess;
-    use std::process::Command;
-    let mut listener_cmd = Command::new(listener_path);
     // The ws demo Entry (`talker_pkg`) publishes std_msgs/Int32 on /chatter;
     // the observability listener must subscribe the SAME type (the message type
     // is baked into the wire keyexpr) or the router never matches it.
+    //
+    // phase-338 W3 — this was the EXAMPLE (`native/rust/listener`) with a
+    // test-only `NROS_SUB_TYPE=int32` switch; the switch moved to
+    // `bins/int32-sink`, which subscribes Int32 natively. Readiness is
+    // unchanged ("Waiting for"); the per-message marker is not — the sink
+    // prints "Received:", the example printed "I heard:".
+    let listener_path = match nros_tests::fixtures::build_int32_sink() {
+        Ok(p) => p.to_path_buf(),
+        Err(e) => nros_tests::skip!("int32-sink fixture not prebuilt ({e})"),
+    };
+    use nros_tests::process::ManagedProcess;
+    use std::process::Command;
+    let mut listener_cmd = Command::new(listener_path);
     listener_cmd
         .env("NROS_LOCATOR", &locator)
-        .env("NROS_SUB_TYPE", "int32")
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
@@ -1643,7 +1651,10 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     eprintln!("\n=== Workspace Entry output ===\n{entry_output}");
     eprintln!("\n=== Native listener output ===\n{listener_output}");
 
-    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     assert!(
         received >= 1,
         "Workspace Entry talker delivered no messages to the external native \

@@ -160,46 +160,41 @@ fn ros_edition_interop(#[case] rmw: Rmw, #[case] workload: Workload, #[case] dir
     let lane = Lane::setup(rmw, example_of(workload, dir));
 
     match (workload, dir) {
-        // ── pub/sub (std_msgs/Int32 on /chatter) ─────────────────────────────
+        // ── pub/sub (std_msgs/String on /chatter) ────────────────────────────
+        //
+        // phase-338 W3 — these two cases used to force the examples onto Int32
+        // with `NROS_PUB_TYPE` / `NROS_SUB_TYPE`. The type was arbitrary here
+        // (the edition axis is about type_hash + keyexpr format, not the
+        // payload), so both now use the examples' DEFAULT `std_msgs/String` —
+        // the official ROS 2 demo type — and the test-only switch is gone.
         (Pubsub, NanoToRos) => {
-            let _talker = ros_env::spawn_process(
-                {
-                    let mut c = lane.nano_cmd(&[]);
-                    c.env("NROS_PUB_TYPE", "int32");
-                    c
-                },
-                "nano-talker",
-            )
-            .expect("spawn nano talker");
+            let _talker = ros_env::spawn_process(lane.nano_cmd(&[]), "nano-talker")
+                .expect("spawn nano talker");
             let out = lane
                 .env
-                .echo_topic_once("/chatter", "std_msgs/msg/Int32", 45)
+                .echo_topic_once("/chatter", "std_msgs/msg/String", 45)
                 .expect("ros2 topic echo");
             assert!(
                 out.contains("data:"),
-                "ROS echo did not receive the nano-ros Int32 on /chatter ({rmw:?}):\n{out}"
+                "ROS echo did not receive the nano-ros String on /chatter ({rmw:?}):\n{out}"
             );
         }
         (Pubsub, RosToNano) => {
             let _pub = lane
                 .env
-                .spawn_topic_pub("/chatter", "std_msgs/msg/Int32", "{data: 42}", 5)
+                .spawn_topic_pub("/chatter", "std_msgs/msg/String", "{data: 'hello'}", 5)
                 .expect("spawn ros2 topic pub");
-            let mut listener = ros_env::spawn_process(
-                {
-                    let mut c = lane.nano_cmd(&[]);
-                    c.env("NROS_SUB_TYPE", "int32");
-                    c
-                },
-                "nano-listener",
-            )
-            .expect("spawn nano listener");
+            let mut listener = ros_env::spawn_process(lane.nano_cmd(&[]), "nano-listener")
+                .expect("spawn nano listener");
             let out = listener
                 .wait_for_output(Duration::from_secs(45))
                 .unwrap_or_default();
             assert!(
-                out.contains(&format!("{} [42]", nros_tests::output::LISTENER_LOG_PREFIX)),
-                "nano-ros listener did not receive ROS Int32 42 on /chatter ({rmw:?}):\n{out}"
+                out.contains(&format!(
+                    "{} [hello]",
+                    nros_tests::output::LISTENER_LOG_PREFIX
+                )),
+                "nano-ros listener did not receive the ROS String on /chatter ({rmw:?}):\n{out}"
             );
         }
         // ── service (example_interfaces/AddTwoInts on /add_two_ints) ─────────
