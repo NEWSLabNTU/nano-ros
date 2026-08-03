@@ -369,7 +369,7 @@ check-fast: \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-sysdep-remedies \
+    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-sysdep-remedies \
     check-activate-shells
     @echo "Fast checks passed!"
 
@@ -933,6 +933,12 @@ check-example-matrix:
 check-fixtures-manifest:
     @python3 scripts/build/fixtures-manifest.py validate-workspaces
     @python3 scripts/build/fixtures-manifest.py validate-compile-checks
+
+# Every `docs/{design,issues}/NNNN-*.md` path written anywhere — prose, issue
+# frontmatter, or a cmake error message — must resolve. Renumbering on an id
+# collision is what breaks these.
+check-doc-refs:
+    @bash scripts/check-doc-refs.sh
 
 # A leaf `.cargo/config.toml` is tracked iff it holds content `nros sync`
 # cannot regenerate. `**/.cargo/config.toml` is gitignored (most are pure sync

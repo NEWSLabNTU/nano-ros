@@ -91,7 +91,7 @@ integrated, none of them enumerated dimension by dimension.
 "Board / BSP Integration Architecture", drafted 2026-05 *"in response to 'vendor
 BSPs vary; we can't ship a board crate per (vendor × board × SDK-variant)
 combo.'"* Its Layer 4 is labelled **"Vendor BSP — owned BY the vendor, NOT by
-nano-ros."** RFC-0062 does not invent this; it finishes it and removes the parts
+nano-ros."** RFC-0064 does not invent this; it finishes it and removes the parts
 of the tree that still contradict it.
 
 ## What nano-ros needs (the seam)
@@ -187,7 +187,7 @@ Two consequences worth stating plainly:
   deliverable is an S32DS project with `.cproject`, `Debug_FLASH/makefile`, RTD
   drivers, startup and two linker scripts. **The right integration may be
   `integrations/s32ds/` rather than `cmake/board/nano-ros-board-canhubk344-freertos.cmake`.**
-  That inverts the plan RFC-0062 R1 proposed and is the most important open
+  That inverts the plan RFC-0064 R1 proposed and is the most important open
   question in this document. **[OPEN — test it during the CANHUBK3 bring-up.]**
 - **For the boards that genuinely stay in row 2, keep the module dumb.** It
   supplies linker script, startup, kernel config, netif, and nothing else. It

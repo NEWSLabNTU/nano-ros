@@ -134,7 +134,7 @@ if(NOT DEFINED NANO_ROS_BOARD)
             "PlatformIO), create the `freertos_platform` INTERFACE target — "
             "plus `freertos_kernel` and `lwip` — BEFORE "
             "add_subdirectory(<nano-ros>), and this module runs board-less. "
-            "See docs/design/0062-board-support-organization.md.")
+            "See docs/design/0064-board-support-organization.md.")
     endif()
 endif()
 
