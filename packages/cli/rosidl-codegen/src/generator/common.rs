@@ -360,6 +360,31 @@ pub(super) enum PayloadLang {
 /// fields (RFC-0033). Bounded fields, arrays, primitives, and nested types are
 /// unaffected. A non-`owned` storage mode is rejected in Phase 229 (`heap` and
 /// `borrowed` land in 229.5 / 229.6).
+/// Build every C field of `msg`, sourcing each field's storage from the lowered
+/// IR once (phase-335 W1.c) — no field builder resolves capacity.
+pub(super) fn build_c_fields(
+    current_package: Option<&str>,
+    message: &str,
+    msg: &rosidl_parser::Message,
+    resolver: &CapacityResolver,
+) -> Result<Vec<CField>, GeneratorError> {
+    let store = lowered_storages(current_package.unwrap_or(""), message, msg, resolver);
+    msg.fields
+        .iter()
+        .zip(store.iter())
+        .map(|(f, s)| {
+            build_c_field(
+                &f.name,
+                &f.field_type,
+                current_package,
+                message,
+                resolver,
+                Some(*s),
+            )
+        })
+        .collect()
+}
+
 pub(super) fn field_to_nros_field_with_mode(
     field: &rosidl_parser::Field,
     package_name: &str,
@@ -539,6 +564,8 @@ pub(super) fn build_c_field(
     current_package: Option<&str>,
     message_name: &str,
     resolver: &CapacityResolver,
+    // phase-335 W1.c — storage from the IR when the caller already lowered it.
+    pre_storage: Option<FieldStorage>,
 ) -> Result<CField, GeneratorError> {
     let escaped_name = escape_keyword(name);
 
@@ -562,7 +589,8 @@ pub(super) fn build_c_field(
     let mut owned_seq_cap: Option<usize> = None;
     let (c_type, array_suffix) = if let Some(kind) = cap_kind {
         let package = current_package.unwrap_or("");
-        let storage = resolver.resolve(package, message_name, name, kind);
+        let storage =
+            pre_storage.unwrap_or_else(|| resolver.resolve(package, message_name, name, kind));
         match storage.mode {
             StorageMode::Owned => {
                 if matches!(field_type, FieldType::Sequence { .. }) {

@@ -1,14 +1,13 @@
 use super::common::{
-    GeneratorError, PayloadLang, build_c_field, build_nros_fields, build_nros_schema_for_struct,
+    GeneratorError, PayloadLang, build_c_fields, build_nros_fields, build_nros_schema_for_struct,
     determine_field_kind, ensure_supported_storage_for_payload,
 };
 use crate::{
     config::CapacityResolver,
     templates::{
-        BuildRsTemplate, CConstant, CField, CargoNrosTomlTemplate, CargoTomlTemplate,
-        IdiomaticField, LibNrosRsTemplate, LibRsTemplate, MessageConstant, RmwField,
-        ServiceCHeaderTemplate, ServiceCSourceTemplate, ServiceIdiomaticTemplate,
-        ServiceNrosTemplate, ServiceRmwTemplate,
+        BuildRsTemplate, CConstant, CargoNrosTomlTemplate, CargoTomlTemplate, IdiomaticField,
+        LibNrosRsTemplate, LibRsTemplate, MessageConstant, RmwField, ServiceCHeaderTemplate,
+        ServiceCSourceTemplate, ServiceIdiomaticTemplate, ServiceNrosTemplate, ServiceRmwTemplate,
     },
     types::{
         NrosCodegenMode, c_type_for_constant, constant_value_to_rust, escape_keyword,
@@ -545,20 +544,8 @@ pub fn generate_c_service_package(
     )?;
 
     // Build C fields for request
-    let request_fields: Vec<CField> = service
-        .request
-        .fields
-        .iter()
-        .map(|field| {
-            build_c_field(
-                &field.name,
-                &field.field_type,
-                Some(package_name),
-                &request_msg,
-                resolver,
-            )
-        })
-        .collect::<Result<_, _>>()?;
+    let request_fields =
+        build_c_fields(Some(package_name), &request_msg, &service.request, resolver)?;
 
     let request_constants: Vec<CConstant> = service
         .request
@@ -572,20 +559,12 @@ pub fn generate_c_service_package(
         .collect();
 
     // Build C fields for response
-    let response_fields: Vec<CField> = service
-        .response
-        .fields
-        .iter()
-        .map(|field| {
-            build_c_field(
-                &field.name,
-                &field.field_type,
-                Some(package_name),
-                &response_msg,
-                resolver,
-            )
-        })
-        .collect::<Result<_, _>>()?;
+    let response_fields = build_c_fields(
+        Some(package_name),
+        &response_msg,
+        &service.response,
+        resolver,
+    )?;
 
     let response_constants: Vec<CConstant> = service
         .response

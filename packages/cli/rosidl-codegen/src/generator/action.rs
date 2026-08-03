@@ -1,14 +1,13 @@
 use super::common::{
-    GeneratorError, PayloadLang, build_action_envelope_schemas, build_c_field, build_nros_fields,
+    GeneratorError, PayloadLang, build_action_envelope_schemas, build_c_fields, build_nros_fields,
     build_nros_schema_for_struct, determine_field_kind, ensure_supported_storage_for_payload,
 };
 use crate::{
     config::CapacityResolver,
     templates::{
         ActionCHeaderTemplate, ActionCSourceTemplate, ActionIdiomaticTemplate, ActionNrosTemplate,
-        ActionRmwTemplate, BuildRsTemplate, CConstant, CField, CargoNrosTomlTemplate,
-        CargoTomlTemplate, IdiomaticField, LibNrosRsTemplate, LibRsTemplate, MessageConstant,
-        RmwField,
+        ActionRmwTemplate, BuildRsTemplate, CConstant, CargoNrosTomlTemplate, CargoTomlTemplate,
+        IdiomaticField, LibNrosRsTemplate, LibRsTemplate, MessageConstant, RmwField,
     },
     types::{
         NrosCodegenMode, c_type_for_constant, constant_value_to_rust, escape_keyword,
@@ -729,21 +728,7 @@ pub fn generate_c_action_package(
     )?;
 
     // Build C fields for goal
-    let goal_fields: Vec<CField> = action
-        .spec
-        .goal
-        .fields
-        .iter()
-        .map(|field| {
-            build_c_field(
-                &field.name,
-                &field.field_type,
-                Some(package_name),
-                &goal_msg,
-                resolver,
-            )
-        })
-        .collect::<Result<_, _>>()?;
+    let goal_fields = build_c_fields(Some(package_name), &goal_msg, &action.spec.goal, resolver)?;
 
     let goal_constants: Vec<CConstant> = action
         .spec
@@ -758,21 +743,12 @@ pub fn generate_c_action_package(
         .collect();
 
     // Build C fields for result
-    let result_fields: Vec<CField> = action
-        .spec
-        .result
-        .fields
-        .iter()
-        .map(|field| {
-            build_c_field(
-                &field.name,
-                &field.field_type,
-                Some(package_name),
-                &result_msg,
-                resolver,
-            )
-        })
-        .collect::<Result<_, _>>()?;
+    let result_fields = build_c_fields(
+        Some(package_name),
+        &result_msg,
+        &action.spec.result,
+        resolver,
+    )?;
 
     let result_constants: Vec<CConstant> = action
         .spec
@@ -787,21 +763,12 @@ pub fn generate_c_action_package(
         .collect();
 
     // Build C fields for feedback
-    let feedback_fields: Vec<CField> = action
-        .spec
-        .feedback
-        .fields
-        .iter()
-        .map(|field| {
-            build_c_field(
-                &field.name,
-                &field.field_type,
-                Some(package_name),
-                &feedback_msg,
-                resolver,
-            )
-        })
-        .collect::<Result<_, _>>()?;
+    let feedback_fields = build_c_fields(
+        Some(package_name),
+        &feedback_msg,
+        &action.spec.feedback,
+        resolver,
+    )?;
 
     let feedback_constants: Vec<CConstant> = action
         .spec

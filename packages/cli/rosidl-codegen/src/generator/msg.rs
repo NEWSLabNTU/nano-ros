@@ -1,14 +1,14 @@
 use super::common::{
-    GeneratorError, build_c_field, build_nros_fields, build_nros_message_schema,
+    GeneratorError, build_c_fields, build_nros_fields, build_nros_message_schema,
     determine_field_kind,
 };
 use crate::{
     config::CapacityResolver,
     templates::{
-        BuildRsTemplate, CConstant, CField, CargoNrosTomlTemplate, CargoTomlTemplate,
-        IdiomaticField, LibNrosRsTemplate, LibRsTemplate, MessageCHeaderTemplate,
-        MessageCSourceTemplate, MessageConstant, MessageIdiomaticTemplate, MessageNrosTemplate,
-        MessageRmwTemplate, RmwField,
+        BuildRsTemplate, CConstant, CargoNrosTomlTemplate, CargoTomlTemplate, IdiomaticField,
+        LibNrosRsTemplate, LibRsTemplate, MessageCHeaderTemplate, MessageCSourceTemplate,
+        MessageConstant, MessageIdiomaticTemplate, MessageNrosTemplate, MessageRmwTemplate,
+        RmwField,
     },
     types::{
         NrosCodegenMode, c_type_for_constant, constant_value_to_rust, escape_keyword,
@@ -380,19 +380,7 @@ pub fn generate_c_message_package(
     type_includes.sort();
 
     // Build C fields
-    let fields: Vec<CField> = message
-        .fields
-        .iter()
-        .map(|field| {
-            build_c_field(
-                &field.name,
-                &field.field_type,
-                Some(package_name),
-                message_name,
-                resolver,
-            )
-        })
-        .collect::<Result<_, _>>()?;
+    let fields = build_c_fields(Some(package_name), message_name, message, resolver)?;
 
     // Build C constants
     let constants: Vec<CConstant> = message
