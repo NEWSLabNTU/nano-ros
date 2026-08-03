@@ -4,8 +4,12 @@ title: "Message codegen has no language-neutral IR — parse/resolve/hash/sizing
 status: open
 type: enhancement
 area: codegen
-related: [rfc-0023, issue-0378, phase-333]
+related: [rfc-0068, phase-335, rfc-0023, issue-0378, phase-333]
 ---
+
+> **Designed in [RFC-0068](../design/0068-language-neutral-codegen-ir.md); implemented in waves by
+> [phase-335](../roadmap/phase-335-codegen-ir-refactor.md).** This issue records the problem +
+> tradeoffs; the RFC records the decision; the phase records the migration.
 
 ## Idea
 
@@ -80,7 +84,9 @@ the resolution/hashing without linking our Rust codegen.
 Extract the parse→resolve→hash→size stages behind a neutral IR type with the embedded
 fields above; make the Rust/C/C++ emitters consume the IR; decide the
 serialized-vs-in-process boundary from the consumer set. Fold in resolve-only deps.
-Likely an RFC (amending RFC-0023) before code, given the format + layout decisions.
+Designed as RFC-0068 (four stages: parse → resolve → lower → render; render is a runtime-templated
+data-pack consumer); migrated in waves by phase-335, byte-identical-output-preserving until the
+final wave.
 
 ## Not doing
 
