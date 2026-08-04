@@ -1133,6 +1133,30 @@ pub fn build_workspace_cmake_entry_in(
     build_subdir: &str,
     binary_name: &str,
 ) -> TestResult<PathBuf> {
+    // The manifest already says which entry this fixture builds, so a
+    // `binary_name` that disagrees with it can only be wrong — and it fails in
+    // the most expensive way: the binary is simply "not there", which is
+    // indistinguishable from an absent toolchain, so the cell SKIPS and the
+    // lane stays green over a coordinate that never ran (issue 0411, the 0350
+    // class). phase-331 W2b renamed entries to the platform vocabulary and this
+    // resolver kept `native_threadx_entry` for months.
+    //
+    // Checked here rather than at the one call site that drifted: the argument
+    // exists in ~20 places and any of them can go stale the same way.
+    if let Ok(record) = current_workspace_fixture_record(fixture_id) {
+        let fields: Vec<&str> = record.split('\x1f').collect();
+        if let Some(declared) = fields.get(4)
+            && !declared.is_empty()
+            && *declared != binary_name
+        {
+            return Err(TestError::BuildFailed(format!(
+                "fixture {fixture_id:?} resolves entry {binary_name:?} but \
+                 examples/fixtures.toml declares {declared:?} — the manifest is the SSoT; \
+                 a resolver that names a different entry reports the fixture as \
+                 'not built' forever (issue 0411)"
+            )));
+        }
+    }
     let example_dir = workspace_example_dir(workspace)?;
     let build_dir = example_dir.join(build_subdir);
     let binary_path = build_dir.join(format!("src/{binary_name}/{binary_name}"));
@@ -1843,7 +1867,14 @@ pub fn build_threadx_linux_workspace_c_entry() -> TestResult<&'static Path> {
                 "workspace-c-threadx-linux",
                 "c",
                 "build-workspace-fixtures-threadx",
-                "native_threadx_entry",
+                // `threadx_entry`, not `native_threadx_entry` — the manifest row
+                // and the workspace agree on the former (issue 0411). phase-331
+                // W2b unified entry names to the platform vocabulary and this
+                // resolver kept the old spelling, so the cell reported
+                // "[SKIPPED] not built" for a fixture that had been built all
+                // along: a missing binary and an absent toolchain look identical
+                // from here.
+                "threadx_entry",
             )
         })
         .map(|p| p.as_path())

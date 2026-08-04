@@ -1,7 +1,7 @@
 ---
 id: 412
 title: "Eight SystemModel files are tracked again under examples/workspaces/safety — scooped into an unrelated fix, and check-fast is red"
-status: open
+status: resolved  # fixed 2026-08-04
 type: bug
 area: build
 related: [rfc-0063, phase-330, phase-331, issue-0380]
@@ -110,3 +110,16 @@ gap is upstream of it: a blanket `git add` still scoops generated files into an
 unrelated commit, and the author sees only a green build. CLAUDE.md already
 carries the rule ("Never `git add -A` / `git add .`"); this is the second time
 in the same phase pair that it was the proximate cause.
+
+## Resolution (2026-08-04)
+
+All eight deleted; `check-no-tracked-models` is green.
+
+They were mine: `3f25803d1` added `system_model.yaml` alongside a `[[model]]`
+declaration while fixing the zephyr safety entry, and the rest were the same
+commit's regenerated siblings — landed just before phase-330 W4 made a tracked
+model the defect rather than the norm.
+
+Deleting them was safe only once `nros::main!` stopped requiring a pre-resolved
+model (`2b022c32a`): it now resolves from `system.toml` + the launch file, so the
+workspace builds with no committed artifact at all.

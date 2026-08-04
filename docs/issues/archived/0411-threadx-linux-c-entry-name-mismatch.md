@@ -2,7 +2,7 @@
 id: 411
 title: The threadx-linux C workspace entry is resolved under a name the build
   never produces, so its e2e case silently skips
-status: open
+status: resolved  # fixed 2026-08-04
 type: bug
 area: testing
 related: [phase-331, phase-337, rfc-0051]
@@ -59,3 +59,22 @@ written twice. Two spellings of one fact is what produced this.
 
 Found by phase-337 W4 while thinning the ThreadX boards. Not that wave's to
 fix: it predates it and belongs to whichever phase owns the rename.
+
+## Resolution (2026-08-04)
+
+Resolver now names `threadx_entry`, matching the manifest and the workspace.
+
+Fixed as a CLASS, not a site. `build_workspace_cmake_entry_in` takes both the
+fixture id and the entry name, and the manifest already says which entry that id
+builds — so the two can disagree, and did, silently. The helper now looks the
+entry up (field 5 of the manifest record it already fetches) and FAILS LOUDLY on
+a mismatch instead of resolving a path that will never exist. That covers ~20
+call sites, any of which could drift the same way; a fix at the one site that
+happened to drift would leave the rest exposed.
+
+Swept the other callers first: no further mismatches, so this was the only one.
+
+Verified both directions — with `native_threadx_entry` restored the helper
+reports "resolves entry … but examples/fixtures.toml declares …", and with the
+correct name `entry_e2e::entry_matrix` passes (the cell resolves instead of
+reporting "not built").
