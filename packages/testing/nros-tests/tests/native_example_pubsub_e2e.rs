@@ -1,21 +1,23 @@
 //! phase-329 W4 — THE native-example pubsub matrix consumer (RFC-0051).
 //!
 //! The fold VEHICLE for the native `Example` pubsub cells: it derives its cases
-//! from `matrix::CELLS` (every `Native` / `Pubsub` / `Example` / `Runtime`
-//! cell — Rust/C/C++ × zenoh/cyclone/xrce) instead of the hand-written
-//! `nano2nano.rs` / `xrce.rs` / cyclone one-offs. Built ADDITIVELY (phase-329
-//! W4 dispositioning): it runs alongside those files until it is run-proven on a
-//! host with the fixtures, THEN their delivery cases fold in and the duplicates
-//! are deleted. Nothing is removed by this commit, so coverage cannot regress.
+//! from `matrix::CELLS` (`Native` / `Pubsub` / `Example` / `Runtime`) instead of
+//! the hand-written `nano2nano.rs` one-off. Built ADDITIVELY (phase-329 W4
+//! dispositioning): it runs alongside `nano2nano` until its cases are run-proven,
+//! THEN their delivery cases fold in and the duplicate is deleted. Nothing is
+//! removed by this commit, so coverage cannot regress.
 //!
-//! Each cell boots a talker + a listener of the SAME language and proves the
-//! listener receives ≥3 samples, under the isolation its RMW needs:
-//! - **zenoh** — an ephemeral `zenohd`; both dial `NROS_LOCATOR`.
-//! - **cyclone** — a unique `ROS_DOMAIN_ID` (RTPS), no router.
-//! - **xrce** — an ephemeral micro-XRCE-DDS Agent + a unique domain.
+//! **RMW scope: ZENOH only, run-proven 2026-08-04** (rust + C + C++ pairs
+//! deliver over an ephemeral `zenohd`). The cyclone and xrce native pubsub
+//! cells are DEFERRED — the first run showed their pairs do not deliver with the
+//! isolation env replicated from the existing tests (rust/cyclone failed with
+//! the correct marker), a per-RMW setup problem to root-cause before they join
+//! the filter. Until then those cells keep running under their current hand
+//! tests; the `matches!(c.rmw, Zenoh)` filter clause is the boundary.
 //!
-//! The listener marker is the language's demo contract: Rust prints `I heard:`
-//! (String), C/C++ print `Received:` (Int32).
+//! Each cell boots a talker + a listener of the SAME language on the ephemeral
+//! `zenohd` (both dial `NROS_LOCATOR`) and proves the listener sees ≥3 `I heard:`
+//! lines — the plain example pair is String on both ends in every language.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test native_example_pubsub_e2e`.
 
@@ -27,7 +29,7 @@ use nros_tests::{
         require_zenohd,
     },
     matrix::{Cell as MCell, Kind as MK, Lang as ML, Rmw as MR, Tier as MT, Workload as MW},
-    output::{INT32_LISTENER_LOG_PREFIX, LISTENER_LOG_PREFIX},
+    output::LISTENER_LOG_PREFIX,
     unique_ros_domain_id,
 };
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -69,13 +71,13 @@ fn listener_bin(l: ML) -> &'static str {
         ML::Mixed => "?",
     }
 }
-/// The listener's delivery marker: Rust demo is String (`I heard:`), C/C++ are
-/// Int32 (`Received:`).
-fn listener_prefix(l: ML) -> &'static str {
-    match l {
-        ML::Rust => LISTENER_LOG_PREFIX,
-        _ => INT32_LISTENER_LOG_PREFIX,
-    }
+/// The listener's delivery marker. Run-proved 2026-08-04: the native talker/
+/// listener demos (all three languages) default to the STRING topic and print
+/// `I heard:` — the C listener's `Received:` (Int32) arm is only taken under
+/// `NROS_SUB_TYPE=int32`, which the plain example pair does not set. (The
+/// per-lang split this replaced made c/cpp/zenoh falsely fail.)
+fn listener_prefix(_l: ML) -> &'static str {
+    LISTENER_LOG_PREFIX
 }
 fn lang_str(l: ML) -> &'static str {
     match l {
@@ -106,6 +108,11 @@ fn native_example_pubsub() {
                 && matches!(c.kind, MK::Example)
                 && matches!(c.workload, MW::Pubsub)
                 && matches!(c.tier, MT::Runtime)
+                // ZENOH only for now: run-prove (2026-08-04) showed the cyclone
+                // and xrce native pubsub pairs do NOT deliver with the isolation
+                // env here (rust/cyclone failed with the correct marker), a
+                // per-RMW setup problem to be root-caused before those cells join.
+                && matches!(c.rmw, MR::Zenoh)
         })
         .collect();
     assert!(
