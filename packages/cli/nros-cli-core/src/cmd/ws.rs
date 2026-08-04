@@ -4019,9 +4019,7 @@ nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }
     /// uniformly, since every current board crate's Cargo package name
     /// equals its directory name under `packages/boards/`. This test locks
     /// that resolution in for the concrete crates phase-277 cares about
-    /// (verified against each crate's actual `Cargo.toml` `name =` field —
-    /// note the bare-metal board crate is `nros-board-bare-metal`, not
-    /// `nros-board-baremetal-cortex-m`).
+    /// (verified against each crate's actual `Cargo.toml` `name =` field).
     #[test]
     fn board_crates_resolve_via_generic_fallback() {
         let boards = [
@@ -4030,7 +4028,7 @@ nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }
             "nros-board-mps2-an385-freertos",
             "nros-board-threadx",
             "nros-board-threadx-qemu-riscv64",
-            "nros-board-bare-metal",
+            "nros-board-mps2-an385",
         ];
         for name in &boards {
             assert!(

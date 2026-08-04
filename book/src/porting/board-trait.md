@@ -174,7 +174,11 @@ The family crate is where the `BoardEntry::run` *body* actually lives. Tier-1 fa
 - `nros-board-nuttx` — NuttX POSIX layer; `init_transport` shells `ifup`-style logic.
 - `nros-board-zephyr` — carve-out: Kconfig + DTS own BSP, family crate impls only `NetworkWait` over `<zephyr/net/net_if.h>`. The Rust staticlib cannot take over `main` on Zephyr.
 - `nros-board-esp-idf` — ESP-IDF component shape; WiFi association lives in `init_transport`, IP lease in `wait_link_up`.
-- `nros-board-bare-metal` — Cortex-M / RV32, no RTOS; minimal `run` body with a single-thread `zp_read` loop.
+- Direct-exec (Cortex-M / RV32, no RTOS) has **no family crate**: each board
+  implements `BoardEntry::run` itself with a single-thread `zp_read` loop. A
+  `nros-board-bare-metal` family driver was written for this shape and no board
+  ever opted into it — 135 of its 161 lines were doc comment — so phase-337 W7.c
+  deleted it. `nros-board-mps2-an385` is the worked reference.
 
 > **Current state:** as of Phase 212.N.1 the trait surface lives in `nros-platform`; the family driver crates land in N.2 and the per-board shims in N.3. Until then, see `packages/boards/nros-board-*` for the in-tree boards that still ride the legacy `nros-board-common::board_init::*` traits — same conceptual shape, different module path.
 

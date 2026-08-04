@@ -6,7 +6,8 @@
 //! `ExecutorNodeRuntime`, and hands the codegen-emitted setup closure a
 //! live `RuntimeCtx` so `nros::main!(launch = …)` can `register()` the
 //! launch-named Node pkgs against an RMW session — unlike the WiFi
-//! board's `nros-board-bare-metal::run_entry` path, which uses a
+//! board's direct-exec `run_entry` path (the `nros-board-bare-metal`
+//! family driver, deleted unadopted in phase-337 W7.c), which uses a
 //! `NullNodeRuntime` (every `register()` errors at runtime).
 //!
 //! ## Surface

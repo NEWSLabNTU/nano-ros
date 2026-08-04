@@ -31,7 +31,7 @@ families:
 | FreeRTOS + lwIP | `nros-board-freertos` | `FREERTOS_DIR`, `FREERTOS_PORT`, `LWIP_DIR`, `FREERTOS_CONFIG_DIR` |
 | ThreadX + NetX-Duo | `nros-board-threadx` | `THREADX_DIR`, `THREADX_CONFIG_DIR`, `NETX_DIR`, `NETX_CONFIG_DIR` |
 | NuttX | `nros-board-nuttx` | `NUTTX_DIR` (kernel built by NuttX itself) |
-| bare-metal Cortex-M + smoltcp | `nros-board-baremetal-cortex-m` | `BOARD_LINKER_SCRIPT_DIR` |
+| bare-metal Cortex-M + smoltcp | *(no family crate — copy `nros-board-mps2-an385`)* | `BOARD_LINKER_SCRIPT_DIR` |
 
 ```toml
 # user_app/Cargo.toml

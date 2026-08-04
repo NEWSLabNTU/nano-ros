@@ -151,7 +151,6 @@ members = [
     # Phase 212.N.2 — direct-exec family driver (Cortex-M / esp-hal
     # bare-metal). Per-board crates (mps2-an385, stm32f4, esp32) migrate
     # onto it in 212.N.3 / N.7; until then the crate stands alone.
-    "packages/boards/nros-board-bare-metal",
     # Phase 212.N.2 — POSIX family driver (hosted Linux/macOS).
     # Per-board crates migrate onto it in 212.N.3.
     "packages/boards/nros-board-posix",

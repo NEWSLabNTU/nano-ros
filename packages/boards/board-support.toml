@@ -164,12 +164,6 @@ maintainers = []
 notes = "Header ABI mirror with ZERO in-tree C consumers; kept alive by its own drift gate. Spec artifact, not a library."
 
 [[board]]
-crate = "nros-board-bare-metal"
-tier = "infra"
-maintainers = []
-notes = "Family driver NO board opted into — mps2-an385, stm32f4 and esp32-qemu each hand-roll BoardEntry::run instead. 135 of its 161 lines are doc comment. phase-322 W1.h decides delete-vs-adopt."
-
-[[board]]
 crate = "nros-board-freertos"
 tier = "infra"
 maintainers = []

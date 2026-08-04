@@ -556,8 +556,18 @@ the test axis, which is what makes them safe once decided.
       the `zpico-sys` `orin-spe` feature, `nros-sdk-index.toml [board.orin-spe]`
       and the `zpico_backend` lint value in the root `Cargo.toml`. Deleting the
       crate alone would leave that chain as dead code.
-- [ ] **W7.c** Delete `nros-board-bare-metal` (phase-322 W1.h): 161 lines of which
-      135 are a doc comment describing a family driver no board opted into.
+- [x] **W7.c — LANDED 2026-08-04.** Delete `nros-board-bare-metal` (phase-322
+      W1.h): 161 lines of which 135 are a doc comment describing a family driver
+      no board opted into. Board crates 20 → 19.
+
+      Direct-exec now has NO family crate, and that is the honest state: the
+      three boards of that shape (`mps2-an385`, `esp32-qemu`, and the departed
+      `stm32f4`) each hand-rolled `BoardEntry::run`, so the driver documented a
+      convergence that never happened. `nros-board-mps2-an385` is the worked
+      reference the book points at instead
+      (`book/src/porting/board-trait.md`, `concepts/board-integration.md` — the
+      latter had been naming `nros-board-baremetal-cortex-m`, a crate that never
+      existed under that name).
 
 ## W8 — linux: merge `native` + `posix`, retire `native`
 

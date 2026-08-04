@@ -49,7 +49,6 @@ Shared traits, family drivers, ABI mirrors, PACs, and descriptor directories. No
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
 | `mps2-an385-pac` | — | *unassigned* | IRQ enum only. Kept because RTIC's `#[rtic::app(device = ...)]` needs a nameable path. |
-| `nros-board-bare-metal` | — | *unassigned* | Family driver NO board opted into — mps2-an385, stm32f4 and esp32-qemu each hand-roll BoardEntry::run instead. 135 of its 161 lines are doc comment. phase-322 W1.h decides delete-vs-adopt. |
 | `nros-board-cffi` | — | *unassigned* | Header ABI mirror with ZERO in-tree C consumers; kept alive by its own drift gate. Spec artifact, not a library. |
 | `nros-board-common` | — | *unassigned* | Build-helper library plus one trait; 2180 of 2252 code lines are behind `build-helpers`. |
 | `nros-board-freertos` | — | *unassigned* | Real family driver: the MPS2 overlay is `pub use nros_board_freertos::Config` and carries zero config code. The pattern the forked boards should copy. |
