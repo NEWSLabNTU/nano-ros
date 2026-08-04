@@ -387,20 +387,35 @@ imperative version makes it work immediately, on the same router, first try.
 
 Not a discovery-timing artifact — reproduced with 10 s of server head start.
 
-**This is a runtime defect, not a migration problem, and it needs its own issue.**
-Node-class actions *do* work on native: the matrix carries four `Native` ×
-`Action` × `Workspace` Runtime cells, which run through
-`nros::main!(launch = …)`. The standalone path differs only in its spin:
-`__nros_hosted_spin_forever` loops on `runtime.runtime.spin_once(10)` alone,
-while the RTIC path's own comment describes the correct pattern as
-"`spin_once(ms)` + `run_ticks`, matching the owned-spin boards, so **service/
-action poll components tick**" (`main_macro.rs:2140`). A tick-driven node —
-action server, service client — therefore cannot run under
-`nros::main!(spin = "forever")`.
+**This is a runtime defect, not a migration problem, and it needs its own issue.
+The CAUSE is not yet identified — my first diagnosis was wrong and is corrected
+here rather than left standing.**
 
-That also predicts `service-client` will fail the same way (its group body is
-tick-driven too), and explains why `talker` and `service-server` migrated
-cleanly: neither uses `tick()`.
+What is established:
+
+* The imperative action-server works; the Node-class migration of the same
+  program does not. Same router, same client, first try either way.
+* Node-class actions DO work on native — the matrix carries four `Native` ×
+  `Action` × `Workspace` Runtime cells, run through `nros::main!(launch = …)`.
+* `talker` and `service-server` migrate cleanly; neither uses `tick()`.
+  `action-server` does. `service-client` also does, so it likely fails the same
+  way.
+
+**Retracted:** I first blamed `__nros_hosted_spin_forever` for looping on
+`spin_once` without `run_ticks`. That is wrong. `RuntimeCtx::runtime` is a
+`&mut dyn NodeDispatchRuntime`, whose `ExecutorNodeRuntime` impl
+(`node_runtime.rs:552`) delegates to the inherent `ExecutorNodeRuntime::spin_once`
+(`:392`), and that DOES call `run_ticks()`. Ticks are driven on the hosted path.
+
+**Narrowed, unverified:** `run_ticks` iterates `self.components`
+(`node_runtime.rs:461-471`), which is populated only by the registration path at
+`:350-351`. A node whose entities reach the executor but whose CELL never lands
+in `components` would show exactly this signature — direct service/subscription
+callbacks fire (service-server works) while component ticks never run (action
+goal handling dead). Worth checking whether the standalone `nros::main!` register
+path populates `components` the way the launch path does. Not confirmed; do not
+treat as the answer.
+
 
 **Step 3 — migrate the six** (`talker`, `listener`, `service-{client,server}`,
 `action-{client,server}`): `src/main.rs` becomes `src/lib.rs` carrying the Node
