@@ -65,13 +65,22 @@ fn fixture_workspace_plans_and_checks() {
     })
     .expect("metadata command preserves fixture source metadata");
 
+    // issue 0414 (tail) — this used to pass `demo_pkg` as a DIR and let
+    // convention discovery find `demo_pkg/config/system_model.yaml`. phase-330
+    // W4 made the SystemModel a build artifact and deleted every committed one,
+    // so discovery had nothing to find and the test failed on a condition the
+    // repo deliberately created. It now RESOLVES a model the way a build does,
+    // which is also the stronger assertion: the resolver runs every time
+    // instead of a file somebody generated once.
+    let model = resolve_demo_pkg_model(&demo_pkg, &output);
+
     plan::run(plan::Args {
         system_pkg: "e2e_system".to_string(),
-        // R-code.1 — dir input: convention discovery plans the committed
-        // config/system_model.yaml (the launch parse path is deleted).
+        // R-code.1 — the launch parse path is deleted; `plan` takes a resolved
+        // model, so the dir argument is only the discovery root now.
         launch_file: demo_pkg.clone(),
         record: None,
-        model: None,
+        model: Some(model),
         file: None,
         exec: None,
         workspace: Some(fixture.clone()),
@@ -200,6 +209,45 @@ fn metadata_build_discovers_missing_sources() {
 
 /// The in-tree fixture workspace (owned by the CLI sub-workspace since the
 /// phase-218 in-tree move — `packages/cli/testing_workspaces/`).
+/// Resolve `demo_pkg`'s launch file into a SystemModel under `out`, and return
+/// its path.
+///
+/// The SystemModel is a build ARTIFACT (phase-330 W4 / RFC-0063), so a test
+/// that needs one produces it exactly as the build does: run the
+/// `nros-launch-resolve` helper by ABSOLUTE path (never `$PATH` — issue 0285)
+/// over the bringup's launch XML. Skips loudly rather than silently passing if
+/// the resolver was never built, since a missing resolver and a broken plan
+/// look identical from the assertion below.
+fn resolve_demo_pkg_model(demo_pkg: &Path, out: &Path) -> PathBuf {
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("repo root");
+    let resolver = repo.join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
+    assert!(
+        resolver.is_file(),
+        "nros-launch-resolve not built at {} — run `just setup-launch-resolve`",
+        resolver.display()
+    );
+    let model = out.join("system_model.yaml");
+    fs::create_dir_all(out).expect("create model out dir");
+    let output = std::process::Command::new(&resolver)
+        .arg(demo_pkg.join("launch/system.launch.xml"))
+        .arg("--bringup-root")
+        .arg(demo_pkg)
+        .arg("-o")
+        .arg(&model)
+        .output()
+        .expect("spawn nros-launch-resolve");
+    assert!(
+        output.status.success(),
+        "nros-launch-resolve failed for the e2e fixture bringup:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    model
+}
+
 fn fixture_workspace() -> PathBuf {
     cli_root().join("testing_workspaces/orchestration_e2e")
 }
