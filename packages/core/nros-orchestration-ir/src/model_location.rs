@@ -218,6 +218,254 @@ pub fn launch_to_model_rel(
     Ok(format!("config/{stem}_model.yaml"))
 }
 
+/// The bringup's default launch file (`[system] default_launch`, or the
+/// conventional `system.launch.xml`).
+pub fn default_launch(bringup_dir: &Path) -> String {
+    std::fs::read_to_string(bringup_dir.join("system.toml"))
+        .ok()
+        .and_then(|raw| raw.parse::<toml::Table>().ok())
+        .as_ref()
+        .and_then(|d| d.get("system"))
+        .and_then(|s| s.get("default_launch"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("system.launch.xml")
+        .to_string()
+}
+
+/// The INVERSE of [`launch_to_model_rel`]: given a model's bringup-relative
+/// path, the `(launch file, args)` that produce it.
+///
+/// A consumer addressed by model path (`nros::main!(model = "…")`) still has to
+/// be able to RESOLVE that model from inputs when the artifact is absent, and
+/// to do that it needs the inputs back. Declarations are checked first — they
+/// are the SSoT for arg-bound variants — then the derive rule is reversed.
+///
+/// `None` means the path does not correspond to any launch this bringup has,
+/// which is a user error worth reporting with the model name in it.
+pub fn model_rel_to_inputs(
+    bringup_dir: &Path,
+    model_rel: &str,
+) -> Option<(String, Vec<(String, String)>)> {
+    let name = Path::new(model_rel)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(model_rel);
+
+    let doc: Option<toml::Table> = std::fs::read_to_string(bringup_dir.join("system.toml"))
+        .ok()
+        .and_then(|raw| raw.parse::<toml::Table>().ok());
+
+    // 1. A `[[model]]` declaration whose `out` is this file.
+    if let Some(arr) = doc
+        .as_ref()
+        .and_then(|d| d.get("model"))
+        .and_then(|m| m.as_array())
+    {
+        for e in arr {
+            let out = e.get("out").and_then(|v| v.as_str()).unwrap_or_default();
+            let out_name = Path::new(out)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(out);
+            if out_name != name {
+                continue;
+            }
+            let launch = e.get("launch").and_then(|v| v.as_str())?.to_string();
+            let args: Vec<(String, String)> = e
+                .get("args")
+                .and_then(|a| a.as_table())
+                .map(|t| {
+                    t.iter()
+                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                        .collect()
+                })
+                .unwrap_or_default();
+            return Some((launch, args));
+        }
+    }
+
+    // 2. Reverse the derive rule.
+    if name == "system_model.yaml" {
+        return Some((default_launch(bringup_dir), Vec::new()));
+    }
+    let stem = name.strip_suffix("_model.yaml")?;
+    Some((format!("{stem}.launch.xml"), Vec::new()))
+}
+
+/// The `nros-launch-resolve` helper, by ABSOLUTE path.
+///
+/// Never `$PATH` (issue 0285): a stale `~/.nros/bin` copy silently shadows the
+/// in-tree one and resolves with an older schema. The order is explicit
+/// override, then this checkout, then the installed store.
+pub fn launch_resolver_bin() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("NROS_LAUNCH_RESOLVE") {
+        let p = PathBuf::from(p);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    if let Some(repo) = std::env::var_os("NROS_REPO_DIR") {
+        let p = PathBuf::from(repo)
+            .join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    let home = std::env::var_os("NROS_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".nros")))?;
+    let p = home.join("bin/nros-launch-resolve");
+    p.is_file().then_some(p)
+}
+
+/// Where a consumer may WRITE a model it had to resolve itself.
+///
+/// `$NROS_MODEL_DIR` and `$OUT_DIR` are the build-provided homes. Neither is
+/// guaranteed: a proc-macro only sees `OUT_DIR` when the crate has a build
+/// script, and nano-ros entry crates deliberately have none — so a plain
+/// `cargo build` of an entry has nowhere the build system chose. The last
+/// resort is a per-user cache keyed by the bringup's absolute path, which is
+/// stable across builds and shared between crates that name the same bringup.
+fn model_write_dir(bringup_dir: &Path) -> PathBuf {
+    let bringup_name = bringup_dir
+        .file_name()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("bringup"));
+    if let Some(dir) = std::env::var_os("NROS_MODEL_DIR") {
+        return Path::new(&dir).join(&bringup_name);
+    }
+    if let Some(dir) = std::env::var_os("OUT_DIR") {
+        return Path::new(&dir).join("nros").join(&bringup_name);
+    }
+    // Hash the absolute bringup path so two bringups with the same directory
+    // name (every workspace has a `demo_bringup`) cannot collide.
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bringup_dir.to_string_lossy().as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".cache")))
+        .unwrap_or_else(std::env::temp_dir);
+    base.join("nano-ros/models")
+        .join(format!("{h:016x}-{}", bringup_name.to_string_lossy()))
+}
+
+/// Locate the model for `(bringup, model_rel)`, RESOLVING it from the bringup's
+/// inputs when no build has produced one.
+///
+/// phase-330 made the SystemModel a build artifact; this closes the gap that
+/// left (issue 0414). A consumer that only ever LOOKED for the artifact fails
+/// with "SystemModel not found" whenever it runs without a build system that
+/// ran the resolver first — which is what a plain `cargo build` of an entry
+/// crate is. The inputs are always present; the artifact is derived from them,
+/// so derive it.
+///
+/// Returns the model path and the input files a caller should register as
+/// build dependencies (`system.toml` + the launch file), so a change to either
+/// re-runs the consumer — the property that made touching an input a no-op
+/// before.
+pub fn ensure_model(
+    bringup_dir: &Path,
+    model_rel: &str,
+) -> Result<(PathBuf, Vec<PathBuf>), String> {
+    let system_toml = bringup_dir.join("system.toml");
+    let (launch_file, args) = model_rel_to_inputs(bringup_dir, model_rel).ok_or_else(|| {
+        format!(
+            "`{model_rel}` names no launch of bringup `{}` — expected \
+             `config/system_model.yaml` (the default launch), `config/<stem>_model.yaml` \
+             (for `<stem>.launch.xml`), or a `[[model]] out = …` declaration in {}",
+            bringup_dir.display(),
+            system_toml.display(),
+        )
+    })?;
+    let launch_path = bringup_dir.join("launch").join(&launch_file);
+    let inputs = vec![system_toml.clone(), launch_path.clone()];
+
+    // A model a build already produced wins: cmake / nros-build resolve into
+    // NROS_MODEL_DIR or OUT_DIR before invoking cargo, and re-resolving here
+    // would duplicate that work — and could disagree with it.
+    let found = resolve_model_path(bringup_dir, model_rel);
+    if found.is_file() {
+        return Ok((found, inputs));
+    }
+
+    if !launch_path.is_file() {
+        return Err(format!(
+            "cannot resolve `{model_rel}`: its launch file `{}` does not exist",
+            launch_path.display()
+        ));
+    }
+    let resolver = launch_resolver_bin().ok_or_else(|| {
+        "cannot resolve the SystemModel: `nros-launch-resolve` not found. Build it with \
+         `just setup-launch-resolve`, or point $NROS_LAUNCH_RESOLVE at one. (Never resolved \
+         through $PATH — a stale copy there resolves with an older schema, issue 0285.)"
+            .to_string()
+    })?;
+
+    let out_dir = model_write_dir(bringup_dir);
+    std::fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
+    let out = out_dir.join(
+        Path::new(model_rel)
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("system_model.yaml")),
+    );
+
+    // A model this consumer resolved EARLIER is reusable while it is newer than
+    // every input. Without this check the macro re-resolves on every
+    // invocation, rewrites the file, and the fresh mtime makes cargo consider
+    // the entry dirty forever — an unconditional rebuild that looks like a
+    // caching bug in cargo. (Observed exactly that: three consecutive
+    // `cargo check`s each re-checked the entry with nothing edited.)
+    if is_fresh(&out, &inputs) {
+        return Ok((out, inputs));
+    }
+
+    let mut cmd = std::process::Command::new(&resolver);
+    cmd.arg(&launch_path);
+    for (k, v) in &args {
+        cmd.arg(format!("{k}:={v}"));
+    }
+    cmd.arg("--bringup-root")
+        .arg(bringup_dir)
+        .arg("--system")
+        .arg(&system_toml)
+        .arg("-o")
+        .arg(&out);
+    let output = cmd
+        .output()
+        .map_err(|e| format!("spawn {}: {e}", resolver.display()))?;
+    if !output.status.success() {
+        return Err(format!(
+            "nros-launch-resolve failed for `{}`:\n{}",
+            launch_path.display(),
+            String::from_utf8_lossy(&output.stderr).trim(),
+        ));
+    }
+    // The generated model is deliberately NOT added to `inputs`: the caller
+    // registers those as build dependencies, and an artifact this function may
+    // rewrite is exactly the wrong thing to depend on. The INPUTS are what
+    // decide whether the consumer is stale.
+    Ok((out, inputs))
+}
+
+/// True when `path` exists and is at least as new as every file in `inputs`.
+fn is_fresh(path: &Path, inputs: &[PathBuf]) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    let Ok(when) = meta.modified() else {
+        return false;
+    };
+    inputs.iter().all(|i| {
+        std::fs::metadata(i)
+            .and_then(|m| m.modified())
+            .map(|t| t <= when)
+            .unwrap_or(true)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

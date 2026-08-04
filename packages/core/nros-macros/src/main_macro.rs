@@ -564,26 +564,26 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             .resolve_pkg(&bringup_name)
             .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
         let model_rel = file_override.unwrap_or_else(|| "config/system_model.yaml".to_string());
-        // phase-330 W3.b — prefer the BUILD OUTPUT copy over the committed one.
-        // The order lives in `nros_orchestration_ir::model_location` so the
-        // proc-macro, `nros-build` and cmake cannot disagree about it. With
-        // nothing generating into the build dir yet, this resolves exactly as
-        // `bringup_dir.join(&model_rel)` did.
-        let model_path =
-            nros_orchestration_ir::model_location::resolve_model_path(bringup_dir, &model_rel);
-        tracked.push(model_path.clone());
-        if !model_path.exists() {
-            return Err(syn::Error::new(
-                model_lit.span(),
-                format!(
-                    "nros::main!: SystemModel not found: `{}` — resolve it with \
-                     `nros-launch-resolve <launch> --system <system.toml> -o {}` \
-                     (built by `just setup-launch-resolve`)",
-                    model_path.display(),
-                    model_rel
-                ),
-            ));
-        }
+        // The model is a BUILD ARTIFACT (phase-330), so this asks for it by its
+        // inputs: `ensure_model` returns a build-produced copy when one exists
+        // (cmake / nros-build resolve into `$NROS_MODEL_DIR` or `$OUT_DIR`
+        // before invoking cargo) and otherwise RESOLVES it from the bringup's
+        // `system.toml` + launch file.
+        //
+        // Looking only for the artifact was the gap issue 0414 recorded: a
+        // plain `cargo build` of an entry crate runs no build system, so the
+        // macro failed with "SystemModel not found" for a model it had every
+        // input needed to produce. Entry crates deliberately carry no
+        // `build.rs`, which also means no `$OUT_DIR` — there is no build-chosen
+        // home to fall back to, so `ensure_model` picks one.
+        //
+        // `inputs` are the files the model DERIVES from. Tracking them (not
+        // just the artifact) is what makes editing `system.toml` or the launch
+        // XML rebuild the entry.
+        let (model_path, inputs) =
+            nros_orchestration_ir::model_location::ensure_model(bringup_dir, &model_rel)
+                .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+        tracked.extend(inputs);
         let yaml = std::fs::read_to_string(&model_path).map_err(|e| {
             syn::Error::new(
                 model_lit.span(),

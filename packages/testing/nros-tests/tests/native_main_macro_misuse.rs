@@ -210,6 +210,39 @@ fn unknown_board_emits_compile_error() {
     );
 }
 
+/// `nros::main!` resolves the model from the bringup's INPUTS when no build
+/// system produced one.
+///
+/// This is the contract issue 0414 left open: the macro used to only LOOK for
+/// `config/system_model.yaml` and fail "SystemModel not found" whenever it ran
+/// without a build step that resolved first — which a plain `cargo check` of an
+/// entry crate always is (entry crates carry no `build.rs`, so they do not even
+/// get an `$OUT_DIR` to fall back to).
+///
+/// No `NROS_MODEL_DIR`, no committed model, no build system: the macro must
+/// still compile the entry by resolving `system.toml` + the launch file itself.
+#[test]
+fn resolves_the_model_from_inputs_without_a_build_system() {
+    if nros_tests::launch_resolver_bin().is_none() {
+        nros_tests::skip!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
+    }
+    let (_g, root) = stage_fixture();
+    fs::write(
+        root.join("src/demo_entry/src/main.rs"),
+        "nros::main!(model = \"demo_bringup\");\n",
+    )
+    .expect("write main.rs");
+    // Deliberately NOT passing a model dir — that is the whole point.
+    let out = check_demo_entry(&root);
+    assert!(
+        out.status.success(),
+        "the macro must resolve the model from system.toml + launch when nothing \
+         produced one:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
 /// Touching the model the BUILD produced must force a re-check.
 ///
 /// This used to read a committed `config/system_model.yaml`; phase-330 W4

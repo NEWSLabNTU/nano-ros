@@ -462,7 +462,9 @@ fn verify_params_projected(model_path: &Path, system_toml: &Path) -> Result<()> 
         .map(|arr| {
             arr.iter()
                 .filter(|c| {
-                    c.get("params").and_then(|p| p.as_table()).is_some_and(|t| !t.is_empty())
+                    c.get("params")
+                        .and_then(|p| p.as_table())
+                        .is_some_and(|t| !t.is_empty())
                         || c.get("params_files")
                             .and_then(|p| p.as_array())
                             .is_some_and(|a| !a.is_empty())
@@ -508,9 +510,8 @@ fn verify_params_projected(model_path: &Path, system_toml: &Path) -> Result<()> 
     for (name, pkg) in &declaring {
         // A node from this component's package, if the variant instantiates one.
         let node = nodes.and_then(|m| {
-            m.iter().find(|(_, v)| {
-                v.get("pkg").and_then(|p| p.as_str()) == Some(pkg.as_str())
-            })
+            m.iter()
+                .find(|(_, v)| v.get("pkg").and_then(|p| p.as_str()) == Some(pkg.as_str()))
         });
         match node {
             Some((key, value)) => {
@@ -4631,8 +4632,14 @@ structure:
 "#;
         let err = check(DECLARING, model).unwrap_err().to_string();
         assert!(err.contains("did not project"), "unexpected error: {err}");
-        assert!(err.contains("c_params_param_talker"), "must name the component: {err}");
-        assert!(err.contains("setup-launch-resolve"), "must give the remedy: {err}");
+        assert!(
+            err.contains("c_params_param_talker"),
+            "must name the component: {err}"
+        );
+        assert!(
+            err.contains("setup-launch-resolve"),
+            "must give the remedy: {err}"
+        );
     }
 
     /// A component absent from THIS variant is legitimate — and a correct
@@ -4665,7 +4672,10 @@ structure:
       pkg: some_other_pkg
 "#;
         let err = check(DECLARING, model).unwrap_err().to_string();
-        assert!(err.contains("no diagnostic explaining why"), "unexpected error: {err}");
+        assert!(
+            err.contains("no diagnostic explaining why"),
+            "unexpected error: {err}"
+        );
     }
 
     /// A bringup that declares no params is not this check's business.
