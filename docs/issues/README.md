@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#414** — phase-330 W4 (`39d007dfc`) made the SystemModel a pure build artifact and deleted every
+committed `config/*model.yaml`, but four test files still read those paths and now fail on `os error 2`
+instead of on what they assert: `qos_override_e2e` (1), `multihost_partition_bake` (2),
+`zephyr_edf_deadline_applied` (1), `native_main_macro_misuse` (1). The declarations still exist in
+`system.toml` — only the artifact moved — so the tests are right and their input path is stale. Needs a
+`nros-tests` helper that resolves a bringup model from the active build output dir; short of that they
+should SKIP on a missing artifact rather than panic. See `0414-*`. (2026-08-04)
+
 **#413** — a native Rust cyclone/xrce LISTENER receives nothing in a same-language example pair,
 while C/C++ pairs deliver on the same backends (run-proven, phase-329 W4). The Rust cyclone PUBLISH
 path is known-good (native_api pairs a Rust cyclone talker with C/C++ listeners); the gap is the
