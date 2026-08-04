@@ -96,17 +96,28 @@ visible from the file's location/consumer, not tribal memory:
   to the compile-check fixture move).
 
 ### W2 — realtime-dim matrix
-- [ ] `matrix::sched_dims` — `SchedDim {CorePin, EdfDeadline,
-  PreemptThreshold, TimeSlice, SporadicBudget, TierPriority}` ×
-  platform × lang table with per-cell `Expect {KernelAccept, FailLoud,
-  CarveOut(reason)}` — the RFC-0052 fail-loud contract becomes data.
-- [ ] The 10 single-cell `*_applied` files fold into ONE
-  `sched_dims_applied.rs` rstest consumer (markers already centralized in
-  `output.rs`); `realtime_tiers_e2e` keeps the delivery-scheduling cases
-  and joins the same table for its cell list.
-- [ ] Bake-time gate (issue 0380): a build-stage check that every dim the
-  table expects for a (platform, lang) cell is present in the committed
-  ws-realtime model — a stripped model fails the BUILD, not a QEMU e2e.
+- [x] **Landed 2026-08-04.** `matrix::SchedDim {CorePin, EdfDeadline,
+  PreemptThreshold, TimeSlice, SporadicBudget, TierPriority}` +
+  `SchedCell {dim, platform, lang, tier}` + `SCHED_CELLS` (12 cells) +
+  `sched_runtime_cells()`. **Design refinement vs the draft:** the per-cell
+  `Expect`/marker/assert-shape are the CONSUMER's execution data (`exec_for` in
+  the test), not table facts — the table stays a NEUTRAL coordinate list like
+  `CELLS` (consistent with W1). The RFC-0052 fail-loud contract lives in the
+  consumer's four `Shape`s (AcceptOrFallback / AcceptOnly / StrictCountOne /
+  AcceptOrFailNote).
+- [x] The 10 `*_applied` files fold into ONE `sched_dims_applied_e2e.rs`
+  iterating `SCHED_CELLS` (one `#[test]`, per-cell `catch_unwind`). **Note:**
+  `realtime_tiers_e2e` stays SEPARATE — it proves per-tier delivery
+  *scheduling* (cadence ratios), a different assertion from dim *honoring*; it
+  already derives from `matrix::CELLS` (W1) over `RealtimeTiers`, so the two
+  realtime consumers are cleanly split by what they assert.
+- [ ] Bake-time gate (issue 0380): a build-stage check that every dim the table
+  expects for a `(platform, lang)` cell is present in the committed ws-realtime
+  model — a stripped model fails the BUILD, not a QEMU e2e. **Still open** —
+  needs build-stage model introspection (a `check-*` recipe reading the
+  `system_model.yaml` dims against `SCHED_CELLS`). The matrix-layer half shipped
+  as `matrix::tests::sched_dims_table_covers_every_dim` (every `SchedDim` has a
+  cell); the model→cell half is the remaining piece.
 
 ### W3 — ROS-interop matrix completion
 - [ ] Bind the 5 unbound live-peer files to `interop::CELLS` rows
