@@ -264,6 +264,37 @@ pub const CELLS: &[InteropCell] = &[
        c(Native, Rust, Zenoh, Pubsub, Bridge, Runtime),
        NativeFixtures, NanoBridge { ingress: Zenoh, egress: Xrce }, NanoToRos,
        "declarative_bridge_zenoh_to_xrce"),
+
+    // ── Imperative (issue #53) zenoh→cyclone bridge — the G4 blind spot the
+    //    binding closes (phase-329 W3). Same coordinate as the declarative
+    //    sibling, distinct test. ──────────────────────────────────────────
+    ic("bridge-zenoh-to-cyclone-imperative",
+       c(Native, Rust, Zenoh, Pubsub, Bridge, Runtime),
+       NativeFixtures, NanoBridge { ingress: Zenoh, egress: Cyclonedds }, NanoToRos,
+       "bridge_zenoh_to_cyclonedds"),
+
+    // ── Native nano ↔ stock ROS 2, the previously-unbound live-peer lanes
+    //    (phase-329 W3). Each file mixes host-only cases with a ROS-2-facing
+    //    lane; the coordinate below is the interop lane's. ─────────────────
+    // tests/qos_override_e2e.rs — a plan QoS override reaches the ADVERTISED
+    // profile a stock rmw_zenoh_cpp peer reads (issue #52/0303/0306).
+    ic("native-qos-override-rust-zenoh",
+       c(Native, Rust, Zenoh, Qos, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), NanoToRos, "qos_override_e2e"),
+    // tests/params.rs — `ros2 param list/get/set` against a nano params entry.
+    ic("native-params-rust-zenoh",
+       c(Native, Rust, Zenoh, Params, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), BiDir, "params"),
+    // tests/rust_multi_node_per_node_graph.rs — a multi-node Rust entry shows
+    // one graph node per launch component in `ros2 node list` (#104/phase-268).
+    ic("native-multinode-rust-zenoh",
+       c(Native, Rust, Zenoh, EntryPubsub, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), NanoToRos, "rust_multi_node_per_node_graph"),
+    // tests/cpp_multi_node_entry.rs — the C++ typed multi-node entry's pubsub +
+    // per-node graph visibility against a stock ROS 2 peer (phase-257/268).
+    ic("native-multinode-cpp-zenoh",
+       c(Native, Cpp, Zenoh, EntryPubsub, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), NanoToRos, "cpp_multi_node_entry"),
 ];
 
 /// Runtime interop/bridge cells only.

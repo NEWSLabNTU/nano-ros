@@ -535,3 +535,13 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
         "the live read should follow the reconfigured value"
     );
 }
+
+// phase-329 W3 — bind this test to `interop::CELLS` (the pattern from
+// xrce_ros2_interop). The coordinate below must equal what the list declares
+// for `params`; drift turns this RED. Needs no fixtures — runs in tier 1.
+#[test]
+fn cases_bound_to_interop_cells() {
+    #[allow(unused_imports)]
+    use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
+    nros_tests::interop::assert_test_bound("params", &[(Native, Rust, Zenoh, Params)]);
+}

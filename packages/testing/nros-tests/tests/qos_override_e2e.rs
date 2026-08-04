@@ -203,3 +203,13 @@ fn endpoint_block(report: &str, kind: &str) -> Option<String> {
         .unwrap_or(rest.len());
     Some(rest[..end].to_string())
 }
+
+// phase-329 W3 — bind this test to `interop::CELLS` (the pattern from
+// xrce_ros2_interop). The coordinate below must equal what the list declares
+// for `qos_override_e2e`; drift turns this RED. Needs no fixtures — runs in tier 1.
+#[test]
+fn cases_bound_to_interop_cells() {
+    #[allow(unused_imports)]
+    use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
+    nros_tests::interop::assert_test_bound("qos_override_e2e", &[(Native, Rust, Zenoh, Qos)]);
+}

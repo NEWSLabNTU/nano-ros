@@ -284,3 +284,16 @@ fn test_zenoh_to_cyclonedds_bridge_ros2(zenohd_unique: ZenohRouter, talker_binar
          (zenoh → bridge → rmw_cyclonedds_cpp), got:\n{ros2_output}"
     );
 }
+
+// phase-329 W3 — bind this test to `interop::CELLS` (the pattern from
+// xrce_ros2_interop). The coordinate below must equal what the list declares
+// for `bridge_zenoh_to_cyclonedds`; drift turns this RED. Needs no fixtures — runs in tier 1.
+#[test]
+fn cases_bound_to_interop_cells() {
+    #[allow(unused_imports)]
+    use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
+    nros_tests::interop::assert_test_bound(
+        "bridge_zenoh_to_cyclonedds",
+        &[(Native, Rust, Zenoh, Pubsub)],
+    );
+}
