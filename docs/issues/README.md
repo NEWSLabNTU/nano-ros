@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#412** — eight SystemModel files are tracked again under `examples/workspaces/safety`, so
+`check-no-tracked-models` (phase-330 W7.e) turns `just check-fast` RED on main. They were scooped
+into `3f25803d1`, an unrelated phase-331 fallout fix whose intended change was a launch file plus a
+`system.toml` entry — the `git add -A` class. Diagnosis says the fix is SAFE despite first
+appearances: seven regenerate byte-identically (the only diff is a `meta.inputs` sha256, which
+*should* move once inputs change), and the eighth (`rust_system_model.yaml`) is an ORPHAN — its
+launch file was deleted in `9748f7ae3` when two sessions fixed the same problem at once, leaving a
+generated file with no producer. Delete all eight; nothing needs authoring. See `0412-*`. (2026-08-04)
+
 **#409** — `just setup-launch-resolve` exits **0** without building when the `play_launch` submodule
 is uninitialised, so `nros sync` resolves with whatever stale `nros-launch-resolve` is on disk. A
 binary predating phase-332 has no `apply_params_to_nodes`, so **every `[[component]].params` /
