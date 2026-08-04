@@ -301,8 +301,32 @@ doctor:
     # unrelated ROS 2 `play_launch` won the PATH race and broke every platform's
     # fixture build), so this checks the file, not `command -v`.
     nlr_bin="{{justfile_directory()}}/packages/cli/nros-launch-resolve/target/release/nros-launch-resolve"
+    nlr_src="{{justfile_directory()}}/packages/cli/third-party/play_launch/src/ros-launch-resolve"
     if [ -x "$nlr_bin" ]; then
-        echo "  [OK] nros-launch-resolve (packages/cli/nros-launch-resolve/target/release)"
+        # issue 0409 — existence is NOT enough. A resolver older than its sources
+        # produces models that are missing DATA rather than failing: one built
+        # before rlm v0.1.1 silently drops every `[[component]].params` /
+        # `params_files` projection, and 22 models in `features/` alone lost
+        # their params that way with no error anywhere. Doctor reporting [OK] for
+        # a stale binary is how that stayed invisible. Same probe the recipe
+        # uses: the sources live in the submodule, so `git -C` it — from the
+        # superproject the index holds only the gitlink and the walk matches
+        # nothing, which would make every pin bump look current.
+        nlr_stale=""
+        if [ -d "$nlr_src" ]; then
+            while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                if [ "$nlr_src/$f" -nt "$nlr_bin" ]; then nlr_stale="$f"; break; fi
+            done < <(git -C "$nlr_src" ls-files 2>/dev/null || true)
+        fi
+        if [ -n "$nlr_stale" ]; then
+            echo "  [STALE] nros-launch-resolve is older than its sources ($nlr_stale)"
+            echo "          a stale resolver drops params from generated models SILENTLY (issue 0409)"
+            echo "          run: just setup-launch-resolve"
+            fail=1
+        else
+            echo "  [OK] nros-launch-resolve (packages/cli/nros-launch-resolve/target/release)"
+        fi
     elif [ ! -f "{{justfile_directory()}}/packages/cli/third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
         echo "  [MISSING] play_launch submodule — nros sync cannot resolve SystemModels"
         echo "            run: git submodule update --init packages/cli/third-party/play_launch"

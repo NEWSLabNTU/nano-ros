@@ -63,6 +63,33 @@ The stale-CLI guard (issues 0363/0197) refuses to run a stale `nros`. Its siblin
 does not exist for the resolver: a stale or absent resolver is not a build
 failure, it is a quiet content change in generated files.
 
+## PARTIALLY FIXED (2026-08-04) — directions 1 and 4
+
+**1. The recipe fails instead of skipping.** A missing submodule is exit 1 with
+the init command. `NROS_ALLOW_NO_LAUNCH_RESOLVE=1` keeps the CLI-only path the
+`setup-cli` comment worries about, and DELETES any binary left behind — an
+opt-out that leaves a stale resolver on disk would preserve the exact hazard,
+so the skip now makes a later `nros sync` fail loud on a missing resolver.
+
+**4. `just doctor` checks freshness, not existence.** It reported `[OK]` for any
+binary that existed, which is how a stale one stayed invisible. It now walks the
+resolver sources (`git -C` the submodule, since the superproject index holds
+only the gitlink) and reports `[STALE]` with the remedy.
+
+Verified: submodule absent -> exit 1 + remedy; with the override -> exit 0 and
+the binary removed; submodule present -> builds, doctor `[OK]`; source touched
+-> probe names `resolve/Cargo.toml`, and `[OK]` again after a rebuild.
+
+**Still open — 2 and 3.** `nros sync` does not yet verify the resolver it is
+about to run. Direction 3 needs restating: phase-330 W7.e BANNED committed
+models (`check-no-tracked-models`), so there is no committed artifact left to
+gate — the equivalent watcher is a post-resolve assertion inside `nros sync`
+that every `params` / `params_files` declaration in `system.toml` either appears
+in the model or is reported as an explicit unbound diagnostic. The side finding
+below (component names not matching launch node names) means "absent from the
+model" is sometimes legitimate, so that check must distinguish the two rather
+than fail on any absence.
+
 ## Fix directions
 
 1. **`setup-launch-resolve` must fail, not skip**, when it cannot build — or at

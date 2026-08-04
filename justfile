@@ -3101,12 +3101,36 @@ setup-launch-resolve:
     # `libpython3.14.so.1.0: cannot open shared object file`. Issue 0400.
     bin="${CARGO_TARGET_DIR:-$crate/target}/release/nros-launch-resolve"
     if [ ! -f "$crate/../third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
-        echo "[setup-launch-resolve] SKIP: play_launch submodule not initialised"
+        # issue 0409 — FAIL, do not skip. This recipe's job is to produce the
+        # resolver binary; exiting 0 without producing one let `nros sync` run
+        # with whatever stale binary was left on disk, and a resolver predating
+        # rlm v0.1.1 silently drops every `[[component]].params` /
+        # `params_files` projection. No error, no warning, exit 0 — 22 models in
+        # `features/` alone lost their params that way, and the reds surfaced far
+        # from the cause (`model params: {}` in a QoS-override test).
+        #
+        # It was worse than a plain skip: `setup-cli` WARNS when the resolver is
+        # older than the CLI and tells you to run this recipe, so running it and
+        # getting exit 0 made the warning look addressed while nothing was built.
+        echo "[setup-launch-resolve] FAILED: play_launch submodule not initialised" >&2
         # NON-recursive on purpose (RFC-0060): layer 2 (resolve + parser) is
         # regular files inside play_launch; its layer-3 submodules (vendor/*,
         # container, msgs) are never built by nano-ros and must stay uninitialised.
-        echo "  git submodule update --init packages/cli/third-party/play_launch"
-        exit 0
+        echo "  git submodule update --init packages/cli/third-party/play_launch" >&2
+        echo "" >&2
+        echo "  A resolver that cannot be built must not be silently replaced by an" >&2
+        echo "  older one: the failure mode is missing DATA in generated models, not" >&2
+        echo "  a build error (issue 0409)." >&2
+        echo "  For a deliberate CLI-only setup with no resolver:" >&2
+        echo "      NROS_ALLOW_NO_LAUNCH_RESOLVE=1 just setup-launch-resolve" >&2
+        if [ "${NROS_ALLOW_NO_LAUNCH_RESOLVE:-0}" = "1" ]; then
+            echo "[setup-launch-resolve] skipping anyway (NROS_ALLOW_NO_LAUNCH_RESOLVE=1)" >&2
+            # Remove any binary left behind, so a later `nros sync` fails LOUD on a
+            # missing resolver instead of quietly resolving with a stale one.
+            rm -f "$bin"
+            exit 0
+        fi
+        exit 1
     fi
     # `find -newer` errors when the reference file is absent, and `set -e`
     # would abort the very first build — check existence before comparing.
