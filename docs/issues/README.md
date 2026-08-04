@@ -74,6 +74,15 @@ appearances: seven regenerate byte-identically (the only diff is a `meta.inputs`
 launch file was deleted in `9748f7ae3` when two sessions fixed the same problem at once, leaving a
 generated file with no producer. Delete all eight; nothing needs authoring. See `0412-*`. (2026-08-04)
 
+**#411** — the threadx-linux C workspace entry is resolved as `native_threadx_entry` while the build
+produces `threadx_entry` (`binaries/mod.rs:1846` vs `fixtures.toml:539`), so
+`entry_e2e::case_01_threadx_linux_c` silently SKIPS under `just test-all` (and fails under bare
+nextest). Invisible because a missing fixture and an absent toolchain look identical to the resolver —
+the 0350 class. Reads like phase-331 rename fallout that swept the workspace and manifest but not the
+one call site hardcoding the binary name. Direction: fix the string, then check for siblings — the
+entry argument can be derived from the manifest row the call already names, since two spellings of one
+fact is what produced it. Found by phase-337 W4. See `0411-*`. (2026-08-04)
+
 **#409** (RESOLVED 2026-08-04) — `setup-launch-resolve` exited 0 without building, so `nros sync` ran
 a stale resolver that silently dropped every `params`/`params_files` projection (22 models stripped,
 no error). Closed from three sides: the recipe now fails (and its opt-out DELETES the stale binary),

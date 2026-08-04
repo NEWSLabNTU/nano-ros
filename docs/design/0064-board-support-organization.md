@@ -420,7 +420,25 @@ no consumer today; it should become the spine of this matrix.
 | Class | Who supplies boot/driver/stack | Per-board cost | Members |
 |---|---|---|---|
 | **rtos-owned** | the host ecosystem (Zephyr, NuttX, ESP-IDF, a vendor SDK) | a config bundle — **0–160 lines, nearly all data** | zephyr, nuttx-*, esp32-qemu, s32ds shell |
-| **nanoros-owned** | nano-ros supplies stack *and* MAC driver | **~60–80 lines + a driver crate**, irreducible | mps2-an385{,-freertos}, threadx-*, stm32f4, orin-spe |
+| **nanoros-owned** | nano-ros supplies stack *and* MAC driver | **~76 lines of board delta + ~129 mechanical + a driver crate** (measured, phase-337 W5.f) | mps2-an385{,-freertos}, threadx-*, stm32f4, orin-spe |
+
+> **The two numbers, and why both matter** (measured phase-337 W5.f, 2026-08-04;
+> the earlier "~60–80 lines" counted only the first of them). A second FreeRTOS
+> board is **205 lines**, split:
+>
+> - **~76 lines a porter must reason about** — the vector table, the three
+>   memory-map numbers, the CPU clock, the netif registration, the driver
+>   reference. This is the number the original estimate named, and it held.
+> - **~129 lines of mechanical scaffolding** — the board ZST and its four trait
+>   impls, `build.rs`, `Cargo.toml`. Identical for every Cortex-M FreeRTOS
+>   board, copied without thought.
+> - **plus a MAC driver** (~507 lines for LAN9118) when the board needs one that
+>   nano-ros does not already have. Not reducible by any template.
+>
+> Quoting only 205 overstates the difficulty and only 76 understates the typing,
+> which is why both are stated. Collapsing the 129 behind a macro is possible
+> but not free: it would put `panic-semihosting` into the family crate and so
+> impose a panic strategy on every consumer.
 
 Measured, not assumed. `nros-board-fvp-aemv8r-smp` — a real non-native Zephyr
 board — is **160 lines** and self-describes as "a thin Cargo + config bundle";
@@ -447,7 +465,7 @@ which of them nano-ros has to own is what really differs:
 |---|---|---|---|---|---|
 | 1. Family driver | RTOS-generic entry/spawn/session logic | upstream | upstream | **in-tree, exists, already board-generic** | **in-tree, exists** |
 | 2. **Arch port** | RTOS × ISA — context switch, trap, `tx_port.h` | upstream | upstream | **forked in-tree, TRAPPED inside a board crate** | upstream + cflags |
-| 3. Board overlay | memory map, net bring-up, console, exit | the whole crate (160 lines) | the whole crate | entangled with layer 2 | ~60–80 lines + a MAC driver |
+| 3. Board overlay | memory map, net bring-up, console, exit | the whole crate (160 lines) | the whole crate | entangled with layer 2 | ~76 lines + ~129 mechanical + a MAC driver |
 
 Verified per family:
 
