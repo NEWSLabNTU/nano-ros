@@ -594,14 +594,14 @@ mod tests {
                 "[capabilities]\nthreads = true\n[knobs.zenoh.tx]\nflush_ms = 30\n",
             ),
             (
-                "orin-spe",
+                "child",
                 "inherits = \"generic\"\n[knobs.zenoh.tx]\nflush_ms = 60\n",
             ),
         ]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let tx = tree.resolve_tx("orin-spe", None, &no_env).unwrap();
+        let tx = tree.resolve_tx("child", None, &no_env).unwrap();
         assert_eq!(tx.flush_ms.value, 60);
-        let caps = tree.capabilities("orin-spe").unwrap();
+        let caps = tree.capabilities("child").unwrap();
         assert_eq!(caps.get("threads"), Some(&true));
     }
 
@@ -647,13 +647,13 @@ mod tests {
         let tmp = write_tree(&[
             ("generic", "[build.zenoh]\ndefines = [\"A\"]\n"),
             (
-                "orin-spe",
+                "child",
                 "inherits = \"generic\"\n[build.zenoh]\ndefines = [\"B\"]\n",
             ),
         ]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let manifest = tree.as_platform_manifest();
-        let resolved = manifest.for_platform("orin-spe").unwrap();
+        let resolved = manifest.for_platform("child").unwrap();
         assert_eq!(resolved.defines, vec!["A".to_string(), "B".to_string()]);
     }
 }

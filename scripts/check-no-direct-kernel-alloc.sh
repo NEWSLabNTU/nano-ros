@@ -90,7 +90,7 @@ done
 
 # HARD mode (Phase 230.1.7, RFC-0034). The nros-OWNED allocation surface is
 # fully migrated: nros-c/nros-cpp `#[global_allocator]`s + the C-API inline
-# platform headers + the FreeRTOS/orin board task-context sites all route
+# platform headers + the FreeRTOS board task-context sites all route
 # through `nros_platform_alloc`; the ThreadX board task-stack / NetX net-pool
 # carve-outs are the vendored task/net opaque-struct services (see
 # TASK_NET_ALLOW_RE). A NEW direct kernel-alloc in nros source now fails the

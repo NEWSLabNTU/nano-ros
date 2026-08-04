@@ -143,26 +143,11 @@ maintainers = []
 notes = "License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see."
 
 # ===== scaffold — explicitly not supported =================================
-
-[[board]]
-crate = "nros-board-esp32s3"
-tier = "scaffold"
-maintainers = []
-notes = "No recipe, no fixture, no test, no matrix cell. Needs an Xtensa toolchain absent from nros-sdk-index.toml. Serial-only; WiFi is a follow-up."
-
-[[board]]
-crate = "nros-board-s32z270dc2-r52"
-gated_sdk = "none-modelled"
-tier = "scaffold"
-maintainers = []
-notes = "Zero cargo consumers; `just zephyr build-s32z-board-import` has NO caller; its board_import_s32z fixture is not registered in WEST_FIXTURES. Either wire it up (cheap — the FVP twin exists) or delete."
-
-[[board]]
-crate = "nros-board-orin-spe"
-gated_sdk = "nv-spe-fsp"
-tier = "scaffold"
-maintainers = []
-notes = "Placeholder runtime; no fixture row; absent from PlatformId. orin_spe_mock_ivc.rs proves the IVC wire format on POSIX, NOT the board — do not count it as board coverage. Issue 0271 tracks a 256 KB BTCM overflow."
+#
+# EMPTY since phase-337 W7.b. The four boards that lived here
+# (`embassy-stm32f4`, `esp32s3`, `s32z270dc2-r52`, `orin-spe`) contributed zero
+# cells of any tier, so deleting them cost no coverage. The STATE stays declared
+# above: it is what stops the next unfinished board from reading as support.
 
 # ===== infra — not boards ==================================================
 

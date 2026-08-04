@@ -9,7 +9,7 @@ description = "ARM FVP Base_RevC AEMv8-R Cortex-A SMP (Zephyr) board crate for n
 name = "nros_board_fvp_aemv8r_smp"
 # `rlib` only — the example app crate (consumed by `rust_cargo_application()`
 # in Zephyr's CMake glue) is responsible for the `staticlib` wrap-up plus
-# its own `#[panic_handler]`. Same pattern as `nros-board-orin-spe` /
+# its own `#[panic_handler]`. Same pattern as
 # `nros-board-mps2-an385-freertos`.
 
 [features]

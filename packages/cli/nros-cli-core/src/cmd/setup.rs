@@ -1690,7 +1690,7 @@ mod tests {
              [board.qemu-riscv64-threadx]\npackages=[\"riscv-none-elf-gcc\",\"qemu\",\"threadx\"]\n\
              [board.qemu-esp32-baremetal]\narch=\"riscv32\"\npackages=[]\n\
              [board.native]\npackages=[\"zenohd\"]\n\
-             [board.orin-spe]\npackages=[\"arm-none-eabi-gcc\",\"nv-spe-fsp\"]\n",
+             [board.gated-example]\npackages=[\"arm-none-eabi-gcc\",\"a-gated-sdk\"]\n",
         )
         .unwrap()
     }
@@ -1714,8 +1714,9 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(resolve_packages(&idx, "native").unwrap(), vec!["zenohd"]);
-        let orin = resolve_packages(&idx, "orin-spe").unwrap();
-        assert!(orin.contains(&"arm-none-eabi-gcc") && orin.contains(&"nv-spe-fsp"));
+        // A board whose set mixes a hosted tool with a license-gated one.
+        let gated = resolve_packages(&idx, "gated-example").unwrap();
+        assert!(gated.contains(&"arm-none-eabi-gcc") && gated.contains(&"a-gated-sdk"));
 
         // Unknown board → error (no silent wrong guess), lists known boards.
         let err = resolve_packages(&idx, "totally-unknown")

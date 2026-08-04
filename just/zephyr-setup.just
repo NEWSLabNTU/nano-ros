@@ -476,50 +476,11 @@ run-fvp-board-import:
     export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     west fvp run -d build-fvp-board-import
 
-# phase-292 W3.a — S32Z270-DC RTU0 board-crate IMPORT smoke: builds the
-# minimal `board_import_s32z` fixture via `nano_ros_use_board(s32z270dc2-r52)`
-# (the ASI zephyr-s32z consumption surface). Sibling of
-# `build-fvp-board-import`. Skips when west / workspace / arm-zephyr-eabi
-# SDK are missing.
-[group("examples")]
-build-s32z-board-import:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v west >/dev/null 2>&1; then
-        echo "Zephyr/S32Z board-import skip: west not found"; exit 0
-    fi
-    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
-    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-        echo "Zephyr/S32Z board-import skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
-    fi
-    sdk="$(pwd)/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
-    if [ ! -x "$sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ]; then
-        echo "Zephyr/S32Z board-import skip: arm-zephyr-eabi toolchain missing"
-        exit 0
-    fi
-    nros_root="$(pwd)"
-    source scripts/build/cargo.sh
-    nros_cargo_ensure_codegen_c
-    codegen_tool="$(nros_cargo_codegen_c_bin)"
-    make_bin="$nros_root/third-party/make/make"
-    if [ ! -x "$make_bin" ]; then
-        make_bin="$(command -v make)"
-    fi
-    src="$nros_root/packages/testing/nros-tests/fixtures/board_import_s32z"
-    cd "$workspace"
-    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
-    export ZEPHYR_SDK_INSTALL_DIR="$sdk"
-    export NROS_REPO_DIR="$nros_root"
-    echo "Building board-import fixture via nano_ros_use_board(s32z270dc2-r52)..."
-    west build \
-        -d build-s32z-board-import -p auto \
-        "$src" \
-        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
-    echo "phase-292 W3.a S32Z board-import fixture build OK"
-
-# phase-292 W3.a — the historical `build-s32z` rust-talker smoke was RETIRED
-# here: it was sourceless since phase-221 (the #217 class — `west build` with
-# no app arg, alive only on museum build-dir caches), its original app is
-# gone, and the board's reference consumer (ASI) is C++-only
-# (NROS_BOARD_REQUIRES_RUST=n). `build-s32z-board-import` above is the
-# canonical S32Z build proof.
+# phase-337 W7.b — the S32Z270-DC RTU0 board left the tree with the other
+# scaffolds: `nros-board-s32z270dc2-r52` had ZERO cargo consumers, its
+# `build-s32z-board-import` recipe had NO caller, and its `board_import_s32z`
+# fixture was never registered in WEST_FIXTURES — so nothing ever built it.
+# The board's reference consumer (ASI `zephyr-s32z`) is out-of-tree and
+# C++-only; per RFC-0064 a Zephyr board is a conf bundle its integrator owns,
+# not a crate here. `build-fvp-board-import` above is the surviving
+# `nano_ros_use_board()` import proof.

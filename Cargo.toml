@@ -126,9 +126,6 @@ members = [
     # by the board crate's build.rs (FreeRTOS / ThreadX) or by the
     # parent build system (NuttX `make`, Zephyr `west`, POSIX via the
     # consumer's CMake site / build.rs).
-    # Phase 121.10 — nros-platform-orin-spe was deleted. orin-spe is
-    # now a board over FreeRTOS-FSP (see `packages/boards/nros-board-orin-spe`);
-    # IVC + FSP init live at the board level.
     # Platform shims for RMW backends
     # Phase 129.D — `zpico-platform-shim` deleted. IVC link-layer
     # forwarders carved out into `zpico-link-ivc`; every other
@@ -379,9 +376,7 @@ exclude = [
     "packages/platform/nros-platform-mps2-an385",
     "packages/platform/nros-platform-stm32f4",
     "packages/platform/nros-platform-esp32-qemu",
-    "packages/platform/nros-platform-esp32s3",
     "packages/boards/nros-board-esp32-qemu",
-    "packages/boards/nros-board-esp32s3",
     # phase-337 W7.a — the three STM32F4 board crates
     # (`nros-board-{stm32f4,rtic-stm32f4,embassy-stm32f4}`) and their examples
     # left the supported matrix: 0 Runtime cells, no CI lane that could boot
@@ -419,19 +414,12 @@ exclude = [
     # not part of the host clippy lane. Build via `cd packages/boards/
     # nros-board-zephyr && cargo check`.
     "packages/boards/nros-board-zephyr",
-    # Build via `cd packages/boards/nros-board-orin-spe && cargo build`
-    # or `just orin_spe build` (Phase 100.7).
-    "packages/boards/nros-board-orin-spe",
     "packages/boards/nros-board-threadx-linux",
     "packages/boards/nros-board-threadx-qemu-riscv64",
     # Phase 117.10 — ARM FVP Base_RevC AEMv8-R Cortex-A SMP under Zephyr.
     # Build via `west build -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp` from
     # an example app; cargo `check` works on host for the Rust surface.
     "packages/boards/nros-board-fvp-aemv8r-smp",
-    # Phase 117.11 — NXP X-S32Z270-DC (DC2) Cortex-R52 RTU0 under Zephyr.
-    # Build via `west build -b s32z2xxdc2/s32z270/rtu0/D`; cargo check
-    # works on host for the Rust surface.
-    "packages/boards/nros-board-s32z270dc2-r52",
     # ThreadX Linux examples (require ThreadX + NetX Duo SDKs)
     "examples/threadx-linux/rust/zenoh/talker",
     "examples/threadx-linux/rust/zenoh/listener",
@@ -619,7 +607,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(cbindgen)',
     'cfg(verus_keep_ghost)',
     'cfg(verus_keep_ghost_body)',
-    'cfg(zpico_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx", "threadx", "orin-spe"))',
+    'cfg(zpico_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx", "threadx"))',
 ] }
 
 [workspace.lints.clippy]

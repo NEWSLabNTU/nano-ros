@@ -183,12 +183,19 @@ impl LinkPolicy {
         Self::passthrough()
     }
 
-    /// AGX Orin SPE — Cortex-R5F + NVIDIA FSP, no Ethernet, no
-    /// serial, no TLS. Only IVC + custom transports are valid.
-    /// Encodes the invariants that `build_zenoh_pico_orin_spe`
-    /// used to scatter as `build.define("Z_FEATURE_LINK_*", "0")`
-    /// literals at the bottom of the function body.
-    pub const fn orin_spe() -> Self {
+    /// IVC-only — no Ethernet, no serial, no TLS; the link layer is an
+    /// inter-processor mailbox and only IVC + custom transports are valid.
+    ///
+    /// phase-337 W7.b — was `orin_spe()`, named for the one board that used it.
+    /// The board is gone; the POLICY is not board-specific (any AMP mailbox
+    /// target has this shape), so it keeps the capability name instead. Nothing
+    /// in-tree selects it today: `nros-zpico-build` picks a policy per PLATFORM,
+    /// and IVC-only has no in-tree platform since the SPE board left.
+    #[allow(
+        dead_code,
+        reason = "no in-tree platform selects IVC-only after phase-337 W7.b"
+    )]
+    pub const fn ivc_only() -> Self {
         Self {
             tcp: PolicyChoice::Force(false),
             udp_unicast: PolicyChoice::Force(false),

@@ -119,7 +119,6 @@ pub fn config_header(
     buf: &ZenohBufferConfig,
     target: &str,
     unstable_api: bool,
-    orin_spe: bool,
     tx_batch: bool,
     tx_split_lock: bool,
 ) -> String {
@@ -240,13 +239,11 @@ pub fn config_header(
     writeln!(header).unwrap();
     writeln!(header, "// Protocol Features").unwrap();
     writeln!(header, "#define Z_FEATURE_FRAGMENTATION 1").unwrap();
-    let encoding_values = if orin_spe { 0 } else { 1 };
-    writeln!(
-        header,
-        "#define Z_FEATURE_ENCODING_VALUES {}",
-        encoding_values
-    )
-    .unwrap();
+    // phase-337 W7.b — was `0` on orin-spe alone (its FSP build had no room for
+    // the encoding tables). That board is gone; a future space-constrained
+    // platform should turn this off through the RFC-0049 knob ladder like every
+    // other `[build.zenoh]` value, not through a board-named bool parameter.
+    writeln!(header, "#define Z_FEATURE_ENCODING_VALUES 1").unwrap();
     writeln!(header, "#define Z_FEATURE_TCP_NODELAY 1").unwrap();
     // Same-session loopback (issue 0096): a single `nros::main!` entry registers every
     // node of a launch on ONE zenoh-pico session, so in-process node-to-node delivery —
@@ -295,13 +292,9 @@ pub fn config_header(
     writeln!(header, "#define Z_FEATURE_MATCHING 1").unwrap();
     writeln!(header, "#define Z_FEATURE_RX_CACHE 0").unwrap();
     writeln!(header, "#define Z_FEATURE_UNICAST_PEER 0").unwrap();
-    let auto_reconnect = if orin_spe { 0 } else { 1 };
-    writeln!(
-        header,
-        "#define Z_FEATURE_AUTO_RECONNECT {}",
-        auto_reconnect
-    )
-    .unwrap();
+    // phase-337 W7.b — see `Z_FEATURE_ENCODING_VALUES` above: orin-spe was the
+    // only platform that set this to 0 (IVC has no reconnect notion).
+    writeln!(header, "#define Z_FEATURE_AUTO_RECONNECT 1").unwrap();
     writeln!(header, "#define Z_FEATURE_MULTICAST_DECLARATIONS 0").unwrap();
     writeln!(header, "#define Z_FEATURE_PERIODIC_TASKS 0").unwrap();
     writeln!(header).unwrap();
@@ -807,7 +800,7 @@ int32_t zpico_init(void);\n";
             batch_multicast_size: 1024,
         };
 
-        let header = config_header(&link, &buf, "armv7a-nuttx-eabihf", true, true, false, false);
+        let header = config_header(&link, &buf, "armv7a-nuttx-eabihf", true, false, false);
 
         assert!(header.contains("#define Z_FRAG_MAX_SIZE 4096"));
         assert!(header.contains("#define Z_CONFIG_SOCKET_TIMEOUT 5000"));
@@ -816,8 +809,10 @@ int32_t zpico_init(void);\n";
         assert!(header.contains("#define Z_FEATURE_LINK_TLS 1"));
         assert!(header.contains("#define Z_FEATURE_LINK_CUSTOM 1"));
         assert!(header.contains("#define Z_FEATURE_UNSTABLE_API"));
-        assert!(header.contains("#define Z_FEATURE_ENCODING_VALUES 0"));
-        assert!(header.contains("#define Z_FEATURE_AUTO_RECONNECT 0"));
+        // phase-337 W7.b — both were 0 only under the `orin_spe` flag this
+        // signature used to carry; with the board gone they are unconditional.
+        assert!(header.contains("#define Z_FEATURE_ENCODING_VALUES 1"));
+        assert!(header.contains("#define Z_FEATURE_AUTO_RECONNECT 1"));
         // issue 0096 — same-session loopback stays OFF on embedded (RAM-budgeted).
         assert!(header.contains("#define Z_FEATURE_LOCAL_SUBSCRIBER 0"));
         assert!(header.contains("#define Z_FEATURE_LOCAL_QUERYABLE 0"));
@@ -843,15 +838,7 @@ int32_t zpico_init(void);\n";
             batch_multicast_size: 1024,
         };
 
-        let header = config_header(
-            &link,
-            &buf,
-            "x86_64-unknown-linux-gnu",
-            false,
-            false,
-            false,
-            false,
-        );
+        let header = config_header(&link, &buf, "x86_64-unknown-linux-gnu", false, false, false);
 
         assert!(header.contains("#define Z_FEATURE_LOCAL_SUBSCRIBER 1"));
         assert!(header.contains("#define Z_FEATURE_LOCAL_QUERYABLE 1"));

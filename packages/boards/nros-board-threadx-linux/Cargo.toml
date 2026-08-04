@@ -18,7 +18,7 @@ nros-platform = { path = "../../platform/nros-platform", default-features = fals
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-features = false }
 # Phase 152.2.B — `BoardInit` / `BoardPrint` / `BoardExit` trait
 # impls so this overlay fits the canonical overlay shape (same
-# pattern as `nros-board-orin-spe` 152.3, `nros-board-mps2-an385-freertos`
+# pattern as `nros-board-mps2-an385-freertos`
 # 152.1.B.5). Generic-crate `run<B>` lift deferred to a follow-up
 # session; the trait surface lands now so future consumers can
 # already write `<ThreadxLinux as BoardInit>::init_hardware(&cfg)`.

@@ -18,7 +18,7 @@ crate-type = ["rlib", "staticlib"]
 # Phase 248 C6e — RMW is selected by config (`[package.metadata.nros.deploy.*].rmw`)
 # and the concrete backend is linked by the board's C port (NetX-Duo BSD / zpico-sys
 # C TU), NOT a Rust `nros/rmw-*` dep. These rows are now inert build-target markers
-# (same pattern as `nros-board-{mps2-an385,stm32f4,esp32s3}`), kept so existing
+# (same pattern as `nros-board-mps2-an385`), kept so existing
 # `cargo build --no-default-features --features rmw-zenoh` invocations
 # (examples/fixtures.toml) still resolve; they no longer forward `nros/rmw-*`. (#60 T5)
 rmw-zenoh = []

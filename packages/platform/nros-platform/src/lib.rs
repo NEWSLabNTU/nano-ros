@@ -65,7 +65,6 @@ pub use resolve::{NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_S
     feature = "platform-freertos",
     feature = "platform-threadx",
     feature = "platform-zephyr",
-    feature = "platform-orin-spe",
 ))]
 pub use resolve::ConcretePlatform;
 

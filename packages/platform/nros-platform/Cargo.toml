@@ -60,7 +60,6 @@ cffi-export = [
     "nros-platform-mps2-an385?/cffi-export",
     "nros-platform-stm32f4?/cffi-export",
     "nros-platform-esp32-qemu?/cffi-export",
-    "nros-platform-esp32s3?/cffi-export",
 ]
 # Phase 121.8.e — bare-metal embedded crates flip to CffiPlatform
 # routing. Each crate impls the full PlatformTcp/Udp/SocketHelpers/
@@ -83,12 +82,6 @@ platform-esp32-qemu = [
     "dep:nros-platform-cffi",
     "nros-platform-esp32-qemu/cffi-export",
 ]
-# Phase 173.6 — ESP32-S3 (Xtensa LX7) real-hardware platform.
-platform-esp32s3 = [
-    "dep:nros-platform-esp32s3",
-    "dep:nros-platform-cffi",
-    "nros-platform-esp32s3/cffi-export",
-]
 # Phase 121.3.deprecate-rust-remove (closed): the four RTOS platform
 # features still resolve `ConcretePlatform` to `CffiPlatform`. The
 # Rust kernel crates that previously emitted the C symbols via
@@ -101,13 +94,10 @@ platform-nuttx = ["dep:nros-platform-cffi"]
 platform-freertos = ["dep:nros-platform-cffi"]
 platform-threadx = ["dep:nros-platform-cffi"]
 platform-zephyr = ["dep:nros-platform-cffi"]
-# Phase 100 / 121.10 — orin-spe was promoted out of the platform layer.
-# AGX Orin SPE (Cortex-R5F + FreeRTOS FSP) is now a board over
-# `platform-freertos`; `nros-board-orin-spe` selects `platform-freertos`
-# directly and wires IVC + FSP init at the board level. The
-# `platform-orin-spe` feature is kept as a back-compat alias that maps
-# to `platform-freertos` so out-of-workspace callers still build.
-platform-orin-spe = ["platform-freertos"]
+# phase-337 W7.b — `platform-orin-spe` (a back-compat alias for
+# `platform-freertos` since 121.10) and `platform-esp32s3` are gone with their
+# boards. A Cortex-R5F FreeRTOS-FSP consumer selects `platform-freertos`
+# directly, which is what the alias forwarded to anyway.
 
 # Capability features — enabled by RMW shims to declare requirements
 alloc = []
@@ -151,12 +141,10 @@ critical-section = [
 # Equivalent printk tracing belongs in the Zephyr C port if needed.
 # (No active consumer today.)
 
-# Phase 100.1 / 121.10 — Cortex-R5 CPSR I-bit critical-section (Orin SPE).
-# Now that orin-spe is a board over FreeRTOS and the FreeRTOS Rust
-# crate is gone, the Cortex-R `critical_section::Impl` comes from
-# `nros-platform-critical-section` against the FreeRTOS C port's
-# critical-section body. The feature is preserved as a no-op alias
-# for downstream callers that still set it.
+# Phase 100.1 / 121.10 — Cortex-R CPSR I-bit critical-section. The
+# `critical_section::Impl` comes from `nros-platform-critical-section` against
+# the FreeRTOS C port's critical-section body. Kept as a no-op feature for
+# downstream Cortex-R callers that still set it.
 cortex-r = []
 
 [dependencies]
@@ -169,14 +157,11 @@ nros-platform-cffi = { version = "0.5.0", path = "../nros-platform-cffi", option
 nros-platform-mps2-an385 = { version = "0.5.0", path = "../../platform/nros-platform-mps2-an385", optional = true }
 nros-platform-stm32f4 = { version = "0.4.0", path = "../../platform/nros-platform-stm32f4", optional = true }
 nros-platform-esp32-qemu = { version = "0.4.0", path = "../../platform/nros-platform-esp32-qemu", optional = true }
-nros-platform-esp32s3 = { version = "0.4.0", path = "../../platform/nros-platform-esp32s3", optional = true }
 # Phase 121.3.deprecate-rust-remove — nros-platform-{freertos,nuttx,
 # threadx,zephyr} Rust crates were deleted. `packages/platform/nros-platform-{rtos}/`
 # now hosts the C port only. `platform-{rtos}` features just toggle
 # `dep:nros-platform-cffi` so `ConcretePlatform` resolves to
 # `CffiPlatform`; the canonical symbols come from the linked C port.
-# Phase 121.10 — nros-platform-orin-spe was deleted. `platform-orin-spe`
-# aliases `platform-freertos` for back-compat.
 
 [lints]
 workspace = true

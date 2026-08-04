@@ -12,8 +12,6 @@
 // itself all route through CffiPlatform. Bare-metal net surface is
 // backed by `nros_smoltcp::define_smoltcp_platform!` (PlatformTcp /
 // Udp / SocketHelpers / UdpMulticast) emitted by each platform crate.
-// orin-spe keeps its direct alias: it has no PlatformTcp/Udp impl
-// (IVC replaces TCP/UDP at the link layer per Phase 100).
 #[cfg(feature = "platform-posix")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
@@ -49,11 +47,6 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-zephyr")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
-
-// Phase 121.10 — `platform-orin-spe` is now an alias for
-// `platform-freertos` (see Cargo.toml). The board crate
-// (`nros-board-orin-spe`) wires IVC + FSP init directly; no separate
-// platform crate.
 
 // ============================================================================
 // Phase 71.22 — opaque-buffer sizes for `_z_sys_net_socket_t` /

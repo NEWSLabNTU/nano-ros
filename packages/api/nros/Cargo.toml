@@ -95,7 +95,7 @@ config = ["bridge", "nros-bridge/config"]
 lending = ["rmw-cffi", "nros-rmw-cffi/lending"]
 
 # Phase 248 C5c — the platform-impl selector features (`platform-posix`,
-# `-bare-metal`, `-freertos`, `-nuttx`, `-threadx`, `-cffi`, `-orin-spe`),
+# `-bare-metal`, `-freertos`, `-nuttx`, `-threadx`, `-cffi`),
 # `platform-udp`, the `xrce-udp`/`xrce-serial` legacy aliases, and the
 # zenoh-specific `link-tls`/`link-custom` forwards are REMOVED. `nros` is
 # platform-agnostic: nros-node selects the kernel primitive at runtime (C2

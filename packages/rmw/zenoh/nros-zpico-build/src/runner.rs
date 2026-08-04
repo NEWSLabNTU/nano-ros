@@ -109,7 +109,6 @@ fn generate_config_header(
         buf,
         &target,
         env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok(),
-        env::var("CARGO_FEATURE_ORIN_SPE").is_ok(),
         tx_batch,
         tx_split_lock,
     );
@@ -234,10 +233,6 @@ pub fn run() {
     let use_freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
     let use_nuttx = env::var("CARGO_FEATURE_NUTTX").is_ok();
     let use_threadx = env::var("CARGO_FEATURE_THREADX").is_ok();
-    // Phase 100.6 — AGX Orin SPE (Cortex-R5F + NVIDIA FreeRTOS FSP).
-    // Builds zenoh-pico from the same C source as `freertos` but
-    // skips lwIP / TCP-UDP wiring; the only link transport is IVC.
-    let use_orin_spe = env::var("CARGO_FEATURE_ORIN_SPE").is_ok();
 
     // Phase 128.D — auto-derive `platform-posix` from `target_os` when
     // no explicit platform feature was selected. The POSIX path is
@@ -252,13 +247,8 @@ pub fn run() {
         target_os.as_str(),
         "linux" | "freebsd" | "netbsd" | "openbsd" | "android"
     );
-    let any_explicit = use_posix
-        || use_zephyr
-        || use_bare_metal
-        || use_freertos
-        || use_nuttx
-        || use_threadx
-        || use_orin_spe;
+    let any_explicit =
+        use_posix || use_zephyr || use_bare_metal || use_freertos || use_nuttx || use_threadx;
     if !any_explicit && auto_posix {
         use_posix = true;
     }
@@ -271,7 +261,6 @@ pub fn run() {
         use_freertos,
         use_nuttx,
         use_threadx,
-        use_orin_spe,
     ]
     .iter()
     .filter(|&&b| b)
@@ -289,7 +278,7 @@ pub fn run() {
     if backend_count > 1 {
         panic!(
             "Only one platform backend can be selected at a time \
-             (posix, zephyr, bare-metal, freertos, nuttx, threadx, or orin-spe)"
+             (posix, zephyr, bare-metal, freertos, nuttx, or threadx)"
         );
     }
 
@@ -341,8 +330,6 @@ pub fn run() {
     // the ABI-gating config header is generated.
     let platform_name = if use_threadx {
         Some("threadx")
-    } else if use_orin_spe {
-        Some("orin-spe")
     } else if use_nuttx {
         Some("nuttx")
     } else if use_freertos {
@@ -431,9 +418,7 @@ pub fn run() {
     // `LinkPolicy` once here, generate the canonical header, and every
     // build path below reads it (cc-rs via `ZENOH_GENERIC` + include
     // path; CMake via the same — see 134.4 below).
-    let link_policy = if use_orin_spe {
-        LinkPolicy::orin_spe()
-    } else if use_posix {
+    let link_policy = if use_posix {
         LinkPolicy::posix()
     } else if use_freertos {
         // Phase 146.2 — FreeRTOS has no serial / raweth / TLS
@@ -540,8 +525,6 @@ pub fn run() {
         println!("cargo:rustc-cfg=zpico_backend=\"nuttx\"");
     } else if use_threadx {
         println!("cargo:rustc-cfg=zpico_backend=\"threadx\"");
-    } else if use_orin_spe {
-        println!("cargo:rustc-cfg=zpico_backend=\"orin-spe\"");
     }
 
     // Phase 160 — probe vendor `_z_sys_net_*_t` sizes BEFORE the alias
@@ -558,7 +541,7 @@ pub fn run() {
             &c_dir,
             &zenoh_pico_src.join("include"),
             &out_dir,
-            use_bare_metal || use_orin_spe,
+            use_bare_metal,
             use_freertos,
             use_nuttx,
             use_threadx,
@@ -1312,7 +1295,7 @@ fn build_c_shim(
 /// Phase 136.4 — unified zenoh-pico cc-rs builder, driven by the
 /// resolved `[build.zenoh]` block from the platform package's `nros-platform.toml` (RFC-0049).
 /// Replaces the five per-RTOS functions (`build_zenoh_pico_{embedded,
-/// orin_spe, freertos, nuttx, threadx}`) and the POSIX
+/// orin_spe, freertos, nuttx, threadx}` — historical names) and the POSIX
 /// `build_zenoh_pico_native` body. Per-platform deltas all come from
 /// the manifest: defines, required env vars, include paths
 /// (interpolated `{env:VAR}` / `{nros}` / `{src}` / `{out}`),

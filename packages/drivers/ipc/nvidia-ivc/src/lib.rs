@@ -45,8 +45,9 @@
 //! `nros-rmw`, or zenoh-pico. Reusable by any project that needs a
 //! Tegra Cortex-R5/R52 IVC driver. Higher layers wire it in:
 //!
-//! - `nros-platform-orin-spe` implements `PlatformIvc` by delegating
-//!   here.
+//! - a platform crate implements `PlatformIvc` by delegating here (the
+//!   in-tree one was `nros-platform-orin-spe`, deleted with its board in
+//!   phase-337 W7.b; this driver is deliberately independent of it).
 //! - `zpico-platform-shim::ivc_helpers` re-exports the `extern "C"`
 //!   wrappers under the `_z_ivc_*` symbol names zenoh-pico's link-IVC C
 //!   code expects.

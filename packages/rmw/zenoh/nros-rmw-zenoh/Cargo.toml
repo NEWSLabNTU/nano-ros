@@ -16,18 +16,19 @@ categories = ["embedded", "no-std", "network-programming"]
 [features]
 # issue 0270 — `platform-aliases` + `link-ip` were `zpico-sys`'s OWN defaults,
 # reaching every consumer transitively (the `zpico-sys` dep below is now
-# `default-features = false`) so `platform-orin-spe` could NOT drop them — cargo
-# unification can't subtract, and orin-spe's native `system.c` double-defines the
-# alias TU's `z_*` clock symbols. They are now nros-rmw-zenoh features, supplied
-# BOTH here in `default` (the test / native path that keeps default features on)
-# AND from each non-orin-spe `platform-*` (the boards that build
-# `default-features = false`); `platform-orin-spe` forwards NEITHER. Existing
-# builds are byte-identical; orin-spe finally gets the alias TU OFF.
+# `default-features = false`), so a platform whose vendor `system.c` defines the
+# `z_*` clock symbols natively could NOT drop them — cargo unification cannot
+# subtract. They are nros-rmw-zenoh features instead, supplied BOTH here in
+# `default` (the test / native path, which keeps default features on) AND from
+# each `platform-*` below. A platform that must omit the alias TU simply does
+# not forward them. (phase-337 W7.b: `platform-orin-spe`, the case this shape
+# was built for, left with `nros-board-orin-spe`; the shape stays because the
+# next vendor `system.c` will need it.)
 default = ["platform-aliases", "link-ip"]
 # The `zpico-sys` C alias TU (`platform_aliases.c`) forwarding every `_z_*`
 # zenoh-pico symbol to the canonical `nros_platform_*` ABI, and the IP link
-# (`Z_FEATURE_LINK_{TCP,UDP_*}`). Kept as explicit features so `platform-orin-spe`
-# (native `system.c` + IVC-only) omits both.
+# (`Z_FEATURE_LINK_{TCP,UDP_*}`). Kept as explicit features so a native-`system.c`
+# platform can omit both.
 platform-aliases = ["zpico-sys/platform-aliases"]
 link-ip = ["zpico-sys/link-ip"]
 # issue 0283 — opt OUT of ROS 2 liveliness declarations (node + entity
@@ -69,8 +70,6 @@ platform-bare-metal = ["zpico-sys/bare-metal", "zpico-sys/platform-aliases", "zp
 platform-freertos = ["zpico-sys/freertos", "zpico-sys/platform-aliases", "zpico-sys/link-ip"]
 platform-nuttx = ["zpico-sys/nuttx", "zpico-sys/platform-aliases", "zpico-sys/link-ip"]
 platform-threadx = ["zpico-sys/threadx", "zpico-sys/platform-aliases", "zpico-sys/link-ip"]
-# Phase 11 — AGX Orin SPE (Cortex-R5F). IVC link only, no TCP/UDP.
-platform-orin-spe = ["zpico-sys/orin-spe", "zpico-sys/link-ivc"]
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` deleted (were
 # no-op aliases pointing at `zpico-sys`'s always-on TCP / UDP
 # compile). Consumers that still flipped them just stop. Real
@@ -123,9 +122,9 @@ nros-core = { workspace = true, default-features = false }
 # nros, so adding it here doesn't constrain platform selection.
 nros-platform = { version = "0.5.0", path = "../../../platform/nros-platform", default-features = false }
 # issue 0270 — `default-features = false` so `platform-aliases` + `link-ip` are
-# NOT forced transitively; they arrive via nros-rmw-zenoh's `default` / the
-# non-orin-spe `platform-*` features instead, letting `platform-orin-spe` drop
-# the alias TU (its `system.c` provides `z_*` natively → no double-define).
+# NOT forced transitively; they arrive via nros-rmw-zenoh's `default` / its
+# `platform-*` features instead, so a platform whose vendor `system.c` provides
+# `z_*` natively can drop the alias TU (no double-define).
 zpico-sys = { version = "0.5.0", path = "../zpico-sys", default-features = false }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }

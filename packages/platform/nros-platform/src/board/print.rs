@@ -5,7 +5,7 @@
 //!
 //! Implementing boards wrap one of:
 //! - `cortex_m_semihosting::hprintln!` (QEMU Cortex-M / MPS2-AN385)
-//! - Vendor printf bridge (orin-spe `tcu_print_msg`)
+//! - Vendor printf bridge (e.g. a TCU `print_msg` mailbox)
 //! - Serial UART writer
 //! - `libc::write(STDOUT_FILENO, …)` (POSIX)
 //! - `printk` (Zephyr / NuttX / FreeRTOS-with-stdio)

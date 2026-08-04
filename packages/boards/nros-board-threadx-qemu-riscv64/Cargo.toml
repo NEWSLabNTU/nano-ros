@@ -20,7 +20,7 @@ nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-featu
 nros-platform-critical-section = { path = "../../platform/nros-platform-critical-section" }
 # Phase 152.2.B — `BoardInit` / `BoardPrint` / `BoardExit` trait
 # impls so this overlay fits the canonical overlay shape (same
-# pattern as `nros-board-orin-spe` 152.3, `nros-board-mps2-an385-freertos`
+# pattern as `nros-board-mps2-an385-freertos`
 # 152.1.B.5). Generic-crate `run<B>` lift deferred to a follow-up
 # session.
 # phase-337 W4 — `deploy-overlay` brings `BaseConfig::apply_overlay`, the

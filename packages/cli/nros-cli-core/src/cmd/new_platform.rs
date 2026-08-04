@@ -214,7 +214,7 @@ names = ["{name}"]
 platform = "{platform}"
 board_crate = "nros-board-{name}"
 # toolchain / link_kind / entry_kind / net_stack — see an in-tree
-# nros-board.toml (e.g. packages/boards/nros-board-esp32s3/) for the
+# nros-board.toml (e.g. packages/boards/nros-board-esp32-qemu/) for the
 # full descriptor key set.
 
 [board.capabilities]

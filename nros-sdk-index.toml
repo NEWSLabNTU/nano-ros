@@ -399,11 +399,6 @@ recursive = false
 
 # --- license-gated (never hosted; instruct + nros doctor checks the env var) ---
 
-[gated.nv-spe-fsp]
-version = "36.3"
-env = "NV_SPE_FSP_DIR"
-installer = "nvidia-sdk-manager"
-
 [gated.arm-fvp]
 version = "11.24"
 env = "ARM_FVP_DIR"
@@ -499,11 +494,6 @@ platform = "bare-metal"
 # provisions the compiler zpico-build's detection now looks for, instead of
 # leaving a documented-provisioned host unable to build the example.
 packages = ["riscv-none-elf-gcc"]
-
-[board.orin-spe]
-arch = "cortex-r5"
-platform = "bare-metal"
-packages = ["arm-none-eabi-gcc", "nv-spe-fsp"]
 
 [board.fvp-aemv8r-smp]
 arch = "aarch64"

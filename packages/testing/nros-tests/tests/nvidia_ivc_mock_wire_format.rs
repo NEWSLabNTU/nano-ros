@@ -1,4 +1,10 @@
-//! Phase 100.8 / 11.3.A — Orin SPE mock-IVC E2E test.
+//! Phase 100.8 / 11.3.A — NVIDIA IVC mock wire-format E2E test.
+//!
+//! phase-337 W7.b renamed this from `orin_spe_mock_ivc`: it never tested the
+//! `nros-board-orin-spe` board (RFC-0064 R3 measured exactly that — "proves the
+//! IVC wire format on POSIX, NOT the board"), so the board's deletion leaves it
+//! fully intact. What it pins is the `nvidia-ivc` driver's frame protocol,
+//! which any AMP mailbox consumer needs.
 //!
 //! Exercises the IVC link-transport wire format documented in
 //! `docs/roadmap/phase-100-04-link-ivc-design.md` §5 against the
@@ -26,7 +32,7 @@
 //! together.
 //!
 //! Run with:
-//!   `cargo nextest run -p nros-tests --test orin_spe_mock_ivc`
+//!   `cargo nextest run -p nros-tests --test nvidia_ivc_mock_wire_format`
 //! or via the platform recipe:
 //!   `just orin_spe test`
 

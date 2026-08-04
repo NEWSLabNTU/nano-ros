@@ -74,7 +74,6 @@ mod verification 'just/verification.just'
 mod zenohd 'just/zenohd.just'
 mod rmw_zenoh 'just/rmw_zenoh.just'
 mod px4 'just/px4.just'
-mod orin_spe 'just/orin-spe.just'
 mod cyclonedds 'just/cyclonedds.just'
 mod ros_editions 'just/ros-editions.just'
 mod platformio 'just/platformio.just'
@@ -3357,7 +3356,7 @@ setup target="" tier="":
             base|quickstart|minimal|default|all|everything|contributor|extended)
                 chosen_tier="$target"
                 ;;
-            workspace|verification|zenohd|qemu|freertos|nuttx|threadx_linux|threadx_riscv64|esp32|zephyr|xrce|rmw_zenoh|orin_spe|cyclonedds|platformio|esp_idf|px4)
+            workspace|verification|zenohd|qemu|freertos|nuttx|threadx_linux|threadx_riscv64|esp32|zephyr|xrce|rmw_zenoh|cyclonedds|platformio|esp_idf|px4)
                 # Focused platform setup may still shell `nros setup …`;
                 # build the CLI first so the binary is on disk.
                 just setup-cli
@@ -3513,7 +3512,6 @@ _orchestrate verb tier="everything":
             run zephyr
             run xrce
             run rmw_zenoh
-            run orin_spe
             run cyclonedds
             run platformio
             run esp_idf
@@ -3758,7 +3756,6 @@ clean-examples:
     just esp32 clean
     just esp_idf clean
     just px4 clean
-    just orin_spe clean
     just platformio clean
     @echo "All example artifacts cleaned"
 

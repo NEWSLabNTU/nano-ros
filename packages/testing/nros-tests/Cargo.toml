@@ -232,8 +232,8 @@ name = "rtos_e2e"
 path = "tests/rtos_e2e.rs"
 
 [[test]]
-name = "orin_spe_mock_ivc"
-path = "tests/orin_spe_mock_ivc.rs"
+name = "nvidia_ivc_mock_wire_format"
+path = "tests/nvidia_ivc_mock_wire_format.rs"
 
 [[test]]
 name = "custom_transport_loopback"

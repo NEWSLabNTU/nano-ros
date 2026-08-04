@@ -44,14 +44,10 @@ bare-metal = []
 freertos = []
 nuttx = []
 threadx = []
-# Phase 100.6 — AGX Orin SPE (Cortex-R5F + FreeRTOS FSP). IVC-only:
-# orin-spe pulls `zpico-link-ivc` (the carved-out IVC link-layer
-# forwarders that used to live inside `zpico-platform-shim`).
-# zenoh-pico's `src/system/freertos/system.c` provides clock /
-# mutex / condvar / task / sleep / random / time / alloc
-# natively via the FSP V10.4.3 FreeRTOS API, so `platform-aliases`
-# is OFF for orin-spe to avoid double-define.
-orin-spe = ["dep:zpico-link-ivc"]
+# phase-337 W7.b — the `orin-spe` pseudo-platform feature went with
+# `nros-board-orin-spe`. `link-ivc` below is the surviving, board-agnostic way
+# to pull `zpico-link-ivc`: IVC is a LINK capability (`LinkFeatures::ivc`), and
+# keying it to one vendor board was what made a scaffold load-bearing.
 # Phase 128.E.1 — `link-tcp`, `link-udp-unicast`, `link-udp-multicast`,
 # `link-serial` features deleted. Vendor C sources for those four
 # always compile in (`Z_FEATURE_LINK_TCP=1` etc.). The locator string

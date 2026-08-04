@@ -26,7 +26,7 @@ toml = { version = "0.8", optional = true }
 # 152.2.B — `threadx_sources::add_threadx_kernel_sources` /
 # `_add_threadx_port_sources` take `&mut cc::Build`. cc-rs is
 # build-host only; gating it behind a feature lets runtime
-# consumers (e.g. `nros-board-orin-spe`'s `BoardInit` impl
+# consumers (e.g. a board's `BoardInit` impl
 # linked into bare-metal armv7r firmware) drop it cleanly via
 # `default-features = false`.
 cc = { version = "1.0", optional = true }

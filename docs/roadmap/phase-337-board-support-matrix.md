@@ -150,14 +150,17 @@ adopts it inside its own wave instead of one flag-day commit.
       *Verify:* a compile-only `thumbv7em-none-eabihf` check in the embedded lane.
       *Blast radius:* one `build.rs`. No board migrated. **Do this first** — it is
       small and it is what makes the whole matrix reachable by real users.
-- [ ] **W1.b — Shared `BaseConfig` in `nros-board-common`, adopted by NOBODY yet.**
+- [x] **W1.b — Shared `BaseConfig` in `nros-board-common`, adopted by NOBODY yet.**
+      **LANDED 2026-08-04** (`24647274b`); adopted since by W3.a, W4.b/c, W5.d and
+      W6.a.
       phase-322 W1.g measured **12 hand-rolled `Config` structs**, ≥9 carrying an
       identical `{mac, ip, netmask, gateway, locator, domain_id}` core, with the
       `DeployOverlay`→`Config` merge written out at least four times. Add the
       shared type + overlay-merge **additively**; each board wave migrates its own
       `Config` onto it as wave step 1. Without this the merges re-fork — with it as
       a flag day, the blast radius is 12 crates at once.
-- [ ] **W1.c — Tier registry row key → `(crate, matrix_platform)`.**
+- [x] **W1.c — Tier registry row key → `(crate, matrix_platform)`.**
+      **LANDED 2026-08-04** (`24647274b`); W3.d is its first two-witness row.
       `board-support.toml` keys tier by crate and its gate asserts every board
       directory appears exactly once. After W3 a single `nuttx-qemu` crate serves
       arm (tier 1) and riscv (tier 2); after W9 one `nros-board-zephyr` serves
@@ -475,15 +478,74 @@ it **partly disproves the estimate** — see W5.f.
 Do not start until the fixture/test set is confirmed. Both removals are free on
 the test axis, which is what makes them safe once decided.
 
-- [ ] **W7.a** `stm32f4` + `rtic-stm32f4` leave the matrix — **0 Runtime cells**
-      today, so no runtime coverage is lost; 3 BuildOnly cells and 8 fixture rows
-      go with them. Convert to the book's **worked customization example**: the
-      same hardware, reached through RFC-0064's ladder instead of an in-tree crate
-      nobody can boot in CI. The demotion is only honest if the tutorial lands with
-      it.
-- [ ] **W7.b** Delete the scaffolds — `embassy-stm32f4`, `esp32s3`,
+- [x] **W7.a — LANDED 2026-08-04** (`1b8c4e089`; tutorial first, `5ccd26adc`).
+      `stm32f4` + `rtic-stm32f4` leave the matrix — **0 Runtime cells** today, so
+      no runtime coverage is lost; 3 BuildOnly cells and 8 fixture rows went with
+      them. `book/src/porting/stm32f4-out-of-tree.md` is the worked customization
+      example, and it landed FIRST so the documented path never disappeared.
+
+      **`embassy-stm32f4` rode in this wave, not W7.b.** It is a member of the
+      same board FAMILY — same chip, same `examples/stm32f4/` tree, same
+      `PlatformId`. Splitting it across two waves would have meant a wave that
+      half-deletes a directory, which is worse than the wave-fence it would have
+      honoured. Board crates 26 → 23; the ten `examples/stm32f4/rust/*` packages,
+      the three `templates/cargo-*-stm32f4.toml`, `just/stm32f4.just` and
+      `cmake/board/…-stm32f4-nucleo.cmake` went with them.
+
+      **Kept on purpose:** `nros-platform-stm32f4`, `stm32f4-usart`,
+      `packages/reference/stm32f4-porting/` and `nros-smoke/stm32f4-smoltcp-echo`.
+      RFC-0064's "Deleted (12)" list is BOARDS; a platform crate is the chip
+      material an out-of-tree board consumes, and the porting references are the
+      BSP-developer templates the book page sends people to. None of the four
+      depended on a deleted crate. Also kept: `Framework::Embassy` and its
+      `nros::main!()` emit branch — the framework SEAM (see issue **0415**, which
+      this wave filed: the macro's framework table is deploy-keyed, so nothing
+      out-of-tree can reach that branch until it reads the board crate's
+      `framework` metadata the way `nros ws check` already does).
+
+      Issue **0248** (the Embassy board's scaffold defect) is RESOLVED by the
+      deletion — which is what its own analysis pointed at: *"finishing as
+      stm32f4 can never earn a CI runtime lane."*
+
+      *Verify:* `just check-fast` (`check-board-tiers` green), `just check-build`,
+      `matrix_fixture_coverage` both directions, `example_shape`,
+      `example_portability`.
+- [x] **W7.b — LANDED 2026-08-04.** Delete the scaffolds — `embassy-stm32f4`
+      (taken by W7.a with its family, above), `esp32s3`,
       `s32z270dc2-r52` contribute **zero cells of any tier**, so removal is
-      provably free here. **`orin-spe` first needs untangling**: it is load-bearing
+      provably free here. Board crates 23 → 20; the scaffold tier is now EMPTY
+      (the state stays declared in `board-support.toml` — it is what stops the
+      next unfinished board from reading as support).
+
+      **Beyond the three crates, the dead chains each left behind:**
+      `nros-platform-esp32s3` (802 lines, no consumer left, and no Xtensa
+      toolchain in the SDK index to build it — RFC-0064's ESP32 story is the
+      ESP-IDF integration shell, which supports every part with zero files here),
+      `nros-smoke/esp32s3-board-bringup` (its only dep was the deleted board),
+      and the `board_import_s32z` fixture plus its `build-s32z-board-import`
+      recipe, which had NO caller and was never registered in `WEST_FIXTURES`.
+
+      **`orin-spe`'s chain, deleted in the same change** (the phase's ordering):
+      `config/orin-spe/`, the `CARGO_FEATURE_ORIN_SPE` branches in
+      `nros-zpico-build/src/runner.rs`, the `orin_spe` parameter of
+      `config_header` (its two knobs — `Z_FEATURE_ENCODING_VALUES` and
+      `Z_FEATURE_AUTO_RECONNECT` — become unconditional; a future
+      space-constrained platform turns them off through the RFC-0049 knob ladder,
+      not a board-named bool), the `zpico-sys` `orin-spe` feature, the
+      `platform-orin-spe` features on `nros-platform` / `nros-rmw-zenoh` /
+      `nros-rmw-zenoh-staticlib`, `nros-sdk-index.toml`'s `[board.orin-spe]` +
+      `[gated.nv-spe-fsp]`, `just/orin-spe.just` and the `zpico_backend` lint
+      value in the root `Cargo.toml`.
+
+      `LinkPolicy::orin_spe()` was **renamed, not deleted**: the policy (no TCP /
+      UDP / serial / raweth / TLS, IVC + custom only) is a capability shape, not a
+      board fact, so it is `LinkPolicy::ivc_only()` with an `#[allow(dead_code)]`
+      naming the wave. `packages/drivers/ipc/nvidia-ivc` stays — IVC is a LINK
+      capability (`LinkFeatures::ivc`), and keying it to one vendor board is what
+      made a scaffold load-bearing in the first place. Its test moved with the
+      same reasoning: `orin_spe_mock_ivc` → `nvidia_ivc_mock_wire_format`, since
+      RFC-0064 R3 had already measured that it "proves the IVC wire format on
+      POSIX, NOT the board". **`orin-spe` first needs untangling**: it is load-bearing
       as a pseudo-platform in link-feature selection. **Measured in
       [phase-338](phase-338-source-portability.md) W5.b (2026-08-04): NOT a
       blocker — the chain is self-contained.** The only crate enabling the
