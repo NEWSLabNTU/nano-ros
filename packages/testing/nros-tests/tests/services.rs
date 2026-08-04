@@ -1,6 +1,10 @@
 //! Service integration tests
 //!
 //! Tests for ROS 2 service communication between nros nodes.
+//!
+//! **Bucket (phase-329): KEEP — behavior one-offs, not matrix cells.** The plain
+//! rust/zenoh single-request DELIVERY case folded into the native-example
+//! req/resp matrix consumer (`native_example_reqresp_e2e.rs`).
 //! Uses the AddTwoInts service from example_interfaces.
 
 use nros_tests::{
@@ -9,7 +13,7 @@ use nros_tests::{
         ManagedProcess, ZenohRouter, require_zenohd, service_client_binary, service_server_binary,
         zenohd_unique,
     },
-    output::{SERVICE_RESULT_PREFIX, service_result_line},
+    output::SERVICE_RESULT_PREFIX,
 };
 use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -110,76 +114,11 @@ fn test_service_client_starts_without_server(
 // Request/Response Communication Tests
 // =============================================================================
 
-#[rstest]
-fn test_service_request_response(
-    zenohd_unique: ZenohRouter,
-    service_server_binary: PathBuf,
-    service_client_binary: PathBuf,
-) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-
-    let locator = zenohd_unique.locator();
-
-    // Start service server first
-    let mut server_cmd = Command::new(&service_server_binary);
-    server_cmd.env("NROS_LOCATOR", &locator);
-    server_cmd.env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
-        .expect("Failed to start service server");
-
-    // Wait for server readiness
-    if server
-        .wait_for_output_pattern("Waiting for service", Duration::from_secs(5))
-        .is_err()
-        && !server.is_running()
-    {
-        let output = server
-            .wait_for_all_output(Duration::from_secs(1))
-            .unwrap_or_default();
-        eprintln!("[FAIL] Service server exited before client started");
-        eprintln!("Server output: {}", output);
-        panic!("Service server failed");
-    }
-
-    // Start service client
-    let mut client_cmd = Command::new(&service_client_binary);
-    client_cmd.env("NROS_LOCATOR", &locator);
-    client_cmd.env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
-        .expect("Failed to start service client");
-
-    // The client sends ONE request (the official demo default `2 3`) and
-    // logs `Result of add_two_ints: 5` (phase-277 W5 wording).
-    let client_output = client
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
-
-    // Kill server and collect its output
-    let server_output = server
-        .wait_for_all_output(Duration::from_secs(1))
-        .unwrap_or_default();
-    server.kill();
-
-    eprintln!("=== Client output ===\n{}", client_output);
-    eprintln!("=== Server output ===\n{}", server_output);
-
-    assert!(
-        client_output.contains(&service_result_line(5)),
-        "client should log `{}` for the default 2 + 3 request",
-        service_result_line(5)
-    );
-    assert!(
-        server_output.contains("Incoming request") && server_output.contains("a: 2 b: 3"),
-        "server should log the official two-line request form"
-    );
-}
-
-// =============================================================================
-// Multiple Sequential Runs Test
-// =============================================================================
+// phase-329 W4 — the single-request DELIVERY test (rust/zenoh) FOLDED into the
+// native-example req/resp matrix consumer (`native_example_reqresp_e2e.rs`, the
+// `(Native, Rust, Zenoh, Service)` cell). The tests kept here are one-offs no
+// cell covers: server startup, client-without-server, multiple sequential
+// calls, client timeout, and one server serving multiple clients.
 
 #[rstest]
 fn test_service_multiple_sequential_calls(

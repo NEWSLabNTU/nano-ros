@@ -1,13 +1,14 @@
 //! Action integration tests
 //!
 //! Tests for ROS 2 action communication between nros nodes.
+//!
+//! **Bucket (phase-329): KEEP — behavior one-offs, not matrix cells.** The plain
+//! rust/zenoh DELIVERY case folded into the native-example req/resp matrix
+//! consumer (`native_example_reqresp_e2e.rs`).
 
-use nros_tests::{
-    fixtures::{
-        ManagedProcess, ZenohRouter, action_client_binary, action_server_binary, require_zenohd,
-        zenohd_unique,
-    },
-    output::{ACTION_RESULT_PREFIX, FIBONACCI_ORDER_10_SEQUENCE, parse_action_client},
+use nros_tests::fixtures::{
+    ManagedProcess, ZenohRouter, action_client_binary, action_server_binary, require_zenohd,
+    zenohd_unique,
 };
 use rstest::rstest;
 use std::{path::PathBuf, time::Duration};
@@ -83,88 +84,11 @@ fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: P
     }
 }
 
-#[rstest]
-fn test_action_server_client_communication(
-    zenohd_unique: ZenohRouter,
-    action_server_binary: PathBuf,
-    action_client_binary: PathBuf,
-) {
-    use std::process::Command;
+// phase-329 W4 — the DELIVERY test (rust/zenoh) FOLDED into the native-example
+// req/resp matrix consumer (`native_example_reqresp_e2e.rs`, the
+// `(Native, Rust, Zenoh, Action)` cell). Kept below: server/client startup
+// one-offs + the binaries-exist fixture-artifact check.
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-
-    let locator = zenohd_unique.locator();
-
-    // Start action server first
-    let mut server_cmd = Command::new(&action_server_binary);
-    server_cmd.env("NROS_LOCATOR", &locator);
-    server_cmd.env("RUST_LOG", "info");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-action-server")
-        .expect("Failed to start action server");
-
-    // Wait for server readiness
-    if server
-        .wait_for_output_pattern("Waiting for action", Duration::from_secs(5))
-        .is_err()
-        && !server.is_running()
-    {
-        eprintln!("[FAIL] Action server exited before client started");
-        panic!("Action server failed");
-    }
-
-    // Start action client
-    let mut client_cmd = Command::new(&action_client_binary);
-    client_cmd.env("NROS_LOCATOR", &locator);
-    client_cmd.env("RUST_LOG", "info");
-    let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-action-client")
-        .expect("Failed to start action client");
-
-    // Wait for the client's terminal `Result received: [...]` line
-    // (event-driven — Fibonacci(10) takes ~5.5s)
-    let client_output = client
-        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(20))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
-
-    // Kill server
-    server.kill();
-
-    eprintln!("Client output:\n{}", client_output);
-
-    let parsed = parse_action_client(&client_output);
-    eprintln!(
-        "Goal accepted: {}, feedback: {}, completed: {}",
-        parsed.goal_accepted, parsed.feedback_count, parsed.completed
-    );
-
-    assert!(
-        parsed.goal_accepted && parsed.feedback_count > 0 && parsed.completed,
-        "Action communication failed: goal_accepted={}, feedback_count={}, completed={}",
-        parsed.goal_accepted,
-        parsed.feedback_count,
-        parsed.completed
-    );
-    // Order-10 goal → the result is the full 11-element sequence.
-    assert!(
-        client_output.contains(FIBONACCI_ORDER_10_SEQUENCE),
-        "Result line should carry the full order-10 sequence {}",
-        FIBONACCI_ORDER_10_SEQUENCE
-    );
-}
-
-// =============================================================================
-// Additional Tests (require modifications to examples)
-// =============================================================================
-
-// Note: The following tests require modifications to the action examples:
-// - Goal cancellation: Requires --cancel-after option in client
-// - Multiple concurrent goals: Requires multi-goal support in client
-// - Feedback streaming: Already verified in test_action_server_client_communication
-
-// =============================================================================
-// Detection Tests
 // =============================================================================
 
 #[test]
