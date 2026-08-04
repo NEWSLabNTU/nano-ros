@@ -180,12 +180,31 @@ on a 64-bit host. Zephyr's in-kernel net stack, a real driver, and 32-bit pointe
 width have **never** run — and `nros-platform-zephyr/src/net_wait.c:53`'s
 `#ifdef CONFIG_BOARD_NATIVE_SIM` else-branch has never executed in CI.
 
-- [ ] **W2.a — Settle the board.** RFC-0064 `[OPEN]`: which QEMU-able Zephyr board
-      carries a usable Ethernet driver — `mps2/an385` via `smsc911x`, or SLIP/TAP
-      on `qemu_cortex_m3`. Not answerable from this tree; needs a Zephyr checkout.
-      Prefer `mps2/an385` if it works: `nros-tests/src/qemu.rs:242` already boots
-      `-machine mps2-an385 -nic user,model=lan9118` for two other families, so the
-      runner is reuse, not new code.
+- [x] **W2.a — SETTLED 2026-08-04: `mps2/an385` via `smsc911x`.** Measured
+      against the real Zephyr 3.7 checkout `just zephyr setup` provisions at
+      `zephyr-workspace/zephyr`, which is what RFC-0064 said this question needed
+      and could not have from the nano-ros tree alone:
+
+      | Evidence | Where |
+      |---|---|
+      | `eth0: eth@40200000 { compatible = "smsc,lan9220"; interrupts = <13 3>; }` — present and enabled, no overlay needed | `boards/arm/mps2/mps2_an385.dts:211-218` |
+      | `ETH_SMSC911X` is `default y` on `DT_HAS_SMSC_LAN9220_ENABLED` | `drivers/ethernet/Kconfig.smsc911x` |
+      | `ETH_NIC_MODEL = "lan9118"` — the driver NAMES the QEMU model it expects | same file |
+      | Zephyr's own runner is `qemu-system-arm -cpu cortex-m3 -machine mps2-an385` | `boards/arm/mps2/board.cmake` |
+      | the harness already launches exactly that, `-nic user,model=lan9118` | `nros-tests/src/qemu.rs:242` |
+
+      So the two candidate answers are not equal: `mps2/an385` needs **no**
+      overlay, **no** SLIP, and **no** new runner — Zephyr's driver and our
+      existing QEMU invocation already name the same NIC model. SLIP on
+      `qemu_cortex_m3` would have added a host-side pty and a second runner
+      shape for strictly less realism.
+
+      This is also the exact hole the witness exists to close: an385 is
+      **32-bit ARMv7-M** running Zephyr's **in-kernel** IP stack against a
+      **real driver**, where all 28 existing Zephyr configs are
+      `native_sim/native/64` with `CONFIG_NET_SOCKETS_OFFLOAD=y` (host
+      sockets, 64-bit). `nros-platform-zephyr/src/net_wait.c:53`'s
+      non-`CONFIG_BOARD_NATIVE_SIM` branch gets its first CI execution here.
 - [ ] **W2.b — The conf bundle.** `boards/<board>.conf` (+ `.overlay` if needed)
       beside the existing `prj.conf`s — the same mechanism the 28 native_sim
       configs and the FVP board already use. **No new crate** (see W9).
@@ -545,17 +564,13 @@ the test axis, which is what makes them safe once decided.
       made a scaffold load-bearing in the first place. Its test moved with the
       same reasoning: `orin_spe_mock_ivc` → `nvidia_ivc_mock_wire_format`, since
       RFC-0064 R3 had already measured that it "proves the IVC wire format on
-      POSIX, NOT the board". **`orin-spe` first needs untangling**: it is load-bearing
-      as a pseudo-platform in link-feature selection. **Measured in
-      [phase-338](phase-338-source-portability.md) W5.b (2026-08-04): NOT a
-      blocker — the chain is self-contained.** The only crate enabling the
-      `orin-spe` feature is `nros-board-orin-spe` itself; no example, fixture or
-      test touches it. So this is an ORDERING: delete the crate, then in the same
-      change delete the now-dead `config/orin-spe/`, `LinkPolicy::orin_spe()`,
-      the `CARGO_FEATURE_ORIN_SPE` branches in `nros-zpico-build/src/runner.rs`,
-      the `zpico-sys` `orin-spe` feature, `nros-sdk-index.toml [board.orin-spe]`
-      and the `zpico_backend` lint value in the root `Cargo.toml`. Deleting the
-      crate alone would leave that chain as dead code.
+      POSIX, NOT the board".
+
+      The wave's pre-condition held: phase-338 W5.b had already measured that
+      `orin-spe`'s pseudo-platform status was **not** a blocker — the only crate
+      enabling the feature was the board itself, and no example, fixture or test
+      touched it. So this was an ORDERING problem, not an untangling one, and the
+      ordering is what the change above follows.
 - [x] **W7.c — LANDED 2026-08-04.** Delete `nros-board-bare-metal` (phase-322
       W1.h): 161 lines of which 135 are a doc comment describing a family driver
       no board opted into. Board crates 20 → 19.
@@ -571,8 +586,13 @@ the test axis, which is what makes them safe once decided.
 
 ## W8 — linux: merge `native` + `posix`, retire `native`
 
-Widest wave (187 fixture rows), mechanically safe, and self-gating. **Do it last**,
+Widest wave (188 fixture rows), mechanically safe, and self-gating. **Do it last**,
 when every other wave has settled, so its rename does not churn under them.
+
+**Status 2026-08-04: W8.a and W8.d landed; W8.b landed for the enum only; W8.c
+open.** The split is deliberate and the reason is under W8.b — the fixture token
+shares its spelling with the lane, the `just` module and the example directory,
+three of which deliberately keep the name.
 
 **The naming decision** (RFC-0064): platform stays `posix` — a genuine portability
 seam, and the platform layer names software-stack facts (RFC-0049's duty rule).
@@ -581,17 +601,60 @@ tier-1 promise means "`just ci` exercises it", which only Linux does (all 19 CI
 jobs are `ubuntu-*`; `nros-platform-posix/src/timer.c:72` calls `timer_create`
 with no fallback and macOS has no POSIX timers).
 
-- [ ] **W8.a** Merge `nros-board-native` into one `nros-board-linux`.
+- [x] **W8.a** Merge `nros-board-native` into one `nros-board-linux`.
       `board_path_for` already maps **both** keys to the same ZST
-      (`nros-orchestration-ir/src/lib.rs:78`), so `nros-board-posix` (549 lines) is
-      named by no generated entry — this is ceremony removal, not a behaviour
-      change.
-- [ ] **W8.b** `PlatformId::Native` → `Linux`: enum, `index()` band,
-      `fixture_tokens()` (`native` → `linux`). `fixture_token_mapping_round_trips`
-      gates that the rename landed in both directions.
-- [ ] **W8.c** The 187 `platform = "native"` fixture rows.
-- [ ] **W8.d** Board-key tables + descriptors (`packages/boards/posix/`), the SDK
-      index alias, book pages.
+      (`nros-orchestration-ir/src/lib.rs:78`), so the shim was named by no
+      generated entry — this is ceremony removal, not a behaviour change.
+
+      **LANDED 2026-08-04.** `nros-board-posix` (592 lines, the family driver)
+      became `nros-board-linux`; `nros-board-native` (226 lines, a shim that
+      delegated every trait method one-for-one) is deleted, with its two real
+      contributions folded in: the `__FORCE_LINK_ZENOH` static and
+      `register_linked_rmw()`, plus the RMW dep/feature table that makes the
+      BOARD the RMW selection point. `register_linked_rmw()` now sits on the two
+      boot FUNNELS (`boot_hosted`, `run_tiers`) instead of on four forwarding
+      methods, so a path added later cannot forget it. `PosixBoard`/`NativeBoard`
+      → `LinuxBoard` across 203 files. Board crates 19 → 18.
+- [x] **W8.b — PARTIALLY LANDED 2026-08-04: the enum, NOT the token.**
+      `PlatformId::Native` → `Linux` across the enum, `index()`, `just_module()`,
+      `ALL`, every `cell(...)` / `sched(...)` / `c(...)` row and every consumer
+      (`alloc`, `ci_lane`, `interop`, 13 test files). `fixture_tokens()` still
+      returns `["native"]`, and `fixture_token_mapping_round_trips` passes
+      because the map stays bijective either way.
+
+      **Why the token did not move with it — measured, not deferred out of
+      caution.** `"native"` is not one vocabulary, it is four that share a
+      spelling, and only ONE of them is the fixture token:
+
+      | Use | Example | Moves to `linux`? |
+      |---|---|---|
+      | fixture token (`platform =`) | `examples/fixtures.toml` ×188 | yes — W8.c |
+      | shell ARGUMENT built from it | `fixtures-build.sh native rust`, `workspace-fixtures-build.sh native`, `fixture-make-driver.sh native-cmake-rmw`, `phase226-cxx-eff.sh --platform` | yes, same piece |
+      | lane-coord prefix derived from it | `fixture-lane.sh`'s `grep -v '^native,'`, fed by `lane-coords` → `fixture_tokens()` | yes, same piece |
+      | the LANE name | `just build-test-fixtures lane=native`, `_NROS_LANES` | **no** |
+      | the `just` MODULE | `just native build-fixtures`, `just_module()` | **no** (~100 CI refs) |
+      | the example DIRECTORY | `examples/native/rust/talker` | **no** (it is a `dir =` value, not the token) |
+
+      Renaming the token alone leaves rows saying `linux` and the builder that
+      produces them still called with `native` — two spellings of one fact, the
+      exact defect class this repo keeps re-fixing. Doing all three token-derived
+      rows together is correct but must be proven by a full `just ci`, because
+      this is the reference platform and a half-resolved fixture reads as a
+      missing fixture, not as an error (the 0350 class).
+- [ ] **W8.c** The 188 `platform = "native"` fixture rows (the RFC's count of 187
+      was one low), together with the two other token-derived vocabularies in the
+      table above. Verify with a full `just ci` — not `check-fast` + `check-build`,
+      which do not resolve a fixture.
+- [x] **W8.d — LANDED 2026-08-04 (descriptor + registry).**
+      `packages/boards/posix/` → `packages/boards/linux/`, and its `[[board]]
+      names` becomes `["linux", "native", "posix"]` — `linux` canonical, the other
+      two kept as accepted INPUT spellings because ~200 example and fixture
+      manifests carry `deploy = "native"`. `board-support.toml` collapses its TWO
+      tier-1 host rows (one per merged crate) into one `matrix_platform = "Linux"`
+      row, and `check-board-tiers.py`'s tier-1 nightly-lane exemption keys off
+      `Linux` instead of `Native` — the host is exempt because `just ci` runs it
+      directly, which is stronger than the nightly build the token stands in for.
+      The SDK index needed no change: it has no `[board.native]` alias.
 - [ ] **W8.e** *(optional, only if a hosted non-Linux board is ever wanted)* a
       `timer_create` fallback (dispatch source or `pthread_cond` timed wait), which
       is what would let `macos`/`freebsd` join later as tier-3 boards on the

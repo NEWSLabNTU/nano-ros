@@ -19,7 +19,7 @@ use std_msgs::msg::Int32;
 fn main() {
     env_logger::init();
     // Zenoh-only fixture: register the backend explicitly (the examples route
-    // this through `nros_board_native::register_linked_rmw()`).
+    // this through `nros_board_linux::register_linked_rmw()`).
     nros_rmw_zenoh::register().expect("register zenoh backend");
 
     info!("nros Native Listener (Safety E2E)");

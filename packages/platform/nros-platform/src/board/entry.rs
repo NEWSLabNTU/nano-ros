@@ -79,7 +79,7 @@ pub struct DeployOverlay {
 /// Per-board boot driver.
 ///
 /// Implementations live in the family driver crates
-/// (`nros-board-posix`, `nros-board-freertos`, …). Per-board crates
+/// (`nros-board-linux`, `nros-board-freertos`, …). Per-board crates
 /// (`nros-board-mps2-an385-freertos`, …) plug the family.
 pub trait BoardEntry: super::Board {
     /// Drive the full boot → user-closure → exit flow.

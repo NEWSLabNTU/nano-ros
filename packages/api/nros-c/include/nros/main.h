@@ -34,7 +34,7 @@ extern "C" {
 #endif
 
 /* Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle. The C-ABI sibling of
- * the C++ `NativeBoard::run_components`; the generated typed C TU (emitted by
+ * the C++ `LinuxBoard::run_components`; the generated typed C TU (emitted by
  * `nros codegen entry --lang c --typed`) calls this from `main`. `setup` is
  * invoked once after `init`, with the executor handle, to create each node and
  * `configure` its component on the real executor; then this pumps the executor

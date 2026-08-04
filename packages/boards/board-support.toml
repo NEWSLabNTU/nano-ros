@@ -49,18 +49,11 @@
 # ===== tier 1 — supported ==================================================
 
 [[board]]
-crate = "nros-board-native"
-matrix_platform = "Native"
+crate = "nros-board-linux"
+matrix_platform = "Linux"
 tier = 1
 maintainers = []
-notes = "The reference platform: the densest Runtime coverage of any target, all three RMWs."
-
-[[board]]
-crate = "nros-board-posix"
-matrix_platform = "Native"
-tier = 1
-maintainers = []
-notes = "Family driver behind nros-board-native; `board_path_for` maps both keys to one ZST."
+notes = "The reference platform: the densest Runtime coverage of any target, all three RMWs. phase-337 W8.a merged the `native` shim and the `posix` family driver into this one crate — the registry carried TWO rows for one implementation because `board_path_for` mapped both keys to the same ZST."
 
 [[board]]
 crate = "nros-board-zephyr"
@@ -196,10 +189,10 @@ notes = "IRQ enum only. Kept because RTIC's `#[rtic::app(device = ...)]` needs a
 # ===== descriptor-only directories (no crate) ==============================
 
 [[board]]
-crate = "posix"
+crate = "linux"
 tier = "infra"
 maintainers = []
-notes = "nros-board.toml descriptor directory, not a crate. phase-321 W2 moves these out of packages/boards/."
+notes = "nros-board.toml descriptor directory, not a crate (renamed from `posix` by phase-337 W8.d). phase-321 W2 moves these out of packages/boards/."
 
 [[board]]
 crate = "zephyr"

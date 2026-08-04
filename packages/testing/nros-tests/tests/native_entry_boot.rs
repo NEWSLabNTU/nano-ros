@@ -1,5 +1,5 @@
 //! The canonical Phase 212.N Entry-pkg shape (`nros::main!()` →
-//! `<NativeBoard as BoardEntry>::run`) builds and boots through the
+//! `<LinuxBoard as BoardEntry>::run`) builds and boots through the
 //! BoardEntry lifecycle.
 //!
 //! `packages/testing/nros-tests/bins/entry-poc/` carries the §11.6 one-line
@@ -7,7 +7,7 @@
 //!
 //! ```ignore
 //! nros::main!();   // expands via [package.metadata.nros.entry]
-//!                  // deploy = "native" → `<NativeBoard as BoardEntry>::run(...)`
+//!                  // deploy = "native" → `<LinuxBoard as BoardEntry>::run(...)`
 //! ```
 //!
 //! The **compile** proof is the build of that crate as a fixture

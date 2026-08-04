@@ -33,7 +33,7 @@ max_callbacks = 12
 # an edition restated here would fail on the WIRE, not at build time.
 native_showcase_entry_nros_selection = { path = "../../generated/nros-selection/native_showcase_entry" }
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 talker_pkg = { path = "../talker_pkg", default-features = false }
 listener_pkg = { path = "../listener_pkg", default-features = false }
 service_server_pkg = { path = "../service_server_pkg", default-features = false }

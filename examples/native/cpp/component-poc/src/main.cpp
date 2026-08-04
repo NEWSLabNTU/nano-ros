@@ -12,7 +12,7 @@
 #include <cstring>
 
 #include <nros/component.hpp>
-#include <nros/main.hpp> // Phase 240.2 — NativeBoard::run_components (real executor)
+#include <nros/main.hpp> // Phase 240.2 — LinuxBoard::run_components (real executor)
 #include <nros/nros.hpp>
 
 #include "std_msgs.hpp"
@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
     // Phase 240.2 — the board owns init → setup → spin_once loop → shutdown,
     // driving the REAL executor (no synthesizing interpreter). `setup`
     // constructs the topology + binds the real member callbacks.
-    return ::nros::board::NativeBoard::run_components([&]() -> int32_t {
+    return ::nros::board::LinuxBoard::run_components([&]() -> int32_t {
         nros::Result r = nros::create_node(node, "component_poc");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         if (std::strcmp(role, "listener") != 0) {

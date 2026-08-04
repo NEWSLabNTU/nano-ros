@@ -17,6 +17,6 @@ nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, f
     "rmw-cffi",
     "ros-humble",
 ] }
-nros-board-native = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-native" }
+nros-board-linux = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-linux" }
 ctrl_pkg = { path = "../ctrl_pkg" }
 telem_pkg = { path = "../telem_pkg" }

@@ -125,7 +125,7 @@ fn scenario_coord(s: Scenario) -> (PlatformId, Lang, Rmw, Workload) {
         CycloneServiceNanoServer => (Rmw::Cyclonedds, Workload::Service),
         ZenohLifecycle => (Rmw::Zenoh, Workload::Lifecycle),
     };
-    (PlatformId::Native, Lang::Rust, rmw, workload)
+    (PlatformId::Linux, Lang::Rust, rmw, workload)
 }
 
 /// One interop matrix cell.
@@ -231,7 +231,7 @@ fn poll_ros2_until(locator: &str, subcommand: &str, marker: &str, timeout: Durat
 /// `<rmw>_<workload>_<direction>` shape so nextest `test(...)` filters can
 /// slice by RMW (`test(cyclone)` routes to the host-DDS group).
 #[rstest]
-// ── zenoh (rmw_zenoh_cpp) — matrix (Native, Rust, Zenoh, {Pubsub,Service}, Interop)
+// ── zenoh (rmw_zenoh_cpp) — matrix (Linux, Rust, Zenoh, {Pubsub,Service}, Interop)
 #[case::zenoh_pubsub_nano_to_ros2(Cell {
     scenario: Scenario::ZenohPubsubNanoToRos2,
     note: "#133 fail-loud: after require_ros2, the ros2 subscriber receiving 0 \
@@ -255,7 +255,7 @@ fn poll_ros2_until(locator: &str, subcommand: &str, marker: &str, timeout: Durat
     scenario: Scenario::ZenohServiceRos2Server,
     note: "#133 fail-loud: the nano client must receive the ros2 AddTwoInts reply",
 })]
-// ── cyclone (rmw_cyclonedds_cpp) — matrix (Native, {C}, Cyclonedds, {Pubsub,Service}, Interop)
+// ── cyclone (rmw_cyclonedds_cpp) — matrix (Linux, {C}, Cyclonedds, {Pubsub,Service}, Interop)
 #[case::cyclone_pubsub_nano_to_ros2(Cell {
     scenario: Scenario::CyclonePubsubNanoToRos2,
     note: "phase-117/183.5: nano-ros Cyclone talker is wire-compatible with stock \
@@ -271,7 +271,7 @@ fn poll_ros2_until(locator: &str, subcommand: &str, marker: &str, timeout: Durat
     note: "phase-117.12.B.1: write the reply once the reply reader is DISCOVERED \
            (total_count > 0), not only on current_count > 0 (src/service.cpp)",
 })]
-// ── zenoh lifecycle — matrix (Native, Rust, Zenoh, Lifecycle, Interop)
+// ── zenoh lifecycle — matrix (Linux, Rust, Zenoh, Lifecycle, Interop)
 #[case::zenoh_lifecycle_full_cycle(Cell {
     scenario: Scenario::ZenohLifecycle,
     note: "the full REP-2002 cycle driven end-to-end via `ros2 lifecycle …` \
@@ -701,11 +701,11 @@ fn cases_bound_to_interop_cells() {
     nros_tests::interop::assert_test_bound(
         "interop_e2e",
         &[
-            (Native, Rust, Zenoh, Pubsub),
-            (Native, Rust, Zenoh, Service),
-            (Native, Rust, Cyclonedds, Pubsub),
-            (Native, Rust, Cyclonedds, Service),
-            (Native, Rust, Zenoh, Lifecycle),
+            (Linux, Rust, Zenoh, Pubsub),
+            (Linux, Rust, Zenoh, Service),
+            (Linux, Rust, Cyclonedds, Pubsub),
+            (Linux, Rust, Cyclonedds, Service),
+            (Linux, Rust, Zenoh, Lifecycle),
         ],
     );
 }

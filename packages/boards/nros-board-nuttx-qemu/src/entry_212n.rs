@@ -145,7 +145,7 @@ impl nros_platform::BoardEntry for NuttxQemu {
 /// phase-281 W3-nuttx (RFC-0015 Model 1) — the multi-tier inherent entry the
 /// `nros::main!` generic OwnedSpin arm targets. For a multi-tier plan the macro
 /// emits `<NuttxQemu>::run_tiers(&deploy, TIERS, closure)` (exactly as it does
-/// `PosixBoard::run_tiers` for native); this pushes the guest IP into `eth0`
+/// `LinuxBoard::run_tiers` for native); this pushes the guest IP into `eth0`
 /// (issue #130 — same [`entry_net_init`] the single-tier `run{,_with_deploy}`
 /// paths use) and then delegates to the NuttX family driver's
 /// [`nros_board_nuttx::run_tiers`], which opens the ONE session and runs one

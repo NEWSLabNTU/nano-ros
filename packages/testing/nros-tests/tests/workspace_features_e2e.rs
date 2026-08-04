@@ -217,7 +217,7 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
             entry: || build_native_workspace_rust_entry().map(|p| p.to_path_buf()),
             peer: None,
             proof: Proof::LoggingLines(nros_tests::output::WS_RUST_LOGGING_MARKER),
-            note: "phase-263 A5 / phase-264 W3: nros-board-posix registers the default platform \
+            note: "phase-263 A5 / phase-264 W3: nros-board-linux registers the default platform \
                    sink at boot — talker_pkg's nros_info! needs no per-app init",
         },
         (ML::C, MW::Logging) => Exec {

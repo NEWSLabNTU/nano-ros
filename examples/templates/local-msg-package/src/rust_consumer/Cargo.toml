@@ -24,7 +24,7 @@ path = "src/main.rs"
 [workspace]
 
 # Entry pkg deploy key — `nros::main!()` maps "native" →
-# `nros_board_native::NativeBoard` + the host emit shape.
+# `nros_board_linux::LinuxBoard` + the host emit shape.
 [package.metadata.nros.entry]
 deploy = "native"
 
@@ -42,8 +42,8 @@ locator = "tcp/127.0.0.1:7447"
 
 [dependencies]
 # Board crate — hosted Linux/macOS native board. Supplies the
-# `NativeBoard` ZST the macro resolves; force-links the zenoh RMW.
-nros-board-native = { version = "*" }
+# `LinuxBoard` ZST the macro resolves; force-links the zenoh RMW.
+nros-board-linux = { version = "*" }
 # nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Node API.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Phase 248 C5c — posix platform symbols via a direct `nros-platform` dep

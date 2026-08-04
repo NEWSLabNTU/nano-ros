@@ -168,7 +168,7 @@ fn test_roundtrip<T: RosMessage + Serialize + Deserialize + PartialEq + std::fmt
 fn main() {
     // Register the RMW backend the build linked (idempotent; must run before
     // the executor opens). RMW selection is build/config, never source.
-    nros_board_native::register_linked_rmw();
+    nros_board_linux::register_linked_rmw();
 
     nros_log::register_logger(&LOGGER);
     nros_log::init(nros_log::sinks::default());

@@ -586,17 +586,29 @@ The cost is unusually low: the harness already boots
 and bare-metal lanes (`nros-tests/src/qemu.rs:242`), and Zephyr is the cheapest
 family in the tier-2 build (~200 s against FreeRTOS's ~1370 s).
 
-**[OPEN]** Which QEMU-able Zephyr board carries a usable Ethernet driver —
-`mps2/an385` via `smsc911x`, or SLIP/TAP on `qemu_cortex_m3`. Not verifiable
-from this tree (no Zephyr checkout on the authoring host); it is the first thing
-the implementing phase must settle.
+**SETTLED (phase-337 W2.a, 2026-08-04): `mps2/an385` via `smsc911x`.** Measured
+against the Zephyr 3.7 checkout `just zephyr setup` provisions, which is the
+checkout this RFC said the question needed:
+
+- `boards/arm/mps2/mps2_an385.dts` already carries an ENABLED
+  `eth0: eth@40200000 { compatible = "smsc,lan9220"; }` — no overlay required.
+- `drivers/ethernet/Kconfig.smsc911x` makes `ETH_SMSC911X` `default y` on that
+  node, and sets `ETH_NIC_MODEL = "lan9118"` — the driver names the QEMU model
+  it expects.
+- `boards/arm/mps2/board.cmake` runs `qemu-system-arm -cpu cortex-m3 -machine
+  mps2-an385`, the same invocation `nros-tests/src/qemu.rs:242` already makes
+  for the FreeRTOS and bare-metal lanes.
+
+The two candidates were not equal: this one needs no overlay, no SLIP pty and no
+new runner, while SLIP on `qemu_cortex_m3` would have added a second runner
+shape for less realism.
 
 ### `native` vs `posix` vs `linux` — the name follows the promise
 
 Today there are **two crates and two names for one implementation**:
 `board_path_for` maps *both* `"native"` and `"posix"` to
-`::nros_board_native::NativeBoard` (`nros-orchestration-ir/src/lib.rs:78`), so
-`nros-board-posix` (549 lines) is never named by any generated entry — the
+`::nros_board_linux::LinuxBoard` (`nros-orchestration-ir/src/lib.rs:78`), so
+`nros-board-linux` (549 lines) is never named by any generated entry — the
 observation phase-322 W1.e already made.
 
 What is actually supported, measured:
@@ -621,8 +633,8 @@ does.**
 - **The board/target becomes `linux`** — the board layer names the concrete
   thing we claim to support, and a tier-1 promise means "`just ci` exercises
   it", which only Linux does.
-- **`native` is retired** as a public spelling; `nros-board-native` and
-  `nros-board-posix` merge (phase-322 W1.e) into the single `linux` board.
+- **`native` is retired** as a public spelling; `nros-board-linux` and
+  `nros-board-linux` merge (phase-322 W1.e) into the single `linux` board.
 
 This buys the same thing the rest of the matrix buys: `macos` and `freebsd` can
 later join as tier-3 (build-only) or tier-2 boards on the *unchanged* `posix`
@@ -934,7 +946,7 @@ Revision 3 adds the matrix work, ordered by value per unit of risk:
     duplication in `build.rs`, retire the 727-line `startup.c` shadow copy, and
     drop the ~180-line LAN9118 diagnostic duplicated into both C files.
 14. **Rename `native` → `linux`** (platform stays `posix`); merge
-    `nros-board-native` + `nros-board-posix` per phase-322 W1.e.
+    `nros-board-linux` + `nros-board-linux` per phase-322 W1.e.
 15. **Make `net_stack` a real axis** — the tier registry and the matrix key off
     it instead of it being documentation-grade metadata.
 16. **Demote**: `stm32f4`/`rtic-stm32f4` out of the matrix and into the book's
@@ -1290,8 +1302,8 @@ numbers. The shared crate already owns the kernel/lwIP build and a 973-line
 family driver over a working weak-hook seam.
 
 **Naming.** `board_path_for` maps both `"native"` and `"posix"` to
-`::nros_board_native::NativeBoard` (`nros-orchestration-ir/src/lib.rs:78`) — two
-names, one implementation, and `nros-board-posix` (549 lines) is never named by
+`::nros_board_linux::LinuxBoard` (`nros-orchestration-ir/src/lib.rs:78`) — two
+names, one implementation, and `nros-board-linux` (549 lines) is never named by
 any generated entry. On portability: no `_WIN32` anywhere; five `__APPLE__`
 branches in `nros-platform-posix/src/platform.c` (a `pthread_cond` fallback for
 absent unnamed `sem_t`) but `src/timer.c:72` calls `timer_create` with no

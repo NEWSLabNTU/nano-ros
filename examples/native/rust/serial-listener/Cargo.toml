@@ -25,10 +25,10 @@ nros = { version = "*", default-features = false, features = ["std", "rmw-cffi",
 # cargo builds (no CMake glue) enable the feature so the library's
 # `build.rs` compiles the C port into the binary.
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
-# Native board shim: `nros_board_native::register_linked_rmw()` (called first
+# Native board shim: `nros_board_linux::register_linked_rmw()` (called first
 # thing in `main`) registers the linked backend. The app still owns its
 # concrete backend dep so the backend's feature set is pinned here.
-nros-board-native = { version = "*", default-features = false, features = ["rmw-xrce"] }
+nros-board-linux = { version = "*", default-features = false, features = ["rmw-xrce"] }
 nros-rmw-xrce-cffi = { version = "*", default-features = false, features = ["std"] }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { version = "*" }

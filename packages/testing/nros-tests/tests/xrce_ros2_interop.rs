@@ -626,6 +626,6 @@ fn cases_bound_to_interop_cells() {
     use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
     nros_tests::interop::assert_test_bound(
         "xrce_ros2_interop",
-        &[(Native, Rust, Xrce, Pubsub), (Native, Rust, Xrce, Service)],
+        &[(Linux, Rust, Xrce, Pubsub), (Linux, Rust, Xrce, Service)],
     );
 }

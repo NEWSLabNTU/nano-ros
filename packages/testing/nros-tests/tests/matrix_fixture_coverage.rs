@@ -117,7 +117,7 @@ fn every_runtime_cell_has_a_fixture_row() {
         let west_lane_zephyr = matches!(c.platform, PlatformId::ZephyrNativeSim)
             && (matches!(c.kind, Kind::Example)
                 || (matches!(c.kind, Kind::Workspace) && !matches!(c.lang, Lang::Rust)));
-        if matches!(c.platform, PlatformId::Native)
+        if matches!(c.platform, PlatformId::Linux)
             || west_lane_zephyr
             || (matches!(c.platform, PlatformId::NuttxRiscv) && matches!(c.kind, Kind::Example))
             || (matches!(c.platform, PlatformId::ThreadxRiscv64)

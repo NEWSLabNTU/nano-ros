@@ -61,7 +61,7 @@ impl BuildChannel {
     /// whose platform this channel cannot produce is a mis-declared binding.
     pub const fn builds_platform(self, p: PlatformId) -> bool {
         match self {
-            BuildChannel::NativeFixtures => matches!(p, PlatformId::Native),
+            BuildChannel::NativeFixtures => matches!(p, PlatformId::Linux),
             BuildChannel::ZephyrWestLeaves => matches!(p, PlatformId::ZephyrNativeSim),
         }
     }
@@ -213,30 +213,30 @@ pub const CELLS: &[InteropCell] = &[
     // ── Native nano ↔ stock ROS 2 (host), zenoh + cyclone ───────────────
     // tests/interop_e2e.rs — nano example bins vs `ros2 topic`/`ros2 service`.
     ic("native-pubsub-rust-zenoh-n2r",
-       c(Native, Rust, Zenoh, Pubsub, Interop, Runtime),
+       c(Linux, Rust, Zenoh, Pubsub, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), NanoToRos, "interop_e2e"),
     ic("native-service-rust-zenoh-r2n",
-       c(Native, Rust, Zenoh, Service, Interop, Runtime),
+       c(Linux, Rust, Zenoh, Service, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
     ic("native-pubsub-rust-cyclone-n2r",
-       c(Native, Rust, Cyclonedds, Pubsub, Interop, Runtime),
+       c(Linux, Rust, Cyclonedds, Pubsub, Interop, Runtime),
        NativeFixtures, RosEdition(Cyclonedds), NanoToRos, "interop_e2e"),
     ic("native-service-rust-cyclone-r2n",
-       c(Native, Rust, Cyclonedds, Service, Interop, Runtime),
+       c(Linux, Rust, Cyclonedds, Service, Interop, Runtime),
        NativeFixtures, RosEdition(Cyclonedds), BiDir, "interop_e2e"),
 
     // ── Native nano XRCE ↔ Agent ↔ fastrtps ─────────────────────────────
     // tests/xrce_ros2_interop.rs.
     ic("native-pubsub-rust-xrce-n2r",
-       c(Native, Rust, Xrce, Pubsub, Interop, Runtime),
+       c(Linux, Rust, Xrce, Pubsub, Interop, Runtime),
        NativeFixtures, XrceAgent, NanoToRos, "xrce_ros2_interop"),
     ic("native-service-rust-xrce-r2n",
-       c(Native, Rust, Xrce, Service, Interop, Runtime),
+       c(Linux, Rust, Xrce, Service, Interop, Runtime),
        NativeFixtures, XrceAgent, BiDir, "xrce_ros2_interop"),
 
     // ── Native nano lifecycle ↔ `ros2 lifecycle` ────────────────────────
     ic("native-lifecycle-rust-zenoh",
-       c(Native, Rust, Zenoh, Lifecycle, Interop, Runtime),
+       c(Linux, Rust, Zenoh, Lifecycle, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
 
     // ── Zephyr on-target QoS interop ────────────────────────────────────
@@ -257,11 +257,11 @@ pub const CELLS: &[InteropCell] = &[
     // The nano bridge is a `ws-bridge-*-rust` native_entry; a ROS 2 peer sits on
     // the egress side. cell.rmw = the INGRESS the nano side dials.
     ic("bridge-zenoh-to-cyclone",
-       c(Native, Rust, Zenoh, Pubsub, Bridge, Runtime),
+       c(Linux, Rust, Zenoh, Pubsub, Bridge, Runtime),
        NativeFixtures, NanoBridge { ingress: Zenoh, egress: Cyclonedds }, NanoToRos,
        "declarative_bridge_zenoh_to_cyclonedds"),
     ic("bridge-zenoh-to-xrce",
-       c(Native, Rust, Zenoh, Pubsub, Bridge, Runtime),
+       c(Linux, Rust, Zenoh, Pubsub, Bridge, Runtime),
        NativeFixtures, NanoBridge { ingress: Zenoh, egress: Xrce }, NanoToRos,
        "declarative_bridge_zenoh_to_xrce"),
 
@@ -269,7 +269,7 @@ pub const CELLS: &[InteropCell] = &[
     //    binding closes (phase-329 W3). Same coordinate as the declarative
     //    sibling, distinct test. ──────────────────────────────────────────
     ic("bridge-zenoh-to-cyclone-imperative",
-       c(Native, Rust, Zenoh, Pubsub, Bridge, Runtime),
+       c(Linux, Rust, Zenoh, Pubsub, Bridge, Runtime),
        NativeFixtures, NanoBridge { ingress: Zenoh, egress: Cyclonedds }, NanoToRos,
        "bridge_zenoh_to_cyclonedds"),
 
@@ -279,21 +279,21 @@ pub const CELLS: &[InteropCell] = &[
     // tests/qos_override_e2e.rs — a plan QoS override reaches the ADVERTISED
     // profile a stock rmw_zenoh_cpp peer reads (issue #52/0303/0306).
     ic("native-qos-override-rust-zenoh",
-       c(Native, Rust, Zenoh, Qos, Interop, Runtime),
+       c(Linux, Rust, Zenoh, Qos, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), NanoToRos, "qos_override_e2e"),
     // tests/params.rs — `ros2 param list/get/set` against a nano params entry.
     ic("native-params-rust-zenoh",
-       c(Native, Rust, Zenoh, Params, Interop, Runtime),
+       c(Linux, Rust, Zenoh, Params, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), BiDir, "params"),
     // tests/rust_multi_node_per_node_graph.rs — a multi-node Rust entry shows
     // one graph node per launch component in `ros2 node list` (#104/phase-268).
     ic("native-multinode-rust-zenoh",
-       c(Native, Rust, Zenoh, EntryPubsub, Interop, Runtime),
+       c(Linux, Rust, Zenoh, EntryPubsub, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), NanoToRos, "rust_multi_node_per_node_graph"),
     // tests/cpp_multi_node_entry.rs — the C++ typed multi-node entry's pubsub +
     // per-node graph visibility against a stock ROS 2 peer (phase-257/268).
     ic("native-multinode-cpp-zenoh",
-       c(Native, Cpp, Zenoh, EntryPubsub, Interop, Runtime),
+       c(Linux, Cpp, Zenoh, EntryPubsub, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), NanoToRos, "cpp_multi_node_entry"),
 ];
 

@@ -20,8 +20,8 @@ path = "src/main.rs"
 # a test-only `NROS_SUB_TYPE` env switch. A test fixture must not pin the RMW
 # any more than an example does.
 default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
-rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-linux/rmw-xrce"]
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
@@ -30,7 +30,7 @@ nros = { path = "../../../../api/nros", default-features = false, features = [
     "ros-humble",
 ] }
 nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
-nros-board-native = { path = "../../../../boards/nros-board-native", default-features = false }
+nros-board-linux = { path = "../../../../boards/nros-board-linux", default-features = false }
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "std",
     "platform-posix",

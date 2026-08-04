@@ -4023,7 +4023,7 @@ nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }
     #[test]
     fn board_crates_resolve_via_generic_fallback() {
         let boards = [
-            "nros-board-native",
+            "nros-board-linux",
             "nros-board-freertos",
             "nros-board-mps2-an385-freertos",
             "nros-board-threadx",

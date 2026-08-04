@@ -117,7 +117,7 @@ type Resolver = fn() -> TestResult<PathBuf>;
 
 /// The per-cell EXECUTION data for one realtime-tiers matrix cell. The
 /// coordinate lives in `matrix::Cell`; this carries the boot/resolver/proof.
-/// A coordinate may yield MORE than one `Exec` — the `(Native, Cpp)` cell runs
+/// A coordinate may yield MORE than one `Exec` — the `(Linux, Cpp)` cell runs
 /// both the component-shape and the #124 rclcpp-shape entry, a sub-variant the
 /// matrix's `(platform, lang)` axes cannot distinguish (hence [`exec_for`]
 /// returns a `Vec`). `label` is the display lang, so failure messages tell the
@@ -136,17 +136,17 @@ struct Exec {
 }
 
 /// Map a RealtimeTiers coordinate to its execution row(s). Non-native cells
-/// carry the allocator's baked port; `(Native, Cpp)` returns two rows, the
+/// carry the allocator's baked port; `(Linux, Cpp)` returns two rows, the
 /// component and rclcpp shapes. An unmapped coordinate is a HARD panic
 /// (phase-329 W1: a new RealtimeTiers cell must wire its boot here).
 fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
-    let port = if matches!(platform, MP::Native) {
+    let port = if matches!(platform, MP::Linux) {
         None
     } else {
         Some(port_of(platform, lang, MW::RealtimeTiers))
     };
     match (platform, lang) {
-        (MP::Native, ML::Rust) => vec![Exec {
+        (MP::Linux, ML::Rust) => vec![Exec {
             label: "rust",
             resolver: native_rust_entry,
             port,
@@ -154,7 +154,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             proof: Proof::CounterRatio3x,
             note: "phase-263 B2 `nros::main!` run_tiers (RFC-0032 §5); #158 counter proof",
         }],
-        (MP::Native, ML::C) => vec![Exec {
+        (MP::Linux, ML::C) => vec![Exec {
             label: "c",
             resolver: native_c_entry,
             port,
@@ -162,7 +162,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             proof: Proof::CountRatio3x,
             note: "phase-269 W4 C sched-context (nros_cpp_create_sched_context + node_create_ex)",
         }],
-        (MP::Native, ML::Cpp) => vec![
+        (MP::Linux, ML::Cpp) => vec![
             Exec {
                 label: "cpp",
                 resolver: native_cpp_entry,
@@ -292,7 +292,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
 
 fn plat_str(p: MP) -> &'static str {
     match p {
-        MP::Native => "native",
+        MP::Linux => "native",
         MP::ZephyrNativeSim => "zephyr",
         MP::NuttxArm => "nuttx-arm",
         MP::NuttxRiscv => "nuttx-riscv",
@@ -454,7 +454,7 @@ fn anchor_timeout(boot: Boot) -> Duration {
 
 /// THE realtime-tiers matrix consumer (phase-329 W1). Iterates every cell
 /// `w1_consumer_of` assigns to `RealtimeTiers`, expands each to its execution
-/// row(s) via [`exec_for`] (the `(Native, Cpp)` cell yields two — component +
+/// row(s) via [`exec_for`] (the `(Linux, Cpp)` cell yields two — component +
 /// #124 rclcpp), and runs each in one process, catching per-row skips/failures
 /// so one missing fixture never aborts the rest.
 #[test]

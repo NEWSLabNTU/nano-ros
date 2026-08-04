@@ -2,9 +2,9 @@
 //!
 //! `nros::main!()` (no args) reads
 //! `[package.metadata.nros.entry] deploy = "native"` from this
-//! pkg's `Cargo.toml`, maps `"native"` → `::nros_board_native::NativeBoard`,
+//! pkg's `Cargo.toml`, maps `"native"` → `::nros_board_linux::LinuxBoard`,
 //! and emits `fn main()` that delegates to
-//! `<NativeBoard as BoardEntry>::run(...)`. The setup closure
+//! `<LinuxBoard as BoardEntry>::run(...)`. The setup closure
 //! dispatches `::entry_poc::register(runtime)?;` (this pkg's
 //! companion `lib.rs`).
 //!

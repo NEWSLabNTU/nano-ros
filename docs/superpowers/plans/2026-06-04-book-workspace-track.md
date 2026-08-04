@@ -26,13 +26,13 @@ These are verified against the shipped CLI + source + on-disk examples. Use them
 **`nros::main!()` four forms** (§11.6):
 ```rust
 nros::main!();                                       // single-node self-bringup (reads [..nros.entry] deploy)
-nros::main!(board = NativeBoard);                    // single-node, explicit board
+nros::main!(board = LinuxBoard);                    // single-node, explicit board
 nros::main!(launch = "demo_bringup");                // multi-node, default launch from system.toml
 nros::main!(launch = "demo_bringup:sim.launch.xml"); // multi-node, explicit file
-nros::main!(board = NativeBoard, launch = "demo_bringup:sim.launch.xml", args = [("use_sim","true")]);
+nros::main!(board = LinuxBoard, launch = "demo_bringup:sim.launch.xml", args = [("use_sim","true")]);
 ```
 
-**Escape hatch** (§11.8): skip the macro, call `<NativeBoard as BoardEntry>::run(|runtime| { ... })`, or go fully manual with `nros::Executor::open(&ExecutorConfig::default())`.
+**Escape hatch** (§11.8): skip the macro, call `<LinuxBoard as BoardEntry>::run(|runtime| { ... })`, or go fully manual with `nros::Executor::open(&ExecutorConfig::default())`.
 
 **Shipped CLI verbs (`nros` 0.3.7):** `new generate generate-rust codegen codegen-system metadata plan check explain config build deploy launch setup run monitor doctor board ws version completions`.
 - `nros build` / `nros deploy` **exist but DELEGATE** to the per-platform build framework (auto-detect cargo / cmake / west / idf). nros hands the build off; it does not re-implement it.
@@ -466,7 +466,7 @@ rmw       = "zenoh"
 domain_id = 0
 ```
 - The `nros::main!()` four forms (fact sheet, verbatim).
-- The escape hatch (fact sheet §11.8): `<NativeBoard as BoardEntry>::run(...)` and fully-manual `Executor::open`.
+- The escape hatch (fact sheet §11.8): `<LinuxBoard as BoardEntry>::run(...)` and fully-manual `Executor::open`.
 - Native run path: `cargo run -p robot_entry` (or `nros launch demo_bringup`). One Entry pkg per board: native + an embedded example — cite `examples/stm32f4/rust/talker-embassy/` (`nros::main!();` + `deploy = "embassy-stm32f4"`).
 - **Note**: C++ Entry pkg (`NROS_MAIN` + `nros_entry()` cmake fn) is **future** (Phase 219); Rust is the shipped path today.
 - `nros run` on zephyr/qemu = "not yet wired"; use `just <plat> run` for those.
@@ -649,7 +649,7 @@ path = "src/main.rs"
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
 nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
-nros-board-posix = { path = "../../../../../packages/boards/nros-board-posix" }
+nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 talker_pkg = { path = "../talker_pkg" }
 listener_pkg = { path = "../listener_pkg" }
 
@@ -661,7 +661,7 @@ board     = "posix"
 rmw       = "zenoh"
 domain_id = 0
 ```
-(Verify `nros-board-posix` is the correct native board crate name: `ls packages/boards/ | grep posix`; use the actual name.)
+(Verify `nros-board-linux` is the correct native board crate name: `ls packages/boards/ | grep posix`; use the actual name.)
 
 `src/robot_entry/src/main.rs`:
 ```rust

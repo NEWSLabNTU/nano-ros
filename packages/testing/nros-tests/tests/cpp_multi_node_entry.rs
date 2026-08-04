@@ -5,7 +5,7 @@
 //! `nano_ros_entry(... TYPED)` → `nros codegen entry --typed --metadata`.
 //! Configuring + building `examples/templates/multi-node-workspace-cpp/` produces
 //! a generated TU that constructs each launch node's **component object** + calls
-//! `configure(node)` + `NativeBoard::run_components` — NOT the legacy
+//! `configure(node)` + `LinuxBoard::run_components` — NOT the legacy
 //! register-symbol → `EntryNodeRuntime` interpreter call.
 //!
 //! The cmake configure + build run in the **build stage** — the
@@ -77,7 +77,7 @@ fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestRes
         "generated TU missing component configure() call:\n{gen_body}"
     );
     assert!(
-        gen_body.contains("::nros::board::NativeBoard::run_components"),
+        gen_body.contains("::nros::board::LinuxBoard::run_components"),
         "generated TU missing run_components (typed real-executor entry):\n{gen_body}"
     );
     // Construct order matches launch XML (talker before listener).
@@ -283,6 +283,6 @@ fn cases_bound_to_interop_cells() {
     use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
     nros_tests::interop::assert_test_bound(
         "cpp_multi_node_entry",
-        &[(Native, Cpp, Zenoh, EntryPubsub)],
+        &[(Linux, Cpp, Zenoh, EntryPubsub)],
     );
 }

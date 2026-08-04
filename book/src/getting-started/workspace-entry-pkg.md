@@ -92,7 +92,7 @@ it becomes the identifier in `nros plan` output and in `system.toml`'s
 nros::main!();
 
 // 2. Single-node, explicit board type.
-nros::main!(board = NativeBoard);
+nros::main!(board = LinuxBoard);
 
 // 3. Multi-node (CANONICAL): bake from a resolved SystemModel
 //    committed in the Bringup pkg. Reads
@@ -159,7 +159,7 @@ bypass `nros::main!()`:
 
 ```rust
 // Option A: delegate init to the board crate, supply your own closure.
-<NativeBoard as BoardEntry>::run(|runtime| {
+<LinuxBoard as BoardEntry>::run(|runtime| {
     let node = runtime.create_node("talker", "/", &Default::default())?;
     // ...
     Ok(())
@@ -242,7 +242,7 @@ Node pkg library:
 
 | Entry pkg | `deploy` key | Board crate |
 |---|---|---|
-| `native_entry` | `"native"` | `nros-board-posix` |
+| `native_entry` | `"native"` | `nros-board-linux` |
 | `mps2_entry` | `"rtic-mps2-an385"` | `nros-board-mps2-an385` (`rtic` feature) |
 
 Both reference the same `talker_pkg` and `listener_pkg` Node pkg rlibs. The

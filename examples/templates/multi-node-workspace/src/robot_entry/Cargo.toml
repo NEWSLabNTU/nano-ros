@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 # Entry pkg — `[package.metadata.nros.entry] deploy = "native"` routes
 # the `nros::main!()` proc-macro onto the native board emit branch
-# (`<NativeBoard as BoardEntry>::run`). The deploy key also feeds
+# (`<LinuxBoard as BoardEntry>::run`). The deploy key also feeds
 # `nros check`. The `launch = "demo_bringup:system.launch.xml"` form
 # in `src/main.rs` makes the macro walk the workspace pkg-index, parse
 # the launch XML, and emit one `<node_pkg>::register(runtime)?;` call
@@ -25,11 +25,11 @@ nros = { version = "*", default-features = false, features = [
     "rmw-cffi",
     "ros-humble",
 ] }
-# Board crate — supplies the `NativeBoard` ZST the macro-emitted
-# `<NativeBoard as BoardEntry>::run(...)` call resolves. `deploy =
-# "native"` maps to `nros_board_native::NativeBoard` in the macro's
+# Board crate — supplies the `LinuxBoard` ZST the macro-emitted
+# `<LinuxBoard as BoardEntry>::run(...)` call resolves. `deploy =
+# "native"` maps to `nros_board_linux::LinuxBoard` in the macro's
 # board lookup table.
-nros-board-native = { version = "*" }
+nros-board-linux = { version = "*" }
 # Node pkg rlibs — the launch XML names `talker` + `listener`, so the
 # macro emits `talker_pkg::register` + `listener_pkg::register`; the
 # bin target must link both.

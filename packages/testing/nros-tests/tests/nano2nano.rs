@@ -105,7 +105,7 @@ fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: Path
 
 // phase-329 W4 — the router-based rust/zenoh delivery test FOLDED into the
 // native-example pubsub matrix consumer (`tests/native_example_pubsub_e2e.rs`,
-// the `(Native, Rust, Zenoh, Pubsub)` cell, which asserts the stronger ≥3). The
+// the `(Linux, Rust, Zenoh, Pubsub)` cell, which asserts the stronger ≥3). The
 // tests kept below are genuine one-offs no cell covers: peer-mode (no-router
 // multicast discovery), MessageInfo sequence/GID, and the TLS transport.
 

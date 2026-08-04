@@ -75,7 +75,7 @@ pub mod sidecar_slots;
 /// `[package.metadata.nros.deploy.<board>]` (RFC-0014 §3).
 pub fn board_path_for(key: &str) -> Option<&'static str> {
     Some(match key {
-        "native" | "posix" => "::nros_board_native::NativeBoard",
+        "native" | "posix" => "::nros_board_linux::LinuxBoard",
         // FreeRTOS — MPS2-AN385 Cortex-M3 (the only FreeRTOS board today).
         // The RTOS calls `main()`; the board ZST impls `BoardEntry`.
         "freertos" | "freertos-qemu-mps2-an385" | "qemu-arm-freertos" => {
@@ -1005,7 +1005,7 @@ mod tests {
         assert!(board_path_for("totally-unknown-rtos").is_none());
     }
 
-    /// `freertos` must map to the FreeRTOS board, not NativeBoard.
+    /// `freertos` must map to the FreeRTOS board, not LinuxBoard.
     #[test]
     fn freertos_key_maps_to_freertos_board() {
         for key in ["freertos", "freertos-qemu-mps2-an385", "qemu-arm-freertos"] {
@@ -1015,8 +1015,8 @@ mod tests {
                 "key {key:?} resolved to {path:?} — expected mps2_an385_freertos"
             );
             assert!(
-                !path.contains("NativeBoard"),
-                "key {key:?} fell back to NativeBoard — bug in table"
+                !path.contains("LinuxBoard"),
+                "key {key:?} fell back to LinuxBoard — bug in table"
             );
         }
     }

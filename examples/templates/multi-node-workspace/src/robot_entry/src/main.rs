@@ -4,7 +4,7 @@
 //! The body collapses to the one-line `nros::main!()` macro. The
 //! `model = "demo_bringup"` form makes the macro:
 //!   1. read `[package.metadata.nros.entry] deploy = "native"` →
-//!      `nros_board_native::NativeBoard`,
+//!      `nros_board_linux::LinuxBoard`,
 //!   2. resolve `demo_bringup` via the workspace pkg-index,
 //!   3. load the resolved SystemModel at
 //!      `demo_bringup/config/system_model.yaml` (emitted by

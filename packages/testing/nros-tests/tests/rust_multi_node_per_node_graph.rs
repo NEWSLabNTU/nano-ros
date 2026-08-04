@@ -107,6 +107,6 @@ fn cases_bound_to_interop_cells() {
     use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
     nros_tests::interop::assert_test_bound(
         "rust_multi_node_per_node_graph",
-        &[(Native, Rust, Zenoh, EntryPubsub)],
+        &[(Linux, Rust, Zenoh, EntryPubsub)],
     );
 }

@@ -35,7 +35,7 @@ post_stage() {
         n9_form1)
             printf '//! n9 form 1 (no args).\n\nnros::main!();\n' > "$main_rs" ;;
         n9_form2)
-            printf '//! n9 form 2 (board only).\n\nnros::main!(board = ::nros_board_native::NativeBoard);\n' > "$main_rs" ;;
+            printf '//! n9 form 2 (board only).\n\nnros::main!(board = ::nros_board_linux::LinuxBoard);\n' > "$main_rs" ;;
         n9_form3)
             # phase-330 W7 — the canonical multi-node form is INPUT-addressed.
             printf '//! n9 form 3 (launch, default — the canonical multi-node form).\n\nnros::main!(launch = "demo_bringup");\n' > "$main_rs" ;;
@@ -43,7 +43,7 @@ post_stage() {
             # phase-330 W7.g — the ONE compile proof that the DEPRECATED
             # `model =` arm still works during its window; resolves the BUILD
             # artifact (the sync below materialises it) via the ladder.
-            printf '//! n9 form 4 (all explicit: board + explicit model file — DEPRECATED arm).\n\nnros::main!(\n    board = ::nros_board_native::NativeBoard,\n    model = "demo_bringup:config/system_model.yaml",\n);\n' > "$main_rs" ;;
+            printf '//! n9 form 4 (all explicit: board + explicit model file — DEPRECATED arm).\n\nnros::main!(\n    board = ::nros_board_linux::LinuxBoard,\n    model = "demo_bringup:config/system_model.yaml",\n);\n' > "$main_rs" ;;
         orch_tiers_single)
             # Strip the tier table so the macro takes the legacy single-tier
             # BoardEntry::run path (RFC-0032 §5 gate G.4).

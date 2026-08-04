@@ -24,7 +24,7 @@ deploy = ["native"]
 # without it — see project memory).
 nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble", "rmw-cyclonedds"] }
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
-nros-board-native = { version = "*", default-features = false, features = ["rmw-cyclonedds"] }
+nros-board-linux = { version = "*", default-features = false, features = ["rmw-cyclonedds"] }
 nros-rmw-cyclonedds-sys = { version = "*", features = ["platform-posix"] }
 geometry_msgs = { path = "generated/geometry_msgs", default-features = false }
 log = "0.4"

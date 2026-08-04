@@ -127,7 +127,7 @@ struct Exec {
 /// (phase-329 W1).
 fn exec_for(platform: MP, lang: ML) -> Exec {
     match (platform, lang) {
-        (MP::Native, ML::Rust) => Exec {
+        (MP::Linux, ML::Rust) => Exec {
             robot1: || build_native_workspace_rust_entry_robot1().map(|p| p.to_path_buf()),
             robot2: || build_native_workspace_rust_entry_robot2().map(|p| p.to_path_buf()),
             port: None,
@@ -137,7 +137,7 @@ fn exec_for(platform: MP, lang: ML) -> Exec {
             note: "phase-326: per-host models (`host:=robotN` resolve) bake talker-only / \
                    listener-only entries",
         },
-        (MP::Native, ML::C) => Exec {
+        (MP::Linux, ML::C) => Exec {
             robot1: || build_native_workspace_c_entry_robot1().map(|p| p.to_path_buf()),
             robot2: || build_native_workspace_c_entry_robot2().map(|p| p.to_path_buf()),
             port: None,
@@ -147,7 +147,7 @@ fn exec_for(platform: MP, lang: ML) -> Exec {
             note: "phase-326: the C entry consumes the per-host model via \
                    `nano_ros_add_executable(MODEL …)` — C parity with the Rust macro bake",
         },
-        (MP::Native, ML::Cpp) => Exec {
+        (MP::Linux, ML::Cpp) => Exec {
             robot1: || build_native_workspace_cpp_entry_robot1().map(|p| p.to_path_buf()),
             robot2: || build_native_workspace_cpp_entry_robot2().map(|p| p.to_path_buf()),
             port: None,
@@ -157,7 +157,7 @@ fn exec_for(platform: MP, lang: ML) -> Exec {
             note: "phase-263 Track C: C++ per-host entries; the C++ listener prints no ready \
                    marker (only `Received:`), hence the settle delay",
         },
-        (MP::Native, ML::Mixed) => Exec {
+        (MP::Linux, ML::Mixed) => Exec {
             robot1: || build_native_workspace_mixed_entry_robot1().map(|p| p.to_path_buf()),
             robot2: || build_native_workspace_mixed_entry_robot2().map(|p| p.to_path_buf()),
             port: None,

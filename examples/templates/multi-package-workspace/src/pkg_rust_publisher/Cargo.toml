@@ -34,7 +34,7 @@ name = "pkg_rust_publisher"
 path = "src/main.rs"
 
 # Entry pkg deploy key — `nros::main!()` maps "native" →
-# `nros_board_native::NativeBoard` + the host emit shape.
+# `nros_board_linux::LinuxBoard` + the host emit shape.
 [package.metadata.nros.entry]
 deploy = "native"
 
@@ -52,8 +52,8 @@ locator = "tcp/127.0.0.1:7447"
 
 [dependencies]
 # Board crate — hosted Linux/macOS native board. Supplies the
-# `NativeBoard` ZST the macro resolves; force-links the zenoh RMW.
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+# `LinuxBoard` ZST the macro resolves; force-links the zenoh RMW.
+nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 # nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Node API.
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Phase 248 C5c — posix platform symbols via a direct `nros-platform` dep

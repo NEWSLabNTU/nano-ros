@@ -4,4 +4,4 @@
 
 #include <nros/main.hpp>
 
-NROS_MAIN(::nros::board::NativeBoard, "demo_bringup:multihost.launch.xml");
+NROS_MAIN(::nros::board::LinuxBoard, "demo_bringup:multihost.launch.xml");

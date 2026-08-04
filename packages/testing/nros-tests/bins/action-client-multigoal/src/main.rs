@@ -48,7 +48,7 @@ const GOALS: usize = 6;
 const ORDER: i32 = 40;
 
 fn main() -> ! {
-    nros_board_native::register_linked_rmw();
+    nros_board_linux::register_linked_rmw();
     env_logger::init();
 
     let ctx = nros::init_with_launch_auto().expect("nros init failed");

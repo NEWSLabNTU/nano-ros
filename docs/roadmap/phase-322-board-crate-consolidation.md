@@ -94,10 +94,10 @@ of truth"), so a merge costs 1–3 string edits and breaks no Entry package.
       `startup.c`, its own `#[panic_handler]`, a 316-line build.rs compiling
       FreeRTOS+lwIP, and a different `nros_platform_*` symbol provider. Keep
       `mps2-an385-pac` (RTIC's `#[rtic::app(device = …)]` needs a nameable path).
-- [ ] **W1.e** **host — fold `nros-board-native` into `nros-board-posix`.**
-      `native`'s own doc says it delegates "one-for-one" to `PosixBoard` and that
+- [ ] **W1.e** **host — fold `nros-board-linux` into `nros-board-linux`.**
+      `native`'s own doc says it delegates "one-for-one" to `LinuxBoard` and that
       "there is nothing exotic about the 'native' target"; `board_path_for` already
-      maps **both** keys to the same ZST, so `nros-board-posix` is never named by
+      maps **both** keys to the same ZST, so `nros-board-linux` is never named by
       any generated entry. The only addition is a ~5-line `__FORCE_LINK_ZENOH`
       static → a feature. Pure ceremony: a crate existing to satisfy a naming spec.
 - [ ] **W1.f** **ThreadX — KEEP SEPARATE, and copy its pattern.** Hard reasons:

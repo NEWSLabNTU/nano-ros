@@ -16,7 +16,7 @@
 #include <new>
 
 #include <nros/component_node.hpp>
-#include <nros/main.hpp> // NativeBoard::run_components (real executor)
+#include <nros/main.hpp> // LinuxBoard::run_components (real executor)
 #include <nros/nros.hpp>
 
 #include "std_msgs.hpp"
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
     // The board owns init → setup → spin_once loop → shutdown, driving the REAL
     // executor. The components are CONSTRUCTED INSIDE setup (after init), because
     // a ComponentNode ctor creates its node against the now-valid executor handle.
-    return ::nros::board::NativeBoard::run_components([&]() -> int32_t {
+    return ::nros::board::LinuxBoard::run_components([&]() -> int32_t {
         nros::NodeHandle handle(nros::global_handle());
         if (!handle.valid()) {
             return static_cast<int32_t>(nros::ErrorCode::NotInitialized);

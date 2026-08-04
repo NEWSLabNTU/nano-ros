@@ -231,7 +231,10 @@ def main():
                 errors.append(f"{crate}: declared scaffold but has fixture rows")
         if tier == "1":
             tok = e.get("nightly_token")
-            if plat != "Native" and (not tok or tok not in nl):
+            # `Linux` (was `Native` until phase-337 W8.b) is exempt because
+            # `just ci` runs it DIRECTLY on every push — stronger than a nightly
+            # build, which is what the token stands in for everywhere else.
+            if plat != "Linux" and (not tok or tok not in nl):
                 errors.append(
                     f"{crate}: declared tier 1 but no nightly lane covers it "
                     f"(nightly_token={tok!r}, workflow sweep={sorted(nl)}). Tier 1 promises a "

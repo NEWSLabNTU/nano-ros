@@ -18,11 +18,11 @@ path = "src/main.rs"
 default = ["lifecycle-services", "rmw-zenoh"]
 lifecycle-services = ["nros/lifecycle-services"]
 # Each `rmw-*` activates the app-owned optional backend dep and forwards to
-# `nros-board-native`, whose `register_linked_rmw()` call in `main.rs`
+# `nros-board-linux`, whose `register_linked_rmw()` call in `main.rs`
 # registers the selected backend before the executor opens.
-rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
-rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-native/rmw-cyclonedds"]
-rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-linux/rmw-cyclonedds"]
+rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-linux/rmw-xrce"]
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble", "lifecycle-services"] }
@@ -31,11 +31,11 @@ nros = { version = "*", default-features = false, features = ["std", "rmw-cffi",
 # cargo builds (no CMake glue) enable the feature so the library's
 # `build.rs` compiles the C port into the binary.
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
-# Native board shim: `nros_board_native::register_linked_rmw()` (called first
+# Native board shim: `nros_board_linux::register_linked_rmw()` (called first
 # thing in `main`) registers whichever backend the selected `rmw-*` feature
 # linked. The app still owns its concrete backend dep below so the backend's
 # feature set (std / ros edition / link options) is pinned here.
-nros-board-native = { version = "*", default-features = false }
+nros-board-linux = { version = "*", default-features = false }
 nros-rmw-zenoh = { version = "*", default-features = false, features = ["std", "platform-posix", "ros-humble"], optional = true }
 nros-rmw-cyclonedds-sys = { version = "*", features = ["platform-posix"], optional = true }
 nros-rmw-xrce-cffi = { version = "*", default-features = false, features = ["std"], optional = true }

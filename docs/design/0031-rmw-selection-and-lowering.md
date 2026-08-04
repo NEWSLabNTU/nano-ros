@@ -60,8 +60,8 @@ RMW/platform-agnosticism convergence (issue #60 / phase-248), the `nros` umbrell
 is **agnostic** — it carries no concrete `rmw-*` features or backend deps. The
 **board crate becomes the RMW selection point**: it brings the concrete backend
 into the link graph and self-registers it via `RMW_INIT_ENTRIES` (proven in C5a;
-`nros-board-native` already works this way). Codegen therefore emits the entry's
-**board dep** `features = ["rmw-<x>"]` (e.g. `nros-board-native`,
+`nros-board-linux` already works this way). Codegen therefore emits the entry's
+**board dep** `features = ["rmw-<x>"]` (e.g. `nros-board-linux`,
 `nros-board-mps2-an385-freertos`), with the `nros` dep carrying only the
 `rmw-cffi` vtable. The lowered value table (`resolve_rmw`) is unchanged
 (`rmw-<x>` cargo feature, `<x>` CMake value, `<TOKEN>` C define); only *which

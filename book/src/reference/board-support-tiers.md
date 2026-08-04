@@ -16,10 +16,9 @@ For **procurement guidance on parts that have no crate in this tree** (Nordic, N
 
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
+| `nros-board-linux` | Linux | *unassigned* | The reference platform: the densest Runtime coverage of any target, all three RMWs. phase-337 W8.a merged the `native` shim and the `posix` family driver into this one crate — the registry carried TWO rows for one implementation because `board_path_for` mapped both keys to the same ZST. |
 | `nros-board-mps2-an385-freertos` | FreertosMps2 | *unassigned* |  |
-| `nros-board-native` | Native | *unassigned* | The reference platform: the densest Runtime coverage of any target, all three RMWs. |
 | `nros-board-nuttx-qemu` | NuttxArm | *unassigned* |  |
-| `nros-board-posix` | Native | *unassigned* | Family driver behind nros-board-native; `board_path_for` maps both keys to one ZST. |
 | `nros-board-threadx-linux` | ThreadxLinux | *unassigned* |  |
 | `nros-board-zephyr` | ZephyrNativeSim | *unassigned* | CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board is built by anything. |
 
@@ -48,6 +47,7 @@ Shared traits, family drivers, ABI mirrors, PACs, and descriptor directories. No
 
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
+| `linux` | — | *unassigned* | nros-board.toml descriptor directory, not a crate (renamed from `posix` by phase-337 W8.d). phase-321 W2 moves these out of packages/boards/. |
 | `mps2-an385-pac` | — | *unassigned* | IRQ enum only. Kept because RTIC's `#[rtic::app(device = ...)]` needs a nameable path. |
 | `nros-board-cffi` | — | *unassigned* | Header ABI mirror with ZERO in-tree C consumers; kept alive by its own drift gate. Spec artifact, not a library. |
 | `nros-board-common` | — | *unassigned* | Build-helper library plus one trait; 2180 of 2252 code lines are behind `build-helpers`. |
@@ -55,7 +55,6 @@ Shared traits, family drivers, ABI mirrors, PACs, and descriptor directories. No
 | `nros-board-nuttx` | — | *unassigned* | NuttX FAMILY DRIVER, not a façade: owns run_entry / run_tiers / the tier spin loops, which the one board overlay (nros-board-nuttx-qemu) delegates to. phase-337 W3 merged the two board crates below it; this layer stays. |
 | `nros-board-threadx` | — | *unassigned* | Real family driver: a 1120-line generic entry.py both ThreadX boards call into. |
 | `nros-board-threadx-port-riscv64` | — | *unassigned* | NOT a board: RFC-0064 layer 2, the ThreadX RISC-V64/GNU ARCH PORT. Upstream types ULONG as 8 bytes there; NetX Duo's packet code does `ULONG *` arithmetic assuming 4, and retyping it shifts every TX_THREAD offset the context-switch assembly loads — so the fork is a header plus five `.S` files, and it is arch, not board. Extracted from nros-board-threadx-qemu-riscv64 by phase-337 W4.a; a second riscv64 ThreadX board would need every line of it unchanged. threadx-linux has none because upstream's Linux port already types ULONG as 4 bytes — which is why the two ThreadX boards did NOT merge. |
-| `posix` | — | *unassigned* | nros-board.toml descriptor directory, not a crate. phase-321 W2 moves these out of packages/boards/. |
 | `zephyr` | — | *unassigned* | nros-board.toml descriptor directory, not a crate. |
 
 ## Maintainers

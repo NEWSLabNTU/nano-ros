@@ -9,7 +9,7 @@ related: [phase-296, issue-0259]
 
 ## Update (phase-296 W5.13, 2026-07-24) — placement ACCEPT arm now runtime-proven on POSIX
 
-Added a POSIX core-pin consumer (`nros-board-posix::apply_tier_affinity` via
+Added a POSIX core-pin consumer (`nros-board-linux::apply_tier_affinity` via
 `sched_setaffinity`) — a Linux host is genuinely multi-core and the call is
 unprivileged, so `posix_core_pin_applied_at_runtime` (ws-realtime-rust `high`
 tier `posix.core: 0`, native cell) measures **KERNEL-ACCEPTED**. This is the

@@ -6,12 +6,12 @@ boot a real multi-node topology on an **embedded Zephyr board** with
 keep the Phase 219 C++ Entry-codegen path native-only and
 record-only:
 
-- **G1 — embedded Board adapter.** `nros::board::NativeBoard` is the
+- **G1 — embedded Board adapter.** `nros::board::LinuxBoard` is the
   *only* `Board::run()` in `nros-cpp`
   (`packages/api/nros-cpp/include/nros/main.hpp:56`). There is no
   Zephyr/FVP board that runs the Entry-pkg register sequence into a
   live Zephyr + Cyclone runtime.
-- **G2 — real NodeContext runtime.** Even `NativeBoard::run()` builds a
+- **G2 — real NodeContext runtime.** Even `LinuxBoard::run()` builds a
   *recording* `NodeContext` whose ops are no-ops
   (`main.hpp` Phase 219.B comment: "Real per-Node publishers /
   subscriptions arrive when the Native NodeContext runtime lands as a
@@ -69,7 +69,7 @@ its `create_publisher`/`create_subscription` wrappers ARE the real
 ## Architecture
 
 - **Board trait surface.** Add an embedded board adapter sibling to
-  `NativeBoard` exposing the same `static int32_t run(Lambda&&
+  `LinuxBoard` exposing the same `static int32_t run(Lambda&&
   register_fn)` shape, but driving the Zephyr lifecycle. Open: whether
   this is a single `ZephyrBoard` or per-board (`FvpAemv8rBoard`) — see
   Open questions.
@@ -92,7 +92,7 @@ its `create_publisher`/`create_subscription` wrappers ARE the real
 
 ### 236.A — Real `NodeContext` runtime ops (host/native first)
 
-- [x] **236.A.1** Replace `NativeBoard`'s recording `NodeContextOps`
+- [x] **236.A.1** Replace `LinuxBoard`'s recording `NodeContextOps`
       with a real op set that constructs `nros::Node` + entities via
       `nros-cpp`. Land native-first so it is testable without an
       embedded board. *(Done — `detail::NativeNodeRuntime` in
@@ -107,7 +107,7 @@ its `create_publisher`/`create_subscription` wrappers ARE the real
       `std::shared_ptr<Publisher<M>>`; pick the `no_std`-friendly
       equivalent). *(Done — fixed-capacity arena
       (`NROS_ENTRY_MAX_{NODES,ENTITIES}`) held in a process-scope
-      template-static member (`NativeBoard::RuntimeHolder`), no heap/STL;
+      template-static member (`LinuxBoard::RuntimeHolder`), no heap/STL;
       mirrors `Node::GlobalStorageHolder`'s COMDAT-folded `.bss` trick.)*
 - [x] **236.A.3** Subscription callback → poll-loop wiring
       (`record_callback_effect`), mirroring ASI `SubscriptionHandler<T>`.
@@ -151,7 +151,7 @@ by the native runtime.
       Cyclone `init → network-wait → register_fn → spin → shutdown`.
       Blueprint: ASI `actuation_module/src/main.cpp` +
       `include/common/node/node_nros.hpp`. *(Done —
-      `nros::board::ZephyrBoard` in `main.hpp`, sibling to `NativeBoard`.
+      `nros::board::ZephyrBoard` in `main.hpp`, sibling to `LinuxBoard`.
       **Board granularity (RFC-0032 §8a open item): ONE metadata-driven
       `ZephyrBoard`, not per-board `FvpAemv8rBoard` types.** Everything
       board-specific — Zephyr `BOARD` id, DTS overlay, default RMW, `west`
@@ -191,7 +191,7 @@ by the native runtime.
       `NROS_ENTRY_DOMAIN_ID` before include. `nros::init("", domain)` with
       an empty locator (backend discovery default, as the in-tree FVP
       Cyclone example uses) — NO runtime `ROS_DOMAIN_ID`/`getenv` on the
-      embedded path. `NativeBoard` keeps the host runtime-env exception.)*
+      embedded path. `LinuxBoard` keeps the host runtime-env exception.)*
 
 **Files.** `packages/api/nros-cpp/include/nros/main.hpp`,
 `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs`,
@@ -208,8 +208,8 @@ What WAS verified:
   stubbed `<zephyr/kernel.h>` for `k_yield`, all three domain-id branches);
 - the generated TU for `--board zephyr` emits
   `::nros::board::ZephyrBoard::run(...)` and syntax-checks under
-  `__ZEPHYR__`; the no-`--board` TU still emits `NativeBoard::run(...)`;
-- `cargo test -p nros-cpp` (8 passed — no NativeBoard/236.A regression);
+  `__ZEPHYR__`; the no-`--board` TU still emits `LinuxBoard::run(...)`;
+- `cargo test -p nros-cpp` (8 passed — no LinuxBoard/236.A regression);
 - `cpp_multi_node_entry` (full cmake compile+link of the real native
   template, 83 s);
 - `nros-cli-core` `emit_cpp` unit tests (9 passed incl. 3 new board-key

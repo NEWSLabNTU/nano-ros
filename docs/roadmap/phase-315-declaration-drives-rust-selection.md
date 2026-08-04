@@ -35,7 +35,7 @@ nros = { path = "…", default-features = false, features = [
     "ros-humble",          # edition — can contradict system.toml
     "param-services",      # capability — restates features = [...]
 ] }
-nros-board-native = { path = "…", features = ["rmw-zenoh"] }   # RMW
+nros-board-linux = { path = "…", features = ["rmw-zenoh"] }   # RMW
 ```
 
 Four restatements of three declared axes, and the copies can disagree:
@@ -98,7 +98,7 @@ propagates to `nros` and to the board crate.
 ```
 <ws>/build/nros-sync/facade/<entry>/Cargo.toml     ← GENERATED
     nros              = { path = …, features = ["alloc","rmw-cffi","ros-jazzy","param-services"] }
-    nros-board-native = { path = …, features = ["rmw-zenoh"] }
+    nros-board-linux = { path = …, features = ["rmw-zenoh"] }
 ```
 
 ```toml
@@ -109,7 +109,7 @@ deploy = "native"
 [dependencies]
 nros_selection = { path = "../../build/nros-sync/facade/native_entry" }
 nros           = { path = "…", default-features = false }
-nros-board-native = { path = "…" }
+nros-board-linux = { path = "…" }
 ```
 
 **`nros sync` never edits a user-authored `Cargo.toml`.** Generated selection

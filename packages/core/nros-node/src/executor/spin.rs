@@ -479,7 +479,7 @@ impl core::ops::DerefMut for SessionStore {
 /// In the per-tier model the boot executor opens the one session and hands each
 /// spawned tier task a handle (not a borrow) so the task opens its own
 /// [`Executor`] over that *same* session across the RTOS task boundary. Wrapping
-/// the `pub(crate)` session pointer lets board crates (`nros-board-posix`,
+/// the `pub(crate)` session pointer lets board crates (`nros-board-linux`,
 /// `nros-board-freertos`, …) name + move the handle without naming the session
 /// type. Obtain via [`Executor::session_handle`]; consume via
 /// [`Executor::open_with_session_handle`].

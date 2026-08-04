@@ -545,7 +545,7 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
 - W5.13 (POSIX half — runtime ACCEPT) — **POSIX core-pin consumer; first
   kernel-accept proof of the placement dim** (2026-07-24): the RTOS SMP arms
   only ever hit the fallback (their fixtures are uniprocessor, issue #260), so
-  the ACCEPT path was compile-only. Added `nros-board-posix::apply_tier_affinity`
+  the ACCEPT path was compile-only. Added `nros-board-linux::apply_tier_affinity`
   (`sched_setaffinity`, boot + spawned; new `libc` host-only dep) — a Linux host
   is genuinely multi-core and the call is unprivileged, so the ws-realtime-rust
   `high` tier's `posix.core: 0` pins for real. New `posix_core_pin_applied` e2e

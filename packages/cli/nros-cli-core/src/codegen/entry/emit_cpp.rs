@@ -7,7 +7,7 @@
 //! defines the `NROS_MAIN` declarative marker), declares one
 //! `extern "C" int32_t __nros_component_<pkg>_register(...)` per
 //! launch-XML node, then invokes them in launch order from inside a
-//! lambda passed to `nros::board::NativeBoard::run(...)`.
+//! lambda passed to `nros::board::LinuxBoard::run(...)`.
 //!
 //! Today the Native-board entry boils down to:
 //!
@@ -65,7 +65,7 @@ fn emit_qos_overrides(out: &mut String, i: usize, overrides: &[QosOverrideSpec])
 
 /// Board key → C++ Board adapter path.
 ///
-/// Two adapters ship today (Phase 235): `NativeBoard` (host/POSIX) and
+/// Two adapters ship today (Phase 235): `LinuxBoard` (host/POSIX) and
 /// `ZephyrBoard` (embedded Zephyr — RFC-0032 §8a). Per the §8a decision
 /// there is ONE metadata-driven `ZephyrBoard` rather than per-board C++
 /// types: everything board-specific (the Zephyr `BOARD` id, DTS overlay,
@@ -80,7 +80,7 @@ fn emit_qos_overrides(out: &mut String, i: usize, overrides: &[QosOverrideSpec])
 /// know.
 fn board_cpp_path(board: &str) -> &str {
     match board {
-        "native" | "posix" => "::nros::board::NativeBoard",
+        "native" | "posix" => "::nros::board::LinuxBoard",
         // Embedded Zephyr family — every Phase 215 Zephyr board (FVP,
         // qemu-zephyr, …) compiles with `__ZEPHYR__` and shares the one
         // metadata-driven `ZephyrBoard` adapter.
@@ -105,13 +105,13 @@ fn board_cpp_path(board: &str) -> &str {
         }
         // An explicit, already-qualified C++ board path passes through.
         b if b.starts_with("::nros::board::") => b,
-        // Unknown / future board keys fall back to NativeBoard with the
+        // Unknown / future board keys fall back to LinuxBoard with the
         // assumption the cmake-side configure will have already errored
         // on the DEPLOY check (`nano_ros_entry` requires a BOARD for
-        // non-`native` DEPLOY). Keeping the default as NativeBoard lets
+        // non-`native` DEPLOY). Keeping the default as LinuxBoard lets
         // unit tests cover the unhappy path without teaching the emitter
         // every embedded board prematurely.
-        _ => "::nros::board::NativeBoard",
+        _ => "::nros::board::LinuxBoard",
     }
 }
 
@@ -122,7 +122,7 @@ fn board_cpp_path(board: &str) -> &str {
 /// define `int main` (it would double-main / never run under the kernel). Native keeps
 /// the POSIX `int main`.
 pub(crate) fn board_is_embedded(board: &str) -> bool {
-    board_cpp_path(board) != "::nros::board::NativeBoard"
+    board_cpp_path(board) != "::nros::board::LinuxBoard"
 }
 
 /// phase-263 C2d — Zephyr is the exception among embedded boards: the Zephyr kernel
@@ -683,7 +683,7 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
             out.push_str("}\n\n");
             out.push_str("NROS_APP_MAIN_REGISTER_VOID();\n");
         } else {
-            // Native (NativeBoard): int main.
+            // Native (LinuxBoard): int main.
             out.push_str("int main(int /*argc*/, char** /*argv*/) {\n");
             let _ = writeln!(
                 out,
@@ -951,7 +951,7 @@ NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry
             out.push_str("}\n\n");
             out.push_str("NROS_APP_MAIN_REGISTER_VOID();\n");
         } else {
-            // native (NativeBoard): single-tier or degenerate.
+            // native (LinuxBoard): single-tier or degenerate.
             out.push_str("int main(int /*argc*/, char** /*argv*/) {\n");
             let _ = writeln!(
                 out,
@@ -1203,7 +1203,7 @@ mod tests {
         assert!(src.contains("__nros_comp_1.configure(__nros_node_1)"));
         // routes to the real executor via the named overload (phase 266)
         assert!(src.contains(
-            "::nros::board::NativeBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
         ));
         assert!(!src.contains("__nros_component_"));
         assert!(!src.contains("NodeContext"));
@@ -1341,7 +1341,7 @@ mod tests {
         assert!(!src.contains("create_node(__nros_node_0"));
         // still routes to the real executor via the named overload (phase 266)
         assert!(src.contains(
-            "::nros::board::NativeBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
         ));
     }
 
@@ -1427,7 +1427,7 @@ mod tests {
         assert!(!src.contains("__nros_comp_0.configure"));
         // Still routes to the real executor via the named overload (phase 266).
         assert!(src.contains(
-            "::nros::board::NativeBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
         ));
     }
 
@@ -1509,7 +1509,7 @@ mod tests {
         assert!(src.contains("NROS_BOOT_SET_NODE_NAME"));
         assert!(src.contains(".node_name  = \"talker\""));
         assert!(src.contains(
-            "::nros::board::NativeBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+            "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
         ));
     }
 
@@ -1836,8 +1836,8 @@ mod tests {
         assert!(src.contains("10LL"), "low priority 10LL; src:\n{src}");
         // main calls run_tiers.
         assert!(
-            src.contains("::nros::board::NativeBoard::run_tiers("),
-            "main must call NativeBoard::run_tiers; src:\n{src}"
+            src.contains("::nros::board::LinuxBoard::run_tiers("),
+            "main must call LinuxBoard::run_tiers; src:\n{src}"
         );
         // Old sched-context wiring must NOT appear in the run_tiers path.
         assert!(
@@ -1949,7 +1949,7 @@ mod tests {
         );
         // run_tiers must NOT be called (embedded boards use single executor).
         assert!(
-            !src.contains("NativeBoard::run_tiers"),
+            !src.contains("LinuxBoard::run_tiers"),
             "embedded board must not emit run_tiers; src:\n{src}"
         );
     }
@@ -2034,7 +2034,7 @@ mod tests {
             src.contains("static const ::nros::board::NativeTierSpec __nros_tiers[2]"),
             "expected 2-element NativeTierSpec array; src:\n{src}"
         );
-        // FreertosBoard::run_tiers called (not NativeBoard).
+        // FreertosBoard::run_tiers called (not LinuxBoard).
         assert!(
             src.contains("::nros::board::FreertosBoard::run_tiers("),
             "nros_app_main must call FreertosBoard::run_tiers; src:\n{src}"
@@ -2088,7 +2088,7 @@ mod tests {
             src.contains("static const ::nros::board::NativeTierSpec __nros_tiers[2]"),
             "expected 2-element NativeTierSpec array; src:\n{src}"
         );
-        // ZephyrBoard::run_tiers called (not NativeBoard / FreertosBoard).
+        // ZephyrBoard::run_tiers called (not LinuxBoard / FreertosBoard).
         assert!(
             src.contains("::nros::board::ZephyrBoard::run_tiers("),
             "main must call ZephyrBoard::run_tiers; src:\n{src}"
@@ -2149,7 +2149,7 @@ mod tests {
             src.contains("static const ::nros::board::NativeTierSpec __nros_tiers[2]"),
             "expected 2-element NativeTierSpec array; src:\n{src}"
         );
-        // NuttxBoard::run_tiers called (not NativeBoard / FreertosBoard / ZephyrBoard).
+        // NuttxBoard::run_tiers called (not LinuxBoard / FreertosBoard / ZephyrBoard).
         assert!(
             src.contains("::nros::board::NuttxBoard::run_tiers("),
             "nros_app_main must call NuttxBoard::run_tiers; src:\n{src}"

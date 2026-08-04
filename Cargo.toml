@@ -153,9 +153,11 @@ members = [
     # onto it in 212.N.3 / N.7; until then the crate stands alone.
     # Phase 212.N.2 — POSIX family driver (hosted Linux/macOS).
     # Per-board crates migrate onto it in 212.N.3.
-    "packages/boards/nros-board-posix",
-    # Phase 212.N.3 — tier-1 per-board shim plugging `nros-board-posix`.
-    "packages/boards/nros-board-native",
+    # phase-337 W8.a — ONE host board. `nros-board-native` (a 226-line shim that
+    # delegated every trait method) and `nros-board-posix` (the family driver)
+    # merged: `board_path_for` already mapped both deploy keys to the same ZST,
+    # so the shim was named by no generated entry.
+    "packages/boards/nros-board-linux",
     # Phase 251 — passive build-profile analyzer (host tool; parses
     # .ninja_log + cargo --timings into a normalized cross-backend profile).
     "packages/testing/nros-build-profile",

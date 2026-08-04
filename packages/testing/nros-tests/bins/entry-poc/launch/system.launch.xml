@@ -4,7 +4,7 @@
      Mirrors the freertos sibling pattern (e.g.
      `examples/qemu-arm-freertos/rust/talker-entry/launch/system.launch.xml`):
      the Entry pkg's `src/main.rs` is the one-line `nros::main!();`
-     which N.9 expands to `<NativeBoard/Mps2An385/…>::run(|runtime| {
+     which N.9 expands to `<LinuxBoard/Mps2An385/…>::run(|runtime| {
      run_plan(runtime) })`. The codegen-emitted `run_plan` body comes
      from this file. An empty `<launch>` emits an `Ok(())` body; the
      Component pkg's `register()` wrapper is reached only when this

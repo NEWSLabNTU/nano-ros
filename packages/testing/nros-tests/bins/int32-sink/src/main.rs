@@ -19,7 +19,7 @@ fn main() {
     // phase-338 W3 — register whichever backend the `rmw-*` feature linked,
     // through the same seam the examples use. Was a hardcoded
     // `nros_rmw_zenoh::register()`, which pinned this fixture to one RMW.
-    nros_board_native::register_linked_rmw();
+    nros_board_linux::register_linked_rmw();
 
     // Banner deliberately contains "Listener": the e2e spawn helpers key
     // readiness off that word (pre-W4 they waited on the example listener's

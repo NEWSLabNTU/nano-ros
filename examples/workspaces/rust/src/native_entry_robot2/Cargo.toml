@@ -25,6 +25,6 @@ deploy = "native"
 native_entry_robot2_nros_selection = { path = "../../generated/nros-selection/native_entry_robot2" }
 # Phase 248 C6a (#60 T5) — agnostic `nros`; the board brings RMW+platform.
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 # robot2 hosts only the listener, so the macro emits `listener_pkg::register`.
 listener_pkg = { path = "../listener_pkg", default-features = false }

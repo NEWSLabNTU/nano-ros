@@ -168,7 +168,7 @@ fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
 fn pool(lane: CiLane) -> Vec<&'static Cell> {
     match lane {
         CiLane::Tier1 => all_runtime_cells()
-            .filter(|c| matches!(c.platform, PlatformId::Native))
+            .filter(|c| matches!(c.platform, PlatformId::Linux))
             .collect(),
         CiLane::Tier2 | CiLane::Tier2Nightly => all_runtime_cells().collect(),
     }
@@ -262,7 +262,7 @@ mod tests {
     fn tier1_is_native_only() {
         for c in cells(CiLane::Tier1) {
             assert!(
-                matches!(c.platform, PlatformId::Native),
+                matches!(c.platform, PlatformId::Linux),
                 "tier 1 runs on the host only, got {c:?}"
             );
         }
@@ -439,7 +439,7 @@ mod tests {
         let raw = String::from_utf8_lossy(&out.stdout).to_string();
         let filter = raw.to_lowercase();
         for c in all_runtime_cells() {
-            if matches!(c.platform, PlatformId::Native) {
+            if matches!(c.platform, PlatformId::Linux) {
                 continue;
             }
             // Same rule the script applies: the leading CamelCase word.

@@ -141,7 +141,7 @@ fn native_example_reqresp() {
     let cells: Vec<&MCell> = nros_tests::matrix::CELLS
         .iter()
         .filter(|c| {
-            matches!(c.platform, nros_tests::matrix::PlatformId::Native)
+            matches!(c.platform, nros_tests::matrix::PlatformId::Linux)
                 && matches!(c.kind, MK::Example)
                 && matches!(c.workload, MW::Service | MW::Action)
                 && matches!(c.tier, MT::Runtime)

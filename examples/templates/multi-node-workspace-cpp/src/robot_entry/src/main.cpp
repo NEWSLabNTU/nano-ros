@@ -5,7 +5,7 @@
 // `nros codegen entry --lang cpp --typed --metadata …` at configure time. The
 // generated TU constructs each model node's C++ component object, calls
 // `configure(node)` (binds the real member callbacks by identity), and hands
-// the setup fn to `NativeBoard::run_components` (init → setup → spin_once loop
+// the setup fn to `LinuxBoard::run_components` (init → setup → spin_once loop
 // → shutdown) — the REAL executor, no synthesizing interpreter.
 //
 // `NROS_MAIN(...)` here expands to nothing functional (a doc / IDE hint that
@@ -14,4 +14,4 @@
 
 #include <nros/main.hpp>
 
-NROS_MAIN(::nros::board::NativeBoard, "demo_bringup:config/system_model.yaml");
+NROS_MAIN(::nros::board::LinuxBoard, "demo_bringup:config/system_model.yaml");

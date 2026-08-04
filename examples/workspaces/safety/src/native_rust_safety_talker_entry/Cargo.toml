@@ -23,5 +23,5 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
 # safety-e2e on the board → the zenoh backend attaches a CRC on publish, so the
 # cross-process safe_listener can validate it (issue 0096: in-process delivery does
 # not happen, hence the split). Talker side only attaches; no integrity read needed.
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 rust_safety_talker_pkg = { path = "../rust_safety_talker_pkg", default-features = false }

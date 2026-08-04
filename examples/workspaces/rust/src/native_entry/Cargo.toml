@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 # Entry pkg — `[package.metadata.nros.entry] deploy = "native"` routes
 # the `nros::main!()` proc-macro onto the native board emit branch
-# (`<NativeBoard as BoardEntry>::run`). The deploy key also feeds
+# (`<LinuxBoard as BoardEntry>::run`). The deploy key also feeds
 # `nros check`. The `launch = "demo_bringup:system.launch.xml"` form
 # in `src/main.rs` makes the macro walk the workspace pkg-index, parse
 # the launch XML, and emit one `<node_pkg>::register(runtime)?;` call
@@ -25,12 +25,12 @@ deploy = "native"
 # brought by the board crate below; the umbrella names neither.
 native_entry_nros_selection = { path = "../../generated/nros-selection/native_entry" }
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
-# Board crate — supplies the `NativeBoard` ZST the macro-emitted
-# `<NativeBoard as BoardEntry>::run(...)` call resolves (`deploy = "native"` →
-# `nros_board_native::NativeBoard`) AND is the RMW+platform selection point:
+# Board crate — supplies the `LinuxBoard` ZST the macro-emitted
+# `<LinuxBoard as BoardEntry>::run(...)` call resolves (`deploy = "native"` →
+# `nros_board_linux::LinuxBoard`) AND is the RMW+platform selection point:
 # `features = ["rmw-zenoh"]` self-links+registers the zenoh backend
 # (`RMW_INIT_ENTRIES`) and brings `nros-platform/platform-posix` into the graph.
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 # Node pkg rlibs (platform/RMW-agnostic) — the launch XML names `talker` +
 # `listener`, so the macro emits both `register` calls; the bin links both.
 talker_pkg = { path = "../talker_pkg", default-features = false }

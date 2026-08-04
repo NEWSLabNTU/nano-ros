@@ -76,7 +76,7 @@ src/robot_entry/
 │                       # [dependencies]
 │                       #     talker_pkg   = { path = "../talker_pkg" }
 │                       #     listener_pkg = { path = "../listener_pkg" }
-│                       #     nros-board-posix = { … }            # or another family
+│                       #     nros-board-linux = { … }            # or another family
 │                       # [package.metadata.nros.entry]
 │                       #     deploy = "native"
 │                       # [package.metadata.nros.deploy.native]
@@ -98,7 +98,7 @@ forms; pick whichever matches your composition shape:
 
 ```rust,ignore
 nros::main!();                                          // single-node self-bringup (reads [..nros.entry] deploy)
-nros::main!(board = NativeBoard);                       // single-node, explicit board
+nros::main!(board = LinuxBoard);                       // single-node, explicit board
 nros::main!(launch = "demo_bringup");                   // multi-node (CANONICAL): the bringup's default launch
 nros::main!(launch = "demo_bringup:sim.launch.xml");    // multi-node, a named launch file
 nros::main!(                                            // multi-host: a PER-HOST model (resolved with `host:=robot1`)
@@ -125,7 +125,7 @@ new Entry pkgs no longer need a `build.rs` or a `nros-build`
 build-dep — just `nros` + the target board crate.
 
 **Escape hatch:** skip the macro entirely and call
-`<NativeBoard as BoardEntry>::run(|runtime| { ... })`, or go fully manual
+`<LinuxBoard as BoardEntry>::run(|runtime| { ... })`, or go fully manual
 with `nros::Executor::open(&ExecutorConfig::default())`.
 
 Key rules:

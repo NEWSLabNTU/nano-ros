@@ -3,11 +3,11 @@
 // configure time from cmake/templates/native_entry_main_typed.cpp.in).
 //
 // Routes the single registered Node pkg to the REAL executor on the host and
-// runs `NativeBoard::run_components` (init -> setup -> component spin loop ->
+// runs `LinuxBoard::run_components` (init -> setup -> component spin loop ->
 // shutdown). No synthesizing interpreter, no `__nros_component_*_register`, no
 // `NodeContext`. Mirrors `zephyr_entry_main_typed.cpp.in`, but the host board
 // resolves the locator + domain from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at
-// runtime (NativeBoard::run_components -> nros::init()).
+// runtime (LinuxBoard::run_components -> nros::init()).
 //
 // Shape-branched (Phase 242.4, @NROS_ENTRY_SHAPE_RCLCPP@ set by cmake):
 //   * configure (RFC-0043) — default-construct the component, then
@@ -70,5 +70,5 @@ static int32_t __nros_entry_setup() {
 
 int main(void) {
     return static_cast<int>(
-        ::nros::board::NativeBoard::run_components(&__nros_entry_setup));
+        ::nros::board::LinuxBoard::run_components(&__nros_entry_setup));
 }

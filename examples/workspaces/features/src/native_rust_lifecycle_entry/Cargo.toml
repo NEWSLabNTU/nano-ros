@@ -24,5 +24,5 @@ native_rust_lifecycle_entry_nros_selection = { path = "../../generated/nros-sele
 # build adds this feature automatically from `[lifecycle]`; the hand-cargo entry
 # sets it explicitly.)
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 rust_lifecycle_talker_pkg = { path = "../rust_lifecycle_talker_pkg", default-features = false }

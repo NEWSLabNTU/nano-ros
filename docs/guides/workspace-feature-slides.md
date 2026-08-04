@@ -183,7 +183,7 @@ C++ Entry pkg: CMake shells out to `nros codegen entry --lang cpp`.
 // src/robot_entry/src/main.cpp
 #include <nros/main.hpp>
 
-NROS_MAIN(::nros::board::NativeBoard,
+NROS_MAIN(::nros::board::LinuxBoard,
           "demo_bringup:system.launch.xml");
 ```
 

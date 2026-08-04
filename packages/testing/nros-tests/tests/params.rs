@@ -559,5 +559,5 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
 fn cases_bound_to_interop_cells() {
     #[allow(unused_imports)]
     use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
-    nros_tests::interop::assert_test_bound("params", &[(Native, Rust, Zenoh, Params)]);
+    nros_tests::interop::assert_test_bound("params", &[(Linux, Rust, Zenoh, Params)]);
 }

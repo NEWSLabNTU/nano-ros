@@ -5,10 +5,10 @@
 //!
 //! ```ignore
 //! nros::main!();                                          // Form 1
-//! nros::main!(board = ::nros_board_native::NativeBoard);  // Form 2
+//! nros::main!(board = ::nros_board_linux::LinuxBoard);  // Form 2
 //! nros::main!(launch = "demo_bringup");                   // Form 3
 //! nros::main!(
-//!     board  = ::nros_board_native::NativeBoard,
+//!     board  = ::nros_board_linux::LinuxBoard,
 //!     launch = "demo_bringup:sim.launch.xml",
 //!     args   = [("use_sim", "true")],
 //! );                                                       // Form 4

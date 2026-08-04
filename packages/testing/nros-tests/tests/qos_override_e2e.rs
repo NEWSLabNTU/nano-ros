@@ -221,5 +221,5 @@ fn endpoint_block(report: &str, kind: &str) -> Option<String> {
 fn cases_bound_to_interop_cells() {
     #[allow(unused_imports)]
     use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
-    nros_tests::interop::assert_test_bound("qos_override_e2e", &[(Native, Rust, Zenoh, Qos)]);
+    nros_tests::interop::assert_test_bound("qos_override_e2e", &[(Linux, Rust, Zenoh, Qos)]);
 }

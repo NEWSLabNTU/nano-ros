@@ -10,7 +10,7 @@
 #
 # The companion test stages this into a tempdir, rewrites `@NANO_ROS_ROOT@`,
 # and `cargo check`s the Entry pkg. Because system.toml declares `[tiers.*]`,
-# the macro emits `<NativeBoard>::run_tiers(TIERS, ...)` (RFC-0032 §5) — the
+# the macro emits `<LinuxBoard>::run_tiers(TIERS, ...)` (RFC-0032 §5) — the
 # check proves that emit compiles.
 
 [workspace]

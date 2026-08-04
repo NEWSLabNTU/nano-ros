@@ -2614,7 +2614,7 @@ check-cpp: check-cpp-fmt
         # clang-format check above still covers it; the freestanding
         # C++14 probe stays opt-out until 209 lands its API touch-ups.
         case "$hdr" in *rclcpp_compat.hpp) continue ;; esac
-        # issue #52 — `main.hpp` is the HOSTED entry runtime (NativeBoard / NuttX):
+        # issue #52 — `main.hpp` is the HOSTED entry runtime (LinuxBoard / NuttX):
         # its rtos_e2e readiness/sample banners call `::std::printf`, which
         # `-ffreestanding` is not required to expose from `<cstdio>` (only the global
         # `printf`). Probe it hosted so it keeps full syntax coverage; every other

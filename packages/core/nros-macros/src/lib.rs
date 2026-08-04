@@ -16,11 +16,11 @@ mod source_metadata_sidecars;
 ///
 /// ```ignore
 /// nros::main!();                                          // single-node self-bringup
-/// nros::main!(board = NativeBoard);                       // single-node, explicit board
+/// nros::main!(board = LinuxBoard);                       // single-node, explicit board
 /// nros::main!(launch = "demo_bringup");                   // multi-node, default launch
 /// nros::main!(launch = "demo_bringup:sim.launch.xml");    // multi-node, explicit file
 /// nros::main!(
-///     board  = NativeBoard,
+///     board  = LinuxBoard,
 ///     launch = "demo_bringup:sim.launch.xml",
 ///     args   = [("use_sim", "true")],
 /// );

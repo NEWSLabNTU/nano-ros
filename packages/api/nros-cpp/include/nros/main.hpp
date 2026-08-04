@@ -4,7 +4,7 @@
 // drives the per-Entry-pkg codegen via `nros codegen entry --lang cpp`,
 // then appends the generated TU to the executable target's sources.
 // The generated TU has the canonical body — `int main()` + the
-// `nros::board::NativeBoard::run(lambda)` boot stub + the per-Node
+// `nros::board::LinuxBoard::run(lambda)` boot stub + the per-Node
 // register-call sequence.
 //
 // This header provides two ingredients the generated TU needs:
@@ -23,7 +23,7 @@
 //      lifecycle so the generated TU stays one declarative lambda.
 //
 // Two Board adapters ship (Phase 235.B):
-//   * `nros::board::NativeBoard` — host/POSIX; runtime domain + locator.
+//   * `nros::board::LinuxBoard` — host/POSIX; runtime domain + locator.
 //   * `nros::board::ZephyrBoard` — embedded Zephyr; compile-time domain
 //     id, network-wait hook, cooperative spin. Selected through the
 //     Phase 215 `nano_ros_use_board(<name>)` import (board.cmake feeds
@@ -149,7 +149,7 @@ void nros_board_network_wait(void);
 }
 
 /// Phase 274.W2 (RFC-0015 Model 1) — per-tier spec for
-/// `NativeBoard::run_tiers`. Layout mirrors `nros_native_tier_spec_t` in
+/// `LinuxBoard::run_tiers`. Layout mirrors `nros_native_tier_spec_t` in
 /// `<nros/nros_cpp_ffi.h>` (included transitively via `<nros/nros.hpp>`);
 /// the `run_tiers` static method casts between the two.
 ///
@@ -187,7 +187,14 @@ struct NativeTierSpec {
     const char* deadline_policy;
 };
 
-class NativeBoard {
+/// The Linux host board adapter.
+///
+/// phase-337 W8 renamed this from `NativeBoard` (RFC-0064 R3): the board layer
+/// names what we actually claim to support, and only Linux is exercised by
+/// `just ci`. The PLATFORM is still `posix` — `nros_board_native_run_*` below
+/// are C ABI symbols and keep their names, because the C ABI is a compatibility
+/// surface, not a promise about which OS we test.
+class LinuxBoard {
   public:
     /// Phase 266 (W6) — named variant: `session_name` sets the primary session /
     /// node name visible via `ros2 node list` (the #98 fix for C++ entries). NULL
@@ -244,7 +251,7 @@ class NativeBoard {
 };
 
 /// Phase 235.B — embedded (Zephyr) board adapter, the `Board::run()`
-/// sibling to `NativeBoard` (RFC-0032 §8a).
+/// sibling to `LinuxBoard` (RFC-0032 §8a).
 ///
 /// **Board granularity decision (RFC-0032 §8a open item).** ONE
 /// metadata-driven `ZephyrBoard`, not per-board types (`FvpAemv8rBoard`,
@@ -260,7 +267,7 @@ class NativeBoard {
 ///   `nros::init(domain) → network-wait → register_fn → spin → shutdown`.
 ///
 /// The runtime ops + arena are the **same** `detail::EntryNodeRuntime`
-/// machinery `NativeBoard` uses — only the lifecycle differs:
+/// machinery `LinuxBoard` uses — only the lifecycle differs:
 ///   * domain id is **compile-time** (Kconfig `CONFIG_NROS_*_DOMAIN_ID`),
 ///     never a runtime env (CLAUDE.md embedded domain-id rule);
 ///   * a `nros_board_network_wait()` hook runs before init so a board /
@@ -395,7 +402,7 @@ class ZephyrBoard {
 /// needed; the weak `nros_board_network_wait()` default no-op is correct.
 ///
 /// The runtime ops + arena are the **same** `detail::EntryNodeRuntime`
-/// machinery `NativeBoard` / `ZephyrBoard` use — only the lifecycle differs:
+/// machinery `LinuxBoard` / `ZephyrBoard` use — only the lifecycle differs:
 ///   * domain id is **compile-time** (`NROS_ENTRY_DOMAIN_ID`, fed from the
 ///     example's `nano_ros_deploy(DOMAIN_ID …)` → `CONFIG_NROS_DOMAIN_ID`),
 ///     never a runtime env (CLAUDE.md embedded domain-id rule);
@@ -617,6 +624,13 @@ class FreertosBoard {
     }
 };
 
+/// phase-337 W8 — back-compat spelling. C++ users write the board type BY HAND
+/// in `NROS_MAIN(::nros::board::NativeBoard, …)`, so unlike the Rust-side
+/// rename (which the codegen emitter follows automatically) this one is a
+/// source-breaking change for hand-written entries. The alias keeps them
+/// compiling; `LinuxBoard` is the spelling to write.
+using NativeBoard = LinuxBoard;
+
 } // namespace board
 } // namespace nros
 
@@ -630,7 +644,7 @@ class FreertosBoard {
 // Usage:
 //
 //   #include <nros/main.hpp>
-//   NROS_MAIN(::nros::board::NativeBoard, "demo_bringup:system.launch.xml")
+//   NROS_MAIN(::nros::board::LinuxBoard, "demo_bringup:system.launch.xml")
 //
 // Putting it in a user TU is OPTIONAL. The generated TU (emitted by
 // `nano_ros_entry(LAUNCH …)`) carries the canonical `int main()` body

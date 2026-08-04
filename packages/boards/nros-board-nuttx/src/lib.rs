@@ -134,7 +134,7 @@
 /// Sibling family drivers in 212.N.2 each diverge into
 /// `BoardExit::exit_*`:
 ///
-/// - `nros-board-posix` calls `std::process::exit(0|1)` —
+/// - `nros-board-linux` calls `std::process::exit(0|1)` —
 ///   libstd's runtime hands the integer to `_exit(2)`.
 /// - `nros-board-freertos` traps in an infinite loop — the FreeRTOS
 ///   scheduler never permits `main` to return.
@@ -282,7 +282,7 @@ where
 /// session. NuttX ships `std` and its zenoh-pico build sets
 /// `Z_FEATURE_MULTI_THREAD = 1` (`platforms/nuttx/nros-platform.toml`
 /// `[platform.nuttx]`), so `std::thread` maps onto NuttX pthreads and this
-/// mirrors the **native posix** [`nros_board_posix`] `run_tiers` (a scoped
+/// mirrors the **native posix** [`nros_board_linux`] `run_tiers` (a scoped
 /// thread per tier over one session) rather than the FFI k_thread shim the
 /// Zephyr / bare-metal boards need.
 ///
@@ -660,7 +660,7 @@ where
 }
 
 /// `Send` wrapper for the shared raw session pointer so it can cross the
-/// `std::thread::scope` boundary (the mirror of `nros-board-posix`'s
+/// `std::thread::scope` boundary (the mirror of `nros-board-linux`'s
 /// `SharedSession`). The pointed-to RMW session type is `pub(crate)` in
 /// `nros-node`, so the wrapper is generic over `T` and never names it — `T` is
 /// inferred from [`nros::Executor::session_ptr`]. Sharing the pointer is sound

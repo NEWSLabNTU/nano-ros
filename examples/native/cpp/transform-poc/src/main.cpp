@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
     Relay relay;
     Sink sink;
 
-    return ::nros::board::NativeBoard::run_components([&]() -> int32_t {
+    return ::nros::board::LinuxBoard::run_components([&]() -> int32_t {
         nros::Result r = nros::create_node(node, "transform_poc");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         if (std::strcmp(role, "source") == 0) {

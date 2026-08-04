@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Phase 212.N.7 step-1 — proof-of-concept Entry pkg consuming `nros-board-native` + the codegen-emitted `run_plan(runtime)`."
+description = "Phase 212.N.7 step-1 — proof-of-concept Entry pkg consuming `nros-board-linux` + the codegen-emitted `run_plan(runtime)`."
 
 [[bin]]
 name = "entry-poc"
@@ -27,8 +27,8 @@ locator = "tcp/127.0.0.1:7447"
 [dependencies]
 # Phase 212.N.9 — `nros::main!()` proc-macro lives here.
 nros = { version = "*" }
-# Phase 212.N.3 tier-1 per-board shim. `NativeBoard::run` provides the
+# Phase 212.N.3 tier-1 per-board shim. `LinuxBoard::run` provides the
 # `BoardEntry` lifecycle the Entry pkg's `main.rs` invokes.
-nros-board-native = { version = "*" }
+nros-board-linux = { version = "*" }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, `RuntimeError`.
 nros-platform = { version = "*", features = ["std"] }

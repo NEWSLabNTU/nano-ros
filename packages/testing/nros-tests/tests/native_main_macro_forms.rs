@@ -3,7 +3,7 @@
 //!
 //! 1. `nros::main!();` — reads `[package.metadata.nros.entry] deploy = "native"`,
 //!    emits `::demo_entry::register(runtime)?;` (lib-self bringup).
-//! 2. `nros::main!(board = ::nros_board_native::NativeBoard);` — explicit board.
+//! 2. `nros::main!(board = ::nros_board_linux::LinuxBoard);` — explicit board.
 //! 3. `nros::main!(model = "demo_bringup");` — pkg-index walk → committed
 //!    SystemModel → `::talker_pkg::register(runtime)?;` (the canonical form).
 //! 4. all explicit (board + explicit model file).

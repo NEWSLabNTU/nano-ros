@@ -801,7 +801,7 @@ function(nano_ros_node_register)
     # the FreeRTOS self-executable branch above (add_executable + the generated
     # entry + the component sources + nros_platform_link_app), but the host board
     # resolves locator/domain from $NROS_LOCATOR / $ROS_DOMAIN_ID at runtime
-    # (`NativeBoard::run_components` -> `nros::init()`), so there is no baked
+    # (`LinuxBoard::run_components` -> `nros::init()`), so there is no baked
     # locator and no FreeRTOS app-config TU.
     #
     # TYPED gates the branch (not a FATAL): native supports BOTH the typed carrier

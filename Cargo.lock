@@ -1613,18 +1613,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-board-native"
-version = "0.5.0"
-dependencies = [
- "nros-board-posix",
- "nros-platform",
- "nros-rmw-cyclonedds-sys",
- "nros-rmw-xrce-cffi",
- "nros-rmw-zenoh",
-]
-
-[[package]]
-name = "nros-board-posix"
+name = "nros-board-linux"
 version = "0.5.0"
 dependencies = [
  "libc",
@@ -1632,6 +1621,9 @@ dependencies = [
  "nros",
  "nros-log",
  "nros-platform",
+ "nros-rmw-cyclonedds-sys",
+ "nros-rmw-xrce-cffi",
+ "nros-rmw-zenoh",
 ]
 
 [[package]]

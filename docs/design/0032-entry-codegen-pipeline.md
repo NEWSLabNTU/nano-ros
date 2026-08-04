@@ -108,7 +108,7 @@ differs.
 
 The `BoardEntry` trait (`nros-platform`) is the portable seam: codegen names a
 per-board ZST and calls `<Board>::run(setup)` without knowing the family; the
-family driver crate (`nros-board-posix`, `nros-board-freertos`, …) owns the
+family driver crate (`nros-board-linux`, `nros-board-freertos`, …) owns the
 lifecycle body (`init_hardware` → open executor → build `RuntimeCtx` → `setup` →
 spin/exit).
 
@@ -303,7 +303,7 @@ launch tree + system.toml + node callback_groups
 **Landed (Phase 228):** the runtime mechanism — the `active_groups` registration
 gate, the `.callback_group()` label, `Executor::session_ptr` /
 `open_with_session` / `set_active_groups`, `TierSpec` + RFC-0016 maps,
-`PosixBoard::run_tiers`, and the `nros-orchestration-ir` extraction. Validated by
+`LinuxBoard::run_tiers`, and the `nros-orchestration-ir` extraction. Validated by
 `phase228_tier_filter.rs` (two executors, one shared session, off-tier callbacks
 gated to zero) against real zenohd.
 
@@ -316,7 +316,7 @@ gated to zero) against real zenohd.
   Zephyr/FreeRTOS workspace E2E). Do **not** add a bounded-spin mode to
   `run_tiers`. The runtime *mechanism* is already covered by
   `phase228_tier_filter.rs`.
-- **Native multi-tier is advisory-priority** — `PosixBoard::run_tiers` uses
+- **Native multi-tier is advisory-priority** — `LinuxBoard::run_tiers` uses
   `std::thread` (default scheduler, no strict preemption); it validates the
   task-per-tier + filter shape + serves dev ergonomics. Real preemption is
   FreeRTOS/embedded. `SCHED_FIFO` via libc is a later optional add.
@@ -369,7 +369,7 @@ gated to zero) against real zenohd.
 ## 8a. Embedded board adapter + NodeContext runtime binding (C++ Entry path)
 
 The C++ Entry path (Phase 219) emits the launch tree → register sequence →
-`NodeContext` dispatch, but only against `nros::board::NativeBoard` and only
+`NodeContext` dispatch, but only against `nros::board::LinuxBoard` and only
 with a **recording** `NodeContextOps` (every op a no-op — see
 `packages/api/nros-cpp/include/nros/main.hpp`). So a generated C++ `main()`
 exercises codegen + symbol resolution + launch-order dispatch end-to-end, but
@@ -381,7 +381,7 @@ constructs **no** live publishers/subscriptions, on native or embedded.
   op set is replaced with a real one that maps each entity to an `nros-cpp`
   construction call (`create_node`, pub/sub/service/client/timer create,
   callback→poll wiring). No new IR; identity stays codegen-resolved (RFC-0024).
-- **Embedded gets a sibling `Board::run()`** to `NativeBoard`, owning the
+- **Embedded gets a sibling `Board::run()`** to `LinuxBoard`, owning the
   Zephyr + Cyclone `init → network-wait → register → spin → shutdown` ritual.
   It is selected through the **Phase 215** `nano_ros_use_board(<name>)` import
   (`board.cmake` feeds default RMW + runner).
@@ -430,7 +430,7 @@ constructs **no** live publishers/subscriptions, on native or embedded.
 - Proc-macro: `packages/core/nros-macros/src/main_macro.rs`.
 - CLI mirror + Plan IR: `packages/cli/nros-cli-core/src/codegen/entry/`.
 - BoardEntry seam: `packages/platform/nros-platform/src/board/entry.rs`.
-- `run_tiers` + `TierSpec`: `packages/boards/nros-board-posix/src/lib.rs`,
+- `run_tiers` + `TierSpec`: `packages/boards/nros-board-linux/src/lib.rs`,
   `packages/platform/nros-platform/src/board/tier.rs`.
 - Shared resolver: `packages/core/nros-orchestration-ir/`.
 - Phase tracking: `docs/roadmap/phase-228-per-tier-orchestration-codegen.md`

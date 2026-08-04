@@ -116,7 +116,7 @@ mod tests {
 
     fn baked(cell: &&Cell) -> bool {
         // Native = ephemeral; everything else bakes.
-        !matches!(cell.platform, PlatformId::Native)
+        !matches!(cell.platform, PlatformId::Linux)
             && matches!(cell.tier, Tier::Runtime)
             && !matches!(cell.kind, Kind::Interop)
     }

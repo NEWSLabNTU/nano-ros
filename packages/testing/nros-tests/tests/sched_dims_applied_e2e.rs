@@ -152,7 +152,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             shape: AcceptOrFallback,
             note: "configUSE_CORE_AFFINITY build, or the uniprocessor fallback (W5.11)",
         },
-        (SD::CorePin, MP::Native, ML::Rust) => Exec {
+        (SD::CorePin, MP::Linux, ML::Rust) => Exec {
             resolver: || build_native_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
             boot: Native(NativeEnv::SpinClient {
                 spin_ms: 8000,
@@ -247,7 +247,7 @@ fn plat_str(p: MP) -> &'static str {
         MP::NuttxArm => "nuttx",
         MP::ThreadxLinux => "threadx-linux",
         MP::FreertosMps2 => "freertos",
-        MP::Native => "posix",
+        MP::Linux => "posix",
         _ => "?",
     }
 }

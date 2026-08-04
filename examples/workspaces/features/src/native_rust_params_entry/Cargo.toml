@@ -25,5 +25,5 @@ native_rust_params_entry_nros_selection = { path = "../../generated/nros-selecti
 # `param-services` must be enabled for that registration to compile in (W4b — mirrors
 # the lifecycle-services opt-in; a bake build adds it automatically).
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 rust_param_talker_pkg = { path = "../rust_param_talker_pkg", default-features = false }

@@ -5,7 +5,7 @@
 //! the SAME `shared_node_pkg` rlib + the SAME `launch.xml` under two
 //! distinct Board impls:
 //!
-//! * `posix_entry/`     — `<PosixBoard as BoardEntry>::run` (host)
+//! * `posix_entry/`     — `<LinuxBoard as BoardEntry>::run` (host)
 //! * `freertos_entry/`  — `<Mps2An385 as BoardEntry>::run`
 //!   (`thumbv7m-none-eabi`, QEMU MPS2-AN385)
 //!

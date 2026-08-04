@@ -86,7 +86,7 @@ fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: P
 
 // phase-329 W4 — the DELIVERY test (rust/zenoh) FOLDED into the native-example
 // req/resp matrix consumer (`native_example_reqresp_e2e.rs`, the
-// `(Native, Rust, Zenoh, Action)` cell). Kept below: server/client startup
+// `(Linux, Rust, Zenoh, Action)` cell). Kept below: server/client startup
 // one-offs + the binaries-exist fixture-artifact check.
 
 // =============================================================================

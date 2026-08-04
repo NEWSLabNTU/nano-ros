@@ -47,7 +47,7 @@ pub fn emit(plan: &Plan) -> String {
     }
     out.push('\n');
 
-    let board_path = board_path_for(&plan.board).unwrap_or("::nros_board_native::NativeBoard");
+    let board_path = board_path_for(&plan.board).unwrap_or("::nros_board_linux::LinuxBoard");
 
     // __nros_entry_run body — one ::<pkg>::register(runtime)?; per
     // launch-XML node, in source order.
@@ -336,7 +336,7 @@ mod tests {
         let src = emit(&plan);
         assert!(src.contains("::talker_pkg::register(runtime)?;"));
         assert!(src.contains("::listener_pkg::register(runtime)?;"));
-        assert!(src.contains("NativeBoard"));
+        assert!(src.contains("LinuxBoard"));
         // Both a hosted main and an embedded main.
         assert!(src.contains("#[cfg(not(target_os = \"none\"))]"));
         assert!(src.contains("#[cfg(target_os = \"none\")]"));

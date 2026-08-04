@@ -294,6 +294,6 @@ fn cases_bound_to_interop_cells() {
     use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
     nros_tests::interop::assert_test_bound(
         "bridge_zenoh_to_cyclonedds",
-        &[(Native, Rust, Zenoh, Pubsub)],
+        &[(Linux, Rust, Zenoh, Pubsub)],
     );
 }

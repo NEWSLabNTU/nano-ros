@@ -66,8 +66,8 @@ pub struct Facade {
 /// The runtime deps a facade must re-declare in order to attach features to
 /// them. Discovered from the ENTRY's own manifest rather than from a
 /// deploy→board table, because no such table exists in the CLI: the board dep
-/// IS the deploy declaration on the Rust side (`nros-board-native` supplies the
-/// `NativeBoard` ZST that `nros::main!` resolves `deploy = "native"` onto).
+/// IS the deploy declaration on the Rust side (`nros-board-linux` supplies the
+/// `LinuxBoard` ZST that `nros::main!` resolves `deploy = "native"` onto).
 /// Inventing a second mapping here would be a fourth copy of a selection that
 /// phase-314 spent its whole length collapsing to one.
 #[derive(Debug, Default)]

@@ -5,7 +5,7 @@
 //!
 //! ```ignore
 //! nros::main!();                                          // single-node self-bringup
-//! nros::main!(board = NativeBoard);                       // single-node, explicit board
+//! nros::main!(board = LinuxBoard);                       // single-node, explicit board
 //! nros::main!(launch = "demo_bringup");                   // multi-node, default launch
 //! nros::main!(launch = "demo_bringup:sim.launch.xml");    // multi-node, explicit file
 //! nros::main!(board = X, launch = "Y:Z.xml", args = [("k", "v")]);
@@ -106,7 +106,7 @@ impl Parse for MainArgs {
                         KvValue::Str(s) => {
                             return Err(syn::Error::new(
                                 s.span(),
-                                "expected board ident (e.g. `NativeBoard`), got string literal",
+                                "expected board ident (e.g. `LinuxBoard`), got string literal",
                             ));
                         }
                         KvValue::Args(_) | KvValue::IdentList(_) => {
@@ -238,7 +238,7 @@ struct KeyValue {
 }
 
 enum KvValue {
-    /// `board = NativeBoard` / `board = ::nros_board_native::NativeBoard`
+    /// `board = LinuxBoard` / `board = ::nros_board_linux::LinuxBoard`
     Path(SynPath),
     /// `launch = "demo_bringup:sim.launch.xml"`
     Str(LitStr),
@@ -3070,7 +3070,7 @@ mod custom_tasks_parser_tests {
 
     #[test]
     fn combines_with_other_args() {
-        let parsed = parse("board = ::nros_board_native::NativeBoard, custom_tasks = [foo, bar]")
+        let parsed = parse("board = ::nros_board_linux::LinuxBoard, custom_tasks = [foo, bar]")
             .expect("parse combined");
         assert!(parsed.board.is_some(), "board parsed");
         assert_eq!(parsed.custom_tasks.expect("custom_tasks set").len(), 2);

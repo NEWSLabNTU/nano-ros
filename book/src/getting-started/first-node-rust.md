@@ -85,13 +85,13 @@ path = "src/main.rs"
 
 [features]
 default   = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
 
 [dependencies]
 nros = { version = "*", default-features = false,
          features = ["std", "rmw-cffi", "ros-humble"] }
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
-nros-board-native = { version = "*", default-features = false }
+nros-board-linux = { version = "*", default-features = false }
 nros-rmw-zenoh = { version = "*", default-features = false,
                    features = ["std", "platform-posix", "ros-humble"],
                    optional = true }

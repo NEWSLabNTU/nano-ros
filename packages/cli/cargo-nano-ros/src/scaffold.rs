@@ -92,16 +92,16 @@ struct PlatformSpec {
 /// any file is written, and reused by [`scaffold_rust`].
 fn platform_spec(platform: &str) -> Result<PlatformSpec> {
     let spec = match platform {
-        // native + posix both resolve to `nros_board_native::NativeBoard`
-        // (`board_path_for`); `nros-board-posix` is not reachable via any deploy
-        // token, so the hosted template uses `nros-board-native` for both.
+        // native + posix both resolve to `nros_board_linux::LinuxBoard`
+        // (`board_path_for`); `nros-board-linux` is not reachable via any deploy
+        // token, so the hosted template uses `nros-board-linux` for both.
         "native" => PlatformSpec {
-            board_crate: "nros-board-native",
+            board_crate: "nros-board-linux",
             deploy_token: "native",
             kind: PlatformKind::Hosted,
         },
         "posix" => PlatformSpec {
-            board_crate: "nros-board-native",
+            board_crate: "nros-board-linux",
             deploy_token: "posix",
             kind: PlatformKind::Hosted,
         },
@@ -885,14 +885,14 @@ deploy = ["{deploy}"]
 # RMW is a build-time choice (never source). The default is the backend you
 # passed to `nros new`; switch with `--no-default-features --features rmw-<x>`.
 default = ["{rmw_feature}"]
-rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
-rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
-rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-native/rmw-cyclonedds"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-linux/rmw-xrce"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-linux/rmw-cyclonedds"]
 
 [dependencies]
 nros = {{ version = "*", default-features = false, features = ["std", "rmw-cffi", "{edition_feature}"] }}
 nros-platform-cffi = {{ version = "*", features = ["posix-c-port"] }}
-nros-board-native = {{ version = "*", default-features = false }}
+nros-board-linux = {{ version = "*", default-features = false }}
 nros-rmw-zenoh = {{ version = "*", default-features = false, features = ["std", "platform-posix", "{edition_feature}"], optional = true }}
 nros-rmw-xrce-cffi = {{ version = "*", default-features = false, features = ["std"], optional = true }}
 nros-rmw-cyclonedds-sys = {{ version = "*", features = ["platform-posix"], optional = true }}
@@ -918,7 +918,7 @@ use std_msgs::msg::String as StringMsg;
 
 fn main() {{
     // Register the RMW backend the build linked (idempotent; before the executor).
-    nros_board_native::register_linked_rmw();
+    nros_board_linux::register_linked_rmw();
     env_logger::init();
 
     // Launch-aware init: picks up ROS_DOMAIN_ID / NROS_LOCATOR / RMW_IMPLEMENTATION
@@ -1384,7 +1384,7 @@ mod tests {
         scaffold_rust("foo", "native", "rmw-cyclonedds", "ros-humble", d.path()).unwrap();
         let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
         assert!(toml.contains(r#"default = ["rmw-cyclonedds"]"#), "{toml}");
-        assert!(toml.contains("nros-board-native = {"), "{toml}");
+        assert!(toml.contains("nros-board-linux = {"), "{toml}");
         let main = fs::read_to_string(d.path().join("src/main.rs")).unwrap();
         assert!(
             main.contains("register_linked_rmw()") && main.contains("spin_blocking"),
@@ -1471,15 +1471,15 @@ mod tests {
         ] {
             platform_spec(p).unwrap_or_else(|e| panic!("{p} must resolve: {e}"));
         }
-        // native/posix are hosted against nros-board-native (posix's deploy token
-        // resolves to NativeBoard, not nros-board-posix).
+        // native/posix are hosted against nros-board-linux (posix's deploy token
+        // resolves to LinuxBoard, not nros-board-linux).
         assert!(matches!(
             platform_spec("posix").unwrap().kind,
             PlatformKind::Hosted
         ));
         assert_eq!(
             platform_spec("posix").unwrap().board_crate,
-            "nros-board-native"
+            "nros-board-linux"
         );
         assert!(matches!(
             platform_spec("baremetal").unwrap().kind,

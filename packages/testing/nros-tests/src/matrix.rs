@@ -25,9 +25,15 @@ use crate::platform::{TestLang, TestVariant};
 /// in one axis.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PlatformId {
-    /// Host-native (posix). Isolation is EPHEMERAL (ports/domains picked
-    /// at runtime) — the allocator's baked formula does not apply.
-    Native,
+    /// The Linux host board over the `posix` platform. Isolation is EPHEMERAL
+    /// (ports/domains picked at runtime) — the allocator's baked formula does
+    /// not apply.
+    ///
+    /// phase-337 W8.b renamed this from `Native` (RFC-0064 R3): "native"
+    /// implies any general-purpose OS, and Windows/macOS do not build. The
+    /// PLATFORM is still `posix` — only the board-level promise is narrowed to
+    /// what `just ci` actually exercises.
+    Linux,
     /// Zephyr native_sim (NSOS host sockets).
     ZephyrNativeSim,
     /// FreeRTOS on QEMU MPS2-AN385 (lwIP).
@@ -57,7 +63,7 @@ impl PlatformId {
     /// collision-freedom on every run.
     pub const fn index(self) -> u16 {
         match self {
-            PlatformId::Native => 0,
+            PlatformId::Linux => 0,
             PlatformId::ZephyrNativeSim => 1,
             PlatformId::FreertosMps2 => 2,
             PlatformId::NuttxArm => 3,
@@ -91,7 +97,18 @@ impl PlatformId {
     /// shared helper rather than a second spelling").
     pub const fn fixture_tokens(self) -> &'static [&'static str] {
         match self {
-            PlatformId::Native => &["native"],
+            // phase-337 W8.c (DEFERRED) — still `native`. The board crate,
+            // the registry row and this enum are `linux`; the fixture TOKEN is
+            // not, because it is not only a token: it is also the first
+            // argument of `scripts/build/fixtures-build.sh`, the scope name in
+            // `fixture-make-driver.sh`, the coordinate prefix `fixture-lane.sh`
+            // greps (`^native,`), and it shares its spelling with the
+            // `examples/native/` DIRECTORY and the `native` LANE — which
+            // deliberately keep the name (see `just_module` below). Moving the
+            // token alone would leave two spellings of one fact; moving all of
+            // it needs a full `just ci` behind it, since this is the reference
+            // platform. See the phase doc's W8.c entry for the site map.
+            PlatformId::Linux => &["native"],
             PlatformId::ZephyrNativeSim => &["zephyr"],
             PlatformId::FreertosMps2 => &["freertos"],
             PlatformId::NuttxArm => &["nuttx"],
@@ -122,7 +139,10 @@ impl PlatformId {
     /// that need a job list must dedupe.
     pub const fn just_module(self) -> &'static str {
         match self {
-            PlatformId::Native => "native",
+            // The `just` MODULE keeps the name `native`: it is a third
+            // vocabulary naming a LANE, ~100 CI references deep, and RFC-0064's
+            // decision is about the board's promise, not the recipe namespace.
+            PlatformId::Linux => "native",
             PlatformId::ZephyrNativeSim | PlatformId::Fvp => "zephyr",
             PlatformId::FreertosMps2 => "freertos",
             PlatformId::NuttxArm | PlatformId::NuttxRiscv => "nuttx",
@@ -144,7 +164,7 @@ impl PlatformId {
     }
 
     pub const ALL: &'static [PlatformId] = &[
-        PlatformId::Native,
+        PlatformId::Linux,
         PlatformId::ZephyrNativeSim,
         PlatformId::FreertosMps2,
         PlatformId::NuttxArm,
@@ -384,41 +404,41 @@ const XRCE_RTOS_CARVE: &str =
 #[rustfmt::skip]
 pub const CELLS: &[Cell] = &[
     // ── Example kind: the classic pubsub/service/action pairs ──────────
-    // Native (ephemeral isolation; all three RMWs have runtime lanes).
-    cell(Native, Rust, Zenoh,      Pubsub,  Example, Runtime),
-    cell(Native, C,    Zenoh,      Pubsub,  Example, Runtime),
-    cell(Native, Cpp,  Zenoh,      Pubsub,  Example, Runtime),
-    cell(Native, Rust, Zenoh,      Service, Example, Runtime),
-    cell(Native, C,    Zenoh,      Service, Example, Runtime),
-    cell(Native, Cpp,  Zenoh,      Service, Example, Runtime),
-    cell(Native, Rust, Zenoh,      Action,  Example, Runtime),
-    cell(Native, C,    Zenoh,      Action,  Example, Runtime),
-    cell(Native, Cpp,  Zenoh,      Action,  Example, Runtime),
-    cell(Native, Rust, Cyclonedds, Pubsub,  Example, Runtime),
-    cell(Native, C,    Cyclonedds, Pubsub,  Example, Runtime),
-    cell(Native, Cpp,  Cyclonedds, Pubsub,  Example, Runtime),
-    cell(Native, C,    Cyclonedds, Service, Example, Runtime),
-    cell(Native, Cpp,  Cyclonedds, Service, Example, Runtime),
+    // Linux host (ephemeral isolation; all three RMWs have runtime lanes).
+    cell(Linux, Rust, Zenoh,      Pubsub,  Example, Runtime),
+    cell(Linux, C,    Zenoh,      Pubsub,  Example, Runtime),
+    cell(Linux, Cpp,  Zenoh,      Pubsub,  Example, Runtime),
+    cell(Linux, Rust, Zenoh,      Service, Example, Runtime),
+    cell(Linux, C,    Zenoh,      Service, Example, Runtime),
+    cell(Linux, Cpp,  Zenoh,      Service, Example, Runtime),
+    cell(Linux, Rust, Zenoh,      Action,  Example, Runtime),
+    cell(Linux, C,    Zenoh,      Action,  Example, Runtime),
+    cell(Linux, Cpp,  Zenoh,      Action,  Example, Runtime),
+    cell(Linux, Rust, Cyclonedds, Pubsub,  Example, Runtime),
+    cell(Linux, C,    Cyclonedds, Pubsub,  Example, Runtime),
+    cell(Linux, Cpp,  Cyclonedds, Pubsub,  Example, Runtime),
+    cell(Linux, C,    Cyclonedds, Service, Example, Runtime),
+    cell(Linux, Cpp,  Cyclonedds, Service, Example, Runtime),
     // issue #233 cell 1 — proven: rust cyclone service pair delivers
     // (test_native_cyclonedds_rust_service).
-    cell(Native, Rust, Cyclonedds, Service, Example, Runtime),
-    cell(Native, C,    Cyclonedds, Action,  Example, Runtime),
-    cell(Native, Cpp,  Cyclonedds, Action,  Example, Runtime),
+    cell(Linux, Rust, Cyclonedds, Service, Example, Runtime),
+    cell(Linux, C,    Cyclonedds, Action,  Example, Runtime),
+    cell(Linux, Cpp,  Cyclonedds, Action,  Example, Runtime),
     // issue #234 — RESOLVED: rust cyclone action pair delivers the order-10
     // Fibonacci result (test_native_cyclonedds_rust_action). The action's
     // `register_protocol_types` now registers the `action_msgs` descriptors
     // through the generic `nros_rmw::register_type_descriptor` seam instead of
     // the cfg-gated named-backend call that compiled out of the example build.
-    cell(Native, Rust, Cyclonedds, Action,  Example, Runtime),
-    cell(Native, C,    Xrce,       Pubsub,  Example, Runtime),
-    cell(Native, Rust, Xrce,       Pubsub,  Example, Runtime),
-    cell(Native, Cpp,  Xrce,       Pubsub,  Example, Runtime),
-    cell(Native, C,    Xrce,       Service, Example, Runtime),
-    cell(Native, Rust, Xrce,       Service, Example, Runtime),
-    cell(Native, Cpp,  Xrce,       Service, Example, Runtime),
-    cell(Native, C,    Xrce,       Action,  Example, Runtime),
-    cell(Native, Rust, Xrce,       Action,  Example, Runtime),
-    cell(Native, Cpp,  Xrce,       Action,  Example, Runtime),
+    cell(Linux, Rust, Cyclonedds, Action,  Example, Runtime),
+    cell(Linux, C,    Xrce,       Pubsub,  Example, Runtime),
+    cell(Linux, Rust, Xrce,       Pubsub,  Example, Runtime),
+    cell(Linux, Cpp,  Xrce,       Pubsub,  Example, Runtime),
+    cell(Linux, C,    Xrce,       Service, Example, Runtime),
+    cell(Linux, Rust, Xrce,       Service, Example, Runtime),
+    cell(Linux, Cpp,  Xrce,       Service, Example, Runtime),
+    cell(Linux, C,    Xrce,       Action,  Example, Runtime),
+    cell(Linux, Rust, Xrce,       Action,  Example, Runtime),
+    cell(Linux, Cpp,  Xrce,       Action,  Example, Runtime),
 
     // Zephyr native_sim — zenoh + cyclone + xrce, all three langs
     // (the zephyr.rs families; W4 bakes: cyclone domains 22–30, xrce
@@ -583,21 +603,21 @@ pub const CELLS: &[Cell] = &[
          CarveOut("zenoh-pico needs POSIX API the FVP board conf doesn't enable (#217)")),
 
     // ── Workspace kind (Entry-pkg lanes; native-heavy today) ──────────
-    cell(Native, Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
-    cell(Native, C,     Zenoh, EntryPubsub, Workspace, Runtime),
-    cell(Native, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
-    cell(Native, Mixed, Zenoh, EntryPubsub, Workspace, Runtime),
+    cell(Linux, Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
+    cell(Linux, C,     Zenoh, EntryPubsub, Workspace, Runtime),
+    cell(Linux, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
+    cell(Linux, Mixed, Zenoh, EntryPubsub, Workspace, Runtime),
     // phase-331 W4 (RFC-0066) — the RMW AXIS over the language workspaces.
     // Before this the workspace rows were 85/87 zenoh: the RMW seam was
     // exercised by single-node examples and essentially never by a workspace.
     // `mixed` is deliberately absent — its value is the language seam, not the
     // RMW seam. The rust cells already existed; only c/cpp were missing.
-    cell(Native, Rust, Cyclonedds, EntryPubsub, Workspace, Runtime),
-    cell(Native, C,    Cyclonedds, EntryPubsub, Workspace, Runtime),
-    cell(Native, Cpp,  Cyclonedds, EntryPubsub, Workspace, Runtime),
-    cell(Native, Rust, Xrce,       EntryPubsub, Workspace, Runtime),
-    cell(Native, C,    Xrce,       EntryPubsub, Workspace, Runtime),
-    cell(Native, Cpp,  Xrce,       EntryPubsub, Workspace, Runtime),
+    cell(Linux, Rust, Cyclonedds, EntryPubsub, Workspace, Runtime),
+    cell(Linux, C,    Cyclonedds, EntryPubsub, Workspace, Runtime),
+    cell(Linux, Cpp,  Cyclonedds, EntryPubsub, Workspace, Runtime),
+    cell(Linux, Rust, Xrce,       EntryPubsub, Workspace, Runtime),
+    cell(Linux, C,    Xrce,       EntryPubsub, Workspace, Runtime),
+    cell(Linux, Cpp,  Xrce,       EntryPubsub, Workspace, Runtime),
     cell(ZephyrNativeSim, Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ZephyrNativeSim, C,     Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ZephyrNativeSim, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
@@ -641,8 +661,8 @@ pub const CELLS: &[Cell] = &[
 
     // Workspace feature workloads (native + zephyr today; per-lang rows
     // mirror the ws-* families).
-    cell(Native, C,     Zenoh, CustomMsg, Workspace, Runtime),
-    cell(Native, Cpp,   Zenoh, CustomMsg, Workspace, Runtime),
+    cell(Linux, C,     Zenoh, CustomMsg, Workspace, Runtime),
+    cell(Linux, Cpp,   Zenoh, CustomMsg, Workspace, Runtime),
     // Corrected during the phase-295 W3.b consolidation: the seed table
     // marked native rust CustomMsg/Qos `Runtime`, but no fixtures.toml row
     // builds `ws-{custom-msg,qos}-rust`'s `native_entry` and no test
@@ -651,46 +671,46 @@ pub const CELLS: &[Cell] = &[
     // is the zephyr image). Single-entry natives also hit issue 0096
     // (in-process pub→sub never delivers), so wiring them needs split
     // talker/listener entries first — issue #233.
-    cell(Native, Rust,  Zenoh, CustomMsg, Workspace,
+    cell(Linux, Rust,  Zenoh, CustomMsg, Workspace,
          BuildOnly("ws-custom-msg-rust native_entry has no fixture row or runtime lane \
                     (needs an 0096 two-entry split) — phase-295 W3.b finding, W6 wires it")),
-    cell(Native, Mixed, Zenoh, CustomMsg, Workspace, Runtime),
-    cell(Native, C,     Zenoh, Logging,   Workspace, Runtime),
-    cell(Native, Cpp,   Zenoh, Logging,   Workspace, Runtime),
+    cell(Linux, Mixed, Zenoh, CustomMsg, Workspace, Runtime),
+    cell(Linux, C,     Zenoh, Logging,   Workspace, Runtime),
+    cell(Linux, Cpp,   Zenoh, Logging,   Workspace, Runtime),
     // Added during the phase-295 W3.b consolidation: the rust + mixed
     // logging lanes existed (tests/{,mixed_}logging_workspace_e2e.rs,
     // phase-263 A5) but the seed table never modeled them.
-    cell(Native, Rust,  Zenoh, Logging,   Workspace, Runtime),
-    cell(Native, Mixed, Zenoh, Logging,   Workspace, Runtime),
-    cell(Native, C,     Zenoh, Qos,       Workspace, Runtime),
-    cell(Native, Cpp,   Zenoh, Qos,       Workspace, Runtime),
+    cell(Linux, Rust,  Zenoh, Logging,   Workspace, Runtime),
+    cell(Linux, Mixed, Zenoh, Logging,   Workspace, Runtime),
+    cell(Linux, C,     Zenoh, Qos,       Workspace, Runtime),
+    cell(Linux, Cpp,   Zenoh, Qos,       Workspace, Runtime),
     // See the CustomMsg rust row above — same phase-295 W3.b correction.
-    cell(Native, Rust,  Zenoh, Qos,       Workspace,
+    cell(Linux, Rust,  Zenoh, Qos,       Workspace,
          BuildOnly("ws-qos-rust native_entry has no fixture row or runtime lane (only \
                     the zephyr image is consumed) — phase-295 W3.b finding, W6 wires it")),
-    cell(Native, Mixed, Zenoh, Qos,       Workspace, Runtime),
-    cell(Native, C,     Zenoh, Params,    Workspace, Runtime),
-    cell(Native, Cpp,   Zenoh, Params,    Workspace, Runtime),
-    cell(Native, Rust,  Zenoh, Params,    Workspace, Runtime),
-    cell(Native, C,     Zenoh, Lifecycle, Workspace, Runtime),
-    cell(Native, Cpp,   Zenoh, Lifecycle, Workspace, Runtime),
-    cell(Native, Rust,  Zenoh, Lifecycle, Workspace, Runtime),
-    cell(Native, C,     Zenoh, Safety,    Workspace, Runtime),
-    cell(Native, Cpp,   Zenoh, Safety,    Workspace, Runtime),
-    cell(Native, Rust,  Zenoh, Safety,    Workspace, Runtime),
+    cell(Linux, Mixed, Zenoh, Qos,       Workspace, Runtime),
+    cell(Linux, C,     Zenoh, Params,    Workspace, Runtime),
+    cell(Linux, Cpp,   Zenoh, Params,    Workspace, Runtime),
+    cell(Linux, Rust,  Zenoh, Params,    Workspace, Runtime),
+    cell(Linux, C,     Zenoh, Lifecycle, Workspace, Runtime),
+    cell(Linux, Cpp,   Zenoh, Lifecycle, Workspace, Runtime),
+    cell(Linux, Rust,  Zenoh, Lifecycle, Workspace, Runtime),
+    cell(Linux, C,     Zenoh, Safety,    Workspace, Runtime),
+    cell(Linux, Cpp,   Zenoh, Safety,    Workspace, Runtime),
+    cell(Linux, Rust,  Zenoh, Safety,    Workspace, Runtime),
     // phase-306 W4 (issue 0255) — launch/model remap + `~` private name hits
     // the wire remapped. Rust only: the C/C++ `nros_cpp_declare_remap` path is
     // emitter-unit-tested (W3); a runtime C/C++ cell is residual.
-    cell(Native, Rust,  Zenoh, Remap,     Workspace, Runtime),
+    cell(Linux, Rust,  Zenoh, Remap,     Workspace, Runtime),
     cell(ZephyrNativeSim, Rust, Zenoh, Params,    Workspace, Runtime),
     cell(ZephyrNativeSim, Rust, Zenoh, Lifecycle, Workspace, Runtime),
     cell(ZephyrNativeSim, Rust, Zenoh, Qos,       Workspace, Runtime),
     cell(ZephyrNativeSim, Rust, Zenoh, Safety,    Workspace, Runtime),
 
     // Realtime tiers + multihost.
-    cell(Native, Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
-    cell(Native, C,    Zenoh, RealtimeTiers, Workspace, Runtime),
-    cell(Native, Cpp,  Zenoh, RealtimeTiers, Workspace, Runtime),
+    cell(Linux, Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
+    cell(Linux, C,    Zenoh, RealtimeTiers, Workspace, Runtime),
+    cell(Linux, Cpp,  Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(ZephyrNativeSim, Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(ZephyrNativeSim, C,    Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(ZephyrNativeSim, Cpp,  Zenoh, RealtimeTiers, Workspace, Runtime),
@@ -712,24 +732,24 @@ pub const CELLS: &[Cell] = &[
     // hosted simulation (pthread-backed ThreadX, host binary + NSOS host
     // sockets), port 9091 = port_of(ThreadxLinux, Rust, RealtimeTiers).
     cell(ThreadxLinux, Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
-    cell(Native, Rust,  Zenoh, Multihost, Workspace, Runtime),
-    cell(Native, C,     Zenoh, Multihost, Workspace, Runtime),
-    cell(Native, Cpp,   Zenoh, Multihost, Workspace, Runtime),
-    cell(Native, Mixed, Zenoh, Multihost, Workspace, Runtime),
+    cell(Linux, Rust,  Zenoh, Multihost, Workspace, Runtime),
+    cell(Linux, C,     Zenoh, Multihost, Workspace, Runtime),
+    cell(Linux, Cpp,   Zenoh, Multihost, Workspace, Runtime),
+    cell(Linux, Mixed, Zenoh, Multihost, Workspace, Runtime),
     // The embedded multihost lane is the RUST robot1 zephyr image (276 W6);
     // corrected from Cpp during the phase-295 W3.b consolidation.
     cell(ZephyrNativeSim, Rust, Zenoh, Multihost, Workspace, Runtime),
 
     // Cross-process service/action roundtrips (phase-263 A1/A4; issue 0096
     // forces the two-process topology) — tests/roundtrip_xprocess_e2e.rs.
-    cell(Native, Rust,  Zenoh, Service, Workspace, Runtime),
-    cell(Native, C,     Zenoh, Service, Workspace, Runtime),
-    cell(Native, Cpp,   Zenoh, Service, Workspace, Runtime),
-    cell(Native, Mixed, Zenoh, Service, Workspace, Runtime),
-    cell(Native, Rust,  Zenoh, Action,  Workspace, Runtime),
-    cell(Native, C,     Zenoh, Action,  Workspace, Runtime),
-    cell(Native, Cpp,   Zenoh, Action,  Workspace, Runtime),
-    cell(Native, Mixed, Zenoh, Action,  Workspace, Runtime),
+    cell(Linux, Rust,  Zenoh, Service, Workspace, Runtime),
+    cell(Linux, C,     Zenoh, Service, Workspace, Runtime),
+    cell(Linux, Cpp,   Zenoh, Service, Workspace, Runtime),
+    cell(Linux, Mixed, Zenoh, Service, Workspace, Runtime),
+    cell(Linux, Rust,  Zenoh, Action,  Workspace, Runtime),
+    cell(Linux, C,     Zenoh, Action,  Workspace, Runtime),
+    cell(Linux, Cpp,   Zenoh, Action,  Workspace, Runtime),
+    cell(Linux, Mixed, Zenoh, Action,  Workspace, Runtime),
 
     // Workspace RMW variants (thin today: 80/82 rows are zenoh — issue #233).
 
@@ -820,7 +840,7 @@ pub fn w1_consumer_of(cell: &Cell) -> Option<W1Consumer> {
         // workspace_features_e2e — native feature workspaces (Params is a
         // separate W4 file, deliberately excluded).
         (
-            PlatformId::Native,
+            PlatformId::Linux,
             _,
             Workload::CustomMsg
             | Workload::Logging
@@ -893,7 +913,7 @@ pub const SCHED_CELLS: &[SchedCell] = {
         sched(CorePin, NuttxArm, Rust, Runtime),
         sched(CorePin, ThreadxLinux, Rust, Runtime),
         sched(CorePin, FreertosMps2, Cpp, Runtime),
-        sched(CorePin, Native, Rust, Runtime),
+        sched(CorePin, Linux, Rust, Runtime),
         // Zephyr EDF deadline — all three language arms (W5.5 + W5.8).
         sched(EdfDeadline, ZephyrNativeSim, Rust, Runtime),
         sched(EdfDeadline, ZephyrNativeSim, Cpp, Runtime),

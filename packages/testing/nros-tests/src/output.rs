@@ -561,7 +561,7 @@ pub const THREADX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier="
 /// lockstep.
 pub const THREADX_TIME_SLICE_MARKER: &str = "nros: time slice set tier=";
 
-/// Emitted by the POSIX board (`nros-board-posix/src/lib.rs`,
+/// Emitted by the POSIX board (`nros-board-linux/src/lib.rs`,
 /// `apply_tier_affinity`, boot + spawned) when `sched_setaffinity` pinned a
 /// tier thread to its declared `core` (phase-296 W5.13, the placement dim). A
 /// Linux host is genuinely multi-core and the call needs no privilege, so this
@@ -571,7 +571,7 @@ pub const POSIX_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 
 /// The honest-fallback sibling: printed when `sched_setaffinity` rejects a
 /// declared `core` (bad cpu id) — the tier runs unpinned, loudly. MIRRORS the
-/// `FAILED` literal in `nros-board-posix/src/lib.rs` — keep in lockstep.
+/// `FAILED` literal in `nros-board-linux/src/lib.rs` — keep in lockstep.
 pub const POSIX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 
 /// Extract the trimmed text after a marker in a line.

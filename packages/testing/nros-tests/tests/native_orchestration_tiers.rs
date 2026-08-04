@@ -1,7 +1,7 @@
 //! Multi-tier `nros::main!()` emit round-trip (RFC-0032 §5).
 //!
 //! When `system.toml` declares `[tiers.*]`, the macro resolves a tier table and
-//! emits `<NativeBoard>::run_tiers(TIERS, run_plan)`; with the tier blocks
+//! emits `<LinuxBoard>::run_tiers(TIERS, run_plan)`; with the tier blocks
 //! stripped it falls back to the legacy single-tier `BoardEntry::run`.
 //!
 //! Both shapes are **build-stage fixtures** (`compile-check-fixtures.sh`, run by

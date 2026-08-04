@@ -466,7 +466,7 @@ NOT supported v1; require XML.
 nros::main!();
 
 // Single-node, explicit board override
-nros::main!(board = NativeBoard);
+nros::main!(board = LinuxBoard);
 
 // Multi-node, default launch from bringup pkg's system.toml
 nros::main!(launch = "demo_bringup");
@@ -476,7 +476,7 @@ nros::main!(launch = "demo_bringup:sim.launch.xml");
 
 // All explicit
 nros::main!(
-    board  = NativeBoard,
+    board  = LinuxBoard,
     launch = "demo_bringup:sim.launch.xml",
     args   = [("use_sim", "true")],
 );
@@ -492,7 +492,7 @@ Design parity:
 
 ```cpp
 #include <nros/main.hpp>
-NROS_MAIN(nros::board::NativeBoard, "demo_bringup:sim.launch.xml");
+NROS_MAIN(nros::board::LinuxBoard, "demo_bringup:sim.launch.xml");
 ```
 
 ```cmake
@@ -514,10 +514,10 @@ When users want their own executor lifecycle, they skip
 
 ```rust
 use nros::{Executor, ExecutorConfig, BoardEntry};
-use nros_board_native::NativeBoard;
+use nros_board_linux::LinuxBoard;
 
 fn main() {
-    let outcome = <NativeBoard as BoardEntry>::run(|runtime| {
+    let outcome = <LinuxBoard as BoardEntry>::run(|runtime| {
         runtime.runtime.register_dispatch_slot_dyn(
             __nros_component_talker_register,
             __nros_component_talker_init,

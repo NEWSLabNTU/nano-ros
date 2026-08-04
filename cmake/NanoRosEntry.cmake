@@ -22,7 +22,7 @@
 #   * `BOARD` (optional, single-value) — Phase 212.N.6 addition: the
 #     codegen board key (`native`, `zephyr`, `fvp-aemv8r-smp`, …) the
 #     Entry pkg targets; flows to `nros codegen entry --board` and
-#     selects the C++ Board adapter (`NativeBoard` / `ZephyrBoard`).
+#     selects the C++ Board adapter (`LinuxBoard` / `ZephyrBoard`).
 #     Stored as the `NANO_ROS_BOARD` target property. Absent BOARD is
 #     valid for host-native pkgs; for embedded DEPLOY it is auto-derived
 #     from `NROS_BOARD_RUNNER` (Phase 235.B) when not passed explicitly.

@@ -1,7 +1,7 @@
 # Phase 212.O.3 — POSIX Entry pkg #1.
 #
 # Sibling to `freertos_entry/`. Builds the SAME `shared_node_pkg`
-# rlib against the POSIX Board impl (`nros-board-posix::PosixBoard`).
+# rlib against the POSIX Board impl (`nros-board-linux::LinuxBoard`).
 # The build.rs body is IDENTICAL to `freertos_entry/build.rs` — the
 # whole proof of board-agnostic codegen lives in that identity.
 [workspace]
@@ -21,7 +21,7 @@ deploy = "posix"
 
 [dependencies]
 # Board impl for the POSIX family.
-nros-board-posix = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-posix" }
+nros-board-linux = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-linux" }
 # Trait surface — BoardEntry / RuntimeCtx / RuntimeError.
 nros-platform = { path = "@NANO_ROS_ROOT@/packages/platform/nros-platform", default-features = false, features = ["std", "platform-posix"] }
 # Codegen-emitted `run_plan.rs` defines a `register_dispatch` shim

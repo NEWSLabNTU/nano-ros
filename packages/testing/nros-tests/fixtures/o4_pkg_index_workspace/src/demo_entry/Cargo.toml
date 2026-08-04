@@ -20,9 +20,9 @@ nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, f
     "rmw-cffi",
     "ros-humble",
 ] }
-# Board crate — supplies the `NativeBoard` ZST referenced by the
+# Board crate — supplies the `LinuxBoard` ZST referenced by the
 # macro-emitted `<Board as BoardEntry>::run(...)` call.
-nros-board-native = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-native" }
+nros-board-linux = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-linux" }
 # The macro emits `::node_a::register(runtime)?;`, etc. The bin target
 # must link each rlib for those calls to compile + resolve.
 node_a = { path = "../node_a" }

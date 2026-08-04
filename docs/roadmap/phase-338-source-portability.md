@@ -282,7 +282,7 @@ compiled. Then:
 
 2. **BLOCKER — nothing installs a hosted logger.** With the spin fixed the
    process ran but emitted **no output at all**. The group's Node body logs via
-   `log::info!`, and on native neither `nros-board-native` nor `nros-board-posix`
+   `log::info!`, and on native neither `nros-board-linux` nor `nros-board-linux`
    installs a `log` sink; the imperative example called `env_logger::init()`
    itself, and a Node body has nowhere to put that because `nros::main!()` owns
    `main`. Every test asserting `TALKER_LOG_PREFIX` would go silent.
@@ -294,7 +294,7 @@ compiled. Then:
    with no init, which is why the workspace fixture is green today.
 
    **Three ways out, and this is a product decision:**
-   (a) `nros-board-native`'s `BoardEntry::run` installs the hosted logger, which
+   (a) `nros-board-linux`'s `BoardEntry::run` installs the hosted logger, which
    mirrors embedded exactly (the ThreadX family driver already calls
    `install_uart_logger::<B>()`); (b) the macro emits `env_logger::init()` for
    hosted deploys; (c) every Node body moves to `nros_log`, unifying the facade
@@ -624,7 +624,7 @@ waves is that by here, folding destroys nothing.
 ## W7 — One logging facade in user source
 
 **Filed 2026-08-04 from the W3 blocker; option (c) of the three recorded there.**
-W3 took option (a) — `nros-board-posix` now bridges `log` alongside its
+W3 took option (a) — `nros-board-linux` now bridges `log` alongside its
 `nros_log` init — which unblocks the migration but leaves the underlying split
 in place. This wave removes it.
 

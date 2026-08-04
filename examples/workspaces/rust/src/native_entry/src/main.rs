@@ -4,7 +4,7 @@
 //! The body collapses to the one-line `nros::main!()` macro. The
 //! `launch = "demo_bringup:system.launch.xml"` form makes the macro:
 //!   1. read `[package.metadata.nros.entry] deploy = "native"` →
-//!      `nros_board_native::NativeBoard`,
+//!      `nros_board_linux::LinuxBoard`,
 //!   2. resolve `demo_bringup` via the workspace pkg-index,
 //!   3. parse `demo_bringup/launch/system.launch.xml`,
 //!   4. emit `talker_pkg::register(runtime)?;` +

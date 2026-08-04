@@ -15,11 +15,11 @@ path = "src/main.rs"
 [features]
 # RMW selected at build time via mutually exclusive features (same shape as
 # the examples): each `rmw-*` activates the optional backend dep and forwards
-# to `nros-board-native`, whose `register_linked_rmw()` call in `main.rs`
+# to `nros-board-linux`, whose `register_linked_rmw()` call in `main.rs`
 # registers the selected backend before the executor opens.
 default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
-rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-linux/rmw-xrce"]
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
@@ -28,7 +28,7 @@ nros = { path = "../../../../api/nros", default-features = false, features = [
     "ros-humble",
 ] }
 nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
-nros-board-native = { path = "../../../../boards/nros-board-native", default-features = false }
+nros-board-linux = { path = "../../../../boards/nros-board-linux", default-features = false }
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "std",
     "platform-posix",
