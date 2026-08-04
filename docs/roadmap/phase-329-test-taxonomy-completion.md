@@ -184,9 +184,13 @@ barely move build wall-clock — the same fixtures still build. This wave was me
 to attack the fixture-BUILD burden directly by deleting redundant `fixtures.toml`
 rows / shrinking the edition sweep. **On verification (2026-08-04) every row-dedup
 candidate proved load-bearing** — see the per-item RETRACTED notes and the W8
-verdict at the end of this section. The one surviving lever is **W8.d**, and it
-DEPENDS ON W1. Net: there is no manifest-only build cut; build relief comes from
-the consumer-side waves (fewer boots, fewer files) plus W8.d after W1.
+verdict at the end of this section. **W8.d also collapsed on re-verification
+(2026-08-04):** the per-coordinate build cut already ships as
+`build-test-fixtures lane=tier2` (#393), and the only further saving —
+coordinate-scoping the tier-2 RUN — is blocked on **W4** (needs every test
+cell-bound), not W1. Net: there is NO net-new build cut this wave can land; build
+relief comes from the consumer-side waves (fewer redundant boots via W2/W4, fewer
+files) and, once W4 lands, a coordinate-scoped tier-2 run.
 
 - [x] ~~**W8.a — drop the `target-zenoh` twins.**~~ **RETRACTED 2026-08-04 —
   the premise is wrong.** The `target-<rmw>/` dirs are NOT redundant duplicates;
@@ -216,18 +220,24 @@ the consumer-side waves (fewer boots, fewer files) plus W8.d after W1.
   coverage; the two directions exercise nano-as-publisher vs nano-as-subscriber
   hash matching — not redundant either. The "only unique signal is the per-edition
   hash tail" premise is false: the tail differs PER TYPE, so per-workload is load-bearing.
-- [ ] **W8.d — make `ci-matrix` build what its gate scopes. DEPENDS ON W1 —
-  not independent (corrected 2026-08-04).** Tier 2 builds `all` and runs full
-  `test-all`; only the staleness gate is coordinate-scoped, so the 26% is
-  gate-only. But the `justfile:1904-1909` comment (issue 0393) records why the
-  build is deliberately `all`: narrowing the build requires narrowing the RUN
-  (`NROS_TEST_SCOPE`) to the same coordinates FIRST, else tests execute with no
-  fixture. Today `NROS_TEST_SCOPE` is `native`-granularity only; a per-coordinate
-  run-scope needs each test to know its coordinate and skip when outside the lane
-  — which is exactly what W1 (tests derive from `matrix::CELLS`) provides. So W8.d
-  lands AFTER W1, and adds: a `NROS_TEST_SCOPE=coords:<file>` the cell-bound tests
-  honour, then narrow build+run+gate to one coords file. Not the standalone recipe
-  edit the first draft assumed.
+- [ ] **W8.d — narrow the tier-2 build/run. BLOCKED ON W4 (not W1) + largely
+  already delivered by #393 (re-verified 2026-08-04).** Two findings collapse the
+  original framing:
+  1. **The build already narrows within platforms.** `build-test-fixtures
+     lane=tier2` (#393) sets `NROS_FIXTURE_COORDS` → `fixtures-manifest.py
+     --coords-from`, building only the 12 tier-2 coordinate rows, not `all`. The
+     per-coordinate build cut EXISTS; `ci-matrix` just doesn't invoke it (it
+     assumes a prepared tree + gates coverage).
+  2. **The build cannot drop a platform, and the run cannot coordinate-scope
+     yet.** Tier 2 is 1-wise, so its 12 coords span 10 of ~11 platform families —
+     every platform builds regardless. The only further saving is scoping the RUN
+     below platform granularity, but `NROS_TEST_SCOPE`→`lane-filter.sh` excludes by
+     BINARY / test-name (platform family), not coordinate. A coordinate-level run
+     scope needs EVERY test cell-bound so it can skip when outside the lane — W1
+     made only the 5 consumers + matrix tests cell-bound; the 62 platform-e2e
+     files (W4) are not. So a safe coordinate run-scope is a **W4** dependency, not
+     W1. Revisit W8.d after W4; until then `build-test-fixtures lane=tier2` is the
+     available build cut.
 - [x] ~~**W8.e — collapse same-code/different-YAML rows.**~~ **RETRACTED — not
   same-code.** robot1/robot2 (`fixtures.toml:225/505/708`) share dir/bringup but
   differ by `entry`: robot1 bakes the TALKER, robot2 the LISTENER (comment
@@ -294,8 +304,12 @@ W4 is the long tail; it can proceed cell-family by cell-family behind the
 W1 gates without a flag day.
 
 **W8's row-dedup items (a/b/c/e) are RETRACTED** (verified load-bearing,
-2026-08-04) — do not attempt them. **W8.d** is the only survivor and lands
-AFTER W1 (it needs coordinate-scoped test runs, which the cell-bound consumers
-provide). Recommended order therefore starts on the consumer side: **W0 → W1**
-(close the consumer loop + gate G5) → **W8.d** (narrow the tier-2 run+build) →
-**W2** (sched-dim 10→1) → W3/W4/W5/W6/W7.
+2026-08-04) — do not attempt them. **W8.d** re-verified the same day: the
+per-coordinate build cut already ships as `build-test-fixtures lane=tier2`
+(#393), and the only further saving (coordinate-scoping the tier-2 RUN) is
+BLOCKED ON W4, not W1 — a coordinate run-scope needs every test cell-bound, and
+W1 bound only the 5 consumers + matrix tests.
+
+**W0 + W1 landed 2026-08-04.** Since W8.d is W4-blocked, the next consumer-side
+wave is **W2** (sched-dim 10 files → 1), then **W3/W4**; W8.d's coordinate-scoped
+tier-2 run follows W4. W5/W6/W7 after.
