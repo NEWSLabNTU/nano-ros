@@ -433,8 +433,26 @@ done
         gfile="${rest%%|*}"
         gdir="${rest#*|}"
         printf '%s:\n' "$tgt"
-        printf '\t+@echo "== workspace group: %s =="; env -u CMAKE_BUILD_PARALLEL_LEVEL NROS_WS_RECORDS_FILE=%q bash %q %q %q %q\n\n' \
-            "$gdir" "$gfile" "$0" "$platform" "${lang_filter:-}" "${id_filter:-}"
+        # Only pass filters that are actually SET. This used to interpolate
+        # `%q %q` unconditionally, sending two EMPTY positional arguments on the
+        # common path (no lang, no id). Harmless while the callee read
+        # `lang_filter="${2:-}"`; fatal the moment the parser got strict
+        # (cf3a362d6 / issue 0406): the empty string is not `--*`, so it was
+        # consumed as the lang filter, and the second empty string fell through
+        # to `*)` — "unknown option: " with nothing after the colon.
+        # `just native build-workspace-fixtures` failed outright on main.
+        #
+        # A stricter parser meeting a caller that always passed placeholders is
+        # the entire bug, and the fix belongs on the caller: it should never
+        # have been sending arguments it did not have.
+        printf '\t+@echo "== workspace group: %s =="; env -u CMAKE_BUILD_PARALLEL_LEVEL NROS_WS_RECORDS_FILE=%q bash %q %q' \
+            "$gdir" "$gfile" "$0" "$platform"
+        # Explicit `if`, not `[ … ] && printf`: under `set -e` a failing test
+        # in an AND-list is a non-zero status that aborts the script, and the
+        # common path is exactly the one where both tests fail.
+        if [ -n "${lang_filter:-}" ]; then printf ' %q' "$lang_filter"; fi
+        if [ -n "${id_filter:-}" ]; then printf ' --id %q' "$id_filter"; fi
+        printf '\n\n'
     done
 } > "$makefile"
 
