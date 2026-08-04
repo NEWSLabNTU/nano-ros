@@ -363,6 +363,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-cargo-profile"
+version = "0.5.0"
+
+[[package]]
 name = "nros-cc-flags"
 version = "0.5.0"
 dependencies = [
@@ -549,6 +553,7 @@ dependencies = [
 name = "nros-sizes-build"
 version = "0.5.0"
 dependencies = [
+ "nros-cargo-profile",
  "object",
  "serde_json",
 ]
