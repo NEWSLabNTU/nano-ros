@@ -66,6 +66,32 @@ pub fn int32_listener_line(n: impl std::fmt::Display) -> String {
     format!("{INT32_LISTENER_LOG_PREFIX} {n}")
 }
 
+/// The parameter values the `features` workspace's `param_talker` resolves to,
+/// and the two WRONG values that each name a specific resolution rule.
+///
+/// `demo_bringup/system.toml` gives the node an inline `publish_period_ms` and a
+/// LATER `params_files` entry whose `param_talker:` block sets 120 and whose
+/// `/**:` block sets 999. ROS applies parameter sources in list order, and a
+/// node's own block beats `/**` within a file, so the resolved value is 120.
+///
+/// These live here rather than in one test file because two suites assert on
+/// them — `param_live_read_e2e` (the nros<->nros half) and `params`
+/// (the `ros2 param set` reconfig half) — and they disagreed: the reconfig test
+/// waited for 250, which is the value that means the params FILE was dropped.
+/// It passed only while a stale resolver was dropping it (issue 0409), so the
+/// test encoded the bug and turned RED when the bug was fixed. One constant, one
+/// meaning.
+pub mod param_talker {
+    /// What the node must publish: the params-file value for its own block.
+    pub const RESOLVED: i64 = 120;
+    /// The inline value. Seeing it means source ORDERING was lost — an inline
+    /// value beat a later param file (play_launch issue 0007).
+    pub const ORDERING_LOST: i64 = 250;
+    /// The `/**` value. Seeing it means within-file SPECIFICITY was lost — the
+    /// wildcard block beat the node's own because it is written later.
+    pub const SPECIFICITY_LOST: i64 = 999;
+}
+
 /// The exact Int32 fixture-talker log line for value `n` (`"Published: N"`).
 pub fn int32_talker_line(n: impl std::fmt::Display) -> String {
     format!("{INT32_TALKER_LOG_PREFIX} {n}")

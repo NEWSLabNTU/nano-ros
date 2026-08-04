@@ -8,6 +8,7 @@ use nros_tests::fixtures::{
     ManagedProcess, ZenohRouter, build_int32_sink, build_native_param_talker,
     build_native_workspace_rust_params_entry, require_ros2, require_zenohd, zenohd_unique,
 };
+use nros_tests::output::param_talker;
 use rstest::rstest;
 use std::{process::Command, time::Duration};
 
@@ -454,10 +455,16 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     let mut entry =
         ManagedProcess::spawn_command(entry_cmd, "param_talker").expect("spawn param_talker");
 
-    // Baked initial (250) must be on the wire first (node up + publishing live reads).
+    // The RESOLVED initial must be on the wire first (node up + publishing live
+    // reads). This waited for 250 until issue 0409: 250 is the INLINE value, and
+    // seeing it means the later params FILE was dropped — the exact defect
+    // `param_live_read_e2e` calls ORDERING_LOST. The wait passed only while a
+    // stale resolver was dropping that file, so this test encoded the bug and
+    // went red the moment the resolver was fixed. Both halves now read one
+    // constant.
     if listener
         .wait_for_output_count(
-            nros_tests::output::int32_listener_line(250).as_str(),
+            nros_tests::output::int32_listener_line(param_talker::RESOLVED).as_str(),
             2,
             Duration::from_secs(15),
         )
@@ -465,7 +472,14 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     {
         entry.kill();
         listener.kill();
-        panic!("node never published the baked initial (250) — cannot test reconfig");
+        panic!(
+            "node never published the resolved initial ({}) — cannot test reconfig. \
+             Seeing {} instead means the params file was dropped (source ordering); \
+             seeing {} means `/**` beat the node's own block (specificity).",
+            param_talker::RESOLVED,
+            param_talker::ORDERING_LOST,
+            param_talker::SPECIFICITY_LOST
+        );
     }
 
     // Discover the param node's FQN (skip if ROS 2 ↔ nros discovery is not wire-matched).

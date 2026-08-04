@@ -21,14 +21,10 @@ use nros_tests::fixtures::{
 use rstest::rstest;
 use std::{process::Command, time::Duration};
 
-/// The value the fixture model resolves to when every resolution rule holds.
-const RESOLVED: i64 = 120;
-/// What reaches the wire if ordered param sources are folded kind-first
-/// (inline beating a later file) instead of in order.
-const ORDERING_LOST: i64 = 250;
-/// What reaches the wire if a param file's sections are merged in textual order
-/// instead of by specificity.
-const SPECIFICITY_LOST: i64 = 999;
+// The resolved value and the two wrong ones, each naming the rule it breaks.
+// Shared with `tests/params.rs` (the `ros2 param set` half) — they used to carry
+// their own numbers and disagreed about which one was correct (issue 0409).
+use nros_tests::output::param_talker::{ORDERING_LOST, RESOLVED, SPECIFICITY_LOST};
 
 /// Spawn the `param_talker` workspace entry on `locator`, spinning for `spin_ms`.
 fn spawn_param_entry(locator: &str, spin_ms: u32) -> ManagedProcess {
