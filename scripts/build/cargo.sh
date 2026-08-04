@@ -109,6 +109,48 @@ nros_cargo_profile_env() {
     _nros_profile_query env "$(nros_cargo_profile_name)"
 }
 
+# The size probe's target dir (`nros-sizes-build`). One SHARED dir instead of
+# one per OUT_DIR.
+#
+# The probe compiles the crate under test in an isolated target dir, because a
+# nested cargo pointed at the outer dir deadlocks on cargo's exclusive flock.
+# Isolation means no artifact sharing, so the default (`$OUT_DIR/…`) rebuilt the
+# same ~60-crate graph once per consumer per build dir — measured at ~420 MB and
+# a full cold compile each, ~30 times in a native lane.
+#
+# Sharing keeps the probe's feature-exact nested build (so the sizes are still
+# correct by construction, not by mtime luck); only the CACHE is reused.
+# `nros-sizes-build` appends the rustc slug itself, so two toolchains cannot mix
+# rmeta in here.
+#
+# NOT `nros_scoped_target_dir`: that roots at `$PWD`, and the fixture builders
+# invoke cargo from inside each example dir, so every leaf would get its own
+# "shared" dir. Root at the active CARGO_TARGET_DIR when set (keeps the ROS
+# distrobox's box-private tree separate from the host's — issue 0400), else at
+# the repo.
+nros_sizes_probe_dir() {
+    if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+        printf '%s' "${CARGO_TARGET_DIR}-sizes-probe"
+        return 0
+    fi
+    local repo_root="${NROS_REPO_DIR:-}"
+    if [ -z "$repo_root" ]; then
+        local _self="${BASH_SOURCE[0]:-$0}"
+        repo_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || repo_root=""
+    fi
+    if [ -n "$repo_root" ]; then
+        printf '%s' "$repo_root/build/sizes-probe"
+    fi
+}
+
+# Export it for every child (cargo, and the cmake/corrosion builds that spawn
+# cargo). An explicit setting from the caller always wins.
+if [ -z "${NROS_SIZES_PROBE_TARGET_DIR:-}" ]; then
+    _nros_probe_dir="$(nros_sizes_probe_dir)"
+    [ -n "$_nros_probe_dir" ] && export NROS_SIZES_PROBE_TARGET_DIR="$_nros_probe_dir"
+    unset _nros_probe_dir
+fi
+
 nros_cargo_frontend_jobs() {
     local jobs="${NROS_CARGO_FRONTENDS:-}"
     if [ -z "$jobs" ]; then

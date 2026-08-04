@@ -286,11 +286,20 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
     // probe dir compiled by the previous rustc; the next cargo run
     // explodes with E0514 "found crate `X` compiled by an incompatible
     // version of rustc" instead of recompiling from scratch.
+    // The rustc slug is appended in BOTH branches. It is what keeps a probe dir
+    // from mixing rmeta produced by different toolchains — switch rustup
+    // channels, or let corrosion override `CARGO_BUILD_RUSTC`, and the next
+    // nested cargo dies with E0514 ("compiled by an incompatible version of
+    // rustc") instead of recompiling.
+    //
+    // phase-336 W7: the env branch used the caller's path VERBATIM, so a
+    // SHARED probe dir — the whole point of the env knob — silently gave up
+    // that isolation. Sharing is only safe because the slug is here.
+    let rustc_slug = rustc_version_slug();
     let probe_target_dir = if let Ok(dir) = env::var("NROS_SIZES_PROBE_TARGET_DIR") {
-        PathBuf::from(dir)
+        PathBuf::from(dir).join(&rustc_slug)
     } else {
         let out_dir = env::var("OUT_DIR").map_err(|_| Error::MalformedMetadata("OUT_DIR"))?;
-        let rustc_slug = rustc_version_slug();
         PathBuf::from(out_dir).join(format!("sizes-probe-target-{rustc_slug}"))
     };
 
