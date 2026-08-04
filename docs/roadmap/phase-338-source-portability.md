@@ -359,6 +359,49 @@ it is a silent capability loss.
 bigger change than this wave assumed, and it should not be started without the
 per-platform lane time budgeted.
 
+**Per-program findings (2026-08-04), re-measured properly.** The earlier
+"every native-only marker is asserted" table was inflated by regex artifacts.
+Checked one program at a time:
+
+| program | verdict |
+|---|---|
+| `talker` | **DONE** — group body already had its whole contract |
+| `service-server` | **DONE** — group body already emitted all three asserted markers |
+| `action-server` | contract fine, but **BLOCKED at runtime** — see below |
+| `listener` | needs ONE line added to the group body |
+| `service-client`, `action-client` | not yet checked; both have real failure-mode assertions |
+
+**`listener` — option (a), one line.** `native_api.rs:926` uses
+`"Subscriber created"` as the rust listener's readiness gate
+(`.expect("rust-listener did not become ready")`), and the group body emits
+only `"I heard: [{}]"`. Adding the readiness line to the group body is additive
+and harmless for embedded, whose readiness comes from the board banner.
+
+**`action-server` — the output contract is NOT the problem; the hosted spin is.**
+The group body already emits all five asserted markers, including
+`ACTION_SERVER_READY_MARKER`, and the only gap (`"Error accepting goal"`) is
+asserted nowhere. But the migrated server **declares every entity and then never
+accepts a goal**: the client retries three times and reports "Goal was never
+accepted", with no `"Received goal request"` on the server. Reverting to the
+imperative version makes it work immediately, on the same router, first try.
+
+Not a discovery-timing artifact — reproduced with 10 s of server head start.
+
+**This is a runtime defect, not a migration problem, and it needs its own issue.**
+Node-class actions *do* work on native: the matrix carries four `Native` ×
+`Action` × `Workspace` Runtime cells, which run through
+`nros::main!(launch = …)`. The standalone path differs only in its spin:
+`__nros_hosted_spin_forever` loops on `runtime.runtime.spin_once(10)` alone,
+while the RTIC path's own comment describes the correct pattern as
+"`spin_once(ms)` + `run_ticks`, matching the owned-spin boards, so **service/
+action poll components tick**" (`main_macro.rs:2140`). A tick-driven node —
+action server, service client — therefore cannot run under
+`nros::main!(spin = "forever")`.
+
+That also predicts `service-client` will fail the same way (its group body is
+tick-driven too), and explains why `talker` and `service-server` migrated
+cleanly: neither uses `tick()`.
+
 **Step 3 — migrate the six** (`talker`, `listener`, `service-{client,server}`,
 `action-{client,server}`): `src/main.rs` becomes `src/lib.rs` carrying the Node
 trait impls plus a one-line `src/main.rs` (`nros::main!();`), and `Cargo.toml`
