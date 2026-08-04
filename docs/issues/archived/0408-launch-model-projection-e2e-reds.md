@@ -2,7 +2,7 @@
 id: 408
 title: Seven native e2e tests fail on main — per-node projection (params, remap,
   qos, component order) does not reach the wire
-status: open
+status: resolved
 type: bug
 area: orchestration
 related: [0398, 0382, phase-330, rfc-0066, 0401]
@@ -23,6 +23,29 @@ fixtures — both of those were ruled out by re-running (see Evidence).
 | `workspace_features_e2e::case_17_native_rust_remap` | `/remapped_out` never received 3 samples |
 | `declarative_bridge_zenoh_to_cyclonedds::declarative_zenoh_to_cyclonedds_nested_header_to_ros2` | stock ros2 cyclone subscriber received no bridged Header on `/header` |
 | `nano2nano::test_tls_talker_listener_communication` | Listener: expected at least 1 received messages, got 0 |
+
+## RESOLVED (2026-08-04) — all seven
+
+| Failure | Cause | Fix |
+| --- | --- | --- |
+| `case_01_native_c_custom_msg` | queryable table overflow at boot | platform-scoped `ZPICO_MAX_QUERYABLES` |
+| `case_08_native_c_qos` | same | same |
+| `case_17_native_rust_remap` | same | same |
+| `param_live_read_publishes_resolved_value` | same | same |
+| `c_param_live_read_publishes_baked_initial` | same | same |
+| `test_tls_talker_listener_communication` | IPv4-only TLS listener vs a hostname that resolves to `::1` first | harness listens `tls/[::]` |
+| `nested_header_to_ros2` | probe sidecar discarded a manifest-only topic declaration | `merge_declared_endpoints_into_winners` |
+
+Three distinct faults, each verified behaviourally rather than by test status
+alone: entries went from `NodeRegister("lifecycle")` to `application complete`;
+TLS confirmed with `strace` (`ECONNREFUSED` on `::1`, `EINVAL` on the reused
+socket) and `openssl s_client`; the bridge plan went
+`topics: ["/chatter"]` -> `["/chatter", "/header"]` with both bridge lanes
+passing.
+
+Two of the original eleven reds were load flakes that pass serially
+(`realtime_tiers::case_01_native_rust`, `large_msg::test_xrce_e2e_integrity`),
+one was the lane-coverage gap filed and fixed as #0407, and one was #0382.
 
 ## Already filed separately: component order
 

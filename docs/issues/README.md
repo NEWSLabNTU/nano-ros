@@ -188,15 +188,11 @@ across zpico-build's three riscv probes (was three copies of a two-name list, al
 provisioned `riscv-none-elf-gcc`), the shim build path now calls `detect_riscv_compiler` like the
 lib path, and the board declares `packages = ["riscv-none-elf-gcc"]`. No per-example `CC_*`.)
 
-**#408** — Seven native e2e tests fail on main, reproducibly and serially, against fixtures rebuilt
-from that exact tree: per-node PARAMS (C and Rust), REMAP, QoS, custom-msg, plus a bridge and a TLS
-case. ROOT CAUSE FOUND for the five workspace-feature ones: a service server IS a zenoh queryable,
-and ROS param services (6) + REP-2002 lifecycle services (6) overflow the 8-slot
-`ZPICO_MAX_QUERYABLES` table AT BOOT, so the entry exits before publishing and the test reports
-"listener received 0 messages". Fixed by scoping the default to the platform (32 hosted, 8 stays for
-`target_os = "none"`) + naming the knob on overflow instead of a bare `ServiceServerCreationFailed`.
-The bridge and TLS cases remain unexamined; component-order is #382. Evidence trail (incl. the
-stale-fixture trap that made one run uninterpretable) is in the issue. See `0408-*`. (2026-08-04)
+**#408** (RESOLVED 2026-08-04) — seven native e2e reds, THREE distinct faults: a queryable-table
+overflow at boot killed all five workspace-feature/param lanes (a service server is a queryable; ROS
+param services + lifecycle services need 12 slots, the default was 8), an IPv4-only TLS listener vs a
+hostname resolving to `::1` first, and a probe sidecar discarding a manifest-only topic declaration
+so the bridge lost `/header`. All fixed and verified behaviourally. See `archived/0408-*`.
 
 **#407** (RESOLVED 2026-08-04) — tier 1 selected a threadx-linux test whose fixture `lane=native`
 never builds, so `just ci` failed on a fixture it declines to build. The test had lost its platform
