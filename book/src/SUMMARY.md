@@ -81,6 +81,7 @@
 - [Custom Board Package](./porting/custom-board.md)
 - [Adding a FreeRTOS Board](./porting/freertos-board.md)
 - [Vendor Overlay Board Crate](./porting/vendor-overlay.md)
+- [Worked Example — STM32F4 Out of Tree](./porting/stm32f4-out-of-tree.md)
 - [Importing a Board Crate](./porting/board-crate-import.md)
 - [Custom Platform](./porting/custom-platform.md)
 - [Adding a Platform (CMake)](./porting/add-a-platform.md)
