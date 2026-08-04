@@ -35,7 +35,10 @@ while IFS= read -r manifest; do
     fi
     echo "  $dir" >&2
     violations=$((violations + 1))
-done < <(grep -rlE 'path = "generated/' --include=Cargo.toml packages examples 2>/dev/null | sort)
+# `git grep` over a tracked pathspec, not a recursive walk: the manifests are
+# all tracked, so this is an index lookup (check-no-tracked-file-find enforces
+# the rule; measured 7m36s -> 0.8s for the same paths).
+done < <(git grep -lE 'path = "generated/' -- 'packages/**/Cargo.toml' 'examples/**/Cargo.toml' | sort)
 
 if [ "$violations" -ne 0 ]; then
     {

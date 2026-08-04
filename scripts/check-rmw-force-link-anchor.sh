@@ -41,7 +41,9 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
     # across platforms; a gate that only read `lib.rs` reported every migrated
     # example as missing its anchor. Reading the crate rather than one file also
     # makes the gate's coverage match the rule it enforces (issue-0196).
-    src_files=$(find "$dir/src" -name '*.rs' -type f | sort)
+    # `git ls-files`, not `find`: every source here is tracked, so this is an
+    # index lookup rather than a directory walk (check-no-tracked-file-find).
+    src_files=$(git ls-files -- "$dir/src/*.rs" | sort)
     [ -n "$src_files" ] || continue
     # shellcheck disable=SC2086
     src_text=$(cat $src_files)
