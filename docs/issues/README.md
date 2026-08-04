@@ -62,14 +62,14 @@ larger: `nros::main!` consumes the model and tracks it, never seeing `system.tom
 so a plain `cargo check` with no build step still fails "SystemModel not found". See
 `archived/0414-*`. (2026-08-04)
 
-**#413** — a native Rust cyclone/xrce example pair does not deliver in a same-language pairing while
-C/C++ pairs do (phase-329 W4 run-prove). Deep dive 2026-08-04 recharacterised it: the rust cyclone
-talker AND listener PANIC `Failed to open session: Transport(ConnectionFailed)` at `Executor::open`
-— a session-OPEN failure, not a subscribe bug (type-descriptor registration, the `message_info`
-CFFI fallback, and the marker feature were all verified correct). The tested binary is 7 days stale
-and couldn't be force-rebuilt standalone; open question = whether a fresh fixture-harness rebuild
-still fails, then trace the rust cyclone participant init. Two cells carved out of
-`native_example_pubsub_e2e.rs` + `native_example_reqresp_e2e.rs`. See `0413-*`. (2026-08-04)
+Recently resolved (2026-08-04): **#413** — a native Rust cyclone/xrce example pair delivered nothing
+while C/C++ pairs did (phase-329 W4). NOT a code bug: the rust cyclone/xrce example binaries were 7
+days STALE — never rebuilt because no test had exercised those matrix cells — and the stale binary
+panicked `Transport(ConnectionFailed)` at `Executor::open`. A fresh fixture-harness rebuild made all
+cells deliver (pubsub 9/9, reqresp all green); the code was verified correct throughout
+(type-descriptor registration, the message_info CFFI fallback, the rmw-cyclonedds marker). Carves
+dropped from both consumers (`da26485e9`); the cells now run in test-all so they can't rot again.
+See `archived/0413-*`.
 
 **#412** — eight SystemModel files are tracked again under `examples/workspaces/safety`, so
 `check-no-tracked-models` (phase-330 W7.e) turns `just check-fast` RED on main. They were scooped
