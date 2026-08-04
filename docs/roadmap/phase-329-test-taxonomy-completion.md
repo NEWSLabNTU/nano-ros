@@ -120,14 +120,15 @@ visible from the file's location/consumer, not tribal memory:
   cell); the model→cell half is the remaining piece.
 
 ### W3 — ROS-interop matrix completion
-- [ ] Bind the 5 unbound live-peer files to `interop::CELLS` rows
+**Landed 2026-08-04** — 5 InteropCell rows added, each file gained `cases_bound_to_interop_cells` (G1-G4 + interop lib green). ros_editions boundary already documented in interop.rs.
+- [x] Bind the 5 unbound live-peer files to `interop::CELLS` rows
   (`bridge_zenoh_to_cyclonedds` first — it is the G4 blind spot;
   then `params` ros2-param lanes, `qos_override_e2e`,
   `cpp_multi_node_entry`, `rust_multi_node_per_node_graph`).
-- [ ] The peer requirement becomes part of the cell (`peer:` already
+- [x] The peer requirement becomes part of the cell (`peer:` already
   exists) so `just test-all` on a ROS-less host reports these as ONE
   skipped matrix, not 50 scattered skips.
-- [ ] `ros_editions_*` stays a separate matrix per RFC-0058 — document the
+- [x] `ros_editions_*` stays a separate matrix per RFC-0058 — document the
   boundary in interop.rs (already half-written in its docs).
 
 ### W4 — PLATFORM-E2E fold-in triage
