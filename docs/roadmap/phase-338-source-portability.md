@@ -306,6 +306,59 @@ compiled. Then:
    or macro layer for *every* native entry, so it is not a change to slip into an
    example migration.
 
+**Step 3 status update (2026-08-04): talker DONE; the other five are BLOCKED on
+an output-contract mismatch, and it is not mechanical.**
+
+`talker` migrated cleanly because its output contract is one line
+(`"Publishing: '...'"`) that the group body already emits. The other five do
+not have that property. Measured across all seven native-only markers sampled,
+**every one is asserted somewhere in the test suite**:
+
+| native-only marker | asserted in |
+|---|---|
+| `Timed out waiting for /add_two_ints service` | `services.rs:96,272` |
+| `Waiting for service requests` | `output.rs::SERVICE_SERVER_READY_MARKER` + zephyr |
+| `Waiting for action goals` | 2 files |
+| `Subscriber created` | 3 files |
+| `Spin error` | 2 files |
+| `Action server not confirmed within 10s` | 1 file |
+| `Failed to create action client` | 1 file |
+
+Two are load-bearing, not incidental:
+
+* **`services.rs:96` asserts a FAILURE MODE.** Its comment: "Without a server
+  the client must report a failure (and exit non-zero) rather than hanging or
+  crashing." The group's Node body does the opposite — `Err(_) => {}` silently
+  retries forever — so the test would hang, then fail.
+* **`SERVICE_SERVER_READY_MARKER` is a named constant** in `output.rs`, used as
+  a cross-platform readiness gate (zephyr keys on it for C/C++). The rust group
+  bodies never emit it, so a migrated native server would stop being detectable
+  as ready.
+
+So the native examples carry a **richer output contract than the group bodies**,
+and the suite depends on it. Copying the group body over them is not a port —
+it is a silent capability loss.
+
+**Three ways forward, for the maintainer:**
+
+(a) **Enrich the group bodies to native's contract** and then migrate. Every
+    platform gains the readiness/failure lines, which is arguably right — the
+    embedded copies are the ones under-reporting, and `SERVICE_SERVER_READY_MARKER`
+    already exists as a cross-platform concept the rust bodies fail to honour.
+    Cost: four platform bodies change, plus a re-run of each platform's lane.
+
+(b) **Move the failure-mode assertions to test bins**, the way the
+    `NROS_PUB_TYPE` switch went in step 1. "Timed out waiting" is a failure-mode
+    test, not example behaviour, and a dedicated bin could own it. Does not help
+    the readiness marker, which genuinely belongs in the example.
+
+(c) **Keep the five as declared divergences.** Honest, cheap, and leaves `talker`
+    as the one program that means the same thing everywhere.
+
+(a) is the real fix and the only one that ends with the five migrated. It is a
+bigger change than this wave assumed, and it should not be started without the
+per-platform lane time budgeted.
+
 **Step 3 — migrate the six** (`talker`, `listener`, `service-{client,server}`,
 `action-{client,server}`): `src/main.rs` becomes `src/lib.rs` carrying the Node
 trait impls plus a one-line `src/main.rs` (`nros::main!();`), and `Cargo.toml`
