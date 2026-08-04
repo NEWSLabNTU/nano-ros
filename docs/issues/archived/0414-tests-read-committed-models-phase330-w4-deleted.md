@@ -106,7 +106,24 @@ one answer to "where is it".
     -> 10 passed
   nros-cli-core -E 'binary(entry_typed_plan)' -> 1 passed
 
-## Still open, and bigger than this issue
+## Closed 2026-08-04 — `nros::main!` now resolves from inputs
+
+The section below was written when the macro only LOOKED for the artifact. It
+does not any more: `model_location::ensure_model()` returns a build-produced
+model when one exists and otherwise runs `nros-launch-resolve` over the
+bringup's `system.toml` + launch file itself, and the macro registers the INPUTS
+as its build dependencies rather than the artifact.
+
+Verified on a copied-out fixture with no build system, no `$NROS_MODEL_DIR` and
+no committed model: `cargo check` resolves and compiles; an unchanged re-check
+REUSES the model (no rewrite, so no rebuild loop); touching `system.toml`
+re-resolves. Covered by
+`native_main_macro_misuse::resolves_the_model_from_inputs_without_a_build_system`.
+
+`rebuilds_on_model_touch` still touches the artifact — that one is about cargo's
+tracked-file stamp, and the input-touch path is now covered by the new test.
+
+## Originally recorded as still open
 
 **`nros::main!` consumes the model, not the inputs.** The macro resolves
 `config/system_model.yaml` (build-output copy first, via
