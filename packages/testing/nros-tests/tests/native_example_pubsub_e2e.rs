@@ -7,17 +7,21 @@
 //! THEN their delivery cases fold in and the duplicate is deleted. Nothing is
 //! removed by this commit, so coverage cannot regress.
 //!
-//! **RMW scope: ZENOH only, run-proven 2026-08-04** (rust + C + C++ pairs
-//! deliver over an ephemeral `zenohd`). The cyclone and xrce native pubsub
-//! cells are DEFERRED — the first run showed their pairs do not deliver with the
-//! isolation env replicated from the existing tests (rust/cyclone failed with
-//! the correct marker), a per-RMW setup problem to root-cause before they join
-//! the filter. Until then those cells keep running under their current hand
-//! tests; the `matches!(c.rmw, Zenoh)` filter clause is the boundary.
-//!
-//! Each cell boots a talker + a listener of the SAME language on the ephemeral
-//! `zenohd` (both dial `NROS_LOCATOR`) and proves the listener sees ≥3 `I heard:`
-//! lines — the plain example pair is String on both ends in every language.
+//! Covers 7 of the 9 native pubsub cells, run-proven 2026-08-04: all three
+//! zenoh cells + C/C++ over cyclone + C/C++ over xrce. The rust cyclone and rust
+//! xrce cells are CARVED (see the filter): the rust same-language listener gets
+//! zero delivery there, an unproven product path no existing test exercises.
+//! Each boots a same-language talker + listener and
+//! proves the listener sees the `I heard:` marker (the plain example pair is
+//! String on both ends in every language), under the isolation + env each RMW
+//! needs — faithful to the working `nano2nano`/`native_api`/`xrce.rs` tests:
+//! - **zenoh** — ephemeral `zenohd`; both dial `NROS_LOCATOR`; assert ≥3.
+//! - **cyclone** — unique `ROS_DOMAIN_ID` + `LD_LIBRARY_PATH=build/install/lib`
+//!   (the cyclone libs load at runtime; without it the backend is dead and
+//!   nothing delivers — the first run's root cause). Listener readiness +
+//!   settle; assert ≥2.
+//! - **xrce** — ephemeral Agent + `XRCE_MSG_COUNT` bounded receive; readiness +
+//!   settle; assert ≥1.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test native_example_pubsub_e2e`.
 
@@ -108,11 +112,15 @@ fn native_example_pubsub() {
                 && matches!(c.kind, MK::Example)
                 && matches!(c.workload, MW::Pubsub)
                 && matches!(c.tier, MT::Runtime)
-                // ZENOH only for now: run-prove (2026-08-04) showed the cyclone
-                // and xrce native pubsub pairs do NOT deliver with the isolation
-                // env here (rust/cyclone failed with the correct marker), a
-                // per-RMW setup problem to be root-caused before those cells join.
-                && matches!(c.rmw, MR::Zenoh)
+                // Carve: the RUST same-language listener over cyclone/xrce gets
+                // ZERO delivery (run-prove 2026-08-04) while c/cpp pairs deliver
+                // — and no existing test exercises a rust cyclone/xrce LISTENER
+                // (native_api pairs a rust cyclone TALKER with c/cpp listeners),
+                // so this is an unproven product path, not a harness bug. Left to
+                // root-cause before these two coordinates join. The other 7 cells
+                // (all zenoh + c/cpp cyclone + c/cpp xrce) are run-proven green.
+                && !(matches!(c.lang, ML::Rust)
+                    && matches!(c.rmw, MR::Cyclonedds | MR::Xrce))
         })
         .collect();
     assert!(
@@ -180,7 +188,10 @@ fn run_cell(cell: &MCell) {
     let mut _zenohd: Option<ZenohRouter> = None;
     let mut _agent: Option<XrceAgent> = None;
 
-    match cell.rmw {
+    // Per-RMW recipe, faithful to the working `native_api`/`xrce.rs` tests:
+    // (min delivered samples to assert, whether the listener needs a
+    // ready-marker + stabilisation wait before the talker starts).
+    let (min_count, needs_settle) = match cell.rmw {
         MR::Zenoh => {
             if !require_zenohd() {
                 nros_tests::skip!("zenohd not found");
@@ -190,11 +201,28 @@ fn run_cell(cell: &MCell) {
             talker_cmd.env("NROS_LOCATOR", router.locator());
             listener_cmd.env("NROS_LOCATOR", router.locator());
             _zenohd = Some(router);
+            (3, false)
         }
         MR::Cyclonedds => {
+            // The cyclone example binaries load libcyclonedds from
+            // `build/install/lib` at runtime; without LD_LIBRARY_PATH the
+            // backend never initialises and NOTHING delivers (this was the
+            // 2026-08-04 root cause). Mirrors `native_api::spawn_cyclone_binary`.
             let domain = unique_ros_domain_id().to_string();
-            talker_cmd.env("ROS_DOMAIN_ID", &domain);
-            listener_cmd.env("ROS_DOMAIN_ID", &domain);
+            let cyclone_lib = nros_tests::project_root().join("build/install/lib");
+            let ldp = match std::env::var_os("LD_LIBRARY_PATH") {
+                Some(existing) if !existing.is_empty() => {
+                    let mut paths = vec![cyclone_lib];
+                    paths.extend(std::env::split_paths(&existing));
+                    std::env::join_paths(paths).expect("valid LD_LIBRARY_PATH")
+                }
+                _ => cyclone_lib.into_os_string(),
+            };
+            for cmd in [&mut talker_cmd, &mut listener_cmd] {
+                cmd.env("ROS_DOMAIN_ID", &domain)
+                    .env("LD_LIBRARY_PATH", &ldp);
+            }
+            (2, true)
         }
         MR::Xrce => {
             if !require_xrce_agent() {
@@ -209,14 +237,24 @@ fn run_cell(cell: &MCell) {
                     .env("XRCE_AGENT_ADDR", &addr)
                     .env("ROS_DOMAIN_ID", &domain);
             }
+            // The XRCE listener runs a bounded receive loop of XRCE_MSG_COUNT
+            // (mirrors `xrce.rs::test_xrce_talker_listener_communication`).
+            listener_cmd.env("XRCE_MSG_COUNT", "3");
             _agent = Some(agent);
+            (1, true)
         }
         MR::Uorb => nros_tests::skip!("uorb has no native pubsub example cell"),
-    }
+    };
 
     // Listener first, so its subscription is live before the talker publishes.
     let mut listener_proc = ManagedProcess::spawn_command(listener_cmd, "native-example-listener")
         .unwrap_or_else(|e| panic!("[{}] spawn listener: {e}", rmw_str(cell.rmw)));
+    // Cyclone/xrce discovery is slower — wait for the listener's ready marker,
+    // then let the subscription propagate before the talker publishes.
+    if needs_settle {
+        let _ = listener_proc.wait_for_output_pattern("Waiting for", Duration::from_secs(30));
+        std::thread::sleep(Duration::from_secs(2));
+    }
     let mut talker_proc = ManagedProcess::spawn_command(talker_cmd, "native-example-talker")
         .unwrap_or_else(|e| {
             listener_proc.kill();
@@ -224,13 +262,13 @@ fn run_cell(cell: &MCell) {
         });
 
     let out = listener_proc
-        .wait_for_output_count(prefix, 3, Duration::from_secs(20))
+        .wait_for_output_count(prefix, min_count, Duration::from_secs(25))
         .unwrap_or_else(|_| {
             talker_proc.kill();
             listener_proc.kill();
             panic!(
-                "[{}/{}] listener never saw 3 `{prefix}` deliveries — native pubsub delivery \
-                 did not work",
+                "[{}/{}] listener never saw {min_count} `{prefix}` deliveries — native pubsub \
+                 delivery did not work",
                 lang_str(lang),
                 rmw_str(cell.rmw)
             )
@@ -240,8 +278,8 @@ fn run_cell(cell: &MCell) {
 
     let n = nros_tests::count_pattern(&out, prefix);
     assert!(
-        n >= 3,
-        "[{}/{}] expected ≥3 deliveries, got {n}",
+        n >= min_count,
+        "[{}/{}] expected ≥{min_count} deliveries, got {n}",
         lang_str(lang),
         rmw_str(cell.rmw)
     );
