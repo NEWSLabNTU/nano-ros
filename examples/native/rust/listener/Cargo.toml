@@ -9,9 +9,21 @@ publish = false
 name = "listener"
 path = "src/main.rs"
 
+# phase-338 W3 — node logic moved to a lib so it is byte-identical to every
+# other platform's copy; `main.rs` is the platform glue (`nros::main!()`).
+[lib]
+name = "native_rs_listener"
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
 # Phase 212.L.2 — Application pkg shape. Native-only deploy target.
-[package.metadata.nros.application]
-deploy = ["native"]
+[package.metadata.nros.entry]
+deploy = "native"
+
+[package.metadata.nros.node]
+class = "native_rs_listener::Listener"
+name = "listener"
+default_namespace = "/"
 
 [features]
 # Phase 118 — RMW selected at build time. Default is `rmw-zenoh`

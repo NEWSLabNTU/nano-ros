@@ -1,7 +1,18 @@
-//! FreeRTOS QEMU MPS2-AN385 Listener — Phase 212.L Node pkg.
+//! Native Listener — the official ROS 2 `demo_nodes_cpp` listener.
 //!
-//! Subscribes to `std_msgs/String` on `/chatter` and logs each message
-//! (`I heard: [Hello World: N]`). The BSP-generated runtime owns init / executor / spin.
+//! Subscribes `std_msgs/String` on `/chatter` and prints
+//! `I heard: [Hello World: N]`.
+//!
+//! Node pkg shape: `register()` declares the node + subscription and logs the
+//! readiness marker; `on_callback("on_chatter")` handles each message.
+//! `main.rs`'s `nros::main!()` and the board own `nros::init`, executor open,
+//! RMW registration and the spin loop.
+//!
+//! phase-338 W3 — was an `[package.metadata.nros.application]` example written
+//! against the imperative Executor API. Now Node-class like every other
+//! platform's copy, byte-identical to them (the `example_portability` gate
+//! asserts it). The "Subscriber created" readiness line `native_api.rs` gates
+//! on was added to every group copy so this one did not have to diverge.
 
 #![no_std]
 
