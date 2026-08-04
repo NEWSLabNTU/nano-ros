@@ -145,11 +145,6 @@ fn native_example_reqresp() {
                 && matches!(c.kind, MK::Example)
                 && matches!(c.workload, MW::Service | MW::Action)
                 && matches!(c.tier, MT::Runtime)
-                // Carve (issue #0413 class): the rust cyclone/xrce SUBSCRIBE side
-                // is unproven (see native_example_pubsub_e2e). Req/resp relies on
-                // the same reader path, so carve rust×{cyclone,xrce} until #0413.
-                && !(matches!(c.lang, ML::Rust)
-                    && matches!(c.rmw, MR::Cyclonedds | MR::Xrce))
         })
         .collect();
     assert!(

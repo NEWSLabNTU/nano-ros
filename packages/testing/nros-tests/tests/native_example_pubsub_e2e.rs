@@ -7,11 +7,11 @@
 //! THEN their delivery cases fold in and the duplicate is deleted. Nothing is
 //! removed by this commit, so coverage cannot regress.
 //!
-//! Covers 7 of the 9 native pubsub cells, run-proven 2026-08-04: all three
-//! zenoh cells + C/C++ over cyclone + C/C++ over xrce. The rust cyclone and rust
-//! xrce cells are CARVED (see the filter): the rust same-language listener gets
-//! zero delivery there, an unproven product path no existing test exercises.
-//! Each boots a same-language talker + listener and
+//! Covers all 9 native pubsub cells (rust/c/cpp × zenoh/cyclone/xrce),
+//! run-proven 2026-08-04 on FRESH fixtures. (The rust cyclone/xrce cells were
+//! briefly carved when they failed on a 7-day-stale example binary — issue
+//! #0413 — resolved once a fresh rebuild delivered.) Each boots a same-language
+//! talker + listener and
 //! proves the listener sees the `I heard:` marker (the plain example pair is
 //! String on both ends in every language), under the isolation + env each RMW
 //! needs — faithful to the working `nano2nano`/`native_api`/`xrce.rs` tests:
@@ -112,14 +112,6 @@ fn native_example_pubsub() {
                 && matches!(c.kind, MK::Example)
                 && matches!(c.workload, MW::Pubsub)
                 && matches!(c.tier, MT::Runtime)
-                // Carve (issue #0413): the RUST same-language listener over
-                // cyclone/xrce gets ZERO delivery while c/cpp pairs deliver — an
-                // unproven product path (no test exercises a rust cyclone/xrce
-                // LISTENER), not a harness bug. Drop this clause once #0413 makes
-                // a rust pair deliver. The other 7 cells (all zenoh + c/cpp
-                // cyclone + c/cpp xrce) are run-proven green.
-                && !(matches!(c.lang, ML::Rust)
-                    && matches!(c.rmw, MR::Cyclonedds | MR::Xrce))
         })
         .collect();
     assert!(
