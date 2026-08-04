@@ -417,6 +417,45 @@ path populates `components` the way the launch path does. Not confirmed; do not
 treat as the answer.
 
 
+**The action envelope mismatch — diagnosed 2026-08-04, NOT fixed, and it needs
+its own issue + probably an RFC.** This is the second half of what blocked
+`action-server`, after the type-name bug (fixed, `d63832006`).
+
+With type names corrected, a goal is accepted, executed and succeeds — but the
+typed client still fails feedback (`Transport(DeserializationError)`) and result
+(`ServiceRequestFailed`). The cause is a **payload envelope difference, and it is
+deliberate**:
+
+`nros/src/node.rs` serializes raw action feedback and results **with a CDR
+encapsulation header inside the envelope**, so the wire carries
+`[outer header][goal_id][INNER header][body]`. Both sites document it, and the
+result one documents the failure mode of removing it naively:
+
+> "Without the header the reader eats the first data word (e.g. a sequence
+> length) → empty/garbage payload (issue #35 M-F.23 follow-up: action result
+> `sequence` deserialized to len 0)."
+
+ROS 2 expects a **single** header. So the raw path is self-consistent — nano-ros
+raw publisher ↔ nano-ros raw consumer agree — and wire-incompatible with both
+ROS 2 and nano-ros's own TYPED path. Exactly the shape of the type-name bug, one
+layer down.
+
+**Why this is not a quick fix.** `new_with_header` is the convention on the
+consumer side too, and it spans `nros-node`'s executor (`action_core`, `arena`,
+`handles`) **and the generated C++ message exports**
+(`rosidl-codegen/packs/cpp/message_exports.rs.jinja`). Changing the envelope
+means changing the publisher, every Rust raw consumer, the generated C++/ffi
+consumers, and re-verifying the embedded and C++ lanes — a cross-language wire
+change, not a local edit. It likely deserves an RFC: the decision is "which
+envelope is canonical", and the answer that makes nano-ros interoperable
+(ROS 2's) invalidates a convention several layers already encode.
+
+**Consequence worth stating plainly:** raw-registered action servers and clients
+have never been wire-compatible with ROS 2 on feedback or result payloads. The
+type-name fix made them *discoverable*; this makes them *usable*. Until both
+land, `action-server` / `action-client` / `service-client` cannot migrate to
+Node-class on native, because the native counterparts use the typed path.
+
 **Step 3 — migrate the six** (`talker`, `listener`, `service-{client,server}`,
 `action-{client,server}`): `src/main.rs` becomes `src/lib.rs` carrying the Node
 trait impls plus a one-line `src/main.rs` (`nros::main!();`), and `Cargo.toml`
