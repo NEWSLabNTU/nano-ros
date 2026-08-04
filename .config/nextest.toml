@@ -379,7 +379,7 @@ retries = 1
 # other Zephyr native_sim (NSOS) QEMU-class lanes below (cold boot + zenoh
 # discovery flakes under host load).
 [[profile.default.overrides]]
-filter = "binary(zephyr_edf_deadline_applied) or binary(zephyr_core_pin_applied) or (binary(realtime_tiers_e2e) and (test(zephyr_rust) or test(zephyr_cpp) or test(zephyr_c)))"
+filter = "(binary(realtime_tiers_e2e) and (test(zephyr_rust) or test(zephyr_cpp) or test(zephyr_c)))"
 test-group = "zephyr-realtime-rust-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
@@ -387,7 +387,7 @@ retries = 2
 # phase-296 W5.9 — serialize the shared nuttx cpp realtime image/port; QEMU
 # lane timeout/retries mirror the nuttx cells' own budget.
 [[profile.default.overrides]]
-filter = "binary(nuttx_sporadic_budget_applied) or (binary(realtime_tiers_e2e) and test(nuttx_arm_cpp))"
+filter = "(binary(realtime_tiers_e2e) and test(nuttx_arm_cpp))"
 test-group = "nuttx-realtime-cpp-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
@@ -395,14 +395,14 @@ retries = 2
 # phase-302 W5 (issue 0263) — the RUST arm's tier-priority marker e2e shares
 # the nuttx rust realtime image/port with its realtime cell; serialize them.
 [[profile.default.overrides]]
-filter = "binary(nuttx_tier_priority_applied) or (binary(realtime_tiers_e2e) and test(nuttx_arm_rust))"
+filter = "(binary(realtime_tiers_e2e) and test(nuttx_arm_rust))"
 test-group = "nuttx-realtime-rust-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
 # phase-296 W5.10 — see [test-groups.threadx-realtime-rust-port].
 [[profile.default.overrides]]
-filter = "binary(threadx_preempt_threshold_applied) or binary(threadx_core_pin_applied) or binary(threadx_time_slice_applied) or (binary(realtime_tiers_e2e) and test(threadx_linux_rust))"
+filter = "(binary(realtime_tiers_e2e) and test(threadx_linux_rust))"
 test-group = "threadx-realtime-rust-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
@@ -410,7 +410,7 @@ retries = 2
 # phase-296 W5.11 — serialize the nuttx-arm RUST core-pin e2e with the shared
 # realtime image/port; QEMU lane timeout/retries mirror the nuttx cells.
 [[profile.default.overrides]]
-filter = "binary(nuttx_core_pin_applied) or (binary(realtime_tiers_e2e) and test(nuttx_arm_rust))"
+filter = "(binary(realtime_tiers_e2e) and test(nuttx_arm_rust))"
 test-group = "nuttx-realtime-rust-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
@@ -418,7 +418,7 @@ retries = 2
 # phase-296 W5.11 — serialize the freertos CPP core-pin e2e with the shared
 # realtime image/port; same QEMU throttle as the other freertos lanes.
 [[profile.default.overrides]]
-filter = "binary(freertos_core_pin_applied) or (binary(realtime_tiers_e2e) and test(freertos_cpp))"
+filter = "(binary(realtime_tiers_e2e) and test(freertos_cpp))"
 test-group = "freertos-realtime-cpp-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
@@ -744,3 +744,24 @@ max-threads = 4
 filter = "binary(~freertos) or binary(~nuttx) or binary(~threadx) or binary(~zephyr) or binary(~esp32) or binary(~fvp) or binary(~stm32)"
 test-group = "qemu-emulated"
 
+# phase-329 W2 consolidated ten `*_applied` binaries into ONE
+# `sched_dims_applied_e2e::sched_dims_applied` that iterates every sched-dim
+# cell IN ONE PROCESS. The six overrides above named the deleted binaries and
+# nothing named the survivor, which broke `cargo nextest` outright — an
+# override whose `binary(...)` matches nothing is a hard config error, so every
+# filtered run failed to start, not just the realtime ones.
+#
+# The survivor boots the zephyr / nuttx / threadx / freertos images the groups
+# above serialize, so it gets max-threads = 1 and their slowest budget. NOTE the
+# residual: nextest groups bound concurrency WITHIN a group, so this test can
+# still run alongside `realtime_tiers_e2e` cells that share those ports. If it
+# flakes that way, the fix is to merge it into those groups rather than to widen
+# the timeout.
+[test-groups.sched-dims-serial]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(sched_dims_applied_e2e)"
+test-group = "sched-dims-serial"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
