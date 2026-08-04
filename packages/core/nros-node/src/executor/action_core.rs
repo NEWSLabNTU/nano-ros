@@ -43,6 +43,41 @@ pub(crate) fn action_service_base_type<'a>(
         .unwrap_or(fallback_action_type)
 }
 
+/// The per-channel DDS type name for a RAW-registered action server.
+///
+/// The typed path derives these from `A::SendGoalRequest::TYPE_NAME` via
+/// [`action_service_base_type`]. The raw path (`register_action_server_raw*`)
+/// has only the BARE action type, so it must construct them — and until
+/// phase-338 W3 it did not, advertising `…Fibonacci_` on send_goal / get_result
+/// / feedback where ROS 2 expects `…Fibonacci_SendGoal_`,
+/// `…Fibonacci_GetResult_` and `…Fibonacci_FeedbackMessage_`. The type name is
+/// baked into the keyexpr, so a client's query never matched the server's
+/// queryable and every goal timed out with `Transport(Timeout)` — exactly the
+/// failure [`action_service_base_type`]'s own doc warns about, on the other
+/// registration path.
+///
+/// `action_type` is DDS-form and ends in `_` (`…::dds_::Fibonacci_`); the
+/// result replaces that suffix with `_<Channel>_`. Returns the bare type
+/// unchanged if it has an unexpected shape, matching the typed path's
+/// fallback.
+pub(crate) fn action_channel_type<const N: usize>(
+    action_type: &str,
+    channel: &str,
+) -> heapless::String<N> {
+    let mut out: heapless::String<N> = heapless::String::new();
+    let base = action_type.strip_suffix('_').unwrap_or(action_type);
+    if out.push_str(base).is_err()
+        || out.push('_').is_err()
+        || out.push_str(channel).is_err()
+        || out.push('_').is_err()
+    {
+        let mut fallback: heapless::String<N> = heapless::String::new();
+        let _ = fallback.push_str(action_type);
+        return fallback;
+    }
+    out
+}
+
 /// Scratch buffer for serializing a `GoalStatusArray` before publishing it
 /// on the status topic. 512 bytes holds the CDR header plus a status entry
 /// (`GoalInfo` + status enum) for every concurrently-tracked goal.

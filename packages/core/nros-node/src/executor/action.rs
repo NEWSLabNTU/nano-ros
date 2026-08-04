@@ -586,9 +586,22 @@ impl<'s> Executor<'s> {
             feedback_publisher,
             status_publisher,
         ) = {
+            // phase-338 W3 — ROS 2 matches these by their PER-CHANNEL types, not
+            // the bare action type. The typed path derives them from
+            // `A::SendGoalRequest::TYPE_NAME`; the raw path has only the bare
+            // type, and advertising it here left send_goal / get_result /
+            // feedback undiscoverable, so every goal timed out.
+            let send_goal_type: heapless::String<256> =
+                super::action_core::action_channel_type(type_name, "SendGoal");
+            let get_result_type: heapless::String<256> =
+                super::action_core::action_channel_type(type_name, "GetResult");
+            let feedback_type: heapless::String<256> =
+                super::action_core::action_channel_type(type_name, "FeedbackMessage");
+
             let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
             let mut send_goal_info =
-                ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_namespace(&ns);
+                ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash)
+                    .with_namespace(&ns);
             if !node_name.is_empty() {
                 send_goal_info = send_goal_info.with_node_name(&node_name);
             }
@@ -606,14 +619,15 @@ impl<'s> Executor<'s> {
 
             let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
             let mut get_result_info =
-                ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_namespace(&ns);
+                ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash)
+                    .with_namespace(&ns);
             if !node_name.is_empty() {
                 get_result_info = get_result_info.with_node_name(&node_name);
             }
 
             let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
             let mut feedback_topic =
-                TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_namespace(&ns);
+                TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash).with_namespace(&ns);
             if !node_name.is_empty() {
                 feedback_topic = feedback_topic.with_node_name(&node_name);
             }
@@ -1035,9 +1049,21 @@ impl<'s> Executor<'s> {
         };
 
         let (send_goal_client, cancel_goal_client, get_result_client, feedback_sub) = {
+            // phase-338 W3 — per-channel types, matching the raw SERVER path.
+            // Both raw sides used the bare action type, so nano-ros talked to
+            // itself but was invisible to any `rcl_action` peer; fixing only one
+            // side would have broken the self-consistent pairs instead.
+            let send_goal_type: heapless::String<256> =
+                super::action_core::action_channel_type(type_name, "SendGoal");
+            let get_result_type: heapless::String<256> =
+                super::action_core::action_channel_type(type_name, "GetResult");
+            let feedback_type: heapless::String<256> =
+                super::action_core::action_channel_type(type_name, "FeedbackMessage");
+
             let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
             let mut send_goal_info =
-                ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_namespace(&ns);
+                ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash)
+                    .with_namespace(&ns);
             if !node_name.is_empty() {
                 send_goal_info = send_goal_info.with_node_name(&node_name);
             }
@@ -1055,14 +1081,15 @@ impl<'s> Executor<'s> {
 
             let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
             let mut get_result_info =
-                ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_namespace(&ns);
+                ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash)
+                    .with_namespace(&ns);
             if !node_name.is_empty() {
                 get_result_info = get_result_info.with_node_name(&node_name);
             }
 
             let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
             let mut feedback_topic =
-                TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_namespace(&ns);
+                TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash).with_namespace(&ns);
             if !node_name.is_empty() {
                 feedback_topic = feedback_topic.with_node_name(&node_name);
             }
@@ -1185,9 +1212,21 @@ impl<'s> Executor<'s> {
         };
 
         let (send_goal_client, cancel_goal_client, get_result_client, feedback_sub) = {
+            // phase-338 W3 — per-channel types, matching the raw SERVER path.
+            // Both raw sides used the bare action type, so nano-ros talked to
+            // itself but was invisible to any `rcl_action` peer; fixing only one
+            // side would have broken the self-consistent pairs instead.
+            let send_goal_type: heapless::String<256> =
+                super::action_core::action_channel_type(type_name, "SendGoal");
+            let get_result_type: heapless::String<256> =
+                super::action_core::action_channel_type(type_name, "GetResult");
+            let feedback_type: heapless::String<256> =
+                super::action_core::action_channel_type(type_name, "FeedbackMessage");
+
             let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
             let mut send_goal_info =
-                ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_namespace(&ns);
+                ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash)
+                    .with_namespace(&ns);
             if !node_name.is_empty() {
                 send_goal_info = send_goal_info.with_node_name(&node_name);
             }
@@ -1203,13 +1242,14 @@ impl<'s> Executor<'s> {
             }
             let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
             let mut get_result_info =
-                ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_namespace(&ns);
+                ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash)
+                    .with_namespace(&ns);
             if !node_name.is_empty() {
                 get_result_info = get_result_info.with_node_name(&node_name);
             }
             let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
             let mut feedback_topic =
-                TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_namespace(&ns);
+                TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash).with_namespace(&ns);
             if !node_name.is_empty() {
                 feedback_topic = feedback_topic.with_node_name(&node_name);
             }
