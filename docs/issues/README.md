@@ -87,6 +87,14 @@ consumer reads the body with `new_with_header`), and removing it producer-only r
 issue-#35 corruption its comment warns about, so producer and consumer must change together. This is
 what stops phase-338 W3 migrating `action-{server,client}` / `service-client`. Decision in
 [RFC-0069](../design/0069-action-payload-envelope.md). See `0418-*`. (2026-08-05)
+(#416 resolved 2026-08-05 — `nros sync`'s source digest pruned build dirs by EXACT name, so it skipped
+`target/` and walked straight INTO `target-tls` / `target-zenoh` / `target-xrce` / … , the isolated
+build dirs `fixtures.toml` gives feature-variant rows. It then read every artifact it found, racing
+cargo's own temporaries, and `just build-test-fixtures lane=native` died at a random fixture naming
+an `rmeta`/`.o` path. RESOLVED by recognising a cargo build dir instead of listing names —
+`CACHEDIR.TAG` plus a `target-` prefix for the not-yet-built case. Listing the dirs would have been
+the hand-maintained-exclude-list shape issue 0287 already replaced. See `archived/0416-*`.)
+
 **#415** — `nros::main!` picks the framework emit shape from a hardcoded **deploy-string** table,
 while `nros ws check` reads `[package.metadata.nros.board] framework` off the board crate. Two
 spellings of one fact, and the macro's falls through to `OwnedSpin` on an unknown key — a silently
