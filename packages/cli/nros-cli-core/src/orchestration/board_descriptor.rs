@@ -8,7 +8,7 @@
 //!
 //! Discovery is uniform: every `packages/boards/*/nros-board.toml` is loaded
 //! (crate-backed boards put the file in their crate dir; the crate-less host
-//! boards — `posix`, `zephyr`, `orin-spe` — get a descriptor-only dir under
+//! boards — `posix`, `zephyr` — get a descriptor-only dir under
 //! `packages/boards/`). A file holds a `[[board]]` array so one crate can back
 //! several boards (e.g. `nros-board-nuttx-qemu` → arm virt + rv-virt,
 //! differing only by `chip`).
@@ -170,7 +170,7 @@ pub struct BoardDescriptor {
     #[serde(default)]
     pub chip: Option<String>,
     /// Board crate to depend on; `None` for crate-less host boards
-    /// (posix / zephyr / orin-spe) that pull static or `nros-platform-cffi` deps.
+    /// (posix / zephyr) that pull static or `nros-platform-cffi` deps.
     #[serde(default)]
     pub board_crate: Option<String>,
     /// Board-crate path relative to the workspace root; defaults to
@@ -472,6 +472,55 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
         );
     }
 
+    /// Read a FreeRTOS config header and INLINE its relative `#include "..."`
+    /// siblings, so the caller sees the same text the compiler does.
+    ///
+    /// phase-337 W5.a hoisted the shared body of `FreeRTOSConfig.h` into
+    /// `nros-board-freertos/config/`, leaving each board's copy as two
+    /// `#define`s plus a relative include. The agreement gate below reads that
+    /// file directly, so from W5.a until phase-337 W7.b it saw NO
+    /// `configSUPPORT_DYNAMIC_ALLOCATION` at all and read it as `0` — the gate
+    /// went red while the thing it guards was fine. A gate that stops at the
+    /// first file is narrower than the rule it enforces (the issue-0196 class),
+    /// so it follows the include instead.
+    ///
+    /// Deliberately NOT a C preprocessor: it resolves `#include "relative/path"`
+    /// against the including file's directory, depth-first, and ignores
+    /// `#include <system>` and any conditional compilation. That is exactly the
+    /// shape these config headers use, and anything richer would be a second
+    /// implementation of cpp living in a test.
+    fn read_freertos_config(path: &std::path::Path) -> Option<String> {
+        fn walk(path: &std::path::Path, depth: usize, out: &mut String) {
+            // A cycle or a pathological chain must not hang the test suite.
+            if depth > 8 {
+                return;
+            }
+            let Ok(src) = std::fs::read_to_string(path) else {
+                return;
+            };
+            let dir = path.parent().unwrap_or(std::path::Path::new("."));
+            for line in src.lines() {
+                let trimmed = line.trim();
+                if let Some(rest) = trimmed.strip_prefix("#include")
+                    && let Some(open) = rest.find('"')
+                    && let Some(close) = rest[open + 1..].find('"')
+                {
+                    let rel = &rest[open + 1..open + 1 + close];
+                    walk(&dir.join(rel), depth + 1, out);
+                    continue;
+                }
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        if !path.exists() {
+            return None;
+        }
+        let mut out = String::new();
+        walk(path, 0, &mut out);
+        Some(out)
+    }
+
     /// `#define <name> <val>` is present with a non-zero `<val>` (the FreeRTOS
     /// idiom for an enabled feature). Absent or `0` → false.
     fn freertos_define_is_one(src: &str, name: &str) -> bool {
@@ -510,7 +559,10 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
                 continue;
             };
             let cfg = root.join(&rel).join("config/FreeRTOSConfig.h");
-            let Ok(src) = std::fs::read_to_string(&cfg) else {
+            // Follows the W5.a relative include into `nros-board-freertos`; a
+            // board with no co-located config at all yields `None` and is
+            // skipped, exactly as before.
+            let Some(src) = read_freertos_config(&cfg) else {
                 continue; // board without a co-located config — nothing to cross-check
             };
             let caps = d.capabilities();
