@@ -1,7 +1,7 @@
 ---
 id: 409
 title: setup-launch-resolve exits 0 when the submodule is missing, so a stale resolver silently strips every model's hand-authored params
-status: open
+status: resolved
 type: bug
 area: tooling
 related: [0380, 0285, 0363, rfc-0060, rfc-0063, phase-330, phase-332]
@@ -91,8 +91,32 @@ wrong: an `unknown` stamp on either side, or a resolver predating `--version`,
 proceeds rather than breaking legitimate installs. Verified on all four paths
 (match, mismatch, no `--version`, unknown).
 
-**Still open — 3.** `nros sync` does not yet assert that the projection actually
-happened. Direction 3 needs restating: phase-330 W7.e BANNED committed
+**3. `nros sync` asserts the projection happened (2026-08-04).**
+`verify_params_projected` runs on the STAGED model before it is promoted, so a
+bad resolve cannot overwrite a good model. It separates the two absences that
+look identical in the file: a node from the declaring package EXISTS without
+params (the projection had a target and produced nothing — data loss) versus no
+such node at all (legitimate when the component is absent from this variant).
+
+The discriminator is the resolver's own `meta.diagnostics` entry ("declares
+params but has no matching launch node"): a correct resolver reports the unbound
+case, a stale one emits neither params NOR diagnostics. That turns the side
+finding below from noise into the mechanism. Matching is by PACKAGE, not
+component name, for the same reason — the names deliberately differ in
+`features/`.
+
+Five unit tests pin it, and `bridge-cyclonedds`, `mixed`, `rust`, `features` and
+`safety` all sync rc=0 with a current resolver.
+
+## RESOLVED (2026-08-04)
+
+Closed from three sides: the recipe cannot silently produce nothing (1), `sync`
+cannot run a resolver it cannot vouch for (2), and a resolve that loses declared
+params cannot be promoted (3). Direction 4 (doctor) landed with 1.
+
+The side finding below — `features/` launch node names not matching
+`[[component]].name`s — is still worth cleaning up, but it is now load-bearing
+in a good way: it is the case direction 3 must not report as data loss. Direction 3 needs restating: phase-330 W7.e BANNED committed
 models (`check-no-tracked-models`), so there is no committed artifact left to
 gate — the equivalent watcher is a post-resolve assertion inside `nros sync`
 that every `params` / `params_files` declaration in `system.toml` either appears

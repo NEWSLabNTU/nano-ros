@@ -74,15 +74,12 @@ appearances: seven regenerate byte-identically (the only diff is a `meta.inputs`
 launch file was deleted in `9748f7ae3` when two sessions fixed the same problem at once, leaving a
 generated file with no producer. Delete all eight; nothing needs authoring. See `0412-*`. (2026-08-04)
 
-**#409** — `just setup-launch-resolve` exits **0** without building when the `play_launch` submodule
-is uninitialised, so `nros sync` resolves with whatever stale `nros-launch-resolve` is on disk. A
-binary predating phase-332 has no `apply_params_to_nodes`, so **every `[[component]].params` /
-`params_files` declaration silently vanishes from the generated model** — issue 0380's class, with
-no gate watching it (`check-model-dims` covers `execution.tiers`, not `structure.nodes[].params`).
-Found via `just ci-matrix`: 25 failures clustered in `features/`, e.g. qos_override_e2e panicking
-"the fixture's whole point is this override; model params: {}" while `system.toml` declared it.
-Initialising the submodule and rebuilding changed 22 models (+108 lines) — the committed models
-were wrong in the repo, not just locally. See `0409-*`. (2026-08-04)
+**#409** (RESOLVED 2026-08-04) — `setup-launch-resolve` exited 0 without building, so `nros sync` ran
+a stale resolver that silently dropped every `params`/`params_files` projection (22 models stripped,
+no error). Closed from three sides: the recipe now fails (and its opt-out DELETES the stale binary),
+`sync` refuses a resolver whose play_launch pin is not its own (crate versions cannot tell them
+apart — both read 0.5.0), and a resolve that loses declared params cannot be promoted. See
+`archived/0409-*`.
 
 Recently resolved (2026-08-04): **#410** — a git worktree inside the checkout is claimed by the OUTER
 workspace. `.claude/worktrees/agent-*` sits under the main checkout, so cargo's walk-up from a package

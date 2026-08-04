@@ -421,6 +421,133 @@ pub struct ModelDecl {
 
 /// Read `[[model]]` declarations from a bringup's `system.toml`. A malformed or
 /// absent table yields none — the derived defaults still apply.
+/// issue 0409 direction 3 — a resolved model must actually CARRY the params its
+/// inputs declared.
+///
+/// The stale-resolver failure was silent because nothing checked the output: a
+/// binary predating `apply_params_to_nodes` writes a well-formed model with
+/// every `[[component]].params` / `params_files` quietly absent.
+///
+/// The check has to separate two absences that look identical in the file:
+///
+/// - **dropped** — the launch tree HAS the node, so the projection had a target
+///   and produced nothing. That is the data loss.
+/// - **unbound** — the component declares params but this variant's launch tree
+///   contains no matching node. Legitimate (a component absent from one
+///   variant), and `features/`'s bringups do it today because W2b prefixed the
+///   component names while the launch files kept the bare ones.
+///
+/// A correct resolver already reports the second case in `meta.diagnostics`
+/// ("declares params but has no matching launch node"), so its DIAGNOSTIC is
+/// the evidence that it considered the declaration at all. A stale one emits
+/// neither params nor diagnostics — which is exactly what this rejects.
+///
+/// Matching is by PACKAGE, not by name: the node records `pkg`, and the
+/// component/node name mismatch above would make a name comparison report
+/// dropped params for every correctly-unbound component.
+fn verify_params_projected(model_path: &Path, system_toml: &Path) -> Result<()> {
+    if !system_toml.is_file() {
+        return Ok(());
+    }
+    let Ok(raw) = std::fs::read_to_string(system_toml) else {
+        return Ok(());
+    };
+    let Ok(sys) = toml::from_str::<toml::Value>(&raw) else {
+        return Ok(());
+    };
+    // (component name, pkg) for every component declaring params.
+    let declaring: Vec<(String, String)> = sys
+        .get("component")
+        .and_then(|c| c.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|c| {
+                    c.get("params").and_then(|p| p.as_table()).is_some_and(|t| !t.is_empty())
+                        || c.get("params_files")
+                            .and_then(|p| p.as_array())
+                            .is_some_and(|a| !a.is_empty())
+                })
+                .filter_map(|c| {
+                    Some((
+                        c.get("name")?.as_str()?.to_string(),
+                        c.get("pkg")?.as_str()?.to_string(),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if declaring.is_empty() {
+        return Ok(());
+    }
+
+    let Ok(text) = std::fs::read_to_string(model_path) else {
+        return Ok(());
+    };
+    let Ok(model) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&text) else {
+        return Ok(());
+    };
+
+    let diagnostics: String = model
+        .get("meta")
+        .and_then(|m| m.get("diagnostics"))
+        .and_then(|d| d.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|d| d.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+
+    let nodes = model
+        .get("structure")
+        .and_then(|s| s.get("nodes"))
+        .and_then(|n| n.as_mapping());
+
+    let mut dropped: Vec<String> = Vec::new();
+    for (name, pkg) in &declaring {
+        // A node from this component's package, if the variant instantiates one.
+        let node = nodes.and_then(|m| {
+            m.iter().find(|(_, v)| {
+                v.get("pkg").and_then(|p| p.as_str()) == Some(pkg.as_str())
+            })
+        });
+        match node {
+            Some((key, value)) => {
+                let has_params = value
+                    .get("params")
+                    .and_then(|p| p.as_mapping())
+                    .is_some_and(|m| !m.is_empty());
+                if !has_params {
+                    dropped.push(format!(
+                        "  `{name}` (pkg {pkg}) → node {} has no params",
+                        key.as_str().unwrap_or("?")
+                    ));
+                }
+            }
+            None if diagnostics.contains(name.as_str()) => {} // reported unbound: legitimate
+            None => dropped.push(format!(
+                "  `{name}` (pkg {pkg}) → no node from this pkg, and no diagnostic explaining why"
+            )),
+        }
+    }
+
+    if dropped.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "the resolver did not project these declared params (issue 0409):\n{}\n\n\
+         A resolver predating `apply_params_to_nodes` (rlm v0.1.1) writes a well-formed\n\
+         model with every `params` / `params_files` silently absent. Rebuild it:\n\
+         \n    just setup-launch-resolve\n\
+         \n\
+         If a component is deliberately absent from this variant, the resolver says so in\n\
+         `meta.diagnostics` and this check accepts it — an empty diagnostics list next to a\n\
+         declaring component is the signal that nothing looked at the declaration.",
+        dropped.join("\n")
+    )
+}
+
 fn system_toml_model_decls(system_toml: &Path) -> Vec<ModelDecl> {
     let Ok(raw) = std::fs::read_to_string(system_toml) else {
         return Vec::new();
@@ -905,6 +1032,13 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                     String::from_utf8_lossy(&out.stderr),
                 );
             }
+            // issue 0409 direction 3 — assert the resolver actually PERFORMED the
+            // params projection before promoting the staged file. Everything
+            // upstream of here verifies the TOOL; this verifies the OUTPUT, which
+            // is the property that was silently lost.
+            verify_params_projected(&staged, &system_toml).wrap_err_with(|| {
+                format!("sync: resolved model for `{}` is missing data", pkg.name)
+            })?;
             std::fs::rename(&staged, &model)
                 .wrap_err_with(|| format!("sync: commit resolved model {}", model.display()))?;
             if verbose {
@@ -4442,5 +4576,107 @@ nros-zephyr-build = { path = "../../packages/tooling/nros-zephyr-build" }  # nro
 
         // No existing managed block (fresh leaf) -> nothing to narrow.
         assert!(narrowed_generated_entries("", &new_names, &requested).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod params_projection_tests {
+    use super::*;
+
+    /// Write a `system.toml` + model pair into a scratch dir and run the check.
+    fn check(system_toml: &str, model_yaml: &str) -> Result<()> {
+        let dir = tempfile::TempDir::new().unwrap();
+        let sys = dir.path().join("system.toml");
+        let model = dir.path().join("system_model.yaml");
+        std::fs::write(&sys, system_toml).unwrap();
+        std::fs::write(&model, model_yaml).unwrap();
+        verify_params_projected(&model, &sys)
+    }
+
+    const DECLARING: &str = r#"
+[[component]]
+pkg = "c_param_talker_pkg"
+class = "c_param_talker_pkg::Talker"
+name = "c_params_param_talker"
+params = { "an_int" = 42 }
+"#;
+
+    /// The projection happened: the node from that pkg carries params.
+    #[test]
+    fn projected_params_pass() {
+        let model = r#"
+meta:
+  version: 1
+structure:
+  nodes:
+    /param_talker:
+      pkg: c_param_talker_pkg
+      params:
+        an_int: 42
+"#;
+        assert!(check(DECLARING, model).is_ok());
+    }
+
+    /// issue 0409 — the node EXISTS and has no params. The projection had a
+    /// target and produced nothing: that is the silent data loss.
+    #[test]
+    fn dropped_params_are_rejected() {
+        let model = r#"
+meta:
+  version: 1
+structure:
+  nodes:
+    /param_talker:
+      pkg: c_param_talker_pkg
+"#;
+        let err = check(DECLARING, model).unwrap_err().to_string();
+        assert!(err.contains("did not project"), "unexpected error: {err}");
+        assert!(err.contains("c_params_param_talker"), "must name the component: {err}");
+        assert!(err.contains("setup-launch-resolve"), "must give the remedy: {err}");
+    }
+
+    /// A component absent from THIS variant is legitimate — and a correct
+    /// resolver says so. The diagnostic is the evidence it looked.
+    #[test]
+    fn unbound_component_with_a_diagnostic_passes() {
+        let model = r#"
+meta:
+  version: 1
+  diagnostics:
+  - "system config: [[component]] 'c_params_param_talker' declares params but has no matching launch node (absent in this variant?)"
+structure:
+  nodes:
+    /other:
+      pkg: some_other_pkg
+"#;
+        assert!(check(DECLARING, model).is_ok());
+    }
+
+    /// No node AND no diagnostic: nothing considered the declaration. That is
+    /// the stale-resolver signature — it emits neither params nor diagnostics.
+    #[test]
+    fn unbound_without_a_diagnostic_is_rejected() {
+        let model = r#"
+meta:
+  version: 1
+structure:
+  nodes:
+    /other:
+      pkg: some_other_pkg
+"#;
+        let err = check(DECLARING, model).unwrap_err().to_string();
+        assert!(err.contains("no diagnostic explaining why"), "unexpected error: {err}");
+    }
+
+    /// A bringup that declares no params is not this check's business.
+    #[test]
+    fn no_declarations_is_a_no_op() {
+        let sys = r#"
+[[component]]
+pkg = "plain_pkg"
+class = "plain_pkg::Talker"
+name = "plain"
+"#;
+        assert!(check(sys, "meta:\n  version: 1\n").is_ok());
     }
 }
