@@ -167,10 +167,16 @@ native files corrected the plan; the "~40 deletions" target was optimistic:
   (rust/cyclone failed WITH the right marker). So the consumer is now **ZENOH
   only** and GREEN: rust + C + C++ native zenoh pubsub pairs deliver ≥3 (`cargo
   test --test native_example_pubsub_e2e` = 1 passed). REMAINING:
-  1. **Root-cause cyclone + xrce native pubsub delivery** (per-RMW env — check
-     the #233/#234 native-cyclone service tests' env, the xrce.rs locator), then
-     drop the `Zenoh`-only filter clause. Until then those cells run under their
-     current hand tests.
+  1. **Cyclone + xrce delivery — ROOT-CAUSED + fixed for C/C++ (2026-08-04).**
+     Cyclone needed `LD_LIBRARY_PATH=build/install/lib` (the libs load at
+     runtime; absent it the backend is dead — the first run's silent failure);
+     xrce needed `XRCE_MSG_COUNT` + a readiness/settle wait; per-RMW min-count
+     (zenoh 3 / cyclone 2 / xrce 1). **7 of 9 cells now run-proven GREEN.** The
+     rust cyclone + rust xrce cells are CARVED: the rust same-language listener
+     gets ZERO delivery and no existing test exercises a rust cyclone/xrce
+     listener (native_api pairs a rust cyclone TALKER with c/cpp listeners) — an
+     unproven PRODUCT path, likely a real gap to file as its own issue, not a
+     harness bug.
   2. **Fold `nano2nano`** — but it is NOT a pure duplicate: its router-delivery
      case folds into the consumer (which supersedes it for rust + adds c/cpp),
      while its DIRECT-discovery and sequence-consistency variants are one-offs to
