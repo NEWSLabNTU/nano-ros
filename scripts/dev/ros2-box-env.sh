@@ -59,7 +59,25 @@ export NROS_HOME="${NROS_HOME:-$HOME/.nros-box}"
 # Keeping it next to the repo puts the box's build tree on the same filesystem
 # that already holds the host's `target/`, so whoever sized that disk sized
 # this too. Override CARGO_TARGET_DIR to move it elsewhere.
-export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(cd -P "$_nros_box_root/.." && pwd -P)/.cargo-target-box}"
+# issues 0400/0401 — CARGO_TARGET_DIR is only needed while the box SHARES the
+# host's checkout. `scripts/dev/ros2-box-sync.sh` gives the box its own tree, and
+# then redirecting is actively harmful: the fixture contract is LEAF-RELATIVE
+# (`examples/**/target-<rmw>/…`), so moving cargo's output puts fixtures where
+# the tests do not look — the build reports success and every test fails STALE
+# against whatever the host left behind (0401).
+#
+# So: in a box-owned tree, do NOT redirect. Cargo writes to the leaf paths the
+# fixture contract names, inside a tree the host never touches, and the
+# host/box artifact hazards (0400) have no shared tree to occur in.
+#
+# Sharing the host tree is still supported — that is what a checkout with no
+# `.nros-box-tree` marker means — and keeps the redirect, because there the
+# alternative is host-built build scripts dying on GLIBC.
+if [ -f "$_nros_box_root/.nros-box-tree" ]; then
+    unset CARGO_TARGET_DIR
+else
+    export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(cd -P "$_nros_box_root/.." && pwd -P)/.cargo-target-box}"
+fi
 export CARGO_INSTALL_ROOT="${CARGO_INSTALL_ROOT:-$HOME/.local-box}"
 
 # `nros sync` runs the launch resolver by ABSOLUTE path (issue 0285) and its
@@ -68,7 +86,12 @@ export CARGO_INSTALL_ROOT="${CARGO_INSTALL_ROOT:-$HOME/.local-box}"
 # libpython3.10, and NEITHER loads on the other side, so whoever built last
 # broke the other (issue 0400). The CLI already honours an explicit override,
 # so point it at the box's own build, which lands under CARGO_TARGET_DIR above.
-export NROS_LAUNCH_RESOLVE="${NROS_LAUNCH_RESOLVE:-$CARGO_TARGET_DIR/release/nros-launch-resolve}"
+if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+    export NROS_LAUNCH_RESOLVE="${NROS_LAUNCH_RESOLVE:-$CARGO_TARGET_DIR/release/nros-launch-resolve}"
+fi
+# In a box-owned tree the resolver builds to its normal in-tree path and the CLI
+# finds it there — no override, and #409's pin check now catches a mismatch
+# rather than relying on this env var being right.
 
 cd "$_nros_box_root" || return 1
 

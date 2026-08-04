@@ -40,6 +40,43 @@ paths, and every path-keyed cache then splits in two.
 prerequisites, `rmw_cyclonedds_cpp`, `rmw_fastrtps_cpp`, `domain_bridge`,
 `example_interfaces`, `rosidl_adapter`, colcon and rosdep, then verifies each.
 
+## The box gets its OWN tree (issues 0400, 0401)
+
+Host and box originally shared this checkout, and every build artifact in it is
+glibc- and toolchain-specific. That produced a different failure each time it
+surfaced — a host-built `build-script-build` dying on `GLIBC_2.39`, a
+host-configured CMake cache reusing `sccache` and then missing `strlcpy`, a
+host-built `nros` that cannot exec, fixtures written where the tests do not
+look. Five separate incidents, one premise.
+
+Redirecting the box's `CARGO_TARGET_DIR` cannot fix it: the fixture contract is
+LEAF-RELATIVE (`examples/**/target-<rmw>/…`), so moving cargo's output puts
+fixtures somewhere the tests never stat (issue 0401). The two mechanisms are
+mutually exclusive.
+
+So the box builds in its own tree:
+
+```sh
+bash scripts/dev/ros2-box-sync.sh          # host -> <checkout>-box, one way
+DBX_CONTAINER_MANAGER=docker distrobox enter ros2 -- bash -c '
+    cd /path/to/<checkout>-box && . scripts/dev/ros2-box-env.sh && just ci'
+```
+
+A MIRROR, not `git worktree`: a worktree cannot check out the branch the host
+has, and carries only committed state — the normal loop is edit, build in the
+box, test, and a worktree would test the last commit instead of the edit. The
+mirror includes `.git` (build stamps and the #409 play_launch pin check read
+it) and excludes every build output.
+
+Re-run `nros sync` inside the box for anything you build there: leaf
+`.cargo/config.toml` files carry absolute paths (RFC-0048 W9), so a mirrored
+leaf still points at the source tree. Same rule as any moved checkout.
+
+`ros2-box-env.sh` detects a box-owned tree by its `.nros-box-tree` marker and
+does NOT redirect `CARGO_TARGET_DIR` there. A checkout without the marker is
+treated as shared and keeps the old redirect, because there the alternative is
+host-built build scripts dying on glibc.
+
 ## Using it
 
 ```sh

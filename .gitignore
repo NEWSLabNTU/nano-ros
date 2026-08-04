@@ -170,3 +170,4 @@ packages/core/*/include/nros/.*.tmp.*
 .agents/
 skills-lock.json
 third-party/ros/
+.nros-box-tree

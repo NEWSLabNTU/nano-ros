@@ -2,7 +2,7 @@
 id: 401
 title: The distrobox's CARGO_TARGET_DIR and the fixture path contract are
   mutually exclusive — fixtures build into the wrong tree, tests look in target/
-status: open
+status: resolved
 type: bug
 area: testing
 related: [0400, 0375, 0285]
@@ -85,3 +85,39 @@ elsewhere — that check is what would have caught this in one run.
 Found finishing tier 1 in the box for the issue-0383 `-Werror` work
 (2026-08-03). Not caused by that change. `just check` passes in the box; this
 only affects the fixture/test half.
+
+## RESOLVED (2026-08-04) — the box got its own tree
+
+Both issues were the same premise: host and box sharing one checkout whose build
+artifacts are glibc- and toolchain-specific. Fixing instances did not converge —
+five in one session (build scripts, CMake caches, the CLI, the resolver, fixture
+paths), each real, each a symptom.
+
+`scripts/dev/ros2-box-sync.sh` mirrors the working tree (uncommitted edits
+included, `.git` included, every build output excluded) into `<checkout>-box`,
+and `ros2-box-env.sh` detects the `.nros-box-tree` marker and does NOT redirect
+`CARGO_TARGET_DIR` there. Cargo then writes to the LEAF paths the fixture
+contract names, inside a tree the host never touches — which is what 0401 said
+redirection could never give: the two mechanisms are mutually exclusive, and the
+tree split removes the conflict instead of trading one hole for another.
+
+A mirror rather than `git worktree`, deliberately: a worktree cannot check out
+the branch the host has, and carries only COMMITTED state — the loop here is
+edit, build in the box, test, and a worktree would test the last commit.
+
+Verified: box `just setup-cli` produced a working box CLI and left the host's
+binary untouched (previously each overwrote the other); a fixture built in the
+box landed at `examples/native/rust/talker/target/nros-fast-release/talker` —
+the exact path the test-side resolver stats — inside the box tree.
+
+A checkout WITHOUT the marker is still treated as shared and keeps the redirect:
+there the alternative is host-built build scripts dying on glibc, so the old
+behaviour remains correct for that case.
+
+Caveat, documented in the script and the guide: `nros sync` writes absolute
+paths into leaf `.cargo/config.toml` files, so a mirrored leaf still points at
+the source tree until re-synced in the box. Same rule as any moved checkout.
+
+The narrower guards from this session stay as defence in depth: the CMake
+compiler-version cache guard, `nros_scoped_target_dir` for ephemeral dirs, the
+per-side resolver path, and the SDK store honouring `NROS_HOME`.

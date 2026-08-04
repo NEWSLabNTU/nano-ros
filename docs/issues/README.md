@@ -229,21 +229,15 @@ token to the phase-221 naming audit, which predates the token-matching lane filt
 made the token load-bearing; restored as `logging_smoke_threadx_linux_captures_stderr`. See
 `archived/0407-*`.
 
-**#401** — The box's `CARGO_TARGET_DIR` (which exists so the box never re-runs a host-built build
-script against its older glibc) and the LEAF-RELATIVE fixture path contract are mutually exclusive:
-fixtures build into the box's tree, tests stat `examples/**/target/...`, and the build truthfully
-reports success for files written elsewhere. Worst case is a developer who also built on the host —
-the tests then find the HOST binary and report it STALE, which reads as a fixture-ordering bug and is
-not one. 138/1244 tests failed this way. See `0401-*`. (2026-08-03)
+**#401** (RESOLVED 2026-08-04) — the box's CARGO_TARGET_DIR and the LEAF-RELATIVE fixture path
+contract were mutually exclusive: redirecting put fixtures where tests never stat, so a truthful
+"built" report met a wholly red test run. Resolved by the same tree split as #400 — no redirect in a
+box-owned tree, so cargo writes the leaf paths the contract names. See `archived/0401-*`.
 
-**#400** — A distrobox run and a host run share `target-embedded/`: `check-workspace-embedded`
-hard-sets a RELATIVE `CARGO_TARGET_DIR`, which escapes the box env's redirect, so the box re-runs a
-host-built `build-script-build` and dies on `GLIBC_2.39 not found` while naming an unrelated crate
-(`nros-rmw-cffi`). The recipe's own hint points at a different cause ("declare the new crate
-host-only"), which is what makes it expensive. Same shape for `target-zenoh`, `target-xrce`,
-`target-tls` and the ros-edition dirs. Filed as 0398 first (a racy fallback id that collided with
-the entry above) and renumbered — three commit subjects still read `0398`, mapped in the issue.
-See `0400-*`. (2026-08-03)
+**#400** (RESOLVED 2026-08-04) — host and box shared one checkout whose artifacts are glibc- and
+toolchain-specific; five instances in one session (build scripts, CMake caches, the CLI, the
+resolver, the SDK store). Fixed at the premise: the box now mirrors into its OWN tree
+(`scripts/dev/ros2-box-sync.sh`) and stops redirecting CARGO_TARGET_DIR there. See `archived/0400-*`.
 
 Recently resolved: **#391** — ThreadX-RV64 C fixture lane built wrong-from-clean + a museum binary
 passed the staleness gate. RESOLVED (2026-08-02, `8ef697c95`): (1) the cmake configure helpers now
