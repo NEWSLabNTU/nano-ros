@@ -637,8 +637,12 @@ pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<Pa
 // which is how a test could look for a fixture in a directory the builder never
 // wrote to.
 fn cargo_profile_name() -> String {
-    env::var("NROS_CARGO_PROFILE")
-        .unwrap_or_else(|_| nros_cargo_profile::DEFAULT_PROFILE.to_string())
+    // EMPTY counts as unset. The justfile exports `NROS_CARGO_PROFILE := ""` so
+    // the table owns the default (phase-336 W3) — but `env::var` returns
+    // `Ok("")` for a set-but-empty variable, so `unwrap_or_else` never fires and
+    // the profile name became "". Every fixture path then resolved through
+    // `target//<binary>` and 110 tests reported their binary as not prebuilt.
+    nros_cargo_profile::profile_or_default(env::var("NROS_CARGO_PROFILE").ok().as_deref())
 }
 
 pub(crate) fn cargo_target_profile_dir() -> String {

@@ -186,6 +186,23 @@ pub fn resolve(build_type: Option<&str>) -> Result<&'static str, UnknownBuildTyp
         })
 }
 
+/// The profile named by an env var, treating EMPTY as unset.
+///
+/// The justfile exports `NROS_CARGO_PROFILE := ""` so this table owns the
+/// default rather than a literal evaluated at justfile parse time. Rust's
+/// `env::var` returns `Ok("")` for a set-but-empty variable, so a plain
+/// `unwrap_or(DEFAULT)` silently yields `""` — and an empty profile name builds
+/// paths like `target//<binary>`, which is how 110 tests once reported their
+/// binaries as missing. Shell and cmake callers already treat empty as unset;
+/// this is that rule for Rust, in one place.
+pub fn profile_or_default(value: Option<&str>) -> String {
+    value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(DEFAULT_PROFILE)
+        .to_string()
+}
+
 /// Is this a profile nano-ros defines (and may therefore inject)?
 pub fn is_nros_preset(profile: &str) -> bool {
     preset(profile).is_some()
@@ -306,6 +323,17 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("Coverage"), "{msg}");
         assert!(msg.contains("NROS_CARGO_PROFILE"), "{msg}");
+    }
+
+    #[test]
+    fn empty_env_means_unset_not_an_empty_profile() {
+        assert_eq!(profile_or_default(None), DEFAULT_PROFILE);
+        assert_eq!(profile_or_default(Some("")), DEFAULT_PROFILE);
+        assert_eq!(profile_or_default(Some("   ")), DEFAULT_PROFILE);
+        assert_eq!(profile_or_default(Some("release")), "release");
+        // An empty name would build `target//<bin>`; assert the dir is never
+        // empty for the value this returns.
+        assert!(!target_dir(&profile_or_default(Some(""))).is_empty());
     }
 
     #[test]
