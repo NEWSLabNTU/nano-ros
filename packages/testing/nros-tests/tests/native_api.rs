@@ -9,18 +9,15 @@
 //! tests (interop tests that always pair with Rust, the C++ goal-rejection
 //! test, the C action blocking case) stay as named functions below.
 //!
-//! **Bucket (phase-329 W4 disposition):** most of this file is genuine one-offs
-//! that no matrix cell covers, and stays — cross-LANGUAGE interop pairs
-//! (`*_interop_*`, `c_rust_*`), the RFC-0041 callback-shape variants
-//! (`*_callback`), the C++ goal-rejection path, the MIXED cyclone pairs (rust
-//! talker ↔ c/cpp listener), and the threadx-linux ↔ native cross-PLATFORM
-//! cyclone interop. FOLD-ELIGIBLE (same-language delivery now duplicated by the
-//! matrix consumers `native_example_pubsub_e2e` / `native_example_reqresp_e2e`),
-//! to remove in a focused pass with the cascade cleanup its shared cyclone
-//! helpers need: `test_native_talker_listener_communication` (rust zenoh
-//! pubsub), `test_native_service_communication` (c/cpp zenoh service),
-//! `test_native_cyclonedds_service` + `test_native_cyclonedds_action` (c/cpp
-//! cyclone). The rust cyclone/xrce cases stay until issue #0413.
+//! **Bucket (phase-329 W4):** genuine one-offs no matrix cell covers, and stays
+//! — cross-LANGUAGE interop pairs (`*_interop_*`, `c_rust_*`), the RFC-0041
+//! callback-shape variants (`*_callback`), the C++ goal-rejection path, the MIXED
+//! cyclone pairs (rust talker ↔ c/cpp listener), and the threadx-linux ↔ native
+//! cross-PLATFORM cyclone interop. The four same-language delivery cases that
+//! duplicated the matrix consumers (`test_native_talker_listener_communication`
+//! rust-zenoh pubsub; `test_native_service_communication` c/cpp-zenoh service;
+//! `test_native_cyclonedds_{service,action}` c/cpp-cyclone) were FOLDED into
+//! `native_example_pubsub_e2e` / `native_example_reqresp_e2e` (phase-329 W4).
 //!
 //! Consolidates what used to be `c_api.rs` + `cpp_api.rs` (Phase 85.1).
 
@@ -28,10 +25,9 @@ use nros_tests::{
     count_pattern,
     fixtures::{
         ManagedProcess, Rmw, ZenohRouter, build_c_action_client, build_c_action_server,
-        build_c_listener, build_c_service_client, build_c_service_client_callback,
-        build_c_service_server, build_c_talker, build_cpp_action_client,
-        build_cpp_action_client_callback, build_cpp_action_server, build_cpp_listener,
-        build_cpp_service_client, build_cpp_service_client_callback, build_cpp_service_server,
+        build_c_listener, build_c_service_client_callback, build_c_service_server, build_c_talker,
+        build_cpp_action_client, build_cpp_action_client_callback, build_cpp_action_server,
+        build_cpp_listener, build_cpp_service_client_callback, build_cpp_service_server,
         build_cpp_talker, build_native_c_example_rmw, build_native_cpp_example_rmw,
         build_native_listener_rmw, build_native_service_client_callback, build_native_talker_rmw,
         require_cmake, require_zenohd, zenohd_unique,
@@ -122,15 +118,6 @@ impl Language {
             Language::Cpp => build_cpp_service_server(),
         }
         .unwrap_or_else(|e| skip_missing_fixture("native service server", e))
-        .to_path_buf()
-    }
-
-    fn service_client_binary(&self) -> PathBuf {
-        match self {
-            Language::C => build_c_service_client(),
-            Language::Cpp => build_cpp_service_client(),
-        }
-        .unwrap_or_else(|e| skip_missing_fixture("native service client", e))
         .to_path_buf()
     }
 
@@ -301,124 +288,6 @@ fn test_native_action_server_starts(
         "{} action server failed to initialize.\nOutput:\n{}",
         lang.label(),
         output
-    );
-}
-
-// =============================================================================
-// Pub/Sub communication (parametrised)
-// =============================================================================
-
-#[rstest]
-fn test_native_talker_listener_communication(
-    zenohd_unique: ZenohRouter,
-    #[values(Language::C, Language::Cpp)] lang: Language,
-) {
-    if !require_native_env() {
-        return;
-    }
-    let locator = zenohd_unique.locator();
-    let listener_bin = lang.listener_binary();
-    let talker_bin = lang.talker_binary();
-
-    let mut listener = spawn_native(&listener_bin, lang, "listener", &locator);
-
-    // Wait for the listener to subscribe. Both C and C++ listeners
-    // print "Waiting for messages" once `create_subscription` returns.
-    // Keep the consumed output — the init assertion below greps it.
-    let listener_boot_output = listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
-        .expect("listener did not become ready");
-
-    let mut talker = spawn_native(&talker_bin, lang, "talker", &locator);
-
-    // Fixed wait for the talker to publish a handful of messages.
-    // Replacing this with a count-based pattern is a Phase 85 follow-up
-    // (the talker never exits on its own, so there's no natural marker).
-    std::thread::sleep(Duration::from_secs(6));
-
-    let talker_output = talker
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    eprintln!("{} talker output:\n{}", lang.label(), talker_output);
-
-    let listener_tail = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    let listener_output = listener_boot_output + &listener_tail;
-    eprintln!("{} listener output:\n{}", lang.label(), listener_output);
-
-    assert!(
-        listener_output.contains(lang.init_marker()),
-        "{} listener failed to initialize.\nOutput:\n{}",
-        lang.label(),
-        listener_output
-    );
-
-    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
-    eprintln!(
-        "{} listener received {} messages",
-        lang.label(),
-        received_count
-    );
-    assert!(
-        received_count >= 3,
-        "Expected at least 3 messages, got {}.\nOutput:\n{}",
-        received_count,
-        listener_output
-    );
-}
-
-// =============================================================================
-// Service communication (parametrised)
-// =============================================================================
-
-#[rstest]
-fn test_native_service_communication(
-    zenohd_unique: ZenohRouter,
-    #[values(Language::C, Language::Cpp)] lang: Language,
-) {
-    if !require_native_env() {
-        return;
-    }
-    let locator = zenohd_unique.locator();
-    let server_bin = lang.service_server_binary();
-    let client_bin = lang.service_client_binary();
-
-    let mut server = spawn_native(&server_bin, lang, "service-server", &locator);
-    // Server prints nros_tests::output::SERVICE_SERVER_READY_MARKER after queryable registration.
-    server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
-        .expect("service server did not become ready");
-
-    let mut client = spawn_native(&client_bin, lang, "service-client", &locator);
-
-    // Client makes ONE blocking call (the official demo default `2 3`) then
-    // exits, logging `Result of add_two_ints: 5` (phase-277 W5 wording).
-    let client_output = client
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
-
-    let server_output = server
-        .wait_for_all_output(Duration::from_secs(1))
-        .unwrap_or_default();
-    server.kill();
-
-    eprintln!("{} service client output:\n{}", lang.label(), client_output);
-    eprintln!("{} service server output:\n{}", lang.label(), server_output);
-
-    assert!(
-        client_output.contains(&service_result_line(5)),
-        "Expected `{}` from the {} client.\nOutput:\n{}",
-        service_result_line(5),
-        lang.label(),
-        client_output
-    );
-    assert!(
-        server_output.contains("Incoming request") && server_output.contains("a: 2 b: 3"),
-        "Expected the {} server to log the official two-line request form.\nOutput:\n{}",
-        lang.label(),
-        server_output
     );
 }
 
@@ -1424,54 +1293,6 @@ fn cyclone_role_binary(lang: Language, case: &str) -> PathBuf {
     })
 }
 
-/// Native CycloneDDS service server ↔ client (AddTwoInts).
-#[rstest]
-fn test_native_cyclonedds_service(#[values(Language::C, Language::Cpp)] lang: Language) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
-    let domain = next_cyclonedds_domain();
-    let server_bin = cyclone_role_binary(lang, "service-server");
-    let client_bin = cyclone_role_binary(lang, "service-client");
-
-    let mut server = spawn_cyclone_binary(
-        &server_bin,
-        &format!("{}-cyclonedds-service-server", lang.tag()),
-        &domain,
-    );
-    let _ = server.wait_for_output_pattern(
-        nros_tests::output::SERVICE_SERVER_READY_MARKER,
-        Duration::from_secs(30),
-    );
-    let mut client = spawn_cyclone_binary(
-        &client_bin,
-        &format!("{}-cyclonedds-service-client", lang.tag()),
-        &domain,
-    );
-
-    let client_out = client
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(30))
-        .unwrap_or_default();
-    std::thread::sleep(Duration::from_millis(500));
-    let server_out = server
-        .wait_for_output_pattern("Incoming request", Duration::from_secs(2))
-        .unwrap_or_default();
-    client.kill();
-    server.kill();
-
-    eprintln!(
-        "{} Cyclone service client:\n{client_out}\n--- server ---\n{server_out}",
-        lang.label()
-    );
-    let calls = count_pattern(&client_out, SERVICE_RESULT_PREFIX);
-    let handled = count_pattern(&server_out, "Incoming request");
-    assert!(
-        calls >= 1 || handled >= 1,
-        "{} Cyclone service roundtrip produced no calls/requests.\nclient:\n{client_out}\nserver:\n{server_out}",
-        lang.label()
-    );
-}
-
 /// issue #233 cell 1 — native **Rust** CycloneDDS service pair.
 ///
 /// The Rust cyclone SERVICE path was flagged BuildOnly-unproven by the
@@ -1634,53 +1455,6 @@ fn test_native_cyclonedds_service_callback(#[values(Language::C, Language::Cpp)]
     assert!(
         cb >= 1,
         "{} Cyclone callback service roundtrip produced no callback-dispatched replies.\nclient:\n{client_out}",
-        lang.label()
-    );
-}
-
-/// Native CycloneDDS action server ↔ client (Fibonacci goal → feedback → result).
-#[rstest]
-fn test_native_cyclonedds_action(#[values(Language::C, Language::Cpp)] lang: Language) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
-    // Both action servers print the shared W5 ready marker; both clients end
-    // with the `Result received: [...]` terminal line.
-    let (server_ready, client_done): (&str, &str) =
-        (ACTION_SERVER_READY_MARKER, ACTION_RESULT_PREFIX);
-    let domain = next_cyclonedds_domain();
-    let server_bin = cyclone_role_binary(lang, "action-server");
-    let client_bin = cyclone_role_binary(lang, "action-client");
-
-    let mut server = spawn_cyclone_binary(
-        &server_bin,
-        &format!("{}-cyclonedds-action-server", lang.tag()),
-        &domain,
-    );
-    let _ = server.wait_for_output_pattern(server_ready, Duration::from_secs(30));
-    let mut client = spawn_cyclone_binary(
-        &client_bin,
-        &format!("{}-cyclonedds-action-client", lang.tag()),
-        &domain,
-    );
-
-    let client_out = client
-        .wait_for_output_pattern(client_done, Duration::from_secs(40))
-        .unwrap_or_default();
-    std::thread::sleep(Duration::from_millis(500));
-    let server_out = server
-        .wait_for_output_pattern("Received goal request", Duration::from_secs(2))
-        .unwrap_or_default();
-    client.kill();
-    server.kill();
-
-    eprintln!(
-        "{} Cyclone action client:\n{client_out}\n--- server ---\n{server_out}",
-        lang.label()
-    );
-    assert!(
-        client_out.contains(client_done),
-        "{} Cyclone action client did not reach a result (expected `{client_done}`).\nclient:\n{client_out}\nserver:\n{server_out}",
         lang.label()
     );
 }
