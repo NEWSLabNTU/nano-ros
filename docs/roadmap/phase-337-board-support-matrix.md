@@ -8,7 +8,10 @@ W1.g / W1.h (the board-crate merges; 322 stays the record of the *measurements*)
 **Touches:** RFC-0049 (the config ladder — W1.a extends it to the build block),
 RFC-0051 / phase-329 (the cell tables every wave edits), RFC-0012 (BSP integration).
 
-**Status.** DRAFT — not started.
+**Status.** IN PROGRESS. W1, W3, W4, W5, W6, W7 (a/b/c), W8.a + W8.d and W2.a
+are LANDED (2026-08-04/05). Open: W2.b–f (the new witness's bring-up), W8.c (the
+fixture-token vocabulary), W9.a (blocked on W2.b). See "What is left" at the
+bottom for what each still needs.
 
 ---
 
@@ -692,16 +695,48 @@ only in the shared registry files listed above, at one row each.
 
 ## Acceptance
 
-- [ ] Board crates 27 → 16, with each removal traceable to a wave.
-- [ ] Fixture rows 344 → 336 (only `stm32f4`'s 8 leave; 187 `native` rows renamed).
-- [ ] Cells 202 → 208, Runtime 174 → 177 — the only additions are W2's witness.
-- [ ] No wave's commit touches a board crate outside its own family.
-- [ ] `check-board-tiers`, `matrix_fixture_coverage` (both directions) and the
-      allocator injectivity gate green after every wave, not only at the end.
+Measured 2026-08-05, after W1/W3/W4/W5/W6/W7/W8.a/W8.d.
+
+- [~] **Board crates 27 → 16.** At **18 directories** (16 crates + the two
+      descriptor-only dirs `linux/` and `zephyr/`, which the registry counts but
+      which are not crates). Every removal traces to a wave: W3 −1, W6 −1,
+      W7.a −3, W7.b −3, W7.c −1, W8.a −1; W4.a +1 (the arch port). The two
+      still to go are `nros-board-fvp-aemv8r-smp` (W9.a) — which is why the
+      target says 16 and the tree says 18 — and nothing else.
+- [~] **Fixture rows 344 → 336.** At **337** `platform =` rows: `stm32f4`'s 8
+      left with W7.a (344 → 336 was the prediction; the pre-wave count was 345,
+      not 344, so the post-wave figure is 337). The `native` → `linux` rename is
+      W8.c, still open, and changes no count.
+- [~] **Cells 202 → 208, Runtime 174 → 177.** At **199** cells (172 Runtime, 15
+      BuildOnly, 12 CarveOut): −3 from `Stm32F4`'s BuildOnly cells (W7.a). The
+      +6 is W2.d's witness, not yet added.
+- [x] **No wave's commit touches a board crate outside its own family.** W7.a is
+      the one that looks like an exception and is not: `embassy-stm32f4` is a
+      member of the STM32F4 family, and the wave says so.
+- [x] `check-board-tiers`, `matrix_fixture_coverage` (both directions) and the
+      allocator injectivity gate green after every wave, not only at the end —
+      `just check-fast` + `just check-build` were run and green per wave, and
+      the four pre-existing reds they surfaced were fixed first, each in its own
+      commit.
 - [x] A second FreeRTOS board is demonstrably ~80 lines (W5.f). **Measured 2026-08-04:
       76 lines of board delta, 205 lines total — the estimate counted only the
       C/config layer. See W5.f.**
-- [ ] `just ci-matrix` green after each wave that has tier-2 cells.
+- [ ] `just ci-matrix` green after each wave that has tier-2 cells. **NOT RUN**
+      — every wave so far is host-verifiable (`check-fast` + `check-build` +
+      the native fixture lane + its runtime tests), and no landed wave adds or
+      moves a tier-2 cell. W2 will need it.
+
+## What is left, and what it needs
+
+| Wave | State | What it needs |
+|---|---|---|
+| W2.a | **done** | — |
+| W2.b–f | open | the conf bundle, `PlatformId::ZephyrQemuCortexM`, 3 Runtime + 6 BuildOnly cells, the west-lane exemption, runner + lane wiring. This is a real bring-up: zenoh-pico over Zephyr's in-kernel IP stack on a 32-bit Cortex-M3, and the three Runtime cells have to actually deliver. |
+| W8.c | open | the three token-derived vocabularies moved together, behind a full `just ci` (see W8.b). |
+| W9.a | open | depends on W2.b — the conf-bundle mechanism it folds the FVP board INTO is what W2.b establishes. Folding first would mean inventing that mechanism twice. |
+
+The five landed waves are independent of all three, so the tree is a coherent
+stopping point rather than a half-migration.
 
 ## Risks
 

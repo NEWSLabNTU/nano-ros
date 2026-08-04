@@ -710,7 +710,16 @@ numbers measured 2026-08-04.
 | 6 | `nros-board-threadx-qemu-riscv64` | 2 | riscv64, real NetX Duo | **DONE** (phase-337 W4.b) — thinned to overlay: 4023 → 2185 lines; the arch port moved to `nros-board-threadx-port-riscv64` |
 | 7 | `nros-board-mps2-an385` | 2 | bare-metal floor | **DONE** (phase-337 W6.a) — absorbed `rtic-mps2-an385` as the `rtic` feature |
 | 8 | `nros-board-esp32-qemu` | 2 | Xtensa, vendor SDK | unchanged |
-| 9–16 | infra: `common`, `cffi`, `freertos`, `nuttx`, `threadx`, **`threadx-port-riscv64`** (NEW, layer 2 — **DONE 2026-08-04**, phase-337 W4.a), `mps2-an385-pac`, descriptors | — | — | `bare-metal` deleted (W1.h) |
+| 9–16 | infra: `common`, `cffi`, `freertos`, `nuttx`, `threadx`, **`threadx-port-riscv64`** (NEW, layer 2 — **DONE 2026-08-04**, phase-337 W4.a), `mps2-an385-pac`, descriptors | — | — | `bare-metal` **DELETED 2026-08-04** (phase-337 W7.c — no board ever opted in) |
+
+**Progress against this table, measured 2026-08-05.** 27 → **18** board
+directories (16 crates + the two descriptor-only dirs). Landed: the NuttX merge
+(W3), the ThreadX arch-port extraction (W4), the FreeRTOS templating (W5), the
+RTIC fold (W6), the STM32F4 family's departure and the four scaffolds (W7), and
+the `native` + `posix` → `nros-board-linux` merge with the `packages/boards/posix/`
+→ `linux/` descriptor rename (W8.a/W8.d). Row 2's FVP fold (W9.a) and the new
+Zephyr Cortex-M witness's bring-up (W2.b–f) are what remain; W2.a — this RFC's
+one `[OPEN]` — is settled above.
 
 **Deleted (12):** `native`, `posix` (→ `linux`), `nuttx-qemu-riscv` (→ merged),
 `rtic-mps2-an385` (→ feature), `fvp-aemv8r-smp` (→ conf bundle), `stm32f4`,
