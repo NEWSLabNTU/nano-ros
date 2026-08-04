@@ -57,4 +57,34 @@ fn main() {
 
     let stamp = source_stamp(&root).unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=NROS_CLI_SOURCE_STAMP={stamp}");
+
+    // issue 0409 — the play_launch pin this CLI was built against. `nros sync`
+    // shells out to `nros-launch-resolve`, which stamps the SAME value from its
+    // own build; a mismatch means the resolver was compiled from a different
+    // layer-2 checkout, and such a resolver produces models that are missing
+    // DATA rather than failing (one predating rlm v0.1.1 silently drops every
+    // `params` projection). Crate versions cannot catch it — the two are
+    // versioned in lockstep and read the same number.
+    //
+    // Read from the SUBMODULE working tree, not the superproject gitlink: what
+    // the resolver compiled in is the commit actually checked out.
+    let play_launch = root.join("packages/cli/third-party/play_launch");
+    let pin = if play_launch.exists() {
+        std::process::Command::new("git")
+            .args([
+                "-C",
+                &play_launch.display().to_string(),
+                "rev-parse",
+                "HEAD",
+            ])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "unknown".to_string())
+    } else {
+        "unknown".to_string()
+    };
+    println!("cargo:rustc-env=NROS_PLAY_LAUNCH_SHA={pin}");
 }

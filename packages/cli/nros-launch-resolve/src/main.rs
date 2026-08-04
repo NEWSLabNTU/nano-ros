@@ -46,6 +46,12 @@ use ros_launch_resolve::{
     name = "nros-launch-resolve",
     about = "Resolve a ROS 2 launch tree into a nano-ros SystemModel YAML",
     long_about = None,
+    // issue 0409 — `--version` reports the crate version AND the play_launch
+    // commit this binary compiled in. The version alone cannot distinguish a
+    // stale resolver from a current one (both are versioned in lockstep with
+    // the CLI, both read the same number); the pin is what actually differs,
+    // and `nros sync` compares it against its own before trusting the binary.
+    version = concat!(env!("CARGO_PKG_VERSION"), " (play_launch ", env!("NROS_PLAY_LAUNCH_SHA"), ")"),
 )]
 struct Cli {
     /// Path to the launch file.

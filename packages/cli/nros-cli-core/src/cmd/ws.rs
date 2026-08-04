@@ -543,6 +543,15 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
     // nothing. `blocked` collects everything that DID need the helper so one
     // error names them all rather than the user fixing them one run at a time.
     let play_launch = launch_resolver_path();
+    // issue 0409 — verify the resolver BEFORE trusting its output. A binary
+    // compiled from a different play_launch checkout does not fail; it produces
+    // a model that is missing DATA (one predating rlm v0.1.1 drops every
+    // `[[component]].params` / `params_files` projection, silently, exit 0).
+    // The CLI refuses a stale SELF for the same reason (0363/0197); the
+    // resolver had no such guard.
+    if let Some(pl) = &play_launch {
+        verify_resolver_pin(pl)?;
+    }
     // Held for the whole function: dropping the TempDir removes the symlinks.
     let ament = synth_ament_prefix(scan);
     // phase-330 / issue 0392 C — includes are collected WORKSPACE-WIDE, not per
@@ -943,6 +952,57 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
 ///      the per-checkout build, which `cargo.sh` also prefers so each worktree
 ///      carries its own tools with no cross-tree skew.
 ///
+/// issue 0409 — refuse a `nros-launch-resolve` built from a different
+/// `play_launch` checkout than this `nros`.
+///
+/// Both binaries stamp the submodule commit they compiled in (`build.rs`), so a
+/// mismatch means the resolver's vendored layer-2 differs from the one this CLI
+/// was built against — and that difference shows up as MISSING CONTENT in
+/// generated models, not as an error.
+///
+/// Unverifiable is not the same as wrong. When either side stamped `unknown`
+/// (a tarball build, a vendored drop with no git) or the binary does not
+/// support `--version` (an older resolver predating this check), the pin cannot
+/// be compared and the run proceeds: refusing there would break legitimate
+/// installs to catch a dev-tree hazard.
+fn verify_resolver_pin(resolver: &std::path::Path) -> Result<()> {
+    const OURS: &str = env!("NROS_PLAY_LAUNCH_SHA");
+    if OURS == "unknown" {
+        return Ok(());
+    }
+    let Ok(out) = std::process::Command::new(resolver)
+        .arg("--version")
+        .output()
+    else {
+        return Ok(());
+    };
+    if !out.status.success() {
+        return Ok(()); // predates `--version`; nothing to compare
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let Some(theirs) = text
+        .split_once("play_launch ")
+        .map(|(_, rest)| rest.trim_end_matches([')', '\n', ' ']).trim())
+    else {
+        return Ok(());
+    };
+    if theirs == "unknown" || theirs == OURS {
+        return Ok(());
+    }
+    bail!(
+        "sync: `{}` was built from play_launch {} but this `nros` was built from {}.\n\
+         \n\
+         A resolver from a different layer-2 checkout does not fail — it writes models that are\n\
+         MISSING DATA (one predating rlm v0.1.1 drops every `params` / `params_files`\n\
+         projection, silently). Rebuild it so both agree:\n\
+         \n    just setup-launch-resolve\n\
+         \n(issue 0409)",
+        resolver.display(),
+        &theirs[..theirs.len().min(12)],
+        &OURS[..OURS.len().min(12)],
+    )
+}
+
 /// The helper is its OWN cargo workspace, so its binary is under
 /// `nros-launch-resolve/target/release/`, not beside `nros` in
 /// `packages/cli/target/release/`.

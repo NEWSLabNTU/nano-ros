@@ -80,8 +80,19 @@ Verified: submodule absent -> exit 1 + remedy; with the override -> exit 0 and
 the binary removed; submodule present -> builds, doctor `[OK]`; source touched
 -> probe names `resolve/Cargo.toml`, and `[OK]` again after a rebuild.
 
-**Still open — 2 and 3.** `nros sync` does not yet verify the resolver it is
-about to run. Direction 3 needs restating: phase-330 W7.e BANNED committed
+**2. `nros sync` verifies the resolver before trusting it (2026-08-04).** Both
+binaries stamp the `play_launch` submodule commit they compiled in (`build.rs`
+on each side; `nros-launch-resolve --version` now reports
+`0.5.0 (play_launch <sha>)`), and `verify_resolver_pin` bails on a mismatch
+before the first resolve, naming both pins and the remedy. The crate version
+could not do this — the two are versioned in lockstep and read the same number;
+the vendored layer-2 source is what differs. Unverifiable is not treated as
+wrong: an `unknown` stamp on either side, or a resolver predating `--version`,
+proceeds rather than breaking legitimate installs. Verified on all four paths
+(match, mismatch, no `--version`, unknown).
+
+**Still open — 3.** `nros sync` does not yet assert that the projection actually
+happened. Direction 3 needs restating: phase-330 W7.e BANNED committed
 models (`check-no-tracked-models`), so there is no committed artifact left to
 gate — the equivalent watcher is a post-resolve assertion inside `nros sync`
 that every `params` / `params_files` declaration in `system.toml` either appears
