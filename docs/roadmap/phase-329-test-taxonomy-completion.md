@@ -135,17 +135,49 @@ visible from the file's location/consumer, not tribal memory:
 Not a mass rewrite — a dispositioning pass with the same rule phase-295
 used: fold when the file is a per-cell duplicate of a matrix workload;
 keep (and label) when it tests a genuine one-off behavior.
-- [ ] Native workload files that duplicate matrix workloads fold into the
-  W1 consumers (`services`, `actions`, `qos`, `multi_node`, `custom_msg`,
-  `zero_copy`, `error_handling`, `executor` → Workload rows; `native_api`'s
-  28 rstest cases become the Rmw-parametrized native consumer).
+
+**Dispositioning pass — findings (2026-08-04).** A first triage of the named
+native files corrected the plan; the "~40 deletions" target was optimistic:
+- **The fold vehicle does not exist yet.** The native `Example`
+  Pubsub/Service/Action cells (~30, `matrix.rs`) have NO cell-bound consumer —
+  `services`/`actions`/`nano2nano`/`xrce` run them by hand. The fold FIRST needs
+  a **native-example delivery consumer** (derive delivery cases from those cells,
+  `exec_for` keyed by `(lang, rmw, workload)` over
+  `build_native_<lang>_example_rmw`) — a wave the size of W1, built ADDITIVELY
+  (no deletion) then folded once it provably covers each file's delivery case.
+- **`services`/`actions` are PARTIAL folds, not clean duplicates.** Rust+Zenoh
+  single-cell; their DELIVERY case folds into the new consumer, but their
+  startup/error sub-cases (`server_starts`, `client_without_server`,
+  `binaries_exist`) are genuine one-offs → keep + label.
+- **`custom_msg` is a W5 case, not a fold** — it COMPILES at test time
+  (`build_native_custom_msg`), so it belongs to W5's compile-out-of-test move.
+- **`zero_copy` / `executor` / `error_handling` are genuine behavior one-offs**
+  (zero-copy path, timer/executor, error paths — no cell asserts them) →
+  keep + label, NOT deletions.
+- [ ] Build the native-example delivery consumer (additive first), then fold the
+  delivery cases of `services`/`actions`/`nano2nano`/`xrce` into it, keeping +
+  labelling the startup/error/behavior one-offs; `native_api`'s 28 rstest cases
+  become the Rmw-parametrized native consumer. **Coverage-proven per deletion —
+  no file removed until the consumer demonstrably runs its cells.**
 - [ ] Per-platform QEMU files that duplicate `rtos_e2e` workloads fold in
   (`freertos_qemu`, `nuttx_qemu`, `threadx_linux`, `threadx_riscv64_qemu`,
   `c_riscv_nuttx_e2e`, parts of `emulator.rs`/`esp32_emulator.rs`).
 - [ ] Everything kept gets a one-line header naming its bucket + why it is
   not a cell (the E5 carve-out rule, applied to files).
-- [ ] Target from RFC-0051 restated: tests/ file count drops ~40 while
-  CELLS coverage goes UP.
+- [ ] Target restated after the disposition: tests/ file count drops by **fewer
+  than the original ~40** — many of the 62 are genuine one-offs (keep + label)
+  or W5 compile-at-test cases, not folds. The real deletions are the delivery
+  DUPLICATES once the native-example consumer covers them; CELLS coverage still
+  goes UP (the consumer runs cells the hand files never bound to).
+
+**Next concrete step (the consumer build, deferred from 2026-08-04 to avoid a
+rushed, coverage-losing sprint):** it needs (1) the per-lang example binary-name
+map — `build_native_rust_example_rmw` has NO existing caller, so the rust
+talker/listener/server/client cmake target names must be read from
+`examples/native/rust/*/CMakeLists.txt` (C/C++ are `c_talker`/`cpp_talker`
+etc.), and (2) reconciling `nano2nano`'s multi-variant pubsub assertions
+(router / direct / sequence-consistency) into the consumer's Pubsub shape. Build
+it ADDITIVELY, prove it green, THEN delete the folded delivery cases.
 
 ### W5 — build checks move to the fixture build stage
 The E1 rule gets an enforcement surface. Sanctioned at runtime: FAIL-path
