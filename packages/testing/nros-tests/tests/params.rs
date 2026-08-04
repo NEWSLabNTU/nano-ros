@@ -4,11 +4,13 @@
 //!
 //! Run with: `cargo nextest run -p nros-tests --test params`
 
-use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_int32_sink, build_native_param_talker,
-    build_native_workspace_rust_params_entry, require_ros2, require_zenohd, zenohd_unique,
+use nros_tests::{
+    fixtures::{
+        ManagedProcess, ZenohRouter, build_int32_sink, build_native_param_talker,
+        build_native_workspace_rust_params_entry, require_ros2, require_zenohd, zenohd_unique,
+    },
+    output::param_talker,
 };
-use nros_tests::output::param_talker;
 use rstest::rstest;
 use std::{process::Command, time::Duration};
 

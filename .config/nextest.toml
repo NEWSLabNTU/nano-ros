@@ -291,9 +291,21 @@ filter = "binary(entry_e2e) and test(zephyr_rust_lifecycle)"
 slow-timeout = { period = "60s", terminate-after = 3 }
 
 # issue 0312 — see [test-groups.native-qos-discovery].
+#
+# The `and test(qos)` clause is gone because there is no longer a per-cell test
+# to match: phase-329 W1 collapsed this binary into ONE `workspace_features`
+# test that iterates all 17 cells in a single process. The qos cells still need
+# the serialized discovery group, so the whole binary joins it.
+#
+# And the budget follows: 17 cells run back to back take ~50-60 s, which the
+# default (30 s period, terminate-after 2 = 60 s hard kill) cuts off mid-suite.
+# It was timing out even when run alone. This is the consolidation's cost — one
+# test that cannot be shorter than the sum of its cells — so the budget is sized
+# for the sum rather than for a cell.
 [[profile.default.overrides]]
-filter = "binary(workspace_features_e2e) and test(qos)"
+filter = "binary(workspace_features_e2e)"
 test-group = "native-qos-discovery"
+slow-timeout = { period = "120s", terminate-after = 3 }
 
 # issue #141 — see [test-groups.zephyr-qos-port]. phase-295 W3.b —
 # qos_zephyr_entry_e2e consolidated into binary(entry_e2e); the baked-port

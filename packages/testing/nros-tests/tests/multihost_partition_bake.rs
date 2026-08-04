@@ -26,23 +26,17 @@
 
 use std::process::Command;
 
-/// The `nros-launch-resolve` helper, by ABSOLUTE path (issue 0285 — never
-/// `$PATH`): `just setup-launch-resolve` builds it in-tree.
-fn launch_resolver() -> Option<std::path::PathBuf> {
-    let p = nros_tests::project_root()
-        .join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
-    p.is_file().then_some(p)
-}
-
-fn rust_bringup() -> std::path::PathBuf {
-    nros_tests::project_root().join("examples/workspaces/rust/src/demo_bringup")
-}
+use nros_tests::launch_resolver_bin as launch_resolver;
 
 /// Resolve the rust workspace's multihost launch with `host:=<id>` into a
 /// temp file and return the model YAML.
-fn resolve_with_host(host: &str, out: &std::path::Path) -> String {
+/// Resolve `<ws>`'s multihost launch for `host` into `out` and return the model
+/// text. phase-330 W4 made the SystemModel a build artifact, so a test that
+/// wants one RESOLVES it — it does not open a committed file (issue 0414).
+fn resolve_ws_with_host(ws: &str, host: &str, out: &std::path::Path) -> String {
     let resolver = launch_resolver().expect("caller gated on launch_resolver()");
-    let bringup = rust_bringup();
+    let bringup =
+        nros_tests::project_root().join(format!("examples/workspaces/{ws}/src/demo_bringup"));
     let output = Command::new(&resolver)
         .arg(bringup.join("launch/multihost.launch.xml"))
         .arg(format!("host:={host}"))
@@ -61,6 +55,10 @@ fn resolve_with_host(host: &str, out: &std::path::Path) -> String {
         String::from_utf8_lossy(&output.stderr),
     );
     std::fs::read_to_string(out).expect("read resolved model")
+}
+
+fn resolve_with_host(host: &str, out: &std::path::Path) -> String {
+    resolve_ws_with_host("rust", host, out)
 }
 
 #[test]
@@ -101,11 +99,24 @@ fn resolving_with_host_arg_partitions_the_model() {
     );
 }
 
-/// The committed per-host models in all four workspaces: each records the
-/// binding it was resolved from (`meta.args: host: robotN` — what `nros sync`
-/// replays on refresh) and contains ONLY its host's nodes.
+/// Each workspace's multihost bringup, resolved per host: the model records the
+/// binding it was resolved from (`meta.args: host: robotN`) and contains ONLY
+/// that host's nodes, and `system.toml` still names the host in a `[deploy.*]`
+/// block.
+///
+/// This RESOLVES each model rather than reading a committed one. phase-330 W4
+/// made the SystemModel a pure build artifact — regenerated into the active
+/// build's output dir and no longer committed — so opening
+/// `config/multihost_robot1_model.yaml` failed on `os error 2` and proved
+/// nothing about the partition (issue 0414). Resolving is also the stronger
+/// assertion: it exercises the resolver on every run instead of trusting a file
+/// somebody generated once.
 #[test]
-fn committed_per_host_models_carry_their_binding() {
+fn per_host_resolves_partition_and_carry_their_binding() {
+    if launch_resolver().is_none() {
+        nros_tests::skip!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
+    }
+    let tmp = tempfile::tempdir().expect("tempdir");
     // (workspace, host, must-contain node keys, must-NOT-contain node keys)
     let cells: &[(&str, &str, &[&str], &[&str])] = &[
         ("rust", "robot1", &["/talker:"], &["/listener:"]),
@@ -128,40 +139,32 @@ fn committed_per_host_models_carry_their_binding() {
         ),
     ];
     for (ws, host, contains, absent) in cells {
-        let path = nros_tests::project_root().join(format!(
-            "examples/workspaces/{ws}/src/demo_bringup/config/multihost_{host}_model.yaml"
-        ));
-        let raw = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let out = tmp.path().join(format!("{ws}_{host}.yaml"));
+        let raw = resolve_ws_with_host(ws, host, &out);
         assert!(
             raw.contains(&format!("host: {host}")),
-            "[{ws}/{host}] model records no `meta.args` binding — `nros sync` \
-             would re-resolve it as the default (all-hosts) configuration:\n{}",
-            path.display()
+            "[{ws}/{host}] resolved model records no `meta.args` binding — a \
+             refresh would re-resolve it as the default (all-hosts) configuration"
         );
         for key in *contains {
             assert!(
                 raw.contains(key),
-                "[{ws}/{host}] model lost its own node {key}: {}",
-                path.display()
+                "[{ws}/{host}] model lost its own node {key}"
             );
         }
         for key in *absent {
             assert!(
                 !raw.contains(key),
                 "[{ws}/{host}] model contains the OTHER host's node {key} — \
-                 the per-host partition did not hold: {}",
-                path.display()
+                 the per-host partition did not hold"
             );
         }
         // The deploy SSOT still names this host: `[deploy.<host>]` with an
         // explicit `nodes = [..]` placement (with `machine=` gone there is no
         // launch-derived placement fact).
-        let system_toml = path
-            .parent()
-            .and_then(|p| p.parent())
-            .map(|p| p.join("system.toml"))
-            .expect("bringup layout");
+        let system_toml = nros_tests::project_root().join(format!(
+            "examples/workspaces/{ws}/src/demo_bringup/system.toml"
+        ));
         let toml_raw = std::fs::read_to_string(&system_toml)
             .unwrap_or_else(|e| panic!("read {}: {e}", system_toml.display()));
         assert!(
@@ -199,14 +202,23 @@ fn multihost_bake_emits_only_the_hosts_node() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found");
     }
+    if launch_resolver().is_none() {
+        nros_tests::skip!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
+    }
     let tmp = tempfile::tempdir().expect("tempdir");
-    let cfg = rust_bringup().join("config");
+
+    // Resolve both host models first. They used to be read from
+    // `config/multihost_robot<N>_model.yaml`; phase-330 W4 deleted the committed
+    // models (issue 0414), and the bake's input is a model the BUILD produces —
+    // so produce one, then bake from it. What is under test is the bake, not the
+    // provenance of the yaml.
+    let robot1_model = tmp.path().join("robot1_model.yaml");
+    resolve_ws_with_host("rust", "robot1", &robot1_model);
+    let robot2_model = tmp.path().join("robot2_model.yaml");
+    resolve_ws_with_host("rust", "robot2", &robot2_model);
 
     // robot1 model → talker only.
-    let robot1 = codegen_entry_model(
-        &cfg.join("multihost_robot1_model.yaml"),
-        &tmp.path().join("robot1_main.rs"),
-    );
+    let robot1 = codegen_entry_model(&robot1_model, &tmp.path().join("robot1_main.rs"));
     assert!(
         robot1.contains("talker_pkg::register"),
         "robot1 entry missing talker:\n{robot1}"
@@ -217,10 +229,7 @@ fn multihost_bake_emits_only_the_hosts_node() {
     );
 
     // robot2 model → listener only.
-    let robot2 = codegen_entry_model(
-        &cfg.join("multihost_robot2_model.yaml"),
-        &tmp.path().join("robot2_main.rs"),
-    );
+    let robot2 = codegen_entry_model(&robot2_model, &tmp.path().join("robot2_main.rs"));
     assert!(
         robot2.contains("listener_pkg::register"),
         "robot2 entry missing listener:\n{robot2}"

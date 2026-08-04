@@ -1,7 +1,7 @@
 ---
 id: 414
 title: phase-330 W4 made the SystemModel a build artifact but left four test files reading its committed path
-status: open
+status: resolved  # fixed 2026-08-04
 type: bug
 area: testing
 related: [phase-330, rfc-0063, 0380, 0409]
@@ -72,3 +72,50 @@ With fixtures rebuilt and the routers killed, the ROS 2 interop surface is clean
 (`interop_e2e` 10/10, `param_live_read_e2e`, `cpp_c_param_live_read_e2e` all
 pass), and this issue plus `params::test_ros2_param_set_reconfigures_live_read`
 are what remain.
+
+## Resolution (2026-08-04)
+
+The rule applied: **a test never reads a committed model.** Models are
+intermediate artifacts now — transparent to users, readable by anyone who wants
+them, and not an input the build or its tests may depend on. Where a test needs
+one it RESOLVES it, the way a build does; where it only needs the declaration it
+reads the input that declares it.
+
+Five consumers, not the four this issue first named — `zephyr_edf_deadline_applied`
+was deleted by phase-329 W2 between filing and fixing, and
+`entry_typed_plan` in the CLI sub-workspace turned up once the others were done:
+
+| test | before | after |
+| --- | --- | --- |
+| `qos_override_e2e::the_committed_model_declares_…` | read `rust_qos_model.yaml` | reads `system.toml`, finds the component BY THE OVERRIDE KEY (renamed in W2b, issue 0398), asserts the lowering — renamed `the_bringup_declares_…` |
+| `multihost_partition_bake::committed_per_host_models_…` | read 8 committed per-host models | resolves each of the 4 workspaces × 2 hosts into a temp dir and asserts the partition — renamed `per_host_resolves_partition_and_carry_their_binding` |
+| `multihost_partition_bake::multihost_bake_emits_only_the_hosts_node` | baked from committed models | resolves both host models first, then bakes from those |
+| `native_main_macro_misuse::rebuilds_on_model_touch` | touched a committed model | resolves into a build-output dir, points the macro at it with `NROS_MODEL_DIR`, touches THAT |
+| `entry_typed_plan::typed_plan_from_template_…` | asserted the committed template model's absence "is a repo defect" | resolves the template bringup into a temp dir |
+
+That last assertion is worth naming: it said a missing committed model was a
+repo defect. phase-330 W4 inverted the rule — committing one is now the defect,
+enforced by `check-no-tracked-models.sh` — so the test failed on a condition the
+repo had deliberately created.
+
+`launch_resolver_bin()` moved into `nros_tests` (it had been private to
+`multihost_partition_bake`) so the two suites that now need the resolver share
+one answer to "where is it".
+
+  -E 'binary(native_main_macro_misuse) or binary(multihost_partition_bake) or binary(qos_override_e2e)'
+    -> 10 passed
+  nros-cli-core -E 'binary(entry_typed_plan)' -> 1 passed
+
+## Still open, and bigger than this issue
+
+**`nros::main!` consumes the model, not the inputs.** The macro resolves
+`config/system_model.yaml` (build-output copy first, via
+`model_location::resolve_model_path`) and TRACKS that file. It never sees
+`system.toml` or the launch XML, so touching either does not force a rebuild,
+and a leaf checked with plain `cargo check` and no build step fails with
+"SystemModel not found" — which is what `rebuilds_on_model_touch` hit.
+
+The stated direction is that the build system should ask for launch + config and
+resolve the model itself. Until it does, `rebuilds_on_model_touch` touches the
+artifact rather than the input: asserting the input-touch contract today would
+be asserting a wish, and the test says so where it touches.

@@ -56,42 +56,52 @@ use std::{process::Command, time::Duration};
 const TOPIC: &str = "/qos_chatter";
 
 /// ---------------------------------------------------------------------------
-/// Half 1 — deterministic, no ROS 2: the committed model still declares the
-/// override, and it lowers to the codes the bake will emit.
+/// Half 1 — deterministic, no ROS 2: the DECLARATION still exists in the
+/// bringup's inputs, and it lowers to the codes the bake will emit.
 /// ---------------------------------------------------------------------------
 ///
 /// This guards the fixture itself. The runtime half below skips without ROS 2,
-/// so without this a silent edit to the model (or a regression in the lowering)
-/// would leave the whole file green-by-skipping.
+/// so without this a silent edit to the bringup (or a regression in the
+/// lowering) would leave the whole file green-by-skipping.
+///
+/// Reads `system.toml`, NOT a resolved model. phase-330 W4 made the SystemModel
+/// a pure build artifact — regenerated into the active build's output dir and
+/// no longer committed — so a test that opened
+/// `config/rust_qos_model.yaml` failed on `os error 2` and said nothing about
+/// the override (issue 0414). The declaration is an INPUT and always was; the
+/// model only ever echoed it, and asserting on the echo tied this test to where
+/// the build happened to leave a file.
 #[test]
-fn the_committed_model_declares_a_reliability_override_that_lowers() {
+fn the_bringup_declares_a_reliability_override_that_lowers() {
     use nros_orchestration_ir::qos_override::{lower, policy, role};
 
-    let model_path = concat!(
+    let system_toml = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../../examples/workspaces/features/src/demo_bringup/config/rust_qos_model.yaml"
+        "/../../../examples/workspaces/features/src/demo_bringup/system.toml"
     );
-    let raw = std::fs::read_to_string(model_path)
-        .unwrap_or_else(|e| panic!("committed model missing at {model_path}: {e}"));
-    let model: ros_launch_manifest_model::SystemModel =
-        serde_yaml_ng::from_str(&raw).expect("model parses");
-
-    let talker = model
-        .structure
-        .nodes
-        .get("/reliable_talker")
-        .expect("model declares /reliable_talker");
-    let params = talker.resolved_params("/reliable_talker");
+    let raw = std::fs::read_to_string(system_toml)
+        .unwrap_or_else(|e| panic!("bringup input missing at {system_toml}: {e}"));
+    let doc: toml::Value = toml::from_str(&raw).expect("system.toml parses");
 
     let key = "qos_overrides./qos_chatter.publisher.reliability";
-    let value = params
-        .get(key)
-        .unwrap_or_else(|| {
-            panic!("the fixture's whole point is this override; model params: {params:?}")
-        })
-        .to_bake_string();
 
-    let lowered = lower(key, &value)
+    // The component that carries the override. Found by the KEY rather than by
+    // component name: phase-331 W2b renamed these (issue 0398), and a test that
+    // pins the name fails for a reason that has nothing to do with QoS.
+    let value = doc
+        .get("component")
+        .and_then(|c| c.as_array())
+        .expect("system.toml declares [[component]]")
+        .iter()
+        .find_map(|c| c.get("params")?.get(key)?.as_str())
+        .unwrap_or_else(|| {
+            panic!(
+                "the fixture's whole point is this override — no [[component]] in \
+                 {system_toml} declares params[\"{key}\"]"
+            )
+        });
+
+    let lowered = lower(key, value)
         .expect("the override lowers")
         .expect("the key is an override");
     assert_eq!(lowered.topic, TOPIC);

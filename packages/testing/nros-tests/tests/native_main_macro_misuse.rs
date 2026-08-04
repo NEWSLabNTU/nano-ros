@@ -89,11 +89,53 @@ fn walk(root: &Path) -> std::io::Result<Vec<PathBuf>> {
 }
 
 fn check_demo_entry(root: &Path) -> std::process::Output {
-    Command::new("cargo")
-        .args(["check", "-p", "demo_entry", "--manifest-path"])
-        .arg(root.join("Cargo.toml"))
+    check_demo_entry_with_model_dir(root, None)
+}
+
+/// `cargo check` the fixture, optionally pointing the macro at a build-output
+/// model directory (`NROS_MODEL_DIR` — the first entry in
+/// `nros_orchestration_ir::model_location`'s search order).
+fn check_demo_entry_with_model_dir(root: &Path, model_dir: Option<&Path>) -> std::process::Output {
+    let mut cmd = Command::new("cargo");
+    cmd.args(["check", "-p", "demo_entry", "--manifest-path"])
+        .arg(root.join("Cargo.toml"));
+    if let Some(d) = model_dir {
+        cmd.env("NROS_MODEL_DIR", d);
+    }
+    cmd.output().expect("spawn cargo check")
+}
+
+/// Resolve the fixture's bringup into `model_dir` the way a build does, and
+/// return the model's path there.
+///
+/// phase-330 W4 made the SystemModel a build artifact: no committed
+/// `config/system_model.yaml` exists any more, so a test that needs one
+/// PRODUCES it (issue 0414). `NROS_MODEL_DIR/<bringup>/<name>` is the location
+/// the macro searches first.
+fn resolve_fixture_model(root: &Path, model_dir: &Path) -> PathBuf {
+    let resolver = nros_tests::launch_resolver_bin().unwrap_or_else(|| {
+        nros_tests::skip!("nros-launch-resolve not built (run `just setup-launch-resolve`)")
+    });
+    let bringup = root.join("src/demo_bringup");
+    let out = model_dir.join("demo_bringup").join("system_model.yaml");
+    fs::create_dir_all(out.parent().expect("model dir parent")).expect("create model dir");
+    let output = Command::new(&resolver)
+        .arg(bringup.join("launch/system.launch.xml"))
+        .arg("--bringup-root")
+        .arg(&bringup)
+        .arg("--system")
+        .arg(bringup.join("system.toml"))
+        .arg("-o")
+        .arg(&out)
         .output()
-        .expect("spawn cargo check")
+        .expect("spawn nros-launch-resolve");
+    assert!(
+        output.status.success(),
+        "nros-launch-resolve failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    out
 }
 
 #[test]
@@ -168,15 +210,30 @@ fn unknown_board_emits_compile_error() {
     );
 }
 
+/// Touching the model the BUILD produced must force a re-check.
+///
+/// This used to read a committed `config/system_model.yaml`; phase-330 W4
+/// deleted those, so the test failed on a missing file rather than on the
+/// rebuild behaviour (issue 0414). It now resolves the model into a build-output
+/// dir and points the macro there — the same path a real build takes — so
+/// nothing here depends on a model being committed.
+///
+/// The touch target is still the model, because that is what the macro tracks.
+/// Touching `system.toml` would be the better test of the user-facing contract,
+/// and does NOT force a re-check today: `nros::main!` consumes the resolved
+/// artifact and never sees the inputs behind it. Recorded on issue 0414 rather
+/// than asserted here, because asserting it would be asserting a wish.
 #[test]
 fn rebuilds_on_model_touch() {
     let (_g, root) = stage_fixture();
+    let model_home = tempfile::tempdir().expect("model dir");
+    let model_yaml = resolve_fixture_model(&root, model_home.path());
     fs::write(
         root.join("src/demo_entry/src/main.rs"),
         "nros::main!(model = \"demo_bringup\");\n",
     )
     .expect("write main.rs");
-    let out = check_demo_entry(&root);
+    let out = check_demo_entry_with_model_dir(&root, Some(model_home.path()));
     assert!(
         out.status.success(),
         "initial cargo check failed:\nstdout:\n{}\nstderr:\n{}",
@@ -184,15 +241,13 @@ fn rebuilds_on_model_touch() {
         String::from_utf8_lossy(&out.stderr),
     );
 
-    // Touch the committed model — the macro's tracked-file stamp should force
-    // a re-check. Sleep past cargo's fingerprint mtime resolution, then
-    // rewrite.
+    // Touch the resolved model — the macro's tracked-file stamp should force a
+    // re-check. Sleep past cargo's fingerprint mtime resolution, then rewrite.
     std::thread::sleep(std::time::Duration::from_millis(1100));
-    let model_yaml = root.join("src/demo_bringup/config/system_model.yaml");
-    let body = fs::read_to_string(&model_yaml).expect("read system_model.yaml");
-    fs::write(&model_yaml, &body).expect("rewrite system_model.yaml");
+    let body = fs::read_to_string(&model_yaml).expect("read resolved model");
+    fs::write(&model_yaml, &body).expect("rewrite resolved model");
 
-    let out2 = check_demo_entry(&root);
+    let out2 = check_demo_entry_with_model_dir(&root, Some(model_home.path()));
     assert!(
         out2.status.success(),
         "second cargo check (post-touch) failed:\nstdout:\n{}\nstderr:\n{}",
@@ -202,6 +257,6 @@ fn rebuilds_on_model_touch() {
     let stderr2 = String::from_utf8_lossy(&out2.stderr);
     assert!(
         stderr2.contains("Checking demo_entry") || stderr2.contains("Compiling demo_entry"),
-        "expected demo_entry to be re-checked after model touch, stderr:\n{stderr2}",
+        "expected demo_entry to be re-checked after the model touch, stderr:\n{stderr2}",
     );
 }
