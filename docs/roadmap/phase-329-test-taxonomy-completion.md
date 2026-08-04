@@ -159,15 +159,26 @@ native files corrected the plan; the "~40 deletions" target was optimistic:
   labelling the startup/error/behavior one-offs; `native_api`'s 28 rstest cases
   become the Rmw-parametrized native consumer. **Coverage-proven per deletion —
   no file removed until the consumer demonstrably runs its cells.**
-  **PUBSUB foundation landed 2026-08-04** (`tests/native_example_pubsub_e2e.rs`):
-  the 9 Native/Pubsub/Example cells (rust/c/cpp × zenoh/cyclone/xrce) derive from
-  `matrix::CELLS`, three RMW isolation models wired, ADDITIVE (no deletions —
-  runs alongside `nano2nano`/`xrce`). Compiles + clippy clean; **unrun here** (no
-  native fixtures on this host). REMAINING: (1) run-prove it on a fixture host,
-  (2) then fold + delete `nano2nano`/`xrce` pubsub-delivery cases (keep their
-  startup/error one-offs, labelled), (3) extend to Service + Action (their
-  cross-rmw builders differ), (4) `native_api` → Rmw-parametrized. Do NOT delete
-  before step 1 — the consumer is compile-verified, not run-verified.
+  **PUBSUB consumer landed + RUN-PROVEN 2026-08-04** (`tests/native_example_pubsub_e2e.rs`).
+  Derives from `matrix::CELLS`; ADDITIVE (nothing deleted). Run-proving found +
+  fixed two bugs the first (9-cell) version shipped with — the C/C++ listener
+  marker is `I heard:` not `Received:` (its Int32 arm needs `NROS_SUB_TYPE`), and
+  the cyclone/xrce pairs don't deliver with the replicated isolation env
+  (rust/cyclone failed WITH the right marker). So the consumer is now **ZENOH
+  only** and GREEN: rust + C + C++ native zenoh pubsub pairs deliver ≥3 (`cargo
+  test --test native_example_pubsub_e2e` = 1 passed). REMAINING:
+  1. **Root-cause cyclone + xrce native pubsub delivery** (per-RMW env — check
+     the #233/#234 native-cyclone service tests' env, the xrce.rs locator), then
+     drop the `Zenoh`-only filter clause. Until then those cells run under their
+     current hand tests.
+  2. **Fold `nano2nano`** — but it is NOT a pure duplicate: its router-delivery
+     case folds into the consumer (which supersedes it for rust + adds c/cpp),
+     while its DIRECT-discovery and sequence-consistency variants are one-offs to
+     keep + label. Trim, don't delete wholesale.
+  3. Extend to Service + Action — their example bins are IRREGULAR
+     (`add_two_ints_server`, `service-client`, `action-server`; c/cpp are
+     `c_service_server` etc.) and markers differ from the workspace ones.
+  4. `native_api`'s 28 rstest cases → the Rmw-parametrized native consumer.
 - [ ] Per-platform QEMU files that duplicate `rtos_e2e` workloads fold in
   (`freertos_qemu`, `nuttx_qemu`, `threadx_linux`, `threadx_riscv64_qemu`,
   `c_riscv_nuttx_e2e`, parts of `emulator.rs`/`esp32_emulator.rs`).
