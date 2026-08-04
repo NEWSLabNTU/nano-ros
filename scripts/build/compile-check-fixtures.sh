@@ -278,6 +278,49 @@ if [ -n "$id_filter" ]; then
     unset _cc_matched _cc_builder
 fi
 
+# phase-336 W7 — fan the rows out under the jobserver when this invocation is
+# NOT already narrowed to one.
+#
+# Every row stages its own tree under `$out_root/$id` and builds it, so the rows
+# are independent; walking them serially left a 32-core host ~95 % idle
+# (measured: 5 of 27 rows in 10 minutes, ONE rustc running). Each unit re-invokes
+# this script with `NROS_FIXTURE_ID=<id>`, which is the narrowing the manifest
+# reader already supports — so the per-row code path below is unchanged and is
+# still exactly what runs.
+#
+# The pool falls back to a serial walk when an outer jobserver already owns the
+# tokens (NROS_JOBSERVER=1) or pinned make 4.4 is absent.
+if [ -z "$id_filter" ] && [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ]; then
+    _cc_ids=""
+    for _cc_builder in cargo-check cargo-build cross-build cmake-configure cxx-syntax; do
+        while IFS=$'\x1f' read -r _id _rest; do
+            [ -n "$_id" ] || continue
+            case " $_cc_ids " in *" $_id "*) continue ;; esac
+            _cc_ids="$_cc_ids $_id"
+        done < <(compile_check_records "$_cc_builder")
+    done
+    unset _cc_builder _id _rest
+    if [ -n "$_cc_ids" ]; then
+        # shellcheck source=scripts/build/jobserver-pool.sh
+        source "$repo_root/scripts/build/jobserver-pool.sh"
+        _cc_rc=0
+        nros_pool_run compile-check < <(
+            for _id in $_cc_ids; do
+                printf 'NROS_FIXTURE_ID=%s NROS_COMPILE_CHECK_POOL=0 bash %s/scripts/build/compile-check-fixtures.sh\n' \
+                    "$_id" "$repo_root"
+            done
+        ) || _cc_rc=$?
+        # Each unit prints its OWN one-row summary, so the parent must print the
+        # aggregate itself — otherwise the last unit's counts (check=1 …) read
+        # as the whole stage's.
+        if [ "$_cc_rc" = "0" ]; then
+            echo "compile-check fixtures built: $(printf '%s\n' $_cc_ids | wc -l) row(s) across 5 builders."
+        fi
+        exit $_cc_rc
+    fi
+    unset _cc_ids
+fi
+
 
 # phase-319 W3 (issue 0351) — record the build INPUTS after a successful build.
 #

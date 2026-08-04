@@ -2048,17 +2048,22 @@ ci-full: check rust-rtos-link-check test-all test-ignored
 check-no-std:
     #!/usr/bin/env bash
     set -e
-    crates=(-p nros-core -p nros-log -p nros-serdes -p nros-params \
-        -p nros-platform-api -p nros-platform-cffi -p nros-platform-critical-section -p nros-rmw)
+    crates="-p nros-core -p nros-log -p nros-serdes -p nros-params \
+        -p nros-platform-api -p nros-platform-cffi -p nros-platform-critical-section -p nros-rmw"
+    # `rustup target add` FIRST, serially: two concurrent adds of different
+    # targets touch the same toolchain dir.
     for target in thumbv7m-none-eabi riscv32imc-unknown-none-elf; do
-        echo "== check-no-std: $target =="
         rustup target add "$target" >/dev/null 2>&1 || true
-        # nros-rmw-cffi needs ptr atomics — only checked on the Cortex-M target
-        # (riscv32imc lacks them; mirror of ci.yml's per-target crate set).
-        extra=()
-        [ "$target" = "thumbv7m-none-eabi" ] && extra=(-p nros-rmw-cffi)
-        cargo check "${crates[@]}" "${extra[@]}" --no-default-features --target "$target"
     done
+    # The two targets are independent `cargo check`s, so run them under the
+    # jobserver rather than back to back (phase-336 W7). nros-rmw-cffi needs ptr
+    # atomics — Cortex-M only (riscv32imc lacks them; mirrors ci.yml's per-target
+    # crate set).
+    source scripts/build/jobserver-pool.sh
+    printf '%s\n' \
+        "echo '== check-no-std: thumbv7m-none-eabi ==' && cargo check $crates -p nros-rmw-cffi --no-default-features --target thumbv7m-none-eabi" \
+        "echo '== check-no-std: riscv32imc-unknown-none-elf ==' && cargo check $crates --no-default-features --target riscv32imc-unknown-none-elf" \
+        | nros_pool_run check-no-std
     echo "check-no-std OK."
 
 # Verify nros-sdk-index.toml + the QEMU configure flags

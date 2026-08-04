@@ -166,11 +166,13 @@ build-fixtures:
         echo "  → generate px4_msgs for $dir"
         "$nros_cli" generate-px4-msgs --px4 "$PX4_DIR" --output "$dir/generated" >/dev/null
     done
+    # phase-336 W7 — the three companion examples build into their own
+    # `target-xrce/` dirs, so they are independent; run them under the jobserver
+    # instead of back to back.
+    source scripts/build/jobserver-pool.sh
     for ex in px4-stub offboard-companion px4-probe; do
-        echo "  → cargo build $ex (rmw-xrce, target-xrce/)"
-        ( cd "examples/px4/rust/companion/$ex" \
-          && cargo build $cargo_profile_args --no-default-features --features rmw-xrce --target-dir target-xrce )
-    done
+        printf '%s\n' "echo '  → cargo build $ex (rmw-xrce, target-xrce/)' && cd examples/px4/rust/companion/$ex && cargo build $cargo_profile_args --no-default-features --features rmw-xrce --target-dir target-xrce"
+    done | nros_pool_run px4-companion
     echo "PX4 XRCE fixtures built."
 
 # Run the Track A uORB interop E2E: a STOCK PX4 `listener` reads a nano-ros
