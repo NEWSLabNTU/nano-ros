@@ -67,7 +67,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     makefile="$(mktemp "${TMPDIR:-/tmp}/nros_example_build.XXXXXX.mk")"
     trap 'rm -f "$toml_list" "$makefile"' EXIT
 
-    # Phase 181.6 / 181.4.h — qemu-arm-baremetal, stm32f4, esp32 and
+    # Phase 181.6 / 181.4.h — qemu-arm-baremetal, esp32 and
     # qemu-esp32-baremetal are excluded here and built from the SSOT manifest
     # below instead, so each has a single enumeration source (matching the
     # test-all staleness probe). The remaining platforms have no manifest rows
@@ -78,7 +78,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # leak in. `NF>=5` = the old find's `-mindepth 4` (leaf crates, not
     # workspace-root manifests). Selection filters stay as greps.
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/workspaces/|/qemu-arm-freertos/|/qemu-arm-nuttx/|/threadx-linux/|/qemu-riscv64-threadx/|/qemu-arm-baremetal/|/stm32f4/|/esp32/|/qemu-esp32-baremetal/|/px4/' \
+        | grep -vE '/zephyr/|/workspaces/|/qemu-arm-freertos/|/qemu-arm-nuttx/|/threadx-linux/|/qemu-riscv64-threadx/|/qemu-arm-baremetal/|/esp32/|/qemu-esp32-baremetal/|/px4/' \
         | sort > "$toml_list"
 
     # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
@@ -122,11 +122,10 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
         } > "$makefile"
         make -j "$cargo_frontends" -f "$makefile"
     fi
-    # Phase 181.6 — qemu-arm-baremetal + stm32f4 rust examples from the SSOT
-    # manifest (plain default builds; each example's .cargo/config.toml selects
-    # the cross target). No codegen prep needed (no generated-msg consumers).
+    # Phase 181.6 — qemu-arm-baremetal rust examples from the SSOT manifest
+    # (plain default builds; each example's .cargo/config.toml selects the cross
+    # target). No codegen prep needed (no generated-msg consumers).
     bash scripts/build/fixtures-build.sh qemu-arm-baremetal rust
-    bash scripts/build/fixtures-build.sh stm32f4 rust
     # Phase 181.4.h — esp32 + qemu-esp32-baremetal (ESP32-C3, riscv32imc) from
     # the manifest. They need the workspace nightly + rust-src/build-std (NOT
     # xtensa/espup) + SSID/PASSWORD; inject those as platform env.
@@ -417,7 +416,6 @@ size: build-examples
     @echo "Binary sizes (release):"
     @echo "======================="
     @size packages/reference/stm32f4-porting/rtic/target/thumbv7em-none-eabihf/release/stm32f4-rs-rtic-example 2>/dev/null || echo "RTIC: build failed"
-    @size examples/stm32f4/rust/talker-embassy/target/thumbv7em-none-eabihf/release/stm32f4-rs-embassy-example 2>/dev/null || echo "Embassy: build failed"
     @size packages/reference/stm32f4-porting/polling/target/thumbv7em-none-eabihf/release/stm32f4-rs-polling-example 2>/dev/null || echo "Polling: build failed"
     @size packages/testing/nros-smoke/stm32f4-smoltcp-echo/target/thumbv7em-none-eabihf/release/stm32f4-rs-smoltcp 2>/dev/null || echo "stm32f4-smoltcp-echo: build failed"
 

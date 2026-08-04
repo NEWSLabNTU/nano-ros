@@ -466,20 +466,5 @@ name = "dispatch_strategy"
 path = "tests/dispatch_strategy.rs"
 required-features = ["phase216-substrate"]
 
-# `nros::main!()` RTIC macro expansion (Phase 216.B.5): consumes the prebuilt
-# `stm32f4-rtic-talker` fixture (examples/stm32f4/rust/talker-rtic, built by
-# `just stm32f4 build-fixtures` for thumbv7em-none-eabihf) and asserts it
-# exists — the fixture build IS the compile check (no in-test cargo; issue 0034).
-[[test]]
-name = "stm32f4_rtic_main_macro"
-path = "tests/stm32f4_rtic_main_macro.rs"
-
-# `nros::main!()` Embassy macro expansion (Phase 216.C.4): asserts the build-stage
-# `embassy_main_macro` cargo-check fixture stamp (a cross `cargo check` of
-# examples/stm32f4/rust/talker-embassy — no link; issue 0034).
-[[test]]
-name = "stm32f4_embassy_main_macro"
-path = "tests/stm32f4_embassy_main_macro.rs"
-
 [lints]
 workspace = true

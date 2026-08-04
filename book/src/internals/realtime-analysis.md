@@ -82,7 +82,7 @@ cargo clippy --all-targets -- \
 cargo +nightly install cargo-call-stack
 
 # Build with stack size info
-cd examples/stm32f4/rust/rtic
+cd examples/qemu-arm-baremetal/rust/talker-rtic
 RUSTFLAGS="-Z emit-stack-sizes" cargo +nightly build --release
 
 # Generate call graph with stack sizes

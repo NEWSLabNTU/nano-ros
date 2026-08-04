@@ -84,7 +84,7 @@ When a project grows beyond one node, continue with
 | Vendor / form factor      | Chip          | RTOS / no-RTOS  | Languages | Example in repo                                   | ROS 2 interop |
 |---------------------------|---------------|-----------------|-----------|---------------------------------------------------|---------------|
 | ARM MPS2-AN385 (QEMU)     | Cortex-M3     | FreeRTOS / bare | Rust C C++ ¹ | `examples/qemu-arm-{freertos,baremetal}/`         | Verified      |
-| ST STM32F4-Discovery      | Cortex-M4F    | FreeRTOS / bare | Rust ²    | board crate `nros-board-stm32f4`                  | Verified      |
+| ST STM32F4-Discovery      | Cortex-M4F    | bare            | Rust ²    | out-of-tree — [worked example](porting/stm32f4-out-of-tree.md) | Untested ⁵ |
 | Espressif ESP32-C3        | RISC-V (RV32) | ESP-IDF         | Rust C C++ | `integrations/nano-ros/`                          | Ready         |
 | Espressif ESP32-C3 (QEMU) | RISC-V        | bare            | Rust      | `examples/qemu-esp32-baremetal/`                  | Verified      |
 | QEMU `virt` RISC-V64      | RV64GC        | ThreadX         | Rust C C++ | `examples/qemu-riscv64-threadx/`                  | Verified      |
@@ -98,20 +98,25 @@ runs but no in-CI gate yet — drop into the matching `examples/<plat>/`
 to compile and try.
 
 Footnotes — ¹ MPS2-AN385 bare-metal is Rust-only (`nros-c` / `nros-cpp`
-need an RTOS for libc / heap). ² STM32F4 Rust path is the canonical
-target for the bare-metal board crate; FreeRTOS variant uses the
+need an RTOS for libc / heap). ² STM32F4 is reached through the
+customization ladder, not an in-tree crate; a FreeRTOS variant sits on the
 shared `nros-board-freertos` glue. ³ ESP32-S3 needs the `xtensa-esp32s3-none-elf`
 Rust target via the [`espup`](https://github.com/esp-rs/espup) toolchain
 installer (not `rustup` — Xtensa targets aren't in upstream rust). ⁴ PX4 path is via the
 external-module template in `integrations/px4/` — C++ only because
-PX4's uORB binding is C++-only.
+PX4's uORB binding is C++-only. ⁵ *Untested* = the code path exists and the
+port is documented, but no lane in this repo boots it — the hardware is not in
+the test rack and QEMU models no STM32 MAC. phase-337 W7.a moved the two
+STM32F4 board crates out of the tree for exactly that reason; keeping a row
+that says "Verified" for a board nothing verifies is the failure mode the tier
+registry exists to prevent.
 
 ## Supported platforms (by RTOS)
 
 | Platform   | RTOS          | Network Stack  | Targets                      |
 |------------|---------------|----------------|------------------------------|
 | POSIX      | Linux / *BSD | OS sockets     | x86-64, aarch64              |
-| Bare-metal | None          | smoltcp        | Cortex-M3, ESP32-C3, STM32F4 |
+| Bare-metal | None          | smoltcp        | Cortex-M3, ESP32-C3          |
 | FreeRTOS   | FreeRTOS      | lwIP           | Cortex-M3 (QEMU)             |
 | NuttX      | NuttX         | BSD sockets    | Cortex-A7 (QEMU), RISC-V32 (QEMU rv-virt) |
 | ThreadX    | ThreadX       | NetX Duo       | RISC-V 64 (QEMU), Linux sim  |

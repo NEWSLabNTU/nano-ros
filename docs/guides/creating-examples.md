@@ -157,7 +157,7 @@ fn main() {
 
 ---
 
-## BSP Examples (`examples/qemu/`, `examples/stm32f4/`)
+## BSP Examples (`examples/qemu-arm-baremetal/`)
 
 BSP examples run on bare-metal embedded targets via a Board Support Package that wraps all hardware and network setup.
 
@@ -295,20 +295,23 @@ fn main() -> ! {
 - Output via `println!` macro (semihosting)
 - `test = false` and `bench = false` in `[[bin]]` (no test harness for `no_std`)
 
-### STM32F4 variant
+### Out-of-tree board variant
 
-Same pattern, but use `nros-board-stm32f4` and `defmt` logging:
+Same pattern against a board crate you own — `defmt` logging instead of
+semihosting, your own `Config` preset. phase-337 W7.a moved the STM32F4 board
+crates out of this tree, so this shape now lives at
+[`book/src/porting/stm32f4-out-of-tree.md`](../../book/src/porting/stm32f4-out-of-tree.md):
 
 ```toml
 [dependencies]
-nros-board-stm32f4 = { path = "../../../packages/boards/nros-board-stm32f4" }
+my-stm32f4-board = { path = "../../boards/my-stm32f4-board" }
 std_msgs = { version = "*", default-features = false }
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 defmt-rtt = "0.4"
 ```
 
 ```rust
-use nros_board_stm32f4::prelude::*;
+use my_stm32f4_board::prelude::*;
 use std_msgs::msg::Int32;
 
 #[entry]
@@ -751,7 +754,7 @@ CONFIG_HEAP_MEM_POOL_SIZE=65536
 | **Source file**    | `src/main.rs`             | `src/main.rs`                    | `src/lib.rs`                | `src/main.cpp`                                   | `src/main.cpp`                               |
 | **Crate type**     | Binary                    | Binary                           | Staticlib                   | N/A                                              | N/A                                          |
 | **Package name**   | Any                       | Any                              | Must be `rustapp`           | Any                                              | Any                                          |
-| **Main library**   | `nros`                    | `nros-board-mps2-an385`/`nros-board-stm32f4` | `nros`                      | `NanoRos::NanoRosCpp`                            | `CONFIG_NROS_CPP_API`                        |
+| **Main library**   | `nros`                    | `nros-board-mps2-an385`          | `nros`                      | `NanoRos::NanoRosCpp`                            | `CONFIG_NROS_CPP_API`                        |
 | **Transport**      | Feature-gated `zenoh`     | Built into platform crate        | Kconfig + module            | CMake config                                     | Kconfig + module                             |
 | **Logging**        | `env_logger`              | Semihosting / `defmt`            | `zephyr::set_logger()`      | `printf`                                         | Zephyr LOG                                   |
 | **Build system**   | `cargo build`             | `cargo build`                    | `west build` (CMake)        | `cmake`                                          | `west build` (CMake)                         |

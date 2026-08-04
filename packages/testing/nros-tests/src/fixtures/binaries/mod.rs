@@ -2486,14 +2486,12 @@ pub fn build_test_fixture(
 ///
 /// Returns `None` for platforms not yet migrated, so unrelated callers
 /// keep their example-local resolution. Only the *default* group (no
-/// extra features/env) is mirrored here, matching the only rows these two
-/// platforms carry today; a future feature/env variant would get a
+/// extra features/env) is mirrored here, matching the only rows this
+/// platform carries today; a future feature/env variant would get a
 /// hashed group slug on the shell side and would need an explicit mirror.
 fn fixture_shared_target_dir(platform: &str) -> Option<PathBuf> {
     match platform {
-        "qemu-arm-baremetal" | "stm32f4" => {
-            Some(project_root().join("build/fixtures-cargo").join(platform))
-        }
+        "qemu-arm-baremetal" => Some(project_root().join("build/fixtures-cargo").join(platform)),
         _ => None,
     }
 }
@@ -2525,12 +2523,6 @@ fn require_shared_fixture_binary(
 /// binary resolver.
 fn require_qemu_baremetal_fixture(binary_name: &str) -> TestResult<PathBuf> {
     require_shared_fixture_binary("qemu-arm-baremetal", "thumbv7m-none-eabi", binary_name)
-}
-
-/// Phase 226.D — stm32f4 (`thumbv7em-none-eabihf`) shared-fixture binary
-/// resolver.
-fn require_stm32f4_fixture(binary_name: &str) -> TestResult<PathBuf> {
-    require_shared_fixture_binary("stm32f4", "thumbv7em-none-eabihf", binary_name)
 }
 
 /// Build native-rs-talker (cached). phase-277 W3.a: the default-target talker
@@ -3970,14 +3962,12 @@ pub fn qemu_talker_xrce_binary() -> PathBuf {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// RTIC Example Builders (STM32F4, cross-compiled)
+// RTIC Example Builders (native host)
+//
+// phase-337 W7.a — the cross-compiled STM32F4 half of this block went with the
+// board. Its six accessors had ZERO callers once `stm32f4_rtic_main_macro.rs`
+// was deleted, which is the same "resolver nobody calls" shape as #222/#328.
 // ═══════════════════════════════════════════════════════════════════════════
-
-/// Cached path to the stm32f4-rtic-talker binary
-static RTIC_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Cached path to the stm32f4-rtic-listener binary
-static RTIC_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native rtic-talker binary
 static NATIVE_RTIC_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -3991,42 +3981,11 @@ static NATIVE_RTIC_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native rtic-service-client binary
 static NATIVE_RTIC_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached path to the stm32f4-rtic-service-server binary
-static RTIC_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Cached path to the stm32f4-rtic-service-client binary
-static RTIC_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
 /// Cached path to the native rtic-action-server binary
 static NATIVE_RTIC_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native rtic-action-client binary
 static NATIVE_RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Cached path to the stm32f4-rtic-action-server binary
-static RTIC_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Cached path to the stm32f4-rtic-action-client binary
-static RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Resolve the prebuilt stm32f4 RTIC talker fixture (cached). The
-/// `examples/stm32f4/rust/talker-rtic` crate's `[[bin]]` is named
-/// `stm32f4-rs-rtic-example` (not `stm32f4-rtic-talker` — the old name here was
-/// stale and matched nothing, so this accessor never resolved).
-pub fn build_rtic_talker() -> TestResult<&'static Path> {
-    RTIC_TALKER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
-        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rs-rtic-example"))
-        .map(|p| p.as_path())
-}
-
-/// Build stm32f4-rtic-listener (cached)
-pub fn build_rtic_listener() -> TestResult<&'static Path> {
-    RTIC_LISTENER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
-        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-listener"))
-        .map(|p| p.as_path())
-}
 
 /// Build native rtic-talker (cached)
 pub fn build_native_rtic_talker() -> TestResult<&'static Path> {
@@ -4070,22 +4029,6 @@ pub fn build_native_rtic_service_client() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Build stm32f4-rtic-service-server (cached)
-pub fn build_rtic_service_server() -> TestResult<&'static Path> {
-    RTIC_SERVICE_SERVER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
-        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-service-server"))
-        .map(|p| p.as_path())
-}
-
-/// Build stm32f4-rtic-service-client (cached)
-pub fn build_rtic_service_client() -> TestResult<&'static Path> {
-    RTIC_SERVICE_CLIENT_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
-        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-service-client"))
-        .map(|p| p.as_path())
-}
-
 /// Build native rtic-action-server (cached)
 pub fn build_native_rtic_action_server() -> TestResult<&'static Path> {
     NATIVE_RTIC_ACTION_SERVER_BINARY
@@ -4111,22 +4054,6 @@ pub fn build_native_rtic_action_client() -> TestResult<&'static Path> {
                 None,
             )
         })
-        .map(|p| p.as_path())
-}
-
-/// Build stm32f4-rtic-action-server (cached)
-pub fn build_rtic_action_server() -> TestResult<&'static Path> {
-    RTIC_ACTION_SERVER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
-        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-action-server"))
-        .map(|p| p.as_path())
-}
-
-/// Build stm32f4-rtic-action-client (cached)
-pub fn build_rtic_action_client() -> TestResult<&'static Path> {
-    RTIC_ACTION_CLIENT_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
-        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-action-client"))
         .map(|p| p.as_path())
 }
 

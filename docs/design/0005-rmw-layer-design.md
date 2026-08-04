@@ -152,7 +152,6 @@ nros-board-mps2-an385 (user-facing, composes everything)
 | `nano-ros-platform-qemu` (user API portion)  | **`nros-board-mps2-an385`**                 | nros-core, nros-rmw | QEMU user API: `Publisher<M>`, `run_node()`               |
 | `nano-ros-platform-esp32` (user API portion) | **`nros-board-esp32`**                | nros-core, nros-rmw | ESP32 WiFi user API                                       |
 | `nano-ros-platform-esp32-qemu` (user API)    | **`nros-board-esp32-qemu`**           | nros-core, nros-rmw | ESP32 QEMU user API                                       |
-| `nano-ros-platform-stm32f4` (user API)       | **`nros-board-stm32f4`**              | nros-core, nros-rmw | STM32F4 user API                                          |
 | **Removed**                                  |                                 |                     |                                                           |
 | `nano-ros-bsp-qemu`                          | REMOVED                         | —                   | Thin wrapper (11 lines)                                   |
 | `nano-ros-bsp-esp32`                         | REMOVED                         | —                   | Thin wrapper (11 lines)                                   |
@@ -191,7 +190,6 @@ packages/
     nros-board-mps2-an385/                       #   Publisher<M>, run_node(), Config for QEMU
     nros-board-esp32/                      #   Same for ESP32 WiFi
     nros-board-esp32-qemu/                 #   Same for ESP32 QEMU
-    nros-board-stm32f4/                    #   Same for STM32F4
   drivers/                           # Hardware drivers (middleware-agnostic)
     lan9118-smoltcp/
     openeth-smoltcp/

@@ -74,7 +74,7 @@ const GROUPS: &[Group] = &[
         name: "B-baremetal",
         reason: "no scheduler: the node declares DispatchStrategy::Deferred and an \
                  explicit tick(), and uses the nros_log facade because `log` needs std",
-        platforms: &["qemu-arm-baremetal", "qemu-esp32-baremetal", "stm32f4"],
+        platforms: &["qemu-arm-baremetal", "qemu-esp32-baremetal"],
     },
     Group {
         name: "C-zephyr",
@@ -166,14 +166,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     },
     Divergence {
         lang: "rust",
-        program: "action-client-rtic",
-        platform: "stm32f4",
-        reason: "phase-337 W7.a — stm32f4 leaves the matrix (0 Runtime cells); its RTIC \
-                 variants diverge broadly from the qemu-arm-baremetal siblings. Resolve \
-                 by removal, not by converging a board we are dropping.",
-    },
-    Divergence {
-        lang: "rust",
         program: "action-server",
         platform: "qemu-riscv64-threadx",
         reason: "W2 moved the ceremony this reason used to name (`extern crate \
@@ -217,14 +209,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     },
     Divergence {
         lang: "rust",
-        program: "action-server-rtic",
-        platform: "stm32f4",
-        reason: "phase-337 W7.a — stm32f4 leaves the matrix (0 Runtime cells); its RTIC \
-                 variants diverge broadly from the qemu-arm-baremetal siblings. Resolve \
-                 by removal, not by converging a board we are dropping.",
-    },
-    Divergence {
-        lang: "rust",
         program: "listener",
         platform: "qemu-esp32-baremetal",
         reason: "W3.c — group B is not yet internally consistent; measure the \
@@ -246,14 +230,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         reason: "W2.c/W2.d — the re-exported node-package name differs \
                  (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
                  attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "listener-rtic",
-        platform: "stm32f4",
-        reason: "phase-337 W7.a — stm32f4 leaves the matrix (0 Runtime cells); its RTIC \
-                 variants diverge broadly from the qemu-arm-baremetal siblings. Resolve \
-                 by removal, not by converging a board we are dropping.",
     },
     Divergence {
         lang: "rust",
@@ -299,14 +275,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     },
     Divergence {
         lang: "rust",
-        program: "service-client-rtic",
-        platform: "stm32f4",
-        reason: "phase-337 W7.a — stm32f4 leaves the matrix (0 Runtime cells); its RTIC \
-                 variants diverge broadly from the qemu-arm-baremetal siblings. Resolve \
-                 by removal, not by converging a board we are dropping.",
-    },
-    Divergence {
-        lang: "rust",
         program: "service-server",
         platform: "qemu-riscv64-threadx",
         reason: "W2 moved the ceremony this reason used to name (`extern crate \
@@ -348,14 +316,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     },
     Divergence {
         lang: "rust",
-        program: "service-server-rtic",
-        platform: "stm32f4",
-        reason: "phase-337 W7.a — stm32f4 leaves the matrix (0 Runtime cells); its RTIC \
-                 variants diverge broadly from the qemu-arm-baremetal siblings. Resolve \
-                 by removal, not by converging a board we are dropping.",
-    },
-    Divergence {
-        lang: "rust",
         program: "talker",
         platform: "qemu-esp32-baremetal",
         reason: "W3.c — group B is not yet internally consistent; measure the \
@@ -377,14 +337,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         reason: "W2.c/W2.d — the re-exported node-package name differs \
                  (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
                  attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "talker-rtic",
-        platform: "stm32f4",
-        reason: "phase-337 W7.a — stm32f4 leaves the matrix (0 Runtime cells); its RTIC \
-                 variants diverge broadly from the qemu-arm-baremetal siblings. Resolve \
-                 by removal, not by converging a board we are dropping.",
     },
 ];
 

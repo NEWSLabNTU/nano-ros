@@ -41,8 +41,6 @@ Compiles. **No CI lane can boot it** — real hardware or a license-gated model 
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
 | `nros-board-fvp-aemv8r-smp` | Fvp | *unassigned* | **Gated SDK: `arm-fvp`.** License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see. |
-| `nros-board-rtic-stm32f4` | Stm32F4 | *unassigned* | RTIC runtime delivers (phase-289) but the hardware is not in CI. |
-| `nros-board-stm32f4` | Stm32F4 | *unassigned* | Hardware-gated (#221): needs a real NUCLEO-F429ZI; QEMU has no F4 ethernet model. |
 
 ## Scaffold — not supported
 
@@ -50,7 +48,6 @@ Structurally incomplete. Distinct from tier 3: tier 3 is finished-but-unverified
 
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
-| `nros-board-embassy-stm32f4` | — | *unassigned* | Issue 0248: no transport bringup, and a Deferred image signals callbacks into a channel nothing drains. Actively committed to, which is exactly why it must be labelled. |
 | `nros-board-esp32s3` | — | *unassigned* | No recipe, no fixture, no test, no matrix cell. Needs an Xtensa toolchain absent from nros-sdk-index.toml. Serial-only; WiFi is a follow-up. |
 | `nros-board-orin-spe` | — | *unassigned* | **Gated SDK: `nv-spe-fsp`.** Placeholder runtime; no fixture row; absent from PlatformId. orin_spe_mock_ivc.rs proves the IVC wire format on POSIX, NOT the board — do not count it as board coverage. Issue 0271 tracks a 256 KB BTCM overflow. |
 | `nros-board-s32z270dc2-r52` | — | *unassigned* | Zero cargo consumers; `just zephyr build-s32z-board-import` has NO caller; its board_import_s32z fixture is not registered in WEST_FIXTURES. Either wire it up (cheap — the FVP twin exists) or delete. |

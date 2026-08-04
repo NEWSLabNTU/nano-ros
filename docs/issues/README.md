@@ -87,6 +87,14 @@ consumer reads the body with `new_with_header`), and removing it producer-only r
 issue-#35 corruption its comment warns about, so producer and consumer must change together. This is
 what stops phase-338 W3 migrating `action-{server,client}` / `service-client`. Decision in
 [RFC-0069](../design/0069-action-payload-envelope.md). See `0418-*`. (2026-08-05)
+**#415** — `nros::main!` picks the framework emit shape from a hardcoded **deploy-string** table,
+while `nros ws check` reads `[package.metadata.nros.board] framework` off the board crate. Two
+spellings of one fact, and the macro's falls through to `OwnedSpin` on an unknown key — a silently
+wrong entry shape, not a diagnostic. Invisible until phase-337 W7.a deleted `embassy-stm32f4`, the
+only in-tree key that selected `Framework::Embassy`; `Framework::Rtic` is in the same shape and only
+still reachable via `rtic-mps2-an385`. Fix = let the macro read the same manifest key (needs the
+expansion-time fs round-trip `rtic_board_spec_for` already defers). See `0415-*`. (2026-08-04)
+
 Recently resolved (2026-08-04): **#414** — phase-330 W4 made the SystemModel a build artifact and
 deleted every committed `config/*model.yaml`; five tests still read those paths and failed on
 `os error 2` instead of on what they assert. RESOLVED by the rule that a test never reads a
@@ -498,9 +506,12 @@ project into the generated entry; seeding gated on `param_services`. #277 resolv
 mixed-subset failure mode by construction (verified on a disjoint-subset workspace,
 zero duplicate exports); no union closure needed, union-shim pkg obsolete.)
 
-**#248** — Embassy board entry is a stub: every Board/EmbassyBoardEntry method `todo!()`, the C.3
-dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,
-phase-289). Release decision: finish or de-advertise. See `0248-*`. (release-prep audit 2026-07-24)
+(#248 resolved 2026-08-04 — Embassy board entry was a stub whose crate could never earn a runtime
+lane; RESOLVED BY DELETION in phase-337 W7.a, which is what the issue's own analysis pointed at
+("finishing as stm32f4 can never earn a CI runtime lane"). The SEAM stays — `EmbassyBoardEntry`, the
+`nros::main!()` Embassy emit branch, and `nros ws check`'s Deferred lint — because RFC-0064 keeps
+framework seams and lets boards arrive from integrators. Narrower successor: **#415**. See
+`archived/0248-*`.)
 
 (#244 resolved — platform ABI surface asymmetry: PlatformSerial/PlatformIvc had no C header mirror. See `archived/0244-*`.)
 

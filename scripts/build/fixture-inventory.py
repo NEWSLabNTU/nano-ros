@@ -311,17 +311,6 @@ def prerequisite_rows():
             "notes": "build-fixtures skips without arm-none-eabi-gcc; patched qemu provisioned by setup-qemu for tests",
         },
         {
-            "id": "stm32f4-toolchain-prereq",
-            "platform": "stm32f4",
-            "kind": "sdk-prereq",
-            "role": "arm-none-eabi-gcc",
-            "dir": "nros-sdk-index.toml",
-            "build_root": "",
-            "scheduler": "just stm32f4 setup",
-            "shared_mutation": "$NROS_HOME/sdk/openocd; host arm-none-eabi-gcc",
-            "notes": "build-fixtures skips without arm-none-eabi-gcc; setup provisions openocd for hardware flow",
-        },
-        {
             "id": "freertos-sdk-prereq",
             "platform": "freertos",
             "kind": "sdk-prereq",

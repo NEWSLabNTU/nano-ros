@@ -44,8 +44,6 @@ pub enum PlatformId {
     Esp32Qemu,
     /// Bare-metal RTIC on QEMU MPS2-AN385.
     QemuBaremetal,
-    /// STM32F4 hardware (NUCLEO-F429ZI) — RTIC + Embassy.
-    Stm32F4,
     /// ARM FVP Base_RevC AEMv8-R (license-gated model).
     Fvp,
     /// PX4-SITL host (the uORB middleware). Issue 0341 — expressible so the
@@ -68,9 +66,11 @@ impl PlatformId {
             PlatformId::ThreadxRiscv64 => 6,
             PlatformId::Esp32Qemu => 7,
             PlatformId::QemuBaremetal => 8,
-            PlatformId::Stm32F4 => 9,
-            PlatformId::Fvp => 10,
-            PlatformId::Px4 => 11,
+            // 9 was `Stm32F4` until phase-337 W7.a. Renumbering `Fvp`/`Px4`
+            // down into the gap is free: both carry ZERO Runtime cells, so no
+            // fixture image, locator or domain was ever baked from their band.
+            PlatformId::Fvp => 9,
+            PlatformId::Px4 => 10,
         }
     }
 
@@ -100,7 +100,6 @@ impl PlatformId {
             PlatformId::ThreadxRiscv64 => &["threadx-riscv64"],
             PlatformId::Esp32Qemu => &["esp32", "qemu-esp32-baremetal"],
             PlatformId::QemuBaremetal => &["qemu-arm-baremetal"],
-            PlatformId::Stm32F4 => &["stm32f4"],
             PlatformId::Fvp => &["fvp"],
             // Carried as a CarveOut (no CI runner builds PX4-SITL), so no row
             // spells this today. The token is still declared: the vocabulary has
@@ -131,7 +130,6 @@ impl PlatformId {
             PlatformId::ThreadxRiscv64 => "threadx_riscv64",
             PlatformId::Esp32Qemu => "esp32",
             PlatformId::QemuBaremetal => "qemu",
-            PlatformId::Stm32F4 => "stm32f4",
             PlatformId::Px4 => "px4",
         }
     }
@@ -155,7 +153,6 @@ impl PlatformId {
         PlatformId::ThreadxRiscv64,
         PlatformId::Esp32Qemu,
         PlatformId::QemuBaremetal,
-        PlatformId::Stm32F4,
         PlatformId::Fvp,
         PlatformId::Px4,
     ];
@@ -556,14 +553,12 @@ pub const CELLS: &[Cell] = &[
     cell(QemuBaremetal, Rust, Zenoh, Action, Example,
          CarveOut("rtic demo set is pubsub-only by design (phase-289 scope)")),
 
-    // STM32F4 hardware — build-only (#221: QEMU has no F4 ethernet model;
-    // runtime proof rides the shared entry scaffold's QEMU RTIC lanes).
-    cell(Stm32F4, Rust, Zenoh, Pubsub,  Example,
-         BuildOnly("hardware-gated (#221); QEMU RTIC lanes are the runtime proof for the shared scaffold")),
-    cell(Stm32F4, Rust, Zenoh, Service, Example,
-         BuildOnly("hardware-gated (#221)")),
-    cell(Stm32F4, Rust, Zenoh, Action,  Example,
-         BuildOnly("hardware-gated (#221)")),
+    // phase-337 W7.a — the three `Stm32F4` BuildOnly cells left with the board.
+    // They were `BuildOnly`, i.e. ZERO Runtime, so the removal costs no
+    // coverage: `check-board-tiers` requires a Runtime cell for tier 1/2 and
+    // this platform could never have one (no hardware in the rack, no QEMU
+    // model of the F4 MAC). The board is now
+    // `book/src/porting/stm32f4-out-of-tree.md`.
 
     // FVP — cyclone runtime (license-gated at run time), cpp + rust.
     // Issue 0232 / phase-320 W1.a — these were `Runtime`, which the lane can

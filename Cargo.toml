@@ -293,47 +293,6 @@ exclude = [
     "examples/qemu-arm-nuttx/rust/action-server-entry",
     "examples/qemu-arm-nuttx/rust/action-client-entry",
     # Phase 169.2 — qemu-arm-nuttx rust/dds deleted.
-    # STM32F4 examples
-    "examples/stm32f4/rust/talker",
-    "examples/stm32f4/rust/polling",
-    "examples/stm32f4/rust/talker-rtic",
-    "examples/stm32f4/rust/listener-rtic",
-    "examples/stm32f4/rust/service-server-rtic",
-    "examples/stm32f4/rust/service-client-rtic",
-    "examples/stm32f4/rust/action-server-rtic",
-    "examples/stm32f4/rust/action-client-rtic",
-    "examples/stm32f4/rust/talker-embassy",
-    "examples/stm32f4/rust/listener-embassy",
-    # Phase 216.C.4 — board-agnostic talker Node pkg shared by the
-    # Embassy + RTIC (parallel B.5 wave) Entry pkgs above. Excluded
-    # because it cross-builds for `thumbv7em-none-eabihf` only.
-    "examples/stm32f4/rust/talker_pkg",
-    # Phase 216.C.5 — board-agnostic listener Node pkg (Deferred
-    # dispatch + tag-based subscription) consumed by the Embassy
-    # Entry pkg above. Excluded because it cross-builds for
-    # `thumbv7em-none-eabihf` only. RTIC sibling lives at
-    # `listener_pkg_rtic` (Phase 216.B.5) — split because the
-    # Embassy flavor's `ListenerState` carries an
-    # `Option<embassy_executor::Spawner>` (spawn-from-sync escape
-    # demo), whereas RTIC's task spawn is a static
-    # `task_name::spawn()` symbol with no runtime handle.
-    "examples/stm32f4/rust/listener_pkg",
-    "examples/stm32f4/rust/listener_pkg_rtic",
-    # Phase 216.B.5 — board-agnostic action-client Node pkg (Inline
-    # dispatch + EntityId-based action client via `create_action_client`).
-    # Excluded because it cross-builds for `thumbv7em-none-eabihf` only.
-    "examples/stm32f4/rust/action_client_pkg",
-    # Phase 216.B.5 — board-agnostic action-server Node pkg (Deferred
-    # dispatch + tag-based action via `create_action_static`).
-    # Excluded because it cross-builds for `thumbv7em-none-eabihf` only.
-    "examples/stm32f4/rust/action_server_pkg",
-    # Phase 216.B.5 — board-agnostic service-server Node pkg (Deferred
-    # dispatch + tag-based service via `create_service_static`). Shared
-    # with a potential future Embassy Entry pkg, hence sibling-pkg
-    # naming. Excluded because it cross-builds for
-    # `thumbv7em-none-eabihf` only.
-    "examples/stm32f4/rust/service_server_pkg",
-    "examples/stm32f4/rust/service_client_pkg",
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     # Zephyr examples
     # Phase 168.1 collapsed-shape Rust examples (one dir, N RMW
@@ -423,12 +382,12 @@ exclude = [
     "packages/platform/nros-platform-esp32s3",
     "packages/boards/nros-board-esp32-qemu",
     "packages/boards/nros-board-esp32s3",
-    "packages/boards/nros-board-embassy-stm32f4",
-    "packages/boards/nros-board-stm32f4",
-    # Phase 216.B.2 — RTIC + STM32F4 sibling crate. Cross-compile
-    # only (thumbv7em-none-eabihf); excluded from the host workspace
-    # walk for the same reason as `nros-board-stm32f4` above.
-    "packages/boards/nros-board-rtic-stm32f4",
+    # phase-337 W7.a — the three STM32F4 board crates
+    # (`nros-board-{stm32f4,rtic-stm32f4,embassy-stm32f4}`) and their examples
+    # left the supported matrix: 0 Runtime cells, no CI lane that could boot
+    # them. `nros-platform-stm32f4` (below) and the porting references stay —
+    # they are the chip material an out-of-tree board crate consumes, which is
+    # what `book/src/porting/stm32f4-out-of-tree.md` now documents.
     # phase-337 W3 — ONE crate for both QEMU NuttX witnesses (arm virt +
     # rv-virt). Cross-only for either (armv7a-nuttx-eabihf /
     # riscv32imac-unknown-nuttx-elf, both build-std), so it stays out of the

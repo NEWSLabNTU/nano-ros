@@ -1052,7 +1052,7 @@ mod tests {
         write_entry_pkg(
             &root,
             "talker-rtic-entry",
-            "rtic-stm32f4",
+            "rtic-mps2-an385",
             &[
                 ("board_rtic_stub", "../board-rtic-stub"),
                 ("talker_node", "../talker-node"),
@@ -1076,7 +1076,7 @@ mod tests {
         write_entry_pkg(
             &root,
             "listener-rtic-entry",
-            "rtic-stm32f4",
+            "rtic-mps2-an385",
             &[
                 ("board_rtic_stub", "../board-rtic-stub"),
                 ("listener_node", "../listener-node"),
@@ -1101,7 +1101,7 @@ mod tests {
         write_entry_pkg(
             &root,
             "default-rtic-entry",
-            "rtic-stm32f4",
+            "rtic-mps2-an385",
             &[
                 ("board_rtic_stub", "../board-rtic-stub"),
                 ("default_node", "../default-node"),
@@ -1123,7 +1123,7 @@ mod tests {
         write_entry_pkg(
             &root,
             "talker-embassy-entry",
-            "embassy-stm32f4",
+            "my-embassy-board",
             &[
                 ("board_embassy_stub", "../board-embassy-stub"),
                 ("talker_node", "../talker-node"),

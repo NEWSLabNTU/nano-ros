@@ -16,7 +16,7 @@
 # Eligibility — returns nothing (caller keeps the example-local
 # `target/`) unless BOTH hold:
 #   * the platform has been migrated to a shared fixture dir
-#     (qemu-arm-baremetal, stm32f4 — see NROS_FIXTURE_SHARED_PLATFORMS);
+#     (qemu-arm-baremetal — see NROS_FIXTURE_SHARED_PLATFORMS);
 #   * the manifest row did NOT author its own `--target-dir` (authored
 #     dirs such as target-zenoh / target-safety win and stay per-example).
 #
@@ -33,7 +33,7 @@
 # environment — a plain (non-exported) assignment is visible in the
 # sourcing process but vanishes in the leaf, making every row look
 # ineligible and silently fall back to the example-local `target/`.
-export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal stm32f4}"
+export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal}"
 
 # _nros_fixture_variant_sig <cargo-args> <envstr>
 # Signature of everything in the grouping key BEYOND platform+triple.

@@ -14,18 +14,17 @@ closures, why no `AsyncNode` trait yet — see the sibling internals page
 
 ## When to reach for `nros::main!()` instead of Pattern A
 
-The current in-tree RTIC examples (e.g.
-`examples/stm32f4/rust/talker-rtic/`) use the **Pattern A escape
-hatch**: hand-written `#[rtic::app]`, manual `Executor::open` inside
-`#[init]`, manual `spin_once(0)` polling task. It looks like this:
+The **Pattern A escape hatch** is hand-written `#[rtic::app]`, manual
+`Executor::open` inside `#[init]`, manual `spin_once(0)` polling task. It looks
+like this:
 
 ```rust
-// File: examples/stm32f4/rust/talker-rtic/src/main.rs (today, pre-216.B.5)
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1, USART2])]
+// Pattern A, written by hand
+#[rtic::app(device = mps2_an385_pac, dispatchers = [UARTRX0, UARTTX0])]
 mod app {
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
-        let syst = nros_board_stm32f4::init_hardware(&config, cx.device, cx.core);
+        let syst = nros_board_mps2_an385::init_hardware(&config, cx.device, cx.core);
         nros_rmw_zenoh::register().expect("Failed to register RMW backend");
         let mut executor = Executor::open(&exec_config).unwrap();
         let mut node = executor.create_node("talker").unwrap();
@@ -50,18 +49,17 @@ the burden of getting RTIC + nros + the dispatcher list right on every
 example author. Phase 216.B.5 collapses it to one line:
 
 ```rust
-// File: examples/stm32f4/rust/talker-rtic/src/main.rs (post-216.B.5)
+// File: examples/qemu-arm-baremetal/rust/talker-rtic/src/main.rs
 #![no_std]
 #![no_main]
 
-use defmt_rtt as _;
-use panic_probe as _;
+use panic_semihosting as _;
 
 nros::main!();
 ```
 
 The `nros::main!()` proc-macro reads `[package.metadata.nros.entry]
-deploy = "rtic-stm32f4"` from the Entry pkg's `Cargo.toml`, sees that
+deploy = "rtic-mps2-an385"` from the Entry pkg's `Cargo.toml`, sees that
 the board's metadata declares `framework = "rtic"`, and emits a full
 `#[rtic::app]` module — including `#[init]`, `__nros_spin`, and (if any
 deployed Node declares `DispatchStrategy::Deferred`) `__nros_dispatch`.
@@ -99,7 +97,7 @@ my_rtic_robot/
     │   └── src/lib.rs                 # impl Node for Talker + nros::node!(Talker)
     └── talker_entry/                  # Entry pkg — picks RTIC board
         ├── package.xml
-        ├── Cargo.toml                 # [package.metadata.nros.entry] deploy = "rtic-stm32f4"
+        ├── Cargo.toml                 # [package.metadata.nros.entry] deploy = "rtic-mps2-an385"
         └── src/main.rs                # nros::main!();
 ```
 
@@ -107,14 +105,15 @@ my_rtic_robot/
   subscriptions, services, actions). No `main`, no `#[rtic::app]`, no
   board choice. Builds as `rlib + staticlib` and gets linked into one
   or more Entry pkgs.
-- **Entry pkg** — picks the board crate (`nros-board-rtic-stm32f4`),
+- **Entry pkg** — picks the board crate (`nros-board-mps2-an385`, `rtic`
+  feature),
   pins the deploy target, and runs `nros::main!();`.
 - **Bringup pkg** — optional, only when ≥2 Entry pkgs share the same
   `launch/*.launch.xml` topology. Skipped here because we have one
   binary.
 
 The split exists so the same `talker_pkg/` can be deployed under RTIC
-on STM32F4, under FreeRTOS on QEMU, and under POSIX on a Linux host
+on bare-metal Cortex-M, under FreeRTOS on QEMU, and under POSIX on a Linux host
 without any per-target Node-pkg fork.
 
 ### A minimal Node pkg — pub-only Talker
@@ -201,14 +200,14 @@ path = "src/main.rs"
 
 [dependencies]
 nros                       = { workspace = true, default-features = false }
-nros-board-rtic-stm32f4    = { workspace = true }
+nros-board-mps2-an385      = { workspace = true, features = ["rtic"] }
 talker_pkg                 = { path = "../talker_pkg" }
 
 [package.metadata.nros.entry]
-deploy = "rtic-stm32f4"
+deploy = "rtic-mps2-an385"
 
-[package.metadata.nros.deploy.rtic-stm32f4]
-board     = "rtic-stm32f4"
+[package.metadata.nros.deploy.rtic-mps2-an385]
+board     = "rtic-mps2-an385"
 rmw       = "zenoh"
 domain_id = 0
 locator   = "tcp/192.168.1.10:7447"
@@ -226,8 +225,8 @@ nros::main!();
 ```
 
 That's the whole Entry pkg. The proc-macro reads `deploy =
-"rtic-stm32f4"`, looks up the board crate's `framework = "rtic"`
-metadata, and expands into a `#[rtic::app(device = ::nros_board_rtic_stm32f4::pac, dispatchers = [USART1, USART2])]` module with auto-generated `#[init]`,
+"rtic-mps2-an385"`, looks up the board crate's `framework = "rtic"`
+metadata, and expands into a `#[rtic::app(device = mps2_an385_pac, dispatchers = [UARTRX0, UARTTX0])]` module with auto-generated `#[init]`,
 `__nros_spin`, and per-Node state slots.
 
 ## `DispatchStrategy::Inline` vs `Deferred`

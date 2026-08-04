@@ -327,15 +327,17 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 # This is a STOPGAP, not the fix. The durable fix (AGENTS.md "No compilation
 # inside tests") is to convert each compile-in-test into a build-stage fixture
 # (examples/fixtures.toml) that the test merely asserts exists — see the
-# `stm32f4_rtic_main_macro` conversion. As each binary is converted it becomes
+# `native_entry_boot` conversion. As each binary is converted it becomes
 # fast and is dropped from this filter (phase216_b already converted + removed);
 # the rule shrinks to empty when the last compile-in-test is gone.
 [[profile.default.overrides]]
 # NOTE: as each compile-in-test binary is CONVERTED to consume a build-stage
 # fixture (issue 0034 — it becomes a fast artifact check, no in-test cargo), it
 # is removed from this list; it no longer needs the headroom AND nextest errors
-# on a `binary()` that matches nothing. Converted so far: phase216_b →
-# stm32f4_rtic_main_macro, phase212_n_entry_poc_runs → native_entry_boot.
+# on a `binary()` that matches nothing. Converted so far:
+# phase212_n_entry_poc_runs → native_entry_boot. (phase216_b →
+# `stm32f4_rtic_main_macro` was the other one; both it and the fixture it
+# asserted left with the board in phase-337 W7.a.)
 filter = """
   binary(native_orchestration_misuse) \
   or binary(native_main_macro_misuse) \
@@ -753,7 +755,7 @@ slow-timeout = { period = "60s", terminate-after = 10 }
 max-threads = 4
 
 [[profile.default.overrides]]
-filter = "binary(~freertos) or binary(~nuttx) or binary(~threadx) or binary(~zephyr) or binary(~esp32) or binary(~fvp) or binary(~stm32)"
+filter = "binary(~freertos) or binary(~nuttx) or binary(~threadx) or binary(~zephyr) or binary(~esp32) or binary(~fvp)"
 test-group = "qemu-emulated"
 
 # phase-329 W2 consolidated ten `*_applied` binaries into ONE

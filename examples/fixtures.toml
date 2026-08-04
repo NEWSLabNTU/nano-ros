@@ -1610,67 +1610,6 @@ lang = "rust"
 dir = "packages/testing/nros-bench/large-msg-baremetal"
 
 # ===========================================================================
-# stm32f4 — Rust (cortex-m4 thumbv7em; cross target via .cargo/config).
-# Plain cargo; no feature variants.
-# ===========================================================================
-
-[[fixture]]
-platform = "stm32f4"
-lang = "rust"
-dir = "examples/stm32f4/rust/talker"
-target = "thumbv7em-none-eabihf"
-
-[[fixture]]
-platform = "stm32f4"
-lang = "rust"
-dir = "examples/stm32f4/rust/talker-rtic"
-target = "thumbv7em-none-eabihf"
-
-[[fixture]]
-platform = "stm32f4"
-lang = "rust"
-dir = "examples/stm32f4/rust/talker-embassy"
-target = "thumbv7em-none-eabihf"
-# Incomplete example: does not link as a standalone fixture (missing board
-# libc/platform glue + memory layout — undefined __assert_func / strncmp /
-# nros_platform_alloc). The pre-226 hard-coded stm32f4 recipe deliberately
-# omitted it; the manifest migration would otherwise build + fail on it.
-# Kept in the manifest for documentation/inventory; skip_build excludes it
-# from the fixture build + stale probe until the example is fixed.
-# See docs/known-issues.md #13.
-skip_build = true
-
-[[fixture]]
-platform = "stm32f4"
-lang = "rust"
-dir = "examples/stm32f4/rust/listener-rtic"
-target = "thumbv7em-none-eabihf"
-
-[[fixture]]
-platform = "stm32f4"
-lang = "rust"
-dir = "examples/stm32f4/rust/service-server-rtic"
-target = "thumbv7em-none-eabihf"
-
-[[fixture]]
-platform = "stm32f4"
-lang = "rust"
-dir = "examples/stm32f4/rust/service-client-rtic"
-target = "thumbv7em-none-eabihf"
-
-[[fixture]]
-platform = "stm32f4"
-lang = "rust"
-dir = "examples/stm32f4/rust/action-server-rtic"
-target = "thumbv7em-none-eabihf"
-
-[[fixture]]
-platform = "stm32f4"
-lang = "rust"
-dir = "examples/stm32f4/rust/action-client-rtic"
-target = "thumbv7em-none-eabihf"
-
-# ===========================================================================
 # freertos (qemu MPS2-AN385) — Rust. Role examples, zenoh RMW into
 # target-zenoh/ (cyclonedds is cmake — see 181.5). Codegen runs in the recipe.
 # ===========================================================================
@@ -2968,21 +2907,6 @@ output = ".compile-ok"
 id = "n9_form4"
 builder = "cargo-check"
 dir = "packages/testing/nros-tests/fixtures/n9_workspace"
-output = ".compile-ok"
-
-# `cargo check` an EXISTING example dir for a cross target (no staging).
-[[compile_check_fixture]]
-id = "embassy_main_macro"
-builder = "cargo-check"
-dir = "examples/stm32f4/rust/talker-embassy"
-target = "thumbv7em-none-eabihf"
-output = ".compile-ok"
-
-[[compile_check_fixture]]
-id = "embassy_main_macro_listener"
-builder = "cargo-check"
-dir = "examples/stm32f4/rust/listener-embassy"
-target = "thumbv7em-none-eabihf"
 output = ".compile-ok"
 
 # --- cargo-build: the binary is the point; tests run it.

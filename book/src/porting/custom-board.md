@@ -268,7 +268,6 @@ Start from the crate closest to your target:
 | `nros-board-mps2-an385` | Ethernet + Serial | Bare-metal | `packages/boards/nros-board-mps2-an385/` |
 | `nros-board-mps2-an385-freertos` | Ethernet (lwIP) | FreeRTOS | `packages/boards/nros-board-mps2-an385-freertos/` |
 | `nros-board-esp32-qemu` | Ethernet (OpenETH) | Bare-metal (esp-hal) | `packages/boards/nros-board-esp32-qemu/` |
-| `nros-board-stm32f4` | Ethernet + Serial | Bare-metal | `packages/boards/nros-board-stm32f4/` |
 | `nros-board-nuttx-qemu` | BSD sockets | NuttX | `packages/boards/nros-board-nuttx-qemu/` (arm virt **and** rv-virt) |
 | `nros-board-threadx-qemu-riscv64` | NetX Duo | ThreadX | `packages/boards/nros-board-threadx-qemu-riscv64/` |
 

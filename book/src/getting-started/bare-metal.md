@@ -189,6 +189,7 @@ For Cortex-M3 with an RTOS, switch to the
   under `packages/testing/nros-bench/wake-latency-cortex-m3/` shows
   how to feed a backend's transport-notify into the cooperative
   spin loop on bare-metal.
-- Real hardware: same code runs on STM32F4-Discovery with a
-  different board crate (`nros-board-stm32f4`) and a different
-  linker script.
+- Real hardware: the same code runs on an STM32F4-Discovery with a board
+  crate of your own and a different linker script — see
+  [Worked Example — STM32F4 Out of Tree](../porting/stm32f4-out-of-tree.md),
+  which takes that board through the customization ladder end to end.

@@ -66,7 +66,6 @@ mod zephyr 'just/zephyr.just'
 mod esp32 'just/esp32.just'
 mod esp_idf 'just/esp_idf.just'
 mod qemu 'just/qemu-baremetal.just'
-mod stm32f4 'just/stm32f4.just'
 mod native 'just/native.just'
 mod xrce 'just/xrce.just'
 mod docker 'just/docker.just'
@@ -195,7 +194,7 @@ build-example-extras:
     list="$(mktemp)"
     rg --files examples -g Cargo.toml \
         | sed 's#/Cargo.toml$##' \
-        | grep -Ev '^examples/(zephyr|qemu-arm-freertos|qemu-arm-nuttx|threadx-linux|qemu-riscv64-threadx|qemu-arm-baremetal|stm32f4)/' \
+        | grep -Ev '^examples/(zephyr|qemu-arm-freertos|qemu-arm-nuttx|threadx-linux|qemu-riscv64-threadx|qemu-arm-baremetal)/' \
         | grep -Ev '^examples/native/rust/(talker|listener|lifecycle-node|custom-msg|service-server|service-client|action-server|action-client|talker-rtic|listener-rtic|service-server-rtic|service-client-rtic|action-server-rtic|action-client-rtic|serial-talker|serial-listener)$' \
         | sort > "$list"
 
@@ -1485,7 +1484,7 @@ build-test-fixtures-leaves lane="all":
         # the module is filtered OUT (a false compound command is a failure), so
         # the skip is an explicit `if`.
         if in_lane zephyr; then run_stage zephyr just zephyr build-fixtures; fi
-        for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4; do
+        for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 esp32 px4; do
             in_lane "$platform" || continue
             run_stage "$platform" just "$platform" build-fixtures
         done
@@ -1511,7 +1510,7 @@ build-test-fixtures-leaves lane="all":
     # must agree, so they read one variable rather than three copies of the
     # literal list.
     lane_platforms=""
-    for platform in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4; do
+    for platform in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 esp32 px4; do
         if in_lane "$platform"; then lane_platforms="$lane_platforms $platform"; fi
     done
     lane_platforms="${lane_platforms# }"
@@ -3758,7 +3757,6 @@ clean-examples:
     just zephyr clean
     just esp32 clean
     just esp_idf clean
-    just stm32f4 clean
     just px4 clean
     just orin_spe clean
     just platformio clean
@@ -3799,7 +3797,7 @@ clean: clean-examples clean-fixtures
     # Clean stale per-crate target/ dirs inside workspace members (left by standalone builds)
     find packages -maxdepth 4 -name target -type d -not -path '*/codegen/packages/*' -exec rm -rf {} + 2>/dev/null || true
     # Catch-all for example target/ dirs the per-platform `clean` recipes miss
-    # (e.g. stm32f4 leaves listener-embassy/target, fixture entry crates, …).
+    # (e.g. a west-built entry leaf, fixture entry crates, …).
     # `-prune` so we don't recurse into a target we're already deleting.
     find examples packages/testing/nros-tests/fixtures -type d -name target -prune -exec rm -rf {} + 2>/dev/null || true
     # Ephemeral scratch target dirs (issue 0400). Each is box-aware: the recipe

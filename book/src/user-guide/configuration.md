@@ -65,13 +65,13 @@ config file on the device and nothing is parsed at runtime.
 `BoardEntry::run_with_deploy` applies onto the board's boot `Config`:
 
 ```toml
-# Cargo.toml (e.g. examples/stm32f4/rust/talker)
+# Cargo.toml (e.g. examples/qemu-arm-baremetal/rust/talker)
 [package.metadata.nros.node]
 class = "talker_pkg::Talker"
 name  = "talker"
 
-[package.metadata.nros.deploy.stm32f4]
-board   = "stm32f4"            # board crate (optional where unambiguous)
+[package.metadata.nros.deploy.mps2-an385]
+board   = "mps2-an385"         # board crate (optional where unambiguous)
 rmw     = "zenoh"
 locator = "tcp/192.168.1.1:7447"
 ip      = "192.168.1.10"
@@ -209,7 +209,7 @@ brokered client doesn't need:
 |----------|---------|--------|
 | `NROS_LINK_IP` | on | `NROS_LINK_IP=0` on a **serial-only** node drops the IP link layer — zenoh-pico's TCP/UDP link C (`Z_FEATURE_LINK_TCP/UDP=0`) and (with `--gc-sections`) the smoltcp platform impl. Serial link stays. |
 | `NROS_SMOLTCP_MAX_SOCKETS` / `NROS_SMOLTCP_MAX_UDP_SOCKETS` | 4 / 2 | Sized for DDS RTPS (3 UDP/participant). A zenoh/XRCE client multiplexes everything over **one** session → set both to `1` to drop the spare socket buffers (≈8 KB each). |
-| `NROS_HEAP_SIZE` | per-board (64 KB mps2-an385, 32 KB stm32f4) | Decimal **bytes** for the bare-metal static heap. The defaults are generous; size to the RMW's working set (table below). E.g. `NROS_HEAP_SIZE = "24576"` on a zenoh-pico node cut the mps2-an385 `.data` 66 → 25 KB (−41 KB). |
+| `NROS_HEAP_SIZE` | per-platform-crate (64 KB `nros-platform-mps2-an385`, 32 KB `nros-platform-stm32f4`) | Decimal **bytes** for the bare-metal static heap. The defaults are generous; size to the RMW's working set (table below). E.g. `NROS_HEAP_SIZE = "24576"` on a zenoh-pico node cut the mps2-an385 `.data` 66 → 25 KB (−41 KB). |
 
 **Static-heap sizing by backend** (bare-metal `FreeListHeap`, set via
 `NROS_HEAP_SIZE`):
@@ -235,11 +235,17 @@ are applied where noted; the serial cell ships with the recipe below.
 | qemu-arm-baremetal | ethernet | zenoh-pico | size | **158.3 KB** | 67.0 KB | 91.7 KB | 158.7 KB |
 | qemu-arm-baremetal | **serial** (no IP stack) | zenoh-pico | release | 128.6 KB | 25.2 KB | 75.8 KB | **101.0 KB** |
 | qemu-arm-baremetal | **serial** | zenoh-pico | **size** + recipe | **116.1 KB** | 25.2 KB | 75.8 KB | **101.0 KB** |
-| stm32f4 (thumbv7em-eabihf, cortex-m4) | ethernet | zenoh-pico | release | 186.9 KB | 13.7 KB | 123.0 KB | 136.7 KB |
-| stm32f4 | ethernet | zenoh-pico | size | **138.1 KB** | 13.7 KB | 123.0 KB | 136.7 KB |
+| stm32f4 (thumbv7em-eabihf, cortex-m4) ¹ | ethernet | zenoh-pico | release | 186.9 KB | 13.7 KB | 123.0 KB | 136.7 KB |
+| stm32f4 ¹ | ethernet | zenoh-pico | size | **138.1 KB** | 13.7 KB | 123.0 KB | 136.7 KB |
 | qemu-arm-freertos (cortex-m3 + lwIP, RTOS-reused stack) | ethernet (lwIP) | zenoh-pico | release | 240.6 KB | 10.7 KB | 3.3 MB | 3.3 MB |
 | **qemu-arm-baremetal (Phase 207)** | **serial** (custom XRCE transport) | **XRCE** | **size**, heap 24 KB, tight XRCE pools | **60.3 KB** | 25.2 KB (heap 24 KB) | 8.8 KB | **~34 KB** |
 | **micro-ROS reference** (XRCE) | serial | XRCE-DDS Client | -Os | < 75 KB | — | ~3 KB | ~3 KB peak |
+
+¹ The two stm32f4 rows are **historical**: the board crates left the tree in
+phase-337 W7.a, so nothing in-tree reproduces them today. They stay because a
+Cortex-M4F-with-its-own-stack data point is still the closest published figure
+for that class, and deleting a measurement is worse than dating it. The chip
+crate the numbers were built against (`nros-platform-stm32f4`) is still here.
 
 The XRCE row uses the Phase 207.6 tight per-session pools — set in the
 example's `.cargo/config.toml` `[env]` and read by `nros-rmw-xrce-cffi`'s

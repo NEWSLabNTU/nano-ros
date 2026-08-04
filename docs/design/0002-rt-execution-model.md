@@ -597,7 +597,7 @@ On single-thread MCU: `Executor::open()` (current API) returns one in-tree execu
 **RTIC SRP model.** Compile-time Stack Resource Policy. Each shared resource has a *ceiling* = max NVIC priority of any task that accesses it. Access raises `BASEPRI` to ceiling. Deadlock-free, single-stack, bounded blocking. nano-ros could (long-term) layer SchedContexts as RTIC tasks at distinct NVIC priorities.
 
 **Idle / wake.**
-- `cortex_m::asm::wfi()` — Wait-For-Interrupt. CPU halts until any pending IRQ. Already used by `nros-board-stm32f4` and `nros-board-mps2-an385`.
+- `cortex_m::asm::wfi()` — Wait-For-Interrupt. CPU halts until any pending IRQ. Already used by `nros-board-mps2-an385`.
 - `wfe()` — Wait-For-Event (DMA, multi-core SEV). Used in spin-locks.
 - RISC-V `wfi` — near-identical semantics.
 
@@ -668,7 +668,7 @@ Cross-platform consolidation. ✅ = fits natively / cleanly. ⚠️ = fits w/ ca
 4. **Linux `SCHED_DEADLINE`** is the only kernel-side bandwidth enforcer for the executor as a whole. Worth a `ExecutorConfig::os_policy = OsPolicy::Deadline { runtime, deadline, period }` knob.
 5. **Zephyr `k_work_q`** is the cleanest `BestEffort` tier sink. Recommend it as the default `BestEffort` mapping on Zephyr.
 6. **ThreadX preemption threshold** lets us implement HSE-style "Critical bucket non-preemptive among themselves but preempts Normal" without re-shuffling priorities.
-7. **Bare-metal (Cortex-M, RISC-V)** has the *fewest* OS pri slots but the *best* timing precision (cycle counter sub-µs). Default cooperative single-thread + `wfi` idle fits naturally — current `nros-board-mps2-an385` and `nros-board-stm32f4` patterns generalize.
+7. **Bare-metal (Cortex-M, RISC-V)** has the *fewest* OS pri slots but the *best* timing precision (cycle counter sub-µs). Default cooperative single-thread + `wfi` idle fits naturally — the current `nros-board-mps2-an385` pattern generalizes.
 8. **All platforms support PI mutex** in some form — `nros-platform`'s mutex abstraction (already planned in `0015-rtos-orchestration.md` § 10.6) covers cross-executor sync.
 9. **Direction-flipped priority** (ThreadX, Zephyr-preempt, Cortex-M NVIC: low = high) needs careful handling in the `PlatformScheduler` API. Lift this to a `Priority::abstract` enum (`Critical | Normal | BestEffort`) at the user surface; platform crate translates.
 

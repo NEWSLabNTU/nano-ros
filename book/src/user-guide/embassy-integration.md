@@ -1,17 +1,24 @@
 # Embassy Integration
 
-> **Status (issue 0248): partially implemented — read before relying on
-> this chapter.** The hand-written **Pattern A** shape (own
-> `#[embassy_executor::main]`, own spin/publish tasks —
-> `examples/stm32f4/rust/talker-embassy`) is the working integration
-> today. The streamlined board-entry path this chapter also describes
-> (`EmbassyBoardEntry` / the 216.C.4 collapse) and the
-> `DispatchStrategy::Deferred` dispatch task are **scaffold-only**: the
-> board crate's entry methods are unimplemented (`todo!()`) and a
-> Deferred-strategy image compiles and boots but never executes
-> `on_callback`. Until issue 0248 closes, use Pattern A. (The RTIC twin
-> of this integration is complete and runtime-tested — see
-> [RTIC Integration](rtic-integration.md).)
+> **Status: NO in-tree Embassy board — read before relying on this chapter.**
+> `nros-board-embassy-stm32f4` was the only one, and phase-337 W7.a deleted it:
+> it was registry-labelled `scaffold` (issue 0248 — entry methods `todo!()`, a
+> Deferred image signalling into a channel nothing drained), and RFC-0064's rule
+> is that a board with no Runtime cell is not a support promise this repo can
+> make. What survives is the **seam**, which is the part an integrator needs:
+> the `EmbassyBoardEntry` trait in `nros-platform` and the `nros::main!()`
+> Embassy emit branch, plus `nros ws check`'s Deferred-dispatch lint, which
+> routes on the board crate's `framework = "embassy"` metadata.
+>
+> Two consequences for this chapter. **(1)** Every path below names a board YOU
+> write — see [Worked Example — STM32F4 Out of
+> Tree](../porting/stm32f4-out-of-tree.md) for the board-crate shape. **(2)**
+> `nros::main!()` currently picks the framework from a hardcoded deploy-key
+> table, so an out-of-tree Embassy board falls through to `OwnedSpin` rather
+> than the Embassy emit; **issue 0415** tracks teaching that table to read the
+> same `framework` metadata `nros ws check` already reads. Until it closes, use
+> Pattern A. (The RTIC twin of this integration is complete and runtime-tested
+> on `mps2-an385` — see [RTIC Integration](rtic-integration.md).)
 
 [Embassy](https://embassy.dev) is an async/await framework for embedded
 Rust, built around a cooperative executor that polls futures from a
@@ -43,15 +50,13 @@ switch overhead beyond a future poll. For nano-ros that means:
   priority. Keep handlers short, hand off long work to a spawned
   task.
 
-The current in-tree example
-(`examples/stm32f4/rust/talker-embassy/src/main.rs`) is **Pattern A**:
-hand-written `#[embassy_executor::main]`, hand-written
-`zenoh_poll_task`, hand-written `publisher_task`. It's a working
-template but it's ~150 lines and each example author re-derives the
-spawn topology. Phase 216.C.4 collapses it to:
+**Pattern A** is hand-written `#[embassy_executor::main]`, hand-written
+`zenoh_poll_task`, hand-written `publisher_task`. It works, but it is ~150
+lines and each author re-derives the spawn topology. The 216.C.4 board-entry
+path collapses it to:
 
 ```rust
-// File: examples/stm32f4/rust/talker-embassy/src/main.rs (post-216.C.4)
+// File: <your entry pkg>/src/main.rs
 #![no_std]
 #![no_main]
 
@@ -62,7 +67,7 @@ nros::main!();
 ```
 
 The proc-macro reads `[package.metadata.nros.entry] deploy =
-"embassy-stm32f4"` from the Entry pkg's `Cargo.toml`, sees that the
+"<your-embassy-board>"` from the Entry pkg's `Cargo.toml`, sees that the
 board's metadata declares `framework = "embassy"`, and expands into a
 full `#[embassy_executor::main] async fn main(spawner: Spawner)`
 including the spin task spawn, the dispatch task spawn, and the
@@ -108,7 +113,7 @@ my_embassy_robot/
     │   └── src/lib.rs                   # impl Node for Listener + nros::node!(Listener)
     └── listener_entry/                  # Entry pkg — picks Embassy board
         ├── package.xml
-        ├── Cargo.toml                   # [package.metadata.nros.entry] deploy = "embassy-stm32f4"
+        ├── Cargo.toml                   # [package.metadata.nros.entry] deploy = "<your-embassy-board>"
         └── src/main.rs                  # nros::main!();
 ```
 
@@ -131,14 +136,14 @@ path = "src/main.rs"
 
 [dependencies]
 nros                       = { workspace = true, default-features = false }
-nros-board-embassy-stm32f4 = { workspace = true }
+my-embassy-board           = { path = "../../boards/my-embassy-board" }
 listener_pkg               = { path = "../listener_pkg" }
 
 [package.metadata.nros.entry]
-deploy = "embassy-stm32f4"
+deploy = "my-embassy-board"
 
-[package.metadata.nros.deploy.embassy-stm32f4]
-board     = "embassy-stm32f4"
+[package.metadata.nros.deploy.my-embassy-board]
+board     = "my-embassy-board"
 rmw       = "zenoh"
 domain_id = 0
 locator   = "tcp/192.168.1.10:7447"

@@ -10,7 +10,7 @@
 //! (crate-backed boards put the file in their crate dir; the crate-less host
 //! boards — `posix`, `zephyr`, `orin-spe` — get a descriptor-only dir under
 //! `packages/boards/`). A file holds a `[[board]]` array so one crate can back
-//! several boards (e.g. `nros-board-stm32f4` → `stm32f429` + `stm32f407`,
+//! several boards (e.g. `nros-board-nuttx-qemu` → arm virt + rv-virt,
 //! differing only by `chip`).
 //!
 //! Layout paths in `cargo_config` are stored **relative** and written with the
@@ -416,24 +416,33 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
     /// defaults. All boards declare today; this catches a future board that
     /// omits the block (which would silently inherit a possibly-wrong heap/
     /// threads default — the issue-0038 footgun).
-    /// Phase 252 (issue 0072) — the stm32f4 descriptor advertises the `safety-e2e`
-    /// capability feature (the worked-example board), so codegen lowers `[safety]`
-    /// to its board `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]` forwarding.
+    /// Phase 252 (issue 0072) — a board descriptor advertises the `safety-e2e`
+    /// capability feature, so codegen lowers `[safety]` to that board's
+    /// `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]` forwarding.
+    ///
+    /// phase-337 W7.a rehomed this from `stm32f4` (deleted with its board) to
+    /// `bare-metal` (the mps2-an385 descriptor). The assertion is over the SET rather than one name: the
+    /// point is that the forwarding chain has at least one in-tree witness, and
+    /// keying it to a single board is what made a board deletion look like a
+    /// capability regression.
     #[test]
-    fn stm32f4_advertises_safety_capability_feature() {
+    fn a_board_advertises_the_safety_capability_feature() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(3)
             .expect("repo root")
             .to_path_buf();
         let cat = BoardCatalog::load(&root).expect("load real board catalog");
-        let d = cat
-            .resolve("stm32f4", "thumbv7em-none-eabihf")
-            .expect("stm32f4 descriptor");
+        let advertising: Vec<&str> = cat
+            .descriptors()
+            .iter()
+            .filter(|d| d.capability_features.iter().any(|f| f == "safety-e2e"))
+            .flat_map(|d| d.names.iter().map(|n| n.as_str()))
+            .collect();
         assert!(
-            d.capability_features.iter().any(|f| f == "safety-e2e"),
-            "stm32f4 must advertise safety-e2e; got {:?}",
-            d.capability_features
+            advertising.contains(&"bare-metal"),
+            "bare-metal (mps2-an385) must advertise safety-e2e; \
+             advertising boards: {advertising:?}"
         );
     }
 

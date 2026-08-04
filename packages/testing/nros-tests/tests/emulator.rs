@@ -243,9 +243,9 @@ fn test_arm_toolchain_detection() {
 // Tests for the simplified nros-board-mps2-an385 API (Board Support Package).
 // These examples use a higher-level API than the rs-* examples.
 
-// (Phase 182.3) The qemu-bsp + stm32f4-rtic `*_builds` presence tests were
+// (Phase 182.3) The qemu-bsp `*_builds` presence tests were
 // removed — they only asserted a fixture compiled, covered by `build-all`
-// (qemu-arm-baremetal + stm32f4 are manifest rows, Phase 181.4/181.6) + the
+// (qemu-arm-baremetal is a manifest row, Phase 181.4/181.6) + the
 // `_require-fixtures` preflight. (The BSP examples have no e2e here — they need
 // Docker/slirp networking, see the skipped start tests below — so their compile
 // coverage now lives solely in `build-all`, which is the test-all prerequisite.)

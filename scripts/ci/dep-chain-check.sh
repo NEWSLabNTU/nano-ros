@@ -67,7 +67,6 @@ CELLS=(
     "qemu-arm-nuttx:zenoh"
     "qemu-esp32-baremetal:zenoh"
     "qemu-riscv64-threadx:zenoh"
-    "stm32f4:zenoh"
     "threadx-linux:zenoh"
 )
 
@@ -101,7 +100,7 @@ for cell in "${CELLS[@]}"; do
 
         # 2. codegen the example's interface crates — only when the example
         #    declares ROS msg deps (has a package.xml). Board-driven baremetal
-        #    talkers (stm32f4 / qemu-arm-baremetal) publish without generated
+        #    talkers (qemu-arm-baremetal) publish without generated
         #    interfaces, so they ship no package.xml and `nros generate-rust`
         #    would fail "Failed to read package.xml" — there is nothing to
         #    generate, so skip codegen for them (#69).
@@ -130,7 +129,7 @@ for cell in "${CELLS[@]}"; do
         #    Match the package's OWN feature table only — a substring grep over the
         #    whole metadata also hits a DEP's requested features
         #    (e.g. `nros-board-* { features=["rmw-zenoh"] }`), which made
-        #    board-driven cells (stm32f4 / qemu-arm-baremetal) wrongly pass
+        #    board-driven cells (qemu-arm-baremetal) wrongly pass
         #    `--features rmw-zenoh` and fail "does not contain this feature" (#69).
         feat_args=()
         if ( cd "$ex" && cargo metadata --no-deps --format-version 1 2>/dev/null \

@@ -100,8 +100,6 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
         // only (NOT `BoardEntry`). The proc-macro routes through
         // `Framework::Zephyr` and emits a `rust_main` staticlib export.
         "zephyr" => "::nros_board_zephyr::ZephyrBoard",
-        // Phase 216.B.3 — RTIC + STM32F4. Board ZST impls `RticBoardEntry`.
-        "rtic-stm32f4" => "::nros_board_rtic_stm32f4::RticStm32F4",
         // phase-337 W6.a — the RTIC entry surface moved INTO
         // `nros-board-mps2-an385` (its `rtic` feature); the ZST kept its name.
         // The deploy key stays distinct because the two entry shapes are
@@ -111,10 +109,12 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
         // board. Board ZST impls `nros_platform::BoardEntry`. Distinct from
         // `rtic-mps2-an385`, which routes through the RTIC framework emit.
         "qemu-mps2-an385" | "mps2-an385" => "::nros_board_mps2_an385::Mps2An385",
-        // Phase 244.C5 — pure bare-metal STM32F4 direct-exec board.
-        "stm32f4" => "::nros_board_stm32f4::Stm32F4",
-        // Phase 216.C.3 — Embassy + STM32F4. Board ZST impls `EmbassyBoardEntry`.
-        "embassy-stm32f4" => "::nros_board_embassy_stm32f4::EmbassyStm32F4",
+        // phase-337 W7.a — the three STM32F4 keys (`stm32f4`, `rtic-stm32f4`,
+        // `embassy-stm32f4`) left with their board crates. Unlike W6.a's
+        // `rtic-mps2-an385`, no key survives: the ZSTs are gone, not moved, so
+        // an entry naming one must fail to resolve rather than silently pick
+        // another board. Out-of-tree replacements supply their own
+        // `board_crate` — see `book/src/porting/stm32f4-out-of-tree.md`.
         _ => return None,
     })
 }
@@ -986,13 +986,10 @@ mod tests {
             "esp32-qemu",
             "qemu-esp32-baremetal",
             "zephyr",
-            "rtic-stm32f4",
             "rtic-mps2-an385",
             "qemu-rtic-mps2-an385",
             "qemu-mps2-an385",
             "mps2-an385",
-            "stm32f4",
-            "embassy-stm32f4",
         ];
         for key in known {
             assert!(

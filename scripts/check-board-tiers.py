@@ -79,10 +79,11 @@ def runtime_platforms(text):
 def platform_variants(text):
     """The `PlatformId` variants that actually exist.
 
-    W3.a — a tier 1/2/3 board must name a REAL platform. Scaffold boards name
-    none by definition, which is the honest encoding of "absent from PlatformId":
-    the four boards in that state (esp32s3, s32z270dc2-r52, orin-spe,
-    embassy-stm32f4) are exactly the ones with no lane, no fixture and no cell.
+    W3.a — a tier 1/2/3 board must name a REAL platform. Scaffold boards named
+    none by definition, which was the honest encoding of "absent from
+    PlatformId". phase-337 W7 then deleted every board in that state, so the
+    scaffold tier is currently unpopulated — kept because the state is what
+    stops the next unfinished board from reading as support.
     """
     m = re.search(r'pub const fn fixture_tokens\(self\).*?\n    \}', text, re.S)
     body = m.group(0) if m else ""

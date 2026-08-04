@@ -107,7 +107,7 @@ graph TD
     end
 
     subgraph "Board Crates"
-        BOARD["nros-board-mps2-an385<br/>nros-board-esp32<br/>nros-board-stm32f4<br/>nros-threadx-*<br/>nros-nuttx-*"]
+        BOARD["nros-board-mps2-an385<br/>nros-board-esp32<br/>nros-threadx-*<br/>nros-nuttx-*"]
     end
 
     subgraph "Drivers"
@@ -444,7 +444,6 @@ graph TD
 | `nros-board-mps2-an385-freertos`  | QEMU Cortex-M3 | FreeRTOS   | lwIP          | lan9118-lwip          |
 | `nros-board-esp32`                | ESP32-C3       | Bare-metal | smoltcp       | WiFi (esp-hal)        |
 | `nros-board-esp32-qemu`           | QEMU ESP32-C3  | Bare-metal | smoltcp       | openeth-smoltcp       |
-| `nros-board-stm32f4`              | STM32F4        | Bare-metal | smoltcp       | STM32 Ethernet        |
 | `nros-board-nuttx-qemu`           | QEMU Cortex-A7 · rv-virt | NuttX      | NuttX sockets | virtio-net (built-in) |
 | `nros-board-threadx-qemu-riscv64` | QEMU RISC-V    | ThreadX    | NetX Duo      | virtio-net-netx       |
 

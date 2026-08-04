@@ -27,9 +27,11 @@
 #                  recently unless a maintainer did so by hand.
 #   scaffold       Structurally incomplete. Explicitly NOT supported. Distinct
 #                  from tier 3: tier 3 is finished-but-unverified, scaffold is
-#                  unfinished. `embassy-stm32f4` is why this state exists — it
-#                  is actively committed to, which reads as support unless the
-#                  registry says otherwise.
+#                  unfinished. `embassy-stm32f4` is why this state existed — it
+#                  was actively committed to, which reads as support unless the
+#                  registry says otherwise. phase-337 W7 answered the state's
+#                  own question: a scaffold nobody finishes is a delete, and
+#                  every scaffold row left the tree with its crate.
 #   infra          Not a board: shared traits, family drivers, ABI mirrors,
 #                  PACs. Carries no platform and no tier promise.
 #
@@ -133,20 +135,6 @@ notes = "HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveO
 # ===== tier 3 — build-only =================================================
 
 [[board]]
-crate = "nros-board-stm32f4"
-matrix_platform = "Stm32F4"
-tier = 3
-maintainers = []
-notes = "Hardware-gated (#221): needs a real NUCLEO-F429ZI; QEMU has no F4 ethernet model."
-
-[[board]]
-crate = "nros-board-rtic-stm32f4"
-matrix_platform = "Stm32F4"
-tier = 3
-maintainers = []
-notes = "RTIC runtime delivers (phase-289) but the hardware is not in CI."
-
-[[board]]
 crate = "nros-board-fvp-aemv8r-smp"
 matrix_platform = "Fvp"
 gated_sdk = "arm-fvp"
@@ -155,12 +143,6 @@ maintainers = []
 notes = "License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see."
 
 # ===== scaffold — explicitly not supported =================================
-
-[[board]]
-crate = "nros-board-embassy-stm32f4"
-tier = "scaffold"
-maintainers = []
-notes = "Issue 0248: no transport bringup, and a Deferred image signals callbacks into a channel nothing drains. Actively committed to, which is exactly why it must be labelled."
 
 [[board]]
 crate = "nros-board-esp32s3"

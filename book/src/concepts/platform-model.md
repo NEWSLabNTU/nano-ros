@@ -90,7 +90,6 @@ own platform axis — it pulls in one of the rows above.
 | Board crate                  | Underlying platform | CPU         | Notes                                       |
 |------------------------------|---------------------|-------------|---------------------------------------------|
 | `nros-board-mps2-an385`      | `bare-metal`        | Cortex-M3   | QEMU MPS2-AN385 + LAN9118 + smoltcp         |
-| `nros-board-stm32f4`         | `bare-metal`        | Cortex-M4   | STM32F4-Discovery                           |
 | `nros-board-esp32-qemu`      | `bare-metal`        | RISC-V (ESP32-C3) | QEMU ESP32 + OpenETH + smoltcp        |
 | `nros-board-orin-spe`        | `freertos`          | Cortex-R5F  | NVIDIA Jetson AGX Orin SPE + FreeRTOS-FSP   |
 

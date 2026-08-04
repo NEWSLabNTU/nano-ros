@@ -455,11 +455,6 @@ arch = "cortex-m3"
 platform = "bare-metal"
 packages = ["arm-none-eabi-gcc", "qemu"]
 
-[board.stm32f4]
-arch = "cortex-m4"
-platform = "bare-metal"
-packages = ["arm-none-eabi-gcc", "openocd"] # real hw: openocd to flash, no qemu
-
 [board.qemu-arm-freertos]
 arch = "cortex-m3"
 platform = "freertos"

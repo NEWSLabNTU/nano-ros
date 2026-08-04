@@ -7,8 +7,8 @@ board, wires the runtime, and — for multi-node setups — points at a Bringup
 pkg that describes which nodes should be launched.
 
 You have one Entry pkg per deploy target. A workspace targeting both a native
-workstation and an STM32F4 board has two Entry pkgs that reference the same
-Node pkgs; only the board and (optionally) the launch target differ.
+workstation and a bare-metal Cortex-M board has two Entry pkgs that reference
+the same Node pkgs; only the board and (optionally) the launch target differ.
 
 ## Prereqs
 
@@ -37,7 +37,7 @@ source ./activate.fish        # fish
 ```
 
 Then provision the native host (the canonical first Entry pkg target;
-for STM32F4 / Zephyr / ESP32 swap in the matching `nros setup` board):
+for Zephyr / FreeRTOS / ESP32 swap in the matching `nros setup` board):
 ```sh
 nros setup native --rmw zenoh
 ```
@@ -59,11 +59,11 @@ them to the runtime that `nros::main!()` generates.
 
 The `[package.metadata.nros.entry]` table tells the CLI which deploy target
 this binary is built for. The embedded example
-`examples/stm32f4/rust/talker-embassy/` uses:
+`examples/qemu-arm-baremetal/rust/talker-rtic/` uses:
 
 ```toml
 [package.metadata.nros.entry]
-deploy = "embassy-stm32f4"
+deploy = "rtic-mps2-an385"
 ```
 
 A native Entry pkg that references a Bringup pkg looks like:
@@ -139,15 +139,14 @@ its tier table for whichever RTOS that board targets. On Embassy / RTIC targets 
 framework-specific `#[embassy_executor::main]` or `#[rtic::app]` body so your
 `src/main.rs` stays a single line.
 
-The real `examples/stm32f4/rust/talker-embassy/src/main.rs` collapses to
-exactly this:
+The real `examples/qemu-arm-baremetal/rust/talker-rtic/src/main.rs` collapses
+to exactly this:
 
 ```rust
 #![no_std]
 #![no_main]
 
-use defmt_rtt as _;
-use panic_probe as _;
+use panic_semihosting as _;
 
 nros::main!();
 ```
@@ -238,13 +237,13 @@ nros::main!(launch = "demo_bringup");
 ## One Entry pkg per board
 
 Each deploy target gets its own Entry pkg. A workspace that runs on both
-`native` and `embassy-stm32f4` would have two Entry pkgs that share the same
+`native` and `rtic-mps2-an385` would have two Entry pkgs that share the same
 Node pkg library:
 
 | Entry pkg | `deploy` key | Board crate |
 |---|---|---|
 | `native_entry` | `"native"` | `nros-board-posix` |
-| `stm32f4_entry` | `"embassy-stm32f4"` | `nros-board-embassy-stm32f4` |
+| `mps2_entry` | `"rtic-mps2-an385"` | `nros-board-mps2-an385` (`rtic` feature) |
 
 Both reference the same `talker_pkg` and `listener_pkg` Node pkg rlibs. The
 board crate provides the `BoardEntry` impl and any hardware-specific
@@ -257,9 +256,9 @@ already owns its board abstraction, so a single `zephyr_entry` covers
 are board-specific, so each of those Entries bakes one board. See
 [Running on Zephyr](#running-on-zephyr).
 
-The `examples/stm32f4/rust/talker-embassy/` example demonstrates the
-embedded shape: `deploy = "embassy-stm32f4"` + `nros::main!();` on a
-`no_std / no_main` binary that delegates everything to the `EmbassyStm32F4`
+The `examples/qemu-arm-baremetal/rust/talker-rtic/` example demonstrates the
+embedded shape: `deploy = "rtic-mps2-an385"` + `nros::main!();` on a
+`no_std / no_main` binary that delegates everything to the `RticMps2An385`
 board crate.
 
 ## C / C++ Entry packages

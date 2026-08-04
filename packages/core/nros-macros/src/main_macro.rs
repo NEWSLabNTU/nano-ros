@@ -407,8 +407,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // Entry pkg's `[package.metadata.nros.entry] deploy = "..."` key
     // (form 1). When the user passes `board = X` directly we have no
     // deploy string and default to the `OwnedSpin` framework — RTIC
-    // / Embassy require the `deploy = "rtic-stm32f4"` / `deploy =
-    // "embassy-stm32f4"` opt-in for now.
+    // requires the `deploy = "rtic-mps2-an385"` opt-in for now.
     let (board_path, deploy_for_framework): (SynPath, Option<String>) = match &args.board {
         Some(p) => (p.clone(), None),
         None => {
@@ -1321,7 +1320,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             "esp32",
             "rtic",
             "embassy",
-            "stm32",
             "baremetal",
             "bare-metal",
             "orin",
@@ -1933,8 +1931,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // arg — RTIC generates `<f>::Context` from the task ident)
             // outside the macro; the macro just declares the task.
             //
-            // Hardcoded `dispatchers = [USART1, USART2]` matches
-            // `RticStm32F4::DISPATCHERS`. A follow-up reads the const
+            // Hardcoded `dispatchers = [UARTRX0, UARTTX0]` matches
+            // `RticMps2An385::DISPATCHERS`. A follow-up reads the const
             // from the board crate at macro-expansion time (requires a
             // build-graph fs round-trip we want to defer).
             //
@@ -2853,7 +2851,7 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
 
 fn known_boards_csv() -> &'static str {
     "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, nuttx-riscv, esp32-qemu, \
-     zephyr, rtic-stm32f4, rtic-mps2-an385, qemu-mps2-an385, stm32f4, embassy-stm32f4"
+     zephyr, rtic-mps2-an385, qemu-mps2-an385, mps2-an385"
 }
 
 /// Phase 244.D1 — does this deploy key name a pure bare-metal Cortex-M
@@ -2863,7 +2861,7 @@ fn known_boards_csv() -> &'static str {
 /// macro keys the entry-emit shape off this. RTIC bare-metal boards are NOT
 /// here: they route through the RTIC framework, which owns its own entry.
 fn is_baremetal_cortexm_deploy(deploy: Option<&str>) -> bool {
-    matches!(deploy, Some("qemu-mps2-an385" | "mps2-an385" | "stm32f4"))
+    matches!(deploy, Some("qemu-mps2-an385" | "mps2-an385"))
 }
 
 struct RticBoardSpec {
@@ -2882,12 +2880,6 @@ struct RticBoardSpec {
 
 fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
     let (device, dispatchers, consumer, tick_irq) = match deploy {
-        "rtic-stm32f4" => (
-            "stm32f4xx_hal::pac",
-            &["USART1", "USART2"][..],
-            "::nros_board_rtic_stm32f4::take_dispatch_consumer",
-            Some("TIM2"),
-        ),
         "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => (
             "mps2_an385_pac",
             &["UARTRX0", "UARTTX0"][..],
@@ -2932,6 +2924,19 @@ enum Framework {
     /// Embassy framework owns the spin loop. The macro emits a
     /// `#[embassy_executor::main] async fn main(spawner: Spawner)` body
     /// that delegates to `EmbassyBoardEntry::init_hardware`.
+    ///
+    /// phase-337 W7.a — UNREACHABLE from [`framework_for`] since
+    /// `embassy-stm32f4`, the only in-tree deploy key that selected it, left
+    /// with its board crate. The variant and its emit branch stay because they
+    /// are the seam an out-of-tree Embassy board consumes — `EmbassyBoardEntry`
+    /// is public in `nros-platform` and `nros ws check` already routes on the
+    /// board crate's `framework = "embassy"` metadata. Deleting the emit would
+    /// mean issue 0415's fix (teach THIS table to read that same metadata) has
+    /// to re-write it. The expect fires the day it becomes constructible.
+    #[expect(
+        dead_code,
+        reason = "no in-tree deploy key selects Embassy after phase-337 W7.a; issue 0415"
+    )]
     Embassy,
     /// Phase 225.P — Zephyr RTOS owns boot + `main`. The macro emits a
     /// `#[unsafe(no_mangle)] pub extern "C" fn rust_main()` staticlib
@@ -2966,8 +2971,15 @@ enum Framework {
 
 fn framework_for(deploy: &str) -> Framework {
     match deploy {
-        "rtic-stm32f4" | "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => Framework::Rtic,
-        "embassy-stm32f4" => Framework::Embassy,
+        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => Framework::Rtic,
+        // phase-337 W7.a — `embassy-stm32f4` was the ONLY deploy key that
+        // selected `Framework::Embassy`, and it left with its board crate. The
+        // framework itself stays: `EmbassyBoardEntry` and the emit branch below
+        // are the seam an out-of-tree Embassy board consumes, and `nros ws
+        // check` still reaches it through the board crate's
+        // `[package.metadata.nros.board] framework = "embassy"`. Issue 0415
+        // tracks the gap this leaves in THIS table (deploy-keyed, so an
+        // out-of-tree Embassy board currently emits OwnedSpin here).
         "zephyr" => Framework::Zephyr,
         "esp32-qemu" | "qemu-esp32-baremetal" => Framework::Esp32,
         // NuttX ("nuttx" / "qemu-arm-nuttx") rides OwnedSpin — the board
@@ -3004,8 +3016,8 @@ fn _unused() {
 /// Phase 216.B.4 — parser-only unit tests for `custom_tasks = [...]`.
 ///
 /// The full `cargo check`-driven round-trip (showing the RTIC splice
-/// actually compiles against the stm32f4 board crate) needs a
-/// thumbv7em-eabihf cross build; that lives in the 216.B.5 follow-up.
+/// actually compiles against a board crate) rides the `qemu` lane's
+/// mps2-an385 RTIC fixtures.
 /// These tests pin the host-side syntax acceptance: the parser takes
 /// `custom_tasks = [ident, ident, ...]` (and the empty `[]` form),
 /// rejects malformed shapes, and round-trips ident order.

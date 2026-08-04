@@ -281,7 +281,7 @@ impls (`ExecutorNodeRuntime` in `nros`, `NullNodeRuntime` in
 `nros-platform`). A Deferred runtime overrides both:
 
 ```rust
-// File: packages/boards/nros-board-rtic-stm32f4/src/runtime.rs (sketch)
+// File: packages/boards/nros-board-mps2-an385/src/rtic.rs (sketch)
 impl NodeDispatchRuntime for RticRuntime {
     fn dispatch_strategy(&self) -> DispatchStrategy {
         DispatchStrategy::Deferred

@@ -86,20 +86,20 @@ RMW registration, and the spin/yield loop.
 
 The metadata block is what the `nros` CLI reads to discover, name, and
 wire this node into a topology.
-From [`examples/stm32f4/rust/talker_pkg/Cargo.toml`](../../../../examples/stm32f4/rust/talker_pkg/Cargo.toml):
+From [`examples/workspaces/rust/src/talker_pkg/Cargo.toml`](../../../../examples/workspaces/rust/src/talker_pkg/Cargo.toml):
 
 ```toml
 [lib]
-crate-type = ["rlib"]
-
-[dependencies]
-nros = { path = "../../../../packages/api/nros", default-features = false,
-         features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+path = "src/lib.rs"
 
 [package.metadata.nros.node]
-class = "stm32f4_talker_pkg::Talker"
+class = "talker_pkg::Talker"
 name = "talker"
 default_namespace = "/"
+
+[dependencies]
+nros = { path = "../../../../../packages/api/nros", default-features = false,
+         features = ["alloc", "rmw-cffi"] }
 ```
 
 The three fields in `[package.metadata.nros.node]`:
@@ -110,7 +110,11 @@ The three fields in `[package.metadata.nros.node]`:
 | `name` | Default ROS 2 node name (remappable at launch) |
 | `default_namespace` | Default namespace (remappable at launch) |
 
-For a native workspace the `nros` dep would use `features = ["std", "rmw-cffi", "platform-posix", "ros-humble"]` instead of `platform-bare-metal`. The RMW feature (`rmw-zenoh`, `rmw-xrce`, `rmw-cyclonedds`) is chosen at build time — it is not baked into the Node pkg itself.
+A Node pkg names **no** platform and **no** RMW. `alloc` is the universal
+baseline and `rmw-cffi` is the vtable seam; the concrete backend and the
+platform both flow in from the board crate that the sibling Entry pkg depends
+on, via cargo feature unification. That is what lets one `talker_pkg` deploy to
+a Linux host and a Cortex-M board without a fork.
 
 ---
 
@@ -121,7 +125,7 @@ A Node pkg implements two traits: `Node` (declarative registration) and
 trampolines the Entry macro expects.
 
 Here is the essential shape, drawn from
-[`examples/stm32f4/rust/talker_pkg/src/lib.rs`](../../../../examples/stm32f4/rust/talker_pkg/src/lib.rs)
+[`examples/workspaces/rust/src/talker_pkg/src/lib.rs`](../../../../examples/workspaces/rust/src/talker_pkg/src/lib.rs)
 (see that file for the full worked version):
 
 ```rust

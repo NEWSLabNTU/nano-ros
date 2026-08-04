@@ -137,11 +137,6 @@ const MIGRATED_PREFIXES: &[&str] = &[
     // is_migrated() filter below carves it out.
     "examples/threadx-linux/rust/",
     "examples/threadx-linux/cpp/",
-    // stm32f4/rust/{talker, *-rtic} migrated 2026-06-02 — they
-    // carry [package.metadata.nros.application] deploy = ["stm32f4"]
-    // (M.11-equivalent sweep). The Embassy variant stays carved out
-    // in UNMIGRATED_PREFIXES below pending M-F.5 async-Node work.
-    "examples/stm32f4/rust/",
 ];
 
 /// Suffix patterns inside an otherwise-migrated tree that are NOT
@@ -183,23 +178,6 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
     // M.13 (informal — sweep landed 2026-06-02) covered native/c via
     // package.xml + nano_ros_application() cmake fn. native/c is now
     // canonical-shape. Carve-out retired.
-    // stm32f4/rust/{talker, *-rtic} migrated 2026-06-02 by adding
-    // [package.metadata.nros.application] deploy = ["stm32f4"].
-    // Carve-out narrowed to the Embassy variant only.
-    (
-        "examples/stm32f4/rust/talker-embassy/",
-        "stm32f4 Embassy variant — pre-212 shape, no package.xml; \
-         falls under M-F.5 async-Node work",
-    ),
-    // Issue #34 — listener-embassy is the Embassy *listener* variant, same
-    // category as talker-embassy above (pre-212 shape, non-linking — skip_build
-    // in examples/fixtures.toml, known-issue #13). It was omitted from the
-    // carve-out, so m12 wrongly required a package.xml for it.
-    (
-        "examples/stm32f4/rust/listener-embassy/",
-        "stm32f4 Embassy variant — pre-212 shape, no package.xml; \
-         falls under M-F.5 async-Node work",
-    ),
     // `examples/native/rust/bridge/` UNMIGRATED entry retired 2026-06-02:
     // the sole occupant (`tt-zenoh-to-xrce`) moved to `examples/bridges/`
     // per §212.L sibling-category rule. `examples/bridges/` carries no
