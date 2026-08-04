@@ -265,14 +265,15 @@ pub fn run(args: Args) -> Result<()> {
             .map(|d| d.join("system.toml"))
             .filter(|p| p.exists());
         if let Some(toml) = toml_path {
+            // phase-336 W7 — see the note in `plan.rs`: the model is a build
+            // artifact, so pointing users at a committed path told them to
+            // create what `check-no-tracked-models` rejects.
             eyre::bail!(
-                "codegen-system: `{}` declares system semantics but the bringup \
-                 has no committed SystemModel — the direct system.toml bake was \
-                 removed (phase-296 R4). Resolve one and commit it:\n  \
-                 nros-launch-resolve <bringup>/launch/<file>.launch.xml \
-                 --system {} -o <bringup>/config/system_model.yaml\n\
-                 (convention discovery picks it up; `--model <path>` overrides)",
-                toml.display(),
+                "codegen-system: `{}` declares system semantics but no \
+                 SystemModel was found. It is a BUILD ARTIFACT (phase-330 W4), \
+                 so generate it rather than committing one:\n  nros sync      \
+                 # writes <ws>/build/nros/models/<bringup>/\n(`--model <path>` \
+                 overrides.)",
                 toml.display(),
             );
         }

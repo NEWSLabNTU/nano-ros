@@ -215,14 +215,17 @@ pub fn run(args: Args) -> Result<()> {
     // lands here only when it carries launch files but no committed model;
     // a file input lands here only without --record. Both must resolve.
     if args.record.is_none() {
+        // phase-336 W7 — this used to say "Resolve one and commit it" and name
+        // `<bringup>/config/system_model.yaml`. phase-330 W4 made the model a
+        // BUILD ARTIFACT and `check-no-tracked-models` rejects a committed one,
+        // so that told users to create a file the repo refuses.
         eyre::bail!(
-            "`{}` has no committed SystemModel and the launch-XML parse path \
-             was removed (phase-296 R4). Resolve one and commit it:\n  \
-             nros-launch-resolve <bringup>/launch/<file>.launch.xml \
-             [--system <bringup>/system.toml] -o \
-             <bringup>/config/system_model.yaml\n(convention discovery plans \
-             it; `--model <path>` overrides; a pre-baked record via --record \
-             also works)",
+            "no SystemModel for `{}`. It is a BUILD ARTIFACT (phase-330 W4), so \
+             generate it rather than committing one:\n  nros sync            \
+             # writes <ws>/build/nros/models/<bringup>/\n(searched, in order: \
+             $NROS_MODEL_DIR, $OUT_DIR/nros, <ws>/build/nros/models, \
+             <bringup>/build/nros/models. `--model <path>` overrides; a \
+             pre-baked record via --record also works.)",
             launch_input_path.display()
         );
     }

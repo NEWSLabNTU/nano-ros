@@ -233,12 +233,15 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     } else if args.launch.is_some() {
         // phase-296 R-code.1 — the launch-XML entry bake is REMOVED. The
         // canonical input is a play_launch-resolved SystemModel.
+        // phase-336 W7 — the example path was `<bringup>/config/…`, the
+        // committed location `check-no-tracked-models` now rejects. The model
+        // is a build artifact; point at where `nros sync` writes it.
         bail!(
-            "codegen entry: `--launch` was removed (phase-296 R4) — resolve a \
-             SystemModel and pass `--model`:\n  nros-launch-resolve \
-             <bringup>/launch/<file>.launch.xml [--system <bringup>/system.toml] \
-             -o <bringup>/config/system_model.yaml\n  nros codegen entry --model \
-             <bringup>/config/system_model.yaml …"
+            "codegen entry: `--launch` was removed (phase-296 R4) — generate a \
+             SystemModel and pass `--model`:\n  nros sync            \
+             # writes <ws>/build/nros/models/<bringup>/system_model.yaml\n  \
+             nros codegen entry --model \
+             <ws>/build/nros/models/<bringup>/system_model.yaml …"
         );
     } else {
         bail!("codegen entry: pass --model <system_model.yaml>");

@@ -97,9 +97,15 @@ pub fn model_search_paths(bringup_dir: &Path, model_rel: &str) -> Vec<PathBuf> {
 
 /// The model path a consumer should read.
 ///
-/// Returns the first candidate that exists. When none does, returns the
-/// COMMITTED location rather than a build-output one, so the "not found" error
-/// a user sees names the file they can actually create.
+/// Returns the first candidate that exists. When none does, returns the LAST
+/// candidate — the legacy committed location — purely so the error names a
+/// stable path.
+///
+/// phase-336 W7: that is a naming convenience, NOT advice. Since W4 the model
+/// is a build artifact and `check-no-tracked-models` rejects a committed one,
+/// so a caller reporting "not found" must tell the user to GENERATE it
+/// (`nros sync`), never to create the path this returns. The three CLI messages
+/// that got that backwards are fixed; keep new ones consistent.
 pub fn resolve_model_path(bringup_dir: &Path, model_rel: &str) -> PathBuf {
     let candidates = model_search_paths(bringup_dir, model_rel);
     for c in &candidates {
