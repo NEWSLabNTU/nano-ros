@@ -320,10 +320,10 @@ fn producible_tokens(module: &str, file: &std::path::Path) -> BTreeSet<String> {
             }
             // `just <module> <recipe>` — an edge to a sibling recipe.
             let call = format!("just {module} ");
-            if let Some(i) = line.find(&call) {
-                if let Some(next) = line[i + call.len()..].split_whitespace().next() {
-                    stack.push(next.to_string());
-                }
+            if let Some(i) = line.find(&call)
+                && let Some(next) = line[i + call.len()..].split_whitespace().next()
+            {
+                stack.push(next.to_string());
             }
         }
     }
