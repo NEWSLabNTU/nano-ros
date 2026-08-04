@@ -9,6 +9,19 @@
 //! tests (interop tests that always pair with Rust, the C++ goal-rejection
 //! test, the C action blocking case) stay as named functions below.
 //!
+//! **Bucket (phase-329 W4 disposition):** most of this file is genuine one-offs
+//! that no matrix cell covers, and stays — cross-LANGUAGE interop pairs
+//! (`*_interop_*`, `c_rust_*`), the RFC-0041 callback-shape variants
+//! (`*_callback`), the C++ goal-rejection path, the MIXED cyclone pairs (rust
+//! talker ↔ c/cpp listener), and the threadx-linux ↔ native cross-PLATFORM
+//! cyclone interop. FOLD-ELIGIBLE (same-language delivery now duplicated by the
+//! matrix consumers `native_example_pubsub_e2e` / `native_example_reqresp_e2e`),
+//! to remove in a focused pass with the cascade cleanup its shared cyclone
+//! helpers need: `test_native_talker_listener_communication` (rust zenoh
+//! pubsub), `test_native_service_communication` (c/cpp zenoh service),
+//! `test_native_cyclonedds_service` + `test_native_cyclonedds_action` (c/cpp
+//! cyclone). The rust cyclone/xrce cases stay until issue #0413.
+//!
 //! Consolidates what used to be `c_api.rs` + `cpp_api.rs` (Phase 85.1).
 
 use nros_tests::{
