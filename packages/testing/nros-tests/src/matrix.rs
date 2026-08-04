@@ -839,6 +839,86 @@ pub fn w1_consumer_of(cell: &Cell) -> Option<W1Consumer> {
     }
 }
 
+// =============================================================================
+// Realtime-dim matrix (RFC-0051 §6a, phase-329 W2)
+// =============================================================================
+
+/// The scheduler knob whose HONORING (or honest fallback) a sched-dim cell
+/// asserts at boot. Each is a real-time tier attribute the `ws-realtime`
+/// fixtures declare in `system_model.yaml`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SchedDim {
+    /// `core_id` pin → `k_thread_cpu_pin` / `pthread_setaffinity` / … .
+    CorePin,
+    /// `deadline_us` → `k_thread_deadline_set` (Zephyr EDF).
+    EdfDeadline,
+    /// `preempt_threshold` → ThreadX `tx_thread_preemption_change`.
+    PreemptThreshold,
+    /// `time_slice_us` → ThreadX `tx_thread_time_slice_change`.
+    TimeSlice,
+    /// `budget_us`/`period_us` → NuttX `SCHED_SPORADIC`.
+    SporadicBudget,
+    /// tier priority → NuttX per-tier `SCHED_FIFO` priority.
+    TierPriority,
+}
+
+/// One realtime-dim matrix cell: a `(dim × platform × lang)` coordinate. Like
+/// [`Cell`] this is NEUTRAL — the boot mechanism, markers, and assert shape are
+/// the consumer's execution data (`tests/sched_dims_applied_e2e.rs`), not table
+/// facts. Every cell boots a `ws-realtime-*` fixture (shared with
+/// `realtime_tiers_e2e`).
+#[derive(Copy, Clone, Debug)]
+pub struct SchedCell {
+    pub dim: SchedDim,
+    pub platform: PlatformId,
+    pub lang: Lang,
+    pub tier: Tier,
+}
+
+const fn sched(dim: SchedDim, platform: PlatformId, lang: Lang, tier: Tier) -> SchedCell {
+    SchedCell {
+        dim,
+        platform,
+        lang,
+        tier,
+    }
+}
+
+/// The realtime-dim matrix (phase-329 W2 — replaces the 10 hand-written
+/// `*_applied.rs` files, one `#[test]` each). Every dim a `ws-realtime` fixture
+/// declares has a cell here; the consumer iterates them.
+pub const SCHED_CELLS: &[SchedCell] = {
+    use Lang::*;
+    use PlatformId::*;
+    use SchedDim::*;
+    use Tier::Runtime;
+    &[
+        // core-pin — one per platform family that can pin (RFC-0052 fail-loud).
+        sched(CorePin, ZephyrNativeSim, Rust, Runtime),
+        sched(CorePin, NuttxArm, Rust, Runtime),
+        sched(CorePin, ThreadxLinux, Rust, Runtime),
+        sched(CorePin, FreertosMps2, Cpp, Runtime),
+        sched(CorePin, Native, Rust, Runtime),
+        // Zephyr EDF deadline — all three language arms (W5.5 + W5.8).
+        sched(EdfDeadline, ZephyrNativeSim, Rust, Runtime),
+        sched(EdfDeadline, ZephyrNativeSim, Cpp, Runtime),
+        sched(EdfDeadline, ZephyrNativeSim, C, Runtime),
+        // NuttX sporadic + tier-priority.
+        sched(SporadicBudget, NuttxArm, Cpp, Runtime),
+        sched(TierPriority, NuttxArm, Rust, Runtime),
+        // ThreadX preempt-threshold + time-slice.
+        sched(PreemptThreshold, ThreadxLinux, Rust, Runtime),
+        sched(TimeSlice, ThreadxLinux, Rust, Runtime),
+    ]
+};
+
+/// Runtime sched-dim cells — what the consumer iterates.
+pub fn sched_runtime_cells() -> impl Iterator<Item = &'static SchedCell> {
+    SCHED_CELLS
+        .iter()
+        .filter(|c| matches!(c.tier, Tier::Runtime))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -878,6 +958,27 @@ mod tests {
                 runtime_cells().any(|c| w1_consumer_of(c) == Some(cons)),
                 "G5: consumer {cons:?} claims no Runtime cell — its workload/platform set \
                  vanished from CELLS (a consumer file would silently run nothing)"
+            );
+        }
+    }
+
+    /// phase-329 W2 — the realtime-dim table is populated and every declared
+    /// `SchedDim` variant has at least one cell (a tripwire against a dim's
+    /// cells vanishing from the table, the 0380 loss shape at the matrix layer).
+    #[test]
+    fn sched_dims_table_covers_every_dim() {
+        assert!(!SCHED_CELLS.is_empty(), "the realtime-dim matrix is empty");
+        for dim in [
+            SchedDim::CorePin,
+            SchedDim::EdfDeadline,
+            SchedDim::PreemptThreshold,
+            SchedDim::TimeSlice,
+            SchedDim::SporadicBudget,
+            SchedDim::TierPriority,
+        ] {
+            assert!(
+                sched_runtime_cells().any(|c| c.dim == dim),
+                "realtime-dim {dim:?} has no Runtime cell — its coverage vanished from SCHED_CELLS"
             );
         }
     }
