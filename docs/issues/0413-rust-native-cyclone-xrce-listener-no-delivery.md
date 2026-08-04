@@ -19,6 +19,45 @@ Surfaced by the native-example pubsub matrix consumer
 exactly `(Native, Rust, Cyclonedds, Pubsub)` and `(Native, Rust, Xrce, Pubsub)`,
 so both are CARVED out of that consumer's filter with a pointer here.
 
+## Root cause (2026-08-04 deep dive) — it is a session-OPEN failure, not delivery
+
+Running the native rust cyclone talker AND listener directly (`ROS_DOMAIN_ID` +
+`LD_LIBRARY_PATH=build/install/lib`, the exact env `native_api::spawn_cyclone_binary`
+uses) shows BOTH panic at startup:
+
+```
+thread 'main' panicked at src/main.rs:48:55:
+Failed to open session: Transport(ConnectionFailed)     # Executor::open
+```
+
+So the "listener receives nothing" symptom is downstream: the rust cyclone (and
+by the same class, xrce) example never opens its session, prints nothing, and the
+consumer reads that as no delivery. This is NOT a subscribe/`message_info`/type-
+descriptor bug — those paths were all verified correct:
+- `register_type::<M>()` is called by both the plain and the `with_info`
+  subscription paths (`spin.rs:3011/3518`), and the Cyclone descriptor registrar
+  IS installed by the board's `nros_rmw_cyclonedds_sys::register()`
+  (`nros-board-native/src/lib.rs:121`).
+- the CFFI `try_recv_raw_with_info` already falls back to plain `try_recv_raw` +
+  optional info (`rmw/cffi/src/lib.rs:2386`), so `message_info` on a backend
+  without info support delivers with `None`, not a drop.
+- talker/listener `Cargo.toml` `rmw-cyclonedds` are identical and both carry the
+  `nros/rmw-cyclonedds` marker.
+
+**Contradiction to resolve:** `native_api::test_native_cyclonedds_rust_talker_to_listener`
+pairs a rust cyclone TALKER (the same `build_example_rmw("native/rust/talker",…)`
+binary) with c/cpp listeners and is green — yet that same binary `ConnectionFailed`s
+here. The tested binary is **7 days stale** (built 2026-07-29) and could not be
+force-rebuilt standalone (`cargo build` misses the `nros` path-patch that
+`nros sync` supplies; the fixture harness caches the stale one). So the open
+question is whether a FRESH fixture-harness rebuild still `ConnectionFailed`s.
+
+**Next step:** rebuild the rust cyclone/xrce examples through the fixture harness
+with the cache invalidated, rerun `native_example_pubsub_e2e` / `_reqresp_e2e`; if
+they still `ConnectionFailed`, trace the rust cyclone participant creation in
+`Executor::open` (why the DDS participant/session init returns
+`Transport(ConnectionFailed)` for the rust path when the C/C++ path succeeds).
+
 ## Evidence
 
 - With the correct runtime env (cyclone: `ROS_DOMAIN_ID` +

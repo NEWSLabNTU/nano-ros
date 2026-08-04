@@ -62,11 +62,14 @@ larger: `nros::main!` consumes the model and tracks it, never seeing `system.tom
 so a plain `cargo check` with no build step still fails "SystemModel not found". See
 `archived/0414-*`. (2026-08-04)
 
-**#413** — a native Rust cyclone/xrce LISTENER receives nothing in a same-language example pair,
-while C/C++ pairs deliver on the same backends (run-proven, phase-329 W4). The Rust cyclone PUBLISH
-path is known-good (native_api pairs a Rust cyclone talker with C/C++ listeners); the gap is the
-Rust SUBSCRIBE side on cyclone/xrce, a path no prior test exercised. The two cells are carved out
-of `native_example_pubsub_e2e.rs`; drop the carve once a Rust pair delivers. See `0413-*`. (2026-08-04)
+**#413** — a native Rust cyclone/xrce example pair does not deliver in a same-language pairing while
+C/C++ pairs do (phase-329 W4 run-prove). Deep dive 2026-08-04 recharacterised it: the rust cyclone
+talker AND listener PANIC `Failed to open session: Transport(ConnectionFailed)` at `Executor::open`
+— a session-OPEN failure, not a subscribe bug (type-descriptor registration, the `message_info`
+CFFI fallback, and the marker feature were all verified correct). The tested binary is 7 days stale
+and couldn't be force-rebuilt standalone; open question = whether a fresh fixture-harness rebuild
+still fails, then trace the rust cyclone participant init. Two cells carved out of
+`native_example_pubsub_e2e.rs` + `native_example_reqresp_e2e.rs`. See `0413-*`. (2026-08-04)
 
 **#412** — eight SystemModel files are tracked again under `examples/workspaces/safety`, so
 `check-no-tracked-models` (phase-330 W7.e) turns `just check-fast` RED on main. They were scooped
