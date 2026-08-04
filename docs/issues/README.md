@@ -51,6 +51,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#413** — a native Rust cyclone/xrce LISTENER receives nothing in a same-language example pair,
+while C/C++ pairs deliver on the same backends (run-proven, phase-329 W4). The Rust cyclone PUBLISH
+path is known-good (native_api pairs a Rust cyclone talker with C/C++ listeners); the gap is the
+Rust SUBSCRIBE side on cyclone/xrce, a path no prior test exercised. The two cells are carved out
+of `native_example_pubsub_e2e.rs`; drop the carve once a Rust pair delivers. See `0413-*`. (2026-08-04)
+
 **#412** — eight SystemModel files are tracked again under `examples/workspaces/safety`, so
 `check-no-tracked-models` (phase-330 W7.e) turns `just check-fast` RED on main. They were scooped
 into `3f25803d1`, an unrelated phase-331 fallout fix whose intended change was a launch file plus a

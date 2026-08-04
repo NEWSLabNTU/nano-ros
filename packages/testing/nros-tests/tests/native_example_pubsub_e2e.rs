@@ -112,13 +112,12 @@ fn native_example_pubsub() {
                 && matches!(c.kind, MK::Example)
                 && matches!(c.workload, MW::Pubsub)
                 && matches!(c.tier, MT::Runtime)
-                // Carve: the RUST same-language listener over cyclone/xrce gets
-                // ZERO delivery (run-prove 2026-08-04) while c/cpp pairs deliver
-                // — and no existing test exercises a rust cyclone/xrce LISTENER
-                // (native_api pairs a rust cyclone TALKER with c/cpp listeners),
-                // so this is an unproven product path, not a harness bug. Left to
-                // root-cause before these two coordinates join. The other 7 cells
-                // (all zenoh + c/cpp cyclone + c/cpp xrce) are run-proven green.
+                // Carve (issue #0413): the RUST same-language listener over
+                // cyclone/xrce gets ZERO delivery while c/cpp pairs deliver — an
+                // unproven product path (no test exercises a rust cyclone/xrce
+                // LISTENER), not a harness bug. Drop this clause once #0413 makes
+                // a rust pair deliver. The other 7 cells (all zenoh + c/cpp
+                // cyclone + c/cpp xrce) are run-proven green.
                 && !(matches!(c.lang, ML::Rust)
                     && matches!(c.rmw, MR::Cyclonedds | MR::Xrce))
         })
