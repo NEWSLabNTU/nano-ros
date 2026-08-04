@@ -154,11 +154,20 @@ native files corrected the plan; the "~40 deletions" target was optimistic:
 - **`zero_copy` / `executor` / `error_handling` are genuine behavior one-offs**
   (zero-copy path, timer/executor, error paths — no cell asserts them) →
   keep + label, NOT deletions.
-- [ ] Build the native-example delivery consumer (additive first), then fold the
+- [~] Build the native-example delivery consumer (additive first), then fold the
   delivery cases of `services`/`actions`/`nano2nano`/`xrce` into it, keeping +
   labelling the startup/error/behavior one-offs; `native_api`'s 28 rstest cases
   become the Rmw-parametrized native consumer. **Coverage-proven per deletion —
   no file removed until the consumer demonstrably runs its cells.**
+  **PUBSUB foundation landed 2026-08-04** (`tests/native_example_pubsub_e2e.rs`):
+  the 9 Native/Pubsub/Example cells (rust/c/cpp × zenoh/cyclone/xrce) derive from
+  `matrix::CELLS`, three RMW isolation models wired, ADDITIVE (no deletions —
+  runs alongside `nano2nano`/`xrce`). Compiles + clippy clean; **unrun here** (no
+  native fixtures on this host). REMAINING: (1) run-prove it on a fixture host,
+  (2) then fold + delete `nano2nano`/`xrce` pubsub-delivery cases (keep their
+  startup/error one-offs, labelled), (3) extend to Service + Action (their
+  cross-rmw builders differ), (4) `native_api` → Rmw-parametrized. Do NOT delete
+  before step 1 — the consumer is compile-verified, not run-verified.
 - [ ] Per-platform QEMU files that duplicate `rtos_e2e` workloads fold in
   (`freertos_qemu`, `nuttx_qemu`, `threadx_linux`, `threadx_riscv64_qemu`,
   `c_riscv_nuttx_e2e`, parts of `emulator.rs`/`esp32_emulator.rs`).
