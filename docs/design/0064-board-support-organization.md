@@ -472,6 +472,20 @@ Verified per family:
   84 % identical between them (55 diff lines of 339), so W1.g's shared `BaseConfig`
   absorbs most of the remainder.
 
+  **LANDED 2026-08-04 (phase-337 W4).** Layer 2 is
+  `packages/boards/nros-board-threadx-port-riscv64` — 1690 lines of forked port
+  (the header plus FIVE `.S` files, not three: `tx_thread_stack_build.S` and
+  `tx_thread_system_return.S` carry the same `ULONG` retype, and the earlier
+  count of "~1250" had missed them). `tx_initialize_low_level.S` stayed with the
+  board: it is the qemu_virt BSP's low-level init, not the arch port's. Both
+  boards adopted `BaseConfig`, which deleted the two hand-copied
+  `DeployOverlay`→`Config` merges and the two hand-copied `nros.toml` parsers.
+  Consumers reach the port through one precedence rule (its `inc/` before
+  upstream's), enforced by a `_Static_assert(sizeof(ULONG) == 4)` in
+  `nros-board-common/c/threadx_hooks.c` — because the failure mode of losing it
+  is a clean compile and corrupted packets, not a diagnostic. Behaviour-neutral:
+  42 + 23 fixture rows and 18 + 12 cells unchanged.
+
   This revises phase-322 W1.f. Its "KEEP SEPARATE" verdict is right about the crate
   boundary, but the reasons it cites — distinct `#[panic_handler]`, hosted-vs-bare
   link model, different net drivers — are all things the `BoardInit`/`BoardPrint`/
@@ -662,17 +676,23 @@ numbers measured 2026-08-04.
 | 2 | `nros-board-zephyr` | 1 / 2 / 3 | native_sim · **QEMU Cortex-M** · FVP | conf bundles, not crates; absorbs `fvp-aemv8r-smp` |
 | 3 | `nros-board-mps2-an385-freertos` | 1 | ARMv7-M, nanoros-owned | **DONE** (phase-337 W5) — templated: overlay 2497 → 1065 lines (−57 %); a second board measures 205 lines, of which 76 are the board delta |
 | 4 | `nros-board-nuttx-qemu` | 1 / 2 | ARMv7-A · riscv32 | **DONE** (phase-337 W3) — merge of `-qemu-arm` + `-qemu-riscv`: 3350 → 2054 lines (−1296, −39 %), two `[[board]]` witnesses in one descriptor, `Config` on `BaseConfig` |
-| 5 | `nros-board-threadx-linux` | 1 | x86_64, NSOS shim | thins to overlay |
-| 6 | `nros-board-threadx-qemu-riscv64` | 2 | riscv64, real NetX Duo | thins to overlay |
+| 5 | `nros-board-threadx-linux` | 1 | x86_64, NSOS shim | **DONE** (phase-337 W4.c) — thinned to overlay: 1265 → 1097 lines |
+| 6 | `nros-board-threadx-qemu-riscv64` | 2 | riscv64, real NetX Duo | **DONE** (phase-337 W4.b) — thinned to overlay: 4023 → 2185 lines; the arch port moved to `nros-board-threadx-port-riscv64` |
 | 7 | `nros-board-mps2-an385` | 2 | bare-metal floor | **DONE** (phase-337 W6.a) — absorbed `rtic-mps2-an385` as the `rtic` feature |
 | 8 | `nros-board-esp32-qemu` | 2 | Xtensa, vendor SDK | unchanged |
-| 9–16 | infra: `common`, `cffi`, `freertos`, `nuttx`, `threadx`, **`threadx-port-riscv64`** (NEW, layer 2), `mps2-an385-pac`, descriptors | — | — | `bare-metal` deleted (W1.h) |
+| 9–16 | infra: `common`, `cffi`, `freertos`, `nuttx`, `threadx`, **`threadx-port-riscv64`** (NEW, layer 2 — **DONE 2026-08-04**, phase-337 W4.a), `mps2-an385-pac`, descriptors | — | — | `bare-metal` deleted (W1.h) |
 
 **Deleted (12):** `native`, `posix` (→ `linux`), `nuttx-qemu-riscv` (→ merged),
 `rtic-mps2-an385` (→ feature), `fvp-aemv8r-smp` (→ conf bundle), `stm32f4`,
 `rtic-stm32f4` (→ book customization example), `embassy-stm32f4`, `esp32s3`,
 `s32z270dc2-r52`, `orin-spe` (scaffolds → integration shells), `bare-metal`.
-**Added (1):** the ThreadX riscv64 arch port.
+**Added (1):** the ThreadX riscv64 arch port — **landed 2026-08-04** as
+`packages/boards/nros-board-threadx-port-riscv64` (phase-337 W4.a). It holds
+the five forked context-switch `.S` files and the forked `tx_port.h`; both
+ThreadX boards and every CMake path reach it through the ONE precedence rule
+its `src/lib.rs` states, backed by a `_Static_assert(sizeof(ULONG) == 4)` in
+`nros-board-common/c/threadx_hooks.c` so a lost override fails the build
+rather than the network.
 
 `orin-spe` cannot be deleted blind — it is load-bearing as a pseudo-platform in
 link-feature selection (`runner.rs:225,419-420,528-529`). Untangle first.

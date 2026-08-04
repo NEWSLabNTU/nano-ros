@@ -38,6 +38,13 @@ members = [
     # link-feature policy) consumed by zpico-sys + the per-kernel
     # generic board crates as `[build-dependencies]`.
     "packages/boards/nros-board-common",
+    # phase-337 W4.a — the ThreadX RISC-V64 ARCH PORT (layer 2 of RFC-0064):
+    # the ULONG=4 fork of upstream's `ports/risc-v64/gnu`, extracted out of
+    # `nros-board-threadx-qemu-riscv64` so the board is an overlay again. Pure
+    # host Rust (path accessors + the two gates that keep the fork honest), so
+    # unlike the board crates it is a MEMBER and `just check` / `just test-all`
+    # exercise it.
+    "packages/boards/nros-board-threadx-port-riscv64",
     # Phase 173.4 — canonical board-entry C ABI (`<nros/board.h>` mirror
     # + `nros_board_export!` macro). Sibling to `nros-platform-cffi`.
     "packages/boards/nros-board-cffi",

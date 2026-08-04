@@ -65,6 +65,13 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = f
 # variant choice diverges meaningfully (Linux=NSOS shim,
 # RISC-V=full NetX-Duo + virtio-net).
 nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }
+# phase-337 W4.a — the in-tree ARCH-PORT overrides, keyed by `THREADX_PORT` in
+# `build.rs::port_override_inc_dir`. Only `risc-v64/gnu` has one today. This is
+# a build-side PATH dependency, not the assembly itself: the family driver
+# compiles kernel C for whichever port is selected and must put the forked
+# `tx_port.h` ahead of upstream's, which requires knowing where it is. No
+# RISC-V source is pulled into the crate that also serves threadx-linux.
+nros-board-threadx-port-riscv64 = { path = "../nros-board-threadx-port-riscv64" }
 cc = "1.0"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.

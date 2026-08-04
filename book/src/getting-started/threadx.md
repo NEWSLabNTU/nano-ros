@@ -78,6 +78,44 @@ uses the `nx_bsd_*` BSD socket shim layered on the host TCP stack
 (threadx-linux variant) or on its own NetX Duo TCP/IP stack
 (riscv64 variant).
 
+## Why there are two board crates and one arch port
+
+The two flavours look like one board with two targets, and they are not.
+nano-ros ships **three** ThreadX packages, in the three layers RFC-0064
+describes:
+
+| Package | Layer | What it owns |
+|---|---|---|
+| `nros-board-threadx` | family driver | the kernel/NetX build and the generic `run_entry` boot path both boards call |
+| `nros-board-threadx-port-riscv64` | **arch port** | a fork of upstream's `ports/risc-v64/gnu`: `tx_port.h` + five context-switch `.S` files |
+| `nros-board-threadx-{linux,qemu-riscv64}` | board overlay | defaults, console/exit/panic, and the network bring-up |
+
+The arch port is the reason the two boards did not merge. Upstream's
+RISC-V64 port types `ULONG` as `unsigned long` — 8 bytes on rv64 — but
+NetX Duo's packet code does `ULONG *` arithmetic assuming 4-byte words,
+so nano-ros retypes it to `unsigned int`, matching upstream's own Linux
+and AArch64 ports. That retype shifts every field offset inside
+`TX_THREAD`, and the port's context-switch assembly loads those fields at
+hard-coded offsets — so the header change forces the assembly to be
+forked with it. `threadx-linux` needs none of this, because upstream's
+Linux port already types `ULONG` as 4 bytes.
+
+That is architecture code, not board code: a second RISC-V64 ThreadX
+board would need every line of it unchanged, and folding it into a crate
+that also serves Linux would mean `cfg`-gating RISC-V assembly there. If
+you are porting to another RISC-V64 ThreadX board, depend on the arch
+port and write only the overlay — see
+[Custom boards](../porting/custom-board.md).
+
+One rule matters if you build ThreadX outside the shipped recipes: the
+arch port's `inc/` **must** be searched before
+`$THREADX_DIR/ports/risc-v64/gnu/inc`. Get that wrong and the build
+succeeds against upstream's 8-byte `ULONG`, and the symptom is corrupted
+packets at runtime rather than a compiler error. A
+`_Static_assert(sizeof(ULONG) == 4, …)` in
+`packages/boards/nros-board-common/c/threadx_hooks.c` turns that mistake
+into a build failure with a name on it.
+
 ## Configure
 
 Deploy config is declared per flavour in the build manifest and baked at

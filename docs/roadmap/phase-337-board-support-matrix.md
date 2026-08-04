@@ -272,16 +272,47 @@ assuming 4-byte words, and retyping shifts every `TX_THREAD` offset.
 **So merging the two boards is the wrong cut** — it would `cfg`-gate RISC-V
 assembly into a crate that also serves Linux.
 
-- [ ] **W4.a** New layer-2 unit (`nros-board-threadx-port-riscv64`, or a `port-*`
+- [x] **W4.a** New layer-2 unit (`nros-board-threadx-port-riscv64`, or a `port-*`
       feature of the family crate) holding the three `.S` files + `tx_port.h`,
       with the upstream provenance and the `ULONG` rationale carried over verbatim.
-- [ ] **W4.b** Thin `threadx-qemu-riscv64` to an overlay: `Config` defaults on
+      **DONE 2026-08-04** — `packages/boards/nros-board-threadx-port-riscv64/`,
+      1690 lines: `port/inc/tx_port.h` (252) + **five** `.S` (1438), not three —
+      `tx_thread_stack_build.S` (249) and `tx_thread_system_return.S` (187) carry
+      the same `ULONG` retype and the "~1250" estimate had missed them.
+      `tx_initialize_low_level.S` stays on the BOARD: it is the qemu_virt BSP's
+      low-level init (it `#include`s the board's `csr.h`), patched for the Phase
+      120.3 SP alignment, not arch-port code.
+- [x] **W4.b** Thin `threadx-qemu-riscv64` to an overlay: `Config` defaults on
       `BaseConfig`, the four trait impls, console/exit/panic, virtio-net bring-up.
-- [ ] **W4.c** Thin `threadx-linux` likewise (`src/config.rs` is already 84 %
-      identical to its sibling — 55 diff lines of 339).
-- [ ] **W4.d** **Behaviour-neutral wave:** the 42 + 23 fixture rows and the 18 + 12
+      **DONE** — `src/config.rs` 330 → 173, `src/lib.rs` 447 → 438, crate total
+      4023 → 2185 lines (tracked files, `Cargo.lock` excluded).
+- [x] **W4.c** Thin `threadx-linux` likewise (`src/config.rs` is already 84 %
+      identical to its sibling — 55 diff lines of 339). **DONE** —
+      `src/config.rs` 339 → 178, `src/lib.rs` 284 → 275, crate total 1265 → 1097
+      (tracked files, `Cargo.lock` excluded).
+- [x] **W4.d** **Behaviour-neutral wave:** the 42 + 23 fixture rows and the 18 + 12
       cells do not change. If a cell moves, the wave did more than it should.
-      *Verify:* both ThreadX lanes, on rebuilt fixtures.
+      *Verify:* both ThreadX lanes, on rebuilt fixtures. **HELD** — `git diff` on
+      `examples/fixtures.toml` and `matrix.rs` is empty; the counts re-measured
+      after the wave are still 42 + 23 and 18 + 12.
+
+**The precedence hazard this wave created, and how it is contained.** Moving
+`tx_port.h` out of the board's `config/` moves it out of an include dir that was
+already first. Every ThreadX riscv64 compile must now search the arch port's
+`inc/` BEFORE `<THREADX_DIR>/ports/risc-v64/gnu/inc`, and losing that is a CLEAN
+COMPILE against upstream's 8-byte `ULONG` — corrupted packets at runtime, no
+diagnostic. Five consumers were updated together (the class, not the site):
+`nros-board-common/src/threadx_qemu_riscv64_build.rs`,
+`nros-board-threadx/build.rs`, `nros-c/cmake/nros-threadx.cmake`
+(`PORT_OVERRIDE_DIR`), `cmake/platform/nano-ros-threadx.cmake` (the Cyclone
+ddsrt cross block) and `config/threadx/nros-platform.toml` (the zpico shim).
+The backstop is a `_Static_assert(sizeof(ULONG) == 4, …)` in
+`nros-board-common/c/threadx_hooks.c` — compiled on both the cargo and the CMake
+path, for both boards — so a sixth consumer added later fails the build with a
+message naming this wave. The CMake helper also DERIVES its exclusion list from
+the override dir's file names instead of taking a hand-written
+`BOARD_OVERRIDES`, so "excluded from upstream" and "compiled from the fork"
+cannot drift apart.
 
 ## W5 — FreeRTOS: template the per-board files — **LANDED 2026-08-04**
 

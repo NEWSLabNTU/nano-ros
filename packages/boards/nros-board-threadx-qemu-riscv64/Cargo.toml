@@ -23,7 +23,9 @@ nros-platform-critical-section = { path = "../../platform/nros-platform-critical
 # pattern as `nros-board-orin-spe` 152.3, `nros-board-mps2-an385-freertos`
 # 152.1.B.5). Generic-crate `run<B>` lift deferred to a follow-up
 # session.
-nros-board-common = { path = "../nros-board-common", default-features = false }
+# phase-337 W4 — `deploy-overlay` brings `BaseConfig::apply_overlay`, the
+# `DeployOverlay` -> `Config` merge this board used to write out by hand.
+nros-board-common = { path = "../nros-board-common", default-features = false, features = ["deploy-overlay"] }
 # Phase 152.2.B.4 — generic `run<B>` lifted into the parent
 # crate.
 nros-board-threadx = { path = "../nros-board-threadx", default-features = false }
@@ -32,6 +34,12 @@ nros-board-threadx = { path = "../nros-board-threadx", default-features = false 
 cc = "1"
 # Phase 152.2.B — shared ThreadX kernel + port source helpers.
 nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }
+# phase-337 W4.a — the layer-2 arch port (RFC-0064): upstream's
+# `ports/risc-v64/gnu` forked to type `ULONG` as 4 bytes, which NetX Duo's
+# `ULONG *` packet arithmetic requires and which shifts every `TX_THREAD`
+# offset the context-switch assembly loads. Build-side only: the crate ships
+# `.S` + a header and the paths to reach them.
+nros-board-threadx-port-riscv64 = { path = "../nros-board-threadx-port-riscv64" }
 
 [features]
 default = []

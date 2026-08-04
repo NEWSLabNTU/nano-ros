@@ -1708,6 +1708,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-board-threadx-port-riscv64"
+version = "0.5.0"
+
+[[package]]
 name = "nros-bridge"
 version = "0.5.0"
 dependencies = [

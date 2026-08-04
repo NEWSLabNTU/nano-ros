@@ -7,7 +7,12 @@ use std::{
     process::Command,
 };
 
-pub fn run(linker_script: &[u8]) {
+/// `port_dir` is the layer-2 arch-port override
+/// (`nros_board_threadx_port_riscv64::port_dir()`): `inc/tx_port.h` plus the
+/// five forked context-switch `.S` files. Passed in rather than resolved here
+/// so the path has exactly one spelling — the port crate's own manifest dir —
+/// and so the board's `build.rs` states the layering edge out loud.
+pub fn run(linker_script: &[u8], port_dir: &Path) {
     // issue 0288 — do nothing unless we are building FOR riscv64.
     //
     // Everything below cross-compiles ThreadX / NetX / virtio sources with
@@ -113,34 +118,34 @@ pub fn run(linker_script: &[u8]) {
         &threadx_port_dir,
         &qemu_virt_dir,
         &config_dir,
+        port_dir,
     );
 
-    let excluded_port_asm: &[&str] = &[
-        "tx_initialize_low_level.S",
-        "tx_thread_schedule.S",
-        "tx_thread_context_save.S",
-        "tx_thread_context_restore.S",
-        "tx_thread_stack_build.S",
-        "tx_thread_system_return.S",
-    ];
+    // phase-337 W4.a — the five ULONG=4 overrides now live in the arch-port
+    // unit (`nros-board-threadx-port-riscv64`), which owns the exclusion list
+    // too. Deriving the excluded names from the files that replace them is
+    // what keeps "excluded from upstream" and "compiled from the fork" the
+    // same set: the previous hand-written pair of literal lists could drop a
+    // name from one and silently compile upstream's 8-byte-ULONG copy.
+    //
+    // `tx_initialize_low_level.S` is NOT in that set. It is the qemu_virt
+    // BSP's low-level init (it includes the board's `csr.h`), patched for the
+    // Phase 120.3 16-byte SP alignment, so it stays with the board overlay
+    // and is added from `c/` further down.
+    let port_asm_dir = port_dir.join("src");
+    let overrides = read_port_asm_overrides(&port_asm_dir);
     for entry in std::fs::read_dir(threadx_port_dir.join("src")).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().is_some_and(|e| e == "S") {
-            let name = path.file_name().unwrap().to_str().unwrap_or("");
-            if excluded_port_asm.contains(&name) {
+            let name = path.file_name().unwrap().to_str().unwrap_or("").to_string();
+            if name == "tx_initialize_low_level.S" || overrides.contains(&name) {
                 continue;
             }
             port_asm.file(&path);
         }
     }
-    for asm_name in &[
-        "tx_thread_schedule.S",
-        "tx_thread_context_save.S",
-        "tx_thread_context_restore.S",
-        "tx_thread_stack_build.S",
-        "tx_thread_system_return.S",
-    ] {
-        port_asm.file(manifest_dir.join("c").join(asm_name));
+    for name in &overrides {
+        port_asm.file(port_asm_dir.join(name));
     }
 
     // QEMU virt board support C files (board.c, plic.c, uart.c).
@@ -184,6 +189,7 @@ pub fn run(linker_script: &[u8]) {
         &threadx_port_dir,
         &qemu_virt_dir,
         &config_dir,
+        port_dir,
     );
     add_netx_includes(&mut netxduo, &netx_dir, &config_dir);
 
@@ -209,6 +215,7 @@ pub fn run(linker_script: &[u8]) {
         &threadx_port_dir,
         &qemu_virt_dir,
         &config_dir,
+        port_dir,
     );
     add_netx_includes(&mut virtio, &netx_dir, &config_dir);
 
@@ -239,6 +246,7 @@ pub fn run(linker_script: &[u8]) {
         &threadx_port_dir,
         &qemu_virt_dir,
         &config_dir,
+        port_dir,
     );
     add_netx_includes(&mut glue, &netx_dir, &config_dir);
     glue.include(virtio_driver_dir.join("include"));
@@ -306,7 +314,12 @@ pub fn run(linker_script: &[u8]) {
     println!("cargo:rerun-if-changed=c/trap.c");
     println!("cargo:rerun-if-changed=c/board_threadx_qemu_riscv64.c");
     println!("cargo:rerun-if-changed=c/syscalls.c");
-    println!("cargo:rerun-if-changed=config/tx_port.h");
+    // phase-337 W4.a — `tx_port.h` and the five `.S` overrides moved to the
+    // arch-port unit; their triggers are emitted by that crate's
+    // `emit_rerun_directives()`, called from the board's `build.rs` OUTSIDE
+    // the riscv64 guard above. They cannot be listed here as bare relative
+    // paths: `cargo:rerun-if-changed` resolves those against the BOARD's
+    // manifest dir, so they would silently watch nothing.
     println!("cargo:rerun-if-changed=config/tx_user.h");
     println!("cargo:rerun-if-changed=config/nx_port.h");
     println!("cargo:rerun-if-changed=config/nx_user.h");
@@ -429,15 +442,52 @@ fn get_libgcc_dir() -> Option<PathBuf> {
     None
 }
 
+/// The `.S` files the arch-port unit ships, i.e. the upstream port sources it
+/// REPLACES.
+///
+/// Globbed rather than hard-coded: the files are the list, so a file added or
+/// removed there cannot leave a stale literal behind. Empty is a hard error —
+/// it would mean silently compiling upstream's whole 8-byte-`ULONG` port.
+fn read_port_asm_overrides(port_asm_dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(port_asm_dir)
+        .unwrap_or_else(|e| {
+            panic!(
+                "nros-board-threadx-qemu-riscv64: read_dir({}): {e} — the arch-port unit \
+                 (nros-board-threadx-port-riscv64) is missing",
+                port_asm_dir.display()
+            )
+        })
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "S"))
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert!(
+        !names.is_empty(),
+        "nros-board-threadx-qemu-riscv64: no `.S` overrides in {} — see \
+         nros-board-threadx-port-riscv64's crate docs on why upstream's port cannot be used",
+        port_asm_dir.display()
+    );
+    names
+}
+
+/// `port_override_dir` is the arch-port unit's `port/` root. Its `inc/` is
+/// listed **before** the upstream port's `inc/` on purpose: it carries the
+/// forked `tx_port.h`, and losing that precedence compiles cleanly against
+/// upstream's 8-byte `ULONG` and corrupts packets at runtime instead
+/// (`threadx_hooks.c`'s `_Static_assert` is the backstop).
 fn add_threadx_includes(
     build: &mut cc::Build,
     threadx_dir: &Path,
     port_dir: &Path,
     qemu_virt_dir: &Path,
     config_dir: &Path,
+    port_override_dir: &Path,
 ) {
     build
         .include(config_dir)
+        .include(port_override_dir.join("inc"))
         .include(threadx_dir.join("common/inc"))
         .include(port_dir.join("inc"))
         .include(qemu_virt_dir);

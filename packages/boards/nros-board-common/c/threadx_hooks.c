@@ -41,6 +41,26 @@
 
 #include "tx_api.h"
 
+/* phase-337 W4.a — tripwire for a lost arch-port override.
+ *
+ * Every ThreadX port nano-ros builds on types `ULONG` as 4 bytes: upstream
+ * does so for `linux/gnu` and for the AArch64 ports, and
+ * `nros-board-threadx-port-riscv64` forks `risc-v64/gnu` to match, because
+ * NetX Duo's packet code does `ULONG *` arithmetic assuming 4-byte words.
+ *
+ * The forked `tx_port.h` wins only by INCLUDE ORDER — it has to precede
+ * `<THREADX_DIR>/ports/risc-v64/gnu/inc`. Get that wrong and the build
+ * SUCCEEDS against upstream's 8-byte `ULONG`: every `TX_THREAD` field offset
+ * shifts, the context-switch assembly reads the wrong words, and the symptom
+ * is corrupted packets at runtime rather than a diagnostic. This TU is
+ * compiled on both the cargo and the CMake path, for both ThreadX boards, so
+ * the assert turns that class into a build failure with a name on it.
+ */
+_Static_assert(sizeof(ULONG) == 4,
+               "ThreadX ULONG is not 4 bytes: the arch-port override "
+               "(nros-board-threadx-port-riscv64/port/inc) lost include-order "
+               "precedence over the upstream port header. See phase-337 W4.a.");
+
 /* ---- Sizing constants ---- */
 #define BYTE_POOL_SIZE          (4 * 1024 * 1024)
 

@@ -22,7 +22,9 @@ nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-featu
 # 152.1.B.5). Generic-crate `run<B>` lift deferred to a follow-up
 # session; the trait surface lands now so future consumers can
 # already write `<ThreadxLinux as BoardInit>::init_hardware(&cfg)`.
-nros-board-common = { path = "../nros-board-common", default-features = false }
+# phase-337 W4 — `deploy-overlay` brings `BaseConfig::apply_overlay`, the
+# `DeployOverlay` -> `Config` merge this board used to write out by hand.
+nros-board-common = { path = "../nros-board-common", default-features = false, features = ["deploy-overlay"] }
 # Phase 152.2.B.4 — generic `run<B>` lifted into the parent
 # crate. The overlay's `pub fn run` is now a thin non-generic
 # wrapper that calls `nros_board_threadx::run::<ThreadxLinux,

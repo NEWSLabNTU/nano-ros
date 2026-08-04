@@ -109,11 +109,26 @@ fn main() {
         threadx_port_dir.display()
     );
 
+    // phase-337 W4.a — an in-tree ARCH-PORT OVERRIDE for this `THREADX_PORT`,
+    // if one exists. `risc-v64/gnu` has one
+    // (`nros-board-threadx-port-riscv64`) because upstream types `ULONG` as 8
+    // bytes there and NetX Duo's packet code needs 4; `linux/gnu` has none
+    // because upstream already types it as 4.
+    //
+    // Its `inc/` MUST precede the upstream port's `inc/`: the forked
+    // `tx_port.h` shadows upstream's, and losing that precedence compiles
+    // cleanly and corrupts packets at runtime. This is why the override is
+    // NOT folded into `THREADX_EXTRA_INCLUDES`, which is appended after.
+    let port_override_inc = port_override_inc_dir(&port_subpath);
+
     // ---- Build ThreadX kernel (C only — port `.S` stays per-overlay) ----
     let mut kernel = cc::Build::new();
     configure(&mut kernel);
+    kernel.include(&config_dir);
+    if let Some(inc) = &port_override_inc {
+        kernel.include(inc);
+    }
     kernel
-        .include(&config_dir)
         .include(threadx_dir.join("common/inc"))
         .include(threadx_port_dir.join("inc"));
     for p in &extra_kernel_includes {
@@ -146,8 +161,11 @@ fn main() {
 
     let mut platform = cc::Build::new();
     configure(&mut platform);
+    platform.include(&config_dir);
+    if let Some(inc) = &port_override_inc {
+        platform.include(inc);
+    }
     platform
-        .include(&config_dir)
         .include(threadx_dir.join("common/inc"))
         .include(threadx_port_dir.join("inc"))
         .include(netx_dir.join("common/inc"))
@@ -181,6 +199,22 @@ fn main() {
     println!("cargo:rerun-if-env-changed=THREADX_EXTRA_INCLUDES");
     println!("cargo:rerun-if-env-changed=NETX_DIR");
     println!("cargo:rerun-if-env-changed=NETX_EXTRA_INCLUDES");
+}
+
+/// phase-337 W4.a — the in-tree arch-port override for a `THREADX_PORT`
+/// value, if there is one.
+///
+/// ONE table, keyed by the port subpath, so the family driver never grows a
+/// second spelling of a port path. The path itself comes from the port
+/// crate's own manifest dir, not from a relative walk.
+fn port_override_inc_dir(port_subpath: &str) -> Option<PathBuf> {
+    let dir = match port_subpath {
+        "risc-v64/gnu" => nros_board_threadx_port_riscv64::inc_dir(),
+        // `linux/gnu` and every other upstream port is used as shipped.
+        _ => return None,
+    };
+    println!("cargo:rerun-if-changed={}", dir.join("tx_port.h").display());
+    Some(dir)
 }
 
 fn configure(build: &mut cc::Build) {

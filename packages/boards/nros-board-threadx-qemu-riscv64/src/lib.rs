@@ -112,24 +112,24 @@ pub struct ThreadxQemuRiscv64;
 
 impl ThreadxConfig for Config {
     fn mac(&self) -> &[u8; 6] {
-        &self.mac
+        &self.base.mac
     }
     fn ip(&self) -> &[u8; 4] {
-        &self.ip
+        &self.base.ip
     }
     fn netmask(&self) -> &[u8; 4] {
-        &self.netmask
+        &self.base.netmask
     }
     fn gateway(&self) -> &[u8; 4] {
-        &self.gateway
+        &self.base.gateway
     }
     // No host interface — bare-metal NetX-Duo + virtio-net.
 
     fn locator(&self) -> &'static str {
-        self.zenoh_locator
+        self.base.zenoh_locator
     }
     fn domain_id(&self) -> u32 {
-        self.domain_id
+        self.base.domain_id
     }
 }
 
@@ -296,23 +296,14 @@ macro_rules! cyclonedds_app_main {
 
 /// Phase 245 B0 — overlay the `nros::main!()` deploy block onto `Config::default()`.
 /// Fields the deploy block omits keep the board default.
+///
+/// phase-337 W4.b — the field-by-field merge is
+/// [`nros_board_common::BaseConfig::apply_overlay`], which four board crates
+/// had each written out by hand. This board adds no fields of its own, so the
+/// whole merge is that one call.
 fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
     let mut config = Config::default();
-    if let Some(loc) = deploy.locator {
-        config.zenoh_locator = loc;
-    }
-    if let Some(ip) = deploy.ip {
-        config.ip = ip;
-    }
-    if let Some(gw) = deploy.gateway {
-        config.gateway = gw;
-    }
-    if let Some(nm) = deploy.netmask {
-        config.netmask = nm;
-    }
-    if let Some(d) = deploy.domain_id {
-        config.domain_id = d;
-    }
+    config.base.apply_overlay(deploy);
     config
 }
 

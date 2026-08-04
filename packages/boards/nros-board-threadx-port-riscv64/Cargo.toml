@@ -1,0 +1,22 @@
+[package]
+name = "nros-board-threadx-port-riscv64"
+version.workspace = true
+publish = false
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "ThreadX RISC-V64/GNU arch port override for nano-ros (ULONG=4 fork of the upstream port)"
+authors = ["nano-ros contributors"]
+repository = "https://github.com/NEWSLabNTU/peripherals"
+keywords = ["nano-ros", "threadx", "riscv", "port", "no-std"]
+categories = ["embedded", "no-std"]
+
+[lib]
+name = "nros_board_threadx_port_riscv64"
+
+# phase-337 W4.a — this crate ships NO Rust runtime code. It exists so the
+# forked arch port (`port/src/*.S` + `port/inc/tx_port.h`) has one owner, and
+# so build scripts can locate it by crate rather than by a hand-written
+# relative path. Everything here is `build.rs`-side, hence no dependencies:
+# consumers pass their own `cc::Build`, exactly as `nros-board-common`'s
+# `threadx_sources` helpers do.
+[dependencies]

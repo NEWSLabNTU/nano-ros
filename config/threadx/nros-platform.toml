@@ -73,6 +73,16 @@ rerun_if_env_changed = [
 [[build.zenoh.include_paths_conditional]]
 path = "{env:THREADX_DIR}/ports/linux/gnu/inc"
 when = { target_not = "embedded" }
+# phase-337 W4.a — the ARCH-PORT override must precede upstream's port inc
+# below. `tx_port.h` used to reach this build through `THREADX_CONFIG_DIR`
+# (the board's `config/`); it now lives in the layer-2 arch-port unit. The
+# zpico shim and the ThreadX kernel MUST agree on `ULONG`'s width or every
+# `TX_THREAD` offset differs between them — a clean compile and a runtime
+# corruption. `{nros}` is `packages/rmw/zenoh/zpico-sys`, so three levels up
+# is `packages/`.
+[[build.zenoh.include_paths_conditional]]
+path = "{nros}/../../../boards/nros-board-threadx-port-riscv64/port/inc"
+when = { target_match = "riscv64" }
 [[build.zenoh.include_paths_conditional]]
 path = "{env:THREADX_DIR}/ports/risc-v64/gnu/inc"
 when = { target_match = "riscv64" }

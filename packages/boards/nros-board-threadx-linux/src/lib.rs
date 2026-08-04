@@ -41,25 +41,25 @@ pub struct ThreadxLinux;
 
 impl ThreadxConfig for Config {
     fn mac(&self) -> &[u8; 6] {
-        &self.mac
+        &self.base.mac
     }
     fn ip(&self) -> &[u8; 4] {
-        &self.ip
+        &self.base.ip
     }
     fn netmask(&self) -> &[u8; 4] {
-        &self.netmask
+        &self.base.netmask
     }
     fn gateway(&self) -> &[u8; 4] {
-        &self.gateway
+        &self.base.gateway
     }
     fn interface(&self) -> Option<&str> {
         Some(self.interface)
     }
     fn locator(&self) -> &'static str {
-        self.zenoh_locator
+        self.base.zenoh_locator
     }
     fn domain_id(&self) -> u32 {
-        self.domain_id
+        self.base.domain_id
     }
 }
 
@@ -216,23 +216,14 @@ impl ThreadxLinux {
 
 /// Phase 244 E5 — overlay the `nros::main!()` deploy block onto `Config::default()`.
 /// Fields the deploy block omits keep the board default.
+///
+/// phase-337 W4.c — the field-by-field merge is
+/// [`nros_board_common::BaseConfig::apply_overlay`]. `interface` is NOT
+/// overlaid: `DeployOverlay` carries no such field, and it never did — the
+/// hand-written copy this replaces did not touch it either.
 fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
     let mut config = Config::default();
-    if let Some(loc) = deploy.locator {
-        config.zenoh_locator = loc;
-    }
-    if let Some(ip) = deploy.ip {
-        config.ip = ip;
-    }
-    if let Some(gw) = deploy.gateway {
-        config.gateway = gw;
-    }
-    if let Some(nm) = deploy.netmask {
-        config.netmask = nm;
-    }
-    if let Some(d) = deploy.domain_id {
-        config.domain_id = d;
-    }
+    config.base.apply_overlay(deploy);
     config
 }
 

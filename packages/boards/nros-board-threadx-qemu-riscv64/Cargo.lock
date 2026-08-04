@@ -317,6 +317,7 @@ dependencies = [
  "cc",
  "nros-build-paths",
  "nros-cc-flags",
+ "nros-platform",
  "serde",
  "toml 0.8.23",
 ]
@@ -329,10 +330,15 @@ dependencies = [
  "log",
  "nros",
  "nros-board-common",
+ "nros-board-threadx-port-riscv64",
  "nros-cc-flags",
  "nros-platform",
  "nros-rmw-zenoh",
 ]
+
+[[package]]
+name = "nros-board-threadx-port-riscv64"
+version = "0.5.0"
 
 [[package]]
 name = "nros-board-threadx-qemu-riscv64"
@@ -341,6 +347,7 @@ dependencies = [
  "cc",
  "nros-board-common",
  "nros-board-threadx",
+ "nros-board-threadx-port-riscv64",
  "nros-platform",
  "nros-platform-cffi",
  "nros-platform-critical-section",

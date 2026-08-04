@@ -14,18 +14,33 @@
 #       THREADX_CONFIG_DIR plus whatever the caller passes in REQUIRE.
 #
 #   nros_threadx_build_kernel(PORT <subdir>
+#                             [PORT_OVERRIDE_DIR <dir>]
 #                             [BOARD_DIR <dir>]
 #                             [BOARD_OVERRIDES <asm files…>]
 #                             [QEMU_VIRT_DIR <dir>]
 #                             [QEMU_VIRT_EXCLUDE <c files…>])
 #       Build the threadx_kernel STATIC library. PORT is the suffix
 #       under "${THREADX_DIR}/ports/" (e.g. "linux/gnu",
-#       "risc-v64/gnu"). For ports with board-supplied
-#       reset/scheduler/context-switch assembly, pass BOARD_DIR
-#       (extra C + asm sources) and BOARD_OVERRIDES (asm files in the
-#       port to *exclude* in favour of the board's). QEMU_VIRT_DIR /
-#       QEMU_VIRT_EXCLUDE handle the "qemu_virt example_build" tree
-#       used by the RISC-V port.
+#       "risc-v64/gnu").
+#
+#       PORT_OVERRIDE_DIR names an in-tree fork of that port — a dir
+#       with `inc/` and `src/` mirroring the upstream port's
+#       (phase-337 W4.a: packages/boards/nros-board-threadx-port-riscv64
+#       /port). Its `inc/` is placed FIRST in the include set (the
+#       forked `tx_port.h` must shadow upstream's, or the build
+#       succeeds against the wrong ULONG width and corrupts packets at
+#       runtime), and every `src/*.S` in it both REPLACES and EXCLUDES
+#       the same-named upstream file. Deriving the exclusion from the
+#       files is what keeps the two halves in step; the old
+#       hand-written BOARD_OVERRIDES list could name one and not the
+#       other.
+#
+#       BOARD_DIR (extra C + asm sources) and BOARD_OVERRIDES (asm
+#       files in the port to *exclude* in favour of the board's) remain
+#       for genuinely board-level assembly — e.g. the RISC-V board's
+#       `tx_initialize_low_level.S`, which is the qemu_virt BSP's, not
+#       the arch port's. QEMU_VIRT_DIR / QEMU_VIRT_EXCLUDE handle the
+#       "qemu_virt example_build" tree used by the RISC-V port.
 #
 #   nros_threadx_build_netstack_nsos(SHIM_DIR <path>)
 #       Linux-style: build nsos_netx STATIC from a single .c file in
@@ -111,7 +126,7 @@ endfunction()
 function(nros_threadx_build_kernel)
     cmake_parse_arguments(_NTBK
         ""
-        "PORT;BOARD_DIR;QEMU_VIRT_DIR"
+        "PORT;PORT_OVERRIDE_DIR;BOARD_DIR;QEMU_VIRT_DIR"
         "BOARD_OVERRIDES;QEMU_VIRT_EXCLUDE;EXTRA_DEFINES;EXTRA_INCLUDES"
         ${ARGN})
 
@@ -119,8 +134,36 @@ function(nros_threadx_build_kernel)
         message(FATAL_ERROR "nros_threadx_build_kernel: PORT is required.")
     endif()
 
+    # phase-337 W4.a — an in-tree fork of the upstream arch port. Its `inc/`
+    # goes ahead of BOTH the board config dir and the upstream port inc: it
+    # carries the forked `tx_port.h`, and a lost override is a clean compile
+    # with the wrong ULONG width, not a diagnostic.
     set(_port_dir "${THREADX_DIR}/ports/${_NTBK_PORT}")
-    set(_includes
+    set(_port_override_asm "")
+    set(_port_override_names "")
+    set(_includes "")
+    if(_NTBK_PORT_OVERRIDE_DIR)
+        if(NOT EXISTS "${_NTBK_PORT_OVERRIDE_DIR}/inc")
+            message(FATAL_ERROR
+                "nros_threadx_build_kernel: PORT_OVERRIDE_DIR "
+                "'${_NTBK_PORT_OVERRIDE_DIR}' has no inc/ — the forked tx_port.h "
+                "is what the override exists for.")
+        endif()
+        list(APPEND _includes "${_NTBK_PORT_OVERRIDE_DIR}/inc")
+        file(GLOB _port_override_asm "${_NTBK_PORT_OVERRIDE_DIR}/src/*.S")
+        if(NOT _port_override_asm)
+            message(FATAL_ERROR
+                "nros_threadx_build_kernel: PORT_OVERRIDE_DIR "
+                "'${_NTBK_PORT_OVERRIDE_DIR}' ships no src/*.S. Upstream's port "
+                "assembly assumes the upstream ULONG width; compiling it against "
+                "the forked header is exactly the mismatch the override prevents.")
+        endif()
+        foreach(_f ${_port_override_asm})
+            get_filename_component(_n "${_f}" NAME)
+            list(APPEND _port_override_names "${_n}")
+        endforeach()
+    endif()
+    list(APPEND _includes
         "${THREADX_CONFIG_DIR}"
         "${THREADX_DIR}/common/inc"
         "${_port_dir}/inc")
@@ -134,16 +177,18 @@ function(nros_threadx_build_kernel)
     file(GLOB _kernel_srcs "${THREADX_DIR}/common/src/*.c")
     file(GLOB _port_c_srcs "${_port_dir}/src/*.c")
 
-    # Port assembly with optional board overrides
+    # Port assembly, minus anything the arch-port fork or the board replaces.
     file(GLOB _port_asm_all "${_port_dir}/src/*.S")
     set(_port_asm "")
     foreach(_f ${_port_asm_all})
         get_filename_component(_name "${_f}" NAME)
         list(FIND _NTBK_BOARD_OVERRIDES "${_name}" _idx)
-        if(_idx EQUAL -1)
+        list(FIND _port_override_names "${_name}" _pidx)
+        if(_idx EQUAL -1 AND _pidx EQUAL -1)
             list(APPEND _port_asm "${_f}")
         endif()
     endforeach()
+    list(APPEND _port_asm ${_port_override_asm})
 
     # Optional board-supplied glue (assembly + C)
     set(_board_srcs "")

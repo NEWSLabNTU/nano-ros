@@ -68,6 +68,7 @@ Shared traits, family drivers, ABI mirrors, PACs, and descriptor directories. No
 | `nros-board-freertos` | — | *unassigned* | Real family driver: the MPS2 overlay is `pub use nros_board_freertos::Config` and carries zero config code. The pattern the forked boards should copy. |
 | `nros-board-nuttx` | — | *unassigned* | NuttX FAMILY DRIVER, not a façade: owns run_entry / run_tiers / the tier spin loops, which the one board overlay (nros-board-nuttx-qemu) delegates to. phase-337 W3 merged the two board crates below it; this layer stays. |
 | `nros-board-threadx` | — | *unassigned* | Real family driver: a 1120-line generic entry.py both ThreadX boards call into. |
+| `nros-board-threadx-port-riscv64` | — | *unassigned* | NOT a board: RFC-0064 layer 2, the ThreadX RISC-V64/GNU ARCH PORT. Upstream types ULONG as 8 bytes there; NetX Duo's packet code does `ULONG *` arithmetic assuming 4, and retyping it shifts every TX_THREAD offset the context-switch assembly loads — so the fork is a header plus five `.S` files, and it is arch, not board. Extracted from nros-board-threadx-qemu-riscv64 by phase-337 W4.a; a second riscv64 ThreadX board would need every line of it unchanged. threadx-linux has none because upstream's Linux port already types ULONG as 4 bytes — which is why the two ThreadX boards did NOT merge. |
 | `posix` | — | *unassigned* | nros-board.toml descriptor directory, not a crate. phase-321 W2 moves these out of packages/boards/. |
 | `zephyr` | — | *unassigned* | nros-board.toml descriptor directory, not a crate. |
 

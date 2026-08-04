@@ -22,16 +22,20 @@
 #   THREADX_CONFIG_DIR — tx_user.h / nx_user.h / nx_port.h / link.lds
 #                        (default: board crate's config/)
 #   THREADX_BOARD_DIR  — board crate C dir (entry.s, app_define.c,
-#                        tx_thread_*.S overrides)
+#                        tx_initialize_low_level.S)
 #                        (default: board crate's c/)
+#                        NB phase-337 W4.a: the tx_thread_*.S ULONG=4
+#                        overrides and tx_port.h are NOT here — they are
+#                        the arch port, in
+#                        packages/boards/nros-board-threadx-port-riscv64/
 #   VIRTIO_DRIVER_DIR  — virtio-net-netx driver source dir
 #                        (default: packages/drivers/net/virtio-net-netx)
 #
 # What this overlay declares:
 #
-#   threadx_kernel       STATIC    — ThreadX kernel (risc-v64/gnu port,
-#                                    with board-supplied tx_thread_*.S
-#                                    overrides + QEMU virt example_build
+#   threadx_kernel       STATIC    — ThreadX kernel (risc-v64/gnu port, with
+#                                    the arch port's tx_thread_*.S overrides
+#                                    + QEMU virt example_build
 #                                    board.c/plic.c/uart.c)
 #   netxduo              STATIC    — NetX Duo common stack + BSD addon
 #   virtio_net_netx      STATIC    — virtio-net NetX Duo driver
@@ -80,6 +84,13 @@ set(_NROS_BOARD_CONFIG_DIR "${_NROS_BOARD_DIR}/config")
 set(_NROS_BOARD_C_DIR      "${_NROS_BOARD_DIR}/c")
 set(_NROS_BOARD_STARTUP_C  "${_NROS_BOARD_DIR}/startup.c")
 set(_NROS_BOARD_CXX_COMPAT_DIR "${_NROS_BOARD_DIR}/cxx-compat")
+# phase-337 W4.a — the layer-2 ARCH PORT (RFC-0064), extracted from this
+# board: upstream's `ports/risc-v64/gnu` forked to type ULONG as 4 bytes
+# (NetX Duo's packet code does `ULONG *` arithmetic assuming 4-byte words),
+# which shifts every TX_THREAD offset and so forces the five context-switch
+# `.S` files to change with the header. See that directory's src/lib.rs.
+set(_NROS_PORT_RISCV64_DIR
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-threadx-port-riscv64/port")
 set(_NROS_VIRTIO_DRIVER_DIR
     "${_NROS_BOARD_ROOT}/packages/drivers/net/virtio-net-netx")
 
@@ -147,6 +158,12 @@ if(NOT EXISTS "${_NROS_BOARD_CONFIG_DIR}/tx_user.h")
         "nano-ros-board-riscv64-qemu: tx_user.h not found at "
         "${_NROS_BOARD_CONFIG_DIR}/tx_user.h.")
 endif()
+if(NOT EXISTS "${_NROS_PORT_RISCV64_DIR}/inc/tx_port.h")
+    message(FATAL_ERROR
+        "nano-ros-board-riscv64-qemu: forked tx_port.h not found at "
+        "${_NROS_PORT_RISCV64_DIR}/inc/tx_port.h. Without it the build silently "
+        "falls back to upstream's 8-byte-ULONG port header (phase-337 W4.a).")
+endif()
 if(NOT EXISTS "${_NROS_BOARD_CONFIG_DIR}/link.lds")
     message(FATAL_ERROR
         "nano-ros-board-riscv64-qemu: linker script not found at "
@@ -186,14 +203,16 @@ enable_language(ASM)
 if(NOT TARGET threadx_kernel)
     nros_threadx_build_kernel(
         PORT          "risc-v64/gnu"
+        # phase-337 W4.a — the five ULONG=4 context-switch overrides and the
+        # forked `tx_port.h` come from the arch-port unit, which both supplies
+        # them and (by their file names) excludes upstream's. Only
+        # `tx_initialize_low_level.S` stays a BOARD override: it is the
+        # qemu_virt BSP's low-level init, patched for the Phase 120.3 16-byte
+        # SP alignment, and is re-added from the example_build tree below.
+        PORT_OVERRIDE_DIR "${_NROS_PORT_RISCV64_DIR}"
         BOARD_DIR     "${THREADX_BOARD_DIR}"
         BOARD_OVERRIDES
             tx_initialize_low_level.S
-            tx_thread_schedule.S
-            tx_thread_context_save.S
-            tx_thread_context_restore.S
-            tx_thread_stack_build.S
-            tx_thread_system_return.S
         QEMU_VIRT_DIR "${THREADX_DIR}/ports/risc-v64/gnu/example_build/qemu_virt"
         QEMU_VIRT_EXCLUDE
             trap.c

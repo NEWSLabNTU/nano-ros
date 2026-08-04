@@ -221,6 +221,12 @@ maintainers = []
 notes = "Real family driver: a 1120-line generic entry.py both ThreadX boards call into."
 
 [[board]]
+crate = "nros-board-threadx-port-riscv64"
+tier = "infra"
+maintainers = []
+notes = "NOT a board: RFC-0064 layer 2, the ThreadX RISC-V64/GNU ARCH PORT. Upstream types ULONG as 8 bytes there; NetX Duo's packet code does `ULONG *` arithmetic assuming 4, and retyping it shifts every TX_THREAD offset the context-switch assembly loads — so the fork is a header plus five `.S` files, and it is arch, not board. Extracted from nros-board-threadx-qemu-riscv64 by phase-337 W4.a; a second riscv64 ThreadX board would need every line of it unchanged. threadx-linux has none because upstream's Linux port already types ULONG as 4 bytes — which is why the two ThreadX boards did NOT merge."
+
+[[board]]
 crate = "mps2-an385-pac"
 tier = "infra"
 maintainers = []

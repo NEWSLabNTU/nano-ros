@@ -148,6 +148,13 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds"
         set(THREADX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}")
     endif()
     set(_tx_port_inc "${THREADX_DIR}/ports/risc-v64/gnu/inc")
+    # phase-337 W4.a — the forked port header (`ULONG` = 4 bytes) lives in the
+    # arch-port unit and MUST be searched before upstream's `${_tx_port_inc}`.
+    # Cyclone's ddsrt ThreadX port includes `tx_api.h`, so getting this wrong
+    # gives ddsrt a different `TX_THREAD` layout than the kernel it links
+    # against — a clean compile and a runtime corruption.
+    set(_tx_port_override_inc
+        "${CMAKE_CURRENT_LIST_DIR}/../../packages/boards/nros-board-threadx-port-riscv64/port/inc")
     # picolibc sysroot (host tool query) — match the cross-probe's resolution.
     execute_process(
         COMMAND riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d --specs=picolibc.specs -print-sysroot
@@ -165,6 +172,7 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds"
     # propagate to every subdirectory target (ddsc, ddsrt, …).
     include_directories(SYSTEM "${_tx_picolibc}/include")
     include_directories(
+        "${_tx_port_override_inc}"
         "${THREADX_CONFIG_DIR}"
         "${THREADX_DIR}/common/inc"
         "${_tx_port_inc}"
