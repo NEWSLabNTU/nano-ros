@@ -653,7 +653,8 @@ being a separate group. Removing the split removes one of them.
       threadx boards, beside their existing `log` bridges, so both facades work
       everywhere before any body moves.
 
-      **Surveyed 2026-08-05 — W7.a is not one line per board.** `sinks::default()`
+      **Surveyed 2026-08-05 — W7.a is not one line per board, and is BLOCKED on
+      [issue 0420](../issues/0420-nros-log-facade-silent-noop-on-threadx-and-nuttx.md).** `sinks::default()`
       is `PlatformSink`, which forwards to the `nros_platform_log_write` C ABI, so
       "init the facade" is only the last step. Where that symbol comes from today:
 
