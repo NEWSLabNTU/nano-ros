@@ -185,14 +185,6 @@ stage, serial, with the riscv half gated on the run's own coordinates by the sha
 graph from `build-fixtures` and fails when a fixture token that module OWNS is produced by no recipe
 on that path. See `archived/0405-*`.
 
-**#417** — tests still read committed SystemModels that phase-330 W4 deleted. `39d007dfc` made the
-model a pure build artifact and removed every committed copy; the CLI consumers were migrated to
-`model_location`, but `multihost_partition_bake` (x2), `qos_override_e2e` and
-`native_main_macro_misuse` still name `<bringup>/config/*_model.yaml` and read it as a source file,
-so tier 1 is red on a clean main. Fix either way phase-336 W7 already used for the same class:
-carry the YAML inline in the test, or `nros sync` and read through `model_location`. Do NOT
-re-commit the yamls (`check-no-tracked-models`; issue 0380). See `0417-*`. (2026-08-05)
-
 **#404** — no schema for DECLARING a measured WCET. `MapperPath.exec_ms` is `Option<f64>` and nothing
 outside rlm's own tests ever sets it, so rlm v0.1.4's `ChainFeasibleWithoutWcet` (issue 0259) now
 reports missing evidence with nowhere to put it. Open questions: keying (board id / platform family /
