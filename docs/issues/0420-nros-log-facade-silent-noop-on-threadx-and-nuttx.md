@@ -64,6 +64,49 @@ NuttX e2e marker into silence**, and because the harness greps for markers, each
 would surface as a *timeout*, not an error — the most expensive possible failure
 mode to diagnose. W7.a is therefore blocked on this, and phase-338 records it.
 
+## Survey corrected by measurement (2026-08-05)
+
+Two of the three "broken" rows do not reproduce. Checked before fixing, because
+a fix aimed at a working platform is worse than no fix.
+
+**ThreadX — WORKS.** `nros-board-threadx-linux` registers the writer:
+`node.rs::register_log_writer_public()` is called from the board entry, and
+`nros-board-threadx-qemu-riscv64/src/node.rs:70` has the same call. Running the
+prebuilt fixture proves the facade reaches stderr:
+
+```
+$ ./packages/testing/nros-tests/bins/logging-smoke-threadx-linux/target/nros-fast-release/logging-smoke-threadx-linux
+[TRACE] smoke: trace payload
+[DEBUG] smoke: debug payload
+```
+
+So "ThreadX has **no caller anywhere**, on either path" is not true — the claim
+appears to have surveyed `nros_platform_register_log_writer` call sites without
+following `register_log_writer_public`.
+
+**FreeRTOS-via-Rust — registers.**
+`nros-board-mps2-an385-freertos/src/lib.rs:111` makes the same call, so the
+"partial" row needs the same re-check under QEMU before anything is changed.
+
+**NuttX — still stands, but UNVERIFIED here.** No `nros_platform_log_write` and
+no registration anywhere under `nros-platform-nuttx` / `nros-board-nuttx*`
+(`git grep`), which matches the report. It could not be confirmed by running:
+`logging_smoke_nuttx_qemu_arm_emits_every_severity` SKIPS on this host
+("NuttX source tree not found"), which is itself the issue's point — the gap is
+invisible because the cell never runs.
+
+### What that leaves
+
+- Fix 1 (NuttX implementation) — still wanted, but it must be proven by making
+  that smoke cell RUN, not by adding a plausible `platform.c`. Writing one blind
+  would ship an unverified guess into the exact hole the issue is about.
+- Fix 2 (register from the Rust board entries) — **already done** for ThreadX
+  and FreeRTOS. Nothing to do unless the QEMU cells show otherwise.
+- Fix 3 (make the weak stub loud) — unaffected by the above and still correct:
+  a real platform silently falling through to
+  `nros-c/c-stubs/weak_platform_log_stubs.c` is the mechanism that would hide
+  NuttX's gap even after it is fixed.
+
 ## Fix
 
 1. **NuttX** — give it a `nros_platform_log_write`. Either a `platform.c` with
