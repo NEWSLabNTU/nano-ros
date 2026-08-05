@@ -1,3 +1,8 @@
+//! **Bucket (phase-329 W4): KEEP — not a matrix cell / not a rtos_e2e dup.**
+//! `rtos_e2e.rs`'s `Platform` enum covers Freertos/Nuttx(arm)/ThreadxLinux/
+//! ThreadxRiscv64 — NOT NuttxRiscv. This is the ONLY runtime delivery test for
+//! the riscv-nuttx C lane, so it stays until that platform joins the matrix.
+//!
 //! #199 follow-up — the FIRST riscv-nuttx (rv-virt) **C-lane RUNTIME** e2e:
 //! the standalone `examples/qemu-riscv-nuttx/c/talker` kernel image (the very
 //! binary whose link #199 fixed) boots under the phase-285 W2 harness and its

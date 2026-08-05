@@ -1,5 +1,12 @@
 //! FreeRTOS QEMU MPS2-AN385 integration tests
 //!
+//! **Bucket (phase-329 W4): KEEP — not matrix cells.** The standard FreeRTOS
+//! pubsub/service/action DELIVERY e2e is the `rtos_e2e.rs` matrix consumer
+//! (platform × lang × variant). What remains here is one-offs: the toolchain
+//! detection probe and the (currently `#[ignore]`d, retired-fixture) FreeRTOS
+//! rust CycloneDDS boot / local-pubsub tests — a distinct RMW path, not a
+//! rtos_e2e duplicate.
+//!
 //! Tests that verify FreeRTOS examples build and run on QEMU MPS2-AN385 (Cortex-M3).
 //! FreeRTOS examples use `thumbv7m-none-eabi` target with `no_std` + lwIP networking.
 //!

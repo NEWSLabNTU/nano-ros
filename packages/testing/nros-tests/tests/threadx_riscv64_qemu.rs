@@ -1,5 +1,12 @@
 //! ThreadX QEMU RISC-V 64-bit integration tests
 //!
+//! **Bucket (phase-329 W4): KEEP — not matrix cells.** The standard
+//! (nano → host) pubsub/service/action DELIVERY e2e already lives in the
+//! `rtos_e2e.rs` matrix consumer (see the note below). What remains here is
+//! one-offs no cell covers: the detection probe and the CycloneDDS TWO-QEMU
+//! pubsub tests (two embedded ThreadX-RV64 nodes talking over Cyclone DDS —
+//! a distinct topology from rtos_e2e's nano → host zenoh shape), c/rust/cpp.
+//!
 //! Tests that verify ThreadX QEMU RISC-V examples build and run on QEMU virt
 //! machine with virtio-net networking. Examples use `riscv64gc-unknown-none-elf`
 //! target with `no_std` + NetX Duo networking over virtio-net.

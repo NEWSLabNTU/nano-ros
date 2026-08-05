@@ -185,9 +185,19 @@ native files corrected the plan; the "~40 deletions" target was optimistic:
      (`add_two_ints_server`, `service-client`, `action-server`; c/cpp are
      `c_service_server` etc.) and markers differ from the workspace ones.
   4. `native_api`'s 28 rstest cases → the Rmw-parametrized native consumer.
-- [ ] Per-platform QEMU files that duplicate `rtos_e2e` workloads fold in
-  (`freertos_qemu`, `nuttx_qemu`, `threadx_linux`, `threadx_riscv64_qemu`,
-  `c_riscv_nuttx_e2e`, parts of `emulator.rs`/`esp32_emulator.rs`).
+- [x] Per-platform QEMU files vs `rtos_e2e` — **dispositioned 2026-08-05; the
+  standard delivery e2e was ALREADY folded into `rtos_e2e` in a prior phase**
+  (threadx_riscv64_qemu's own doc: "the E2E test bodies live in tests/rtos_e2e.rs").
+  What remains in the per-platform files is genuine one-offs, NOT duplicates, now
+  bucket-labelled + kept: `freertos_qemu` (detection + retired/`#[ignore]`d rust
+  CycloneDDS boot & local-pubsub — a distinct RMW, not a rtos_e2e dup);
+  `nuttx_qemu` (detection + kernel-boot to NSH); `threadx_riscv64_qemu` (detection
+  + CycloneDDS TWO-QEMU pubsub — a two-embedded-node topology distinct from
+  rtos_e2e's nano→host zenoh); `c_riscv_nuttx_e2e` (the ONLY NuttxRiscv delivery
+  test — rtos_e2e's `Platform` enum has no NuttxRiscv). No deletions: none are
+  clean dups, and QEMU folds can't be run-proven on a host without the
+  cross-toolchains. `emulator.rs`/`esp32_emulator.rs` triage deferred (larger,
+  mixed).
 - [ ] Everything kept gets a one-line header naming its bucket + why it is
   not a cell (the E5 carve-out rule, applied to files).
 - [ ] Target restated after the disposition: tests/ file count drops by **fewer

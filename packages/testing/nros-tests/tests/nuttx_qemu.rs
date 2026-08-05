@@ -1,5 +1,11 @@
 //! NuttX QEMU ARM virt integration tests
 //!
+//! **Bucket (phase-329 W4): KEEP — not matrix cells.** The standard NuttX
+//! pubsub/service/action DELIVERY e2e is the `rtos_e2e.rs` matrix consumer.
+//! What remains here is one-offs no cell covers: the toolchain detection probe
+//! and the KERNEL-BOOT test (boots to the NSH prompt) — a platform boot check,
+//! not a delivery duplicate.
+//!
 //! Tests that verify NuttX examples build and run on QEMU ARM virt (Cortex-A7).
 //! NuttX examples use `armv7a-nuttx-eabihf` target with `std` support.
 //!
