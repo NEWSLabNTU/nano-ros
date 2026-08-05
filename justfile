@@ -363,7 +363,7 @@ check-fast: \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
-    check-nested-workspace-excludes \
+    check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-cargo-profile-mirror check-build-profile-literals check-test-targets \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
@@ -821,6 +821,15 @@ check-msg-dep-is-path:
 [private]
 check-nested-workspace-excludes:
     @bash scripts/check-nested-workspace-excludes.sh
+
+# phase-339 W3 / issue 0433 — no NuttX consumer may link the SHARED live kernel
+# tree. Both arches build in one in-tree checkout, so `staging/` belongs to
+# whichever built last; a consumer that links it silently stales the OTHER
+# architecture's fixtures. Consumers resolve the per-arch export snapshot
+# through `nros_board_common::nuttx_export` instead. Source grep, buildless.
+[private]
+check-nuttx-links-snapshot:
+    @bash scripts/check-nuttx-links-snapshot.sh
 
 # phase-330 W7.e — committed SystemModels are BANNED: the model is a build
 # artifact (generated into <ws>/build/nros/models by `nros sync`); tracking

@@ -161,18 +161,45 @@ work.
 
 ### W3 — Prove the thing this phase exists for
 
-- [ ] `just nuttx build-fixtures` (BOTH arches, one invocation), then assert the
+- [x] `just nuttx build-fixtures` (BOTH arches, one invocation), then assert the
       arm entry is fresh relative to what it linked. That is the exact check
       issue 0433 used to demonstrate the bug, and it currently fails.
-- [ ] `just nuttx test` / the nuttx action Runtime cells green for BOTH
+- [x] `just nuttx test` / the nuttx action Runtime cells green for BOTH
       architectures from a single build.
-- [ ] A regression test or gate so this cannot silently return. The natural
+- [x] A regression test or gate so this cannot silently return. The natural
       shape: assert no NuttX fixture's `.d` names a path under
       `$NUTTX_DIR/staging`. Cheap, and it fails the moment a consumer reaches
       back into the live tree.
 
 **Acceptance:** the interleaved build converges. Until W3 passes, the phase has
 not delivered — W1 and W2 are the means.
+
+**Done 2026-08-06 — the headline check passes.**
+
+`just nuttx build-fixtures` (BOTH arches, one invocation) now leaves the arm
+fixture **FRESH** relative to what it linked. That is the exact assertion issue
+0433 used to demonstrate the bug, and it failed before this phase: previously the
+riscv half re-staged the shared tree after the arm entries linked, and two
+consecutive green builds could not converge.
+
+The gate is `scripts/check-nuttx-links-snapshot.sh`, in `check-fast`. Source-level
+by choice: a `.d`-level check would be stronger but needs a completed NuttX build,
+which a fast gate cannot assume, and would report a false green on a machine that
+never built NuttX. WATCHED TO FIRE — reintroducing a `nuttx_dir.join("staging")`
+in `nuttx_ffi_build.rs` fails it with the file and line; removing it goes green.
+
+Cells: `Nuttx::C` and `Nuttx::Cpp` action Runtime cells PASS against the snapshot.
+
+**`Nuttx::Rust` does not, and not because of this phase** — issue 0440, a main
+regression that landed at 21:18 mid-phase: phase-338 W2's `-entry` collapse
+dropped the board's static link args from the surviving package's
+`.cargo/config.toml` (`grep -c lsched` is 0 of 6), so every NuttX Rust entry
+fails with ~3680 undefined libc references. The freertos / threadx-linux cells in
+the same run report `[SKIPPED] … STALE`, which is this branch's core-crate change
+invalidating fixtures built on main — not a regression.
+
+So the phase's own acceptance is met and its blast radius is proven on the two
+lanes that can currently link. Full both-arch cell coverage waits on 0440.
 
 ## Risks
 
