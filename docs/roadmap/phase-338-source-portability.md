@@ -293,6 +293,56 @@ written in the phase doc, and I scoped the remaining work from the doc rather
 than asking. Recorded here because "the doc said it was still open" is exactly
 how a settled decision gets relitigated.
 
+## W2 DONE — the 18 `-entry` packages are collapsed (2026-08-05)
+
+Every `examples/<plat>/rust/<prog>-entry` folded into its `<prog>` sibling.
+All eight platforms now carry the same shape: ONE package with `src/lib.rs` and
+`src/main.rs`. Divergence entries **18 → 6**; identical triples **14**; every
+Rust group-A program is now byte-identical across the group.
+
+`[[bin]]` took the short program name (`talker`), native's convention.
+
+**The six `-entry` divergences did not need converging — they needed deleting.**
+The re-export line that differed across platforms
+(`pub use <plat>_rs_talker::register`) exists only because a separate entry
+package needs to reach the node package's `register`. One package doesn't:
+`nros::main!()` dispatches to the current crate's `register`, which
+`nros::node!` emits in that same crate. The gate then flagged all 12 stale
+entries by itself — "no such example — stale entry, delete it" — which is the
+ratchet doing exactly what W1 built it for.
+
+### Verification, and what it does NOT cover
+
+| platform | evidence |
+|---|---|
+| threadx-linux | all 6 build; service + action pairs driven LIVE against a zenoh router |
+| qemu-arm-nuttx | all 6 `cargo check`; **no link, no run** |
+| qemu-arm-freertos | all 6 `cargo check`; **no link, no run** |
+
+Two thirds is compile-verified only. A full nuttx link needs the board-centric
+image build (a configured NuttX); freertos needs the kernel compile through the
+`just` overlay. Neither is available on the host this landed from, so the
+freertos/nuttx lanes want a real run before this is called proven.
+
+### Two things this surfaced
+
+**1. The nuttx leaf configs were missing their board patch.** `nros sync` had to
+add `nros-board-nuttx-qemu = { path = … }` to all six `.cargo/config.toml`
+files. The `-entry` packages had depended on that crate while their patch table
+never named it, so the dep resolved only inside a `just` recipe that supplies
+more context. Collapsing surfaced it because a bare `cargo check` in the leaf
+finally had to resolve it alone.
+
+**2. Building any embedded example by hand needs SDK env no activate.sh sets.**
+threadx-linux needs `THREADX_DIR`, `NETX_DIR`, `THREADX_CONFIG_DIR`,
+`NETX_CONFIG_DIR`; nuttx needs `NUTTX_DIR`; freertos needs `FREERTOS_DIR`,
+`FREERTOS_PORT`, `LWIP_DIR`, `FREERTOS_CONFIG_DIR`, `NROS_LAN9118_LWIP_DIR`.
+All are defaulted in `just/sdk-env.just`, so the `just` recipes work and a
+direct `cargo` invocation does not. This is the same shape as the NuttX-cells-
+always-skip finding recorded against issue 0420: the build works, but only
+through one door, and the other door fails in a way that reads like a code
+fault. Worth its own issue rather than folklore.
+
 ## W3 — Close the native/embedded Rust split
 
 > **Measured 2026-08-04, and the premise was wrong. Read before starting.**
