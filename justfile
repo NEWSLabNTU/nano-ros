@@ -422,7 +422,7 @@ check-test-targets:
 [group("main")]
 check-build: \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
-    check-source-gates check-staticlib-symbols check-dep-chain \
+    check-source-gates check-staticlib-symbols check-borrowed-e2e check-dep-chain \
     check-embedded-feature-unification \
     check-c check-cpp check-rmw-cyclonedds check-cli-tests check-feature-set-ssot \
     check-no-tracked-file-find \
@@ -554,6 +554,18 @@ check-staticlib-symbols:
     set -e
     bash scripts/build/link-determinism-fixture.sh
     cargo test -p nros-tests --test staticlib_duplicate_symbols
+
+# Borrowed-view runtime E2E (RFC-0033 / #0423) — link the C + C++ proof binaries at
+# the build stage, then RUN them (they assert every borrowed view aliases the CDR
+# buffer). Bespoke recipe like `check-staticlib-symbols` because the composite
+# (cargo + codegen + a raw gcc/g++ link with a weak config-variant anchor) fits no
+# `compile_check_fixture` builder.
+[private]
+check-borrowed-e2e:
+    #!/usr/bin/env bash
+    set -e
+    bash scripts/build/borrowed-e2e-fixture.sh
+    cargo test -p nros-tests --test borrowed_e2e
 
 # Embedded feature-unification guard — no `feature "std"` activation path may
 # reach an embedded target's production-link view. The `check.yml` step (SSoT).

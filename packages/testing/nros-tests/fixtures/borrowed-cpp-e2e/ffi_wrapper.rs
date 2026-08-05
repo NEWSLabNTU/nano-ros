@@ -14,6 +14,15 @@ unsafe extern "C" {
     fn nros_cpp_publish_raw(handle: *mut core::ffi::c_void, data: *const u8, len: usize) -> i32;
 }
 
+// #0423 — mirror `cmake/ffi_lib_rs.in`'s `fixed_str()`: the production FFI-crate
+// lib.rs wrapper provides this helper, and the generated per-message serialize
+// routes every non-heap string field through it (message_types.rs.jinja). The
+// stub prelude here had drifted without it (which bit-rotted the C++ proof).
+fn fixed_str(buf: &[u8]) -> &str {
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    core::str::from_utf8(&buf[..end]).unwrap_or("")
+}
+
 // phase-306 W1 — codegen splits the glue into a types + exports pair.
 include!("e2e_msgs_msg_borrowed_types.rs");
 include!("e2e_msgs_msg_borrowed_exports.rs");

@@ -51,14 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#423** — the borrowed-view (RFC-0033) RUNTIME e2e proofs `tests/borrowed_{c,cpp}_e2e.sh` were
-orphaned (no lane/recipe/CI ran them) AND bit-rotted (the RFC-0042 platform.h move + the
-`nros_config_variant_sz_*` guard both broke their build), i.e. dead code masquerading as coverage.
-Deleted them + their fixtures + the two negative-diagnostic-registry rows (phase-329 W5 follow-up).
-EMIT coverage survives in `rosidl-codegen`'s `#[ignore]` tests; the borrowed-view RUNTIME assertion is
-now unguarded. Re-establishing it as a build-stage fixture needs the standalone-`nros-c`
-`EXECUTOR_SIZE`-probe stub (sizes/opaque class) solved so a raw `gcc`/`g++` link finds the config
-variant symbol. See `0423-*`. (2026-08-05)
+RESOLVED 2026-08-05 — **#423** the borrowed-view (RFC-0033) RUNTIME e2e proofs were orphaned +
+bit-rotted, deleted, then RE-ESTABLISHED as a build-stage fixture + Rust consumer. Fixed three rots:
+the RFC-0042 platform.h include; the `nros_config_variant_sz_*` guard (a standalone `nros-c` can't
+size the executor, so the recipe links a matching WEAK anchor read from the config header — borrowed
+views touch the CDR buffer via `nros_serdes`, not executor opaque storage, so the guard is a false
+constraint the weak-merge mechanism is built for); and a `fixed_str()` helper missing from the drifted
+`ffi_wrapper.rs` prelude. `scripts/build/borrowed-e2e-fixture.sh` + `tests/borrowed_e2e.rs` +
+`just check-borrowed-e2e`; both C + C++ pass. See `archived/0423-*`.
 **#413 (REOPENED 2026-08-05)** — `da26485e9` resolved this as a stale binary and un-carved the
 cells. The stale half was real: a fresh rebuild does clear `Transport(ConnectionFailed)` at
 `Executor::open`. The CLASS is not fixed — the Rust cyclone talker now opens its session and then
