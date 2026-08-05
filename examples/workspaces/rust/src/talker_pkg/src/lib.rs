@@ -49,13 +49,11 @@ impl ExecutableNode for Talker {
         if callback.as_str() == "on_tick" {
             let msg = Int32 { data: *state };
             let _ = ctx.publish_to_topic::<Int32, 8>("/chatter", &msg);
-            // Track D (A5) — log via `nros_info!`; the board's boot-time sink
-            // (phase-264 W3) routes it to the native entry's stdout.
-            nros_log::nros_info!(
-                &nros_log::DEFAULT_LOGGER,
-                "talker publishing chatter seq={}",
-                *state
-            );
+            // phase-338 W7 — the `log` facade, like every other example body.
+            // The board bridges it (nros-board-linux's stdout bridge); the
+            // marker text is unchanged, so `WS_RUST_LOGGING_MARKER` still
+            // matches.
+            log::info!("talker publishing chatter seq={}", *state);
             *state = state.wrapping_add(1);
         }
     }

@@ -217,8 +217,12 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
             entry: || build_native_workspace_rust_entry().map(|p| p.to_path_buf()),
             peer: None,
             proof: Proof::LoggingLines(nros_tests::output::WS_RUST_LOGGING_MARKER),
-            note: "phase-263 A5 / phase-264 W3: nros-board-linux registers the default platform \
-                   sink at boot — talker_pkg's nros_info! needs no per-app init",
+            note: "phase-338 W7: talker_pkg logs through the `log` facade like every other \
+                   example body, and nros-board-linux's stdout bridge carries it — no \
+                   per-app logging init. This cell USED to prove the same for the \
+                   nros_log chain (`nros_info!` + the board's boot-time platform sink); \
+                   that property now rests on the C and C++ siblings below, which reach \
+                   the identical board mechanism through their projections",
         },
         (ML::C, MW::Logging) => Exec {
             entry: || build_native_workspace_c_entry().map(|p| p.to_path_buf()),
