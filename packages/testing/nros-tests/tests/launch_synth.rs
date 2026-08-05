@@ -11,7 +11,7 @@
 //! only assert deleted behavior and were removed (issue 0381).
 //!
 //! What remains here is the one branch still owned by `nros plan`: a
-//! bringup that carries no committed SystemModel is refused with a clear
+//! bringup with no resolvable SystemModel is refused with a clear
 //! error. This test needs only the `nros` CLI — no `play_launch_parser`.
 
 use std::{fs, path::Path, process::Command};
@@ -47,7 +47,7 @@ domain_id = 0
     .unwrap();
 }
 
-/// A bringup with no committed SystemModel is refused, with the current
+/// A bringup with no resolvable SystemModel is refused, with the current
 /// phase-296 error contract (not the pre-296 "synthesis is disallowed"
 /// wording — that path is deleted).
 #[test]
@@ -73,15 +73,20 @@ fn nros_plan_refuses_bringup_with_no_committed_model() {
         .expect("spawn nros plan");
     assert!(
         !result.status.success(),
-        "nros plan should fail for a bringup with no committed SystemModel\nstdout:\n{}\nstderr:\n{}",
+        "nros plan should fail for a bringup with no resolvable SystemModel\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr),
     );
     let stderr = String::from_utf8_lossy(&result.stderr);
-    // The current (phase-296 R-code.1) contract: no committed model + the
-    // launch-XML parse path removed.
+    // The contract: no model anywhere + the launch-XML parse path removed
+    // (phase-296 R-code.1) is a refusal, and the message must tell the user how
+    // to GET a model. phase-336 W7 repointed that guidance: the model is a build
+    // artifact (phase-330 W4), so the message now names `nros sync` and the
+    // build-output location instead of telling the user to commit one — which
+    // `check-no-tracked-models` rejects. Assert the CONTRACT (refusal + a usable
+    // instruction), not one phrasing of it.
     assert!(
-        stderr.contains("no committed SystemModel") || stderr.contains("launch-XML parse path"),
-        "stderr should mention the missing committed SystemModel contract:\n{stderr}"
+        stderr.contains("SystemModel") && stderr.contains("nros sync"),
+        "stderr should refuse AND point at `nros sync`:\n{stderr}"
     );
 }
