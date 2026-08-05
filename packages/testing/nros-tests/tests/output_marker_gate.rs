@@ -9,6 +9,33 @@
 //!
 //! Doc comments and non-marker prose are fine — only STRING LITERALS
 //! containing a marker are flagged.
+//!
+//! ## Scope boundary (phase-329 W6 — "document why not")
+//!
+//! W6 asked whether the 7 files that parse runtime output with BESPOKE greps
+//! should route through `output.rs` too. Decision: NO — none of them grep a
+//! stock DEMO DELIVERY banner (the class that drifts when banners are slimmed,
+//! the only class this gate polices). Their strings are file-local one-offs
+//! that do NOT move with demo-banner changes, so promoting them to the SSoT
+//! would couple unrelated tests to it:
+//!
+//! * `nuttx_qemu` — kernel boot markers (`nsh>`, `NuttShell`, `NuttX`): a
+//!   platform boot probe, not delivery.
+//! * `platform` — QEMU/target config tokens (`arm`, `lm3s6965evb`,
+//!   `semihosting`, `thumb`): not runtime node output at all.
+//! * `qos_override_e2e` — QoS-profile echo lines (`Reliability: RELIABLE`,
+//!   `Durability: TRANSIENT_LOCAL`, …): a QoS assertion surface, file-local.
+//! * `qos_zephyr_ros2_interop_e2e` — `data:`, the peer-side `ros2 topic echo`
+//!   field, not a nano marker.
+//! * `rust_multi_node_per_node_graph` — node NAMES (`talker`, `listener`) in a
+//!   graph assertion, not a delivery banner.
+//! * `logging_smoke` — `[FATAL] smoke: fatal payload`, a payload the test
+//!   itself emits and greps back; self-contained.
+//! * `fvp_runtime_ws` — no bespoke marker literal (already helper-driven).
+//!
+//! If any of these strings later becomes a SHARED stock marker, move it to
+//! `output.rs` and add it to `MARKERS` below — the gate then covers it for
+//! free. Until then, this note IS the "why not".
 
 use std::path::PathBuf;
 

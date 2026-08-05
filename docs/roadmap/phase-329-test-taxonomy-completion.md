@@ -269,11 +269,19 @@ prebuilt fixture).
   was committed-`metadata/*.json` detection (git-`ls-files`, not `is_file()`);
   folded in as `example_shape::no_committed_metadata_json_artifacts` and the M.11
   file + its `[[test]]` entry deleted.
-- [ ] `output_marker_gate` extends to the 7 files parsing runtime node
+- [x] `output_marker_gate` extends to the 7 files parsing runtime node
   output with bespoke greps (`logging_smoke`, `nuttx_qemu`, `platform`,
   `qos_zephyr_ros2_interop_e2e`, `rust_multi_node_per_node_graph`,
   `fvp_runtime_ws`, `qos_override_e2e`) — either their markers join
-  `output.rs` or the file documents why not.
+  `output.rs` or the file documents why not. **Done 2026-08-05 — the "why
+  not" arm, recorded centrally in `output_marker_gate.rs`.** Inspection showed
+  NONE grep a stock demo DELIVERY banner (the only class that drifts on banner
+  slimming, which is all this gate polices): they grep kernel-boot markers
+  (`nsh>`), QEMU target-config tokens, QoS-profile echoes, the peer-side
+  `ros2 topic echo` `data:` field, node NAMES, or a self-emitted log payload.
+  Promoting those to the SSoT would couple unrelated tests to it. The gate's new
+  scope-boundary doc enumerates all 7 + the promotion path if any later becomes
+  shared.
 - [ ] Grep-gate against new local `CELLS`/axis tables outside
   `matrix.rs`/`interop.rs`.
 
