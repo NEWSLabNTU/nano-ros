@@ -185,6 +185,19 @@ stage, serial, with the riscv half gated on the run's own coordinates by the sha
 graph from `build-fixtures` and fails when a fixture token that module OWNS is produced by no recipe
 on that path. See `archived/0405-*`.
 
+**#422** — ~16 runtime E2E tests fail on a clean tree (cyclonedds interop, zenoh transport,
+orchestration tiers, two 60s timeouts). Same set fails on a fresh clone with no local work, so it is
+the standing state, not a regression. Needs TRIAGE before fixing: some are plausibly environmental
+(zenohd/CycloneDDS/ROS not confirmed present), the timeouts are not, and one is stray `metadata/`
+build artifacts. Fixing before triage risks papering an unmet precondition over with a skip. See
+`0422-*`. (2026-08-05)
+
+**#421** — `zephyr_leaf_buildrs_uses_shared_bake` asserts it walked >=13 zephyr rust leaves; the
+tracked tree has 7. phase-277 consolidated the examples (`4cbdf8dc1`, `1e2ce89aa`) without moving the
+threshold, so the silent-empty guard has been failing on its own stale constant. The count also
+drifts with untracked build output on disk (10 vs 7), so the walker wants the `git ls-files` fix
+too. See `0421-*`. (2026-08-05)
+
 **#404** — no schema for DECLARING a measured WCET. `MapperPath.exec_ms` is `Option<f64>` and nothing
 outside rlm's own tests ever sets it, so rlm v0.1.4's `ChainFeasibleWithoutWcet` (issue 0259) now
 reports missing evidence with nowhere to put it. Open questions: keying (board id / platform family /
