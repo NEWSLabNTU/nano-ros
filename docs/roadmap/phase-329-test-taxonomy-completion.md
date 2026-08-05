@@ -261,8 +261,14 @@ prebuilt fixture).
   the gate covers the class, not the known sites).
 
 ### W6 — gate dedup + marker sweep
-- [ ] Merge `examples_canonical_shape.rs` into `example_shape.rs` (one
-  walker).
+- [x] Merge `examples_canonical_shape.rs` into `example_shape.rs` (one
+  walker). **Done 2026-08-05.** The two M.11/M.12 sibling walkers ran the SAME
+  `examples/` tree; `example_shape` (M.12) already covered forbidden-files
+  (superset — adds `Kconfig`/`Make.defs`, migration-scoped), taxonomy, and the
+  `<pkg>::<Class>` prefix rule. The ONLY check unique to `examples_canonical_shape`
+  was committed-`metadata/*.json` detection (git-`ls-files`, not `is_file()`);
+  folded in as `example_shape::no_committed_metadata_json_artifacts` and the M.11
+  file + its `[[test]]` entry deleted.
 - [ ] `output_marker_gate` extends to the 7 files parsing runtime node
   output with bespoke greps (`logging_smoke`, `nuttx_qemu`, `platform`,
   `qos_zephyr_ros2_interop_e2e`, `rust_multi_node_per_node_graph`,

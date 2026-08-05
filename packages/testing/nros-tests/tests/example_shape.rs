@@ -21,6 +21,9 @@
 //! * **pre-212 files absent** — `nros.toml`, `component_nros.toml`,
 //!   `gen-app-config.py`, `app_config.h.in`, `Kconfig`, `Make.defs`
 //!   never live in a migrated example dir (M.10 cleanup gate).
+//! * **no committed `metadata/*.json`** — the codegen build artifact is
+//!   gitignored; a tracked one is a mistake (phase-329 W6, folded in from
+//!   the retired `examples_canonical_shape.rs`).
 //!
 //! ### Per-wave skip policy
 //!
@@ -841,5 +844,43 @@ fn zephyr_leaf_buildrs_uses_shared_bake() {
     assert!(
         zephyr_leaves >= 13,
         "expected >=13 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
+    );
+}
+
+// Test 11 — no committed `metadata/*.json` build artifacts (phase-329 W6: folded
+// in from the retired `examples_canonical_shape.rs`, the ONLY check that file
+// carried which this walker did not — its forbidden-file / taxonomy / class-prefix
+// checks are already covered by tests 6 / 3 / 4 above, more precisely).
+//
+// `metadata/<node>.json` is generated into a package dir by a normal build and is
+// gitignored (`examples/**/metadata/*.json`), so `is_file()` would be green where
+// no build had run and red where one had — exactly backwards. The rule is about
+// what is COMMITTED, so ask git, not the filesystem. Returns cleanly (no failure)
+// on any git error: a violation must be positively demonstrated, never inferred
+// from a broken query.
+#[test]
+fn no_committed_metadata_json_artifacts() {
+    let root = project_root();
+    let out = match std::process::Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .args(["ls-files", "--", "examples/**/metadata/*.json"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        Ok(_) => nros_tests::skip!("git ls-files failed (non-zero) — cannot verify committed set"),
+        Err(e) => nros_tests::skip!("git unavailable ({e}) — cannot verify committed set"),
+    };
+    let tracked: BTreeSet<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert!(
+        tracked.is_empty(),
+        "committed `metadata/*.json` build artifact(s) — these are generated into \
+         the package dir by a build (gitignored `examples/**/metadata/*.json`) and \
+         must NOT be tracked; they live in $OUT_DIR/nros-gen/ or target/nros-metadata/:\n  {}",
+        tracked.into_iter().collect::<Vec<_>>().join("\n  ")
     );
 }

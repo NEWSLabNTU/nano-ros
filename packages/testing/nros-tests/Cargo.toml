@@ -424,15 +424,10 @@ path = "tests/cli_bringup_px4.rs"
 name = "example_shape"
 path = "tests/example_shape.rs"
 
-# Phase 212.M.11 (parallel sibling) — canonical-shape regression: every
-# `package.xml` under `examples/` carries the §212.L pkg taxonomy
-# and no pre-212 files (nros.toml, component_nros.toml,
-# gen-app-config.py, app_config.h.in, committed metadata/*.json).
-# Different skip-set + punch-list shape from `phase212_m12_example_shape`;
-# both run, both report.
-[[test]]
-name = "examples_canonical_shape"
-path = "tests/examples_canonical_shape.rs"
+# (phase-329 W6) `examples_canonical_shape` was retired here — it was the M.11
+# parallel-sibling walker over the same `examples/` tree; its only check this
+# `example_shape` walker lacked (committed `metadata/*.json`) folded in as
+# `no_committed_metadata_json_artifacts`. One walker now.
 
 # Phase 212.M.12 (parallel sibling) — pre-212 file ban: no nros.toml /
 # component_nros.toml / gen-app-config.py / app_config.h.in /
