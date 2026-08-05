@@ -1,7 +1,17 @@
 //! ESP32-C3 QEMU emulator tests
 //!
-//! Tests that verify ESP32-C3 examples build, boot, and communicate
-//! on the Espressif QEMU fork (qemu-system-riscv32 -M esp32c3).
+//! **Bucket (phase-329 W4): KEEP — sole ESP32-C3 coverage, heavy prereqs, not
+//! matrix-cell dups.** No cell-bound consumer runs the Espressif QEMU fork
+//! (`qemu-system-riscv32 -M esp32c3` + espflash + the RISC-V zenoh-pico), so this
+//! file is the only runtime coverage of the esp32 target — nothing duplicates it.
+//! Kept as one-offs: the BSP boot banner test, the local talker→listener e2e, the
+//! ESP32↔native INTEROP pair (`test_esp32_to_native` / `test_native_to_esp32`),
+//! the workspace-entry e2e, and the toolchain/qemu/espflash detection probes. The
+//! two interop tests are the fold candidates for `interop::CELLS` IF esp32 later
+//! joins that matrix (its `PlatformId` + a peer/dir binding); until then they stay
+//! here, bound to the esp32 fixtures the interop harness does not build.
+//! No deletions: sole platform coverage, un-run-provable folds on a host without
+//! the Espressif fork.
 //!
 //! Run with: `just test-qemu-esp32`
 //!

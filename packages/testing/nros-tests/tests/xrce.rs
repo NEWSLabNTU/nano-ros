@@ -3,25 +3,27 @@
 //! Tests communication between XRCE-DDS test binaries via the
 //! Micro-XRCE-DDS-Agent.
 //!
-//! **Bucket (phase-329 W4): KEEP — mostly one-offs; delivery overlap flagged.**
+//! **Bucket (phase-329 W4): KEEP — genuine one-offs; delivery FOLDED 2026-08-05.**
 //! These run the DEDICATED `nros-tests/bins` XRCE binaries over an explicit UDP
-//! locator + Agent, not the `examples/` fixtures the native matrix consumers
-//! use. Genuine one-offs no cell covers: the SERIAL transport lane
-//! (`*_serial_*`), the large-message publish (`large_message_publish`), and the
-//! startup probes (`*_starts`). The plain pubsub/service/action delivery
-//! (`talker_listener_communication`, `multiple_messages`,
-//! `service_request_response`, `action_fibonacci`) OVERLAPS the native XRCE
-//! matrix cells in intent — flag for a future fold once a dedicated-bin cell
-//! family exists; it is NOT a native-example duplicate, so it is not deleted now.
+//! locator + Agent. What remains is one-offs no matrix cell covers: the SERIAL
+//! transport lane (`*_serial_*`), the large-message / fragmented-stream publish
+//! (`large_message_publish`), and the startup probes (`*_starts`).
+//!
+//! The plain pubsub/service/action DELIVERY tests
+//! (`talker_listener_communication`, `multiple_messages`, `service_request_response`,
+//! `action_fibonacci`) were DELETED: the native XRCE matrix cells — run-proven in
+//! `native_example_pubsub_e2e` (xrce pubsub) and `native_example_reqresp_e2e` (xrce
+//! service + action) — cover that same product path, so the dedicated-bin repeats
+//! were redundant. The dedicated bins survive (the `*_starts` probes here + the
+//! `xrce_ros2_interop` tests still use them), so nothing is orphaned.
 //!
 //! Prerequisites:
 //!   just build-xrce-agent   # Build the Agent from source
 
 use nros_tests::fixtures::{
     ManagedProcess, XrceAgent, XrceSerialAgent, require_socat, require_xrce_agent,
-    xrce_action_client_binary, xrce_action_server_binary, xrce_large_msg_test_binary,
-    xrce_listener_binary, xrce_serial_listener_binary, xrce_serial_talker_binary,
-    xrce_service_client_binary, xrce_service_server_binary, xrce_talker_binary,
+    xrce_large_msg_test_binary, xrce_listener_binary, xrce_serial_listener_binary,
+    xrce_serial_talker_binary, xrce_talker_binary,
 };
 use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -101,262 +103,6 @@ fn test_xrce_listener_starts(xrce_listener_binary: PathBuf) {
             }
         }
     }
-
-    drop(agent);
-}
-
-#[rstest]
-fn test_xrce_talker_listener_communication(
-    xrce_talker_binary: PathBuf,
-    xrce_listener_binary: PathBuf,
-) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
-    let addr = agent.addr();
-    let domain = nros_tests::unique_ros_domain_id().to_string();
-
-    // Start listener first (subscribe before publishing)
-    let mut listener_cmd = Command::new(&xrce_listener_binary);
-    set_xrce_udp_locator(&mut listener_cmd, &addr, &domain).env("XRCE_MSG_COUNT", "3");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener")
-        .expect("Failed to start listener");
-
-    // Wait for listener to be ready
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(30));
-
-    // Stabilization delay — let XRCE Agent propagate the subscription
-    std::thread::sleep(Duration::from_secs(2));
-
-    // Start talker
-    let mut talker_cmd = Command::new(&xrce_talker_binary);
-    set_xrce_udp_locator(&mut talker_cmd, &addr, &domain);
-    let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "xrce-talker").expect("Failed to start talker");
-
-    // Wait for listener to receive messages
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(15),
-        )
-        .unwrap_or_default();
-
-    // Kill both processes
-    talker.kill();
-    listener.kill();
-
-    // Assert at least 1 message was received
-    nros_tests::output::assert_listener(&listener_output, 1);
-
-    drop(agent);
-}
-
-#[rstest]
-fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
-    let addr = agent.addr();
-    let domain = nros_tests::unique_ros_domain_id().to_string();
-
-    // Start listener first, expect 5 messages
-    let mut listener_cmd = Command::new(&xrce_listener_binary);
-    set_xrce_udp_locator(&mut listener_cmd, &addr, &domain).env("XRCE_MSG_COUNT", "5");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener")
-        .expect("Failed to start listener");
-
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(30));
-    std::thread::sleep(Duration::from_secs(2));
-
-    // Start talker (publishes 20 messages at 500ms intervals)
-    let mut talker_cmd = Command::new(&xrce_talker_binary);
-    set_xrce_udp_locator(&mut talker_cmd, &addr, &domain);
-    let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "xrce-talker").expect("Failed to start talker");
-
-    // Wait for listener to receive enough messages (or exit on its own after 5)
-    let listener_output = listener
-        .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            5,
-            Duration::from_secs(20),
-        )
-        .unwrap_or_default();
-
-    talker.kill();
-    listener.kill();
-
-    nros_tests::output::assert_listener(&listener_output, 3);
-
-    drop(agent);
-}
-
-// =============================================================================
-// XRCE Service Tests
-// =============================================================================
-
-#[rstest]
-fn test_xrce_service_request_response(
-    xrce_service_server_binary: PathBuf,
-    xrce_service_client_binary: PathBuf,
-) {
-    use nros_tests::count_pattern;
-
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
-    let addr = agent.addr();
-    let domain = nros_tests::unique_ros_domain_id().to_string();
-
-    // Start service server first
-    let mut server_cmd = Command::new(&xrce_service_server_binary);
-    set_xrce_udp_locator(&mut server_cmd, &addr, &domain).env("XRCE_TIMEOUT", "30");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-service-server")
-        .expect("Failed to start service server");
-
-    // Wait for server to be ready
-    let _ = server.wait_for_output_pattern(
-        nros_tests::output::SERVICE_SERVER_READY_MARKER,
-        Duration::from_secs(30),
-    );
-
-    // Stabilization delay — let XRCE Agent propagate the service
-    std::thread::sleep(Duration::from_secs(2));
-
-    // Start service client (one request, official demo default `2 3`)
-    let mut client_cmd = Command::new(&xrce_service_client_binary);
-    set_xrce_udp_locator(&mut client_cmd, &addr, &domain);
-    let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-service-client")
-        .expect("Failed to start service client");
-
-    // Wait for the client's single result line
-    let client_output = client
-        .wait_for_output_pattern(
-            nros_tests::output::SERVICE_RESULT_PREFIX,
-            Duration::from_secs(30),
-        )
-        .unwrap_or_default();
-
-    // Give server time to flush output, then collect
-    std::thread::sleep(Duration::from_millis(500));
-    let server_output = server
-        .wait_for_output_pattern(
-            nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
-            Duration::from_secs(2),
-        )
-        .unwrap_or_default();
-
-    // Kill both processes
-    client.kill();
-    server.kill();
-
-    eprintln!("Client output:\n{}", client_output);
-    eprintln!("Server output:\n{}", server_output);
-
-    // Verify client received the reply
-    let reply_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
-    eprintln!("Client received {} replies", reply_count);
-    assert!(
-        reply_count >= 1,
-        "Expected at least 1 reply, got {}",
-        reply_count
-    );
-
-    drop(agent);
-}
-
-// =============================================================================
-// XRCE Action Tests
-// =============================================================================
-
-#[rstest]
-fn test_xrce_action_fibonacci(
-    xrce_action_server_binary: PathBuf,
-    xrce_action_client_binary: PathBuf,
-) {
-    use nros_tests::count_pattern;
-
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
-    let addr = agent.addr();
-    let domain = nros_tests::unique_ros_domain_id().to_string();
-
-    // Start action server first
-    let mut server_cmd = Command::new(&xrce_action_server_binary);
-    set_xrce_udp_locator(&mut server_cmd, &addr, &domain).env("XRCE_TIMEOUT", "30");
-    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-action-server")
-        .expect("Failed to start action server");
-
-    // Wait for server to be ready
-    let _ = server.wait_for_output_pattern(
-        nros_tests::output::ACTION_SERVER_READY_MARKER,
-        Duration::from_secs(30),
-    );
-
-    // Stabilization delay
-    std::thread::sleep(Duration::from_secs(2));
-
-    // Start action client (sends the demo Fibonacci order=10 goal)
-    let mut client_cmd = Command::new(&xrce_action_client_binary);
-    set_xrce_udp_locator(&mut client_cmd, &addr, &domain);
-    let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-action-client")
-        .expect("Failed to start action client");
-
-    // Wait for the client's terminal `Result received: [...]` line
-    let client_output = client
-        .wait_for_output_pattern(
-            nros_tests::output::ACTION_RESULT_PREFIX,
-            Duration::from_secs(30),
-        )
-        .unwrap_or_default();
-
-    // Give server time to flush output
-    std::thread::sleep(Duration::from_millis(500));
-    let server_output = server
-        .wait_for_output_pattern(
-            nros_tests::output::ACTION_GOAL_SUCCEEDED_MARKER,
-            Duration::from_secs(2),
-        )
-        .unwrap_or_default();
-
-    client.kill();
-    server.kill();
-
-    eprintln!("Client output:\n{}", client_output);
-    eprintln!("Server output:\n{}", server_output);
-
-    // Verify goal was accepted
-    assert!(
-        client_output.contains("Goal accepted"),
-        "Client should have received goal acceptance.\nClient output:\n{}",
-        client_output,
-    );
-
-    // Verify feedback was received
-    let feedback_count = count_pattern(&client_output, nros_tests::output::ACTION_FEEDBACK_PREFIX);
-    assert!(
-        feedback_count >= 1,
-        "Expected at least 1 feedback message, got {}.\nClient output:\n{}",
-        feedback_count,
-        client_output,
-    );
-
-    // Verify result was received
-    assert!(
-        client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX),
-        "Client should have completed the action.\nClient output:\n{}",
-        client_output,
-    );
 
     drop(agent);
 }

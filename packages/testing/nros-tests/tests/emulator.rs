@@ -1,5 +1,22 @@
 //! Emulator tests for nros
 //!
+//! **Bucket (phase-329 W4): KEEP — sole qemu-arm-baremetal coverage + on-target
+//! one-offs, not matrix-cell dups.** rtos_e2e's `Platform` enum is RTOS-only
+//! (Freertos/Nuttx/ThreadxLinux/ThreadxRiscv64); this file is the ONLY runtime
+//! coverage of the BARE-METAL Cortex-M3 (MPS2-AN385) target, so nothing duplicates
+//! it. Two kinds live here, both kept:
+//!   * ON-TARGET UNIT tests no cell asserts — CDR serialization, Node API, type
+//!     metadata, output format, the WCET benchmark, the LAN9118 driver, and the
+//!     toolchain/qemu detection probes.
+//!   * TRANSPORT/FRAMEWORK pubsub VARIANTS on qemu-arm-baremetal — `bsp` (the
+//!     standard), `serial` (serial transport), `xrce` (XRCE rmw), `rtic` (the RTIC
+//!     framework entry shape). These overlap the `qemu-arm-baremetal` matrix
+//!     coordinate in intent but there is no cell-bound baremetal consumer to fold
+//!     into; when one exists, the `bsp` case is the fold candidate and the
+//!     serial/xrce/rtic variants stay one-offs.
+//! No deletions: sole platform coverage, and QEMU folds can't be run-proven for a
+//! safe delete on a host without exercising every variant.
+//!
 //! Tests that run on QEMU Cortex-M3 emulator without physical hardware.
 //! These verify CDR serialization, Node API, and type metadata work on embedded targets.
 //!
