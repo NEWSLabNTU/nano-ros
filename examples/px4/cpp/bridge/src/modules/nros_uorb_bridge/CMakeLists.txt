@@ -57,6 +57,9 @@ endif()
 nros_px4_add_module(
 	MODULE   modules__nros_uorb_bridge
 	MAIN     nros_uorb_bridge
+	# zenoh-pico's z_open allocates sizeable buffers + spawns its read/lease
+	# tasks; the default module stack is not sized for it (#0436 probe).
+	STACK_MAIN 32768
 	# uorb = inward (in-firmware, zero-copy). zenoh = outward; a networked
 	# backend contributes no sources here — it is compiled INTO libnros_cpp.a by
 	# `--features rmw-zenoh-cffi`, and this list only drives the register call.

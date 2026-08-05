@@ -120,6 +120,61 @@ lockstep simulated clock or the work-queue thread context that zenoh-pico's conn
 runs in. That is the next thing to test (e.g. open the same session from a plain PX4
 task vs a work-queue item, and with lockstep disabled).
 
+
+## Update 2026-08-06 (c) — isolated to zenoh-in-PX4, with a strong lead
+
+Added a single-session probe (`NROS_BRIDGE_PROBE=uorb|zenoh`) to the module, which
+splits the question cleanly:
+
+| probe | result |
+| --- | --- |
+| `uorb` only | MultiExecutor OPENS fine (fails later only at the zenoh bind, as expected) |
+| `zenoh` only | `nros_init_multi failed — Transport(ConnectionFailed)` |
+
+So it is **not** the bridge API and **not** multi-session: a zenoh session simply
+cannot be opened inside PX4. `NROS_RMW_TRACE_OPEN=1` gives the backend's own code:
+
+```
+[nros-rmw-cffi] open: locator="tcp/127.0.0.1:7447" mode=0 ret=-18 backend_data=0x0
+```
+
+`-18` is `NROS_RMW_RET_CONNECTION_FAILED`, `mode=0` is `Client`, the locator is
+right, and `zenohd` is listening. **The router logs no incoming connection at all**,
+so zenoh-pico never reaches the network.
+
+Ruled out, each by test rather than argument:
+* **Stack** — `STACK_MAIN 32768` changes nothing.
+* **Missing platform layer** — all 1429 zenoh-pico symbols are in `bin/px4`,
+  including `_z_open_socket` / `_z_open_link`.
+* **Compile config** — the staticlib's `zenoh_generic_config.h` has
+  `Z_FEATURE_LINK_TCP 1`, and is IDENTICAL (`Z_FEATURE_MULTI_THREAD 0`) to the one
+  the WORKING native talker uses.
+* **The host / the router** — a native nros client connects to the same router
+  seconds later ("nros: session open").
+
+**Strong lead: the image links TWO complete copies of zenoh-pico.**
+
+```
+libnros_cpp.a          : 1465 z_* symbols, defines _z_open_socket
+libnros_rmw_zenoh_staticlib.a : 1576 z_* symbols, defines _z_open_socket
+```
+
+`libnros_cpp.a` carries the zenoh backend (built `--features rmw-zenoh-cffi`) AND
+its bundled zenoh-pico; the separate platform archive carries another. The linker
+picks one definition per symbol, but each copy has its own `static` state — the
+`#48` split-registry class, one layer down, and exactly the hazard CLAUDE.md
+records for the zpico shim ("shim + library MUST share the generated config … a
+mismatched TU is a silent ABI break"). A session whose config/state lives in copy A
+while the socket call resolves to copy B would fail to connect while emitting
+nothing on the wire, which is precisely what is observed.
+
+Next: confirm by checking whether the two copies' objects differ (they are built by
+different cargo invocations with different feature sets), then decide the fix —
+most likely the PX4 link should take zenoh-pico from ONE archive, i.e. either the
+umbrella carries it and the platform archive is dropped, or the umbrella is built
+without the bundled copy. Note `nros_px4_add_module` currently REQUIRES the separate
+zenoh archive (its guard names it), so the fix is a helper change too.
+
 ## Investigation trail — the error is named, and two mechanisms are confirmed
 
 **The real error is `NodeError::Transport(ConnectionFailed)`.** `-100` is

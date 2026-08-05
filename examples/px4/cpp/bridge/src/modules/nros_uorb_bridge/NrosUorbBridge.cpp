@@ -177,10 +177,28 @@ bool NrosUorbBridge::init()
 	}
 
 	PX4_INFO("outward %s locator: %s", NROS_BRIDGE_RMW, out_locator);
-	_exec.reset(new nros::MultiExecutor({
-		nros::SessionSpec("uorb", "").with_node_name("px4_bridge_in"),
-		nros::SessionSpec(NROS_BRIDGE_RMW, out_locator).with_node_name("px4_bridge_out"),
-	}));
+	// #0436 probe: NROS_BRIDGE_PROBE=zenoh|uorb opens a SINGLE session so the
+	// failing one can be identified; unset = the real two-session bridge.
+	const char *probe = getenv("NROS_BRIDGE_PROBE");
+
+	if (probe != nullptr && strcmp(probe, "zenoh") == 0) {
+		PX4_INFO("probe: zenoh-only session");
+		_exec.reset(new nros::MultiExecutor({
+			nros::SessionSpec(NROS_BRIDGE_RMW, out_locator).with_node_name("px4_probe"),
+		}));
+
+	} else if (probe != nullptr && strcmp(probe, "uorb") == 0) {
+		PX4_INFO("probe: uorb-only session");
+		_exec.reset(new nros::MultiExecutor({
+			nros::SessionSpec("uorb", "").with_node_name("px4_probe"),
+		}));
+
+	} else {
+		_exec.reset(new nros::MultiExecutor({
+			nros::SessionSpec("uorb", "").with_node_name("px4_bridge_in"),
+			nros::SessionSpec(NROS_BRIDGE_RMW, out_locator).with_node_name("px4_bridge_out"),
+		}));
+	}
 
 	if (!_exec->valid()) {
 		PX4_ERR("MultiExecutor open failed (uorb + %s): ret=%d", NROS_BRIDGE_RMW,
