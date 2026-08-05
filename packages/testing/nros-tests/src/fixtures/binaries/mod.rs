@@ -876,6 +876,17 @@ fn zpico_c_source_newer(binary_path: &Path, bin_mtime: std::time::SystemTime) ->
 /// Recursively walk `dir` for `.c`/`.h`/`.cpp`/`.hpp` sources and return the
 /// first one whose mtime is newer than `bin_mtime`. Bounded to the given tree;
 /// reads directory entries + `stat`, never builds. Symlinks are not followed.
+///
+/// Skips [`REGENERATED_INPLACE_HEADERS`], same as the dep-info arms. This walk
+/// is a SIBLING of `cmake_dep_info_newer_source`'s ninja-deps loop, which has
+/// always applied that exemption — and the two disagreeing is what made every
+/// freertos / threadx-linux C and C++ zenoh fixture read STALE against
+/// `zpico-sys/c/include/zpico.h`. That header is cbindgen output written IN
+/// PLACE: any build of a different feature set moves its mtime without changing
+/// a byte, so "newer than my binary" says nothing about this fixture's inputs
+/// (issue #222's cross-family false-stale, reached through the other arm).
+///
+/// A guard whose coverage is narrower than the rule it enforces — issue 0196.
 fn newest_source_after(dir: &Path, bin_mtime: std::time::SystemTime) -> Option<PathBuf> {
     let entries = fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {
@@ -891,6 +902,7 @@ fn newest_source_after(dir: &Path, bin_mtime: std::time::SystemTime) -> Option<P
                 Some("c" | "h" | "cpp" | "hpp" | "cc" | "hh")
             );
             if is_source
+                && !is_regenerated_inplace_header(&path)
                 && let Ok(mtime) = fs::metadata(&path).and_then(|m| m.modified())
                 && mtime > bin_mtime
             {

@@ -51,6 +51,23 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#444** — the FreeRTOS Rust action image boots, prints the platform banner and brings up LAN9118 +
+lwIP ("Network ready"), then never reaches `Application setup complete`. Fails SOLO 3/3, so not the
+QEMU-load flake class. `Freertos::{C,Cpp}` and all six nuttx/threadx cells pass on the same board and
+run — 8 of 9. It had been HIDDEN by issue 0442: the cell reported STALE and never launched, so a probe
+defect masked a runtime one (the 0350 class). Entry wiring looks intact; `ab486a8db` (phase-338 W2's
+`-entry` collapse, the same commit behind 0440) is a suspect but NOT bisected, and this is not yet
+attributed to a branch. Next step: run it on main with fresh fixtures. See `0444-*`. (2026-08-06)
+
+Recently resolved (2026-08-06): **#442** — the regenerated-header exemption was applied on the ninja
+dep-info arm of the cmake freshness probe but NOT on its sibling directory-walk arm, so every
+freertos / threadx-linux C and C++ zenoh fixture read STALE against `zpico-sys/c/include/zpico.h` —
+a cbindgen header written in place, whose mtime moves on any other feature set's build with the
+content unchanged (measured: header 23:46 vs binary 21:23, `git status` clean). Issue 0196 one layer
+in. RESOLVED: `newest_source_after` skips it like the loop does; action cells went 3 → 7 of 9 passing.
+First written off as "a core-crate change staled main-built fixtures" — plausible and wrong, since the
+observable is identical; reading the actual `newer:` path settled it. See `archived/0442-*`.
+
 Recently resolved (2026-08-06): **#440** — phase-338 W2's `-entry` collapse kept the NODE package's
 `.cargo/config.toml` and dropped the board's STATIC link args, so all six NuttX Rust entries failed
 with ~3680 undefined libc references (`grep -c lsched` was 0 of 6). RESOLVED: the 24 args restored
