@@ -176,10 +176,16 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "rust",
         program: "action-server",
         platform: "qemu-riscv64-threadx",
-        reason: "W2 — link ceremony: `extern crate alloc`, `extern crate \
-                 nros_board_threadx_qemu_riscv64 as _`, \
-                 `cyclonedds_app_main!(register)`, plus stray \
-                 `#![no_std]`/`#![no_main]`.",
+        reason: "W2 moved the ceremony this reason used to name (`extern crate \
+                 alloc`, the board anchor, `cyclonedds_app_main!`, `#![no_main]`) \
+                 into `src/app_main.rs`. Re-diffed 2026-08-05, what is left is ONE \
+                 glue line — `mod app_main;` — which cannot move to `main.rs` \
+                 because the CycloneDDS/CMake path links the STATICLIB, built from \
+                 `lib.rs`'s module tree. Structural fix: let `nros::node!(Ty)`, \
+                 which every copy already invokes, emit the glue cfg-gated on the \
+                 deploy target. Plus body drift: a `u32` State vs `()`, a `GoalId` \
+                 import, an extra \"Executing goal\" log, and a different \
+                 goal-order spelling.",
     },
     Divergence {
         lang: "rust",
@@ -253,10 +259,16 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "rust",
         program: "service-client",
         platform: "qemu-riscv64-threadx",
-        reason: "W2 — link ceremony: `extern crate alloc`, `extern crate \
-                 nros_board_threadx_qemu_riscv64 as _`, \
-                 `cyclonedds_app_main!(register)`, plus stray \
-                 `#![no_std]`/`#![no_main]`.",
+        reason: "W2 moved the ceremony this reason used to name (`extern crate \
+                 alloc`, the board anchor, `cyclonedds_app_main!`, `#![no_main]`) \
+                 into `src/app_main.rs`. Re-diffed 2026-08-05, what is left is ONE \
+                 glue line — `mod app_main;` — which cannot move to `main.rs` \
+                 because the CycloneDDS/CMake path links the STATICLIB, built from \
+                 `lib.rs`'s module tree. Structural fix: let `nros::node!(Ty)`, \
+                 which every copy already invokes, emit the glue cfg-gated on the \
+                 deploy target. Plus body drift: the failure arm logs at \
+                 `log::error!` where the group logs `log::info!` (and drops the \
+                 error value), plus a `reply`/`resp` binding rename.",
     },
     Divergence {
         lang: "rust",
@@ -297,10 +309,16 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "rust",
         program: "service-server",
         platform: "qemu-riscv64-threadx",
-        reason: "W2 — link ceremony: `extern crate alloc`, `extern crate \
-                 nros_board_threadx_qemu_riscv64 as _`, \
-                 `cyclonedds_app_main!(register)`, plus stray \
-                 `#![no_std]`/`#![no_main]`.",
+        reason: "W2 moved the ceremony this reason used to name (`extern crate \
+                 alloc`, the board anchor, `cyclonedds_app_main!`, `#![no_main]`) \
+                 into `src/app_main.rs`. Re-diffed 2026-08-05, what is left is ONE \
+                 glue line — `mod app_main;` — which cannot move to `main.rs` \
+                 because the CycloneDDS/CMake path links the STATICLIB, built from \
+                 `lib.rs`'s module tree. Structural fix: let `nros::node!(Ty)`, \
+                 which every copy already invokes, emit the glue cfg-gated on the \
+                 deploy target. Plus body drift: the callback key is \"on_add\" \
+                 vs the group's \"handle_add\", and State counts requests in a \
+                 `u32` where the group types it `()`.",
     },
     Divergence {
         lang: "rust",
