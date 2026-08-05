@@ -1838,16 +1838,21 @@ impl<'a> TickCtx<'a> {
         status: GoalStatus,
         result: &R,
     ) -> NodeResult<()> {
-        // CDR-LE encapsulation header included: the executor's `complete_goal_raw`
-        // frames only the outer envelope ([header][goal_id]) + this payload
-        // verbatim — it does NOT add an inner header — and the consumer reads the
-        // result via `CallbackCtx::message` (`CdrReader::new_with_header`), as do
-        // the C++/ffi clients. Without the header the reader eats the first data
-        // word (e.g. a sequence length) → empty/garbage payload (issue #35 M-F.23
-        // follow-up: action result `sequence` deserialized to len 0).
+        // RFC-0069 / issue 0418 — NO inner encapsulation header. ROS 2's
+        // `<Action>_GetResult_Response` is ONE CDR message: `[header][status][result
+        // fields]`. This used to write a second header inside the envelope, which
+        // made the payload `[outer][status][pad][INNER][fields]` — self-consistent
+        // with nano-ros's own raw consumer and undecodable by any `rcl_action` peer
+        // or by nano-ros's TYPED path.
+        //
+        // The issue-#35 corruption that motivated the old header ("the reader eats
+        // the first data word … `sequence` deserialized to len 0") is now prevented
+        // on the READ side instead: the executor splices the envelope's encap onto
+        // the body before the callback sees it, so `CallbackCtx::message` still
+        // receives a well-formed CDR message. Producer and consumer changed
+        // together — either alone reproduces #35.
         let mut buf = [0u8; N];
-        let mut writer =
-            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| NodeDeclError::Runtime)?;
+        let mut writer = crate::CdrWriter::new(&mut buf);
         result
             .serialize(&mut writer)
             .map_err(|_| NodeDeclError::Runtime)?;
@@ -1902,13 +1907,12 @@ impl<'a> TickCtx<'a> {
         goal_id: &GoalId,
         feedback: &F,
     ) -> NodeResult<()> {
-        // CDR-LE encapsulation header included — see `complete_goal` above. The
-        // executor frames the outer [header][goal_id] envelope only; the consumer
-        // reads feedback via `CallbackCtx::message` (`new_with_header`), so the
-        // payload itself must carry the header (issue #35 M-F.23 follow-up).
+        // RFC-0069 / issue 0418 — NO inner encapsulation header; see
+        // `complete_goal` above. ROS 2's `<Action>_FeedbackMessage` is ONE CDR
+        // message: `[header][goal_id][feedback fields]`. The executor frames
+        // `[header][goal_id]` and this payload is the fields alone.
         let mut buf = [0u8; N];
-        let mut writer =
-            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| NodeDeclError::Runtime)?;
+        let mut writer = crate::CdrWriter::new(&mut buf);
         feedback
             .serialize(&mut writer)
             .map_err(|_| NodeDeclError::Runtime)?;

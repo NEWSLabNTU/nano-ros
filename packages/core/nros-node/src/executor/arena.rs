@@ -1248,11 +1248,20 @@ pub(crate) unsafe fn action_server_raw_try_process<
 /// # Safety
 /// `ptr` must point to a valid, aligned `ActionClientRawArenaEntry<...>`.
 /// True if `p` begins with a CDR encapsulation header (RTPS encoding
-/// identifier). The 4-byte header is `00 <id> <opts> <opts>` where `<id>` ∈
-/// {`00` BE, `01` LE, `06`/`07` D_CDR2, `0a`/`0b` PL_CDR2}. Raw CDR fields
-/// (e.g. a sequence's `u32` length) do not begin with this pattern, so a false
-/// result means the per-message encap was dropped by a typed transport framing
-/// (Cyclone) and must be spliced back before deserialization (#175).
+/// identifier): `00 <id> <opts> <opts>`, `<id>` ∈ {`00` BE, `01` LE, `06`/`07`
+/// D_CDR2, `0a`/`0b` PL_CDR2}.
+///
+/// RFC-0069 / issue 0418 — **this is a heuristic and it is now only a
+/// belt-and-braces check.** The claim in its old doc, that raw CDR fields "do
+/// not begin with this pattern", is false: a leading `int32` of 256 serializes
+/// LE as `00 01 00 00` and matches. It was safe while only Cyclone hit the
+/// false branch; once the producer stopped writing an inner header (0418) every
+/// payload takes that branch, so relying on the sniff for correctness would have
+/// turned a payload VALUE into a decode bug.
+///
+/// Kept, rather than deleted, for peers that still send the pre-0418 double
+/// header — a v0.5 image talking to a v0.6 host. Reading such a payload
+/// directly is correct; the splice below is what the current producer needs.
 fn payload_has_cdr_encap(p: &[u8]) -> bool {
     p.len() >= 4 && p[0] == 0x00 && matches!(p[1], 0x00 | 0x01 | 0x06 | 0x07 | 0x0a | 0x0b)
 }

@@ -1,7 +1,7 @@
 ---
 rfc: 0069
 title: "The action payload envelope: one CDR header, ROS 2's"
-status: Draft
+status: Accepted
 since: 2026-08
 last-reviewed: 2026-08-05
 implements-tracked-by: []
@@ -12,9 +12,11 @@ superseded-by: null
 # RFC-0069 — The action payload envelope
 
 > Filed from [issue 0418](../issues/0418-action-payload-envelope-not-ros-compatible.md),
-> found during phase-338 W3. The defect is not in dispute; **which envelope is
-> canonical** is the decision, because the interoperable answer breaks a
-> convention nano-ros already ships.
+> found during phase-338 W3.
+>
+> **ACCEPTED and IMPLEMENTED 2026-08-05 (maintainer: option A).** The
+> implementation turned out to be producer-only, which the analysis below did
+> not predict — see "What A actually required".
 
 ## Summary
 
@@ -101,7 +103,35 @@ talking to a non-nano-ros peer.
 compatibility it breaks is between two of our own versions, and we control the
 migration.
 
-## What A requires
+## What A actually required — smaller than forecast
+
+**Producer only.** The two `nros/src/node.rs` sites now write the body with a
+header-less `CdrWriter::new`. Every consumer was already correct:
+
+* **`nros-node`'s executor** already spliced an encap onto a header-less payload
+  — added for Cyclone in #175, which drops the inner encap of a nested field.
+  With the producer fixed, that branch is simply always taken.
+* **The C++ trampolines** (`nros-cpp/src/action.rs`) use the same
+  splice-if-absent shape. Correct unchanged.
+* **The C client** (`nros-c/src/action/client.rs`) strips
+  `CDR_HEADER_LEN + SEQ_PREFIX_LEN + UUID_LEN` and prepends its own header,
+  with the comment "the C deserializer expects `[CDR_HEADER][fields]`".
+  `SEQ_PREFIX_LEN` is `0` since 233.6, so it strips 20 — matching the executor.
+  It was written for ROS 2's layout all along, and the double header was what
+  made it wrong. This change fixes it.
+
+So **the extra header was the sole outlier**: every consumer already assumed the
+ROS 2 envelope. That is also why nothing caught it — the producer was the only
+component encoding the divergence, and its only in-tree peer was itself.
+
+One honesty note recorded in the code: `payload_has_cdr_encap` is a heuristic,
+and its old doc claimed raw CDR fields "do not begin with this pattern". False —
+a leading `int32` of 256 is `00 01 00 00` and matches. That was harmless while
+only Cyclone took the branch; it is now consulted for every payload, so the doc
+says plainly that it is belt-and-braces for pre-0418 peers, not a correctness
+mechanism.
+
+## What A was forecast to require
 
 1. **Producer:** `nros/src/node.rs` — `publish_feedback`, `complete_goal`.
    Serialize the body with a header-less writer.
@@ -121,14 +151,21 @@ migration.
 
 ## Acceptance
 
-- [ ] One envelope: a captured feedback payload from the raw path is
-      byte-identical in shape to the typed path's.
-- [ ] `examples/native/rust/action-server` runs Node-class against the existing
-      typed `action-client`, delivering feedback and result (phase-338 W3's
-      blocked case).
+- [x] One envelope: the raw path's payload no longer carries an inner header.
+- [x] **`examples/native/rust/action-server` runs Node-class against the existing
+      typed `action-client`, delivering feedback AND result** — phase-338 W3's
+      blocked case, verified 2026-08-05 against a live router:
+      `Next number in sequence received: [0, 1, 1]` and
+      `Result received: [0, 1, 1]`, no errors. Before the fix this was
+      `DeserializationError` + `ServiceRequestFailed`.
 - [ ] A real ROS 2 client drives a nano-ros raw action server end to end.
+      **Not done** — needs a ROS install this host lacks.
 - [ ] Every action Runtime cell green on real targets, embedded included.
-- [ ] A test covers the issue-#35 corruption directly.
+      **Not done** — the raw↔raw pairs are exactly what this changes, and they
+      are the ones a host cannot run. THE gate before relying on this.
+- [ ] A test covers the issue-#35 corruption directly. **Not done**, and it is
+      the item most likely to be skipped: its absence is why the divergence
+      survived a redesign in the first place.
 
 ## Risks
 

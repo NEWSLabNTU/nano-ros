@@ -9,9 +9,19 @@ publish = false
 name = "action-server"
 path = "src/main.rs"
 
+[lib]
+name = "native_rs_action_server"
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
 # Phase 212.L.2 — Application pkg shape. Native-only deploy target.
-[package.metadata.nros.application]
-deploy = ["native"]
+[package.metadata.nros.entry]
+deploy = "native"
+
+[package.metadata.nros.node]
+class = "native_rs_action_server::FibonacciServer"
+name = "fibonacci_action_server"
+default_namespace = "/"
 
 [features]
 # Phase 118 — RMW selected at build time via mutually exclusive features.
