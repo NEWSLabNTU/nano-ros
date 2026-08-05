@@ -39,6 +39,25 @@ impl CiTier {
             CiLane::Tier2Nightly => CiTier::Tier2Nightly,
         }
     }
+
+    /// The `just` recipe that runs this tier. This is the wiring point: the
+    /// justfile tier recipes ARE the ladder the bucket map declares, and
+    /// `ci_tier_ladder_matches_justfile_recipes` gates that they stay in step.
+    pub fn just_recipe(self) -> &'static str {
+        match self {
+            CiTier::Tier1 => "ci",
+            CiTier::Tier2 => "ci-matrix",
+            CiTier::Tier2Nightly => "ci-matrix-nightly",
+            CiTier::Tier3 => "ci-full",
+        }
+    }
+
+    pub const ALL: &'static [CiTier] = &[
+        CiTier::Tier1,
+        CiTier::Tier2,
+        CiTier::Tier2Nightly,
+        CiTier::Tier3,
+    ];
 }
 
 /// A test bucket — one row of the phase-329 "Target structure" table. Every test
@@ -218,6 +237,34 @@ mod tests {
             declared.contains(&CiTier::Tier3),
             "the CellMatrix is only FULLY covered at tier3 — it must declare Tier3"
         );
+    }
+
+    /// The wiring gate (phase-329 W7): every `CiTier` in the ladder maps to a real
+    /// `just` recipe. The justfile tier recipes are the ladder the bucket map
+    /// declares, so a renamed/removed tier recipe (or a new rung with no recipe)
+    /// fails HERE rather than leaving the SSoT map pointing at a command that no
+    /// longer exists. Mirrors `ci_lane`'s `build_fanout_names_every_module…` — the
+    /// justfile is a checked consumer of the Rust-side ladder.
+    #[test]
+    fn ci_tier_ladder_matches_justfile_recipes() {
+        let justfile = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../justfile");
+        let Ok(text) = std::fs::read_to_string(justfile) else {
+            return; // out-of-tree checkout; nothing to gate
+        };
+        for tier in CiTier::ALL {
+            let recipe = tier.just_recipe();
+            // A recipe line is `<name>:` or `<name> <args>:` at column 0.
+            let found = text.lines().any(|l| {
+                l.starts_with(recipe)
+                    && l[recipe.len()..].starts_with([':', ' '])
+                    && l.contains(':')
+            });
+            assert!(
+                found,
+                "CiTier::{tier:?} declares `just {recipe}` but the justfile has no such \
+                 recipe — the tier ladder and the justfile drifted (rename one to match)"
+            );
+        }
     }
 
     /// The host-only buckets must all be Tier1 (RFC-0061: guards/gates + host-unit

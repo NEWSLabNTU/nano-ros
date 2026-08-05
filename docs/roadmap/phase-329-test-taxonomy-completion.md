@@ -328,9 +328,14 @@ un-prebuildable), so they belong IN the registry, not moved out of it.
   declaration to the real machinery: `cell_matrix_covers_every_computed_lane`
   asserts every `ci_lane::ALL` lane is a declared CellMatrix tier (a new computed
   rung can't be added without declaring it), and `host_only_buckets_are_tier1`
-  pins the five host buckets. **Follow-up (not this wave):** wire the justfile lane
-  recipes to READ `BUCKET_TIERS` programmatically (today they encode the same map
-  in comments/filters, now kept honest by the gate rather than duplicated).
+  pins the five host buckets. **Follow-up done 2026-08-05 (bounded):** `CiTier`
+  carries `just_recipe()` (Tier1→`ci`, Tier2→`ci-matrix`, nightly→`ci-matrix-nightly`,
+  Tier3→`ci-full`) and `ci_tier_ladder_matches_justfile_recipes` fails if the ladder
+  and the real justfile recipes drift; the justfile tier block cross-references
+  `BUCKET_TIERS` as the SSoT. A FULL bucket-driven lane selection was NOT built: lane
+  selection is COORDINATE-based (`ci_lane` + the `lane-coords` bin), which is finer
+  than bucket granularity, so a bucket-keyed rewrite would add a consumer nothing
+  needs — the map's job is the coarse tier home + the drift gate, which it now has.
 
 ### W8 — cut the BUILD, not just the file count (added 2026-08-04; row-dedup half RETRACTED same day)
 

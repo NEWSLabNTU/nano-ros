@@ -1884,6 +1884,12 @@ rust-rtos-link-check:
 #   just ci-matrix-nightly       — the pairwise cover, nightly
 #   just ci-full          tier 3 — pre-release, on demand (the former `ci`)
 #
+# SSoT for which test BUCKET runs at which tier: `nros_tests::buckets::BUCKET_TIERS`
+# (phase-329 W7). `CiTier::just_recipe` names these four recipes, and
+# `ci_tier_ladder_matches_justfile_recipes` fails if this ladder and those recipe
+# names ever drift. The cell-COORDINATE selection within tiers 1/2/nightly is the
+# separate `nros_tests::ci_lane` computation (emitted by the `lane-coords` bin).
+#
 # Issue 0393 — tier 1's BUILD narrows too, not just its gate and its run:
 #
 #     just build-test-fixtures lane=native   # one module, ~180 of 337 rows
