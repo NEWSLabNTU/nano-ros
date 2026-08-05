@@ -92,3 +92,65 @@ per-arch kernel tree, or a freshness signature that keys on the arch-specific
 export rather than the shared `staging/` dir. Both are larger than this issue
 and belong with whoever owns the NuttX board work — leaving this resolved-with-a-
 workaround rather than claiming the interleaved build is fixed.
+
+## Fix method, explored (2026-08-05)
+
+### What the code already knows
+
+The shared staging dir is not an oversight — it is declared:
+
+* `nuttx_ffi_build.rs:453` — "The staging dir is SHARED between configs (arm and
+  riscv kernels both stage into `third-party/nuttx/nuttx/staging`), so the lib
+  set this scan sees can change under a cached build-script output." It defends
+  with `cargo:rerun-if-changed=<staging>`.
+* `scripts/build/fixture-inventory.py` declares it formally:
+  `shared_mutation: "$NUTTX_DIR/staging/libc.a; $NUTTX_DIR/include/nuttx/config.h"`.
+
+That `rerun-if-changed` is exactly what puts the staging dir into each entry's
+`.d`, and the test-side freshness probe reads that `.d`. So the probe is
+downstream of a defence, not missing one.
+
+### Rejected: exempt the shared kernel in the probe
+
+Tempting, and there is precedent — `dep_info_newer_source` already exempts two
+classes of build-side-effect mtime (`REGENERATED_INPLACE_HEADERS` for issue #222,
+`is_cargo_out_dir_product` for phase-300).
+
+**But it is wrong here.** Those exemptions are safe because the exempted file's
+content cannot differ semantically without an edited source that IS in the dep
+graph. The shared staging dir fails that test: after a riscv build it holds
+riscv archives, so an arm entry relinked against it would link the WRONG kernel —
+which is precisely what `nuttx_ffi_build.rs`'s comment says it is defending
+against. The probe is telling the truth. Silencing it would let a test run a
+binary whose link inputs are from another architecture.
+
+### Recommended: per-arch staging snapshot
+
+Give each architecture its own copy of the staged archives, so one arch's build
+cannot invalidate the other's entries:
+
+1. `scripts/nuttx/build-nuttx.sh` — after the kernel build, snapshot
+   `staging/` to `staging-<arch>/` (the script already derives `CONFIG_ARCH`
+   for its run hint).
+2. `packages/boards/nros-board-common/src/nuttx_ffi_build.rs` — resolve
+   `staging-<arch>` when present (fall back to `staging`), and watch that path
+   instead.
+3. `packages/boards/nros-board-common/src/nuttx_image_link.rs` — same path
+   resolution (`nuttx_dir.join("staging")` at line 108).
+
+This fixes the root cause rather than the symptom: it also removes the
+"lib set can change under a cached build-script output" hazard the build script
+currently only DETECTS, and it restores the build-once-link-many property
+`build-nuttx.sh` claims in its own comments.
+
+The version-keyed export dir (`nuttx-export-<ver>/libs/`) carries the same
+archives and was considered as the snapshot source, but it is not arch-keyed and
+`make export` wipes it per run — so it collides exactly like `staging/`.
+
+### Not applied here
+
+This changes the link path for every NuttX fixture on both architectures, in the
+board area phase-337 is actively reshaping, and verifying it means rebuilding
+both arches. The workaround (build one arch at a time) is sufficient for the
+RFC-0069 acceptance this was blocking, so the structural change is left for the
+NuttX board owner with the method above rather than landed opportunistically.
