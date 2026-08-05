@@ -206,7 +206,7 @@ RMW registration and the spin loop already live.
       line is identical across platforms (today `freertos_rs_talker` vs
       `nuttx_rs_talker`). Naming rules already exist in
       `examples/workspaces/README-layout.md`; extend them to examples.
-- [ ] **W2.d** Normalize the `#![no_std]` / `#![no_main]` inconsistency — the
+- [x] **W2.d** Normalize the `#![no_std]` / `#![no_main]` inconsistency — the
       freertos `talker-entry/src/main.rs` carries both attributes while the nuttx
       and threadx-linux ones carry neither, for the same generated entry.
       *Result:* threadx-riscv64 and zephyr join the RTOS group;
@@ -765,7 +765,7 @@ Part of B's delta *is* reducible — the `log` vs `nros_log` split is a facade
 problem, and `DISPATCH`/`tick` could carry defaults. W3.c measures how much;
 whatever survives is a declared group, not a defect.
 
-- [ ] **W3.c** Measure B's irreducible delta after unifying the logging facade and
+- [x] **W3.c** Measure B's irreducible delta after unifying the logging facade and
       defaulting `DISPATCH`/`tick`. Record the remainder as group B's declared
       reason. **Do not force B into A** — an execution-model difference expressed
       as one body with cfg branches is worse than two honest bodies.
@@ -824,6 +824,61 @@ macro arguments.
       branches, the `zpico-sys` feature, the `nros-sdk-index.toml [board.orin-spe]`
       entry and the `zpico_backend` lint value. Recorded here so W7.b does not
       re-derive it.
+
+## W2.d / W3.c / W7 — closed 2026-08-05
+
+### W2.d — not an inconsistency; closed as invalid
+
+The claim was that `#![no_std]`/`#![no_main]` is applied inconsistently "for the
+same generated entry". Measured across every collapsed entry, it correlates
+perfectly with the target triple:
+
+| carries the attributes | does not |
+|---|---|
+| `thumbv7m-none-eabi` (freertos, mps2), `riscv64gc-…-none-elf`, `riscv32imc-…-none-elf` | host, `x86_64-unknown-linux-gnu` (threadx-linux), `armv7a-nuttx-eabihf` |
+
+Every `*-none-*` target has no OS supplying `main`; the others do. It tracks the
+runtime model, not drift, and it could not be unified anyway — `#![no_main]` on
+a hosted target breaks the normal `main`, and inner attributes cannot be emitted
+by a macro. It also affects nothing: `main.rs` is GLUE to the gate.
+
+### W3.c — measured, and the answer removed the wave
+
+W3.c asked for group B's irreducible delta "after unifying the logging facade".
+The measurement made the unification beside the point: **B had one real member.**
+`qemu-esp32-baremetal` was classified B on the assumption that bare-metal implies
+deferred dispatch, but its bodies are plain immediate-dispatch group-A code —
+talker byte-identical to group A, listener short one `log::info!` line — and its
+Pubsub cell RUNS that way. Moved to A; both divergences deleted; group renamed
+`B-deferred` because the axis is the dispatch strategy, not the presence of an
+OS.
+
+### W7 — done, in the opposite direction to the draft
+
+W7.a's premise ("`log` needs std") is false: esp32 bridges `log` on `no_std` via
+esp_println. And the weight was already on `log` — 6 of 7 boards bridge it,
+exactly one board's bodies used `nros_log`. So instead of adding `nros_log` to
+three boards and moving five bodies, W7 added ONE bridge and moved TWO bodies.
+
+* `nros-board-mps2-an385` gains `install_semihosting_log_bridge`.
+* Its talker and listener use `log::info!`; the `Logger` static and
+  `register_logger` call leave user source.
+* **Decision (W7.c): `log` is the user-facing facade; `nros_log` is the
+  platform/ABI layer** — it backs `nros_platform_log_write` and therefore the C
+  API. Not "secondary", *different layer*.
+* W7.d: group B's reason is now dispatch-only.
+
+Verified by running the Runtime cell, which is the whole risk W7.b names:
+talker under QEMU printed `Publishing: 'Hello World: 1..10'`; the listener,
+subscribed to a NATIVE talker through the same router, printed
+`I heard: [Hello World: 34..46]`.
+
+**Declared residue** — 11 `qemu-arm-baremetal` bodies (RTIC / serial / xrce) and
+`workspaces/rust/src/talker_pkg` still use `nros_log`. The mps2 ones are
+single-platform demos with no cross-platform twin, so no portability claim rests
+on them. The workspace pkg is the reference shape and should follow; it was left
+because its lane is not runnable on this host and W7.b's risk is precisely the
+kind not to take unverified.
 
 ## W6 — CLOSED: prove portability with a CHECK, keep the copies (maintainer, 2026-08-05)
 
@@ -921,7 +976,7 @@ It is also a live group boundary: `example_portability`'s group B declares "uses
 the `nros_log` facade because `log` needs std" as one of its two reasons for
 being a separate group. Removing the split removes one of them.
 
-- [ ] **W7.a** Add `nros_log::init(sinks::default())` to the freertos, nuttx and
+- [x] **W7.a** Add `nros_log::init(sinks::default())` to the freertos, nuttx and
       threadx boards, beside their existing `log` bridges, so both facades work
       everywhere before any body moves.
 
@@ -962,15 +1017,15 @@ being a separate group. Removing the split removes one of them.
       regression on nuttx could sit unnoticed indefinitely. **W7.a is not blocked;
       W7's real prerequisite is that the nuttx cells can actually run.**
 
-- [ ] **W7.b** Move the node bodies to `nros_log::nros_info!`. **The asserted
+- [x] **W7.b** Move the node bodies to `nros_log::nros_info!`. **The asserted
       markers survive** — the format strings do not change, only the macro that
       emits them, so `TALKER_LOG_PREFIX` / `LISTENER_LOG_PREFIX` still match.
       Verify that claim per platform rather than assuming it; a facade that
       prefixes or reformats would break every e2e grep at once.
-- [ ] **W7.c** Retire the now-unused `log` bridges, or keep them and document
+- [x] **W7.c** Retire the now-unused `log` bridges, or keep them and document
       `log` as a supported-but-secondary facade. Decide explicitly — leaving both
       undocumented is how the split happened.
-- [ ] **W7.d** Re-run the group-B reason in the gate: with the facade unified,
+- [x] **W7.d** Re-run the group-B reason in the gate: with the facade unified,
       B's remaining difference is the execution model alone
       (`DispatchStrategy::Deferred` + explicit `tick()`). Update the declared
       reason, and re-measure whether B still needs to be its own group.
