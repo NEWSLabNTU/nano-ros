@@ -316,12 +316,37 @@ check JOBS="75%":
     # function does not.
     source scripts/build/cargo.sh
     export NROS_EXAMPLE_PROFILE_FLAGS="$(nros_cargo_profile_arg_string)"
-    echo "Checking examples (parallel, JOBS={{JOBS}})..."
-    if ! command -v parallel >/dev/null 2>&1; then
+
+    # Fan-out choice. Two ways to be serial here, for opposite reasons:
+    #
+    #   NROS_JOBSERVER=1  an OUTER pool already owns the tokens. A serial walk
+    #                     still saturates the machine, because cargo is itself a
+    #                     jobserver client and every one it spawns draws from
+    #                     that pool. Fanning out on top would double-count the
+    #                     budget — the nesting `nros_pool_available` refuses for
+    #                     the same reason, and the `build-all` extras lane in
+    #                     the root justfile already handles it exactly this way.
+    #   no `parallel`     nothing to fan out WITH. One frontend at a time, each
+    #                     free to use the whole machine.
+    #
+    # Only the middle case — parallel present, no outer pool — needs the inner
+    # width capped, and only there is NROS_EXAMPLE_INNER_JOBS set.
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        echo "Checking examples (serial; outer jobserver owns the tokens)..."
+        SERIAL=1
+    elif ! command -v parallel >/dev/null 2>&1; then
         echo "GNU parallel not found — falling back to serial check."
+        echo "  (provision it: \`nros setup --system\`; \`just doctor\` lists it as gnu-parallel)"
         SERIAL=1
     else
         SERIAL=0
+        # Without this each of the {{JOBS}} frontends runs `cargo clippy` at its
+        # own default width — one whole machine EACH. Nominally
+        # 0.75*ncpu * ncpu on a 32-core host; the real width stayed survivable
+        # only because each example's dep graph is small, which is luck, not a
+        # bound.
+        export NROS_EXAMPLE_INNER_JOBS="$(nros_cargo_inner_jobs '{{JOBS}}')"
+        echo "Checking examples (parallel, JOBS={{JOBS}}, cargo -j$NROS_EXAMPLE_INNER_JOBS each)..."
     fi
 
     toml_list="$(mktemp "${TMPDIR:-/tmp}/nros_check_toml.XXXXXX")"
@@ -406,7 +431,11 @@ check JOBS="75%":
         # followed the setup instructions. A fresh clone has no `generated/`,
         # so CI never saw it and main stayed green.
         pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.toml" | head -1)"
-        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check -p "$pkg" && eval $env_prefix cargo clippy --quiet $flags )
+        # Empty unless the caller fanned out with GNU parallel — see the
+        # dispatch above. Never set under an outer jobserver, where an explicit
+        # `-j` would override the inherited token pool.
+        local jflag="${NROS_EXAMPLE_INNER_JOBS:+-j $NROS_EXAMPLE_INNER_JOBS}"
+        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check -p "$pkg" && eval $env_prefix cargo clippy --quiet $jflag $flags )
     }
     export -f check_one
     export NIGHTLY="{{NIGHTLY}}"

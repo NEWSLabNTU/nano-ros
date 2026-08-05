@@ -185,6 +185,41 @@ nros_cargo_frontend_jobs() {
     printf '%s\n' "$jobs"
 }
 
+# How wide may EACH cargo run, when N of them run side by side under a fan-out
+# that is NOT a jobserver?
+#
+# `scripts/build/jobserver-pool.sh` explains why a jobserver is the right answer
+# when the units spawn their own parallel tools: `-P N` MULTIPLIES, because each
+# unit's cargo assumes the whole machine. Where a pool is available that reason
+# stands and this helper is not what you want.
+#
+# The example lanes fan out with GNU parallel instead, and cannot use a pool:
+# it needs pinned make 4.4 for `--jobserver-style=fifo` (the system 4.3's
+# pipe-based jobserver cannot be joined by child tools), which is a provisioned
+# dependency those lanes deliberately do not carry. So they get the arithmetic
+# instead of the token pool — divide the budget up front rather than let every
+# frontend claim all of it.
+#
+# Accepts what GNU parallel's `-j` accepts (an integer or a "NN%" of cores) so
+# one spec drives both halves and they cannot drift apart.
+#
+# Only for the no-jobserver case. Under NROS_JOBSERVER=1 pass NOTHING: cargo is
+# itself a jobserver client, an explicit `-j` OVERRIDES the inherited pool, and
+# capping there would fight the very mechanism that already bounds the total.
+nros_cargo_inner_jobs() {
+    local spec="${1:-}" cores frontends inner
+    cores="$(nproc 2>/dev/null || echo 4)"
+    case "$spec" in
+        *%)          frontends=$(( cores * ${spec%\%} / 100 )) ;;
+        ''|*[!0-9]*) frontends="$cores" ;;
+        *)           frontends="$spec" ;;
+    esac
+    [ "$frontends" -lt 1 ] && frontends=1
+    inner=$(( cores / frontends ))
+    [ "$inner" -lt 1 ] && inner=1
+    printf '%s\n' "$inner"
+}
+
 nros_cmake_frontend_jobs() {
     local jobs="${NROS_CMAKE_FRONTENDS:-}"
     if [ -z "$jobs" ]; then
