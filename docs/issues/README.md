@@ -257,11 +257,12 @@ stage, serial, with the riscv half gated on the run's own coordinates by the sha
 graph from `build-fixtures` and fails when a fixture token that module OWNS is produced by no recipe
 on that path. See `archived/0405-*`.
 
-**#429** — `nano2nano::{test_gid_consistency,test_sequence_number_increment}` parse `MessageInfo`
-trace lines out of the native listener under `RUST_LOG=trace`; the listener emits none (verified
-directly: 0 matches for gid/MessageInfo/"Waiting for"), so "got 0" is literal. Transport is fine —
-the talker publishes against the same router. Grep-drift class (archived 0157/0164): diff the
-pattern against what the fixture prints before debugging delivery. See `0429-*`. (2026-08-05)
+RESOLVED 2026-08-05 — **#429** grep-drift: `nano2nano::{test_gid_consistency,test_sequence_number_increment}`
+parsed `MessageInfo` seq/GID out of the demo listener, which phase-277 slimmed (no receive-side trace).
+Retargeted to the AUTHORITATIVE source — the zenoh publisher shim's `… with attachment: seq=N, gid=[..]`
+trace — asserting on `output::MESSAGE_INFO_*` constants (not literals) and FAILING LOUDLY if the marker
+drifts; fixed the parsers for the real format. Both pass (GID `[80, b7, 08, 4a]`, seq `[1, 2]`). See
+`archived/0429-*`.
 
 RESOLVED 2026-08-05 — **#428** same class as #0413 (the declarative Node API never registered
 Cyclone type descriptors → `PublisherCreationFailed` → the opaque `NodeRegister`). Fixed by #0413's

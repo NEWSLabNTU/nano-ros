@@ -48,6 +48,20 @@ pub const TALKER_READY_MARKER: &str = TALKER_LOG_PREFIX;
 /// publish line from setup prose containing "Publishing" (phase-295 W2).
 pub const TALKER_PAYLOAD_PREFIX: &str = "Publishing: '";
 
+/// MessageInfo attachment trace (issue 0429). The zenoh publisher shim logs the
+/// per-message MessageInfo it stamps into the wire attachment under `RUST_LOG=trace`
+/// (`nros-rmw-zenoh/src/shim/publisher.rs`): `… with attachment: seq=N, ts=…,
+/// gid=[..]`. This is the authoritative source of the sequence/GID a subscriber
+/// then reads — the DEMO listener is slim and no longer traces the receive side, so
+/// tests observe the values here. The line marker proves the attachment path fired.
+pub const MESSAGE_INFO_ATTACHMENT_MARKER: &str = "with attachment:";
+/// The per-message sequence number inside [`MESSAGE_INFO_ATTACHMENT_MARKER`]
+/// (`seq=N,`). Monotonic per publisher.
+pub const MESSAGE_INFO_SEQ_PREFIX: &str = "seq=";
+/// The publisher GID inside [`MESSAGE_INFO_ATTACHMENT_MARKER`] (`gid=[..]`).
+/// Constant per publisher.
+pub const MESSAGE_INFO_GID_PREFIX: &str = "gid=";
+
 /// Pre-W4 Int32 chatter wording, retained by nodes OUTSIDE the phase-277 W4
 /// demo-parity flip: the purpose-built fixture bins
 /// (`packages/testing/nros-tests/bins/{param,safety,header}-chatter-*`,

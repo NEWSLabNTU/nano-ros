@@ -183,148 +183,130 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
 // MessageInfo Tests (sequence number, GID)
 // =============================================================================
 
-/// Test that sequence numbers increment monotonically per publisher
+// Issue 0429 — these observe the per-message MessageInfo (sequence + GID) the
+// zenoh publisher shim stamps into the wire attachment and logs under
+// `RUST_LOG=trace` (`output::MESSAGE_INFO_ATTACHMENT_MARKER`). They USED to grep
+// the demo listener's stderr, but phase-277 slimmed the example — it no longer
+// traces the receive side — so the greps silently found nothing ("got 0"). The
+// authoritative source of these values is the PUBLISHER, so observe it there and
+// assert on `output::*` constants, not literals, so the next banner change breaks
+// the constant rather than these tests (CLAUDE.md grep-drift rule).
+
+/// Run the native pair with `RUST_LOG=trace` on the TALKER and return the talker's
+/// captured output. Fails loudly if the MessageInfo attachment trace is absent —
+/// the drift #0429 fixed must not recur as a silent "got 0".
+fn capture_publisher_msginfo_trace(
+    locator: &str,
+    talker_binary: &std::path::Path,
+    listener_binary: &std::path::Path,
+) -> String {
+    use std::process::Command;
+
+    // The listener is the peer that makes this a real pair; it is not observed.
+    let mut listener_cmd = Command::new(listener_binary);
+    listener_cmd.env("NROS_LOCATOR", locator);
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
+        .expect("Failed to start listener");
+
+    let mut talker_cmd = Command::new(talker_binary);
+    talker_cmd
+        .env("NROS_LOCATOR", locator)
+        .env("RUST_LOG", "trace");
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+
+    // Accumulate several publishes (need ≥2 for the increment/consistency checks).
+    std::thread::sleep(Duration::from_secs(3));
+
+    talker.kill();
+    listener.kill();
+    let talker_output = talker
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    eprintln!("Talker trace output:\n{}", talker_output);
+    assert!(
+        talker_output.contains(output::MESSAGE_INFO_ATTACHMENT_MARKER),
+        "talker (RUST_LOG=trace) emitted no `{}` line — the publisher-shim MessageInfo \
+         trace moved or was removed (issue 0429 grep-drift class). Diff the marker \
+         constant against what the shim prints before assuming a delivery bug.\nOutput:\n{}",
+        output::MESSAGE_INFO_ATTACHMENT_MARKER,
+        talker_output
+    );
+    talker_output
+}
+
+/// Test that sequence numbers increment monotonically per publisher.
 #[rstest]
 fn test_sequence_number_increment(
     zenohd_unique: ZenohRouter,
     talker_binary: PathBuf,
     listener_binary: PathBuf,
 ) {
-    use std::process::Command;
-
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
+    let out =
+        capture_publisher_msginfo_trace(&zenohd_unique.locator(), &talker_binary, &listener_binary);
 
-    let locator = zenohd_unique.locator();
-
-    // Start listener with RUST_LOG=trace to get MessageInfo trace output
-    let mut listener_cmd = Command::new(&listener_binary);
-    listener_cmd
-        .env("NROS_LOCATOR", &locator)
-        .env("RUST_LOG", "trace");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
-        .expect("Failed to start listener");
-
-    // Wait for listener readiness
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
-
-    // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("NROS_LOCATOR", &locator);
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
-        .expect("Failed to start talker");
-
-    // Wait for several messages to be received (need at least 2 for increment/consistency check)
-    std::thread::sleep(Duration::from_secs(3));
-
-    // Kill processes and collect output
-    talker.kill();
-    listener.kill();
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-
-    eprintln!("Listener trace output:\n{}", listener_output);
-
-    // Parse seq= values from trace output
-    let seq_values: Vec<i64> = listener_output
+    // `… seq=N, ts=…` — take the leading digits after the prefix (stops at the comma).
+    let seq_values: Vec<i64> = out
         .lines()
         .filter_map(|line| {
-            if let Some(pos) = line.find("seq=") {
-                let rest = &line[pos + 4..];
-                let end = rest.find(' ').unwrap_or(rest.len());
-                rest[..end].parse::<i64>().ok()
-            } else {
-                None
-            }
+            let pos = line.find(output::MESSAGE_INFO_SEQ_PREFIX)?;
+            let rest = &line[pos + output::MESSAGE_INFO_SEQ_PREFIX.len()..];
+            let end = rest
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            rest[..end].parse::<i64>().ok()
         })
         .collect();
 
     eprintln!("Parsed sequence numbers: {:?}", seq_values);
-
     assert!(
         seq_values.len() >= 2,
         "Need at least 2 sequence numbers to verify increment, got {}",
         seq_values.len()
     );
-
-    // Verify monotonic increment
     output::assert_monotonic(&seq_values);
-
     eprintln!(
         "[PASS] Sequence numbers increment monotonically ({} messages)",
         seq_values.len()
     );
 }
 
-/// Test that publisher GID stays consistent across messages
+/// Test that publisher GID stays consistent across messages.
 #[rstest]
 fn test_gid_consistency(
     zenohd_unique: ZenohRouter,
     talker_binary: PathBuf,
     listener_binary: PathBuf,
 ) {
-    use std::process::Command;
-
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
+    let out =
+        capture_publisher_msginfo_trace(&zenohd_unique.locator(), &talker_binary, &listener_binary);
 
-    let locator = zenohd_unique.locator();
-
-    // Start listener with RUST_LOG=trace to get MessageInfo trace output
-    let mut listener_cmd = Command::new(&listener_binary);
-    listener_cmd
-        .env("NROS_LOCATOR", &locator)
-        .env("RUST_LOG", "trace");
-    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
-        .expect("Failed to start listener");
-
-    // Wait for listener readiness
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
-
-    // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("NROS_LOCATOR", &locator);
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
-        .expect("Failed to start talker");
-
-    // Wait for several messages to be received (need at least 2 for increment/consistency check)
-    std::thread::sleep(Duration::from_secs(3));
-
-    // Kill processes and collect output
-    talker.kill();
-    listener.kill();
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-
-    eprintln!("Listener trace output:\n{}", listener_output);
-
-    // Parse gid= values from trace output
-    let gid_values: Vec<String> = listener_output
+    // `… gid=[c0, 3b, 8b, a3]` — take the whole bracketed byte array.
+    let gid_values: Vec<String> = out
         .lines()
         .filter_map(|line| {
-            if let Some(pos) = line.find("gid=") {
-                let rest = &line[pos + 4..];
-                let end = rest.find(' ').unwrap_or(rest.len());
-                Some(rest[..end].to_string())
-            } else {
-                None
-            }
+            let pos = line.find(output::MESSAGE_INFO_GID_PREFIX)?;
+            let rest = &line[pos + output::MESSAGE_INFO_GID_PREFIX.len()..];
+            let start = rest.find('[')?;
+            let end = rest[start..].find(']')? + start;
+            Some(rest[start..=end].to_string())
         })
         .collect();
 
     eprintln!("Parsed GIDs: {:?}", gid_values);
-
     assert!(
         gid_values.len() >= 2,
         "Need at least 2 GID values to verify consistency, got {}",
         gid_values.len()
     );
 
-    // Verify all GIDs are identical
     let first_gid = &gid_values[0];
     for (i, gid) in gid_values.iter().enumerate() {
         assert_eq!(
@@ -334,10 +316,14 @@ fn test_gid_consistency(
         );
     }
 
-    // Verify GID is not all zeros (should be a real publisher ID)
-    assert_ne!(
-        first_gid, "00000000",
-        "GID should not be all zeros (should contain real publisher ID)"
+    // Not an all-zero GID — a real publisher ID has a non-zero hex byte.
+    let has_nonzero = first_gid
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .any(|c| c != '0');
+    assert!(
+        has_nonzero,
+        "GID should not be all zeros (should contain a real publisher ID): {first_gid}"
     );
 
     eprintln!(
