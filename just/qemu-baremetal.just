@@ -16,7 +16,35 @@ QEMU_BIN := QEMU_PREFIX / "bin/qemu-system-arm"
 # phase-336: no literal fallback. A wrong-but-plausible default here sends every
 # QEMU recipe at a path that does not exist and reports it as a missing fixture;
 # the resolver failing loudly names the real problem (no CLI built yet).
-PROFILE_DIR := `bash -c 'source scripts/build/cargo.sh && nros_cargo_target_profile_dir'`
+#
+# But it must not fail AT PARSE TIME. `just` evaluates a module's `:=` backticks
+# when the justfile loads, for EVERY invocation — including `just setup-cli`,
+# whose entire job is to build the CLI this query needs. A tree without one (a
+# fresh clone, or a `~/.nros/bin/nros` older than `nros profile`) could not run
+# ANY just recipe:
+#
+#     error: unrecognized subcommand 'profile'
+#     error: backtick failed with exit code 1
+#       ——▶ just/qemu-baremetal.just:19:16
+#
+# So the query yields EMPTY when the CLI cannot answer, and the recipes that
+# consume it check for empty and fail with the actionable message. Loud at USE,
+# silent at parse — which is what "fail loudly" wanted in the first place; it
+# just cannot be spelled as an eager assignment.
+PROFILE_DIR := `bash -c 'source scripts/build/cargo.sh && nros_cargo_target_profile_dir 2>/dev/null' || true`
+
+# Refuse to build a path out of an unresolved profile dir. Every recipe that
+# interpolates PROFILE_DIR calls this first.
+[private]
+_require-profile-dir:
+    #!/usr/bin/env bash
+    set -e
+    if [ -z "{{PROFILE_DIR}}" ]; then
+        echo "qemu: cannot resolve the cargo target-profile dir — the nros CLI is" >&2
+        echo "      missing or predates \`nros profile\` (phase-336)." >&2
+        echo "  Run:  just setup-cli" >&2
+        exit 1
+    fi
 
 # Provision the project-local patched qemu-system-arm under build/qemu.
 #
@@ -161,7 +189,7 @@ FIXTURE_TARGET := absolute_path("build/fixtures-cargo/qemu-arm-baremetal") / "th
 
 # Run basic QEMU test (nros serialization on Cortex-M3)
 [group("debug")]
-test-basic verbose="": build-fixtures
+test-basic verbose="": _require-profile-dir build-fixtures
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine lm3s6965evb -nographic \
@@ -198,7 +226,7 @@ build-rtic-main-e2e:
 
 # Run the Phase 216.B generated-entry RTIC E2E fixture on QEMU MPS2-AN385.
 [group("debug")]
-test-rtic-main-e2e verbose="": build-rtic-main-e2e
+test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{LOG_DIR}}/latest
