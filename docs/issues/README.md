@@ -51,7 +51,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-<<<<<<< HEAD
+RESOLVED 2026-08-05 — **#382** rlm v0.1.4 preserves launch order (`IndexMap`); the stale generated
 TU that kept the test red needed `nros codegen entry`, which needed 0414's CMake half fixed first.
 **#398** direction 2: `[[component]].name` stays an instance id, and `apply_model_execution` now
 REFUSES a `group_tiers` declaration that reached no node while a node of the same package is in the
@@ -59,8 +59,8 @@ model — telling "renamed" apart from "absent in this variant", which look iden
 **#392** last item done: `orchestration_e2e`'s metadata refresh exposed a service + action the launch
 MANIFEST never declared; the manifest was the stale side. See `archived/`.
 
->>>>>>> f98a92cc9 (fix(#382, #392, #398): launch order, the stale e2e fixture, and a silent tier bind)
 
+**#418** — raw action feedback/result payloads carry an EXTRA CDR encapsulation header
 (`[outer][goal_id][INNER][body]`), so they are wire-incompatible with ROS 2 *and* with nano-ros's
 own typed path. Raw↔raw is self-consistent — every action Runtime cell pairs a raw server with a
 raw client, so the double header cancels and nobody noticed. The inner header is deliberate (the raw
@@ -68,7 +68,6 @@ consumer reads the body with `new_with_header`), and removing it producer-only r
 issue-#35 corruption its comment warns about, so producer and consumer must change together. This is
 what stops phase-338 W3 migrating `action-{server,client}` / `service-client`. Decision in
 [RFC-0069](../design/0069-action-payload-envelope.md). See `0418-*`. (2026-08-05)
-=======
 Recently resolved (2026-08-04): **#414** — phase-330 W4 made the SystemModel a build artifact and
 deleted every committed `config/*model.yaml`; five tests still read those paths and failed on
 `os error 2` instead of on what they assert. RESOLVED by the rule that a test never reads a
