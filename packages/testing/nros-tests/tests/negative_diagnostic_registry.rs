@@ -110,21 +110,9 @@ const REGISTRY: &[Entry] = &[
                  NROS_SIZES_PROBE_MODE to prove the generated header sizes don't flake — the \
                  repeated build IS the assertion, antithetical to a cached artifact",
     },
-    Entry {
-        file: "borrowed_c_e2e.sh",
-        kind: Kind::RuntimeException,
-        tool: "cargo build + gcc",
-        reason: "composite build→run e2e: cargo build + codegen emit + a raw gcc link of \
-                 driver+generated source into one exe, then RUN it; no single compile_check \
-                 builder covers the composite (a dedicated recipe is a larger follow-up)",
-    },
-    Entry {
-        file: "borrowed_cpp_e2e.sh",
-        kind: Kind::RuntimeException,
-        tool: "cargo build + g++",
-        reason: "same composite build→run e2e as borrowed_c, C++ side (cargo + codegen + a \
-                 generated-crate cargo build + a raw g++ link, then RUN)",
-    },
+    // (borrowed_c_e2e.sh / borrowed_cpp_e2e.sh removed 2026-08-05 — they were
+    //  orphaned + bit-rotted dead code, deleted rather than registered. See
+    //  docs/issues/0423.)
     Entry {
         file: "integration_px4.rs",
         kind: Kind::RuntimeException,

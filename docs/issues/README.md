@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#423** — the borrowed-view (RFC-0033) RUNTIME e2e proofs `tests/borrowed_{c,cpp}_e2e.sh` were
+orphaned (no lane/recipe/CI ran them) AND bit-rotted (the RFC-0042 platform.h move + the
+`nros_config_variant_sz_*` guard both broke their build), i.e. dead code masquerading as coverage.
+Deleted them + their fixtures + the two negative-diagnostic-registry rows (phase-329 W5 follow-up).
+EMIT coverage survives in `rosidl-codegen`'s `#[ignore]` tests; the borrowed-view RUNTIME assertion is
+now unguarded. Re-establishing it as a build-stage fixture needs the standalone-`nros-c`
+`EXECUTOR_SIZE`-probe stub (sizes/opaque class) solved so a raw `gcc`/`g++` link finds the config
+variant symbol. See `0423-*`. (2026-08-05)
+
 **#419** — the play_launch pin in `nros-cli-core/build.rs` records the **superproject** SHA when the
 submodule is uninitialised, so `nros sync` reports "this `nros` was built from <a nano-ros commit>"
 and the issue-0409 guard fires forever. Two compounding faults: an uninitialised submodule is an
