@@ -130,14 +130,7 @@ only in-tree key that selected `Framework::Embassy`; `Framework::Rtic` is in the
 still reachable via `rtic-mps2-an385`. Fix = let the macro read the same manifest key (needs the
 expansion-time fs round-trip `rtic_board_spec_for` already defers). See `0415-*`. (2026-08-04)
 
-**#418** — raw action feedback/result payloads carry an EXTRA CDR encapsulation header
-(`[outer][goal_id][INNER][body]`), so they are wire-incompatible with ROS 2 *and* with nano-ros's
-own typed path. Raw↔raw is self-consistent — every action Runtime cell pairs a raw server with a
-raw client, so the double header cancels and nobody noticed. The inner header is deliberate (the raw
-consumer reads the body with `new_with_header`), and removing it producer-only reproduces the
-issue-#35 corruption its comment warns about, so producer and consumer must change together. This is
-what stops phase-338 W3 migrating `action-{server,client}` / `service-client`. Decision in
-[RFC-0069](../design/0069-action-payload-envelope.md). See `0418-*`. (2026-08-05)
+RESOLVED 2026-08-05 — **#418** raw action feedback/result carried a SECOND CDR header, breaking raw↔{ROS 2, typed} decode. RFC-0069 (option A) made the producer header-less; the `nros-node` `payload_has_cdr_encap` value-sniff (a 2nd instance of #35) was deleted (splice unconditionally); C/C++/ffi audited clean. Verified: `action_envelope_tests` 3/3, a native typed-client ↔ Node-class server pair decodes result `[0,1,1]`, and `ros2 action send_goal --feedback` returns SUCCEEDED. 14/18 action cells green; the 4 remaining are blocked by build defects that predate this (freertos sizes-header / nuttx #0433), tracked under #0433 + #0422. See `archived/0418-*`.
 (#416 resolved 2026-08-05 — `nros sync`'s source digest pruned build dirs by EXACT name, so it skipped
 `target/` and walked straight INTO `target-tls` / `target-zenoh` / `target-xrce` / … , the isolated
 build dirs `fixtures.toml` gives feature-variant rows. It then read every artifact it found, racing
