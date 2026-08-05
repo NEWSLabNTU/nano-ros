@@ -247,6 +247,16 @@ an `rmeta`/`.o` path. RESOLVED by recognising a cargo build dir instead of listi
 `CACHEDIR.TAG` plus a `target-` prefix for the not-yet-built case. Listing the dirs would have been
 the hand-maintained-exclude-list shape issue 0287 already replaced. See `archived/0416-*`.)
 
+**#446** — the same crate is compiled ~21x across leaf target dirs: 106 `nros-core` rlibs, **5**
+distinct `-C metadata` identities (45 of them the same compilation). Measured the exact
+incompatibility factors — profile, feature set, RUSTFLAGS, and **explicit `--target` even for the
+host triple** (so corrosion builds can never share with plain cargo builds). Separately,
+`incremental = true` keeps the identity but destroys byte-reproducibility across dirs
+(CGU session token), which blocks any content-addressed reuse; phase-336 made that profile the
+default everywhere. Isolation is applied per-DIRECTORY while incompatibility lives per-IDENTITY, and
+those are not the same partition. sccache's role is UNVERIFIED — measure before acting. See
+`0446-*`. (2026-08-06)
+
 **#441** — `zero_copy::test_zero_copy_message_info` observes nothing: the demo listener emits neither
 `"Waiting for"` nor `"seq="` (verified running the fixture directly — session opens, subscriber
 declares, zero matches). Grep-drift like #0429, but NOT fixable the same way: #0429 retargeted at the
