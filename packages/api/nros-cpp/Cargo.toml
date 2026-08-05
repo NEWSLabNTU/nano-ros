@@ -24,6 +24,9 @@ std = [
     "nros-node/std",
     "nros-rmw/std",
     "nros-c/std",
+    # Optional-dep forward: only applies when `bridge` is also on. Without it the
+    # bridge ABI's std-only diagnostics compile out (issue 0436).
+    "nros-bridge?/std",
 ]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc", "nros-c/alloc"]
 
@@ -34,6 +37,20 @@ alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc", "nros-c/alloc"]
 # (its `rmw_backend` ctor does the auto-register); `nros-cpp` no longer pulls a
 # backend rlib directly. Reverts Phase 161's drop, mirroring nros-c's W2.
 rmw-cffi = ["nros/rmw-cffi", "nros-c/rmw-cffi"]
+
+# Issue 0436 — the multi-RMW bridge ABI (`nros_init_multi` / `nros_fini_multi` /
+# `nros_pubsub_bridge_*`) that `<nros/bridge.hpp>`'s `MultiExecutor` calls.
+#
+# The header shipped without any archive carrying its symbols: `nros-bridge` was
+# reachable only from the RUST façade's `bridge` feature, so a C++ consumer could
+# include `bridge.hpp`, compile, and then fail to link — and a PX4 module (which
+# links `libnros_cpp.a` and nothing else) had no way to get them at all. Bundling
+# it here follows the same rule the backends already do: ONE archive is what a C++
+# binary links.
+#
+# Off by default: it pulls `alloc` (every bridge entity handle is boxed), which a
+# bare-metal image must opt into deliberately.
+bridge = ["alloc", "dep:nros-bridge"]
 
 # phase-308 — record declared entities instead of transporting them, for the
 # host metadata probe. Turns on the three executor-side hooks (node / timer /
@@ -170,6 +187,10 @@ nros-node.workspace = true
 # Replaces the separate `libnros_c.a` + backend-staticlib links and nros-cpp's own
 # optional backend deps.
 nros-c = { version = "0.5.0", path = "../nros-c", default-features = false }
+# Issue 0436 — the C/C++ multi-RMW bridge ABI behind the `bridge` feature. `cffi`
+# is what emits the `nros_init_multi` / `nros_pubsub_bridge_*` exports that
+# `<nros/bridge.h>` declares and `<nros/bridge.hpp>` wraps.
+nros-bridge = { version = "0.5.0", path = "../../rmw/bridge", default-features = false, features = ["cffi"], optional = true }
 # Phase 88.12 — `nros_cpp_node_get_logger` returns `&'static nros_log::Logger`.
 nros-log = { workspace = true }
 nros-platform = { workspace = true, default-features = false }

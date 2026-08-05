@@ -84,6 +84,11 @@ endfunction()
 
 _nros_px4_resolve_archive(_NROS_PX4_CPP_A NROS_CPP_ARCHIVE NROS_CPP_ARCHIVE
     "${NANO_ROS_ROOT}/target/release/libnros_cpp.a"
+    # Issue 0436 — a MULTI-RMW module (a uORB->RMW bridge) additionally needs the
+    # `bridge` feature, which is what puts `nros_init_multi` / `nros_pubsub_bridge_*`
+    # (the ABI `<nros/bridge.hpp>`'s MultiExecutor calls) into this archive:
+    #   cargo build -p nros-cpp --no-default-features \
+    #       --features std,rmw-zenoh-cffi,bridge --release
     "cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release")
 
 _nros_px4_resolve_archive(_NROS_PX4_PLATFORM_A NROS_PLATFORM_ARCHIVE NROS_PLATFORM_ARCHIVE

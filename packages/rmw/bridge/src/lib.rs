@@ -68,6 +68,23 @@ pub use config::{ConfigError, run_from_config, run_from_config_str};
 #[cfg(feature = "cffi")]
 mod cffi;
 
+/// Issue 0436 — force-link anchor for the C/C++ bridge ABI.
+///
+/// When this crate is bundled as an rlib DEPENDENCY of a staticlib root (that is
+/// how `libnros_cpp.a` ships it), rustc drops every `#[no_mangle]` export the root
+/// never references — so `<nros/bridge.hpp>`'s `MultiExecutor` compiled but failed
+/// to link, and a PX4 module could not reach the bridge API at all. The root
+/// references THIS from a `#[used]` static, which keeps the objects (and with them
+/// the whole `nros_init_multi` / `nros_pubsub_bridge_*` surface) in the archive.
+///
+/// Mirrors `nros_c::c_surface_anchor::C_SURFACE_ANCHOR`.
+#[cfg(feature = "cffi")]
+pub mod cffi_surface_anchor {
+    /// Fn pointers into the C ABI. Never called through — an anchor only.
+    pub static CFFI_SURFACE_ANCHOR: [unsafe extern "C" fn(*mut core::ffi::c_void); 1] =
+        [super::cffi::nros_fini_multi];
+}
+
 /// Size of the per-bridge payload-hash dedup ring. Forwarded sample
 /// hashes are written here in a circular buffer; receive-side
 /// matches against any slot within the window cause the sample to be

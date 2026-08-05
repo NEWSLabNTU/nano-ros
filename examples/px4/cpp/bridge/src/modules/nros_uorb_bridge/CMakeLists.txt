@@ -61,6 +61,11 @@ nros_px4_add_module(
 	# backend contributes no sources here — it is compiled INTO libnros_cpp.a by
 	# `--features rmw-zenoh-cffi`, and this list only drives the register call.
 	BACKENDS uorb zenoh
+	# `<nros/bridge.hpp>` (MultiExecutor) is gated on NROS_CPP_STD rather than
+	# __STDC_HOSTED__ on purpose (issue 0332: a hosted compiler can be run
+	# -nostdinc++ against a minimal libcpp with no <string>/<vector>). PX4 SITL is
+	# real posix with full libstdc++, so opt in explicitly.
+	COMPILE_FLAGS -DNROS_CPP_STD=1
 	INCLUDES ${_gen}
 	SRCS
 		${CMAKE_CURRENT_LIST_DIR}/NrosUorbBridge.cpp

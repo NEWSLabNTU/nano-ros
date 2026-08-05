@@ -169,7 +169,10 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
         --manifest-path "$EXT_DIR/ffi/Cargo.toml"
 
     echo "[3/4] building the nano-ros archives (outward backend baked in here)"
-    cargo build -p nros-cpp --no-default-features --features std,rmw-zenoh-cffi --release
+    # `bridge` is what puts nros_init_multi / nros_pubsub_bridge_* (the ABI
+    # nros::MultiExecutor calls) into libnros_cpp.a — issue 0436. Without it the
+    # module compiles and fails to LINK.
+    cargo build -p nros-cpp --no-default-features --features std,rmw-zenoh-cffi,bridge --release
     cargo build -p nros-rmw-zenoh-staticlib --features platform-posix,std --release
     # The POSIX platform archive nros_px4_add_module links (its guard names this
     # exact command when it is missing).

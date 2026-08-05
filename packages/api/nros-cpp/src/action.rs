@@ -884,8 +884,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
     // Latched fast-path first, re-borrowing the arena each time so the
     // executor borrow below does not overlap.
     {
-        let Some(core) =
-            (unsafe { cpp_arena_core_mut(client.arena_entry_index, executor_ptr) })
+        let Some(core) = (unsafe { cpp_arena_core_mut(client.arena_entry_index, executor_ptr) })
         else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         };

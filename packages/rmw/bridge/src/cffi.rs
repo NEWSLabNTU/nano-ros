@@ -131,7 +131,15 @@ pub unsafe extern "C" fn nros_init_multi(
             unsafe { *out = Box::into_raw(boxed) as *mut core::ffi::c_void };
             NROS_RMW_RET_OK
         }
-        Err(_) => NROS_RMW_RET_ERROR,
+        // Issue 0436 — this discarded the only description of WHY the open failed,
+        // so a C/C++ caller saw a bare -1 for "backend not registered", "that RMW
+        // name is not linked in", "the transport refused" and everything else.
+        // Name it on the error path (std only — the crate is no_std-capable).
+        Err(_e) => {
+            #[cfg(feature = "std")]
+            std::eprintln!("nros: nros_init_multi failed — {_e:?}");
+            NROS_RMW_RET_ERROR
+        }
     }
 }
 

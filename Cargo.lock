@@ -1729,6 +1729,7 @@ version = "0.5.0"
 dependencies = [
  "critical-section",
  "nros",
+ "nros-bridge",
  "nros-build-helpers",
  "nros-c",
  "nros-log",

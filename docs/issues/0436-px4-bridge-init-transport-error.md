@@ -80,6 +80,46 @@ but the PX4 link helper. It is small: teach the helper to resolve + link the bri
 archive the way it already does for `libnros_cpp.a`, `libnros_platform_posix.a` and
 the zenoh platform archive.
 
+
+## Update 2026-08-06 (b) — gap closed, module ported, frontier moved into PX4
+
+**The GAP is closed.** `nros-cpp` gained a `bridge` feature (+ a force-link anchor,
+because the rlib's `#[no_mangle]` exports were DCE'd out of the staticlib — the
+CLAUDE.md FORCE_LINK class; verified: the archive first carried `U nros_init_multi`
+with nothing to satisfy it). `libnros_cpp.a` now DEFINES `nros_init_multi`,
+`nros_fini_multi`, `nros_pubsub_bridge_create`, so `<nros/bridge.hpp>`'s
+`MultiExecutor` is reachable from a PX4 module — previously the header existed but
+no archive carried its symbols.
+
+**The module is ported** to the supported shape (`MultiExecutor` + `SessionSpec`,
+both sessions up front, `create_node_on` / `NodeBuilder` per node). It compiles and
+LINKS into PX4 SITL.
+
+Three more things fixed on the way, each the same "collapsed error" class:
+* `nros_init_multi` discarded the cause (`Err(_) => NROS_RMW_RET_ERROR`) — now names
+  it (std-gated).
+* `nros-cpp` `std` did not forward to `nros-bridge`, so those diagnostics compiled
+  out; forwarded via `nros-bridge?/std`.
+* `<nros/bridge.hpp>` is gated on `NROS_CPP_STD` (deliberately, issue 0332), which
+  a PX4 module does not define — the module now opts in explicitly.
+
+**Also found, worth its own fix:** `nros_init_multi` does NOT call the generated
+`nros_app_register_backends()`, while `nros_cpp_init` (i.e. `nros::init()`) does. So
+on the MultiExecutor path the registry is EMPTY unless the caller registers first.
+The module now calls it explicitly; the asymmetry should probably be removed inside
+`nros_init_multi`.
+
+**Frontier: the failure is now inside PX4, not in nano-ros's API.** With backends
+registered, both sessions named, `mode = Client` and a real locator
+(`tcp/127.0.0.1:7447`, `zenohd` up), `nros_init_multi` returns
+`Transport(ConnectionFailed)` — i.e. a SESSION OPEN failed. uORB's `session_create`
+cannot meaningfully fail (it mallocs and stashes), so it is the zenoh open. zenoh
+demonstrably works on this host (the native talker/listener pair published over a
+router minutes earlier), so **PX4 is the remaining variable** — most likely its
+lockstep simulated clock or the work-queue thread context that zenoh-pico's connect
+runs in. That is the next thing to test (e.g. open the same session from a plain PX4
+task vs a work-queue item, and with lockstep disabled).
+
 ## Investigation trail — the error is named, and two mechanisms are confirmed
 
 **The real error is `NodeError::Transport(ConnectionFailed)`.** `-100` is
