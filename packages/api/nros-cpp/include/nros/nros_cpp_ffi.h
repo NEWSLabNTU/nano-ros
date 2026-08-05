@@ -1375,6 +1375,34 @@ nros_cpp_ret_t nros_cpp_service_client_try_recv_reply(void *storage,
 nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage, int32_t *out);
 
 /**
+ * phase-338 W8 — block until a matching service server is discoverable.
+ *
+ * The C API has had `nros_client_wait_for_service` since phase-124; C++ never
+ * bound it, so every C++ client example hand-rolled a retry loop around the
+ * first request instead (three attempts, spin in between) to paper over slow
+ * discovery. This is the primitive those loops were approximating.
+ *
+ * Mirrors `rclcpp::ClientBase::wait_for_service`, and re-probes for the same
+ * reason `Client::wait_for_service` does
+ * (`nros-node/src/executor/handles.rs`): a `liveliness_get` samples the
+ * router's CURRENT token list and terminates, so a server that comes up after
+ * we start waiting is only seen by a fresh probe.
+ *
+ * # Returns
+ * * `NROS_CPP_RET_OK` — server visible.
+ * * `NROS_CPP_RET_TIMEOUT` — budget elapsed without seeing a token.
+ * * `NROS_CPP_RET_INVALID_ARGUMENT` — null storage / executor.
+ * * `NROS_CPP_RET_TRANSPORT_ERROR` — transport-level failure.
+ *
+ * # Safety
+ * `storage` must be a valid initialized future-style service client;
+ * `executor_handle` a valid `CppContext`.
+ */
+nros_cpp_ret_t nros_cpp_service_client_wait_for_service(void *storage,
+                                                        void *executor_handle,
+                                                        uint32_t timeout_ms);
+
+/**
  * Destroy a service client (drop in place, no free).
  *
  * # Safety
@@ -1800,7 +1828,24 @@ nros_cpp_ret_t nros_cpp_action_client_create(const struct nros_cpp_node_t *node,
  *
  * # Safety
  * All pointers must be valid.
+ * phase-338 W8 — block until the action server's send-goal queryable is
+ * discoverable.
+ *
+ * C++ sibling of `nros_action_client_wait_for_action_server`, which the C API
+ * has had since phase-124 while C++ bound neither it nor a readiness probe —
+ * so the C++ action-client examples hand-rolled a 3-attempt retry around
+ * `send_goal`. Mirrors `rclcpp_action::Client::wait_for_action_server`.
+ *
+ * Probes the `send_goal` service-client liveliness keyexpr, which is the
+ * load-bearing entity for the first `send_goal`; see
+ * `ActionClient::wait_for_action_server` in
+ * `nros-node/src/executor/handles.rs` for the re-probe rationale.
+ *
+ * # Safety
+ * `handle` must be a valid initialized `CppActionClient`.
  */
+nros_cpp_ret_t nros_cpp_action_client_wait_for_action_server(void *handle, uint32_t timeout_ms);
+
 nros_cpp_ret_t nros_cpp_action_client_send_goal(void *handle,
                                                 const uint8_t *goal_buf,
                                                 size_t goal_len,

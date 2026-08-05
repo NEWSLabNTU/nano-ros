@@ -102,6 +102,20 @@ template <typename A> class ActionClient {
     /// @param goal     Goal to send.
     /// @param goal_id  Output 16-byte goal UUID (filled on success).
     /// @return Result indicating success or failure.
+    /// phase-338 W8 — block until the action server is discoverable.
+    ///
+    /// Mirrors `rclcpp_action::Client::wait_for_action_server`. Probes the
+    /// `send_goal` queryable, which is the load-bearing entity for the first
+    /// `send_goal()`. Prefer this over retrying `send_goal()` on timeout: it
+    /// waits for the real condition and re-probes, so a server that comes up
+    /// after the wait starts is still seen.
+    ///
+    /// Spins the executor while probing — not for use inside a callback.
+    Result wait_for_action_server(uint32_t timeout_ms = 5000) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_client_wait_for_action_server(storage_, timeout_ms));
+    }
+
     Result send_goal(const GoalType& goal, uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
 

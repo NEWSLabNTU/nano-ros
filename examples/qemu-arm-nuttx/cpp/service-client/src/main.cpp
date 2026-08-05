@@ -62,33 +62,36 @@ int nros_app_main(int argc, char** argv) {
     example_interfaces::srv::AddTwoInts::Request req;
     req.a = a;
     req.b = b;
+    nros::Result ret;
 
-    // Issue 0153 / #188 — retry the call with a ~1 s spin backoff. On zenoh
-    // the server's readiness gossips ahead of its queryable route; a query
-    // fired in that window matches no queryable and can only time out (a
-    // zenoh get is evaluated against the queryables visible at fire time, so
-    // waiting longer on the same future never helps). Same fix shape as the
-    // native rust demo. Each attempt is a FRESH send_request (new query).
-    example_interfaces::srv::AddTwoInts::Response resp;
-    nros::Result ret = nros::Result(-2 /* NROS_RET_TIMEOUT */);
-    for (int attempt = 0; attempt < 3; attempt++) {
-        if (attempt > 0) {
-            fprintf(stderr, "service call timed out; retrying (attempt %d)\n", attempt + 1);
-            for (int i = 0; i < 10; i++) {
-                nros::spin_once(100);
-            }
-        }
-        auto fut = client.send_request(req);
-        if (fut.is_consumed()) {
-            fprintf(stderr, "send_request failed\n");
-            nros::shutdown();
-            return 1;
-        }
-        ret = fut.wait(nros::global_handle(), 5000, resp);
-        if (ret.ok() || ret.raw() != -2 /* NROS_RET_TIMEOUT */) {
-            break;
-        }
+    // phase-338 W8 — wait for the service, then call ONCE.
+    //
+    // Issue 0153 / #188 root cause: on zenoh the server's readiness gossips
+    // ahead of its queryable ROUTE, and a query fired in that window matches
+    // no queryable and can only time out — a zenoh get is evaluated against
+    // the queryables visible at fire time, so waiting longer on the SAME
+    // future never helps.
+    //
+    // The NuttX copy used to re-send three times with a ~1 s spin between
+    // attempts. `wait_for_service` is the primitive that was approximating: it
+    // probes the server's liveliness and RE-probes until the budget expires,
+    // so a server appearing mid-wait is still seen. Mirrors
+    // `rclcpp::ClientBase::wait_for_service`.
+    ret = client.wait_for_service(10000);
+    if (!ret.ok()) {
+        fprintf(stderr, "Service did not appear within 10s (ret=%d)\n", ret.raw());
+        nros::shutdown();
+        return 1;
     }
+
+    example_interfaces::srv::AddTwoInts::Response resp;
+    auto fut = client.send_request(req);
+    if (fut.is_consumed()) {
+        fprintf(stderr, "send_request failed\n");
+        nros::shutdown();
+        return 1;
+    }
+    ret = fut.wait(nros::global_handle(), 5000, resp);
 
     int exit_code = 0;
     if (ret.ok()) {

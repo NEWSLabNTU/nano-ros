@@ -50,6 +50,26 @@ int nros_app_main(int argc, char** argv) {
         order = atoi(ord);
     }
 #endif
+    // phase-338 W8 — wait for the action server, then send ONCE.
+    //
+    // Issue 0153 / #188 root cause: on zenoh the server's readiness gossips
+    // ahead of its send-goal queryable ROUTE, and a query fired in that window
+    // matches no queryable and can only time out (-2) — a zenoh get is
+    // evaluated against the queryables visible at fire time, so retrying the
+    // same query is the only recourse once it has been fired.
+    //
+    // The NuttX copy used to retry send_goal three times with a ~1 s spin
+    // between attempts. `wait_for_action_server` is the primitive that was
+    // approximating: it probes the send-goal queryable's liveliness and
+    // RE-probes until the budget expires, so a server appearing mid-wait is
+    // still seen. Mirrors `rclcpp_action::Client::wait_for_action_server`.
+    ret = client.wait_for_action_server(10000);
+    if (!ret.ok()) {
+        fprintf(stderr, "Action server did not appear within 10s (ret=%d)\n", ret.raw());
+        nros::shutdown();
+        return 2;
+    }
+
     printf("\nSending goal\n");
 
     example_interfaces::action::Fibonacci::Goal goal;
@@ -62,6 +82,7 @@ int nros_app_main(int argc, char** argv) {
         nros::shutdown();
         return 2;
     }
+
     printf("Goal accepted by server, waiting for result\n");
 
     // Poll for feedback while waiting — drain via the Stream<T> API,

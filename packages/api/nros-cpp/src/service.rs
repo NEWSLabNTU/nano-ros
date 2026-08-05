@@ -769,6 +769,76 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
     }
 }
 
+/// phase-338 W8 — block until a matching service server is discoverable.
+///
+/// The C API has had `nros_client_wait_for_service` since phase-124; C++ never
+/// bound it, so every C++ client example hand-rolled a retry loop around the
+/// first request instead (three attempts, spin in between) to paper over slow
+/// discovery. This is the primitive those loops were approximating.
+///
+/// Mirrors `rclcpp::ClientBase::wait_for_service`, and re-probes for the same
+/// reason `Client::wait_for_service` does
+/// (`nros-node/src/executor/handles.rs`): a `liveliness_get` samples the
+/// router's CURRENT token list and terminates, so a server that comes up after
+/// we start waiting is only seen by a fresh probe.
+///
+/// # Returns
+/// * `NROS_CPP_RET_OK` — server visible.
+/// * `NROS_CPP_RET_TIMEOUT` — budget elapsed without seeing a token.
+/// * `NROS_CPP_RET_INVALID_ARGUMENT` — null storage / executor.
+/// * `NROS_CPP_RET_TRANSPORT_ERROR` — transport-level failure.
+///
+/// # Safety
+/// `storage` must be a valid initialized future-style service client;
+/// `executor_handle` a valid `CppContext`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
+    storage: *mut c_void,
+    executor_handle: *mut c_void,
+    timeout_ms: u32,
+) -> nros_cpp_ret_t {
+    use nros_rmw::ClientTrait as _;
+
+    if storage.is_null() || executor_handle.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
+
+    // Latched: a previous wait already proved reachability.
+    if client.is_server_ready() {
+        return NROS_CPP_RET_OK;
+    }
+
+    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    const SPIN_MS: u64 = 10;
+    const PROBE_TIMEOUT_MS: u32 = nros_node::SERVER_DISCOVERY_PROBE_TIMEOUT_MS;
+    let deadline_ns = crate::nros_cpp_time_ns() + (timeout_ms as u64) * 1_000_000;
+
+    loop {
+        if client.start_server_discovery(PROBE_TIMEOUT_MS).is_err() {
+            return NROS_CPP_RET_TRANSPORT_ERROR;
+        }
+        // Drain this probe: token reply, or empty FINAL and re-issue.
+        loop {
+            let _ = ctx
+                .executor
+                .spin_once(core::time::Duration::from_millis(SPIN_MS));
+            match client.poll_server_discovery() {
+                Ok(Some(true)) => return NROS_CPP_RET_OK,
+                Ok(Some(false)) => break,
+                Ok(None) => {}
+                Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+            }
+            if crate::nros_cpp_time_ns() >= deadline_ns {
+                return NROS_CPP_RET_TIMEOUT;
+            }
+        }
+        if crate::nros_cpp_time_ns() >= deadline_ns {
+            return NROS_CPP_RET_TIMEOUT;
+        }
+    }
+}
+
 /// Destroy a service client (drop in place, no free).
 ///
 /// # Safety

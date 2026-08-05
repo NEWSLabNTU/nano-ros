@@ -848,6 +848,91 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
 ///
 /// # Safety
 /// All pointers must be valid.
+/// phase-338 W8 — block until the action server's send-goal queryable is
+/// discoverable.
+///
+/// C++ sibling of `nros_action_client_wait_for_action_server`, which the C API
+/// has had since phase-124 while C++ bound neither it nor a readiness probe —
+/// so the C++ action-client examples hand-rolled a 3-attempt retry around
+/// `send_goal`. Mirrors `rclcpp_action::Client::wait_for_action_server`.
+///
+/// Probes the `send_goal` service-client liveliness keyexpr, which is the
+/// load-bearing entity for the first `send_goal`; see
+/// `ActionClient::wait_for_action_server` in
+/// `nros-node/src/executor/handles.rs` for the re-probe rationale.
+///
+/// # Safety
+/// `handle` must be a valid initialized `CppActionClient`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
+    handle: *mut c_void,
+    timeout_ms: u32,
+) -> nros_cpp_ret_t {
+    if handle.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let executor_ptr = client.executor_ptr;
+    if executor_ptr.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    const SPIN_MS: u64 = 10;
+    const PROBE_TIMEOUT_MS: u32 = nros_node::SERVER_DISCOVERY_PROBE_TIMEOUT_MS;
+    let deadline_ns = crate::nros_cpp_time_ns() + (timeout_ms as u64) * 1_000_000;
+
+    // Latched fast-path first, re-borrowing the arena each time so the
+    // executor borrow below does not overlap.
+    {
+        let Some(core) =
+            (unsafe { cpp_arena_core_mut(client.arena_entry_index, executor_ptr) })
+        else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        if core.is_server_ready() {
+            return NROS_CPP_RET_OK;
+        }
+    }
+
+    loop {
+        {
+            let Some(core) =
+                (unsafe { cpp_arena_core_mut(client.arena_entry_index, executor_ptr) })
+            else {
+                return NROS_CPP_RET_INVALID_ARGUMENT;
+            };
+            if core.start_server_discovery(PROBE_TIMEOUT_MS).is_err() {
+                return NROS_CPP_RET_TRANSPORT_ERROR;
+            }
+        }
+        loop {
+            {
+                let ctx = unsafe { &mut *(executor_ptr as *mut CppContext) };
+                let _ = ctx
+                    .executor
+                    .spin_once(core::time::Duration::from_millis(SPIN_MS));
+            }
+            let Some(core) =
+                (unsafe { cpp_arena_core_mut(client.arena_entry_index, executor_ptr) })
+            else {
+                return NROS_CPP_RET_INVALID_ARGUMENT;
+            };
+            match core.poll_server_discovery() {
+                Ok(Some(true)) => return NROS_CPP_RET_OK,
+                Ok(Some(false)) => break,
+                Ok(None) => {}
+                Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+            }
+            if crate::nros_cpp_time_ns() >= deadline_ns {
+                return NROS_CPP_RET_TIMEOUT;
+            }
+        }
+        if crate::nros_cpp_time_ns() >= deadline_ns {
+            return NROS_CPP_RET_TIMEOUT;
+        }
+    }
+}
+
 #[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
 pub unsafe extern "C" fn nros_cpp_action_client_send_goal(

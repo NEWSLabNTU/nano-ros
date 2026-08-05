@@ -62,6 +62,27 @@ int nros_app_main(int argc, char** argv) {
     example_interfaces::srv::AddTwoInts::Request req;
     req.a = a;
     req.b = b;
+    nros::Result ret;
+
+    // phase-338 W8 — wait for the service, then call ONCE.
+    //
+    // Issue 0153 / #188 root cause: on zenoh the server's readiness gossips
+    // ahead of its queryable ROUTE, and a query fired in that window matches
+    // no queryable and can only time out — a zenoh get is evaluated against
+    // the queryables visible at fire time, so waiting longer on the SAME
+    // future never helps.
+    //
+    // The NuttX copy used to re-send three times with a ~1 s spin between
+    // attempts. `wait_for_service` is the primitive that was approximating: it
+    // probes the server's liveliness and RE-probes until the budget expires,
+    // so a server appearing mid-wait is still seen. Mirrors
+    // `rclcpp::ClientBase::wait_for_service`.
+    ret = client.wait_for_service(10000);
+    if (!ret.ok()) {
+        fprintf(stderr, "Service did not appear within 10s (ret=%d)\n", ret.raw());
+        nros::shutdown();
+        return 1;
+    }
 
     example_interfaces::srv::AddTwoInts::Response resp;
     auto fut = client.send_request(req);
@@ -70,7 +91,7 @@ int nros_app_main(int argc, char** argv) {
         nros::shutdown();
         return 1;
     }
-    nros::Result ret = fut.wait(nros::global_handle(), 5000, resp);
+    ret = fut.wait(nros::global_handle(), 5000, resp);
 
     int exit_code = 0;
     if (ret.ok()) {

@@ -165,6 +165,25 @@ template <typename S> class Client {
         return out;
     }
 
+    /// phase-338 W8 — block until a matching service server is discoverable.
+    ///
+    /// Mirrors `rclcpp::ClientBase::wait_for_service`. Prefer this over
+    /// hand-rolling a retry loop around the first `call()` / `send_request()`:
+    /// it waits for the actual condition instead of guessing an attempt count,
+    /// and it re-probes, so a server that starts AFTER the wait begins is still
+    /// seen (a single liveliness query samples the router's current token list
+    /// and terminates).
+    ///
+    /// Spins the executor cooperatively while probing, so do NOT call it from
+    /// inside a callback — use the non-blocking `server_available()` there.
+    ///
+    /// Returns ok when the server is visible, `Timeout` when the budget
+    /// elapses.
+    Result wait_for_service(uint32_t timeout_ms = 5000) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_service_client_wait_for_service(storage_, executor_, timeout_ms));
+    }
+
     /// Phase 189.M3.3.f — callback-style async send. Only valid on a
     /// callback-style client (created via the `create_client(out, name, callback,
     /// ...)` overload); the reply is delivered to the registered response handler

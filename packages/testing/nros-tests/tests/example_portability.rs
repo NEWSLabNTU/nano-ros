@@ -124,68 +124,11 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     // wave that removes it. Grouped by cause, alphabetical within.
     Divergence {
         lang: "c",
-        program: "action-client",
-        platform: "qemu-arm-nuttx",
-        reason: "NuttX carries a 3-attempt retry loop around send_goal / the service \
-                 call that the other platforms lack — a workaround for slow \
-                 discovery, where the first request fires before the server is \
-                 visible. INVESTIGATED 2026-08-06: do NOT unify by copying the retry \
-                 everywhere (the earlier note said so). The API already has the right \
-                 primitive — `nros_client_wait_for_service` and \
-                 `nros_action_client_wait_for_action_server`, which exist in the C \
-                 header and explicitly mirror rclcpp's. No C or C++ example calls \
-                 either. Unify as wait-then-send-ONCE, which waits for the actual \
-                 condition instead of guessing 3 attempts and matches the idiom ROS \
-                 users know. BLOCKER: the C++ wrapper never bound them — `Client` has \
-                 only the non-blocking `server_available()`, and `ActionClient` has no \
-                 readiness method at all — so the C++ half needs two thin wrappers \
-                 first (RFC-0019: the C header is the SSoT).",
-    },
-    Divergence {
-        lang: "c",
         program: "listener",
         platform: "native",
         reason: "PERMANENT — native carries the NROS_SUB_TYPE env switch so tests can \
                  select int32 vs string. A declared affordance, not drift; delete this \
                  entry if the test that needs it goes away.",
-    },
-    Divergence {
-        lang: "cpp",
-        program: "action-client",
-        platform: "qemu-arm-nuttx",
-        reason: "NuttX carries a 3-attempt retry loop around send_goal / the service \
-                 call that the other platforms lack — a workaround for slow \
-                 discovery, where the first request fires before the server is \
-                 visible. INVESTIGATED 2026-08-06: do NOT unify by copying the retry \
-                 everywhere (the earlier note said so). The API already has the right \
-                 primitive — `nros_client_wait_for_service` and \
-                 `nros_action_client_wait_for_action_server`, which exist in the C \
-                 header and explicitly mirror rclcpp's. No C or C++ example calls \
-                 either. Unify as wait-then-send-ONCE, which waits for the actual \
-                 condition instead of guessing 3 attempts and matches the idiom ROS \
-                 users know. BLOCKER: the C++ wrapper never bound them — `Client` has \
-                 only the non-blocking `server_available()`, and `ActionClient` has no \
-                 readiness method at all — so the C++ half needs two thin wrappers \
-                 first (RFC-0019: the C header is the SSoT).",
-    },
-    Divergence {
-        lang: "cpp",
-        program: "service-client",
-        platform: "qemu-arm-nuttx",
-        reason: "NuttX carries a 3-attempt retry loop around send_goal / the service \
-                 call that the other platforms lack — a workaround for slow \
-                 discovery, where the first request fires before the server is \
-                 visible. INVESTIGATED 2026-08-06: do NOT unify by copying the retry \
-                 everywhere (the earlier note said so). The API already has the right \
-                 primitive — `nros_client_wait_for_service` and \
-                 `nros_action_client_wait_for_action_server`, which exist in the C \
-                 header and explicitly mirror rclcpp's. No C or C++ example calls \
-                 either. Unify as wait-then-send-ONCE, which waits for the actual \
-                 condition instead of guessing 3 attempts and matches the idiom ROS \
-                 users know. BLOCKER: the C++ wrapper never bound them — `Client` has \
-                 only the non-blocking `server_available()`, and `ActionClient` has no \
-                 readiness method at all — so the C++ half needs two thin wrappers \
-                 first (RFC-0019: the C header is the SSoT).",
     },
 ];
 
