@@ -111,13 +111,19 @@ visible from the file's location/consumer, not tribal memory:
   *scheduling* (cadence ratios), a different assertion from dim *honoring*; it
   already derives from `matrix::CELLS` (W1) over `RealtimeTiers`, so the two
   realtime consumers are cleanly split by what they assert.
-- [ ] Bake-time gate (issue 0380): a build-stage check that every dim the table
-  expects for a `(platform, lang)` cell is present in the committed ws-realtime
-  model — a stripped model fails the BUILD, not a QEMU e2e. **Still open** —
-  needs build-stage model introspection (a `check-*` recipe reading the
-  `system_model.yaml` dims against `SCHED_CELLS`). The matrix-layer half shipped
-  as `matrix::tests::sched_dims_table_covers_every_dim` (every `SchedDim` has a
-  cell); the model→cell half is the remaining piece.
+- [x] Bake-time gate (issue 0380): a check that every dim the table expects for a
+  `(platform, lang)` cell is present in the authored ws-realtime source — a
+  stripped model fails FAST, not silently in a QEMU e2e. **Done 2026-08-05 as
+  `tests/sched_dims_model_coverage.rs`.** **Premise updated for phase-330:** the
+  SystemModel is now a BUILD ARTIFACT (never committed), so the dims are authored
+  in `system.toml`'s `[tiers.<tier>.<rtos>]` blocks and lower into the model from
+  there — THAT is the SSoT the gate reads (not the old committed
+  `system_model.yaml`). It maps each `SCHED_CELLS` cell (lang→ws-realtime
+  workspace, platform→rtos key, dim→toml key) and asserts the dim key is declared;
+  the mapping tables panic on an unmapped coordinate so a new platform/lang cell
+  can't pass vacuously. Runs tier-1 (host), before any QEMU boot — a stripped dim
+  reds here. All 12 cells currently satisfied. (Matrix-layer half remains
+  `matrix::tests::sched_dims_table_covers_every_dim`.)
 
 ### W3 — ROS-interop matrix completion
 **Landed 2026-08-04** — 5 InteropCell rows added, each file gained `cases_bound_to_interop_cells` (G1-G4 + interop lib green). ros_editions boundary already documented in interop.rs.
