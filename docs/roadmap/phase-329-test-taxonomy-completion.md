@@ -228,11 +228,16 @@ native files corrected the plan; the "~40 deletions" target was optimistic:
   `xrce`/`zero_copy`/`executor`/`error_handling` all carry a `Bucket (phase-329
   W4)` header. `xrce`'s flags a delivery OVERLAP with the native XRCE cells
   (dedicated-bin, not example) for a future fold — kept, not deleted.
-- [ ] Target restated after the disposition: tests/ file count drops by **fewer
+- [x] Target restated after the disposition: tests/ file count drops by **fewer
   than the original ~40** — many of the 62 are genuine one-offs (keep + label)
   or W5 compile-at-test cases, not folds. The real deletions are the delivery
   DUPLICATES once the native-example consumer covers them; CELLS coverage still
-  goes UP (the consumer runs cells the hand files never bound to).
+  goes UP (the consumer runs cells the hand files never bound to). **Measured
+  2026-08-05: 151 test files** (150 `.rs` + 1 `.sh`), down from 156 — the delivery
+  dupes folded (nano2nano/services/actions/native_api trimmed; platform_header,
+  examples_canonical_shape, the borrowed shells removed) but the pre-disposition
+  `≤120` figure assumed ~36 foldable files that turned out to be genuine one-offs.
+  The realistic floor stands at ~150 unless the deferred folds land (see below).
 
 **Next concrete step (the consumer build, deferred from 2026-08-04 to avoid a
 rushed, coverage-losing sprint):** it needs (1) the per-lang example binary-name
@@ -465,8 +470,14 @@ tree. Refinements, so execution targets the real sites:
   once in CI as part of landing W1.
 - `grep -rn 'cargo build\|cmake -S\|cc \|g++\|make -C' tests/` hits only
   registry members (W5 gate green).
-- tests/ file count ≤ 120 (from 156) with CELLS-derived case count ≥
-  today's ~587.
+- ~~tests/ file count ≤ 120 (from 156)~~ **RESTATED 2026-08-05: 151 (from 156)**,
+  with CELLS-derived case count ≥ today's ~587. The `≤120` figure was
+  pre-disposition optimism — the W4 dispositioning pass proved ~36 of the target
+  files are genuine one-offs (behavior/boot/QoS/error/edge tests no matrix cell
+  covers) or W5 compile-at-test cases, NOT delivery duplicates. Every real
+  delivery dupe was folded; a lower count now requires deleting real coverage.
+  Remaining folds that WOULD lower it are deferred, not blocked: the `xrce.rs`
+  dedicated-bin delivery overlap, and the `emulator.rs`/`esp32_emulator.rs` triage.
 - A ROS-less host's `just test-all` reports skips grouped by matrix
   (interop / editions), not per-file.
 - **Build cost drops via the consumer side, not manifest dedup (W8 verdict):**
