@@ -105,9 +105,42 @@ pub fn run_image_link(builtins_stub: &Path) {
     let board_lib_rel =
         env::var("NUTTX_BOARD_LIB_DIR").unwrap_or_else(|_| "arch/arm/src/board".to_string());
 
-    let staging = nuttx_dir.join("staging");
-    let linker_script = nuttx_dir.join(&ld_script_rel);
-    let vectortab = (!vectortab_rel.is_empty()).then(|| nuttx_dir.join(&vectortab_rel));
+    // phase-339 W2 — resolve out of this arch's export SNAPSHOT when there is
+    // one, so the shared live tree cannot invalidate an already-linked image
+    // (issue 0433). Each path falls back to its live-tree spelling, which keeps
+    // a pre-phase-339 tree working and lets the migration land one arch at a
+    // time.
+    let kernel = crate::nuttx_export::kernel_libs(&nuttx_dir);
+    let staging = kernel.libs.clone();
+    // The snapshot flattens these: the linker script lands in `scripts/` and the
+    // vector table is copied into `startup/` by `build-nuttx.sh` (it is an
+    // intermediate object `make export` does not ship).
+    let linker_script = crate::nuttx_export::snapshot_or_tree(
+        &kernel,
+        &nuttx_dir,
+        &format!(
+            "scripts/{}",
+            std::path::Path::new(&ld_script_rel)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        ),
+        &ld_script_rel,
+    );
+    let vectortab = (!vectortab_rel.is_empty()).then(|| {
+        crate::nuttx_export::snapshot_or_tree(
+            &kernel,
+            &nuttx_dir,
+            &format!(
+                "startup/{}",
+                std::path::Path::new(&vectortab_rel)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            ),
+            &vectortab_rel,
+        )
+    });
     // Phase-285 W5 — a CONFIGURED vectortab that does not exist means this
     // build is not the image-link lane for this arch (e.g. the riscv C lane
     // compiles the riscv board crate with the helper's arm DEFAULT path

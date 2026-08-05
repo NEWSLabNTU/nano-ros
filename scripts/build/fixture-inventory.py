@@ -362,9 +362,15 @@ def prerequisite_rows():
             "kind": "preflight",
             "role": "kernel-export",
             "dir": "scripts/nuttx/build-nuttx.sh",
-            "build_root": "$NUTTX_DIR/staging",
+            "build_root": "$NUTTX_DIR/nros-nuttx-export-<arch>",
             "scheduler": "just nuttx build-fixtures -> just nuttx build",
-            "shared_mutation": "$NUTTX_DIR/staging/libc.a; $NUTTX_DIR/include/nuttx/config.h",
+            # phase-339 — the shared mutation is GONE. The kernel still builds
+            # in one tree (NuttX holds a single `.config`), but consumers link a
+            # per-arch export SNAPSHOT, so an arm fixture and a riscv fixture are
+            # valid at the same time. Leaving the old declaration would assert a
+            # hazard that no longer exists, which is worse than none: it is the
+            # inventory's job to say what is actually shared (issue 0433).
+            "shared_mutation": None,
             "notes": "idempotent kernel export required before Rust/C/C++ NuttX fixture builds",
         },
         {

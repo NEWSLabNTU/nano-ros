@@ -377,7 +377,11 @@ pub fn run_nuttx() {
         Err(_) => return,
     };
 
-    let staging = nuttx_dir.join("staging");
+    // phase-339 W2 — link the per-arch export SNAPSHOT, not the shared live
+    // tree. `kernel_libs` falls back to `staging/` when this arch has no
+    // snapshot, so a tree provisioned by an older `build-nuttx.sh` still links.
+    let kernel = crate::nuttx_export::kernel_libs(&nuttx_dir);
+    let staging = kernel.libs.clone();
     if !staging.join("libc.a").exists() {
         return;
     }
@@ -440,7 +444,9 @@ pub fn run_nuttx() {
     // opted out via `NUTTX_VECTORTAB_OBJ=""`.
     let _ = &vectortab_obj;
     println!("cargo:rustc-link-arg=-L{}", staging.display());
-    println!("cargo:rustc-link-arg=-L{}", board_src.display());
+    if !kernel.from_snapshot {
+        println!("cargo:rustc-link-arg=-L{}", board_src.display());
+    }
     println!("cargo:rustc-link-arg=-Wl,--start-group");
     // #134 follow-up: link every archive the NuttX build actually staged
     // instead of a hardcoded list. Configs differ per board: the arm
@@ -450,13 +456,21 @@ pub fn run_nuttx() {
     // ("undefined reference to audio_register"). Order inside
     // --start-group is irrelevant.
     //
-    // The staging dir is SHARED between configs (arm and riscv kernels both
-    // stage into third-party/nuttx/nuttx/staging), so the lib set this scan
-    // sees can change under a cached build-script output. Watch the dirs:
-    // their mtime moves when archives are added/removed, forcing a re-scan
-    // instead of linking against a lib list from the other config's kernel.
+    // phase-339 W2 — watch the dir so the lib set is re-scanned when archives
+    // are added or removed.
+    //
+    // This used to be the SHARED live `staging/`, which both architectures wrote:
+    // the watch was correct (it stopped us linking "a lib list from the other
+    // config's kernel") but it made every arm entry read stale the moment riscv
+    // built, because the watched path had genuinely changed (issue 0433). With a
+    // per-arch snapshot the watch means what it says — this arch's kernel changed
+    // — and the other architecture cannot trip it.
     println!("cargo:rerun-if-changed={}", staging.display());
-    println!("cargo:rerun-if-changed={}", board_src.display());
+    if !kernel.from_snapshot {
+        // Compatibility path only: pre-phase-339 trees still need the separate
+        // board-lib dir watched, and still carry the cross-arch hazard above.
+        println!("cargo:rerun-if-changed={}", board_src.display());
+    }
     let mut staged: Vec<String> = std::fs::read_dir(&staging)
         .into_iter()
         .flatten()
@@ -468,7 +482,10 @@ pub fn run_nuttx() {
         })
         .collect();
     staged.sort();
-    if board_src.join("libboard.a").exists() {
+    // phase-339 W2 — the snapshot ships `libs/libboard.a`, so the scan above
+    // already found it. Only the live-tree fallback needs the special case,
+    // where `libboard.a` sits outside the staging dir.
+    if !kernel.from_snapshot && board_src.join("libboard.a").exists() {
         staged.push("board".to_string());
     }
     if staged.is_empty() {
