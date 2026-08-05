@@ -59,18 +59,32 @@ counting `mps2` as if it were one. **Check a candidate name against
 platform-looking words.** A gate that asserts this mechanically is the real
 fix and does not exist yet.
 
-## Remaining, untriaged (7)
+## Triaged since (2026-08-06, freshly rebuilt fixtures)
 
-- `large_msg::test_xrce_e2e_integrity` — "Expected 0 invalid messages, got 15"
+- `native_orchestration_misuse::launch_arm_is_a_removal_error` — **FIXED.** It
+  failed BY SUCCEEDING: it asserted `nros::main!(launch = …)` must be rejected
+  (phase-296 R-code.1 removed the arm), but phase-330 W7 brought the arm back as
+  the SUPPORTED spelling and the test was not retired with it. A test that
+  outlives the rule it guards inverts into a guard against the current contract.
+  Now `launch_arm_resolves_the_bringup`, asserting the arm compiles.
+- `native_orchestration_tiers` ×2 — **issue 0438.** The test greps a
+  `multi-tier` marker that only the NUTTX board emits; the native/linux board
+  prints the generic `NullNodeRuntime` fallback, so the assertion is
+  unsatisfiable on native regardless of router state.
+- `zero_copy::test_zero_copy_message_info` — **confirmed 0429's cause**, not
+  merely "may be". Verified by running the zero-copy listener directly against a
+  router: session opens, subscriber declares, and it emits ZERO matches for both
+  strings the test waits on (`"Waiting for"` readiness, then two `"seq="`).
+  Upstream's 0429 fix retargeted `nano2nano` at the publisher shim's trace but
+  did not cover this test, which still greps the listener.
+- `large_msg::test_xrce_e2e_integrity` — now PASSES.
+
+## Remaining, untriaged (3)
+
 - `xrce_ros2_interop::test_ros2_action_xrce_client` — accepted=true,
   got_feedback=false
-- `native_orchestration_tiers` ×2 — binary never reaches the run_tiers boot path
-- `native_orchestration_misuse::launch_arm_is_a_removal_error` — expected a
-  refusal, the check succeeded
 - `realtime_tiers_e2e::realtime_tiers` — 1 of 16 rows
-- `zero_copy::test_zero_copy_message_info` — no sequence markers (may be 0429's
-  shape; the other two zero_copy tests pass now)
-(was 8 — the `logging_smoke` line is diagnosed and fixed above)
+- (the `logging_smoke` line is diagnosed and fixed above)
 
 ## Method note
 
