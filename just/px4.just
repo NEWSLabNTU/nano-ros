@@ -177,9 +177,13 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # module compiles and fails to LINK.
     # profile-literal-ok: symbol fixture: linked into the same PX4 SITL image as
     # the archive above; one profile for the whole link.
-    cargo build -p nros-cpp --no-default-features --features std,rmw-zenoh-cffi,bridge --release
+    # `platform-posix` makes the umbrella's bundled zenoh-pico COMPLETE (core +
+    # platform layer, 1576 symbols). Without it the link needed a SECOND
+    # zenoh-pico archive, and two copies in one image is what broke the session
+    # open — issue 0436. One archive, one zenoh-pico.
+    cargo build -p nros-cpp --no-default-features \
+        --features std,rmw-zenoh-cffi,bridge,platform-posix --release
     # profile-literal-ok: symbol fixture: same PX4 SITL link as above.
-    cargo build -p nros-rmw-zenoh-staticlib --features platform-posix,std --release
     # The POSIX platform archive nros_px4_add_module links (its guard names this
     # exact command when it is missing).
     cmake -S "$ROOT/packages/platform/nros-platform-posix" -B "$ROOT/build/nros-platform-posix" >/dev/null

@@ -175,6 +175,52 @@ umbrella carries it and the platform archive is dropped, or the umbrella is buil
 without the bundled copy. Note `nros_px4_add_module` currently REQUIRES the separate
 zenoh archive (its guard names it), so the fix is a helper change too.
 
+
+## Update 2026-08-06 (d) — the duplicate WAS the bug; two fixes landed, one blocker left
+
+**Confirmed and FIXED: two copies of zenoh-pico.** The umbrella carried zenoh-pico's
+1465 CORE symbols but none of the 111 PLATFORM ones (`z_clock_*`, `_z_condvar_*`,
+`_z_task_*`, socket shims) — because it was built without a platform feature. The
+separate `libnros_rmw_zenoh_staticlib.a` supplied those, but it is a COMPLETE
+zenoh-pico (1576), so the image got two cores. Each copy owns its statics, so a
+session opened against one made socket calls resolving into the other: `z_open`
+returned CONNECTION_FAILED having put nothing on the wire.
+
+The SSoT fix is a single source, not a second archive — build the umbrella WITH a
+platform feature and its zenoh-pico is complete:
+
+    cargo build -p nros-cpp --no-default-features \
+        --features std,rmw-zenoh-cffi,platform-posix --release   # → all 1576
+
+`nros_px4_add_module` no longer links the second archive (it warns if
+`NROS_ZENOH_ARCHIVE` is still set), and `just px4 build-bridge-example` builds the
+complete umbrella. **VERIFIED: a zenoh session now OPENS inside PX4** —
+`[nros-rmw-cffi] open: locator="tcp/127.0.0.1:7447" mode=0 ret=0` where it was
+`ret=-18`. This is the duplicate-symbol class the project bans outright, one layer
+below the archives `check-no-allow-multiple-def` inspects.
+
+**Also FIXED: `open_multi`'s extra sessions were anonymous.** `NodeBuilder::rmw(name)`
+could only recognise an extra session by finding a NodeRecord already bound to it, so
+the FIRST node naming a backend always missed and fell through to "open a new
+session" — a SECOND session against a singleton backend, with an empty locator.
+Executor now carries `extra_session_ids` (the extras' `(rmw, locator)`, mirroring
+`primary_rmw_name`/`primary_locator`), populated by `open_multi_in` and by the
+open-a-new-session path, and consulted first in `resolve_session_slot`.
+
+**Remaining blocker — the C++ bridge and Node surfaces do not compose.**
+`nros_cpp_node_create_with_options` does `&mut *(executor_handle as *mut CppContext)`,
+but a `MultiExecutor` handle is the `ExecutorBox` that `nros_init_multi` boxed. Both
+happen to start with an `Executor`, so the cast "works" far enough to proceed and
+then corrupts memory: PX4 now **dumps core** during MultiExecutor construction
+instead of failing cleanly. `<nros/bridge.h>` documents the bridge handle as input to
+`nros_create_node_on` (the C entry point), so the C++ `nros::Node` / `NodeBuilder`
+path — which assumes a `CppContext` — cannot be used with it.
+
+Direction: give the two surfaces one handle type (or make the C++ Node path accept a
+bridge handle explicitly), and add a type tag so mixing them is a clean error instead
+of a core dump. Until then a C++ uORB→RMW bridge cannot create nodes on its sessions,
+and `examples/px4/cpp/bridge` stays a documented work-in-progress.
+
 ## Investigation trail — the error is named, and two mechanisms are confirmed
 
 **The real error is `NodeError::Transport(ConnectionFailed)`.** `-100` is

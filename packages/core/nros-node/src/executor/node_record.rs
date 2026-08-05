@@ -241,6 +241,26 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
         // Reuse an extra session if one already opened against the
         // same rmw + locator. Slot 0 (primary) handled by the
         // primary-identity check above.
+        // Issue 0436 — match the extras' RECORDED identity (rmw + locator). This
+        // is what lets a Node bind to a session `open_multi` opened: previously the
+        // only signal was a prior NodeRecord bound to that slot, so the FIRST node
+        // naming a backend always missed and fell through to opening a SECOND
+        // session against it (which fails — the backend's global state is a
+        // process singleton).
+        for (i, id) in self.executor.extra_session_ids.iter().enumerate() {
+            let (sess_rmw, sess_loc) = id;
+            if sess_rmw.as_str() == rmw {
+                let locator_matches = match self.locator {
+                    // No locator requested → inherit whatever this session opened with.
+                    None => true,
+                    Some(loc) => sess_loc.as_str() == loc,
+                };
+                if locator_matches {
+                    return Ok((i + 1) as u8);
+                }
+            }
+        }
+
         for (i, sess) in self.executor.extra_sessions.iter().enumerate() {
             let _ = sess;
             // Phase 104.C.3 doesn't yet store rmw-name per session;
@@ -273,6 +293,15 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
             .extra_sessions
             .push(session)
             .map_err(|_| NodeError::NodeTableFull)?;
+        // Issue 0436 — record identity here too, so the NEXT node naming this
+        // backend reuses the session instead of opening another.
+        {
+            let mut rmw_s = heapless::String::<32>::new();
+            let _ = rmw_s.push_str(rmw);
+            let mut loc_s = heapless::String::<128>::new();
+            let _ = loc_s.push_str(locator);
+            let _ = self.executor.extra_session_ids.push((rmw_s, loc_s));
+        }
         let idx = self.executor.extra_sessions.len();
         if idx > u8::MAX as usize {
             return Err(NodeError::NodeTableFull);

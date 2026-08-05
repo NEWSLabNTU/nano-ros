@@ -26,18 +26,25 @@ bridge API this module does not yet use.** See
 [issue 0436](../../../../docs/issues/0436-px4-bridge-init-transport-error.md) for
 the full diagnosis. In short:
 
-* `nros::init()` + `NodeBuilder::rmw()` — what this module does, following the
-  phase-325 W3 note — is the SINGLE-session shape. It opens one session, so the
-  outward node has no zenoh session to bind to.
-* The supported multi-RMW shape is `nros::MultiExecutor` + `SessionSpec`
-  (`nros/bridge.hpp`), which opens both sessions up front. It requires linking
-  `libnros_bridge.a`, and `nros_px4_add_module` has no support for that yet —
-  the remaining gap.
+* The module now uses the supported multi-RMW shape (`nros::MultiExecutor` +
+  `SessionSpec`), and BOTH sessions open — including zenoh, inside PX4.
+* It is blocked on the C++ bridge and Node surfaces not composing: a
+  `MultiExecutor` handle is the `ExecutorBox` `nros_init_multi` boxed, while
+  `nros::Node`/`NodeBuilder` cast the handle to `CppContext`. Mixing them corrupts
+  memory (PX4 dumps core during construction).
 
-Two real defects were found and FIXED along the way (both verified): uORB
-registered under the deprecated unnamed shim (name `"default"`, so `rmw("uorb")`
-and `$NROS_RMW=uorb` could never select it), and `Executor::open_in` reporting
-backend-SELECTION outcomes as `Transport(ConnectionFailed)`.
+Four real defects were found and FIXED along the way, all verified:
+1. **Two copies of zenoh-pico** in one image (the umbrella's core + a complete
+   second one from the platform archive) — each with its own statics, so `z_open`
+   failed having put nothing on the wire. Fixed by making the umbrella's copy
+   complete (`platform-posix`) and dropping the second archive. A zenoh session now
+   opens inside PX4.
+2. **uORB registered under the deprecated unnamed shim** (name `"default"`), so
+   `rmw("uorb")` and `$NROS_RMW=uorb` could never select it.
+3. **`open_multi`'s extra sessions were anonymous**, so the first Node naming a
+   backend opened a SECOND session against it instead of reusing the one it had.
+4. **Selection outcomes reported as transport failures** (`Ambiguous` →
+   `ConnectionFailed`), plus three swallowed error causes now named.
 
 Verified so far, on a real PX4 SITL build:
 

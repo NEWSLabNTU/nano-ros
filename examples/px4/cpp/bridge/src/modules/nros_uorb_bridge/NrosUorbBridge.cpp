@@ -215,9 +215,14 @@ bool NrosUorbBridge::init()
 	}
 
 	// Outward node bound to the named networked session.
-	if (!nros::NodeBuilder(exec, "px4_bridge_out").rmw(NROS_BRIDGE_RMW).build(_out_node).ok()) {
-		PX4_ERR("bind outward node to %s failed", NROS_BRIDGE_RMW);
-		return false;
+	{
+		auto r = nros::NodeBuilder(exec, "px4_bridge_out").rmw(NROS_BRIDGE_RMW).build(_out_node);
+
+		if (!r.ok()) {
+			PX4_ERR("bind outward node to %s failed: code=%d", NROS_BRIDGE_RMW,
+				static_cast<int>(r.code()));
+			return false;
+		}
 	}
 
 	if (!_in_node.create_subscription(_in_sub, kInTopic).ok()) {

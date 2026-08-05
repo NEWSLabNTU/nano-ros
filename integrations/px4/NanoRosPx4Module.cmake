@@ -353,32 +353,43 @@ function(nros_px4_add_module)
     # would satisfy nothing at that final line.
     set(_nros_px4_link_archives "${_NROS_PX4_CPP_A}" "${_NROS_PX4_PLATFORM_A}")
 
-    # zenoh needs a THIRD archive. libnros_cpp.a carries the nano-ros zenoh
-    # backend, but zenoh-pico's own platform layer (z_clock_*, _z_condvar_*,
-    # _z_task_*, the socket shims — 74 symbols) lives in the zpico-sys staticlib
-    # wrapper, which is a separate crate:
+    # Issue 0436 — zenoh-pico has ONE source of truth: `libnros_cpp.a`.
     #
-    #   cargo build -p nros-rmw-zenoh-staticlib --release --features platform-posix,std
+    # This used to link a SECOND archive (`libnros_rmw_zenoh_staticlib.a`) for
+    # zenoh-pico's platform layer (z_clock_*, _z_condvar_*, _z_task_*, the socket
+    # shims). That was true when the umbrella was built WITHOUT a platform
+    # feature: its bundled zenoh-pico had the 1465 core symbols and none of the
+    # 111 platform ones, so the platform archive supplied them.
     #
-    # `platform-posix` is required: the crate's default feature set is bare
-    # no_std and fails with "`#[panic_handler]` function required, but not found"
-    # before it produces anything.
+    # But the platform archive is a COMPLETE zenoh-pico (1576 symbols), so the
+    # image then carried TWO copies of the core — both defining `_z_open_socket`.
+    # One definition wins per symbol while each copy keeps its own `static` state,
+    # and a session opened against one copy's state made socket calls that
+    # resolved into the other's: `z_open` failed with CONNECTION_FAILED having put
+    # nothing on the wire. That is the duplicate-symbol class the project bans
+    # outright (`check-no-allow-multiple-def`), one layer below the archives it
+    # usually catches.
+    #
+    # The fix is a single source, not a second archive: build the umbrella with a
+    # PLATFORM feature and its zenoh-pico is complete —
+    #
+    #   cargo build -p nros-cpp --no-default-features \
+    #       --features std,rmw-zenoh-cffi,platform-posix --release
+    #
+    # verified to yield all 1576 symbols, i.e. exactly what the separate archive
+    # had. So nothing extra is linked here; a missing platform layer now surfaces
+    # as an undefined-symbol link error naming `z_clock_now` & friends, whose fix
+    # is the feature above rather than another archive.
     if("zenoh" IN_LIST _networked_backends)
-        if(DEFINED NROS_ZENOH_ARCHIVE AND NOT "${NROS_ZENOH_ARCHIVE}" STREQUAL "")
-            set(_zenoh_a "${NROS_ZENOH_ARCHIVE}")
-        elseif(NOT "$ENV{NROS_ZENOH_ARCHIVE}" STREQUAL "")
-            set(_zenoh_a "$ENV{NROS_ZENOH_ARCHIVE}")
-        else()
-            set(_zenoh_a "${NANO_ROS_ROOT}/target/release/libnros_rmw_zenoh_staticlib.a")
-        endif()
-        if(NOT EXISTS "${_zenoh_a}")
-            message(FATAL_ERROR
-                "nros_px4_add_module: BACKENDS lists 'zenoh' but the zenoh-pico "
-                "platform archive is missing:\n    ${_zenoh_a}\n"
-                "Build it:\n    cargo build -p nros-rmw-zenoh-staticlib --release "
-                "--features platform-posix,std")
-        endif()
-        list(APPEND _nros_px4_link_archives "${_zenoh_a}")
+        foreach(_stale IN ITEMS "${NROS_ZENOH_ARCHIVE}" "$ENV{NROS_ZENOH_ARCHIVE}")
+            if(NOT "${_stale}" STREQUAL "")
+                message(WARNING
+                    "nros_px4_add_module: NROS_ZENOH_ARCHIVE is set (${_stale}) but is "
+                    "no longer linked — zenoh-pico now comes solely from libnros_cpp.a "
+                    "(issue 0436). Linking both put two copies of zenoh-pico in one "
+                    "image. Build the umbrella with a platform feature instead.")
+            endif()
+        endforeach()
     endif()
 
     target_link_libraries(${NPX_MODULE} PUBLIC ${_nros_px4_link_archives})

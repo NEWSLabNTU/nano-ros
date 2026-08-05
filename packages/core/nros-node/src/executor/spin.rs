@@ -325,6 +325,16 @@ impl<'s> Executor<'s> {
                 .extra_sessions
                 .push(session)
                 .map_err(|_| NodeError::NodeTableFull)?;
+            // Issue 0436 — record WHICH backend/locator this extra is, so
+            // `NodeBuilder::rmw(name)` can find it instead of opening a second
+            // session against the same (singleton) backend.
+            {
+                let mut rmw_s = heapless::String::<32>::new();
+                let _ = rmw_s.push_str(spec.rmw);
+                let mut loc_s = heapless::String::<128>::new();
+                let _ = loc_s.push_str(spec.locator);
+                let _ = executor.extra_session_ids.push((rmw_s, loc_s));
+            }
             #[cfg(feature = "std")]
             {
                 let idx = executor.extra_sessions.len() - 1;
@@ -1081,6 +1091,19 @@ pub struct Executor<'s> {
     /// extra session per Node is the worst case.
     pub(crate) extra_sessions:
         heapless::Vec<session::ConcreteSession, { crate::config::MAX_NODES }>,
+    /// Issue 0436 — `(rmw_name, locator)` for each entry of `extra_sessions`,
+    /// the extras' equivalent of `primary_rmw_name` / `primary_locator`.
+    ///
+    /// Without it an extra session is ANONYMOUS, and
+    /// `NodeBuilder::resolve_session_slot` could only recognise one by finding a
+    /// previously-registered `NodeRecord` bound to it. Sessions opened by
+    /// `open_multi*` have no such Node yet, so the FIRST `.rmw("zenoh")` node fell
+    /// through to "open a new session" — a SECOND zenoh session, with an empty
+    /// locator, which fails (see `primary_rmw_name`'s note: zenoh-pico's global
+    /// state is a process singleton). That is why the PX4 bridge could open both
+    /// sessions and then fail to bind its outward Node.
+    pub(crate) extra_session_ids:
+        heapless::Vec<(heapless::String<32>, heapless::String<128>), { crate::config::MAX_NODES }>,
     /// Phase 156 — primary session's rmw name + locator, captured
     /// at `open*` time so `NodeBuilder::resolve_session_slot`'s
     /// cache lookup can detect when a `.rmw(name).locator(loc)`
@@ -1282,6 +1305,7 @@ impl<'s> Executor<'s> {
             dispatch_slots: heapless::Vec::new(),
             component_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
+            extra_session_ids: heapless::Vec::new(),
             primary_rmw_name: heapless::String::new(),
             primary_locator: heapless::String::new(),
             namespace: {
