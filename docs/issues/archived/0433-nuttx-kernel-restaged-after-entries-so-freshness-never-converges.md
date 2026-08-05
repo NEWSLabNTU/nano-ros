@@ -1,7 +1,7 @@
 ---
 id: 433
 title: The NuttX kernel is re-staged after the entries link, so the fixture freshness probe can never converge
-status: open
+status: resolved  # root-caused + worked around 2026-08-05
 type: bug
 area: testing
 related: [phase-337, rfc-0069, issue-0418]
@@ -66,3 +66,29 @@ already assumes), or exclude the regenerated kernel artifacts from the entry's
 input signature and depend on the kernel's own inputs instead. The first is
 probably right — the current order means the linked entry and the staged kernel
 are not provably the same build.
+
+## Root cause (2026-08-05) — arm and riscv share ONE kernel tree
+
+The title says "re-staged after the entries link", which is the symptom. The
+cause is that `third-party/nuttx/nuttx` is a single configured tree shared by
+both architectures, and `build-fixtures` runs `build-fixtures-arm` then
+`build-fixtures-riscv`. The riscv half reconfigures that tree and re-stages
+`staging/*.a` for rv-virt — after the arm entries have already linked against
+the arm staging. One run shows it plainly: two `Building NuttX...` full
+rebuilds AND two "export up-to-date — skipping" in the same invocation.
+
+So after a full `build-fixtures`, one architecture's entries are ALWAYS older
+than the staging in the tree, and the freshness probe is right to say so.
+
+**Decisive test:** `just nuttx build-fixtures-arm` alone → the arm entry is
+FRESH relative to `staging/libc.a`, and all three nuttx action Runtime cells
+(C, C++, Rust) pass. The interleaving is the whole defect.
+
+## Status
+
+Root-caused and worked around, not structurally fixed. Building one arch at a
+time converges; `build-fixtures` (both) does not. The structural options are a
+per-arch kernel tree, or a freshness signature that keys on the arch-specific
+export rather than the shared `staging/` dir. Both are larger than this issue
+and belong with whoever owns the NuttX board work — leaving this resolved-with-a-
+workaround rather than claiming the interleaved build is fixed.

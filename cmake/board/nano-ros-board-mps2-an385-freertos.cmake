@@ -192,10 +192,21 @@ set(FREERTOS_STARTUP_INCLUDES
     ${NROS_FREERTOS_INCLUDES}
     ${NROS_FREERTOS_LWIP_INCLUDES}
     "${_NROS_LAN9118_DIR}/include"
-    # phase-337 W5.b — `freertos_c_entry.c` reads `NROS_APP_CONFIG`, declared by
-    # <nros/app_config.h>. The per-app generated header shadows this one on the
-    # include path when the carrier emits it; both spell the same type.
-    "${_NROS_BOARD_ROOT}/packages/api/nros-c/include"
+    # issue 0434 — the SOURCE `packages/api/nros-c/include` is deliberately NOT
+    # listed here.
+    #
+    # phase-337 W5.b added it so `freertos_c_entry.c` could read `NROS_APP_CONFIG`
+    # from <nros/app_config.h>, on the assumption that "the per-app generated
+    # header shadows this one on the include path when the carrier emits it".
+    # It does not: this entry landed at position 9 of the consumer's include
+    # list while the generated headers are at 10 and 13, so the SOURCE tree won
+    # and every C++ example TU resolved <nros/nros_config_generated.h> to the
+    # in-tree `#error` stub. Deterministic, not a race — two consecutive builds
+    # with the headers already present failed identically.
+    #
+    # The dir is still reachable: nros-c exports it as an INTERFACE include, so
+    # it appears later in the same list (position 14) and `app_config.h` still
+    # resolves. Adding it EARLY was redundant as well as harmful.
     CACHE INTERNAL "Include dirs for FREERTOS_STARTUP_SOURCE TUs")
 
 # ---------------------------------------------------------------------------

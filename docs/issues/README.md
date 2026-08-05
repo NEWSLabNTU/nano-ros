@@ -51,6 +51,23 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-05): **#434** — FreeRTOS C++ TUs resolved `<nros/nros_config_generated.h>`
+to the in-tree `#error` stub, so `freertos cpp` fixtures could not build. NOT the ordering race the
+first diagnosis claimed (lifting the Zephyr-guarded `OBJECT_DEPENDS` changed nothing, and two builds
+with the headers present failed identically): the include LIST order was wrong. phase-337 W5.b added
+the SOURCE `packages/api/nros-c/include` to `FREERTOS_STARTUP_INCLUDES` for `app_config.h`, assuming
+"the per-app generated header shadows this one" — it is shadowed BY it, landing at position 9 ahead
+of the generated dirs at 10/13. Removed; the dir is still reachable as nros-c's INTERFACE include
+(position 14). All three freertos action cells now pass. See `archived/0434-*`.
+
+Recently resolved (2026-08-05): **#433** — `just nuttx build-fixtures` exits 0 and its fixtures read
+STALE. Root cause: arm and riscv share ONE configured kernel tree, and the riscv half re-stages it
+after the arm entries link (one run shows two full `Building NuttX...` plus two "up-to-date" skips).
+Decisive test: `build-fixtures-arm` alone leaves the entry FRESH and all three nuttx action cells
+pass. Root-caused and worked around, NOT structurally fixed — a per-arch tree or an arch-keyed
+freshness signature is larger and belongs with the NuttX board owner. See `archived/0433-*`.
+
+
 **#200** — fixture-build timing campaign blocked on a big-disk CI runner (phase-226 validation
 residue). See `0200-*`.
 
@@ -147,12 +164,5 @@ and every failure examined so far is a real defect. See `0422-*`. (2026-08-05)
 
 RESOLVED 2026-08-05 — **#431** NuttX cells skipped on a host that ran only `nros setup qemu-arm-nuttx`. (1) `NUTTX_DIR` is in fact exported by `sdk-env.sh` (verified clean-env) — the filing's claim was stale. (2) The real gap: no kconfig frontend, and the `pip install kconfiglib` remedy is refused on PEP-668 distros. `scripts/nuttx/build-nuttx.sh` now self-provisions kconfiglib into a repo-local venv (`build/nuttx-kconfig-venv`) when none is present — venv pip isn't PEP-668-blocked, no sudo. (3) `just nuttx doctor` already reports the state. So the cells now run instead of skipping. See `archived/0431-*`.
 
-**#433** — `just nuttx build-fixtures` exits 0 and the fixtures it just built read STALE: the kernel
-is re-staged AFTER the entries link, so `staging/libc.a` is newer than the binary depending on it and
-the freshness probe can never converge (measured: entry 20:42:48, libc.a 20:46:00). Two consecutive
-green builds leave the same four cells unrunnable — the 0350 class, where a coordinate that never runs
-looks like one that cannot. Blocked RFC-0069's last acceptance item for `nuttx c`/`nuttx rust`.
-NOT the cause and already fixed: stale caches naming the board dir phase-337 W3 retired, and a
-`--profile nros-minsizerel` argv-quoting bug. See `0433-*`. (2026-08-05)
 
 Recently resolved (2026-08-05 cycle) — #248, #382, #392, #398, #411, #412, #413, #416, #419, #420, #421, #423, #425, #426, #427, #428, #429, #430. Their summaries live in `docs/issues/archived/`.

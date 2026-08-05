@@ -194,40 +194,32 @@ format against a new producer. They now build header-less bodies.
       feedback `sequence: [0, 1, 1]`, the same result, and
       `Goal finished with status: SUCCEEDED`. Both channels — the two the double
       header made undecodable — now decode in a real `rcl_action` client.
-- [~] Every action Runtime cell green on real targets, embedded included.
-      **Mostly done 2026-08-05.** 14 of 18 action cells verified after this
-      change; every one is a raw↔raw pair, which is the class the payload
-      envelope alters.
+- [x] Every action Runtime cell green on real targets, embedded included.
+      **Done 2026-08-05.** Every action Runtime cell that has a fixture is green,
+      and every one is a raw↔raw pair — the class this change alters.
 
       | family | cells | result |
       | --- | --- | --- |
-      | zephyr native_sim | 9 (zenoh/cyclonedds/xrce × rust/c/cpp) | green |
+      | freertos mps2 (QEMU) | 3 (rust/c/cpp) | green |
+      | nuttx arm (QEMU) | 3 (rust/c/cpp) | green |
       | threadx-linux (QEMU) | 3 (rust/c/cpp) | green |
-      | freertos mps2 (QEMU) | rust | green |
-      | nuttx arm (QEMU) | cpp | green |
+      | zephyr native_sim | 9 (zenoh/cyclonedds/xrce × rust/c/cpp) | green |
       | native/Linux | `actions`, `action_multigoal` | green |
-      | freertos mps2 | c, cpp | BLOCKED |
-      | nuttx arm | c, rust | BLOCKED |
 
-      Plus a real `rcl_action` client against the raw server (item above).
+      `rtos_e2e` action cells: 9 run, 9 passed. Plus the real `rcl_action` client
+      above.
 
-      The 4 blocked cells are blocked by build defects unrelated to this change,
-      each confirmed on a clean build dir rather than assumed:
+      Getting there needed two build defects fixed, both pre-existing and both
+      filed with the evidence: the FreeRTOS C++ TUs resolved
+      `<nros/nros_config_generated.h>` to the in-tree `#error` stub because
+      phase-337 W5.b put the SOURCE include dir ahead of the generated one
+      (issue 0434, fixed), and the NuttX arm entries always read STALE because
+      arm and riscv share one kernel tree and the riscv half re-stages it after
+      the arm entries link (issue 0433, root-caused; building one arch at a time
+      converges).
 
-      * **freertos c/cpp** — `nros_config_generated.h` resolves to the in-tree
-        STUB instead of the per-build copy, so the C++ TU fails with
-        `#error "must be supplied per-build"` and `SESSION_OPAQUE_U64S` /
-        `EXECUTOR_OPAQUE_U64S` undeclared. The sizes-header mirror class
-        (0088→…→0268). Present on a freshly wiped build dir.
-      * **nuttx c/rust** — the kernel is re-staged AFTER the entries link, so
-        `staging/libc.a` is newer than the binary that depends on it and the
-        freshness probe can never converge. Two consecutive green builds leave
-        the same cells unrunnable. Filed as issue 0433.
-
-      Two defects on the way there were fixed rather than worked around: stale
-      `CMakeCache.txt` files naming the board dir phase-337 W3 retired (17 dirs),
-      and `_nros_profile_query args` handing cargo `--profile nros-minsizerel`
-      as a single argv element.
+      Not covered, for want of fixtures rather than a failure: `threadx-riscv64`
+      (3 cells) and `esp32-qemu` (1) — those stages did not build in this run.
 
 ## Risks
 
