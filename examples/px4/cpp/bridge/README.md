@@ -19,45 +19,36 @@ This example demonstrates **reach**, and the serialization uORB avoids comes bac
 here, at the RMW boundary — necessarily. Zero-copy is not claimed for the outward
 half. Conflating the two would overclaim (phase-325 W4.3).
 
-## Status (2026-08-06)
+## Status (2026-08-06): WORKING
 
-**Builds, links and registers; the inward half works; the outward half needs the
-bridge API this module does not yet use.** See
-[issue 0436](../../../../docs/issues/0436-px4-bridge-init-transport-error.md) for
-the full diagnosis. In short:
+Verified end to end on PX4 SITL — the module reads a uORB topic in-firmware and
+re-publishes it as CDR `px4_msgs` on zenoh:
 
-* The module now uses the supported multi-RMW shape (`nros::MultiExecutor` +
-  `SessionSpec`), and BOTH sessions open — including zenoh, inside PX4.
-* It is blocked on the C++ bridge and Node surfaces not composing: a
-  `MultiExecutor` handle is the `ExecutorBox` `nros_init_multi` boxed, while
-  `nros::Node`/`NodeBuilder` cast the handle to `CppContext`. Mixing them corrupts
-  memory (PX4 dumps core during construction).
+```
+INFO  [nros_uorb_bridge] bridging /fmu/out/debug_key_value (uorb) -> /fmu/out/debug_key_value (zenoh)
+INFO  [nros_uorb_bridge] forwarded 100 samples (key=velx value=99.0)
+```
 
-Four real defects were found and FIXED along the way, all verified:
-1. **Two copies of zenoh-pico** in one image (the umbrella's core + a complete
-   second one from the platform archive) — each with its own statics, so `z_open`
-   failed having put nothing on the wire. Fixed by making the umbrella's copy
-   complete (`platform-posix`) and dropping the second archive. A zenoh session now
-   opens inside PX4.
-2. **uORB registered under the deprecated unnamed shim** (name `"default"`), so
-   `rmw("uorb")` and `$NROS_RMW=uorb` could never select it.
+(`px4_mavlink_debug start` supplies the uORB samples; nothing publishes
+`debug_key_value` by default.)
+
+Getting here fixed five real defects — see
+[issue 0436](../../../../docs/issues/0436-px4-bridge-init-transport-error.md):
+
+1. **Two copies of zenoh-pico** in one image (umbrella core + a complete second
+   from the platform archive), each with its own statics — `z_open` failed having
+   put nothing on the wire. zenoh-pico now has ONE source: the umbrella built with
+   a platform feature.
+2. **uORB registered under the deprecated unnamed shim** (`"default"`), so
+   `rmw("uorb")` / `$NROS_RMW=uorb` could never select it.
 3. **`open_multi`'s extra sessions were anonymous**, so the first Node naming a
-   backend opened a SECOND session against it instead of reusing the one it had.
-4. **Selection outcomes reported as transport failures** (`Ambiguous` →
-   `ConnectionFailed`), plus three swallowed error causes now named.
-
-Verified so far, on a real PX4 SITL build:
-
-| | |
-| --- | --- |
-| PX4 SITL links with the module | yes (1123/1123, `bin/px4`) |
-| module registered in the image | yes (`nros_uorb_bridge`) |
-| generated CDR symbols linked | yes (`nros_cpp_publish_px4_msgs_msg_debug_key_value`) |
-| both backends' register symbols | yes (uORB + zenoh — the W3 gate) |
-| module starts | **no** — issue 0436 |
-
-So the codegen half (issue 0362) and the link half (phase-325 W3) are done; what
-remains is a runtime session-selection question, not plumbing.
+   backend opened a SECOND session against it.
+4. **Two incompatible executor handles behind one `void*`** — `MultiExecutor`'s
+   `ExecutorBox` vs the C++ Node path's `CppContext`. Mixing them corrupted memory
+   (PX4 dumped core). `nros_cpp_init_multi` now opens multi-RMW sessions into a real
+   `CppContext`, so every existing C++ Node/publisher path works unchanged.
+5. **Collapsed errors** at four seams reported selection/registration problems as
+   transport failures; each now names its cause.
 
 ## Build + run
 

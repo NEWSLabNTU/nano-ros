@@ -72,7 +72,7 @@ if the lane is deliberately release-only. Matters because check-fast is the gate
 first: while it is red, every unrelated change looks like it broke something. See `0437-*`.
 (2026-08-06)
 
-**#436** — the phase-325 W3 PX4 bridge module builds, links and registers (module in `bin/px4`, generated CDR symbols linked, BOTH backends' register symbols present — the W3 gate holds) but `nros::init()` returns `TransportError(-100)` when a networked backend is registered alongside uORB. Fails BEFORE either node is created, so before the two-session code runs. Not the link, not a missing router (same with zenohd + NROS_LOCATOR), not registration order (uORB registers first, and the uORB-only W2 demo inits fine). See `0436-*`. (2026-08-06)
+RESOLVED 2026-08-06 — **#436** the PX4 uORB→RMW bridge now works end to end (uORB samples translated to CDR px4_msgs and published on zenoh, 100+ forwarded). Five defects fixed: TWO copies of zenoh-pico in one image (each with its own statics — z_open failed silently; zenoh-pico now has ONE source, the umbrella built with a platform feature); uORB registered under the deprecated unnamed shim so it could never be named; `open_multi`'s extra sessions were anonymous; two incompatible executor handles behind one `void*` (fixed by `nros_cpp_init_multi`, which opens multi-RMW sessions into a real CppContext); and four collapsed error seams. See `archived/0436-*`.
 
 Recently resolved (2026-08-05): **#434** — FreeRTOS C++ TUs resolved `<nros/nros_config_generated.h>`
 to the in-tree `#error` stub, so `freertos cpp` fixtures could not build. NOT the ordering race the

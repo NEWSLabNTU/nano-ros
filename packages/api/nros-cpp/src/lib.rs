@@ -684,6 +684,144 @@ fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t {
     }
 }
 
+/// Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
+/// into the CALLER'S storage, producing a real [`CppContext`].
+///
+/// # Why this exists next to `nros_init_multi`
+///
+/// `nros_init_multi` (the `nros-bridge` C ABI behind `<nros/bridge.hpp>`'s
+/// `MultiExecutor`) returns a heap `ExecutorBox { executor, _spec_strings }`. The
+/// C++ Node surface casts its handle to `*mut CppContext`
+/// (`{ executor, domain_id, in_dispatch, backing }`). Both begin with the SAME
+/// `Executor<'static>` at offset 0, so the cast reads correctly and then writes
+/// `domain_id` / `in_dispatch` over the `Vec<String>` that follows in the bridge's
+/// box — memory corruption, observed as PX4 dumping core during construction.
+///
+/// The two surfaces need ONE handle type. This is that: same storage contract as
+/// [`nros_cpp_init`] (caller owns the buffer, executor carved in place), so every
+/// existing C++ path — `nros::Node`, `NodeBuilder().rmw(name)`, publishers,
+/// subscriptions — works against a multi-session executor unchanged.
+///
+/// `specs[0]` is the primary session; the rest become extras, each findable by its
+/// `rmw` name (see `Executor::extra_session_ids`).
+///
+/// # Safety
+/// `specs` must point to `specs_len` valid [`NrosCppSessionSpec`] whose string
+/// fields are NUL-terminated and outlive the call; `storage` must be a
+/// `NROS_CPP_EXECUTOR_STORAGE_SIZE`-byte, `u64`-aligned buffer that outlives the
+/// executor (identical to `nros_cpp_init`).
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_init_multi(
+    specs: *const NrosCppSessionSpec,
+    specs_len: usize,
+    storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if specs.is_null() || specs_len == 0 || storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    unsafe extern "C" {
+        fn nros_app_register_backends();
+    }
+    // Same as `nros_cpp_init`: the generated strong def registers the linked
+    // backends. Without this the registry is empty and every spec's lookup misses
+    // (issue 0436 — `nros_init_multi` does NOT do it, which is its own trap).
+    unsafe {
+        nros_app_register_backends();
+    }
+
+    // Borrow the caller's C strings for the duration of the call. `open_multi_in`
+    // copies what it needs into the executor + `extra_session_ids`.
+    // Fixed table — no allocator dependency (this crate is no_std-capable) and a
+    // bridge names a handful of backends, not dozens.
+    const MAX_SPECS: usize = 8;
+    if specs_len > MAX_SPECS {
+        return NROS_CPP_RET_FULL;
+    }
+    let mut owned: [Option<nros_node::executor::SessionSpec<'_>>; MAX_SPECS] = Default::default();
+    for (i, slot) in owned.iter_mut().take(specs_len).enumerate() {
+        let spec = unsafe { &*specs.add(i) };
+        let rmw = match unsafe { cstr_to_str(spec.rmw) } {
+            Some(s) => s,
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        };
+        let locator = if spec.locator.is_null() {
+            ""
+        } else {
+            match unsafe { cstr_to_str(spec.locator) } {
+                Some(s) => s,
+                None => return NROS_CPP_RET_INVALID_ARGUMENT,
+            }
+        };
+        let node_name = if spec.node_name.is_null() {
+            ""
+        } else {
+            unsafe { cstr_to_str(spec.node_name) }.unwrap_or("")
+        };
+        let namespace = if spec.namespace_.is_null() {
+            "/"
+        } else {
+            unsafe { cstr_to_str(spec.namespace_) }.unwrap_or("/")
+        };
+        *slot = Some(nros_node::executor::SessionSpec {
+            rmw,
+            locator,
+            domain_id: spec.domain_id,
+            node_name,
+            namespace,
+        });
+    }
+    let mut flat: [nros_node::executor::SessionSpec<'_>; MAX_SPECS] =
+        [owned[0].expect("specs_len >= 1"); MAX_SPECS];
+    for (dst, slot) in flat.iter_mut().zip(owned.iter().take(specs_len)) {
+        *dst = slot.expect("filled above");
+    }
+    let owned = &flat[..specs_len];
+
+    let ctx_ptr = storage as *mut CppContext;
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe {
+        core::slice::from_raw_parts_mut(
+            core::ptr::addr_of_mut!((*ctx_ptr).backing) as *mut core::mem::MaybeUninit<u64>,
+            CPP_EXECUTOR_BACKING_U64S,
+        )
+    };
+    // SAFETY: as `nros_cpp_init` — caller-owned, correctly sized/aligned buffer.
+    match unsafe { CppExecutor::open_multi_in(owned, backing, nros_node::ExecutorSizing::DEFAULT) }
+    {
+        Ok(executor) => {
+            unsafe {
+                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), executor);
+                core::ptr::write(
+                    core::ptr::addr_of_mut!((*ctx_ptr).domain_id),
+                    owned.first().map(|s| s.domain_id).unwrap_or(0),
+                );
+                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(e) => node_error_to_cpp_ret(e),
+    }
+}
+
+/// Issue 0436 — C mirror of `nros_node::executor::SessionSpec`, matching
+/// `nros_session_spec_t` in `<nros/bridge.h>` field for field so a caller can use
+/// either entry point with one struct.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+pub struct NrosCppSessionSpec {
+    /// Canonical backend name, e.g. `"zenoh"`. Must be registered.
+    pub rmw: *const c_char,
+    /// Backend-specific locator. NULL = empty (uORB ignores it entirely).
+    pub locator: *const c_char,
+    /// ROS domain id.
+    pub domain_id: u32,
+    /// Session-default node name. NULL = empty.
+    pub node_name: *const c_char,
+    /// Session-default namespace. NULL = "/".
+    pub namespace_: *const c_char,
+}
+
 /// Shut down an nros executor session.
 ///
 /// Drops the executor in-place within the caller's storage.

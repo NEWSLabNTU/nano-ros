@@ -46,7 +46,6 @@
  ****************************************************************************/
 
 #include <nros/nros.hpp>
-#include <nros/bridge.hpp>
 
 #include <px4_platform_common/defines.h>
 #include <px4_platform_common/log.h>
@@ -85,6 +84,11 @@ constexpr const char *kOutTopic = "/fmu/out/debug_key_value";
 // Where the outward session dials. `$NROS_LOCATOR` overrides; this is the zenoh
 // default endpoint so a plain `zenohd` on the same host just works.
 constexpr const char *kDefaultOutLocator = "tcp/127.0.0.1:7447";
+
+// TWO sessions on ONE executor (issue 0436). Caller-owned executor storage,
+// exactly like `nros::init()`'s global storage — `nros_cpp_init_multi` carves the
+// executor in place inside it, so it must outlive the module.
+alignas(8) uint8_t g_exec_storage[NROS_CPP_EXECUTOR_STORAGE_SIZE];
 
 // The outward backend, chosen when libnros_cpp.a was built
 // (`--features rmw-<name>-cffi`) and named here so session selection does not
@@ -129,8 +133,7 @@ public:
 private:
 	void Run() override;
 
-	// TWO sessions on ONE executor (issue 0436): inward uORB, outward networked.
-	std::unique_ptr<nros::MultiExecutor> _exec{};
+
 	nros::Node _in_node{};
 	nros::Node _out_node{};
 	nros::Subscription<px4_msgs::msg::DebugKeyValue> _in_sub{};
@@ -177,36 +180,46 @@ bool NrosUorbBridge::init()
 	}
 
 	PX4_INFO("outward %s locator: %s", NROS_BRIDGE_RMW, out_locator);
-	// #0436 probe: NROS_BRIDGE_PROBE=zenoh|uorb opens a SINGLE session so the
-	// failing one can be identified; unset = the real two-session bridge.
+	// Issue 0436 — `nros_cpp_init_multi` (NOT `nros_init_multi`/`MultiExecutor`):
+	// it opens the sessions into a real `CppContext`, which is the handle type
+	// `nros::Node` / `NodeBuilder` expect. The bridge crate's handle is a different
+	// struct behind the same `void*`; both start with an `Executor` so the cast
+	// reads fine and then writes over the box's `Vec` — PX4 dumped core.
+	//
+	// NROS_BRIDGE_PROBE=zenoh|uorb opens a SINGLE session, for isolating which
+	// backend fails; unset = the real two-session bridge.
 	const char *probe = getenv("NROS_BRIDGE_PROBE");
 
+	NrosCppSessionSpec specs[2] = {};
+	size_t n_specs = 0;
+
 	if (probe != nullptr && strcmp(probe, "zenoh") == 0) {
-		PX4_INFO("probe: zenoh-only session");
-		_exec.reset(new nros::MultiExecutor({
-			nros::SessionSpec(NROS_BRIDGE_RMW, out_locator).with_node_name("px4_probe"),
-		}));
+		specs[0] = NrosCppSessionSpec{NROS_BRIDGE_RMW, out_locator, 0, "px4_probe", nullptr};
+		n_specs = 1;
 
 	} else if (probe != nullptr && strcmp(probe, "uorb") == 0) {
-		PX4_INFO("probe: uorb-only session");
-		_exec.reset(new nros::MultiExecutor({
-			nros::SessionSpec("uorb", "").with_node_name("px4_probe"),
-		}));
+		specs[0] = NrosCppSessionSpec{"uorb", "", 0, "px4_probe", nullptr};
+		n_specs = 1;
 
 	} else {
-		_exec.reset(new nros::MultiExecutor({
-			nros::SessionSpec("uorb", "").with_node_name("px4_bridge_in"),
-			nros::SessionSpec(NROS_BRIDGE_RMW, out_locator).with_node_name("px4_bridge_out"),
-		}));
+		// specs[0] is PRIMARY: uORB, the inward side.
+		specs[0] = NrosCppSessionSpec{"uorb", "", 0, "px4_bridge_in", nullptr};
+		specs[1] = NrosCppSessionSpec{NROS_BRIDGE_RMW, out_locator, 0, "px4_bridge_out", nullptr};
+		n_specs = 2;
 	}
 
-	if (!_exec->valid()) {
-		PX4_ERR("MultiExecutor open failed (uorb + %s): ret=%d", NROS_BRIDGE_RMW,
-			static_cast<int>(_exec->last_ret()));
-		return false;
+	{
+		auto ret = nros_cpp_init_multi(specs, n_specs, g_exec_storage);
+
+		if (ret != NROS_CPP_RET_OK) {
+			PX4_ERR("nros_cpp_init_multi(uorb + %s) failed: ret=%d", NROS_BRIDGE_RMW,
+				static_cast<int>(ret));
+			return false;
+		}
 	}
 
-	void *exec = _exec->handle();
+	void *exec = g_exec_storage;
+
 
 	// Inward node on the PRIMARY (uORB) session.
 	if (!nros::create_node_on(_in_node, exec, "px4_bridge_in").ok()) {

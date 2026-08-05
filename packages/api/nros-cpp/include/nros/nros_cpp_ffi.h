@@ -162,6 +162,34 @@ typedef enum nros_cpp_qos_liveliness_t {
 typedef int nros_cpp_ret_t;
 
 /**
+ * Issue 0436 — C mirror of `nros_node::executor::SessionSpec`, matching
+ * `nros_session_spec_t` in `<nros/bridge.h>` field for field so a caller can use
+ * either entry point with one struct.
+ */
+typedef struct NrosCppSessionSpec {
+  /**
+   * Canonical backend name, e.g. `"zenoh"`. Must be registered.
+   */
+  const char *rmw;
+  /**
+   * Backend-specific locator. NULL = empty (uORB ignores it entirely).
+   */
+  const char *locator;
+  /**
+   * ROS domain id.
+   */
+  uint32_t domain_id;
+  /**
+   * Session-default node name. NULL = empty.
+   */
+  const char *node_name;
+  /**
+   * Session-default namespace. NULL = "/".
+   */
+  const char *namespace_;
+} NrosCppSessionSpec;
+
+/**
  * Phase 211.H (issue #52) — one per-topic QoS override, the C++-FFI mirror of
  * Rust's `nros_rmw::QosOverride` (and nros-c's `nros_qos_override_t`). The
  * deploy plan lowers a `qos_overrides.<topic>.<role>.<policy>` launch param
@@ -581,6 +609,38 @@ nros_cpp_ret_t nros_cpp_init(const char *locator,
                              const char *node_name,
                              const char *namespace_,
                              void *storage);
+
+/**
+ * Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
+ * into the CALLER'S storage, producing a real [`CppContext`].
+ *
+ * # Why this exists next to `nros_init_multi`
+ *
+ * `nros_init_multi` (the `nros-bridge` C ABI behind `<nros/bridge.hpp>`'s
+ * `MultiExecutor`) returns a heap `ExecutorBox { executor, _spec_strings }`. The
+ * C++ Node surface casts its handle to `*mut CppContext`
+ * (`{ executor, domain_id, in_dispatch, backing }`). Both begin with the SAME
+ * `Executor<'static>` at offset 0, so the cast reads correctly and then writes
+ * `domain_id` / `in_dispatch` over the `Vec<String>` that follows in the bridge's
+ * box — memory corruption, observed as PX4 dumping core during construction.
+ *
+ * The two surfaces need ONE handle type. This is that: same storage contract as
+ * [`nros_cpp_init`] (caller owns the buffer, executor carved in place), so every
+ * existing C++ path — `nros::Node`, `NodeBuilder().rmw(name)`, publishers,
+ * subscriptions — works against a multi-session executor unchanged.
+ *
+ * `specs[0]` is the primary session; the rest become extras, each findable by its
+ * `rmw` name (see `Executor::extra_session_ids`).
+ *
+ * # Safety
+ * `specs` must point to `specs_len` valid [`NrosCppSessionSpec`] whose string
+ * fields are NUL-terminated and outlive the call; `storage` must be a
+ * `NROS_CPP_EXECUTOR_STORAGE_SIZE`-byte, `u64`-aligned buffer that outlives the
+ * executor (identical to `nros_cpp_init`).
+ */
+nros_cpp_ret_t nros_cpp_init_multi(const struct NrosCppSessionSpec *specs,
+                                   size_t specs_len,
+                                   void *storage);
 
 /**
  * Shut down an nros executor session.

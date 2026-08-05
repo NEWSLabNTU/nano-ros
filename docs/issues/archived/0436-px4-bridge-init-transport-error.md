@@ -1,10 +1,11 @@
 ---
 id: 436
 title: "PX4 bridge module: `nros::init()` returns TransportError(-100) when a networked backend is registered alongside uORB"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0362, phase-325]
+resolved_in: one-zenoh-pico + nros_cpp_init_multi
 ---
 
 ## Symptom
@@ -175,6 +176,40 @@ umbrella carries it and the platform archive is dropped, or the umbrella is buil
 without the bundled copy. Note `nros_px4_add_module` currently REQUIRES the separate
 zenoh archive (its guard names it), so the fix is a helper change too.
 
+
+
+## RESOLVED 2026-08-06 — the bridge works end to end
+
+```
+INFO  [nros_uorb_bridge] bridging /fmu/out/debug_key_value (uorb) -> /fmu/out/debug_key_value (zenoh)
+INFO  [nros_uorb_bridge] forwarded 100 samples (key=velx value=99.0)
+```
+
+Live uORB samples (from `px4_mavlink_debug`) read in-firmware, translated
+field-by-field into the generated CDR `px4_msgs` type, and published on zenoh — the
+phase-325 W3 goal, on the codegen issue 0362 delivered.
+
+**The last blocker: two incompatible executor handles behind one `void*`.**
+`nros_cpp_node_create_with_options` casts its handle to `*mut CppContext`
+(`{ executor, domain_id, in_dispatch, backing }`), while a `MultiExecutor` handle is
+the `ExecutorBox { executor, _spec_strings: Vec<String> }` that `nros_init_multi`
+boxed. `CppExecutor` IS `Executor<'static>` and both structs put it at offset 0
+(CppContext documents "keep `backing` last so `executor` stays at offset 0"), so the
+cast reads correctly — and then writes `domain_id`/`in_dispatch` over the bridge
+box's `Vec`. PX4 dumped core during construction.
+
+Fixed by giving the C++ surface its own multi-init: `nros_cpp_init_multi(specs,
+len, storage)` opens one session per spec into the CALLER'S storage with the same
+contract as `nros_cpp_init`, producing a real `CppContext`. Every existing C++ path
+— `nros::Node`, `NodeBuilder().rmw(name)`, publishers, subscriptions — then works
+against a multi-session executor unchanged, and there is no second handle type to
+confuse. It also calls `nros_app_register_backends()`, which `nros_init_multi` does
+not (recorded above as its own trap).
+
+`<nros/bridge.hpp>`'s `MultiExecutor` remains valid for the C bridge API
+(`nros_pubsub_bridge_*`, raw sample forwarding); it is simply NOT the handle the C++
+Node API takes. Worth a follow-up: give the two handles a type tag so mixing them is
+a clean error rather than memory corruption.
 
 ## Update 2026-08-06 (d) — the duplicate WAS the bug; two fixes landed, one blocker left
 
