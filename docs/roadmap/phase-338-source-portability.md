@@ -326,13 +326,10 @@ So five are closable and one is permanent. The floor for this phase is **1**.
   both, nuttx and threadx-linux carry neither. Small, and now cosmetic-only:
   `main.rs` is GLUE to the gate, so it is not compared and this blocks nothing.
 * **W3.c** — measure group B's irreducible delta. Gated on W7.
-* **W6** — fold the copies. **Recommendation: do not, and close it.** W6.b
-  already pre-authorizes this ("if that cannot be kept, do not fold; the gate
-  alone already removes the drift risk, which was the actual problem"). The
-  copies exist so a user can `cp -r` one out (RFC-0026); every way to fold them
-  either breaks that (`include!`, symlinks) or adds a templating surface nothing
-  else needs. Duplication that *cannot drift* is not a defect — it is the price
-  of copy-out, and W1 made it undriftable. Needs a maintainer yes/no, not work.
+* **W6** — **CLOSED 2026-08-05.** Not folded: portability is proven by a check,
+  copy-out is preserved by keeping the copies. Both halves are now gated — the
+  identical-copies test, and a new standalone-workspace-root test that codifies
+  the copy-out property nothing had been checking.
 * **W7** — one logging facade. **Needs re-scoping before it starts**: W7.a's
   premise was disproved (issue 0420 is archived not-a-bug; all three platforms
   do emit through the facade). What survives is W7.b/c/d — move the bodies to
@@ -828,22 +825,71 @@ macro arguments.
       entry and the `zpico_backend` lint value. Recorded here so W7.b does not
       re-derive it.
 
-## W6 — Fold the per-platform copies (gated on W1–W3 green)
+## W6 — CLOSED: prove portability with a CHECK, keep the copies (maintainer, 2026-08-05)
 
-Only once the gate proves the bodies are identical. The point of the earlier
-waves is that by here, folding destroys nothing.
+**Decision: do not fold. Assert instead.** Portability is demonstrated by a test
+that the copies are identical, and copy-out is preserved by leaving the copies
+where they are. W6.b already pre-authorized exactly this — *"if that cannot be
+kept, do not fold; the gate alone already removes the drift risk, which was the
+actual problem"* — so this closes the wave on its own terms rather than
+abandoning it.
 
-- [ ] **W6.a** Fold the copies within each portability group to one canonical
+Why folding loses: the copies exist so a user can `cp -r` a leaf out and build
+it (RFC-0026). Every way to fold either breaks that (`include!` and symlinks
+make the copied directory non-standalone) or adds a templating surface nothing
+else in the tree needs. **Duplication that cannot drift is not a defect — it is
+the price of copy-out**, and W1 made it undriftable.
+
+Measured at close: `rust/talker` exists in 9 platform directories and
+`rust/listener` in 8; for group A, four of five copies are byte-identical in
+code and the fifth differs only by `mod app_main;` (glue the gate excludes).
+The sole on-disk difference is each file's doc header naming its platform.
+
+### The two halves, both now gated
+
+| property | gate | status |
+|---|---|---|
+| the copies are IDENTICAL (portability) | `example_portability::copies_within_a_group_are_identical` + the `no_stale_divergence_entries` ratchet | 6/6, 14 triples identical, 6 declared exceptions |
+| a copy can be COPIED OUT and built | `example_shape::every_standalone_rust_leaf_is_its_own_workspace_root` | **new, 2026-08-05** |
+
+The second one was the gap. Until now copy-out was asserted only as "every leaf
+ships a README" — that the *instructions* travel, not that the thing still
+builds once it lands elsewhere. The mechanism that makes it true is the empty
+`[workspace]` table in each leaf manifest (standalone root + outer-workspace
+adoption guard), and nothing checked for it. All 71 standalone leaves had it, so
+this codifies a property that held by convention. Dropping it fails indirectly —
+cargo adopts the leaf into whatever workspace it finds upward, which reads as a
+dependency or feature-unification problem, not a missing table.
+
+Membership is decided structurally (does an ancestor manifest declare
+`[workspace]`?), not by path name — a first draft skipped anything under a
+`workspaces/` component and false-flagged
+`examples/templates/multi-node-workspace/src/*`, which is the same kind of
+member living somewhere else.
+
+### Reopen only if
+
+A materializer gets built for another reason — if `nros new` ever templates
+example projects, folding becomes nearly free and this is worth revisiting. Do
+not build one *in order to* fold.
+
+
+- [x] **W6.a** CLOSED — not folded, by decision above.
+      ~~Fold the copies within each portability group to one canonical~~
       source plus per-platform build configuration (`Cargo.toml`,
       `.cargo/config.toml`, `package.xml`, `CMakeLists.txt`), which is where the
       real platform difference has always lived.
-- [ ] **W6.b** **Preserve what the copies are for.** They exist so a user can copy
+- [x] **W6.b** SATISFIED — its own escape clause is what closed the wave, and
+      the copy-out property it names is now a test rather than a convention.
+      **Preserve what the copies are for.** They exist so a user can copy
       one out (RFC-0026) and so `talker`/`listener` mirror the ROS 2 examples that
       make nano-ros legible to ROS users. Folding must keep a per-platform copy
       *materializable* — generated or templated — not force users into a
       workspace. If that cannot be kept, do not fold; the gate alone already
       removes the drift risk, which was the actual problem.
-- [ ] **W6.c** **Zephyr stays an exception**, declared with its reason: its
+- [x] **W6.c** DONE — Zephyr is declared as group C in the gate, with its
+      reason recorded there.
+      **Zephyr stays an exception**, declared with its reason: its
       component shape (`Talker.c` / `.hpp`) is the convention Zephyr users expect,
       not a portability failure. Same for any other shape exception W1.b records.
 

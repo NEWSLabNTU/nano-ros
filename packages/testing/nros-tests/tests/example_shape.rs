@@ -401,6 +401,87 @@ fn every_canonical_leaf_has_readme() {
     );
 }
 
+/// phase-338 W6 — every canonical Rust leaf is a **standalone workspace root**.
+///
+/// This is the other half of the portability story, and until now it was only
+/// a convention. `example_portability` proves the copies are IDENTICAL, which
+/// is the argument for not folding them into one canonical source; the reason
+/// not to fold is that a user can `cp -r` a leaf out and build it (RFC-0026).
+/// That second property had no test — only `every_canonical_leaf_has_readme`,
+/// which checks the instructions travel, not that the thing still builds once
+/// it lands somewhere else.
+///
+/// The mechanism is the empty `[workspace]` table each leaf `Cargo.toml`
+/// carries. It does two jobs: makes the copied directory its own workspace
+/// root, and stops the repo's outer workspace from adopting the leaf in place.
+/// Drop it and the failure is indirect — cargo reports the leaf as a member of
+/// whatever workspace it can find upward, which reads as a dependency or
+/// feature-unification problem rather than a missing table.
+///
+/// Workspace MEMBERS are excluded — they belong to an enclosing workspace by
+/// design and must NOT carry the table. That exclusion is decided STRUCTURALLY
+/// (does an ancestor manifest declare `[workspace]`?) rather than by path name:
+/// a first draft skipped anything under a `workspaces/` component and promptly
+/// false-flagged `examples/templates/multi-node-workspace/src/*`, which is the
+/// same kind of member living somewhere else. Ask the tree, not the path.
+#[test]
+fn every_standalone_rust_leaf_is_its_own_workspace_root() {
+    /// Is some ancestor of `leaf` (up to `examples/`) a workspace root?
+    fn belongs_to_enclosing_workspace(leaf: &Path, examples: &Path) -> bool {
+        let mut dir = leaf.parent();
+        while let Some(d) = dir {
+            if !d.starts_with(examples) {
+                break;
+            }
+            let manifest = d.join("Cargo.toml");
+            if let Ok(text) = std::fs::read_to_string(&manifest)
+                && text.lines().any(|l| l.trim_end() == "[workspace]")
+            {
+                return true;
+            }
+            dir = d.parent();
+        }
+        false
+    }
+
+    let examples = examples_dir();
+    let mut missing = Vec::new();
+    for leaf in discover_example_leaves() {
+        let rel = rel_to_project(&leaf);
+        if belongs_to_enclosing_workspace(&leaf, &examples) {
+            continue;
+        }
+        let manifest = leaf.join("Cargo.toml");
+        if !manifest.is_file() {
+            continue; // C/C++ leaves are CMake-driven; nothing to assert here.
+        }
+        let text = match std::fs::read_to_string(&manifest) {
+            Ok(t) => t,
+            Err(e) => {
+                missing.push(format!("{} (unreadable: {e})", rel.display()));
+                continue;
+            }
+        };
+        if !text.lines().any(|l| l.trim_end() == "[workspace]") {
+            missing.push(rel.display().to_string());
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "{} standalone example leaf/leaves carry no `[workspace]` table, so a \
+         copied-out copy would be adopted by whatever workspace sits above it \
+         (RFC-0026 copy-out contract; phase-338 W6 kept the per-platform copies \
+         BECAUSE copy-out works — this is what makes that true):\n{}",
+        missing.len(),
+        missing
+            .iter()
+            .map(|p| format!("  - {p}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
 #[test]
 fn every_example_leaf_has_package_xml() {
     // The discovery itself filters on package.xml presence, so the
