@@ -1,0 +1,19 @@
+# Standalone (not a workspace member) E2E staticlib wrapping the generated
+# C++ FFI glue for Phase 235.8.
+[workspace]
+
+[package]
+name = "borrowed-cpp-e2e"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "lib.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+nros-serdes = { path = "../../packages/core/nros-serdes" }
+
+[profile.release]
+lto = false
