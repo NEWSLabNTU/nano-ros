@@ -1,76 +1,66 @@
 ---
 id: 422
-title: "~16 runtime E2E tests fail on a clean tree — triage needed before they are trusted"
+title: "19 runtime E2E failures on a clean tree — triage index (8 diagnosed, 11 open)"
 status: open
 type: bug
 area: testing
-related: [issue-0421, phase-336, rfc-0051]
+related: [issue-0427, issue-0428, issue-0429, phase-336, rfc-0051]
 ---
 
 ## Symptom
 
-`just ci` (tier 1) ends with `test-all` failing. On 2026-08-05, with every gate
-green and fixtures freshly built:
+`just ci` (tier 1) passes every gate, then fails `test-all`. On 2026-08-05,
+fixtures freshly built for the native lane:
 
 ```
-Summary [121.784s] 1251 tests run: 1226 passed, 23 failed, 2 timed out, 72 skipped
-Real failures: 18 / 18
+Summary [115.885s] 1257 tests run: 1231 passed, 25 failed, 1 timed out, 72 skipped
+Real failures: 19
 ```
 
-The same families failed on a fresh clone at the START of that session (18
-failures, before any local work), so this is the standing state of the tree, not
-a regression from a particular change.
+The same families failed on a fresh clone before any of this session's work, so
+this is the standing state of the tree, not a regression.
 
-## The set
+## Triage result (2026-08-05)
 
-Runtime E2E, grouped by what they exercise:
+**The original framing of this issue was wrong and is corrected here.** It said
+the failures were "plausibly environmental — zenohd / CycloneDDS / ROS not
+confirmed present". They are present (`zenohd` in the SDK store, `ROS_DISTRO=
+humble`, `ros2` on PATH), and every failure examined so far has been a real
+defect. Triage, not environment, was the right instinct; the guess about WHICH
+way it would fall was not.
 
-- **CycloneDDS interop** — `native_api::test_native_cyclonedds_rust_service`,
-  `…_rust_talker_to_listener::{C,Cpp}`, `…_talker_to_rust_listener::{C,Cpp}`
-- **Zenoh transport** — `nros-rmw-zenoh::zenoh_integration
-  two_sessions_deliver_cross_session_through_router`, `nano2nano
-  test_gid_consistency`, `nano2nano test_sequence_number_increment`
-- **Orchestration runtime** — `native_orchestration_tiers` (x2),
-  `native_orchestration_misuse launch_arm_is_a_removal_error`,
-  `realtime_subnode_cpp_e2e`, `realtime_subnode_cpp_portable_e2e`
-- **Board / run-plan** — `baremetal_run_plan_runtime`,
-  `board_agnostic_run_plan`, `logging_smoke_mps2_baremetal_emits_every_severity`
-- **Workspace build** — `cpp_multi_node_entry`, `entry_e2e entry_matrix`,
-  `nav2_compat n11_launch_xml_ros2_compat_smoke`
-- **Timeouts (60s)** — `native_example_pubsub_e2e`,
-  `native_example_reqresp_e2e`
+Eight of the nineteen now have root causes, in three separate bugs:
 
-## Why this needs triage before fixing
+| Failures | Cause | Issue |
+| --- | --- | --- |
+| `cpp_multi_node_entry` | a resolver fix never reaches an existing SystemModel — freshness ignores the resolver | **0427** |
+| 5 × `native_api` cyclonedds + `test_threadx_linux_cyclonedds_service` | node registration fails on the Cyclone backend; error collapsed to opaque `NodeRegister` | **0428** |
+| `nano2nano` gid + sequence | tests grep listener trace output the binary no longer emits | **0429** |
 
-The failure MODES differ, and at least three explanations are live:
+`cpp_multi_node_entry` is verified fixed by regenerating the model (4 passed).
 
-1. **Environmental.** Several need a running `zenohd`, a CycloneDDS install, or
-   a ROS 2 environment. `just doctor` and `source ./activate.sh` are the
-   documented prerequisites, and it is not established that this host satisfies
-   all of them. A test that fails for a missing service is a setup gap, not a
-   bug — but per CLAUDE.md it must still FAIL rather than silently skip, so
-   "fails here" does not by itself locate the problem.
-2. **Genuinely broken.** The two 60-second timeouts are not a missing-service
-   shape; something starts and never delivers.
-3. **Stale expectations.** `example_shape::pre_212_files_forbidden_in_migrated
-   _examples` fails on stray `metadata/*.json` build artifacts that `nros sync`
-   leaves in example dirs. Those are gitignored and absent from a clean clone,
-   so this one is an artifact-hygiene issue rather than a product defect — it
-   passes once the 84 stray `metadata/` dirs are removed.
+## Remaining, not yet triaged
 
-Fixing before triage risks papering over (1) with a skip, which is exactly the
-failure mode CLAUDE.md calls out: a test that reports PASS on an unmet
-precondition is worse than one that fails.
+- `large_msg::test_xrce_e2e_integrity` — "Expected 0 invalid messages, got 15"
+- `xrce_ros2_interop::test_ros2_action_xrce_client` — accepted, no feedback
+- `native_orchestration_tiers` ×2 — binary never reaches the run_tiers boot path
+- `native_orchestration_misuse::launch_arm_is_a_removal_error` — expected a
+  refusal, the check succeeded
+- `zero_copy::test_zero_copy_message_info` — listener emitted no sequence
+  markers (possibly the same shape as 0429)
+- `native_example_pubsub_e2e`, `native_example_reqresp_e2e`,
+  `realtime_tiers_e2e` — cell failures inside larger matrices
+- `logging_smoke_mps2_baremetal_emits_every_severity` — fixture not built for
+  this lane (`just qemu build-fixtures`), likely a lane-coverage artifact rather
+  than a defect
 
-## Suggested first step
+## Method note
 
-Run the suite on a host where `just doctor` is fully green, and diff the failure
-set. What survives is the real list. Then split this issue: environmental gaps
-become setup/doc work, the timeouts get their own investigation.
+Each of the three diagnosed bugs was found the same way: reproduce OUTSIDE the
+test harness, then compare against a working sibling. The Cyclone failure looked
+identical to the zenoh path until the binary was run directly; the nano2nano
+"got 0" looked like a delivery failure until the listener was run against a
+router and observed to publish fine while emitting no trace markers at all.
 
-## Notes
-
-Recorded while verifying phase-336 (build-profile propagation). Not caused by
-it: the same families fail on a clean checkout with none of that work applied.
-Two failures that WERE in this set are already resolved — the empty-profile bug
-(fixed in phase-336 W7) and the committed-SystemModel class (upstream #414).
+Reading the failure message alone would have produced three plausible and wrong
+fixes.

@@ -258,12 +258,11 @@ declaration-order fix (issue 0382) reaching new models only. Workaround `rm -rf 
 && nros sync`, verified. Second defect noted: models stamp `resolver.version: 0.1.0` while the
 resolver is v0.1.4. See `0427-*`. (2026-08-05)
 
-**#422** — ~16 runtime E2E tests fail on a clean tree (cyclonedds interop, zenoh transport,
-orchestration tiers, two 60s timeouts). Same set fails on a fresh clone with no local work, so it is
-the standing state, not a regression. Needs TRIAGE before fixing: some are plausibly environmental
-(zenohd/CycloneDDS/ROS not confirmed present), the timeouts are not, and one is stray `metadata/`
-build artifacts. Fixing before triage risks papering an unmet precondition over with a skip. See
-`0422-*`. (2026-08-05)
+**#422** — TRIAGE INDEX for the 19 runtime E2E failures on a clean tree (tier 1 gates all pass;
+1231/1257 tests do). Eight are now diagnosed across three bugs — `0427` (stale SystemModel),
+`0428` (cyclone node-register), `0429` (nano2nano grep drift) — and eleven remain. The original
+"plausibly environmental" framing was WRONG and is corrected in the issue: zenohd/ROS are present
+and every failure examined so far is a real defect. See `0422-*`. (2026-08-05)
 
 **#421** — RESOLVED. `zephyr_leaf_buildrs_uses_shared_bake` asserted a floor of 13 zephyr rust
 leaves, phase-291's count; phase-331 W3/W4 deleted four `ws-*-rust` micro-workspaces that each
