@@ -76,10 +76,13 @@ exclusions=(
     # `check-dep-chain` fails on four boards with `no matching package named
     # \`nros\`` — a resolution error that says nothing about mirroring.
     #
-    # Excluding them makes the box regenerate its own on the first `nros sync`
-    # (or `just generate-bindings`), which is the only state that is coherent.
+    # Only the ROOT `nros-patch.toml` is excluded, and only because it is
+    # gitignored and purely generated. Leaf `.cargo/config.toml` files are NOT:
+    # 63 of them are TRACKED source, and excluding the name globally deleted
+    # those from the mirror, which broke resolution far worse (`no matching
+    # package named `nros`` with no config present at all). They are mirrored,
+    # and the box's own `nros sync` rewrites the absolute paths inside them.
     --exclude '/nros-patch.toml'
-    --exclude '.cargo/config.toml'
 )
 
 mkdir -p "$dst"
