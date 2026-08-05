@@ -351,7 +351,51 @@ fn model_provenance_stale(model_path: &Path, bringup_dir: &Path) -> Option<Strin
             return Some(format!("input hash changed `{}`", input.path));
         }
     }
+    // Issue 0427 — the resolver identity is a freshness input too. A resolver fix
+    // (node ordering, params, remaps, tiers) changes the OUTPUT for byte-identical
+    // inputs, so a model produced by a DIFFERENT resolver pin is stale even when
+    // every input hash matches. nano-ros stamps `meta.resolver.version` with
+    // `NROS_PLAY_LAUNCH_SHA` at resolve time (`stamp_resolver_pin`) — the pin
+    // `verify_resolver_pin` already agrees on — because the resolver's own
+    // self-version is unreliable (it wrote `0.1.0` while the tool was v0.1.4).
+    // Skip when our pin is unverifiable, matching `verify_resolver_pin`.
+    let ours = env!("NROS_PLAY_LAUNCH_SHA");
+    if ours != "unknown" {
+        match model.meta.resolver.as_ref().map(|r| r.version.as_str()) {
+            Some(v) if v == ours => {}
+            Some(v) => {
+                return Some(format!(
+                    "resolver pin changed (model `{}` ≠ ours `{}`)",
+                    &v[..v.len().min(12)],
+                    &ours[..ours.len().min(12)]
+                ));
+            }
+            None => return Some("no resolver pin recorded".into()),
+        }
+    }
     None
+}
+
+/// Issue 0427 — record the resolver PIN (`NROS_PLAY_LAUNCH_SHA`) into a freshly
+/// resolved model's `meta.resolver`, so [`model_provenance_stale`] treats a
+/// resolver change as staleness. Overwrites the resolver's own unreliable
+/// self-version (it stamped `0.1.0` at v0.1.4). Called on the STAGED file before
+/// it is promoted, so a mid-resolve failure leaves no half-stamped model.
+fn stamp_resolver_pin(staged: &Path) -> Result<()> {
+    let raw = std::fs::read_to_string(staged)
+        .wrap_err_with(|| format!("read staged model {}", staged.display()))?;
+    let mut model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw)
+        .map_err(|e| eyre::eyre!("parse staged model {}: {e}", staged.display()))?;
+    model.meta.resolver = Some(ros_launch_manifest_model::ResolverInfo {
+        tool: "nros-launch-resolve".into(),
+        version: env!("NROS_PLAY_LAUNCH_SHA").into(),
+    });
+    let yaml = model
+        .to_yaml_string()
+        .map_err(|e| eyre::eyre!("serialize staged model {}: {e}", staged.display()))?;
+    std::fs::write(staged, yaml)
+        .wrap_err_with(|| format!("write staged model {}", staged.display()))?;
+    Ok(())
 }
 
 /// phase-326 (issue 0364) — the exact launch-argument binding a committed
@@ -1040,6 +1084,11 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
             verify_params_projected(&staged, &system_toml).wrap_err_with(|| {
                 format!("sync: resolved model for `{}` is missing data", pkg.name)
             })?;
+            // Issue 0427 — stamp the resolver pin so a later resolver change makes
+            // this model stale (`model_provenance_stale`) instead of reading fresh
+            // forever on unchanged inputs.
+            stamp_resolver_pin(&staged)
+                .wrap_err_with(|| format!("sync: stamp resolver pin for `{}`", pkg.name))?;
             std::fs::rename(&staged, &model)
                 .wrap_err_with(|| format!("sync: commit resolved model {}", model.display()))?;
             if verbose {
@@ -4477,12 +4526,21 @@ mod provenance_tests {
     }
 
     fn write_model(dir: &Path, inputs: Vec<(String, String)>) -> PathBuf {
+        write_model_with_pin(dir, inputs, env!("NROS_PLAY_LAUNCH_SHA"))
+    }
+
+    fn write_model_with_pin(dir: &Path, inputs: Vec<(String, String)>, pin: &str) -> PathBuf {
         let mut m = ros_launch_manifest_model::SystemModel::default();
         m.meta.version = ros_launch_manifest_model::SCHEMA_VERSION;
         m.meta.inputs = inputs
             .into_iter()
             .map(|(path, sha256)| ros_launch_manifest_model::InputHash { path, sha256 })
             .collect();
+        // Issue 0427 — stamp the resolver pin the same way `stamp_resolver_pin` does.
+        m.meta.resolver = Some(ros_launch_manifest_model::ResolverInfo {
+            tool: "nros-launch-resolve".into(),
+            version: pin.into(),
+        });
         let p = dir.join("system_model.yaml");
         std::fs::write(&p, serde_yaml_ng::to_string(&m).unwrap()).unwrap();
         p
@@ -4536,6 +4594,60 @@ mod provenance_tests {
             model_provenance_stale(&model, bringup)
                 .unwrap()
                 .contains("missing")
+        );
+    }
+
+    /// Issue 0427 — a model whose inputs are byte-identical but was produced by a
+    /// DIFFERENT resolver pin is stale, so a resolver fix reaches existing models.
+    #[test]
+    fn resolver_pin_change_is_stale() {
+        // Skip when our own pin is unverifiable — the check itself is disabled then.
+        if env!("NROS_PLAY_LAUNCH_SHA") == "unknown" {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        let content = b"[system]\n";
+        std::fs::write(bringup.join("system.toml"), content).unwrap();
+        // Same inputs + hash, but a stale resolver pin.
+        let model = write_model_with_pin(
+            bringup,
+            vec![("system.toml".into(), sha(content))],
+            "deadbeefdeadbeef",
+        );
+        assert!(
+            model_provenance_stale(&model, bringup)
+                .unwrap()
+                .contains("resolver pin changed"),
+            "a model with a foreign resolver pin must be stale"
+        );
+    }
+
+    /// Issue 0427 — a model with NO recorded resolver pin (pre-fix / legacy) is
+    /// stale, so it re-resolves and gains the pin.
+    #[test]
+    fn missing_resolver_pin_is_stale() {
+        if env!("NROS_PLAY_LAUNCH_SHA") == "unknown" {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        let content = b"[system]\n";
+        std::fs::write(bringup.join("system.toml"), content).unwrap();
+        // Build a model with inputs but NO resolver stamp.
+        let mut m = ros_launch_manifest_model::SystemModel::default();
+        m.meta.version = ros_launch_manifest_model::SCHEMA_VERSION;
+        m.meta.inputs = vec![ros_launch_manifest_model::InputHash {
+            path: "system.toml".into(),
+            sha256: sha(content),
+        }];
+        let model = bringup.join("system_model.yaml");
+        std::fs::write(&model, serde_yaml_ng::to_string(&m).unwrap()).unwrap();
+        assert!(
+            model_provenance_stale(&model, bringup)
+                .unwrap()
+                .contains("no resolver pin"),
+            "a model with no resolver pin must be stale"
         );
     }
 

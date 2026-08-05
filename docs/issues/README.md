@@ -275,13 +275,12 @@ main with fresh `rmw-cyclonedds` Rust examples: node register no longer fails; p
 `decl_err_from_node` to surface the real `NodeError` variant (the collapse that caused the double
 misdiagnosis). See `archived/0428-*`.
 
-**#427** — a SystemModel reads as FRESH when only the RESOLVER changed, so a resolver fix never
-reaches models that already exist. `meta.inputs[].sha256` covers the launch file and `system.toml`;
-`meta.resolver` is recorded but not part of the decision, so `nros sync` exits 0 having done nothing.
-Surfaced as `cpp_multi_node_entry` "component order doesn't match launch XML" — the rlm v0.1.4
-declaration-order fix (issue 0382) reaching new models only. Workaround `rm -rf <ws>/build/nros/models
-&& nros sync`, verified. Second defect noted: models stamp `resolver.version: 0.1.0` while the
-resolver is v0.1.4. See `0427-*`. (2026-08-05)
+RESOLVED 2026-08-05 — **#427** a SystemModel read FRESH when only the RESOLVER changed (freshness
+keyed on input hashes only; `meta.resolver` recorded but ignored, and its `version` was a bogus `0.1.0`
+at v0.1.4). Fixed by making the resolver PIN a freshness input: `stamp_resolver_pin` writes
+`NROS_PLAY_LAUNCH_SHA` into `meta.resolver` on the staged model, and `model_provenance_stale` treats a
+pin mismatch (or an absent pin, for legacy models) as stale. Verified end-to-end: fresh sync stamps
+the real SHA, unchanged model skips, tampered pin re-resolves. See `archived/0427-*`.
 
 **#422** — TRIAGE INDEX for the 19 runtime E2E failures on a clean tree (tier 1 gates all pass;
 1231/1257 tests do). Eight are now diagnosed across three bugs — `0427` (stale SystemModel),
