@@ -6,6 +6,31 @@ use std::{
 
 pub type SizeMap = HashMap<String, u64>;
 
+/// Identity of the artifact the sizes were probed from, for
+/// [`write_header_if_absent_or_verify`]'s stale-vs-divergent question.
+///
+/// Both `nros-c` and `nros-cpp` read their `__NROS_SIZE_*` values out of the
+/// SAME `nros` rlib in a given build, so that file's identity is exactly the
+/// discriminator the verify step was missing: same build ⇒ same rlib ⇒ same
+/// stamp. A header left behind by an EARLIER build carries a different one.
+///
+/// Path + mtime + length rather than a content hash: the rlib is tens of
+/// megabytes and this runs in every build script, while the triple already
+/// changes whenever cargo relinks. Returns `None` when the probe itself could
+/// not find the rlib — the caller then treats the stamp as unknown, which is
+/// the conservative direction (it cannot claim a mismatch is stale).
+fn probe_artifact_stamp() -> Option<String> {
+    let rlib = nros_sizes_build::find_dep_rlib("nros", "__NROS_SIZE_").ok()?;
+    let meta = std::fs::metadata(&rlib).ok()?;
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    Some(format!("{} {} {}", rlib.display(), mtime, meta.len()))
+}
+
 const NUTTX_FALLBACK_SIZES: &[(&str, u64)] = &[
     ("EXECUTOR_SIZE", 79_296),
     ("GUARD_CONDITION_SIZE", 24),
@@ -361,10 +386,26 @@ fn pid_is_live(pid: u32) -> bool {
 }
 
 pub fn write_header_to_target_dir(relative: &[&str], contents: &str) {
-    if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
-        write_to(PathBuf::from(target_dir), relative, contents);
-    } else if let Ok(target_dir) = nros_sizes_build::cargo_target_dir() {
-        write_to(target_dir, relative, contents);
+    let root = if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+        Some(PathBuf::from(target_dir))
+    } else {
+        nros_sizes_build::cargo_target_dir().ok()
+    };
+    let Some(root) = root else { return };
+    write_to(root, relative, contents);
+
+    // The OWNER must stamp too, or the check it owns goes toothless. This is
+    // the path `nros-c` takes; `write_header_if_absent_or_verify` is the
+    // verifier's. If only the verifier stamped, every subsequent build would
+    // read `None` from disk, conclude "cannot prove same build", and treat a
+    // genuine divergence as staleness — silently overwriting exactly the case
+    // the panic exists to catch. Stamping both writers keeps "same artifact"
+    // answerable no matter which crate got there first.
+    if let Some(dest) = target_dir_path(relative) {
+        write_stamp(
+            &dest.with_extension("h.stamp"),
+            probe_artifact_stamp().as_deref(),
+        );
     }
 }
 
@@ -393,16 +434,40 @@ fn write_to(root: PathBuf, relative: &[&str], contents: &str) {
 /// `_opaque` sizes.
 ///
 /// So: the owner writes; this writes only into a GAP, and otherwise verifies.
-/// A mismatch here is not staleness — `nros-c` is a non-optional dependency of
-/// `nros-cpp`, so cargo runs the owner's build script first and any file
-/// present is already current for this build. A difference therefore means the
-/// two crates genuinely resolved different sizes (divergent features), which
-/// must stop the build rather than produce an image whose C and C++ halves
-/// disagree about a struct's size.
+///
+/// **A mismatch is one of two very different things, and this used to conflate
+/// them.** The original reasoning was: `nros-c` is a non-optional dependency of
+/// `nros-cpp`, so cargo runs the owner's build script first and any file present
+/// is already current — therefore a difference means divergent features. That
+/// confuses ORDER with EXECUTION. Cargo only *re-runs* a build script when the
+/// crate's fingerprint is dirty; a fresh `nros-c` is skipped entirely, its
+/// header from an earlier build stays in the (long-lived, per-example) target
+/// dir, and a re-probing `nros-cpp` then compares against a file from an older
+/// source state. Observed 2026-08-06 on the freertos fixtures: the guard
+/// reported "different features" for a tree that had none — every half probed
+/// 11025 once the build dirs were wiped, against 10940 on disk.
+///
+/// So ask the question directly, via the identity of the rlib the sizes came
+/// from ([`probe_artifact_stamp`]):
+///
+/// * values agree → nothing to do;
+/// * values differ, stamps differ (or either is unknown) → the file predates
+///   this build. Overwrite it; that is plain staleness, not a defect;
+/// * values differ, stamps MATCH → both halves read the same artifact and still
+///   resolved different layouts. That is the real divergent-features case, and
+///   it must stop the build rather than produce an image whose C and C++ halves
+///   disagree about a struct's size.
 pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label: &str) {
     let Some(dest) = target_dir_path(relative) else {
         return;
     };
+    // Sidecar rather than a `#define` inside the header: the two writers build
+    // `contents` from different sources (nros-c from a `.template`, nros-cpp
+    // from an inline string), so a stamp define would have to be added to both
+    // and kept in step — the same duplication that produced this bug. A sidecar
+    // keeps the change in this one function.
+    let stamp_path = dest.with_extension("h.stamp");
+    let current_stamp = probe_artifact_stamp();
     match std::fs::read_to_string(&dest) {
         // Compare the VALUES, not the bytes. The two writers build this header
         // from different sources — nros-c from
@@ -411,16 +476,54 @@ pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label
         // agrees. A byte comparison called that divergence and broke EVERY
         // native C++ build; only a disagreeing `#define` is a real problem.
         Ok(existing) if defines_of(&existing) == defines_of(contents) => {}
-        Ok(existing) => panic!(
-            "{label}: {} was written by another crate with DIFFERENT probed sizes.\n\
-             The C and C++ halves of this build resolved different runtime layouts, \
-             so one of them would size its `_opaque` storage wrong (silent overflow \
-             at runtime). Usually this means nros-c and nros-cpp were built with \
-             different features.\nDisagreeing defines:\n{}",
-            dest.display(),
-            disagreeing_defines(&existing, contents),
-        ),
-        Err(_) => write_to_path(&dest, contents),
+        Ok(existing) => {
+            let on_disk_stamp = std::fs::read_to_string(&stamp_path).ok();
+            if stamps_prove_same_build(on_disk_stamp.as_deref(), current_stamp.as_deref()) {
+                panic!(
+                    "{label}: {} was written by another crate with DIFFERENT probed sizes, \
+                     from the SAME probed artifact.\n\
+                     The C and C++ halves of this build resolved different runtime layouts, \
+                     so one of them would size its `_opaque` storage wrong (silent overflow \
+                     at runtime). This means nros-c and nros-cpp were built with different \
+                     features.\nDisagreeing defines:\n{}",
+                    dest.display(),
+                    disagreeing_defines(&existing, contents),
+                );
+            }
+            // Stale: left by an earlier build whose `nros` rlib differed.
+            write_to_path(&dest, contents);
+            write_stamp(&stamp_path, current_stamp.as_deref());
+        }
+        Err(_) => {
+            write_to_path(&dest, contents);
+            write_stamp(&stamp_path, current_stamp.as_deref());
+        }
+    }
+}
+
+/// Can the two stamps PROVE both headers came from the same build?
+///
+/// Only an equal pair of known stamps proves it. Anything unknown answers "no",
+/// which routes a value mismatch to the stale branch — and that asymmetry is
+/// deliberate: treating an unprovable case as stale re-writes a header that may
+/// already have been correct, while treating it as divergence would fail the
+/// build over a question never actually answered. The expensive direction is
+/// the false accusation, so the default leans away from it.
+fn stamps_prove_same_build(on_disk: Option<&str>, current: Option<&str>) -> bool {
+    match (on_disk, current) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Record which artifact the freshly-written header was probed from. Best
+/// effort: a missing stamp only costs the next build the ability to prove
+/// sameness, and that path is already handled as "assume stale".
+fn write_stamp(path: &Path, stamp: Option<&str>) {
+    if let Some(stamp) = stamp {
+        let _ = std::fs::write(path, stamp);
+    } else {
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -591,6 +694,37 @@ pub fn non_zero_or(probe: usize, fallback: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The stale-vs-divergent question `write_header_if_absent_or_verify` asks
+    /// when the probed sizes disagree.
+    ///
+    /// Only an equal pair of KNOWN stamps means "same build, so the two crates
+    /// genuinely resolved different layouts" — the case that must fail the
+    /// build. Everything else is a header left by an earlier build, which is
+    /// staleness and gets overwritten. Before this distinction existed, every
+    /// mismatch was reported as divergent features, and a plain stale header on
+    /// the freertos fixtures (10940 on disk vs 11025 probed, no feature
+    /// difference anywhere) was diagnosed as one.
+    #[test]
+    fn only_equal_known_stamps_prove_one_build() {
+        assert!(stamps_prove_same_build(
+            Some("rlib 42 100"),
+            Some("rlib 42 100")
+        ));
+
+        // Different artifact identity — an earlier build wrote it.
+        assert!(!stamps_prove_same_build(
+            Some("rlib 41 100"),
+            Some("rlib 42 100")
+        ));
+
+        // Unknown on either side proves nothing, and the unprovable case must
+        // NOT be reported as divergence: a wrongly-overwritten header costs a
+        // rebuild, a wrongly-failed build costs a diagnosis.
+        assert!(!stamps_prove_same_build(None, Some("rlib 42 100")));
+        assert!(!stamps_prove_same_build(Some("rlib 42 100"), None));
+        assert!(!stamps_prove_same_build(None, None));
+    }
 
     /// The cbindgen temp-header sweep removes ONLY orphans of this header
     /// whose owning pid is gone. A live build's in-flight temp, another
