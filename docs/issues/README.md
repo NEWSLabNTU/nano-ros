@@ -156,11 +156,12 @@ an `rmeta`/`.o` path. RESOLVED by recognising a cargo build dir instead of listi
 `CACHEDIR.TAG` plus a `target-` prefix for the not-yet-built case. Listing the dirs would have been
 the hand-maintained-exclude-list shape issue 0287 already replaced. See `archived/0416-*`.)
 
-**#422** — TRIAGE INDEX for the 19 runtime E2E failures on a clean tree (tier 1 gates all pass;
-1231/1257 tests do). Eight are now diagnosed across three bugs — `0427` (stale SystemModel),
-`0428` (cyclone node-register), `0429` (nano2nano grep drift) — and eleven remain. The original
-"plausibly environmental" framing was WRONG and is corrected in the issue: zenohd/ROS are present
-and every failure examined so far is a real defect. See `0422-*`. (2026-08-05)
+**#422** — TRIAGE INDEX for the runtime E2E failures. **10** on freshly rebuilt fixtures (tier-1
+gates all pass, 1242/1259 tests do). An earlier run said 19 — nine of those were STALE FIXTURES
+after a rebase touched `nros/src/node.rs`, so rebuild the lane BEFORE triaging or you are measuring
+the rebase. Diagnosed: `0427` (stale SystemModel, verified fixed), `0429` (nano2nano grep drift,
+re-verified on fresh fixtures); `0428` turned out to be #0413's cyclone descriptor bug, resolved
+upstream. Eight remain, listed with their messages. See `0422-*`. (2026-08-05)
 
 RESOLVED 2026-08-05 — **#431** NuttX cells skipped on a host that ran only `nros setup qemu-arm-nuttx`. (1) `NUTTX_DIR` is in fact exported by `sdk-env.sh` (verified clean-env) — the filing's claim was stale. (2) The real gap: no kconfig frontend, and the `pip install kconfiglib` remedy is refused on PEP-668 distros. `scripts/nuttx/build-nuttx.sh` now self-provisions kconfiglib into a repo-local venv (`build/nuttx-kconfig-venv`) when none is present — venv pip isn't PEP-668-blocked, no sudo. (3) `just nuttx doctor` already reports the state. So the cells now run instead of skipping. See `archived/0431-*`.
 

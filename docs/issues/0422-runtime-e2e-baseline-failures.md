@@ -1,6 +1,6 @@
 ---
 id: 422
-title: "19 runtime E2E failures on a clean tree — triage index (8 diagnosed, 11 open)"
+title: "10 runtime E2E failures on FRESH fixtures — triage index"
 status: open
 type: bug
 area: testing
@@ -9,58 +9,53 @@ related: [issue-0427, issue-0428, issue-0429, phase-336, rfc-0051]
 
 ## Symptom
 
-`just ci` (tier 1) passes every gate, then fails `test-all`. On 2026-08-05,
-fixtures freshly built for the native lane:
+`just ci` (tier 1) passes every gate, then fails `test-all`. On 2026-08-05, with
+the native lane rebuilt IMMEDIATELY before the run:
 
 ```
-Summary [115.885s] 1257 tests run: 1231 passed, 25 failed, 1 timed out, 72 skipped
-Real failures: 19
+Summary [118.899s] 1259 tests run: 1242 passed, 17 failed, 72 skipped
+Real failures: 10
 ```
 
-The same families failed on a fresh clone before any of this session's work, so
-this is the standing state of the tree, not a regression.
+## The number depends on fixture freshness — measure after a rebuild
 
-## Triage result (2026-08-05)
+An earlier run of the same tree reported **19**. Nine of those were STALE
+FIXTURES, not defects: upstream's `ad7752bc9` arrived in a rebase and touched
+`packages/api/nros/src/node.rs`, so every fixture built before it read stale.
+Any pull or rebase does this (CLAUDE.md, "fixture mtime treadmill").
 
-**The original framing of this issue was wrong and is corrected here.** It said
-the failures were "plausibly environmental — zenohd / CycloneDDS / ROS not
-confirmed present". They are present (`zenohd` in the SDK store, `ROS_DISTRO=
-humble`, `ros2` on PATH), and every failure examined so far has been a real
-defect. Triage, not environment, was the right instinct; the guess about WHICH
-way it would fall was not.
+That cost a wrong issue — 0428, filed against CycloneDDS, was the stale-fixture
+symptom. **Rebuild the lane, then triage.** A failure list captured across a
+rebase is measuring the rebase.
 
-Eight of the nineteen now have root causes, in three separate bugs:
+## Diagnosed
 
 | Failures | Cause | Issue |
 | --- | --- | --- |
-| `cpp_multi_node_entry` | a resolver fix never reaches an existing SystemModel — freshness ignores the resolver | **0427** |
-| 5 × `native_api` cyclonedds + `test_threadx_linux_cyclonedds_service` | node registration fails on the Cyclone backend; error collapsed to opaque `NodeRegister` | **0428** |
-| `nano2nano` gid + sequence | tests grep listener trace output the binary no longer emits | **0429** |
+| `nano2nano` gid + sequence | tests grep listener trace output the binary no longer emits; re-verified on fresh fixtures | **0429** |
+| ~~cyclone × 5~~ | ~~backend~~ — stale fixtures; 8/12 pass after rebuild | 0428 (filed in error) |
+| ~~`cpp_multi_node_entry`~~ | stale SystemModel — a resolver fix never reaches an existing model | **0427** (real; test passes after regenerating) |
 
-`cpp_multi_node_entry` is verified fixed by regenerating the model (4 passed).
-
-## Remaining, not yet triaged
+## Remaining, untriaged (8)
 
 - `large_msg::test_xrce_e2e_integrity` — "Expected 0 invalid messages, got 15"
-- `xrce_ros2_interop::test_ros2_action_xrce_client` — accepted, no feedback
+- `xrce_ros2_interop::test_ros2_action_xrce_client` — accepted=true,
+  got_feedback=false
 - `native_orchestration_tiers` ×2 — binary never reaches the run_tiers boot path
 - `native_orchestration_misuse::launch_arm_is_a_removal_error` — expected a
   refusal, the check succeeded
-- `zero_copy::test_zero_copy_message_info` — listener emitted no sequence
-  markers (possibly the same shape as 0429)
-- `native_example_pubsub_e2e`, `native_example_reqresp_e2e`,
-  `realtime_tiers_e2e` — cell failures inside larger matrices
-- `logging_smoke_mps2_baremetal_emits_every_severity` — fixture not built for
-  this lane (`just qemu build-fixtures`), likely a lane-coverage artifact rather
-  than a defect
+- `realtime_tiers_e2e::realtime_tiers` — 1 of 16 rows
+- `zero_copy::test_zero_copy_message_info` — no sequence markers (may be 0429's
+  shape; the other two zero_copy tests pass now)
+- `logging_smoke_mps2_baremetal_emits_every_severity` — fixture from the qemu
+  lane, not built here; likely lane coverage rather than a defect
 
 ## Method note
 
-Each of the three diagnosed bugs was found the same way: reproduce OUTSIDE the
-test harness, then compare against a working sibling. The Cyclone failure looked
-identical to the zenoh path until the binary was run directly; the nano2nano
-"got 0" looked like a delivery failure until the listener was run against a
-router and observed to publish fine while emitting no trace markers at all.
+Reproduce OUTSIDE the harness, then compare against a working sibling — that is
+how 0427 and 0429 were found. But 0428 shows the limit: reproducing a SYMPTOM
+outside the harness proves the symptom is real, not that you have its cause. The
+binary was stale, and a stale binary fails the same way a broken backend does.
 
-Reading the failure message alone would have produced three plausible and wrong
-fixes.
+Check freshness the way the harness does (the whole input set), not by
+hand-picking one source file to compare against.
