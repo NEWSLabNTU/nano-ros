@@ -47,8 +47,16 @@ const EXPECTED_LINES: &[&str] = &[
 ];
 
 /// Phase 88.15.a — bare-metal MPS2-AN385 over QEMU semihosting.
+///
+/// issue 0422 — the `qemu` in the NAME is load-bearing, for the reason spelled
+/// out on `logging_smoke_threadx_linux_captures_stderr` below. The token must
+/// come from the `PlatformId` variant's LEADING word, which for this fixture is
+/// `QemuBaremetal` -> `qemu`. It was named `mps2_baremetal`, and neither `mps2`
+/// nor `baremetal` is a token: `FreertosMps2` contributes `freertos`, so `mps2`
+/// never enters the set at all. Tier 1 therefore selected this test and failed
+/// it on a fixture only `just qemu build-fixtures` produces.
 #[test]
-fn logging_smoke_mps2_baremetal_emits_every_severity() {
+fn logging_smoke_qemu_baremetal_mps2_emits_every_severity() {
     if !is_qemu_available() {
         panic!("[SKIPPED] qemu-system-arm not available");
     }
@@ -165,7 +173,15 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
 /// decoration. `scripts/test/lane-filter.sh` excludes a platform's cases from
 /// another lane by matching platform tokens in the binary AND test names
 /// (issue 0357), and every sibling here carries one (`freertos_mps2`,
-/// `nuttx_qemu_arm`, `threadx_riscv64`, `esp32_qemu`). This one lost its token
+/// `nuttx_qemu_arm`, `threadx_riscv64`, `esp32_qemu`, `qemu_baremetal_mps2`).
+///
+/// That list was wrong when first written: it counted the bare-metal test as
+/// tokenised on the strength of `mps2`, which is NOT a token — `FreertosMps2`
+/// contributes only `freertos`. It leaked into tier 1 for exactly the reason
+/// documented here, and is renamed above (issue 0422). Check a name against
+/// `scripts/test/lane-filter.sh native`, not against what looks platform-ish.
+///
+/// This one lost its token
 /// to the phase-221 naming audit — reasonable then, since the token-based
 /// filter did not exist yet — and tier 1 has been selecting a threadx-linux
 /// test ever since, whose fixture `lane=native` never builds. Do not shorten it

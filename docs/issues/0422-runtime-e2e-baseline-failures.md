@@ -35,8 +35,31 @@ rebase is measuring the rebase.
 | `nano2nano` gid + sequence | tests grep listener trace output the binary no longer emits; re-verified on fresh fixtures | **0429** |
 | ~~cyclone × 5~~ | ~~backend~~ — stale fixtures; 8/12 pass after rebuild | 0428 (filed in error) |
 | ~~`cpp_multi_node_entry`~~ | stale SystemModel — a resolver fix never reaches an existing model | **0427** (real; test passes after regenerating) |
+| ~~`logging_smoke_mps2_baremetal`~~ | lane coverage, as suspected — name carried no platform token, so `lane-filter.sh` never excluded it | fixed here (renamed) |
 
-## Remaining, untriaged (8)
+### `logging_smoke_mps2_baremetal` — not a defect, a name
+
+`scripts/test/lane-filter.sh` builds its exclusion tokens from the LEADING
+CamelCase word of each `PlatformId` variant, so the set is exactly:
+
+    esp32 freertos fvp nuttx px4 qemu threadx zephyr
+
+This fixture's variant is `QemuBaremetal`, i.e. token `qemu` — but the test was
+named `mps2_baremetal`. Neither `mps2` nor `baremetal` is a token, and `mps2`
+never enters the set at all, because `FreertosMps2` contributes only
+`freertos`. Tier 1 selected it and failed on a fixture only
+`just qemu build-fixtures` builds.
+
+Renamed to `logging_smoke_qemu_baremetal_mps2_emits_every_severity`.
+
+Second occurrence of this class in one file — `threadx_linux` was the first
+(issue 0407). The doc-comment added then even listed this test as tokenised,
+counting `mps2` as if it were one. **Check a candidate name against
+`bash scripts/test/lane-filter.sh native`; do not eyeball it for
+platform-looking words.** A gate that asserts this mechanically is the real
+fix and does not exist yet.
+
+## Remaining, untriaged (7)
 
 - `large_msg::test_xrce_e2e_integrity` — "Expected 0 invalid messages, got 15"
 - `xrce_ros2_interop::test_ros2_action_xrce_client` — accepted=true,
@@ -47,8 +70,7 @@ rebase is measuring the rebase.
 - `realtime_tiers_e2e::realtime_tiers` — 1 of 16 rows
 - `zero_copy::test_zero_copy_message_info` — no sequence markers (may be 0429's
   shape; the other two zero_copy tests pass now)
-- `logging_smoke_mps2_baremetal_emits_every_severity` — fixture from the qemu
-  lane, not built here; likely lane coverage rather than a defect
+(was 8 — the `logging_smoke` line is diagnosed and fixed above)
 
 ## Method note
 
