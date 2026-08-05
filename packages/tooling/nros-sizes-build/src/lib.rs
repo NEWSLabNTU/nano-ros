@@ -296,8 +296,31 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
     // SHARED probe dir — the whole point of the env knob — silently gave up
     // that isolation. Sharing is only safe because the slug is here.
     let rustc_slug = rustc_version_slug();
+    // Resolve the feature set BEFORE choosing the dir — it is part of the key.
+    // (The nested `--features` argument below uses the same value.)
+    let forwarded = resolved_features_for(crate_name).unwrap_or_else(|e| {
+        println!(
+            "cargo:warning=nros-sizes-build: feature-set resolution \
+             failed ({e}); falling back to identity forwarding"
+        );
+        forwarded_features()
+    });
     let probe_target_dir = if let Ok(dir) = env::var("NROS_SIZES_PROBE_TARGET_DIR") {
-        PathBuf::from(dir).join(&rustc_slug)
+        // A SHARED dir must be keyed by everything that changes the probe's
+        // ANSWER, not just by the toolchain.
+        //
+        // phase-336 W7 keyed it by the rustc slug alone. Nine differently-
+        // featured `nros` rlibs then piled into one directory, and the
+        // filesystem fallback — which picks the NEWEST rlib by mtime — could
+        // return another consumer's build. That is not theoretical: it made
+        // nros-c and nros-cpp resolve different `EXECUTOR_SIZE` values (88680
+        // vs 89392) in the same workspace, tripping the header-agreement guard
+        // and failing every C++ workspace fixture build.
+        //
+        // Keying by (target, features) restores the isolation while keeping the
+        // reuse: consumers that would produce the SAME artifact still share.
+        let key = probe_key(&target, &forwarded);
+        PathBuf::from(dir).join(&rustc_slug).join(key)
     } else {
         let out_dir = env::var("OUT_DIR").map_err(|_| Error::MalformedMetadata("OUT_DIR"))?;
         PathBuf::from(out_dir).join(format!("sizes-probe-target-{rustc_slug}"))
@@ -426,13 +449,7 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
     // consumer crates may carry features the probed crate doesn't
     // (e.g. `unstable-zenoh-api` is exposed by nros-cpp but not by
     // nros), and `cargo build --features <unknown>` errors out.
-    let forwarded = resolved_features_for(crate_name).unwrap_or_else(|e| {
-        println!(
-            "cargo:warning=nros-sizes-build: feature-set resolution \
-             failed ({e}); falling back to identity forwarding"
-        );
-        forwarded_features()
-    });
+    // `forwarded` was resolved above — it keys the probe dir as well.
     if !forwarded.is_empty() {
         cmd.arg("--features").arg(forwarded.join(","));
     }
@@ -607,6 +624,30 @@ fn resolved_features_for(crate_name: &str) -> Result<Vec<String>, Error> {
 /// Produce a path-safe slug from `rustc -V` (or `$CARGO_BUILD_RUSTC -V`
 /// when set) for use as a probe target dir suffix. Keeps probe
 /// artefacts from different rustc versions / channels from colliding.
+/// Stable short key for a probe dir: everything that changes the probe's ANSWER
+/// other than the toolchain (which the caller adds separately).
+///
+/// FNV-1a rather than a hashing crate: this crate is deliberately dependency-free
+/// so a build script can use it without dragging a graph along.
+fn probe_key(target: &str, features: &[String]) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut mix = |b: &[u8]| {
+        for byte in b {
+            h ^= u64::from(*byte);
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    mix(target.as_bytes());
+    // Sorted so feature ORDER cannot split an otherwise-identical probe.
+    let mut sorted: Vec<&str> = features.iter().map(String::as_str).collect();
+    sorted.sort_unstable();
+    for f in sorted {
+        mix(b"\x1f");
+        mix(f.as_bytes());
+    }
+    format!("{h:016x}")
+}
+
 fn rustc_version_slug() -> String {
     let rustc = env::var_os("CARGO_BUILD_RUSTC")
         .or_else(|| env::var_os("RUSTC"))
