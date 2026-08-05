@@ -106,8 +106,8 @@ fn sched_dims_are_declared_in_authored_system_toml() {
         let path = workspace_system_toml(lang);
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {} : {e}", path.display()));
-        let doc: toml::Value = toml::from_str(&text)
-            .unwrap_or_else(|e| panic!("parse {} : {e}", path.display()));
+        let doc: toml::Value =
+            toml::from_str(&text).unwrap_or_else(|e| panic!("parse {} : {e}", path.display()));
         (path, doc)
     };
 
@@ -119,10 +119,7 @@ fn sched_dims_are_declared_in_authored_system_toml() {
             Lang::C => "realtime-c",
             _ => "",
         };
-        let doc = docs
-            .entry(ws)
-            .or_insert_with(|| load(cell.lang).1)
-            .clone();
+        let doc = docs.entry(ws).or_insert_with(|| load(cell.lang).1).clone();
         let rtos = rtos_key(cell.platform);
         for key in dim_keys(cell.dim) {
             if !key_declared(&doc, rtos, key) {
