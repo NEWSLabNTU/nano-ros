@@ -481,7 +481,14 @@ mod tests {
     fn with_env<T>(pairs: &[(&str, Option<&str>)], f: impl FnOnce() -> T) -> T {
         use std::sync::{Mutex, OnceLock};
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _g = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        // `unwrap_or_else(into_inner)`, not `unwrap()`: this guards env, not
+        // data, so a panicking test leaves nothing inconsistent — but poisoning
+        // makes every LATER test fail with `PoisonError` instead of its own
+        // assertion. One real failure read as five (phase-336 W7).
+        let _g = LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let saved: Vec<(String, Option<std::ffi::OsString>)> = pairs
             .iter()
             .map(|(k, _)| ((*k).to_string(), std::env::var_os(k)))

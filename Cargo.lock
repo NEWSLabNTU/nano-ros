@@ -2057,6 +2057,7 @@ dependencies = [
 name = "nros-sizes-build"
 version = "0.5.0"
 dependencies = [
+ "nros-cargo-profile",
  "object",
  "serde_json",
 ]
