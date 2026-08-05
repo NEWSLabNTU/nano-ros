@@ -191,6 +191,29 @@ def main():
     for c in sorted(extra):
         errors.append(f"{c}: in the registry but no such directory under packages/boards/")
 
+    # phase-337 W2 — the OTHER direction of completeness, and the one the check
+    # above structurally cannot do.
+    #
+    # Everything so far is keyed on board DIRECTORIES, which silently assumes a
+    # board is a crate. RFC-0064's whole direction is that it is not: the Zephyr
+    # Cortex-M witness is `cmake/zephyr/mps2-an385.conf` and owns no directory
+    # under packages/boards/, so it could carry Runtime cells — a tier-1-or-2
+    # promise — while being enumerated nowhere, which is the exact failure this
+    # gate was written to catch. As boards keep becoming conf bundles (W9), the
+    # directory check covers less and less of the rule it is enforcing.
+    #
+    # So assert it from the matrix side too: a platform that CI actually runs
+    # must be somebody's declared promise.
+    declared_platforms = {
+        e.get("matrix_platform") for e in reg if e.get("matrix_platform")
+    }
+    for plat in sorted(rt - declared_platforms):
+        errors.append(
+            f"platform {plat} has Runtime cells but no registry row names it as a "
+            "matrix_platform. A board that CI runs must carry a tier promise — "
+            "and a board with no directory (a conf bundle) is invisible to the "
+            "directory check above, which is why this one exists")
+
     # --- per-entry predicates -------------------------------------------------
     unowned = 0
     for e in reg:

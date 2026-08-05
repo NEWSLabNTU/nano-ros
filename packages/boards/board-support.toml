@@ -109,6 +109,20 @@ tier = 2
 maintainers = []
 notes = "phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` feature — one crate, two entry shapes (direct-exec + RTIC), one witness row."
 
+# phase-337 W2 — the SECOND row for `nros-board-zephyr`, and the reason W1.c
+# re-keyed this registry by (crate, matrix_platform): one crate, two witnesses,
+# two different promises. The tier-1 row above is native_sim; this one is a real
+# 32-bit Cortex-M3 running Zephyr's OWN IP stack over `eth_smsc911x`. There is NO
+# board crate — the board is `cmake/zephyr/mps2-an385.conf`, which is RFC-0064's
+# whole thesis working as intended.
+[[board]]
+crate = "nros-board-zephyr"
+matrix_platform = "ZephyrQemuCortexM"
+nightly_token = "zephyr"
+tier = 2
+maintainers = []
+notes = "C and C++ pubsub are Runtime; service/action are BuildOnly pending the runner's peer half. NO RUST ROW: `zephyr-lang-rust` cannot compile for any board whose devicetree has gpio nodes (issue 0432), so a rust cell would not build and BuildOnly would be a lie. Tier 2 rather than 1 because `just ci` is host-only and this needs QEMU."
+
 [[board]]
 crate = "nros-board-esp32-qemu"
 matrix_platform = "Esp32Qemu"
