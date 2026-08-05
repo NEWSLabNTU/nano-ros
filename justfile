@@ -2528,7 +2528,13 @@ check-c: check-c-fmt
     # emitted by `nros-c`'s build.rs into `target/nros-c-generated/`.
     # Build first so the syntax check has those macros; otherwise
     # the source-tree stub fires its `#error`.
-    cargo build -p nros-c --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
+    # issue 0400 follow-up — this build GENERATES the headers the checks below
+    # compile against, so its failure must not be swallowed. It used to run
+    # `--quiet 2>/dev/null || true`, which turned "the generator never ran" into
+    # "your C headers are broken": every `*_OPAQUE_U64S` came back undeclared
+    # from a `cc` line that says nothing about cargo. Diagnosing that cost four
+    # wrong hypotheses; the build's own error names the cause in one line.
+    cargo build -p nros-c --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet
     # Variant dir FIRST so its `nros_config_generated.h` (with the
     # real OPAQUE_U64S macros) wins over the source-tree stub.
     cc -fsyntax-only \
@@ -2554,7 +2560,13 @@ check-c: check-c-fmt
     # the compiler the drift gate: any divergence is a "conflicting types"
     # error. Field-level struct-mirror parity is the buildless
     # check-ffi-struct-mirrors gate (push lane).
-    cargo build -p nros-cpp --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
+    # issue 0400 follow-up — this build GENERATES the headers the checks below
+    # compile against, so its failure must not be swallowed. It used to run
+    # `--quiet 2>/dev/null || true`, which turned "the generator never ran" into
+    # "your C headers are broken": every `*_OPAQUE_U64S` came back undeclared
+    # from a `cc` line that says nothing about cargo. Diagnosing that cost four
+    # wrong hypotheses; the build's own error names the cause in one line.
+    cargo build -p nros-cpp --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet
     cc -fsyntax-only \
         -Itarget/nros-c-generated \
         -Itarget/nros-cpp-generated \
@@ -2607,7 +2619,13 @@ check-cpp: check-cpp-fmt
     # `target/nros-cpp-generated/`. Same C-side header for nros-c.
     # Build both first; variant dirs go FIRST on the include path so
     # their real headers win over the source-tree stubs.
-    cargo build -p nros-c -p nros-cpp --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
+    # issue 0400 follow-up — this build GENERATES the headers the checks below
+    # compile against, so its failure must not be swallowed. It used to run
+    # `--quiet 2>/dev/null || true`, which turned "the generator never ran" into
+    # "your C headers are broken": every `*_OPAQUE_U64S` came back undeclared
+    # from a `cc` line that says nothing about cargo. Diagnosing that cost four
+    # wrong hypotheses; the build's own error names the cause in one line.
+    cargo build -p nros-c -p nros-cpp --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet
     for hdr in packages/api/nros-cpp/include/nros/*.hpp; do
         # Phase 209 — `rclcpp_compat.hpp` is a source-compat shim still
         # being aligned with the live nros::Result / nros::QoS API. The
