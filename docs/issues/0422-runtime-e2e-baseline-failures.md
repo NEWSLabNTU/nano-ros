@@ -82,16 +82,21 @@ fix and does not exist yet.
   indistinguishable at the output level.
 - `large_msg::test_xrce_e2e_integrity` — now PASSES.
 
-## Remaining, untriaged (3)
+## Remaining, untriaged (4)
 
 - `xrce_ros2_interop::test_ros2_action_xrce_client` — accepted=true,
   got_feedback=false
 - `realtime_tiers_e2e::realtime_tiers` — 1 of 16 rows
+- `native_example_reqresp` — 1 of 18 cells, `cpp/xrce/action`: client never logs
+  `Result received:`. Surfaced by the box run below, so it is NOT in the host
+  baseline at the top. Third XRCE action-path row here — see that section.
 - (the `logging_smoke` line is diagnosed and fixed above)
 
 ## Independently reproduced on a second tree (2026-08-06)
 
-The same 10 came back from a run in the ROS distrobox mirror
+Run at `457c8838b`, i.e. BEFORE the "Triaged since" fixes above — so read this
+as corroboration of the original 10, not as a current status. The same 10 came
+back from a run in the ROS distrobox mirror
 (`nano-ros-box`, Ubuntu 22.04) — a different tree, toolchain and glibc from the
 host Arch run above. Same list, so none of these is host-specific:
 
