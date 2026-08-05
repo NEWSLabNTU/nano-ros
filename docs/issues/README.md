@@ -51,6 +51,8 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#436** — the phase-325 W3 PX4 bridge module builds, links and registers (module in `bin/px4`, generated CDR symbols linked, BOTH backends' register symbols present — the W3 gate holds) but `nros::init()` returns `TransportError(-100)` when a networked backend is registered alongside uORB. Fails BEFORE either node is created, so before the two-session code runs. Not the link, not a missing router (same with zenohd + NROS_LOCATOR), not registration order (uORB registers first, and the uORB-only W2 demo inits fine). See `0436-*`. (2026-08-06)
+
 Recently resolved (2026-08-05): **#434** — FreeRTOS C++ TUs resolved `<nros/nros_config_generated.h>`
 to the in-tree `#error` stub, so `freertos cpp` fixtures could not build. NOT the ordering race the
 first diagnosis claimed (lifting the Zephyr-guarded `OBJECT_DEPENDS` changed nothing, and two builds

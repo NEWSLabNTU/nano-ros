@@ -1,0 +1,8 @@
+menuconfig MODULES_NROS_UORB_BRIDGE
+	bool "nros_uorb_bridge"
+	default n
+	---help---
+		nano-ros uORB -> RMW bridge: reads a uORB topic in-firmware (raw PX4
+		struct, no decode) and re-publishes it as CDR px4_msgs on a networked
+		backend, so a ROS 2 subscriber sees it. Zero-copy is not claimed for
+		the outward half.

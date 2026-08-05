@@ -1,0 +1,32 @@
+# FFI staticlib for the bridge's generated px4_msgs C++ headers (issue 0362).
+#
+# A generated C++ message header declares its serialize/deserialize/publish as
+# `extern "C"` — the bodies are RUST, emitted beside the header as the
+# `_types.rs` / `_exports.rs` pair. `nros_generate_interfaces(LANGUAGE CPP)`
+# synthesizes this crate for a normal CMake consumer; a PX4 module builds under
+# PX4's own cmake, so the bridge carries it explicitly.
+#
+# `src/lib.rs` `include!`s whatever `nros generate-px4-msgs --lang cpp` wrote, so
+# the topic list lives in ONE place (the just recipe) rather than being restated
+# here.
+[workspace]
+
+[package]
+name = "nros-px4-bridge-ffi"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "nros_px4_bridge_ffi"
+crate-type = ["staticlib"]
+
+[dependencies]
+nros-serdes = { path = "../../../../../packages/core/nros-serdes", default-features = false }
+
+# This crate is its own workspace root (it lives inside an example tree), so the
+# profile it is built with must be defined here. `panic = "abort"` is required —
+# a staticlib that unwinds cannot link into a PX4 image.
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"

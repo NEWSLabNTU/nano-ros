@@ -129,6 +129,58 @@ build-sitl-example:
     echo "Building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
     make -C "$PX4_DIR" px4_sitl_default EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
+# Build PX4 SITL with the uORB->RMW BRIDGE as EXTERNAL_MODULES_LOCATION
+# (phase-325 W3, issue 0362).
+#
+# Its own root because PX4 takes exactly ONE EXTERNAL_MODULES_LOCATION per build.
+# Three steps the other px4 recipes don't need, all consequences of publishing on
+# a wire rather than into uORB:
+#
+#   1. generate the CDR px4_msgs C++ headers (their RIHS01 hash is what makes a
+#      ROS 2 peer match the topic — a guessed one is invisible, or worse, wrong);
+#   2. build the FFI staticlib holding those headers' Rust bodies (a normal CMake
+#      consumer gets this from nros_generate_interfaces(LANGUAGE CPP), which a PX4
+#      module never runs);
+#   3. the outward backend is chosen when the ARCHIVE is built, so libnros_cpp.a
+#      must carry `rmw-zenoh-cffi`, and zenoh needs its own platform archive.
+#
+# TOPICS is the single source of truth for the message set: it drives the
+# generator, and the FFI crate's build.rs globs whatever the generator wrote.
+[group("examples")]
+build-bridge-example topics="debug_key_value" edition="jazzy":
+    #!/usr/bin/env bash
+    set -e
+    ROOT="$(pwd)"
+    PX4_DIR="${PX4_AUTOPILOT_DIR:-$ROOT/third-party/px4/PX4-Autopilot}"
+    EXT_DIR="$ROOT/examples/px4/cpp/bridge"
+    GEN="$ROOT/build/px4-bridge/generated"
+    if [ ! -d "$PX4_DIR/Tools" ]; then
+        echo "ERROR: PX4-Autopilot tree not found at $PX4_DIR"
+        echo "Run: just px4 setup"
+        exit 1
+    fi
+
+    echo "[1/4] generating CDR px4_msgs C++ ({{topics}})"
+    nros generate-px4-msgs --lang cpp --topics '{{topics}}' \
+        --ros-edition '{{edition}}' -o "$GEN"
+
+    echo "[2/4] building the generated-message FFI staticlib"
+    NROS_PX4_BRIDGE_GEN="$GEN" cargo build --release \
+        --manifest-path "$EXT_DIR/ffi/Cargo.toml"
+
+    echo "[3/4] building the nano-ros archives (outward backend baked in here)"
+    cargo build -p nros-cpp --no-default-features --features std,rmw-zenoh-cffi --release
+    cargo build -p nros-rmw-zenoh-staticlib --features platform-posix,std --release
+    # The POSIX platform archive nros_px4_add_module links (its guard names this
+    # exact command when it is missing).
+    cmake -S "$ROOT/packages/platform/nros-platform-posix" -B "$ROOT/build/nros-platform-posix" >/dev/null
+    cmake --build "$ROOT/build/nros-platform-posix" >/dev/null
+
+    echo "[4/4] building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
+    NROS_PX4_BRIDGE_GEN="$GEN" \
+    NROS_PX4_BRIDGE_FFI_ARCHIVE="$EXT_DIR/ffi/target/release/libnros_px4_bridge_ffi.a" \
+        make -C "$PX4_DIR" px4_sitl_default EXTERNAL_MODULES_LOCATION="$EXT_DIR"
+
 # Build PX4 examples. (phase-277 W7: the former `build-sitl` recipe pointed
 # EXTERNAL_MODULES_LOCATION at the README-only `examples/px4/rust/uorb/`
 # placeholder — it compiled no nano-ros module and the placeholder dir is
