@@ -69,7 +69,24 @@ fn main() {
     // Read from the SUBMODULE working tree, not the superproject gitlink: what
     // the resolver compiled in is the commit actually checked out.
     let play_launch = root.join("packages/cli/third-party/play_launch");
-    let pin = if play_launch.exists() {
+    // issue 0419 — require a REPOSITORY, not a directory. An uninitialised
+    // submodule is an empty directory that EXISTS, and `git -C <empty dir>
+    // rev-parse HEAD` walks UP to the enclosing repo and returns the
+    // SUPERPROJECT's HEAD. The pin then names a nano-ros commit, the 0409 guard
+    // compares it against the resolver's real play_launch sha, and reports a
+    // mismatch that cannot be true. A submodule checkout has a `.git` FILE, so
+    // gate on that: an uninitialised one yields "unknown", which is what this
+    // code always intended and which the guard treats as unverifiable.
+    //
+    // Re-stamp when it appears: without this rerun-if-changed,
+    // `git submodule update --init` changes no input cargo watches, so build.rs
+    // never re-runs and `setup-cli` reports success while rebuilding nothing —
+    // the wrong pin is STICKY, and even `touch build.rs` does not clear it.
+    println!(
+        "cargo:rerun-if-changed={}",
+        play_launch.join(".git").display()
+    );
+    let pin = if play_launch.join(".git").exists() {
         std::process::Command::new("git")
             .args([
                 "-C",

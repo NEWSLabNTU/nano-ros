@@ -27,8 +27,17 @@ fn main() {
         .parent()
         .map(|p| p.join("third-party/play_launch"));
 
+    // issue 0419 — a `.git` FILE, not merely an existing directory. An
+    // uninitialised submodule is an empty dir, and `git -C <empty dir>
+    // rev-parse HEAD` walks UP and returns the SUPERPROJECT's HEAD, so the
+    // binary would stamp a nano-ros commit as its play_launch pin. Same fault
+    // as the CLI side; both must agree on "unknown" or the 0409 guard compares
+    // two different things and reports an impossible mismatch.
+    if let Some(p) = submodule.as_ref() {
+        println!("cargo:rerun-if-changed={}", p.join(".git").display());
+    }
     let sha = submodule
-        .filter(|p| p.exists())
+        .filter(|p| p.join(".git").exists())
         .and_then(|p| {
             // `git -C <submodule> rev-parse HEAD`: from the SUPERPROJECT the
             // index holds only the gitlink, so a superproject-side lookup would

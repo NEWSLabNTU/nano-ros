@@ -1,7 +1,7 @@
 ---
 id: 419
 title: "The play_launch pin records the SUPERPROJECT sha when the submodule is uninitialised, and never re-stamps once it is"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0409, phase-338]
@@ -93,3 +93,29 @@ sends the reader to the one command that cannot fix it.
 The guard itself is good and did its job — it refused to run with a resolver it
 could not vouch for, which is exactly what issue 0409 asked for. This is a
 defect in how one side computes its value, not an argument against the check.
+
+## RESOLVED (2026-08-05)
+
+Both faults, in both stampers — `nros-cli-core/build.rs` and
+`nros-launch-resolve/build.rs` carried the identical `.exists()` test, so fixing
+only the reported side would have left the two disagreeing again.
+
+- **Require a repository.** Gate on `<submodule>/.git` (a submodule checkout has
+  a `.git` FILE) instead of the directory. An uninitialised submodule now yields
+  `"unknown"` — the value the code always intended and the one the 0409 guard
+  treats as unverifiable rather than as a mismatch.
+- **Re-stamp when it appears.** Both emit
+  `cargo:rerun-if-changed=<submodule>/.git`, so `git submodule update --init`
+  invalidates the build instead of leaving the wrong pin stuck.
+
+Verified end to end by moving the submodule's `.git` aside and back:
+
+    .git absent   -> NROS_PLAY_LAUNCH_SHA=unknown        (was: the superproject sha)
+    .git restored -> NROS_PLAY_LAUNCH_SHA=0cd95a0030aa…  (automatic, no touch of any .rs)
+
+(The first restore attempt showed no re-stamp because `mv` PRESERVES mtime, so
+cargo correctly saw nothing newer; a real `git submodule update --init` creates
+the file fresh. Noted because the same false negative will mislead the next
+person testing this by hand.)
+
+Mine, from the issue-0409 direction-2 work.
