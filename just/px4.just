@@ -165,6 +165,9 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
         --ros-edition '{{edition}}' -o "$GEN"
 
     echo "[2/4] building the generated-message FFI staticlib"
+    # profile-literal-ok: symbol fixture: the archive PATH is handed to PX4's
+    # make via NROS_PX4_BRIDGE_FFI_ARCHIVE, and PX4 knows nothing about nano-ros
+    # profiles — build and path must name the same dir, so both stay pinned.
     NROS_PX4_BRIDGE_GEN="$GEN" cargo build --release \
         --manifest-path "$EXT_DIR/ffi/Cargo.toml"
 
@@ -172,7 +175,10 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # `bridge` is what puts nros_init_multi / nros_pubsub_bridge_* (the ABI
     # nros::MultiExecutor calls) into libnros_cpp.a — issue 0436. Without it the
     # module compiles and fails to LINK.
+    # profile-literal-ok: symbol fixture: linked into the same PX4 SITL image as
+    # the archive above; one profile for the whole link.
     cargo build -p nros-cpp --no-default-features --features std,rmw-zenoh-cffi,bridge --release
+    # profile-literal-ok: symbol fixture: same PX4 SITL link as above.
     cargo build -p nros-rmw-zenoh-staticlib --features platform-posix,std --release
     # The POSIX platform archive nros_px4_add_module links (its guard names this
     # exact command when it is missing).
@@ -180,6 +186,7 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     cmake --build "$ROOT/build/nros-platform-posix" >/dev/null
 
     echo "[4/4] building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
+    # profile-literal-ok: symbol fixture: pairs with the --release build above.
     NROS_PX4_BRIDGE_GEN="$GEN" \
     NROS_PX4_BRIDGE_FFI_ARCHIVE="$EXT_DIR/ffi/target/release/libnros_px4_bridge_ffi.a" \
         make -C "$PX4_DIR" px4_sitl_default EXTERNAL_MODULES_LOCATION="$EXT_DIR"
