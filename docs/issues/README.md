@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-06): **#440** — phase-338 W2's `-entry` collapse kept the NODE package's
+`.cargo/config.toml` and dropped the board's STATIC link args, so all six NuttX Rust entries failed
+with ~3680 undefined libc references (`grep -c lsched` was 0 of 6). RESOLVED: the 24 args restored
+from `nros-board.toml`'s `cargo_config` (the SSoT, not the deleted files), rustflags only —
+`build-fixtures-arm` RC=0 with 0 undefined refs and all three nuttx action cells (Rust/C/C++) pass.
+Gated by `check-board-cargo-config-applied`, watched to fire. Nothing caught it because the broken
+config was valid TOML that cargo and `nros sync` both accepted — the loss showed only at link time,
+on one platform. See `archived/0440-*`. (2026-08-06)
+
 **#437** — `just check-fast` is RED on **main**: `check-build-profile-literals` flags four sites in
 `just/px4.just` (three `cargo build --release`, one `target/release/` path) added by `e2f850efa`
 (#0362 pass 2). Reproduced against a pristine `origin/main` worktree, so it is not an interaction
