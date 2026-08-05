@@ -83,21 +83,40 @@ exclusions=(
     # package named `nros`` with no config present at all). They are mirrored,
     # and the box's own `nros sync` rewrites the absolute paths inside them.
     --exclude '/nros-patch.toml'
+    # The box-owned marker. Excluded so `--delete` cannot remove it (the SOURCE
+    # tree has no such file, so without this rsync deletes it as extraneous).
+    --exclude '/.nros-box-tree'
 )
 
 mkdir -p "$dst"
+
+# Write the marker BEFORE the transfer, not after.
+#
+# `ros2-box-env.sh` reads it to decide this tree is box-OWNED and must NOT get
+# the CARGO_TARGET_DIR redirect. It used to be touched after rsync, which is
+# correct only when rsync finishes: `set -e` means ANY interrupted sync — a
+# timeout, a Ctrl-C, a full disk — exits before the touch and leaves a tree that
+# LOOKS like a plain shared checkout.
+#
+# That failure is silent and expensive. The redirect comes back, fixtures build
+# to a path the leaf-relative test resolver never stats, and the run fails far
+# away from the cause (issues 0400/0401). Measured: one killed sync, then four
+# wrong hypotheses before anyone thought to print $CARGO_TARGET_DIR.
+#
+# Marker first + excluded from --delete means an interrupted sync leaves a tree
+# that is merely INCOMPLETE — which the next run fixes — rather than one that is
+# complete-looking and mis-targeted.
+touch "$dst/.nros-box-tree"
+
 echo "ros2-box-sync: $src -> $dst"
 rsync -a --delete "${exclusions[@]}" "$src/" "$dst/"
 
-# The marker that tells `ros2-box-env.sh` this tree is box-OWNED (and so must
-# NOT redirect CARGO_TARGET_DIR) lives only here, in the destination — the
-# source has no such file. `--delete` therefore removed it on every re-sync, and
-# the box silently fell back to the redirect it was supposed to stop using.
-# Everything still built, so nothing complained; the symptom surfaced far away,
-# as `check-c` compiling against headers the redirected build had written to the
-# OLD location.
-#
-# Write it AFTER rsync, every time, so the mirror cannot exist without it.
+# Re-touched after a SUCCESSFUL transfer as well. Belt and braces: the exclusion
+# above is what actually preserves it (a marker deleted by `--delete` was the
+# original bug — the box silently fell back to the redirect, everything still
+# built, and the symptom surfaced far away as `check-c` compiling against
+# headers the redirected build had written to the OLD location), and this second
+# touch costs nothing while covering any future edit that drops the exclusion.
 touch "$dst/.nros-box-tree"
 
 # A CMakeCache.txt records the ABSOLUTE source and build directories it was
