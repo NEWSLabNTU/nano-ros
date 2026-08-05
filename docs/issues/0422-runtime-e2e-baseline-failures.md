@@ -76,7 +76,10 @@ fix and does not exist yet.
   router: session opens, subscriber declares, and it emits ZERO matches for both
   strings the test waits on (`"Waiting for"` readiness, then two `"seq="`).
   Upstream's 0429 fix retargeted `nano2nano` at the publisher shim's trace but
-  did not cover this test, which still greps the listener.
+  did NOT cover this test — and must not, since its subject is the receive-side
+  zero-copy trampoline. Now **issue 0441**, which also records that the fixture
+  has no `cfg(feature)` branch at all, so the zero-copy and plain listeners are
+  indistinguishable at the output level.
 - `large_msg::test_xrce_e2e_integrity` — now PASSES.
 
 ## Remaining, untriaged (3)

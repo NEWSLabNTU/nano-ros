@@ -200,6 +200,15 @@ an `rmeta`/`.o` path. RESOLVED by recognising a cargo build dir instead of listi
 `CACHEDIR.TAG` plus a `target-` prefix for the not-yet-built case. Listing the dirs would have been
 the hand-maintained-exclude-list shape issue 0287 already replaced. See `archived/0416-*`.)
 
+**#441** — `zero_copy::test_zero_copy_message_info` observes nothing: the demo listener emits neither
+`"Waiting for"` nor `"seq="` (verified running the fixture directly — session opens, subscriber
+declares, zero matches). Grep-drift like #0429, but NOT fixable the same way: #0429 retargeted at the
+PUBLISHER shim, while this test's subject is the RECEIVE-side zero-copy trampoline, so pointing it at
+the talker would keep it green while it stopped testing zero-copy. Worse, the fixture has no
+`cfg(feature)` at all — `unstable-zenoh-api` only propagates to `nros`, so the zero-copy and plain
+listeners print identically and there is nothing to assert on. Needs a receive-side channel (or an
+in-process assertion) before the test can mean anything. See `0441-*`. (2026-08-06)
+
 **#438** — `native_orchestration_tiers` (x2) grep a `multi-tier` marker that only the NUTTX board
 emits; the native/linux board prints the generic `NullNodeRuntime` fallback instead
 (`nros-board-linux/src/lib.rs:334`), so a native multi-tier binary can never satisfy the assertion.
