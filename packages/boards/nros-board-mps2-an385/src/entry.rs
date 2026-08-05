@@ -119,6 +119,22 @@ where
     // closure. Nodes still `register_logger(&LOGGER)` in their `register()`.
     nros_log::init(nros_log::sinks::default());
 
+    // phase-338 W7 — bridge the `log` facade too, so BOTH work here.
+    //
+    // This board was the last one whose node bodies had to use `nros_info!`:
+    // every other platform bridges `log`, so a body written against `log`
+    // compiled here and printed nothing. That made the logging facade a board
+    // property leaking into user source, which is the defect class this phase
+    // exists to remove.
+    //
+    // Note the direction. W7 was drafted the other way round — add `nros_log`
+    // to the boards that lack it — on the premise that `log` needs `std`.
+    // qemu-esp32-baremetal disproves that: it bridges `log` on a `no_std`
+    // target through `esp_println`. So `log` is the user-facing facade
+    // everywhere and `nros_log` stays the platform/ABI layer (it is what
+    // `nros_platform_log_write`, and therefore the C API, is built on).
+    install_semihosting_log_bridge();
+
     // Phase 248 C5a (#60 T4) — the board owns RMW selection: register the linked
     // zenoh backend into the CFFI vtable here, before `Executor::open`.
     // Bare-metal (`target_os = "none"`) is linkme-blind + runs no `.init_array`,
@@ -220,5 +236,41 @@ impl BoardEntry for Mps2An385 {
             }
         }
         let _ = deploy;
+    }
+}
+
+/// phase-338 W7 — route the `log` facade to the semihosting console.
+///
+/// Mirrors `nros-board-linux::install_stdout_log_bridge` and
+/// `nros-board-nuttx::install_stdout_logger`. `set_logger` may only succeed
+/// once, and the `is_ok()` guard makes this a NO-OP if something already
+/// installed one — so it adds a sink where there was none and never fights one
+/// that exists.
+///
+/// The message is emitted VERBATIM, with no level prefix: the examples bake the
+/// full human line into the message (`Publishing: '...'` / `I heard: [...]`)
+/// and the e2e harness greps those markers, so decorating them here would break
+/// every assertion at once.
+fn install_semihosting_log_bridge() {
+    struct SemihostingLogger;
+
+    impl ::log::Log for SemihostingLogger {
+        fn enabled(&self, _: &::log::Metadata<'_>) -> bool {
+            true
+        }
+
+        fn log(&self, record: &::log::Record<'_>) {
+            crate::println!("{}", record.args());
+        }
+
+        fn flush(&self) {}
+    }
+
+    static LOGGER: SemihostingLogger = SemihostingLogger;
+
+    // No `std::sync::Once` on bare metal; `set_logger` is itself idempotent —
+    // the second call returns Err and we leave the level alone.
+    if ::log::set_logger(&LOGGER).is_ok() {
+        ::log::set_max_level(::log::LevelFilter::Trace);
     }
 }

@@ -439,6 +439,7 @@ dependencies = [
  "cortex-m-semihosting",
  "heapless",
  "lan9118-smoltcp",
+ "log",
  "mps2-an385-pac",
  "nros",
  "nros-board-common",

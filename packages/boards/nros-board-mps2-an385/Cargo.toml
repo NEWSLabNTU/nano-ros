@@ -9,6 +9,10 @@ description = "QEMU MPS2-AN385 board crate for nros (hardware + network init)"
 name = "nros_board_mps2_an385"
 
 [dependencies]
+# phase-338 W7 — the `log` facade, bridged to semihosting by
+# `install_semihosting_log_bridge` so node bodies here can use `log::info!`
+# like every other platform's. no_std: default features off.
+log = { version = "0.4", default-features = false }
 # Phase 173.1 — Board super-trait + the generic direct-exec `run`.
 # no_std, zero-dep (default-features = false drops the build-helper
 # serde/toml/cc closure).

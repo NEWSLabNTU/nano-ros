@@ -79,13 +79,15 @@ const GROUPS: &[Group] = &[
     Group {
         name: "B-deferred",
         reason: "the node declares DispatchStrategy::Deferred and an explicit \
-                 tick(), and logs through the nros_log facade. ONE member, and \
-                 the reason was wrong twice: qemu-esp32-baremetal sat here on the \
-                 assumption that bare-metal implies deferred dispatch (its bodies \
-                 are plain immediate-dispatch group-A code, and its Pubsub cell \
-                 RUNS that way), and the old reason claimed `log` needs std — \
-                 which esp32 disproves by bridging `log` on a no_std target via \
-                 esp_println. Both corrected 2026-08-05",
+                 tick(). That is now the WHOLE reason — W7 moved this group's \
+                 bodies onto the `log` facade, so the execution model is the only \
+                 thing separating it from A. ONE member, and the reason was wrong \
+                 twice before: qemu-esp32-baremetal sat here on the assumption \
+                 that bare-metal implies deferred dispatch (its bodies are plain \
+                 immediate-dispatch group-A code and its Pubsub cell RUNS that \
+                 way), and the old reason claimed `log` needs std — which esp32 \
+                 disproves by bridging `log` on a no_std target via esp_println. \
+                 Corrected 2026-08-05",
         platforms: &["qemu-arm-baremetal"],
     },
     Group {
