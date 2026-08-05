@@ -368,6 +368,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-bridge"
+version = "0.5.0"
+dependencies = [
+ "nros-node",
+ "nros-rmw-cffi",
+]
+
+[[package]]
 name = "nros-build-helpers"
 version = "0.5.0"
 dependencies = [
@@ -422,6 +430,7 @@ name = "nros-cpp"
 version = "0.5.0"
 dependencies = [
  "nros",
+ "nros-bridge",
  "nros-build-helpers",
  "nros-c",
  "nros-log",
