@@ -59,6 +59,16 @@ EMIT coverage survives in `rosidl-codegen`'s `#[ignore]` tests; the borrowed-vie
 now unguarded. Re-establishing it as a build-stage fixture needs the standalone-`nros-c`
 `EXECUTOR_SIZE`-probe stub (sizes/opaque class) solved so a raw `gcc`/`g++` link finds the config
 variant symbol. See `0423-*`. (2026-08-05)
+**#413 (REOPENED 2026-08-05)** — `da26485e9` resolved this as a stale binary and un-carved the
+cells. The stale half was real: a fresh rebuild does clear `Transport(ConnectionFailed)` at
+`Executor::open`. The CLASS is not fixed — the Rust cyclone talker now opens its session and then
+fails `NodeRegister("native_rs_talker")`, while the C talker on the same backend, domain and libddsc
+publishes normally, and the ZENOH build of the same Rust source works against a router. Ruled out:
+phase-337 W8.a (the merged board carries the cyclone register arm verbatim, now on the one boot
+funnel), the descriptor registrar (installed by `nros_rmw_cyclonedds_sys::register()` before open),
+and feature forwarding. Blocked on the error the emitted `map_err(|_| NodeRegister(..))` discards —
+that discard is why this has been mis-diagnosed twice. The un-carved cells are red on main. See
+`0413-*`. (2026-08-05)
 
 **#419** — the play_launch pin in `nros-cli-core/build.rs` records the **superproject** SHA when the
 submodule is uninitialised, so `nros sync` reports "this `nros` was built from <a nano-ros commit>"

@@ -495,7 +495,7 @@ check-version-lockstep:
 check-source-gates:
     #!/usr/bin/env bash
     set -e
-    cargo test -p nros-tests --test platform_header_matrix
+    cargo test -p nros-tests --test platform_header_compile
     cargo test -p nros-tests --test cross_libc_precedence_gate
     cargo test -p nros-tests --test zephyr_prjconf_requirements
 
