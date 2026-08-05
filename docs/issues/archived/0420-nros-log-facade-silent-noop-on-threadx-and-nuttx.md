@@ -1,7 +1,7 @@
 ---
 id: 420
 title: "The nros_log facade is a silent no-op on ThreadX and NuttX, and on FreeRTOS's Rust path"
-status: open
+status: resolved  # not-a-bug: all three rows disproved by execution
 type: bug
 area: platform
 related: [phase-338, rfc-0069]
@@ -131,3 +131,57 @@ same transport `log::info!` does. `logging_smoke.rs` already does this for
 mps2-baremetal and zephyr; the gap is that ThreadX, NuttX and FreeRTOS have no
 equivalent, which is why the slot could stay NULL indefinitely without a red
 test. Add those cells before fixing, so the fix is proven rather than assumed.
+
+## RESOLVED (2026-08-05) — NOT A BUG. All three "broken" rows disproved.
+
+Measured, not reasoned.
+
+**NuttX — WORKS.** Booted the fixture directly:
+
+```
+$ qemu-system-arm -M virt -cpu cortex-a7 -nographic -kernel \
+    packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/target/armv7a-nuttx-eabihf/nros-minsizerel/logging-smoke-nuttx-qemu-arm
+[TRACE] smoke: trace payload
+[DEBUG] smoke: debug payload
+[INFO] smoke: info payload
+[WARN] smoke: warn payload
+[ERROR] smoke: error payload
+[FATAL] smoke: fatal payload
+```
+
+`nm` confirms `T nros_platform_log_write` in the image. The provider is
+`nros-platform-posix/src/platform.c`: `nros-board-common`'s
+`nuttx_platform_build.rs` compiles the POSIX platform.c against the board's
+headers ("`nros-platform-posix/src/{platform.c,net.c}` compiled against the
+board's ...", its own doc comment). The survey searched for a *nuttx-specific*
+platform.c and concluded there was none — the definition arrives by reuse.
+
+`logging_smoke_nuttx_qemu_arm_emits_every_severity` also PASSES once the cell
+can run. (It completes in ~0.2 s, which looks too fast for QEMU and is not: the
+fixture skips `Executor::open`, so NuttX boots and prints immediately. Verified
+by the manual boot above before trusting it.)
+
+**ThreadX — WORKS.** Shown earlier in this issue by running the threadx-linux
+fixture.
+
+**FreeRTOS-via-Rust — registers.** `nros-board-mps2-an385-freertos/src/lib.rs:111`.
+
+### The real finding
+
+The facade is fine; what is missing is the ability to SEE that. Every NuttX cell
+skips silently unless two conditions hold, neither of which any setup step
+establishes:
+
+- `NUTTX_DIR` must be exported — `activate.sh` and the SDK env never set it, so
+  `is_nuttx_available()` is false on a fully provisioned host;
+- NuttX must be configured/built (`include/nuttx/config.h`), which needs kconfig
+  tooling (`kconfiglib` or `kconfig-frontends`) that nothing provisions.
+
+So the cell reported SKIP on a machine that had the sources, the toolchain and
+QEMU. That is the actual gap this issue found, and it is why a genuine
+regression here would stay invisible — the same shape as issue 0407, one layer
+further out.
+
+Follow-ups worth filing separately, if wanted: export `NUTTX_DIR` from the SDK
+env, and have `nros setup <nuttx board>` provision kconfig tooling (or `just
+nuttx build` name it as a prereq rather than failing mid-run).
