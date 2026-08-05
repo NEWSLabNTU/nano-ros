@@ -825,6 +825,68 @@ macro arguments.
       entry and the `zpico_backend` lint value. Recorded here so W7.b does not
       re-derive it.
 
+## W8 — the C/C++ retry-loop divergence: investigated 2026-08-06
+
+The last three closable divergences (`c/action-client`, `cpp/action-client`,
+`cpp/service-client`, all on qemu-arm-nuttx) are one pattern: a **3-attempt
+retry loop** around the first request, spinning between attempts.
+
+```c
+for (int attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+        fprintf(stderr, "send_goal timed out; retrying (attempt %d)\n", attempt + 1);
+        nros_executor_spin_some(&app.executor, 1000000000ull);
+    }
+    ret = nros_action_send_goal(...);
+    if (ret != NROS_RET_TIMEOUT) break;
+}
+```
+
+It is a workaround for slow discovery: on NuttX under QEMU the first request
+fires before the server is visible, times out, and the retry — after a spin that
+lets discovery finish — succeeds.
+
+### The earlier note was wrong about the fix
+
+It said *"unify by giving every copy the retry."* Don't. **The API already has
+the right primitive**, and no example uses it:
+
+| | C | C++ |
+|---|---|---|
+| `wait_for_service` | `nros_client_wait_for_service` ✅ | **missing** — `Client` has only the non-blocking `server_available()` |
+| `wait_for_action_server` | `nros_action_client_wait_for_action_server` ✅ | **missing** — `ActionClient` has no readiness method at all |
+
+Both C entry points document themselves as mirroring
+`rclcpp::Client::wait_for_service` / `rclcpp_action::Client::wait_for_action_server`.
+A grep of `examples/` for either name returns exactly one hit, and it is a Rust
+one (`native/rust/service-client-callback`).
+
+### The unification
+
+**Wait-then-send-once, in every copy.** Better than spreading the retry on three
+counts: it waits for the actual condition rather than guessing that three
+attempts is enough; it removes the loop from user source instead of duplicating
+it into six files; and it is the idiom ROS 2 users already know, which is the
+whole point of these examples.
+
+Ordered work:
+
+1. **Bind the two C++ wrappers** — `Client::wait_for_service` and
+   `ActionClient::wait_for_action_server`, thin over the existing C entry points
+   (RFC-0019: the C header is the SSoT, C++ mirrors it). This is a real API gap
+   independent of the examples: C exposes a blocking wait, C++ does not.
+2. **Rewrite the six client examples** — native + nuttx × {c, cpp} ×
+   {service, action} — to wait then send once, deleting the retry loops.
+3. Delete the three divergence entries.
+
+Runtime exposure to check before landing: native C/C++ service and action cells
+are `Runtime`, and the nuttx C ones are too, so step 2 wants a real run on both
+platforms rather than a build.
+
+**Left for later deliberately** — the ask was to investigate and unify
+"eventually", and step 1 changes public C++ API surface, which deserves its own
+change rather than riding along in an examples cleanup.
+
 ## W2.d / W3.c / W7 — closed 2026-08-05
 
 ### W2.d — not an inconsistency; closed as invalid

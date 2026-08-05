@@ -126,9 +126,20 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "c",
         program: "action-client",
         platform: "qemu-arm-nuttx",
-        reason: "W2 — NuttX carries a 3-attempt retry loop around send_goal / service \
-                 call that the other platforms lack. A robustness accommodation, not a \
-                 platform constraint: unify by giving every copy the retry.",
+        reason: "NuttX carries a 3-attempt retry loop around send_goal / the service \
+                 call that the other platforms lack — a workaround for slow \
+                 discovery, where the first request fires before the server is \
+                 visible. INVESTIGATED 2026-08-06: do NOT unify by copying the retry \
+                 everywhere (the earlier note said so). The API already has the right \
+                 primitive — `nros_client_wait_for_service` and \
+                 `nros_action_client_wait_for_action_server`, which exist in the C \
+                 header and explicitly mirror rclcpp's. No C or C++ example calls \
+                 either. Unify as wait-then-send-ONCE, which waits for the actual \
+                 condition instead of guessing 3 attempts and matches the idiom ROS \
+                 users know. BLOCKER: the C++ wrapper never bound them — `Client` has \
+                 only the non-blocking `server_available()`, and `ActionClient` has no \
+                 readiness method at all — so the C++ half needs two thin wrappers \
+                 first (RFC-0019: the C header is the SSoT).",
     },
     Divergence {
         lang: "c",
@@ -142,17 +153,39 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "cpp",
         program: "action-client",
         platform: "qemu-arm-nuttx",
-        reason: "W2 — NuttX carries a 3-attempt retry loop around send_goal / service \
-                 call that the other platforms lack. A robustness accommodation, not a \
-                 platform constraint: unify by giving every copy the retry.",
+        reason: "NuttX carries a 3-attempt retry loop around send_goal / the service \
+                 call that the other platforms lack — a workaround for slow \
+                 discovery, where the first request fires before the server is \
+                 visible. INVESTIGATED 2026-08-06: do NOT unify by copying the retry \
+                 everywhere (the earlier note said so). The API already has the right \
+                 primitive — `nros_client_wait_for_service` and \
+                 `nros_action_client_wait_for_action_server`, which exist in the C \
+                 header and explicitly mirror rclcpp's. No C or C++ example calls \
+                 either. Unify as wait-then-send-ONCE, which waits for the actual \
+                 condition instead of guessing 3 attempts and matches the idiom ROS \
+                 users know. BLOCKER: the C++ wrapper never bound them — `Client` has \
+                 only the non-blocking `server_available()`, and `ActionClient` has no \
+                 readiness method at all — so the C++ half needs two thin wrappers \
+                 first (RFC-0019: the C header is the SSoT).",
     },
     Divergence {
         lang: "cpp",
         program: "service-client",
         platform: "qemu-arm-nuttx",
-        reason: "W2 — NuttX carries a 3-attempt retry loop around send_goal / service \
-                 call that the other platforms lack. A robustness accommodation, not a \
-                 platform constraint: unify by giving every copy the retry.",
+        reason: "NuttX carries a 3-attempt retry loop around send_goal / the service \
+                 call that the other platforms lack — a workaround for slow \
+                 discovery, where the first request fires before the server is \
+                 visible. INVESTIGATED 2026-08-06: do NOT unify by copying the retry \
+                 everywhere (the earlier note said so). The API already has the right \
+                 primitive — `nros_client_wait_for_service` and \
+                 `nros_action_client_wait_for_action_server`, which exist in the C \
+                 header and explicitly mirror rclcpp's. No C or C++ example calls \
+                 either. Unify as wait-then-send-ONCE, which waits for the actual \
+                 condition instead of guessing 3 attempts and matches the idiom ROS \
+                 users know. BLOCKER: the C++ wrapper never bound them — `Client` has \
+                 only the non-blocking `server_available()`, and `ActionClient` has no \
+                 readiness method at all — so the C++ half needs two thin wrappers \
+                 first (RFC-0019: the C header is the SSoT).",
     },
 ];
 
