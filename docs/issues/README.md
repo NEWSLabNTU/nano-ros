@@ -85,14 +85,6 @@ funnel), the descriptor registrar (installed by `nros_rmw_cyclonedds_sys::regist
 and feature forwarding. Blocked on the error the emitted `map_err(|_| NodeRegister(..))` discards —
 that discard is why this has been mis-diagnosed twice. The un-carved cells are red on main. See
 `0413-*`. (2026-08-05)
-**#423** — the borrowed-view (RFC-0033) RUNTIME e2e proofs `tests/borrowed_{c,cpp}_e2e.sh` were
-orphaned (no lane/recipe/CI ran them) AND bit-rotted (the RFC-0042 platform.h move + the
-`nros_config_variant_sz_*` guard both broke their build), i.e. dead code masquerading as coverage.
-Deleted them + their fixtures + the two negative-diagnostic-registry rows (phase-329 W5 follow-up).
-EMIT coverage survives in `rosidl-codegen`'s `#[ignore]` tests; the borrowed-view RUNTIME assertion is
-now unguarded. Re-establishing it as a build-stage fixture needs the standalone-`nros-c`
-`EXECUTOR_SIZE`-probe stub (sizes/opaque class) solved so a raw `gcc`/`g++` link finds the config
-variant symbol. See `0423-*`. (2026-08-05)
 (#413 resolved 2026-08-05 — the DECLARATIVE Node API never registered Cyclone type descriptors.
 Cyclone resolves topic types through a runtime registry; the imperative typed creators call
 `register_type::<M>()`, but the declarative path records metadata and hits the type-ERASED
