@@ -89,6 +89,42 @@ fix and does not exist yet.
 - `realtime_tiers_e2e::realtime_tiers` — 1 of 16 rows
 - (the `logging_smoke` line is diagnosed and fixed above)
 
+## Independently reproduced on a second tree (2026-08-06)
+
+The same 10 came back from a run in the ROS distrobox mirror
+(`nano-ros-box`, Ubuntu 22.04) — a different tree, toolchain and glibc from the
+host Arch run above. Same list, so none of these is host-specific:
+
+```
+suite: tests=1259  failures=10  skipped=23
+```
+
+Two deltas against the host run:
+
+- **NEW: `native_example_reqresp` — 1 of 18 cells, `cpp/xrce/action`.** "client
+  never logged the server-computed result (`Result received:`)". Not in the host
+  list. Shares a shape with the two XRCE rows already here
+  (`large_msg::test_xrce_e2e_integrity`,
+  `xrce_ros2_interop::test_ros2_action_xrce_client`) — worth triaging as one
+  XRCE group rather than three unrelated tests.
+- Absent: `realtime_tiers_e2e` and `cpp_multi_node_entry` (0427 — already fixed
+  by regenerating the model).
+
+### Compare the junit `failures=`, never nextest's summary line
+
+The box run's raw summary said **33 failed**; the real number was 10. The other
+23 were `nros_tests::skip!` panics, which only `just test-all`'s junit rewrite
+turns back into skips (CLAUDE.md). The box skips more than the host — no
+`rmw_zenoh_cpp` overlay (6 `interop_e2e` cells, 5 `params`, `qos_override_e2e`),
+no qemu lanes — so its raw count is inflated by exactly the things it correctly
+declined to run.
+
+Raw failure counts are therefore **not comparable across environments** and mean
+little on their own. Read `failures=` off
+`target/nextest/default/junit.xml`. This sits alongside the freshness note
+below: one number is wrong if the fixtures are stale, the other if the
+environment differs, and both look like "the tier got worse".
+
 ## Method note
 
 Reproduce OUTSIDE the harness, then compare against a working sibling — that is
