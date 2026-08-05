@@ -100,6 +100,30 @@ rsync -a --delete "${exclusions[@]}" "$src/" "$dst/"
 # Write it AFTER rsync, every time, so the mirror cannot exist without it.
 touch "$dst/.nros-box-tree"
 
+# A CMakeCache.txt records the ABSOLUTE source and build directories it was
+# generated for. One copied from the source tree therefore points at the source
+# tree, and cmake refuses outright:
+#
+#   CMake Error: The current CMakeCache.txt directory <dst>/…/build/CMakeCache.txt
+#   is different than the directory <src>/…/build where CMakeCache.txt was created.
+#
+# Excluded paths are protected from `--delete`, which is right for the box's OWN
+# build output but means anything copied under an EARLIER, wronger exclusion set
+# stays forever. That is how these arrived: a window where the rule was anchored
+# to `/build` and nested build dirs were mirrored.
+#
+# Remove only caches that provably belong to another tree — the ones naming a
+# home directory outside this destination. The box's own caches name the box.
+while IFS= read -r cache; do
+    [ -n "$cache" ] || continue
+    home="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$cache" 2>/dev/null | head -1)"
+    case "$home" in
+        "$dst"/*|"") continue ;;
+    esac
+    echo "ros2-box-sync: dropping foreign cmake cache ($home) -> $(dirname "$cache")"
+    rm -rf "$(dirname "$cache")"
+done < <(find "$dst" -name CMakeCache.txt 2>/dev/null)
+
 # `nros sync` writes ABSOLUTE paths into each leaf's `.cargo/config.toml`
 # (RFC-0048 W9), so a mirrored leaf still points at the SOURCE tree and cargo
 # resolves `nros` against crates.io instead of the checkout. This is the
