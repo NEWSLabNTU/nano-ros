@@ -73,6 +73,16 @@ freshness signature is larger and belongs with the NuttX board owner. See `archi
 **#200** — fixture-build timing campaign blocked on a big-disk CI runner (phase-226 validation
 residue). See `0200-*`.
 
+**#432** — the pinned `zephyr-lang-rust` (404fcef) cannot build the `zephyr` crate for ANY board
+whose devicetree has gpio nodes: its DT generator emits a five-argument `GpioPin::new` against a
+six-argument signature (`pin` without `dt_flags`). `CONFIG_GPIO=n` makes it worse, not better — the
+generator reads the devicetree, and the `gpio-keys` augment carries no `cfg:` key, so the calls are
+still emitted while the `raw` bindings vanish (14 errors instead of 4). Invisible until phase-337
+W2.b added the first non-native_sim Zephyr board, native_sim having no gpio nodes. Since essentially
+every real board has gpio, Rust-on-Zephyr is native_sim-only until this is fixed upstream; C and C++
+are unaffected (no `zephyr` crate), which is why W2.b's cells build the C entry. See `0432-*`.
+(2026-08-05)
+
 **#259** — derived scheduling is quantitatively INERT: the model carries no per-callback WCET
 (`MapperPath.exec_ms` is `None` everywhere), so the budget dim short-circuits, blocking (`B_i`)
 can never be numeric, and the feasibility check assumes `B_i = 0` — **unsound whenever callbacks

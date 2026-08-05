@@ -8,9 +8,10 @@ W1.g / W1.h (the board-crate merges; 322 stays the record of the *measurements*)
 **Touches:** RFC-0049 (the config ladder — W1.a extends it to the build block),
 RFC-0051 / phase-329 (the cell tables every wave edits), RFC-0012 (BSP integration).
 
-**Status.** IN PROGRESS. W1, W3, W4, W5, W6, W7 (a/b/c), W8.a + W8.d and W2.a
-are LANDED (2026-08-04/05). Open: W2.b–f (the new witness's bring-up), W8.c (the
-fixture-token vocabulary), W9.a (blocked on W2.b). See "What is left" at the
+**Status.** IN PROGRESS. W1, W3, W4, W5, W6, W7 (a/b/c), W8.a + W8.d, W2.a and
+W2.b are LANDED (2026-08-04/05) — the Cortex-M witness boots and publishes.
+Open: W2.c–f (registering it into the matrix), W8.c (the
+fixture-token vocabulary), W9.a (unblocked by W2.b). See "What is left" at the
 bottom for what each still needs.
 
 ---
@@ -208,14 +209,58 @@ width have **never** run — and `nros-platform-zephyr/src/net_wait.c:53`'s
       `native_sim/native/64` with `CONFIG_NET_SOCKETS_OFFLOAD=y` (host
       sockets, 64-bit). `nros-platform-zephyr/src/net_wait.c:53`'s
       non-`CONFIG_BOARD_NATIVE_SIM` branch gets its first CI execution here.
-- [ ] **W2.b — The conf bundle.** `boards/<board>.conf` (+ `.overlay` if needed)
-      beside the existing `prj.conf`s — the same mechanism the 28 native_sim
-      configs and the FVP board already use. **No new crate** (see W9).
+- [x] **W2.b — LANDED 2026-08-05: the conf bundle, and five defects under it.**
+      `cmake/zephyr/mps2-an385.conf`; **no new crate**, no overlay (W2.a's
+      finding that the board's own DTS already enables `eth0`/`smsc,lan9220`
+      held). **Verified end to end**: boots on `qemu-system-arm -machine
+      mps2-an385`, `net_config: IPv4 address: 10.0.2.15` comes from the real
+      `eth_smsc911x` driver over Zephyr's in-kernel stack, a zenoh session
+      reaches a host router through SLIRP, and the talker publishes. 310 KB
+      flash / 653 KB RAM of 4 MB each — not a tight board.
+
+      The bring-up's actual content was five things that only a non-native_sim
+      Zephyr can surface, none of them in the conf file:
+
+      1. **`zpico.h` vs `zpico.c` disagreed on `size_t`.** cbindgen renders Rust
+         `usize` as `uintptr_t`; the hand-written C uses `size_t`. The same type
+         on x86-64, two types of one width on 32-bit ARM. Fixed at the generator
+         (`usize_is_size_t`). Not an ABI change.
+      2. **`portable-atomic`'s `unsafe-assume-single-core` was gated on an ARCH
+         LIST**, which says yes to thumbv7m — a target with native LDREX/STREX
+         that never needed the polyfill, and where the feature hard-conflicts
+         with the `critical-section` upstream's `zephyr` crate always enables.
+         `not(target_has_atomic = "ptr")` asks the real question. Three sites
+         had spelled one intent three ways (arch list / target triple /
+         unconditional); they are now one spelling.
+      3. **`nros-rmw-zenoh-staticlib` had no allocator and no panic handler for
+         bare-metal Zephyr** — every other no_std platform declares them;
+         `platform-zephyr` did not, because cmake appends `,std` on native_sim
+         and the host's std supplied both. New `platform-zephyr-baremetal`, plus
+         entries in the `extern crate ... as _` lists: declaring a dep is not
+         enough, an unreferenced one is never linked and its lang items never
+         arrive.
+      4. **Two cmake sites computed that feature string independently**; fixing
+         one left the other on the old answer. Now one macro.
+      5. **No entropy device on an385**, so `sys_rand_get()` linked against
+         nothing and every RNG arm but `TEST_RANDOM_GENERATOR` is gated on
+         `ENTROPY_HAS_DRIVER`. The conf records that this lands on a
+         CONSTANT-seeded timer PRNG — a future PAIR off this bundle must vary
+         the seed or repeat archived issue 0157's identical-GUID false negative.
+
+      **The cells build the C entry, not the Rust one.** The pinned
+      `zephyr-lang-rust` cannot compile the `zephyr` crate for ANY board whose
+      devicetree has gpio nodes (**issue 0432** — a 5-arg `GpioPin::new` against
+      a 6-arg signature; `CONFIG_GPIO=n` makes it 14 errors instead of 4). That
+      is upstream and orthogonal to what this witness is for: 32-bit pointers,
+      the in-kernel IP stack and a real ethernet driver are exercised identically
+      by the C entry. W2.d's cell list is adjusted accordingly.
 - [ ] **W2.c — `PlatformId::ZephyrQemuCortexM`** — enum arm, `index()` band,
       `fixture_tokens()`. The injectivity gate re-proves port/domain
       collision-freedom automatically.
-- [ ] **W2.d — Cells:** pubsub × {rust, c, cpp} × zenoh as `Runtime` (3);
-      service and action as `BuildOnly` with the reason string until they run (6).
+- [ ] **W2.d — Cells:** pubsub × {c, cpp} × zenoh as `Runtime` (2 — **not 3**;
+      the rust arm is blocked on issue 0432, and a cell that cannot build is not
+      a `BuildOnly` cell, it is a lie); service and action as `BuildOnly` with
+      the reason string until they run (4).
 - [ ] **W2.e — Fixture coverage:** join the west-lane exemption in
       `tests/matrix_fixture_coverage.rs::every_runtime_cell_has_a_fixture_row`,
       naming the new board. **Adds zero `fixtures.toml` rows** — the west leaves
@@ -731,9 +776,10 @@ Measured 2026-08-05, after W1/W3/W4/W5/W6/W7/W8.a/W8.d.
 | Wave | State | What it needs |
 |---|---|---|
 | W2.a | **done** | — |
-| W2.b–f | open | the conf bundle, `PlatformId::ZephyrQemuCortexM`, 3 Runtime + 6 BuildOnly cells, the west-lane exemption, runner + lane wiring. This is a real bring-up: zenoh-pico over Zephyr's in-kernel IP stack on a 32-bit Cortex-M3, and the three Runtime cells have to actually deliver. |
+| W2.b | **done** | the bring-up itself is finished and proven: the image boots, takes an IP from the real driver, and publishes over a zenoh session. Five defects fixed under it; one (0432) filed rather than fixed. |
+| W2.c–f | open | `PlatformId::ZephyrQemuCortexM`, 2 Runtime + 4 BuildOnly cells (see W2.d — the rust arm is blocked on 0432), the west-lane exemption, runner + lane wiring. The hard part is behind: what remains is registration into the matrix, which is mechanical, plus a runner that reproduces the SLIRP + host-router setup W2.b ran by hand. |
 | W8.c | open | the three token-derived vocabularies moved together, behind a full `just ci` (see W8.b). |
-| W9.a | open | depends on W2.b — the conf-bundle mechanism it folds the FVP board INTO is what W2.b establishes. Folding first would mean inventing that mechanism twice. |
+| W9.a | open, UNBLOCKED | W2.b established the conf-bundle mechanism (`cmake/zephyr/<board>.conf`, no crate), which is what the FVP board folds INTO. |
 
 The five landed waves are independent of all three, so the tree is a coherent
 stopping point rather than a half-migration.
