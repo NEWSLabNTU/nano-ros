@@ -212,6 +212,53 @@ one. Growing the GROUP body to compute the sequence is the honest fix, but it
 touches four platforms with live runtime lanes and raises feedback buffers
 128 → 256 on constrained targets. Worth its own item.
 
+## W3.e — threadx-linux bodies converged (2026-08-05)
+
+The four plain bodies (`action-client`, `action-server`, `service-client`,
+`service-server`) now match the group-A body. Divergence entries: **22 → 18**;
+fully-identical triples **10 → 14**.
+
+**Verified by execution, not by building.** Unlike riscv64's action cell
+(`BuildOnly`), `matrix::CELLS` runs ThreadxLinux × Rust × Zenoh ×
+{Pubsub, Service, Action} as `Runtime`, so both pairs were driven live against a
+real zenoh router on their declared locators. Service: ready marker → incoming
+request → `a: 2 b: 3` → `Result of add_two_ints: 5`. Action: ready → goal request
+→ executing → publish feedback → goal succeeded, with the client logging
+`Goal accepted`, feedback `[0,1,1]` and result `[0,1,1]`.
+
+The service pair is the one that *needed* running. Converging replaced an
+unpaced per-tick retry that failed silently with the group's 1 s timer plus a
+logged failure arm — that changes when the first call lands, and reading the
+code cannot tell you whether it still beats the harness timeout.
+
+**A coupling worth remembering for the remaining platforms:**
+`[package.metadata.nros.node] class` names the node struct, so renaming the
+struct without moving `class` leaves codegen pointing at a type that no longer
+exists. `name` moved too, and doing so exposed that it had read
+`"service_client"` while the body's own
+`NodeOptions::new("add_two_ints_client")` said otherwise — the metadata had
+disagreed with its own node all along.
+
+The `-entry` siblings needed no change: they re-export by CRATE name
+(`pub use threadx_linux_rs_service_client::register`), not by struct name.
+
+### What is left on threadx-linux — a naming decision, not a body
+
+Six `-entry` divergences remain, and each is a single line:
+
+```rust
+pub use freertos_rs_talker::register;       // qemu-arm-freertos
+pub use threadx_linux_rs_talker::register;  // threadx-linux
+```
+
+They differ only because the node-crate name encodes the platform. Converging
+them means unifying example package naming across platforms (W2.c/W2.d), which
+touches `[package]  name`, the entry's dependency key, and the symbols
+`nros::node!` derives from `CARGO_PKG_NAME`
+(`__nros_node_<pkg>_dispatch_strategy`, the `<pkg>::<Class>` component class).
+That is a decision about naming policy — `examples/workspaces/README-layout.md`
+already has rules for workspaces — not an edit to make in passing.
+
 ## W3 — Close the native/embedded Rust split
 
 > **Measured 2026-08-04, and the premise was wrong. Read before starting.**
