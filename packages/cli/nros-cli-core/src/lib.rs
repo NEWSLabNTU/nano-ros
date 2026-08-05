@@ -5,6 +5,7 @@
 //! that library is renamed or split.
 
 pub mod abi_guard;
+pub mod build_output;
 pub mod cmd;
 // Issue 0363 — the freshness predicate, shared verbatim with `build.rs` via
 // `include!`. One implementation: the build embeds a stamp, the runtime

@@ -38,7 +38,7 @@ use super::{
 /// Directory names never hashed as component source: build output and the
 /// sidecar dir itself (hashing the output would make the digest self-
 /// referential).
-const SKIPPED_DIRS: &[&str] = &["target", "build", "generated", "metadata", "node_modules"];
+use crate::build_output::is_build_output_dir;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct RefreshReport {
@@ -408,7 +408,7 @@ fn collect_sources(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<()
             continue;
         }
         if path.is_dir() {
-            if SKIPPED_DIRS.contains(&name.as_ref()) {
+            if is_build_output_dir(&name) {
                 continue;
             }
             collect_sources(root, &path, out)?;

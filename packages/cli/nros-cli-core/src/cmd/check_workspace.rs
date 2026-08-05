@@ -105,7 +105,9 @@ pub fn check_workspace(workspace_root: &Path) -> Result<WorkspaceLintReport> {
 
     for (name, pkg_dir) in dirs {
         // Skip dotted dirs (.git, .cargo, .claude, …) and build output dirs.
-        if name.starts_with('.') || name == "target" || name == "build" {
+        // `is_build_output_dir` prefix-matches, so the suffixed variants this
+        // exact comparison used to miss (`target-xrce`, `build-zenoh`) go too.
+        if name.starts_with('.') || crate::build_output::is_build_output_dir(&name) {
             continue;
         }
 
