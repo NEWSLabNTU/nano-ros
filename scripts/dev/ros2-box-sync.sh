@@ -68,6 +68,18 @@ exclusions=(
     --exclude '/tmp'
     --exclude '/test-logs'
     --exclude 'node_modules'
+    # issue 0401 follow-up — path-carrying GENERATED files must NOT be mirrored.
+    # `nros sync` writes ABSOLUTE paths (RFC-0048 W9), so a copied
+    # `nros-patch.toml` / leaf `.cargo/config.toml` points at the SOURCE tree.
+    # Worse than useless: it half-works. The box then has some leaves rewritten
+    # to box paths and a central patch still naming the host, and
+    # `check-dep-chain` fails on four boards with `no matching package named
+    # \`nros\`` — a resolution error that says nothing about mirroring.
+    #
+    # Excluding them makes the box regenerate its own on the first `nros sync`
+    # (or `just generate-bindings`), which is the only state that is coherent.
+    --exclude '/nros-patch.toml'
+    --exclude '.cargo/config.toml'
 )
 
 mkdir -p "$dst"
@@ -79,8 +91,9 @@ rsync -a --delete "${exclusions[@]}" "$src/" "$dst/"
 # resolves `nros` against crates.io instead of the checkout. This is the
 # documented "moved checkout -> re-run `nros sync`" rule; it applies to a mirror
 # for exactly the same reason.
-echo "ros2-box-sync: re-run \`nros sync <workspace>\` inside the box for anything you build —"
-echo "               leaf .cargo/config.toml files carry absolute paths to the source tree."
+echo "ros2-box-sync: run \`just generate-bindings\` (or \`nros sync <ws>\`) inside the box before"
+echo "               building: the path-carrying generated files are deliberately NOT mirrored,"
+echo "               so the box writes its own with box paths."
 echo ""
 echo "ros2-box-sync: done. Enter the box against the MIRROR:"
 echo "    DBX_CONTAINER_MANAGER=docker distrobox enter ros2 -- \\"
