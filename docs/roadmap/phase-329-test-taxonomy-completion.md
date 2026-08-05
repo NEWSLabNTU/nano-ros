@@ -307,8 +307,13 @@ un-prebuildable), so they belong IN the registry, not moved out of it.
   Promoting those to the SSoT would couple unrelated tests to it. The gate's new
   scope-boundary doc enumerates all 7 + the promotion path if any later becomes
   shared.
-- [ ] Grep-gate against new local `CELLS`/axis tables outside
-  `matrix.rs`/`interop.rs`.
+- [x] Grep-gate against new local `CELLS`/axis tables outside
+  `matrix.rs`/`interop.rs`. **Done 2026-08-05 as `tests/no_local_axis_tables.rs`**
+  (unblocked once W5 removed `platform_header_matrix`'s local `const CELLS`). Fails
+  on any `const`/`static` whose NAME contains `CELLS` or whose TYPE is `&[*Cell]`,
+  outside the two SSoT files. A local `struct Cell` used as dynamic per-case exec
+  data (the W1 pattern; `interop_e2e`/`zephyr`) is ALLOWED — only a static
+  coordinate table is banned. Verified non-vacuous.
 
 ### W7 — tier mapping (RFC-0061 join)
 - [ ] Each bucket declares its tier home: guards/gates + host-unit +
