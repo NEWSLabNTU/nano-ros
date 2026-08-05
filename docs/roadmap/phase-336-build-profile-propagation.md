@@ -296,6 +296,50 @@ literal.
 
 ### W7 — Verification sweep
 
+> **W7 landed 2026-08-05.** What the sweep actually cost is worth recording,
+> because almost none of it was profile propagation.
+>
+> **Two regressions in this phase's own work, both found by running it:**
+> - The generated C++ FFI glue is a SECOND Rust staticlib in a link that already
+>   holds `libnros_cpp.a`. At `lto = "off"` both carry std's panicking codegen
+>   unit → `multiple definition of __rustc::rust_begin_unwind`, five workspaces
+>   dead. The hardcoded `--release` had been supplying fat LTO silently; it is
+>   now the `cpp-ffi-glue` carve-out. **A hardcoded value can be load-bearing
+>   for a reason nobody wrote down — "it built before" is evidence about the old
+>   profile's SETTINGS, not about the site.**
+> - `NROS_CARGO_PROFILE := ""` (W3, so the table owns the default) met
+>   `env::var`, which returns `Ok("")` for a set-but-empty variable. The profile
+>   name became `""`, every fixture path became `target//<bin>`, and 110 tests
+>   reported "not prebuilt" — a plausible-but-wrong message that sent the first
+>   diagnosis at stale fixtures. Shell and cmake already treated empty as unset;
+>   the rule is now `nros_cargo_profile::profile_or_default`, tested.
+>
+> **Five pre-existing breaks on main**, none caused here, all blocking
+> verification: the workspace-fixture sweep passing `''` args (0406 made `--id`
+> a flag, the generator stayed positional), `check-dep-chain` not syncing the
+> leaf configs that were untracked as `nros sync` output, two CLI tests reading
+> SystemModels that phase-330 W4 deleted, the `model_location` ladder test not
+> tracking two rungs W4/W7 added (and a poisoned test mutex reporting one
+> failure as five), and two gates walking the filesystem for TRACKED files.
+> Four more tests of the same W4 class remain → **issue 0417**.
+>
+> **Performance, since the sweep spent most of its wall-clock waiting:** the
+> compile-check stage walked ~27 independent rows serially — 5 rows in 10
+> minutes with ONE rustc on 32 cores. Now fanned out under pinned make 4.4's
+> FIFO jobserver (`scripts/build/jobserver-pool.sh`, extracted rather than
+> spelled a third time): 696s for all 26. The size probe rebuilt a ~60-crate
+> graph per consumer per build dir (~420 MB each) — one shared cache, 63s → 16s.
+> The workspace-fixture entry lookup walked 24k files per row and could pick a
+> cargo artifact over the cmake one; the metadata probe linked one binary per
+> component serially, 24s → 4s.
+>
+> **Not done here:** the per-board size table. The carve-outs mean the embedded
+> images are byte-unchanged (both resolve to `nros-minsizerel`, which carries
+> `release`'s pre-split settings), so the delta that motivated the table is
+> zero for every board that has one; measuring it needs a tier-3 sweep this
+> phase does not otherwise require.
+
+
 - [ ] Rebuild every fixture lane — the profile is in the artifact path, so all
       prebuilt fixtures are invalid on landing (`just build-test-fixtures
       lane=<lane>` per lane).
