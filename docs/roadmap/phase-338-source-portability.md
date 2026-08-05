@@ -148,12 +148,41 @@ nothing silently regresses.
 > a property of the logic; the glue is platform-specific by nature and the point
 > is to **isolate** it, not to pretend it can vanish.
 >
-> **Open design question, for the maintainer — do not decide this unilaterally.**
-> Either (a) every platform gains a committed `-entry` package (uniform, but more
-> directories), or (b) the entry glue is a declared per-platform file inside the
-> same package (fewer directories, and the gate's subject becomes the logic file).
-> (b) fits W6's direction; (a) fits the existing three platforms. W2's remaining
-> items are written for whichever wins.
+> **DECIDED (maintainer, 2026-08-04): option (b), AND collapse the 18 existing
+> `-entry` packages.** The entry glue is a declared per-platform file inside the
+> same package, and the separate `-entry` directories go away rather than
+> spreading to the platforms that lack them.
+>
+> *(Recorded 2026-08-05. The decision was made in conversation and never written
+> down, so this block still read "open question" for a day while work proceeded
+> on the assumption it was open. That cost a wrong scoping note in W3.e — see
+> the correction there.)*
+>
+> The target is the shape **native already has**: ONE package holding both
+> `src/lib.rs` (node logic) and `src/main.rs` (`nros::main!()`), with
+> `[package.metadata.nros.entry]`, `[[bin]]` and `[lib]` in the same
+> `Cargo.toml`. threadx-riscv64 and zephyr already have no `-entry` package, so
+> after the collapse the shape is uniform across all eight platforms instead of
+> 3-of-8 carrying an extra directory.
+>
+> **Scope of the collapse, measured 2026-08-05:**
+>
+> | | count |
+> |---|---|
+> | `-entry` packages | **18** — 6 programs × {qemu-arm-freertos, qemu-arm-nuttx, threadx-linux} |
+> | `examples/fixtures.toml` rows naming an `-entry` dir | 12 |
+> | test files resolving a `*_rs_*_entry` binary | 6 |
+>
+> The six test files are the reason this is a wave and not a cleanup:
+> `entry_e2e.rs`, `nuttx_entry_build.rs`, `threadx_linux_entry_build.rs` and
+> `freertos_run_plan_runtime.rs` exist to exercise the entry-package shape
+> specifically, plus the `binaries/{nuttx,threadx_linux}.rs` resolvers. Each
+> needs to follow the binary to its new home or be retired with a reason.
+>
+> **Stage it one platform at a time** (maintainer's standing principle — "we
+> don't migrate all boards at once, it reduces the blast radius"). threadx-linux
+> first: its cells are `Runtime`, so the collapse can be proven by running the
+> pairs rather than by building them.
 
 The ceremony moves into the generated entry, where `nros::init`, executor open,
 RMW registration and the spin loop already live.
@@ -242,22 +271,27 @@ disagreed with its own node all along.
 The `-entry` siblings needed no change: they re-export by CRATE name
 (`pub use threadx_linux_rs_service_client::register`), not by struct name.
 
-### What is left on threadx-linux — a naming decision, not a body
+### What is left on threadx-linux — resolved by DELETION, not by naming
 
-Six `-entry` divergences remain, and each is a single line:
+Six `-entry` divergences remain, each a single line whose only difference is
+that the node-crate name encodes the platform:
 
 ```rust
 pub use freertos_rs_talker::register;       // qemu-arm-freertos
 pub use threadx_linux_rs_talker::register;  // threadx-linux
 ```
 
-They differ only because the node-crate name encodes the platform. Converging
-them means unifying example package naming across platforms (W2.c/W2.d), which
-touches `[package]  name`, the entry's dependency key, and the symbols
-`nros::node!` derives from `CARGO_PKG_NAME`
-(`__nros_node_<pkg>_dispatch_strategy`, the `<pkg>::<Class>` component class).
-That is a decision about naming policy — `examples/workspaces/README-layout.md`
-already has rules for workspaces — not an edit to make in passing.
+**Correction (2026-08-05):** an earlier version of this section proposed
+unifying example package naming (W2.c/W2.d) to make that line identical. That is
+the wrong fix. The maintainer decided on 2026-08-04 to **collapse the 18
+`-entry` packages** into their node packages, native-style — see the W2 decision
+block. Under that decision these six files cease to exist, so there is no line
+left to converge and no naming policy to settle.
+
+The mistake was mine and it was avoidable: the decision existed, it just was not
+written in the phase doc, and I scoped the remaining work from the doc rather
+than asking. Recorded here because "the doc said it was still open" is exactly
+how a settled decision gets relitigated.
 
 ## W3 — Close the native/embedded Rust split
 
