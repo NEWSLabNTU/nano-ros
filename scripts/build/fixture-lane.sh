@@ -246,8 +246,16 @@ nros_fixtures_stamp_require() {
     want_file="$(nros_lane_coords_file "$want")" || return 1
 
     if [ "$have" = "native" ]; then
-        # A `native` build covers every row of the native module, so it covers
-        # any lane whose coordinates are ALL on native — which is true of tier 1
+        # NOTE the two spellings here, which are NOT a typo (phase-337 W8.c).
+        # `native` is the LANE name — `lane=native`, `_NROS_LANES`, `just native
+        # …` — and it deliberately keeps that name. `linux` is the fixture TOKEN
+        # the coordinates are built from (`lane-coords` → `fixture_tokens()`),
+        # and W8.c moved it to match `PlatformId::Linux` and
+        # `nros-board-linux`. They are different vocabularies that used to share
+        # a spelling, so this line is where the seam is visible.
+        #
+        # A `native`-lane build covers every row of the host module, so it covers
+        # any lane whose coordinates are ALL on the host — which is true of tier 1
         # by construction. Checked rather than assumed: if the tier-1 selection
         # ever grows a cross-platform cell this reports it instead of waving a
         # run through on fixtures that were never built.
@@ -256,7 +264,7 @@ nros_fixtures_stamp_require() {
             # module-level except `all`, handled earlier.
             missing=""
         else
-            missing="$(grep -v '^native,' "$want_file" || true)"
+            missing="$(grep -v '^linux,' "$want_file" || true)"
         fi
     else
         missing="$(comm -23 \

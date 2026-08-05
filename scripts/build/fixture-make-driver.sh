@@ -8,14 +8,14 @@ set -euo pipefail
 
 usage() {
     cat >&2 <<'EOF'
-usage: scripts/build/fixture-make-driver.sh [--dry-run] [--keep] <platform|all|native-cyclonedds-rust|native-cmake-rmw|native-cyclonedds-cmake>
+usage: scripts/build/fixture-make-driver.sh [--dry-run] [--keep] <platform|all|linux-cyclonedds-rust|linux-cmake-rmw|linux-cyclonedds-cmake>
 
 Generates a temporary makefile, joblog, and leaf logs under build/fixture-make-driver/.
 Current scope:
-  native                  native manifest-driven fixture groups
-  native-cyclonedds-rust  native Rust talker/listener Cyclone pure-Cargo leaves
-  native-cmake-rmw        native C/C++ Zenoh and XRCE CMake fixture groups
-  native-cyclonedds-cmake native C/C++ Cyclone CMake fixture groups
+  linux                   linux (host) manifest-driven fixture groups
+  linux-cyclonedds-rust   linux Rust talker/listener Cyclone pure-Cargo leaves
+  linux-cmake-rmw         linux C/C++ Zenoh and XRCE CMake fixture groups
+  linux-cyclonedds-cmake  linux C/C++ Cyclone CMake fixture groups
 
 Options:
   --dry-run, -n   generate and print the make command without executing it
@@ -59,11 +59,11 @@ if [ -z "$scope" ]; then
 fi
 
 case "$scope" in
-    native|all|native-cyclonedds-rust|native-cmake-rmw|native-cyclonedds-cmake)
+    linux|all|linux-cyclonedds-rust|linux-cmake-rmw|linux-cyclonedds-cmake)
         ;;
     *)
         echo "fixture-make-driver: unsupported platform for skeleton: $scope" >&2
-        echo "fixture-make-driver: current scope is native manifest groups and native CMake/Cyclone Rust leaves only" >&2
+        echo "fixture-make-driver: current scope is linux manifest groups and linux CMake/Cyclone Rust leaves only" >&2
         exit 2
         ;;
 esac
@@ -86,7 +86,7 @@ printf 'target\tplatform\tlang\trmw\tstatus\tstart_epoch\tend_epoch\tduration_s\
 leaf_file="$work_root/leaves-$stamp.tsv"
 mkdir -p "$work_root"
 case "$scope" in
-    native|all)
+    linux|all)
         python3 - "$repo_root/examples/fixtures.toml" >"$leaf_file" <<'PY'
 import sys
 from pathlib import Path
@@ -102,7 +102,7 @@ with manifest.open("rb") as f:
 
 seen = set()
 for row in rows:
-    if row.get("platform") != "native":
+    if row.get("platform") != "linux":
         continue
     lang = row.get("lang") or "rust"
     rmw = row.get("rmw") or ""
@@ -110,43 +110,43 @@ for row in rows:
     if key in seen:
         continue
     seen.add(key)
-    name = f"native-{lang}{('-' + rmw) if rmw else ''}".replace("_", "-")
+    name = f"linux-{lang}{('-' + rmw) if rmw else ''}".replace("_", "-")
     target = f"fixture-{name}"
-    label = f"native {lang}{(' ' + rmw) if rmw else ''}"
+    label = f"linux {lang}{(' ' + rmw) if rmw else ''}"
     command = (
-        f"NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native {lang} {rmw}"
+        f"NROS_JOBSERVER=1 scripts/build/fixtures-build.sh linux {lang} {rmw}"
         if rmw
-        else f"NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native {lang}"
+        else f"NROS_JOBSERVER=1 scripts/build/fixtures-build.sh linux {lang}"
     )
     rmw_field = rmw if rmw else "-"
-    print(f"{target}\tnative\t{lang}\t{rmw_field}\t{label}\t{name}\t{command}")
+    print(f"{target}\tlinux\t{lang}\t{rmw_field}\t{label}\t{name}\t{command}")
 PY
         ;;
-    native-cyclonedds-rust)
+    linux-cyclonedds-rust)
         {
             for role in talker listener; do
-                name="native-rust-cyclonedds-$role"
+                name="linux-rust-cyclonedds-$role"
                 target="fixture-$name"
-                label="native rust cyclonedds $role"
+                label="linux rust cyclonedds $role"
                 command="cd examples/native/rust/$role && cargo build \$\${NROS_CARGO_PROFILE_ARGS:-} --no-default-features --features rmw-cyclonedds --target-dir target-cyclonedds"
-                printf '%s\tnative\trust\tcyclonedds\t%s\t%s\t%s\n' "$target" "$label" "$name" "$command"
+                printf '%s\tlinux\trust\tcyclonedds\t%s\t%s\t%s\n' "$target" "$label" "$name" "$command"
             done
         } >"$leaf_file"
         ;;
-    native-cmake-rmw)
+    linux-cmake-rmw)
         {
             for lang in c cpp; do
                 for rmw_name in zenoh xrce; do
-                    name="native-$lang-$rmw_name"
+                    name="linux-$lang-$rmw_name"
                     target="fixture-$name"
-                    label="native $lang $rmw_name"
-                    command="NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native $lang $rmw_name"
-                    printf '%s\tnative\t%s\t%s\t%s\t%s\t%s\n' "$target" "$lang" "$rmw_name" "$label" "$name" "$command"
+                    label="linux $lang $rmw_name"
+                    command="NROS_JOBSERVER=1 scripts/build/fixtures-build.sh linux $lang $rmw_name"
+                    printf '%s\tlinux\t%s\t%s\t%s\t%s\t%s\n' "$target" "$lang" "$rmw_name" "$label" "$name" "$command"
                 done
             done
         } >"$leaf_file"
         ;;
-    native-cyclonedds-cmake)
+    linux-cyclonedds-cmake)
         # Issue 0022 — the cyclone deadlock (parallel corrosion→cargo on
         # nros-c/nros) is fixed at the SOURCE: nros-sizes-build now strips the
         # make jobserver from the nested opaque-size probe cargo
@@ -156,11 +156,11 @@ PY
         # jobserver/CARGO_HOME hacks needed here.
         {
             for lang in c cpp; do
-                name="native-$lang-cyclonedds"
+                name="linux-$lang-cyclonedds"
                 target="fixture-$name"
-                label="native $lang cyclonedds"
-                command="NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native $lang cyclonedds"
-                printf '%s\tnative\t%s\tcyclonedds\t%s\t%s\t%s\n' "$target" "$lang" "$label" "$name" "$command"
+                label="linux $lang cyclonedds"
+                command="NROS_JOBSERVER=1 scripts/build/fixtures-build.sh linux $lang cyclonedds"
+                printf '%s\tlinux\t%s\tcyclonedds\t%s\t%s\t%s\n' "$target" "$lang" "$label" "$name" "$command"
             done
         } >"$leaf_file"
         ;;

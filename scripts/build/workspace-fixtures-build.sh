@@ -171,12 +171,12 @@ build_workspace() {
     # build otherwise fails DEEP and cryptically — e.g. the bridge's
     # `nros::main!(launch=...)` finds no `nros sync`-generated `nros-bridge.toml`,
     # falls back to a normal-launch entry, and errors `E0433: cannot find
-    # nros_board_linux`. Fail LOUD + actionable here instead. Scoped to native:
+    # nros_board_linux`. Fail LOUD + actionable here instead. Scoped to the host:
     # the embedded cyclonedds lanes (freertos/threadx/zephyr) have their own
     # graceful idlc/submodule skips and must not be turned into hard failures.
     case "$defs" in
         *NROS_RMW=cyclonedds*)
-            if [ "$platform" = "native" ] && \
+            if [ "$platform" = "linux" ] && \
                [ ! -e "$repo_root/third-party/dds/cyclonedds/CMakeLists.txt" ]; then
                 echo "ERROR: workspace fixture '$id' requires the cyclonedds submodule," >&2
                 echo "       which is not checked out (third-party/dds/cyclonedds is empty)." >&2

@@ -143,7 +143,7 @@ build-fixtures: build-fixture-rust build-fixture-extras build-workspace-fixtures
 # Build native workspace fixtures from examples/fixtures.toml.
 [group("examples")]
 build-workspace-fixtures:
-    bash scripts/build/workspace-fixtures-build.sh native
+    bash scripts/build/workspace-fixtures-build.sh linux
 
 # Build every native Rust test fixture from the SSOT manifest
 # (examples/fixtures.toml). Per-fixture build options — features, target-dir,
@@ -177,7 +177,7 @@ build-fixture-rust:
         NROS_REPO_DIR="$nros_repo_root" "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_write "$dir"
     done
-    bash scripts/build/fixtures-build.sh native rust
+    bash scripts/build/fixtures-build.sh linux rust
     echo "Native rust fixtures built (from examples/fixtures.toml)."
 
 # Issue #29 — like `build-fixture-rust` but `--core-only`: builds just the
@@ -204,7 +204,7 @@ build-fixture-rust-core:
         NROS_REPO_DIR="$nros_repo_root" "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_write "$dir"
     done
-    bash scripts/build/fixtures-build.sh native rust --core-only
+    bash scripts/build/fixtures-build.sh linux rust --core-only
     echo "Native rust CORE fixtures built (default-config rows only)."
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
@@ -261,7 +261,7 @@ build-fixture-extras:
         ensure_native_rust_generated "native/rust/${collapsed_case}"
     done
     export NROS_CARGO_PROFILE_ARGS="$cargo_profile_args"
-    bash scripts/build/fixture-make-driver.sh native-cyclonedds-rust
+    bash scripts/build/fixture-make-driver.sh linux-cyclonedds-rust
     # Phase 181.5 — collapsed-shape native C / C++ examples from the SSOT
     # manifest (examples/fixtures.toml). Per-cell RMW (`-DNROS_RMW`),
     # per-RMW build-subdir (`build-<rmw>/`) and any cmake target come from
@@ -270,7 +270,7 @@ build-fixture-extras:
     # NROS_CMAKE_EXTRA_DEFS contract. The cpp/parameters cell (target
     # cpp_parameters) is a manifest row too, so it builds in the same pass.
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON"
-    bash scripts/build/fixture-make-driver.sh native-cmake-rmw
+    bash scripts/build/fixture-make-driver.sh linux-cmake-rmw
     unset NROS_CMAKE_EXTRA_DEFS
     # Phase 186 — native c/cpp Cyclone cells self-provision from source (static
     # ddsc via nano-ros-posix.cmake; DISABLE_FIND_PACKAGE forces the pinned source
@@ -284,7 +284,7 @@ build-fixture-extras:
     # deadlock (issue 0022) is fixed at the source — nros-sizes-build strips the
     # jobserver from its nested probe cargo — so no per-leaf workaround is needed
     # here. DO NOT re-add `NROS_BUILD_JOBS=1` (re-serializes for no reason).
-    bash scripts/build/fixture-make-driver.sh native-cyclonedds-cmake
+    bash scripts/build/fixture-make-driver.sh linux-cyclonedds-cmake
     unset NROS_CMAKE_EXTRA_DEFS
 
 # Build every native tier: core artifacts, Rust/C/C++ examples, and test fixtures.

@@ -126,18 +126,21 @@ impl PlatformId {
     /// shared helper rather than a second spelling").
     pub const fn fixture_tokens(self) -> &'static [&'static str] {
         match self {
-            // phase-337 W8.c (DEFERRED) — still `native`. The board crate,
-            // the registry row and this enum are `linux`; the fixture TOKEN is
-            // not, because it is not only a token: it is also the first
-            // argument of `scripts/build/fixtures-build.sh`, the scope name in
-            // `fixture-make-driver.sh`, the coordinate prefix `fixture-lane.sh`
-            // greps (`^native,`), and it shares its spelling with the
-            // `examples/native/` DIRECTORY and the `native` LANE — which
-            // deliberately keep the name (see `just_module` below). Moving the
-            // token alone would leave two spellings of one fact; moving all of
-            // it needs a full `just ci` behind it, since this is the reference
-            // platform. See the phase doc's W8.c entry for the site map.
-            PlatformId::Linux => &["native"],
+            // phase-337 W8.c — moved from `native` WITH the two other
+            // token-derived vocabularies, because the token is not only a
+            // token: it is also the first argument of
+            // `scripts/build/fixtures-build.sh` / `workspace-fixtures-build.sh`,
+            // the scope name in `fixture-make-driver.sh`, and the coordinate
+            // prefix `fixture-lane.sh` greps. Renaming any one of those alone
+            // would leave rows saying `linux` and the builder that produces them
+            // still called with `native` — two spellings of one fact.
+            //
+            // What did NOT move, and is not an oversight: the `native` LANE
+            // (`lane=native`, `_NROS_LANES`), the `just` MODULE (`just native
+            // …`, see `just_module` below), and the `examples/native/`
+            // DIRECTORY — that last one is a `dir =` value, not this token.
+            // Those are different vocabularies that merely share a spelling.
+            PlatformId::Linux => &["linux"],
             PlatformId::ZephyrNativeSim => &["zephyr"],
             // phase-337 W2.c/W2.e — declared, but NO `fixtures.toml` row spells
             // it: this board is built by the west leaves lane, which carries its

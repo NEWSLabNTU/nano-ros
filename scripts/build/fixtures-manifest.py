@@ -4,9 +4,9 @@
 Consumed by both the fixture build recipes and the test-all staleness probe so
 they build each fixture with identical features/target-dir/env.
 
-  fixtures-manifest.py list --platform native --lang rust [--rmw zenoh] [--id ID]
-  fixtures-manifest.py list-workspaces --platform native [--lang rust] [--id ID]
-  fixtures-manifest.py validate-workspaces --platform native
+  fixtures-manifest.py list --platform linux --lang rust [--rmw zenoh] [--id ID]
+  fixtures-manifest.py list-workspaces --platform linux [--lang rust] [--id ID]
+  fixtures-manifest.py validate-workspaces --platform linux
 
 emits one record per matching entry, fields separated by the unit-separator
 byte 0x1F (NOT tab — tab is IFS-whitespace, so bash `read` would collapse the

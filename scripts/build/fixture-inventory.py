@@ -92,10 +92,10 @@ def fixture_scheduler(row):
     rmw = row.get("rmw", "")
     fixture_id = row.get("id", "")
 
-    if platform == "native" and lang in {"c", "cpp"}:
+    if platform == "linux" and lang in {"c", "cpp"}:
         if rmw == "cyclonedds":
-            return "scripts/build/fixture-make-driver.sh native-cyclonedds-cmake"
-        return "scripts/build/fixture-make-driver.sh native-cmake-rmw"
+            return "scripts/build/fixture-make-driver.sh linux-cyclonedds-cmake"
+        return "scripts/build/fixture-make-driver.sh linux-cmake-rmw"
 
     if fixture_id:
         return f"scripts/build/fixtures-build.sh {platform} {lang} --id {fixture_id}"
@@ -264,7 +264,7 @@ def prerequisite_rows():
         },
         {
             "id": "root-zenoh-posix-staticlib-fixture",
-            "platform": "native",
+            "platform": "linux",
             "kind": "preflight",
             "lang": "rust",
             "rmw": "zenoh",
@@ -277,7 +277,7 @@ def prerequisite_rows():
         },
         {
             "id": "native-rust-ws-sync-preflight",
-            "platform": "native",
+            "platform": "linux",
             "kind": "preflight",
             "lang": "rust",
             "role": "ws-sync",
@@ -289,7 +289,7 @@ def prerequisite_rows():
         },
         {
             "id": "native-cmake-codegen-tool",
-            "platform": "native",
+            "platform": "linux",
             "kind": "preflight",
             "lang": "c/cpp",
             "role": "host-codegen",
@@ -530,27 +530,27 @@ def hand_authored_rows():
         },
         {
             "id": "native-rust-cyclonedds-talker",
-            "platform": "native",
+            "platform": "linux",
             "kind": "hand-authored-cargo",
             "lang": "rust",
             "rmw": "cyclonedds",
             "role": "talker",
             "dir": "examples/native/rust/talker",
             "build_root": "examples/native/rust/talker/target-cyclonedds",
-            "scheduler": "scripts/build/fixture-make-driver.sh native-cyclonedds-rust",
+            "scheduler": "scripts/build/fixture-make-driver.sh linux-cyclonedds-rust",
             "shared_mutation": "examples/native/rust/talker/generated; examples/native/rust/talker/target-cyclonedds",
             "notes": "pure-cargo Cyclone lane outside manifest",
         },
         {
             "id": "native-rust-cyclonedds-listener",
-            "platform": "native",
+            "platform": "linux",
             "kind": "hand-authored-cargo",
             "lang": "rust",
             "rmw": "cyclonedds",
             "role": "listener",
             "dir": "examples/native/rust/listener",
             "build_root": "examples/native/rust/listener/target-cyclonedds",
-            "scheduler": "scripts/build/fixture-make-driver.sh native-cyclonedds-rust",
+            "scheduler": "scripts/build/fixture-make-driver.sh linux-cyclonedds-rust",
             "shared_mutation": "examples/native/rust/listener/generated; examples/native/rust/listener/target-cyclonedds",
             "notes": "pure-cargo Cyclone lane outside manifest",
         },

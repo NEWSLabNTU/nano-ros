@@ -13,7 +13,7 @@
 # per-fixture.
 #
 # Single-node entry schema ([[fixture]]):
-#   platform   required  "native" | "qemu-arm-baremetal" | "freertos" | ...
+#   platform   required  "linux" | "qemu-arm-baremetal" | "freertos" | ...
 #   lang       required  "rust" | "c" | "cpp"
 #   dir        required  build cwd (cargo: the crate dir; cmake: the example dir)
 #   rmw        optional  "zenoh" | "xrce" | "cyclonedds" (informational/filter)
@@ -32,7 +32,9 @@
 #
 # Workspace fixture schema ([[workspace_fixture]]):
 #   id          required  stable id used by build/test helper names
-#   platform    required  platform family, initially "native"
+#   platform    required  platform family; the host one is "linux"
+#                         (phase-337 W8.c renamed it from "native" — the LANE
+#                         and the `just` module keep that name)
 #   lang        required  "rust" | "c" | "cpp" | "mixed"
 #   dir         required  workspace root
 #   rmw         required  "zenoh" | "xrce" | "cyclonedds"
@@ -61,7 +63,7 @@
 
 [[workspace_fixture]]
 id = "workspace-rust-native"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
@@ -85,7 +87,7 @@ target_dir = "target-fixtures"
 # only refuses over-capacity systems, it does not size this executor.
 [[workspace_fixture]]
 id = "workspace-rust-native-sizing"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/sizing"
@@ -95,7 +97,7 @@ target_dir = "target-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-rust-native-bridge"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/workspaces/bridge-cyclonedds"
@@ -110,7 +112,7 @@ target_dir = "target-fixtures"
 # tests/declarative_bridge_zenoh_to_xrce.rs: talker → entry → agent → ros2 sub.
 [[workspace_fixture]]
 id = "workspace-rust-native-bridge-xrce"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/workspaces/bridge-xrce"
@@ -130,7 +132,7 @@ target_dir = "target-fixtures"
 # server-computed sums 1,2,3.
 [[workspace_fixture]]
 id = "workspace-rust-native-service-server"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
@@ -140,7 +142,7 @@ target_dir = "target-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-rust-native-service-client"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
@@ -162,7 +164,7 @@ target_dir = "target-fixtures"
 # in one process — unrelated to 0096 — so this minimal entry is the regression vehicle.)
 [[workspace_fixture]]
 id = "workspace-rust-native-service-inprocess"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
@@ -179,7 +181,7 @@ target_dir = "target-fixtures"
 # Consumed by tests/roundtrip_xprocess_e2e.rs (native_rust_action cell).
 [[workspace_fixture]]
 id = "workspace-rust-native-action-server"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
@@ -189,7 +191,7 @@ target_dir = "target-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-rust-native-action-client"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
@@ -206,7 +208,7 @@ target_dir = "target-fixtures"
 # 2 callback entries, under the default MAX_CBS (cf. issue 0095).
 [[workspace_fixture]]
 id = "workspace-rust-native-realtime"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-rust"
@@ -224,7 +226,7 @@ target_dir = "target-fixtures"
 # the default MAX_CBS, issue 0095).
 [[workspace_fixture]]
 id = "workspace-rust-native-robot1"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
@@ -235,7 +237,7 @@ target_dir = "target-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-rust-native-robot2"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
@@ -438,7 +440,7 @@ env = { NROS_LOCATOR = "tcp/127.0.0.1:9091", NROS_DOMAIN_ID = "0" }
 
 [[workspace_fixture]]
 id = "workspace-c-native"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
@@ -452,7 +454,7 @@ build_subdir = "build-workspace-fixtures"
 # (the client prints the server-computed sums it receives over the wire).
 [[workspace_fixture]]
 id = "workspace-c-native-service-server"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
@@ -463,7 +465,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-c-native-service-client"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
@@ -477,7 +479,7 @@ build_subdir = "build-workspace-fixtures"
 # (the client prints the server-computed result sequence's last element it receives).
 [[workspace_fixture]]
 id = "workspace-c-native-action-server"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
@@ -488,7 +490,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-c-native-action-client"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
@@ -504,7 +506,7 @@ build_subdir = "build-workspace-fixtures"
 # /chatter delivery).
 [[workspace_fixture]]
 id = "workspace-c-native-robot1"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
@@ -515,7 +517,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-c-native-robot2"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
@@ -645,7 +647,7 @@ cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv",
 
 [[workspace_fixture]]
 id = "workspace-cpp-native"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
@@ -658,7 +660,7 @@ build_subdir = "build-workspace-fixtures"
 # client as two entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_cpp_service cell).
 [[workspace_fixture]]
 id = "workspace-cpp-native-service-server"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
@@ -669,7 +671,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-service-client"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
@@ -683,7 +685,7 @@ build_subdir = "build-workspace-fixtures"
 # prints the server-computed result sequence's last element it receives).
 [[workspace_fixture]]
 id = "workspace-cpp-native-action-server"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
@@ -694,7 +696,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-action-client"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
@@ -707,7 +709,7 @@ build_subdir = "build-workspace-fixtures"
 # `multihost_robot<N>_model.yaml`). Consumed by tests/multihost_e2e.rs (native_cpp cell).
 [[workspace_fixture]]
 id = "workspace-cpp-native-robot1"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
@@ -718,7 +720,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-robot2"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
@@ -732,7 +734,7 @@ build_subdir = "build-workspace-fixtures"
 # nros_cpp_get_param_integer. Consumed by tests/cpp_c_param_live_read_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-c-native-realtime"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
@@ -747,7 +749,7 @@ build_subdir = "build-workspace-fixtures"
 # sched context (100 ms). Consumed by tests/realtime_tiers_cpp_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-cpp-native-realtime"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
@@ -763,7 +765,7 @@ build_subdir = "build-workspace-fixtures"
 # Consumed by tests/realtime_tiers_cpp_rclcpp_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-cpp-native-realtime-rclcpp"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
@@ -779,7 +781,7 @@ build_subdir = "build-workspace-fixtures"
 # the per-node-name table cannot express. Consumed by tests/realtime_subnode_cpp_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-cpp-native-realtime-subnode"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
@@ -795,7 +797,7 @@ build_subdir = "build-workspace-fixtures"
 # Consumed by tests/realtime_subnode_cpp_portable_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-cpp-native-realtime-subnode-portable"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp-subnode-portable"
@@ -878,7 +880,7 @@ cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-free
 
 [[workspace_fixture]]
 id = "workspace-mixed-native"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
@@ -891,7 +893,7 @@ build_subdir = "build-workspace-fixtures"
 # client, as two entries (issue 0096). Consumed by tests/roundtrip_xprocess_e2e.rs (native_mixed_service cell).
 [[workspace_fixture]]
 id = "workspace-mixed-native-service-server"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
@@ -902,7 +904,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-mixed-native-service-client"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
@@ -915,7 +917,7 @@ build_subdir = "build-workspace-fixtures"
 # entries (issue 0096). Consumed by tests/roundtrip_xprocess_e2e.rs (native_mixed_action cell).
 [[workspace_fixture]]
 id = "workspace-mixed-native-action-server"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
@@ -926,7 +928,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-mixed-native-action-client"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
@@ -940,7 +942,7 @@ build_subdir = "build-workspace-fixtures"
 # `multihost_robot<N>_model.yaml`). Consumed by tests/multihost_e2e.rs (native_mixed cell).
 [[workspace_fixture]]
 id = "workspace-mixed-native-robot1"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
@@ -951,7 +953,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-mixed-native-robot2"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
@@ -999,22 +1001,22 @@ cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-free
 
 # Collapsed role examples — default features, default target dir.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/talker"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/listener"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/lifecycle-node"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/custom-msg"
 
@@ -1024,33 +1026,33 @@ dir = "examples/native/rust/custom-msg"
 # running `cargo build` at test time (issue 0034 / AGENTS.md no-compile-in-tests).
 # phase-277 W7: test-only fixture, moved out of examples/ into nros-tests/bins/.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/entry-poc"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/service-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/service-client"
 
 # RFC-0041 / Phase 239 — callback-receive variant of the service client.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/service-client-callback"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/action-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/action-client"
 
@@ -1059,27 +1061,27 @@ dir = "examples/native/rust/action-client"
 # above) build-assert them. Runtime behavior assertions (async client actually
 # receives; logging sink emits) are a follow-up test under nros-tests/tests/.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/service-client-async"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/action-client-async"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/logging"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/talker-rtic"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/listener-rtic"
 
@@ -1087,7 +1089,7 @@ dir = "examples/native/rust/listener-rtic"
 # installs a per-topic QoS override on its NodeHandle and proves it is honoured
 # on a live entity). Consumed by tests/qos_overrides_runtime_delivery.rs.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/qos-override-pubsub"
 
@@ -1096,7 +1098,7 @@ dir = "packages/testing/nros-tests/bins/qos-override-pubsub"
 # test_declarative_safety_listener_receives_integrity (paired with the safety
 # talker). safety-e2e is a non-optional dep feature of the bin, so no row flag.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/declarative-safety-listener"
 
@@ -1104,7 +1106,7 @@ dir = "packages/testing/nros-tests/bins/declarative-safety-listener"
 # against a stock `ros2 run demo_nodes_cpp talker`. Consumed by
 # tests/demo_nodes_cpp_interop.rs (gated on ros2 + rmw_zenoh_cpp).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/ros2-string-interop"
 
@@ -1116,7 +1118,7 @@ dir = "packages/testing/nros-tests/bins/ros2-string-interop"
 # Consumed by tests/bridge_zenoh_to_cyclonedds.rs
 # (base forward-log check + path A in-tree cyclone listener + path B ros2 echo).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd"
@@ -1125,48 +1127,48 @@ dir = "packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd"
 # from the manifest, so nothing prebuilt it and tests/bridge_mixed_rmw.rs
 # skip-failed). Same shape: no package.xml, cargo-built directly.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/service-server-rtic"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/service-client-rtic"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/action-server-rtic"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/action-client-rtic"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/serial-talker"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/serial-listener"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/custom-transport-talker"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/custom-transport-listener"
 
@@ -1175,7 +1177,7 @@ dir = "examples/native/rust/custom-transport-listener"
 # example is cfg-free and the default talker fixture is the plain build).
 # Consumed by tests/params.rs.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/param-chatter-talker"
 
@@ -1184,7 +1186,7 @@ dir = "packages/testing/nros-tests/bins/param-chatter-talker"
 # std_msgs/String chatter, so the Int32 side-topic observer role moved here).
 # Consumed by the service/action/param/safety/realtime e2e tests.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/int32-sink"
@@ -1198,7 +1200,7 @@ target_dir = "target-zenoh"
 # switch, because this fixture was hardcoded to zenoh. A test fixture must not
 # pin the RMW any more than an example does.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/int32-sink"
@@ -1212,7 +1214,7 @@ target_dir = "target-xrce"
 # here). Built per-RMW: Zenoh variant consumed by tests/rmw_interop.rs, XRCE
 # variant by tests/xrce_ros2_interop.rs.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/action-server-concurrent"
@@ -1221,7 +1223,7 @@ features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/action-server-concurrent"
@@ -1235,7 +1237,7 @@ target_dir = "target-xrce"
 # assertion is about the server's goal table, which is backend-independent, so
 # a second RMW build would add sweep time without adding coverage.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/action-client-multigoal"
@@ -1245,14 +1247,14 @@ target_dir = "target-zenoh"
 
 # TLS variant (isolated target dir).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/talker"
 features = ["link-tls"]
 target_dir = "target-tls"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/listener"
 features = ["link-tls"]
@@ -1262,7 +1264,7 @@ target_dir = "target-tls"
 # build in target-safety/; now a dedicated fixture bin with the safety
 # features baked, so the example manifest stays free of test-only features).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/safety-chatter-talker"
 
@@ -1271,14 +1273,14 @@ dir = "packages/testing/nros-tests/bins/safety-chatter-talker"
 # (tests/declarative_bridge_zenoh_to_cyclonedds.rs). phase-277 W3.a — was the
 # talker `header` feature build in target-header/; now a dedicated fixture bin.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/header-chatter-talker"
 
 # E2E-safety listener (phase-277 W3.a — was the listener `safety-e2e`-gated
 # second `main`; the example keeps only the plain listener).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/safety-chatter-listener"
 
@@ -1288,13 +1290,13 @@ dir = "packages/testing/nros-tests/bins/safety-chatter-listener"
 # W3b.4/.5 cross-runtime "done-when": min_rate_hz + max_age violations report
 # on /diagnostics in the play_launch rule vocabulary; compliant twin silent).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/contract-monitor"
 
 # Zero-copy (unstable zenoh receive API) variant.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/listener"
 features = ["unstable-zenoh-api"]
@@ -1302,7 +1304,7 @@ target_dir = "target-zero-copy"
 
 # Per-RMW collapsed talker/listener/service/action, isolated target-<rmw>/ dirs.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/native/rust/talker"
@@ -1311,7 +1313,7 @@ features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/native/rust/listener"
@@ -1320,7 +1322,7 @@ features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/native/rust/service-server"
@@ -1329,7 +1331,7 @@ features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/native/rust/service-client"
@@ -1343,7 +1345,7 @@ target_dir = "target-zenoh"
 # refreshed the binary the test consumes (a hand-built June-12 artifact sat
 # there while `build-test-fixtures` reported green).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/native/rust/service-client-callback"
@@ -1352,7 +1354,7 @@ features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/native/rust/action-server"
@@ -1361,7 +1363,7 @@ features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/native/rust/action-client"
@@ -1370,7 +1372,7 @@ features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/talker"
@@ -1379,7 +1381,7 @@ features = ["rmw-xrce"]
 target_dir = "target-xrce"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/listener"
@@ -1388,7 +1390,7 @@ features = ["rmw-xrce"]
 target_dir = "target-xrce"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/service-server"
@@ -1397,7 +1399,7 @@ features = ["rmw-xrce"]
 target_dir = "target-xrce"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/service-client"
@@ -1408,7 +1410,7 @@ target_dir = "target-xrce"
 # issue #233 cell 1 — native rust CycloneDDS service pair (proven to deliver:
 # server sees the request, client prints `Result of add_two_ints: 5`).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/service-server"
@@ -1417,7 +1419,7 @@ features = ["rmw-cyclonedds"]
 target_dir = "target-cyclonedds"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/service-client"
@@ -1433,7 +1435,7 @@ target_dir = "target-cyclonedds"
 # that compiled out of the example build → ActionCreationFailed). Consumed by
 # tests/native_api.rs (test_native_cyclonedds_rust_action).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/action-server"
@@ -1442,7 +1444,7 @@ features = ["rmw-cyclonedds"]
 target_dir = "target-cyclonedds"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/action-client"
@@ -1451,7 +1453,7 @@ features = ["rmw-cyclonedds"]
 target_dir = "target-cyclonedds"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/action-server"
@@ -1460,7 +1462,7 @@ features = ["rmw-xrce"]
 target_dir = "target-xrce"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/action-client"
@@ -1470,28 +1472,28 @@ target_dir = "target-xrce"
 
 # Bench / stress fixtures (default features).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-bench/stress-zenoh"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-bench/executor-fairness"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-bench/stress-xrce"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-bench/large-msg-xrce"
 
 # Large-buffer variant of stress-zenoh (env-tuned subscriber buffer).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-bench/stress-zenoh"
 target_dir = "target-large-buf"
@@ -1992,25 +1994,25 @@ dir = "packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64"
 # ===========================================================================
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/talker"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "xrce"
 dir = "examples/native/c/talker"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/native/c/talker"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/listener"
@@ -2020,7 +2022,7 @@ dir = "examples/native/c/listener"
 # the CRC path) needs no extra flag. Consumed by tests/safety_e2e.rs::
 # test_c_safety_listener_validates_crc (paired with the safety talker).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/safety-listener"
@@ -2031,55 +2033,55 @@ dir = "examples/native/c/safety-listener"
 # path). Consumed by tests/safety_e2e.rs::
 # test_cpp_safety_listener_validates_crc (paired with the safety talker).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/safety-listener"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "xrce"
 dir = "examples/native/c/listener"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/native/c/listener"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/service-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "xrce"
 dir = "examples/native/c/service-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/native/c/service-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/service-client"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "xrce"
 dir = "examples/native/c/service-client"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/native/c/service-client"
@@ -2087,49 +2089,49 @@ dir = "examples/native/c/service-client"
 # RFC-0041 / Phase 239 — C service-client callback variant (zenoh + cyclonedds
 # for the 239.8 backend-parity check).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/service-client-callback"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/native/c/service-client-callback"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/action-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "xrce"
 dir = "examples/native/c/action-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/native/c/action-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/action-client"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "xrce"
 dir = "examples/native/c/action-client"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/native/c/action-client"
@@ -2141,97 +2143,97 @@ dir = "examples/native/c/action-client"
 # build under the standard harness on good hardware; add a runtime assertion for
 # the transport-loopback path as follow-up.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/custom-msg"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/custom-platform"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/custom-transport-loopback"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/logging"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/talker"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "xrce"
 dir = "examples/native/cpp/talker"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/native/cpp/talker"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/listener"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "xrce"
 dir = "examples/native/cpp/listener"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/native/cpp/listener"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/service-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "xrce"
 dir = "examples/native/cpp/service-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/native/cpp/service-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/service-client"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "xrce"
 dir = "examples/native/cpp/service-client"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/native/cpp/service-client"
@@ -2239,61 +2241,61 @@ dir = "examples/native/cpp/service-client"
 # RFC-0041 / Phase 239 — C++ callback variants. service-client-callback gets
 # zenoh + cyclonedds (239.8 backend-parity); action-client-callback gets zenoh.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/service-client-callback"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/native/cpp/service-client-callback"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/action-client-callback"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/action-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "xrce"
 dir = "examples/native/cpp/action-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/native/cpp/action-server"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/action-client"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "xrce"
 dir = "examples/native/cpp/action-client"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/native/cpp/action-client"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/parameters"
@@ -2302,7 +2304,7 @@ target = "cpp_parameters"
 # phase-277 W5 — C sibling of cpp/parameters (the parameter/clock demo block
 # extracted from native/c/talker when the talker slimmed to chatter-only).
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/parameters"
@@ -2314,28 +2316,28 @@ target = "c_parameters"
 # cpp/parameters pattern above. UNVERIFIED (host RAM #115) — confirm the POC
 # targets build under the fixture harness; add runtime assertions as follow-up.
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/component-poc"
 target = "component_poc"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/component-node-poc"
 target = "component_node_poc"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/transform-poc"
 target = "transform_poc"
 
 [[fixture]]
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/logging"
@@ -3083,7 +3085,7 @@ builder = "cxx-syntax"
 
 [[workspace_fixture]]
 id = "workspace-features-c-qos-talker"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3094,7 +3096,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-c-qos-listener"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3105,7 +3107,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-c-params"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3116,7 +3118,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-c-lifecycle"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3127,7 +3129,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-c-custom-msg-talker"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3138,7 +3140,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-c-custom-msg-listener"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3149,7 +3151,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-qos-talker"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3160,7 +3162,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-qos-listener"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3171,7 +3173,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-params"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3182,7 +3184,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-lifecycle"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3193,7 +3195,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-custom-msg-talker"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3204,7 +3206,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-custom-msg-listener"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3220,7 +3222,7 @@ build_subdir = "build-workspace-fixtures"
 # `features/` impossible, so this is its own small workspace.
 [[workspace_fixture]]
 id = "workspace-managed-cpp-native"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/managed"
@@ -3232,7 +3234,7 @@ env = { NROS_EXECUTOR_MAX_CBS = "8" }
 
 [[workspace_fixture]]
 id = "workspace-features-rust-qos"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3243,7 +3245,7 @@ target_dir = "target-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-rust-params"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3254,7 +3256,7 @@ target_dir = "target-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-rust-lifecycle"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3265,7 +3267,7 @@ target_dir = "target-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-rust-custom-msg"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3276,7 +3278,7 @@ target_dir = "target-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-rust-remap"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3290,7 +3292,7 @@ target_dir = "target-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-mixed-qos-talker"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3301,7 +3303,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-mixed-qos-listener"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3312,7 +3314,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-mixed-custom-msg-talker"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3323,7 +3325,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-features-mixed-custom-msg-listener"
-platform = "native"
+platform = "linux"
 lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
@@ -3339,7 +3341,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-safety-c-talker"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/safety"
@@ -3350,7 +3352,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-safety-c-listener"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/safety"
@@ -3361,7 +3363,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-safety-cpp-talker"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/safety"
@@ -3372,7 +3374,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-safety-cpp-listener"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/safety"
@@ -3383,7 +3385,7 @@ build_subdir = "build-workspace-fixtures"
 
 [[workspace_fixture]]
 id = "workspace-safety-rust-talker"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/safety"
@@ -3394,7 +3396,7 @@ target_dir = "target-safety"
 
 [[workspace_fixture]]
 id = "workspace-safety-rust-listener"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/safety"
@@ -3410,7 +3412,7 @@ target_dir = "target-safety"
 # and sharing one would trip the sizes-mirror guard.
 [[workspace_fixture]]
 id = "workspace-c-native-cyclonedds"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/workspaces/c"
@@ -3421,7 +3423,7 @@ build_subdir = "build-workspace-fixtures-cyclonedds"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-cyclonedds"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
@@ -3432,7 +3434,7 @@ build_subdir = "build-workspace-fixtures-cyclonedds"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-xrce"
-platform = "native"
+platform = "linux"
 lang = "cpp"
 rmw = "xrce"
 dir = "examples/workspaces/cpp"
@@ -3443,7 +3445,7 @@ build_subdir = "build-workspace-fixtures-xrce"
 
 [[workspace_fixture]]
 id = "workspace-rust-native-cyclonedds"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/workspaces/rust"
@@ -3454,7 +3456,7 @@ target_dir = "target-fixtures-cyclonedds"
 
 [[workspace_fixture]]
 id = "workspace-rust-native-xrce"
-platform = "native"
+platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/workspaces/rust"
@@ -3465,7 +3467,7 @@ target_dir = "target-fixtures-xrce"
 
 [[workspace_fixture]]
 id = "workspace-c-native-xrce"
-platform = "native"
+platform = "linux"
 lang = "c"
 rmw = "xrce"
 dir = "examples/workspaces/c"

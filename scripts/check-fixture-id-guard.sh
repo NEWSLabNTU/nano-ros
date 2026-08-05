@@ -25,7 +25,7 @@ fails=0
 
 # Ids picked from the manifest at run time — hardcoding one would rot the day
 # it is renamed, and this gate would then pass by testing nothing.
-ws_id="$(python3 scripts/build/fixtures-manifest.py list-workspaces --platform native --lang rust \
+ws_id="$(python3 scripts/build/fixtures-manifest.py list-workspaces --platform linux --lang rust \
     | head -1 | cut -d$'\x1f' -f1)"
 fx_id="$(python3 - <<'PY'
 import re
@@ -105,7 +105,7 @@ echo "check-fixture-id-guard: wired into the builders"
 # End to end through a real builder — proves the guard is actually reached,
 # not merely present. fixtures-build.sh needs no CLI or SDK to get this far.
 expect_rc 2 "fixtures-build.sh --id of a workspace row is fatal" \
-    bash scripts/build/fixtures-build.sh native rust --id "$ws_id"
+    bash scripts/build/fixtures-build.sh linux rust --id "$ws_id"
 
 # And the case that must stay silent and green: no id filter, a real platform,
 # a language with no rows. Sweeps hit this constantly.

@@ -2,7 +2,7 @@
 # Issue 0406 — what a fixture builder says when its id filter matched no rows.
 #
 # Before this, every builder answered the same way: exit 0, having built
-# nothing. `fixtures-build.sh native rust --id workspace-rust-native-realtime`
+# nothing. `fixtures-build.sh linux rust --id workspace-rust-native-realtime`
 # returned in 0.03s with no output — a real id, a real platform, a real lang,
 # and no work, because that id names a `[[workspace_fixture]]` and that script
 # lists only `[[fixture]]` rows. Same clean exit for a typo'd id or platform.

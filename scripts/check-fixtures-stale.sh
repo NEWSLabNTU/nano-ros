@@ -38,7 +38,9 @@ SCOPE="${NROS_FIXTURE_SCOPE:-all}"
 scope_args=()
 case "$SCOPE" in
     all) ;;
-    native) scope_args=(--platform native) ;;
+    # The SCOPE name is the lane (`native`, kept); the --platform value is the
+    # fixture TOKEN (`linux` since phase-337 W8.c). Different vocabularies.
+    native) scope_args=(--platform linux) ;;
     coords)
         if [ -z "${NROS_FIXTURE_COORDS:-}" ] || [ ! -s "${NROS_FIXTURE_COORDS}" ]; then
             # Silently degrading to "check nothing" would report a lane green

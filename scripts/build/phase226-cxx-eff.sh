@@ -39,7 +39,7 @@ EOF
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 
-platform="native"
+platform="linux"
 lang="all"
 rmw=""
 role=""
@@ -185,7 +185,7 @@ fi
 
 mkdir -p "$log_dir/cells"
 
-if [ "$platform" = "native" ] && [ -z "${NROS_CMAKE_EXTRA_DEFS:-}" ]; then
+if [ "$platform" = "linux" ] && [ -z "${NROS_CMAKE_EXTRA_DEFS:-}" ]; then
     # shellcheck source=scripts/build/cargo.sh
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
