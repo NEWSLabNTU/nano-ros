@@ -689,32 +689,43 @@ being a separate group. Removing the split removes one of them.
       threadx boards, beside their existing `log` bridges, so both facades work
       everywhere before any body moves.
 
-      **Surveyed 2026-08-05 — W7.a is not one line per board, and is BLOCKED on
-      [issue 0420](../issues/0420-nros-log-facade-silent-noop-on-threadx-and-nuttx.md).** `sinks::default()`
-      is `PlatformSink`, which forwards to the `nros_platform_log_write` C ABI, so
-      "init the facade" is only the last step. Where that symbol comes from today:
+      **Surveyed 2026-08-05, then DISPROVED by measurement the same day.** The
+      survey traced `sinks::default()` to the `nros_platform_log_write` C ABI,
+      grepped for its providers, found none for nuttx and no
+      `nros_platform_register_log_writer` caller for threadx, and concluded the
+      facade was a silent no-op on both — filed as issue 0420 and used to mark
+      W7.a blocked.
 
-      | platform | `nros_platform_log_write` | gap |
-      |---|---|---|
-      | posix, zephyr, esp-idf | strong C definition | none |
-      | mps2-an385, stm32f4, esp32-qemu, esp32s3 | `nros_platform_export_log!` (Rust macro) | none |
-      | freertos | strong C def, but a **NULL fn-ptr slot** until `nros_platform_register_log_writer` runs | registered ONLY from `freertos_c_entry.c:212` — the C/C++ app path. The pure-Rust board entry never fills it. |
-      | threadx | same NULL-slot shape | **no caller anywhere.** The slot is never filled, on either path. |
-      | **nuttx** | **none** | the symbol does not exist in `nros-platform-nuttx`. Links the weak no-op in `nros-c`'s stub TU, or fails to link at all without it. |
+      **That was wrong, and it was wrong in an instructive way.** Issue 0420 is
+      archived `resolved  # not-a-bug`: every row was disproved by *running* the
+      cells rather than reading them.
 
-      So on threadx and nuttx an `nros_info!` today goes to a no-op — silently, which
-      is why nothing has noticed. W7.a must, in order: (1) give nuttx a
-      `nros_platform_log_write` (fn-ptr-slot C body like freertos/threadx, or the
-      Rust macro — pick one and say why); (2) register the writer from the *Rust*
-      board entries on freertos and threadx, not just the C entry; (3) only then
-      call `nros_log::init`. Steps 1–2 are the wave; step 3 is the easy part.
+      * **NuttX works.** `nm` shows `T nros_platform_log_write` in the image and
+        a direct QEMU boot prints all six severities. The definition arrives by
+        REUSE — `nros-board-common`'s `nuttx_platform_build.rs` compiles
+        `nros-platform-posix/src/platform.c` against the board's headers. The
+        survey searched for a *nuttx-specific* `platform.c`, so a definition that
+        exists looked like a definition that does not.
+      * **ThreadX works** (shown by running the threadx-linux fixture).
+      * **FreeRTOS-via-Rust** registers its writer at
+        `mps2-an385-freertos/src/lib.rs:111` — not only from the C entry.
 
-      **This also re-prices W7.b.** Moving the bodies to `nros_info!` before 1–2 land
-      would turn every threadx and nuttx e2e marker into silence — the exact
-      "changes five bodies with one lane as witness" risk the sequencing note warns
-      about, except the failure mode is a *quiet* one that greps as a timeout rather
-      than an error. Land W7.a and prove a marker reaches the UART on each of the
-      three boards BEFORE any body moves.
+      Implementing the "fix" this section previously prescribed would have added a
+      SECOND log writer to three platforms that already had one.
+
+      The lesson is the one this repo keeps re-learning: a grep that finds nothing
+      is evidence about the grep, not about the tree. `nros_platform_log_write`
+      reaches nuttx through a build script, which no amount of searching
+      `nros-platform-nuttx/` will reveal. Boot the thing.
+
+      **What IS real**, and is the finding 0420 half-saw: every NuttX cell SKIPS
+      unless `NUTTX_DIR` is exported — `activate.sh` and the SDK env never set it,
+      and configuring NuttX needs kconfig tooling nothing provisions. The cell
+      reported SKIP on a host that had the sources, the toolchain and QEMU. That
+      is the issue-0407 shape one layer further out, and it is why a facade
+      regression on nuttx could sit unnoticed indefinitely. **W7.a is not blocked;
+      W7's real prerequisite is that the nuttx cells can actually run.**
+
 - [ ] **W7.b** Move the node bodies to `nros_log::nros_info!`. **The asserted
       markers survive** — the format strings do not change, only the macro that
       emits them, so `TALKER_LOG_PREFIX` / `LISTENER_LOG_PREFIX` still match.
