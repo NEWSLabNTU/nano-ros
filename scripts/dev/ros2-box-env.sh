@@ -108,14 +108,29 @@ cd "$_nros_box_root" || return 1
 export NROS_BOX_REPO="$_nros_box_root"
 
 nros_box_publish() {
-    local built="$CARGO_TARGET_DIR/release/nros"
+    # Where cargo ACTUALLY put it, which depends on whether this tree is
+    # box-owned. In a box-owned tree CARGO_TARGET_DIR is deliberately unset
+    # (issues 0400/0401), so the old unconditional "$CARGO_TARGET_DIR/release"
+    # expanded to the absolute path "/release/nros" and this function refused
+    # with "box: no CLI at /release/nros" — right after a build that succeeded.
+    # The two-tree fix unset the variable and did not revisit its readers.
+    local built
+    if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+        built="$CARGO_TARGET_DIR/release/nros"
+    else
+        built="$NROS_BOX_REPO/packages/cli/target/release/nros"
+    fi
     if [ ! -x "$built" ]; then
         echo "box: no CLI at $built — build it first:" >&2
         echo "  cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros" >&2
         return 1
     fi
     mkdir -p "$CARGO_INSTALL_ROOT/bin" "$NROS_BOX_REPO/packages/cli/target/release"
-    install -m755 "$built" "$NROS_BOX_REPO/packages/cli/target/release/nros" || return 1
+    # In a box-owned tree the build path IS the publish path, so skip the
+    # self-copy — `install` onto itself truncates the source before reading it.
+    if [ "$built" != "$NROS_BOX_REPO/packages/cli/target/release/nros" ]; then
+        install -m755 "$built" "$NROS_BOX_REPO/packages/cli/target/release/nros" || return 1
+    fi
     install -m755 "$built" "$CARGO_INSTALL_ROOT/bin/nros" || return 1
     echo "box CLI published: $NROS_BOX_REPO/packages/cli/target/release/nros + $CARGO_INSTALL_ROOT/bin/nros"
 }
