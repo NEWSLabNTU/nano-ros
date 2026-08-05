@@ -481,6 +481,31 @@ families (esp32, zephyr, ros-editions) and both bridge lanes. Do not land steps
 divide (`c/talker` is one body across native and five embedded platforms), and
 that affordance stays a declared exception.
 
+**Step 4 found a latent CLI bug before it found anything about the migration**
+(fixed in `afe0828f4`). The native lane died at ~55 minutes on:
+
+```text
+Error: read …/service-server/target-xrce/nros-fast-release/incremental/
+       service_server-…/s-…-working/dep-graph.part.bin
+Caused by: No such file or directory (os error 2)
+  at nros-cli-core/src/orchestration/metadata_refresh.rs:392
+```
+
+The source-digest dirwalk skipped build output by matching the EXACT names
+`target` and `build`, but this repo's convention is a per-RMW suffix —
+`target-xrce`, `target-zenoh`, `build-zenoh`. So the digest recursed into
+cargo's incremental artifacts and raced a scratch file cargo deleted from under
+it. Nothing under `target-*` was ever a legitimate hash input.
+
+Worth recording because of *why it waited for this phase*: a package's sources
+are only hashed in the **Node** shape, so making the native examples Node
+packages (steps 2–3) was what first pointed the walker at those trees. The
+migration did not cause the bug; it was the first thing to execute it. Fixed as
+a class — one `build_output::is_build_output_dir` predicate, prefix-matching,
+called from both exact-match walkers (`metadata_refresh`, `check_workspace`).
+`stale_guard` and `source_stamp` look similar but are not this class and were
+left alone.
+
 - [ ] **W3.a** Establish why the hosted Rust example is 91 lines when its embedded
       sibling is 34 — how much is genuinely hosted-only (arg parsing, signal
       handling, `std` logging) versus ceremony the generated entry could own on
@@ -627,6 +652,32 @@ being a separate group. Removing the split removes one of them.
 - [ ] **W7.a** Add `nros_log::init(sinks::default())` to the freertos, nuttx and
       threadx boards, beside their existing `log` bridges, so both facades work
       everywhere before any body moves.
+
+      **Surveyed 2026-08-05 — W7.a is not one line per board.** `sinks::default()`
+      is `PlatformSink`, which forwards to the `nros_platform_log_write` C ABI, so
+      "init the facade" is only the last step. Where that symbol comes from today:
+
+      | platform | `nros_platform_log_write` | gap |
+      |---|---|---|
+      | posix, zephyr, esp-idf | strong C definition | none |
+      | mps2-an385, stm32f4, esp32-qemu, esp32s3 | `nros_platform_export_log!` (Rust macro) | none |
+      | freertos | strong C def, but a **NULL fn-ptr slot** until `nros_platform_register_log_writer` runs | registered ONLY from `freertos_c_entry.c:212` — the C/C++ app path. The pure-Rust board entry never fills it. |
+      | threadx | same NULL-slot shape | **no caller anywhere.** The slot is never filled, on either path. |
+      | **nuttx** | **none** | the symbol does not exist in `nros-platform-nuttx`. Links the weak no-op in `nros-c`'s stub TU, or fails to link at all without it. |
+
+      So on threadx and nuttx an `nros_info!` today goes to a no-op — silently, which
+      is why nothing has noticed. W7.a must, in order: (1) give nuttx a
+      `nros_platform_log_write` (fn-ptr-slot C body like freertos/threadx, or the
+      Rust macro — pick one and say why); (2) register the writer from the *Rust*
+      board entries on freertos and threadx, not just the C entry; (3) only then
+      call `nros_log::init`. Steps 1–2 are the wave; step 3 is the easy part.
+
+      **This also re-prices W7.b.** Moving the bodies to `nros_info!` before 1–2 land
+      would turn every threadx and nuttx e2e marker into silence — the exact
+      "changes five bodies with one lane as witness" risk the sequencing note warns
+      about, except the failure mode is a *quiet* one that greps as a timeout rather
+      than an error. Land W7.a and prove a marker reaches the UART on each of the
+      three boards BEFORE any body moves.
 - [ ] **W7.b** Move the node bodies to `nros_log::nros_info!`. **The asserted
       markers survive** — the format strings do not change, only the macro that
       emits them, so `TALKER_LOG_PREFIX` / `LISTENER_LOG_PREFIX` still match.
