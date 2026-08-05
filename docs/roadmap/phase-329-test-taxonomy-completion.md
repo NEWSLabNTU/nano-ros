@@ -90,10 +90,11 @@ visible from the file's location/consumer, not tribal memory:
   runtime-enforced (the hard panic above), since exec tables live in the test
   binaries. `EntryPubsub` + native feature workloads are SHARED with W4 files, so
   only the claimed subset is gated (full ownership follows once W4 converts).
-- [ ] Kill the second spelling: `platform_header_matrix.rs` local `CELLS`
-  table rewritten over `matrix::PlatformId` (its cells move to the
-  compile-check fixture family in W5) — **deferred to W5** (its own text ties it
-  to the compile-check fixture move).
+- [x] Kill the second spelling: `platform_header_matrix.rs` local `CELLS`
+  table. **Done in W5 (2026-08-05).** Rather than rewrite it over `matrix::PlatformId`,
+  its 9 positive cells became build-stage `cxx-syntax` fixtures and the 1 negative
+  cell a plain runtime check — so the `struct Cell`/`const CELLS` table is GONE
+  entirely (file renamed `platform_header_compile.rs`), not respelled.
 
 ### W2 — realtime-dim matrix
 - [x] **Landed 2026-08-04.** `matrix::SchedDim {CorePin, EdfDeadline,
@@ -246,25 +247,43 @@ it ADDITIVELY, prove it green, THEN delete the folded delivery cases.
 The E1 rule gets an enforcement surface. Sanctioned at runtime: FAIL-path
 diagnostics only (a configure/compile that MUST fail cannot be a passing
 prebuilt fixture).
-- [ ] `zpico_drift_gate` → `compile_check_fixture` row (the cargo build
-  moves to `scripts/build/compile-check-fixtures.sh`); test asserts the
-  artifact + drift metadata.
-- [ ] `platform_header_matrix` positive-compile cells → compile-check
-  fixture family generated from the matrix vocabulary; the FAIL-path cells
-  stay runtime (registry below).
-- [ ] `cross_libc_precedence_gate` positive compile → build stage.
-- [ ] `staticlib_duplicate_symbols` link proof → build stage (link once at
-  fixture build; test runs `nm` on the artifact).
-- [ ] `cli_bringup_nuttx` `make context` → prebuilt into the nuttx fixture
-  stage; test consumes the staged tree.
-- [ ] **Negative-diagnostic registry**: one module (or fixtures.toml
-  section) listing every sanctioned runtime FAIL-path invocation —
-  `cmake_node_register_misuse`, `cmake_platform_matrix`,
-  `native_main_macro_misuse`, `native_orchestration_misuse`,
-  `diagnostic_verbatim` — with the tool it invokes and why it cannot be
-  prebuilt. A gate greps `tests/` for `cmake`/`cargo`/`cc`/`gcc`/`make`
-  invocations and fails on any file NOT in the registry (the 0196 rule:
-  the gate covers the class, not the known sites).
+**Landed 2026-08-05.** A two-agent full-tree map corrected the plan: three of the
+five named files are NOT convertible (they are FAIL-path or structurally
+un-prebuildable), so they belong IN the registry, not moved out of it.
+- [x] `zpico_drift_gate` — **stays runtime, registry member.** Not a positive
+  compile: the corrupted-tree run must PANIC the zpico-sys build script (drift
+  sentinel) and the pristine round-trip needs the `NROS_PLATFORMS_DIR` sandbox
+  injected at configure — neither half is a static artifact.
+- [x] `platform_header_matrix` positive-compile cells → compile-check fixture
+  family. **Done:** the 9 POSITIVE cells became `cxx-syntax` `platform_hdr_*` rows
+  (snippets with the `-D` defines baked in), consumed by `platform_header_compile.rs`;
+  the 1 FAIL-path cell stays runtime (registry). The local `const CELLS` is gone
+  (also unblocked W6's grep-gate). Renamed `platform_header_matrix.rs` →
+  `platform_header_compile.rs`.
+- [x] `cross_libc_precedence_gate` — **stays runtime, registry member.** A RELATIVE
+  paired gate (broken-precedence cross compile MUST fail with the div_t clash, fixed
+  MUST pass); the raw cross-`arm-none-eabi-g++` object compile maps to no
+  compile_check builder. Only meaningful run together.
+- [x] `staticlib_duplicate_symbols` link proof → build stage. **Done:**
+  `link-determinism-fixture.sh` now links `lkproof` (`-u` force, NO
+  `--allow-multiple-definition`) — link success is the build-stage assertion; the
+  test runs `nm` on the prebuilt exe. No runtime `cc`.
+- [x] `cli_bringup_nuttx` `make context` — **dropped, not converted.** It asserted
+  NOTHING ("do not assert success"), a non-load-bearing compile-at-test. Removed;
+  the test's contract is the template-shape audit, and the codegen pipeline is
+  exercised by the nuttx fixture build.
+- [x] **Negative-diagnostic registry** — **Done as `tests/negative_diagnostic_registry.rs`.**
+  The explicit allowlist of every test permitted to invoke a compiler/build at
+  runtime, each with tool + why-it-can't-prebuild, split FAIL-path
+  (`diagnostic_verbatim`, `cmake_node_register_misuse`, `cmake_platform_matrix`,
+  `native_main_macro_misuse`, `native_orchestration_misuse`, `zpico_drift_gate`,
+  `cross_libc_precedence_gate`, `platform_header_compile`) vs runtime-exception
+  (`size_probe_verify.sh`, `borrowed_c_e2e.sh`, `borrowed_cpp_e2e.sh`,
+  `integration_px4.rs`). `enforce_registry` scans `tests/` for cargo build|check /
+  cmake / cc / gcc / g++ / make invocations and FAILS on any file NOT listed (0196
+  rule). Verified non-vacuous. **Follow-up (not this wave):** the `borrowed_*`
+  composite build→run e2e shells could move to a dedicated build-stage recipe (they
+  currently sit in the registry as runtime-exceptions).
 
 ### W6 — gate dedup + marker sweep
 - [x] Merge `examples_canonical_shape.rs` into `example_shape.rs` (one
