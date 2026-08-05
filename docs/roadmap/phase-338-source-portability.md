@@ -825,6 +825,64 @@ macro arguments.
       entry and the `zpico_backend` lint value. Recorded here so W7.b does not
       re-derive it.
 
+## Every embedded lane verified (2026-08-06)
+
+| lane | cells | result |
+|---|---|---|
+| qemu-arm-nuttx | 9 — {pubsub, service, action} × {Rust, C, C++} | **pass** |
+| qemu-arm-freertos | 9 — same | **pass** |
+| qemu-riscv64-threadx | 6 — {pubsub, service} × 3 langs (action is `BuildOnly`) | **pass** |
+| threadx-linux | pairs driven live earlier | pass |
+| native | all three W8 programs run | pass |
+
+The `-entry` collapse and the W8 wait-then-send change are now proven at
+runtime on every platform that has runtime cells.
+
+### freertos: the collapse had broken all three Rust cells
+
+Three omissions, all from ONE root cause — **the merge script decided what to
+carry from the entry manifest with incomplete rules**:
+
+* **`ip` / `gateway` dropped.** The script carried only `rmw`, `domain_id`,
+  `locator` from the entry's deploy block. FreeRTOS entries also set
+  `ip = "10.0.2.15"` / `gateway = "10.0.2.2"`, because `LWIP_DHCP` is 0 on that
+  board — the address is baked, not leased. Without them the image took the
+  board default `192.0.3.10` and could not route to the router, so it booted,
+  printed "Network ready.", and silently stopped short of "Application setup
+  complete".
+* **`nros-platform` dropped.** The fallback guard was
+  `if "nros-platform" not in ntext` — a whole-file substring test. The freertos
+  node manifest mentions `nros-platform/platform-freertos` in two COMMENTS, so
+  the guard read as "already present".
+* **`locator` lost to the node's value.** The rule was "add keys the node
+  lacks", but when both blocks define a key the ENTRY's is the deployed one.
+  The per-role ports (7800/7810/7820) lost to the node's generic 7447.
+
+### The pattern worth carrying forward
+
+**Substring tests against a whole file, three times now.** `"[[bin]]" in text`
+matched a comment saying *"no [[bin]]"*; `"nros-platform" in text` matched a
+comment; and a repair script matched `[package.metadata.nros.deploy.*]` inside
+a `[features]` comment and appended keys to the wrong table. Structured edits
+need anchored patterns (`^key =`, a real table header), never `in text`.
+
+**And `git mv A/x B/x` nests when `B/x` exists** — that buried the NuttX cargo
+config. A move script must assert the destination is absent.
+
+Both classes are silent: they produce a plausible file that builds, and fail
+only at runtime on hardware. Every one of them was found by RUNNING, and none
+by reading.
+
+### Two recurring environment traps, neither ours
+
+* **Stale cmake caches.** nuttx, freertos and riscv64 all failed first on stale
+  build dirs — nuttx on a `nros-board-nuttx-qemu-arm` path upstream removed,
+  the other two on the sizes-header mirror (`EXECUTOR_OPAQUE_U64S` disagreeing
+  between the C and C++ halves). Wiping the build dirs fixed all three. This is
+  the issue-0268 class: incremental trees red, clean trees green.
+* **A missing lock entry.** `nros-cpp` gained an `nros-bridge` dep that
+  `nros-nuttx-ffi/Cargo.lock` never recorded, blocking the nuttx C++ lane.
+
 ## Embedded lane verification — nuttx PROVEN, and it found three breaks (2026-08-06)
 
 Running `just nuttx build-examples` + the `rtos_e2e` NuttX cells was worth it:
