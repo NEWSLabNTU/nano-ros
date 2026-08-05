@@ -196,10 +196,30 @@ from the surviving package's `.cargo/config.toml`). **Fixed on this branch**, so
 all three NuttX action Runtime cells — Rust, C and C++ — now pass against the
 snapshot: `3 tests run: 3 passed`.
 
-The freertos / threadx-linux cells still report `[SKIPPED] … STALE` in a
-whole-suite run: this branch changes a core crate, so fixtures built on main
-before the rebase are stale. Not regressions, and not this phase's subject —
-they link no NuttX kernel.
+### Correction — the freertos/threadx STALE was NOT what I first wrote
+
+The line here previously read: "this branch changes a core crate, so fixtures
+built on main before the rebase are stale." **That was wrong**, and it was wrong
+in a way worth keeping visible: it is plausible, it explains the observable
+exactly, and it is indistinguishable from the truth without reading the
+`newer:` path the probe actually printed.
+
+The real cause was issue 0442 — the cmake freshness probe applied its
+`REGENERATED_INPLACE_HEADERS` exemption on the ninja dep-info arm but not on its
+sibling directory-walk arm, so every freertos / threadx-linux C and C++ zenoh
+fixture read stale against `zpico-sys/c/include/zpico.h`. That header is
+cbindgen output written in place; its mtime moves whenever any other feature set
+builds, with the content unchanged (measured: header 23:46, binary 21:23, `git
+status` clean).
+
+Fixed there, not here. The action cells went 3 → 7 of 9 immediately, and to 8 of
+9 after building the two lanes that genuinely had never been built on this
+branch.
+
+The ninth, `Freertos::Rust`, then FAILED AT RUNTIME — it had been skipping, so
+the probe defect was hiding a real one. Filed as issue 0444, unattributed: this
+branch touches nothing in the FreeRTOS runtime, and a main comparison is the
+next step.
 
 ## Risks
 

@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#445** — a staleness verdict is TERMINAL and self-explaining, so it absorbs whatever the fixture
+would have done at runtime. Demonstrated: issue 0442 (a probe exemption missing from one arm) made the
+freertos/threadx C/C++ cells read stale; fixing it made them run and immediately exposed issue 0444, a
+real FreeRTOS Rust runtime failure that had been sitting behind it. Broader than 0350, which is about
+skips: in `rtos_e2e` a stale fixture PANICS and still masks, because the failure is attributed to
+staleness rather than investigated. I hit the reader-side half too — asked why those cells were stale I
+gave a plausible, consistent, WRONG answer, because the verdict explains itself well enough to survive
+scrutiny. Directions in the issue; the smallest is counting how long a coordinate has gone without
+producing a runtime result. NOT a request to weaken the probes (0433 was a probe being right, and it
+masked too). See `0445-*`. (2026-08-06)
+
 **#444** — the FreeRTOS Rust action image boots, prints the platform banner and brings up LAN9118 +
 lwIP ("Network ready"), then never reaches `Application setup complete`. Fails SOLO 3/3, so not the
 QEMU-load flake class. `Freertos::{C,Cpp}` and all six nuttx/threadx cells pass on the same board and
