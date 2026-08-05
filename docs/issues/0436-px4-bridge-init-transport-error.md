@@ -38,7 +38,49 @@ of the two-session (`NodeBuilder(...).rmw(...)`) code runs.
   so the default session should be the uORB one — which is exactly what the W2
   demo (`examples/px4/cpp/firmware`, `BACKENDS uorb` only) opens successfully.
 
-## Investigation 2026-08-06 — the error is named, and two mechanisms are confirmed
+## RESOLVED-AS-DIAGNOSED 2026-08-06 — not one bug: a misuse, two bugs, and a gap
+
+Answering the question directly (design issue / gap / bug): **the design is sound
+and the bridge shape is a first-class, already-implemented feature. My module used
+the wrong API, and on the way there it hit two real defects and one integration
+gap.**
+
+**1. MISUSE (mine).** nano-ros has a multi-RMW bridge surface —
+`nros::MultiExecutor` + `SessionSpec` (`nros-cpp/include/nros/bridge.hpp`, phase-128
+F.5) over `nros_init_multi`, backed by `Executor::open_multi_in` + `extra_sessions`
++ per-node `session_idx` (phase-104 C.3, landed). Sessions are opened UP FRONT from
+a spec list; `NodeBuilder::rmw(name)` then binds a node to one that ALREADY exists.
+The module followed the phase-325 W3 note (`nros::init()` + `NodeBuilder`), which is
+the SINGLE-session shape — so there was never a zenoh session for the outward node
+to bind to. That is why the outward bind failed even with a router up.
+
+**2. BUG — uORB registered under the wrong name (FIXED).** `nros_rmw_uorb_register`
+used `nros_rmw_cffi_register`, the `#[deprecated]` unnamed shim, which registers the
+literal name `"default"` ("use `nros_rmw_cffi_register_named` with the backend's
+canonical name" — its own note). Every other backend uses the named form. So uORB
+could not be selected as `"uorb"` by EITHER handle: `NodeBuilder().rmw("uorb")` or
+`$NROS_RMW=uorb`. Fixed to `register_named("uorb", &kVtable)`. Single-backend images
+are unaffected (`resolve_backend` returns the sole entry regardless of name).
+VERIFIED: after the fix `NROS_RMW=uorb` resolves and the inward uORB bind succeeds.
+
+**3. BUG — a selection outcome reported as a transport failure (FIXED).**
+`Executor::open_in` mapped every non-`Single` resolution — `Ambiguous`, `NoBackend`,
+`Unknown` — to `Transport(ConnectionFailed)`. Two registered backends and no
+selector is "you must disambiguate", not a network error: it reads as a router
+problem and was chased as one (zenohd on two ports, `NROS_LOCATOR`, all irrelevant).
+Now `Transport(InvalidConfig)` plus a std-gated line naming the outcome and the
+remedy. The `-100` catch-all at the C++ seam is likewise widened to print the real
+`NodeError`.
+
+**4. GAP (the remaining work).** `MultiExecutor` requires linking `libnros_bridge.a`
+(the `packages/rmw/bridge` crate), and `nros_px4_add_module` has no notion of it —
+zero mentions. So a PX4 module cannot use the supported bridge API today. That is
+the actual phase-325 W3 gap: not the runtime, not the codegen (issue 0362, done),
+but the PX4 link helper. It is small: teach the helper to resolve + link the bridge
+archive the way it already does for `libnros_cpp.a`, `libnros_platform_posix.a` and
+the zenoh platform archive.
+
+## Investigation trail — the error is named, and two mechanisms are confirmed
 
 **The real error is `NodeError::Transport(ConnectionFailed)`.** `-100` is
 documented in `node_error_to_cpp_ret` as the catch-all for UNMAPPED variants, so

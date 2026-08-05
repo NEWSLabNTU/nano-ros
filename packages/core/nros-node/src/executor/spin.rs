@@ -107,11 +107,38 @@ impl<'s> Executor<'s> {
         let sel_ref = selector.as_deref();
         match nros_rmw_cffi::resolve_backend(sel_ref) {
             nros_rmw_cffi::BackendResolution::Single(_) => {}
-            // Map every non-`Single` outcome to a transport
-            // ConnectionFailed for now; the more granular ret codes
-            // (NO_BACKEND / AMBIGUOUS / UNKNOWN) are exposed to C
-            // callers via `nros_init`'s return value (Phase 128.C.2).
-            _ => return Err(NodeError::Transport(TransportError::ConnectionFailed)),
+            // Issue 0436 — these are SELECTION outcomes, not transport failures,
+            // and calling them `ConnectionFailed` actively misleads: a PX4 bridge
+            // that registered two backends reported "connection failed", which
+            // reads as a router/network problem and was chased as one. Nothing is
+            // connected at this point — the resolver has not chosen a backend yet.
+            //
+            // The variant still collapses into `NodeError::Transport` (the enum has
+            // no selection arm, and adding one is an ABI change across the C/C++
+            // seams), but `InvalidConfig` at least says "your configuration is
+            // unresolvable", and the std-gated line below names WHICH outcome.
+            other => {
+                #[cfg(feature = "std")]
+                {
+                    let why: &str = match other {
+                        nros_rmw_cffi::BackendResolution::NoBackend => {
+                            "no RMW backend is registered"
+                        }
+                        nros_rmw_cffi::BackendResolution::Ambiguous => {
+                            "more than one RMW backend is registered and no \
+                             $NROS_RMW selector was set — name one (e.g. \
+                             NROS_RMW=uorb), or open per-backend sessions"
+                        }
+                        nros_rmw_cffi::BackendResolution::Unknown => {
+                            "$NROS_RMW names a backend that is not registered"
+                        }
+                        nros_rmw_cffi::BackendResolution::Single(_) => unreachable!(),
+                    };
+                    std::eprintln!("nros: cannot select an RMW backend — {why}");
+                }
+                let _ = other;
+                return Err(NodeError::Transport(TransportError::InvalidConfig));
+            }
         }
 
         let rmw_config = nros_rmw::RmwConfig {

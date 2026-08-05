@@ -21,9 +21,23 @@ half. Conflating the two would overclaim (phase-325 W4.3).
 
 ## Status (2026-08-06)
 
-**Builds, links and registers; does not yet start.** `nros::init()` returns
-`TransportError(-100)` when a networked backend is registered alongside uORB —
-tracked as [issue 0436](../../../../docs/issues/0436-px4-bridge-init-transport-error.md).
+**Builds, links and registers; the inward half works; the outward half needs the
+bridge API this module does not yet use.** See
+[issue 0436](../../../../docs/issues/0436-px4-bridge-init-transport-error.md) for
+the full diagnosis. In short:
+
+* `nros::init()` + `NodeBuilder::rmw()` — what this module does, following the
+  phase-325 W3 note — is the SINGLE-session shape. It opens one session, so the
+  outward node has no zenoh session to bind to.
+* The supported multi-RMW shape is `nros::MultiExecutor` + `SessionSpec`
+  (`nros/bridge.hpp`), which opens both sessions up front. It requires linking
+  `libnros_bridge.a`, and `nros_px4_add_module` has no support for that yet —
+  the remaining gap.
+
+Two real defects were found and FIXED along the way (both verified): uORB
+registered under the deprecated unnamed shim (name `"default"`, so `rmw("uorb")`
+and `$NROS_RMW=uorb` could never select it), and `Executor::open_in` reporting
+backend-SELECTION outcomes as `Transport(ConnectionFailed)`.
 
 Verified so far, on a real PX4 SITL build:
 

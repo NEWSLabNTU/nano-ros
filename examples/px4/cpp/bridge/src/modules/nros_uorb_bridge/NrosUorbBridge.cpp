@@ -13,13 +13,18 @@
  *   necessarily, and that is the honest framing (phase-325 W4.3). Zero-copy is
  *   NOT claimed for this path.
  *
- * TWO SESSIONS, BOTH NAMED
+ * TWO SESSIONS — AND THIS FILE USES THE WRONG API FOR THAT (issue 0436)
  *
- *   The inward node binds "uorb", the outward node binds the networked backend.
- *   `NodeBuilder::rmw(name)` selects among backends registered by the generated
- *   `nros_app_register_backends()`; an empty name takes the first REGISTERED,
- *   which is `BACKENDS` argument order — an argument list, not a contract. So
- *   both are named explicitly.
+ *   `nros::init()` opens ONE session and `NodeBuilder::rmw(name)` binds a node to
+ *   a session that ALREADY EXISTS. That is the single-session shape (what the
+ *   phase-325 W3 note suggested), so the outward node below has no zenoh session
+ *   to bind to and its bind fails.
+ *
+ *   The supported multi-RMW shape is `nros::MultiExecutor` + `SessionSpec`
+ *   (`nros/bridge.hpp`, phase-128 F.5), which opens BOTH sessions up front from a
+ *   spec list. Porting this module to it is blocked only on linking
+ *   `libnros_bridge.a`, which `nros_px4_add_module` cannot do yet — see issue
+ *   0436. The inward (uORB) half below is correct and verified working.
  *
  * WHY THE TRANSLATION IS FIELD-BY-FIELD AND NOT A memcpy
  *

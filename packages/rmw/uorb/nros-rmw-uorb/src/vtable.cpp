@@ -61,5 +61,18 @@ const nros_rmw_vtable_t kVtable = {
 } // namespace
 
 extern "C" nros_rmw_ret_t nros_rmw_uorb_register(void) {
-    return nros_rmw_cffi_register(&kVtable);
+    // Issue 0436 — register under the CANONICAL name, not the deprecated unnamed
+    // shim (which registers the literal name "default"). Every other backend uses
+    // `nros_rmw_cffi_register_named` with its own name, and the shim's own
+    // deprecation note says to do this.
+    //
+    // The name is not cosmetic: it is the ONLY handle for selecting this backend
+    // in a multi-backend image — `NodeBuilder().rmw("uorb")` (the PX4 bridge's
+    // inward session) and `$NROS_RMW=uorb` both look the name up in the registry.
+    // Registered as "default", uORB could never be named by either, which is why
+    // the bridge's `rmw("uorb")` bind failed.
+    //
+    // Single-backend images are unaffected: with one entry the resolver returns it
+    // regardless of name (`resolve_backend` → `n == 1` → `Single`).
+    return nros_rmw_cffi_register_named("uorb", &kVtable);
 }
