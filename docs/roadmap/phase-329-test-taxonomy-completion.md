@@ -316,11 +316,21 @@ un-prebuildable), so they belong IN the registry, not moved out of it.
   coordinate table is banned. Verified non-vacuous.
 
 ### W7 — tier mapping (RFC-0061 join)
-- [ ] Each bucket declares its tier home: guards/gates + host-unit +
+- [x] Each bucket declares its tier home: guards/gates + host-unit +
   CLI-behavior + fixture-artifact = tier 1; cell matrix 1-wise = tier 2;
   pairwise + interop + realtime-dim full = nightly; editions + full
   matrix = tier 3. Today the mapping exists only as lane filters; write it
-  into the tables so `ci_lane` selection reads it.
+  into the tables so `ci_lane` selection reads it. **Done 2026-08-05 as
+  `src/buckets.rs`.** `BUCKET_TIERS` is the SSoT map: each of the 9
+  Target-structure buckets → the `CiTier`(s) that exercise it + a reason, with
+  `CiTier` = the full ladder (Tier1/Tier2/Tier2Nightly/Tier3; the first three have
+  computed selections in `ci_lane`, Tier3 = everything). The gate ties the
+  declaration to the real machinery: `cell_matrix_covers_every_computed_lane`
+  asserts every `ci_lane::ALL` lane is a declared CellMatrix tier (a new computed
+  rung can't be added without declaring it), and `host_only_buckets_are_tier1`
+  pins the five host buckets. **Follow-up (not this wave):** wire the justfile lane
+  recipes to READ `BUCKET_TIERS` programmatically (today they encode the same map
+  in comments/filters, now kept honest by the gate rather than duplicated).
 
 ### W8 — cut the BUILD, not just the file count (added 2026-08-04; row-dedup half RETRACTED same day)
 
