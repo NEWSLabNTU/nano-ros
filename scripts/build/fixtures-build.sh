@@ -114,6 +114,18 @@ manifest() {
         "${coords_args[@]}"
 }
 
+# issue 0439 — the SAME query with the lane filter removed. Used only to tell
+# "this id does not exist" from "this id exists but is not in this lane", which
+# the narrowed query cannot distinguish and which #0406's guard would otherwise
+# report as the caller's mistake. Deliberately a sibling of `manifest()` rather
+# than a parameter on it: the two differ in exactly one argument, and a reader
+# comparing them should see that at a glance.
+manifest_unnarrowed() {
+    python3 scripts/build/fixtures-manifest.py list \
+        --platform "$platform" --lang "$lang" ${rmw:+--rmw "$rmw"} \
+        ${fixture_id:+--id "$fixture_id"} ${core_only:+--core-only}
+}
+
 run_with_make() {
     local fn="$1"
     local work_root makefile target quoted make_quoted line idx jobs make_bin
@@ -180,6 +192,19 @@ if [ "${#fixture_records[@]}" -eq 0 ]; then
     if [ -n "$fixture_id" ]; then
         # shellcheck source=scripts/build/fixture-id-guard.sh
         source scripts/build/fixture-id-guard.sh
+        # Issue 0439 — FIRST rule out the one way an empty result is not the
+        # caller's fault. `--coords-from` (issue 0393) drops rows for a lane
+        # reason the recipe has no say in: `just/threadx-riscv64.just` hard-codes
+        # `--id threadx-riscv64-logging-smoke` (a `rust` row) and tier 2's
+        # coordinate for that platform is `c,cyclonedds`, so the row vanishes and
+        # 0406's guard blamed a perfectly correct invocation — with a diagnostic
+        # that printed requested and declared coordinates that MATCHED, because
+        # the lane appears in neither.
+        if nros_fixture_id_out_of_lane "$fixture_id" \
+            "$([ "${#coords_args[@]}" -gt 0 ] && echo 1 || echo 0)" \
+            "$(manifest_unnarrowed)" "${platform}/${lang}"; then
+            exit 0
+        fi
         nros_fixture_id_no_match "$fixture_id" flag fixture "$platform" "$lang" "$rmw"
     fi
     # No id filter: an empty (platform, lang, rmw) is routine — the recipes

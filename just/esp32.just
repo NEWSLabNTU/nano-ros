@@ -118,6 +118,22 @@ build-qemu:
         elf_name="esp32_qemu_${ex}"
         elf="examples/qemu-esp32-baremetal/rust/$ex/target/riscv32imc-unknown-none-elf/$target_profile_dir/$elf_name"
         out="build/esp32-qemu/esp32-qemu-$ex.bin"
+        # Issue 0439 — the build loop above is lane-narrowable, so under a lane
+        # that excludes `qemu-esp32-baremetal,rust` it correctly builds nothing
+        # and there is no ELF to pack. Skip ONLY for that reason: an absent ELF
+        # with nothing narrowing the build is issue #181 exactly (espflash
+        # opening a nonexistent path while the lane exits 0), and that has to
+        # stay loud. `NROS_FIXTURE_COORDS` is the same signal
+        # `fixtures-build.sh` narrows on, so the two cannot disagree.
+        if [ ! -f "$elf" ]; then
+            if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
+                echo "  skip $ex — not in this lane's coordinates"
+                continue
+            fi
+            echo "ERROR: $elf is missing, and nothing narrowed this build." >&2
+            echo "       The build step above should have produced it." >&2
+            exit 1
+        fi
         if command -v espflash &>/dev/null; then
             espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$out"
             echo "  $out"
@@ -144,6 +160,18 @@ build-logging-smoke:
     fixture=packages/testing/nros-tests/bins/logging-smoke-esp32-qemu
     elf="$fixture/target/riscv32imc-unknown-none-elf/$target_profile_dir/logging-smoke-esp32-qemu"
     bin="$elf.bin"
+    # Issue 0439 — same shape as `build-qemu` above: a lane-narrowable `--id`
+    # build followed by a pack that assumed it happened. Fixed here WITH the
+    # reported site rather than after it bites: this recipe is only absent from
+    # the tier-2 failure because its id is not in that lane's module set.
+    if [ ! -f "$elf" ]; then
+        if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
+            echo "  skip — logging-smoke is not in this lane's coordinates"
+            exit 0
+        fi
+        echo "ERROR: $elf is missing, and nothing narrowed this build." >&2
+        exit 1
+    fi
     if command -v espflash &>/dev/null; then
         espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$bin"
         echo "  $bin"

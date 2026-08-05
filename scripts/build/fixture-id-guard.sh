@@ -27,6 +27,33 @@
 # So the loudness is keyed on the spelling, and the spellings keep distinct
 # meanings instead of being merged into one that cannot express both.
 
+# nros_fixture_id_out_of_lane <id> <coords_active> <unnarrowed_rows> <what>
+#
+# Issue 0439 — decide whether an EMPTY narrowed row set is the lane's doing
+# rather than the caller's mistake, BEFORE nros_fixture_id_no_match gets to call
+# it an invocation error.
+#
+#   coords_active:   "1" when the query carried `--coords-from` (issue 0393)
+#   unnarrowed_rows: the same query's output with the lane filter removed
+#   what:            what this stage builds, for the message
+#
+# Returns 0 (having printed) when the row exists but is out of lane — the caller
+# should exit 0, the same benign answer the `NROS_FIXTURE_ID` path already gives.
+# Returns 1 when the caller should fall through to the fatal guard.
+#
+# Shared by both flag-narrowed builders (`fixtures-build.sh`,
+# `workspace-fixtures-build.sh`) instead of inlined twice: the pair of guards
+# this reconciles were each added once and combined wrongly, and a second
+# spelling of the reconciliation is how that repeats.
+nros_fixture_id_out_of_lane() {
+    local id="$1" coords_active="$2" unnarrowed_rows="$3" what="$4"
+    [ "$coords_active" = "1" ] || return 1
+    [ -n "$unnarrowed_rows" ] || return 1
+    echo "fixtures: id '${id}' is not in this lane's coordinates;" \
+         "this ${what} stage builds nothing."
+    return 0
+}
+
 # nros_fixture_id_no_match <id> <source> <kind> <platform> <lang> [rmw]
 #
 #   source: "flag" (--id) or "env" (NROS_FIXTURE_ID)

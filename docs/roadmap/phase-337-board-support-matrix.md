@@ -8,10 +8,14 @@ W1.g / W1.h (the board-crate merges; 322 stays the record of the *measurements*)
 **Touches:** RFC-0049 (the config ladder — W1.a extends it to the build block),
 RFC-0051 / phase-329 (the cell tables every wave edits), RFC-0012 (BSP integration).
 
-**Status.** COMPLETE (2026-08-04/05). Every wave has landed: W1, W2 (a–f),
-W3, W4, W5, W6, W7 (a/b/c), W8 (a/b/c/d) and W9.a. W8.e stays deliberately
-undone — it is marked optional and only wanted if a hosted non-Linux board is
-ever added.
+**Status.** All waves landed (2026-08-04/05): W1, W2 (a–f), W3, W4, W5, W6,
+W7 (a/b/c), W8 (a/b/c/d) and W9.a. W8.e stays deliberately undone — it is marked
+optional and only wanted if a hosted non-Linux board is ever added.
+
+**One acceptance criterion is still open**, and the phase was briefly mismarked
+COMPLETE while it was: `just ci-matrix`. It became live when W2 landed a tier-2
+board, and attempting it uncovered two fixture-BUILD defects that made tier 2
+unrunnable — issue 0439 (fixed here) and issue 0433 (upstream). See Acceptance.
 
 The two headline results: Zephyr stopped meaning one 64-bit host config (the
 `mps2_an385` witness boots, takes an IP from a real ethernet driver, and
@@ -846,10 +850,30 @@ Measured 2026-08-05, after every wave.
 - [x] A second FreeRTOS board is demonstrably ~80 lines (W5.f). **Measured 2026-08-04:
       76 lines of board delta, 205 lines total — the estimate counted only the
       C/config layer. See W5.f.**
-- [ ] `just ci-matrix` green after each wave that has tier-2 cells. **NOT RUN**
-      — every wave so far is host-verifiable (`check-fast` + `check-build` +
-      the native fixture lane + its runtime tests), and no landed wave adds or
-      moves a tier-2 cell. W2 will need it.
+- [~] `just ci-matrix` green after each wave that has tier-2 cells. **The earlier
+      "NOT RUN — no landed wave adds or moves a tier-2 cell" is EXPIRED**: W2
+      landed `ZephyrQemuCortexM` as a tier-2 board, and the tier-2 1-wise cover
+      picks it up automatically (`zephyr-cortex-m,c,zenoh` is in
+      `lane-coords tier2`). So this criterion became live the moment W2.d landed,
+      and the phase was briefly marked COMPLETE while it was outstanding.
+
+      **Attempting it found that tier 2 could not run AT ALL** — for reasons that
+      predate this phase and have nothing to do with its cells:
+
+      * **issue 0439** (found and FIXED here) — a lane-narrowed build killed any
+        recipe naming a fixture by `--id`. Three of eight tier-2 modules died, so
+        no stamp was written and `_lane-gate` refused before running anything.
+        Two guards, each right alone: 0393's `--coords-from` removes rows for
+        lane reasons; 0406 treats an `--id` matching zero rows as a wrong
+        invocation. Together, the lane's own narrowing got blamed on the caller.
+      * **issue 0433** (upstream, another agent) — NuttX arches share one
+        `$NUTTX_DIR/staging`, so building both clobbers the link list. Visible
+        here as `nuttx` failing under `lane=all` but passing under `lane=tier2`,
+        which builds one arch.
+
+      Both are fixture-BUILD defects, not matrix or board defects, which is why
+      no earlier wave saw them: `lane=all`, `lane=native` and `lane=tier1` do not
+      combine flag-narrowed recipes with lane coordinates.
 
 ## What is left, and what it needs
 
@@ -858,10 +882,12 @@ Measured 2026-08-05, after every wave.
 | W2.a | **done** | — |
 | W2.b | **done** | the bring-up itself is finished and proven: the image boots, takes an IP from the real driver, and publishes over a zenoh session. Five defects fixed under it; one (0432) filed rather than fixed. |
 | W2.c–f | **done** | `PlatformId::ZephyrQemuCortexM` at index 9, 2 Runtime + 4 BuildOnly cells, the west-lane exemption, the `build-cortex-m-*` fixture leaves and a runner. Both Runtime cells pass in 3.3 s each on fixtures built through `zephyr-fixture-make-driver.sh`. The registry row came with a widening of `check-board-tiers`, which could not see a board that owns no directory. |
-| W8.c | **done** | all three token-derived vocabularies moved together; the lane name, the `just` module and `examples/native/` deliberately kept theirs. |
+| W8.c | **done**, verification carried | all three token-derived vocabularies moved together; the lane name, the `just` module and `examples/native/` deliberately kept theirs. The full `just ci` its acceptance asks for has NOT come back clean — not for any token reason (no run produced a platform or coordinate error) but because issues 0435, 0433 and 0439 each broke the fixture build in turn. Failures fell 126 → 43 → 33 → 15 purely by rebuilding. |
 | W9.a | **done** | folded into `nros-board-zephyr/boards/fvp-aemv8r-smp/`; 18 board directories → 17. `nano_ros_use_board(<name>)` unchanged at every call site — the lookup widened instead. |
 
-Every wave of this phase has landed.
+Every wave of this phase has landed. What remains is the `just ci-matrix`
+acceptance criterion (see Acceptance) — blocked twice over by fixture-BUILD
+defects, one of which (0439) this phase found and fixed.
 
 ## Risks
 

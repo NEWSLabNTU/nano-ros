@@ -148,6 +148,16 @@ manifest() {
         ${id_filter:+--id "$id_filter"} "${coords_args[@]}"
 }
 
+# issue 0439 — the SAME query with the lane filter removed, used only to tell
+# "this id does not exist" from "this id is not in this lane". Sibling of
+# `manifest()` rather than a parameter on it: they differ in exactly one
+# argument and a reader should see that at a glance.
+manifest_unnarrowed() {
+    python3 "$repo_root/scripts/build/fixtures-manifest.py" list-workspaces \
+        --platform "$platform" ${lang_filter:+--lang "$lang_filter"} \
+        ${id_filter:+--id "$id_filter"}
+}
+
 profile_dir="$(nros_cargo_target_profile_dir)"
 mapfile -t cargo_profile_args < <(nros_cargo_profile_args)
 
@@ -379,6 +389,16 @@ if [ "${#live_records[@]}" -eq 0 ]; then
     if [ -n "$id_filter" ]; then
         # shellcheck source=scripts/build/fixture-id-guard.sh
         source "$repo_root/scripts/build/fixture-id-guard.sh"
+        # Issue 0439 — same reconciliation as `fixtures-build.sh`, via the same
+        # helper. This builder has the identical shape (`--id` can set
+        # `id_filter_source=flag`, and it honours `--coords-from`), so it carried
+        # the identical latent bug; it simply had no lane-narrowed `--id` caller
+        # yet. Fixed with the reported site rather than after it reappears here.
+        if nros_fixture_id_out_of_lane "$id_filter" \
+            "$([ "${#coords_args[@]}" -gt 0 ] && echo 1 || echo 0)" \
+            "$(manifest_unnarrowed)" "${platform}${lang_filter:+/$lang_filter}"; then
+            exit 0
+        fi
         nros_fixture_id_no_match \
             "$id_filter" "${id_filter_source:-env}" workspace_fixture \
             "$platform" "$lang_filter"
