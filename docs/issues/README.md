@@ -51,6 +51,24 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#419** — the play_launch pin in `nros-cli-core/build.rs` records the **superproject** SHA when the
+submodule is uninitialised, so `nros sync` reports "this `nros` was built from <a nano-ros commit>"
+and the issue-0409 guard fires forever. Two compounding faults: an uninitialised submodule is an
+empty dir that `.exists()`, so the intended `"unknown"` branch is unreachable and `git -C <empty>
+rev-parse HEAD` walks up to the parent repo; and there is no `rerun-if-changed` on the submodule, so
+initialising it re-stamps nothing — `just setup-cli` reports success while rebuilding nothing, and
+the remedy the message suggests (`setup-launch-resolve`) cannot help because the wrong value is on
+the CLI side. See `0419-*`. (2026-08-05)
+
+RESOLVED 2026-08-05 — **#382** rlm v0.1.4 preserves launch order (`IndexMap`); the stale generated
+TU that kept the test red needed `nros codegen entry`, which needed 0414's CMake half fixed first.
+**#398** direction 2: `[[component]].name` stays an instance id, and `apply_model_execution` now
+REFUSES a `group_tiers` declaration that reached no node while a node of the same package is in the
+model — telling "renamed" apart from "absent in this variant", which look identical otherwise.
+**#392** last item done: `orchestration_e2e`'s metadata refresh exposed a service + action the launch
+MANIFEST never declared; the manifest was the stale side. See `archived/`.
+
+
 **#418** — raw action feedback/result payloads carry an EXTRA CDR encapsulation header
 (`[outer][goal_id][INNER][body]`), so they are wire-incompatible with ROS 2 *and* with nano-ros's
 own typed path. Raw↔raw is self-consistent — every action Runtime cell pairs a raw server with a
