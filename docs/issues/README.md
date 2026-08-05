@@ -51,6 +51,23 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#425** — a MIXED C+C++ workspace links BOTH umbrella staticlibs and dies on ~96 duplicate C-ABI
+symbols, blocking `just build-test-fixtures lane=native` outright. `NanoRosEntry.cmake` states the
+invariant ("a C binary links NanoRos, a C++ binary NanoRosCpp — NEVER both"), and Phase 241.D3-rev
+made `libnros_cpp.a` BUNDLE `nros-c` so a C++ binary needs only one archive. A mixed workspace cannot
+satisfy that by construction: the C node pkg links `NanoRos`, the C++ entry links `NanoRosCpp`, and
+the entry inherits the first through a dependency. Direction: node-package libraries take the C ABI
+as INTERFACE (headers) only, so `nano_ros_entry` stays the single place an umbrella archive is
+chosen — not `-z muldefs`, which `check-no-allow-multiple-def` bans. See `0425-*`. (2026-08-05)
+
+**#426** — `nros sync`'s source-metadata HOST probe compiles target-only deps for RTIC / bare-metal
+Cortex-M node pkgs and fails with a raw `E0432` on `cortex_m::register::basepri`, while the run exits
+0. Loud error, silent consequence: those packages get no metadata sidecar (bakes fall back to the
+model's lower bound), and a genuine compile error in one of them is indistinguishable from this
+expected one. The refresh already guards the same class for `build-std` targets and says why; a
+`thumbv7m` leaf just misses that branch. Direction: widen the guard from "sets build-std" to
+"declares a non-host `[build] target`". See `0426-*`. (2026-08-05)
+
 RESOLVED 2026-08-05 — **#423** the borrowed-view (RFC-0033) RUNTIME e2e proofs were orphaned +
 bit-rotted, deleted, then RE-ESTABLISHED as a build-stage fixture + Rust consumer. Fixed three rots:
 the RFC-0042 platform.h include; the `nros_config_variant_sz_*` guard (a standalone `nros-c` can't
