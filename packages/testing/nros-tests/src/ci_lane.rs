@@ -484,10 +484,46 @@ mod tests {
                 c.platform
             );
         }
-        assert!(
-            !filter.contains("binary(~native)"),
-            "the native lane must not exclude itself:\n{filter}"
-        );
+        // The host lane must not exclude ITSELF. This assertion used to read
+        // `!filter.contains("binary(~native)")` — a hardcoded literal, and a
+        // gate narrower than the rule it enforces (the issue-0196 class) in two
+        // ways at once:
+        //
+        //   1. It named `native`. phase-337 W8.b renamed the host variant to
+        //      `Linux`, `lane-filter.sh`'s `grep -v '^Native$'` stopped matching,
+        //      and `Linux` survived into the exclusion set — while this assertion
+        //      kept passing, because the string it looked for was gone too.
+        //   2. It checked only `binary(...)`. The damage is done by the TEST
+        //      form: `not test(~Linux)` filters out every
+        //      `platform_N_Platform__Linux` rstest case, i.e. the entire host
+        //      matrix, and the run reports a fast green.
+        //
+        // Both fixed by deriving the host family from `PlatformId` the same way
+        // the script does, and by checking every spelling the script emits.
+        let host_family = {
+            let debug = format!("{:?}", PlatformId::Linux);
+            let mut f = String::new();
+            for (i, ch) in debug.chars().enumerate() {
+                if i > 0 && ch.is_ascii_uppercase() {
+                    break;
+                }
+                f.push(ch.to_ascii_lowercase());
+            }
+            f
+        };
+        let mut host_cap = host_family.clone();
+        host_cap[..1].make_ascii_uppercase();
+        for form in [host_family.as_str(), host_cap.as_str()] {
+            for kind in ["binary", "test"] {
+                assert!(
+                    !raw.contains(&format!("{kind}(~{form})")),
+                    "the host lane excludes ITSELF via {kind}(~{form}) — every host \
+                     case would be filtered out and the lane would report a fast \
+                     green. `lane-filter.sh` must skip the `{:?}` variant:\n{raw}",
+                    PlatformId::Linux
+                );
+            }
+        }
 
         // The unit-test exemption. Without it the lane drops host-only tests
         // whose names merely mention a platform — `board::tier::tests::

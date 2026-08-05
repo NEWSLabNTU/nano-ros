@@ -524,9 +524,32 @@ mod tests {
                     PathBuf::from("/build/out/nros/demo_bringup/system_model.yaml")
                 );
                 assert_eq!(c[1], PathBuf::from("/build/out/nros/system_model.yaml"));
+                // phase-330 W4/W7 inserted the two build-root rungs BETWEEN the
+                // OUT_DIR candidates and the committed path, and this positional
+                // test was not moved with them — it asserted the committed path
+                // at `c[2]` and had been red ever since. Asserting the whole
+                // ORDER rather than three indices is the point of the test, so
+                // it now names every rung; a new one inserted in the middle
+                // fails here loudly instead of shifting an index nobody checks.
                 assert_eq!(
                     c[2],
-                    PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml")
+                    PathBuf::from("/ws/build/nros/models/demo_bringup/system_model.yaml"),
+                    "the workspace build root (<ws>/build/nros/models/<bringup>/) \
+                     must outrank the committed config path"
+                );
+                assert_eq!(
+                    c[3],
+                    PathBuf::from(
+                        "/ws/src/demo_bringup/build/nros/models/demo_bringup/system_model.yaml"
+                    ),
+                    "the standalone/self-bringup build root must also outrank the \
+                     committed config path"
+                );
+                assert_eq!(
+                    c[4],
+                    PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml"),
+                    "the committed config path stays LAST — the model is a build \
+                     artifact (phase-330 W4), so every build output outranks it"
                 );
             },
         );

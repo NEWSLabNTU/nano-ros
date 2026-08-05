@@ -39,19 +39,25 @@ esac
 matrix="packages/testing/nros-tests/src/matrix.rs"
 [ -f "$matrix" ] || { echo "lane-filter.sh: $matrix not found" >&2; exit 2; }
 
-# Variants of `enum PlatformId`, minus `Native` — everything a host lane must not
-# run. Take only the LEADING CamelCase word (the platform family):
+# Variants of `enum PlatformId`, minus the HOST one — everything a host lane must
+# not run. Take only the LEADING CamelCase word (the platform family):
 # FreertosMps2 -> freertos, ThreadxRiscv64 -> threadx, ZephyrNativeSim -> zephyr.
 #
 # Splitting into all words would be actively wrong: ZephyrNativeSim yields
 # "native" and ThreadxLinux yields "linux", either of which would exclude the
 # host binaries this lane exists to run. Family names are also what the binaries
 # are actually named after (freertos_qemu, threadx_riscv64_qemu, …).
+#
+# The host variant is `Linux` since phase-337 W8.b (was `Native`). Missing this
+# rename is not a subtle failure: `Linux` survives into the token set, the lane
+# emits `not test(~Linux)`, and the tier-1 lane silently stops running the
+# platform it exists for — every `platform_N_Platform__Linux` rstest case
+# filtered out, reported as a fast green.
 tokens="$(
     awk '/^pub enum PlatformId \{/{f=1; next} f && /^\}/{exit} f' "$matrix" \
         | grep -oE '^\s{4}[A-Z][A-Za-z0-9]*,' \
         | tr -d ' ,' \
-        | grep -v '^Native$' \
+        | grep -v '^Linux$' \
         | sed -E 's/^([A-Z][a-z0-9]*).*/\1/' \
         | tr 'A-Z' 'a-z' \
         | sort -u

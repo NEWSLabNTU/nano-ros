@@ -61,6 +61,39 @@ fn project_root() -> PathBuf {
     nros_tests::project_root()
 }
 
+/// Paths git TRACKS under `examples/`, relative to the project root.
+///
+/// An index lookup, never a walk (the repo rule `check-no-tracked-file-find`
+/// enforces, and the same defect class as issue 0416): the working tree is full
+/// of legitimate build output, so "the file exists" and "the file is committed"
+/// are different questions. A gate that asks the first when it means the second
+/// fires on every machine where the build has run.
+fn tracked_example_paths() -> std::collections::HashSet<PathBuf> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(project_root())
+        .args(["ls-files", "--", "examples"])
+        .output()
+        .expect("git ls-files -- examples");
+    assert!(
+        out.status.success(),
+        "git ls-files failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let set: std::collections::HashSet<PathBuf> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(PathBuf::from)
+        .collect();
+    // A silent-empty result would make every "is it committed?" gate below pass
+    // vacuously — the failure mode those gates exist to prevent.
+    assert!(
+        !set.is_empty(),
+        "git tracks no files under examples/ — refusing to run the committed-file \
+         gates against an empty set"
+    );
+    set
+}
+
 fn examples_dir() -> PathBuf {
     project_root().join("examples")
 }
@@ -613,6 +646,7 @@ fn pre_212_files_forbidden_in_migrated_examples() {
     ];
     const NUTTX_FORBIDDEN: &[&str] = &["Kconfig", "Make.defs"];
 
+    let tracked = tracked_example_paths();
     let mut violations = Vec::new();
     walk(&examples_dir(), |dir| {
         let rel = rel_to_project(dir);
@@ -636,19 +670,31 @@ fn pre_212_files_forbidden_in_migrated_examples() {
         // They belong in `$OUT_DIR/nros-gen/` or `target/nros-metadata/`,
         // never tracked next to a Cargo.toml. Aligns with sibling
         // `phase212_examples_canonical_shape` test's same check.
+        //
+        // TRACKED, not present. `.gitignore:131` already ignores
+        // `examples/**/metadata/*.json`, and `nros sync` WRITES one per Node
+        // pkg — so testing for existence flagged 5+ legitimate build artifacts
+        // on any machine where sync had run, while the thing the gate forbids
+        // (a committed sidecar) is unreachable through that path. The message
+        // always said "not committed"; now the check asks that.
         let metadata_dir = dir.join("metadata");
         if metadata_dir.is_dir()
             && let Ok(entries) = fs::read_dir(&metadata_dir)
         {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                    violations.push(format!(
-                        "{}/metadata/{} (build artifact must live in target/, not committed)",
-                        rel.to_string_lossy(),
-                        path.file_name().and_then(|n| n.to_str()).unwrap_or("?")
-                    ));
+                if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                    continue;
                 }
+                let rel_path = rel_to_project(&path);
+                if !tracked.contains(&rel_path) {
+                    continue;
+                }
+                violations.push(format!(
+                    "{}/metadata/{} (build artifact must live in target/, not committed)",
+                    rel.to_string_lossy(),
+                    path.file_name().and_then(|n| n.to_str()).unwrap_or("?")
+                ));
             }
         }
     });
@@ -818,10 +864,18 @@ fn zephyr_leaf_buildrs_uses_shared_bake() {
         "zephyr rust leaf build.rs missing the shared bake call:\n  {}",
         missing_call.join("\n  ")
     );
-    // Guard a silent-empty pass: all 13 phase-291 leaves must be walked.
+    // Guard a silent-empty pass — the floor is NOT a coverage target, it fires
+    // when the discovery rule stops matching a shape.
+    //
+    // Was 13 (phase-291's count). phase-331 W3/W4 then deleted four themed
+    // micro-workspaces that each carried a `zephyr_entry` leaf
+    // (`ws-{lifecycle,params,qos,safety}-rust`), so the tree holds 10: seven
+    // under `examples/zephyr/rust/` plus `realtime-rust`'s and `rust`'s
+    // (`zephyr_entry` + `zephyr_entry_robot1`). The floor moves with a real
+    // deletion, never to make a red go away.
     assert!(
-        zephyr_leaves >= 13,
-        "expected >=13 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
+        zephyr_leaves >= 10,
+        "expected >=10 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
     );
 }
 
