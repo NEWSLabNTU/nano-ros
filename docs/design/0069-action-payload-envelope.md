@@ -195,25 +195,39 @@ format against a new producer. They now build header-less bodies.
       `Goal finished with status: SUCCEEDED`. Both channels — the two the double
       header made undecodable — now decode in a real `rcl_action` client.
 - [~] Every action Runtime cell green on real targets, embedded included.
-      **Partly done 2026-08-05.** Every zephyr `native_sim` action cell is
-      green — 8 e2e cells (`zenoh`/`cyclonedds`/`xrce` × `rust`/`c`/`cpp`) plus
-      the two action boot smokes — and those ARE raw↔raw pairs, so the class this
-      change breaks is exercised on all three RMWs and all three languages.
-      `nros-tests` `actions` + `action_multigoal` (4) and `entry_e2e` also green.
+      **Mostly done 2026-08-05.** 14 of 18 action cells verified after this
+      change; every one is a raw↔raw pair, which is the class the payload
+      envelope alters.
 
-      STILL NOT COVERED: the QEMU lanes on real targets — freertos, nuttx,
-      threadx. `native_sim` is a host process, so it does not settle the "real
-      targets" half. Running them needs the full embedded fixture build (a core
-      crate changed here, which stales all of them); the zephyr non-action cells
-      in the same run report `[SKIPPED] … STALE` for exactly that reason, not
-      because they regressed.
-- [x] A test covers the issue-#35 corruption directly.
-      `nros-node/src/executor/arena.rs::action_envelope_tests` — three cases at
-      the level the corruption happens (`read_action_field`): a header-less body
-      round-trips; a body whose leading word IS the encap byte pattern is read as
-      data, not framing; a pre-0418 double-header payload does not decode as
-      itself (the declared break, asserted). Verified to FAIL against the
-      pre-fix consumer — 2 of 3 red — rather than assumed to cover it.
+      | family | cells | result |
+      | --- | --- | --- |
+      | zephyr native_sim | 9 (zenoh/cyclonedds/xrce × rust/c/cpp) | green |
+      | threadx-linux (QEMU) | 3 (rust/c/cpp) | green |
+      | freertos mps2 (QEMU) | rust | green |
+      | nuttx arm (QEMU) | cpp | green |
+      | native/Linux | `actions`, `action_multigoal` | green |
+      | freertos mps2 | c, cpp | BLOCKED |
+      | nuttx arm | c, rust | BLOCKED |
+
+      Plus a real `rcl_action` client against the raw server (item above).
+
+      The 4 blocked cells are blocked by build defects unrelated to this change,
+      each confirmed on a clean build dir rather than assumed:
+
+      * **freertos c/cpp** — `nros_config_generated.h` resolves to the in-tree
+        STUB instead of the per-build copy, so the C++ TU fails with
+        `#error "must be supplied per-build"` and `SESSION_OPAQUE_U64S` /
+        `EXECUTOR_OPAQUE_U64S` undeclared. The sizes-header mirror class
+        (0088→…→0268). Present on a freshly wiped build dir.
+      * **nuttx c/rust** — the kernel is re-staged AFTER the entries link, so
+        `staging/libc.a` is newer than the binary that depends on it and the
+        freshness probe can never converge. Two consecutive green builds leave
+        the same cells unrunnable. Filed as issue 0433.
+
+      Two defects on the way there were fixed rather than worked around: stale
+      `CMakeCache.txt` files naming the board dir phase-337 W3 retired (17 dirs),
+      and `_nros_profile_query args` handing cargo `--profile nros-minsizerel`
+      as a single argv element.
 
 ## Risks
 

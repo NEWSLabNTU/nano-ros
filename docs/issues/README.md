@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#433** — `just nuttx build-fixtures` exits 0 and the fixtures it just built read STALE: the kernel
+is re-staged AFTER the entries link, so `staging/libc.a` is newer than the binary depending on it and
+the freshness probe can never converge (measured: entry 20:42:48, libc.a 20:46:00). Two consecutive
+green builds leave the same four cells unrunnable — the 0350 class, where a coordinate that never runs
+looks like one that cannot. Blocked RFC-0069's last acceptance item for `nuttx c`/`nuttx rust`.
+NOT the cause and already fixed: stale caches naming the board dir phase-337 W3 retired, and a
+`--profile nros-minsizerel` argv-quoting bug. See `0433-*`. (2026-08-05)
+
 **#430** — A stale in-tree `nros` bricks EVERY `just` recipe: justfile EVALUATION runs a backtick
 calling `nros profile` (phase-336), so an older binary makes `just` refuse to run anything —
 including `just setup-cli`, the recipe that would fix it. The error names `qemu-baremetal.just:19`

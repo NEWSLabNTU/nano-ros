@@ -93,8 +93,26 @@ nros_cargo_freertos_qemu_profile() {
 }
 
 # Flags for a NAMED profile (a carve-out), rather than the ambient one.
+#
+# Emits ONE FLAG PER LINE, like `nros_cargo_profile_args` — so a caller can
+# `mapfile` it straight into an argv array. The table stores them as a single
+# string (`--profile nros-minsizerel`), and a caller that mapfiles the raw query
+# gets that as ONE argv element, which cargo rejects:
+#
+#     error: unexpected argument '--profile nros-minsizerel' found
+#     tip: a similar argument exists: '--profile'
+#
+# That is exactly what broke the NuttX workspace fixtures: the nuttx carve-out
+# in `workspace-fixtures-build.sh` called `_nros_profile_query args` directly
+# while every other path went through the ambient helper, which splits. The
+# split now lives with the accessor rather than in each caller.
 nros_cargo_profile_args_for() {
-    _nros_profile_query args "$1"
+    local flags
+    flags="$(_nros_profile_query args "$1")" || return 1
+    # Unquoted on purpose: word-splitting is the point.
+    # shellcheck disable=SC2086
+    [ -n "$flags" ] && printf '%s\n' $flags
+    return 0
 }
 
 # Target subdirectory for a NAMED profile.

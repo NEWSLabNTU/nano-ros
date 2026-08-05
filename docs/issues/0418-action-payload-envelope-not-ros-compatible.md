@@ -129,6 +129,9 @@ asserting the retired wire format against a new producer.
   was wrong; humble + `rmw_zenoh_cpp` are installed. `ros2 action send_goal
   --feedback` against the Node-class `action-server` returns feedback, result and
   `SUCCEEDED`.
-* Every action Runtime cell on real targets — PARTLY. All 8 zephyr `native_sim`
-  action cells green (3 RMWs × 3 languages, all raw↔raw). The freertos / nuttx /
-  threadx QEMU lanes still need the full embedded fixture build.
+* Every action Runtime cell on real targets — 14 of 18, all raw↔raw. Green:
+  9 zephyr native_sim, 3 threadx-linux QEMU (rust/c/cpp), freertos rust, nuttx
+  cpp, plus the native suites. BLOCKED by build defects that predate this change
+  and were each confirmed on a clean build dir: freertos c/cpp on the
+  sizes-header stub (`nros_config_generated.h`, the 0268 class), and nuttx
+  c/rust on the kernel being re-staged AFTER the entries link — issue 0433.

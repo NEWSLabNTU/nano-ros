@@ -253,7 +253,12 @@ build_workspace() {
             if [ "$platform" = "nuttx" ] || [ "$platform" = "nuttx-riscv" ]; then
                 local nuttx_profile
                 nuttx_profile="$(nros_cargo_nuttx_profile)"
-                mapfile -t profile_args < <(_nros_profile_query args "$nuttx_profile")
+                # `nros_cargo_profile_args_for`, NOT the raw `_nros_profile_query`:
+                # the table stores the flags as one string, so mapfiling the raw
+                # query yields a single argv element `--profile nros-minsizerel`
+                # and cargo rejects it. Every other path here goes through an
+                # accessor that splits.
+                mapfile -t profile_args < <(nros_cargo_profile_args_for "$nuttx_profile")
                 row_profile_dir="$(_nros_profile_query dir "$nuttx_profile")"
             fi
             local cargo_args=(build "${profile_args[@]}" -p "$entry")
