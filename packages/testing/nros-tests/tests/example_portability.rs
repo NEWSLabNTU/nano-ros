@@ -59,8 +59,13 @@ struct Group {
 const GROUPS: &[Group] = &[
     Group {
         name: "A-scheduled",
-        reason: "an RTOS or host OS scheduler runs the callbacks; the node body \
-                 is plain declarative + callback code",
+        reason: "callbacks are dispatched IMMEDIATELY by the executor, so the node \
+                 body is plain declarative + callback code with no DISPATCH \
+                 override and no tick(). Usually because an RTOS or host OS \
+                 scheduler runs them — but NOT always: qemu-esp32-baremetal has \
+                 neither and still dispatches immediately, which is why this \
+                 reason names the dispatch model rather than the presence of an OS \
+                 (corrected 2026-08-05, see the group-B note)",
         platforms: &[
             "native",
             "threadx-linux",
@@ -68,13 +73,20 @@ const GROUPS: &[Group] = &[
             "qemu-arm-nuttx",
             "qemu-riscv-nuttx",
             "qemu-riscv64-threadx",
+            "qemu-esp32-baremetal",
         ],
     },
     Group {
-        name: "B-baremetal",
-        reason: "no scheduler: the node declares DispatchStrategy::Deferred and an \
-                 explicit tick(), and uses the nros_log facade because `log` needs std",
-        platforms: &["qemu-arm-baremetal", "qemu-esp32-baremetal"],
+        name: "B-deferred",
+        reason: "the node declares DispatchStrategy::Deferred and an explicit \
+                 tick(), and logs through the nros_log facade. ONE member, and \
+                 the reason was wrong twice: qemu-esp32-baremetal sat here on the \
+                 assumption that bare-metal implies deferred dispatch (its bodies \
+                 are plain immediate-dispatch group-A code, and its Pubsub cell \
+                 RUNS that way), and the old reason claimed `log` needs std — \
+                 which esp32 disproves by bridging `log` on a no_std target via \
+                 esp_println. Both corrected 2026-08-05",
+        platforms: &["qemu-arm-baremetal"],
     },
     Group {
         name: "C-zephyr",
@@ -139,22 +151,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         reason: "W2 — NuttX carries a 3-attempt retry loop around send_goal / service \
                  call that the other platforms lack. A robustness accommodation, not a \
                  platform constraint: unify by giving every copy the retry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "listener",
-        platform: "qemu-esp32-baremetal",
-        reason: "W3.c — group B is not yet internally consistent; measure the \
-                 irreducible part after the log/nros_log facade is unified and \
-                 DISPATCH/tick get defaults.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "talker",
-        platform: "qemu-esp32-baremetal",
-        reason: "W3.c — group B is not yet internally consistent; measure the \
-                 irreducible part after the log/nros_log facade is unified and \
-                 DISPATCH/tick get defaults.",
     },
 ];
 

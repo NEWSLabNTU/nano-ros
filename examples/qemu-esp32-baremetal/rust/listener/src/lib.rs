@@ -24,6 +24,7 @@ impl Node for Listener {
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
         let _sub =
             node.create_subscription_for_callback_name::<StringMsg>("on_chatter", "/chatter")?;
+        log::info!("Subscriber created for topic: /chatter");
         Ok(())
     }
 }
