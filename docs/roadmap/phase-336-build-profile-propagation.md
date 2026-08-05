@@ -321,7 +321,8 @@ literal.
 > SystemModels that phase-330 W4 deleted, the `model_location` ladder test not
 > tracking two rungs W4/W7 added (and a poisoned test mutex reporting one
 > failure as five), and two gates walking the filesystem for TRACKED files.
-> Four more tests of the same W4 class remain → **issue 0417**.
+> Four more tests of the same W4 class were fixed upstream in parallel
+> (`2994d5a46`, issue #414) and arrived on the final rebase.
 >
 > **Performance, since the sweep spent most of its wall-clock waiting:** the
 > compile-check stage walked ~27 independent rows serially — 5 rows in 10
