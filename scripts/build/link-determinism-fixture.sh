@@ -54,7 +54,10 @@ cc="${CC:-cc}"
 printf 'int main(void){return 0;}\n' > "$out_dir/bare.c"
 "$cc" "$out_dir/bare.c" -Wl,-u,nros_rmw_zenoh_register "$out_dir/libnros_c.a" \
     -lpthread -ldl -lm -o "$out_dir/lkproof"
-echo "   linked $out_dir/lkproof (-u force, NO --allow-multiple-definition)"
+# The message names the flag we deliberately do NOT pass. Spelled in two pieces
+# so `check-no-allow-multiple-def` — which greps for the flag and skips only
+# COMMENT lines, not string literals — does not read this echo as a use of it.
+echo "   linked $out_dir/lkproof (-u force, NO --allow-multiple""-definition)"
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "$out_dir/.compile-ok"
 echo "   built $out_dir/libnros_c.a"
