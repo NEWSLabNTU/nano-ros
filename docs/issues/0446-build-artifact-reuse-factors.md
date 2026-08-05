@@ -82,6 +82,13 @@ collapses to 5 identities.
 The critical path is therefore not "compile 106 crates" but "compile 5, then
 link 106". Nothing in the current arrangement expresses that.
 
+## Fix
+
+**Phase 340** (`docs/roadmap/phase-340-build-artifact-reuse.md`) carries the
+work items, with the four repetition reasons (directory-vs-identity partition,
+per-leaf workspaces, corrosion's explicit `--target`, and `incremental`) and the
+measurements behind each.
+
 ## Directions, in order of confidence
 
 1. **Verify the sharing is safe, then share by identity.** A shared
