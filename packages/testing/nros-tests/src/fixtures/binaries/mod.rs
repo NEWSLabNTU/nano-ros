@@ -2998,6 +2998,38 @@ pub fn build_zephyr_rust_example_rmw(case: &str, rmw: Rmw) -> TestResult<PathBuf
     require_prebuilt_binary_fresh_zephyr(&binary_path)
 }
 
+/// phase-337 W2.f — the Zephyr Cortex-M witness (`mps2_an385`) leaf resolver.
+///
+/// Two things differ from every sibling above, and both are the point of the
+/// board rather than incidental:
+///
+/// * `zephyr.elf`, not `zephyr.exe`. native_sim builds a HOST executable the
+///   harness runs directly; this is a real image QEMU loads with `-kernel`.
+/// * the build name carries a `cortex-m` segment, because the same
+///   `(lang, role, rmw)` coordinate already names a native_sim leaf — the board
+///   is the thing that distinguishes them, and it has to appear in the path or
+///   the two builds collide in one directory.
+///
+/// `lang` is `"c"` or `"cpp"`. There is no rust arm: issue 0432 blocks the
+/// `zephyr` crate on any board with gpio nodes.
+pub fn build_zephyr_cortex_m_example(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/zephyr/{}/{}", lang, case));
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+    let binary_path = zephyr_build_root().join(format!(
+        "build-cortex-m-{}-{}-{}/zephyr/zephyr.elf",
+        lang,
+        case,
+        rmw.cmake_value()
+    ));
+    require_prebuilt_binary_fresh_zephyr(&binary_path)
+}
+
 /// Phase 168.4 — collapsed-shape Zephyr C / C++ example resolver.
 /// `lang` is `"c"` or `"cpp"`. Mirrors the Rust resolver.
 pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {

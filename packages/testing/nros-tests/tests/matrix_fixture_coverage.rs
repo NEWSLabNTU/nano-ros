@@ -114,9 +114,14 @@ fn every_runtime_cell_has_a_fixture_row() {
         // - NuttxRiscv examples: `just nuttx build-riscv-*` recipes.
         // - ThreadxRiscv64 cyclone: `just threadx_riscv64 build-fixtures`
         //   deploy-overlay lane (#214).
-        let west_lane_zephyr = matches!(c.platform, PlatformId::ZephyrNativeSim)
-            && (matches!(c.kind, Kind::Example)
-                || (matches!(c.kind, Kind::Workspace) && !matches!(c.lang, Lang::Rust)));
+        // phase-337 W2.e — `ZephyrQemuCortexM` joins with NO kind qualifier: it
+        // has only Example cells and every one of them is a west build, so the
+        // native_sim split (examples + non-rust workspaces) has nothing to
+        // distinguish here. Adds zero `fixtures.toml` rows.
+        let west_lane_zephyr = matches!(c.platform, PlatformId::ZephyrQemuCortexM)
+            || (matches!(c.platform, PlatformId::ZephyrNativeSim)
+                && (matches!(c.kind, Kind::Example)
+                    || (matches!(c.kind, Kind::Workspace) && !matches!(c.lang, Lang::Rust))));
         if matches!(c.platform, PlatformId::Linux)
             || west_lane_zephyr
             || (matches!(c.platform, PlatformId::NuttxRiscv) && matches!(c.kind, Kind::Example))
@@ -353,14 +358,17 @@ fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
         // Platforms whose fixtures are NOT produced through the two manifest
         // builders. Same exemption set as `every_runtime_cell_has_a_fixture_row`
         // above, and for the same reason — each names its real build channel:
-        //   - ZephyrNativeSim / Fvp: the west leaves lane
+        //   - ZephyrNativeSim / Fvp / ZephyrQemuCortexM: the west leaves lane
         //     (`scripts/build/zephyr-fixture-leaves.sh`, `just zephyr build-fvp-*`),
         //     which carries its own staleness signature and no fixtures.toml row.
         //   - Px4: a CarveOut on every cell; no runner builds SITL, so no recipe
         //     can produce it and demanding one would be the inverse lie.
         if matches!(
             p,
-            PlatformId::ZephyrNativeSim | PlatformId::Fvp | PlatformId::Px4
+            PlatformId::ZephyrNativeSim
+                | PlatformId::Fvp
+                | PlatformId::Px4
+                | PlatformId::ZephyrQemuCortexM
         ) {
             continue;
         }

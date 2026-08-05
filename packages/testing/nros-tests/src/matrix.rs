@@ -36,6 +36,21 @@ pub enum PlatformId {
     Linux,
     /// Zephyr native_sim (NSOS host sockets).
     ZephyrNativeSim,
+    /// Zephyr on QEMU MPS2-AN385 (Cortex-M3) — Zephyr's OWN IP stack over the
+    /// `eth_smsc911x` driver, 32-bit.
+    ///
+    /// phase-337 W2 added this because "Zephyr" previously meant exactly one
+    /// config: `native_sim/native/64`, where sockets are OFFLOADED to the host
+    /// and the pointer width is the host's. That is a board, not a platform —
+    /// and the difference is not academic. Bringing this witness up cost five
+    /// real defects (a 32-bit `size_t`/`uintptr_t` header conflict, an atomics
+    /// feature gated on an arch list, a staticlib with no allocator or panic
+    /// handler off native_sim, a duplicated cmake feature string, and a board
+    /// with no entropy device), every one of them invisible to native_sim.
+    ///
+    /// Cells here are C/C++ only: the pinned `zephyr-lang-rust` cannot compile
+    /// for any board whose devicetree has gpio nodes (issue 0432).
+    ZephyrQemuCortexM,
     /// FreeRTOS on QEMU MPS2-AN385 (lwIP).
     FreertosMps2,
     /// NuttX on QEMU arm virt (Cortex-A7).
@@ -75,8 +90,22 @@ impl PlatformId {
             // 9 was `Stm32F4` until phase-337 W7.a. Renumbering `Fvp`/`Px4`
             // down into the gap is free: both carry ZERO Runtime cells, so no
             // fixture image, locator or domain was ever baked from their band.
-            PlatformId::Fvp => 9,
-            PlatformId::Px4 => 10,
+            //
+            // phase-337 W2.c takes 9 for the same reason, and moves them again.
+            // The index is NOT free real estate: `alloc::domain_of` gives every
+            // platform a 21-wide window out of the 232 DDS domains, which fits
+            // exactly 11 — so a twelfth platform at index 11 computes domain 233
+            // and `domains_valid` rejects it. The scarce resource is therefore a
+            // LOW index, and it belongs to platforms that actually bake. `Fvp`
+            // and `Px4` still bake nothing (tier 3 / CarveOut), so their windows
+            // remain unreachable arithmetic wherever they sit; a witness with
+            // Runtime cells cannot say the same. If either ever gains a Runtime
+            // cell, `domains_valid` fails immediately — which is the right
+            // answer, because at that point the window scheme is genuinely full
+            // and needs narrowing, not another renumber.
+            PlatformId::ZephyrQemuCortexM => 9,
+            PlatformId::Fvp => 10,
+            PlatformId::Px4 => 11,
         }
     }
 
@@ -110,6 +139,13 @@ impl PlatformId {
             // platform. See the phase doc's W8.c entry for the site map.
             PlatformId::Linux => &["native"],
             PlatformId::ZephyrNativeSim => &["zephyr"],
+            // phase-337 W2.c/W2.e — declared, but NO `fixtures.toml` row spells
+            // it: this board is built by the west leaves lane, which carries its
+            // own staleness signature (same channel as `ZephyrNativeSim`'s
+            // examples). The token still has to exist — a platform the
+            // vocabulary cannot name selects nothing and looks fast rather than
+            // broken, which is the trap `Px4`'s token comment already records.
+            PlatformId::ZephyrQemuCortexM => &["zephyr-cortex-m"],
             PlatformId::FreertosMps2 => &["freertos"],
             PlatformId::NuttxArm => &["nuttx"],
             PlatformId::NuttxRiscv => &["nuttx-riscv"],
@@ -143,7 +179,12 @@ impl PlatformId {
             // vocabulary naming a LANE, ~100 CI references deep, and RFC-0064's
             // decision is about the board's promise, not the recipe namespace.
             PlatformId::Linux => "native",
-            PlatformId::ZephyrNativeSim | PlatformId::Fvp => "zephyr",
+            // All three are `just zephyr …` — one module, three boards. That is
+            // the RFC-0064 shape working as intended: a board is a conf bundle
+            // under a family's recipes, not a namespace of its own.
+            PlatformId::ZephyrNativeSim | PlatformId::Fvp | PlatformId::ZephyrQemuCortexM => {
+                "zephyr"
+            }
             PlatformId::FreertosMps2 => "freertos",
             PlatformId::NuttxArm | PlatformId::NuttxRiscv => "nuttx",
             PlatformId::ThreadxLinux => "threadx_linux",
@@ -166,6 +207,7 @@ impl PlatformId {
     pub const ALL: &'static [PlatformId] = &[
         PlatformId::Linux,
         PlatformId::ZephyrNativeSim,
+        PlatformId::ZephyrQemuCortexM,
         PlatformId::FreertosMps2,
         PlatformId::NuttxArm,
         PlatformId::NuttxRiscv,
@@ -439,6 +481,34 @@ pub const CELLS: &[Cell] = &[
     cell(Linux, C,    Xrce,       Action,  Example, Runtime),
     cell(Linux, Rust, Xrce,       Action,  Example, Runtime),
     cell(Linux, Cpp,  Xrce,       Action,  Example, Runtime),
+
+    // Zephyr on QEMU mps2/an385 (Cortex-M3) — phase-337 W2.d. The point of
+    // these rows is everything the native_sim rows below CANNOT say: 32-bit
+    // pointers, Zephyr's own in-kernel IP stack, and a real ethernet driver
+    // (`eth_smsc911x` against QEMU's lan9118). Proven end to end in W2.b — the
+    // image boots, takes 10.0.2.15 from the driver, and publishes over a zenoh
+    // session to a host router through SLIRP.
+    //
+    // NO RUST ROW, deliberately, and NOT as a BuildOnly: the pinned
+    // `zephyr-lang-rust` cannot compile the `zephyr` crate for any board whose
+    // devicetree has gpio nodes (issue 0432), so a rust cell here would not
+    // build either, and `BuildOnly` promises that it does. An absent row with
+    // the reason recorded beats a tier that lies — see this module's header.
+    //
+    // Zenoh only: cyclone and xrce on this board are untried, and the honest
+    // record of "nobody has attempted it" is no row, not a guess.
+    cell(ZephyrQemuCortexM, C,   Zenoh, Pubsub,  Example, Runtime),
+    cell(ZephyrQemuCortexM, Cpp, Zenoh, Pubsub,  Example, Runtime),
+    cell(ZephyrQemuCortexM, C,   Zenoh, Service, Example,
+         BuildOnly("phase-337 W2.f — the runner reproduces W2.b's manual setup \
+                    (SLIRP + a host zenoh router on 7456) for pubsub only; \
+                    service needs the peer half of that harness")),
+    cell(ZephyrQemuCortexM, Cpp, Zenoh, Service, Example,
+         BuildOnly("phase-337 W2.f — same runner gap as the C service row")),
+    cell(ZephyrQemuCortexM, C,   Zenoh, Action,  Example,
+         BuildOnly("phase-337 W2.f — same runner gap as the C service row")),
+    cell(ZephyrQemuCortexM, Cpp, Zenoh, Action,  Example,
+         BuildOnly("phase-337 W2.f — same runner gap as the C service row")),
 
     // Zephyr native_sim — zenoh + cyclone + xrce, all three langs
     // (the zephyr.rs families; W4 bakes: cyclone domains 22–30, xrce

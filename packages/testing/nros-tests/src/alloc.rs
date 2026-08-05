@@ -72,6 +72,14 @@ pub const fn xrce_agent_port(cell: &Cell) -> u16 {
 /// the cyclone SPDP-isolation axis. Valid range 1..=232; each platform
 /// gets a 21-wide window (7 workload slots × 3 langs), which fits 11
 /// platforms exactly.
+///
+/// "Exactly" is load-bearing, and the enum now holds TWELVE platforms: index 11
+/// computes domain 233 and `domains_valid` rejects it. That is deliberate rather
+/// than a latent bug — `PlatformId::index` documents that low indices are
+/// allocated to platforms that BAKE, and the two that do not (`Fvp`, `Px4`) hold
+/// the tail. The gate firing is the signal that the scheme is full and wants
+/// narrowing (the workload window is 7 slots wide but no platform uses more than
+/// a handful), not that another renumber is due.
 pub const fn domain_of(platform: PlatformId, lang: Lang, workload: Workload) -> u8 {
     let w = workload.port_offset() / 10; // 0..=9 → slot
     let slot = if w > 6 { 6 } else { w }; // clamp tail workloads into window

@@ -367,6 +367,69 @@ for lang in $(nros_fixture_langs); do
     done
 done
 
+# phase-337 W2.f — the Cortex-M witness leaves (`mps2_an385`).
+#
+# Not folded into the loop above: that loop is native_sim × every lang × every
+# rmw × every role, and this board covers exactly {c, cpp} × zenoh × talker.
+# Widening the loop's board axis would multiply 27 native_sim leaves by a board
+# that only two of them apply to, so the witness gets its own block — the same
+# shape the logging-smoke and workspace-entry leaves already use.
+#
+# No rust leaf: the pinned `zephyr-lang-rust` cannot compile for any board whose
+# devicetree has gpio nodes (issue 0432), which is every real board. That is why
+# `matrix::CELLS` has no rust row here either.
+#
+# The locator is the allocator's, not a literal: `alloc::port_of(
+# ZephyrQemuCortexM, {C,Cpp}, Pubsub)` = 10700 / 10800. The HOST half of it is
+# 10.0.2.2 rather than 127.0.0.1 — under NSOS the guest's loopback IS the host,
+# on a real guest it is the guest, and SLIRP always puts the host at 10.0.2.2.
+for cm_lang in c cpp; do
+    cm_lang_tag="$(nros_zephyr_lang_tag "$cm_lang")"
+    cm_lang_idx="$(lang_idx_for_lang "$cm_lang")"
+    cm_board="mps2_an385"
+    cm_role="talker"
+    cm_rmw="zenoh"
+    cm_build_name="build-cortex-m-${cm_lang_tag}-${cm_role}-${cm_rmw}"
+    cm_build_dir="$build_root/$cm_build_name"
+    cm_src="zephyr/${cm_lang}/${cm_role}"
+    cm_src_dir="$nros_root/examples/$cm_src"
+    cm_port=$((10600 + cm_lang_idx * 100))
+    cm_locator="tcp/10.0.2.2:$cm_port"
+    cm_conf_files="prj.conf;prj-${cm_rmw}.conf;$nros_root/cmake/zephyr/mps2-an385.conf"
+    cm_extra_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+    cm_extra_defs="$cm_extra_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$cm_locator\""
+    cm_extra_defs="$cm_extra_defs -DCONF_FILE=$cm_conf_files"
+    cm_sccache=0
+    if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+        cm_sccache=1
+        cm_extra_defs="$cm_extra_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+    fi
+
+    cm_id="zephyr/${cm_board}/${cm_lang}/${cm_role}/${cm_rmw}"
+    cm_target="fixture/zephyr/${cm_board}/${cm_lang}/${cm_role}/${cm_rmw}"
+    cm_haystack="$cm_board $cm_build_name $cm_src $cm_conf_files $cm_id"
+    if [ -n "$fixture_filter" ] && ! [[ "$cm_haystack" =~ $fixture_filter ]]; then
+        continue
+    fi
+    selected=$((selected + 1))
+    cm_log="$log_dir/${cm_build_name}.log"
+    cm_sig_file="$cm_build_dir/.nros-zephyr-fixture.sig"
+    cm_sig="$(printf '%s\n' \
+        "board=$cm_board" \
+        "src=$cm_src" \
+        "xrce_port=" \
+        "conf_files=$cm_conf_files" \
+        "zenoh_locator=$cm_locator" \
+        "codegen_tool=$codegen_tool" \
+        "toolchain_cache_dir=$toolchain_cache_dir" \
+        "make=$make_bin" \
+        "sccache_launcher=$cm_sccache")"
+    emit_record fixture "$cm_id" "$cm_target" "$cm_board" "$cm_lang" "$cm_lang_tag" \
+        "$cm_role" "$cm_rmw" "$cm_src" "$cm_src_dir" "$cm_build_name" "$cm_build_dir" \
+        "$cm_log" "" "$cm_locator" "" "$cm_conf_files" "$cm_extra_defs" \
+        "$cm_sig" "$cm_sig_file" 0 "$pristine"
+done
+
 if [ "$include_logging_smoke" = "1" ]; then
     id="zephyr/native_sim/native/64/logging-smoke"
     target="fixture/zephyr/native_sim/native/64/logging-smoke"
