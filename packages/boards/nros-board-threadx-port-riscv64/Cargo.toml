@@ -33,18 +33,4 @@ name = "nros_board_threadx_port_riscv64"
 # relative path. Everything here is `build.rs`-side, hence no dependencies:
 # consumers pass their own `cc::Build`, exactly as `nros-board-common`'s
 # `threadx_sources` helpers do.
-# issue 0287 / phase-337 W7.b — HOST-ONLY. This crate's `src/lib.rs` is a
-# build-script helper: it uses `std::path`, `std::fs` and `env!`, and ships no
-# firmware code at all (the arch port itself is `port/*.S` + `port/inc/*.h`,
-# compiled by whoever consumes it). It went in as a workspace MEMBER in W4.a
-# without this declaration, which turned `just check-workspace-embedded` red —
-# cargo unifies features across every member when building the workspace for a
-# thumb target, so one std-using member fails the lane, usually naming an
-# innocent crate. Declared here rather than hand-listed in the justfile so the
-# reason lives with the crate and the exclude list stays derived — see
-# scripts/build/host-only-members.sh.
-[package.metadata.nros]
-host-only = true
-host-only-reason = "build-script helper: locates the forked ThreadX riscv64 arch-port sources; no firmware Rust"
-
 [dependencies]

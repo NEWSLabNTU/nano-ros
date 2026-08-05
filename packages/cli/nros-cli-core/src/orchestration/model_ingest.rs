@@ -38,8 +38,10 @@ use crate::orchestration::{cargo_metadata_schema::SystemToml, source_metadata::S
 /// `nano_ros_entry(LAUNCH …)` shells out to `nros codegen entry`, which landed
 /// on this function and died with
 ///
-///     Error: read SystemModel …/config/system_model.yaml
-///       No such file or directory (os error 2)
+/// ```text
+/// Error: read SystemModel …/config/system_model.yaml
+///   No such file or directory (os error 2)
+/// ```
 ///
 /// for a bringup whose `system.toml` and launch file were sitting right there
 /// (issue 0414, the CMake half).
