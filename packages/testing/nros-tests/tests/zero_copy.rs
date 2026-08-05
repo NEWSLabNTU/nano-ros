@@ -1,5 +1,11 @@
 //! Zero-Copy Receive Integration Tests
 //!
+//! **Bucket (phase-329 W4): KEEP — behavior one-off, not a matrix cell.** No
+//! `matrix::CELLS` cell asserts the `unstable-zenoh-api` zero-copy receive code
+//! path (cells assert delivery, not which path delivered). This file owns that
+//! path: build+start under it, e2e flow through the zero-copy trampoline, and
+//! MessageInfo (seq/GID) passthrough.
+//!
 //! Tests the zero-copy code path enabled by the `unstable-zenoh-api` feature.
 //! The zero-copy path is transparent — `create_subscription_with_info()` automatically
 //! uses it when the feature is enabled. These tests verify:

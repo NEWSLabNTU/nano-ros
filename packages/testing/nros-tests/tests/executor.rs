@@ -1,5 +1,10 @@
 //! Executor and Timer Integration Tests
 //!
+//! **Bucket (phase-329 W4): KEEP — behavior one-off, not a matrix cell.** No
+//! `matrix::CELLS` cell asserts executor/timer semantics — cells assert
+//! cross-process delivery. This file owns timer firing/cadence, callback
+//! ordering, mixed callbacks, and `spin_once`/`spin` result behavior.
+//!
 //! Tests for timer firing, callback execution, and executor behavior.
 //!
 //! Run with: `cargo test -p nano-ros-tests --test executor -- --nocapture`

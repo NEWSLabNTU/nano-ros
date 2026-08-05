@@ -3,6 +3,17 @@
 //! Tests communication between XRCE-DDS test binaries via the
 //! Micro-XRCE-DDS-Agent.
 //!
+//! **Bucket (phase-329 W4): KEEP — mostly one-offs; delivery overlap flagged.**
+//! These run the DEDICATED `nros-tests/bins` XRCE binaries over an explicit UDP
+//! locator + Agent, not the `examples/` fixtures the native matrix consumers
+//! use. Genuine one-offs no cell covers: the SERIAL transport lane
+//! (`*_serial_*`), the large-message publish (`large_message_publish`), and the
+//! startup probes (`*_starts`). The plain pubsub/service/action delivery
+//! (`talker_listener_communication`, `multiple_messages`,
+//! `service_request_response`, `action_fibonacci`) OVERLAPS the native XRCE
+//! matrix cells in intent — flag for a future fold once a dedicated-bin cell
+//! family exists; it is NOT a native-example duplicate, so it is not deleted now.
+//!
 //! Prerequisites:
 //!   just build-xrce-agent   # Build the Agent from source
 

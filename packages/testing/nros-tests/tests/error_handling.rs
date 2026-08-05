@@ -1,5 +1,11 @@
 //! Error Handling and Edge Case Tests
 //!
+//! **Bucket (phase-329 W4): KEEP — behavior one-off, not a matrix cell.** The
+//! matrix cells assert the HAPPY delivery path; no cell asserts an error/edge
+//! path. This file owns them: connection timeout (router absent), router
+//! disconnect/reconnect, rapid start/stop, minimal-runtime bring-up, and
+//! debug-logging overhead.
+//!
 //! Tests for error paths, timeouts, and edge cases in nros communication.
 //!
 //! Run with: `cargo test -p nano-ros-tests --test error_handling -- --nocapture`

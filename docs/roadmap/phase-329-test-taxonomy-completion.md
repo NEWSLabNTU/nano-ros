@@ -195,11 +195,21 @@ native files corrected the plan; the "~40 deletions" target was optimistic:
   + CycloneDDS TWO-QEMU pubsub — a two-embedded-node topology distinct from
   rtos_e2e's nano→host zenoh); `c_riscv_nuttx_e2e` (the ONLY NuttxRiscv delivery
   test — rtos_e2e's `Platform` enum has no NuttxRiscv). No deletions: none are
-  clean dups, and QEMU folds can't be run-proven on a host without the
-  cross-toolchains. `emulator.rs`/`esp32_emulator.rs` triage deferred (larger,
-  mixed).
-- [ ] Everything kept gets a one-line header naming its bucket + why it is
-  not a cell (the E5 carve-out rule, applied to files).
+  clean dups. `emulator.rs`/`esp32_emulator.rs` triage deferred (larger, mixed).
+  **RUN-PROVEN 2026-08-05** (host provisioned with the QEMU + cross-toolchains):
+  every kept per-platform file passes solo — `threadx_riscv64_qemu` 3/3
+  (CycloneDDS two-QEMU pubsub rust/c/cpp), `nuttx_qemu` kernel-boot-to-NSH,
+  `c_riscv_nuttx_e2e` (after `just nuttx build-riscv-c`), `freertos_qemu`
+  detection. **The fold itself is proven: `rtos_e2e` runs 33/33 delivery cells,
+  0 skipped** (every platform×lang×variant the per-platform files used to hold);
+  the 8 in-sweep failures ALL pass when retested solo (`--test-threads=1`) —
+  QEMU+zenoh load flake under parallel nextest, zero real regressions.
+- [x] Everything kept gets a one-line header naming its bucket + why it is
+  not a cell (the E5 carve-out rule, applied to files). **Done 2026-08-05:** the
+  4 QEMU files, `native_api`, `services`/`actions`/`nano2nano`, plus
+  `xrce`/`zero_copy`/`executor`/`error_handling` all carry a `Bucket (phase-329
+  W4)` header. `xrce`'s flags a delivery OVERLAP with the native XRCE cells
+  (dedicated-bin, not example) for a future fold — kept, not deleted.
 - [ ] Target restated after the disposition: tests/ file count drops by **fewer
   than the original ~40** — many of the 62 are genuine one-offs (keep + label)
   or W5 compile-at-test cases, not folds. The real deletions are the delivery
