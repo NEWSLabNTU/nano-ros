@@ -237,6 +237,19 @@ stage, serial, with the riscv half gated on the run's own coordinates by the sha
 graph from `build-fixtures` and fails when a fixture token that module OWNS is produced by no recipe
 on that path. See `archived/0405-*`.
 
+**#429** — `nano2nano::{test_gid_consistency,test_sequence_number_increment}` parse `MessageInfo`
+trace lines out of the native listener under `RUST_LOG=trace`; the listener emits none (verified
+directly: 0 matches for gid/MessageInfo/"Waiting for"), so "got 0" is literal. Transport is fine —
+the talker publishes against the same router. Grep-drift class (archived 0157/0164): diff the
+pattern against what the fixture prints before debugging delivery. See `0429-*`. (2026-08-05)
+
+**#428** — every CycloneDDS runtime test fails at node registration while every zenoh test in the
+same file passes: `session open (rmw=cyclonedds)` then `NodeRegister("…")`. Reproduces from a
+directly-invoked binary. Ruled out stale fixtures, missing backend (79 cyclone symbols present),
+environment, and the phase-336 profile work. Blocked on diagnosis because `decl_err_from_node`
+collapses every `NodeError` except `ExecutorFull` — widen that seam first (issue 0095 did the same
+once). See `0428-*`. (2026-08-05)
+
 **#427** — a SystemModel reads as FRESH when only the RESOLVER changed, so a resolver fix never
 reaches models that already exist. `meta.inputs[].sha256` covers the launch file and `system.toml`;
 `meta.resolver` is recorded but not part of the decision, so `nros sync` exits 0 having done nothing.
