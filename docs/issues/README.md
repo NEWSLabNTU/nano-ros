@@ -51,6 +51,26 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#430** — A stale in-tree `nros` bricks EVERY `just` recipe: justfile EVALUATION runs a backtick
+calling `nros profile` (phase-336), so an older binary makes `just` refuse to run anything —
+including `just setup-cli`, the recipe that would fix it. The error names `qemu-baremetal.just:19`
+and says nothing about the CLI. Escape: `cd packages/cli && cargo build --release --bin nros`.
+See `0430-*`. (2026-08-05)
+
+**#431** — Every NuttX cell skips on a fully provisioned host: `NUTTX_DIR` is never exported by
+activate.sh or the SDK env, and nothing provisions kconfig (and the printed `pip install kconfiglib`
+remedy is refused on PEP-668 distros). `nros setup qemu-arm-nuttx` succeeds while every cell reports
+SKIPPED. That is how #420 could assert broken behaviour that was never broken. See `0431-*`.
+(2026-08-05)
+
+**#423** — the borrowed-view (RFC-0033) RUNTIME e2e proofs `tests/borrowed_{c,cpp}_e2e.sh` were
+orphaned (no lane/recipe/CI ran them) AND bit-rotted (the RFC-0042 platform.h move + the
+`nros_config_variant_sz_*` guard both broke their build), i.e. dead code masquerading as coverage.
+Deleted them + their fixtures + the two negative-diagnostic-registry rows (phase-329 W5 follow-up).
+EMIT coverage survives in `rosidl-codegen`'s `#[ignore]` tests; the borrowed-view RUNTIME assertion is
+now unguarded. Re-establishing it as a build-stage fixture needs the standalone-`nros-c`
+`EXECUTOR_SIZE`-probe stub (sizes/opaque class) solved so a raw `gcc`/`g++` link finds the config
+variant symbol. See `0423-*`. (2026-08-05)
 (#425 resolved 2026-08-05 — a MIXED C+C++ workspace linked BOTH umbrella staticlibs, ~96 duplicate
 C-ABI symbols, blocking `build-test-fixtures lane=native`. RESOLVED by applying a rule the tree
 already used for TYPED C components everywhere: prefer the umbrella that BUNDLES the other whenever
