@@ -8,6 +8,29 @@
 
 if(CONFIG_NROS)
 
+# phase-337 W2.b — ONE spelling of "which flavour of Zephyr is this".
+# The C-API branch and the C++ branch below each build
+# nros-rmw-zenoh-staticlib, and each computed this feature string itself. When
+# the bare-metal arm was added, patching only the first left the second
+# silently on the old answer — so the two spellings become one macro here.
+#
+# Why it needs an arm at all: native_sim borrows the HOST's std, which supplies
+# the global allocator and the panic handler. Every real board is no_std and
+# must bring its own (`platform-zephyr-baremetal`). native_sim being the only
+# Zephyr target this repo has ever built is why nothing noticed.
+#
+# A macro, not a function: it sets the caller's variable directly. A function
+# would need PARENT_SCOPE, which is the same scope footgun the `_NROS_ENTRY_DIR`
+# pattern exists to dodge (AGENTS.md CMake Pitfalls).
+macro(_nros_zephyr_backend_features _out)
+    set(${_out} "platform-zephyr")
+    if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
+        string(APPEND ${_out} ",std")
+    else()
+        string(APPEND ${_out} ",platform-zephyr-baremetal")
+    endif()
+endmacro()
+
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 # Phase 212.H.1 — nros_system_generate(<bringup-pkg>) shells the
 # `nros codegen-system` host-time bake at zephyr cmake configure
@@ -193,10 +216,7 @@ if(CONFIG_NROS_C_API)
     # standalone backend staticlib. XRCE keeps `dep:nros-rmw-xrce-cffi`
     # under `cffi-xrce-c`, so it does NOT need a separate staticlib.
     if(CONFIG_NROS_RMW_ZENOH)
-        set(_nros_backend_features "platform-zephyr")
-        if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
-            string(APPEND _nros_backend_features ",std")
-        endif()
+        _nros_zephyr_backend_features(_nros_backend_features)
         nros_cargo_build(
             PACKAGE nros-rmw-zenoh-staticlib
             FEATURES "${_nros_backend_features}"
@@ -416,10 +436,7 @@ if(CONFIG_NROS_CPP_API)
     # unless we link the standalone backend staticlib. `rmw-xrce-cffi`
     # still carries its dep, so it doesn't need this extra step.
     if(CONFIG_NROS_RMW_ZENOH)
-        set(_nros_cpp_backend_features "platform-zephyr")
-        if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
-            string(APPEND _nros_cpp_backend_features ",std")
-        endif()
+        _nros_zephyr_backend_features(_nros_cpp_backend_features)
         if(NOT TARGET nros_rmw_zenoh_staticlib_cargo)
             nros_cargo_build(
                 PACKAGE nros-rmw-zenoh-staticlib

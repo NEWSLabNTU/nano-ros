@@ -44,14 +44,33 @@ smoltcp = { version = "0.12", default-features = false, features = [
 # previously made `cargo test --lib` impossible. The split below keeps the
 # feature on the bare-metal embedded targets the crate actually ships to
 # and drops it everywhere else so unit tests run.
+portable-atomic = { version = "1", default-features = false }
 #
 # Gate on `target_os = "none"` (bare-metal): hosted-OS ARM/RISC-V targets
 # like `armv7a-nuttx-eabihf` (Cortex-A7 — native atomic CAS via LDREX/STREX
 # AND an OS) are NOT single-core bare-metal MCUs, and portable-atomic
 # rejects `unsafe-assume-single-core` there ("privileged instructions …
-# obviously unavailable"). They use native atomics via the base dep below.
-[target.'cfg(all(any(target_arch = "arm", target_arch = "riscv32"), target_os = "none"))'.dependencies]
+# obviously unavailable"). They use native atomics via the base dep above.
+#
+# phase-337 W2.b — the arch list was the WRONG discriminator, and the Zephyr
+# Cortex-M witness is what proved it. `unsafe-assume-single-core` is not a
+# "which arch" question but a "does this target have CAS" one: an arch list
+# says yes to `thumbv7m-none-eabi` (Cortex-M3), which HAS native LDREX/STREX
+# and therefore never needed the polyfill. Enabling it there is not merely
+# redundant — it is a hard conflict, because portable-atomic refuses to be
+# built with both `unsafe-assume-single-core` and `critical-section`, and
+# upstream's `zephyr` crate unconditionally enables the latter:
+#
+#   error: you may not enable `critical-section` feature and
+#   `portable_atomic_unsafe_assume_{single_core,privileged}` cfg
+#   (`unsafe-assume-{single-core,privileged}` feature) at the same time
+#
+# native_sim (x86_64 host) misses this arm, and the bare-metal mps2 lane has
+# no `zephyr` crate, so no existing target held both halves.
+#
+# `not(target_has_atomic = "ptr")` IS the question, asked directly — it is
+# false for thumbv7m and true for the CAS-less targets that need the polyfill
+# (riscv32imc, thumbv6m). Keep `target_os = "none"` as well: the polyfill
+# disables interrupts, which a hosted OS will not permit.
+[target.'cfg(all(target_os = "none", not(target_has_atomic = "ptr")))'.dependencies]
 portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
-
-[target.'cfg(not(all(any(target_arch = "arm", target_arch = "riscv32"), target_os = "none")))'.dependencies]
-portable-atomic = { version = "1", default-features = false }

@@ -18,6 +18,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -120,7 +121,7 @@ typedef struct zpico_property_t {
  * * `len` - Length of data in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ZpicoCallback)(const uint8_t *data, uintptr_t len, void *ctx);
+typedef void (*ZpicoCallback)(const uint8_t *data, size_t len, void *ctx);
 
 /**
  * Callback function type for receiving samples with attachment (RMW compatible).
@@ -133,9 +134,9 @@ typedef void (*ZpicoCallback)(const uint8_t *data, uintptr_t len, void *ctx);
  * * `ctx` - User-provided context pointer
  */
 typedef void (*ZpicoCallbackWithAttachment)(const uint8_t *data,
-                                            uintptr_t len,
+                                            size_t len,
                                             const uint8_t *attachment,
-                                            uintptr_t attachment_len,
+                                            size_t attachment_len,
                                             void *ctx);
 
 /**
@@ -150,9 +151,9 @@ typedef void (*ZpicoCallbackWithAttachment)(const uint8_t *data,
  * * `attachment_len` - Length of attachment in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ZpicoNotifyCallback)(uintptr_t len,
+typedef void (*ZpicoNotifyCallback)(size_t len,
                                     const uint8_t *attachment,
-                                    uintptr_t attachment_len,
+                                    size_t attachment_len,
                                     void *ctx);
 
 /**
@@ -173,7 +174,7 @@ typedef struct zpico_ring_desc_t {
   /**
    * Bytes between payload slot starts.
    */
-  uintptr_t payload_stride;
+  size_t payload_stride;
   /**
    * `slot_count * att_stride` bytes of attachment storage.
    */
@@ -181,27 +182,27 @@ typedef struct zpico_ring_desc_t {
   /**
    * Bytes between attachment slot starts.
    */
-  uintptr_t att_stride;
+  size_t att_stride;
   /**
    * Number of ring slots N.
    */
-  uintptr_t slot_count;
+  size_t slot_count;
   /**
    * `slot_count` entries — per-slot payload length.
    */
-  uintptr_t *payload_len;
+  size_t *payload_len;
   /**
    * `slot_count` entries — per-slot attachment length.
    */
-  uintptr_t *att_len;
+  size_t *att_len;
   /**
    * Consumer counter — written only by the Rust shim.
    */
-  uintptr_t *head;
+  size_t *head;
   /**
    * Producer counter — written only by the C shim.
    */
-  uintptr_t *tail;
+  size_t *tail;
 } zpico_ring_desc_t;
 
 /**
@@ -216,9 +217,9 @@ typedef struct zpico_ring_desc_t {
  * * `ctx` - User-provided context pointer
  */
 typedef void (*ZpicoZeroCopyCallback)(const uint8_t *data,
-                                      uintptr_t len,
+                                      size_t len,
                                       const uint8_t *attachment,
-                                      uintptr_t attachment_len,
+                                      size_t attachment_len,
                                       void *ctx);
 
 /**
@@ -232,9 +233,9 @@ typedef void (*ZpicoZeroCopyCallback)(const uint8_t *data,
  * * `ctx` - User-provided context pointer
  */
 typedef void (*ZpicoQueryCallback)(const char *keyexpr,
-                                   uintptr_t keyexpr_len,
+                                   size_t keyexpr_len,
                                    const uint8_t *payload,
-                                   uintptr_t payload_len,
+                                   size_t payload_len,
                                    void *ctx);
 
 /**
@@ -323,7 +324,7 @@ int32_t zpico_init_with_config(struct zpico_session_t *_session,
                                const char *_locator,
                                const char *_mode,
                                const struct zpico_property_t *_properties,
-                               uintptr_t _num_properties);
+                               size_t _num_properties);
 
 /**
  * Open zenoh session and start background tasks (if threaded backend).
@@ -358,14 +359,14 @@ int32_t zpico_send_keep_alive(struct zpico_session_t *_session);
  */
 int32_t zpico_publish_streamed(struct zpico_session_t *_session,
                                int32_t _handle,
-                               uintptr_t _total_len,
+                               size_t _total_len,
                                void (*_chunk_cb)(uint8_t *out_buf,
-                                                 uintptr_t cap,
-                                                 uintptr_t *out_written,
+                                                 size_t cap,
+                                                 size_t *out_written,
                                                  void *user_ctx),
                                void *_user_ctx,
                                const uint8_t *_attachment,
-                               uintptr_t _attachment_len);
+                               size_t _attachment_len);
 
 /**
  * Close the session and clean up all resources.
@@ -418,7 +419,7 @@ int32_t zpico_declare_publisher_ex(struct zpico_session_t *_session,
 int32_t zpico_publish(struct zpico_session_t *_session,
                       int32_t _handle,
                       const uint8_t *_data,
-                      uintptr_t _len);
+                      size_t _len);
 
 /**
  * Undeclare a publisher.
@@ -485,7 +486,7 @@ int32_t zpico_declare_subscriber_with_attachment(struct zpico_session_t *_sessio
 int32_t zpico_declare_subscriber_direct_write(struct zpico_session_t *_session,
                                               const char *_keyexpr,
                                               uint8_t *_buf_ptr,
-                                              uintptr_t _buf_capacity,
+                                              size_t _buf_capacity,
                                               const bool *_locked_ptr,
                                               ZpicoNotifyCallback _callback,
                                               void *_ctx);
@@ -616,9 +617,9 @@ int32_t zpico_undeclare_liveliness(struct zpico_session_t *_session, int32_t _ha
 int32_t zpico_publish_with_attachment(struct zpico_session_t *_session,
                                       int32_t _handle,
                                       const uint8_t *_data,
-                                      uintptr_t _len,
+                                      size_t _len,
                                       const uint8_t *_attachment,
-                                      uintptr_t _attachment_len);
+                                      size_t _attachment_len);
 
 /**
  * Declare a queryable for receiving service requests.
@@ -665,9 +666,9 @@ int32_t zpico_query_reply(struct zpico_session_t *_session,
                           int64_t _reply_seq,
                           const char *_keyexpr,
                           const uint8_t *_data,
-                          uintptr_t _len,
+                          size_t _len,
                           const uint8_t *_attachment,
-                          uintptr_t _attachment_len);
+                          size_t _attachment_len);
 
 /**
  * Phase 237 — reply-slot index from the most recent query callback (the
@@ -693,9 +694,9 @@ int64_t zpico_queryable_take_reply_seq(struct zpico_session_t *_session, int32_t
 int32_t zpico_get(struct zpico_session_t *_session,
                   const char *_keyexpr,
                   const uint8_t *_payload,
-                  uintptr_t _payload_len,
+                  size_t _payload_len,
                   uint8_t *_reply_buf,
-                  uintptr_t _reply_buf_size,
+                  size_t _reply_buf_size,
                   uint32_t _timeout_ms);
 
 /**
@@ -706,7 +707,7 @@ int32_t zpico_get(struct zpico_session_t *_session,
 int32_t zpico_get_start(struct zpico_session_t *_session,
                         const char *_keyexpr,
                         const uint8_t *_payload,
-                        uintptr_t _payload_len,
+                        size_t _payload_len,
                         uint32_t _timeout_ms);
 
 /**
@@ -715,9 +716,9 @@ int32_t zpico_get_start(struct zpico_session_t *_session,
 int32_t zpico_get_start_with_attachment(struct zpico_session_t *_session,
                                         const char *_keyexpr,
                                         const uint8_t *_payload,
-                                        uintptr_t _payload_len,
+                                        size_t _payload_len,
                                         const uint8_t *_attachment,
-                                        uintptr_t _attachment_len,
+                                        size_t _attachment_len,
                                         uint32_t _timeout_ms);
 
 /**
@@ -728,7 +729,7 @@ int32_t zpico_get_start_with_attachment(struct zpico_session_t *_session,
 int32_t zpico_get_check(struct zpico_session_t *_session,
                         int32_t _handle,
                         uint8_t *_reply_buf,
-                        uintptr_t _reply_buf_size);
+                        size_t _reply_buf_size);
 
 /**
  * Start a non-blocking liveliness query (for wait_for_service).

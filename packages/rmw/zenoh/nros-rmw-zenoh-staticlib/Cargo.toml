@@ -28,6 +28,30 @@ default = []
 std = ["nros-rmw-zenoh/std"]
 platform-posix = ["nros-rmw-zenoh/platform-posix", "nros-rmw-zenoh/std"]
 platform-zephyr = ["nros-rmw-zenoh/platform-zephyr"]
+# phase-337 W2.b — bare-metal Zephyr (i.e. any real board) needs exactly what
+# `platform-freertos` / `platform-nuttx` / `platform-threadx` below already
+# declare: a global allocator and a panic handler. `platform-zephyr` alone
+# carries neither, and nothing noticed, because the only Zephyr target this
+# repo has ever built is `native_sim/native/64` — where `zephyr/CMakeLists.txt`
+# appends `,std` and the HOST's std supplies both lang items. Point the same
+# feature set at mps2_an385 and the staticlib does not compile:
+#
+#   error: no global memory allocator found but one is required; link to std
+#          or add `#[global_allocator]` to a static item ...
+#   error: `#[panic_handler]` function required, but not found
+#
+# A SEPARATE feature rather than folding the deps into `platform-zephyr`:
+# `panic-halt` on the std path would collide with std's own panic handler, so
+# the two Zephyr flavours cannot share one spelling — the same reason
+# `platform-threadx` and `platform-threadx-std` are two features.
+platform-zephyr-baremetal = [
+    "alloc",
+    "nros-rmw-zenoh/platform-zephyr",
+    "dep:nros-platform",
+    "nros-platform/platform-zephyr",
+    "nros-platform/global-allocator",
+    "dep:panic-halt",
+]
 alloc = ["nros-rmw-zenoh/alloc"]
 platform-freertos = [
     "alloc",

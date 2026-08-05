@@ -61,10 +61,16 @@ log = { workspace = true, optional = true }
 # where the target needs it.
 portable-atomic = { version = "1", default-features = false }
 
-[target.riscv32imc-unknown-none-elf.dependencies]
-# ESP32-C3 / QEMU riscv32imc is single-core. Keep the fallback scoped
-# to this target so host and SMP-capable targets do not inherit the
-# single-core assumption through feature unification.
+# phase-337 W2.b — one spelling of "this target needs the interrupt-disable
+# polyfill", shared with nros-smoltcp and nros-board-esp32-qemu. A target
+# triple (the old gate here) and an arch list (the old gate in nros-smoltcp)
+# were two different approximations of the same question; the arch list was
+# wrong on thumbv7m, which HAS native CAS and where the feature hard-conflicts
+# with the `critical-section` the `zephyr` crate enables. Ask directly instead:
+# no CAS => needs the polyfill, and bare-metal only, because the polyfill
+# disables interrupts. Still scoped, so host and SMP-capable targets do not
+# inherit the single-core assumption through feature unification.
+[target.'cfg(all(target_os = "none", not(target_has_atomic = "ptr")))'.dependencies]
 portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
 
 # Integration tests pull the POSIX C impl of `nros_platform_log_*`

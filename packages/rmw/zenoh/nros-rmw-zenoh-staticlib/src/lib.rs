@@ -17,11 +17,17 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+// phase-337 W2.b — these two lists are the reason declaring the deps in
+// Cargo.toml is not enough: an unreferenced dependency is not linked, so its
+// `#[global_allocator]` / `#[panic_handler]` lang items never reach this
+// crate's graph and rustc reports them as missing. Every platform that needs
+// the lang items must therefore appear HERE as well as in the feature.
 #[cfg(any(
     feature = "platform-freertos",
     feature = "platform-nuttx",
     feature = "platform-threadx",
     feature = "platform-threadx-std",
+    feature = "platform-zephyr-baremetal",
 ))]
 extern crate nros_platform as _;
 
@@ -31,6 +37,7 @@ extern crate nros_platform as _;
         feature = "platform-freertos",
         feature = "platform-nuttx",
         feature = "platform-threadx",
+        feature = "platform-zephyr-baremetal",
     )
 ))]
 extern crate panic_halt as _;
