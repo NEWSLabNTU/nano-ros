@@ -1,12 +1,17 @@
-//! NuttX QEMU ARM AddTwoInts service client — declarative Node pkg.
+//! Native AddTwoInts service client — the official ROS 2 demo service client.
 //!
-//! Declarative metadata: node + service client + driver timer.
+//! Issues one request per timer tick until it succeeds, then reports the sum.
+//! `main.rs`'s `nros::main!()` and the board own `nros::init`, executor open,
+//! RMW registration and the spin loop.
 //!
-//! The timer fires → `on_callback` flips the state's `pending` flag;
-//! the call dispatch lives in `tick` (the only place `&mut Executor`
-//! is free — see `TickCtx` docs). Embedded client: one fixed request
-//! (2, 3), no argv on firmware. On the first successful reply it logs
-//! the sum and goes idle; the runtime keeps spinning.
+//! phase-338 W3 — was an `[package.metadata.nros.application]` example on the
+//! imperative Executor API. Now Node-class like every other platform's copy.
+//!
+//! Output contract: the group body already emitted the success marker
+//! ("Result of add_two_ints: N"); the FAILURE marker was added to every group
+//! copy in this wave, because the silent `Err(_) => {}` arm made a client with
+//! no server indistinguishable from a healthy one — and `services.rs`'s
+//! client-without-server test asserts exactly that marker.
 
 #![no_std]
 

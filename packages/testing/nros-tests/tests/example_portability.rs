@@ -143,22 +143,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     Divergence {
         lang: "rust",
         program: "action-client",
-        platform: "native",
-        reason: "CLASS DIFFERENCE, not a portability gap — measured 2026-08-04. EVERY \
-                 native rust example is `[package.metadata.nros.application]` \
-                 (imperative Executor API) and ZERO are \
-                 `[package.metadata.nros.node]`, while every embedded copy is \
-                 Node-class (declarative `ExecutableNode` + `nros::node!`). \
-                 `example_shape.rs` enforces the Node XOR Application split \
-                 deliberately. Comparing them is a category error. C has no \
-                 such divide — `c/talker` is identical across native and 5 \
-                 embedded platforms. Awaiting a maintainer decision (phase-338 \
-                 W3): give native a Node-class sibling, or accept two Rust \
-                 authoring APIs as intended.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "action-client",
         platform: "threadx-linux",
         reason: "W2.c — node struct and NAME drifted (`ActionClient` / \"action_client\" \
                  against the group's `FibonacciClient`); pure naming, no behaviour.",
@@ -258,22 +242,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         reason: "phase-337 W7.a — stm32f4 leaves the matrix (0 Runtime cells); its RTIC \
                  variants diverge broadly from the qemu-arm-baremetal siblings. Resolve \
                  by removal, not by converging a board we are dropping.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "service-client",
-        platform: "native",
-        reason: "CLASS DIFFERENCE, not a portability gap — measured 2026-08-04. EVERY \
-                 native rust example is `[package.metadata.nros.application]` \
-                 (imperative Executor API) and ZERO are \
-                 `[package.metadata.nros.node]`, while every embedded copy is \
-                 Node-class (declarative `ExecutableNode` + `nros::node!`). \
-                 `example_shape.rs` enforces the Node XOR Application split \
-                 deliberately. Comparing them is a category error. C has no \
-                 such divide — `c/talker` is identical across native and 5 \
-                 embedded platforms. Awaiting a maintainer decision (phase-338 \
-                 W3): give native a Node-class sibling, or accept two Rust \
-                 authoring APIs as intended.",
     },
     Divergence {
         lang: "rust",

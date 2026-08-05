@@ -70,9 +70,13 @@ impl ExecutableNode for AddTwoIntsClient {
                 log::info!("Result of add_two_ints: {}", reply.sum);
                 state.done = true;
             }
-            Err(_) => {
-                // Server not reachable yet — the next timer fire retries
-                // the same request.
+            Err(e) => {
+                // phase-338 W3 — report the failure instead of swallowing it.
+                // The silent arm made a client with no server look identical to
+                // a healthy one on every platform, and `services.rs`'s
+                // client-without-server test asserts exactly this marker. The
+                // timer paces the retries, so this logs once per attempt.
+                log::info!("Service call failed, retrying: {:?}", e);
             }
         }
     }
