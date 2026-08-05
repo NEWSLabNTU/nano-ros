@@ -49,7 +49,25 @@ failure appears during a BUILD and names a build artifact, and the isolated
 target dirs only exist for the feature-variant rows — the plain rows use
 `target/`, which the exact-name skip does catch.
 
-## Fix (landed with phase-337 W8.a)
+## Fix — landed TWICE, concurrently; upstream's is the one that stands
+
+Two sessions hit this within hours and fixed it independently. The surviving
+implementation is `a1c871da1`'s `crate::build_output::is_build_output_dir` — ONE
+predicate, prefix-matching `target-` / `build-`, called by every dirwalk that
+must not descend into build output (the source hash, `nros check-workspace`, the
+build profiler). That is strictly better than what this issue originally landed,
+which fixed only `collect_sources` and left the other walkers with their own
+exact-match spellings. The local helper was dropped on rebase.
+
+The one thing the local version had that the surviving one does not is a
+`CACHEDIR.TAG` probe — cargo writes that file into every target dir it creates,
+so it recognises a build directory whose name follows no convention at all.
+Worth adding to `build_output.rs` if a third naming scheme ever appears; not
+worth a second predicate today.
+
+Original write-up follows.
+
+## Fix (as first landed)
 
 `collect_sources` now also skips anything `is_cargo_build_dir` recognises:
 

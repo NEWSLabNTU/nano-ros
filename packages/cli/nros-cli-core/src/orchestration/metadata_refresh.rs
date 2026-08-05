@@ -40,7 +40,6 @@ use super::{
 /// referential).
 use crate::build_output::is_build_output_dir;
 
-
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct RefreshReport {
     /// Sidecars produced or updated.
