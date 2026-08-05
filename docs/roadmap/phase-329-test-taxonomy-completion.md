@@ -154,11 +154,19 @@ native files corrected the plan; the "~40 deletions" target was optimistic:
 - **`zero_copy` / `executor` / `error_handling` are genuine behavior one-offs**
   (zero-copy path, timer/executor, error paths — no cell asserts them) →
   keep + label, NOT deletions.
-- [~] Build the native-example delivery consumer (additive first), then fold the
+- [x] Build the native-example delivery consumer (additive first), then fold the
   delivery cases of `services`/`actions`/`nano2nano`/`xrce` into it, keeping +
   labelling the startup/error/behavior one-offs; `native_api`'s 28 rstest cases
   become the Rmw-parametrized native consumer. **Coverage-proven per deletion —
   no file removed until the consumer demonstrably runs its cells.**
+  **DONE 2026-08-05 across two consumers.** `native_example_pubsub_e2e.rs` (9
+  cells, all RMW) + `native_example_reqresp_e2e.rs` (20 service+action cells) both
+  landed + run-proven; `nano2nano`/`services`/`actions` delivery dups trimmed with
+  their one-offs kept+labelled; `native_api` trimmed of its 4 same-lang delivery
+  dups and labelled (its remainder — cross-language interop pairs, callback-shape
+  variants, goal-rejection, mixed — is genuine one-offs the two new consumers do
+  NOT cover, so it stays as a suite rather than dissolving fully into the
+  Rmw-parametrized consumer). Sub-items:
   **PUBSUB consumer landed + RUN-PROVEN 2026-08-04** (`tests/native_example_pubsub_e2e.rs`).
   Derives from `matrix::CELLS`; ADDITIVE (nothing deleted). Run-proving found +
   fixed two bugs the first (9-cell) version shipped with — the C/C++ listener
@@ -171,20 +179,23 @@ native files corrected the plan; the "~40 deletions" target was optimistic:
      Cyclone needed `LD_LIBRARY_PATH=build/install/lib` (the libs load at
      runtime; absent it the backend is dead — the first run's silent failure);
      xrce needed `XRCE_MSG_COUNT` + a readiness/settle wait; per-RMW min-count
-     (zenoh 3 / cyclone 2 / xrce 1). **7 of 9 cells now run-proven GREEN.** The
-     rust cyclone + rust xrce cells are CARVED: the rust same-language listener
-     gets ZERO delivery and no existing test exercises a rust cyclone/xrce
-     listener (native_api pairs a rust cyclone TALKER with c/cpp listeners) — an
-     unproven PRODUCT path, likely a real gap to file as its own issue, not a
-     harness bug.
-  2. **Fold `nano2nano`** — but it is NOT a pure duplicate: its router-delivery
-     case folds into the consumer (which supersedes it for rust + adds c/cpp),
-     while its DIRECT-discovery and sequence-consistency variants are one-offs to
-     keep + label. Trim, don't delete wholesale.
-  3. Extend to Service + Action — their example bins are IRREGULAR
-     (`add_two_ints_server`, `service-client`, `action-server`; c/cpp are
-     `c_service_server` etc.) and markers differ from the workspace ones.
-  4. `native_api`'s 28 rstest cases → the Rmw-parametrized native consumer.
+     (zenoh 3 / cyclone 2 / xrce 1). **RESOLVED — all 9 cells run-proven GREEN.**
+     The rust cyclone + rust xrce carve was NOT a product gap: issue #0413 found
+     the rust cyclone/xrce example binaries were 7 days STALE (never rebuilt — no
+     test exercised those cells), panicking `Transport(ConnectionFailed)` at
+     `Executor::open`. A fresh fixture rebuild made them deliver; both cells
+     UN-CARVED and the consumers now cover the full matrix, so the cells run in
+     test-all and can't rot again.
+  2. **Fold `nano2nano`** — DONE: its router-delivery dup trimmed (the consumer
+     supersedes it for rust + adds c/cpp); DIRECT-discovery + sequence-consistency
+     one-offs kept + labelled.
+  3. **Extend to Service + Action** — DONE as `native_example_reqresp_e2e.rs` (20
+     cells), handling the IRREGULAR example bin names (`add_two_ints_server`,
+     `service-client`, `action-server`; c/cpp `c_service_server` etc.) and the
+     example-specific markers.
+  4. **`native_api`** — trimmed of 4 same-lang delivery dups + labelled; its
+     interop/callback/goal-rejection/mixed remainder is genuine one-offs kept as a
+     suite (see the file's own `Bucket` header), not dissolved into the consumer.
 - [x] Per-platform QEMU files vs `rtos_e2e` — **dispositioned 2026-08-05; the
   standard delivery e2e was ALREADY folded into `rtos_e2e` in a prior phase**
   (threadx_riscv64_qemu's own doc: "the E2E test bodies live in tests/rtos_e2e.rs").
