@@ -9,8 +9,10 @@
 #
 # Prerequisites:
 #   - ARM cross-compiler: arm-none-eabi-gcc
-#   - kconfig-frontends-nox (sudo apt install kconfig-frontends-nox) or Python kconfiglib
 #   - Run `just setup-nuttx` to download sources
+#   - kconfig frontend: a native kconfig-conf, an existing kconfiglib, OR nothing
+#     — this script self-provisions kconfiglib into a repo-local venv when neither
+#     is present (issue 0431; works on PEP-668 distros where `pip install` is refused).
 #
 # Environment (auto-resolved from project root if not set):
 #   - NUTTX_DIR — NuttX source (default: third-party/nuttx/nuttx)
@@ -73,11 +75,39 @@ if ! command -v "$NUTTX_CROSS" &>/dev/null; then
     exit 1
 fi
 
+# kconfig: NuttX's `make olddefconfig` needs a kconfig frontend. Prefer a native
+# `kconfig-conf` or an already-present `kconfiglib` (`olddefconfig` on PATH);
+# otherwise SELF-PROVISION kconfiglib into a repo-local venv. Issue 0431 — a host
+# that ran only `nros setup <board>` has the toolchain, qemu and sources but NOT
+# kconfig, so every NuttX test cell silently skipped. `pip install kconfiglib` (the
+# old remedy) is refused on PEP-668 distros (Arch, Debian 12+); a venv's own pip is
+# not, so the venv makes the provisioning work everywhere without sudo.
 if ! command -v kconfig-conf &>/dev/null && ! command -v olddefconfig &>/dev/null; then
-    echo "ERROR: kconfig tools not found (kconfig-conf or kconfiglib)."
-    echo "Install one of:"
-    echo "  sudo apt install kconfig-frontends-nox  # Native C implementation (recommended)"
-    echo "  pip install kconfiglib                  # Python implementation"
+    KCONFIG_VENV="$PROJECT_ROOT/build/nuttx-kconfig-venv"
+    if [ ! -x "$KCONFIG_VENV/bin/olddefconfig" ]; then
+        echo "kconfig frontend not found — provisioning kconfiglib into $KCONFIG_VENV …"
+        if ! command -v python3 &>/dev/null; then
+            echo "ERROR: no kconfig-conf/olddefconfig and no python3 to provision kconfiglib." >&2
+            echo "  Install a distro package (e.g. kconfig-frontends-nox) or python3." >&2
+            exit 1
+        fi
+        if ! python3 -m venv "$KCONFIG_VENV" 2>/dev/null; then
+            echo "ERROR: python3 -m venv failed — install the venv module (e.g. python3-venv)" >&2
+            echo "  or a distro kconfig-frontends-nox package." >&2
+            rm -rf "$KCONFIG_VENV"
+            exit 1
+        fi
+        if ! "$KCONFIG_VENV/bin/pip" install --quiet kconfiglib; then
+            echo "ERROR: could not install kconfiglib into the venv (offline?)." >&2
+            echo "  Install a distro kconfig-frontends-nox package instead." >&2
+            rm -rf "$KCONFIG_VENV"
+            exit 1
+        fi
+    fi
+    export PATH="$KCONFIG_VENV/bin:$PATH"
+fi
+if ! command -v kconfig-conf &>/dev/null && ! command -v olddefconfig &>/dev/null; then
+    echo "ERROR: kconfig tools still unavailable after provisioning (kconfig-conf/olddefconfig)." >&2
     exit 1
 fi
 

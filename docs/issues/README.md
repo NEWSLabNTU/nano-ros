@@ -152,11 +152,7 @@ the hand-maintained-exclude-list shape issue 0287 already replaced. See `archive
 "plausibly environmental" framing was WRONG and is corrected in the issue: zenohd/ROS are present
 and every failure examined so far is a real defect. See `0422-*`. (2026-08-05)
 
-**#431** — Every NuttX cell skips on a fully provisioned host: `NUTTX_DIR` is never exported by
-activate.sh or the SDK env, and nothing provisions kconfig (and the printed `pip install kconfiglib`
-remedy is refused on PEP-668 distros). `nros setup qemu-arm-nuttx` succeeds while every cell reports
-SKIPPED. That is how #420 could assert broken behaviour that was never broken. See `0431-*`.
-(2026-08-05)
+RESOLVED 2026-08-05 — **#431** NuttX cells skipped on a host that ran only `nros setup qemu-arm-nuttx`. (1) `NUTTX_DIR` is in fact exported by `sdk-env.sh` (verified clean-env) — the filing's claim was stale. (2) The real gap: no kconfig frontend, and the `pip install kconfiglib` remedy is refused on PEP-668 distros. `scripts/nuttx/build-nuttx.sh` now self-provisions kconfiglib into a repo-local venv (`build/nuttx-kconfig-venv`) when none is present — venv pip isn't PEP-668-blocked, no sudo. (3) `just nuttx doctor` already reports the state. So the cells now run instead of skipping. See `archived/0431-*`.
 
 **#433** — `just nuttx build-fixtures` exits 0 and the fixtures it just built read STALE: the kernel
 is re-staged AFTER the entries link, so `staging/libc.a` is newer than the binary depending on it and
