@@ -120,22 +120,44 @@ changed key still reconfigures (verified by corrupting it).
 
 ### W2 — Consumers link the snapshot
 
-- [ ] `packages/boards/nros-board-common/src/nuttx_ffi_build.rs`: resolve
+- [x] `packages/boards/nros-board-common/src/nuttx_ffi_build.rs`: resolve
       `<snapshot>/libs` instead of `nuttx_dir.join("staging")`; drop the
       `libboard.a` special case; point `cargo:rerun-if-changed` at the snapshot.
-- [ ] `packages/boards/nros-board-common/src/nuttx_image_link.rs:108`: same
+- [x] `packages/boards/nros-board-common/src/nuttx_image_link.rs:108`: same
       path; `NUTTX_LD_SCRIPT` and `NUTTX_VECTORTAB` resolve inside the snapshot.
-- [ ] Update the env defaults that name live-tree paths — the arm defaults in
+- [x] Update the env defaults that name live-tree paths — the arm defaults in
       `nuttx_image_link.rs` and the explicit riscv values in `just/nuttx.just`
       (`NUTTX_ARCH_INCLUDES` / `NUTTX_LD_SCRIPT` / `NUTTX_VECTORTAB`) and
       `nros-board.toml`.
-- [ ] `scripts/build/fixture-inventory.py`: the `nuttx-kernel-export-preflight`
+- [x] `scripts/build/fixture-inventory.py`: the `nuttx-kernel-export-preflight`
       row declares `shared_mutation: "$NUTTX_DIR/staging/libc.a; …"`. When the
       sharing is gone the declaration must go with it — a stale `shared_mutation`
       is worse than none.
 
 **Acceptance:** `cargo:rerun-if-changed` names no path under the live tree; a
 riscv build does not dirty an arm entry.
+
+**Done 2026-08-06.** Resolution lives in ONE place —
+`nros_board_common::nuttx_export` — because two consumers need it and a second
+spelling of "where is the kernel" is how the `TierRtosSpec` mirrors drifted.
+`kernel_libs()` returns the snapshot when this arch has one and falls back to
+`staging/` otherwise, so a tree provisioned by an older `build-nuttx.sh` still
+links and the migration can land one arch at a time.
+
+Two consumers got simpler, as predicted: the `libboard.a` special case and the
+separate board-lib `-L` are gone on the snapshot path (the snapshot ships
+`libs/libboard.a`), and the linker script + vectortab resolve inside the
+snapshot.
+
+Verified on the nuttx C lane (`fixtures-build.sh nuttx c zenoh`): RC=0, zero
+undefined references, and NOTHING in the build dir names `nuttx/staging` while
+the `.d` and build-script output both name `nros-nuttx-export-arm`.
+
+The Rust lane could not be used for this check — issue 0440, a main regression
+that landed mid-phase: phase-338 W2's `-entry` collapse dropped the board's
+static link args from the surviving package's `.cargo/config.toml`, so every
+NuttX Rust entry fails with ~3680 undefined libc references regardless of this
+work.
 
 ### W3 — Prove the thing this phase exists for
 

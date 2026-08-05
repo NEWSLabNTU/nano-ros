@@ -59,6 +59,9 @@ pub mod arch_flags;
 pub mod freertos_build;
 #[cfg(feature = "build-helpers")]
 pub mod manifest;
+/// phase-339 — the per-arch export snapshot a NuttX consumer links against.
+#[cfg(feature = "build-helpers")]
+pub mod nuttx_export;
 #[cfg(feature = "build-helpers")]
 pub mod nuttx_ffi_build;
 #[cfg(feature = "build-helpers")]
