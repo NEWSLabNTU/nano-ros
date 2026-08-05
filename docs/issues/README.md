@@ -201,11 +201,11 @@ the standing state, not a regression. Needs TRIAGE before fixing: some are plaus
 build artifacts. Fixing before triage risks papering an unmet precondition over with a skip. See
 `0422-*`. (2026-08-05)
 
-**#421** — `zephyr_leaf_buildrs_uses_shared_bake` asserts it walked >=13 zephyr rust leaves; the
-tracked tree has 7. phase-277 consolidated the examples (`4cbdf8dc1`, `1e2ce89aa`) without moving the
-threshold, so the silent-empty guard has been failing on its own stale constant. The count also
-drifts with untracked build output on disk (10 vs 7), so the walker wants the `git ls-files` fix
-too. See `0421-*`. (2026-08-05)
+**#421** — RESOLVED. `zephyr_leaf_buildrs_uses_shared_bake` asserted a floor of 13 zephyr rust
+leaves, phase-291's count; phase-331 W3/W4 deleted four `ws-*-rust` micro-workspaces that each
+carried a `zephyr_entry` leaf, leaving 10. Fixed upstream in `1f19ea937` (floor 10, with the
+deletion recorded). The original filing said 7 and blamed phase-277 — it grepped only
+`examples/zephyr/rust/` and missed the `zephyr_entry*` rule. See `archived/0421-*`. (2026-08-05)
 
 **#404** — no schema for DECLARING a measured WCET. `MapperPath.exec_ms` is `Option<f64>` and nothing
 outside rlm's own tests ever sets it, so rlm v0.1.4's `ChainFeasibleWithoutWcet` (issue 0259) now
