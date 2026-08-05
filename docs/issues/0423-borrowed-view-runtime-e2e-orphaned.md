@@ -51,12 +51,40 @@ hitting the config-variant wall, and was removed rather than left half-built.
   the borrowed-VIEW-points-into-the-buffer RUNTIME assertion is currently
   **unguarded**.
 
+## Root cause (sharpened 2026-08-05)
+
+The blocker is NOT merely a missing include or a stale header — it is that **a
+standalone `cargo build -p nros-c` produces an archive that is not meant to be
+linked at all.** Traced through `nros-build-helpers/src/c.rs`:
+
+- The `nros_config_variant_sz_<suffix>` anchor (a `__attribute__((weak))` C symbol,
+  `c.rs:458-472`) is emitted ONLY when `suffix` is `Some` (`c.rs:455`), and the
+  suffix is size-derived. When the `EXECUTOR_SIZE` probe returns 0 (`c.rs:127-135`)
+  the suffix is absent, so **no variant symbol is compiled into `libnros_c.a`**.
+- The probe returns 0 for a standalone `cargo build -p nros-c` because
+  `EXECUTOR_SIZE` is measured from `nros`'s `__NROS_SIZE_*` export symbols, which
+  only carry a real value when a downstream binary INSTANTIATES the executor. The
+  build.rs warning says it outright: *"EXECUTOR_SIZE probe returned 0 … do not link
+  the resulting rlib."*
+- The `d021…` hash in `target/nros-c-generated/nros_config_generated.h` is left
+  over from an earlier, properly-sized build; a fresh standalone build is the stub,
+  so header (`extern nros_config_variant_sz_d021…`) and archive (no such symbol)
+  disagree → `undefined reference`.
+
 ## Direction
 
-Re-establish the runtime proof as a proper build-stage fixture consumed by a Rust
-test (the phase-329 W5 pattern), which requires building `nros-c` with a config
-that DEFINES the `nros_config_variant_sz_*` guard the generated code imports — i.e.
-solving the standalone `EXECUTOR_SIZE`-probe stub (the sizes/opaque class) for a
-host archive that a raw `gcc`/`g++` link can consume. The driver logic to reuse
-lived in the deleted `fixtures/borrowed-{c,cpp}-e2e/` (recoverable from git
-history at the parent of this change).
+Re-establish the runtime proof as a build-stage fixture, but the driver must link
+against an `nros-c` archive built THROUGH A CONSUMER THAT INSTANTIATES THE EXECUTOR
+(so the size probe is non-zero and the variant anchor is emitted), not a raw
+`cargo build -p nros-c`. Two viable shapes:
+  1. **C++ side is the easier win**: its proof already builds an FFI staticlib crate
+     (`ffi_wrapper.rs`) that depends on nros-c and instantiates it — that build
+     sizes the executor, so `libborrowed_cpp_e2e.a` should carry the matching
+     variant. Rebuild the C++ proof around that archive + the header IT emits.
+  2. **C side needs a sized carrier**: link the C driver against an archive from a
+     cargo target that instantiates the executor (an example's, or a purpose-built
+     `demo_entry`-style crate), not the bare umbrella archive.
+This is the sizes/opaque integration (Phase 87/118/119 class), not a cleanup — it
+is why the shells rotted silently. The driver logic to reuse lived in the deleted
+`fixtures/borrowed-{c,cpp}-e2e/` (recoverable from git history at this change's
+parent).
