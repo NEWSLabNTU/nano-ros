@@ -2336,7 +2336,14 @@ pub fn build_native_workspace_cpp_rclcpp_realtime_entry() -> TestResult<&'static
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime-rclcpp",
                 "realtime-cpp",
-                "native_entry",
+                // The manifest row declares `native_rclcpp_entry` and the
+                // manifest is the SSoT (issue 0411). This named the sibling
+                // `native_entry` — a real package, but the CONFIGURE-shape one,
+                // not the rclcpp shape this fixture exists to cover. The
+                // mismatch makes the fixture read "not built" forever: the
+                // builder produces what the manifest says and the resolver
+                // looks for something else.
+                "native_rclcpp_entry",
             )
         })
         .map(|p| p.as_path())
