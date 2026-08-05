@@ -237,6 +237,14 @@ stage, serial, with the riscv half gated on the run's own coordinates by the sha
 graph from `build-fixtures` and fails when a fixture token that module OWNS is produced by no recipe
 on that path. See `archived/0405-*`.
 
+**#427** — a SystemModel reads as FRESH when only the RESOLVER changed, so a resolver fix never
+reaches models that already exist. `meta.inputs[].sha256` covers the launch file and `system.toml`;
+`meta.resolver` is recorded but not part of the decision, so `nros sync` exits 0 having done nothing.
+Surfaced as `cpp_multi_node_entry` "component order doesn't match launch XML" — the rlm v0.1.4
+declaration-order fix (issue 0382) reaching new models only. Workaround `rm -rf <ws>/build/nros/models
+&& nros sync`, verified. Second defect noted: models stamp `resolver.version: 0.1.0` while the
+resolver is v0.1.4. See `0427-*`. (2026-08-05)
+
 **#422** — ~16 runtime E2E tests fail on a clean tree (cyclonedds interop, zenoh transport,
 orchestration tiers, two 60s timeouts). Same set fails on a fresh clone with no local work, so it is
 the standing state, not a regression. Needs TRIAGE before fixing: some are plausibly environmental
