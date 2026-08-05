@@ -33,8 +33,17 @@ QEMU_BIN := QEMU_PREFIX / "bin/qemu-system-arm"
 # just cannot be spelled as an eager assignment.
 PROFILE_DIR := `bash -c 'source scripts/build/cargo.sh && nros_cargo_target_profile_dir 2>/dev/null' || true`
 
-# Refuse to build a path out of an unresolved profile dir. Every recipe that
-# interpolates PROFILE_DIR calls this first.
+# Refuse to build a path out of an unresolved profile dir. EVERY recipe that
+# interpolates PROFILE_DIR / FIXTURE_TARGET must dep this first, so a stale CLI
+# yields the actionable "run just setup-cli" message instead of a confusing
+# "kernel not found" (issue 0430 — test-wcet / test-lan9118 / _run-qemu-mps2, and
+# so its talker/listener/rtic-* callers, lacked it and got the confusing path).
+#
+# NB: PROFILE_DIR / FIXTURE_TARGET STAY `:=` variables (not recipe-local shell) —
+# FIXTURE_TARGET is interpolated into recipe-ARGUMENT positions (`_run-qemu-mps2
+# (FIXTURE_TARGET / "…")`), which cargo/just resolve at PARSE time, so they cannot
+# move into a recipe body. The parse-time query is made non-fatal by the trailing
+# `|| true` on the backtick (empty on a stale CLI); THIS guard makes it loud at USE.
 [private]
 _require-profile-dir:
     #!/usr/bin/env bash
@@ -198,7 +207,7 @@ test-basic verbose="": _require-profile-dir build-fixtures
 
 # Run WCET benchmark on QEMU (DWT cycle counter)
 [group("debug")]
-test-wcet verbose="": build-fixtures
+test-wcet verbose="": _require-profile-dir build-fixtures
     ./tests/run-test.sh --name qemu-wcet-bench --log {{LOG_DIR}}/latest/qemu-wcet-bench.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine lm3s6965evb -nographic \
@@ -207,7 +216,7 @@ test-wcet verbose="": build-fixtures
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
 [group("debug")]
-test-lan9118 verbose="": build-fixtures
+test-lan9118 verbose="": _require-profile-dir build-fixtures
     ./tests/run-test.sh --name qemu-lan9118 --log {{LOG_DIR}}/latest/qemu-lan9118.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
@@ -502,7 +511,7 @@ clean: clean-zenoh-pico
 # Phase 226.D — depends on build-fixtures so the binary resolves under the
 # shared fixture target dir ({{FIXTURE_TARGET}}); callers pass paths there.
 [no-exit-message]
-_run-qemu-mps2 binary: build-fixtures
+_run-qemu-mps2 binary: _require-profile-dir build-fixtures
     #!/usr/bin/env bash
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \

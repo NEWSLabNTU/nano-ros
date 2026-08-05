@@ -59,11 +59,14 @@ looks like one that cannot. Blocked RFC-0069's last acceptance item for `nuttx c
 NOT the cause and already fixed: stale caches naming the board dir phase-337 W3 retired, and a
 `--profile nros-minsizerel` argv-quoting bug. See `0433-*`. (2026-08-05)
 
-**#430** — A stale in-tree `nros` bricks EVERY `just` recipe: justfile EVALUATION runs a backtick
-calling `nros profile` (phase-336), so an older binary makes `just` refuse to run anything —
-including `just setup-cli`, the recipe that would fix it. The error names `qemu-baremetal.just:19`
-and says nothing about the CLI. Escape: `cd packages/cli && cargo build --release --bin nros`.
-See `0430-*`. (2026-08-05)
+RESOLVED 2026-08-05 — **#430** a stale in-tree `nros` bricked EVERY `just` recipe (a `:=` backtick
+in `qemu-baremetal.just` ran `nros profile` at PARSE time). Fixed in two parts: `20028b818` made the
+backtick non-fatal (`|| true` → empty on a stale CLI, no bricked parse); and this fix added the
+`_require-profile-dir` guard to the FIXTURE_TARGET/PROFILE_DIR consumers that lacked it (`test-wcet`,
+`test-lan9118`, `_run-qemu-mps2` → its talker/listener/rtic-* callers) so a stale CLI gets the
+actionable "Run: just setup-cli" message, not a confusing "kernel not found". Direction (2) is
+infeasible — FIXTURE_TARGET is interpolated into recipe-arg positions needing a parse-time `:=`.
+Verified (stale-nros stub): `just --list` runs, the guard fires the message. See `archived/0430-*`.
 
 **#431** — Every NuttX cell skips on a fully provisioned host: `NUTTX_DIR` is never exported by
 activate.sh or the SDK env, and nothing provisions kconfig (and the printed `pip install kconfiglib`
