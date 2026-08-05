@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#418** — raw action feedback/result payloads carry an EXTRA CDR encapsulation header
+(`[outer][goal_id][INNER][body]`), so they are wire-incompatible with ROS 2 *and* with nano-ros's
+own typed path. Raw↔raw is self-consistent — every action Runtime cell pairs a raw server with a
+raw client, so the double header cancels and nobody noticed. The inner header is deliberate (the raw
+consumer reads the body with `new_with_header`), and removing it producer-only reproduces the
+issue-#35 corruption its comment warns about, so producer and consumer must change together. This is
+what stops phase-338 W3 migrating `action-{server,client}` / `service-client`. Decision in
+[RFC-0069](../design/0069-action-payload-envelope.md). See `0418-*`. (2026-08-05)
+
 Recently resolved (2026-08-04): **#414** — phase-330 W4 made the SystemModel a build artifact and
 deleted every committed `config/*model.yaml`; five tests still read those paths and failed on
 `os error 2` instead of on what they assert. RESOLVED by the rule that a test never reads a

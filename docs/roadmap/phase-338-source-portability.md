@@ -440,15 +440,23 @@ raw publisher ↔ nano-ros raw consumer agree — and wire-incompatible with bot
 ROS 2 and nano-ros's own TYPED path. Exactly the shape of the type-name bug, one
 layer down.
 
-**Why this is not a quick fix.** `new_with_header` is the convention on the
-consumer side too, and it spans `nros-node`'s executor (`action_core`, `arena`,
-`handles`) **and the generated C++ message exports**
-(`rosidl-codegen/packs/cpp/message_exports.rs.jinja`). Changing the envelope
-means changing the publisher, every Rust raw consumer, the generated C++/ffi
-consumers, and re-verifying the embedded and C++ lanes — a cross-language wire
-change, not a local edit. It likely deserves an RFC: the decision is "which
-envelope is canonical", and the answer that makes nano-ros interoperable
-(ROS 2's) invalidates a convention several layers already encode.
+**Why this is not a quick fix.** The raw CONSUMER is symmetric with the producer
+— `action_core.rs::try_recv_feedback_raw` reads the outer header, then the
+`goal_id`, and the body is read with `new_with_header` again — so removing the
+producer's header alone reproduces exactly the corruption issue #35 documents.
+Producer and consumer change together or not at all, and every action Runtime
+cell is raw↔raw, i.e. precisely the pairs the change breaks and must re-prove on
+real targets.
+
+**Correcting an overclaim in the first draft of this note:** I recorded that the
+generated C++ message exports encode this convention. They do not — their
+`new_with_header` is ordinary per-message CDR, correct ROS 2 behaviour for a
+topic payload. The blast radius is the action envelope specifically, not codegen.
+
+Filed as [issue 0418](../issues/0418-action-payload-envelope-not-ros-compatible.md)
+with [RFC-0069](../design/0069-action-payload-envelope.md) for the decision —
+which envelope is canonical, since the interoperable answer breaks
+nano-ros↔nano-ros across the version boundary.
 
 **Consequence worth stating plainly:** raw-registered action servers and clients
 have never been wire-compatible with ROS 2 on feedback or result payloads. The
