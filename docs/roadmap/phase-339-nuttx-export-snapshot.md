@@ -190,16 +190,16 @@ in `nuttx_ffi_build.rs` fails it with the file and line; removing it goes green.
 
 Cells: `Nuttx::C` and `Nuttx::Cpp` action Runtime cells PASS against the snapshot.
 
-**`Nuttx::Rust` does not, and not because of this phase** — issue 0440, a main
-regression that landed at 21:18 mid-phase: phase-338 W2's `-entry` collapse
-dropped the board's static link args from the surviving package's
-`.cargo/config.toml` (`grep -c lsched` is 0 of 6), so every NuttX Rust entry
-fails with ~3680 undefined libc references. The freertos / threadx-linux cells in
-the same run report `[SKIPPED] … STALE`, which is this branch's core-crate change
-invalidating fixtures built on main — not a regression.
+`Nuttx::Rust` was blocked by issue 0440 — a main regression that landed at 21:18
+mid-phase (phase-338 W2's `-entry` collapse dropped the board's static link args
+from the surviving package's `.cargo/config.toml`). **Fixed on this branch**, so
+all three NuttX action Runtime cells — Rust, C and C++ — now pass against the
+snapshot: `3 tests run: 3 passed`.
 
-So the phase's own acceptance is met and its blast radius is proven on the two
-lanes that can currently link. Full both-arch cell coverage waits on 0440.
+The freertos / threadx-linux cells still report `[SKIPPED] … STALE` in a
+whole-suite run: this branch changes a core crate, so fixtures built on main
+before the rebase are stale. Not regressions, and not this phase's subject —
+they link no NuttX kernel.
 
 ## Risks
 
