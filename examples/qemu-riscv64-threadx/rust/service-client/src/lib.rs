@@ -28,7 +28,6 @@ use nros::{
     TimerDuration,
 };
 
-/// AddTwoInts service client — sends ONE fixed request (2, 3).
 pub struct AddTwoIntsClient;
 
 impl Node for AddTwoIntsClient {
@@ -47,7 +46,8 @@ pub struct State {
     /// Set by `on_callback` when the timer fires; drained by `tick`
     /// after dispatching the call.
     pending: bool,
-    /// Set once a reply has been received — the client sends ONE request.
+    /// Set once the reply has been logged — the single-shot client
+    /// then idles while the runtime keeps spinning.
     done: bool,
 }
 
@@ -78,13 +78,18 @@ impl ExecutableNode for AddTwoIntsClient {
         match ctx
             .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req)
         {
-            Ok(resp) => {
-                log::info!("Result of add_two_ints: {}", resp.sum);
+            Ok(reply) => {
+                log::info!("Result of add_two_ints: {}", reply.sum);
                 state.done = true;
             }
-            // The timer re-arms `pending`, so a failed call (server not yet
-            // discovered) is retried on the next fire.
-            Err(_) => log::error!("service call failed, retrying"),
+            Err(e) => {
+                // phase-338 W3 — report the failure instead of swallowing it.
+                // The silent arm made a client with no server look identical to
+                // a healthy one on every platform, and `services.rs`'s
+                // client-without-server test asserts exactly this marker. The
+                // timer paces the retries, so this logs once per attempt.
+                log::info!("Service call failed, retrying: {:?}", e);
+            }
         }
     }
 }

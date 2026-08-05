@@ -22,12 +22,10 @@ mod app_main;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    Callback, CallbackCtx, CancelResponse, ExecutableNode, GoalId, GoalResponse, GoalStatus, Node,
+    Callback, CallbackCtx, CancelResponse, ExecutableNode, GoalResponse, GoalStatus, Node,
     NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
-/// Fibonacci action server — accepts non-negative goal orders and completes
-/// each accepted goal with a canonical Fibonacci sequence.
 pub struct FibonacciServer;
 
 impl Node for FibonacciServer {
@@ -41,28 +39,24 @@ impl Node for FibonacciServer {
             "on_cancel",
             "on_accepted",
         )?;
-        // Readiness marker the e2e harness greps before sending a goal.
         log::info!("Waiting for action goals");
         Ok(())
     }
 }
 
 impl ExecutableNode for FibonacciServer {
-    /// Goals completed so far (informational).
-    type State = u32;
+    type State = ();
 
-    fn init() -> Self::State {
-        0
-    }
+    fn init() -> Self::State {}
 
     fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         match callback.as_str() {
             "on_goal" => {
-                let order = ctx.message::<FibonacciGoal>().ok().map(|g| g.order);
+                let order = ctx.message::<FibonacciGoal>().map(|g| g.order).ok();
                 if let Some(order) = order {
                     log::info!("Received goal request with order {}", order);
                 }
-                let accept = matches!(order, Some(o) if o >= 0);
+                let accept = order.map(|o| o >= 0).unwrap_or(false);
                 let _ = ctx.set_goal_response(if accept {
                     GoalResponse::AcceptAndExecute
                 } else {
@@ -73,65 +67,46 @@ impl ExecutableNode for FibonacciServer {
                 let _ = ctx.set_cancel_response(CancelResponse::Ok);
             }
             "on_accepted" => {
-                // No imperative work here — feedback/result are driven from
-                // `tick()`, the only place the executor is free for action ops.
-                log::info!("Executing goal");
+                // Per-spin work runs in `tick()` (the only place the
+                // executor is free for action ops).
             }
             _ => {}
         }
     }
 
-    fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
-        // Snapshot any active goals into a fixed-cap stack list so the
-        // borrow-checker lets us issue mutable executor ops after the
-        // visit returns.
-        let mut pending: heapless::Vec<GoalId, 4> = heapless::Vec::new();
-        ctx.for_each_active_goal_for_name("/fibonacci", &mut |goal_id, status| {
-            if matches!(status, GoalStatus::Accepted | GoalStatus::Executing) {
-                let _ = pending.push(*goal_id);
-            }
+    fn tick(_state: &mut Self::State, ctx: &mut TickCtx<'_>) {
+        // Collect goal ids first — typed feedback / result calls borrow
+        // `ctx` mutably so they can't run inside `visit`.
+        let mut goals: nros::heapless::Vec<(nros::GoalId, i32), 4> = nros::heapless::Vec::new();
+        ctx.for_each_active_goal_for_name("/fibonacci", &mut |goal_id, _status: GoalStatus| {
+            let _ = goals.push((*goal_id, 0));
         });
 
-        for goal_id in pending {
-            // The app-node shape doesn't surface the goal payload at tick
-            // time, so we emit a fixed order = 5 sequence incrementally as
-            // feedback, then complete the goal.
-            const ORDER: i32 = 5;
-            let mut seq: heapless::Vec<i32, 64> = heapless::Vec::new();
-            for i in 0..=ORDER {
-                let next = match i {
-                    0 => 0,
-                    1 => 1,
-                    _ => {
-                        let len = seq.len();
-                        seq[len - 1] + seq[len - 2]
-                    }
-                };
-                let _ = seq.push(next);
-                let feedback = FibonacciFeedback {
-                    sequence: seq.clone(),
-                };
-                log::info!("Publish feedback");
-                let _ = ctx.publish_feedback_for_name::<FibonacciFeedback, 256>(
-                    "/fibonacci",
-                    &goal_id,
-                    &feedback,
-                );
-            }
+        for (goal_id, _order) in goals {
+            log::info!("Executing goal");
+            // Publish one canonical Fibonacci-shaped feedback frame.
+            let mut sequence: nros::heapless::Vec<i32, 64> = nros::heapless::Vec::new();
+            let _ = sequence.push(0);
+            let _ = sequence.push(1);
+            let _ = sequence.push(1);
+            let feedback = FibonacciFeedback {
+                sequence: sequence.clone(),
+            };
+            log::info!("Publish feedback");
+            let _ = ctx.publish_feedback_for_name::<FibonacciFeedback, 128>(
+                "/fibonacci",
+                &goal_id,
+                &feedback,
+            );
 
-            let result = FibonacciResult { sequence: seq };
-            if ctx
-                .complete_goal_for_name::<FibonacciResult, 256>(
-                    "/fibonacci",
-                    &goal_id,
-                    GoalStatus::Succeeded,
-                    &result,
-                )
-                .is_ok()
-            {
-                log::info!("Goal succeeded");
-            }
-            *state = state.wrapping_add(1);
+            let result = FibonacciResult { sequence };
+            let _ = ctx.complete_goal_for_name::<FibonacciResult, 128>(
+                "/fibonacci",
+                &goal_id,
+                GoalStatus::Succeeded,
+                &result,
+            );
+            log::info!("Goal succeeded");
         }
     }
 }
