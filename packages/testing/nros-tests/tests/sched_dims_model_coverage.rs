@@ -49,7 +49,10 @@ fn rtos_key(p: PlatformId) -> &'static str {
         PlatformId::NuttxArm => "nuttx",
         PlatformId::ThreadxLinux => "threadx",
         PlatformId::FreertosMps2 => "freertos",
-        PlatformId::Native => "posix",
+        // phase-337 W8.b renamed the host BOARD variant to `Linux`; the RTOS key
+        // stays `posix`, which is the point of the split — the board layer names
+        // what we support, the platform layer names the software stack.
+        PlatformId::Linux => "posix",
         other => panic!(
             "SCHED_CELLS carries platform {other:?} with no [tiers.*.<rtos>] key mapping — \
              add it to `rtos_key`"
