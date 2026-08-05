@@ -23,6 +23,22 @@ plumbing is done and proven:
 What is missing is that **the bridge has to translate**, and one side of the
 translation has no types.
 
+## Scope — CDR is needed for exactly one path (confirmed 2026-08-05)
+
+CDR `px4_msgs` types are needed ONLY where nano-ros speaks the ROS 2 **wire**
+protocol from inside PX4 — i.e. an in-firmware C++ uORB→RMW bridge module. Every
+other PX4 path is CDR-free, so this is not a general PX4 gap:
+
+| path | serialization | needs C++ CDR types |
+| --- | --- | --- |
+| nano-ros ↔ PX4 in-firmware (**direct uORB**) | NONE — `publisher_publish_raw` hands the caller's bytes straight to `orb_publish`; the payload IS the PX4 struct (`px4_uorb_interop_e2e.rs:4`) | no |
+| nano-ros node → ROS 2 via the XRCE companion (**off-board**) | CDR, but the node is Rust and uses the generated `px4_msgs` **crate** | no (Rust) |
+| **in-firmware C++ bridge** → ROS 2 | CDR + RIHS01 type hash | **yes** ← the whole gap |
+
+So the fix is DEMAND-DRIVEN: it should land WITH the phase-325 W3 bridge, not
+speculatively. Nothing today needs it (the direct demo is verified by a stock PX4
+`listener`).
+
 ## The shape of the gap
 
 | side | payload | identity | available in C++? |
