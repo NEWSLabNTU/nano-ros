@@ -1697,37 +1697,22 @@ dir = "packages/testing/nros-tests/bins/logging-smoke-freertos-mps2"
 # ===========================================================================
 # nuttx (qemu ARM virt) — Rust role examples. Plain cargo (nightly pinned by
 # the example's rust-toolchain.toml). Codegen runs in the recipe.
+#
+# phase-338 W2 — the bare rows that used to live here (platform+lang+dir, no
+# rmw) built the LIB-ONLY component package, which had no `[[bin]]` and so
+# never linked. The collapse gave that package the entry's `[[bin]]`, and a
+# build with no `rmw` selects no backend, so the link then failed with
+# `undefined reference to open / socket / malloc` — NuttX libc symbols the
+# board's platform glue brings in. The rows below (with `rmw` + the baked
+# locator env) are the ones that produce a bootable image; they are now the
+# only rows, one per example.
 # ===========================================================================
 
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-dir = "examples/qemu-arm-nuttx/rust/talker"
 
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-dir = "examples/qemu-arm-nuttx/rust/listener"
 
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-dir = "examples/qemu-arm-nuttx/rust/service-server"
 
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-dir = "examples/qemu-arm-nuttx/rust/service-client"
 
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-dir = "examples/qemu-arm-nuttx/rust/action-server"
 
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-dir = "examples/qemu-arm-nuttx/rust/action-client"
 
 [[fixture]]
 platform = "nuttx"
