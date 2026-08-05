@@ -21,6 +21,20 @@ build-std-features = ["compiler-builtins-mem"]
 [target.armv7a-nuttx-eabihf]
 linker = "arm-none-eabi-gcc"
 rustflags = [
+    # issue 0440 — the board's STATIC image-link args, restored.
+    #
+    # phase-338 W2 collapsed the `-entry` packages into their node packages and
+    # kept the NODE package's `.cargo/config.toml`, which had only the three cpu
+    # flags — the `-T` / `--start-group` / `-l…` set lived in the deleted
+    # `*-entry` file. Without them nothing pulls in the kernel archives and every
+    # NuttX Rust entry fails with ~3680 undefined libc references.
+    #
+    # SSoT is `nros-board-nuttx-qemu/nros-board.toml`'s `cargo_config` (RFC-0032
+    # "third leg": static args here, dynamic `-L`/script/boot-archive propagated
+    # from the board crate's build.rs). This file is tracked and `nros sync`
+    # leaves it alone, so the two must be kept in step by hand — which is what
+    # made a silent loss possible.
+
     "-C", "link-arg=-mcpu=cortex-a7",
     "-C", "link-arg=-mfloat-abi=hard",
     "-C", "link-arg=-mfpu=neon-vfpv4",

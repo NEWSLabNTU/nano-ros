@@ -1,7 +1,7 @@
 ---
 id: 440
 title: NuttX Rust entries lost the board's static link args when phase-338 W2 collapsed the -entry packages, so every one fails to link
-status: open
+status: resolved  # fixed 2026-08-06
 type: bug
 area: build
 related: [phase-338, phase-339, rfc-0032, rfc-0048]
@@ -87,3 +87,34 @@ A gate is cheap here and the class has bitten before: assert that every leaf
 whose `package.metadata.nros` names a `deploy` with a board `cargo_config`
 actually carries that block. Silent loss of link args is only visible at link
 time, and only on the platform whose archives went missing.
+
+## Resolution (2026-08-06)
+
+The board's 24 static link args are restored in all six leaves, taken from
+`nros-board.toml`'s `cargo_config` (the SSoT) rather than from the deleted
+`-entry` files, so nothing stale rode along. Only the `rustflags` array was
+replaced — each leaf keeps its own `[patch.crates-io]` and `[env]`.
+
+Verified: `just nuttx build-fixtures-arm` → RC=0, **0 undefined references**
+(was ~3680), and all three NuttX action Runtime cells — Rust, C and C++ — pass.
+
+**Gate: `check-board-cargo-config-applied`**, in `check-fast`. For every board
+whose `cargo_config` declares a `-l<kernel lib>` group, each leaf deploying to
+that board must carry a representative arg from it. Representative, not
+exhaustive: the point is to catch a config that lost the GROUP, not to diff two
+files that legitimately differ in patch tables and paths. It reports 6 leaves —
+exactly the set that broke.
+
+Watched to fire: truncating `talker`'s rustflags back to the cpu flags fails it
+with the file named and exit 1; restoring goes green.
+
+## Why nothing caught it
+
+Worth stating, because the gate is shaped around it. The broken config was valid
+TOML, `cargo metadata` accepted it, and `nros sync` reported success — the file
+is TRACKED and sync deliberately leaves it alone. The loss was observable only at
+LINK time, and only on the one platform whose archives went missing. Every
+cheap check in the repo passed.
+
+That is the same shape as issue 0196's rule: the thing that could detect the
+defect was not watching the thing that broke.

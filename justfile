@@ -364,6 +364,7 @@ check-fast: \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
+    check-board-cargo-config-applied \
     check-cargo-profile-mirror check-build-profile-literals check-test-targets \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
@@ -830,6 +831,16 @@ check-nested-workspace-excludes:
 [private]
 check-nuttx-links-snapshot:
     @bash scripts/check-nuttx-links-snapshot.sh
+
+# issue 0440 — a leaf that deploys to a board must carry that board's STATIC
+# link args. `nros-board.toml`'s `cargo_config` is the SSoT (RFC-0032 third
+# leg), the leaf `.cargo/config.toml` is TRACKED and `nros sync` leaves it
+# alone, so the two drift by hand. phase-338 W2's `-entry` collapse kept the
+# node package's config and dropped the whole `-l<kernel lib>` group — valid
+# TOML, happy cargo, and every NuttX Rust entry failing at LINK time.
+[private]
+check-board-cargo-config-applied:
+    @bash scripts/check-board-cargo-config-applied.sh
 
 # phase-330 W7.e — committed SystemModels are BANNED: the model is a build
 # artifact (generated into <ws>/build/nros/models by `nros sync`); tracking
