@@ -93,19 +93,15 @@ EMIT coverage survives in `rosidl-codegen`'s `#[ignore]` tests; the borrowed-vie
 now unguarded. Re-establishing it as a build-stage fixture needs the standalone-`nros-c`
 `EXECUTOR_SIZE`-probe stub (sizes/opaque class) solved so a raw `gcc`/`g++` link finds the config
 variant symbol. See `0423-*`. (2026-08-05)
-**#413 (ROOT CAUSE FIXED 2026-08-05 — pubsub + services; actions still open)** — the DECLARATIVE
-Node API never registered Cyclone type descriptors. Cyclone resolves topic types through a runtime
-registry; the imperative typed creators call `register_type::<M>()`, but the declarative path records
-metadata and hits the type-ERASED `create_generic_publisher_with_qos(topic, type_name, …)`, which has
-no `M`. Hence C/C++ (static descriptor table) and zenoh/XRCE (no registry) were fine while Rust
-cyclone was not, and hence it surfaced only when phase-338 W3 made the native Rust examples
-Node-class. FIXED by registering at the last point that knows the type, with associated-type bounds
-on the declarative methods (`RosService`/`RosAction` live in nros-core and cannot name
-`MessageForRmw`). Verified: talker publishes, the pair delivers, a service round-trips,
-`native_api::test_native_cyclonedds_rust_talker_to_listener` green. The ACTION half still fails —
-suspect #418's extra CDR header. Also worth keeping: the cause sat FOUR collapses below the message
-(`UNSUPPORTED` -> `PublisherCreationFailed` -> `NodeDeclError::Runtime` -> `NodeRegister(<pkg>)`),
-which is what made this a three-session diagnosis. See `0413-*`. (2026-08-05)
+(#413 resolved 2026-08-05 — the DECLARATIVE Node API never registered Cyclone type descriptors.
+Cyclone resolves topic types through a runtime registry; the imperative typed creators call
+`register_type::<M>()`, but the declarative path records metadata and hits the type-ERASED
+`create_generic_publisher_with_qos(topic, type_name, …)`, which has no `M`. Hence C/C++ (static
+descriptor table) and zenoh/XRCE (no registry) were fine while Rust cyclone was not, and hence it
+surfaced only when phase-338 W3 made the native Rust examples Node-class. The ACTION half was NOT
+#418's CDR header — it was two more funnels the first pass's text-matching missed; ENUMERATING all
+eleven `EntityMetadataSpec` sites found them. Also carries a nextest budget: the pubsub e2e is one
+test iterating nine cells and needs 93 s against a 60 s default kill. See `archived/0413-*`.)
 
 **#419** — the play_launch pin in `nros-cli-core/build.rs` records the **superproject** SHA when the
 submodule is uninitialised, so `nros sync` reports "this `nros` was built from <a nano-ros commit>"

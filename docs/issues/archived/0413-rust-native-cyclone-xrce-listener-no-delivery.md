@@ -1,13 +1,14 @@
 ---
 id: 413
-title: "Declarative Node API never registered Cyclone type descriptors (pubsub+services FIXED; actions open)"
-status: open
+title: "Declarative Node API never registered Cyclone type descriptors"
+status: resolved
 type: bug
 area: rmw
 related: [phase-329, phase-337, issue-0233, issue-0234]
+resolved_in: "phase-337 session"
 ---
 
-## ROOT CAUSE FOUND + FIXED 2026-08-05 (pubsub + services); actions still open
+## ROOT CAUSE FOUND + FIXED 2026-08-05 — pubsub, services AND actions
 
 **The declarative Node API never registered Cyclone type descriptors.**
 
@@ -67,12 +68,49 @@ rust service  -> Result of add_two_ints: 5           (round-trips)
 plus `native_api::test_native_cyclonedds_rust_talker_to_listener` (C and C++
 peers) green, having been red.
 
-**STILL OPEN: actions.** `test_native_cyclonedds_rust_action` still fails. The
-eight payload registrations are in place and mirror the imperative creator, so
-the remaining cause is elsewhere on the action path; a plausible suspect is
-issue **0418** (the action payload envelope carries one CDR header too many),
-handled under RFC-0069. The pubsub and service halves are fixed and verified;
-this issue stays open for the action half.
+**The action half: NOT #0418 — a missed sibling funnel.** The first pass added
+the registration by pattern-matching the funnel bodies, which quietly reached
+only ONE of the TWO `EntityKind::ActionClient` sites (the second spells its
+metadata `id: EntityId::new(name)` rather than `id,`) and neither of two
+`Subscription` funnels. The action SERVER worked; the CLIENT still failed
+`NodeRegister`, which looked like a protocol problem and was really the same
+missing registration one funnel over.
+
+Fixed by ENUMERATING every `entity_metadata(EntityMetadataSpec { … kind: … })`
+in the declarative API and asserting each message-typed one registers, instead
+of matching text:
+
+| funnel | registers |
+|---|---|
+| Publisher ×1, Subscription ×3 | `M` |
+| ServiceServer ×1, ServiceClient ×1 | `S::Request`, `S::Reply` |
+| ActionServer ×1, ActionClient ×2 | `A`'s 8 wire types + protocol types |
+| Timer, Parameter | nothing — no message type, correctly excluded |
+
+Textbook CLAUDE.md "fix the CLASS, not the reported site": three of the eleven
+funnels were missed on the first pass, and the audit is what found them.
+
+Full action round-trip on cyclone now:
+
+```text
+client: Sending goal / Goal accepted / Next number in sequence received: [0, 1, 1]
+        Result received: [0, 1, 1]
+server: Received goal request with order 1 / Executing goal / Publish feedback
+        Goal succeeded
+```
+
+**One budget change rode along.** `native_example_pubsub_e2e` then TIMED OUT: it
+is ONE test iterating nine cells (3 langs x 3 RMWs) in a single process, so its
+wall clock is the sum of nine router-start + delivery waits — measured 93 s
+against nextest's 60 s default kill. Same consolidation cost
+`workspace_features_e2e` already carries a 120 s budget for. Left alone it is a
+timeout that reads exactly like the delivery failure this issue was about.
+
+**Verified green:** every `native_api` cyclone cell including
+`test_native_cyclonedds_rust_action`, plus `native_example_pubsub_e2e` (92.9 s)
+and `native_example_reqresp_e2e` (51.7 s). The remaining `native_api`
+`threadx_linux_cyclonedds_*` failures are `[SKIPPED]` precondition panics —
+they need `just threadx_linux build-fixtures`, a different lane.
 
 ## Diagnosis trail (2026-08-05) — kept, because it is what the collapse hides
 

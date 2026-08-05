@@ -307,6 +307,20 @@ filter = "binary(workspace_features_e2e)"
 test-group = "native-qos-discovery"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
+# issue 0413 — the SAME consolidation cost, one binary over. These two are each
+# ONE test iterating every native example cell (3 langs x 3 RMWs) in a single
+# process, so their wall clock is the sum of nine router-start + delivery waits,
+# not one cell's. Measured 93 s for `native_example_pubsub` on a quiet host, and
+# the default (30 s period, terminate-after 2 = 60 s hard kill) cut it off
+# mid-sweep — a TIMEOUT that reads exactly like the delivery failure #413 was
+# about, which is why it is worth pinning rather than leaving to chance.
+#
+# They only started running the full nine in the first place when `da26485e9`
+# un-carved the rust cyclone/xrce cells, so this budget is that change's tail.
+[[profile.default.overrides]]
+filter = "binary(native_example_pubsub_e2e) or binary(native_example_reqresp_e2e)"
+slow-timeout = { period = "120s", terminate-after = 3 }
+
 # issue #141 — see [test-groups.zephyr-qos-port]. phase-295 W3.b —
 # qos_zephyr_entry_e2e consolidated into binary(entry_e2e); the baked-port
 # (17849) sharer is now the `zephyr_rust_qos` cell.

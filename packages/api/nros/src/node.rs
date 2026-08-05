@@ -843,6 +843,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     ) -> NodeResult<NodeSubscription<'callback, M>> {
         let callback_id = CallbackId::new(callback_name);
         let id = EntityId::new(callback_id.as_str());
+        register_declared_type::<M>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -950,6 +951,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     ) -> NodeResult<SubscriptionTag> {
         let id = EntityId::new(topic);
         let callback_id = CallbackId::new(topic);
+        register_declared_type::<M>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -1404,6 +1406,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         result_callback_name: &str,
         feedback_callback_name: &str,
     ) -> NodeResult<NodeActionClient<'entity, A>> {
+        register_declared_action::<A>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id: EntityId::new(name),
             node_id: self.id,
