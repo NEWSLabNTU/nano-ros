@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#443** — `just ci-matrix` runs its staleness gate over the WHOLE tier-3 fixture set, the opposite of
+what its own comment promises ("the tier-2 saving is in the staleness GATE, which insists only the
+lane's coordinates are fresh"). The lane reaches the two fixture gates under two names —
+`_require-fixtures` reads `NROS_FIXTURE_LANE`, `check-fixtures-stale.sh` reads `NROS_FIXTURE_SCOPE`
+— and `just ci` sets both while `ci-matrix` sets only the lane, so SCOPE takes its `all` default.
+Undetectable, since `all` is legitimate: the gate cannot tell "wants everything" from "forgot the
+second variable". FIXED by deriving SCOPE from LANE in `_check-fixtures-stale` (explicit SCOPE still
+wins; `ci-matrix-nightly` fixed for free). Note `NROS_TEST_SCOPE` stays unset on purpose — that is
+0393's declared position, not part of this. See `0443-*`. (2026-08-06)
+
 **#439** — a lane-narrowed fixture build KILLS any recipe that names a fixture by `--id`, so
 `just ci-matrix` cannot run at all (3 of 8 tier-2 modules die, no stamp, `_lane-gate` fails). Two
 guards that are each right alone: #0393's `--coords-from` removes rows for lane reasons, #0406 treats

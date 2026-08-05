@@ -1705,7 +1705,40 @@ _require-build-sources:
 # NROS_SKIP_FIXTURE_CHECK=1.
 [private]
 _check-fixtures-stale:
-    ./scripts/check-fixtures-stale.sh
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Issue 0443 — the lane used to reach the two fixture gates under two
+    # different names: `_require-fixtures` reads NROS_FIXTURE_LANE, this gate
+    # reads NROS_FIXTURE_SCOPE (+ NROS_FIXTURE_COORDS). `just ci` sets both;
+    # `ci-matrix` set only the lane, so SCOPE fell back to `all` and the gate
+    # audited the whole tier-3 fixture set while the run, the build and the
+    # stamp were all scoped to tier 2 — demanding out-of-lane fixtures with a
+    # remedy that builds a different platform.
+    #
+    # Nothing could detect that: `all` is a legitimate value, so the gate cannot
+    # tell "the caller wants everything" from "the caller forgot the second
+    # variable". So DERIVE the scope from the lane instead of asking every
+    # caller to keep two spellings in sync. An explicit SCOPE still wins, which
+    # keeps `just ci` and the per-lane check-fixtures-stale recipe unchanged.
+    if [ -n "${NROS_FIXTURE_SCOPE:-}" ]; then
+        exec ./scripts/check-fixtures-stale.sh
+    fi
+    case "${NROS_FIXTURE_LANE:-}" in
+        ""|all)
+            exec ./scripts/check-fixtures-stale.sh
+            ;;
+        native)
+            NROS_FIXTURE_SCOPE=native exec ./scripts/check-fixtures-stale.sh
+            ;;
+        *)
+            # The SAME coordinate file `_lane-gate` and the fixture build use,
+            # so gate and build cannot disagree about what the lane contains.
+            source scripts/build/fixture-lane.sh
+            coords="$(nros_lane_coords_file "${NROS_FIXTURE_LANE}")"
+            NROS_FIXTURE_SCOPE=coords NROS_FIXTURE_COORDS="$coords" \
+                exec ./scripts/check-fixtures-stale.sh
+            ;;
+    esac
 
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen
