@@ -60,6 +60,16 @@ initialising it re-stamps nothing — `just setup-cli` reports success while reb
 the remedy the message suggests (`setup-launch-resolve`) cannot help because the wrong value is on
 the CLI side. See `0419-*`. (2026-08-05)
 
+**#420** — the `nros_log` facade is a **silent no-op** on ThreadX and NuttX, and on FreeRTOS built
+through the Rust board entry. `sinks::default()` forwards to the `nros_platform_log_write` C ABI;
+ThreadX and FreeRTOS dispatch that through a fn-ptr slot whose only registrar is
+`freertos_c_entry.c:212` (the C/C++ path — ThreadX has no caller at all), and NuttX has no
+implementation, falling through to `nros-c`'s weak no-op stub. The link succeeds either way, so the
+failure is runtime silence. Nothing has hit it because every shipped body on those platforms uses
+`log::info!`, which those boards DO bridge — but phase-338 W7 plans to move the bodies to
+`nros_info!`, which would turn every ThreadX and NuttX e2e marker into a grep timeout rather than an
+error. W7.a is blocked on this. See `0420-*`. (2026-08-05)
+
 RESOLVED 2026-08-05 — **#382** rlm v0.1.4 preserves launch order (`IndexMap`); the stale generated
 TU that kept the test red needed `nros codegen entry`, which needed 0414's CMake half fixed first.
 **#398** direction 2: `[[component]].name` stays an instance id, and `apply_model_execution` now
