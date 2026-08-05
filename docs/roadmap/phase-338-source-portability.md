@@ -100,12 +100,12 @@ tests select int32 vs string. That is a deliberate test affordance and must be
 Land the measurement before the fixes, so every later wave has a scoreboard and
 nothing silently regresses.
 
-- [ ] **W1.a** A guard test that, for each (language, program), normalizes every
+- [x] **W1.a** A guard test that, for each (language, program), normalizes every
       platform copy (strip comments and blank lines, collapse whitespace) and
       asserts the copies within a **portability group** are byte-identical.
       Source comparison only — no fixture, no boot, no QEMU. Belongs in
       phase-329's guards bucket.
-- [ ] **W1.b** **Exceptions are DATA with a reason, and they do not escape the
+- [x] **W1.b** **Exceptions are DATA with a reason, and they do not escape the
       gate — they form their own group.** Two kinds:
       - **Shape exceptions** — Zephyr's component convention (`Talker.c`,
         `Talker.hpp`, 34 loc against C's 89). Zephyr users expect that shape;
@@ -115,7 +115,7 @@ nothing silently regresses.
         the test that needs it, so deleting the test deletes the exception.
       An undeclared divergence is a failure. A declared one is a row with a
       reason — the same rule `Tier::CarveOut` already follows.
-- [ ] **W1.c** Record the baseline table above as the gate's starting state, so
+- [x] **W1.c** Record the baseline table above as the gate's starting state, so
       W2–W5 are measurable as groups merging rather than as vibes.
 
 ## W2 — Migrate the plain Rust examples onto the `-entry` shape
@@ -187,15 +187,22 @@ nothing silently regresses.
 The ceremony moves into the generated entry, where `nros::init`, executor open,
 RMW registration and the spin loop already live.
 
-- [ ] **W2.a** Teach the generated entry to emit what the examples currently
+- [~] **W2.a** SUPERSEDED by the option-(b) decision — the ceremony went into a
+      declared per-platform glue FILE, not the generated entry. Kept for the
+      record because the reasoning still applies if (a) is ever revisited.
+      ~~Teach the generated entry to emit what the examples currently~~
       hand-write: `force_link_backend!` for the selected RMW(s), the board's
       `*_app_main!` / `zephyr_component_main!` invocation, and the
       `extern crate <board> as _` / `extern crate alloc` link anchors. The
       generator already knows the board (`board_path_for`), so this is emission,
       not new resolution.
-- [ ] **W2.b** Migrate the plain `rust/{talker,listener,service-*,action-*}`
-      examples to the two-file `-entry` shape.
-- [ ] **W2.c** Normalize the node-package names so the `pub use <node>::register;`
+- [~] **W2.b** SUPERSEDED — went the OTHER way. The decision was to collapse the
+      `-entry` packages, not to spread them, so the plain examples gained a
+      `src/main.rs` in the SAME package rather than an `-entry` sibling.
+- [x] **W2.c** RESOLVED BY DELETION — the collapse removed every
+      `pub use <node>::register;` file, so there is no line left to normalize
+      and no naming policy to settle.
+      ~~Normalize the node-package names so the `pub use <node>::register;`~~
       line is identical across platforms (today `freertos_rs_talker` vs
       `nuttx_rs_talker`). Naming rules already exist in
       `examples/workspaces/README-layout.md`; extend them to examples.
@@ -292,6 +299,58 @@ The mistake was mine and it was avoidable: the decision existed, it just was not
 written in the phase doc, and I scoped the remaining work from the doc rather
 than asking. Recorded here because "the doc said it was still open" is exactly
 how a settled decision gets relitigated.
+
+## Status — what is left (2026-08-05)
+
+Progress metric: divergence entries **41 (baseline) → 6**; 14 of 20
+`(lang, program, group)` triples fully identical. **Every Rust group-A program
+is byte-identical across all six of its platforms** — the portability claim,
+demonstrated rather than asserted.
+
+Landed: W1 (gate), W2 (collapse + naming resolved by deletion), W3.a/W3.b,
+W3.d (riscv64), W3.e (threadx-linux), W4, W5.
+
+### The 6 remaining divergences
+
+| entry | class | closes with |
+|---|---|---|
+| `c/action-client`, `cpp/action-client`, `cpp/service-client` [qemu-arm-nuttx] | a 3-attempt retry loop the other platforms lack | a decision: retry belongs in the RMW, or in every copy. NOT a platform constraint. |
+| `rust/talker`, `rust/listener` [qemu-esp32-baremetal] | group B is not internally consistent | W3.c, which is gated on W7 |
+| `c/listener` [native] | **PERMANENT** — the `NROS_SUB_TYPE` env switch tests use to pick int32 vs string | nothing; delete only if that test goes |
+
+So five are closable and one is permanent. The floor for this phase is **1**.
+
+### The 4 remaining waves, honestly priced
+
+* **W2.d** — the `#![no_std]`/`#![no_main]` split. freertos `main.rs` carries
+  both, nuttx and threadx-linux carry neither. Small, and now cosmetic-only:
+  `main.rs` is GLUE to the gate, so it is not compared and this blocks nothing.
+* **W3.c** — measure group B's irreducible delta. Gated on W7.
+* **W6** — fold the copies. **Recommendation: do not, and close it.** W6.b
+  already pre-authorizes this ("if that cannot be kept, do not fold; the gate
+  alone already removes the drift risk, which was the actual problem"). The
+  copies exist so a user can `cp -r` one out (RFC-0026); every way to fold them
+  either breaks that (`include!`, symlinks) or adds a templating surface nothing
+  else needs. Duplication that *cannot drift* is not a defect — it is the price
+  of copy-out, and W1 made it undriftable. Needs a maintainer yes/no, not work.
+* **W7** — one logging facade. **Needs re-scoping before it starts**: W7.a's
+  premise was disproved (issue 0420 is archived not-a-bug; all three platforms
+  do emit through the facade). What survives is W7.b/c/d — move the bodies to
+  `nros_info!`, decide `log`'s status, re-measure group B — plus the real
+  finding underneath 0420: the NuttX cells cannot run at all on an unprovisioned
+  host, so a facade regression there would be invisible. Fix the visibility
+  first or W7.b lands unwitnessed.
+
+### Not phase-338, but surfaced by it
+
+* The group action-server body is a stub publishing a fixed `[0,1,1]`;
+  converging riscv64 deleted the only real Fibonacci implementation. Growing the
+  group body is the honest fix — four platforms with live runtime lanes, and
+  128 → 256 feedback buffers on constrained targets.
+* Building any embedded example by hand needs SDK env `activate.sh` never sets
+  (4 vars threadx-linux, 1 nuttx, 5 freertos), all defaulted only in
+  `just/sdk-env.just`. Works through the `just` door, fails through the `cargo`
+  door in a way that reads like a code fault.
 
 ## W2 DONE — the 18 `-entry` packages are collapsed (2026-08-05)
 
@@ -673,11 +732,11 @@ called from both exact-match walkers (`metadata_refresh`, `check_workspace`).
 `stale_guard` and `source_stamp` look similar but are not this class and were
 left alone.
 
-- [ ] **W3.a** Establish why the hosted Rust example is 91 lines when its embedded
+- [x] **W3.a** Establish why the hosted Rust example is 91 lines when its embedded
       sibling is 34 — how much is genuinely hosted-only (arg parsing, signal
       handling, `std` logging) versus ceremony the generated entry could own on
       both sides. **ANSWERED above: ~2/3 is the triple-implemented type switch.**
-- [ ] **W3.b** Bring native onto the entry shape so the body is the same 34 lines,
+- [x] **W3.b** Bring native onto the entry shape so the body is the same 34 lines,
       with the hosted/embedded difference living entirely in the generated `main`
       that `emit_rust.rs` **already** emits in both shapes.
       *Result:* `rust/talker` reaches ONE body across **group A** (below) — the
@@ -719,7 +778,7 @@ whatever survives is a declared group, not a defect.
 **Owner moved here from phase-337 W1.a** — it is a source-portability defect, so
 it belongs with the rest of them. phase-337 keeps a pointer.
 
-- [ ] **W4.a** `packages/boards/nros-board-freertos/build.rs:273-287` **hard-panics**
+- [x] **W4.a** `packages/boards/nros-board-freertos/build.rs:273-287` **hard-panics**
       for any `thumb*` target that is not `thumbv7m` unless `FREERTOS_CFLAGS` is
       set, even though `config/freertos-lwip/nros-platform.toml` now lists
       `arch = ["cortex-m3", "cortex-m7"]`. Derive the cflags from the `[arch.*]`
