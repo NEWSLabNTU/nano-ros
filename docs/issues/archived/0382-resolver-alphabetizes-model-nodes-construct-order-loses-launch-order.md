@@ -2,7 +2,7 @@
 id: 0382
 title: Resolver serializes model nodes alphabetized — entry construct order
   no longer follows launch declaration order
-status: open
+status: resolved  # fixed 2026-08-05
 severity: medium
 created: 2026-08-01
 tags: [orchestration, codegen, system-model]
@@ -89,3 +89,27 @@ Note: fixing this requires re-resolving affected committed models (the
 alphabetization is baked into files on disk), which collides with issue
 0380's regeneration hazard — land 0370's guard/schema decision first or
 regenerate with care.
+
+## Resolution (2026-08-05)
+
+All three steps landed. Steps 1 and 2 upstream — `ros-launch-manifest` v0.1.4
+carries `nodes: IndexMap<String, NodeInstance>` (the order-preserving form, not
+the additive `declaration_index`), and the resolver populates it. Step 3 was the
+tag bump, already in `nros-orchestration-ir`; no consumer-side sort is needed
+because the map now IS the order.
+
+`cpp_multi_node_entry::multi_node_workspace_cpp_typed_configures_and_builds` —
+the test this issue was filed from — passes: the generated TU constructs
+`talker_pkg::Talker` as `__nros_comp_0` and `listener_pkg::Listener` as
+`__nros_comp_1`, matching the launch XML rather than the alphabet.
+
+The regeneration hazard this issue flagged turned out to be the load-bearing
+part. The committed TU was stale (generated 2026-08-04 07:34, before the pin
+moved) and still showed listener-first, so the test kept failing after the fix
+had landed. Regenerating it needed `nros codegen entry`, which died on the
+model phase-330 W4 had deleted — see `archived/0414`, whose CMake half was fixed
+in the same change as this one.
+
+One consumer-side assertion moved with it: `entry_typed_plan` asserted the
+ALPHABETICAL order and reasoned in a comment that the model "has no launch order
+to preserve". It does now.

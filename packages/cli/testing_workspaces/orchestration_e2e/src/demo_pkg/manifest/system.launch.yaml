@@ -4,3 +4,18 @@ topics:
     type: std_msgs/msg/String
     pub: [/talker]
     sub: [/talker]
+# issue 0392 — the talker node also serves a service and an action (see
+# `src/lib.rs`: `create_service_server_for_name_with_callback::<EchoSrv>` and
+# `create_action_server_for_name_with_callbacks::<EchoAction>`). The committed
+# source metadata was stale and did not list them, so the planner's
+# `metadata-entity-unmatched` check had nothing to complain about. Refreshing
+# the metadata surfaced both — the manifest, not the source, was the side that
+# had fallen behind.
+services:
+  /echo:
+    type: std_srvs/srv/Echo
+    server: [/talker]
+actions:
+  /echo_action:
+    type: nros_test/action/Echo
+    server: [/talker]

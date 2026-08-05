@@ -51,7 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#418** — raw action feedback/result payloads carry an EXTRA CDR encapsulation header
+<<<<<<< HEAD
+TU that kept the test red needed `nros codegen entry`, which needed 0414's CMake half fixed first.
+**#398** direction 2: `[[component]].name` stays an instance id, and `apply_model_execution` now
+REFUSES a `group_tiers` declaration that reached no node while a node of the same package is in the
+model — telling "renamed" apart from "absent in this variant", which look identical otherwise.
+**#392** last item done: `orchestration_e2e`'s metadata refresh exposed a service + action the launch
+MANIFEST never declared; the manifest was the stale side. See `archived/`.
+
+>>>>>>> f98a92cc9 (fix(#382, #392, #398): launch order, the stale e2e fixture, and a silent tier bind)
+
 (`[outer][goal_id][INNER][body]`), so they are wire-incompatible with ROS 2 *and* with nano-ros's
 own typed path. Raw↔raw is self-consistent — every action Runtime cell pairs a raw server with a
 raw client, so the double header cancels and nobody noticed. The inner header is deliberate (the raw
@@ -59,7 +68,7 @@ consumer reads the body with `new_with_header`), and removing it producer-only r
 issue-#35 corruption its comment warns about, so producer and consumer must change together. This is
 what stops phase-338 W3 migrating `action-{server,client}` / `service-client`. Decision in
 [RFC-0069](../design/0069-action-payload-envelope.md). See `0418-*`. (2026-08-05)
-
+=======
 Recently resolved (2026-08-04): **#414** — phase-330 W4 made the SystemModel a build artifact and
 deleted every committed `config/*model.yaml`; five tests still read those paths and failed on
 `os error 2` instead of on what they assert. RESOLVED by the rule that a test never reads a
@@ -169,7 +178,7 @@ constraints for the `no_std` C/C++ emitters; Render drives every backend from ru
 data packs — adding a language is dropping a pack, not editing Rust (askama gone). Boundary is an
 in-process trait, not a serialized JSON-IR. See `archived/0402-*` + `book/src/internals/codegen-packs.md`.
 
-**#398** — `[[component]] name` no longer matches the launch node name, so every per-node projection
+Recently resolved (2026-08-05): **#398** — `[[component]] name` no longer matches the launch node name, so every per-node projection
 keyed on it silently binds NOTHING. phase-331's consolidation gave component names workspace-unique
 prefixes (`rust_params_param_talker`) while launch files kept the plain node name (`param_talker`):
 ZERO of `features/`'s 20 component names match any of its 8 launch nodes. It stayed invisible because
@@ -219,7 +228,7 @@ scope half of #0351). Also fixed: the stamp survived a failed build (the clear r
 dependencies that build), three copies of the stamp writer, and a dead `NROS_FIXTURE_SHARED_SIG`
 export whose failure `export` was masking. See `archived/0393-*`. (2026-08-02)
 
-**#392** — Six bringups cannot `nros sync` AT ALL (not "produce a different model" — fail before
+Recently resolved (2026-08-05): **#392** — Six bringups cannot `nros sync` AT ALL (not "produce a different model" — fail before
 writing anything), so each is a phase-330 W4.a blocker: a bringup that cannot sync cannot regenerate
 its deleted model. Two legacy `[system]` schemas (`n9_workspace` missing the required `name`;
 `multi_pkg_workspace_freertos` spelling `launch`/`components`/`zenoh_locator` — its header says a
@@ -333,7 +342,7 @@ committed model is GONE (W4.a — build artifact under `<ws>/build/nros/models/`
 input-addressed via `launch =`/`LAUNCH`, `check-no-tracked-models` bans tracked copies). With no
 committed artifact, the conflict cannot recur. See `archived/0380-*`.
 
-**#382** (filed as #372; renumbered) — The resolver serializes `structure.nodes` alphabetized, so entry construct order no
+Recently resolved (2026-08-05): **#382** (filed as #372; renumbered) — The resolver serializes `structure.nodes` alphabetized, so entry construct order no
 longer follows launch declaration order (typed cpp multi-node TU builds listener before talker).
 Preserve declaration order in the emitted mapping + a resolver-level order test. Fix collides with
 #380's regeneration hazard — sequence them. See `0382-*`. (2026-08-01)

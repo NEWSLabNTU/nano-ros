@@ -221,3 +221,23 @@ A and B are done. What remains:
   * `n9_workspace` still cannot complete a sync IN PLACE, but only because of
     the `@NANO_ROS_ROOT@` template placeholder documented below — its own
     schema defect is fixed.
+
+## Closed 2026-08-05 — the last item, `orchestration_e2e`'s stale metadata
+
+Refreshed. `nros sync` rewrites `demo_pkg/metadata/talker.json` with 122 more
+lines and renamed ids (`node_talker` -> `talker`, `pub_chatter` -> `chatter`).
+
+The refresh is what made the fixture honest, and it immediately failed
+`plan_pipeline_e2e` with two `metadata-entity-unmatched` errors: the source
+declares a service (`echo`) and an action (`echo_action`) that the launch
+MANIFEST never listed. The stale metadata had hidden both — the planner's
+coverage check had nothing to compare against.
+
+So the manifest was the side that had fallen behind, not the source.
+`manifest/system.launch.yaml` now declares both endpoints (the schema has
+supported `services:` / `actions:` all along; this fixture simply never used
+them). `plan_pipeline_e2e` 3/3, `orchestration_e2e` 1/1.
+
+The other remaining item — `n9_workspace` cannot sync IN PLACE — is not a defect:
+the `@NANO_ROS_ROOT@` placeholder is what makes it a template, and every consumer
+stages it through `stage_fixture()`, which substitutes the placeholder first.

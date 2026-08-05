@@ -7,7 +7,9 @@
   "exported_symbol": "nros_component_talker",
   "nodes": [
     {
-      "id": "node_talker",
+      "id": "talker",
+      "declaration_slot": 0,
+      "source_default_name": "talker",
       "unresolved_name": {
         "value": "talker",
         "kind": "relative"
@@ -15,7 +17,8 @@
       "namespace": null,
       "publishers": [
         {
-          "id": "pub_chatter",
+          "id": "chatter",
+          "declaration_slot": 0,
           "unresolved_topic": {
             "value": "chatter",
             "kind": "relative"
@@ -25,12 +28,23 @@
             "name": "msg/String",
             "kind": "message"
           },
-          "qos": null
+          "qos": {
+            "reliability": "reliable",
+            "durability": "volatile",
+            "history": "keep_last",
+            "depth": 10,
+            "deadline_ms": null,
+            "lifespan_ms": null,
+            "liveliness": "automatic",
+            "liveliness_lease_duration_ms": null,
+            "extensions": {}
+          }
         }
       ],
       "subscribers": [
         {
-          "id": "sub_chatter",
+          "id": "cb_echo",
+          "declaration_slot": 2,
           "unresolved_topic": {
             "value": "chatter",
             "kind": "relative"
@@ -40,49 +54,128 @@
             "name": "msg/String",
             "kind": "message"
           },
-          "qos": null,
-          "callback": "cb_chatter"
+          "qos": {
+            "reliability": "reliable",
+            "durability": "volatile",
+            "history": "keep_last",
+            "depth": 10,
+            "deadline_ms": null,
+            "lifespan_ms": null,
+            "liveliness": "automatic",
+            "liveliness_lease_duration_ms": null,
+            "extensions": {}
+          },
+          "callback": "cb_echo",
+          "callback_slot": 1
         }
       ],
-      "timers": [],
-      "services": [],
-      "actions": []
+      "timers": [
+        {
+          "id": "cb_timer",
+          "declaration_slot": 1,
+          "period_ms": 100,
+          "callback": "cb_timer",
+          "callback_slot": 0
+        }
+      ],
+      "services": [
+        {
+          "id": "echo",
+          "declaration_slot": 3,
+          "unresolved_name": {
+            "value": "echo",
+            "kind": "relative"
+          },
+          "interface": {
+            "package": "std_srvs",
+            "name": "srv/Echo",
+            "kind": "service"
+          },
+          "callback": "cb_srv",
+          "callback_slot": 2
+        }
+      ],
+      "actions": [
+        {
+          "id": "echo_action",
+          "declaration_slot": 4,
+          "unresolved_name": {
+            "value": "echo_action",
+            "kind": "relative"
+          },
+          "interface": {
+            "package": "nros_test",
+            "name": "action/Echo",
+            "kind": "action"
+          },
+          "goal_callback": "cb_act",
+          "goal_callback_slot": 3,
+          "cancel_callback": "cb_act",
+          "cancel_callback_slot": 3,
+          "accepted_callback": "cb_act",
+          "accepted_callback_slot": 3
+        }
+      ]
     }
   ],
   "callbacks": [
     {
-      "id": "cb_chatter",
+      "id": "cb_timer",
+      "declaration_slot": 0,
+      "kind": "timer",
+      "group": null,
+      "effects": [],
+      "source": {
+        "artifact": "src/lib.rs",
+        "line": 19,
+        "column": 22
+      }
+    },
+    {
+      "id": "cb_echo",
+      "declaration_slot": 1,
       "kind": "subscription",
       "group": null,
-      "effects": [
-        {
-          "kind": "publishes",
-          "entity": "pub_chatter"
-        }
-      ],
+      "effects": [],
       "source": {
         "artifact": "src/lib.rs",
-        "line": 42,
-        "column": 5
+        "line": 23,
+        "column": 22
       }
-    }
-  ],
-  "parameters": [
+    },
     {
-      "node": "node_talker",
-      "name": "rate_hz",
-      "default": 10,
-      "read_only": false,
+      "id": "cb_srv",
+      "declaration_slot": 2,
+      "kind": "service",
+      "group": null,
+      "effects": [],
       "source": {
         "artifact": "src/lib.rs",
-        "line": 10,
-        "column": 1
+        "line": 27,
+        "column": 22
+      }
+    },
+    {
+      "id": "cb_act",
+      "declaration_slot": 3,
+      "kind": "action_goal",
+      "group": null,
+      "effects": [],
+      "source": {
+        "artifact": "src/lib.rs",
+        "line": 30,
+        "column": 29
       }
     }
   ],
+  "parameters": [],
   "trace": {
     "generator": "nros-metadata-rust",
     "package_manifest": "package.xml",
-    "source_artifacts": ["src/lib.rs"]
+    "source_artifacts": []
+  },
+  "provenance": {
+    "inputs_digest": "fnv1a64:00cb1d8cc4fed8f5",
+    "generator": "nros 0.5.0"
   }
 }

@@ -28,12 +28,49 @@ use serde_json::Value as JsonValue;
 
 use crate::orchestration::{cargo_metadata_schema::SystemToml, source_metadata::SourceMetadata};
 
-/// Load + schema-gate a SystemModel.
+/// Load + schema-gate a SystemModel, RESOLVING it from the bringup's inputs
+/// when no build has produced one.
+///
+/// The model is an intermediate artifact (phase-330): a consumer asks for it by
+/// its inputs and never requires the user to have produced one. This is the
+/// same rule `nros::main!` follows — `model_location::ensure_model` is the one
+/// implementation both use — extended here so the CMake path gets it too.
+/// `nano_ros_entry(LAUNCH …)` shells out to `nros codegen entry`, which landed
+/// on this function and died with
+///
+///     Error: read SystemModel …/config/system_model.yaml
+///       No such file or directory (os error 2)
+///
+/// for a bringup whose `system.toml` and launch file were sitting right there
+/// (issue 0414, the CMake half).
+///
+/// A conventional model path is `<bringup>/config/<name>.yaml`, which is how
+/// `model_location` builds its search paths in the first place — so the bringup
+/// is recoverable from the path when the file is absent. A path of any other
+/// shape (a temp file a caller resolved itself) exists by construction, so the
+/// fallback never sees it.
 pub fn load_model(path: &Path) -> Result<SystemModel> {
-    let yaml = std::fs::read_to_string(path)
-        .with_context(|| format!("read SystemModel {}", path.display()))?;
+    let resolved: std::borrow::Cow<'_, Path> = if path.is_file() {
+        std::borrow::Cow::Borrowed(path)
+    } else {
+        let bringup_dir = path
+            .parent()
+            .and_then(|config| config.parent())
+            .ok_or_else(|| eyre::eyre!("read SystemModel {}: no such file", path.display()))?;
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| eyre::eyre!("read SystemModel {}: no file name", path.display()))?;
+        let model_rel = format!("config/{name}");
+        let (produced, _inputs) =
+            nros_orchestration_ir::model_location::ensure_model(bringup_dir, &model_rel)
+                .map_err(|e| eyre::eyre!("resolve SystemModel for {}: {e}", path.display()))?;
+        std::borrow::Cow::Owned(produced)
+    };
+    let yaml = std::fs::read_to_string(resolved.as_ref())
+        .with_context(|| format!("read SystemModel {}", resolved.display()))?;
     SystemModel::from_yaml_str(&yaml)
-        .map_err(|e| eyre::eyre!("load SystemModel {}: {e}", path.display()))
+        .map_err(|e| eyre::eyre!("load SystemModel {}: {e}", resolved.display()))
 }
 
 /// Bare node name from a model FQN (`/ns/node` → `node`).
@@ -120,6 +157,67 @@ pub fn apply_model_execution(
             });
         }
     }
+    // ISSUE 0398 — the other direction, which was silent.
+    //
+    // A binding that names no component already bails above. The reverse never
+    // did: a `[[component]]` that declares `group_tiers` and matches NO launch
+    // node produces no binding at all, so there is nothing here to reject, and
+    // the node quietly runs on the default tier.
+    //
+    // That is not hypothetical. `[[component]].name` is an instance id that must
+    // be unique across a bringup, while the launch node keeps the plain role
+    // name — phase-331's consolidation made all 20 of `features/`'s component
+    // names differ from all 8 of its launch node names. The params projection
+    // survived only because rlm v0.1.2 added a package-based fallback and emits
+    // a diagnostic when even that misses; `group_tiers` has neither. The first
+    // consolidated workspace to declare one would have lost its tiers with no
+    // trace.
+    //
+    // The matching rule itself belongs upstream (the resolver decides which node
+    // a component binds to). What belongs HERE is refusing to bake a declaration
+    // that reached nothing.
+    // ABSENT-IN-VARIANT is not the same as RENAMED, and only the second is a
+    // defect. A bringup is a CATALOG: `features/` declares 20 components and
+    // each of its 8 launches uses a handful, so most components legitimately
+    // reach no node in any given model (`realtime-cpp`'s `aux_node` is in the
+    // freertos launch and not the native one). Failing on that would make a
+    // multi-variant bringup unbakeable.
+    //
+    // The rename hazard has a signature that tells them apart: the model DOES
+    // contain a node from the component's package, under a different name. That
+    // is a component whose node is right there and did not match — the phase-331
+    // shape — and it is an error. A package with no node in this model is simply
+    // not part of this variant.
+    let bound: std::collections::BTreeSet<&str> = overrides.keys().map(|s| s.as_str()).collect();
+    let renamed: Vec<String> = system
+        .components
+        .iter()
+        .filter(|c| !c.group_tiers.is_empty() && !bound.contains(c.name.as_str()))
+        .filter_map(|c| {
+            let node = model
+                .structure
+                .nodes
+                .iter()
+                .find(|(_, n)| n.pkg.as_deref() == Some(c.pkg.as_str()))?;
+            Some(format!(
+                "`{}` (its package `{}` runs in this model as `{}`)",
+                c.name, c.pkg, node.0
+            ))
+        })
+        .collect();
+    if !renamed.is_empty() {
+        bail!(
+            "these `[[component]]`s declare `group_tiers` that reached no node, while a node \
+             of the SAME PACKAGE is in the resolved model: {}. A component binds to a launch \
+             node by NAME (`[[component]].name` vs the node's `name=`), so a component renamed \
+             for workspace-wide uniqueness stops matching its own node and its tiers fall back \
+             to the default silently — issue 0398. Give the node the component's name, or bind \
+             it with an explicit `[[node_overrides]]`. (A component whose package has no node \
+             here is simply absent from this variant, and is not an error.)",
+            renamed.join(", ")
+        );
+    }
+
     system.node_overrides = overrides
         .into_iter()
         .map(|(name, callback_groups)| NodeOverride {

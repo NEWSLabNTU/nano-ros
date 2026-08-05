@@ -2,7 +2,7 @@
 id: 398
 title: "`[[component]] name` no longer matches the launch node name, so every
   per-node projection keyed on it silently does nothing"
-status: open
+status: resolved  # fixed 2026-08-05
 type: bug
 area: orchestration
 related: [phase-331, phase-330, rfc-0066, rfc-0047, 0380]
@@ -76,3 +76,43 @@ Either way, the invariant worth having is that ONE rule matches components to
 nodes, and that failing to match is loud. The bare-name rule is currently
 implicit, undocumented, and silent on failure — which is why a whole-workspace
 rename could invalidate it without a single test noticing.
+
+## Resolution (2026-08-05) — direction 2, plus the loud failure
+
+**Decision (phase-331 owns the naming): `[[component]].name` stays an INSTANCE
+ID.** Recoupling it to the launch node name (direction 1) would mean giving four
+language variants of one role distinct namespaces, which changes wire-visible
+node names and every test that asserts them — a large blast radius to buy a
+matching rule that is already worked around. Projections key on the documented
+rule (bare name, then unambiguous package, as rlm v0.1.2 does for params).
+
+What was missing is the invariant this issue actually asks for: **failing to
+match is loud.** The model->component direction already bails on a binding that
+names no component. The reverse was silent — a `[[component]]` declaring
+`group_tiers` that matched no node produced no binding, so there was nothing to
+reject and the node ran on the default tier.
+
+`apply_model_execution` now refuses that. The check distinguishes the two cases
+that look identical from the outside:
+
+  * **absent in this variant** — no node of the component's PACKAGE is in this
+    model. Legitimate and common: a bringup is a catalog, and each launch uses a
+    subset (`realtime-cpp`'s `aux_node` is in the freertos launch, not the
+    native one). Not an error, or every multi-variant bringup becomes unbakeable.
+  * **renamed** — a node of the SAME package IS in the model under another name.
+    That is a component whose node is right there and did not match: the
+    phase-331 shape, and an error naming the component, its package and the node
+    it should have bound to.
+
+Watched both directions rather than assumed: `workspace-cpp-native-realtime`
+builds clean with `aux_node` absent, and renaming `ctrl_node` to
+`renamed_ctrl_node` fails with
+
+    these `[[component]]`s declare `group_tiers` that reached no node, while a
+    node of the SAME PACKAGE is in the resolved model: `renamed_ctrl_node`
+    (its package `ctrl_pkg` runs in this model as `/ctrl_node`)
+
+The first draft of the check failed on absent-in-variant too, which the realtime
+workspace caught immediately — worth recording, because "declaration reached
+nothing" and "declaration does not apply here" are the same observation until
+you look at the package.
