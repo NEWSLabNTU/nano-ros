@@ -645,6 +645,13 @@ pub unsafe extern "C" fn nros_cpp_init(
 fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t {
     use nros_node::NodeError as E;
     use nros_rmw::TransportError as T;
+    // Issue 0436 — `-100` is documented as the catch-all for unmapped variants, so
+    // a C++ caller sees "TransportError" for causes that are not transport at all.
+    // That collapse is what made the PX4 bridge's init failure undiagnosable (the
+    // #0428 class, one layer out). Name the real variant on the error path — it
+    // only runs when something already failed.
+    #[cfg(feature = "std")]
+    std::eprintln!("nros: NodeError::{err:?}");
     match err {
         E::NameTooLong => NROS_CPP_RET_INVALID_ARGUMENT,
         E::Serialization | E::Deserialization => NROS_CPP_RET_ERROR,

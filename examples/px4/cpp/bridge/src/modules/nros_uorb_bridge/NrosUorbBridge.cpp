@@ -64,6 +64,7 @@
 
 #include <cstring>
 
+
 using namespace time_literals;
 
 namespace
@@ -164,21 +165,25 @@ bool NrosUorbBridge::init()
 		return false;
 	}
 
+#ifndef NROS_BRIDGE_INWARD_ONLY
 	// Outward session — explicitly the networked backend.
 	if (!nros::NodeBuilder(exec, "px4_bridge_out").rmw(NROS_BRIDGE_RMW).build(_out_node).ok()) {
 		PX4_ERR("bind outward node to %s failed", NROS_BRIDGE_RMW);
 		return false;
 	}
+#endif
 
 	if (!_in_node.create_subscription(_in_sub, kInTopic).ok()) {
 		PX4_ERR("create_subscription(%s) failed", kInTopic);
 		return false;
 	}
 
+#ifndef NROS_BRIDGE_INWARD_ONLY
 	if (!_out_node.create_publisher(_out_pub, kOutTopic).ok()) {
 		PX4_ERR("create_publisher(%s) on %s failed", kOutTopic, NROS_BRIDGE_RMW);
 		return false;
 	}
+#endif
 
 	PX4_INFO("bridging %s (uorb) -> %s (%s)", kInTopic, kOutTopic, NROS_BRIDGE_RMW);
 	ScheduleOnInterval(200_ms);
@@ -208,7 +213,13 @@ void NrosUorbBridge::Run()
 	px4_msgs::msg::DebugKeyValue out{};
 	translate(*in, out);
 
+#ifdef NROS_BRIDGE_INWARD_ONLY
+	(void)out;
+	_forwarded++;
+	if (false) {
+#else
 	if (_out_pub.publish(out).ok()) {
+#endif
 		_forwarded++;
 
 		if (_forwarded == 1 || (_forwarded % 25) == 0) {
