@@ -274,10 +274,13 @@ width have **never** run — and `nros-platform-zephyr/src/net_wait.c:53`'s
       move to the tail and the witness takes 9. If either ever gains a Runtime
       cell the gate fires — correct, because at that point the scheme is full and
       wants narrowing, not another renumber.
-- [ ] **W2.d — Cells:** pubsub × {c, cpp} × zenoh as `Runtime` (2 — **not 3**;
-      the rust arm is blocked on issue 0432, and a cell that cannot build is not
-      a `BuildOnly` cell, it is a lie); service and action as `BuildOnly` with
-      the reason string until they run (4).
+- [x] **W2.d — LANDED 2026-08-05. Cells:** pubsub × {c, cpp} × zenoh as
+      `Runtime` (2 — **not 3**; the rust arm is blocked on issue 0432, and a cell
+      that cannot build is not a `BuildOnly` cell, it is a lie); service and
+      action as `BuildOnly` with the reason string until they run (4). Both
+      Runtime cells pass in 3.3 s each on fixtures built through the west leaves
+      lane. Zenoh only: cyclone and xrce on this board are untried, and the
+      honest record of "nobody has attempted it" is no row, not a guess.
 - [x] **W2.e — LANDED 2026-08-05.** Joined the west-lane exemption in BOTH
       directions of `matrix_fixture_coverage`, with no kind qualifier: this board
       has only Example cells and every one is a west build, so native_sim's

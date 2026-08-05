@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#439** — a lane-narrowed fixture build KILLS any recipe that names a fixture by `--id`, so
+`just ci-matrix` cannot run at all (3 of 8 tier-2 modules die, no stamp, `_lane-gate` fails). Two
+guards that are each right alone: #0393's `--coords-from` removes rows for lane reasons, #0406 treats
+an `--id` matching zero rows as a wrong invocation. Together, a lane dropping the row makes 0406
+blame the caller — and the message prints requested and declared coordinates that are IDENTICAL,
+because the thing that excluded the row (the lane) appears in neither. Only bites `--id` FLAG callers
+under `lane=tier2`/`tier2-nightly`; the `NROS_FIXTURE_ID` env path already returns 0 for this case.
+Fix = on an empty narrowed result, re-query without `--coords-from`: present ⇒ out-of-lane, exit 0;
+absent ⇒ the real 0406 typo. See `0439-*`. (2026-08-06)
+
 **#437** — `just check-fast` is RED on **main**: `check-build-profile-literals` flags four sites in
 `just/px4.just` (three `cargo build --release`, one `target/release/` path) added by `e2f850efa`
 (#0362 pass 2). Reproduced against a pristine `origin/main` worktree, so it is not an interaction
