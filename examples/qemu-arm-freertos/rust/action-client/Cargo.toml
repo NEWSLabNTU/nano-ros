@@ -35,6 +35,10 @@ crate-type = ["rlib"]
 # brings `nros-platform/platform-freertos`. The sibling node pkg + this Entry's
 # `nros` dep name neither `rmw-*` nor `platform-*`.
 nros-board-mps2-an385-freertos = { version = "*", features = ["rmw-zenoh"] }
+# phase-338 W2 — carried from the collapsed `-entry` package. The board
+# brings the FreeRTOS port; without this the image boots but the app never
+# reaches "Application setup complete".
+nros-platform = { version = "*", default-features = false, features = ["platform-freertos"] }
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi"] }
 example_interfaces = { path = "generated/example_interfaces", default-features = false }
 # Demo-parity log lines route through the `log` facade; the platform
@@ -50,10 +54,14 @@ name = "action_client"
 default_namespace = "/"
 
 [package.metadata.nros.deploy.freertos]
-board = "qemu-mps2-an385"
 rmw = "zenoh"
 domain_id = 0
-locator = "tcp/10.0.2.2:7447"
+# phase-338 W2 — the ENTRY's locator, not the node's. The role
+# ports are what the e2e harness binds zenohd to; the node block's
+# generic 7447 was never the deployed value.
+locator = "tcp/10.0.2.2:7820"
+ip = "10.0.2.16"
+gateway = "10.0.2.2"
 
 [package.metadata.ament]
 build_depend = ["example_interfaces"]
