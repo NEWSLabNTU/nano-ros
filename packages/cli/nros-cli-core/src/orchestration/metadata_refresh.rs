@@ -388,8 +388,16 @@ pub fn source_digest(package_root: &Path) -> Result<String> {
     mix(env!("CARGO_PKG_VERSION").as_bytes(), &mut hash);
     for rel in &files {
         mix(rel.to_string_lossy().as_bytes(), &mut hash);
-        let bytes = std::fs::read(package_root.join(rel))
-            .wrap_err_with(|| format!("read {}", package_root.join(rel).display()))?;
+        // A file that vanishes between the walk and the read is build output a
+        // concurrent cargo removed, not a source. `is_build_output_dir` should
+        // already have excluded it — but with `incremental = true` (the
+        // development profile since phase-336) cargo churns `.o` files under
+        // dirs the walk has just listed, and a hard failure here took the whole
+        // fixture build down. A genuinely missing SOURCE cannot disappear here
+        // without also being absent from the walk.
+        let Ok(bytes) = std::fs::read(package_root.join(rel)) else {
+            continue;
+        };
         mix(&bytes, &mut hash);
     }
     Ok(format!("fnv1a64:{hash:016x}"))
