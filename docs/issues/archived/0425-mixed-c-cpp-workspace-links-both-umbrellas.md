@@ -1,10 +1,11 @@
 ---
 id: 425
 title: "A mixed C+C++ workspace links BOTH umbrella staticlibs and dies on ~96 duplicate symbols"
-status: open
+status: resolved
 type: bug
 area: cmake
 related: [phase-241, phase-337, issue-0160]
+resolved_in: "phase-337 session"
 ---
 
 ## Symptom
@@ -54,19 +55,44 @@ umbrella arrives through a dependency.
 shape works, so this is a supported configuration that the single-runtime change
 made unlinkable.
 
-## Fix direction
+## Fix (landed)
 
-The final EXECUTABLE must pick exactly one umbrella; a node-package library must
-not pick one at all. A C node library needs the C ABI **headers** (include dirs,
-compile definitions) to compile, not the staticlib to link — the symbols come
-from whichever umbrella the executable chooses.
+Simpler than the INTERFACE-target restructure this filing sketched, and it
+follows a rule the tree already applied in one place: **prefer the umbrella that
+BUNDLES the other, whenever it exists.**
 
-So `nano_ros_auto_add_library` (and whatever else links `NanoRos` into a node
-lib) should attach an INTERFACE-only target for the C ABI, leaving
-`nano_ros_entry` as the single place an umbrella archive is selected. That also
-restores the stated invariant instead of working around it with `-z muldefs`,
-which `check-no-allow-multiple-def` bans repo-wide for exactly this reason
-(issue 0160's class: a duplicate-symbol workaround hides a real ODR problem).
+`NanoRosNodeRegister.cmake` already did this for a TYPED C component, with the
+reasoning spelled out — "the umbrella bundles nros-c's C ABI, so `nros_*` C
+calls still resolve, and only ONE Rust staticlib is linked". The bug was that
+the same reasoning was applied only to typed components; every other site kept a
+`NOT _TYPED` carve-out routing legacy C code to `NanoRos`. In a mixed workspace
+that carve-out is what put both archives on one link line.
+
+FOUR sites had the carve-out, and all four had to move together — fixing three
+left the count at exactly 96 duplicates, because the last one still pulled the C
+archive in:
+
+| Site | What it links |
+|---|---|
+| `NanoRosNodeRegister.cmake` | the component library |
+| `NanoRosVerbs.cmake` | the component library, `nano_ros_component_register` path |
+| `NanoRosEntry.cmake` | the executable |
+| `NanoRosGenerateInterfaces.cmake` | the GENERATED message-binding library |
+
+The last is the one that is easy to miss: generated bindings are consumed by
+both C and C++ packages, so they drag the C umbrella into a C++ executable no
+matter what the node and entry choose.
+
+A pure-C workspace instantiates no `NanoRosCpp` target, so every site falls
+through to `NanoRos` exactly as before — verified, not assumed.
+
+No `-z muldefs`: `check-no-allow-multiple-def` bans it repo-wide, and it would
+have hidden a real ODR problem (issue 0160's class).
+
+**Verified:** `c_mixed_workspace` links clean (was 96 duplicate symbols);
+`pure_c_workspace`, `cpp_robot_entry` and `shadowing` all still exit 0;
+`just build-test-fixtures lane=native` completes (was: stopped here);
+`just check-fast` + `just check-build` green.
 
 ## Reproduce
 

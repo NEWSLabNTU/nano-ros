@@ -622,8 +622,22 @@ function(nros_generate_interfaces target)
       )
     endif()
 
-    # Link to nros-c
-    if(TARGET NanoRos::NanoRos)
+    # Link to the nano-ros runtime umbrella.
+    #
+    # issue 0425 — prefer `NanoRosCpp` when it exists. This generated C binding
+    # library is consumed by BOTH C and C++ packages, so in a mixed workspace it
+    # was the third path (after the node-lib and entry sites) that dragged
+    # `libnros_c.a` onto a C++ executable that already links `libnros_cpp.a` —
+    # and the latter BUNDLES nros-c, so the two archives define the same C ABI
+    # twice. Preferring the bundling umbrella keeps ONE Rust staticlib per
+    # binary; a pure-C workspace has no `NanoRosCpp` target and is unchanged.
+    if(TARGET NanoRos::NanoRosCpp)
+      set(_link_type PUBLIC)
+      if(NOT _generated_sources)
+        set(_link_type INTERFACE)
+      endif()
+      target_link_libraries(${_lib_target} ${_link_type} NanoRos::NanoRosCpp)
+    elseif(TARGET NanoRos::NanoRos)
       set(_link_type PUBLIC)
       if(NOT _generated_sources)
         set(_link_type INTERFACE)

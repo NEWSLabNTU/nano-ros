@@ -397,10 +397,26 @@ function(nano_ros_node_register)
             # NOT the C-only NanoRos. (A legacy declarative C node keeps NanoRos.)
             # The umbrella bundles nros-c's C ABI, so `nros_*` C calls still resolve,
             # and only ONE Rust staticlib is linked (no double `std`/REGISTRY).
-            if(_nrc_lang STREQUAL "C" AND NOT _NRC_TYPED AND TARGET NanoRos::NanoRos)
-                target_link_libraries(${_lib} PUBLIC NanoRos::NanoRos)
-            elseif(TARGET NanoRos::NanoRosCpp)
+            #
+            # issue 0425 — the C-only branch is taken ONLY when no C++ umbrella
+            # exists in this configure. A MIXED workspace (C node pkg + C++ node
+            # pkg + C++ entry) otherwise links BOTH archives into one
+            # executable: the C node drags `libnros_c.a`, the C++ side drags
+            # `libnros_cpp.a`, and since Phase 241.D3-rev the latter BUNDLES
+            # nros-c — ~96 duplicate `nros_log_*` / `nros_lifecycle_*`
+            # definitions, which is the "NEVER both" rule stated in
+            # NanoRosEntry.cmake being violated through a DEPENDENCY rather than
+            # by the entry's own LANG.
+            #
+            # Preferring the C++ umbrella when it is present is exactly the
+            # reasoning the TYPED branch above already relies on — it bundles
+            # nros-c, so a C node's `nros_*` calls still resolve and the binary
+            # links ONE Rust staticlib. A pure-C workspace instantiates no
+            # `NanoRosCpp` target and so keeps `NanoRos`, unchanged.
+            if(TARGET NanoRos::NanoRosCpp)
                 target_link_libraries(${_lib} PUBLIC NanoRos::NanoRosCpp)
+            elseif(TARGET NanoRos::NanoRos)
+                target_link_libraries(${_lib} PUBLIC NanoRos::NanoRos)
             endif()
             target_include_directories(${_lib} PUBLIC
                 "${CMAKE_CURRENT_SOURCE_DIR}/include"

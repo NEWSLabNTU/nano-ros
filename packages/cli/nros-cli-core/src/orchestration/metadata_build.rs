@@ -358,14 +358,27 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
     let out = child
         .wait_with_output()
         .wrap_err_with(|| format!("run metadata-mode harness for '{}'", o.component_id))?;
-    // Echo the captured stderr so the harness's own diagnostics are not lost.
-    {
+    // Echo the captured stderr so the harness's own diagnostics are not lost —
+    // but only when the probe SUCCEEDED.
+    //
+    // issue 0426: on failure this echo dumped the probe's full rustc output and
+    // the caller then degraded QUIETLY (deploy-bound examples fall back to the
+    // SystemModel bound). The operator saw a screenful of `error[E0432]` from a
+    // build that exits 0, with nothing tying the two together — and a REAL
+    // compile error in that package looked exactly the same. A failure's cause
+    // belongs in the failure MESSAGE, which the caller prints on the same line
+    // as the degradation; see the excerpt folded into `bail!` below.
+    if out.status.success() {
         use std::io::Write;
         let _ = std::io::stderr().write_all(&out.stderr);
     }
     if !out.status.success() {
         let code = out.status.code().unwrap_or(-1);
         let stderr = String::from_utf8_lossy(&out.stderr);
+        // The first rustc diagnostic is what identifies the cause; the rest is
+        // notes and a second copy under `--message-format`. Keep it short — this
+        // rides inside a one-line "probe failed" report.
+        let excerpt = first_diagnostic(&stderr);
         // #0390 — if the failure is a missing vendored `[source.*]` tree, name
         // the remedy in the user's vocabulary rather than leaving cargo's raw
         // path error. Index-driven (dest → package name), so it stays correct
@@ -380,7 +393,7 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
                 o.component_id
             ),
             None => bail!(
-                "metadata-mode harness failed (exit {code}) for component '{}'",
+                "metadata-mode harness failed (exit {code}) for component '{}': {excerpt}",
                 o.component_id
             ),
         }
@@ -393,6 +406,24 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
     }
     relativise_source_artifacts(&o.output_path, &o.component_dir)?;
     Ok(())
+}
+
+/// The first rustc diagnostic line from a captured stderr, for folding a probe
+/// failure's CAUSE into its one-line report (issue 0426).
+///
+/// Deliberately the first `error…` line and nothing else: the caller renders
+/// this inside `"<pkg>::<component> (deploy-bound probe failed: …)"`, and a
+/// multi-line rustc dump there is what this issue exists to stop. Falls back to
+/// the last non-empty line when nothing matches, so a non-rustc failure (a
+/// linker, a missing binary) still says something.
+fn first_diagnostic(stderr: &str) -> String {
+    stderr
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("error"))
+        .or_else(|| stderr.lines().map(str::trim).rfind(|l| !l.is_empty()))
+        .unwrap_or("no diagnostic captured")
+        .to_string()
 }
 
 /// Rewrite absolute source paths in the harness output to be relative to the

@@ -346,10 +346,15 @@ function(nano_ros_entry)
         # (`nros_board_native_run_components`, `nros_cpp_node_create`), which lives
         # in the C++ umbrella, so it links NanoRosCpp like a C++ entry — NOT the
         # C-only NanoRos. A legacy (non-typed) C entry keeps NanoRos.
-        if(_lang_tag STREQUAL "c" AND NOT _NRA_TYPED AND TARGET NanoRos::NanoRos)
-            target_link_libraries(${_NRA_NAME} PRIVATE NanoRos::NanoRos)
-        elseif(TARGET NanoRos::NanoRosCpp)
+        # issue 0425 — the C++ umbrella wins whenever it exists: it BUNDLES
+        # nros-c, so a legacy C entry's `nros_*` calls still resolve and the
+        # executable links exactly ONE Rust staticlib, which is the "NEVER both"
+        # rule above. A pure-C workspace has no `NanoRosCpp` target and keeps
+        # `NanoRos` unchanged.
+        if(TARGET NanoRos::NanoRosCpp)
             target_link_libraries(${_NRA_NAME} PRIVATE NanoRos::NanoRosCpp)
+        elseif(TARGET NanoRos::NanoRos)
+            target_link_libraries(${_NRA_NAME} PRIVATE NanoRos::NanoRos)
         endif()
     else()
         # Target may have been declared by a sibling call (e.g. the

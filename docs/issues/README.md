@@ -51,22 +51,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#425** — a MIXED C+C++ workspace links BOTH umbrella staticlibs and dies on ~96 duplicate C-ABI
-symbols, blocking `just build-test-fixtures lane=native` outright. `NanoRosEntry.cmake` states the
-invariant ("a C binary links NanoRos, a C++ binary NanoRosCpp — NEVER both"), and Phase 241.D3-rev
-made `libnros_cpp.a` BUNDLE `nros-c` so a C++ binary needs only one archive. A mixed workspace cannot
-satisfy that by construction: the C node pkg links `NanoRos`, the C++ entry links `NanoRosCpp`, and
-the entry inherits the first through a dependency. Direction: node-package libraries take the C ABI
-as INTERFACE (headers) only, so `nano_ros_entry` stays the single place an umbrella archive is
-chosen — not `-z muldefs`, which `check-no-allow-multiple-def` bans. See `0425-*`. (2026-08-05)
+(#425 resolved 2026-08-05 — a MIXED C+C++ workspace linked BOTH umbrella staticlibs, ~96 duplicate
+C-ABI symbols, blocking `build-test-fixtures lane=native`. RESOLVED by applying a rule the tree
+already used for TYPED C components everywhere: prefer the umbrella that BUNDLES the other whenever
+it exists. FOUR sites carried the `NOT _TYPED` carve-out and all four had to move together — fixing
+three left the count at exactly 96, because `NanoRosGenerateInterfaces.cmake` still dragged the C
+archive through the GENERATED bindings, which both languages consume. Pure-C workspaces have no
+`NanoRosCpp` target and are unchanged (verified). See `archived/0425-*`.)
 
-**#426** — `nros sync`'s source-metadata HOST probe compiles target-only deps for RTIC / bare-metal
-Cortex-M node pkgs and fails with a raw `E0432` on `cortex_m::register::basepri`, while the run exits
-0. Loud error, silent consequence: those packages get no metadata sidecar (bakes fall back to the
-model's lower bound), and a genuine compile error in one of them is indistinguishable from this
-expected one. The refresh already guards the same class for `build-std` targets and says why; a
-`thumbv7m` leaf just misses that branch. Direction: widen the guard from "sets build-std" to
-"declares a non-host `[build] target`". See `0426-*`. (2026-08-05)
+(#426 resolved 2026-08-05 — `nros sync`'s host metadata probe dumped raw rustc output for Cortex-M
+node pkgs and then degraded silently. NOT fixed by skipping every non-host `[build] target`, which
+the filing sketched — that would also skip the Cortex-M leaves that probe FINE today. The real
+defect was one line: the probe pipes stderr and echoes it UNCONDITIONALLY, so a failure printed a
+screenful before the existing degradation path handled it quietly. Now echoed only on success, with
+the first rustc diagnostic folded into the one-line "no producer for X" report. See
+`archived/0426-*`.)
 
 RESOLVED 2026-08-05 — **#423** the borrowed-view (RFC-0033) RUNTIME e2e proofs were orphaned +
 bit-rotted, deleted, then RE-ESTABLISHED as a build-stage fixture + Rust consumer. Fixed three rots:

@@ -365,9 +365,15 @@ function(nros_components_register_node target)
     # A C component links its runtime by TYPED-ness (see auto_add_library).
     get_target_property(_ncr_lang ${target} NROS_COMPONENT_LANG)
     if(_ncr_lang STREQUAL "C")
-        if(_NCR_TYPED AND TARGET NanoRos::NanoRosCpp)
+        # issue 0425 — prefer the C++ umbrella whenever it exists, TYPED or not:
+        # it BUNDLES nros-c, so a C component's `nros_*` calls resolve from it
+        # and the binary links ONE Rust staticlib. Keeping `NanoRos` for a
+        # non-typed C node is what made a MIXED workspace link both archives and
+        # die on ~96 duplicate C-ABI symbols. A pure-C workspace instantiates no
+        # `NanoRosCpp` target and is unaffected.
+        if(TARGET NanoRos::NanoRosCpp)
             target_link_libraries(${target} PUBLIC NanoRos::NanoRosCpp)
-        elseif(NOT _NCR_TYPED AND TARGET NanoRos::NanoRos)
+        elseif(TARGET NanoRos::NanoRos)
             target_link_libraries(${target} PUBLIC NanoRos::NanoRos)
         endif()
     endif()

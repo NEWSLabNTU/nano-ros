@@ -1,10 +1,11 @@
 ---
 id: 426
 title: "The source-metadata host probe compiles target-only deps and fails unhandled on Cortex-M node pkgs"
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-307, issue-0413]
+resolved_in: "phase-337 session"
 ---
 
 ## Symptom
@@ -58,17 +59,38 @@ Two, both quiet:
 2. A real compile error in one of those packages is indistinguishable from this
    expected one, because both print the same way and neither fails the run.
 
-## Fix direction
+## Fix (landed)
 
-Same shape as the `build-std` guard: decide up-front whether a package is
-host-probeable and SAY SO, instead of attempting the probe and letting rustc
-explain. The signal is available without compiling — the leaf's
-`.cargo/config.toml` names a `[build] target`, and a cross target that is not
-the host means the probe cannot run.
+NOT by widening `probe_blocker` to "any non-host `[build] target`", which the
+filing sketched. That would skip every Cortex-M leaf up front, including the
+ones that probe FINE today (a plain `no_std` talker with no target-gated deps —
+`examples/qemu-arm-baremetal/rust/talker-rtic` has a live sidecar). Trading a
+noisy-but-correct probe for a silent skip is the wrong direction.
 
-Widen the existing "no producer for X" branch from "sets build-std" to "declares
-a non-host `[build] target`", which subsumes the two current cases and this one,
-and keep the reason string per-cause so the message still says WHY.
+The actual defect is narrower and is in `metadata_build.rs`: the probe pipes
+stderr and then echoes it **unconditionally**. The degradation machinery already
+worked — a deploy-bound component that fails is negative-cached and reported via
+`sync: source metadata — no producer for …`. So the failure was already handled;
+what leaked was the raw output, printed BEFORE the handling and with nothing
+tying the two together.
+
+So the echo now happens only when the probe SUCCEEDS (where it carries the
+harness's own diagnostics), and on failure the first rustc diagnostic is folded
+into the error, which the caller already prints on the degradation line:
+
+```text
+sync: source metadata — no producer for qemu_rtic_main_e2e::rtic_run_plan_e2e
+  (deploy-bound probe failed: metadata-mode harness failed (exit 101) for
+   component 'rtic_run_plan_e2e': error[E0432]: unresolved imports
+   `cortex_m::register::basepri`, `cortex_m::register::basepri_max`)
+```
+
+One line, names the package, the consequence and the cause. A REAL compile error
+in such a package now reads the same way — which is correct, because it IS the
+same event, and the operator gets the diagnostic either way.
+
+`just qemu build-fixtures` no longer prints any `E0432` / `basepri` output and
+still exits 0.
 
 ## Reproduce
 
