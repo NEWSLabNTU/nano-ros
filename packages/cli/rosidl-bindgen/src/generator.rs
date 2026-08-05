@@ -647,10 +647,43 @@ pub fn generate_px4_msgs(
     edition: RosEdition,
     resolver: &CapacityResolver,
 ) -> Result<GeneratedRustPackage> {
+    let (stage, package) = stage_px4_msgs(px4_dir, output_dir, version, &[])?;
+
+    // px4_msgs is self-contained (all nested types are same-package), so the
+    // internal same-package resolver covers the full DAG.
+    let result = generate_package(
+        &package,
+        output_dir,
+        edition,
+        resolver,
+        &no_cross_pkg_resolver,
+    );
+    let _ = std::fs::remove_dir_all(&stage);
+    result
+}
+
+/// Stage the PX4 `.msg` tree into one flat synthetic ament package.
+///
+/// `msg/` + `msg/versioned/` are copied into a single `msg/` dir (versioned last
+/// so it shadows a same-named base entry — it is the canonical definition), which
+/// is exactly the `share_dir/msg/<Name>.msg` layout the ament-driven generators
+/// expect.
+///
+/// `only` selects a SUBSET by message name (issue 0362 approach B: a bridge
+/// carries a handful of topics, not PX4's ~200). Accepts either the CamelCase
+/// message name (`VehicleStatus`) or the snake_case uORB topic (`vehicle_status`).
+/// Empty ⇒ every message. Nested types are always staged regardless of the filter,
+/// because the RIHS01 hash is computed over the CLOSED type DAG.
+///
+/// Returns the staging dir (caller removes it) and the synthetic package.
+fn stage_px4_msgs(
+    px4_dir: &Path,
+    output_dir: &Path,
+    version: &str,
+    only: &[String],
+) -> Result<(PathBuf, Package)> {
     use crate::ament::InterfaceFiles;
 
-    // Stage `msg/` + `msg/versioned/` into one flat `msg/` dir (versioned copied
-    // last so it shadows a same-named base entry).
     let stage = output_dir.join(".px4_msg_stage");
     let stage_msg = stage.join("msg");
     std::fs::create_dir_all(&stage_msg)
@@ -672,6 +705,8 @@ pub fn generate_px4_msgs(
             let Some(stem) = path.file_stem().and_then(|s| s.to_str()).map(String::from) else {
                 continue;
             };
+            // Stage EVERY message even when filtering: a selected message may nest
+            // another, and the type hash needs the closed DAG.
             std::fs::copy(&path, stage_msg.join(format!("{stem}.msg")))
                 .wrap_err_with(|| format!("stage {}", path.display()))?;
             if !names.contains(&stem) {
@@ -688,14 +723,40 @@ pub fn generate_px4_msgs(
     }
     names.sort();
 
-    // Synthetic ament package — `share_dir/msg/<name>.msg` is exactly what the
-    // staging layout provides, so `generate_package` resolves every msg.
+    // Apply the subset filter to the EMITTED list (staging keeps the full DAG).
+    let messages = if only.is_empty() {
+        names
+    } else {
+        let mut selected = Vec::new();
+        for want in only {
+            // Accept `VehicleStatus` or the uORB topic spelling `vehicle_status`.
+            let matched = names
+                .iter()
+                .find(|n| n.as_str() == want.as_str() || to_snake_case(n) == to_snake_case(want));
+            match matched {
+                Some(n) => {
+                    if !selected.contains(n) {
+                        selected.push(n.clone());
+                    }
+                }
+                None => {
+                    let _ = std::fs::remove_dir_all(&stage);
+                    eyre::bail!(
+                        "px4 message `{want}` not found under {}/msg (or msg/versioned)",
+                        px4_dir.display()
+                    );
+                }
+            }
+        }
+        selected
+    };
+
     let package = Package {
         name: "px4_msgs".to_string(),
         version: version.to_string(),
         share_dir: stage.clone(),
         interfaces: InterfaceFiles {
-            messages: names,
+            messages,
             services: Vec::new(),
             actions: Vec::new(),
             idl_messages: Vec::new(),
@@ -703,18 +764,173 @@ pub fn generate_px4_msgs(
             idl_actions: Vec::new(),
         },
     };
+    Ok((stage, package))
+}
 
-    // px4_msgs is self-contained (all nested types are same-package), so the
-    // internal same-package resolver covers the full DAG.
-    let result = generate_package(
-        &package,
-        output_dir,
-        edition,
-        resolver,
-        &no_cross_pkg_resolver,
-    );
+/// Generated C++ `px4_msgs` headers (issue 0362).
+#[derive(Debug)]
+pub struct GeneratedPx4CppPackage {
+    /// Directory the headers were written to.
+    pub output_dir: PathBuf,
+    /// Number of message headers emitted.
+    pub message_count: usize,
+}
+
+/// Issue 0362 — emit CDR `px4_msgs::msg::*` as **C++ headers**, so an in-firmware
+/// C++ PX4 module (the phase-325 W3 uORB→RMW bridge) can publish uORB data on a
+/// ROS wire.
+///
+/// The direct uORB path needs none of this — `publisher_publish_raw` hands the PX4
+/// struct straight to `orb_publish`. CDR is required only where nano-ros speaks the
+/// ROS 2 wire protocol from inside PX4, and there the RIHS01 **type hash** is
+/// load-bearing: `rmw_zenoh` keys discovery on it, so a guessed hash either never
+/// matches or matches the wrong type. The hash therefore comes from the same
+/// generator that emits the struct — [`compute_msg_type_hash`], exactly as the Rust
+/// crate does — never from a second source.
+///
+/// Approach B: `only` names the handful of topics a bridge carries. The whole
+/// `.msg` tree is still staged (nested types must resolve for the hash), but only
+/// the selected messages are emitted.
+pub fn generate_px4_msgs_cpp(
+    px4_dir: &Path,
+    output_dir: &Path,
+    version: &str,
+    edition: RosEdition,
+    resolver: &CapacityResolver,
+    only: &[String],
+) -> Result<GeneratedPx4CppPackage> {
+    let (stage, package) = stage_px4_msgs(px4_dir, output_dir, version, only)?;
+    let result = emit_px4_cpp_headers(&package, output_dir, edition, resolver);
     let _ = std::fs::remove_dir_all(&stage);
     result
+}
+
+/// Message names this message nests from its OWN package — the siblings whose
+/// headers the generated header will `#include` (issue 0362 transitive closure).
+///
+/// A same-package reference parses as `NamespacedType { package: None }`; a
+/// cross-package one names its package and is out of scope here (px4_msgs is
+/// self-contained). Array/sequence element types are unwrapped.
+fn same_package_nested(message: &Message, package_name: &str) -> Vec<String> {
+    fn walk(t: &rosidl_parser::FieldType, pkg: &str, out: &mut Vec<String>) {
+        use rosidl_parser::FieldType as F;
+        match t {
+            F::NamespacedType { package, name, .. } => {
+                if package.is_none() || package.as_deref() == Some(pkg) {
+                    out.push(name.clone());
+                }
+            }
+            F::Array { element_type, .. }
+            | F::Sequence { element_type }
+            | F::BoundedSequence { element_type, .. } => walk(element_type, pkg, out),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for field in &message.fields {
+        walk(&field.field_type, package_name, &mut out);
+    }
+    out
+}
+
+fn emit_px4_cpp_headers(
+    package: &Package,
+    output_dir: &Path,
+    edition: RosEdition,
+    resolver: &CapacityResolver,
+) -> Result<GeneratedPx4CppPackage> {
+    // Headers land under `<out>/px4_msgs/msg/` so a module adds ONE include dir
+    // (`<out>`) and writes `#include <px4_msgs/msg/vehicle_status.hpp>`.
+    let msg_dir = output_dir.join(&package.name).join("msg");
+    std::fs::create_dir_all(&msg_dir)
+        .wrap_err_with(|| format!("create output dir {}", msg_dir.display()))?;
+
+    // Same-package nested resolution — px4_msgs is self-contained.
+    let self_resolve = |fqn: &str| -> Option<Message> {
+        let mut parts = fqn.split('/');
+        let pkg = parts.next()?;
+        let name = parts.next_back()?;
+        if pkg == package.name {
+            let content = std::fs::read_to_string(package.get_message_path(name)).ok()?;
+            rosidl_parser::parse_message(&content).ok()
+        } else {
+            None
+        }
+    };
+
+    // Transitively close the emit set: a selected message's generated header
+    // `#include`s its same-package nested siblings (`extract_intra_package_includes`),
+    // so emitting only the named list would leave dangling includes. Walk the
+    // nested types breadth-first and emit those too.
+    let mut queue: Vec<String> = package.interfaces.messages.clone();
+    let mut seen: HashSet<String> = queue.iter().cloned().collect();
+    let mut message_count = 0;
+
+    while let Some(msg_name) = queue.pop() {
+        let msg_path = package.get_message_path(&msg_name);
+        let content = std::fs::read_to_string(&msg_path)
+            .wrap_err_with(|| format!("read message file {}", msg_path.display()))?;
+        let parsed = rosidl_parser::parse_message(&content)
+            .wrap_err_with(|| format!("parse message {msg_name}"))?;
+
+        // Same-package nested types become sibling headers. NOT
+        // `extract_dependencies` — that yields cross-package PACKAGE names (a
+        // same-package field carries `package: None`), which is the Cargo-dep
+        // question, not this one.
+        for name in same_package_nested(&parsed, &package.name) {
+            if seen.insert(name.clone()) {
+                queue.push(name);
+            }
+        }
+
+        let fqn = format!("{}/msg/{}", package.name, msg_name);
+        let type_hash = compute_msg_type_hash(edition, &fqn, &parsed, &self_resolve)?;
+
+        let generated = rosidl_codegen::generate_cpp_message_package(
+            &package.name,
+            &msg_name,
+            &parsed,
+            &type_hash,
+            resolver,
+        )
+        .map_err(|e| eyre::eyre!("generate C++ message {msg_name}: {e}"))?;
+
+        // Header + the split FFI Rust glue. The header's serialize/deserialize are
+        // Rust symbols (`nros_cpp_{serialize,deserialize}_*`), so the `_types.rs` /
+        // `_exports.rs` pair MUST travel with it — a consumer builds them into the
+        // FFI staticlib it links, exactly as `nros_generate_interfaces(LANGUAGE CPP)`
+        // does for a normal package.
+        write_if_changed(msg_dir.join(&generated.header_name), &generated.header)
+            .wrap_err_with(|| format!("write header for {msg_name}"))?;
+        write_if_changed(
+            msg_dir.join(&generated.ffi.types_rs_name),
+            &generated.ffi.types_rs,
+        )
+        .wrap_err_with(|| format!("write ffi types for {msg_name}"))?;
+        write_if_changed(
+            msg_dir.join(&generated.ffi.exports_rs_name),
+            &generated.ffi.exports_rs,
+        )
+        .wrap_err_with(|| format!("write ffi exports for {msg_name}"))?;
+
+        // ROS-style alias header so a module writes
+        // `#include <px4_msgs/msg/vehicle_status.hpp>` rather than the flat
+        // prefixed form.
+        let alias = msg_dir.join(format!("{}.hpp", to_snake_case(&msg_name)));
+        if alias.file_name() != Some(std::ffi::OsStr::new(&generated.header_name)) {
+            write_if_changed(
+                &alias,
+                format!("#pragma once\n#include \"{}\"\n", generated.header_name),
+            )
+            .wrap_err_with(|| format!("write alias header for {msg_name}"))?;
+        }
+        message_count += 1;
+    }
+
+    Ok(GeneratedPx4CppPackage {
+        output_dir: output_dir.join(&package.name),
+        message_count,
+    })
 }
 
 #[cfg(test)]
@@ -1150,5 +1366,176 @@ mod tests {
                 .join("srv")
                 .exists()
         );
+    }
+
+    // ---- issue 0362: the C++ px4_msgs emitter -------------------------------
+
+    /// A miniature PX4-shaped `.msg` tree: `msg/` + `msg/versioned/`, with one
+    /// message that NESTS another so the transitive-closure rule is exercised.
+    fn write_fake_px4_tree(root: &Path) {
+        let msg = root.join("msg");
+        let versioned = msg.join("versioned");
+        fs::create_dir_all(&versioned).unwrap();
+        fs::write(msg.join("Nested.msg"), "uint8 flag\n").unwrap();
+        fs::write(
+            msg.join("VehicleStatus.msg"),
+            "uint64 timestamp\nuint8 arming_state\nNested nested\n",
+        )
+        .unwrap();
+        fs::write(msg.join("DebugKeyValue.msg"), "float32 value\n").unwrap();
+        // versioned/ shadows a same-named base entry
+        fs::write(versioned.join("DebugKeyValue.msg"), "float32 value\n").unwrap();
+    }
+
+    /// The topic filter emits ONLY what was asked for — plus the nested types the
+    /// selected headers `#include` (issue 0362 approach B).
+    #[test]
+    fn px4_cpp_emits_only_the_named_topics_plus_nested() {
+        let tmp = tempfile::tempdir().unwrap();
+        let px4 = tmp.path().join("PX4-Autopilot");
+        write_fake_px4_tree(&px4);
+        let out = tmp.path().join("out");
+
+        let generated = generate_px4_msgs_cpp(
+            &px4,
+            &out,
+            "1.17.0",
+            RosEdition::Jazzy,
+            &CapacityResolver::empty(),
+            &["vehicle_status".to_string()], // uORB topic spelling resolves
+        )
+        .expect("emit C++ px4_msgs");
+
+        let msg_dir = out.join("px4_msgs").join("msg");
+        // VehicleStatus + the Nested it pulls in transitively.
+        assert!(msg_dir.join("px4_msgs_msg_vehicle_status.hpp").is_file());
+        assert!(
+            msg_dir.join("px4_msgs_msg_nested.hpp").is_file(),
+            "a nested type the selected header #includes must be emitted too"
+        );
+        // NOT selected, not nested by the selection.
+        assert!(
+            !msg_dir.join("px4_msgs_msg_debug_key_value.hpp").exists(),
+            "the filter must not emit unrequested messages"
+        );
+        assert_eq!(generated.message_count, 2);
+    }
+
+    /// The header travels with its FFI glue (its serialize/deserialize are Rust
+    /// symbols) and a ROS-style alias header.
+    #[test]
+    fn px4_cpp_emits_ffi_glue_and_alias_header() {
+        let tmp = tempfile::tempdir().unwrap();
+        let px4 = tmp.path().join("PX4-Autopilot");
+        write_fake_px4_tree(&px4);
+        let out = tmp.path().join("out");
+
+        generate_px4_msgs_cpp(
+            &px4,
+            &out,
+            "1.17.0",
+            RosEdition::Jazzy,
+            &CapacityResolver::empty(),
+            &["DebugKeyValue".to_string()],
+        )
+        .unwrap();
+
+        let msg_dir = out.join("px4_msgs").join("msg");
+        assert!(
+            msg_dir
+                .join("px4_msgs_msg_debug_key_value_types.rs")
+                .is_file()
+        );
+        assert!(
+            msg_dir
+                .join("px4_msgs_msg_debug_key_value_exports.rs")
+                .is_file()
+        );
+        let alias = msg_dir.join("debug_key_value.hpp");
+        assert!(alias.is_file(), "ROS-style alias header");
+        assert!(
+            fs::read_to_string(&alias)
+                .unwrap()
+                .contains("px4_msgs_msg_debug_key_value.hpp")
+        );
+    }
+
+    /// The hash is the whole point: it must be a REAL RIHS01 (not the all-zero
+    /// placeholder the CMake C++ path emits) and identical to what the Rust crate
+    /// carries — a guessed hash either never matches on the wire or matches the
+    /// wrong type.
+    #[test]
+    fn px4_cpp_hash_is_real_and_matches_the_rust_crate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let px4 = tmp.path().join("PX4-Autopilot");
+        write_fake_px4_tree(&px4);
+
+        let cpp_out = tmp.path().join("cpp");
+        generate_px4_msgs_cpp(
+            &px4,
+            &cpp_out,
+            "1.17.0",
+            RosEdition::Jazzy,
+            &CapacityResolver::empty(),
+            &["VehicleStatus".to_string()],
+        )
+        .unwrap();
+        let hpp = fs::read_to_string(
+            cpp_out
+                .join("px4_msgs/msg")
+                .join("px4_msgs_msg_vehicle_status.hpp"),
+        )
+        .unwrap();
+
+        let rust_out = tmp.path().join("rust");
+        generate_px4_msgs(
+            &px4,
+            &rust_out,
+            "1.17.0",
+            RosEdition::Jazzy,
+            &CapacityResolver::empty(),
+        )
+        .unwrap();
+        let rs = fs::read_to_string(rust_out.join("px4_msgs/src/msg").join("vehicle_status.rs"))
+            .unwrap();
+
+        let grab = |text: &str| -> String {
+            let at = text.find("RIHS01_").expect("a real RIHS01 hash");
+            text[at..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect()
+        };
+        let cpp_hash = grab(&hpp);
+        let rust_hash = grab(&rs);
+        assert!(
+            !cpp_hash
+                .trim_start_matches("RIHS01_")
+                .chars()
+                .all(|c| c == '0'),
+            "emitted the all-zero placeholder hash: {cpp_hash}"
+        );
+        assert_eq!(
+            cpp_hash, rust_hash,
+            "the C++ header and the Rust crate must carry the SAME type hash"
+        );
+    }
+
+    /// An unknown topic is a hard error, not a silently-empty emit.
+    #[test]
+    fn px4_cpp_unknown_topic_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let px4 = tmp.path().join("PX4-Autopilot");
+        write_fake_px4_tree(&px4);
+        let err = generate_px4_msgs_cpp(
+            &px4,
+            &tmp.path().join("out"),
+            "1.17.0",
+            RosEdition::Jazzy,
+            &CapacityResolver::empty(),
+            &["no_such_topic".to_string()],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("no_such_topic"), "{err}");
     }
 }
