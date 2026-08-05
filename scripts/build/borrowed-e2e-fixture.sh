@@ -37,6 +37,8 @@ mkdir -p "$out_dir"
 # so the header's variant hash matches the archive's (stub) sizing.
 echo "borrowed-e2e: building nros-c (platform-posix)…"
 ( cd "$repo_root" && cargo build -p nros-c --features platform-posix >/dev/null )
+# profile-literal-ok: unprofiled: the line above is a plain `cargo build`, so
+# `target/debug/` IS the derived output dir for it.
 lib="$repo_root/target/debug/libnros_c.a"
 cfg_dir="$repo_root/target/nros-c-generated"
 cfg_hdr="$cfg_dir/nros/nros_config_generated.h"
@@ -104,7 +106,15 @@ if command -v g++ >/dev/null 2>&1; then
     cp "$fix/ffi_wrapper.rs" "$build/lib.rs"
     cp "$fix/driver.cpp" "$build/driver.cpp"
     echo "borrowed-e2e: building C++ FFI staticlib…"
+    # This crate is synthesized STANDALONE under tmp/ from `Cargo.toml.in`,
+    # outside the root workspace, so nano-ros's custom profiles
+    # (`nros-relwithdebinfo`, …) are not defined for it: asking the resolver
+    # here yields `--profile nros-…` and cargo errors "profile is not defined".
+    # It is a throwaway link-proof, not a shipped artifact.
+    # profile-literal-ok: unprofiled
     ( cd "$build" && cargo build --release >/dev/null )
+    # profile-literal-ok: unprofiled: pairs with the standalone `cargo build
+    # --release` above — same reason, and the two must name the same dir.
     cpp_lib="$build/target/release/libborrowed_cpp_e2e.a"
     [ -f "$cpp_lib" ] || { echo "FAIL: C++ FFI staticlib missing" >&2; exit 1; }
     echo "borrowed-e2e: compiling C++ proof binary…"
