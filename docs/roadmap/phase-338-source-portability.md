@@ -825,6 +825,66 @@ macro arguments.
       entry and the `zpico_backend` lint value. Recorded here so W7.b does not
       re-derive it.
 
+## Embedded lane verification — nuttx PROVEN, and it found three breaks (2026-08-06)
+
+Running `just nuttx build-examples` + the `rtos_e2e` NuttX cells was worth it:
+**all nine nuttx cells now pass under QEMU** — {pubsub, service, action} ×
+{Rust, C, C++} — plus `nuttx_entry_build::nuttx_entry_demos_build`. That is the
+`-entry` collapse AND the W8 wait-then-send change proven at RUNTIME on the
+platform whose retry loop started all of this.
+
+Getting there surfaced three separate breaks. Two were mine.
+
+### 1. `git mv` nested the entry's cargo config (MINE, fixed)
+
+The collapse ran `git mv <entry>/.cargo <node>/.cargo`. The six NuttX node
+packages already HAD a `.cargo/`, and git moves a directory INTO an existing
+one — producing `<node>/.cargo/.cargo/config.toml`, which cargo never reads.
+The node's own config survived, and it lacks the NuttX image-link recipe
+(`-Tdramboot.ld`, `--entry=__start`, the kernel-lib `--start-group`) that
+`nros-board-nuttx-qemu`'s build.rs documents as living in the ENTRY's config.
+
+Every nuttx Rust example linked without NuttX's libc:
+`undefined reference to open / socket / ioctl / malloc / __errno`.
+
+**The lesson is the mechanical one:** `git mv A/x B/x` silently NESTS when
+`B/x` exists. It hit `.cargo` and would have hit `src/main.rs` or `launch/`
+just as quietly — those were only safe because no node dir had them. A move
+script must assert the destination is absent, not assume it.
+
+### 2. Six fixture rows that only made sense pre-collapse (MINE, fixed)
+
+The bare nuttx rust rows (no `rmw`) built the LIB-ONLY package: no `[[bin]]`,
+so cargo never linked and the row was harmless. The collapse gave that package
+the entry's `[[bin]]`, and a build selecting no RMW links no board glue — so
+the row started failing the same link. They were also redundant with the
+`rmw = "zenoh"` rows carrying the baked locator env. Deleted.
+
+Their presence also caused a second symptom worth naming: two rows on one dir
+meant two concurrent `nros sync` passes over that dir, and the collapsed dirs
+now have a `launch/`, so both raced staging the SystemModel —
+`YAML: missing field meta` on `system_model.yaml.resolving`.
+
+### 3. Two pre-existing blockers (NOT mine)
+
+* **Stale cmake caches.** The nuttx C/C++ and workspace build dirs cached
+  `NUTTX_FFI_CRATE_DIR` / `NUTTX_DEFCONFIG` under a `nros-board-nuttx-qemu-arm`
+  path that upstream `983306561` (phase-337 W3, one board crate two witnesses)
+  removed. The board cmake's own defaults are correct; only the caches were
+  wrong. Wiping the 12 build dirs fixed it — the class upstream `84eb6d26b`
+  (issue 0400) addresses.
+* **A missing lock entry.** `nros-cpp` gained an `nros-bridge` dependency that
+  `nros-nuttx-ffi/Cargo.lock` never recorded, so `--locked` refused the C++
+  lane. Only the C++ graph pulls it in, which is why it sat unnoticed. Fixed
+  via `just lock-update`.
+
+### Still unverified
+
+freertos and threadx-riscv64 embedded lanes. threadx-linux was proven earlier
+by building AND running its collapsed examples; native by running all three W8
+programs. Given that nuttx — the most intricate of the embedded lanes — is now
+green end to end, the remaining two are lower risk, but they are not evidence.
+
 ## W8 — DONE 2026-08-06: C++ `wait_for_*` bound, client examples unified
 
 The last three closable divergences (`c/action-client`, `cpp/action-client`,
