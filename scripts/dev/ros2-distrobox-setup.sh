@@ -44,6 +44,13 @@ fi
 # (3.11+). `just check-cargo-profile-mirror` reads Cargo.toml with tomllib and
 # falls back to tomli — on a bare box NEITHER exists and tier 1 dies there with
 # a bare `ModuleNotFoundError`, long after the ROS parts it came here for.
+#
+# This list is deliberately the MINIMUM to build the nros CLI, and nothing more.
+# Everything else the recipes need is declared in `[system.*]` in
+# nros-sdk-index.toml and installed by `nros setup --system` — see the closing
+# instructions. Do not grow this list to cover a missing recipe tool: that is the
+# hand-written-list drift issue 0368 removed, and a package named in both places
+# will diverge from the index the moment one side is edited.
 echo "=== [1/4] base tooling + the book's host prerequisites"
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
@@ -106,5 +113,19 @@ source it rather than exporting them by hand. Then, inside the box:
   . scripts/dev/ros2-box-env.sh    # box-local store / target dir / PATH
   cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
   nros_box_publish                 # put the box CLI where consumers look
+  nros setup --system              # system packages — SEE BELOW, do not skip
   nros setup native --rmw zenoh
+  just doctor                      # confirm; fix anything it reports
+
+`nros setup --system` is the step this box goes wrong without, and it fails
+QUIETLY. Step [1/4] above installs only what the CLI needs to COMPILE; the
+recipes need a further set declared in `[system.*]` of nros-sdk-index.toml, and
+most of the justfile probes those with `command -v` and DEGRADES instead of
+failing. So a box missing them still builds, still passes, and merely runs
+wrong — e.g. without `parallel`, `check-examples` prints "GNU parallel not
+found — falling back to serial check" and walks 99 example leaves one at a
+time, which on a 4-core box reads as a hang rather than as a missing package.
+
+`just doctor` names every one of them with its remedy in a single line. Run it
+before concluding anything about a slow or red box.
 EOF

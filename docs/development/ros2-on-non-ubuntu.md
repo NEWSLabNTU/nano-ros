@@ -108,9 +108,25 @@ cargo install just --locked
 cargo install cargo-nextest --locked   # just test-unit / test / test-all drive it
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 nros_box_publish                       # defined by ros2-box-env.sh
+nros setup --system                    # system packages — see below
 nros setup native --rmw zenoh          # the box needs its OWN SDK store
 nros setup native --rmw cyclonedds     # for the DDS interop cells
+just doctor                            # confirm before running any tier
 ```
+
+**Do not skip `nros setup --system`, and run `just doctor` before believing
+anything about a slow box.** The distrobox setup script installs only what the
+CLI needs to COMPILE. The recipes need a further set, declared in `[system.*]`
+of `nros-sdk-index.toml` — and most of the justfile probes those with
+`command -v` and *degrades* rather than failing, so a box without them builds
+fine, passes, and merely runs wrong.
+
+The measured case: no `parallel` in the box, so `check-examples` printed
+`GNU parallel not found — falling back to serial check` and walked all 99
+example leaves one at a time. On a 4-core box that reads as a hung tier, not as
+a missing package. `just doctor` had been reporting
+`[MISSING] gnu-parallel — just format fan-out (issue 0368 F7)` with the exact
+apt line the whole time; nothing in the box bootstrap said to run it.
 
 Then the normal tiers, all through the same entry form:
 
