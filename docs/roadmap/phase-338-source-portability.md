@@ -825,7 +825,7 @@ macro arguments.
       entry and the `zpico_backend` lint value. Recorded here so W7.b does not
       re-derive it.
 
-## W8 — the C/C++ retry-loop divergence: investigated 2026-08-06
+## W8 — DONE 2026-08-06: C++ `wait_for_*` bound, client examples unified
 
 The last three closable divergences (`c/action-client`, `cpp/action-client`,
 `cpp/service-client`, all on qemu-arm-nuttx) are one pattern: a **3-attempt
@@ -883,9 +883,35 @@ Runtime exposure to check before landing: native C/C++ service and action cells
 are `Runtime`, and the nuttx C ones are too, so step 2 wants a real run on both
 platforms rather than a build.
 
-**Left for later deliberately** — the ask was to investigate and unify
-"eventually", and step 1 changes public C++ API surface, which deserves its own
-change rather than riding along in an examples cleanup.
+### Landed
+
+All three steps, same day. **Divergences 4 → 1**, and the remaining one is the
+PERMANENT native `c/listener` affordance — so every closable divergence in the
+tree is now closed, and the phase is at its floor.
+
+Two things the implementation turned up:
+
+* **The examples touched were 15, not 6.** Only NuttX carried the retry loop,
+  but converging means every copy of the program changes — freertos,
+  riscv64-threadx and threadx-linux all matched OLD native, so they diverged the
+  moment native moved. The gate named them immediately, which is the ratchet
+  working: three programs × five group-A platforms.
+* **The action shim must go through `ActionClientCore`'s public accessors**
+  (`{start,poll}_server_discovery`, `is_server_ready`), not `send_goal_client`.
+  Those exist for exactly this — their doc says "used by the C action-client
+  wrapper … to keep `send_goal_client` private while still exposing the
+  discovery surface". Reaching the field compiled under one feature set and
+  failed under `check-cpp`'s.
+
+Verified by running on native: the C action pair completed a full Fibonacci
+round trip, `cpp/service-client` printed `Result of add_two_ints: 5`, and
+`cpp/action-client` took three feedback publishes to a result. `just check-c`
+and `just check-cpp` pass.
+
+**Not verified**: the freertos / riscv64-threadx / threadx-linux copies are
+source-converged and gate-checked but unbuilt here — their toolchains need the
+per-platform `just` recipes. The nuttx C action cell is `Runtime`, so it wants a
+real run before this is called proven on embedded.
 
 ## W2.d / W3.c / W7 — closed 2026-08-05
 
