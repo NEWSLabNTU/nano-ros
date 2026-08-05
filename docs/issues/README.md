@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#437** — `just check-fast` is RED on **main**: `check-build-profile-literals` flags four sites in
+`just/px4.just` (three `cargo build --release`, one `target/release/` path) added by `e2f850efa`
+(#0362 pass 2). Reproduced against a pristine `origin/main` worktree, so it is not an interaction
+with any branch. The path spelling is the one that bites — line 168 builds the FFI archive and line
+181 hands PX4 its PATH, so if the profile ever moves they disagree and PX4 links a stale archive,
+failing inside PX4's make far from the cause. Fix = `nros_cargo_profile_arg_string` /
+`nros_cargo_target_profile_dir` so both derive from one answer, or a `# profile-literal-ok:` marker
+if the lane is deliberately release-only. Matters because check-fast is the gate every task runs
+first: while it is red, every unrelated change looks like it broke something. See `0437-*`.
+(2026-08-06)
+
 **#436** — the phase-325 W3 PX4 bridge module builds, links and registers (module in `bin/px4`, generated CDR symbols linked, BOTH backends' register symbols present — the W3 gate holds) but `nros::init()` returns `TransportError(-100)` when a networked backend is registered alongside uORB. Fails BEFORE either node is created, so before the two-session code runs. Not the link, not a missing router (same with zenohd + NROS_LOCATOR), not registration order (uORB registers first, and the uORB-only W2 demo inits fine). See `0436-*`. (2026-08-06)
 
 Recently resolved (2026-08-05): **#434** — FreeRTOS C++ TUs resolved `<nros/nros_config_generated.h>`
