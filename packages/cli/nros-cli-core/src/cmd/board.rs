@@ -38,8 +38,11 @@ pub struct ListArgs {
 
 #[derive(Debug, ClapArgs)]
 pub struct InfoArgs {
-    /// Board crate suffix (after the `nros-board-` prefix). E.g.
-    /// `fvp-aemv8r-smp` resolves to `packages/boards/nros-board-fvp-aemv8r-smp/`.
+    /// Board key. Resolves to a board CRATE
+    /// (`packages/boards/nros-board-<name>/`) or, since phase-337 W9.a, to a
+    /// conf BUNDLE under a family crate
+    /// (`packages/boards/nros-board-<family>/boards/<name>/`) — e.g.
+    /// `fvp-aemv8r-smp` is `nros-board-zephyr/boards/fvp-aemv8r-smp/`.
     pub name: String,
     /// Path to the nano-ros workspace root (auto-detected by walking
     /// upward from cwd if omitted). May also be set via
@@ -218,23 +221,57 @@ fn info(args: InfoArgs) -> Result<()> {
     Ok(())
 }
 
-/// Resolve `packages/boards/nros-board-<name>/` under the workspace
-/// root. The board crate dir name is `nros-board-<name>` verbatim;
-/// `name = "fvp-aemv8r-smp"` ⇒ `packages/boards/nros-board-fvp-aemv8r-smp/`.
+/// Resolve a board key to the directory holding its `board.cmake`.
+///
+/// Two shapes, tried in this order — phase-337 W9.a added the second, and
+/// RFC-0064 expects it to become the common one:
+///
+/// 1. a board CRATE — `packages/boards/nros-board-<name>/`
+/// 2. a CONF BUNDLE under a family crate —
+///    `packages/boards/nros-board-<family>/boards/<name>/`
+///
+/// A per-board crate for a Zephyr board is duplication: Zephyr owns boot, MMU,
+/// net stack and drivers, so the "crate" held a `prj.conf`, a DTS overlay and a
+/// manifest — a config bundle wearing a `Cargo.toml`. Shape 1 stays first and
+/// stays supported for boards that carry real Rust.
+///
+/// This MUST match `nano_ros_use_board()`'s lookup order
+/// (`zephyr/cmake/nano_ros_use_board.cmake`). Two languages, so no shared
+/// implementation is possible — the pair is kept honest by the fact that
+/// `nros board info <name>` and a Zephyr build of the same board must agree.
 fn locate_board_crate(workspace_root: &Path, name: &str) -> Result<PathBuf> {
+    let boards = workspace_root.join("packages").join("boards");
+
     let dir_name = format!("nros-board-{name}");
-    let dir = workspace_root
-        .join("packages")
-        .join("boards")
-        .join(&dir_name);
-    if !dir.is_dir() {
-        return Err(eyre!(
-            "no board crate dir `{}` under `{}/packages/boards/`",
-            dir_name,
-            workspace_root.display()
-        ));
+    let crate_dir = boards.join(&dir_name);
+    if crate_dir.is_dir() {
+        return Ok(crate_dir);
     }
-    Ok(dir)
+
+    // Board keys are global, so more than one match is a naming collision
+    // rather than something to disambiguate by search order.
+    let mut bundles: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&boards) {
+        for entry in entries.flatten() {
+            let candidate = entry.path().join("boards").join(name);
+            if candidate.join("board.cmake").is_file() {
+                bundles.push(candidate);
+            }
+        }
+    }
+    bundles.sort();
+    match bundles.len() {
+        1 => Ok(bundles.remove(0)),
+        0 => Err(eyre!(
+            "no board `{name}` under `{}/packages/boards/`: looked for a board \
+             crate `{dir_name}/` and for a conf bundle `*/boards/{name}/`",
+            workspace_root.display(),
+        )),
+        _ => Err(eyre!(
+            "board `{name}` is ambiguous — it is a conf bundle under more than \
+             one family crate: {bundles:?}. Board keys are global; rename one."
+        )),
+    }
 }
 
 /// Walk upward from cwd until a directory containing `packages/boards/`

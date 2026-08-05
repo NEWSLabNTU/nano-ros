@@ -36,14 +36,55 @@ function(nano_ros_use_board NAME)
             "board-resolution phase.")
     endif()
 
+    # Board keys resolve in TWO shapes, tried in this order. phase-337 W9.a
+    # added the second, and RFC-0064 expects it to become the common one.
+    #
+    #   1. a board CRATE          packages/boards/nros-board-<NAME>/board.cmake
+    #   2. a CONF BUNDLE under a  packages/boards/nros-board-<family>/
+    #      family crate             boards/<NAME>/board.cmake
+    #
+    # A per-board crate for a Zephyr board is the duplication this phase exists
+    # to remove: Zephyr already owns boot, MMU, net stack and drivers, so what
+    # a "board crate" actually held was a prj.conf, a DTS overlay and this
+    # manifest — a config bundle wearing a Cargo.toml. `fvp-aemv8r-smp` was the
+    # last one and its Rust half (`Config` + a `run` loop) had ZERO consumers.
+    #
+    # Shape 1 stays first and stays supported: out-of-tree boards that DO carry
+    # real Rust (a `BoardEntry`, a driver) are still crates, and RFC-0064 says
+    # so. The key is what the consumer names either way — folding a board must
+    # not change `nano_ros_use_board(<name>)` at any call site, which is the
+    # whole reason the lookup widened instead of the callers moving.
+    #
+    # The CLI's `locate_board_crate` (nros-cli-core/src/cmd/board.rs) implements
+    # the SAME two-step order for `nros board info` / `nros setup board`. Two
+    # languages, so no shared code is possible — but they must not diverge, and
+    # `board_import_fvp` (tests/fvp_smoke.rs) exercises this path.
     set(_board_dir "${NROS_REPO_DIR}/packages/boards/nros-board-${NAME}")
     set(_board_cmake "${_board_dir}/board.cmake")
     if(NOT EXISTS "${_board_cmake}")
+        file(GLOB _bundle_candidates
+            "${NROS_REPO_DIR}/packages/boards/*/boards/${NAME}/board.cmake")
+        list(LENGTH _bundle_candidates _bundle_count)
+        if(_bundle_count GREATER 1)
+            message(FATAL_ERROR
+                "nano_ros_use_board(${NAME}): ambiguous — ${NAME} is a conf "
+                "bundle under more than one family crate:\n"
+                "  ${_bundle_candidates}\n"
+                "Board keys are global; rename one.")
+        elseif(_bundle_count EQUAL 1)
+            list(GET _bundle_candidates 0 _board_cmake)
+            get_filename_component(_board_dir "${_board_cmake}" DIRECTORY)
+        endif()
+    endif()
+    if(NOT EXISTS "${_board_cmake}")
         message(FATAL_ERROR
-            "nano_ros_use_board(${NAME}): no board.cmake at\n"
-            "  ${_board_cmake}\n"
+            "nano_ros_use_board(${NAME}): no board.cmake for board ${NAME}.\n"
+            "Looked for a board crate at\n"
+            "  ${NROS_REPO_DIR}/packages/boards/nros-board-${NAME}/board.cmake\n"
+            "and for a conf bundle at\n"
+            "  ${NROS_REPO_DIR}/packages/boards/*/boards/${NAME}/board.cmake\n"
             "Check the board name, or run `nros board info ${NAME}` "
-            "to validate the crate's manifest.")
+            "to validate the manifest.")
     endif()
     include("${_board_cmake}")
 
@@ -92,7 +133,7 @@ function(nano_ros_use_board NAME)
     # 7. NANO_ROS_RMW — board's default if the consumer didn't pin one.
     if(NOT DEFINED NANO_ROS_RMW)
         set(NANO_ROS_RMW "${NROS_BOARD_DEFAULT_RMW}" CACHE STRING
-            "nano-ros RMW backend (default from nros-board-${NAME})")
+            "nano-ros RMW backend (default from board ${NAME})")
     endif()
 
     # 7b. RMW-common Kconfig — phase-292 W2 (ASI wall #4). On Zephyr 4.x the

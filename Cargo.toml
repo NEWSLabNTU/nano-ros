@@ -425,7 +425,6 @@ exclude = [
     # Phase 117.10 — ARM FVP Base_RevC AEMv8-R Cortex-A SMP under Zephyr.
     # Build via `west build -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp` from
     # an example app; cargo `check` works on host for the Rust surface.
-    "packages/boards/nros-board-fvp-aemv8r-smp",
     # ThreadX Linux examples (require ThreadX + NetX Duo SDKs)
     "examples/threadx-linux/rust/zenoh/talker",
     "examples/threadx-linux/rust/zenoh/listener",

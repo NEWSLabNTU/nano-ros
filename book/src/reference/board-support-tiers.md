@@ -32,6 +32,7 @@ Asserted runtime coverage and a nightly lane, but not in `just ci`. Breakage is 
 | `nros-board-mps2-an385` | QemuBaremetal | *unassigned* | phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` feature — one crate, two entry shapes (direct-exec + RTIC), one witness row. |
 | `nros-board-nuttx-qemu` | NuttxRiscv | *unassigned* | HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly. |
 | `nros-board-threadx-qemu-riscv64` | ThreadxRiscv64 | *unassigned* | All three Action rows are BuildOnly by a deliberate wall-clock choice (182.5), not by breakage. |
+| `nros-board-zephyr` | ZephyrQemuCortexM | *unassigned* | C and C++ pubsub are Runtime; service/action are BuildOnly pending the runner's peer half. NO RUST ROW: `zephyr-lang-rust` cannot compile for any board whose devicetree has gpio nodes (issue 0432), so a rust cell would not build and BuildOnly would be a lie. Tier 2 rather than 1 because `just ci` is host-only and this needs QEMU. |
 
 ## Tier 3 — build-only
 
@@ -39,7 +40,7 @@ Compiles. **No CI lane can boot it** — real hardware or a license-gated model 
 
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
-| `nros-board-fvp-aemv8r-smp` | Fvp | *unassigned* | **Gated SDK: `arm-fvp`.** License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see. |
+| `nros-board-zephyr` | Fvp | *unassigned* | **Gated SDK: `arm-fvp`.** License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see. phase-337 W9.a folded the `nros-board-fvp-aemv8r-smp` CRATE into `nros-board-zephyr/boards/fvp-aemv8r-smp/` — the crate's Rust half (a `Config` and a `run` loop) had zero consumers, so what it actually shipped was a prj.conf, a DTS overlay and a board.cmake: a config bundle wearing a Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate, matrix_platform) keying is for. |
 
 ## Infrastructure — not boards
 

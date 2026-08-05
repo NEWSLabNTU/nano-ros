@@ -142,12 +142,12 @@ notes = "HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveO
 # ===== tier 3 — build-only =================================================
 
 [[board]]
-crate = "nros-board-fvp-aemv8r-smp"
+crate = "nros-board-zephyr"
 matrix_platform = "Fvp"
 gated_sdk = "arm-fvp"
 tier = 3
 maintainers = []
-notes = "License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see."
+notes = "License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see. phase-337 W9.a folded the `nros-board-fvp-aemv8r-smp` CRATE into `nros-board-zephyr/boards/fvp-aemv8r-smp/` — the crate's Rust half (a `Config` and a `run` loop) had zero consumers, so what it actually shipped was a prj.conf, a DTS overlay and a board.cmake: a config bundle wearing a Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate, matrix_platform) keying is for."
 
 # ===== scaffold — explicitly not supported =================================
 #
