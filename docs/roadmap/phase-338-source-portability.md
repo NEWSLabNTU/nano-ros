@@ -176,6 +176,42 @@ RMW registration and the spin loop already live.
       *Result:* threadx-riscv64 and zephyr join the RTOS group;
       `rust/talker` goes from 4 bodies to 2 (RTOS+baremetal, and native).
 
+## W3.d — threadx-riscv64 converged (2026-08-05)
+
+All six `qemu-riscv64-threadx/rust` bodies now normalize identical to the
+group-A body. Divergence entries: **31 → 28**.
+
+**Recorded because the first diagnosis was wrong.** An earlier pass read
+`mod app_main;` in each `lib.rs`, concluded it was glue the gate still counted
+as logic, and proposed teaching `nros::node!(Ty)` to emit the board glue so the
+line could disappear. That macro change was never needed:
+`example_portability::normalize` has skipped glue-module declarations since W1,
+
+```rust
+// A glue-module declaration is glue, not logic (see GLUE_MODULES).
+if GLUE_MODULES.iter().any(|m| t == format!("mod {m};") || ...) { continue; }
+```
+
+so talker, listener and action-client already matched — all five group-A talker
+copies normalize to the same 1087 bytes. Reading the diffs without re-reading
+the normalizer turned "already solved" into a proposed macro rewrite. When a
+gate says a thing is identical and the raw files disagree, the normalizer is the
+thing to read first.
+
+What actually differed on the other three was body drift, converged onto the
+group body. The action-server case is the only one that lost behaviour: riscv64
+computed a real iterative Fibonacci with 256-byte feedback buffers where the
+group body publishes a fixed `[0,1,1]`. That was safe only because the cell is
+`BuildOnly` — phase-182.5 dropped ThreadX riscv64 action from the run matrix on
+wall-clock grounds, so the richer body had never executed.
+
+**Open question this surfaces, deliberately not folded in:** the group body's
+action-server is a stub. riscv64's was the better implementation, and
+converging moved four platforms' worth of nothing while deleting the only real
+one. Growing the GROUP body to compute the sequence is the honest fix, but it
+touches four platforms with live runtime lanes and raises feedback buffers
+128 → 256 on constrained targets. Worth its own item.
+
 ## W3 — Close the native/embedded Rust split
 
 > **Measured 2026-08-04, and the premise was wrong. Read before starting.**
