@@ -53,20 +53,6 @@ fn require_nuttx_setup() -> Option<()> {
     Some(())
 }
 
-/// Returns true if the `nros codegen-system` verb is reachable (Phase
-/// 212.E). When false the build step is skipped (the audit-only path
-/// still verifies template shape).
-fn nros_codegen_system_available() -> bool {
-    let bin = std::env::var("NROS_BIN")
-        .ok()
-        .unwrap_or_else(|| "nros".to_string());
-    Command::new(&bin)
-        .args(["codegen-system", "--help"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
 #[test]
 fn template_files_exist_and_loc_under_budget() {
     let template = workspace_root().join("integrations/nuttx/apps-external-template");
@@ -172,44 +158,11 @@ fn nuttx_qemu_arm_2_component_bringup_builds() {
         source.display()
     );
 
-    // Step 3 — exercise the `context::` rule against the actual NuttX
-    // tree when the Phase 212.E `nros codegen-system` verb exists.
-    // Otherwise the audit ends here (Phase 212.E gates the cargo step;
-    // the template shape verification is the H.2 contract).
-    if !nros_codegen_system_available() {
-        println!(
-            "[SKIPPED build step] `nros codegen-system` verb not yet implemented \
-             (Phase 212.E). Template-shape audit only."
-        );
-        return;
-    }
-
-    // Real build: best-effort. NuttX kernel configure is heavy
-    // (defconfig copy + olddefconfig + kconfig-tweak NROS knobs);
-    // replicating it would duplicate hundreds of LoC and is out of
-    // scope for this build-shape audit (the legacy
-    // `build-fixtures-make` recipe that owned it was retired under
-    // Phase 212.M-F.16). Verify only that `make context` against the
-    // staged shell drives the codegen + cargo-build pipeline without
-    // erroring.
-    let nuttx_dir = std::env::var("NUTTX_DIR").expect("NUTTX_DIR set above");
-    let make_out = Command::new("make")
-        .arg("-C")
-        .arg(&shell)
-        .arg("context")
-        .env("APPDIR", &apps)
-        .env("TOPDIR", &nuttx_dir)
-        .env("NANO_ROS_ROOT", workspace_root())
-        .output()
-        .expect("spawn make context");
-    println!(
-        "[make context] status={} stdout:\n{}\nstderr:\n{}",
-        make_out.status,
-        String::from_utf8_lossy(&make_out.stdout).trim_end(),
-        String::from_utf8_lossy(&make_out.stderr).trim_end(),
-    );
-    // The scratch APPDIR omits `tools/Rust.mk` and the full kernel
-    // configure, so `make context` may legitimately exit non-zero on a
-    // missing include — that's beyond the H.2 contract. Surface output
-    // for diagnostic value; do not assert success.
+    // phase-329 W5 — the former "Step 3" ran `make -C <shell> context` against the
+    // NuttX tree but explicitly did NOT assert its result ("Surface output for
+    // diagnostic value; do not assert success"). A non-asserting compile/make at
+    // test time is exactly what the E1 rule (no compilation inside tests) forbids
+    // and buys nothing — dropped. This test's contract is the template-shape audit
+    // (Steps 1-2 above, the H.2 contract). The `context::` codegen+build pipeline
+    // is exercised for real by the nuttx fixture build stage.
 }

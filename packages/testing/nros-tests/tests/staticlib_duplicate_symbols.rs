@@ -21,11 +21,19 @@
 //!     `NoBackend` hazard).
 //!
 //! This is the host (posix) proxy for the cross C++ staticlib link; the dependency
-//! closure is target-agnostic, so it is faithful + always reproducible. Consumes
-//! the build-stage fixture (`scripts/build/link-determinism-fixture.sh` →
-//! `build/link-determinism/libnros_c.a` + `.compile-ok`); skips when the fixture
-//! or the host tools are absent (CLAUDE.md: skip on unmet preconditions, never
-//! silent-pass).
+//! closure is target-agnostic, so it is faithful + always reproducible.
+//!
+//! ## phase-329 W5 — link out of test
+//!
+//! The `-u`-forced link itself moved to the BUILD stage
+//! (`scripts/build/link-determinism-fixture.sh` now links `bare.c` + the umbrella
+//! archive into `build/link-determinism/lkproof` with `-u nros_rmw_zenoh_register`
+//! and NO `--allow-multiple-definition`). The link SUCCEEDING is the build-stage
+//! assertion — a strong-symbol collision or a missing forced entry aborts the
+//! fixture build under `set -e`, failing the hard PR gate. This test now only runs
+//! `nm` on the PREBUILT `lkproof` (pure inspection, no compilation at test time).
+//! Skips when the fixture or `nm` is absent (CLAUDE.md: skip on unmet
+//! preconditions, never silent-pass).
 
 use std::{path::PathBuf, process::Command};
 
@@ -48,20 +56,13 @@ fn nm_tool() -> Option<String> {
     None
 }
 
-fn tool(name: &str) -> Option<String> {
-    Command::new(name)
-        .arg("--version")
-        .output()
-        .ok()
-        .map(|_| name.to_string())
-}
-
-/// The single-runtime fixture archive (`build/link-determinism/libnros_c.a`,
-/// zenoh bundled), gated on the `.compile-ok` stamp.
-fn single_archive(root: &std::path::Path) -> Option<PathBuf> {
+/// The prebuilt single-runtime link proof (`build/link-determinism/lkproof`,
+/// linked at the build stage with `-u` force + NO `--allow-multiple-definition`),
+/// gated on the `.compile-ok` stamp.
+fn link_proof_exe(root: &std::path::Path) -> Option<PathBuf> {
     let fx = root.join("build/link-determinism");
-    let lib = fx.join("libnros_c.a");
-    (fx.join(".compile-ok").is_file() && lib.is_file()).then_some(lib)
+    let exe = fx.join("lkproof");
+    (fx.join(".compile-ok").is_file() && exe.is_file()).then_some(exe)
 }
 
 /// Phase 241.D3-rev (issue #62 / #70) — the single-runtime link proof.
@@ -76,41 +77,18 @@ fn single_archive(root: &std::path::Path) -> Option<PathBuf> {
 #[test]
 fn single_archive_links_via_u_force_without_allow_multiple_definition() {
     let root = repo_root();
-    let Some(cc) = tool("cc") else {
-        nros_tests::skip!("cc not on PATH — D3 single-runtime link-proof needs a host C compiler");
-    };
-    let Some(lib) = single_archive(&root) else {
+    let Some(exe) = link_proof_exe(&root) else {
         nros_tests::skip!(
-            "no single-runtime fixture archive (build/link-determinism/libnros_c.a) — run \
-             `scripts/build/link-determinism-fixture.sh` first"
+            "no single-runtime link proof (build/link-determinism/lkproof) — run \
+             `scripts/build/link-determinism-fixture.sh` first (it links with `-u` force \
+             + NO --allow-multiple-definition at the build stage)"
         );
     };
 
-    let tmp = tempfile::tempdir().unwrap();
-    let main_c = tmp.path().join("bare.c");
-    std::fs::write(&main_c, "int main(void){return 0;}\n").unwrap();
-    let exe = tmp.path().join("lkproof");
-
-    // The single umbrella archive bundles the zenoh backend + the cffi C ABI
-    // (`REGISTRY` + entry points), so the host binary links against it ALONE.
-    // `-u nros_rmw_zenoh_register` forces the backend register entry (replacing
-    // `--whole-archive`); NO `--allow-multiple-definition`.
-    let out = Command::new(&cc)
-        .arg(&main_c)
-        .args(["-Wl,-u,nros_rmw_zenoh_register"])
-        .arg(&lib)
-        .args(["-lpthread", "-ldl", "-lm"])
-        .arg("-o")
-        .arg(&exe)
-        .output()
-        .unwrap_or_else(|e| panic!("spawn {cc}: {e}"));
-    assert!(
-        out.status.success(),
-        "single-runtime host link FAILED with `-u nros_rmw_zenoh_register` and WITHOUT \
-         `--allow-multiple-definition` — a real strong-symbol collision or a missing \
-         definition in libnros_c.a (the single-runtime model should link clean):\n{}",
-        String::from_utf8_lossy(&out.stderr),
-    );
+    // The link itself (`-u nros_rmw_zenoh_register`, NO `--allow-multiple-definition`)
+    // succeeded at the BUILD stage — its failure aborts the fixture build under
+    // `set -e`, so the presence of `lkproof` here IS the link-success proof. This
+    // test asserts the resulting symbol shape.
 
     // Symbol checks need an `nm`; skip them (link already proven) if absent.
     let Some(nm) = nm_tool() else {

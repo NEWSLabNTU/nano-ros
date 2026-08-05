@@ -42,5 +42,18 @@ built="$target_dir/debug/libnros_c.a"
 [ -f "$built" ] || { echo "no archive at $built (CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-unset})" >&2; exit 1; }
 cp "$built" "$out_dir/"
 
+# phase-329 W5 — the single-runtime LINK PROOF moves to the BUILD stage (was a
+# runtime `cc` link in staticlib_duplicate_symbols.rs). Link a bare host binary
+# against the umbrella archive with `-u nros_rmw_zenoh_register` and NO
+# `--allow-multiple-definition`; the link SUCCEEDING is the assertion (a real
+# strong-symbol collision or a missing forced entry aborts this script under
+# `set -e`, failing the hard PR gate). The consuming test then only runs `nm` on
+# this prebuilt `lkproof` (pure inspection — no compilation at test time).
+cc="${CC:-cc}"
+printf 'int main(void){return 0;}\n' > "$out_dir/bare.c"
+"$cc" "$out_dir/bare.c" -Wl,-u,nros_rmw_zenoh_register "$out_dir/libnros_c.a" \
+    -lpthread -ldl -lm -o "$out_dir/lkproof"
+echo "   linked $out_dir/lkproof (-u force, NO --allow-multiple-definition)"
+
 date -u +%Y-%m-%dT%H:%M:%SZ > "$out_dir/.compile-ok"
 echo "   built $out_dir/libnros_c.a"
