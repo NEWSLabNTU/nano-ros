@@ -3110,6 +3110,49 @@ builder = "cxx-syntax"
 id = "spin_until_future_complete"
 builder = "cxx-syntax"
 
+# phase-329 W5 — the platform-header compile matrix (was the runtime g++/cc gate
+# in tests/platform_header_matrix.rs, RFC-0042 D4). These are the POSITIVE cells:
+# the canonical <nros/platform.h> + nros-cpp heap containers MUST compile per
+# platform capability. The -D defines are baked into each snippet (the cxx-syntax
+# builder takes no per-row defines). The one NEGATIVE cell (baremetal heap WITHOUT
+# malloc MUST fail) can't be a passing prebuilt fixture, so it stays runtime in the
+# negative-diagnostic registry. Consumed by tests/platform_header_compile.rs.
+[[compile_check_fixture]]
+id = "platform_hdr_posix_cpp_heap"
+builder = "cxx-syntax"
+
+[[compile_check_fixture]]
+id = "platform_hdr_posix_c"
+builder = "cxx-syntax"
+
+[[compile_check_fixture]]
+id = "platform_hdr_baremetal_has_malloc"
+builder = "cxx-syntax"
+
+[[compile_check_fixture]]
+id = "platform_hdr_baremetal_core"
+builder = "cxx-syntax"
+
+[[compile_check_fixture]]
+id = "platform_hdr_freertos"
+builder = "cxx-syntax"
+
+[[compile_check_fixture]]
+id = "platform_hdr_zephyr"
+builder = "cxx-syntax"
+
+[[compile_check_fixture]]
+id = "platform_hdr_threadx"
+builder = "cxx-syntax"
+
+[[compile_check_fixture]]
+id = "platform_hdr_nuttx"
+builder = "cxx-syntax"
+
+[[compile_check_fixture]]
+id = "platform_hdr_esp"
+builder = "cxx-syntax"
+
 # phase-331 W2 (RFC-0066 R2) — the capability-demo workspace. Native only:
 # param_services/lifecycle are alloc-gated and an embedded image opts in
 # explicitly, which is why these left the language workspaces.

@@ -394,7 +394,11 @@ cxx_syntax_check() {
         && inc+=(-I "$repo_root/target/nros-cpp-generated")
     [ -f "$repo_root/target/nros-c-generated/nros/nros_config_generated.h" ] \
         && inc+=(-I "$repo_root/target/nros-c-generated")
-    inc+=(-I "$repo_root/packages/api/nros-cpp/include"
+    # phase-329 W5 — the platform-header snippets `#include <nros/platform.h>`,
+    # which lives ONLY in nros-platform-api (the RFC-0042 D1 canonical header).
+    # Prepend it so it resolves; unique location, so no shadowing risk.
+    inc+=(-I "$repo_root/packages/platform/nros-platform-api/include"
+          -I "$repo_root/packages/api/nros-cpp/include"
           -I "$repo_root/packages/api/nros-c/include"
           -I "$repo_root/cmake/compat/include")
     # Best-effort: a snippet that doesn't compile (pre-existing API drift or a
