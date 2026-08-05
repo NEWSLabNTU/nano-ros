@@ -380,9 +380,10 @@ files) and, once W4 lands, a coordinate-scoped tier-2 run.
   coverage; the two directions exercise nano-as-publisher vs nano-as-subscriber
   hash matching — not redundant either. The "only unique signal is the per-edition
   hash tail" premise is false: the tail differs PER TYPE, so per-workload is load-bearing.
-- [ ] **W8.d — narrow the tier-2 build/run. BLOCKED ON W4 (not W1) + largely
-  already delivered by #393 (re-verified 2026-08-04).** Two findings collapse the
-  original framing:
+- [x] **W8.d — narrow the tier-2 build/run. DONE (re-verified 2026-08-05,
+  post-W4): the build-cut ships + composes; the run scopes by fixture-absence; a
+  stricter run-scope is a permanent non-goal.** Two findings collapsed the original
+  framing, and a third (2026-08-05) resolves it:
   1. **The build already narrows within platforms.** `build-test-fixtures
      lane=tier2` (#393) sets `NROS_FIXTURE_COORDS` → `fixtures-manifest.py
      --coords-from`, building only the 12 tier-2 coordinate rows, not `all`. The
@@ -398,6 +399,23 @@ files) and, once W4 lands, a coordinate-scoped tier-2 run.
      files (W4) are not. So a safe coordinate run-scope is a **W4** dependency, not
      W1. Revisit W8.d after W4; until then `build-test-fixtures lane=tier2` is the
      available build cut.
+  3. **RE-VERIFIED 2026-08-05, post-W4 — resolved as "build-cut ships + composes;
+     run scopes by fixture-absence; strict run-scope is not W4-unblocked and is a
+     permanent non-goal."** Confirmed the build cut is coherent end-to-end:
+     `lane-coords tier2` = 12 coords → `build-test-fixtures lane=tier2`
+     (`--coords-from` / `NROS_FIXTURE_COORDS`) builds only those → `ci-matrix`
+     consumes them (`NROS_FIXTURE_LANE=tier2` + `_lane-gate tier2`, run-scope
+     `NROS_FIXTURE_SCOPE=coords`). The RUN is ALREADY coordinate-scoped in effect:
+     the cell-bound consumers (`rtos_e2e`, `native_example_{pubsub,reqresp}`) `skip!`
+     any cell whose fixture coordinate wasn't built, so a tier-2 build runs exactly
+     its 12 coords and skips the rest. The STRICTER skip-before-enumerate for the
+     remaining files did NOT get unblocked by W4: W4 was a DISPOSITION pass that
+     KEPT the genuine one-offs (executor/error_handling/zero_copy = host-tier;
+     the per-platform QEMU files = family-excluded by `lane-filter.sh`) rather than
+     cell-binding them — correctly, since they are not matrix cells. So there is no
+     un-scoped cross-fixture waste left to cut, and cell-binding a genuine one-off
+     purely to scope it would be the wrong shape. W8.d is DONE to the extent a safe
+     cut exists.
 - [x] ~~**W8.e — collapse same-code/different-YAML rows.**~~ **RETRACTED — not
   same-code.** robot1/robot2 (`fixtures.toml:225/505/708`) share dir/bringup but
   differ by `entry`: robot1 bakes the TALKER, robot2 the LISTENER (comment
