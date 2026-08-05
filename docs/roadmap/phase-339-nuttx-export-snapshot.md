@@ -87,20 +87,36 @@ directory scan both collapse into "point at `libs/`".
 
 ### W1 — Per-arch export snapshots
 
-- [ ] `scripts/nuttx/build-nuttx.sh`: derive the arch (it already greps
+- [x] `scripts/nuttx/build-nuttx.sh`: derive the arch (it already greps
       `CONFIG_ARCH` for its run hint) and extract the export to
       `nuttx-export-<arch>-<ver>/`. Stop `rm -rf nuttx-export-*` from wiping the
       OTHER architecture's snapshot — scope the removal to this arch.
-- [ ] Copy the vector-table object into the snapshot (`<snapshot>/startup/`)
+- [x] Copy the vector-table object into the snapshot (`<snapshot>/startup/`)
       when the config has one. arm does; riscv sets `NUTTX_VECTORTAB=""` and
       skips it already.
-- [ ] Keep the up-to-date short-circuit working per arch: the marker
+- [x] Keep the up-to-date short-circuit working per arch: the marker
       (`HEAD:sha256(defconfig)`) and the export-presence check must both become
       arch-aware, or a second arch's build will look "current" and skip.
 
 **Acceptance:** building arm then riscv leaves BOTH snapshots on disk, each
 containing that arch's archives. `nuttx-export-arm-*/libs/libc.a` is untouched
 by a riscv build (mtime unchanged).
+
+**Done 2026-08-05.** Snapshots are `nros-nuttx-export-{arm,riscv}/` — arch-keyed
+and NOT version-keyed, so a submodule bump does not move the path under
+consumers. Each carries `.nros-export-key` (`HEAD:sha256(defconfig)`).
+
+Verified: arm build → snapshot with 16 libs + the vectortab; riscv build → arm's
+`libs/libc.a` mtime UNCHANGED, both snapshots present.
+
+One correction during the wave, and it is the interesting part. The short-circuit
+first went inside the existing `if NEEDS_RECONFIG -eq 0` block, where it never
+fired — those checks compare the defconfig's board against the live `.config`,
+which is the other arch precisely when skipping is wanted. Moved AHEAD of every
+tree check: the snapshot's validity is a property of the snapshot, not of the
+tree. Now `just nuttx build` for arm reports "up-to-date — skipping" while the
+tree holds riscv, and vice versa — the twice-per-run reconfigure is gone. A
+changed key still reconfigures (verified by corrupting it).
 
 ### W2 — Consumers link the snapshot
 

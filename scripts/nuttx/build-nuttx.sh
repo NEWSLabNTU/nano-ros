@@ -169,7 +169,29 @@ export APPDIR="$NUTTX_APPS_DIR"
 # the qemu-arm board so the arm provisioning is unchanged. A new-arch board
 # (e.g. riscv rv-virt) sets NUTTX_BOARD_MAKEDEFS=boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs.
 BOARD_MAKEDEFS="$(pwd)/${NUTTX_BOARD_MAKEDEFS:-boards/arm/qemu/qemu-armv7a/scripts/Make.defs}"
-MARKER=".nros-nuttx-build-head"
+# phase-339 W1 — ARCH-KEYED everything below.
+#
+# Both architectures build in this one tree, so a single marker and a single
+# export dir made whichever built last the owner: the other arch's already-linked
+# entries went stale and its cells stopped running (issue 0433). The tree stays
+# shared (NuttX builds in-tree; one `.config` at a time), but the OUTPUT each
+# consumer links is now per-arch and survives the other arch's build.
+#
+# Derived from the DEFCONFIG, never from `.config` — at decision time the tree
+# may still hold the other architecture, which is exactly the case this fixes.
+NUTTX_ARCH=$(grep -E '^CONFIG_ARCH=' "$DEFCONFIG" 2>/dev/null | cut -d'"' -f2)
+if [ -z "$NUTTX_ARCH" ]; then
+    echo "build-nuttx.sh: $DEFCONFIG declares no CONFIG_ARCH — cannot key the export" >&2
+    exit 1
+fi
+# `risc-v` → `riscv`: the arch name reaches directory names and env vars.
+NUTTX_ARCH="${NUTTX_ARCH//-/}"
+# The per-arch snapshot consumers link against (phase-339 W2). Its own key file
+# records what produced it, so freshness never depends on the shared tree.
+NUTTX_SNAPSHOT="nros-nuttx-export-${NUTTX_ARCH}"
+NUTTX_SNAPSHOT_KEY="${NUTTX_SNAPSHOT}/.nros-export-key"
+
+MARKER=".nros-nuttx-build-head-${NUTTX_ARCH}"
 CURRENT_HEAD=$(git -C "$NUTTX_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 # 194.5: key the marker on the NuttX HEAD *and* this board's defconfig (content
 # hash) so a board/config switch — not just a submodule-HEAD change — forces a
@@ -179,6 +201,25 @@ CURRENT_HEAD=$(git -C "$NUTTX_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 DEFCONFIG_HASH=$(sha256sum "$DEFCONFIG" 2>/dev/null | cut -d' ' -f1)
 CURRENT_KEY="${CURRENT_HEAD}:${DEFCONFIG_HASH}"
 STORED_KEY=$(cat "$MARKER" 2>/dev/null || echo "none")
+
+# phase-339 W1 — SNAPSHOT SHORT-CIRCUIT, deliberately ahead of every tree check.
+#
+# This arch's snapshot is valid or not on its own terms: it records the
+# `HEAD:defconfig-hash` that produced it, and consumers link IT rather than the
+# shared tree. So when the key matches there is nothing to do — no matter which
+# architecture the tree currently holds.
+#
+# Ordering is the whole point. Behind the `NEEDS_RECONFIG` checks below this
+# never fires in the case that matters: those checks compare the DEFCONFIG's
+# board against the live `.config`, which is the OTHER arch exactly when we most
+# want to skip. That is what made `build-fixtures` reconfigure the tree twice per
+# run (issue 0433) — and with the snapshot in place, rebuilding is not just slow
+# but pointless.
+if [ -f "$NUTTX_SNAPSHOT_KEY" ] \
+    && [ "$(cat "$NUTTX_SNAPSHOT_KEY" 2>/dev/null)" = "$CURRENT_KEY" ]; then
+    echo "NuttX ${NUTTX_ARCH} export up-to-date ($NUTTX_SNAPSHOT) — skipping build/export."
+    exit 0
+fi
 # Self-validate the in-tree config against this board (catches an external
 # reconfigure that didn't touch the marker).
 EXPECTED_BOARD=$(grep -E '^CONFIG_ARCH_BOARD=' "$DEFCONFIG" 2>/dev/null || true)
@@ -225,14 +266,7 @@ fi
 # also recovers from a prior run that reconfigured but failed mid-build (fresh
 # marker, missing export ⇒ NEEDS_RECONFIG=0 but no tarball ⇒ rebuild).
 if [ "$NEEDS_RECONFIG" -eq 0 ]; then
-    # `|| true`: under `set -o pipefail`, `ls <glob>` returns nonzero when no
-    # tarball matches, which would abort the script (set -e) before we can
-    # decide to rebuild. Tolerate the empty match.
-    _EXPORT_TAR=$(ls nuttx-export-*.tar.gz 2>/dev/null | head -1 || true)
-    if [ -n "$_EXPORT_TAR" ] && [ -d "${_EXPORT_TAR%.tar.gz}" ]; then
-        echo "NuttX export up-to-date ($_EXPORT_TAR) — skipping build/export."
-        exit 0
-    fi
+    :
 fi
 
 # --- Build NuttX ---
@@ -248,6 +282,10 @@ make -j"$NCPUS"
 # Clear both so export always starts clean (194.4 — repeated cmake-driven
 # provisioning would otherwise wedge on the leftover from an interrupted run).
 echo "Exporting NuttX..."
+# `make export` is not idempotent: it mkdir's `nuttx-export-<ver>/` and fails
+# ("File exists") on a leftover. Clear only the UNVERSIONED staging products it
+# writes — never `nros-nuttx-export-*`, which is the other architecture's
+# snapshot (phase-339 W1; the old `rm -rf nuttx-export-*` wiped it).
 rm -rf nuttx-export-*.tar.gz nuttx-export-*/
 make export
 EXPORT_TAR=$(ls nuttx-export-*.tar.gz 2>/dev/null | head -1)
@@ -255,7 +293,29 @@ if [ -n "$EXPORT_TAR" ]; then
     EXPORT_DIR="${EXPORT_TAR%.tar.gz}"
     rm -rf "$EXPORT_DIR"
     tar xzf "$EXPORT_TAR"
-    echo "  Export: $NUTTX_DIR/$EXPORT_DIR"
+    # Move the freshly extracted export into this arch's stable snapshot path.
+    # Consumers link `<snapshot>/libs`, so the path must not carry the NuttX
+    # version (it would change under them on a submodule bump) nor be shared
+    # between architectures (the whole defect).
+    rm -rf "$NUTTX_SNAPSHOT"
+    mv "$EXPORT_DIR" "$NUTTX_SNAPSHOT"
+    rm -f "$EXPORT_TAR"
+
+    # The vector table is an intermediate object `make export` does not ship,
+    # and the arm image link needs it (riscv sets NUTTX_VECTORTAB="" and skips).
+    # Snapshot it beside the other startup objects so nothing reaches back into
+    # the live tree.
+    for _vt in arch/*/src/*_vectortab.o; do
+        if [ -f "$_vt" ]; then
+            mkdir -p "$NUTTX_SNAPSHOT/startup"
+            cp "$_vt" "$NUTTX_SNAPSHOT/startup/"
+        fi
+    done
+
+    # Record what produced this snapshot. The short-circuit above reads it, so
+    # freshness is a property of the SNAPSHOT rather than of the shared tree.
+    echo "$CURRENT_KEY" > "$NUTTX_SNAPSHOT_KEY"
+    echo "  Export: $NUTTX_DIR/$NUTTX_SNAPSHOT (arch ${NUTTX_ARCH})"
 else
     echo "  WARNING: make export did not produce a tarball"
 fi
