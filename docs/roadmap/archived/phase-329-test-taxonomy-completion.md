@@ -1,5 +1,14 @@
 # Phase 329 — Test taxonomy completion: every test under a matrix, every build in the build stage
 
+**Status: COMPLETE (archived 2026-08-05).** All work items W0–W8 landed (W8's
+row-dedup items a/b/c/e retracted as load-bearing; W8.d resolved). Acceptance met,
+with the tests/-file-count target restated from the pre-disposition `≤120` to the
+measured `151` (the W4 pass proved most candidate files are genuine one-offs, not
+folds). Follow-ups + deferred items all closed: the `CiTier`↔justfile ladder gate,
+the emulator/esp32 disposition, the xrce delivery fold, and #0423 (borrowed-view
+runtime E2E re-established as a build-stage fixture). Remaining lower-count folds
+are optional and named in Acceptance.
+
 **Implements:** RFC-0051 (the unfinished half), RFC-0058 (edition axis stays
 separate), RFC-0061 (tier mapping)
 **Informed by:** the 2026-08-01 full-tree inventory (156 test files, 454 test
