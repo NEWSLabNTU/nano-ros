@@ -263,12 +263,13 @@ directly: 0 matches for gid/MessageInfo/"Waiting for"), so "got 0" is literal. T
 the talker publishes against the same router. Grep-drift class (archived 0157/0164): diff the
 pattern against what the fixture prints before debugging delivery. See `0429-*`. (2026-08-05)
 
-**#428** — every CycloneDDS runtime test fails at node registration while every zenoh test in the
-same file passes: `session open (rmw=cyclonedds)` then `NodeRegister("…")`. Reproduces from a
-directly-invoked binary. Ruled out stale fixtures, missing backend (79 cyclone symbols present),
-environment, and the phase-336 profile work. Blocked on diagnosis because `decl_err_from_node`
-collapses every `NodeError` except `ExecutorFull` — widen that seam first (issue 0095 did the same
-once). See `0428-*`. (2026-08-05)
+RESOLVED 2026-08-05 — **#428** same class as #0413 (the declarative Node API never registered
+Cyclone type descriptors → `PublisherCreationFailed` → the opaque `NodeRegister`). Fixed by #0413's
+`register_declared_type`/`_service`/`_action` + the `ad7752bc9` action funnel. VERIFIED on current
+main with fresh `rmw-cyclonedds` Rust examples: node register no longer fails; pubsub delivers
+(`I heard: 1..4`) and the service pair delivers (client `Result: 5`, server `a:2 b:3`). Also widened
+`decl_err_from_node` to surface the real `NodeError` variant (the collapse that caused the double
+misdiagnosis). See `archived/0428-*`.
 
 **#427** — a SystemModel reads as FRESH when only the RESOLVER changed, so a resolver fix never
 reaches models that already exist. `meta.inputs[].sha256` covers the launch file and `system.toml`;

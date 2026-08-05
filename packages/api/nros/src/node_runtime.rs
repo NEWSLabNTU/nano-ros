@@ -1435,6 +1435,19 @@ impl ActionExecutor for RuntimeActions<'_> {
 /// the `nros::main!` entry) can name `NROS_EXECUTOR_MAX_CBS` instead of an
 /// opaque `NodeRegister`. Every other `NodeError` stays `Runtime`.
 fn decl_err_from_node(e: nros_node::NodeError) -> NodeDeclError {
+    // Issue 0428 — `NodeDeclError::Runtime` collapses every non-`ExecutorFull`
+    // cause into one opaque `NodeRegister("<pkg>")`, "four collapses away from the
+    // cause" (node.rs). That is how a Cyclone descriptor/transport failure was
+    // mis-diagnosed twice. Surface the real variant on the error path (rare — this
+    // only runs when a declaration is already failing), so the register seam names
+    // WHAT failed, not just WHERE.
+    // `#![no_std]` crate with `extern crate std` under the std feature — the
+    // eprintln! macro is not in the no_std prelude, so qualify it; the whole
+    // diagnostic is std-gated so a no_std build sees nothing.
+    #[cfg(feature = "std")]
+    if !matches!(e, nros_node::NodeError::ExecutorFull) {
+        std::eprintln!("nros: node declaration failed — NodeError::{e:?}");
+    }
     match e {
         nros_node::NodeError::ExecutorFull => NodeDeclError::ExecutorFull,
         _ => NodeDeclError::Runtime,
