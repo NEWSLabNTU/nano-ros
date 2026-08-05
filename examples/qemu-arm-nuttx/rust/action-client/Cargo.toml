@@ -6,16 +6,32 @@ license = "MIT OR Apache-2.0"
 publish = false
 description = "NuttX QEMU ARM Fibonacci action client — Component pkg"
 
+# phase-338 W2 — collapsed from the retired `-entry` package: this ONE
+# package carries both the node logic (src/lib.rs) and the entry
+# (src/main.rs's `nros::main!()`), the shape native already had.
+[[bin]]
+name = "action-client"
+path = "src/main.rs"
+
 [lib]
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
+# phase-338 W2 — carried over from the collapsed `-entry` package.
+# #127: `rmw-zenoh` bakes the zenoh RMW backend into the image (the board's
+# `run_entry` registers it explicitly — NuttX has no .init_array
+# auto-register); without it `Executor::open` fails instantly with
+# Transport(ConnectionFailed) before touching the network.
+nros-board-nuttx-qemu = { version = "*", features = ["rmw-zenoh"] }
 nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
 nros-platform = { version = "*", default-features = false, features = ["platform-nuttx"] }
 example_interfaces = { path = "generated/example_interfaces", default-features = false }
 # Demo-parity log lines route through the `log` facade; the platform
 # entry runtime owns the sink.
 log = "0.4"
+
+[package.metadata.nros.entry]
+deploy = "nuttx"
 
 [package.metadata.nros.node]
 class = "nuttx_rs_action_client::FibonacciClient"
@@ -27,6 +43,7 @@ board = "qemu-armv7a-nsh"
 target = "armv7a-nuttx-eabihf"
 rmw = "zenoh"
 domain_id = 0
+locator = "tcp/10.0.2.2:8220"
 
 [package.metadata.ament]
 build_depend = ["example_interfaces"]

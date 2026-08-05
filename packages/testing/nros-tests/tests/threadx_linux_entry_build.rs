@@ -18,14 +18,16 @@
 
 use nros_tests::fixtures::threadx_linux;
 
-/// (role dir suffix, `[[bin]]` name) for each Entry-pkg demo.
+/// (role dir, `[[bin]]` name) for each demo. phase-338 W2 collapsed the
+/// `-entry` packages into the role packages, so the two are now the same
+/// short name — kept as a pair because the resolver takes both.
 const ENTRIES: &[(&str, &str)] = &[
-    ("talker", "threadx_linux_rs_talker_entry"),
-    ("listener", "threadx_linux_rs_listener_entry"),
-    ("service-server", "threadx_linux_rs_service_server_entry"),
-    ("service-client", "threadx_linux_rs_service_client_entry"),
-    ("action-server", "threadx_linux_rs_action_server_entry"),
-    ("action-client", "threadx_linux_rs_action_client_entry"),
+    ("talker", "talker"),
+    ("listener", "listener"),
+    ("service-server", "service-server"),
+    ("service-client", "service-client"),
+    ("action-server", "action-server"),
+    ("action-client", "action-client"),
 ];
 
 #[test]

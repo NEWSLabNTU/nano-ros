@@ -142,38 +142,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     },
     Divergence {
         lang: "rust",
-        program: "action-client-entry",
-        platform: "qemu-arm-nuttx",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "action-client-entry",
-        platform: "threadx-linux",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "action-server-entry",
-        platform: "qemu-arm-nuttx",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "action-server-entry",
-        platform: "threadx-linux",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
         program: "listener",
         platform: "qemu-esp32-baremetal",
         reason: "W3.c — group B is not yet internally consistent; measure the \
@@ -182,75 +150,11 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     },
     Divergence {
         lang: "rust",
-        program: "listener-entry",
-        platform: "qemu-arm-nuttx",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "listener-entry",
-        platform: "threadx-linux",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "service-client-entry",
-        platform: "qemu-arm-nuttx",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "service-client-entry",
-        platform: "threadx-linux",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "service-server-entry",
-        platform: "qemu-arm-nuttx",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "service-server-entry",
-        platform: "threadx-linux",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
         program: "talker",
         platform: "qemu-esp32-baremetal",
         reason: "W3.c — group B is not yet internally consistent; measure the \
                  irreducible part after the log/nros_log facade is unified and \
                  DISPATCH/tick get defaults.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "talker-entry",
-        platform: "qemu-arm-nuttx",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "talker-entry",
-        platform: "threadx-linux",
-        reason: "W2.c/W2.d — the re-exported node-package name differs \
-                 (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
-                 attributes are inconsistent for the same generated entry.",
     },
 ];
 

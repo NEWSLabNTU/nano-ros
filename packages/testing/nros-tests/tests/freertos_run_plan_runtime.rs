@@ -10,7 +10,7 @@
 //!
 //! ## Fixture
 //!
-//! `examples/qemu-arm-freertos/rust/talker-entry/` — the M-F.15-shipped
+//! `examples/qemu-arm-freertos/rust/talker/` — the M-F.15-shipped
 //! FreeRTOS Entry pkg (Phase 212.N.7 step-2 / 213.C.1). Shape:
 //!
 //! - `src/main.rs` is one line: `nros::main!();` (Form 1 self-bringup).
@@ -23,7 +23,8 @@
 //!
 //! Build path: `cargo build` under the pkg dir; `.cargo/config.toml`
 //! pins `target = "thumbv7m-none-eabi"`, so the artifact lands at
-//! `target/thumbv7m-none-eabi/debug/freertos_rs_talker_entry`.
+//! `target/thumbv7m-none-eabi/debug/talker` (phase-338 W2 collapsed the
+//! `-entry` package in and shortened the `[[bin]]` name).
 //!
 //! ## What the lifecycle proof looks like
 //!
@@ -40,7 +41,7 @@
 //!
 //! Then the app task opens `Executor::open(...)` and dispatches into
 //! the codegen-emitted run-plan closure (which itself calls
-//! `freertos_rs_talker_entry::register(runtime)` →
+//! `freertos_rs_talker::register(runtime)` →
 //! `freertos_rs_talker::register`). Four ends are accepted as
 //! run_plan-reached proofs (mirror of the posix sibling's two-arm
 //! assertion):
@@ -281,30 +282,30 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
 
 #[test]
 fn freertos_board_run_executes_run_plan() {
-    boot_and_connect("talker-entry", "freertos_rs_talker_entry");
+    boot_and_connect("talker", "talker");
 }
 
 #[test]
 fn freertos_listener_entry_boots_and_connects() {
-    boot_and_connect("listener-entry", "freertos_rs_listener_entry");
+    boot_and_connect("listener", "listener");
 }
 
 #[test]
 fn freertos_service_server_entry_boots_and_connects() {
-    boot_and_connect("service-server-entry", "freertos_rs_service_server_entry");
+    boot_and_connect("service-server", "service-server");
 }
 
 #[test]
 fn freertos_service_client_entry_boots_and_connects() {
-    boot_and_connect("service-client-entry", "freertos_rs_service_client_entry");
+    boot_and_connect("service-client", "service-client");
 }
 
 #[test]
 fn freertos_action_server_entry_boots_and_connects() {
-    boot_and_connect("action-server-entry", "freertos_rs_action_server_entry");
+    boot_and_connect("action-server", "action-server");
 }
 
 #[test]
 fn freertos_action_client_entry_boots_and_connects() {
-    boot_and_connect("action-client-entry", "freertos_rs_action_client_entry");
+    boot_and_connect("action-client", "action-client");
 }

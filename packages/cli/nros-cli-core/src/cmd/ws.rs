@@ -968,7 +968,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                     // Namespace by the bringup DIR name, not pkg.name — the
                     // consumer ladder (model_location) only knows the dir, and
                     // the two differ for standalone self-bringups
-                    // (`talker-entry/` vs pkg `threadx_linux_rs_talker_entry`).
+                    // (`talker/` vs pkg `threadx_linux_rs_talker`).
                     (
                         launch,
                         dir.join(

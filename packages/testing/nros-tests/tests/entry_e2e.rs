@@ -345,7 +345,7 @@ fn nuttx_c_entry() -> TestResult<PathBuf> {
 fn nuttx_rust_entry() -> TestResult<PathBuf> {
     // Prebuilt standalone `nros::main!` Entry-pkg demo image (#130) —
     // consume-only, exactly like the old rust_nuttx_entry_e2e.rs.
-    nuttx::require_entry_binary("talker", "nuttx_rs_talker_entry")
+    nuttx::require_entry_binary("talker", "talker")
 }
 
 // =============================================================================

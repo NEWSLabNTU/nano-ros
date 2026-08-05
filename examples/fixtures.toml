@@ -1755,7 +1755,7 @@ env = { CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/talker-entry"
+dir = "examples/qemu-arm-nuttx/rust/talker"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 
@@ -1763,7 +1763,7 @@ env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/listener-entry"
+dir = "examples/qemu-arm-nuttx/rust/listener"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 
@@ -1771,7 +1771,7 @@ env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/service-server-entry"
+dir = "examples/qemu-arm-nuttx/rust/service-server"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 
@@ -1779,7 +1779,7 @@ env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/service-client-entry"
+dir = "examples/qemu-arm-nuttx/rust/service-client"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 
@@ -1787,7 +1787,7 @@ env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/action-server-entry"
+dir = "examples/qemu-arm-nuttx/rust/action-server"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 
@@ -1795,7 +1795,7 @@ env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/action-client-entry"
+dir = "examples/qemu-arm-nuttx/rust/action-client"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 
@@ -1870,37 +1870,37 @@ target_dir = "target-zenoh"
 platform = "threadx-linux"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/threadx-linux/rust/talker-entry"
+dir = "examples/threadx-linux/rust/talker"
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/threadx-linux/rust/listener-entry"
+dir = "examples/threadx-linux/rust/listener"
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/threadx-linux/rust/service-server-entry"
+dir = "examples/threadx-linux/rust/service-server"
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/threadx-linux/rust/service-client-entry"
+dir = "examples/threadx-linux/rust/service-client"
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/threadx-linux/rust/action-server-entry"
+dir = "examples/threadx-linux/rust/action-server"
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/threadx-linux/rust/action-client-entry"
+dir = "examples/threadx-linux/rust/action-client"
 
 [[fixture]]
 id = "threadx-linux-logging-smoke"

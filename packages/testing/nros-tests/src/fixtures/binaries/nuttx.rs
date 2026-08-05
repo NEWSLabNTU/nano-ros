@@ -144,37 +144,37 @@ fn _keep_build_rust_example() {
 
 pub fn build_nuttx_talker() -> TestResult<&'static Path> {
     NUTTX_TALKER_BINARY
-        .get_or_try_init(|| require_entry_binary("talker", "nuttx_rs_talker_entry"))
+        .get_or_try_init(|| require_entry_binary("talker", "talker"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_listener() -> TestResult<&'static Path> {
     NUTTX_LISTENER_BINARY
-        .get_or_try_init(|| require_entry_binary("listener", "nuttx_rs_listener_entry"))
+        .get_or_try_init(|| require_entry_binary("listener", "listener"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_service_server() -> TestResult<&'static Path> {
     NUTTX_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| require_entry_binary("service-server", "nuttx_rs_service_server_entry"))
+        .get_or_try_init(|| require_entry_binary("service-server", "service-server"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_service_client() -> TestResult<&'static Path> {
     NUTTX_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| require_entry_binary("service-client", "nuttx_rs_service_client_entry"))
+        .get_or_try_init(|| require_entry_binary("service-client", "service-client"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_action_server() -> TestResult<&'static Path> {
     NUTTX_ACTION_SERVER_BINARY
-        .get_or_try_init(|| require_entry_binary("action-server", "nuttx_rs_action_server_entry"))
+        .get_or_try_init(|| require_entry_binary("action-server", "action-server"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
     NUTTX_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| require_entry_binary("action-client", "nuttx_rs_action_client_entry"))
+        .get_or_try_init(|| require_entry_binary("action-client", "action-client"))
         .map(|p| p.as_path())
 }
 
@@ -188,11 +188,12 @@ pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
 /// `just nuttx build-examples` → `fixtures-build.sh nuttx rust` at the
 /// `release` profile — the 177.8.c CGU-miscompile dodge — which runs
 /// `nros sync` + cargo; the board-centric image link needs `NUTTX_DIR`).
-/// `role` is hyphenated (`"service-server"`); `bin` is the `[[bin]]` name
-/// (`"nuttx_rs_service_server_entry"`). Mirrors [`build_rust_example`]'s
+/// `role` is hyphenated (`"service-server"`); since phase-338 W2 collapsed the
+/// `-entry` package into the role package, `bin` is that same short name.
+/// Mirrors [`build_rust_example`]'s
 /// release-first profile resolution.
 pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
-    let dir = project_root().join(format!("examples/qemu-arm-nuttx/rust/{role}-entry"));
+    let dir = project_root().join(format!("examples/qemu-arm-nuttx/rust/{role}"));
     if !dir.exists() {
         return Err(TestError::BuildFailed(format!(
             "NuttX entry example not found: {}",

@@ -28,4 +28,5 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 # rendered config — re-append until the upstream CLI is fixed.
 [patch.crates-io]
 libc = { path = "../../../../third-party/nuttx/libc" }
+nros-board-nuttx-qemu = { path = "../../../../packages/boards/nros-board-nuttx-qemu" }  # nros-managed
 nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed

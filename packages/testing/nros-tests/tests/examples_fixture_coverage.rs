@@ -61,18 +61,13 @@ const ZEPHYR_ROLES: &[&str] = &[
 /// Dirs built directly by a test harness (no `fixtures.toml` row). Keep the
 /// harness path in the comment so the pairing is auditable.
 const TEST_DRIVEN_BUILDERS: &[&str] = &[
-    // All 6 freertos `*_entry` demos are prebuilt at `--release` by
-    // `just freertos build-examples` (each Entry carries the `NROS_PLATFORM_*`
-    // env in its `.cargo/config.toml`, so it builds standalone) and then
-    // booted by `freertos_run_plan_runtime.rs` (`boot_and_connect(...)` per
-    // role), which now only LOCATES the prebuilt binary — the former
-    // compile-in-test build is gone (CLAUDE.md "no compilation inside tests").
-    "qemu-arm-freertos/rust/talker-entry",
-    "qemu-arm-freertos/rust/listener-entry",
-    "qemu-arm-freertos/rust/service-server-entry",
-    "qemu-arm-freertos/rust/service-client-entry",
-    "qemu-arm-freertos/rust/action-server-entry",
-    "qemu-arm-freertos/rust/action-client-entry",
+    // phase-338 W2 — the 6 freertos `*-entry` dirs are GONE: each collapsed
+    // into its role package, which already carries a `fixtures.toml` row. They
+    // are therefore covered by a source above and must NOT be listed here (a
+    // dir covered twice is a stale exception, per this list's own rule).
+    // `just freertos build-examples` still builds the default-`target/` binary
+    // that `freertos_run_plan_runtime.rs` locates — a second build of a
+    // covered dir, not a second dir.
     // Cyclone-on-Zephyr aemv8r references — BUILT by the FVP recipes
     // `just zephyr build-fvp-aemv8r-cyclonedds{,-rust}`. phase-321 W3.c: this
     // used to say they were "run by `fvp_runtime.rs` / `fvp_runtime_rust.rs`",

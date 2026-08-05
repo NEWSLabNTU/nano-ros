@@ -69,7 +69,7 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     // crate can no longer produce, so the lane looked permanently unbuilt.
     let _ = binary_name;
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/{}-entry", name));
+    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/{}", name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -78,7 +78,8 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         )));
     }
 
-    let bin = format!("freertos_rs_{}_entry", name.replace('-', "_"));
+    // phase-338 W2 — collapsed package, short `[[bin]]` name (native convention).
+    let bin = name.to_string();
     // phase-336 — the carve-out profile these Entry demos are prebuilt at (the
     // emulated Cortex-M3 misses zenoh-pico's handshake window below it). Same
     // constant the `just freertos build-fixtures` recipe uses, so the locator

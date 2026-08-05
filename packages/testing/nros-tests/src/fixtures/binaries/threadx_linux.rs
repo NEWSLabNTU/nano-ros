@@ -58,8 +58,10 @@ static THREADX_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 // markers) satisfied the probe and delivered under the OLD `Received [N]:`
 // marker, so the harness's `I heard:` grep counted 0 while delivery worked.
 fn build_rust_example(name: &str, _binary_name: &str) -> TestResult<PathBuf> {
-    let bin = format!("threadx_linux_rs_{}_entry", name.replace('-', "_"));
-    require_entry_binary(name, &bin)
+    // phase-338 W2 — the `-entry` package is collapsed into the role package,
+    // and its `[[bin]]` took the short program name (`service-server`), the
+    // same convention native uses.
+    require_entry_binary(name, name)
 }
 
 pub fn build_threadx_talker() -> TestResult<&'static Path> {
@@ -111,9 +113,10 @@ pub fn build_threadx_action_client() -> TestResult<&'static Path> {
 /// artifact lands under `target/x86_64-unknown-linux-gnu/<profile>/`, where
 /// `<profile>` is whatever the build ran at (phase-336). `role` is hyphenated
 /// (`"service-server"`); `bin` is the `[[bin]]` name
-/// (`"threadx_linux_rs_service_server_entry"`).
+/// (since phase-338 W2 collapsed the `-entry` package in, the same short
+/// name: `"service-server"`).
 pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
-    let dir = project_root().join(format!("examples/threadx-linux/rust/{role}-entry"));
+    let dir = project_root().join(format!("examples/threadx-linux/rust/{role}"));
     if !dir.exists() {
         return Err(TestError::BuildFailed(format!(
             "ThreadX Linux entry example not found: {}",

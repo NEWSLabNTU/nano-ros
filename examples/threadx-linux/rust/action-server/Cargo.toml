@@ -6,6 +6,13 @@ license = "MIT OR Apache-2.0"
 publish = false
 description = "ThreadX Linux action server — Phase 212.L Component pkg"
 
+# phase-338 W2 — collapsed from the retired `-entry` package: this ONE
+# package carries both the node logic (src/lib.rs) and the entry
+# (src/main.rs's `nros::main!()`), the shape native already had.
+[[bin]]
+name = "action-server"
+path = "src/main.rs"
+
 [lib]
 crate-type = ["rlib", "staticlib"]
 
@@ -21,6 +28,9 @@ rmw-xrce = []
 rmw-cyclonedds = []
 
 [dependencies]
+# phase-338 W2 — carried over from the collapsed `-entry` package.
+# #131 / #194 — forward the family board's zenoh-backend link + boot-path register().
+nros-board-threadx-linux = { version = "*", features = ["rmw-zenoh"] }
 nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
 # Phase 212.N.7 step-2 — Entry-pkg-callable `pub fn register(runtime: &mut RuntimeCtx)` wrapper.
 nros-platform = { version = "*", default-features = false, features = ["platform-threadx"] }
@@ -29,6 +39,9 @@ example_interfaces = { path = "generated/example_interfaces", default-features =
 # runtime owns the sink.
 log = "0.4"
 heapless = { version = "0.8", default-features = false }
+
+[package.metadata.nros.entry]
+deploy = "threadx-linux"
 
 [package.metadata.nros.node]
 class = "threadx_linux_rs_action_server::FibonacciServer"
@@ -39,6 +52,7 @@ default_namespace = "/"
 board = "threadx-linux"
 rmw = "zenoh"
 domain_id = 0
+locator = "tcp/127.0.0.1:9020"
 
 [package.metadata.ament]
 build_depend = ["example_interfaces"]

@@ -79,13 +79,12 @@ build-examples:
     fi
     # Codegen prep (per-platform); build options come from the SSOT manifest
     # (examples/fixtures.toml) via the shared builder. Phase 181.4.d.
-    # Component pkgs AND their sibling Entry pkgs — the Entry pkg is the workspace
-    # root carrying the `[patch.crates-io]` block, so it needs its own `generated/`
-    # msg crates for the Phase 212.O.1 boot+connected gates to build the firmware.
+    # phase-338 W2 — the sibling Entry pkgs are gone: each role package now
+    # carries BOTH the node logic and the entry, so one `nros sync` per role
+    # covers what used to need two (the `[patch.crates-io]` block and the
+    # `generated/` msg crates moved in with the entry).
     for example in \
-        talker listener service-server service-client action-server action-client \
-        talker-entry listener-entry service-server-entry service-client-entry \
-        action-server-entry action-client-entry; do
+        talker listener service-server service-client action-server action-client; do
         dir="examples/qemu-arm-freertos/rust/$example"
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
         NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
@@ -103,8 +102,13 @@ build-examples:
     # Cortex-M3, and the test-side locator reads the SAME constant.
     fr_profile="$(nros_cargo_freertos_qemu_profile)"
     fr_args="$(nros_cargo_profile_args_for "$fr_profile")"
-    for entry in talker-entry listener-entry service-server-entry \
-        service-client-entry action-server-entry action-client-entry; do
+    # phase-338 W2 — same six packages, now that the `-entry` siblings are
+    # collapsed in. This build is still SEPARATE from the fixture rows above:
+    # the rows build `--features rmw-zenoh` into `target-zenoh/` (the firmware
+    # staticlib path), while `freertos_run_plan_runtime.rs` locates the default
+    # `target/` binary this loop produces.
+    for entry in talker listener service-server \
+        service-client action-server action-client; do
         ( cd "examples/qemu-arm-freertos/rust/$entry" && cargo build $fr_args --quiet )
     done
     bash scripts/build/workspace-fixtures-build.sh freertos rust
