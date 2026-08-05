@@ -51,15 +51,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-RESOLVED 2026-08-05 — **#382** rlm v0.1.4 preserves launch order (`IndexMap`); the stale generated
-TU that kept the test red needed `nros codegen entry`, which needed 0414's CMake half fixed first.
-**#398** direction 2: `[[component]].name` stays an instance id, and `apply_model_execution` now
-REFUSES a `group_tiers` declaration that reached no node while a node of the same package is in the
-model — telling "renamed" apart from "absent in this variant", which look identical otherwise.
-**#392** last item done: `orchestration_e2e`'s metadata refresh exposed a service + action the launch
-MANIFEST never declared; the manifest was the stale side. See `archived/`.
-
-
 **#418** — raw action feedback/result payloads carry an EXTRA CDR encapsulation header
 (`[outer][goal_id][INNER][body]`), so they are wire-incompatible with ROS 2 *and* with nano-ros's
 own typed path. Raw↔raw is self-consistent — every action Runtime cell pairs a raw server with a
@@ -185,7 +176,14 @@ that bringup declares no `group_tiers` — the phase-330 W4 params projection is
 projection it uses, and only its diagnostic made the failure visible at all. Worked around for params
 in rlm v0.1.2 (unambiguous `pkg` fallback); `group_tiers` still matches by bare name and will bind
 nothing the moment a consolidated workspace declares one. Direction: recouple the names, or key every
-projection on `pkg`+`class` — but ONE rule, and loud on failure. See `0398-*`. (2026-08-03)
+projection on `pkg`+`class` — but ONE rule, and loud on failure. RESOLVED as direction 2, the naming
+decision belonging to phase-331: `name` stays an INSTANCE ID (recoupling would need per-language
+namespaces, changing wire-visible node names and every test asserting them), and the missing
+invariant — that failing to match is LOUD — is now enforced. `apply_model_execution` refuses a
+`group_tiers` declaration that reached no node WHEN a node of the same package is in the model,
+which distinguishes "renamed" (the phase-331 hazard) from "absent in this variant" (legitimate — a
+bringup is a catalog and each launch uses a subset). The first draft failed on both, which
+`realtime-cpp`'s `aux_node` caught on the first build. See `archived/0398-*`. (2026-08-05)
 
 **#397** (RESOLVED 2026-08-03) — a failing `nros` CLI made `check-model-dims` report every dim of
 every model as LOST. The loop read `… 2>/dev/null || true`, so a stale-CLI refusal after a rebase
@@ -235,7 +233,13 @@ BSP `build.rs` also reads it via `NROS_SYSTEM_TOML`, so migrating it blind trade
 a FreeRTOS build failure), two components declaring no `class` (possibly NEGATIVE fixtures for that
 very check), and one launch resolving an uninstalled package. Also records the six W4.a failures
 that were NOT bugs — a wsroot bug in the probe, and `@NANO_ROS_ROOT@` templates that are
-materialised before use — so nobody re-investigates them. See `0392-*`. (2026-08-02)
+materialised before use — so nobody re-investigates them. RESOLVED: A, B and C landed 2026-08-02;
+the last item was `orchestration_e2e`'s stale metadata. Refreshing it (+122 lines, `node_talker` ->
+`talker`) immediately failed `plan_pipeline_e2e` with two `metadata-entity-unmatched` errors — the
+source declares a service and an action the launch MANIFEST never listed, and the stale metadata had
+hidden both. The manifest was the side that had fallen behind; it declares them now (the schema has
+supported `services:` / `actions:` all along). `n9_workspace` not syncing IN PLACE is not a defect:
+`@NANO_ROS_ROOT@` is what makes it a template. See `archived/0392-*`. (2026-08-05)
 
 (#399 resolved 2026-08-03 — see `archived/0399-*`: `qemu-esp32-baremetal` compiled zpico C for
 riscv32imc but nothing named the compiler, so cc-rs guessed `riscv32-unknown-elf-gcc` and a
@@ -344,7 +348,12 @@ committed artifact, the conflict cannot recur. See `archived/0380-*`.
 Recently resolved (2026-08-05): **#382** (filed as #372; renumbered) — The resolver serializes `structure.nodes` alphabetized, so entry construct order no
 longer follows launch declaration order (typed cpp multi-node TU builds listener before talker).
 Preserve declaration order in the emitted mapping + a resolver-level order test. Fix collides with
-#380's regeneration hazard — sequence them. See `0382-*`. (2026-08-01)
+#380's regeneration hazard — sequence them. RESOLVED upstream: `ros-launch-manifest` v0.1.4 carries
+`nodes: IndexMap` and the resolver populates it, so no consumer-side sort is needed. The predicted
+regeneration hazard is what kept the test red AFTER the fix landed — the committed TU predated the
+pin move, and regenerating it needed `nros codegen entry`, which died on the model phase-330 W4
+deleted (0414's CMake half, fixed in the same change). `cpp_multi_node_entry` 4/4, constructing
+talker before listener. See `archived/0382-*`. (2026-08-05)
 
 (#368 resolved 2026-08-03 — see `archived/0368-*`: `just setup all` failed 7/18 modules on a clean
 Ubuntu 22.04, nearly all on prereqs RFC-0062's dependency SSoT was meant to absorb. All EIGHT
