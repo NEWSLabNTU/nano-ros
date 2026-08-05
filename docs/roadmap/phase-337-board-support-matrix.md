@@ -8,11 +8,17 @@ W1.g / W1.h (the board-crate merges; 322 stays the record of the *measurements*)
 **Touches:** RFC-0049 (the config ladder — W1.a extends it to the build block),
 RFC-0051 / phase-329 (the cell tables every wave edits), RFC-0012 (BSP integration).
 
-**Status.** IN PROGRESS. W1, W3, W4, W5, W6, W7 (a/b/c), W8.a + W8.d, W2.a and
-W2.b are LANDED (2026-08-04/05) — the Cortex-M witness boots and publishes.
-Open: W2.c–f (registering it into the matrix), W8.c (the
-fixture-token vocabulary), W9.a (unblocked by W2.b). See "What is left" at the
-bottom for what each still needs.
+**Status.** COMPLETE (2026-08-04/05). Every wave has landed: W1, W2 (a–f),
+W3, W4, W5, W6, W7 (a/b/c), W8 (a/b/c/d) and W9.a. W8.e stays deliberately
+undone — it is marked optional and only wanted if a hosted non-Linux board is
+ever added.
+
+The two headline results: Zephyr stopped meaning one 64-bit host config (the
+`mps2_an385` witness boots, takes an IP from a real ethernet driver, and
+publishes — after five defects that only a non-native_sim Zephyr could surface),
+and Zephyr boards stopped being crates (`fvp-aemv8r-smp` is now a conf bundle;
+18 board directories → 17). See "What is left" at the bottom for the wave-by-wave
+state and Acceptance for the measured numbers.
 
 ---
 
@@ -254,21 +260,47 @@ width have **never** run — and `nros-platform-zephyr/src/net_wait.c:53`'s
       is upstream and orthogonal to what this witness is for: 32-bit pointers,
       the in-kernel IP stack and a real ethernet driver are exercised identically
       by the C entry. W2.d's cell list is adjusted accordingly.
-- [ ] **W2.c — `PlatformId::ZephyrQemuCortexM`** — enum arm, `index()` band,
-      `fixture_tokens()`. The injectivity gate re-proves port/domain
-      collision-freedom automatically.
+- [x] **W2.c — LANDED 2026-08-05: `PlatformId::ZephyrQemuCortexM`.** Enum arm,
+      `index()` band, `fixture_tokens()` (`zephyr-cortex-m`, declared but spelled
+      by no `fixtures.toml` row), `just_module()` (`zephyr` — one module, three
+      boards, which is the RFC-0064 shape working), `ALL`.
+
+      **The index was the one non-mechanical part.** `alloc::domain_of` gives
+      each platform a 21-wide window out of 232 DDS domains, so it fits exactly
+      eleven — the twelfth platform at index 11 computes domain 233 and
+      `domains_valid` rejects it. The scarce resource is a LOW index and it
+      belongs to platforms that BAKE, so `Fvp` and `Px4` (tier 3 / CarveOut, zero
+      Runtime cells, windows that are unreachable arithmetic wherever they sit)
+      move to the tail and the witness takes 9. If either ever gains a Runtime
+      cell the gate fires — correct, because at that point the scheme is full and
+      wants narrowing, not another renumber.
 - [ ] **W2.d — Cells:** pubsub × {c, cpp} × zenoh as `Runtime` (2 — **not 3**;
       the rust arm is blocked on issue 0432, and a cell that cannot build is not
       a `BuildOnly` cell, it is a lie); service and action as `BuildOnly` with
       the reason string until they run (4).
-- [ ] **W2.e — Fixture coverage:** join the west-lane exemption in
-      `tests/matrix_fixture_coverage.rs::every_runtime_cell_has_a_fixture_row`,
-      naming the new board. **Adds zero `fixtures.toml` rows** — the west leaves
-      lane (`scripts/build/zephyr-fixture-leaves.sh`) carries its own staleness
-      signature.
-- [ ] **W2.f — Runner + lane wiring**, modelled on the existing networked-QEMU
-      helper.
-      *Verify:* the three new Runtime cells deliver; native_sim stays green.
+- [x] **W2.e — LANDED 2026-08-05.** Joined the west-lane exemption in BOTH
+      directions of `matrix_fixture_coverage`, with no kind qualifier: this board
+      has only Example cells and every one is a west build, so native_sim's
+      examples-plus-non-rust-workspaces split has nothing to distinguish here.
+      **Zero `fixtures.toml` rows added.** The leaves themselves are a new block
+      in `zephyr-fixture-leaves.sh` rather than a widening of its board axis —
+      that loop is native_sim × every lang × every rmw × every role, and this
+      board is {c, cpp} × zenoh × talker.
+- [x] **W2.f — LANDED 2026-08-05.** No new runner was needed:
+      `QemuProcess::start_mps2_an385_networked` already drives this exact machine
+      and NIC for the FreeRTOS lane, and `ZenohRouter::start_slirp` already
+      existed for guests that reach the host at 10.0.2.2. `tests/
+      zephyr_cortex_m_qemu.rs` is the consumer; ports come from `alloc::port_of`
+      on BOTH sides, since the image bakes `CONFIG_NROS_ZENOH_LOCATOR` (a
+      Cortex-M image has no env to read one from).
+
+      **One red worth recording.** The test waits on the DRIVER's line
+      (`IPv4 address: 10.0.2.15`), not the talker's. The console is muxed and
+      Zephyr's logging flushes on its own schedule, so the first `Publishing:`
+      lands in the stream BEFORE the boot banner — waiting on the talker pattern
+      returns in ~0.1 s with `net_config` unflushed, then fails the driver
+      assertion on a perfectly healthy run.
+      *Verified:* both Runtime cells pass (3.3 s each). native_sim untouched.
 
 ## W3 — NuttX: two crates → one (closes #405) — **LANDED 2026-08-04**
 
@@ -689,10 +721,24 @@ with no fallback and macOS has no POSIX timers).
       rows together is correct but must be proven by a full `just ci`, because
       this is the reference platform and a half-resolved fixture reads as a
       missing fixture, not as an error (the 0350 class).
-- [ ] **W8.c** The 188 `platform = "native"` fixture rows (the RFC's count of 187
-      was one low), together with the two other token-derived vocabularies in the
-      table above. Verify with a full `just ci` — not `check-fast` + `check-build`,
-      which do not resolve a fixture.
+- [x] **W8.c — LANDED 2026-08-05.** All 188 `platform = "native"` fixture rows
+      (the RFC's 187 was one low) → `linux`, together with the two other
+      token-derived vocabularies, in ONE commit. The lane name, the `just` module
+      and `examples/native/` keep theirs, as the table above says.
+
+      **The rename was safer than its size suggests**, because issue 0406's
+      `nros_fixture_require_known_platform` validates the builder's platform
+      argument against the manifest's own platform list. A missed caller exits 2
+      with "unknown platform" instead of sweeping zero rows successfully — which
+      is exactly what happened to `check-fixture-id-guard.sh`'s manifest sampler
+      and to `check-fixtures-stale.sh`'s scope map, both caught by `check-fast`
+      on the first run rather than by a fixture that silently stopped existing.
+
+      Two files now carry BOTH spellings on purpose, and each says so at the
+      line: `fixture-lane.sh` compares the LANE (`native`) and greps the
+      COORDINATE prefix (`^linux,`), and `check-fixtures-stale.sh` maps
+      `SCOPE=native` to `--platform linux`. That is the seam between two
+      vocabularies, not a leftover.
 - [x] **W8.d — LANDED 2026-08-04 (descriptor + registry).**
       `packages/boards/posix/` → `packages/boards/linux/`, and its `[[board]]
       names` becomes `["linux", "native", "posix"]` — `linux` canonical, the other
@@ -713,13 +759,36 @@ with no fallback and macOS has no POSIX timers).
 
 Depends on W2 (the conf-bundle mechanism) and W1.b (shared `Config`).
 
-- [ ] **W9.a** Fold `nros-board-fvp-aemv8r-smp` (160 lines: `boards/*.conf` +
-      `.overlay` + `prj.conf` + a `Config` + `board.cmake`) into
-      `nros-board-zephyr` as a conf bundle. A per-Zephyr-board *crate* is exactly
-      the duplication this phase exists to remove — Zephyr already owns boot, MMU,
-      net stack and driver.
-      *Verify:* the FVP build-only lane still builds (the model is license-gated,
-      so it stays tier 3 / 0 Runtime cells).
+- [x] **W9.a — LANDED 2026-08-05.** `nros-board-fvp-aemv8r-smp` →
+      `nros-board-zephyr/boards/fvp-aemv8r-smp/`; 18 board directories → 17.
+
+      The crate's Rust half (`Config`, `init_hardware`, `run` — 160 lines) had
+      **zero consumers**: `nros_board_fvp_aemv8r_smp` appeared in exactly one file
+      in the tree, its own `Cargo.toml`. What it actually shipped was a
+      `prj.conf`, a DTS overlay, a Kconfig fragment and a `board.cmake` — a config
+      bundle wearing a Cargo.toml, which is the whole argument. Zephyr already
+      owns boot, MMU, net stack and drivers.
+
+      **The board KEY does not change.** `nano_ros_use_board(fvp-aemv8r-smp)`
+      works at every call site because the LOOKUP widened rather than the callers
+      moving: a board crate (`nros-board-<name>/board.cmake`) first, then a conf
+      bundle (`nros-board-<family>/boards/<name>/board.cmake`). Shape 1 stays
+      supported — out-of-tree boards that carry real Rust (a `BoardEntry`, a
+      driver) are still crates, which RFC-0064 says explicitly. Two matches is an
+      error, not a search-order tiebreak: board keys are global. The CLI's
+      `locate_board_crate` implements the same two steps for `nros board info` /
+      `nros setup board`.
+
+      Third registry row for `nros-board-zephyr` — native_sim (tier 1), the
+      Cortex-M witness (tier 2), the FVP (tier 3). Exactly what W1.c's
+      (crate, matrix_platform) keying exists for.
+
+      *Verified:* `board_import_fvp_builds_via_nano_ros_use_board` PASSES on a
+      freshly configured west fixture, and its `CMakeCache.txt` resolves the
+      overlay to the NEW bundle path — not a stale one. `nros board info
+      fvp-aemv8r-smp` resolves to the bundle dir. `check-board-tiers` green at 17
+      directories. The FVP model itself stays license-gated, so `fvp_smoke` still
+      skips — unchanged by this, and the reason the board is tier 3.
 
 ---
 
@@ -740,21 +809,29 @@ only in the shared registry files listed above, at one row each.
 
 ## Acceptance
 
-Measured 2026-08-05, after W1/W3/W4/W5/W6/W7/W8.a/W8.d.
+Measured 2026-08-05, after every wave.
 
-- [~] **Board crates 27 → 16.** At **18 directories** (16 crates + the two
+- [~] **Board crates 27 → 16.** At **17 directories** (15 crates + the two
       descriptor-only dirs `linux/` and `zephyr/`, which the registry counts but
       which are not crates). Every removal traces to a wave: W3 −1, W6 −1,
-      W7.a −3, W7.b −3, W7.c −1, W8.a −1; W4.a +1 (the arch port). The two
-      still to go are `nros-board-fvp-aemv8r-smp` (W9.a) — which is why the
-      target says 16 and the tree says 18 — and nothing else.
-- [~] **Fixture rows 344 → 336.** At **337** `platform =` rows: `stm32f4`'s 8
+      W7.a −3, W7.b −3, W7.c −1, W8.a −1, W9.a −1; W4.a +1 (the arch port).
+      **One BELOW the target on crates, one above on directories** — the target
+      counted the two descriptor dirs as crates, which they are not. Nothing
+      remains to remove: the last per-board Zephyr crate went in W9.a, and what
+      is left is either a real crate with real code or a descriptor dir that
+      phase-321 W2 moves out of `packages/boards/` entirely.
+- [x] **Fixture rows 344 → 336.** At **337** `platform =` rows: `stm32f4`'s 8
       left with W7.a (344 → 336 was the prediction; the pre-wave count was 345,
-      not 344, so the post-wave figure is 337). The `native` → `linux` rename is
-      W8.c, still open, and changes no count.
-- [~] **Cells 202 → 208, Runtime 174 → 177.** At **199** cells (172 Runtime, 15
-      BuildOnly, 12 CarveOut): −3 from `Stm32F4`'s BuildOnly cells (W7.a). The
-      +6 is W2.d's witness, not yet added.
+      not 344, so the post-wave figure is 337). W8.c renamed 188 of them
+      `native` → `linux` and changed no count, as predicted.
+- [~] **Cells 202 → 208, Runtime 174 → 177.** At **205** cells (176 Runtime, 18
+      BuildOnly, 11 CarveOut): −3 from `Stm32F4`'s BuildOnly cells (W7.a), +6
+      from W2.d's witness. Three short of the 208 target and one short on
+      Runtime, both for the same reason: the witness landed **2 Runtime + 4
+      BuildOnly instead of 3 + 6**, because issue 0432 blocks the Rust arm
+      entirely. A cell that cannot build is not a `BuildOnly` cell, so those rows
+      are ABSENT with the reason recorded rather than present and false. The
+      target's arithmetic assumed a Rust row that upstream will not compile.
 - [x] **No wave's commit touches a board crate outside its own family.** W7.a is
       the one that looks like an exception and is not: `embassy-stm32f4` is a
       member of the STM32F4 family, and the wave says so.
@@ -777,12 +854,11 @@ Measured 2026-08-05, after W1/W3/W4/W5/W6/W7/W8.a/W8.d.
 |---|---|---|
 | W2.a | **done** | — |
 | W2.b | **done** | the bring-up itself is finished and proven: the image boots, takes an IP from the real driver, and publishes over a zenoh session. Five defects fixed under it; one (0432) filed rather than fixed. |
-| W2.c–f | open | `PlatformId::ZephyrQemuCortexM`, 2 Runtime + 4 BuildOnly cells (see W2.d — the rust arm is blocked on 0432), the west-lane exemption, runner + lane wiring. The hard part is behind: what remains is registration into the matrix, which is mechanical, plus a runner that reproduces the SLIRP + host-router setup W2.b ran by hand. |
-| W8.c | open | the three token-derived vocabularies moved together, behind a full `just ci` (see W8.b). |
-| W9.a | open, UNBLOCKED | W2.b established the conf-bundle mechanism (`cmake/zephyr/<board>.conf`, no crate), which is what the FVP board folds INTO. |
+| W2.c–f | **done** | `PlatformId::ZephyrQemuCortexM` at index 9, 2 Runtime + 4 BuildOnly cells, the west-lane exemption, the `build-cortex-m-*` fixture leaves and a runner. Both Runtime cells pass in 3.3 s each on fixtures built through `zephyr-fixture-make-driver.sh`. The registry row came with a widening of `check-board-tiers`, which could not see a board that owns no directory. |
+| W8.c | **done** | all three token-derived vocabularies moved together; the lane name, the `just` module and `examples/native/` deliberately kept theirs. |
+| W9.a | **done** | folded into `nros-board-zephyr/boards/fvp-aemv8r-smp/`; 18 board directories → 17. `nano_ros_use_board(<name>)` unchanged at every call site — the lookup widened instead. |
 
-The five landed waves are independent of all three, so the tree is a coherent
-stopping point rather than a half-migration.
+Every wave of this phase has landed.
 
 ## Risks
 

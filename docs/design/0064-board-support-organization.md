@@ -527,6 +527,17 @@ Verified per family:
   migration once W1.g's shared `Config` lands — a per-Zephyr-board *crate* is the
   duplication this RFC exists to prevent.
 
+  **DONE (phase-337 W9.a, 2026-08-05).** `nros-board-fvp-aemv8r-smp` is now
+  `nros-board-zephyr/boards/fvp-aemv8r-smp/`. The prediction held better than
+  written: the crate's Rust half was not merely thin, it had **zero consumers** —
+  `nros_board_fvp_aemv8r_smp` appeared in one file in the whole tree, its own
+  `Cargo.toml`. `nano_ros_use_board(<name>)` is unchanged at every call site
+  because the LOOKUP widened (crate first, then conf bundle under a family crate)
+  rather than the callers moving. And the same crate now serves three witnesses at
+  three tiers — native_sim (1), the `mps2_an385` Cortex-M witness (2), the FVP
+  (3) — which is exactly the `(crate, matrix_platform)` registry key the paragraph
+  below predicted would be needed.
+
 **Consequence for the tier registry.** `board-support.toml` keys tier by CRATE and
 its completeness gate asserts every board directory appears exactly once. A merged
 `nuttx-qemu` crate serves *two* arches at *two different tiers* (arm tier 1, riscv
@@ -712,14 +723,30 @@ numbers measured 2026-08-04.
 | 8 | `nros-board-esp32-qemu` | 2 | Xtensa, vendor SDK | unchanged |
 | 9–16 | infra: `common`, `cffi`, `freertos`, `nuttx`, `threadx`, **`threadx-port-riscv64`** (NEW, layer 2 — **DONE 2026-08-04**, phase-337 W4.a), `mps2-an385-pac`, descriptors | — | — | `bare-metal` **DELETED 2026-08-04** (phase-337 W7.c — no board ever opted in) |
 
-**Progress against this table, measured 2026-08-05.** 27 → **18** board
-directories (16 crates + the two descriptor-only dirs). Landed: the NuttX merge
-(W3), the ThreadX arch-port extraction (W4), the FreeRTOS templating (W5), the
-RTIC fold (W6), the STM32F4 family's departure and the four scaffolds (W7), and
-the `native` + `posix` → `nros-board-linux` merge with the `packages/boards/posix/`
-→ `linux/` descriptor rename (W8.a/W8.d). Row 2's FVP fold (W9.a) and the new
-Zephyr Cortex-M witness's bring-up (W2.b–f) are what remain; W2.a — this RFC's
-one `[OPEN]` — is settled above.
+**Progress against this table: COMPLETE, measured 2026-08-05.** 27 → **17**
+board directories (15 crates + the two descriptor-only dirs, which the target's
+"16" counted as crates and which phase-321 W2 moves out of `packages/boards/`
+altogether). Every row above is now DONE. Landed: the NuttX merge (W3), the
+ThreadX arch-port extraction (W4), the FreeRTOS templating (W5), the RTIC fold
+(W6), the STM32F4 family's departure and the four scaffolds (W7), the `native` +
+`posix` → `nros-board-linux` merge with the descriptor rename and the
+fixture-token move (W8), the FVP fold (W9.a), and row 2's Cortex-M witness
+(W2) — which is the one that turned "Zephyr" from a single 64-bit host config
+into a platform with a real 32-bit witness, at the cost of five defects that only
+a non-native_sim Zephyr could surface.
+
+**Row 2 is the RFC's thesis, demonstrated.** One `nros-board-zephyr` now serves
+THREE witnesses at three tiers, and the two non-native_sim ones own no crate at
+all: `mps2_an385` is `cmake/zephyr/mps2-an385.conf`, the FVP is
+`nros-board-zephyr/boards/fvp-aemv8r-smp/`. Adding a Zephyr architecture really
+did become adding a conf bundle.
+
+**One caveat worth carrying forward.** The Cortex-M witness's cells are C and
+C++ only. The pinned `zephyr-lang-rust` cannot compile the `zephyr` crate for ANY
+board whose devicetree has gpio nodes (issue 0432) — essentially every real
+board — so Rust-on-Zephyr remains native_sim-only until that is fixed upstream.
+Nothing in this RFC's structure causes it, and nothing in this RFC's structure can
+fix it.
 
 **Deleted (12):** `native`, `posix` (→ `linux`), `nuttx-qemu-riscv` (→ merged),
 `rtic-mps2-an385` (→ feature), `fvp-aemv8r-smp` (→ conf bundle), `stm32f4`,
@@ -740,7 +767,7 @@ link-feature selection (`runner.rs:225,419-420,528-529`). Untangle first.
 
 | `platform =` token | now | target | note |
 |---|---|---|---|
-| `native` → **`linux`** | 187 | 187 | rename only; `fixture_tokens()` gates it |
+| `native` → **`linux`** | 188 | 188 | **DONE** (phase-337 W8.c) — rename only, no count change. 188, not 187: the RFC's figure was one low. Moved together with the two other token-derived vocabularies (the builder's platform argument, the lane-coordinate prefix); the LANE name, the `just` module and `examples/native/` deliberately keep `native` |
 | `threadx-linux` | 42 | 42 | — |
 | `nuttx` | 30 | 30 | one crate now builds it |
 | `freertos` | 25 | 25 | — |

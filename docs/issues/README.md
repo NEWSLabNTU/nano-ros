@@ -73,6 +73,17 @@ freshness signature is larger and belongs with the NuttX board owner. See `archi
 **#200** — fixture-build timing campaign blocked on a big-disk CI runner (phase-226 validation
 residue). See `0200-*`.
 
+**#435** — a FULL native fixture build reports "All test fixtures built" while leaving C/C++ example
+binaries un-relinked after a generated RMW header changes, so every consuming test then fails the
+TEST-side staleness probe naming the command that was just run. Issue-0196's rule from the other
+side: `c_talker` links `libnros_c.a` and never includes `zpico.h`, so nothing in the CMake graph
+connects them, and whether a relink happens depends on whether cargo incidentally rebuilt the
+staticlib in that invocation. Surfaced by phase-337 W2.b regenerating `zpico.h`. The dangerous
+direction is the reverse: `zpico.h` is a cbindgen ABI surface whose `usize` changed
+`uintptr_t`→`size_t` — same width, so a stale mixed link would not crash, just be UB. Fix = the
+CMake side watches what the test side watches, plus a gate diffing the two lists. Workaround: build
+twice. See `0435-*`. (2026-08-05)
+
 **#432** — the pinned `zephyr-lang-rust` (404fcef) cannot build the `zephyr` crate for ANY board
 whose devicetree has gpio nodes: its DT generator emits a five-argument `GpioPin::new` against a
 six-argument signature (`pin` without `dt_flags`). `CONFIG_GPIO=n` makes it worse, not better — the
