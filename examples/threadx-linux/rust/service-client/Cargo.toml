@@ -30,8 +30,8 @@ example_interfaces = { path = "generated/example_interfaces", default-features =
 log = "0.4"
 
 [package.metadata.nros.node]
-class = "threadx_linux_rs_service_client::ServiceClient"
-name = "service_client"
+class = "threadx_linux_rs_service_client::AddTwoIntsClient"
+name = "add_two_ints_client"
 default_namespace = "/"
 
 [package.metadata.nros.deploy.threadx-linux]

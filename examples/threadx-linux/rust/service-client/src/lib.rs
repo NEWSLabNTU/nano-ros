@@ -1,57 +1,86 @@
 //! ThreadX Linux Service Client — Node pkg.
 //!
 //! Declares a service client for `example_interfaces/AddTwoInts` on
-//! `/add_two_ints` and sends ONE fixed request (2, 3) from `tick`.
-//! A failed call (server not yet discovered) retries on the next tick;
-//! once the reply lands the client logs the sum and goes quiet. The
-//! generated runtime owns init / executor / spin.
+//! `/add_two_ints` and issues one request (2, 3) per 1 s timer tick until the
+//! reply lands, then goes quiet. A failed call logs and is retried on the next
+//! timer fire. The generated runtime owns init / executor / spin.
+//!
+//! phase-338 W3.e — body converged onto the group-A source; the timer-paced
+//! retry and the logged failure arm come from that body, replacing an unpaced
+//! per-tick retry that failed silently.
 
 #![no_std]
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
     Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
+    TimerDuration,
 };
 
-pub struct ServiceClient;
+pub struct AddTwoIntsClient;
 
-impl Node for ServiceClient {
-    const NAME: &'static str = "service_client";
+impl Node for AddTwoIntsClient {
+    const NAME: &'static str = "add_two_ints_client";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("add_two_ints_client"))?;
         let _client = node.create_service_client_for_name::<AddTwoInts>("/add_two_ints")?;
+        let _timer =
+            node.create_timer_for_callback_name("issue_call", TimerDuration::from_secs(1))?;
         Ok(())
     }
 }
 
 pub struct State {
-    /// Set once the reply has been received — the client sends ONE request.
+    /// Set by `on_callback` when the timer fires; drained by `tick`
+    /// after dispatching the call.
+    pending: bool,
+    /// Set once the reply has been logged — the single-shot client
+    /// then idles while the runtime keeps spinning.
     done: bool,
 }
 
-impl ExecutableNode for ServiceClient {
+impl ExecutableNode for AddTwoIntsClient {
     type State = State;
 
     fn init() -> Self::State {
-        State { done: false }
+        State {
+            pending: false,
+            done: false,
+        }
     }
 
-    fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {}
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
+        if callback.as_str() == "issue_call" && !state.done {
+            state.pending = true;
+        }
+    }
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
-        if state.done {
+        if !state.pending || state.done {
             return;
         }
+        state.pending = false;
         let req = AddTwoIntsRequest { a: 2, b: 3 };
-        if let Ok(resp) = ctx
+        // Stack-buf sizes: AddTwoInts request = 2 × i64 + CDR header = 24 B;
+        // response = 1 × i64 + header = 16 B. 64 each is generous.
+        match ctx
             .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req)
         {
-            log::info!("Result of add_two_ints: {}", resp.sum);
-            state.done = true;
+            Ok(reply) => {
+                log::info!("Result of add_two_ints: {}", reply.sum);
+                state.done = true;
+            }
+            Err(e) => {
+                // phase-338 W3 — report the failure instead of swallowing it.
+                // The silent arm made a client with no server look identical to
+                // a healthy one on every platform, and `services.rs`'s
+                // client-without-server test asserts exactly this marker. The
+                // timer paces the retries, so this logs once per attempt.
+                log::info!("Service call failed, retrying: {:?}", e);
+            }
         }
-        // On failure (server not yet discovered) the next tick retries.
     }
 }
 
-nros::node!(ServiceClient);
+nros::node!(AddTwoIntsClient);

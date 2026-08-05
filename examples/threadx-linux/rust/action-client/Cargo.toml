@@ -30,8 +30,8 @@ example_interfaces = { path = "generated/example_interfaces", default-features =
 log = "0.4"
 
 [package.metadata.nros.node]
-class = "threadx_linux_rs_action_client::ActionClient"
-name = "action_client"
+class = "threadx_linux_rs_action_client::FibonacciClient"
+name = "fibonacci_action_client"
 default_namespace = "/"
 
 [package.metadata.nros.deploy.threadx-linux]

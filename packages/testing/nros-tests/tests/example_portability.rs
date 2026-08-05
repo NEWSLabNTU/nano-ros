@@ -142,14 +142,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     },
     Divergence {
         lang: "rust",
-        program: "action-client",
-        platform: "threadx-linux",
-        reason: "W2.c — naming only, verified by diff 2026-08-05: `ActionClient` / \
-                 \"action_client\" against the group's `FibonacciClient` / \
-                 \"fibonacci_action_client\". A rename closes this one.",
-    },
-    Divergence {
-        lang: "rust",
         program: "action-client-entry",
         platform: "qemu-arm-nuttx",
         reason: "W2.c/W2.d — the re-exported node-package name differs \
@@ -163,18 +155,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         reason: "W2.c/W2.d — the re-exported node-package name differs \
                  (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
                  attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "action-server",
-        platform: "threadx-linux",
-        reason: "W2.c — NOT naming only, verified by diff 2026-08-05. Beyond \
-                 `ActionServer` / \"action_server\" vs `FibonacciServer`, this copy \
-                 carries a `u32` State the group body does not, imports `GoalId`, \
-                 logs an extra \"Executing goal\", spells the goal-order check \
-                 differently (`matches!` vs `map`/`unwrap_or`), and is MISSING the \
-                 group's `tick()`. Converging needs a decision about which body is \
-                 canonical, not a rename.",
     },
     Divergence {
         lang: "rust",
@@ -218,17 +198,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
     },
     Divergence {
         lang: "rust",
-        program: "service-client",
-        platform: "threadx-linux",
-        reason: "W2.c — NOT naming only, verified by diff 2026-08-05, and the \
-                 widest of the four. The group body drives calls from a 1 s timer \
-                 (`create_timer_for_callback_name(\"issue_call\", …)`) with a \
-                 `pending` flag; this copy has neither timer nor flag and a smaller \
-                 State. Two different state machines with the same output — pick one \
-                 deliberately.",
-    },
-    Divergence {
-        lang: "rust",
         program: "service-client-entry",
         platform: "qemu-arm-nuttx",
         reason: "W2.c/W2.d — the re-exported node-package name differs \
@@ -242,16 +211,6 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         reason: "W2.c/W2.d — the re-exported node-package name differs \
                  (`<platform>_rs_<program>`) and the `#![no_std]`/`#![no_main]` \
                  attributes are inconsistent for the same generated entry.",
-    },
-    Divergence {
-        lang: "rust",
-        program: "service-server",
-        platform: "threadx-linux",
-        reason: "W2.c — NOT naming only, verified by diff 2026-08-05. `ServiceServer` \
-                 / \"service_server\" vs `AddTwoIntsServer` / \"add_two_ints_server\", \
-                 AND the callback key differs (\"on_add\" vs the group's \"handle_add\") \
-                 AND this copy counts handled requests in a `u32` State the group \
-                 body types as `()`.",
     },
     Divergence {
         lang: "rust",

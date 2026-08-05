@@ -1,10 +1,10 @@
 //! ThreadX Linux Action Client — Node pkg.
 //!
-//! Declares an `example_interfaces/Fibonacci` action client on
-//! `/fibonacci`. One-shot `send_goal` on the first successful `tick`;
-//! feedback and the terminal result are delivered to `on_callback`
-//! (`on_feedback` / `on_result`). The generated runtime owns init /
+//! Sends one `example_interfaces/Fibonacci` goal on `/fibonacci` and logs the
+//! feedback and result as they arrive. The generated runtime owns init /
 //! executor / spin.
+//!
+//! phase-338 W3.e — body converged onto the group-A source.
 
 #![no_std]
 
@@ -13,10 +13,10 @@ use nros::{
     Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
-pub struct ActionClient;
+pub struct FibonacciClient;
 
-impl Node for ActionClient {
-    const NAME: &'static str = "action_client";
+impl Node for FibonacciClient {
+    const NAME: &'static str = "fibonacci_action_client";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_client"))?;
@@ -34,7 +34,7 @@ pub struct State {
     sent: bool,
 }
 
-impl ExecutableNode for ActionClient {
+impl ExecutableNode for FibonacciClient {
     type State = State;
 
     fn init() -> Self::State {
@@ -63,6 +63,7 @@ impl ExecutableNode for ActionClient {
         }
         let goal = FibonacciGoal { order: 10 };
         log::info!("Sending goal");
+        // 32 B is more than enough for one `i32` + CDR header.
         if ctx
             .send_goal_for_name::<FibonacciGoal, 32>("/fibonacci", &goal)
             .is_ok()
@@ -70,7 +71,8 @@ impl ExecutableNode for ActionClient {
             state.sent = true;
             log::info!("Goal accepted by server, waiting for result");
         }
+        // On send failure `sent` stays false — the next tick retries.
     }
 }
 
-nros::node!(ActionClient);
+nros::node!(FibonacciClient);
