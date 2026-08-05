@@ -14,6 +14,7 @@
 //!     coordinate in intent but there is no cell-bound baremetal consumer to fold
 //!     into; when one exists, the `bsp` case is the fold candidate and the
 //!     serial/xrce/rtic variants stay one-offs.
+//!
 //! No deletions: sole platform coverage, and QEMU folds can't be run-proven for a
 //! safe delete on a host without exercising every variant.
 //!

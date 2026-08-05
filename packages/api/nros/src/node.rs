@@ -2,6 +2,12 @@
 
 use core::marker::PhantomData;
 
+// issue 0413 — the descriptor-registration bound. `MessageForRmw` is
+// `RosMessage` alone unless a descriptor-needing backend is linked, in which
+// case it also requires `nros_serdes::schema::Message` (the schema the Cyclone
+// descriptor builder walks). Generated message crates implement both.
+use nros_node::rmw_type_registry::MessageForRmw;
+
 use crate::{
     ActionTag, CallbackId, CancelResponse, EntityId, GoalId, GoalResponse, GoalStatus,
     ParameterType, QosSettings, RosAction, RosMessage, RosService, ServiceTag, SubscriptionTag,
@@ -28,6 +34,58 @@ pub const MISSING_NODE_EXPORT_ERROR: &str = "package has no exported nros compon
 
 /// Result type for component declarations.
 pub type NodeResult<T = ()> = Result<T, NodeDeclError>;
+
+/// Register `M`'s runtime type descriptor with a descriptor-needing backend
+/// (Cyclone DDS), from the DECLARATIVE path — issue 0413.
+///
+/// The imperative API's typed creators (`Node::create_publisher_with_qos::<M>`
+/// in `nros-node`) already call `register_type::<M>()` before asking the cffi
+/// vtable for the entity, because Cyclone resolves topic types through a
+/// RUNTIME registry and `dds_create_topic` fails without it.
+///
+/// The declarative Node API does not reach those creators. `NodeContext`
+/// records `EntityMetadata` and the sink calls the type-ERASED
+/// `create_generic_publisher_with_qos(topic, type_name, type_hash, qos)` —
+/// which has a type NAME and no `M`, so it cannot register anything. The
+/// descriptor was therefore never built, `find_descriptor` returned null in
+/// `publisher.cpp`, and the entity failed with `NROS_RMW_RET_UNSUPPORTED` ->
+/// `TransportError::PublisherCreationFailed` -> `NodeDeclError::Runtime` ->
+/// `RuntimeError::NodeRegister("<pkg>")`, four collapses away from the cause.
+///
+/// So it is registered HERE, at the last point that still knows `M`. A no-op
+/// unless a descriptor-needing backend installed a registrar
+/// (`nros_rmw::register_type_descriptor` returns `Ok` when the slot is empty),
+/// so zenoh / XRCE builds are unaffected.
+///
+/// Why this only surfaced now: every native Rust example was
+/// `[package.metadata.nros.application]` (imperative, typed creators) until
+/// phase-338 W3 made them Node-class. C and C++ were never affected — they use
+/// the static `descriptors.cpp` table, which is why `c/talker` published
+/// normally against the same backend while `rust/talker` could not.
+#[inline]
+fn register_declared_type<M: nros_node::rmw_type_registry::MessageForRmw>() -> NodeResult<()> {
+    nros_node::rmw_type_registry::register_type::<M>().map_err(|_| NodeDeclError::Runtime)
+}
+
+/// issue 0413, service half — register both payload types of `S`.
+///
+/// Services reach the same type-erased sink path as publishers, so the
+/// descriptor has to be built here too. The bound is a WHERE-CLAUSE on the
+/// declarative methods rather than on `RosService` itself: `RosService` lives in
+/// `nros-core`, which cannot depend on `nros-node` where `MessageForRmw` is
+/// defined. Generated service crates satisfy it (their payloads implement
+/// `schema::Message`); a hand-rolled service used only with zenoh/XRCE is
+/// unaffected, because `MessageForRmw` collapses to `RosMessage` when no
+/// descriptor-needing backend is linked.
+#[inline]
+fn register_declared_service<S: RosService>() -> NodeResult<()>
+where
+    S::Request: nros_node::rmw_type_registry::MessageForRmw,
+    S::Reply: nros_node::rmw_type_registry::MessageForRmw,
+{
+    register_declared_type::<S::Request>()?;
+    register_declared_type::<S::Reply>()
+}
 
 /// Node declaration error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +132,36 @@ impl From<NodeMetadataError> for NodeDeclError {
     fn from(value: NodeMetadataError) -> Self {
         Self::Metadata(value)
     }
+}
+
+/// issue 0413, action half — register every wire payload type of `A`.
+///
+/// Mirrors the eight `register_type::<A::…>()` calls the IMPERATIVE action
+/// creator makes (`nros-node/src/executor/action.rs`); the declarative path
+/// reaches the same type-erased sink and would otherwise register none of them.
+/// `A::register_protocol_types()` covers the fixed `action_msgs` types the
+/// cancel/status plumbing serializes, exactly as the imperative path does.
+#[inline]
+fn register_declared_action<A: RosAction>() -> NodeResult<()>
+where
+    A::Goal: nros_node::rmw_type_registry::MessageForRmw,
+    A::Result: nros_node::rmw_type_registry::MessageForRmw,
+    A::Feedback: nros_node::rmw_type_registry::MessageForRmw,
+    A::SendGoalRequest: nros_node::rmw_type_registry::MessageForRmw,
+    A::SendGoalResponse: nros_node::rmw_type_registry::MessageForRmw,
+    A::GetResultRequest: nros_node::rmw_type_registry::MessageForRmw,
+    A::GetResultResponse: nros_node::rmw_type_registry::MessageForRmw,
+    A::FeedbackMessage: nros_node::rmw_type_registry::MessageForRmw,
+{
+    register_declared_type::<A::Goal>()?;
+    register_declared_type::<A::Result>()?;
+    register_declared_type::<A::Feedback>()?;
+    register_declared_type::<A::SendGoalRequest>()?;
+    register_declared_type::<A::SendGoalResponse>()?;
+    register_declared_type::<A::GetResultRequest>()?;
+    register_declared_type::<A::GetResultResponse>()?;
+    register_declared_type::<A::FeedbackMessage>()?;
+    A::register_protocol_types().map_err(|()| NodeDeclError::Runtime)
 }
 
 /// Rust component entry point.
@@ -640,7 +728,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a publisher with default QoS. Stable publisher ID is required.
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_publisher<'entity, M: RosMessage>(
+    pub fn create_publisher<'entity, M: MessageForRmw>(
         &mut self,
         id: EntityId<'entity>,
         topic: &str,
@@ -654,7 +742,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// a node declares more than one publisher on the same topic or needs a
     /// stable metadata ID that differs from the ROS topic name.
     #[track_caller]
-    pub fn create_publisher_for_topic<'entity, M: RosMessage>(
+    pub fn create_publisher_for_topic<'entity, M: MessageForRmw>(
         &mut self,
         topic: &'entity str,
     ) -> NodeResult<NodePublisher<'entity, M>> {
@@ -663,7 +751,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a publisher with explicit QoS, using `topic` as the stable entity ID.
     #[track_caller]
-    pub fn create_publisher_for_topic_with_qos<'entity, M: RosMessage>(
+    pub fn create_publisher_for_topic_with_qos<'entity, M: MessageForRmw>(
         &mut self,
         topic: &'entity str,
         qos: QosSettings,
@@ -674,19 +762,22 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a publisher with explicit QoS.
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_publisher_with_qos<'entity, M: RosMessage>(
+    pub fn create_publisher_with_qos<'entity, M: MessageForRmw>(
         &mut self,
         id: EntityId<'entity>,
         topic: &str,
         qos: QosSettings,
     ) -> NodeResult<NodePublisher<'entity, M>> {
+        register_declared_type::<M>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
             kind: EntityKind::Publisher,
             source_name: topic,
-            type_name: M::TYPE_NAME,
-            type_hash: M::TYPE_HASH,
+            // issue 0413 — `MessageForRmw` can pull `schema::Message` into scope,
+            // which also has a `TYPE_NAME`; disambiguate to the ROS-facing one.
+            type_name: <M as RosMessage>::TYPE_NAME,
+            type_hash: <M as RosMessage>::TYPE_HASH,
             qos,
         })?;
         metadata.source = SourceLocationMetadata::caller()?;
@@ -697,7 +788,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a subscription. Stable subscription and callback IDs are required.
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_subscription<'entity, 'callback, M: RosMessage>(
+    pub fn create_subscription<'entity, 'callback, M: MessageForRmw>(
         &mut self,
         id: EntityId<'entity>,
         callback_id: CallbackId<'callback>,
@@ -712,7 +803,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// [`create_subscription_for_callback_name`](Self::create_subscription_for_callback_name).
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_subscription_for_callback<'callback, M: RosMessage>(
+    pub fn create_subscription_for_callback<'callback, M: MessageForRmw>(
         &mut self,
         callback_id: CallbackId<'callback>,
         topic: &str,
@@ -727,7 +818,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a subscription using `callback_name` as the source callback
     /// name and synthesized entity ID.
     #[track_caller]
-    pub fn create_subscription_for_callback_name<'callback, M: RosMessage>(
+    pub fn create_subscription_for_callback_name<'callback, M: MessageForRmw>(
         &mut self,
         callback_name: &'callback str,
         topic: &str,
@@ -745,7 +836,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// also usable by hand. Ungated — when `safety-e2e` is off the flag is simply
     /// ignored and the subscription registers as a basic one.
     #[track_caller]
-    pub fn create_subscription_for_callback_name_with_safety<'callback, M: RosMessage>(
+    pub fn create_subscription_for_callback_name_with_safety<'callback, M: MessageForRmw>(
         &mut self,
         callback_name: &'callback str,
         topic: &str,
@@ -757,8 +848,10 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             node_id: self.id,
             kind: EntityKind::Subscription,
             source_name: topic,
-            type_name: M::TYPE_NAME,
-            type_hash: M::TYPE_HASH,
+            // issue 0413 — `MessageForRmw` can pull `schema::Message` into scope,
+            // which also has a `TYPE_NAME`; disambiguate to the ROS-facing one.
+            type_name: <M as RosMessage>::TYPE_NAME,
+            type_hash: <M as RosMessage>::TYPE_HASH,
             qos: QosSettings::default(),
         })?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
@@ -772,7 +865,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a subscription with explicit QoS, using `callback_id` as the stable entity ID.
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_subscription_for_callback_with_qos<'callback, M: RosMessage>(
+    pub fn create_subscription_for_callback_with_qos<'callback, M: MessageForRmw>(
         &mut self,
         callback_id: CallbackId<'callback>,
         topic: &str,
@@ -788,7 +881,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a subscription using `topic` as both the stable entity ID and callback ID.
     #[track_caller]
-    pub fn create_subscription_for_topic<'entity, M: RosMessage>(
+    pub fn create_subscription_for_topic<'entity, M: MessageForRmw>(
         &mut self,
         topic: &'entity str,
     ) -> NodeResult<NodeSubscription<'entity, M>> {
@@ -797,7 +890,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a subscription with explicit QoS, using `topic` as both IDs.
     #[track_caller]
-    pub fn create_subscription_for_topic_with_qos<'entity, M: RosMessage>(
+    pub fn create_subscription_for_topic_with_qos<'entity, M: MessageForRmw>(
         &mut self,
         topic: &'entity str,
         qos: QosSettings,
@@ -813,20 +906,23 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a subscription with explicit QoS.
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_subscription_with_qos<'entity, 'callback, M: RosMessage>(
+    pub fn create_subscription_with_qos<'entity, 'callback, M: MessageForRmw>(
         &mut self,
         id: EntityId<'entity>,
         callback_id: CallbackId<'callback>,
         topic: &str,
         qos: QosSettings,
     ) -> NodeResult<NodeSubscription<'entity, M>> {
+        register_declared_type::<M>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
             kind: EntityKind::Subscription,
             source_name: topic,
-            type_name: M::TYPE_NAME,
-            type_hash: M::TYPE_HASH,
+            // issue 0413 — `MessageForRmw` can pull `schema::Message` into scope,
+            // which also has a `TYPE_NAME`; disambiguate to the ROS-facing one.
+            type_name: <M as RosMessage>::TYPE_NAME,
+            type_hash: <M as RosMessage>::TYPE_HASH,
             qos,
         })?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
@@ -848,7 +944,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// and the returned tag preserves that identifier for compile-time
     /// `state.sub_chatter == cb` matches in `on_callback`.
     #[track_caller]
-    pub fn create_subscription_static<M: RosMessage>(
+    pub fn create_subscription_static<M: MessageForRmw>(
         &mut self,
         topic: &'static str,
     ) -> NodeResult<SubscriptionTag> {
@@ -859,8 +955,10 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             node_id: self.id,
             kind: EntityKind::Subscription,
             source_name: topic,
-            type_name: M::TYPE_NAME,
-            type_hash: M::TYPE_HASH,
+            // issue 0413 — `MessageForRmw` can pull `schema::Message` into scope,
+            // which also has a `TYPE_NAME`; disambiguate to the ROS-facing one.
+            type_name: <M as RosMessage>::TYPE_NAME,
+            type_hash: <M as RosMessage>::TYPE_HASH,
             qos: QosSettings::default(),
         })?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
@@ -921,12 +1019,20 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a service server. Stable service and callback IDs are required.
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_service_server<'entity, 'callback, S: RosService>(
+    pub fn create_service_server<
+        'entity,
+        'callback,
+        S: RosService<
+                Request: nros_node::rmw_type_registry::MessageForRmw,
+                Reply: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         id: EntityId<'entity>,
         callback_id: CallbackId<'callback>,
         service_name: &str,
     ) -> NodeResult<NodeServiceServer<'entity, S>> {
+        register_declared_service::<S>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -946,7 +1052,13 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a service server using `name` as both the stable entity ID
     /// and callback ID.
     #[track_caller]
-    pub fn create_service_server_for_name<'entity, S: RosService>(
+    pub fn create_service_server_for_name<
+        'entity,
+        S: RosService<
+                Request: nros_node::rmw_type_registry::MessageForRmw,
+                Reply: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         name: &'entity str,
     ) -> NodeResult<NodeServiceServer<'entity, S>> {
@@ -956,7 +1068,13 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a service server using `name` as the stable entity ID and
     /// `callback_name` as the source callback name.
     #[track_caller]
-    pub fn create_service_server_for_name_with_callback<'entity, S: RosService>(
+    pub fn create_service_server_for_name_with_callback<
+        'entity,
+        S: RosService<
+                Request: nros_node::rmw_type_registry::MessageForRmw,
+                Reply: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         name: &'entity str,
         callback_name: &str,
@@ -976,7 +1094,12 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// [`create_service_client_for_name`](Self::create_service_client_for_name) builder
     /// for the client side.
     #[track_caller]
-    pub fn create_service_static<S: RosService>(
+    pub fn create_service_static<
+        S: RosService<
+                Request: nros_node::rmw_type_registry::MessageForRmw,
+                Reply: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         name: &'static str,
     ) -> NodeResult<ServiceTag> {
@@ -987,11 +1110,18 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a service client. Stable service client ID is required.
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_service_client<'entity, S: RosService>(
+    pub fn create_service_client<
+        'entity,
+        S: RosService<
+                Request: nros_node::rmw_type_registry::MessageForRmw,
+                Reply: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         id: EntityId<'entity>,
         service_name: &str,
     ) -> NodeResult<NodeServiceClient<'entity, S>> {
+        register_declared_service::<S>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -1008,7 +1138,13 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a service client using `name` as the stable entity ID.
     #[track_caller]
-    pub fn create_service_client_for_name<'entity, S: RosService>(
+    pub fn create_service_client_for_name<
+        'entity,
+        S: RosService<
+                Request: nros_node::rmw_type_registry::MessageForRmw,
+                Reply: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         name: &'entity str,
     ) -> NodeResult<NodeServiceClient<'entity, S>> {
@@ -1018,7 +1154,20 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare an action server. Stable action and callback IDs are required.
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_action_server<'entity, 'callback, A: RosAction>(
+    pub fn create_action_server<
+        'entity,
+        'callback,
+        A: RosAction<
+                Goal: nros_node::rmw_type_registry::MessageForRmw,
+                Result: nros_node::rmw_type_registry::MessageForRmw,
+                Feedback: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalRequest: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalResponse: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultRequest: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultResponse: nros_node::rmw_type_registry::MessageForRmw,
+                FeedbackMessage: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         id: EntityId<'entity>,
         callback_id: CallbackId<'callback>,
@@ -1036,7 +1185,22 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare an action server with distinct goal/cancel/accepted callbacks.
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_action_server_with_callbacks<'entity, 'goal, 'cancel, 'accepted, A: RosAction>(
+    pub fn create_action_server_with_callbacks<
+        'entity,
+        'goal,
+        'cancel,
+        'accepted,
+        A: RosAction<
+                Goal: nros_node::rmw_type_registry::MessageForRmw,
+                Result: nros_node::rmw_type_registry::MessageForRmw,
+                Feedback: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalRequest: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalResponse: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultRequest: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultResponse: nros_node::rmw_type_registry::MessageForRmw,
+                FeedbackMessage: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         id: EntityId<'entity>,
         goal_callback_id: CallbackId<'goal>,
@@ -1044,6 +1208,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         accepted_callback_id: CallbackId<'accepted>,
         action_name: &str,
     ) -> NodeResult<NodeActionServer<'entity, A>> {
+        register_declared_action::<A>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -1067,7 +1232,19 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare an action server using `name` as the stable entity ID and
     /// default goal/cancel/accepted callback ID.
     #[track_caller]
-    pub fn create_action_server_for_name<'entity, A: RosAction>(
+    pub fn create_action_server_for_name<
+        'entity,
+        A: RosAction<
+                Goal: nros_node::rmw_type_registry::MessageForRmw,
+                Result: nros_node::rmw_type_registry::MessageForRmw,
+                Feedback: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalRequest: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalResponse: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultRequest: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultResponse: nros_node::rmw_type_registry::MessageForRmw,
+                FeedbackMessage: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         name: &'entity str,
     ) -> NodeResult<NodeActionServer<'entity, A>> {
@@ -1077,7 +1254,19 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare an action server using `name` as the stable entity ID and
     /// explicit source callback names for goal, cancel, and accepted events.
     #[track_caller]
-    pub fn create_action_server_for_name_with_callbacks<'entity, A: RosAction>(
+    pub fn create_action_server_for_name_with_callbacks<
+        'entity,
+        A: RosAction<
+                Goal: nros_node::rmw_type_registry::MessageForRmw,
+                Result: nros_node::rmw_type_registry::MessageForRmw,
+                Feedback: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalRequest: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalResponse: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultRequest: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultResponse: nros_node::rmw_type_registry::MessageForRmw,
+                FeedbackMessage: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         name: &'entity str,
         goal_callback_name: &str,
@@ -1109,7 +1298,18 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// [`create_action_client_for_name`](Self::create_action_client_for_name) builder
     /// for the client side.
     #[track_caller]
-    pub fn create_action_static<A: RosAction>(
+    pub fn create_action_static<
+        A: RosAction<
+                Goal: nros_node::rmw_type_registry::MessageForRmw,
+                Result: nros_node::rmw_type_registry::MessageForRmw,
+                Feedback: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalRequest: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalResponse: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultRequest: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultResponse: nros_node::rmw_type_registry::MessageForRmw,
+                FeedbackMessage: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         name: &'static str,
     ) -> NodeResult<ActionTag> {
@@ -1120,11 +1320,24 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare an action client. Stable action client ID is required.
     #[track_caller]
     #[doc(hidden)]
-    pub fn create_action_client<'entity, A: RosAction>(
+    pub fn create_action_client<
+        'entity,
+        A: RosAction<
+                Goal: nros_node::rmw_type_registry::MessageForRmw,
+                Result: nros_node::rmw_type_registry::MessageForRmw,
+                Feedback: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalRequest: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalResponse: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultRequest: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultResponse: nros_node::rmw_type_registry::MessageForRmw,
+                FeedbackMessage: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         id: EntityId<'entity>,
         action_name: &str,
     ) -> NodeResult<NodeActionClient<'entity, A>> {
+        register_declared_action::<A>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -1141,7 +1354,19 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare an action client using `name` as the stable entity ID.
     #[track_caller]
-    pub fn create_action_client_for_name<'entity, A: RosAction>(
+    pub fn create_action_client_for_name<
+        'entity,
+        A: RosAction<
+                Goal: nros_node::rmw_type_registry::MessageForRmw,
+                Result: nros_node::rmw_type_registry::MessageForRmw,
+                Feedback: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalRequest: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalResponse: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultRequest: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultResponse: nros_node::rmw_type_registry::MessageForRmw,
+                FeedbackMessage: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         name: &'entity str,
     ) -> NodeResult<NodeActionClient<'entity, A>> {
@@ -1161,7 +1386,19 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// `action_accepted_callback_id` metadata slot for the feedback callback —
     /// that field is unused on a client, so no new schema field is needed.)
     #[track_caller]
-    pub fn create_action_client_with_callbacks_for_name<'entity, A: RosAction>(
+    pub fn create_action_client_with_callbacks_for_name<
+        'entity,
+        A: RosAction<
+                Goal: nros_node::rmw_type_registry::MessageForRmw,
+                Result: nros_node::rmw_type_registry::MessageForRmw,
+                Feedback: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalRequest: nros_node::rmw_type_registry::MessageForRmw,
+                SendGoalResponse: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultRequest: nros_node::rmw_type_registry::MessageForRmw,
+                GetResultResponse: nros_node::rmw_type_registry::MessageForRmw,
+                FeedbackMessage: nros_node::rmw_type_registry::MessageForRmw,
+            >,
+    >(
         &mut self,
         name: &'entity str,
         result_callback_name: &str,

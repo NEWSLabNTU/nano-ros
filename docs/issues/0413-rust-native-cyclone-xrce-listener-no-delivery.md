@@ -1,13 +1,80 @@
 ---
 id: 413
-title: "Rust native cyclone example fails node registration where the C one publishes"
+title: "Declarative Node API never registered Cyclone type descriptors (pubsub+services FIXED; actions open)"
 status: open
 type: bug
 area: rmw
 related: [phase-329, phase-337, issue-0233, issue-0234]
 ---
 
-## REOPENED 2026-08-05 — the stale-binary resolution fixed one symptom, not the class
+## ROOT CAUSE FOUND + FIXED 2026-08-05 (pubsub + services); actions still open
+
+**The declarative Node API never registered Cyclone type descriptors.**
+
+Cyclone resolves topic types through a RUNTIME registry: `publisher.cpp` calls
+`find_descriptor(type)` and returns `NROS_RMW_RET_UNSUPPORTED` when it is
+absent. The IMPERATIVE API's typed creators
+(`nros-node::Node::create_publisher_with_qos::<M>`) call `register_type::<M>()`
+first, so they were fine. The DECLARATIVE Node API does not reach them:
+`NodeContext` records `EntityMetadata` and the sink calls the type-ERASED
+`create_generic_publisher_with_qos(topic, type_name, type_hash, qos)`, which has
+a type NAME and no `M` — so nothing could register the descriptor.
+
+That is why every symptom looked the way it did:
+
+* **C and C++ were never affected** — they use the static `descriptors.cpp`
+  table, so `c/talker` published normally against the same backend.
+* **zenoh / XRCE were never affected** — no descriptor registry; the seam
+  (`nros_rmw::register_type_descriptor`) returns `Ok` when no registrar is
+  installed.
+* **It surfaced only now** because every native Rust example was
+  `[package.metadata.nros.application]` (imperative) until phase-338 W3 made
+  them Node-class.
+
+**Why it took three sessions to place.** The cause is four collapses away from
+the message: `NROS_RMW_RET_UNSUPPORTED` ->
+`TransportError::PublisherCreationFailed` -> `decl_err_from_node`'s
+`_ => NodeDeclError::Runtime` -> the macro's
+`map_err(|_| RuntimeError::NodeRegister(<pkg>))`. The operator sees only
+`application error: NodeRegister("native_rs_talker")`, which names the package
+and nothing else.
+
+**The fix** registers the descriptor at the last point that still knows the
+type — the declarative API in `packages/api/nros/src/node.rs`:
+
+| Declarative funnel | Registers |
+|---|---|
+| publisher | `M` |
+| subscription | `M` |
+| service server / client | `S::Request`, `S::Reply` |
+| action server / client | `A`'s 8 wire types + `A::register_protocol_types()` |
+
+The bounds are associated-type bounds on the declarative METHODS
+(`S: RosService<Request: MessageForRmw, …>`), not on `RosService` / `RosAction`
+themselves: those live in `nros-core`, which cannot depend on `nros-node` where
+`MessageForRmw` is defined. `MessageForRmw` collapses to plain `RosMessage`
+when no descriptor-needing backend is linked, so zenoh / XRCE builds are
+unchanged.
+
+**Verified** on freshly built cyclone binaries:
+
+```text
+rust talker   -> Publishing: 'Hello World: 1' …      (was: NodeRegister)
+rust listener -> I heard: [Hello World: 1] …         (the pair delivers)
+rust service  -> Result of add_two_ints: 5           (round-trips)
+```
+
+plus `native_api::test_native_cyclonedds_rust_talker_to_listener` (C and C++
+peers) green, having been red.
+
+**STILL OPEN: actions.** `test_native_cyclonedds_rust_action` still fails. The
+eight payload registrations are in place and mirror the imperative creator, so
+the remaining cause is elsewhere on the action path; a plausible suspect is
+issue **0418** (the action payload envelope carries one CDR header too many),
+handled under RFC-0069. The pubsub and service halves are fixed and verified;
+this issue stays open for the action half.
+
+## Diagnosis trail (2026-08-05) — kept, because it is what the collapse hides
 
 `da26485e9` was right that the binaries were stale, and right that rebuilding
 clears `Transport(ConnectionFailed)` at `Executor::open`. It was wrong that "the
