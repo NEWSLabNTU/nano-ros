@@ -16,6 +16,12 @@
 //! No heap allocation required — fully alloc-free.
 //!
 //! All serialization/deserialization happens on the runtime.
+//!
+//! Issue 0436 — every exported entry point that takes a user-supplied `void*`
+//! executor handle validates it with `cpp_ctx_checked` (tag check) instead of
+//! blind-casting to `*mut CppContext`. Construction (`nros_cpp_init` /
+//! `_open_over_session`) and destruction (`nros_cpp_fini`) sites stamp or tear
+//! down the tag and are necessarily unchecked.
 
 #![no_std]
 #![allow(non_camel_case_types)]
@@ -457,6 +463,16 @@ pub(crate) const CPP_EXECUTOR_BACKING_U64S: usize = nros_node::ExecutorSizing::D
 /// so `executor` stays at offset 0 for the `*mut c_void as *mut CppContext` casts.
 #[cfg(feature = "rmw-cffi")]
 pub(crate) struct CppContext {
+    /// Issue 0436 — handle type tag, FIRST so it can be read before the struct is
+    /// trusted. `nros_cpp_init`/`_init_multi` stamp it; every entry point that
+    /// takes a `void*` executor handle checks it.
+    ///
+    /// Two different structs used to travel as `void*`: this one and
+    /// `nros-bridge`'s `ExecutorBox` (from `nros_init_multi`). Both begin with the
+    /// SAME `Executor<'static>`, so a mixed-up handle READ correctly and then wrote
+    /// this struct's later fields over the other's `Vec` — memory corruption, seen
+    /// as PX4 dumping core. A tag turns that into a clean error.
+    pub(crate) tag: u64,
     pub(crate) executor: CppExecutor,
     pub(crate) domain_id: u32,
     /// Reentrancy guard — `true` while a spin is dispatching callbacks.
@@ -510,6 +526,30 @@ impl Drop for DispatchGuard<'_> {
     fn drop(&mut self) {
         *self.flag = false;
     }
+}
+
+/// Issue 0436 — marks a buffer as an nros-cpp executor context. Value is
+/// arbitrary but must not be a plausible pointer or small integer.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) const CPP_CONTEXT_TAG: u64 = 0x6E52_4F53_4350_5001; // "nROSCP\x50\x01"
+
+/// Issue 0436 — validate a caller-supplied executor handle before treating it as a
+/// [`CppContext`]. Returns `None` for null or for a buffer this crate did not
+/// stamp (e.g. an `nros_init_multi` bridge handle).
+///
+/// # Safety
+/// `handle` must either be null or point to a readable 8-byte-aligned allocation.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) unsafe fn cpp_ctx_checked<'a>(handle: *mut c_void) -> Option<&'a mut CppContext> {
+    if handle.is_null() {
+        return None;
+    }
+    let ctx = handle as *mut CppContext;
+    // Read ONLY the tag until it is proven to be ours.
+    if unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).tag)) } != CPP_CONTEXT_TAG {
+        return None;
+    }
+    Some(unsafe { &mut *ctx })
 }
 
 // Compile-time assertion: inline storage must fit CppContext (executor + domain
@@ -639,6 +679,9 @@ pub unsafe extern "C" fn nros_cpp_init(
                     domain_id as u32,
                 );
                 core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
+                // Stamp LAST: the tag means "fully initialised", so a half-built
+                // buffer never validates (issue 0436).
+                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
             }
             NROS_CPP_RET_OK
         }
@@ -797,6 +840,7 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
                     owned.first().map(|s| s.domain_id).unwrap_or(0),
                 );
                 core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
+                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
             }
             NROS_CPP_RET_OK
         }
@@ -1228,7 +1272,7 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     namespace: *const c_char,
     out_node: *mut nros_cpp_node_t,
 ) -> nros_cpp_ret_t {
-    if executor_handle.is_null() || name.is_null() || out_node.is_null() {
+    if name.is_null() || out_node.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
@@ -1256,7 +1300,9 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     // session (no rmw override → slot 0), so routing is unchanged — only the
     // node identity is now correct per component, matching the Rust + `_ex`
     // paths.
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let node_id = match ctx
         .executor
         .node_builder(name_str)
@@ -1403,7 +1449,13 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     // / `_service_*_create` calls observe `node_id != 0` and route
     // through `Executor::node_session_mut(NodeId)` instead of the
     // primary session.
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    // Issue 0436 — VALIDATE the handle. This is the site where a `MultiExecutor` /
+    // `nros_init_multi` handle used to be cast to `CppContext`: both start with the
+    // same `Executor`, so the cast read fine and the later field writes corrupted
+    // the other struct's `Vec` (PX4 dumped core). Now it is a clean error.
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let mut builder = ctx.executor.node_builder(name_str);
     if opts.rmw_name_len > 0 {
         let rmw = unsafe { core::str::from_utf8_unchecked(&opts.rmw_name[..opts.rmw_name_len]) };
@@ -1543,11 +1595,9 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     handle: *mut c_void,
     timeout_ms: i32,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
-
-    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    };
     let ms = timeout_ms.max(0) as u64;
     // Issue 0290 — refuse to re-enter from inside a callback. Without this a
     // blocking helper called during dispatch (`Client::call`, `Future::wait`,
@@ -1628,10 +1678,9 @@ pub unsafe extern "C" fn nros_cpp_executor_ping(
     handle: *mut c_void,
     timeout_ms: i32,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
-    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    };
     match ctx.executor.ping(timeout_ms) {
         Ok(()) => NROS_CPP_RET_OK,
         Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Timeout)) => {
@@ -1720,13 +1769,15 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
     cfg: *const nros_cpp_sched_context_t,
     out_sc_id: *mut u8,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() || cfg.is_null() || out_sc_id.is_null() {
+    if cfg.is_null() || out_sc_id.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     use nros_node::executor::sched_context::{
         DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext,
     };
-    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let cfg = unsafe { &*cfg };
     #[allow(deprecated)]
     let sc = SchedContext {
@@ -1804,11 +1855,13 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context_from_policy(
     os_pri: u8,
     out_sc_id: *mut u8,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() || out_sc_id.is_null() {
+    if out_sc_id.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     use nros_node::executor::sched_context::SchedContext;
-    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     // null → None; a non-UTF-8 string is treated as absent (the bake already
     // validated the tier vocabulary, so this only guards a caller ABI bug).
     let class_str = if class.is_null() {
@@ -1860,10 +1913,9 @@ pub unsafe extern "C" fn nros_cpp_bind_handle_to_sched_context(
     callback_handle: usize,
     sc_id: u8,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
-    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    };
     let h = nros_node::executor::HandleId(callback_handle);
     let id = nros_node::executor::sched_context::SchedContextId(sc_id);
     match ctx.executor.bind_handle_to_sched_context(h, id) {
@@ -1895,10 +1947,12 @@ pub unsafe extern "C" fn nros_cpp_bind_node_name_sched(
     namespace_: *const c_char,
     sc_id: u8,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() || name.is_null() {
+    if name.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let name_str = match unsafe { cstr_to_str(name) } {
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -1940,10 +1994,12 @@ pub unsafe extern "C" fn nros_cpp_bind_group_sched(
     group: *const c_char,
     sc_id: u8,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() || name.is_null() || group.is_null() {
+    if name.is_null() || group.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let name_str = match unsafe { cstr_to_str(name) } {
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -1991,10 +2047,12 @@ pub unsafe extern "C" fn nros_cpp_declare_remap(
     from: *const c_char,
     to: *const c_char,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() || node_name.is_null() || from.is_null() || to.is_null() {
+    if node_name.is_null() || from.is_null() || to.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let name_str = match unsafe { cstr_to_str(node_name) } {
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -2042,10 +2100,9 @@ pub unsafe extern "C" fn nros_cpp_declare_remap(
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_executor_session_handle(executor: *mut c_void) -> *mut c_void {
-    if executor.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return core::ptr::null_mut();
-    }
-    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    };
     ctx.executor.session_handle().into_raw()
 }
 
@@ -2151,11 +2208,9 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
     groups: *const *const c_char,
     n: usize,
 ) -> nros_cpp_ret_t {
-    if executor.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
-
-    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    };
 
     if n == 0 || groups.is_null() {
         // Empty / NULL ⇒ wildcard (clear filter, accept all groups).

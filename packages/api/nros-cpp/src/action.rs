@@ -1,6 +1,11 @@
 //! Action server and client FFI functions for the C++ API.
 //!
 //! Alloc-free: all internal state is written into caller-provided inline storage.
+//!
+//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! `cpp_ctx_checked`. Handles reached through an already-validated node/client
+//! (`node_ref.executor`, `client.executor_ptr`) inherit that provenance and stay
+//! direct casts.
 
 use core::ffi::{c_char, c_void};
 
@@ -13,7 +18,8 @@ use nros_node::config::DEFAULT_RX_BUF_SIZE;
 use crate::{
     CppContext, DispatchGuard, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
     NROS_CPP_RET_REENTRANT, NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR,
-    NROS_CPP_RET_TRY_AGAIN, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
+    NROS_CPP_RET_TRY_AGAIN, cpp_ctx_checked, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t,
+    nros_cpp_ret_t,
 };
 
 /// Scratch buffer for re-framing an incoming goal payload before handing
@@ -226,17 +232,14 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
     type_hash: *const c_char,
     sched_context: u8,
 ) -> nros_cpp_ret_t {
-    if storage.is_null()
-        || executor_handle.is_null()
-        || action_name.is_null()
-        || type_name.is_null()
-        || type_hash.is_null()
-    {
+    if storage.is_null() || action_name.is_null() || type_name.is_null() || type_hash.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
     let server = unsafe { &mut *(storage as *mut CppActionServer) };
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
 
     let act_str = match unsafe { cstr_to_str(action_name) } {
         Some(s) => s,
@@ -357,13 +360,14 @@ pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback(
     feedback_buf: *const u8,
     feedback_len: usize,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() || executor_handle.is_null() || goal_id.is_null() || feedback_buf.is_null()
-    {
+    if handle.is_null() || goal_id.is_null() || feedback_buf.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
     let server = unsafe { &*(handle as *const CppActionServer) };
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let id = nros::GoalId {
         uuid: unsafe { *goal_id },
     };
@@ -407,12 +411,14 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     result_buf: *const u8,
     result_len: usize,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() || executor_handle.is_null() || goal_id.is_null() || result_buf.is_null() {
+    if handle.is_null() || goal_id.is_null() || result_buf.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
     let server = unsafe { &*(handle as *const CppActionServer) };
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let id = nros::GoalId {
         uuid: unsafe { *goal_id },
     };
@@ -455,14 +461,17 @@ pub unsafe extern "C" fn nros_cpp_action_server_for_each_active_goal(
     visitor: Option<unsafe extern "C" fn(goal_id: *const [u8; 16], status: i8, ctx: *mut c_void)>,
     ctx: *mut c_void,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() || executor_handle.is_null() {
+    if handle.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let Some(visitor) = visitor else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let server = unsafe { &*(handle as *const CppActionServer) };
-    let executor_ctx = unsafe { &*(executor_handle as *const CppContext) };
+    let Some(executor_ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let executor_ctx = &*executor_ctx;
     let arena_handle = match &server.handle {
         Some(h) => *h,
         None => return NROS_CPP_RET_ERROR,
@@ -1071,17 +1080,14 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     result_buf_len: usize,
     result_len: *mut usize,
 ) -> nros_cpp_ret_t {
-    if handle.is_null()
-        || executor_handle.is_null()
-        || goal_id.is_null()
-        || result_buf.is_null()
-        || result_len.is_null()
-    {
+    if handle.is_null() || goal_id.is_null() || result_buf.is_null() || result_len.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
-    let _ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let Some(_ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let id = nros::GoalId {
         uuid: unsafe { *goal_id },
     };

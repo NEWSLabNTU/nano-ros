@@ -77,6 +77,19 @@ pub unsafe extern "C" fn nros_init_multi(
         return NROS_RMW_RET_NO_BACKEND;
     }
 
+    // Issue 0436 — register the linked backends, as `nros_cpp_init` does. This
+    // entry point did NOT, so a caller that used the multi path INSTEAD of
+    // `nros_*_init` (which is the whole point of it) met an empty registry and
+    // every spec's lookup missed. `nros_app_register_backends` is the generated
+    // strong def (weak no-op in nros-c when a board supplies none) and is
+    // idempotent, so calling it here costs nothing and removes the asymmetry.
+    unsafe extern "C" {
+        fn nros_app_register_backends();
+    }
+    unsafe {
+        nros_app_register_backends();
+    }
+
     // Snapshot every C string into owned `String`s so the executor's
     // borrowed views stay valid past this call.
     let mut owned: Vec<String> = Vec::with_capacity(specs_len * 4);

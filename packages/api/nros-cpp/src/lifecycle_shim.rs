@@ -3,6 +3,9 @@
 //! Mirrors `nros-c/src/lifecycle.rs`'s service-backed module but recovers the
 //! executor from `CppContext*` instead of `nros_executor_t*`. W1/W2 emitters
 //! call these; no emitter wires them yet this wave.
+//!
+//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! `cpp_ctx_checked` instead of being blind-cast to `*mut CppContext`.
 
 #[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
 use core::ffi::c_void;
@@ -24,8 +27,8 @@ pub type nros_cpp_lifecycle_callback_t = unsafe extern "C" fn(*mut c_void) -> u8
 
 #[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
 use crate::{
-    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_NOT_INIT,
-    NROS_CPP_RET_OK, nros_cpp_ret_t,
+    NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_NOT_INIT, NROS_CPP_RET_OK,
+    cpp_ctx_checked, nros_cpp_ret_t,
 };
 
 /// Register the five REP-2002 lifecycle services on the C++ executor's node.
@@ -37,10 +40,9 @@ use crate::{
 pub unsafe extern "C" fn nros_cpp_register_lifecycle_services(
     executor: *mut c_void,
 ) -> nros_cpp_ret_t {
-    if executor.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
-    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    };
     match ctx.executor.register_lifecycle_services() {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
@@ -62,10 +64,9 @@ pub unsafe extern "C" fn nros_cpp_lifecycle_change_state(
     executor: *mut c_void,
     transition_id: u8,
 ) -> nros_cpp_ret_t {
-    if executor.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
-    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    };
     let Some(sm) = ctx.executor.lifecycle_state_machine_mut() else {
         return NROS_CPP_RET_NOT_INIT;
     };
@@ -92,10 +93,9 @@ pub unsafe extern "C" fn nros_cpp_lifecycle_change_state(
 #[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_lifecycle_get_state(executor: *mut c_void) -> u8 {
-    if executor.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return 0;
-    }
-    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    };
     match ctx.executor.lifecycle_state_machine() {
         Some(sm) => sm.state() as u8,
         None => 0,
@@ -116,10 +116,9 @@ unsafe fn register_cpp(
     cb: nros_cpp_lifecycle_callback_t,
     ctx: *mut c_void,
 ) -> nros_cpp_ret_t {
-    if executor.is_null() {
+    let Some(context) = (unsafe { cpp_ctx_checked(executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
-    let context = unsafe { &mut *(executor as *mut CppContext) };
+    };
     let Some(sm) = context.executor.lifecycle_state_machine_mut() else {
         return NROS_CPP_RET_NOT_INIT;
     };

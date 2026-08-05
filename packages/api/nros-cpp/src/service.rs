@@ -5,6 +5,10 @@
 //! on the C++ `nros::Service<S>` / `nros::Client<S>` classes. Received CDR
 //! bytes are copied directly into caller-provided output buffers — no
 //! runtime scratch.
+//!
+//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! `cpp_ctx_checked`. Handles reached through an already-validated node/client
+//! (`node_ref.executor`) inherit that provenance and stay direct casts.
 
 use core::ffi::{c_char, c_void};
 
@@ -12,8 +16,8 @@ use nros_rmw::{ClientTrait, ServiceInfo, ServiceTrait, Session};
 
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
-    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR, NROS_CPP_RET_TRY_AGAIN, cstr_to_str,
-    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
+    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR, NROS_CPP_RET_TRY_AGAIN, cpp_ctx_checked,
+    cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 use core::{
@@ -634,10 +638,12 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_on_handle(
     req_data: *const u8,
     req_len: usize,
 ) -> nros_cpp_ret_t {
-    if executor_handle.is_null() || req_data.is_null() {
+    if req_data.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let entry = match unsafe { ctx.executor.service_client_entry_mut(handle_id) } {
         Some(e) => e,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -799,9 +805,12 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
 ) -> nros_cpp_ret_t {
     use nros_rmw::ClientTrait as _;
 
-    if storage.is_null() || executor_handle.is_null() {
+    if storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
 
     // Latched: a previous wait already proved reachability.
@@ -809,7 +818,6 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
         return NROS_CPP_RET_OK;
     }
 
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
     const SPIN_MS: u64 = 10;
     const PROBE_TIMEOUT_MS: u32 = nros_node::SERVER_DISCOVERY_PROBE_TIMEOUT_MS;
     let deadline_ns = crate::nros_cpp_time_ns() + (timeout_ms as u64) * 1_000_000;

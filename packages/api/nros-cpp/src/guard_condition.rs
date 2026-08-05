@@ -1,11 +1,15 @@
 //! Guard condition FFI functions for the C++ API.
+//!
+//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! `cpp_ctx_checked` instead of being blind-cast to `*mut CppContext`.
 
 use core::ffi::c_void;
 
 use nros_node::GuardConditionHandle;
 
 use crate::{
-    CppContext, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, nros_cpp_ret_t,
+    NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, cpp_ctx_checked,
+    nros_cpp_ret_t,
 };
 
 // Phase 87.6: no compile-time assertion needed — the C++ side sizes
@@ -31,11 +35,13 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_create(
     context: *mut c_void,
     storage: *mut c_void,
 ) -> nros_cpp_ret_t {
-    if executor_handle.is_null() || storage.is_null() {
+    if storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let c_callback = callback;
     let c_context = context;
 

@@ -1,12 +1,15 @@
 //! Timer FFI functions for the C++ API.
+//!
+//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! `cpp_ctx_checked` instead of being blind-cast to `*mut CppContext`.
 
 use core::ffi::{c_char, c_void};
 
 use nros_node::timer::TimerDuration;
 
 use crate::{
-    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
-    NROS_CPP_RET_OK, cstr_to_str, nros_cpp_node_t, nros_cpp_ret_t,
+    NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
+    cpp_ctx_checked, cstr_to_str, nros_cpp_node_t, nros_cpp_ret_t,
 };
 
 /// C callback type for timers: `void callback(void* context)`.
@@ -33,7 +36,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
     context: *mut c_void,
     out_handle_id: *mut usize,
 ) -> nros_cpp_ret_t {
-    if executor_handle.is_null() || out_handle_id.is_null() {
+    if out_handle_id.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
@@ -42,7 +45,9 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let c_context = context;
 
     let wrapper = move || unsafe {
@@ -88,7 +93,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_oneshot(
     context: *mut c_void,
     out_handle_id: *mut usize,
 ) -> nros_cpp_ret_t {
-    if executor_handle.is_null() || out_handle_id.is_null() {
+    if out_handle_id.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
@@ -97,7 +102,9 @@ pub unsafe extern "C" fn nros_cpp_timer_create_oneshot(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let c_context = context;
 
     let wrapper = move || unsafe {
@@ -153,7 +160,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_in_group(
     callback_group: *const c_char,
     out_handle_id: *mut usize,
 ) -> nros_cpp_ret_t {
-    if executor_handle.is_null() || out_handle_id.is_null() {
+    if out_handle_id.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
@@ -162,7 +169,9 @@ pub unsafe extern "C" fn nros_cpp_timer_create_in_group(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let c_context = context;
 
     let wrapper = move || unsafe {
@@ -217,11 +226,9 @@ pub unsafe extern "C" fn nros_cpp_timer_cancel(
     executor_handle: *mut c_void,
     handle_id: usize,
 ) -> nros_cpp_ret_t {
-    if executor_handle.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
-
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    };
     let id = nros_node::HandleId(handle_id);
 
     match ctx.executor.cancel_timer(id) {
@@ -241,11 +248,9 @@ pub unsafe extern "C" fn nros_cpp_timer_reset(
     executor_handle: *mut c_void,
     handle_id: usize,
 ) -> nros_cpp_ret_t {
-    if executor_handle.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
-
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    };
     let id = nros_node::HandleId(handle_id);
 
     match ctx.executor.reset_timer(id) {
@@ -263,11 +268,10 @@ pub unsafe extern "C" fn nros_cpp_timer_is_cancelled(
     executor_handle: *mut c_void,
     handle_id: usize,
 ) -> bool {
-    if executor_handle.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return true;
-    }
-
-    let ctx = unsafe { &*(executor_handle as *const CppContext) };
+    };
+    let ctx = &*ctx;
     let id = nros_node::HandleId(handle_id);
     ctx.executor.timer_is_cancelled(id)
 }

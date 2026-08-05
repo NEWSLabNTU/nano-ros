@@ -175,14 +175,15 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # `bridge` is what puts nros_init_multi / nros_pubsub_bridge_* (the ABI
     # nros::MultiExecutor calls) into libnros_cpp.a — issue 0436. Without it the
     # module compiles and fails to LINK.
-    # profile-literal-ok: symbol fixture: linked into the same PX4 SITL image as
-    # the archive above; one profile for the whole link.
     # `platform-posix` makes the umbrella's bundled zenoh-pico COMPLETE (core +
     # platform layer, 1576 symbols). Without it the link needed a SECOND
     # zenoh-pico archive, and two copies in one image is what broke the session
     # open — issue 0436. One archive, one zenoh-pico.
+    # Linked into the same PX4 SITL image as the archive above; one profile for
+    # the whole link. Marker is INLINE because check-build-profile-literals.sh
+    # only looks 3 lines up, and this comment block is longer than that.
     cargo build -p nros-cpp --no-default-features \
-        --features std,rmw-zenoh-cffi,bridge,platform-posix --release
+        --features std,rmw-zenoh-cffi,bridge,platform-posix --release # profile-literal-ok: symbol fixture
     # profile-literal-ok: symbol fixture: same PX4 SITL link as above.
     # The POSIX platform archive nros_px4_add_module links (its guard names this
     # exact command when it is missing).

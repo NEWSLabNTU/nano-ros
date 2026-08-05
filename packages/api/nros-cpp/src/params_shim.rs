@@ -3,6 +3,9 @@
 //! Mirrors `nros-c/src/parameter.rs`'s executor-backed functions but recovers the
 //! executor from `CppContext*` instead of `nros_executor_t*`. W1 emitters call these;
 //! no emitter wires them yet this wave.
+//!
+//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! `cpp_ctx_checked` instead of being blind-cast to `*mut CppContext`.
 
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
 use core::ffi::{c_char, c_void};
@@ -12,8 +15,8 @@ use nros_node::ParameterValue;
 
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
 use crate::{
-    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
-    NROS_CPP_RET_NOT_FOUND, NROS_CPP_RET_OK, cstr_to_str, nros_cpp_ret_t,
+    NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_NOT_FOUND,
+    NROS_CPP_RET_OK, cpp_ctx_checked, cstr_to_str, nros_cpp_ret_t,
 };
 
 /// Register the ROS 2 parameter services on the C++ executor's node.
@@ -27,10 +30,9 @@ use crate::{
 pub unsafe extern "C" fn nros_cpp_register_parameter_services(
     executor: *mut c_void,
 ) -> nros_cpp_ret_t {
-    if executor.is_null() {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
-    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    };
     match ctx.executor.register_parameter_services() {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
@@ -53,10 +55,12 @@ pub unsafe extern "C" fn nros_cpp_declare_param(
     name: *const c_char,
     value: *const c_char,
 ) -> nros_cpp_ret_t {
-    if executor.is_null() || name.is_null() || value.is_null() {
+    if name.is_null() || value.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let name_str = match unsafe { cstr_to_str(name) } {
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -89,10 +93,12 @@ pub unsafe extern "C" fn nros_cpp_get_param_integer(
     name: *const c_char,
     out_value: *mut i64,
 ) -> nros_cpp_ret_t {
-    if executor.is_null() || out_value.is_null() {
+    if out_value.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let name_str = match unsafe { cstr_to_str(name) } {
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -122,10 +128,12 @@ pub unsafe extern "C" fn nros_cpp_get_param_double(
     name: *const c_char,
     out_value: *mut f64,
 ) -> nros_cpp_ret_t {
-    if executor.is_null() || out_value.is_null() {
+    if out_value.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let name_str = match unsafe { cstr_to_str(name) } {
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
@@ -160,10 +168,12 @@ pub unsafe extern "C" fn nros_cpp_get_param_string(
     out_buf: *mut c_char,
     buf_len: usize,
 ) -> nros_cpp_ret_t {
-    if executor.is_null() || out_buf.is_null() || buf_len == 0 {
+    if out_buf.is_null() || buf_len == 0 {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     let name_str = match unsafe { cstr_to_str(name) } {
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,

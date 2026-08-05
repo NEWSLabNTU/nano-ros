@@ -84,7 +84,11 @@ fn generate_config(
     // `$CARGO_TARGET_DIR/nros-cpp-generated/` (FLAT — the `<variant_slug>`
     // level was documented but never implemented; issue 0360), so the
     // source-tree merging from 119.1 is unnecessary.
-    const CPP_CONTEXT_OVERHEAD: usize = 8;
+    // `CppContext` = executor + the fields around it. 8 bytes covered
+    // `domain_id` + `in_dispatch` (+ padding); issue 0436 added the 8-byte handle
+    // `tag` that makes a mixed-up executor handle a clean error instead of memory
+    // corruption, so the overhead is 16.
+    const CPP_CONTEXT_OVERHEAD: usize = 16;
     let probe_executor_pre = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     if probe_executor_pre == 0 {
         println!(
