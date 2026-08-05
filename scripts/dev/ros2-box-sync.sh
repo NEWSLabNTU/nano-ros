@@ -89,6 +89,17 @@ mkdir -p "$dst"
 echo "ros2-box-sync: $src -> $dst"
 rsync -a --delete "${exclusions[@]}" "$src/" "$dst/"
 
+# The marker that tells `ros2-box-env.sh` this tree is box-OWNED (and so must
+# NOT redirect CARGO_TARGET_DIR) lives only here, in the destination — the
+# source has no such file. `--delete` therefore removed it on every re-sync, and
+# the box silently fell back to the redirect it was supposed to stop using.
+# Everything still built, so nothing complained; the symptom surfaced far away,
+# as `check-c` compiling against headers the redirected build had written to the
+# OLD location.
+#
+# Write it AFTER rsync, every time, so the mirror cannot exist without it.
+touch "$dst/.nros-box-tree"
+
 # `nros sync` writes ABSOLUTE paths into each leaf's `.cargo/config.toml`
 # (RFC-0048 W9), so a mirrored leaf still points at the SOURCE tree and cargo
 # resolves `nros` against crates.io instead of the checkout. This is the
