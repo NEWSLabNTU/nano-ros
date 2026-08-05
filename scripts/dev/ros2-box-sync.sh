@@ -53,14 +53,20 @@ fi
 #
 # `.cargo-target-box` is the box's redirected dir from before this existed; it
 # sits beside the checkout and must not be dragged in.
+# Patterns are ANCHORED where a bare name would also match SOURCE. `--exclude
+# 'build'` matches any directory called `build` at any depth — including
+# `scripts/build/`, which is tracked source, and dropping it broke the mirror's
+# `check-board-manifest-drift` with a missing `scripts/build/cargo.sh`. Only
+# `scripts/build` is tracked under that name (`git ls-files` confirms), so the
+# root `/build` is anchored and everything else stays name-matched.
 exclusions=(
     --exclude 'target'
     --exclude 'target-*'
-    --exclude 'build'
+    --exclude '/build'
     --exclude 'build-*'
     --exclude '.cargo-target-box'
-    --exclude 'tmp'
-    --exclude 'test-logs'
+    --exclude '/tmp'
+    --exclude '/test-logs'
     --exclude 'node_modules'
 )
 
