@@ -2710,9 +2710,17 @@ fn test_action_client_callbacks_fire_at_spin() {
     use crate::executor::action_core::ActionClientCore;
 
     /// CDR-with-header encode of a single i32 (mirrors a `{ i32 }` message).
+    /// RFC-0069 / issue 0418 — the action payload is the FIELDS, with no inner
+    /// encapsulation header. This used to be `CdrWriter::new_with_header`,
+    /// encoding the double-header convention 0418 retired: the enclosing
+    /// message carries the only header, and the consumer splices it on.
+    ///
+    /// These tests kept passing after the producer was fixed because the
+    /// consumer still sniffed for an inner header and found one HERE. They were
+    /// asserting the old wire format against a new producer.
     fn encode_i32_cdr(v: i32) -> ([u8; 256], usize) {
         let mut b = [0u8; 256];
-        let mut w = CdrWriter::new_with_header(&mut b).unwrap();
+        let mut w = CdrWriter::new(&mut b);
         w.write_i32(v).unwrap();
         let n = w.position();
         let _ = w; // release the &mut b borrow so b can be returned (avoids clippy::drop_non_drop)
@@ -2808,9 +2816,17 @@ fn test_action_client_callbacks_fire_at_spin() {
 fn test_action_client_feedback_burst_buffered() {
     use crate::executor::action_core::ActionClientCore;
 
+    /// RFC-0069 / issue 0418 — the action payload is the FIELDS, with no inner
+    /// encapsulation header. This used to be `CdrWriter::new_with_header`,
+    /// encoding the double-header convention 0418 retired: the enclosing
+    /// message carries the only header, and the consumer splices it on.
+    ///
+    /// These tests kept passing after the producer was fixed because the
+    /// consumer still sniffed for an inner header and found one HERE. They were
+    /// asserting the old wire format against a new producer.
     fn encode_i32_cdr(v: i32) -> ([u8; 256], usize) {
         let mut b = [0u8; 256];
-        let mut w = CdrWriter::new_with_header(&mut b).unwrap();
+        let mut w = CdrWriter::new(&mut b);
         w.write_i32(v).unwrap();
         let n = w.position();
         let _ = w; // release the &mut b borrow so b can be returned (avoids clippy::drop_non_drop)

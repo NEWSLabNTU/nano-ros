@@ -1247,21 +1247,22 @@ pub(crate) unsafe fn action_server_raw_try_process<
 ///
 /// # Safety
 /// `ptr` must point to a valid, aligned `ActionClientRawArenaEntry<...>`.
-/// True if `p` begins with a CDR encapsulation header (RTPS encoding
-/// identifier): `00 <id> <opts> <opts>`, `<id>` ∈ {`00` BE, `01` LE, `06`/`07`
-/// D_CDR2, `0a`/`0b` PL_CDR2}.
+/// RFC-0069 / issues 0418 + 0035 — **retired as a correctness mechanism.**
 ///
-/// RFC-0069 / issue 0418 — **this is a heuristic and it is now only a
-/// belt-and-braces check.** The claim in its old doc, that raw CDR fields "do
-/// not begin with this pattern", is false: a leading `int32` of 256 serializes
-/// LE as `00 01 00 00` and matches. It was safe while only Cyclone hit the
-/// false branch; once the producer stopped writing an inner header (0418) every
-/// payload takes that branch, so relying on the sniff for correctness would have
-/// turned a payload VALUE into a decode bug.
+/// This sniffed whether a payload already began with a CDR encapsulation header
+/// (`00 <id> <opts> <opts>`) and read it directly if so. That is a VALUE test,
+/// not a framing test, and it cannot tell the two apart: a leading `uint32` of
+/// 256 serializes little-endian as `00 01 00 00` — byte for byte the LE encap
+/// header. A sequence of length 256 is enough.
 ///
-/// Kept, rather than deleted, for peers that still send the pre-0418 double
-/// header — a v0.5 image talking to a v0.6 host. Reading such a payload
-/// directly is correct; the splice below is what the current producer needs.
+/// It was harmless while only Cyclone took the false branch. 0418 stopped the
+/// producer writing an inner header, so EVERY payload began consulting it, and
+/// a body whose first word happened to look like a header had that word eaten
+/// as framing — issue #35's "sequence deserialized to len 0", reached through a
+/// payload value instead of a framing bug.
+///
+/// Kept only for the pre-0418 diagnostic below, never for a decode decision.
+#[cfg(test)]
 fn payload_has_cdr_encap(p: &[u8]) -> bool {
     p.len() >= 4 && p[0] == 0x00 && matches!(p[1], 0x00 | 0x01 | 0x06 | 0x07 | 0x0a | 0x0b)
 }
@@ -1277,10 +1278,16 @@ fn read_action_field<M: nros_serdes::Deserialize, const CAP: usize>(
     top_encap: &[u8],
     raw: &[u8],
 ) -> Option<M> {
-    if payload_has_cdr_encap(raw) {
-        let mut reader = CdrReader::new_with_header(raw).ok()?;
-        return M::deserialize(&mut reader).ok();
-    }
+    // ALWAYS splice (RFC-0069 / issue 0418). Post-0418 the producer writes no
+    // inner encapsulation header, and neither does Cyclone's `dds_stream` (it
+    // drops the inner encap of a nested field, #175) — so the payload is field
+    // bytes in every case and the enclosing message's encap is the right one to
+    // read them with.
+    //
+    // This used to branch on `payload_has_cdr_encap(raw)`. That sniff is a value
+    // test and gets it wrong for a body starting `00 01 00 00` (a `uint32` of
+    // 256, e.g. a 256-element sequence), eating the leading data word — see the
+    // retired helper above.
     if top_encap.len() < 4 || raw.len() + 4 > CAP {
         return None;
     }
@@ -1352,21 +1359,18 @@ pub(crate) unsafe fn action_client_raw_try_process<
             // rejects the extra 4 bytes).
             const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 16;
             if total_len > FEEDBACK_PAYLOAD_OFFSET {
-                // #175 — same encap restoration as the result path below: Cyclone's
-                // typed `FeedbackMessage` framing carries `feedback` as a nested
-                // field, so `dds_stream` drops the inner encap and the fields arrive
-                // raw here. Splice the top-level encap (`feedback_buffer[0..4]`) when
-                // absent; zenoh/XRCE keep it and pass through.
+                // #175 + RFC-0069/0418 — the payload is field bytes on every
+                // backend now: Cyclone's `dds_stream` drops the inner encap of a
+                // nested field, and since 0418 the producer never writes one. So
+                // splice the enclosing message's encap unconditionally. This used
+                // to branch on an encap SNIFF, which mis-fires on a body whose
+                // first word is 0x00010000 (see the retired helper).
                 let raw = &core.feedback_buffer[FEEDBACK_PAYLOAD_OFFSET..total_len];
-                if payload_has_cdr_encap(raw) {
-                    unsafe { cb(&goal_id, raw.as_ptr(), raw.len(), *context) };
-                } else {
-                    let mut spliced = [0u8; FEEDBACK_BUF];
-                    let n = raw.len().min(FEEDBACK_BUF - 4);
-                    spliced[0..4].copy_from_slice(&core.feedback_buffer[0..4]);
-                    spliced[4..4 + n].copy_from_slice(&raw[..n]);
-                    unsafe { cb(&goal_id, spliced.as_ptr(), 4 + n, *context) };
-                }
+                let mut spliced = [0u8; FEEDBACK_BUF];
+                let n = raw.len().min(FEEDBACK_BUF - 4);
+                spliced[0..4].copy_from_slice(&core.feedback_buffer[0..4]);
+                spliced[4..4 + n].copy_from_slice(&raw[..n]);
+                unsafe { cb(&goal_id, spliced.as_ptr(), 4 + n, *context) };
             }
         }
         did_work = true;
@@ -1413,29 +1417,30 @@ pub(crate) unsafe fn action_client_raw_try_process<
                         uuid
                     },
                 };
-                // #175 — restore the result's CDR encapsulation header if the
-                // backend's typed reply framing dropped it. Cyclone sends the
-                // `GetResult_Response` as a TYPED DDS sample whose `result` is a
-                // NESTED field (no per-message encap), so `dds_stream` consumes
-                // the inner encap the server serialised and the fields arrive raw
-                // at `RESULT_PAYLOAD_OFFSET`. The consumer (`CallbackCtx::message`
-                // / `ffi_deserialize`) reads with `new_with_header` and would eat
-                // the first data word (e.g. a sequence length) as the encap. A raw
-                // CDR field never begins with an encoding identifier
-                // (`00 {00|01|06|07|0a|0b}`), so detect the missing header and
-                // splice the reply's top-level encap (`result_buffer[0..4]`, always
-                // valid) in front. Zenoh/XRCE preserve the inner encap, so their
-                // payload already starts with one and is passed through unchanged.
+                // #175 + RFC-0069/0418 — restore the result's CDR encapsulation
+                // header. The fields arrive raw at `RESULT_PAYLOAD_OFFSET` on
+                // every backend now: Cyclone sends `GetResult_Response` as a
+                // TYPED sample whose `result` is a NESTED field, so `dds_stream`
+                // consumes the inner encap; and since 0418 the producer never
+                // writes one. The consumer (`CallbackCtx::message` /
+                // `ffi_deserialize`) reads with `new_with_header`, so splice the
+                // reply's top-level encap (`result_buffer[0..4]`, always valid)
+                // in front unconditionally.
+                //
+                // This used to branch on an encap SNIFF, justified by the claim
+                // that "a raw CDR field never begins with an encoding
+                // identifier". That claim is false — a leading `int32` of 256 is
+                // `00 01 00 00` — and once 0418 made every payload header-less
+                // the sniff decided every decode, so such a body had its first
+                // word eaten as framing: the very corruption this comment warns
+                // about, caused by the guard against it. See the retired
+                // `payload_has_cdr_encap`.
                 let raw = &core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len];
-                if payload_has_cdr_encap(raw) {
-                    unsafe { cb(&goal_id, status, raw.as_ptr(), raw.len(), *context) };
-                } else {
-                    let mut spliced = [0u8; RESULT_BUF];
-                    let n = raw.len().min(RESULT_BUF - 4);
-                    spliced[0..4].copy_from_slice(&core.result_buffer[0..4]);
-                    spliced[4..4 + n].copy_from_slice(&raw[..n]);
-                    unsafe { cb(&goal_id, status, spliced.as_ptr(), 4 + n, *context) };
-                }
+                let mut spliced = [0u8; RESULT_BUF];
+                let n = raw.len().min(RESULT_BUF - 4);
+                spliced[0..4].copy_from_slice(&core.result_buffer[0..4]);
+                spliced[4..4 + n].copy_from_slice(&raw[..n]);
+                unsafe { cb(&goal_id, status, spliced.as_ptr(), 4 + n, *context) };
             }
         }
         did_work = true;
@@ -2224,5 +2229,133 @@ mod borrowed_sub_tests {
             let _ = view.width;
             let _ = view.data.len();
         });
+    }
+}
+
+/// RFC-0069 / issues 0418 + 0035 — the action payload envelope carries exactly
+/// ONE CDR header, and reading it back must not eat a data word.
+///
+/// The RFC lists this as the acceptance item "most likely to be skipped: its
+/// absence is why the divergence survived a redesign in the first place." These
+/// sit at the level the corruption happens — `read_action_field`, the consumer
+/// half of the 0418 producer/consumer pair.
+#[cfg(test)]
+mod action_envelope_tests {
+    use nros_core::{CdrWriter, Deserialize, Serialize};
+
+    use super::*;
+
+    /// Three `int32`s. The FIRST is the one that matters: give it the value 256
+    /// and the body's leading bytes are `00 01 00 00` — byte for byte the
+    /// little-endian CDR encapsulation header.
+    #[derive(Debug, PartialEq)]
+    struct Body {
+        first: i32,
+        rest: [i32; 2],
+    }
+
+    impl Serialize for Body {
+        fn serialize(&self, w: &mut CdrWriter) -> Result<(), nros_serdes::SerError> {
+            w.write_i32(self.first)?;
+            for v in &self.rest {
+                w.write_i32(*v)?;
+            }
+            Ok(())
+        }
+    }
+
+    impl Deserialize for Body {
+        fn deserialize(r: &mut CdrReader) -> Result<Self, nros_serdes::DeserError> {
+            Ok(Body {
+                first: r.read_i32()?,
+                rest: [r.read_i32()?, r.read_i32()?],
+            })
+        }
+    }
+
+    const LE_ENCAP: [u8; 4] = [0x00, 0x01, 0x00, 0x00];
+
+    /// Serialize the way the 0418 PRODUCER does: fields only, no inner header.
+    fn produce_headerless(body: &Body, buf: &mut [u8]) -> usize {
+        let mut w = CdrWriter::new(buf);
+        body.serialize(&mut w).expect("serialize");
+        w.position()
+    }
+
+    #[test]
+    fn headerless_payload_round_trips() {
+        let body = Body {
+            first: 7,
+            rest: [1, 1],
+        };
+        let mut buf = [0u8; 64];
+        let n = produce_headerless(&body, &mut buf);
+
+        let got = read_action_field::<Body, 64>(&LE_ENCAP, &buf[..n])
+            .expect("consumer must decode the headerless payload");
+        assert_eq!(got, body, "issue 0035: the reader ate a data word");
+    }
+
+    /// THE hazard 0418's own doc names and did not test.
+    ///
+    /// `payload_has_cdr_encap` was a VALUE sniff: a leading `int32` of 256 is
+    /// `00 01 00 00`, indistinguishable from the LE encap header. While the
+    /// producer wrote an inner header only Cyclone took the other branch, so it
+    /// never mattered; once 0418 made every payload headerless the sniff was
+    /// consulted for all of them, and this body had its first word eaten as
+    /// framing — `first` came back as `rest[0]`. Issue #35 reached through a
+    /// payload VALUE rather than a framing bug.
+    #[test]
+    fn a_leading_word_that_looks_like_an_encap_is_data_not_framing() {
+        let body = Body {
+            first: 256,
+            rest: [11, 12],
+        };
+        let mut buf = [0u8; 64];
+        let n = produce_headerless(&body, &mut buf);
+
+        assert_eq!(
+            &buf[..4],
+            &LE_ENCAP,
+            "precondition: an int32 of 256 IS the LE encap byte pattern"
+        );
+        assert!(
+            payload_has_cdr_encap(&buf[..n]),
+            "precondition: the retired sniff cannot tell this from a header"
+        );
+
+        let got = read_action_field::<Body, 64>(&LE_ENCAP, &buf[..n]).expect("must decode");
+        assert_eq!(
+            got, body,
+            "the leading word is DATA — reading it as framing is issue #35"
+        );
+    }
+
+    /// The version break RFC-0069 accepts, asserted rather than assumed.
+    ///
+    /// A pre-0418 peer sends `[inner header][fields]`. The consumer no longer
+    /// sniffs, so it splices unconditionally and the inner header is read as
+    /// data. Old and new images are wire-incompatible on action payloads — the
+    /// RFC's "silent version skew" risk, made explicit here so the next reader
+    /// finds it as a decision and not as a mystery.
+    #[test]
+    fn a_pre_0418_double_header_payload_does_not_decode_as_itself() {
+        let body = Body {
+            first: 5,
+            rest: [6, 7],
+        };
+        let mut inner = [0u8; 64];
+        let n = produce_headerless(&body, &mut inner);
+        let mut withhdr = [0u8; 68];
+        withhdr[..4].copy_from_slice(&LE_ENCAP);
+        withhdr[4..4 + n].copy_from_slice(&inner[..n]);
+
+        let got = read_action_field::<Body, 68>(&LE_ENCAP, &withhdr[..4 + n]);
+        assert_ne!(
+            got,
+            Some(body),
+            "a pre-0418 payload must NOT silently appear to decode — the wire \
+             format changed and the skew is expected to fail"
+        );
     }
 }

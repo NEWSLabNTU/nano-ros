@@ -93,3 +93,42 @@ with ROS 2 on feedback or result payloads. Until this lands,
 `examples/native/rust/{action-server,action-client,service-client}` cannot
 migrate to Node-class (phase-338 W3), because their counterparts use the typed
 path.
+
+## Follow-through (2026-08-05)
+
+`0403a8b53` fixed the producer and left three acceptance items open. Two are now
+done, and closing the third turned up a live bug the first pass had recorded as
+harmless.
+
+**The retired `payload_has_cdr_encap` sniff was a second instance of #35.** The
+consumer chose between "read directly" and "splice the enclosing encap" by
+SNIFFING whether the payload began with an encapsulation header. That is a value
+test: a leading `int32` of 256 is `00 01 00 00`, byte for byte the LE header.
+While the producer wrote an inner header only Cyclone took the other branch, so
+it never mattered — but 0418 made every payload header-less, so the sniff decided
+every decode, and a body whose first word was 256 had that word eaten as framing.
+Issue #35's corruption, reintroduced by the guard against it, in the commit that
+fixed its cousin.
+
+Fixed by deleting the branch: post-0418 the payload is field bytes on every path,
+so the consumer splices unconditionally. All three sites — `read_action_field`,
+the feedback path, and a THIRD in the result path that the first sweep missed —
+now behave the same.
+
+Two executor tests had to change with it (`test_action_client_callbacks_fire_at_spin`,
+`test_action_client_feedback_burst_buffered`): they built payloads with
+`CdrWriter::new_with_header`, and kept passing after the producer was fixed
+*because* the consumer still sniffed and found the header they wrote. They were
+asserting the retired wire format against a new producer.
+
+**Acceptance now:**
+
+* Regression test — DONE. `action_envelope_tests` in `arena.rs`, three cases,
+  verified to fail 2/3 against the pre-fix consumer rather than assumed to cover.
+* A real ROS 2 client drives a raw server — DONE. The "this host lacks ROS" note
+  was wrong; humble + `rmw_zenoh_cpp` are installed. `ros2 action send_goal
+  --feedback` against the Node-class `action-server` returns feedback, result and
+  `SUCCEEDED`.
+* Every action Runtime cell on real targets — PARTLY. All 8 zephyr `native_sim`
+  action cells green (3 RMWs × 3 languages, all raw↔raw). The freertos / nuttx /
+  threadx QEMU lanes still need the full embedded fixture build.

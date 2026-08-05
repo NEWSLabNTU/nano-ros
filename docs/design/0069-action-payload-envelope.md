@@ -124,12 +124,40 @@ So **the extra header was the sole outlier**: every consumer already assumed the
 ROS 2 envelope. That is also why nothing caught it — the producer was the only
 component encoding the divergence, and its only in-tree peer was itself.
 
-One honesty note recorded in the code: `payload_has_cdr_encap` is a heuristic,
-and its old doc claimed raw CDR fields "do not begin with this pattern". False —
-a leading `int32` of 256 is `00 01 00 00` and matches. That was harmless while
-only Cyclone took the branch; it is now consulted for every payload, so the doc
-says plainly that it is belt-and-braces for pre-0418 peers, not a correctness
-mechanism.
+### The honesty note was understating it — the sniff was a live bug (2026-08-05)
+
+The first pass recorded that `payload_has_cdr_encap` is a heuristic whose old doc
+was false (a leading `int32` of 256 is `00 01 00 00` and matches), and called it
+"belt-and-braces for pre-0418 peers, not a correctness mechanism."
+
+It was a correctness mechanism, because it was consulted for every payload and
+its answer chose the decode path. A body whose first word is 256 — an `int32`
+field, or a 256-element sequence's length — was read as pre-0418 framing, the
+leading word eaten, and the rest shifted by one word. That is issue #35's
+"sequence deserialized to len 0", reached through a payload VALUE instead of a
+framing bug, in the code that had just been changed to fix #35's cousin.
+
+Demonstrated before fixing: the regression test below returns
+`Body { first: 0, rest: [0, 0] }` for `Body { first: 256, rest: [11, 12] }`.
+
+**Resolved by deleting the branch.** Post-0418 the payload is field bytes on
+every path — the producer writes no inner header, and Cyclone's `dds_stream`
+drops the one it would have — so the consumer splices the enclosing message's
+encap unconditionally. `read_action_field` and the feedback path both did the
+same sniff; both now splice. The helper survives `#[cfg(test)]`-only, to state in
+one place what it can and cannot distinguish.
+
+The cost is explicit: a pre-0418 peer's double-header payload no longer decodes.
+That skew was already declared incompatible by this RFC, and a clean universal
+break beats a value-dependent silent corruption. There is a test asserting the
+break so it reads as a decision.
+
+Two executor tests (`test_action_client_callbacks_fire_at_spin`,
+`test_action_client_feedback_burst_buffered`) had to change with it: they built
+feedback and result payloads with `CdrWriter::new_with_header`, encoding the
+retired convention. They kept passing after the producer was fixed *because* the
+consumer still sniffed and found the header they wrote — asserting the old wire
+format against a new producer. They now build header-less bodies.
 
 ## What A was forecast to require
 
@@ -158,14 +186,34 @@ mechanism.
       `Next number in sequence received: [0, 1, 1]` and
       `Result received: [0, 1, 1]`, no errors. Before the fix this was
       `DeserializationError` + `ServiceRequestFailed`.
-- [ ] A real ROS 2 client drives a nano-ros raw action server end to end.
-      **Not done** — needs a ROS install this host lacks.
-- [ ] Every action Runtime cell green on real targets, embedded included.
-      **Not done** — the raw↔raw pairs are exactly what this changes, and they
-      are the ones a host cannot run. THE gate before relying on this.
-- [ ] A test covers the issue-#35 corruption directly. **Not done**, and it is
-      the item most likely to be skipped: its absence is why the divergence
-      survived a redesign in the first place.
+- [x] A real ROS 2 client drives a nano-ros raw action server end to end.
+      Done 2026-08-05 — the "host lacks ROS" note was wrong, humble +
+      `rmw_zenoh_cpp` are installed. `examples/native/rust/action-server`
+      (Node-class, raw) on a private router; `ros2 action send_goal --feedback
+      /fibonacci example_interfaces/action/Fibonacci "{order: 5}"` returns
+      feedback `sequence: [0, 1, 1]`, the same result, and
+      `Goal finished with status: SUCCEEDED`. Both channels — the two the double
+      header made undecodable — now decode in a real `rcl_action` client.
+- [~] Every action Runtime cell green on real targets, embedded included.
+      **Partly done 2026-08-05.** Every zephyr `native_sim` action cell is
+      green — 8 e2e cells (`zenoh`/`cyclonedds`/`xrce` × `rust`/`c`/`cpp`) plus
+      the two action boot smokes — and those ARE raw↔raw pairs, so the class this
+      change breaks is exercised on all three RMWs and all three languages.
+      `nros-tests` `actions` + `action_multigoal` (4) and `entry_e2e` also green.
+
+      STILL NOT COVERED: the QEMU lanes on real targets — freertos, nuttx,
+      threadx. `native_sim` is a host process, so it does not settle the "real
+      targets" half. Running them needs the full embedded fixture build (a core
+      crate changed here, which stales all of them); the zephyr non-action cells
+      in the same run report `[SKIPPED] … STALE` for exactly that reason, not
+      because they regressed.
+- [x] A test covers the issue-#35 corruption directly.
+      `nros-node/src/executor/arena.rs::action_envelope_tests` — three cases at
+      the level the corruption happens (`read_action_field`): a header-less body
+      round-trips; a body whose leading word IS the encap byte pattern is read as
+      data, not framing; a pre-0418 double-header payload does not decode as
+      itself (the declared break, asserted). Verified to FAIL against the
+      pre-fix consumer — 2 of 3 red — rather than assumed to cover it.
 
 ## Risks
 
