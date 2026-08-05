@@ -200,6 +200,13 @@ an `rmeta`/`.o` path. RESOLVED by recognising a cargo build dir instead of listi
 `CACHEDIR.TAG` plus a `target-` prefix for the not-yet-built case. Listing the dirs would have been
 the hand-maintained-exclude-list shape issue 0287 already replaced. See `archived/0416-*`.)
 
+**#438** — `native_orchestration_tiers` (x2) grep a `multi-tier` marker that only the NUTTX board
+emits; the native/linux board prints the generic `NullNodeRuntime` fallback instead
+(`nros-board-linux/src/lib.rs:334`), so a native multi-tier binary can never satisfy the assertion.
+Marker added to nuttx in `f28ebc379` and never mirrored. Same class as archived 0157/0164 — greps
+want `nros_tests::output::*` constants, not literals. Decide whether the board should say it or the
+test should ask differently. See `0438-*`. (2026-08-06)
+
 **#422** — TRIAGE INDEX for the runtime E2E failures. **10** on freshly rebuilt fixtures (tier-1
 gates all pass, 1242/1259 tests do). An earlier run said 19 — nine of those were STALE FIXTURES
 after a rebase touched `nros/src/node.rs`, so rebuild the lane BEFORE triaging or you are measuring

@@ -64,11 +64,16 @@ fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
 }
 
 #[test]
-fn launch_arm_is_a_removal_error() {
-    // R-code.1 — the `launch = …` macro arm is REMOVED; using it must fail
-    // with the actionable migrate-to-model diagnostic (the launch↔system.toml
-    // identity check retired with the arm; the model form's integrity is the
-    // resolve-time checker's job).
+fn launch_arm_resolves_the_bringup() {
+    // phase-330 W7 — `nros::main!(launch = "<bringup>[:file]")` is the SUPPORTED
+    // spelling: an entry names its INPUT and the build owns the model
+    // (CLAUDE.md "SystemModels are BUILD ARTIFACTS").
+    //
+    // This test previously asserted the opposite — phase-296 R-code.1 had
+    // REMOVED the arm, and the test guarded that removal. W7 brought it back and
+    // the test was not retired with it, so it failed by succeeding: "expected the
+    // launch-arm removal error, but check succeeded". A test that outlives the
+    // rule it guards inverts into a guard against the CURRENT contract.
     let (_g, root) = stage_fixture();
     fs::write(
         root.join("src/demo_entry/src/main.rs"),
@@ -82,13 +87,9 @@ fn launch_arm_is_a_removal_error() {
         .output()
         .expect("spawn cargo check");
     assert!(
-        !out.status.success(),
-        "expected the launch-arm removal error, but check succeeded.\nstderr:\n{}",
+        out.status.success(),
+        "`nros::main!(launch = …)` is the supported entry spelling (phase-330 W7) \
+         and must compile.\nstderr:\n{}",
         String::from_utf8_lossy(&out.stderr),
-    );
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("removed") && stderr.contains("nros-launch-resolve"),
-        "expected the removal diagnostic naming the resolve command, stderr:\n{stderr}",
     );
 }
