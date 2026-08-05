@@ -28,51 +28,27 @@ time, and the entry emitter iterates the mapping in file order.
 Construct order is semantic: components initialize (and `configure()`) in
 that order, and the launch file is where the user expresses it.
 
-## Located (2026-08-04) — it is an UPSTREAM type, not a nano-ros bug
+## Retracted (2026-08-05) — the 2026-08-04 "upstream, not fixable here" analysis was WRONG
 
-The alphabetization is structural, in the schema crate:
+That entry claimed `structure.nodes` was still a `BTreeMap` in
+`ros-launch-manifest`, that launch order was unrecoverable downstream, and that
+closing this needed a three-repo change (rlm schema + tag, resolver, dep bump).
+All of it followed from one bad read.
 
-    ros-launch-manifest / model/src/lib.rs:163
-        pub nodes: BTreeMap<String, NodeInstance>,
+It inspected `~/.cargo/git/checkouts/ros-launch-manifest-*/172aa53/model/src/lib.rs`.
+`172aa53` is **v0.1.0** — a stale cargo checkout of an old tag left in the
+cache. The manifests pin **v0.1.4**, where the field has been
+`IndexMap<String, NodeInstance>` since `62e90af` (released v0.1.3). The fix was
+already in the build; nothing upstream was needed.
 
-A `BTreeMap` serializes in key order, so `/listener` precedes `/talker` no
-matter what the launch file said. `structure.scopes`, `topics`, `services` are
-the same shape; `nodes` is the one whose order is semantic.
+Read the dependency the MANIFEST names, not whichever checkout happens to sit in
+`~/.cargo/git/checkouts`. `git describe --tags <rev>` in the source repo settles
+which tag a checkout is, in one command, and would have prevented the whole
+detour.
 
-**Launch order is not recoverable downstream.** The model carries no index: a
-node instance has `scope`, `pkg`, `exec`, `params`, `param_sources`,
-`node_name` — nothing ordinal. nano-ros's entry emitter iterates
-`model.structure.nodes` directly (`codegen/entry/mod.rs:369`), so it inherits
-the map order and has nothing else to sort by. The information is destroyed at
-resolve time, which is why no consumer-side fix exists.
-
-**Deliberately NOT worked around in-tree.** The tempting stopgap is to order
-construct calls by the `[[component]]` sequence in `system.toml`, which nano-ros
-does own. It would make this test pass. It would also silently substitute a
-DIFFERENT ordering semantic — authored component order, not launch declaration
-order — and the two can disagree without anyone noticing. That is the
-plausible-but-wrong class this repo keeps paying for; a green test would hide it.
-
-## The change, and where each part lands
-
-Three repos, in order:
-
-1. **ros-launch-manifest** (tag-pinned dep, currently `v0.1.2`) — either
-   `nodes: IndexMap<String, NodeInstance>` (preserves insertion order; adds an
-   `indexmap` dep and changes a public type), or additively a
-   `declaration_index: u32` on `NodeInstance` (schema stays a mapping, consumers
-   sort). The additive form is the smaller blast radius. New tag either way.
-2. **play_launch / ros-launch-resolve** — populate the order. The resolver knows
-   declaration order at parse time; today it simply drops it. Add the
-   resolver-level test the fix shape below asks for (a launch file with
-   deliberately non-alphabetical node names -> model preserves order) so the
-   property is owned where it can break.
-3. **nano-ros** — bump the dep, and if the additive form is chosen, sort by
-   `declaration_index` in `plan_from_model`.
-
-Not landed here: steps 1 and 2 are pushes to repos outside this checkout, and
-the tag bump is a maintainer decision. Step 3 is a two-line change once the tag
-exists.
+The wrong sections are removed rather than left with a footnote: they were a
+confident, specific cross-repo plan, and the next reader would have started
+executing it well before reaching any correction.
 
 ## Fix shape
 
