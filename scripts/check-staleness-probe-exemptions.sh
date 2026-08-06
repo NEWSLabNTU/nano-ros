@@ -39,8 +39,10 @@ if [ ! -f "$OWNER" ]; then
 fi
 
 # 1. one spelling of the rule.
-stray="$(grep -rln 'REGENERATED_INPLACE_HEADERS\|is_cargo_out_dir_product\|is_regenerated_inplace_header' \
-    "$SRC" | grep -v "^$OWNER\$" || true)"
+# `git grep -l`, not `grep -rln`: an index lookup, not a filesystem walk
+# (check-no-tracked-file-find enforces this — the walk costs minutes).
+stray="$(git grep -lE 'REGENERATED_INPLACE_HEADERS|is_cargo_out_dir_product|is_regenerated_inplace_header' \
+    -- "$SRC" | grep -v "^$OWNER\$" || true)"
 if [ -n "$stray" ]; then
     echo "[FAIL] the probe exemption rule is spelled outside its owner:" >&2
     printf '  %s\n' $stray >&2
