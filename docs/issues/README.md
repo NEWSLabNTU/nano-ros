@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#461** — an action server reads `1` for every goal's `order`. A client sending `order: 10` and one
+sending `order: 7` both make the server log `Received goal request with order 1` — CONSTANT, not merely
+wrong, so it is reading a different field rather than slipping an offset (a wrong offset would land in
+the 16-byte goal UUID and vary per goal). Fresh binaries, live router, isolated port. Invisible until
+#0450 made the server COMPUTE from the received order: the stub published a fixed `[0, 1, 1]`, so the
+one consumer of the mis-read value was a log line nothing asserted on, and every action e2e passed then
+and passes now (they check delivery markers, not the order). The stub was masking a wire defect. Until
+this is fixed the demo streams the sequence for the order it actually receives, so a client asking 10
+gets `[0, 1]` — a faithful report of a broken input. First checks in the issue. See `0461-*`.
+(2026-08-06)
+
 Recently resolved (2026-08-06): **#444** — every FreeRTOS **Rust** cell (pubsub, service AND action —
 the issue's action-only scope came from one run and was wrong) booted, printed "Network ready." and
 stalled forever. Reproduced on main with fresh fixtures, so not branch-specific. TWO faults, both from
@@ -97,13 +108,6 @@ have it), `CONFIG_SCHED_DEADLINE` (all three prj.conf set it), staleness (the cp
 passing C one and `strings` finds the marker compiled in), and the shared shim (C uses it and works). Note the
 rust lane's image does not exist here, so that cell only appears to pass. See `0459-*`. (2026-08-06)
 
-**#450** — the group-A `action-server` example body publishes a FIXED `[0, 1, 1]` instead of computing the
-sequence, and phase-338 W3.d's convergence deleted the riscv64 copy that did the real iterative Fibonacci.
-Safe at the time (that cell is `BuildOnly`) but backwards: `Fibonacci` is the canonical ROS 2 action demo
-BECAUSE the sequence is computed and streamed as feedback, and the goal's `order` is read, logged, then
-ignored. Growing the group body touches four platforms with live runtime lanes and raises feedback buffers
-128 → 256 on constrained targets. See `0450-*`. (2026-08-06)
-
 **#451** — the embedded SDK env vars live only in `just/sdk-env.just`, so a direct `cargo build` of an
 embedded example fails one variable at a time (5 freertos, 4 threadx, 1+ nuttx) even though every SDK sits
 at the default path. The failure does not look like a missing variable: `zpico-sys` panics inside a
@@ -147,6 +151,17 @@ from `nros-board.toml`'s `cargo_config` (the SSoT, not the deleted files), rustf
 Gated by `check-board-cargo-config-applied`, watched to fire. Nothing caught it because the broken
 config was valid TOML that cargo and `nros sync` both accepted — the loss showed only at link time,
 on one platform. See `archived/0440-*`. (2026-08-06)
+
+RESOLVED 2026-08-06 — **#450** the group-A action-server published a fixed `[0, 1, 1]` whatever the
+request, and converging riscv64 had deleted the only body that computed anything. RESOLVED: the group
+body now computes the sequence iteratively and streams one feedback frame per element, across all six
+platform copies at once (the portability gate makes them move together), with buffers 128 -> 256 and a
+`MAX_ORDER = 50` bounding both the `heapless::Vec<i32, 64>` and the 256-byte CDR payload. The requested
+order is now honored — which the deleted riscv64 body did NOT manage either (it used a fixed
+`ORDER = 5`, because `for_each_active_goal_for_name` yields no request payload); the accepted order is
+carried from `on_goal` to `tick` through `State`. Verified: portability 6/6, native actions 4/4,
+freertos + nuttx `build-examples` clean, freertos action Rust/C/C++ 3/3 on the Cortex-M3. This is what
+uncovered **#0461**. See `archived/0450-*`.
 
 RESOLVED 2026-08-06 — **#441** `test_zero_copy_message_info` had nothing to observe: the zero-copy and
 plain listeners produced identical output. Neither obvious repair worked — `CallbackCtx` exposes NO
