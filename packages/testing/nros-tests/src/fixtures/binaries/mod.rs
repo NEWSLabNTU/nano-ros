@@ -80,8 +80,9 @@ static CONTRACT_MONITOR_DIAGSINK_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// was the listener `safety-e2e`-gated second `main`).
 static NATIVE_LISTENER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached path to the native-rs-listener binary with unstable-zenoh-api (zero-copy)
-static NATIVE_LISTENER_ZERO_COPY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// issue 0441 — the receive-side MessageInfo observer, plain and zero-copy.
+static MESSAGE_INFO_OBSERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static MESSAGE_INFO_OBSERVER_ZERO_COPY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native-rs-talker binary with link-tls
 static NATIVE_TALKER_TLS_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -3754,13 +3755,38 @@ pub fn listener_safety_binary() -> PathBuf {
 ///
 /// Uses a separate `target-zero-copy` directory to avoid overwriting the
 /// standard/safety listener binaries that other parallel test processes use.
-pub fn build_native_listener_zero_copy() -> TestResult<&'static Path> {
-    NATIVE_LISTENER_ZERO_COPY_BINARY
+/// issue 0441 — the receive-side MessageInfo observer, built PLAIN.
+///
+/// Pairs with [`build_message_info_observer_zero_copy`]: the two differ in
+/// exactly one feature, so "both print the same `seq=`/`gid=` line" is a
+/// statement about the zero-copy trampoline rather than about two unrelated
+/// binaries. Replaces the zero-copy build of the listener EXAMPLE, whose output
+/// was byte-identical to the plain one — the example cannot reach `MessageInfo`
+/// at all (`CallbackCtx` has no accessor; the `FnMut(&M, Option<&MessageInfo>)`
+/// shape lives on the executor's `.message_info()` builder).
+pub fn build_message_info_observer() -> TestResult<&'static Path> {
+    MESSAGE_INFO_OBSERVER_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let example_dir = root.join("examples/native/rust/listener");
-            let target_dir = example_dir.join("target-zero-copy");
-            let binary_path = target_dir.join(format!("{}/listener", cargo_target_profile_dir()));
+            let dir = project_root().join("packages/testing/nros-tests/bins/message-info-observer");
+            let binary_path = dir.join(format!(
+                "target/{}/message-info-observer",
+                cargo_target_profile_dir()
+            ));
+            require_prebuilt_binary_fresh(&binary_path)
+        })
+        .map(|p| p.as_path())
+}
+
+/// issue 0441 — the same observer built with `unstable-zenoh-api` (the
+/// zero-copy receive path).
+pub fn build_message_info_observer_zero_copy() -> TestResult<&'static Path> {
+    MESSAGE_INFO_OBSERVER_ZERO_COPY_BINARY
+        .get_or_try_init(|| {
+            let dir = project_root().join("packages/testing/nros-tests/bins/message-info-observer");
+            let binary_path = dir.join(format!(
+                "target-zero-copy/{}/message-info-observer",
+                cargo_target_profile_dir()
+            ));
             require_prebuilt_binary_fresh(&binary_path)
         })
         .map(|p| p.as_path())

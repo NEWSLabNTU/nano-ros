@@ -148,6 +148,21 @@ Gated by `check-board-cargo-config-applied`, watched to fire. Nothing caught it 
 config was valid TOML that cargo and `nros sync` both accepted — the loss showed only at link time,
 on one platform. See `archived/0440-*`. (2026-08-06)
 
+RESOLVED 2026-08-06 — **#441** `test_zero_copy_message_info` had nothing to observe: the zero-copy and
+plain listeners produced identical output. Neither obvious repair worked — `CallbackCtx` exposes NO
+MessageInfo accessor, so the `seq=` line the test grepped had never come from the receive path (that
+shape lives on the executor's `.message_info()` builder, which the Node API a demo is written against
+never reaches), and adding a `cfg` branch to the example would break phase-338 W1's byte-identical
+portability gate across seven platform copies. RESOLVED by moving the assertion rather than weakening
+it (retargeting at the publisher's trace, as #0429 did, would have gone green while no longer testing
+the receive path): a `message-info-observer` bin registers through `.message_info()` and emits both the
+standard `I heard:` line and `seq=/gid=/ts=`, with a loud ABSENT error if MessageInfo is missing — a
+quiet skip would read as "no messages", this issue's own failure mode. The marker is a CONSTANT, and
+the fixture pair differs in exactly `unstable-zenoh-api`, which is what makes it a trampoline check.
+All THREE zero_copy tests were broken the same way (the other two waited on `"Waiting for"`, also
+slimmed away); 3/3 pass, monotonic seq and stable GID measured through the zero-copy path. See
+`archived/0441-*`.
+
 RESOLVED 2026-08-06 — **#438** `native_orchestration_tiers` failed on "no multi-tier marker", and the
 filed diagnosis (linux board missing the NuttX marker) was wrong twice over. The linux board HAS both
 markers — the issue's grep missed them because the string is line-broken across a `\` continuation, so
@@ -364,15 +379,6 @@ host triple** (so corrosion builds can never share with plain cargo builds). Sep
 default everywhere. Isolation is applied per-DIRECTORY while incompatibility lives per-IDENTITY, and
 those are not the same partition. sccache's role is UNVERIFIED — measure before acting. See
 `0446-*`. (2026-08-06)
-
-**#441** — `zero_copy::test_zero_copy_message_info` observes nothing: the demo listener emits neither
-`"Waiting for"` nor `"seq="` (verified running the fixture directly — session opens, subscriber
-declares, zero matches). Grep-drift like #0429, but NOT fixable the same way: #0429 retargeted at the
-PUBLISHER shim, while this test's subject is the RECEIVE-side zero-copy trampoline, so pointing it at
-the talker would keep it green while it stopped testing zero-copy. Worse, the fixture has no
-`cfg(feature)` at all — `unstable-zenoh-api` only propagates to `nros`, so the zero-copy and plain
-listeners print identically and there is nothing to assert on. Needs a receive-side channel (or an
-in-process assertion) before the test can mean anything. See `0441-*`. (2026-08-06)
 
 **#422** — TRIAGE INDEX for the runtime E2E failures. **10** on freshly rebuilt fixtures (tier-1
 gates all pass, 1242/1259 tests do). An earlier run said 19 — nine of those were STALE FIXTURES

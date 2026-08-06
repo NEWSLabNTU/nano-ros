@@ -14,7 +14,7 @@
 //! - MessageInfo (sequence number, GID) is correctly passed through
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_listener_zero_copy, build_native_talker,
+    ManagedProcess, ZenohRouter, build_message_info_observer_zero_copy, build_native_talker,
     require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
@@ -33,8 +33,8 @@ fn test_zero_copy_listener_starts(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let listener_path =
-        build_native_listener_zero_copy().expect("Failed to build zero-copy listener");
+    let listener_path = build_message_info_observer_zero_copy()
+        .expect("Failed to build the zero-copy MessageInfo observer");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(listener_path);
@@ -71,8 +71,8 @@ fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
     }
 
     let talker_path = build_native_talker().expect("Failed to build talker");
-    let listener_path =
-        build_native_listener_zero_copy().expect("Failed to build zero-copy listener");
+    let listener_path = build_message_info_observer_zero_copy()
+        .expect("Failed to build the zero-copy MessageInfo observer");
     let locator = zenohd_unique.locator();
 
     // Start zero-copy listener first (subscriber before publisher)
@@ -131,8 +131,8 @@ fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
     }
 
     let talker_path = build_native_talker().expect("Failed to build talker");
-    let listener_path =
-        build_native_listener_zero_copy().expect("Failed to build zero-copy listener");
+    let listener_path = build_message_info_observer_zero_copy()
+        .expect("Failed to build the zero-copy MessageInfo observer");
     let locator = zenohd_unique.locator();
 
     // Start zero-copy listener with RUST_LOG=trace to get MessageInfo output
@@ -154,7 +154,11 @@ fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     let output = listener
-        .wait_for_output_count("seq=", 2, Duration::from_secs(30))
+        .wait_for_output_count(
+            nros_tests::output::MESSAGE_INFO_LOG_PREFIX,
+            2,
+            Duration::from_secs(30),
+        )
         .expect("Zero-copy listener did not emit 2 sequence markers");
 
     // Kill processes and collect output
@@ -167,7 +171,7 @@ fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
     let seq_values: Vec<i64> = output
         .lines()
         .filter_map(|line| {
-            if let Some(pos) = line.find("seq=") {
+            if let Some(pos) = line.find(nros_tests::output::MESSAGE_INFO_LOG_PREFIX) {
                 let rest = &line[pos + 4..];
                 let end = rest.find(' ').unwrap_or(rest.len());
                 rest[..end].parse::<i64>().ok()

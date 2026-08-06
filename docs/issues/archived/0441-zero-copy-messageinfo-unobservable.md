@@ -1,7 +1,7 @@
 ---
 id: 441
 title: "test_zero_copy_message_info observes nothing — the listener emits no MessageInfo, and the zero-copy feature changes no output"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0422, issue-0429, issue-0157, issue-0164]
@@ -93,3 +93,60 @@ constants rather than literals.
 ## Notes
 
 Found triaging #0422 on freshly rebuilt fixtures. Not caused by phase-336.
+
+## Resolution (2026-08-06)
+
+The issue's analysis holds and its warning was the useful part: retargeting at
+the publisher's trace (0429's fix) would have gone green while silently no
+longer testing the receive path. So the assertion moved instead of being
+weakened.
+
+**Why neither obvious repair works.** Un-slimming the example cannot work —
+`CallbackCtx` exposes **no** `MessageInfo` accessor at all, so the line the test
+looked for had never come from the receive path. The
+`FnMut(&M, Option<&MessageInfo>)` shape lives on the executor's
+`.message_info()` subscription builder, which the `Node`/`ExecutableNode` API a
+demo is written against never reaches. And adding a `cfg` branch to the example
+would break phase-338 W1's portability gate, which asserts every platform copy
+of a program is byte-identical after normalization; putting a native-only
+zero-copy branch in seven firmware copies to satisfy one test is the wrong
+trade.
+
+**What landed.** A purpose-built `packages/testing/nros-tests/bins/
+message-info-observer`, which registers through `.message_info()` and prints two
+lines per message: the standard `I heard: [...]`
+(`output::LISTENER_LOG_PREFIX`, so it is a drop-in for the plain delivery
+assertions) and `seq=<n> gid=<hex> ts=<t>`
+(`output::MESSAGE_INFO_LOG_PREFIX`, which only the info-carrying callback can
+produce). A `None` MessageInfo logs a loud ABSENT error rather than staying
+quiet — a silent skip would read as "no messages", which is this issue's own
+failure mode.
+
+The marker is a CONSTANT, not a literal, per the rule this issue is an instance
+of. The fixture pair is the observer built with and without
+`unstable-zenoh-api`, differing in exactly that one feature — which is what
+makes "both emit the same `seq=`/`gid=`" a statement about the trampoline rather
+than about two unrelated binaries. The example's zero-copy fixture row is
+retired: its output was byte-identical to the plain build, so it proved nothing.
+
+All three `zero_copy` tests were broken the same way, not just the one filed —
+the other two waited on `"Waiting for"`, which the slimmed example also stopped
+printing. All three now pass.
+
+## Verification
+
+```
+nros-tests::zero_copy  3 tests run: 3 passed
+```
+
+And the positive result the test now actually asserts, from the zero-copy build
+against a live router:
+
+```
+seq lines: 7   ABSENT: 0
+seq=1 gid=e0ff33caf0ff0300e0fe1360d8ff0700 ts=1786012909627000000
+seq=2 gid=e0ff33caf0ff0300e0fe1360d8ff0700 ts=1786012910623000000
+```
+
+Monotonic sequence, stable GID, through the zero-copy receive path. That is the
+property the test claimed to check and previously could not.

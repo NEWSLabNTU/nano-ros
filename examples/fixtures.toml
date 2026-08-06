@@ -1309,11 +1309,21 @@ platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/contract-monitor"
 
-# Zero-copy (unstable zenoh receive API) variant.
+# issue 0441 — the zero-copy pair. Both halves are the MessageInfo OBSERVER, not
+# the listener example: `CallbackCtx` exposes no MessageInfo, so no example
+# written against the Node API can observe the receive path this feature
+# changes, and the example's zero-copy build printed output identical to the
+# plain one (nothing for a test to assert). The two rows differ in exactly one
+# feature, which is what makes them a trampoline check.
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/listener"
+dir = "packages/testing/nros-tests/bins/message-info-observer"
+
+[[fixture]]
+platform = "linux"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/message-info-observer"
 features = ["unstable-zenoh-api"]
 target_dir = "target-zero-copy"
 

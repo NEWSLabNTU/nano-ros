@@ -74,6 +74,16 @@ pub const INT32_TALKER_LOG_PREFIX: &str = "Published:";
 /// See [`INT32_TALKER_LOG_PREFIX`] — the listener/sink side (`"Received:"`).
 pub const INT32_LISTENER_LOG_PREFIX: &str = "Received:";
 
+/// issue 0441 — the receive-side `MessageInfo` marker emitted by the
+/// `message-info-observer` bin (`seq=<n> gid=<hex> ts=<t>`).
+///
+/// A constant rather than a literal for the reason this whole module exists:
+/// the previous zero-copy assertion grepped `seq=` out of the listener EXAMPLE,
+/// and when phase-277 slimmed that example to the two lines a ROS 2 demo prints
+/// the test kept looking for a string nothing emitted any more. The observer is
+/// now the one producer, and this is the one spelling of what it produces.
+pub const MESSAGE_INFO_LOG_PREFIX: &str = "seq=";
+
 /// The exact `int32-sink` / workspace-listener log line for value `n`
 /// (`"Received: N"`).
 pub fn int32_listener_line(n: impl std::fmt::Display) -> String {

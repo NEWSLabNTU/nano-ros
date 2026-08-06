@@ -1,0 +1,42 @@
+[workspace]
+
+[package]
+name = "message-info-observer"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Receive-side MessageInfo observer (issue 0441). Subscribes to NROS_SUB_TOPIC (default /chatter) typed std_msgs/String through the executor's `.message_info()` builder and prints `seq=<n> gid=<hex> ts=<t>` per message. Exists because CallbackCtx exposes no MessageInfo, so no example written against the Node API can observe the receive path the zero-copy trampoline changes."
+
+[[bin]]
+name = "message-info-observer"
+path = "src/main.rs"
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+# issue 0441 — the zero-copy receive path. This is the ONLY axis this bin
+# varies: the same `seq=`/`gid=` line must appear with and without it, which is
+# what makes the pair a trampoline check rather than two unrelated runs.
+unstable-zenoh-api = ["nros/unstable-zenoh-api"]
+
+[dependencies]
+nros = { path = "../../../../api/nros", default-features = false, features = [
+    "std",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-board-linux = { path = "../../../../boards/nros-board-linux", default-features = false }
+nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+], optional = true }
+std_msgs = { path = "generated/std_msgs", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+
+[patch.crates-io]
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }
