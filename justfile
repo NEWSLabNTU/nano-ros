@@ -2614,7 +2614,12 @@ format-c:
     echo "Formatting C code... ($CF)"
     find packages/api/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" -i
     "$CF" -i packages/rmw/zenoh/zpico-zephyr/src/*.c packages/rmw/zenoh/zpico-zephyr/include/*.h
-    git ls-files -z 'examples/native/c/**/*.c' | xargs -0 "$CF" -i
+    # phase-338 — EVERY platform's C examples, not just native. The portability
+    # gate compares copies line by line, so a formatter that reaches one copy and
+    # not its siblings manufactures divergence: `examples/native/c/listener` was
+    # clean while its five siblings had drifted, and matching them meant leaving
+    # native unformatted. Same file, same rule, every platform.
+    git ls-files -z 'examples/*/c/**/*.c' 'examples/*/c/**/*.h' ':!examples/px4/**' | xargs -0 "$CF" -i
     echo "C code formatted."
 
 # Format C++ headers (nros-cpp) with the pinned clang-format
@@ -2626,7 +2631,10 @@ format-cpp:
     CF="$(nros_clang_format)"
     echo "Formatting C++ headers... ($CF)"
     "$CF" -i packages/api/nros-cpp/include/nros/*.hpp
-    echo "C++ headers formatted."
+    # phase-338 — the C++ EXAMPLES were never formatted by anything. Same reason
+    # as the C side: the portability gate compares line breaking across copies.
+    git ls-files -z 'examples/*/cpp/**/*.cpp' 'examples/*/cpp/**/*.hpp' ':!examples/px4/**' | xargs -0 "$CF" -i
+    echo "C++ headers + examples formatted."
 
 # Format Python code with ruff. Phase 195.D — the colcon extension moved to the
 # nros-cli repo with the retired packages/codegen submodule; no in-tree Python
@@ -2647,8 +2655,8 @@ check-c-fmt:
     find packages/api/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" --dry-run --Werror
     echo "  - clang-format (zpico C)"
     "$CF" --dry-run --Werror packages/rmw/zenoh/zpico-zephyr/src/*.c packages/rmw/zenoh/zpico-zephyr/include/*.h
-    echo "  - clang-format (C examples)"
-    git ls-files -z 'examples/native/c/**/*.c' | xargs -0 "$CF" --dry-run --Werror
+    echo "  - clang-format (C examples, ALL platforms)"
+    git ls-files -z 'examples/*/c/**/*.c' 'examples/*/c/**/*.h' ':!examples/px4/**' | xargs -0 "$CF" --dry-run --Werror
     echo "C formatting OK."
 
 # The Cyclone RMW's own CMake/ctest suite (descriptor builder + registry).
@@ -2758,8 +2766,10 @@ check-cpp-fmt:
     source scripts/dev/clang-format.sh
     CF="$(nros_clang_format)"
     echo "Checking C++ formatting... ($CF)"
-    echo "  - clang-format"
+    echo "  - clang-format (nros-cpp headers)"
     "$CF" --dry-run --Werror packages/api/nros-cpp/include/nros/*.hpp
+    echo "  - clang-format (C++ examples, ALL platforms)"
+    git ls-files -z 'examples/*/cpp/**/*.cpp' 'examples/*/cpp/**/*.hpp' ':!examples/px4/**' | xargs -0 "$CF" --dry-run --Werror
     echo "C++ formatting OK."
 
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The

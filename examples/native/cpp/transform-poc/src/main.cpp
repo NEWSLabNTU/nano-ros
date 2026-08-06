@@ -22,7 +22,7 @@
 
 using Int32 = std_msgs::msg::Int32;
 
-static int32_t read_i32_le(const uint8_t *p) {
+static int32_t read_i32_le(const uint8_t* p) {
     return static_cast<int32_t>(static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
                                 (static_cast<uint32_t>(p[2]) << 16) |
                                 (static_cast<uint32_t>(p[3]) << 24));
@@ -43,7 +43,7 @@ class Source {
     }
 
   public:
-    nros::Result configure(nros::Node &node) {
+    nros::Result configure(nros::Node& node) {
         std::setvbuf(stdout, nullptr, _IONBF, 0);
         nros::Result r = node.create_publisher(pub_, "/in");
         if (!r.ok()) return r;
@@ -55,7 +55,7 @@ class Source {
 class Relay {
     nros::Publisher<Int32> out_;
 
-    void on_in(const uint8_t *data, size_t len) {
+    void on_in(const uint8_t* data, size_t len) {
         int32_t v = (len >= 8) ? read_i32_le(data + 4) : 0;
         Int32 m;
         m.data = v * 2;
@@ -65,7 +65,7 @@ class Relay {
     }
 
   public:
-    nros::Result configure(nros::Node &node) {
+    nros::Result configure(nros::Node& node) {
         std::setvbuf(stdout, nullptr, _IONBF, 0);
         nros::Result r = node.create_publisher(out_, "/out");
         if (!r.ok()) return r;
@@ -76,13 +76,13 @@ class Relay {
 
 // ---- Sink: sub /out → print -----------------------------------------------
 class Sink {
-    void on_out(const uint8_t *data, size_t len) {
+    void on_out(const uint8_t* data, size_t len) {
         int32_t v = (len >= 8) ? read_i32_le(data + 4) : 0;
         std::printf("Doubled: %d\n", v);
     }
 
   public:
-    nros::Result configure(nros::Node &node) {
+    nros::Result configure(nros::Node& node) {
         std::setvbuf(stdout, nullptr, _IONBF, 0);
         nros::Result r =
             nros::bind_subscription_raw<Sink, &Sink::on_out>(node, "/out", Int32::TYPE_NAME, this);
@@ -91,8 +91,8 @@ class Sink {
     }
 };
 
-int main(int argc, char **argv) {
-    const char *role = (argc > 1) ? argv[1] : "relay";
+int main(int argc, char** argv) {
+    const char* role = (argc > 1) ? argv[1] : "relay";
     std::printf("transform-poc role=%s\n", role);
 
     nros::Node node;

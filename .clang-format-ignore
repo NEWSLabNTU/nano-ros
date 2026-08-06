@@ -10,4 +10,9 @@ cmake/templates/*
 # `examples/**/*.cpp`, clang-format itself honours this file, so the trees stay
 # PX4-shaped rather than being silently reflowed to 4-space. See phase-325 W0.1.
 packages/testing/nros-px4-register-check/*
-examples/px4/*
+# `*` does NOT cross `/` in a .clang-format-ignore pattern, so `examples/px4/*`
+# matched only DIRECT children and never the nested module sources. The guard
+# below predicted "the day a glob widens to examples/**/*.cpp" — that day came
+# (phase-338 widened the C/C++ fmt recipes to every platform) and this pattern
+# did not hold: 723 lines of PX4 style were reflowed before it was caught.
+examples/px4/**

@@ -52,11 +52,9 @@ int nros_app_main(int argc, char** argv) {
         // Result is true while a sample was received+deserialized (TryAgain → false).
         while (sub.try_recv_validated(msg, status)) {
             count++;
-            const char* crc = status.crc_valid == 1   ? "ok"
-                              : status.crc_valid == 0 ? "FAIL"
-                                                      : "n-a";
+            const char* crc = status.crc_valid == 1 ? "ok" : status.crc_valid == 0 ? "FAIL" : "n-a";
             printf("[%d] Received: data=%d [SAFETY] INTEGRITY gap=%lld dup=%d crc=%s\n", count,
-                        msg.data, (long long)status.gap, (int)status.duplicate, crc);
+                   msg.data, (long long)status.gap, (int)status.duplicate, crc);
         }
     }
 

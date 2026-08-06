@@ -75,7 +75,7 @@ int nros_app_main(int argc, char** argv) {
             resp.sum = req.a + req.b;
 
             printf("Incoming request\na: %lld b: %lld\n", static_cast<long long>(req.a),
-                        static_cast<long long>(req.b));
+                   static_cast<long long>(req.b));
 
             ret = srv.send_reply(seq_id, resp);
             if (!ret.ok()) {
