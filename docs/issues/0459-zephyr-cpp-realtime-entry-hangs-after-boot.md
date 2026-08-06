@@ -74,6 +74,35 @@ machine — the cell skips. Only the C lane actually proves the EDF path. Whethe
 the rust image is meant to be built by `just zephyr build-fixtures` and is
 silently absent is worth checking alongside this.
 
+
+## Reporting fixed, cause still open (2026-08-06)
+
+The assertion no longer misattributes this. `nros_tests::output::
+runtime_silence_note` classifies a log by whether the nano-ros runtime ever
+spoke (every runtime line carries `nros`), and each shape in
+`sched_dims_applied_e2e` now leads with it:
+
+```
+NO RUNTIME OUTPUT: 2 non-empty line(s), none from the nano-ros runtime.
+  The image did not reach application code, so a missing marker below is NOT
+  evidence about that marker — look between boot and the first `nros` line
+  last line(s) seen:
+    *** Booting Zephyr OS build v3.7.0 ***
+[zephyr cpp EdfDeadline] expected exactly 1 `nros: EDF deadline set tier=` …
+```
+
+So the next reader is pointed between boot and the first runtime line, which is
+where this actually lives, instead of at the scheduler.
+
+Unit-tested both ways — a boot banner with nothing after it classifies as
+silent, and a log containing any runtime line does NOT (otherwise the note would
+swallow real missing-marker failures).
+
+**The hang itself is unfixed and this issue stays open.** The "where to start"
+section below is unchanged: between `main` and the first tier task in the C++
+image — the generated C++ entry carrier, `nros_cpp_init`/session open, and
+`ZephyrBoard::run_tiers`.
+
 ## Where to start
 
 Between `main` and the first tier task in the C++ image: the generated C++ entry

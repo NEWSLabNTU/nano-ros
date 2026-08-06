@@ -395,18 +395,27 @@ fn run_cell(cell: &SchedCell) {
         }
     };
 
+    // issues 0459/0460 — if the image never reached application code, say THAT
+    // first. Every shape below names a missing marker, and a missing marker is
+    // only evidence when something was running to emit it. Issue 0459 was
+    // reported as a missing EDF marker for an image that produced four lines
+    // total, which sent the investigation to the scheduler.
+    let silence = nros_tests::output::runtime_silence_note(&log)
+        .map(|n| format!("{n}\n  "))
+        .unwrap_or_default();
+
     // Classify per the cell's assert shape.
     let accepted = log.contains(ex.accept);
     match ex.shape {
         Shape::AcceptOrFallback => {
             let fb = ex.fallback.map(|f| log.contains(f)).unwrap_or(false);
-            assert!(accepted || fb, "{}\nlog:\n{log}", fail_loud());
+            assert!(accepted || fb, "{silence}{}\nlog:\n{log}", fail_loud());
         }
         Shape::AcceptOnly => {
             assert!(
                 accepted,
-                "[{platform} {lang} {:?}] expected the ACCEPT marker (`{}`); saw fallback? {}\n\
-                 log:\n{log}",
+                "{silence}[{platform} {lang} {:?}] expected the ACCEPT marker (`{}`); saw \
+                 fallback? {}\nlog:\n{log}",
                 cell.dim, ex.accept, ex.note
             );
         }
@@ -414,16 +423,16 @@ fn run_cell(cell: &SchedCell) {
             let hits = nros_tests::count_pattern(&log, ex.accept);
             assert_eq!(
                 hits, 1,
-                "[{platform} {lang} {:?}] expected exactly 1 `{}` (the single declaring tier), \
-                 saw {hits}. {}\nlog:\n{log}",
+                "{silence}[{platform} {lang} {:?}] expected exactly 1 `{}` (the single \
+                 declaring tier), saw {hits}. {}\nlog:\n{log}",
                 cell.dim, ex.accept, ex.note
             );
         }
         Shape::AcceptOrFailNote(fn_note) => {
             assert!(
                 accepted || log.contains(fn_note),
-                "[{platform} {lang} {:?}] produced NEITHER `{}` NOR the failure note `{fn_note}` \
-                 — silently dropped (RFC-0052 fail-loud). {}\nlog:\n{log}",
+                "{silence}[{platform} {lang} {:?}] produced NEITHER `{}` NOR the failure note \
+                 `{fn_note}` — silently dropped (RFC-0052 fail-loud). {}\nlog:\n{log}",
                 cell.dim,
                 ex.accept,
                 ex.note

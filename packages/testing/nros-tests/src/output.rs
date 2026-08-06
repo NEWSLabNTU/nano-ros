@@ -84,6 +84,51 @@ pub const INT32_LISTENER_LOG_PREFIX: &str = "Received:";
 /// now the one producer, and this is the one spelling of what it produces.
 pub const MESSAGE_INFO_LOG_PREFIX: &str = "seq=";
 
+/// issues 0459 / 0460 — tell "produced output that LACKS marker X" apart from
+/// "produced nothing at all", and say which.
+///
+/// A narrow assertion at the end of a chain names the last missing thing, so an
+/// image that emitted nothing after its boot banner gets reported as, say, a
+/// missing EDF marker — and the reader goes looking at the scheduler. Issue
+/// 0459 was exactly that: the Zephyr C++ realtime entry produced four lines
+/// total and the failure said `expected exactly 1 "nros: EDF deadline set
+/// tier=", saw 0`. It is not a scheduling problem; it never reached tier
+/// startup. Issue 0460's message went further and blamed a subsystem
+/// ("the embedded LAUNCH-entry runtime delivery did not work") from the
+/// OBSERVER's silence, without showing the guest's output at all.
+///
+/// The signal is whether the nano-ros runtime ever spoke. Every runtime line
+/// this project emits carries `nros` (`nros: …`, `[nros] …`, or a target of
+/// `nros_*` under `env_logger`), so zero such lines means the image did not
+/// reach application code and a missing application marker says nothing about
+/// that marker.
+///
+/// Returns `None` when the runtime did speak — then a missing marker really is
+/// about the marker, and the caller's own message is the right one.
+pub fn runtime_silence_note(log: &str) -> Option<String> {
+    let lines: Vec<&str> = log.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.iter().any(|l| l.contains("nros")) {
+        return None;
+    }
+    let tail = lines
+        .iter()
+        .rev()
+        .take(3)
+        .rev()
+        .map(|l| format!("    {}", l.trim_end()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some(format!(
+        "NO RUNTIME OUTPUT: {} non-empty line(s), none from the nano-ros runtime.\n           The image did not reach application code, so a missing marker below is NOT \n           evidence about that marker — look between boot and the first `nros` line \n           (issues 0459, 0460).{}",
+        lines.len(),
+        if tail.is_empty() {
+            String::new()
+        } else {
+            format!("\n  last line(s) seen:\n{tail}")
+        }
+    ))
+}
+
 /// The exact `int32-sink` / workspace-listener log line for value `n`
 /// (`"Received: N"`).
 pub fn int32_listener_line(n: impl std::fmt::Display) -> String {
@@ -696,5 +741,42 @@ mod tests {
         );
         assert_eq!(extract_after("no match here", "Published:"), None);
         assert_eq!(extract_after("Received: hello", "Received:"), Some("hello"));
+    }
+}
+
+#[cfg(test)]
+mod silence_tests {
+    use super::runtime_silence_note;
+
+    /// The exact shape issue 0459 reported: a Zephyr image that booted and then
+    /// said nothing. The old failure named a missing EDF marker, which reads as
+    /// a scheduling problem and is not one.
+    #[test]
+    fn a_boot_banner_and_nothing_else_is_silence() {
+        let log = "WARNING: Using a test - not safe - entropy source\n\
+                   *** Booting Zephyr OS build v3.7.0 ***\n";
+        let note = runtime_silence_note(log).expect("must classify as silent");
+        assert!(note.contains("NO RUNTIME OUTPUT"), "{note}");
+        assert!(note.contains("2 non-empty line(s)"), "{note}");
+        assert!(
+            note.contains("Booting Zephyr"),
+            "tail must be shown: {note}"
+        );
+    }
+
+    #[test]
+    fn empty_output_is_silence() {
+        assert!(runtime_silence_note("").is_some());
+        assert!(runtime_silence_note("\n\n  \n").is_some());
+    }
+
+    /// The other half, and the one that keeps this from swallowing real
+    /// failures: once the runtime has spoken, a missing marker IS about the
+    /// marker and the caller's own message must stand alone.
+    #[test]
+    fn a_runtime_that_spoke_is_not_silence() {
+        let log = "*** Booting Zephyr OS ***\n[nros] tier task entered\n";
+        assert!(runtime_silence_note(log).is_none());
+        assert!(runtime_silence_note("nros: session open\n").is_none());
     }
 }

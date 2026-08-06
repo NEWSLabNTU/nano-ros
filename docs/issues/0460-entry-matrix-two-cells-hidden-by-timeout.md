@@ -70,3 +70,21 @@ These two were simply never observable while the timeout killed the run.
 ```
 cargo nextest run -p nros-tests --test entry_e2e      # ~228s, 2 of 15 cells fail
 ```
+
+## Reporting fixed, both cells still open (2026-08-06)
+
+The two delivery assertions timed out on the OBSERVER and then blamed the guest
+— "the embedded LAUNCH-entry runtime delivery did not work" — without ever
+showing the guest's output. Either side can be the silent one, and the message
+picked one by assertion.
+
+They now print the guest's own log and classify it with
+`nros_tests::output::runtime_silence_note`: if the runtime never spoke, the
+fault is before delivery and no amount of looking at the transport will find
+it. The issue's own advice ("the observer is native, so either side can be the
+silent one") is now enforced by the message rather than left to the reader.
+
+**Neither cell is fixed and this issue stays open** — `nuttx-arm/rust/
+entry_pubsub` and `zephyr/rust/params` still fail. The first checks are
+unchanged: whether `entry_net_init` still pushes the guest IP into `eth0` before
+`Executor::open`, and whether the params observer is the TYPED int32 sink.

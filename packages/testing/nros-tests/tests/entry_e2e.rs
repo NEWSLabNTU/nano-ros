@@ -561,11 +561,37 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 // The parametrized matrix consumer
 // =============================================================================
 
+/// issue 0460 — what the GUEST said, for a failure that is about the guest.
+///
+/// The two delivery assertions below time out on the OBSERVER and then blamed
+/// the guest ("the embedded LAUNCH-entry runtime delivery did not work")
+/// without ever showing it. Either side can be the silent one, so print the
+/// guest's own output and classify it: if the runtime never spoke, the fault is
+/// before delivery and no amount of looking at the transport will find it.
+fn guest_diagnosis(guest: &mut Guest) -> String {
+    let log = match guest {
+        Guest::Managed(p) => p
+            .wait_for_output(Duration::from_secs(2))
+            .unwrap_or_default(),
+        Guest::Zephyr(p) => p
+            .wait_for_output(Duration::from_secs(2))
+            .unwrap_or_default(),
+        Guest::Qemu(p) => p
+            .wait_for_output(Duration::from_secs(2))
+            .unwrap_or_default(),
+    };
+    let note = nros_tests::output::runtime_silence_note(&log)
+        .map(|n| format!("\n  {n}"))
+        .unwrap_or_default();
+    format!("{note}\n  --- guest output ---\n{log}\n  --- end guest output ---")
+}
+
 /// THE Entry-pkg matrix consumer (phase-329 W1). Iterates every cell
 /// `w1_consumer_of` assigns to `Entry` — the RTOS `EntryPubsub` subset it boots
 /// plus the zephyr-rust feature entries — derived from `matrix::CELLS`, and runs
 /// each in one process. Per-cell skips/failures are caught so one missing
 /// fixture never aborts the rest.
+
 #[test]
 fn entry_matrix() {
     let cells: Vec<&MCell> = nros_tests::matrix::CELLS
@@ -669,10 +695,10 @@ fn run_cell(pcell: &MCell) {
                 .unwrap_or_else(|_| {
                     guest.kill();
                     obs.kill();
+                    let diag = guest_diagnosis(&mut guest);
                     panic!(
-                        "[{} {}] native observer never received the entry's /chatter — the \
-                         embedded LAUNCH-entry runtime delivery did not work ({})",
-                        platform, lang, cell.note
+                        "[{} {}] native observer never received the entry's /chatter ({}).{}",
+                        platform, lang, cell.note, diag
                     )
                 });
             guest.kill();
@@ -697,9 +723,10 @@ fn run_cell(pcell: &MCell) {
                 .unwrap_or_else(|_| {
                     guest.kill();
                     obs.kill();
+                    let diag = guest_diagnosis(&mut guest);
                     panic!(
                         "[{} {}] native observer never received the entry image's /chatter \
-                         ({})",
+                         ({}){diag}",
                         platform, lang, cell.note
                     )
                 });
