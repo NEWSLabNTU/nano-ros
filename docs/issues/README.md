@@ -80,6 +80,23 @@ mapping is the board-crate dep, 54 leaves, 0 ambiguous), and three tracked confi
 DID patch generated msg crates — `tests/` was outside the gate's walk. `check-cargo-config-tracked` now
 walks it and rejects a tracked config patching an uncommitted `generated/` tree. See `archived/0457-*`.
 
+**#460** — `entry_e2e::entry_matrix` reported `TIMEOUT [60s]` with no output on every run. Not a hang: the
+matrix boots up to 15 RTOS images and takes **228s**, aggregating its verdict at the end. phase-295 W3.b
+consolidated 15 per-cell tests into one `entry_matrix`, but `.config/nextest.toml`'s timeout override still
+filtered on `test(zephyr_rust_lifecycle)` — a name that no longer exists — so it matched NOTHING and the
+matrix ran under the default 60s ceiling. Filter fixed; with the run allowed to finish, 13/15 cells pass and
+TWO real failures appear that the TIMEOUT had been absorbing (issue 0445's shape at the harness level):
+`nuttx-arm/rust/entry_pubsub` (observer never gets /chatter) and `zephyr/rust/params` (never sees the baked
+250). Neither is in #0422. See `0460-*`. (2026-08-06)
+
+**#459** — `sched_dims_applied_e2e` fails EdfDeadline/zephyr/**cpp** ('expected exactly 1 EDF marker, saw 0'),
+but that is not a scheduling problem: run against its baked router the C image emits 1872 lines including the
+marker, while the C++ image boots and emits NOTHING for 20s — it hangs before any tier work, and the narrow
+assertion names only the last missing thing. Ruled out: the `deadline_us` declaration (all three workspaces
+have it), `CONFIG_SCHED_DEADLINE` (all three prj.conf set it), staleness (the cpp binary is NEWER than the
+passing C one and `strings` finds the marker compiled in), and the shared shim (C uses it and works). Note the
+rust lane's image does not exist here, so that cell only appears to pass. See `0459-*`. (2026-08-06)
+
 **#450** — the group-A `action-server` example body publishes a FIXED `[0, 1, 1]` instead of computing the
 sequence, and phase-338 W3.d's convergence deleted the riscv64 copy that did the real iterative Fibonacci.
 Safe at the time (that cell is `BuildOnly`) but backwards: `Fibonacci` is the canonical ROS 2 action demo

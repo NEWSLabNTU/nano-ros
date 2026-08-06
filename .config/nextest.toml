@@ -284,11 +284,21 @@ retries = 2
 # issue #139 follow-up — the lifecycle zephyr e2e polls `ros2 lifecycle` CLIs
 # (multi-second python startup per poll); solo it finishes in ~10 s but under
 # a parallel suite the CLI contention pushes past the default 60 s ceiling.
-# phase-295 W3.b — lifecycle_zephyr_entry_e2e consolidated into the
-# binary(entry_e2e) matrix consumer; its cell is `zephyr_rust_lifecycle`.
+#
+# phase-295 W3.b consolidated the 15 per-cell entry tests into ONE test,
+# `entry_matrix` — so the old `and test(zephyr_rust_lifecycle)` clause selected
+# a name that no longer exists and this override silently matched NOTHING. The
+# whole matrix then ran under the default 30s×2 = 60s ceiling while booting up
+# to 15 RTOS images (QEMU nuttx/threadx/freertos + zephyr native_sim). Measured
+# end-to-end: 228s. So it was killed every run, and the TIMEOUT verdict absorbed
+# the two cells that genuinely fail (issue 0445's shape, at the harness level) —
+# a filter that matches nothing costs more than no filter at all.
+#
+# The budget covers the serial cost of the whole matrix, not one cell; the same
+# shape as the qemu-baremetal override above.
 [[profile.default.overrides]]
-filter = "binary(entry_e2e) and test(zephyr_rust_lifecycle)"
-slow-timeout = { period = "60s", terminate-after = 3 }
+filter = "binary(entry_e2e)"
+slow-timeout = { period = "120s", terminate-after = 3 }
 
 # issue 0312 — see [test-groups.native-qos-discovery].
 #
