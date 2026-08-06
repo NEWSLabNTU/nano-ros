@@ -316,7 +316,15 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `include = ["…/nros-patch.toml"]` (central, gitignored, absolute paths) + leaf-local
   `generated/*`/platform patches. Never hand-edit; moved checkout → re-run `nros sync`. Central
   membership = only crates registry-named in EVERY graph (else cargo "unused patch" warnings).
-  → AGENTS.md Rust Consumption.
+  **Sync's `[patch.crates-io]` block lives in the GITIGNORED sidecar `.cargo/nros-managed-patch.toml`,
+  reached by a second `include` entry — never in `config.toml` (issue 0457).** Its rows name
+  `generated/` crates built from the USER's ament install, so inside a tracked `config.toml` they
+  committed a host-derived path AND re-dirtied the worktree on every sync; the authored half
+  (`[build] target`, a QEMU `runner`, link rustflags, a user `libc` patch) stays tracked because a
+  clone cannot regenerate it. Corollary, gated by `check-cargo-config-tracked`: **a tracked config
+  must never patch an uncommitted `generated/` tree** (`packages/interfaces/*` are exempt — they
+  commit theirs). An out-of-tree consumer keeps the block INLINE: no `include` outside this
+  checkout (#272). → AGENTS.md Rust Consumption.
 - **Parallel agent sessions push to `main`** — **reserve issue ids with `just issue-new <slug>`,
   never by reading the highest number.** Reading-then-writing is a race that has collided seven
   times (0367→0372→0377 collided TWICE, the second time while renumbering the first). The tool

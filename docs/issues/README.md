@@ -51,15 +51,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#457** — a leaf `.cargo/config.toml` is a hand-kept COPY of `nros-board.toml`'s `cargo_config`, not
-user-specific content. Measured: of 46 tracked leaf configs under `examples/`, **39 are deploy-bound**, and
-NONE patches a generated msg crate — what they carry (`[build] target`, `build-std`, linker rustflags,
-`[env]`, board path patches) is declared verbatim in the board descriptor. `check-board-cargo-config-applied`
-states the contract: "the leaf file is TRACKED and `nros sync` leaves it alone, so the two are kept in step
-by hand" — and that gap caused BOTH 0440 (~3680 undefined libc refs) and 0444's sibling failure. Proposal:
-`nros sync` renders it and it gets gitignored, like `nros-patch.toml` and SystemModels already are; the 7
-non-deploy-bound leaves decide whether the tracking gate inverts or just narrows. See `0457-*`. (2026-08-06)
-
 Recently resolved (2026-08-06): **#444** — every FreeRTOS **Rust** cell (pubsub, service AND action —
 the issue's action-only scope came from one run and was wrong) booted, printed "Network ready." and
 stalled forever. Reproduced on main with fresh fixtures, so not branch-specific. TWO faults, both from
@@ -75,6 +66,19 @@ was dropped in its favour. All NINE FreeRTOS cells pass. Still open underneath: 
 Rust lane on a SEPARATE network plan from C/C++ on the same board, and its own comment calls unifying
 them follow-up work — a lane whose firmware config and launcher are maintained apart is a lane where
 they can silently stop matching. See `archived/0444-*`.
+
+Recently resolved (2026-08-06): **#457** — sync's managed `[patch.crates-io]` block sat inside the leaf
+`.cargo/config.toml`, which is tracked: it committed host-derived `generated/` paths AND re-dirtied the
+worktree on every sync as the row set moved. RESOLVED by splitting the file on its real seam — the block
+now lives in the gitignored sidecar `.cargo/nros-managed-patch.toml` reached by a second `include`, while
+the authored half (`[build] target`, QEMU `runner`, link rustflags) stays tracked because a clone cannot
+regenerate it. NOT the filed proposal (render the whole config from `nros-board.toml` + gitignore it):
+measured per line, only **1 of 48** board-resolvable leaves equals its board's `cargo_config` — leaves
+legitimately override the `runner` and add `[env]`, which no descriptor can express, so that plan would
+have deleted content with no other home. Also corrected: deploy tokens are NOT board names (the working
+mapping is the board-crate dep, 54 leaves, 0 ambiguous), and three tracked configs outside `examples/`
+DID patch generated msg crates — `tests/` was outside the gate's walk. `check-cargo-config-tracked` now
+walks it and rejects a tracked config patching an uncommitted `generated/` tree. See `archived/0457-*`.
 
 **#450** — the group-A `action-server` example body publishes a FIXED `[0, 1, 1]` instead of computing the
 sequence, and phase-338 W3.d's convergence deleted the riscv64 copy that did the real iterative Fibonacci.

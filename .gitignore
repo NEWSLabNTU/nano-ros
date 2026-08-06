@@ -104,6 +104,20 @@ examples/**/target-*/
 # ever left untracked, so the blanket rule cannot silently swallow a new one.
 **/.cargo/config.toml
 
+# Issue 0457 — sync's managed `[patch.crates-io]` block, split OUT of the leaf
+# `config.toml` above and into its own file that the config `include`s.
+#
+# The entries name `generated/` message crates produced from the USER's ament
+# install, and their membership shifts as a leaf's dependency graph resolves.
+# Held inside a TRACKED config.toml they did two things at once: committed a
+# host-derived path, and dirtied the worktree on every sync. Neither is fixable
+# by ignoring config.toml itself, because the rest of that file (`[build]
+# target`, a QEMU `runner`, link args) is authored content a clone cannot
+# regenerate. Splitting on that seam lets the authored half stay tracked and
+# stable while everything sync owns lives here, unseen by git — the same
+# treatment `nros-patch.toml` and the SystemModels already get.
+**/.cargo/nros-managed-patch.toml
+
 # cmake build dirs in the standalone examples. `examples/**/target-*/` above
 # covered the cargo side and many leaves carry their own `/build/` line, but
 # the west/cmake entry leaves (qemu-arm-freertos, qemu-arm-nuttx,

@@ -1,4 +1,4 @@
-include = ["../../../../../nros-patch.toml"]
+include = ["../../../../../nros-patch.toml", "nros-managed-patch.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 
@@ -45,8 +45,4 @@ rustflags = [
     "-C",
     "link-arg=-Tlink.x",
 ]
-
-[patch.crates-io]
-nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385" }  # nros-managed
-nros-log = { path = "../../../../packages/core/nros-log" }  # nros-managed
 

@@ -1,11 +1,5 @@
-[patch.crates-io.nros-builtin-interfaces]
-path = "generated/nros-builtin-interfaces"
-
 [patch.crates-io.nros-core]
 path = "../../core/nros-core"
 
 [patch.crates-io.nros-serdes]
 path = "../../core/nros-serdes"
-
-[patch.crates-io.nros-rcl-interfaces]
-path = "generated/nros-rcl-interfaces"

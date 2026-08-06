@@ -1,4 +1,4 @@
-include = ["../../../../../nros-patch.toml"]
+include = ["../../../../../nros-patch.toml", "nros-managed-patch.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 
@@ -21,7 +21,3 @@ rustflags = [
     "-C", "link-arg=-Tmps2_an385.ld",
     "-C", "link-arg=--nmagic",
 ]
-
-[patch.crates-io]
-nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }  # nros-managed
-nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed

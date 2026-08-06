@@ -37,6 +37,42 @@ has_authored_content() {
     grep -qvE '^\s*$|^\s*#|^include = |^\[patch\.crates-io\]|# nros-managed\s*$' "$1"
 }
 
+# Issue 0457 — a TRACKED config must not patch a `generated/` message crate
+# whose tree is not itself committed.
+#
+# Those crates are produced by `nros sync` from the USER's ament install, so the
+# row is host-derived: it names a path that does not exist in a fresh clone, and
+# cargo fails on a `[patch]` (or path dep) pointing at a missing manifest. This
+# is the same rule that already keeps `generated/` and the leaf `Cargo.lock`
+# beside it out of git — a tracked artifact must not assert which ROS install
+# built it.
+#
+# The exception is exact and narrow: `packages/interfaces/*` commit their
+# generated msg crates on purpose (core crates need those messages BEFORE any
+# codegen runs), so a config patching a COMMITTED `generated/` tree is fine.
+# Hence the test is "is that tree tracked", not "does the path say generated".
+#
+# Sync itself can no longer create this: its managed block now lives in the
+# gitignored `nros-managed-patch.toml` sidecar. What this catches is a
+# HAND-written row, which is how all three offenders got here.
+ament_rows_tracked=0
+has_uncommitted_generated_patch() {
+    local cfg="$1" leaf rel
+    leaf="$(dirname "$(dirname "$cfg")")"
+    # Every `path = ".../generated/<crate>"` value in the file, sub-table form
+    # (`[patch.crates-io.x]` + `path = …`) and inline form alike.
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        # Patch paths resolve against the leaf dir (cargo's invocation cwd).
+        if [ -z "$(git ls-files -- "$leaf/$rel" 2>/dev/null)" ]; then
+            echo "    $cfg" >&2
+            echo "      patches '$rel', which is not committed" >&2
+            return 0
+        fi
+    done < <(grep -oE 'path *= *"[^"]*generated/[^"]*"' "$cfg" | sed -E 's/.*"([^"]*)".*/\1/')
+    return 1
+}
+
 untracked_authored=0
 tracked_pure=0
 
@@ -44,6 +80,18 @@ while IFS= read -r -d '' cfg; do
     cfg="${cfg#./}"
     tracked=0
     git ls-files --error-unmatch "$cfg" >/dev/null 2>&1 && tracked=1
+
+    if [ "$tracked" -eq 1 ]; then
+        if [ "$ament_rows_tracked" -eq 0 ]; then
+            # Header printed lazily, before the first offender's detail lines.
+            if has_uncommitted_generated_patch "$cfg" >/dev/null 2>&1; then
+                echo "check-cargo-config-tracked: tracked config patches an UNCOMMITTED generated/ tree:" >&2
+            fi
+        fi
+        if has_uncommitted_generated_patch "$cfg"; then
+            ament_rows_tracked=$((ament_rows_tracked + 1))
+        fi
+    fi
 
     if has_authored_content "$cfg"; then
         if [ "$tracked" -eq 0 ]; then
@@ -60,7 +108,7 @@ while IFS= read -r -d '' cfg; do
         echo "  $cfg" >&2
         tracked_pure=$((tracked_pure + 1))
     fi
-done < <(find examples packages "${NROS_FIND_PRUNE[@]}" -o -path '*/.cargo/config.toml' -print0 2>/dev/null)
+done < <(find examples packages tests "${NROS_FIND_PRUNE[@]}" -o -path '*/.cargo/config.toml' -print0 2>/dev/null)
 
 rc=0
 if [ "$untracked_authored" -ne 0 ]; then
@@ -70,6 +118,17 @@ if [ "$untracked_authored" -ne 0 ]; then
         echo "  a runner, or link flags. \`**/.cargo/config.toml\` is gitignored because"
         echo "  most of these files are pure sync output, so committing one takes:"
         echo "      git add -f <path>"
+    } >&2
+    rc=1
+fi
+if [ "$ament_rows_tracked" -ne 0 ]; then
+    {
+        echo
+        echo "  These rows are built from the USER's ament install, so a fresh clone has"
+        echo "  no such path and cargo fails on the missing manifest. Drop the row: sync"
+        echo "  writes what it owns to the gitignored \`.cargo/nros-managed-patch.toml\`,"
+        echo "  and a leaf that path-deps its msg crate in Cargo.toml needs no patch at all."
+        echo "  (\`packages/interfaces/*\` are exempt — they COMMIT their generated tree.)"
     } >&2
     rc=1
 fi

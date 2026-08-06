@@ -1,4 +1,4 @@
-include = ["../../../../../nros-patch.toml"]
+include = ["../../../../../nros-patch.toml", "nros-managed-patch.toml"]
 [build]
 target = "armv7a-nuttx-eabihf"
 
@@ -74,5 +74,3 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 # invocation cwd (this example dir), not the config file. Untagged (no
 # `# nros-managed` suffix), so `nros sync` preserves it as a user key.
 libc = { path = "../../../../third-party/nuttx/libc" }
-nros-board-nuttx-qemu = { path = "../../../../packages/boards/nros-board-nuttx-qemu" }  # nros-managed
-nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
