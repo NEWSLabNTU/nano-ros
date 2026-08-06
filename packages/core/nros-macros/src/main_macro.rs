@@ -478,6 +478,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let mut node_groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
     let mut node_instances: Vec<String> = Vec::new();
     let mut resolved_tiers: Option<ResolvedTierTable> = None;
+    // issue 0438 — the tier names the SYSTEM declared, as opposed to the ones
+    // that survived membership resolution. Empty when the schedule is derived.
+    let mut authored_tier_names: Vec<String> = Vec::new();
     // Phase 264 W2 — `[lifecycle]` boot autostart from `system.toml` (launch arm only).
     let mut lifecycle_code: Option<u8> = None;
     // Phase 264 W4b — `[param_services]` declared in `system.toml` (launch arm only) →
@@ -861,6 +864,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 })?;
             nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
                 .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+            // issue 0438 — remember that tiers were AUTHORED, so a collapse to
+            // the degenerate default below can be reported instead of taken.
+            authored_tier_names = model.execution.tiers.keys().cloned().collect();
             resolved_tiers = Some(table);
         } else {
             // phase-296 W5.13 follow-up — NO authored tiers: DERIVE the schedule
@@ -1309,6 +1315,38 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         exec_sizing,
     );
 
+    // issue 0438 — a system that DECLARES `[tiers.*]` and binds no callback
+    // group to any of them resolves to the degenerate single synthesized
+    // `default` tier, and the macro then emits the SINGLE-tier path. That is a
+    // declaration being discarded, and it used to happen in silence: the
+    // orchestration_tiers_native fixture declared `[tiers.high]`/`[tiers.low]`
+    // for months, emitted a single-tier binary, and the only visible symptom
+    // was an E2E three layers away reporting a missing boot marker — which sent
+    // the investigation to the board's print statements instead of here.
+    //
+    // Membership comes from `[[component]].group_tiers` (phase-273 W2 /
+    // RFC-0047 moved it out of the package manifest). The fixture still carried
+    // the pre-273 `callback_groups` form, which nothing reads any more, so the
+    // tiers had no members. By this point the board slice is known non-empty —
+    // an empty one already errored above — so authored-but-unbound really does
+    // mean the tiers are dead declarations rather than sliced away.
+    if !authored_tier_names.is_empty()
+        && resolved_tiers.as_ref().is_some_and(|t| t.is_single_tier())
+    {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            format!(
+                "nros::main!: the system declares tier(s) [{}] but no callback group is \
+                 bound to any of them, so they resolve to a single default tier and this \
+                 entry would silently emit the SINGLE-tier path.\n  \
+                 Bind groups with `[[component]] group_tiers = {{ <group> = \"<tier>\" }}` \
+                 in `system.toml` (phase-273 W2 / RFC-0047 — `callback_groups` in a node \
+                 package's Cargo.toml is the retired form and is not read).\n  \
+                 If the tiers are genuinely unused, delete them. issue 0438",
+                authored_tier_names.join(", ")
+            ),
+        ));
+    }
     let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
     // phase-302 W4 (issue 0265) — reject multi-tier systems on targets with
     // no `run_tiers` EARLY with a real diagnostic. Previously the deploy fell

@@ -3,15 +3,25 @@ name = "demo"
 rmw = "zenoh"
 domain_id = 0
 
+# issue 0438 — `group_tiers` is what BINDS a callback group to a tier
+# (phase-273 W2 / RFC-0047 moved this out of the package manifest and into the
+# deployment config). Without it the `[tiers.*]` tables below are declared and
+# unreferenced: `resolve_tiers` builds membership only from bindings, finds
+# none, and returns the degenerate single synthesized `default` tier — so the
+# macro emits the SINGLE-tier path and the two authored tiers vanish without a
+# word. This fixture still carried the pre-273 form (`callback_groups` in each
+# node package's `Cargo.toml`), which nothing reads any more.
 [[component]]
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
+group_tiers = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
+group_tiers = { telem = "low" }
 
 # Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
 # the native deploy; priorities are raw POSIX (advisory on native).

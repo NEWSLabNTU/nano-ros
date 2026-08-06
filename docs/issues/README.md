@@ -148,6 +148,21 @@ Gated by `check-board-cargo-config-applied`, watched to fire. Nothing caught it 
 config was valid TOML that cargo and `nros sync` both accepted — the loss showed only at link time,
 on one platform. See `archived/0440-*`. (2026-08-06)
 
+RESOLVED 2026-08-06 — **#438** `native_orchestration_tiers` failed on "no multi-tier marker", and the
+filed diagnosis (linux board missing the NuttX marker) was wrong twice over. The linux board HAS both
+markers — the issue's grep missed them because the string is line-broken across a `\` continuation, so
+an issue about grep drift was itself produced by a grep artifact. And the binary never reached that
+code: `strings` found zero `multi-tier`, `nm` no `run_tiers` symbol. REAL CAUSE: `resolve_tiers` builds
+tier membership only from group bindings, and phase-273 W2 moved binding from the package manifest to
+`[[component]].group_tiers` — this fixture was never migrated, so its two authored tiers had no members,
+collapsed to one synthesized `default`, and the macro emitted the SINGLE-tier path in silence while the
+fixture's own doc-comment claimed to prove the multi-tier emit. RESOLVED: both tier fixtures bind their
+groups (the freertos sibling carried the identical latent defect), the native one moves to the canonical
+`launch =` arm (the deprecated `model =` arm has an empty membership map BY CONSTRUCTION and can never
+resolve a multi-tier system), and the silent discard is now a compile error naming the tiers and the
+remedy. 6/6 pass, including the with-router case the issue expected to need separate zenohd work — it
+did not. See `archived/0438-*`.
+
 RESOLVED 2026-08-06 — **#456** two of the three NuttX riscv recipes never exported the riscv env, so
 the C lane archived an **arm** vector table into a riscv image. `build-riscv-rust` held the only copy
 of the six arch-describing `NUTTX_*` values (including phase-285 W4's `NUTTX_VECTORTAB=""` opt-out);
@@ -358,13 +373,6 @@ the talker would keep it green while it stopped testing zero-copy. Worse, the fi
 `cfg(feature)` at all — `unstable-zenoh-api` only propagates to `nros`, so the zero-copy and plain
 listeners print identically and there is nothing to assert on. Needs a receive-side channel (or an
 in-process assertion) before the test can mean anything. See `0441-*`. (2026-08-06)
-
-**#438** — `native_orchestration_tiers` (x2) grep a `multi-tier` marker that only the NUTTX board
-emits; the native/linux board prints the generic `NullNodeRuntime` fallback instead
-(`nros-board-linux/src/lib.rs:334`), so a native multi-tier binary can never satisfy the assertion.
-Marker added to nuttx in `f28ebc379` and never mirrored. Same class as archived 0157/0164 — greps
-want `nros_tests::output::*` constants, not literals. Decide whether the board should say it or the
-test should ask differently. See `0438-*`. (2026-08-06)
 
 **#422** — TRIAGE INDEX for the runtime E2E failures. **10** on freshly rebuilt fixtures (tier-1
 gates all pass, 1242/1259 tests do). An earlier run said 19 — nine of those were STALE FIXTURES
