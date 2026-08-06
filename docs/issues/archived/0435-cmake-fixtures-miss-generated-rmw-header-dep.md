@@ -1,11 +1,39 @@
 ---
 id: 435
 title: "CMake native fixtures do not depend on generated RMW headers, so a header change leaves a stale binary that a full lane build reports as built"
-status: open
+status: resolved  # superseded by issue 0442, fixed 2026-08-06 in 2e333c068
 type: bug
 area: build
-related: [issue-0196, phase-337]
+related: [issue-0196, issue-0442, phase-337]
 ---
+
+## RESOLVED — superseded by issue 0442, and this filing's cause was WRONG
+
+Fixed by `2e333c068` ("the regenerated-header exemption was missing from the
+probe's walk arm"), filed independently as **issue 0442** by someone hitting the
+same symptom.
+
+**The diagnosis below is incorrect and is kept only as a record.** This says the
+CMake graph fails to depend on the generated RMW header. It is not a missing
+dependency at all: `zpico.h` is generated IN PLACE by `zpico-sys`'s own build
+script and committed, so declaring it an input of its own producer would loop.
+
+The real defect is one level over. `cmake_dep_info_newer_source` has TWO arms —
+the ninja `-t deps` loop and the `zpico_c_source_newer` recursive walk — and the
+`REGENERATED_INPLACE_HEADERS` exemption was applied to the loop but not the
+walk. `zpico.h` is in that exemption list and lives inside the walked tree, so
+the walk reported exactly what the loop was written to ignore. Issue 0196's rule
+one layer in: a guard whose coverage is narrower than the rule it enforces.
+
+That also explains what this filing found confusing — that rebuilding cleared it
+and later builds brought it back. The header is cbindgen output whose mtime moves
+whenever a different feature set is built, without a byte changing.
+
+The "silent UB" worry below does not survive either: a SEMANTIC change to these
+headers implies an edited `.rs` source or `cbindgen.toml`, both of which are
+`rerun-if-changed` inputs of `zpico-sys`, so cargo rebuilds and the binary is
+newer regardless. Only the timestamp-without-content case was ever being
+reported, and that is precisely the false positive the exemption exists for.
 
 ## Symptom
 
