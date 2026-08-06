@@ -29,6 +29,8 @@
 
 // Application modules
 mod config;
+/// phase-338 W7 — `log` -> semihosting bridge, reachable from BOTH boot paths.
+mod log_bridge;
 mod error;
 // Phase 244.D1 enabler — `nros_platform::BoardEntry` for `nros::main!()`.
 // Behind a feature so the legacy `run(Config, closure)` consumers don't pull

@@ -22,10 +22,8 @@ use nros::{
     Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
     NodeResult, TickCtx,
 };
-use nros_log::{Logger, nros_info};
 use std_msgs::msg::String as StringMsg;
 
-static LOGGER: Logger = Logger::new("listener");
 
 pub struct ListenerNode;
 
@@ -34,11 +32,10 @@ impl Node for ListenerNode {
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
         node.create_subscription_for_callback_name::<StringMsg>("on_message", "/chatter")?;
         // Preserve the old example's startup marker exactly.
-        nros_info!(&LOGGER, "Waiting for messages on /chatter...");
+        log::info!("Waiting for messages on /chatter...");
         Ok(())
     }
 }
@@ -53,7 +50,7 @@ impl ExecutableNode for ListenerNode {
             && let Ok(msg) = ctx.message::<StringMsg>()
         {
             // Preserve the old example's per-message marker exactly.
-            nros_info!(&LOGGER, "I heard: [{}]", msg.data);
+            log::info!("I heard: [{}]", msg.data);
         }
     }
 

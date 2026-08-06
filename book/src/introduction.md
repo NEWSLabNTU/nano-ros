@@ -64,6 +64,15 @@ When a project grows beyond one node, continue with
   communication), XRCE-DDS (agent-based), or Cyclone DDS (RTPS
   wire-compatible with stock ROS 2) at compile time. Same application
   code regardless of backend.
+- **The same source runs on every supported target** — a node body written for
+  one platform compiles unchanged on the others; what differs is build
+  configuration (`Cargo.toml`, `.cargo/config.toml`, `CMakeLists.txt`), not the
+  code you write. This is asserted, not asserted-about: the
+  `example_portability` test normalizes every platform's copy of each example
+  and fails if any two differ, so the claim is checked on every run rather than
+  maintained by hope. Two execution models are declared exceptions with written
+  reasons — bare-metal deferred dispatch, and Zephyr's component shape — and the
+  test names them explicitly rather than hiding them.
 - **Rust-first with C API** — the core is written in Rust for memory safety
   and ergonomics, with a thin C FFI (Foreign Function Interface) layer
   following rclc conventions.

@@ -12,10 +12,8 @@ use nros::{
     Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
     NodeResult, TickCtx,
 };
-use nros_log::{Logger, nros_info};
 use std_msgs::msg::String as StringMsg;
 
-static LOGGER: Logger = Logger::new("serial_listener");
 
 pub struct SerialListenerNode;
 
@@ -24,12 +22,11 @@ impl Node for SerialListenerNode {
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("serial_listener"))?;
         node.create_subscription_for_callback_name::<StringMsg>("on_message", "/chatter")?;
-        nros_info!(&LOGGER, "Subscribing to /chatter (std_msgs/String)");
-        nros_info!(&LOGGER, "Subscriber declared");
-        nros_info!(&LOGGER, "Waiting for messages...");
+        log::info!("Subscribing to /chatter (std_msgs/String)");
+        log::info!("Subscriber declared");
+        log::info!("Waiting for messages...");
         Ok(())
     }
 }
@@ -43,7 +40,7 @@ impl ExecutableNode for SerialListenerNode {
         if callback.as_str() == "on_message"
             && let Ok(msg) = ctx.message::<StringMsg>()
         {
-            nros_info!(&LOGGER, "I heard: [{}]", msg.data);
+            log::info!("I heard: [{}]", msg.data);
         }
     }
 

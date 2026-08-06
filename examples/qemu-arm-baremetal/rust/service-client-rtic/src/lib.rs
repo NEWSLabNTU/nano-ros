@@ -19,10 +19,8 @@ use nros::{
     Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
     TimerDuration,
 };
-use nros_log::{Logger, nros_info};
 
 // Diagnostics route through `nros-log`.
-static LOGGER: Logger = Logger::new("add_two_ints_client");
 
 /// AddTwoInts service client — issues one fixed `(2, 3)` request.
 pub struct AddTwoIntsClient;
@@ -31,7 +29,6 @@ impl Node for AddTwoIntsClient {
     const NAME: &'static str = "add_two_ints_client";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("add_two_ints_client"))?;
         let _client = node.create_service_client_for_name::<AddTwoInts>("/add_two_ints")?;
         let _timer =
@@ -78,7 +75,7 @@ impl ExecutableNode for AddTwoIntsClient {
         if let Ok(resp) = ctx
             .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req)
         {
-            nros_info!(&LOGGER, "Result of add_two_ints: {}", resp.sum);
+            log::info!("Result of add_two_ints: {}", resp.sum);
             state.done = true;
         }
     }

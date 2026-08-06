@@ -47,7 +47,9 @@ heapless = "0.8"
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board boot scaffold.
-nros-log = { version = "*", default-features = false }
+# phase-338 W7 — one facade in user source: the body logs through `log`,
+# and the board bridges it to semihosting on BOTH boot paths.
+log = { version = "0.4", default-features = false }
 # RTIC board entry: brings up hardware + network, opens the executor, builds the
 # RTIC dispatch runtime consumed by the generated `#[rtic::app]`.
 # phase-337 W6.a — the RTIC entry surface is the base board crate's `rtic`

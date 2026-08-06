@@ -1262,21 +1262,43 @@ W7 to remove properly.
 W1 first is the load-bearing choice: it is cheap, it stands alone, and without it
 every later wave is unverifiable and every fold is a leap.
 
-## Acceptance
+## Acceptance — all met (2026-08-06)
 
-- [ ] The gate exists and passes, with every exception carrying a written reason.
-- [ ] `rust/talker` and `rust/listener` are ONE body **per group** — A, B and C —
-      where today group A alone is split across 4 bodies plus 2 near-misses.
-      Three groups is the honest target; one is not.
-- [ ] No example source contains `force_link_backend!`, `*_app_main!` or
-      `extern crate <board> as _` — the generated entry owns all of it.
-- [ ] A `thumbv7em-none-eabihf` FreeRTOS build does not panic.
-- [ ] No cmake or build-script decision branches on a board *name* where a
-      capability or platform is what it means.
-- [ ] ONE logging facade appears in node source, and no board's choice of sink
-      decides which one an example may use (W7).
-- [ ] The book can state "the same source runs on every supported target" with the
-      gate as its citation.
+- [x] The gate exists and passes, with every exception carrying a written reason.
+      **Stronger than asked: there are no exceptions left.** 18 of 18
+      `(lang, program, group)` triples byte-identical, 0 divergence entries,
+      down from 41 at baseline.
+- [x] `rust/talker` and `rust/listener` are ONE body **per group**. Group A now
+      spans SEVEN platforms (esp32 joined it — W3.c found it was never a group-B
+      member), B is `qemu-arm-baremetal` alone, C is Zephyr alone.
+- [x] ~~No example source contains `force_link_backend!`, `*_app_main!` or
+      `extern crate <board> as _`~~ — **REWORDED, and the reason matters.** That
+      criterion was written for option (a) (every platform gains an `-entry`
+      package). The maintainer chose **option (b)**: node logic and boot glue
+      live in separate FILES, and the glue keeps its ceremony because a
+      staticlib target really does need an `app_main` symbol a hosted binary
+      does not. The honest criterion is *no LOGIC file contains ceremony*, which
+      `example_portability::ceremony_stays_out_of_node_logic` enforces and which
+      passes. 13 glue files legitimately carry it.
+- [x] A `thumbv7em-none-eabihf` FreeRTOS build does not panic — `[arch.cortex-m7]`
+      admits it, and `arch_flags::freertos_lwip_resolves_both_declared_arches`
+      asserts it by name ("the M7 blocker"). Verified as a TEST rather than a
+      one-off build, so it stays true; confirmed reachable from the default
+      sweep (`nextest -E 'test(freertos_lwip_resolves)'` selects it).
+- [x] No cmake or build-script decision branches on a board *name* where a
+      capability or platform is what it means (W5).
+- [x] ONE logging facade appears in node source, and no board's choice of sink
+      decides which one an example may use. **`log` everywhere: zero `src/lib.rs`
+      node bodies use `nros_log`.** Completing this needed the bridge moved out
+      of the `board-entry`-gated module into an ungated one, because the RTIC
+      boot path could not reach it — an RTIC body written against `log::info!`
+      would have compiled and printed NOTHING, which is precisely the silent
+      failure W7.b names. Verified by booting the converted RTIC talker:
+      `Publishing: 'Hello World: N'`. The 15 Application-shaped `main.rs` demos
+      still use `nros_log` and should — one of them IS the `nros_log` demo, and
+      `nros_log` remains the platform/ABI layer beneath `log`.
+- [x] The book states "the same source runs on every supported target" with the
+      gate as its citation (`book/src/introduction.md`, Key Features).
 
 ## Risks
 

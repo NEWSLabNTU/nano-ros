@@ -16,10 +16,8 @@ use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, Fi
 use nros::{
     Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
-use nros_log::{Logger, nros_info};
 
 // Diagnostics route through `nros-log`.
-static LOGGER: Logger = Logger::new("fibonacci_action_client");
 
 /// Fibonacci action client — declares the client, then issues a single goal
 /// (`order = 10`) on the first `tick`.
@@ -29,7 +27,6 @@ impl Node for FibonacciClient {
     const NAME: &'static str = "fibonacci_action_client";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_client"))?;
         let _client = node.create_action_client_with_callbacks_for_name::<Fibonacci>(
             "/fibonacci",
@@ -58,16 +55,12 @@ impl ExecutableNode for FibonacciClient {
         match callback.as_str() {
             "on_feedback" => {
                 if let Ok(f) = ctx.message::<FibonacciFeedback>() {
-                    nros_info!(
-                        &LOGGER,
-                        "Next number in sequence received: {:?}",
-                        f.sequence
-                    );
+                    log::info!("Next number in sequence received: {:?}", f.sequence);
                 }
             }
             "on_result" => {
                 if let Ok(r) = ctx.message::<FibonacciResult>() {
-                    nros_info!(&LOGGER, "Result received: {:?}", r.sequence);
+                    log::info!("Result received: {:?}", r.sequence);
                 }
             }
             _ => {}
@@ -84,9 +77,9 @@ impl ExecutableNode for FibonacciClient {
             .send_goal_for_name::<FibonacciGoal, 32>("/fibonacci", &goal)
             .is_ok()
         {
-            nros_info!(&LOGGER, "Sending goal");
+            log::info!("Sending goal");
             state.sent = true;
-            nros_info!(&LOGGER, "Goal accepted by server, waiting for result");
+            log::info!("Goal accepted by server, waiting for result");
         }
         // On a `Runtime` stub error, `sent` stays false — the next tick retries.
     }

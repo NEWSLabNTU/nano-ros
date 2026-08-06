@@ -16,10 +16,8 @@ use nros::{
     Callback, CallbackCtx, CancelResponse, ExecutableNode, GoalId, GoalResponse, GoalStatus, Node,
     NodeContext, NodeOptions, NodeResult, TickCtx,
 };
-use nros_log::{Logger, nros_info};
 
 // Diagnostics route through `nros-log`.
-static LOGGER: Logger = Logger::new("fibonacci_action_server");
 
 /// Fibonacci action server — accepts non-negative goal orders and completes
 /// each accepted goal with a canonical Fibonacci sequence.
@@ -29,7 +27,6 @@ impl Node for FibonacciServer {
     const NAME: &'static str = "fibonacci_action_server";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_server"))?;
         let _action = node.create_action_server_for_name_with_callbacks::<Fibonacci>(
             "/fibonacci",
@@ -37,7 +34,7 @@ impl Node for FibonacciServer {
             "on_cancel",
             "on_accepted",
         )?;
-        nros_info!(&LOGGER, "Waiting for action goals...");
+        log::info!("Waiting for action goals...");
         Ok(())
     }
 }
@@ -55,7 +52,7 @@ impl ExecutableNode for FibonacciServer {
             "on_goal" => {
                 let response = match ctx.message::<FibonacciGoal>() {
                     Ok(goal) if goal.order >= 0 => {
-                        nros_info!(&LOGGER, "Received goal request with order {}", goal.order);
+                        log::info!("Received goal request with order {}", goal.order);
                         GoalResponse::AcceptAndExecute
                     }
                     _ => GoalResponse::Reject,
@@ -88,7 +85,7 @@ impl ExecutableNode for FibonacciServer {
             // so emit a fixed order = 10 sequence incrementally as feedback,
             // then complete the goal.
             const ORDER: i32 = 10;
-            nros_info!(&LOGGER, "Executing goal");
+            log::info!("Executing goal");
             let mut seq: heapless::Vec<i32, 64> = heapless::Vec::new();
             for i in 0..=ORDER {
                 let next = match i {
@@ -111,7 +108,7 @@ impl ExecutableNode for FibonacciServer {
                     )
                     .is_ok()
                 {
-                    nros_info!(&LOGGER, "Publish feedback");
+                    log::info!("Publish feedback");
                 }
             }
 
@@ -125,7 +122,7 @@ impl ExecutableNode for FibonacciServer {
                 )
                 .is_ok()
             {
-                nros_info!(&LOGGER, "Goal succeeded");
+                log::info!("Goal succeeded");
             }
             *state = state.wrapping_add(1);
         }

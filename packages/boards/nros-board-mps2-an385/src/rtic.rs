@@ -214,6 +214,12 @@ fn init_with_config(config: Config, deploy: Option<&DeployOverlay>) -> (RticBoot
     // record was silently dropped.
     nros_log::init(nros_log::sinks::default());
 
+    // phase-338 W7 — bridge `log` on the RTIC path too, not just `entry::boot`.
+    // Without this an RTIC node body written against `log::info!` compiles and
+    // prints NOTHING, which is the silent-failure mode W7.b exists to avoid:
+    // the facade must not depend on which of the board's two boot paths ran.
+    crate::log_bridge::install_semihosting_log_bridge();
+
     // Phase 289 (#178 layer 3) — arm CMSDK TIMER0 as the periodic tick that
     // wakes the `wfi` idle-yield installed by `on_interrupts_live`. The
     // proc-macro emits a `#[task(binds = TIMER0, priority = 2)]` handler

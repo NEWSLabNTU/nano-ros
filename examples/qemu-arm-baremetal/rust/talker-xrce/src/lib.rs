@@ -13,10 +13,8 @@ use nros::{
     Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeResult,
     TickCtx, TimerDuration,
 };
-use nros_log::{Logger, nros_error, nros_info};
 use std_msgs::msg::String as StringMsg;
 
-static LOGGER: Logger = Logger::new("talker_xrce");
 
 pub struct XrceTalker;
 
@@ -25,7 +23,6 @@ impl Node for XrceTalker {
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(nros::NodeOptions::new("talker_xrce"))?;
         node.create_publisher_for_topic::<StringMsg>("/chatter")?;
         node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
@@ -48,8 +45,8 @@ impl ExecutableNode for XrceTalker {
             let mut msg = StringMsg::default();
             let _ = write!(msg.data, "Hello World: {}", *state);
             match ctx.publish_to_topic::<StringMsg, 64>("/chatter", &msg) {
-                Ok(()) => nros_info!(&LOGGER, "Publishing: '{}'", msg.data),
-                Err(e) => nros_error!(&LOGGER, "Publish failed: {:?}", e),
+                Ok(()) => log::info!("Publishing: '{}'", msg.data),
+                Err(e) => log::error!("Publish failed: {:?}", e),
             }
         }
     }

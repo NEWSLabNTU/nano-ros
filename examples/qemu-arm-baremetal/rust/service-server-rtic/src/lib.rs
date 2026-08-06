@@ -12,10 +12,8 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
-use nros_log::{Logger, nros_info};
 
 // Diagnostics route through `nros-log`.
-static LOGGER: Logger = Logger::new("add_two_ints_server");
 
 /// AddTwoInts service server — sums the two request ints on every call.
 pub struct AddTwoIntsServer;
@@ -24,13 +22,12 @@ impl Node for AddTwoIntsServer {
     const NAME: &'static str = "add_two_ints_server";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("add_two_ints_server"))?;
         let _srv = node.create_service_server_for_name_with_callback::<AddTwoInts>(
             "/add_two_ints",
             "on_add",
         )?;
-        nros_info!(&LOGGER, "Waiting for service requests...");
+        log::info!("Waiting for service requests...");
         Ok(())
     }
 }
@@ -47,8 +44,8 @@ impl ExecutableNode for AddTwoIntsServer {
         if callback.as_str() == "on_add"
             && let Ok(req) = ctx.message::<AddTwoIntsRequest>()
         {
-            nros_info!(&LOGGER, "Incoming request");
-            nros_info!(&LOGGER, "a: {} b: {}", req.a, req.b);
+            log::info!("Incoming request");
+            log::info!("a: {} b: {}", req.a, req.b);
             let resp = AddTwoIntsResponse { sum: req.a + req.b };
             let _ = ctx.reply::<AddTwoIntsResponse, 64>(&resp);
             *state = state.wrapping_add(1);

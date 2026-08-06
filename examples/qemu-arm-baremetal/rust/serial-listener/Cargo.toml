@@ -43,7 +43,9 @@ nros-board-mps2-an385 = { version = "*", default-features = false, features = ["
 nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board BoardEntry boot scaffold — this crate only registers its Logger handle.
-nros-log = { version = "*", default-features = false }
+# phase-338 W7 — one facade in user source: the body logs through `log`,
+# and the board bridges it to semihosting on BOTH boot paths.
+log = { version = "0.4", default-features = false }
 # Generated message types (from package.xml via `nros generate-rust`).
 std_msgs = { path = "generated/std_msgs", default-features = false }
 
