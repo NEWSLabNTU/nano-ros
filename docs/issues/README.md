@@ -247,6 +247,20 @@ an `rmeta`/`.o` path. RESOLVED by recognising a cargo build dir instead of listi
 `CACHEDIR.TAG` plus a `target-` prefix for the not-yet-built case. Listing the dirs would have been
 the hand-maintained-exclude-list shape issue 0287 already replaced. See `archived/0416-*`.)
 
+**#448** — XRCE action client: `accepted=true got_feedback=false`, deterministic over 3 retries. The
+goal request/reply AND the terminal result both arrive (the wait for `Result received:` succeeded, so
+the output is non-empty) — only the feedback assertion fails, and it demands the literal
+`"Next number in sequence received: [0, 1"`. Either the feedback TOPIC is broken while both services
+work, or the grep encodes a payload prefix that changed (the #0429 / archived 0157 class, which has
+already caused two false diagnoses here). Rule out the grep first. See `0448-*`. (2026-08-06)
+
+**#447** — `realtime_tiers` native/rust: the 10 ms high tier publishes NOTHING (`ctrl_max` 0, which is
+`unwrap_or(0)` = nothing parsed) while the 100 ms low tier delivers 5 samples and anchors the test.
+Distinct from #0438 in the same file, which is a boot-path marker assertion — this fails after the
+binary is running. Four candidates (tier not scheduled / bound wrong / observer starved / parse
+failure) are not yet separated; the failure message prints counters but not the text they came from,
+so dumping the `/ctrl` output is the first step. See `0447-*`. (2026-08-06)
+
 **#446** — the same crate is compiled ~21x across leaf target dirs: 106 `nros-core` rlibs, **5**
 distinct `-C metadata` identities (45 of them the same compilation). Measured the exact
 incompatibility factors — profile, feature set, RUSTFLAGS, and **explicit `--target` even for the
