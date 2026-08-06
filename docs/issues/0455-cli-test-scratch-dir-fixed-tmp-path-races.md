@@ -63,12 +63,19 @@ Scope the fallback to the process:
 });
 ```
 
-Applied to **both** sites that carried this exact idiom — and they shared the
-same `nros-cli-core-tests` base name, so they could collide with each other as
-well as across runs:
+Applied to **three** sites carrying this exact idiom — all sharing the same
+`nros-cli-core-tests` base name, so they could collide with each other as well
+as across runs:
 
 - `nros-cli-core/src/cmd/codegen_cyclonedds_descriptors.rs`
 - `nros-cli-core/src/cmd/codegen_system.rs`
+- `nros-cli-core/src/orchestration/nros_config.rs` — **added 2026-08-06.** The
+  first pass said "both sites that carried this exact idiom" and there were
+  three; the third is byte-identical, down to the base name and the opening
+  `remove_dir_all`. It was found by running the sweep this issue already
+  prescribes below, which is the whole point of writing the sweep down: a fix
+  that lands on the sites you happened to look at is the issue-0196 shape, and
+  this issue reproduced it in its own first pass.
 
 ## Residual — the wider class
 

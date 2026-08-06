@@ -23,7 +23,6 @@ use nros::{
 };
 use std_msgs::msg::String as StringMsg;
 
-
 pub struct Talker;
 
 impl Node for Talker {

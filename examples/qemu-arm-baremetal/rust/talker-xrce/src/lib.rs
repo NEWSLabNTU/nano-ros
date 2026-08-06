@@ -15,7 +15,6 @@ use nros::{
 };
 use std_msgs::msg::String as StringMsg;
 
-
 pub struct XrceTalker;
 
 impl Node for XrceTalker {

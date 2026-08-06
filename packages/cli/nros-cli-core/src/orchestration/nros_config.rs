@@ -682,9 +682,22 @@ mod tests {
     /// Build a throwaway directory under `target/` per test (cargo cleans
     /// `target/` between runs and the path is unique per test name).
     fn scratch_dir(test: &str) -> PathBuf {
+        // issue 0455 — `CARGO_TARGET_TMPDIR` is set for INTEGRATION tests only,
+        // and `check-cli-tests` runs these as `--lib`, so the fallback is what
+        // runs. Scope it to the process: the fixed path is shared by every
+        // concurrent run on the host (a second checkout, a parallel agent
+        // session, CI beside a local run), and `scratch_dir` opens with
+        // `remove_dir_all`, so one run deletes another's scratch mid-test.
+        //
+        // 0455 fixed the two OTHER copies of this idiom and recorded that it had
+        // fixed "both sites that carried it". There were three — this one, found
+        // by the sweep the issue itself prescribes
+        // (`git grep -n 'temp_dir()' -- packages/cli | grep -v 'process::id()'`).
         let base = std::env::var_os("CARGO_TARGET_TMPDIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| std::env::temp_dir().join("nros-cli-core-tests"));
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("nros-cli-core-tests-{}", std::process::id()))
+            });
         let dir = base.join(format!("nros_config_{test}"));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("scratch dir");

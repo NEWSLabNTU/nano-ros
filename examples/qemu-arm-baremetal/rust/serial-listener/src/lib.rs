@@ -14,7 +14,6 @@ use nros::{
 };
 use std_msgs::msg::String as StringMsg;
 
-
 pub struct SerialListenerNode;
 
 impl Node for SerialListenerNode {

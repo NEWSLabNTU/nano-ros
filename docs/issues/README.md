@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#457** — a leaf `.cargo/config.toml` is a hand-kept COPY of `nros-board.toml`'s `cargo_config`, not
+user-specific content. Measured: of 46 tracked leaf configs under `examples/`, **39 are deploy-bound**, and
+NONE patches a generated msg crate — what they carry (`[build] target`, `build-std`, linker rustflags,
+`[env]`, board path patches) is declared verbatim in the board descriptor. `check-board-cargo-config-applied`
+states the contract: "the leaf file is TRACKED and `nros sync` leaves it alone, so the two are kept in step
+by hand" — and that gap caused BOTH 0440 (~3680 undefined libc refs) and 0444's sibling failure. Proposal:
+`nros sync` renders it and it gets gitignored, like `nros-patch.toml` and SystemModels already are; the 7
+non-deploy-bound leaves decide whether the tracking gate inverts or just narrows. See `0457-*`. (2026-08-06)
+
 Recently resolved (2026-08-06): **#444** — every FreeRTOS **Rust** cell (pubsub, service AND action —
 the issue's action-only scope came from one run and was wrong) booted, printed "Network ready." and
 stalled forever. Reproduced on main with fresh fixtures, so not branch-specific. TWO faults, both from
@@ -66,15 +75,6 @@ was dropped in its favour. All NINE FreeRTOS cells pass. Still open underneath: 
 Rust lane on a SEPARATE network plan from C/C++ on the same board, and its own comment calls unifying
 them follow-up work — a lane whose firmware config and launcher are maintained apart is a lane where
 they can silently stop matching. See `archived/0444-*`.
-
-Recently resolved (2026-08-06): **#457** — a leaf `.cargo/config.toml` is a hand-kept COPY of `nros-board.toml`'s `cargo_config`, not
-user-specific content. Measured: of 46 tracked leaf configs under `examples/`, **39 are deploy-bound**, and
-NONE patches a generated msg crate — what they carry (`[build] target`, `build-std`, linker rustflags,
-`[env]`, board path patches) is declared verbatim in the board descriptor. `check-board-cargo-config-applied`
-states the contract: "the leaf file is TRACKED and `nros sync` leaves it alone, so the two are kept in step
-by hand" — and that gap caused BOTH 0440 (~3680 undefined libc refs) and 0444's sibling failure. Proposal:
-`nros sync` renders it and it gets gitignored, like `nros-patch.toml` and SystemModels already are; the 7
-non-deploy-bound leaves decide whether the tracking gate inverts or just narrows. See `0457-*`. (2026-08-06)
 
 **#450** — the group-A `action-server` example body publishes a FIXED `[0, 1, 1]` instead of computing the
 sequence, and phase-338 W3.d's convergence deleted the riscv64 copy that did the real iterative Fibonacci.
@@ -97,8 +97,8 @@ to be hand-reverted twice during phase-338). The repo already pins `clang-format
 for the C→Rust direction for exactly this reason; the Rust→C direction has no pin.
 See `0452-*`. (2026-08-06)
 
-**#445** — a staleness verdict is TERMINAL and self-explaining, so it
-absorbs whatever the fixture would have done at runtime. Demonstrated: issue 0442 made the
+Recently resolved (2026-08-06): **#445** — a staleness verdict is TERMINAL and self-explaining, so
+it absorbs whatever the fixture would have done at runtime. Demonstrated: issue 0442 made the
 freertos/threadx C/C++ cells read stale; fixing it made them run and immediately exposed issue 0444, a
 real FreeRTOS Rust runtime failure that had been sitting behind it. I hit the reader-side half too —
 asked why those cells were stale I gave a plausible, consistent, WRONG answer, because the verdict
@@ -303,7 +303,7 @@ session, CI beside a local run) then race one directory — one exec's the stub 
 other truncates it (`Text file busy`), and `remove_dir_all` deletes the other's scratch. Reads as a
 codegen regression, passes 3/3 solo. Fixed in the two sites carrying that exact idiom (which shared a
 base name with each other); ~9 other CLI scratch paths lack a pid and want one shared helper rather
-than a tenth spelling. See `0455-*`. (2026-08-06)
+than a tenth spelling. The first pass said it had fixed "both sites that carried this idiom" — the sweep it prescribes found a THIRD, `orchestration/nros_config.rs`, byte-identical down to the base name (fixed 2026-08-06). See `0455-*`. (2026-08-06)
 
 **#448** — XRCE action client: `accepted=true got_feedback=false`, deterministic over 3 retries. The
 goal request/reply AND the terminal result both arrive (the wait for `Result received:` succeeded, so

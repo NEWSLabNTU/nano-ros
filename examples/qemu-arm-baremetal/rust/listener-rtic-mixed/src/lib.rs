@@ -24,7 +24,6 @@ use nros::{
 };
 use std_msgs::msg::String as StringMsg;
 
-
 pub struct ListenerNode;
 
 impl Node for ListenerNode {
