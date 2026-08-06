@@ -221,6 +221,72 @@ the probe defect was hiding a real one. Filed as issue 0444, unattributed: this
 branch touches nothing in the FreeRTOS runtime, and a main comparison is the
 next step.
 
+## Close-out (2026-08-06)
+
+**Phase COMPLETE.** W1, W2 and W3 all done, and the acceptance re-verified on
+`main` after the branch landed:
+
+```
+$ just nuttx build-fixtures        # both arches, one invocation, riscv last
+RC=0
+$ cargo nextest run … test_rtos_action_e2e::platform_2_Platform__Nuttx
+3 tests run: 3 passed (2 flaky)    # zero STALE verdicts
+$ just fixture-staleness           # no non-running coordinate
+$ just check-nuttx-links-snapshot  # OK
+```
+
+Three things happened after the body above was written, and it is wrong about
+all three until corrected here.
+
+### Issue 0444 is resolved, and it was not what this phase suspected
+
+The W3 note says `Freertos::Rust` was "unattributed: this branch touches nothing
+in the FreeRTOS runtime, and a main comparison is the next step." The comparison
+was run: it fails on `main` too, and on **all three** variants (pubsub, service,
+action), not just action. Two faults, both from phase-338 W2 — a Rust lane
+carved out of the board-net launcher whose firmware had since moved to the
+static plan, and two images deriving one zenoh ZID from an identical `(ip, mac)`
+seed. Fixed upstream by `07faa2383`. Nothing to do with this phase, which is
+what the note suspected but could not show.
+
+### Issue 0442's fix was itself incomplete
+
+The Correction section below leans on 0442 being fixed. It was fixed on the arm
+that reported it: `cmake_dep_info_newer_source` still skipped in-place headers
+but not cargo `OUT_DIR` products, and `newest_source_after` the reverse — a
+third divergence waiting for a third symptom. Closed properly by issue 0445,
+which gave the exemption rule ONE spelling and made every staleness verdict
+report what it examined and exempted.
+
+### The vectortab risk was real, and it bit through this phase's fallback
+
+The Risks list guesses "the vectortab may not be droppable". The actual failure
+was the opposite shape and worth recording, because this phase supplied the
+mechanism.
+
+`snapshot_or_tree` resolves a path from the per-arch snapshot and falls back to
+the live-tree spelling. `nuttx_image_link` defaults `NUTTX_VECTORTAB` to
+`arch/arm/src/arm_vectortab.o`, and two of the three riscv recipes never
+exported the riscv env that opts out of it. The riscv snapshot correctly has no
+`startup/arm_vectortab.o`, so the fallback reached into the live tree and handed
+the riscv build the ARM object that the previous ARM build had left there. `ar`
+does not check machine types; the link then failed `cannot find
+-lnros_nuttx_boot`, because `ld` skips an incompatible archive and looks no
+further.
+
+Filed and fixed as issue 0456 (one `scripts/nuttx/riscv-env.sh`, plus an ELF
+`e_machine` check in `run_image_link`). **This phase did not introduce it** —
+the arm default and the live-tree fallback both predate it — but it made the
+ingredients reliably co-present: before, whether the arm object survived a riscv
+reconfigure was luck; after, both arches build in sequence and the object is
+simply always there.
+
+The general lesson for the fallback, which stays: a per-arch resolver whose
+miss-path reaches into a SHARED location can hand one architecture another's
+artifact. The snapshot is arch-keyed; the fallback is not. It is a compatibility
+path for half-migrated trees, and issue 0456 is what it costs when something
+else forgets to say which arch it is.
+
 ## Risks
 
 - **Blast radius.** This changes the link path for every NuttX fixture on both
