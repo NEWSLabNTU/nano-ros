@@ -8,10 +8,9 @@
 use std::{env, fs, path::PathBuf};
 
 fn main() {
-    let gen_dir = PathBuf::from(
-        env::var("NROS_PX4_BRIDGE_GEN")
-            .expect("NROS_PX4_BRIDGE_GEN must point at the `nros generate-px4-msgs --lang cpp` output"),
-    )
+    let gen_dir = PathBuf::from(env::var("NROS_PX4_BRIDGE_GEN").expect(
+        "NROS_PX4_BRIDGE_GEN must point at the `nros generate-px4-msgs --lang cpp` output",
+    ))
     .join("px4_msgs")
     .join("msg");
     println!("cargo:rerun-if-env-changed=NROS_PX4_BRIDGE_GEN");
