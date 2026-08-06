@@ -2184,6 +2184,15 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
         // e.g. a low-tier `/telem` publisher that never ran. Mirror
         // `nros_cpp_init`'s init.
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
+        // Issue 0436 — stamp the handle tag LAST, exactly as `nros_cpp_init` and
+        // `nros_cpp_init_multi` do: the tag means "fully initialised", so no
+        // partially-built context can ever pass `cpp_ctx_checked`. This is the
+        // THIRD construction site; missing it here made every borrowed-tier
+        // context (C/C++ multi-tier entries) fail validation at the checked
+        // accessors — the same blast radius as the 0387 `in_dispatch` bug above,
+        // and for the same reason: a field this struct's readers require was
+        // initialised at two of the three places that build one.
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
     }
     NROS_CPP_RET_OK
 }
