@@ -1,4 +1,4 @@
-include = ["../../../../../nros-patch.toml", "nros-managed-patch.toml"]
+include = ["../../../../../nros-patch.toml"]
 [build]
 target = "riscv64gc-unknown-none-elf"
 
@@ -14,4 +14,10 @@ NETX_CONFIG_DIR = { value = "../../../../packages/boards/nros-board-threadx-qemu
 THREADX_CONFIG_DIR = { value = "../../../../packages/boards/nros-board-threadx-qemu-riscv64/config", relative = true, force = true }
 THREADX_PORT = { value = "risc-v64/gnu", force = true }
 THREADX_EXTRA_INCLUDES = { value = "../../../../third-party/threadx/kernel/ports/risc-v64/gnu/example_build/qemu_virt", relative = true, force = true }
+
+[patch.crates-io]
+nros-board-threadx-qemu-riscv64 = { path = "../../../../packages/boards/nros-board-threadx-qemu-riscv64" }  # nros-managed
+nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
+nros-rmw-cyclonedds-sys = { path = "../../../../packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys" }  # nros-managed
+nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh" }  # nros-managed
 

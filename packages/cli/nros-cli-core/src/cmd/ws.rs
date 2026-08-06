@@ -3230,12 +3230,20 @@ fn write_patch_config(
     // Splitting on that seam gives both: `config.toml` keeps only authored
     // content plus an `include`, and everything sync owns sits beside it in a
     // file git never sees.
+    // Issue 0463 — only the `generated/` rows are host-specific, so only they
+    // go to the sidecar. Everything else is an in-repo relative path and stays
+    // in the tracked config, where a clone can use it without running sync.
+    let generated: Vec<(String, String)> = managed
+        .iter()
+        .filter(|(_, rel)| is_generated_path(rel))
+        .cloned()
+        .collect();
     let managed_path = cfg_dir.join(MANAGED_PATCH_FILE);
-    if managed.is_empty() || !sidecar {
-        // No managed entries — leave no stale file behind.
+    if generated.is_empty() || !sidecar {
+        // Nothing host-specific — leave no stale file behind.
         let _ = std::fs::remove_file(&managed_path);
     } else {
-        let body = render_managed_patch_file(managed);
+        let body = render_managed_patch_file(&generated);
         let tmp = managed_path.with_file_name(format!(
             ".{MANAGED_PATCH_FILE}.nros-sync-tmp.{}",
             std::process::id()
@@ -3268,6 +3276,14 @@ const MANAGED_PATCH_FILE: &str = "nros-managed-patch.toml";
 /// No `# nros-managed` decor markers here — the whole FILE is managed, so the
 /// per-key tag that distinguished sync's rows from user rows inside a shared
 /// table has nothing left to distinguish.
+/// Issue 0463 — a managed row is host-specific iff its path points into a
+/// `generated/` tree: those crates are produced per host by `nros sync` from the
+/// consumer's ament install. Every other row is an in-repo crate at a relative
+/// path that is the same in any checkout.
+fn is_generated_path(rel: &str) -> bool {
+    rel.split(['/', '\\']).any(|seg| seg == "generated")
+}
+
 fn render_managed_patch_file(managed: &[(String, String)]) -> String {
     let mut sorted: Vec<(String, String)> = managed.to_vec();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
@@ -3359,14 +3375,18 @@ fn render_patch_config_with(
         // realise. It justified itself with "cargo ignores a missing include
         // SILENTLY"; on cargo 1.97.1 a missing include is a HARD error during
         // manifest parse, so an orphaned entry does not degrade the leaf, it
-        // makes the leaf unreadable. Note this cannot be fixed by dropping the
-        // entry more eagerly: the entry is written into a TRACKED file while
-        // its target is gitignored, so a fresh clone always has the entry and
-        // never the file. Committing the target instead would put the user's
-        // ament-derived crate set in git, which is the churn 0457 removed. The
-        // gap is therefore closed at the seam, by `_require-leaf-includes`,
-        // which says "run `nros sync`" before cargo says anything at all.
-        if sidecar && !managed.is_empty() {
+        // makes the leaf unreadable.
+        //
+        // The entry is therefore written ONLY when this leaf actually has a
+        // host-specific row to put in the sidecar. Rows that are in-repo
+        // (relative paths, identical in every checkout) stay inline in the
+        // tracked config above, so a leaf with no `generated/` dep gets no
+        // sidecar and no include at all, and resolves in a fresh clone with no
+        // sync. What remains behind sync is exactly what sync alone can
+        // produce — the ament-derived crates, which must not be in git.
+        // `_require-leaf-includes` covers the leaves that do need it, saying
+        // "run `nros sync`" before cargo says anything at all.
+        if sidecar && managed.iter().any(|(_, rel)| is_generated_path(rel)) {
             arr.push(MANAGED_PATCH_FILE);
         }
         if arr.is_empty() {
@@ -3406,10 +3426,34 @@ fn render_patch_config_with(
         cio.remove(&k);
     }
 
-    // Out-of-tree consumer: no sidecar, no include — the managed set stays
-    // inline here, tagged as before so the next sync can evict exactly its own.
-    if !sidecar {
-        let mut sorted: Vec<(String, String)> = managed.to_vec();
+    // Which rows live HERE, in the tracked config.
+    //
+    // Issue 0463 — the split is by ORIGIN, not by "sync wrote it". 0457 moved
+    // the whole managed set to the sidecar, which stranded every leaf: the set
+    // is mostly IN-REPO crates (`nros-log`, a board crate, `mps2-an385-pac` —
+    // relative paths that are identical in every checkout), and a clone needs
+    // those to resolve at all. Measured across the tree: 183 in-repo rows vs 88
+    // `generated/` rows.
+    //
+    // Only the `generated/` rows are host-specific: those crates are built by
+    // `nros sync` from the USER's ament install, so a committed row would name
+    // a path no clone has — the rule that already keeps `generated/` itself and
+    // the leaf `Cargo.lock` out of git. Those go to the sidecar; everything
+    // else stays inline and tracked, stable across syncs.
+    //
+    // An out-of-tree consumer keeps EVERYTHING inline: #272 gives it no
+    // `include`, and its config is its own to commit or ignore.
+    let inline: Vec<(String, String)> = if sidecar {
+        managed
+            .iter()
+            .filter(|(_, rel)| !is_generated_path(rel))
+            .cloned()
+            .collect()
+    } else {
+        managed.to_vec()
+    };
+    {
+        let mut sorted = inline;
         sorted.sort_by(|a, b| a.0.cmp(&b.0));
         sorted.dedup_by(|a, b| a.0 == b.0);
         for (name, rel) in &sorted {
@@ -4319,9 +4363,16 @@ version = "*"
         ]);
         let out = render_patch_config("", &managed, None).unwrap();
         let doc: toml_edit::DocumentMut = out.parse().unwrap();
+        // Issue 0463 — the IN-REPO row stays here (a clone needs it to resolve);
+        // only the `generated/` row, which is built per host, goes to the sidecar.
+        let cio_here = doc["patch"]["crates-io"].as_table().unwrap();
         assert!(
-            doc.get("patch").is_none(),
-            "managed entries must not land in config.toml:\n{out}"
+            cio_here.get("nros-core").is_some(),
+            "in-repo row must stay in config.toml:\n{out}"
+        );
+        assert!(
+            cio_here.get("std_msgs").is_none(),
+            "generated row must not stay in config.toml:\n{out}"
         );
         let inc: Vec<&str> = doc["include"]
             .as_array()
@@ -4333,7 +4384,12 @@ version = "*"
 
         // The sidecar holds the entries, alphabetised, with no per-key tag
         // (the whole file is managed, so there is nothing to distinguish).
-        let side = render_managed_patch_file(&managed);
+        let generated: Vec<(String, String)> = managed
+            .iter()
+            .filter(|(_, r)| is_generated_path(r))
+            .cloned()
+            .collect();
+        let side = render_managed_patch_file(&generated);
         let sdoc: toml_edit::DocumentMut = side.parse().unwrap();
         let cio = sdoc["patch"]["crates-io"].as_table().unwrap();
         assert_eq!(
@@ -4341,7 +4397,11 @@ version = "*"
             Some("generated/std_msgs")
         );
         let keys: Vec<&str> = cio.iter().map(|(k, _)| k).collect();
-        assert_eq!(keys, vec!["nros-core", "std_msgs"], "not sorted:\n{side}");
+        assert_eq!(
+            keys,
+            vec!["std_msgs"],
+            "sidecar holds only generated:\n{side}"
+        );
     }
 
     /// Issue 0457 — an older sync wrote its managed keys straight into
@@ -4370,8 +4430,8 @@ std_msgs = { path = \"generated/std_msgs\" }  # nros-managed
     }
 
     /// Issue 0457 — no managed entries ⇒ no include to a file sync did not
-    /// write. cargo ignores a missing `include` SILENTLY, so a dangling one
-    /// would resurface #272's failure mode.
+    /// write. cargo HARD-ERRORS on a missing `include` (issue 0463), so a
+    /// dangling one makes the leaf unparseable, not merely unpatched.
     #[test]
     fn config_writer_drops_sidecar_include_when_managed_set_empties() {
         let existing = format!("include = [\"{MANAGED_PATCH_FILE}\"]\n");
@@ -4507,10 +4567,10 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
             !item_is_nros_managed(cio.get("libc").unwrap()),
             "user libc wrongly tagged:\n{out}"
         );
-        // Issue 0457 — the managed entry belongs to the sidecar now, not here.
+        // Issue 0463 — an IN-REPO managed entry belongs here, tagged.
         assert!(
-            cio.get("nros-core").is_none(),
-            "managed entry written into config.toml:\n{out}"
+            item_is_nros_managed(cio.get("nros-core").expect("in-repo row kept")),
+            "in-repo managed entry missing or untagged:\n{out}"
         );
     }
 
@@ -4548,20 +4608,16 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
             "stale managed std_msgs not evicted:\n{s2}"
         );
         assert!(
-            cio.get("nros-serdes").is_none(),
-            "managed entry written into config.toml:\n{s2}"
+            cio.get("nros-serdes").is_some(),
+            "in-repo managed entry must stay in config.toml:\n{s2}"
         );
         assert!(
             cio.get("libc").is_some(),
             "user libc lost on re-sync:\n{s2}"
         );
-        // The moving part shows up in the sidecar instead.
-        let side = render_managed_patch_file(&mng(&[
-            ("nros-core", "../nros-core"),
-            ("nros-serdes", "../nros-serdes"),
-        ]));
-        assert!(side.contains("nros-serdes"), "new managed missing:\n{side}");
-        assert!(!side.contains("std_msgs"), "stale managed kept:\n{side}");
+        // The host-specific part is what the sidecar carries.
+        let side = render_managed_patch_file(&mng(&[("std_msgs", "generated/std_msgs")]));
+        assert!(side.contains("std_msgs"), "generated row missing:\n{side}");
     }
 
     #[test]
@@ -4706,8 +4762,8 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
         let cio = doc["patch"]["crates-io"].as_table().unwrap();
         assert!(cio.get("libc").is_some(), "user key lost:\n{out}");
         assert!(
-            cio.get("nros-core").is_none(),
-            "managed entry written into config.toml:\n{out}"
+            cio.get("nros-core").is_some(),
+            "in-repo managed entry must stay in config.toml:\n{out}"
         );
 
         // Same input, out-of-tree: merged in place, into the SAME quoted table.

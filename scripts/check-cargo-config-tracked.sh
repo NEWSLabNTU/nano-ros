@@ -116,6 +116,7 @@ while IFS= read -r -d '' cfg; do
     tracked=0
     git ls-files --error-unmatch "$cfg" >/dev/null 2>&1 && tracked=1
 
+
     if [ "$tracked" -eq 1 ]; then
         if [ "$ament_rows_tracked" -eq 0 ]; then
             # Header printed lazily, before the first offender's detail lines.

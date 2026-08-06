@@ -51,16 +51,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#463** — 48 tracked leaf `.cargo/config.toml` files `include` `nros-managed-patch.toml`, which
-`.gitignore:119` ignores — so a leaf cannot be *parsed* (not merely built: `cargo metadata` fails too)
-until `nros sync` writes the sidecar. `just rust-rtos-link-check`, a `ci-full` step, is red on any tree
-that has not re-synced since #0457 landed. The resolution of #0457 states cargo "ignores a missing
-`include` SILENTLY"; on cargo 1.97.1 it is a hard error, and that premise is what the split rests on.
-Measured: 48 tracked configs carry the include, **0** sidecars exist on a host that has been building
-these leaves all week; dropping a one-comment placeholder in makes the leaf parse, so the include is
-the whole failure. Same shape as the leaf-lockfile rule — a committed file naming something absent from
-a bare clone. See `0463-*`. (2026-08-06)
-
 Recently resolved (2026-08-06): **#444** — every FreeRTOS **Rust** cell (pubsub, service AND action —
 the issue's action-only scope came from one run and was wrong) booted, printed "Network ready." and
 stalled forever. Reproduced on main with fresh fixtures, so not branch-specific. TWO faults, both from

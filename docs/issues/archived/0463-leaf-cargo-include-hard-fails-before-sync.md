@@ -100,3 +100,30 @@ the issue-0196 rule again, a gate narrower than the invariant it enforces.
 The new gate arm is verified to FIRE, not merely to pass: adding a
 `"typo-patch.toml"` entry to one leaf config makes
 `check-cargo-config-tracked` report it and exit non-zero.
+
+## Follow-up (2026-08-07) — fewer leaves need sync at all
+
+The fix above makes the *absence* of a sync legible. A second pass narrowed
+which leaves depend on one, by splitting the managed rows by ORIGIN rather than
+by "sync wrote it".
+
+Measured across the tree, sync's managed set is mostly in-repo crates — **183
+in-repo rows against 88 `generated/` ones**. An in-repo row (`nros-log`, a board
+crate, `mps2-an385-pac`) is a relative path identical in every checkout, and a
+clone needs it to resolve at all. Only the `generated/` rows are host-specific,
+being built per host from the consumer's ament install.
+
+So in-repo rows are inline in the tracked `config.toml` (tagged
+`# nros-managed`, as before 0457) and only `generated/` rows go to the sidecar —
+with the `include` written only when that file is. A leaf with no message
+dependency therefore has no sidecar, no include, and resolves in a fresh clone
+with no sync; what stays behind sync is exactly what only sync can produce.
+
+Dropping the include alone was tried first and is not sufficient: it moves the
+failure rather than removing it. With the whole set in the sidecar and no
+include, `just check` dies on `no matching package named 'mps2-an385-pac'` —
+an in-repo patch — instead of a parse error.
+
+`_require-leaf-includes` still covers the leaves that do have generated deps.
+The two changes compose: this one shrinks the set that needs sync, that one
+explains the failure for the set that remains.

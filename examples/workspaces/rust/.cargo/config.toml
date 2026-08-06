@@ -1,4 +1,4 @@
-include = ["../../../../nros-patch.toml", "nros-managed-patch.toml"]
+include = ["../../../../nros-patch.toml"]
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [
