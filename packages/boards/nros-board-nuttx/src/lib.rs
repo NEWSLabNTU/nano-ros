@@ -759,7 +759,9 @@ fn install_stdout_logger() {
             // The examples bake the full human line into the message
             // (`Publishing: '...'` / `I heard: [...]`), so emit it verbatim.
             let mut out = std::io::stdout();
-            let _ = writeln!(out, "{}", record.args());
+            // `[LEVEL]` prefix — parity with `nros_log`'s sink; see
+            // nros-board-linux for why the tag is load-bearing.
+            let _ = writeln!(out, "[{}] {}", record.level(), record.args());
             let _ = out.flush();
         }
         fn flush(&self) {
