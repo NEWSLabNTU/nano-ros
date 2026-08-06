@@ -2174,6 +2174,20 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
     // executor's slices already point into `(*ctx_ptr).backing` (its final,
     // pinned location), so moving the `Executor` struct itself is sound.
     unsafe {
+        // Issue 0458 — stamp the handle tag. `CppContext` is `MaybeUninit`, and
+        // `cpp_ctx_checked` reads `tag` BEFORE trusting the struct, so leaving it
+        // uninitialized makes every entry point that takes this handle read
+        // garbage and reject it with `INVALID_ARGUMENT` (-3). That is exactly
+        // what killed the C/C++ multi-tier low tier: `nros_cpp_node_create`
+        // returned -3, so `tier 'low' setup FAILED (rc=-3) — tier will not run`
+        // and `/telem` never published.
+        //
+        // This is the SAME defect as the `in_dispatch` note below, one field
+        // over: a new `CppContext` field gets stamped in `nros_cpp_init` +
+        // `_init_multi` and this THIRD constructor is missed. `tag` came from
+        // #0436, `in_dispatch` from #0290 (fixed as #0387). If you add a field
+        // here, initialize it in all three.
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), executor);
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).domain_id), domain_id);
         // Issue 0387 — the CppContext is `MaybeUninit`; the reentrancy guard

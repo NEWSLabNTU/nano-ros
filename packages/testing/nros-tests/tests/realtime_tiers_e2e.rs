@@ -665,14 +665,23 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 lang,
                 cell.note
             );
+            // Issue 0447 — dump the raw observer text, not just the counters.
+            // `ctrl_max` is an `unwrap_or(0)`, so 0 means "nothing parsed",
+            // which is equally consistent with the tier never publishing and
+            // with the observer printing something `max_int_after` can't read.
+            // The counters alone cannot tell those apart; one run of this can.
             assert!(
                 ctrl_max >= 3 * telem_max,
                 "[{} {}] high-tier /ctrl counter {ctrl_max} is not ≥3× the low-tier \
                  /telem counter {telem_max} — the 10 ms tier is not outrunning the \
-                 100 ms tier ({})",
+                 100 ms tier ({})\n\
+                 --- /ctrl observer output (empty ⇒ nothing was received at all) ---\n{}\n\
+                 --- /telem observer output ---\n{}",
                 platform,
                 lang,
-                cell.note
+                cell.note,
+                ctrl_all,
+                telem_all
             );
         }
         Proof::CountRatio3x | Proof::CountStrict => {

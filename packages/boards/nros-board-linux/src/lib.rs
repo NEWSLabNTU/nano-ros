@@ -436,6 +436,10 @@ impl LinuxBoard {
             ));
         }
         let setup = &setup;
+        // Issue 0447 — held across each tier's `setup` so entity declaration on
+        // the one shared session is serialized (see `run_one_tier`).
+        let setup_lock = std::sync::Mutex::new(());
+        let setup_lock = &setup_lock;
         std::thread::scope(|scope| {
             // Spawn every tier after the first; each borrows the shared
             // session pointer and `&setup` from the enclosing scope.
@@ -455,7 +459,7 @@ impl LinuxBoard {
                     // SAFETY: `shared.0` aliases the boot executor's
                     // session, kept alive for this scope by `thread::scope`.
                     let exec = unsafe { ::nros::Executor::open_with_session(shared.0) };
-                    run_one_tier::<Self, F, E>(exec, tier, setup);
+                    run_one_tier::<Self, F, E>(exec, tier, setup, setup_lock);
                 });
                 if let Err(e) = spawn {
                     <Self as BoardPrint>::println(format_args!(
@@ -473,7 +477,7 @@ impl LinuxBoard {
                 tiers.len()
             ));
             // Boot tier runs on this task, reusing the owning executor.
-            run_boot_tier::<Self, F, E>(&mut boot_crt, &tiers[0], setup);
+            run_boot_tier::<Self, F, E>(&mut boot_crt, &tiers[0], setup, setup_lock);
         });
 
         // Unreachable: the boot tier's spin loop never returns.
@@ -539,8 +543,12 @@ fn apply_tier_affinity<B: BoardPrint>(tier: &TierSpec<'_>) {
 
 /// Register + spin one tier on a freshly-opened borrowed-session
 /// executor (spawned-tier path).
-fn run_one_tier<B, F, E>(exec: ::nros::Executor<'static>, tier: &TierSpec<'_>, setup: &F)
-where
+fn run_one_tier<B, F, E>(
+    exec: ::nros::Executor<'static>,
+    tier: &TierSpec<'_>,
+    setup: &F,
+    setup_lock: &std::sync::Mutex<()>,
+) where
     B: BoardPrint,
     F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
@@ -550,6 +558,15 @@ where
     apply_tier_sched(&mut crt, tier);
     apply_tier_affinity::<B>(tier);
     {
+        // Issue 0447 — SERIALIZE registration across tiers. Every tier executor
+        // borrows the ONE shared session and declares its entities on it, and the
+        // boot tier runs its own `setup` concurrently with these spawned ones with
+        // no synchronization. Interleaved declaration bound topics
+        // non-deterministically: the same binary would deliver correctly, or land
+        // the 10 ms tier's samples on the 100 ms tier's topic, or deliver nothing.
+        // Registration happens once per boot and off the hot path, so the mutex
+        // costs nothing that matters; the spin loops stay fully concurrent.
+        let _guard = setup_lock.lock().unwrap_or_else(|e| e.into_inner());
         let mut ctx = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = setup(&mut ctx) {
             B::println(format_args!(
@@ -567,6 +584,7 @@ fn run_boot_tier<B, F, E>(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
     tier: &TierSpec<'_>,
     setup: &F,
+    setup_lock: &std::sync::Mutex<()>,
 ) where
     B: BoardPrint,
     F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,
@@ -576,6 +594,9 @@ fn run_boot_tier<B, F, E>(
     apply_tier_sched(crt, tier);
     apply_tier_affinity::<B>(tier);
     {
+        // Issue 0447 — see `run_one_tier`: the boot tier's registration races the
+        // spawned tiers' on the shared session unless they take the same lock.
+        let _guard = setup_lock.lock().unwrap_or_else(|e| e.into_inner());
         let mut ctx = RuntimeCtx::with_runtime(crt);
         if let Err(e) = setup(&mut ctx) {
             B::println(format_args!(

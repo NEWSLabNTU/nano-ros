@@ -405,12 +405,24 @@ result. Fixed by using the headerless `CdrWriter::new`, matching the RFC-0069/#0
 `publish_feedback`/`complete_goal` already carried; `nros-c`/`nros-cpp` already stripped it, so the
 Rust API was the lone live offender. See `archived/0448-*`. (2026-08-06)
 
-**#447** — `realtime_tiers` native/rust: the 10 ms high tier publishes NOTHING (`ctrl_max` 0, which is
-`unwrap_or(0)` = nothing parsed) while the 100 ms low tier delivers 5 samples and anchors the test.
-Distinct from #0438 in the same file, which is a boot-path marker assertion — this fails after the
-binary is running. Four candidates (tier not scheduled / bound wrong / observer starved / parse
-failure) are not yet separated; the failure message prints counters but not the text they came from,
-so dumping the `/ctrl` output is the first step. See `0447-*`. (2026-08-06)
+**#458** — RESOLVED 2026-08-06: `nros_cpp_executor_open_over_session` never stamped the `CppContext`
+handle tag. The storage is `MaybeUninit`, so `cpp_ctx_checked` read garbage and every entry point
+taking that handle returned `INVALID_ARGUMENT` (-3) — the generated per-tier setup's
+`nros_cpp_node_create` failed, so `tier 'low' setup FAILED (rc=-3)` and `/telem` never published on
+ALL THREE native C/C++ realtime cells. `tag` came from #0436, which stamped it in `nros_cpp_init` and
+`_init_multi` and missed the THIRD constructor — the one every spawned tier uses. Same class as
+#0387 (`in_dispatch`, from #0290) one field over, whose warning comment sits at the very same site.
+See `archived/0458-*`. (2026-08-06)
+
+**#447** — RESOLVED 2026-08-06: NOT a dead tier — multi-tier registration RACES on the shared RMW
+session. Each spawned tier runs `setup` on its own thread while the boot tier runs the same closure
+after the spawn loop, both declaring entities on one session unsynchronized (the board's
+`SharedSession` comment claimed the backend serialized this; true for publish, false for
+DECLARATION). Same binary, five runs: `telem 0`, then three crossed (`ctrl 0 / telem 1098` — the
+10 ms stream on `/telem`, proven by `distinct=998` with duplicates from 10 up = two publishers), then
+one correct. Fixed by serializing per-tier `setup` behind a mutex; 5/5 clean after. **A race is never
+cleared by one green run** — a single passing rebuild here nearly got it misfiled as a stale fixture.
+See `archived/0447-*`. (2026-08-06)
 
 **#446** — the same crate is compiled ~21x across leaf target dirs: 106 `nros-core` rlibs, **5**
 distinct `-C metadata` identities (45 of them the same compilation). Measured the exact
