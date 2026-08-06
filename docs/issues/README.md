@@ -67,7 +67,16 @@ Rust lane on a SEPARATE network plan from C/C++ on the same board, and its own c
 them follow-up work — a lane whose firmware config and launcher are maintained apart is a lane where
 they can silently stop matching. See `archived/0444-*`.
 
-Recently resolved (2026-08-06): **#450** — the group-A `action-server` example body publishes a FIXED `[0, 1, 1]` instead of computing the
+Recently resolved (2026-08-06): **#457** — a leaf `.cargo/config.toml` is a hand-kept COPY of `nros-board.toml`'s `cargo_config`, not
+user-specific content. Measured: of 46 tracked leaf configs under `examples/`, **39 are deploy-bound**, and
+NONE patches a generated msg crate — what they carry (`[build] target`, `build-std`, linker rustflags,
+`[env]`, board path patches) is declared verbatim in the board descriptor. `check-board-cargo-config-applied`
+states the contract: "the leaf file is TRACKED and `nros sync` leaves it alone, so the two are kept in step
+by hand" — and that gap caused BOTH 0440 (~3680 undefined libc refs) and 0444's sibling failure. Proposal:
+`nros sync` renders it and it gets gitignored, like `nros-patch.toml` and SystemModels already are; the 7
+non-deploy-bound leaves decide whether the tracking gate inverts or just narrows. See `0457-*`. (2026-08-06)
+
+**#450** — the group-A `action-server` example body publishes a FIXED `[0, 1, 1]` instead of computing the
 sequence, and phase-338 W3.d's convergence deleted the riscv64 copy that did the real iterative Fibonacci.
 Safe at the time (that cell is `BuildOnly`) but backwards: `Fibonacci` is the canonical ROS 2 action demo
 BECAUSE the sequence is computed and streamed as feedback, and the goal's `order` is read, logged, then
