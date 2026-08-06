@@ -46,8 +46,73 @@ const fn s(key: &'static str, value: &'static str) -> Setting {
 }
 
 /// Development default: fast to build, still optimized enough to run.
+///
+/// # Why `incremental` is absent (phase-340 W1)
+///
+/// It was `incremental = true` from phase-336 until 2026-08-06. Measured on
+/// `build-test-fixtures lane=native`, four alternating runs with every target
+/// dir wiped between them:
+///
+/// * **disk −27.6 %** (43643 -> 31600 MiB), identical to the MiB across reps.
+///   Unconditional, and the reason this changed.
+/// * **wall-clock −12.2 %** once the sccache cache is warm, **+2.4 %** on the
+///   very first cold-cache run. Incremental keeps units away from sccache
+///   (11514 requests vs 18780), so the incremental arm both populates less and
+///   benefits less; the cold run is where that briefly looks like a win.
+///
+/// The lanes build each leaf ONCE into a per-leaf target dir, which is the case
+/// where incremental state is written and never read. Local iteration — the case
+/// it does serve — is [`ITERATE`], opt-in by name.
+///
+/// Do NOT re-enable it by setting `CARGO_INCREMENTAL=1`: sccache 0.8.2 aborts
+/// the whole build during its `rustc -vV` probe with
+/// `sccache: increment compilation is prohibited`. A profile setting is a
+/// different input (cargo passes `-C incremental=<dir>` and never sets that
+/// variable), which is why the profile below works and the env var does not.
 pub const RELWITHDEBINFO: Preset = Preset {
     name: "nros-relwithdebinfo",
+    settings: &[
+        s("inherits", "release"),
+        s("opt-level", "2"),
+        s("debug", "1"),
+        s("lto", "off"),
+        s("codegen-units", "16"),
+        s("panic", "abort"),
+    ],
+};
+
+/// [`RELWITHDEBINFO`] plus incremental compilation, for LOCAL ITERATION.
+///
+/// Incremental pays off when the same target dir is rebuilt after an edit, which
+/// is what a human does and what the fixture lanes never do. Select it by name:
+///
+/// ```console
+/// NROS_CARGO_PROFILE=nros-iterate just build
+/// ```
+///
+/// It costs ~28 % more disk than the default (phase-340 W1), so it is opt-in
+/// rather than the ambient setting.
+///
+/// # Why the settings are repeated instead of `inherits = "nros-relwithdebinfo"`
+///
+/// Two independent reasons, both found by trying the chain first:
+///
+/// 1. [`env`] injects ONE profile's settings. A chained parent is not injected
+///    with it, so in a workspace outside this checkout — where the
+///    `.cargo/config.toml` walk-up does not reach — cargo fails with
+///    `profile 'nros-relwithdebinfo' is not defined`.
+/// 2. The name would be AMBIGUOUS. A profile called
+///    `nros-relwithdebinfo-incremental` uppercases to the same
+///    `CARGO_PROFILE_NROS_RELWITHDEBINFO_INCREMENTAL` prefix as the `incremental`
+///    KEY of profile `nros-relwithdebinfo`, and cargo resolves it as the latter:
+///    `could not load config key profile.nros-relwithdebinfo`. Any preset name
+///    that extends another preset's name with a word that is also a cargo
+///    profile key collides this way — which is why this one is `nros-iterate`.
+///
+/// Repetition is therefore load-bearing, and `assert_mirrors` keeps the three
+/// TOML copies honest about it.
+pub const ITERATE: Preset = Preset {
+    name: "nros-iterate",
     settings: &[
         s("inherits", "release"),
         s("opt-level", "2"),
@@ -72,7 +137,7 @@ pub const MINSIZEREL: Preset = Preset {
 };
 
 /// Every preset nano-ros owns. A name outside this list is the user's.
-pub const PRESETS: &[Preset] = &[RELWITHDEBINFO, MINSIZEREL];
+pub const PRESETS: &[Preset] = &[RELWITHDEBINFO, ITERATE, MINSIZEREL];
 
 /// The profile NuttX Rust images must be built at.
 ///
@@ -408,17 +473,83 @@ mod tests {
     fn presets_all_inherit_a_builtin() {
         // A custom profile without `inherits` is rejected by cargo, and the
         // env-injected form has no manifest to fall back on.
+        //
+        // The `a builtin` half of this test's name was not enforced until
+        // phase-340 W1: it checked only that SOME `inherits` was present, so a
+        // preset chaining another preset passed. `env` injects one profile's
+        // settings, so outside this checkout — where the `.cargo/config.toml`
+        // walk-up does not reach — cargo fails `profile '<parent>' is not
+        // defined`. Presets must bottom out in a cargo builtin.
+        const BUILTIN: &[&str] = &["dev", "release", "test", "bench"];
         for preset in PRESETS {
+            let inherits = preset
+                .settings
+                .iter()
+                .find(|s| s.key == "inherits")
+                .unwrap_or_else(|| panic!("preset `{}` has no `inherits`", preset.name));
             assert!(
-                preset.settings.iter().any(|s| s.key == "inherits"),
-                "preset `{}` has no `inherits`",
-                preset.name
+                BUILTIN.contains(&inherits.value),
+                "preset `{}` inherits `{}`, which is not a cargo builtin ({BUILTIN:?}). \
+                 `env` injects one profile only, so a chained parent is undefined \
+                 outside this checkout.",
+                preset.name,
+                inherits.value
             );
             assert!(
                 preset.name.starts_with("nros-"),
                 "preset `{}` is outside the namespace we own",
                 preset.name
             );
+        }
+    }
+
+    #[test]
+    fn preset_names_cannot_collide_with_another_preset_key() {
+        // `CARGO_PROFILE_<NAME>_<KEY>` flattens both halves the same way, so a
+        // preset whose name extends another preset's name with a word that is
+        // also a cargo profile KEY produces an AMBIGUOUS variable.
+        // `nros-relwithdebinfo-incremental` + `inherits` and `nros-relwithdebinfo`
+        // + `incremental_inherits` are the same string; cargo picks the latter
+        // and dies with `could not load config key profile.nros-relwithdebinfo`.
+        // Found in phase-340 W1 by shipping exactly that name.
+        //
+        // Compared against EVERY cargo profile key, not just the ones a preset
+        // declares — cargo parses the variable against its own key namespace, so
+        // dropping `incremental` from a preset does not make the name safe. The
+        // first version of this test checked declared keys only and passed the
+        // very name that had just failed.
+        const PROFILE_KEYS: &[&str] = &[
+            "opt-level",
+            "debug",
+            "split-debuginfo",
+            "strip",
+            "debug-assertions",
+            "overflow-checks",
+            "lto",
+            "panic",
+            "incremental",
+            "codegen-units",
+            "rpath",
+            "inherits",
+        ];
+        let envify = |s: &str| s.to_uppercase().replace('-', "_");
+        for a in PRESETS {
+            for b in PRESETS {
+                if a.name == b.name {
+                    continue;
+                }
+                for key in PROFILE_KEYS {
+                    assert_ne!(
+                        envify(a.name),
+                        format!("{}_{}", envify(b.name), envify(key)),
+                        "preset `{}` is ambiguous with `{}` + the `{}` key once \
+                         flattened to CARGO_PROFILE_*; cargo resolves it as the latter",
+                        a.name,
+                        b.name,
+                        key
+                    );
+                }
+            }
         }
     }
 

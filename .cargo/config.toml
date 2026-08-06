@@ -14,7 +14,22 @@ rustflags = ["-C", "symbol-mangling-version=v0"]
 # nros-relwithdebinfo` in any leaf UNDER this checkout resolves without the
 # environment injection the build scripts use. Mirrors the root `Cargo.toml`;
 # `nros-cargo-profile`'s `config_toml_matches_this_table` test fails on drift.
+# phase-340 W1 dropped `incremental = true` here 2026-08-06 — see the root
+# `Cargo.toml` and nros-cargo-profile's RELWITHDEBINFO doc comment for the
+# measurement. This copy is the one LEAVES resolve through, so it is the copy
+# that actually decides what the fixture lanes build with.
 [profile.nros-relwithdebinfo]
+inherits = "release"
+opt-level = 2
+debug = 1
+lto = "off"
+codegen-units = 16
+panic = "abort"
+
+# Opt-in for local iteration; ~28 % more disk. Never `CARGO_INCREMENTAL=1`,
+# which makes sccache abort the build outright. Settings repeated rather than
+# chained — see the root `Cargo.toml` for why.
+[profile.nros-iterate]
 inherits = "release"
 opt-level = 2
 debug = 1

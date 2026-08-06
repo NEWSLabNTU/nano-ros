@@ -655,7 +655,33 @@ opt-level = 1        # Some optimization even in dev for embedded
 
 # The development default: fast to build, still optimized enough to run under
 # QEMU's timing floors. Was `nros-fast-release` before phase-336.
+#
+# phase-340 W1 dropped `incremental = true` (here 2026-08-06). Measured on
+# `build-test-fixtures lane=native`, four alternating runs: disk -27.6 %
+# (43643 -> 31600 MiB, identical across reps), wall-clock -12.2 % with a warm
+# sccache and +2.4 % on the first cold run. The lanes build each leaf ONCE into
+# a per-leaf target dir, so the incremental state was written and never read.
+# Local iteration keeps it under `nros-iterate` below.
+# Rationale in full: nros-cargo-profile's RELWITHDEBINFO doc comment.
 [profile.nros-relwithdebinfo]
+inherits = "release"
+opt-level = 2
+debug = 1
+lto = "off"
+codegen-units = 16
+panic = "abort"
+
+# Opt-in for LOCAL ITERATION, where the same target dir is rebuilt after an edit
+# — the case incremental actually serves and the lanes never hit. Costs ~28 %
+# more disk, so it is named rather than ambient:
+#   NROS_CARGO_PROFILE=nros-iterate just build
+# Do NOT use `CARGO_INCREMENTAL=1` instead: sccache 0.8.2 aborts the build.
+#
+# Spelled out rather than `inherits = "nros-relwithdebinfo"` on purpose — a
+# chained parent is not env-injected alongside it, and the name it would want
+# (`nros-relwithdebinfo-incremental`) is ambiguous with that profile's own
+# `incremental` key once flattened to CARGO_PROFILE_*. Both are gated tests.
+[profile.nros-iterate]
 inherits = "release"
 opt-level = 2
 debug = 1
