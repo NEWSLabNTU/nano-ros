@@ -4,9 +4,11 @@
 **Informed by:** the 2026-08-03 jobs audit (fifo pools, NVMe relocation, the
 sccache install) and phase-330 W3/W7 (models into the build dir).
 
-**Status (2026-08-06). W1 is ANSWERED — by phase-340, which re-derived W1's
-questions before noticing this doc had already framed them. W2 and W3 are open,
-and W3.a is now decided.**
+**Status (2026-08-06). ALL of W1 is ANSWERED** — W1.a/W1.b/W1.d by phase-340,
+which re-derived those questions before noticing this doc had already framed
+them, and W1.c measured here. **W2 is open and is now the critical path**: it is
+both the remaining value in this phase and the precondition for W1.c's win.
+W3.a is decided.
 
 W1 asked three things and phase-340 measured all three. The overlap is real and
 was not deliberate: phase-340 W2's "findings" F1/F2/F3 restate W1.d, W1.a and
@@ -18,7 +20,7 @@ numbers.** Neither should be read as independent confirmation of the other.
 | **W1.a** cargo sharing vs per-example dirs | **sccache wins; do not share a dir across concurrent invocations** | phase-340 W1 lane A/B |
 | **W1.b** feature-unification hazard / signature count | **bimodal — see below** | measured 2026-08-06 |
 | **W1.d** sccache as the alternative | **prefers separate dirs + sccache**, comfortably inside W1.d's own ~15 % rule | 17846 hits / 222 misses warm |
-| **W1.c** cmake / corrosion sharing | **still open** — but phase-340 W3 shows corrosion's `--target` split is real recompilation that sccache cannot dedupe (different `-C metadata` = different cache key) | — |
+| **W1.c** cmake / corrosion sharing | **sharing is safe and worth ~25 % disk, but W2 is its precondition** | measured 2026-08-06, below |
 
 **W1.b answered, and the shape matters more than the count.** Over the 117
 `linux` fixture rows there are **60 distinct variant signatures** — about half
@@ -48,10 +50,74 @@ invocation over many packages (inner parallelism), never N invocations against
 one dir (lock contention). Rationale and the rejected design are recorded in
 phase-340 W2 F3.
 
-**What remains here:** W1.c (corrosion/cmake sharing), all of W2 (the layout and
-naming rule — untouched, and the part phase-340 does NOT cover), and W3.b/W3.c.
-The layout work is independent of the sharing verdict and is where this phase's
-remaining value is.
+**W1.c answered 2026-08-06 — see below. What remains:** all of W2 (the layout
+and naming rule — the part phase-340 does NOT cover) and W3.b/W3.c.
+
+### W1.c result — corrosion's cargo trees
+
+**The duplication is real and it is 9-fold.** The cmake workspace builds carry
+**32.6 GiB across 21 corrosion cargo dirs**. Within the nine native
+`build-workspace-fixtures/cargo/` trees the identity spread falls up the stack,
+exactly as R1 predicts:
+
+| crate | copies | distinct identities | ratio |
+| --- | --- | --- | --- |
+| `nros_core` | 36 | 4 | **9:1** |
+| `nros_rmw_zenoh` | 18 | 4 | 4.5:1 |
+| `nros_node` | 36 | 16 | 2.25:1 |
+
+One identity (`b2744896132993cc`) has nine copies in nine DISTINCT workspaces —
+`c`, `cpp`, `features`, `managed`, `mixed`, `realtime-c`, `realtime-cpp`,
+`realtime-cpp-subnode-portable`, `safety`. Genuinely interchangeable.
+
+**Sharing is mechanically trivial, because corrosion's separation is not doing
+the work here.** Corrosion picks its dir as
+`${CMAKE_BINARY_DIR}/<build>/cargo/<folder>_<sha1(workspace_manifest_path)[0:5]>`,
+and the comment above that code says the hash exists so that "if you build
+multiple workspaces … they won't collide if they use a common dependency. This
+would confuse cargo and trigger unnecessary rebuilds". But for the shared
+nano-ros crates that hash is **constant — `nano-ros_0b88c` in all nine** — since
+they all import the same manifest path. Today's separation therefore comes
+entirely from each workspace's own `CMAKE_BINARY_DIR`, not from corrosion's
+anti-collision scheme. Redirect the root and the nine land in one place with no
+renaming and no collision. (Per-workspace synthesized crates DO get distinct
+hashes — `nros_ws_runtime_14eac`, `_ef4c9` — and are correctly separated.)
+
+**Corrosion's warning is directionally right and quantitatively wrong.** Measured
+directly on `nros-c` by alternating two feature sets in ONE target dir:
+
+```
+A (rmw-zenoh) cold        149 units built
+B (rmw-xrce)  same dir     10 units built   <- 139 of 149 REUSED
+A again                     9 units          <- steady-state churn
+B again                     9 units
+```
+
+So alternating feature sets does churn — but **9 units against 139 reused, ~6 %
+of the build**. Different feature sets do not fight over one slot: a different
+`-C metadata` is a different filename, so the variants coexist in `deps/` and
+only the genuinely feature-dependent units rebuild.
+
+Disk, same two variants:
+
+| | MiB |
+| --- | --- |
+| separate dirs (802 + 725) | 1527 |
+| one shared dir | **1143** |
+| saving | 384 (**25 %**) |
+
+**Verdict.** Sharing corrosion's cargo root across workspaces is safe (no
+pathological thrash), collapses a measured 9:1 duplication at the bottom of the
+stack, and saves ~25 % disk on a two-variant pair. The cost is the same one W1.a
+found: `workspace-fixtures-build.sh` schedules **one make target per workspace
+dir in parallel**, so a shared dir serialises those group workers on cargo's
+exclusive flock.
+
+That makes W1.c's answer **conditional, and W2 is the precondition**: the win is
+available only once the layout gives these trees a shared, addressable root.
+Adopt it as part of W2's migration rather than as a standalone change, and pair
+it with either a bounded group-worker concurrency or a single-invocation driver —
+never N concurrent cmake workspaces against one cargo dir.
 
 ## Problem
 
@@ -111,7 +177,7 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       signatures the fixture manifest actually produces (the `variant-sig`
       key). If the count approaches the example count, sharing buys little
       and W2 should default to sccache-only dedup.
-- [ ] **W1.c (cmake).** CMake build dirs cannot share objects, but their
+- [x] **W1.c (cmake).** ANSWERED 2026-08-06 — see Status. CMake build dirs cannot share objects, but their
       corrosion-embedded cargo trees CAN share a `CARGO_TARGET_DIR` and all
       of them share sccache. Measure a workspace family with (a) today's
       layout, (b) corrosion cargo redirected to the shared cargo root.
