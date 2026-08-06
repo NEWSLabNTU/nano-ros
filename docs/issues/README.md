@@ -127,6 +127,19 @@ Gated by `check-board-cargo-config-applied`, watched to fire. Nothing caught it 
 config was valid TOML that cargo and `nros sync` both accepted — the loss showed only at link time,
 on one platform. See `archived/0440-*`. (2026-08-06)
 
+RESOLVED 2026-08-06 — **#456** two of the three NuttX riscv recipes never exported the riscv env, so
+the C lane archived an **arm** vector table into a riscv image. `build-riscv-rust` held the only copy
+of the six arch-describing `NUTTX_*` values (including phase-285 W4's `NUTTX_VECTORTAB=""` opt-out);
+`build-riscv-c` and `build-riscv-c-workspaces` took the helpers' qemu-arm DEFAULTS, and the live-tree
+fallback happily handed them `arch/arm/src/arm_vectortab.o` left behind by the previous ARM build.
+`ar` does not check machine types, so the link failed `cannot find -lnros_nuttx_boot` — `ld` skips an
+incompatible archive and then looks no further, naming a missing file three steps from the cause. The
+phase-285 W5 accommodation above the site is the same class absorbed rather than named: it tolerates
+the wrong arch exactly as long as the file is missing, which stopped being true once both arches build
+in one lane. RESOLVED: one `scripts/nuttx/riscv-env.sh` sourced by all three recipes, plus an ELF
+`e_machine` check in `run_image_link` that fails naming both arches. Found while verifying #439/#443
+end to end; it was the last thing between them and a green `lane=tier2`. See `archived/0456-*`.
+
 RESOLVED 2026-08-06 — **#439** a lane-narrowed build killed any recipe naming a fixture by `--id`, so
 three of eight tier-2 modules died, no stamp was written and `just ci-matrix` could not run at all.
 Two guards each right alone: #0393 removes rows for LANE reasons, #0406 treats a zero-row `--id` as a

@@ -156,6 +156,20 @@ pub fn run_image_link(builtins_stub: &Path) {
         );
         return;
     }
+    // issue 0456 — the accommodation above tolerates the WRONG ARCH as long as
+    // the file happens to be missing, and that is the only thing that was
+    // stopping an arm vector table from reaching a riscv image. Once both
+    // arches build in one lane, `arch/arm/src/arm_vectortab.o` is simply always
+    // present in the shared in-tree checkout, `exists()` is true, and `ar`
+    // archives it — `ar` does not check machine types. The link then fails
+    // `cannot find -lnros_nuttx_boot`, because `ld` skips an incompatible
+    // archive and then looks no further, so the diagnostic names the wrong
+    // problem entirely (a missing file) three steps from the cause.
+    //
+    // Check it here, where both facts are in hand.
+    if let Some(vt) = &vectortab {
+        assert_vectortab_arch(vt);
+    }
     let board_lib_dir = nuttx_dir.join(&board_lib_rel);
     println!(
         "cargo:rerun-if-changed={}",
@@ -239,4 +253,59 @@ pub fn run_image_link(builtins_stub: &Path) {
     println!("cargo:rustc-link-search=native={}", staging.display());
     println!("cargo:rustc-link-search=native={}", board_lib_dir.display());
     println!("cargo:rustc-link-lib=static:-bundle,+whole-archive=nros_nuttx_boot");
+}
+
+/// Fail if `vectortab` is not built for the arch this crate is compiling for.
+///
+/// issue 0456. Reads the ELF header's `e_machine` directly rather than shelling
+/// out to `readelf`: the check must work in a build script on any host, and the
+/// two bytes it needs are at a fixed offset in every ELF ever written.
+///
+/// Unreadable or non-ELF input is NOT an error here — `ar` and `ld` will say so
+/// far better than a guess would, and a build script that refuses to run on an
+/// input it merely failed to parse is worse than the bug.
+fn assert_vectortab_arch(vectortab: &Path) {
+    let Ok(target_arch) = env::var("CARGO_CFG_TARGET_ARCH") else {
+        return;
+    };
+    let Some(want) = elf_machine_for(&target_arch) else {
+        return; // an arch this helper has not been taught; do not guess
+    };
+    let Ok(bytes) = std::fs::read(vectortab) else {
+        return;
+    };
+    // e_ident[EI_MAG] = 0x7f 'E' 'L' 'F'; e_machine is a u16 at offset 18,
+    // in the file's own endianness (e_ident[EI_DATA] at offset 5: 1 = little).
+    if bytes.len() < 20 || &bytes[0..4] != b"\x7fELF" {
+        return;
+    }
+    let got = if bytes[5] == 2 {
+        u16::from_be_bytes([bytes[18], bytes[19]])
+    } else {
+        u16::from_le_bytes([bytes[18], bytes[19]])
+    };
+    assert!(
+        got == want,
+        "nuttx_image_link: vector table {} is ELF machine {:#x}, but this build \
+         targets {} (machine {:#x}).\n  \
+         The boot archive would be rejected by the linker as incompatible, and \
+         reported as a MISSING library (`cannot find -lnros_nuttx_boot`).\n  \
+         A riscv recipe must `source scripts/nuttx/riscv-env.sh` — without it \
+         the board helpers take their qemu-arm defaults, including \
+         NUTTX_VECTORTAB (issue 0456).",
+        vectortab.display(),
+        got,
+        target_arch,
+        want,
+    );
+}
+
+/// `e_machine` for the target arches these boards build for.
+fn elf_machine_for(target_arch: &str) -> Option<u16> {
+    match target_arch {
+        "arm" => Some(0x28),                       // EM_ARM
+        "aarch64" => Some(0xb7),                   // EM_AARCH64
+        a if a.starts_with("riscv") => Some(0xf3), // EM_RISCV
+        _ => None,
+    }
 }

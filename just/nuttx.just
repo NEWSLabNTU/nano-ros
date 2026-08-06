@@ -277,6 +277,11 @@ build-riscv-c:
     NUTTX_DEFCONFIG="$rv_defconfig" \
         NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
         bash scripts/nuttx/build-nuttx.sh
+    export NUTTX_DIR="$nuttx_dir"
+    # issue 0456 — without this the board helpers take their qemu-ARM defaults
+    # and archive `arm_vectortab.o` into a riscv image's boot archive; the link
+    # then reports it as a MISSING library, three steps from the cause.
+    source scripts/nuttx/riscv-env.sh
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     echo "→ host nros-codegen (C)"
     nros_cargo_ensure_codegen_c
@@ -309,6 +314,8 @@ build-riscv-c-workspaces:
         NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
         bash scripts/nuttx/build-nuttx.sh
     export NUTTX_DIR="$nuttx_dir"
+    # issue 0456 — see build-riscv-c.
+    source scripts/nuttx/riscv-env.sh
     CC_riscv32imac_unknown_nuttx_elf=riscv-none-elf-gcc \
         NROS_CARGO_PROFILE=nros-minsizerel \
         bash scripts/build/workspace-fixtures-build.sh nuttx-riscv c
@@ -340,15 +347,11 @@ build-riscv-rust:
         NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
         bash scripts/nuttx/build-nuttx.sh
     export NUTTX_DIR="$nuttx_dir"
-    # riscv values for the shared board build.rs helpers (platform compile +
-    # #127 image link). Recipe-level because the fixture-row env serialization
-    # cannot carry space-containing values.
-    export NUTTX_CROSS="riscv-none-elf-gcc"
-    export NUTTX_PLATFORM_CFLAGS="-march=rv32imac -mabi=ilp32"
-    export NUTTX_ARCH_INCLUDES="arch/risc-v/src/chip arch/risc-v/src/common"
-    export NUTTX_LD_SCRIPT="boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"
-    export NUTTX_VECTORTAB=""
-    export NUTTX_BOARD_LIB_DIR="arch/risc-v/src/board"
+    # issue 0456 — the riscv values for the shared board build.rs helpers, which
+    # default to qemu-arm. ONE spelling, sourced by all three riscv recipes:
+    # this recipe used to hold the only copy and the two C lanes silently built
+    # arm.
+    source scripts/nuttx/riscv-env.sh
     NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx-riscv rust
 
 # Build every NuttX tier. `build-all-full` removed.
