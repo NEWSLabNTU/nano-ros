@@ -618,10 +618,31 @@ fn install_stdout_log_bridge() {
         }
         fn log(&self, record: &log::Record<'_>) {
             // The examples bake the full human line into the message
-            // (`Publishing: '...'` / `I heard: [...]`), so emit it verbatim —
-            // the e2e harness greps those markers.
+            // (`Publishing: '...'` / `I heard: [...]`), so the message is
+            // emitted verbatim — the e2e harness greps those markers with
+            // `contains`, so the level prefix below leaves every one intact.
+            //
+            // The prefix is not decoration. Issue 0309 made the workspace
+            // logging proof require the level tag specifically so that a line
+            // carrying the marker but no tag reads as "this record bypassed the
+            // logging facade". When this bridge landed (phase-338 W3) it became
+            // the Rust lane's `log::Log`, and printing `record.args()` bare made
+            // every Rust record look exactly like the bypass the proof was
+            // written to catch — `workspace_features_e2e` rust/logging went to
+            // 0 tagged lines while c/cpp/mixed stayed green, because those go
+            // through the C API to `nros_platform_log_write`, which prefixes.
+            //
+            // Labels match `severity_label_log` in nros-platform-posix so the
+            // two lanes render a record the same way.
+            let level = match record.level() {
+                log::Level::Trace => "TRACE",
+                log::Level::Debug => "DEBUG",
+                log::Level::Info => "INFO",
+                log::Level::Warn => "WARN",
+                log::Level::Error => "ERROR",
+            };
             let mut out = std::io::stdout();
-            let _ = writeln!(out, "{}", record.args());
+            let _ = writeln!(out, "[{level}] {}", record.args());
             let _ = out.flush();
         }
         fn flush(&self) {
