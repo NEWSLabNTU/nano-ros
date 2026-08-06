@@ -2262,9 +2262,20 @@ impl<'a> TickCtx<'a> {
         action: EntityId<'_>,
         goal: &G,
     ) -> NodeResult<GoalId> {
+        // RFC-0069 / issue 0418 — NO inner encapsulation header, same rule as
+        // `publish_feedback` / `complete_goal`. ROS 2's `<Action>_SendGoal_Request`
+        // is ONE CDR message: `[header][goal_id][goal fields]`. `send_goal_raw`
+        // frames `[header][goal_id]`, so this payload is the fields alone.
+        //
+        // Issue 0448: this path used `new_with_header` and shipped a SECOND
+        // encapsulation (`header|uuid|header|fields`) — 4 bytes over the ROS 2
+        // layout. Fast-DDS sizes its reader history from the type and drops the
+        // sample outright ("Change payload size of '28' bytes is larger than the
+        // history payload size of '27'"), so the goal never reached the server
+        // and the client saw a zeroed default result. nros-c / nros-cpp already
+        // stripped the header; only this Rust path was missed.
         let mut buf = [0u8; N];
-        let mut writer =
-            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| NodeDeclError::Runtime)?;
+        let mut writer = crate::CdrWriter::new(&mut buf);
         goal.serialize(&mut writer)
             .map_err(|_| NodeDeclError::Runtime)?;
         let len = writer.position();

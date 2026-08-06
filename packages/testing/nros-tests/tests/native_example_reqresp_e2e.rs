@@ -287,4 +287,18 @@ fn run_cell(cell: &MCell) {
         wl_str(cell.workload),
         wl_str(cell.workload),
     );
+
+    // NOTE (issue 0448): the service rows assert a server-COMPUTED value
+    // (`… : 5`), but the action rows can only assert `ACTION_RESULT_PREFIX` — a
+    // line the client prints even when the goal never reached the server and it
+    // decoded a zeroed default result. That is how 0448 stayed invisible here
+    // while the XRCE↔ROS 2 interop test failed.
+    //
+    // It is NOT fixable by asserting the sequence, because the example servers
+    // do not share a convention: the Rust server publishes a fixed `[0, 1, 1]`
+    // and never reads `goal.order` at all, while the C++ server computes
+    // `order` elements and the ROS 2 tutorial server computes `order + 1`. No
+    // native cell's payload is a function of the goal, so none of them can prove
+    // the goal survived the round-trip. Tracked as issue 0453; the payload
+    // assertion lives in `xrce_ros2_interop`, which runs a real ROS 2 server.
 }

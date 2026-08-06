@@ -381,13 +381,22 @@ codegen regression, passes 3/3 solo. Fixed in the two sites carrying that exact 
 base name with each other); ~9 other CLI scratch paths lack a pid and want one shared helper rather
 than a tenth spelling. The first pass said it had fixed "both sites that carried this idiom" — the sweep it prescribes found a THIRD, `orchestration/nros_config.rs`, byte-identical down to the base name (fixed 2026-08-06). See `0455-*`. (2026-08-06)
 
-**#448** — XRCE action client gets a 12-byte ALL-ZERO get_result reply, never the ROS 2 server's.
-Dumped at the client: `head=[00,01,00,00 | 00,00,00,00 | 00,00,00,00]` — XCDR1 encap (so the DHEADER
-path is innocent), `status=0` (Unknown, not 4=Succeeded), `seq_len=0`; a real order-10 reply is 56
-bytes, not 12. The test server sets `seq=[0,1]` BEFORE its loop so it cannot return an empty sequence
-for any order — the payload is not arriving, not mis-decoding. Also: the client logs "Goal accepted by
-server" on local SEND success, so the test's `accepted=true` proves nothing. Next step is capturing the
-server's `SERVER DONE` line to split "goal never arrived" from "reply lost". See `0448-*`. (2026-08-06)
+**#453** — no native action cell can prove the goal payload was DELIVERED. The cells assert only
+`ACTION_RESULT_PREFIX` ("Result received:"), a line the client prints even when it decoded a zeroed
+default result, and the example servers share no convention: the Rust one publishes a fixed
+`[0, 1, 1]` and never reads `goal.order` at all, the C++ one computes `order` elements, the ROS 2
+tutorial server `order + 1`. So no cell's payload is a function of the goal. This is exactly how #448
+stayed green across the whole native matrix while only the XRCE↔ROS 2 interop test — the one with a
+real `rcl_action` peer — caught it. See `0453-*`. (2026-08-06)
+
+**#448** — RESOLVED 2026-08-06: the Rust `send_goal` serialized with `new_with_header` and handed the
+result to `send_goal_raw`, which frames the request itself — so every goal shipped TWO encapsulations
+(`encap|uuid|encap|order` = 28 bytes vs ROS 2's 24). Fast-DDS sizes reader history from the type and
+dropped the sample outright ("Change payload size of '28' bytes is larger than the history payload
+size of '27'"), so the goal never reached the server and the client decoded a zeroed 12-byte default
+result. Fixed by using the headerless `CdrWriter::new`, matching the RFC-0069/#0418 rule its siblings
+`publish_feedback`/`complete_goal` already carried; `nros-c`/`nros-cpp` already stripped it, so the
+Rust API was the lone live offender. See `archived/0448-*`. (2026-08-06)
 
 **#447** — `realtime_tiers` native/rust: the 10 ms high tier publishes NOTHING (`ctrl_max` 0, which is
 `unwrap_or(0)` = nothing parsed) while the 100 ms low tier delivers 5 samples and anchors the test.

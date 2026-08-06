@@ -534,10 +534,20 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
         )
         .unwrap_or_default();
     client.kill();
+    // Drain the ROS 2 server BEFORE killing it. Its script prints `SERVER READY`
+    // at startup and `SERVER DONE [...]` after `execute` returns, so this one
+    // capture says whether the goal ever reached the server — which is exactly
+    // what the client's output cannot tell us (issue 0448: the client logs
+    // "Goal accepted by server" on local SEND success, not on acceptance).
+    // `wait_for_output` TAKES stdout, so it is called once, here.
+    let server_output = ros2_server
+        .wait_for_output(Duration::from_secs(2))
+        .unwrap_or_default();
     ros2_server.kill();
     drop(agent);
 
     eprintln!("XRCE action client output:\n{client_output}");
+    eprintln!("ROS 2 action server output:\n{server_output}");
     // Goal acceptance proves the send_goal request crossed XRCE→agent→DDS and
     // the reply came back (goal_id framing + per-channel service types). At
     // least one non-empty feedback proves the feedback topic + UUID framing
@@ -550,9 +560,31 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
     assert!(
         accepted && got_feedback,
         "ROS 2 DDS action server ↔ XRCE action client did not complete (233.6): \
-         accepted={accepted} got_feedback={got_feedback}.\n{client_output}"
+         accepted={accepted} got_feedback={got_feedback}.\n\
+         client:\n{client_output}\n\
+         server (SERVER DONE present ⇒ the goal reached it and it replied):\n{server_output}"
     );
-    eprintln!("[PASS] ROS 2 DDS action server ↔ XRCE action client: goal accepted + feedback");
+
+    // Issue 0448 — the payload assertion. `accepted` and `got_feedback` are both
+    // satisfiable without the goal ever reaching the server (the client logs
+    // acceptance on local SEND success), so neither proves delivery. The result
+    // sequence is a FUNCTION of `goal.order`, and this is the only action test
+    // whose peer is a real `rcl_action` server that computes it — the native
+    // example servers use their own conventions and one ignores `order`
+    // entirely (issue 0453). Order 10 ⇒ `order + 1` = 11 elements; a dropped
+    // goal yields the zeroed 12-byte default result and an empty sequence.
+    assert!(
+        client_output.contains(nros_tests::output::FIBONACCI_ORDER_10_SEQUENCE),
+        "XRCE action client did not log the order-10 sequence `{}` — the goal \
+         payload did not survive the round-trip (0448: a `Result received:` line \
+         proves decode, not delivery).\n\
+         client:\n{client_output}\n\
+         server:\n{server_output}",
+        nros_tests::output::FIBONACCI_ORDER_10_SEQUENCE,
+    );
+    eprintln!(
+        "[PASS] ROS 2 DDS action server ↔ XRCE action client: goal accepted + feedback + result payload"
+    );
 }
 
 /// ROS 2 (DDS) service server ↔ nano-XRCE service client (reverse direction).
