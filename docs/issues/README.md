@@ -67,7 +67,28 @@ Rust lane on a SEPARATE network plan from C/C++ on the same board, and its own c
 them follow-up work — a lane whose firmware config and launcher are maintained apart is a lane where
 they can silently stop matching. See `archived/0444-*`.
 
-Recently resolved (2026-08-06): **#445** — a staleness verdict is TERMINAL and self-explaining, so it
+Recently resolved (2026-08-06): **#450** — the group-A `action-server` example body publishes a FIXED `[0, 1, 1]` instead of computing the
+sequence, and phase-338 W3.d's convergence deleted the riscv64 copy that did the real iterative Fibonacci.
+Safe at the time (that cell is `BuildOnly`) but backwards: `Fibonacci` is the canonical ROS 2 action demo
+BECAUSE the sequence is computed and streamed as feedback, and the goal's `order` is read, logged, then
+ignored. Growing the group body touches four platforms with live runtime lanes and raises feedback buffers
+128 → 256 on constrained targets. See `0450-*`. (2026-08-06)
+
+**#451** — the embedded SDK env vars live only in `just/sdk-env.just`, so a direct `cargo build` of an
+embedded example fails one variable at a time (5 freertos, 4 threadx, 1+ nuttx) even though every SDK sits
+at the default path. The failure does not look like a missing variable: `zpico-sys` panics inside a
+dependency build script, and a partially-configured NuttX build reaches the LINKER with `undefined
+reference to open / socket / malloc` — mistaken for a link regression during phase-338. CLAUDE.md names
+`activate.sh` the env SSoT; for these it is not. Same shape as 0407 and 0420's real finding.
+See `0451-*`. (2026-08-06)
+
+**#452** — embedded builds regenerate `nros_generated.h` / `nros_cpp_ffi.h` with an OLDER cbindgen, so any
+embedded lane silently dirties two tracked headers, and committing it REVERTS the C23 enum-base guard (had
+to be hand-reverted twice during phase-338). The repo already pins `clang-format` and `bindgen-cli 0.72.1`
+for the C→Rust direction for exactly this reason; the Rust→C direction has no pin.
+See `0452-*`. (2026-08-06)
+
+**#445** — a staleness verdict is TERMINAL and self-explaining, so it
 absorbs whatever the fixture would have done at runtime. Demonstrated: issue 0442 made the
 freertos/threadx C/C++ cells read stale; fixing it made them run and immediately exposed issue 0444, a
 real FreeRTOS Rust runtime failure that had been sitting behind it. I hit the reader-side half too —

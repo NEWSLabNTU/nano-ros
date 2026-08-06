@@ -22,6 +22,10 @@ path = "src/main.rs"
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-linux/rmw-xrce"]
+# issue 0449 — the cyclone half. Without it the zenoh->cyclonedds bridge e2e
+# had to drive `examples/native/c/listener` with an `NROS_SUB_TYPE=int32` env
+# switch, which is why that example carried a type switch no ROS demo has.
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-linux/rmw-cyclonedds"]
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
@@ -38,6 +42,9 @@ nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-featur
 ], optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../rmw/xrce/nros-rmw-xrce-cffi", default-features = false, features = [
     "std",
+], optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = [
+    "platform-posix",
 ], optional = true }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 log = "0.4"

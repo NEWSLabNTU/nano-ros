@@ -39,9 +39,9 @@ use std::{
 use nros_tests::{
     count_pattern,
     fixtures::{
-        DEFAULT_ROS_DISTRO, ManagedProcess, Rmw, Ros2DdsProcess, ZenohRouter,
-        build_native_c_example_rmw, build_native_talker_header,
-        build_native_workspace_rust_bridge_entry, require_ros2_cyclonedds, require_zenohd,
+        DEFAULT_ROS_DISTRO, ManagedProcess, Rmw, Ros2DdsProcess, ZenohRouter, build_int32_sink_rmw,
+        build_native_talker_header, build_native_workspace_rust_bridge_entry,
+        require_ros2_cyclonedds, require_zenohd,
     },
 };
 use rstest::rstest;
@@ -52,14 +52,23 @@ use rstest::rstest;
 const ZENOH_NODE: &str = "S0";
 const CYCLONE_NODE: &str = "S1";
 
-/// Resolve (building if needed) the native Cyclone C listener, or skip when the
-/// fixtures aren't set up. Mirrors `bridge_zenoh_to_cyclonedds::nano_cyclone_listener`.
+/// Resolve the Int32 sink built for cyclonedds, or skip when the fixtures
+/// aren't set up.
+///
+/// issue 0449 — this used to drive `examples/native/c/listener` with
+/// `NROS_SUB_TYPE=int32`, a runtime message-type switch that existed ONLY for
+/// this test. The examples follow the ROS demos, which publish
+/// `std_msgs/String`; a test that needs a different payload uses a test bin.
+/// `bins/int32-sink` gained the cyclone axis so this could stop bending an
+/// example around a test.
 fn nano_cyclone_listener() -> PathBuf {
-    build_native_c_example_rmw("listener", "c_listener", Rmw::Cyclonedds).unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "native/c/listener cyclonedds fixture not built (run `just cyclonedds setup`): {e:?}"
-        )
-    })
+    build_int32_sink_rmw(Rmw::Cyclonedds)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|e| {
+            nros_tests::skip!(
+                "int32-sink cyclonedds fixture not built (run `just build-test-fixtures`): {e:?}"
+            )
+        })
 }
 
 fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
@@ -68,7 +77,6 @@ fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
     // observability listener must subscribe Int32 — the type is baked into the
     // wire keyexpr, and the Int32-typed cyclone topic won't match a String sub.
     cmd.env("ROS_DOMAIN_ID", domain.to_string())
-        .env("NROS_SUB_TYPE", "int32")
         .env("RUST_LOG", "info");
     ManagedProcess::spawn_command(cmd, "nano-cyclone-listener-declarative-bridge")
         .expect("spawn nano cyclone listener")

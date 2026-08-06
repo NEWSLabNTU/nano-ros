@@ -75,71 +75,69 @@ Run the cell on `main` with freshly built fixtures. If it fails there too this
 is a main regression to bisect around `ab486a8db`; if it passes, the difference
 is in this branch and the assumption above is wrong.
 
-## Root cause (2026-08-06) — two faults, both from the phase-338 W2 collapse
+## RESOLVED 2026-08-06 — `ab486a8db` was the cause, and the suspicion was right
 
-Reproduced on `main` with freshly built fixtures, so not branch-specific. Also
-not action-specific: `pubsub` and `service` fail identically. The scope table
-above was drawn from one action run and is wrong about that.
+Root-caused and fixed in `946c70791`. **All nine FreeRTOS cells now pass**
+({pubsub, service, action} × {Rust, C, C++}), so the 8-of-9 is 9-of-9.
 
-Every FreeRTOS image needs two things the `-entry` packages used to supply and
-the collapsed node packages did not.
+The `-entry` collapse dropped THREE things from the FreeRTOS manifests. All
+three came from one root cause: the merge script decided what to carry from the
+entry manifest using incomplete rules.
 
-**Fault 1 — a network the firmware could not route on.** The Rust images kept
-`locator = "tcp/10.0.2.2:7447"` with no `ip` / `gateway` in their deploy block,
-so lwIP came up on the board's STATIC default (192.0.3.10 / gw 192.0.3.1 — the
-boot banner prints it) while the harness launched them on slirp's default
-10.0.2.0/24. Nothing answers that gateway's ARP, and 7447 is a port the harness
-never serves anyway (it serves `zenohd_port_for(variant, Rust)` =
-7800/7810/7820). gdb on a stalled image:
+**1. `ip` / `gateway` — the one that caused this symptom.** The script carried
+only `rmw`, `domain_id` and `locator` out of the entry's
+`[package.metadata.nros.deploy.*]` block. The FreeRTOS entries also set
 
-    _z_open_link <- _z_new_transport <- _z_open <- z_open <- zpico_open
-    <- create_session_trampoline <- CffiSession::open_with_vtable
-    <- app_task_entry_runtime
+```toml
+ip = "10.0.2.15"
+gateway = "10.0.2.2"
+```
 
-A blocking TCP connect that never returns is exactly a boot that stops after
-"Network ready." with no error line.
+because `LWIP_DHCP` is **0** on this board (`config/lwipopts.h`) — the address is
+BAKED, not leased. Without them the image fell back to the board default
+`192.0.3.10 / 192.0.3.1` (`nros-board-freertos/src/config.rs`) and could not
+route to the router at `10.0.2.2`. So it brought up lwIP, printed
+"Network ready.", and sat there: no error, no retry, nothing to grep. Exactly
+the reported symptom.
 
-**Fault 2 — one ZID for two peers.** Fixing only the network gets the LISTENER
-to "Application setup complete" and leaves the TALKER hung. The FreeRTOS
-platform PRNG is seeded from `(ip, mac)` precisely because zenoh-pico's ZID
-comes off it; `freertos_c_entry.c` says so: "Unseeded, two QEMU instances derive
-the same ZID; the router keeps ONE peer (max_links=1) and rejects the second
-connection." Both Rust images booted the same address pair, so whichever
-connected second was rejected. The C/C++ rows have always split this via
-`NROS_ENTRY_IP_LAST` 10/11; `Config::listener()` (ip .11, mac ..01) stopped
-being selected when the `-entry` packages were collapsed.
+**2. `nros-platform` dropped.** The fallback guard was
+`if "nros-platform" not in ntext` — a whole-file substring test — and the
+freertos node manifest MENTIONS `nros-platform/platform-freertos` in two
+comments, so it read as "already present".
 
-`ab486a8db` was named a suspect above. It is the cause of both faults — but that
-was established by reading the boot banner against the launcher and by gdb, not
-by the bisection the issue called for.
+**3. `locator` lost to the node's value.** The rule was "add keys the node
+lacks"; when both blocks define a key the ENTRY's is the deployed one. The
+per-role ports (7800 pubsub, 7810 service, 7820 action) lost to the node block's
+generic 7447.
 
-## Resolution
+### How it was found
 
-Fixed upstream by `07faa2383` ("the freertos collapse dropped ip/gateway and the
-platform dep"), which restores the DEFAULT-slirp plan in each Rust package's
-`[package.metadata.nros.deploy.freertos]` — `ip` 10.0.2.15 / 10.0.2.16 split per
-pair, `gateway = "10.0.2.2"`, and the per-variant router port — so the images
-match the plain launcher `rtos_e2e` already hands them.
+The next step this issue proposed — run on main with fresh fixtures — reproduced
+it, but did not explain it. What explained it was rebuilding the PRE-collapse
+entry from `ab486a8db^` as a control and booting both side by side:
 
-I had independently fixed the same two faults the other way (move the Rust lane
-onto the C/C++ board-net plan and unify the launcher). Both work; upstream's had
-landed, so it stands and mine was dropped. Recorded because the two approaches
-disagree about something real: whether the Rust lane should keep a SEPARATE
-network plan from C/C++ on the same board. `rtos_e2e::start_process` still
-carries the carve-out and its own comment calls unifying the plans follow-up
-work. That is still open, now with the observation that a lane whose firmware
-config and launcher are maintained apart is a lane where they can silently stop
-matching — which is this issue.
+```
+control (entry):    IP: 10.0.2.15  → Application setup complete → Publishing: 'Hello World: 1'
+collapsed (broken): IP: 192.0.3.10 → (nothing)
+```
 
-## Verification
+That one-line diff named `ip`/`gateway` after two wrong guesses (the missing
+platform dep, then the locator — both real omissions, neither the cause of THIS
+symptom).
 
-`rtos_e2e` FreeRTOS, all nine cells on the rebased tree: **9 passed**,
-Rust/C/C++ x pubsub/service/action. Before: Rust 0 of 3 (all three stalled at
-"Network ready."), C/C++ 6 of 6.
+### Why nothing caught it
 
-The two C++ cells that read STALE mid-investigation were a separate, CORRECT
-verdict — `nros-cpp/include/nros/client.hpp` had genuinely been edited and the
-C++ fixture build was failing the C/C++ sizes split-brain guard on incremental
-state. Wiping the six `build-zenoh/` dirs and rebuilding cleared it: the
-documented "core-crate change => wipe workspace build dirs" hazard, not a new
-defect.
+Same shape as 0440: the collapsed manifest was valid TOML that cargo and
+`nros sync` both accepted. A deploy overlay with no `ip` is legal — it just
+means "use the board default", which is correct for boards that DHCP and fatal
+for one that does not. The loss showed only at runtime, on one platform, as
+silence.
+
+### The pattern worth carrying
+
+**Substring tests against a whole file** bit three separate times in phase-338:
+`"[[bin]]" in text` matched a comment saying *"no [[bin]]"*; `"nros-platform" in
+text` matched a comment; and a repair script matched
+`[package.metadata.nros.deploy.*]` inside a `[features]` comment and appended
+keys to the wrong table. Structured edits need anchored patterns (`^key =`, a
+real table header), never `in text`.

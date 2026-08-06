@@ -2555,17 +2555,19 @@ pub fn build_native_param_talker() -> TestResult<&'static Path> {
 /// why the zenoh->xrce declarative bridge e2e still drove the EXAMPLE with a
 /// test-only `NROS_SUB_TYPE=int32` switch; it now carries the same
 /// `rmw-{zenoh,xrce}` axis the examples do.
+///
+/// issue 0449 — cyclonedds joined them, which is what let
+/// `examples/native/c/listener` drop its `NROS_SUB_TYPE` type switch: the
+/// zenoh->cyclonedds bridge e2e was the last caller that needed an Int32
+/// listener speaking a transport this bin could not.
 pub fn build_int32_sink_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_BIN: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_BIN: OnceCell<PathBuf> = OnceCell::new();
+    static CYCLONE_BIN: OnceCell<PathBuf> = OnceCell::new();
     let cell = match rmw {
         Rmw::Zenoh => &ZENOH_BIN,
         Rmw::Xrce => &XRCE_BIN,
-        other => {
-            return Err(TestError::BuildFailed(format!(
-                "int32-sink has no {other:?} fixture build"
-            )));
-        }
+        Rmw::Cyclonedds => &CYCLONE_BIN,
     };
     cell.get_or_try_init(|| {
         let root = project_root();

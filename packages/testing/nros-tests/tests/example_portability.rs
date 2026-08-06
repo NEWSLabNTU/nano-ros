@@ -122,14 +122,6 @@ struct Divergence {
 const KNOWN_DIVERGENCE: &[Divergence] = &[
     // Baseline recorded 2026-08-04 by walking the tree; every entry names the
     // wave that removes it. Grouped by cause, alphabetical within.
-    Divergence {
-        lang: "c",
-        program: "listener",
-        platform: "native",
-        reason: "PERMANENT — native carries the NROS_SUB_TYPE env switch so tests can \
-                 select int32 vs string. A declared affordance, not drift; delete this \
-                 entry if the test that needs it goes away.",
-    },
 ];
 
 // ---------------------------------------------------------------------------

@@ -1208,6 +1208,21 @@ no_default_features = true
 features = ["rmw-xrce"]
 target_dir = "target-xrce"
 
+# issue 0449 — the cyclone build of the same sink. The zenoh->cyclonedds
+# declarative bridge e2e needed an Int32 listener speaking cyclone; before this
+# it drove `examples/native/c/listener` with a test-only `NROS_SUB_TYPE=int32`
+# switch, which is why that example carried a runtime message-type switch no ROS
+# demo has. The examples follow the ROS demos (std_msgs/String); test-only
+# payload shapes belong in a test bin.
+[[fixture]]
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "packages/testing/nros-tests/bins/int32-sink"
+no_default_features = true
+features = ["rmw-cyclonedds"]
+target_dir = "target-cyclonedds"
+
 # Concurrent Fibonacci action server (phase-277 W5 — was the example
 # action-server's `NROS_ACTION_CONCURRENT` escape hatch; the example slimmed
 # to the official single-goal demo, so the concurrent-goals stress role moved
