@@ -1782,22 +1782,50 @@ _check-fixtures-stale:
     # variable". So DERIVE the scope from the lane instead of asking every
     # caller to keep two spellings in sync. An explicit SCOPE still wins, which
     # keeps `just ci` and the per-lane check-fixtures-stale recipe unchanged.
-    if [ -n "${NROS_FIXTURE_SCOPE:-}" ]; then
-        exec ./scripts/check-fixtures-stale.sh
-    fi
+    # The scope this lane implies. One mapping, used both to DERIVE the scope
+    # and to check an explicitly-set one against it.
     case "${NROS_FIXTURE_LANE:-}" in
-        ""|all)
-            exec ./scripts/check-fixtures-stale.sh
+        ""|all) implied=all ;;
+        native) implied=native ;;
+        *)      implied=coords ;;
+    esac
+
+    # An explicit SCOPE still wins — `just ci` sets both, and `_lane-gate`
+    # supplies its own coordinate file. But it may not CONTRADICT the lane.
+    # Deriving fixed the over-audit direction (SCOPE wider than LANE: merely
+    # obstructive). The dangerous direction is the reverse — a SCOPE narrower
+    # than the LANE reports a lane green having freshness-checked less than it
+    # ran, which is the laundering this gate exists to prevent. Nothing caught
+    # that before, because `all` is a legitimate value and the gate could not
+    # tell "wants everything" from "forgot the second variable".
+    if [ -n "${NROS_FIXTURE_SCOPE:-}" ]; then
+        if [ -n "${NROS_FIXTURE_LANE:-}" ] && [ "${NROS_FIXTURE_SCOPE}" != "$implied" ]; then
+            echo "ERROR: NROS_FIXTURE_SCOPE='${NROS_FIXTURE_SCOPE}' contradicts" >&2
+            echo "       NROS_FIXTURE_LANE='${NROS_FIXTURE_LANE}', which implies" >&2
+            echo "       scope '${implied}'. These are two spellings of ONE fact" >&2
+            echo "       (issue 0443): the run, the build, the stamp and this gate" >&2
+            echo "       must agree on what the lane contains. Set the LANE alone" >&2
+            echo "       and the scope is derived, or make the two match." >&2
+            exit 2
+        fi
+        NROS_FIXTURE_SCOPE_ORIGIN=explicit exec ./scripts/check-fixtures-stale.sh
+    fi
+    case "$implied" in
+        all)
+            NROS_FIXTURE_SCOPE_ORIGIN="lane:${NROS_FIXTURE_LANE:-unset}" \
+                exec ./scripts/check-fixtures-stale.sh
             ;;
         native)
-            NROS_FIXTURE_SCOPE=native exec ./scripts/check-fixtures-stale.sh
+            NROS_FIXTURE_SCOPE=native NROS_FIXTURE_SCOPE_ORIGIN="lane:${NROS_FIXTURE_LANE}" \
+                exec ./scripts/check-fixtures-stale.sh
             ;;
-        *)
+        coords)
             # The SAME coordinate file `_lane-gate` and the fixture build use,
             # so gate and build cannot disagree about what the lane contains.
             source scripts/build/fixture-lane.sh
             coords="$(nros_lane_coords_file "${NROS_FIXTURE_LANE}")"
             NROS_FIXTURE_SCOPE=coords NROS_FIXTURE_COORDS="$coords" \
+                NROS_FIXTURE_SCOPE_ORIGIN="lane:${NROS_FIXTURE_LANE}" \
                 exec ./scripts/check-fixtures-stale.sh
             ;;
     esac

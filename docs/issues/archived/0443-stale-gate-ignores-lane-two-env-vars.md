@@ -1,7 +1,7 @@
 ---
 id: 443
 title: "The staleness gate ignores the run's lane, because the lane is two env vars and `ci-matrix` sets only one"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0196, issue-0368, issue-0439, phase-337]
@@ -101,3 +101,54 @@ one thing everywhere, and `ci-matrix` / `ci-matrix-nightly` need no second edit
   lane, fixed for the stamp gate only.
 - issue 0439 — sibling: two guards each correct alone, wrong in combination.
 - phase-337 — its `just ci-matrix` acceptance criterion is blocked behind this.
+
+## Resolution (2026-08-06)
+
+The derivation described above had landed in `_check-fixtures-stale` and the
+issue was left open. Verified, then closed with the two pieces the derivation
+alone does not supply.
+
+**Derivation, verified.** `NROS_FIXTURE_LANE=tier2` with no scope set:
+
+```
+check-fixtures-stale: scope=coords (lane:tier2) coords=target/nextest/lane-coords-tier2.txt (13 coordinate(s))
+```
+
+13 coordinates rather than the whole tier-3 set. `ci-matrix` and
+`ci-matrix-nightly` need no second variable, and neither does the next lane
+recipe anyone adds. Resolution for every caller:
+
+| caller | LANE | SCOPE | result |
+| --- | --- | --- | --- |
+| `just ci` | native | native | explicit `native` |
+| `_lane-gate` | – | coords | explicit `coords` (own coords file) |
+| `ci-matrix` | tier2 | – | derived `coords` |
+| `ci-matrix-nightly` | tier2-nightly | – | derived `coords` |
+| bare `just test-all` | – | – | derived `all` |
+
+**The gate now says what it audited.** The line above is new. The reason this
+defect survived is not that the scope was wrong — it is that a green result
+looks identical whether it covered three coordinates or forty-seven, so nothing
+about the output invited the question. Deriving stops this instance; announcing
+is what makes the next one visible. Same lesson as issue 0445 on the test side:
+a gate that does not report its own scope cannot be caught having the wrong one.
+
+**A contradicting scope is now refused.** Deriving fixed the OVER-audit
+direction, which is merely obstructive. This issue also named the dangerous
+direction — a `SCOPE` narrower than the `LANE` reports a lane green having
+freshness-checked less than it ran — and deriving does not address it, because
+an explicit scope still wins by design (`just ci` sets both). So when both are
+set and they disagree, `_check-fixtures-stale` exits 2:
+
+```
+ERROR: NROS_FIXTURE_SCOPE='all' contradicts
+       NROS_FIXTURE_LANE='tier2', which implies scope 'coords'.
+```
+
+`just ci` (native + native) and `_lane-gate` (scope only, no lane) both pass
+unchanged — checked against every caller in the table above.
+
+**Unchanged, as the issue specified.** `NROS_TEST_SCOPE` stays independent: the
+0393 comment's position is that narrowing the build "would need the run narrowed
+to match first", which is a separate design question. Two of the lane's three
+consumers now agree automatically; the third still does not, on purpose.

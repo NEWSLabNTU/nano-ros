@@ -58,6 +58,21 @@ case "$SCOPE" in
         ;;
 esac
 
+# Issue 0443 — say what is being audited, and where the scope came from.
+#
+# The defect was that `ci-matrix` set the lane and not the scope, so this gate
+# silently audited the whole tier-3 set while the run, the build and the stamp
+# were all tier 2. Nothing detected it BECAUSE the gate never said which set it
+# had chosen: `all` is a legitimate value, and a green line looks identical
+# whether it covered three coordinates or forty-seven. The derivation in
+# `_check-fixtures-stale` stops the mismatch happening; this line is what would
+# have made it visible the first time, and what makes the next one visible.
+#
+# Same lesson as issue 0445 on the test side: a gate that does not report its
+# own scope cannot be caught having the wrong one.
+echo "check-fixtures-stale: scope=${SCOPE} (${NROS_FIXTURE_SCOPE_ORIGIN:-direct})\
+${NROS_FIXTURE_COORDS:+ coords=$NROS_FIXTURE_COORDS ($(wc -l < "$NROS_FIXTURE_COORDS") coordinate(s))}"
+
 cmake_records() {
     python3 scripts/build/fixtures-manifest.py list --for-probe --lang c "${scope_args[@]}"
     python3 scripts/build/fixtures-manifest.py list --for-probe --lang cpp "${scope_args[@]}"

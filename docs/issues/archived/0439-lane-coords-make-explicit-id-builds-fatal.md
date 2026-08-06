@@ -1,7 +1,7 @@
 ---
 id: 439
 title: "A lane-narrowed build kills any recipe that names a fixture by `--id`, so `just ci-matrix` cannot run"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0393, issue-0406, phase-337]
@@ -87,3 +87,39 @@ claim a lane's own narrowing is the caller's mistake.
 - issue 0393 — lane-scoped fixture builds (`--coords-from`).
 - issue 0406 — explicit `--id` matching nothing must not exit 0 silently.
 - phase-337 — its `just ci-matrix` acceptance criterion is blocked by this.
+
+## Resolution
+
+Landed in `9c6420144` as the fix shape above describes; the issue was left open.
+Verified 2026-08-06 against the exact three invocations reported, with
+`NROS_FIXTURE_COORDS` pointing at `lane-coords tier2`
+(`freertos,mixed,zenoh` / `threadx-linux,c,cyclonedds` /
+`threadx-riscv64,c,cyclonedds`):
+
+```
+$ bash scripts/build/fixtures-build.sh threadx-riscv64 rust --id threadx-riscv64-logging-smoke
+fixtures: id 'threadx-riscv64-logging-smoke' is not in this lane's coordinates;
+          this threadx-riscv64/rust stage builds nothing.
+RC=0
+```
+
+All three exit 0, same message shape. `nros_fixture_id_out_of_lane` lives in
+`scripts/build/fixture-id-guard.sh` and is shared by both flag-narrowed builders
+rather than inlined twice — the right call, since a second spelling of a
+reconciliation between two guards is how the two guards diverged in the first
+place.
+
+0406's guarantee is intact in BOTH modes — a mistyped id is still fatal whether
+or not a lane is active:
+
+```
+$ … --id threadx-riscv64-logging-smoek        # lane active
+fixtures: no row anywhere carries id 'threadx-riscv64-logging-smoek'.
+RC=2
+$ … --id threadx-riscv64-logging-smoek        # no lane
+RC=2
+```
+
+That second case is the one worth having checked. The fix works by re-querying
+without the lane filter, so the failure mode to fear was a guard that had become
+lenient generally rather than lenient about lanes specifically.

@@ -118,25 +118,27 @@ Gated by `check-board-cargo-config-applied`, watched to fire. Nothing caught it 
 config was valid TOML that cargo and `nros sync` both accepted — the loss showed only at link time,
 on one platform. See `archived/0440-*`. (2026-08-06)
 
-**#443** — `just ci-matrix` runs its staleness gate over the WHOLE tier-3 fixture set, the opposite of
-what its own comment promises ("the tier-2 saving is in the staleness GATE, which insists only the
-lane's coordinates are fresh"). The lane reaches the two fixture gates under two names —
-`_require-fixtures` reads `NROS_FIXTURE_LANE`, `check-fixtures-stale.sh` reads `NROS_FIXTURE_SCOPE`
-— and `just ci` sets both while `ci-matrix` sets only the lane, so SCOPE takes its `all` default.
-Undetectable, since `all` is legitimate: the gate cannot tell "wants everything" from "forgot the
-second variable". FIXED by deriving SCOPE from LANE in `_check-fixtures-stale` (explicit SCOPE still
-wins; `ci-matrix-nightly` fixed for free). Note `NROS_TEST_SCOPE` stays unset on purpose — that is
-0393's declared position, not part of this. See `0443-*`. (2026-08-06)
+RESOLVED 2026-08-06 — **#439** a lane-narrowed build killed any recipe naming a fixture by `--id`, so
+three of eight tier-2 modules died, no stamp was written and `just ci-matrix` could not run at all.
+Two guards each right alone: #0393 removes rows for LANE reasons, #0406 treats a zero-row `--id` as a
+typo — together, a lane dropping the row made 0406 blame the caller, printing requested and declared
+coordinates that were IDENTICAL because the lane appeared in neither. Fixed in `9c6420144` (re-query
+without `--coords-from`: present ⇒ out-of-lane, exit 0; absent ⇒ real typo), closed here after
+verifying all three reported invocations exit 0 AND that a genuine typo is still fatal with and
+without a lane — the failure to fear was a guard gone lenient generally rather than lenient about
+lanes. See `archived/0439-*`.
 
-**#439** — a lane-narrowed fixture build KILLS any recipe that names a fixture by `--id`, so
-`just ci-matrix` cannot run at all (3 of 8 tier-2 modules die, no stamp, `_lane-gate` fails). Two
-guards that are each right alone: #0393's `--coords-from` removes rows for lane reasons, #0406 treats
-an `--id` matching zero rows as a wrong invocation. Together, a lane dropping the row makes 0406
-blame the caller — and the message prints requested and declared coordinates that are IDENTICAL,
-because the thing that excluded the row (the lane) appears in neither. Only bites `--id` FLAG callers
-under `lane=tier2`/`tier2-nightly`; the `NROS_FIXTURE_ID` env path already returns 0 for this case.
-Fix = on an empty narrowed result, re-query without `--coords-from`: present ⇒ out-of-lane, exit 0;
-absent ⇒ the real 0406 typo. See `0439-*`. (2026-08-06)
+RESOLVED 2026-08-06 — **#443** the staleness gate ignored the run's lane, because the lane is two env
+vars and `ci-matrix` set only one: `NROS_FIXTURE_SCOPE` fell back to `all` and the gate audited the
+whole tier-3 set while the run, build and stamp were tier 2. `_check-fixtures-stale` now DERIVES the
+scope from `NROS_FIXTURE_LANE` (verified: `scope=coords (lane:tier2) … 13 coordinate(s)`), so
+`ci-matrix`, `ci-matrix-nightly` and the next lane recipe need no second variable. Closed with the two
+pieces derivation alone does not give: the gate now PRINTS the scope it chose and where it came from
+(the defect survived because a green line looks identical whether it covered 3 coordinates or 47 —
+issue 0445's lesson on the build side), and an explicit scope that CONTRADICTS the lane now exits 2,
+which closes the dangerous direction the issue named (a scope narrower than the lane launders a green).
+`just ci` and `_lane-gate` unchanged; `NROS_TEST_SCOPE` stays independent by design. See
+`archived/0443-*`.
 
 RESOLVED 2026-08-06 — **#437** `check-fast` was RED on main: `check-build-profile-literals` flagged
 four sites in `just/px4.just`. The PX4 SITL lane is deliberately release-only (the FFI archive and the
