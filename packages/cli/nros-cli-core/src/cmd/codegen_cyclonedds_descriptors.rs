@@ -379,10 +379,25 @@ mod tests {
     use super::*;
     use std::{fs, os::unix::fs::PermissionsExt, path::Path};
 
+    /// Issue 0455 — the fallback base must be UNIQUE PER PROCESS.
+    ///
+    /// `CARGO_TARGET_TMPDIR` is only set for integration tests; a `--lib` run
+    /// (which is how `check-cli-tests` invokes these) fell back to a FIXED
+    /// `/tmp/nros-cli-core-tests/<test>` shared by every concurrent run — a
+    /// second checkout, a parallel agent session, CI beside a local run. These
+    /// tests write an executable stub and then exec it, so two runs racing on
+    /// one path means one truncates the file while the other is exec'ing it:
+    /// `spawn idlc … Text file busy (os error 26)`. It reproduces only under
+    /// load, so it reads as a codegen regression rather than a test defect.
+    ///
+    /// The pid suffix scopes the fallback to this process; `remove_dir_all`
+    /// below then only ever clears our own directory.
     fn scratch_dir(test: &str) -> PathBuf {
         let base = std::env::var_os("CARGO_TARGET_TMPDIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| std::env::temp_dir().join("nros-cli-core-tests"));
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("nros-cli-core-tests-{}", std::process::id()))
+            });
         let dir = base.join(format!("codegen_cyclonedds_descriptors_{test}"));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("scratch dir");

@@ -283,6 +283,15 @@ an `rmeta`/`.o` path. RESOLVED by recognising a cargo build dir instead of listi
 `CACHEDIR.TAG` plus a `target-` prefix for the not-yet-built case. Listing the dirs would have been
 the hand-maintained-exclude-list shape issue 0287 already replaced. See `archived/0416-*`.)
 
+**#455** — CLI unit tests share a FIXED `/tmp/nros-cli-core-tests/` scratch path:
+`CARGO_TARGET_TMPDIR` is set for INTEGRATION tests only, and `check-cli-tests` runs `--lib`, so the
+fallback branch is what every run actually takes. Two concurrent runs (second checkout, parallel agent
+session, CI beside a local run) then race one directory — one exec's the stub `idlc` it wrote while the
+other truncates it (`Text file busy`), and `remove_dir_all` deletes the other's scratch. Reads as a
+codegen regression, passes 3/3 solo. Fixed in the two sites carrying that exact idiom (which shared a
+base name with each other); ~9 other CLI scratch paths lack a pid and want one shared helper rather
+than a tenth spelling. See `0455-*`. (2026-08-06)
+
 **#448** — XRCE action client: `accepted=true got_feedback=false`, deterministic over 3 retries. The
 goal request/reply AND the terminal result both arrive (the wait for `Result received:` succeeded, so
 the output is non-empty) — only the feedback assertion fails, and it demands the literal
