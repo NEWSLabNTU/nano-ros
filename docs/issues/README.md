@@ -380,6 +380,13 @@ other truncates it (`Text file busy`), and `remove_dir_all` deletes the other's 
 codegen regression, passes 3/3 solo. Fixed in the two sites carrying that exact idiom (which shared a
 base name with each other); ~9 other CLI scratch paths lack a pid and want one shared helper rather
 than a tenth spelling. The first pass said it had fixed "both sites that carried this idiom" — the sweep it prescribes found a THIRD, `orchestration/nros_config.rs`, byte-identical down to the base name (fixed 2026-08-06). See `0455-*`. (2026-08-06)
+**#454** — the two `*_send_goal_raw` FFIs (`nros-c` + `nros-cpp`) take a param named `goal_cdr` —
+the same name their STRIPPING siblings use for `[CDR_HEADER][fields]` input — and pass it through
+untouched, while every non-`_raw` sibling calls `strip_cdr_header`. `PollingActionClient::send_goal`
+feeds `ffi_serialize` output (which carries a header) straight into one, so it would ship the #448
+double encapsulation verbatim. LATENT, not live: `PollingActionClient` has no consumer anywhere and
+neither `_raw` is called from `examples/` or `packages/testing/` — which is exactly why nothing
+caught it. Found by sweeping the #448 class rather than by a failure. See `0454-*`. (2026-08-06)
 
 **#453** — no native action cell can prove the goal payload was DELIVERED. The cells assert only
 `ACTION_RESULT_PREFIX` ("Result received:"), a line the client prints even when it decoded a zeroed
