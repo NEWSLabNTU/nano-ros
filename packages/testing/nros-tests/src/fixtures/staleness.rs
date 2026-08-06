@@ -374,7 +374,10 @@ mod tests {
             Some(Exemption::RegeneratedInPlace),
             "the header whose one-armed exemption was issue 0442"
         );
-        let outdir = project_root().join("target/debug/build/zpico-sys-abc123/out/zpico.o");
+        // No profile dir in the literal — the predicate keys on the
+        // `build/<pkg>-<hash>/out/` shape, and naming a profile here would be a
+        // hardcoded target path the profile table no longer owns.
+        let outdir = project_root().join("target/p/build/zpico-sys-abc123/out/zpico.o");
         assert_eq!(exempt_probe_input(&outdir), Some(Exemption::CargoOutDir));
         let real = project_root().join("packages/core/nros-core/src/lib.rs");
         assert_eq!(exempt_probe_input(&real), None);

@@ -52,18 +52,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 ## Open issues
 
 Recently resolved (2026-08-06): **#444** — every FreeRTOS **Rust** cell (pubsub, service AND action —
-the issue's action-only scope was drawn from one run and was wrong) booted, printed "Network ready."
-and stalled forever. Reproduced on main with fresh fixtures, so not branch-specific. TWO faults from
-one carve-out in `rtos_e2e`, which excused the Rust lane from the board-net launcher on the premise
-that it "keeps the historical DEFAULT-slirp plan" — a premise the boot banner (`IP: 192.0.3.10`)
-contradicts in the output pasted in the issue itself. (1) unroutable net: default slirp 10.0.2.0/24
-under a firmware statically on 192.0.3.10, dialing `tcp/10.0.2.2:7447` — wrong address AND a port the
-harness never serves; gdb put it in a blocking `_z_open_link`. (2) one ZID for two peers: the platform
-PRNG is (ip, mac)-seeded because zenoh-pico's ZID comes off it, both images booted the same pair, and
-the router keeps ONE peer. RESOLVED: one launcher for all FreeRTOS images, per-variant locators
-matching `zenohd_port_for`, and `ip = "192.0.3.11"` on the second image of each pair (what
-`NROS_ENTRY_IP_LAST` 10/11 has always done for C/C++). All NINE FreeRTOS cells pass. See
-`archived/0444-*`.
+the issue's action-only scope came from one run and was wrong) booted, printed "Network ready." and
+stalled forever. Reproduced on main with fresh fixtures, so not branch-specific. TWO faults, both from
+the phase-338 W2 `-entry` collapse (`ab486a8db`). (1) The deploy block kept `tcp/10.0.2.2:7447` and no
+`ip`/`gateway`, so lwIP came up on the board's STATIC 192.0.3.10 while the harness launched default
+slirp — unroutable, and 7447 is a port the harness never serves; gdb put it in a blocking
+`_z_open_link`. (2) One ZID for two peers: the platform PRNG is (ip, mac)-seeded because zenoh-pico's
+ZID comes off it, both images booted the same pair, and the router keeps ONE peer (`max_links=1`) —
+what `NROS_ENTRY_IP_LAST` 10/11 has always prevented for C/C++. RESOLVED upstream by `07faa2383`
+(ip .15/.16 + gateway + per-variant port, restoring the default-slirp plan the launcher expects); an
+independent fix from the other direction (move Rust onto the C/C++ board-net plan, unify the launcher)
+was dropped in its favour. All NINE FreeRTOS cells pass. Still open underneath: `rtos_e2e` keeps the
+Rust lane on a SEPARATE network plan from C/C++ on the same board, and its own comment calls unifying
+them follow-up work — a lane whose firmware config and launcher are maintained apart is a lane where
+they can silently stop matching. See `archived/0444-*`.
 
 Recently resolved (2026-08-06): **#445** — a staleness verdict is TERMINAL and self-explaining, so it
 absorbs whatever the fixture would have done at runtime. Demonstrated: issue 0442 made the

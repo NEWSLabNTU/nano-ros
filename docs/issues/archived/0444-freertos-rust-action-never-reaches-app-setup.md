@@ -75,62 +75,71 @@ Run the cell on `main` with freshly built fixtures. If it fails there too this
 is a main regression to bisect around `ab486a8db`; if it passes, the difference
 is in this branch and the assumption above is wrong.
 
-## Root cause (2026-08-06) — two faults, both from the same carve-out
+## Root cause (2026-08-06) — two faults, both from the phase-338 W2 collapse
 
-Reproduced on `main` with freshly built fixtures, so it is not branch-specific.
-It is also not action-specific: `pubsub` and `service` fail identically. The
-issue's scope table was drawn from one action run and was wrong about that.
+Reproduced on `main` with freshly built fixtures, so not branch-specific. Also
+not action-specific: `pubsub` and `service` fail identically. The scope table
+above was drawn from one action run and is wrong about that.
 
-The `rtos_e2e` FreeRTOS dispatch carved the Rust lane out of the board-net
-launcher on the premise that the Rust images "keep the historical DEFAULT-slirp
-plan (guest 10.0.2.15, host 10.0.2.2)". That premise had stopped being true —
-the board crate brings up the STATIC plan for every lane, which the boot banner
-says out loud (`IP: 192.0.3.10`) in the very output pasted at the top of this
-issue.
+Every FreeRTOS image needs two things the `-entry` packages used to supply and
+the collapsed node packages did not.
 
-**Fault 1 — an unroutable network.** The Rust images got `-nic user,model=
-lan9118` (slirp's default 10.0.2.0/24) while their lwIP was configured
-192.0.3.10 / gw 192.0.3.1. Nothing answers that gateway's ARP, and the baked
-locator was `tcp/10.0.2.2:7447` — an address the firmware cannot route to AND a
-port the harness never serves (it serves `zenohd_port_for(variant, Rust)` =
-7800/7810/7820). gdb on the stalled image put it in `_z_open_link` under
-`zpico_open` ← `CffiSession::open_with_vtable` ← `app_task_entry_runtime`: a
-blocking TCP connect that never returns, which is exactly a boot that stops
-after "Network ready." with no error line.
+**Fault 1 — a network the firmware could not route on.** The Rust images kept
+`locator = "tcp/10.0.2.2:7447"` with no `ip` / `gateway` in their deploy block,
+so lwIP came up on the board's STATIC default (192.0.3.10 / gw 192.0.3.1 — the
+boot banner prints it) while the harness launched them on slirp's default
+10.0.2.0/24. Nothing answers that gateway's ARP, and 7447 is a port the harness
+never serves anyway (it serves `zenohd_port_for(variant, Rust)` =
+7800/7810/7820). gdb on a stalled image:
 
-Fixed by giving every FreeRTOS image the board-net launcher and baking
-`tcp/192.0.3.1:<per-variant port>` in each Rust package's
-`[package.metadata.nros.deploy.freertos]`, matching the C/C++ rows in
-`examples/fixtures.toml`.
+    _z_open_link <- _z_new_transport <- _z_open <- z_open <- zpico_open
+    <- create_session_trampoline <- CffiSession::open_with_vtable
+    <- app_task_entry_runtime
 
-**Fault 2 — one ZID for two peers.** With the network fixed, the LISTENER
-reached "Application setup complete" and the TALKER still hung. The FreeRTOS
+A blocking TCP connect that never returns is exactly a boot that stops after
+"Network ready." with no error line.
+
+**Fault 2 — one ZID for two peers.** Fixing only the network gets the LISTENER
+to "Application setup complete" and leaves the TALKER hung. The FreeRTOS
 platform PRNG is seeded from `(ip, mac)` precisely because zenoh-pico's ZID
-comes off it; `freertos_c_entry.c` says so in as many words ("Unseeded, two QEMU
-instances derive the same ZID; the router keeps ONE peer (max_links=1) and
-rejects the second connection"). Both Rust images booted 192.0.3.10 /
-02:00:00:00:00:00, so whichever connected second was rejected. The C/C++ rows
-have always split this via `NROS_ENTRY_IP_LAST` 10/11; the Rust lane had no
-equivalent set, and `Config::listener()` (ip .11, mac ..01) stopped being
-selected when phase-338 W2 collapsed the `-entry` packages into the node
-packages.
+comes off it; `freertos_c_entry.c` says so: "Unseeded, two QEMU instances derive
+the same ZID; the router keeps ONE peer (max_links=1) and rejects the second
+connection." Both Rust images booted the same address pair, so whichever
+connected second was rejected. The C/C++ rows have always split this via
+`NROS_ENTRY_IP_LAST` 10/11; `Config::listener()` (ip .11, mac ..01) stopped
+being selected when the `-entry` packages were collapsed.
 
-Fixed by setting `ip = "192.0.3.11"` on the second image of each pair
-(listener / service-client / action-client) via the `DeployOverlay`.
+`ab486a8db` was named a suspect above. It is the cause of both faults — but that
+was established by reading the boot banner against the launcher and by gdb, not
+by the bisection the issue called for.
 
-`ab486a8db` was named as a suspect above. It is implicated in fault 2 only, and
-was never bisected — the two faults were found by reading the boot banner
-against the launcher, and by gdb, not by bisection.
+## Resolution
+
+Fixed upstream by `07faa2383` ("the freertos collapse dropped ip/gateway and the
+platform dep"), which restores the DEFAULT-slirp plan in each Rust package's
+`[package.metadata.nros.deploy.freertos]` — `ip` 10.0.2.15 / 10.0.2.16 split per
+pair, `gateway = "10.0.2.2"`, and the per-variant router port — so the images
+match the plain launcher `rtos_e2e` already hands them.
+
+I had independently fixed the same two faults the other way (move the Rust lane
+onto the C/C++ board-net plan and unify the launcher). Both work; upstream's had
+landed, so it stands and mine was dropped. Recorded because the two approaches
+disagree about something real: whether the Rust lane should keep a SEPARATE
+network plan from C/C++ on the same board. `rtos_e2e::start_process` still
+carries the carve-out and its own comment calls unifying the plans follow-up
+work. That is still open, now with the observation that a lane whose firmware
+config and launcher are maintained apart is a lane where they can silently stop
+matching — which is this issue.
 
 ## Verification
 
-`rtos_e2e` FreeRTOS, all nine cells: **9 passed**, Rust/C/C++ × pubsub/service/
-action. Before: Rust 0 of 3 (all three stalled at "Network ready."), C/C++ 6 of
-6.
+`rtos_e2e` FreeRTOS, all nine cells on the rebased tree: **9 passed**,
+Rust/C/C++ x pubsub/service/action. Before: Rust 0 of 3 (all three stalled at
+"Network ready."), C/C++ 6 of 6.
 
-The two C++ cells that read STALE mid-investigation were a separate, correct
+The two C++ cells that read STALE mid-investigation were a separate, CORRECT
 verdict — `nros-cpp/include/nros/client.hpp` had genuinely been edited and the
 C++ fixture build was failing the C/C++ sizes split-brain guard on incremental
-state. Wiping the six `build-zenoh/` dirs and rebuilding cleared it, which is
-the documented "core-crate change ⇒ wipe workspace build dirs" hazard, not a new
+state. Wiping the six `build-zenoh/` dirs and rebuilding cleared it: the
+documented "core-crate change => wipe workspace build dirs" hazard, not a new
 defect.
