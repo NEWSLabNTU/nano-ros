@@ -139,3 +139,37 @@ binary was stale, and a stale binary fails the same way a broken backend does.
 
 Check freshness the way the harness does (the whole input set), not by
 hand-picking one source file to compare against.
+
+## Independent re-measurement, 2026-08-06 (phase-338 `just ci`)
+
+A tier-1 run on freshly rebuilt native fixtures, from a tree carrying phase-338's
+completion (the `-entry` collapse, the `log`-facade unification, the C/C++
+formatter widening):
+
+    junit: tests=1266  failures=5  skipped=35
+
+The five are all on this index and none is new:
+
+| failure | tracked as |
+|---|---|
+| `native_orchestration_tiers` ×2 | 0438 |
+| `zero_copy::test_zero_copy_message_info` | 0429 / listed here |
+| `large_msg::test_xrce_e2e_integrity` | listed here — but see below |
+| `entry_e2e::entry_matrix` (60 s TIMEOUT) | not currently listed |
+
+Two notes for whoever owns this index:
+
+* **`large_msg::test_xrce_e2e_integrity` is recorded above as "now PASSES"** and
+  it failed here — `Expected 0 invalid messages, got 15`, with 64-byte
+  `valid=false` records interleaved among 512-byte `valid=true` ones. Either it
+  is flaky or it regressed; the interleaving pattern suggests two publishers'
+  payloads on one topic rather than a corruption.
+* **`entry_e2e::entry_matrix` is not on the list** and timed out at 60 s in both
+  of two consecutive runs here, so it is not a one-off.
+
+Method note, in case the numbers are compared: 77 additional failures appeared
+in a first attempt purely because `just format` ran AFTER the fixture build —
+every touched example then read STALE. Rebuilding and re-running without
+touching sources took it to 5. A count from this suite is only meaningful if
+nothing rewrote a source between the build and the run.
+
