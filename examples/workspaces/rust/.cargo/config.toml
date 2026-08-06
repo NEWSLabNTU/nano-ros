@@ -1,4 +1,4 @@
-include = ["../../../../nros-patch.toml"]
+include = ["../../../../nros-patch.toml", "nros-managed-patch.toml"]
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [
@@ -97,4 +97,3 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 # Path is relative to the workspace root (this dir).
 [patch.crates-io]
 libc = { path = "../../../third-party/nuttx/libc" }
-nros-zephyr-build = { path = "../../../packages/tooling/nros-zephyr-build" }  # nros-managed

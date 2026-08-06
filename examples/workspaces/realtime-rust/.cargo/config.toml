@@ -1,4 +1,4 @@
-include = ["../../../../nros-patch.toml"]
+include = ["../../../../nros-patch.toml", "nros-managed-patch.toml"]
 # phase-281 W3-nuttx — NuttX QEMU ARM virt (Cortex-A7) Entry link flags. Only
 # applies when `--target armv7a-nuttx-eabihf` is selected (the `nuttx_entry`
 # fixture row), so it is inert for the native rows. `-Z build-std=std,panic_abort`
@@ -100,4 +100,3 @@ rustflags = [
 # relative to the workspace root. Mirrors `examples/workspaces/rust`.
 [patch.crates-io]
 libc = { path = "../../../third-party/nuttx/libc" }
-nros-zephyr-build = { path = "../../../packages/tooling/nros-zephyr-build" }  # nros-managed
