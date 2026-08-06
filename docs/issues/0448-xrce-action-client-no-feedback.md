@@ -1,6 +1,6 @@
 ---
 id: 448
-title: "XRCE action client: goal accepted and result delivered, but no feedback line matches"
+title: "XRCE action client receives a 12-byte ZERO result reply, never the ROS 2 server's"
 status: open
 type: bug
 area: rmw
@@ -36,31 +36,79 @@ So the client got its goal accepted AND its result, and only the feedback
 assertion failed. That narrows it considerably: the send_goal request/reply and
 the get_result path both crossed XRCE→agent→DDS successfully.
 
-## Two candidate causes, not yet separated
+## Root observation (2026-08-06) — the reply is a 12-byte zero payload
 
-1. **Feedback genuinely does not arrive.** The feedback TOPIC (as distinct from
-   the two services) has its own UUID framing; that path could be broken while
-   the services work.
-2. **Feedback arrives but does not match the literal.** The assertion requires
-   `"Next number in sequence received: [0, 1"` — an exact prefix INCLUDING the
-   first two Fibonacci elements and the space after the comma. Any of: a
-   different formatting of the sequence, feedback that starts later in the
-   sequence, or a partial first message, makes a working feedback path read as
-   failure.
+A temporary dump of `result_buffer` in the client's result path
+(`executor/arena.rs`, at `RESULT_PAYLOAD_OFFSET`) gives, on every run:
 
-Candidate (2) is the same grep-drift class as #0429 and archived #0157/#0164,
-where a slimmed example's output silently broke greps that had encoded its exact
-text. That class has already produced two false diagnoses in this tree, so it
-must be ruled out before the RMW path is suspected.
+```
+NROS_DEBUG result reply: total_len=12
+  head=[00, 01, 00, 00,  00, 00, 00, 00,  00, 00, 00, 00]
+         encap (XCDR1)     status = 0        seq_len = 0
+```
 
-## First step
+Reading it off:
 
-Print the client output on failure — the message already interpolates
-`{client_output}`, so capture a real failing run and read what the feedback
-lines actually say. If feedback lines are present with different text, it is (2)
-and the fix is to assert on the shared constant plus a NUMERIC check rather than
-a literal prefix of the payload. If there are no feedback lines at all, it is
-(1) and the feedback topic is the subject.
+- `[0..4] = 00 01 00 00` — CDR_LE, i.e. **XCDR1**. So `begin_dheader()` is
+  correctly a no-op here and the generated deserializer is NOT the problem
+  (an early hypothesis; the dump refutes it).
+- `[4] = 0` — `GoalStatus::Unknown`. A successful `rcl_action` result would be
+  **4 (Succeeded)**.
+- `[8..12] = 0` — sequence length zero, hence `Result received: []`.
+
+`total_len` is **12**. The server's real reply for `order = 10` would be
+4 (encap) + 1 (status) + 3 (pad) + 4 (length) + 11×4 (elements) = **56** bytes.
+
+So the client is not mis-decoding the server's reply: it never receives it. It
+receives a zeroed 12-byte stand-in.
+
+## Why the server's own behaviour rules out a benign explanation
+
+The test's ROS 2 server (`ros_env.rs`, `fibonacci_action_server`) is:
+
+```python
+order = goal_handle.request.order
+seq = [0, 1]                       # <- before the loop
+for i in range(1, order): ...
+result.sequence = seq
+```
+
+`seq` is `[0, 1]` **before** the loop, so the server cannot return an empty
+sequence for any `order`, not even 0. An empty result is therefore impossible to
+produce legitimately — it can only come from the payload never arriving.
+
+That also disposes of "the goal arrived with order=0": that would still yield
+`[0, 1]`, plus the server prints `SERVER DONE {seq}` which the test could
+capture to confirm whether `execute` ran at all.
+
+## The `accepted` flag proves nothing
+
+```rust
+if ctx.send_goal_for_name::<FibonacciGoal, 32>("/fibonacci", &goal).is_ok() {
+    state.sent = true;
+    log::info!("Goal accepted by server, waiting for result");   // <- on SEND success
+}
+```
+
+The line is emitted when the local **send** succeeds, before any server
+response. The test's `accepted = client_output.contains("Goal accepted")` is
+therefore satisfied by a goal that never reached the server. Any diagnosis that
+starts from "acceptance works, so the services are fine" — including this
+issue's first draft — is unfounded.
+
+Worth fixing on its own: the message asserts a fact it has not observed. Left
+here rather than changed blind, because several tests grep that exact string and
+`action-client/src/lib.rs`'s own doc comment lists it as a test contract.
+
+## Next step
+
+Capture the ROS 2 server's stdout (`SERVER READY` / `SERVER DONE [...]`) in the
+test and print it on failure. That splits the remaining space in one run:
+
+- no `SERVER DONE` → the goal never reached the server; the send path is the
+  subject.
+- `SERVER DONE [0, 1, ...]` → the server ran and replied; the reply is being
+  lost or replaced between the agent and the client.
 
 ## Notes
 

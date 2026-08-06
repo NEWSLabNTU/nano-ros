@@ -381,12 +381,13 @@ codegen regression, passes 3/3 solo. Fixed in the two sites carrying that exact 
 base name with each other); ~9 other CLI scratch paths lack a pid and want one shared helper rather
 than a tenth spelling. The first pass said it had fixed "both sites that carried this idiom" — the sweep it prescribes found a THIRD, `orchestration/nros_config.rs`, byte-identical down to the base name (fixed 2026-08-06). See `0455-*`. (2026-08-06)
 
-**#448** — XRCE action client: `accepted=true got_feedback=false`, deterministic over 3 retries. The
-goal request/reply AND the terminal result both arrive (the wait for `Result received:` succeeded, so
-the output is non-empty) — only the feedback assertion fails, and it demands the literal
-`"Next number in sequence received: [0, 1"`. Either the feedback TOPIC is broken while both services
-work, or the grep encodes a payload prefix that changed (the #0429 / archived 0157 class, which has
-already caused two false diagnoses here). Rule out the grep first. See `0448-*`. (2026-08-06)
+**#448** — XRCE action client gets a 12-byte ALL-ZERO get_result reply, never the ROS 2 server's.
+Dumped at the client: `head=[00,01,00,00 | 00,00,00,00 | 00,00,00,00]` — XCDR1 encap (so the DHEADER
+path is innocent), `status=0` (Unknown, not 4=Succeeded), `seq_len=0`; a real order-10 reply is 56
+bytes, not 12. The test server sets `seq=[0,1]` BEFORE its loop so it cannot return an empty sequence
+for any order — the payload is not arriving, not mis-decoding. Also: the client logs "Goal accepted by
+server" on local SEND success, so the test's `accepted=true` proves nothing. Next step is capturing the
+server's `SERVER DONE` line to split "goal never arrived" from "reply lost". See `0448-*`. (2026-08-06)
 
 **#447** — `realtime_tiers` native/rust: the 10 ms high tier publishes NOTHING (`ctrl_max` 0, which is
 `unwrap_or(0)` = nothing parsed) while the 100 ms low tier delivers 5 samples and anchors the test.
