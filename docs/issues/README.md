@@ -51,16 +51,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#463** — 48 tracked leaf `.cargo/config.toml` files `include` `nros-managed-patch.toml`, which
-`.gitignore:119` ignores — so a leaf cannot be *parsed* (not merely built: `cargo metadata` fails too)
-until `nros sync` writes the sidecar. `just rust-rtos-link-check`, a `ci-full` step, is red on any tree
-that has not re-synced since #0457 landed. The resolution of #0457 states cargo "ignores a missing
-`include` SILENTLY"; on cargo 1.97.1 it is a hard error, and that premise is what the split rests on.
-Measured: 48 tracked configs carry the include, **0** sidecars exist on a host that has been building
-these leaves all week; dropping a one-comment placeholder in makes the leaf parse, so the include is
-the whole failure. Same shape as the leaf-lockfile rule — a committed file naming something absent from
-a bare clone. See `0463-*`. (2026-08-06)
-
 **#461** — an action server reads `1` for every goal's `order`. A client sending `order: 10` and one
 sending `order: 7` both make the server log `Received goal request with order 1` — CONSTANT, not merely
 wrong, so it is reading a different field rather than slipping an offset (a wrong offset would land in
@@ -87,6 +77,19 @@ was dropped in its favour. All NINE FreeRTOS cells pass. Still open underneath: 
 Rust lane on a SEPARATE network plan from C/C++ on the same board, and its own comment calls unifying
 them follow-up work — a lane whose firmware config and launcher are maintained apart is a lane where
 they can silently stop matching. See `archived/0444-*`.
+
+Recently resolved (2026-08-07): **#463** — two design comments in `cmd/ws.rs` asserted that "cargo
+ignores a missing `include` SILENTLY". On cargo 1.97.1 it is a HARD error raised during *manifest
+parse*, so a leaf whose include target is absent cannot be READ — `cargo metadata` and every gate that
+walks it fail too, four frames deep, naming a path that never mentions sync. Both generated targets are
+gitignored, so a clone has neither: the central `nros-patch.toml` (57 leaves, since #272) and the
+`nros-managed-patch.toml` sidecar (48 leaves, since #457) — i.e. the hole predates #457, which added a
+second instance rather than causing it. NOT fixed by making a clone parse: committing the targets would
+put ament-derived rows in git (the churn #457 removed), cargo has no optional include, and these leaves
+cannot build before sync anyway since their patches name `generated/` trees only sync writes. RESOLVED
+at the seam instead — `_require-leaf-includes` says "run `nros sync`" before cargo says anything, and
+`check-cargo-config-tracked` now rejects an include naming a target NO generator writes (which no sync
+run could ever satisfy — verified to fire, not merely to pass). See `archived/0463-*`.
 
 Recently resolved (2026-08-06): **#457** — sync's managed `[patch.crates-io]` block sat inside the leaf
 `.cargo/config.toml`, which is tracked: it committed host-derived `generated/` paths AND re-dirtied the

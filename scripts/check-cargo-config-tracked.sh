@@ -73,6 +73,41 @@ has_uncommitted_generated_patch() {
     return 1
 }
 
+# Issue 0463 — every `include` entry in a TRACKED config must name a target some
+# generator owns.
+#
+# Cargo raises a missing `include` as a HARD error while PARSING the manifest,
+# so the leaf becomes unreadable, not merely unbuildable: `cargo metadata`,
+# `cargo tree` and every gate that walks the leaf fail with it. (Both #272 and
+# #457 recorded the opposite — "cargo ignores a missing include SILENTLY" — and
+# built on it; measured on cargo 1.97.1 it does not.)
+#
+# Exactly two targets are generated: the central `nros-patch.toml` and the
+# per-leaf `nros-managed-patch.toml` sidecar. Both are gitignored, so a fresh
+# clone has neither and `_require-leaf-includes` sends the developer to
+# `nros sync`. An include naming anything ELSE has no generator at all, so no
+# sync run will ever satisfy it — that leaf is bricked for everyone, forever.
+# This gate catches that at authoring time, which the sync-time check in
+# `cmd/ws.rs` cannot: that one only validates the central entry it just wrote.
+orphan_includes=0
+has_orphan_include() {
+    local cfg="$1" entry base
+    # Only the top-level key: scanning past the first table header would let a
+    # `[target.…]` value containing the word masquerade as one.
+    while IFS= read -r entry; do
+        [ -n "$entry" ] || continue
+        base="$(basename "$entry")"
+        case "$base" in
+            nros-patch.toml | nros-managed-patch.toml) continue ;;
+        esac
+        echo "    $cfg" >&2
+        echo "      include -> '$entry' — no generator writes this" >&2
+        return 0
+    done < <(sed -n '/^\[/q;p' "$cfg" | grep -oE '^include *= *\[[^]]*\]' |
+        grep -oE '"[^"]*"' | tr -d '"')
+    return 1
+}
+
 untracked_authored=0
 tracked_pure=0
 
@@ -90,6 +125,15 @@ while IFS= read -r -d '' cfg; do
         fi
         if has_uncommitted_generated_patch "$cfg"; then
             ament_rows_tracked=$((ament_rows_tracked + 1))
+        fi
+
+        if [ "$orphan_includes" -eq 0 ]; then
+            if has_orphan_include "$cfg" >/dev/null 2>&1; then
+                echo "check-cargo-config-tracked: tracked config includes a file NO generator writes:" >&2
+            fi
+        fi
+        if has_orphan_include "$cfg"; then
+            orphan_includes=$((orphan_includes + 1))
         fi
     fi
 
@@ -129,6 +173,18 @@ if [ "$ament_rows_tracked" -ne 0 ]; then
         echo "  writes what it owns to the gitignored \`.cargo/nros-managed-patch.toml\`,"
         echo "  and a leaf that path-deps its msg crate in Cargo.toml needs no patch at all."
         echo "  (\`packages/interfaces/*\` are exempt — they COMMIT their generated tree.)"
+    } >&2
+    rc=1
+fi
+if [ "$orphan_includes" -ne 0 ]; then
+    {
+        echo
+        echo "  Cargo raises a missing \`include\` as a HARD error during manifest parse,"
+        echo "  so these leaves cannot be READ — \`cargo metadata\` fails too. Only"
+        echo "  \`nros-patch.toml\` (central) and \`nros-managed-patch.toml\` (per-leaf) are"
+        echo "  generated; an include naming anything else can never be satisfied by any"
+        echo "  \`nros sync\` run. Drop the entry, or make sync write the target."
+        echo "  (See docs/issues/0463-*.)"
     } >&2
     rc=1
 fi

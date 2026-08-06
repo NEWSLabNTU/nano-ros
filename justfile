@@ -1490,7 +1490,7 @@ _clear-fixture-stamp:
 # keeps the self-contained UX; aggregate paths that already ran `build` use
 # this to avoid repeating `generate-bindings` and `build-zenoh-posix-fixture`.
 [private]
-build-test-fixtures-leaves lane="all":
+build-test-fixtures-leaves lane="all": _require-leaf-includes
     #!/usr/bin/env bash
     set -e
     # (The phase-177.9 `NROS_FIXTURE_SHARED_SIG` export lived here until
@@ -1737,6 +1737,23 @@ _require-fixtures:
     source scripts/build/fixture-lane.sh
     nros_fixtures_stamp_require "${NROS_FIXTURE_LANE:-all}"
 
+# Issue 0463 — preflight: a tracked leaf `.cargo/config.toml` reaches
+# sync-generated content through `include` (the central `nros-patch.toml` since
+# #272, the `nros-managed-patch.toml` sidecar since #457). Both targets are
+# gitignored, so a clone has neither, and cargo treats a missing include as a
+# HARD error during MANIFEST PARSE — `cargo metadata` and every gate that reads
+# the leaf fail too, four frames deep, naming a path with no mention of sync.
+# (Two comments in cmd/ws.rs claimed cargo drops a missing include silently;
+# measured on 1.97.1 it does not.) Say "run `nros sync`" once here rather than
+# once per leaf in cargo's words. Bypass with NROS_SKIP_LEAF_INCLUDE_CHECK=1.
+[private]
+_require-leaf-includes:
+    #!/usr/bin/env bash
+    if [ "${NROS_SKIP_LEAF_INCLUDE_CHECK:-0}" != "0" ]; then
+        exit 0
+    fi
+    python3 scripts/build/leaf-config-includes.py
+
 # issue 0390 — preflight: the repo's build stage needs the UNION of vendored
 # `[source.*]` (every RMW's `-sys` source + the platform sources the workspace
 # graph path-deps), NOT the per-board slice `nros setup <board>` provisions. Fail
@@ -1979,7 +1996,7 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
 # Best-effort: each RTOS's build skips cleanly if its cross
 # toolchain or board crate prerequisites are absent.
 [private]
-rust-rtos-link-check:
+rust-rtos-link-check: _require-leaf-includes
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh

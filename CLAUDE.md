@@ -324,7 +324,11 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   clone cannot regenerate it. Corollary, gated by `check-cargo-config-tracked`: **a tracked config
   must never patch an uncommitted `generated/` tree** (`packages/interfaces/*` are exempt — they
   commit theirs). An out-of-tree consumer keeps the block INLINE: no `include` outside this
-  checkout (#272). → AGENTS.md Rust Consumption.
+  checkout (#272). **A missing `include` target is a HARD cargo error during MANIFEST PARSE — not the
+  silent drop #272 and #457 both assumed (issue 0463).** Both generated targets are gitignored, so
+  before `nros sync` these leaves cannot even be READ (`cargo metadata` fails too, four frames deep,
+  never naming sync). Guarded by `_require-leaf-includes`; `check-cargo-config-tracked` also rejects
+  an include naming a target no generator writes. → AGENTS.md Rust Consumption.
 - **Parallel agent sessions push to `main`** — **reserve issue ids with `just issue-new <slug>`,
   never by reading the highest number.** Reading-then-writing is a race that has collided seven
   times (0367→0372→0377 collided TWICE, the second time while renumbering the first). The tool

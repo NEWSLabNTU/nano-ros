@@ -2650,9 +2650,16 @@ fn write_patch_block(
 
     // 1) Write the managed [patch.crates-io] into `<authority_dir>/.cargo/config.toml`
     //    (phase-265: never the consumer Cargo.toml). Format-preserving toml_edit DOM.
-    // #272 — fail loud when the include target is unreachable from this leaf
-    // (cargo would silently drop the patch and the build would die with an
-    // unexplained `no matching package named 'nros'`).
+    // #272 — fail loud when the include target is unreachable from this leaf.
+    //
+    // Issue 0463 corrected the reason. #272 recorded it as "cargo would
+    // silently drop the patch and the build would die with an unexplained
+    // `no matching package named 'nros'`". Measured on cargo 1.97.1, a missing
+    // include is not dropped: it is a HARD error, raised while parsing the
+    // manifest, so `cargo metadata` fails alongside the build. The check below
+    // is still the right one — it is the message, not the behaviour, that was
+    // wrong — but it now earns its keep by naming sync instead of pre-empting
+    // a silent-resolution failure that does not occur.
     if let Some(inc) = include_rel.as_deref() {
         let target = std::path::Path::new(inc);
         let resolved = if target.is_absolute() {
@@ -2671,9 +2678,10 @@ fn write_patch_block(
         if !resolved.is_file() {
             bail!(
                 "sync: central patch file `{}` is not readable from `{}` — \
-                 cargo ignores a missing `include` WITHOUT warning and the build \
-                 would fail `no matching package named 'nros'`. Re-run `nros sync` \
-                 from the nano-ros checkout (the file is gitignored + regenerated).",
+                 cargo raises a missing `include` as a hard error while parsing \
+                 the manifest, so every leaf reaching it becomes unreadable (not \
+                 merely unbuildable). Re-run `nros sync` from the nano-ros \
+                 checkout (the file is gitignored + regenerated).",
                 resolved.display(),
                 authority_dir.display(),
             );
@@ -3343,11 +3351,21 @@ fn render_patch_config_with(
         }
         // Issue 0457 — point at the sibling managed-patch file when there is
         // one. Relative to the INCLUDING file's directory, which is `.cargo/`
-        // itself, so the bare basename is the whole path. Re-added each sync
-        // (and dropped when the managed set empties) so a leaf that loses its
-        // last generated dep does not keep an include to a deleted file —
-        // cargo ignores a missing include SILENTLY, which is exactly the
-        // failure mode #272 fought for the central file.
+        // itself, so the bare basename is the whole path. Re-added each sync,
+        // and dropped when the managed set empties, so a leaf that loses its
+        // last generated dep does not keep an include to a deleted file.
+        //
+        // Issue 0463 — that last clause is load-bearing in a way 0457 did not
+        // realise. It justified itself with "cargo ignores a missing include
+        // SILENTLY"; on cargo 1.97.1 a missing include is a HARD error during
+        // manifest parse, so an orphaned entry does not degrade the leaf, it
+        // makes the leaf unreadable. Note this cannot be fixed by dropping the
+        // entry more eagerly: the entry is written into a TRACKED file while
+        // its target is gitignored, so a fresh clone always has the entry and
+        // never the file. Committing the target instead would put the user's
+        // ament-derived crate set in git, which is the churn 0457 removed. The
+        // gap is therefore closed at the seam, by `_require-leaf-includes`,
+        // which says "run `nros sync`" before cargo says anything at all.
         if sidecar && !managed.is_empty() {
             arr.push(MANAGED_PATCH_FILE);
         }
