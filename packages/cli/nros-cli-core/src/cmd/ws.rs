@@ -4336,12 +4336,8 @@ version = "*"
 libc = { path = \"../../third-party/libc\" }
 std_msgs = { path = \"generated/std_msgs\" }  # nros-managed
 ";
-        let out = render_patch_config(
-            &existing.to_string(),
-            &mng(&[("std_msgs", "generated/std_msgs")]),
-            None,
-        )
-        .unwrap();
+        let out = render_patch_config(existing, &mng(&[("std_msgs", "generated/std_msgs")]), None)
+            .unwrap();
         let doc: toml_edit::DocumentMut = out.parse().unwrap();
         let cio = doc["patch"]["crates-io"].as_table().unwrap();
         assert!(
