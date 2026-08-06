@@ -367,13 +367,95 @@ stages only, so it cannot currently answer this.
 
 ### W2 — collapse the R1 duplicates
 
-- [ ] Group leaves by identity tuple (profile, features, target-flag, RUSTFLAGS,
-      workspace) and share ONE target dir per group, instead of one per leaf.
-      `nros_sizes_probe_dir` in `scripts/build/cargo.sh` is the precedent — same
-      shape, already proven for the size probe.
-- [ ] Measure the cargo target-dir lock contention this introduces. It must be
-      cheaper than the duplicate compiles it removes; if it is not, the answer is
-      a content-addressed cache instead, which needs W1 first.
+**Rewritten after W1.** The original plan — "share ONE target dir per identity
+group" — names the right grouping and the wrong mechanism, and it would make the
+lane slower for a benefit sccache already delivers. Three findings force the
+revision.
+
+#### F1 — CPU duplication and DISK duplication are different problems
+
+The phase opened by treating "106 rlibs, 5 identities" as 106 compilations. With
+a warm sccache it is not: rep 2 of the lane A/B recorded **17846 hits against
+222 misses**. Those 106 are 106 *materialisations* of a handful of actual
+compiles. "The machine is not compiling; it is repeating" is a **cold-cache**
+statement, and the lane is cold only on a fresh machine.
+
+Disk is the part nothing dedupes. sccache caches the compile and each consumer
+still writes its own copy: 327 `libnros_core-*.rlib` on disk, 402 GB under
+`examples/`. So W2's target is **bytes, not CPU** — and that changes which
+mechanism is correct, because the two have opposite contention profiles.
+
+#### F2 — the mechanism already exists, and R1 is opted OUT of it
+
+`scripts/build/fixtures-target-dir.sh` (phase-226.D) already groups rows by
+platform, triple, profile, no-default flag, sorted features, sorted env and sync
+mode — essentially this phase's identity tuple — and hands the group ONE
+`--target-dir`. It is gated to a single platform:
+
+```sh
+export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal}"
+```
+
+and it explicitly yields to rows that author their own dir:
+
+> the manifest row did NOT author its own `--target-dir` (authored dirs such as
+> `target-zenoh` / `target-safety` win and stay per-example).
+
+Those authored dirs ARE the R1 population this phase measures. R1 is therefore
+not an unbuilt feature; it is an **opt-out**, and W2 is mostly a question of
+extending an existing, proven resolver rather than writing a new one.
+
+#### F3 — sharing a dir across CONCURRENT cargo processes is the wrong shape
+
+Cargo takes an **exclusive** lock on a target dir for the whole build. The
+fixture fan-out is parallel (`run()` → `run_with_make`, unless
+`NROS_JOBSERVER=1`), so pointing N concurrent rows at one shared dir converts N
+parallel builds into N serial ones. Against a warm sccache — where the duplicate
+work was already cheap — that is a **net loss**: it removes redundancy that cost
+little and adds serialisation that costs a lot.
+
+The alternative shape is the one to build: **one cargo invocation over N
+packages**, not N invocations over one dir. A single invocation takes the lock
+once, builds each identity once by construction, parallelises internally through
+its own jobserver, and writes one copy to disk. That is the difference between
+lock contention and inner parallelism, and it is the whole design question in
+this work item.
+
+**The constraint that bounds group size: feature unification.** Cargo unions
+features across workspace members built in one invocation (resolver 2 only
+avoids unification across build-dep / dev-dep / target boundaries). So a group
+may contain only rows whose feature set is IDENTICAL. Grouping `rmw-zenoh` with
+`rmw-xrce` rows would union them — and because nano-ros has **no
+`compile_error!` on multiple RMW features** (only on multiple ROS editions),
+that union does not fail loudly. It silently builds every backend into every
+fixture and changes what the tests are exercising. A silent behaviour change is
+a worse failure than a build error, so the group key must keep features exact.
+
+Same-feature rows are plentiful: the ~10 native `--features rmw-zenoh` leaves
+are one group, and their entire lower stack is a single identity.
+
+#### Work items
+
+- [ ] **W2.a** Extend the phase-226.D resolver so a manifest-authored
+      `--target-dir` names a GROUP rather than opting the row out, for rows whose
+      identity already matches. No new mechanism; widen the existing key.
+- [ ] **W2.b** Convert a same-identity group from N parallel cargo invocations
+      into ONE invocation over a build-time-only umbrella workspace. Leaves keep
+      their standalone manifests (RFC-0026's copy-out promise); the umbrella is
+      generated for the fixture build and never committed.
+- [ ] **W2.c** Measure W2.b against the status quo on disk AND wall-clock,
+      alternating reps per the W1 method.
+
+**Rejected design, recorded so it is not re-proposed:** N concurrent cargo
+processes sharing one target dir. It serialises on cargo's exclusive flock while
+sccache had already made the duplicate compiles cheap. Any future "just point
+them at the same dir" proposal must first show a cold-cache scenario.
+
+**Considered and not taken:** post-build hardlink dedup of identical artifacts.
+W1 restored byte-reproducibility so this is now *possible*, but the volume is
+**ext4** — no reflink, so it would be true hardlinks, and any tool that rewrites
+an artifact in place instead of replacing it would corrupt every sibling. Revisit
+only with a measured list of what writes into these trees.
 
 **Acceptance:** `nros-core` rlib count drops from 106 toward the identity count,
 the native lane's wall-clock does not regress, and the target-dir bytes for the
@@ -389,6 +471,23 @@ counted differently — an rlib count can fall because the probe changed.
 - [ ] If incidental, align it so cmake-driven and cargo-driven host builds share
       one identity. If load-bearing, record WHY at the call site so the split
       stops looking like an accident.
+
+**Direction, given W2's reframing.** Unifying means picking ONE spelling for
+every host build, and the cheap-looking direction is the wrong one. Dropping
+corrosion's `--target` is not a local edit — corrosion derives it from
+`Rust_CARGO_TARGET` and the cmake integration is built around it. Adding
+`--target` to the native leaves is mechanical but WIDE: with an explicit target
+triple cargo moves artifacts from `target/<profile>/` to
+`target/<triple>/<profile>/`, and every fixture resolver, staleness probe and
+staging path that spells the former would have to move as one change. That is
+the issue-0196 class — a path convention with many spellings — so it is a
+class-wide sweep or nothing, never a per-site fix.
+
+Note this split costs CPU as well as disk, and sccache does NOT paper over it:
+a different `-C metadata` is a different cache key, so the cmake-driven and
+cargo-driven builds of an identical crate miss each other's entries. Unlike R1,
+this duplication is real compilation even with a warm cache — which makes W3 the
+better CPU target and W2 the better disk target.
 
 **Acceptance:** either the two paths share an identity, or the reason they
 cannot is written down where the next reader will find it.
@@ -408,8 +507,21 @@ work. That is a win only if the redundancy exceeds the serialisation; W2 must
 measure rather than assume. The per-RMW isolation exists for a real reason
 (issue 0400's host/box split is the same class) and must survive.
 
-**sccache's role is unverified.** Overall hit rate is 97 %, Rust-specific 68 %,
-with 5310 non-cacheable calls. The obvious hypothesis is that `incremental`
-makes Rust compilations non-cacheable, which would make W1 also a cache fix —
-but repeated A/B probes contradicted each other, so it is written down as the
-next experiment, not as a premise for any of the work above.
+W1 sharpened this from a risk into a **design constraint**: with a warm sccache
+the redundancy is already cheap, so the trade is a loss unless the sharing comes
+from ONE cargo invocation rather than N invocations over one dir. See W2 F3.
+
+**sccache's role — resolved for the `incremental` half, still open for the
+rest.** The hypothesis recorded here was that `incremental` makes Rust
+compilations non-cacheable, which would have made W1 a cache fix too. **It is
+false**: `non_cacheable_compilations` was 0 in all four lane arms and in every
+single-leaf arm, across ~30 000 compilations. What `incremental` actually does is
+keep units away from the cache — 11514 sccache requests with it on versus 18780
+with it off — so the cache serves less, without anything becoming uncacheable.
+
+The 5310 non-cacheable calls in the original observation therefore have some
+other cause, still unidentified, and the 68 % Rust hit rate is not explained by
+this phase. **W2 must not be scoped as if fixing it were a known outcome.**
+Finding what those calls are is worth its own investigation; the likely
+candidates are the C/C++ compilations in the cmake fixtures rather than rustc at
+all, since the overall rate (97 %) and the Rust rate (68 %) differ so widely.
