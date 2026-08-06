@@ -1,5 +1,10 @@
 # Phase 275/276 — branch implementation notes (2026-07-01)
 
+**Status.** NOT A WORK-ITEM PHASE — these are branch working notes for
+`phase-275-276-example-fixture-coverage`, verified on a known-good host
+2026-07-02. Kept for the reasoning about which remaining items are non-mechanical;
+it carries no open acceptance criteria of its own.
+
 > Working notes for branch `phase-275-276-example-fixture-coverage`. The dev host has failing RAM
 > (issue #115) so the original staging pass was **unverified**. Below: what was done, what each
 > remaining item actually requires (study revealed most are NOT mechanical row-adds), and the risks.

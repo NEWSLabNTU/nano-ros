@@ -1,5 +1,11 @@
 # Phase 296 — SystemModel consumption: bake the model into embedded images
 
+**Status.** IN PROGRESS — but LAST RECORDED 2026-07-23, so treat the figures
+below as stale until re-audited. W1–W4 + W3b.1–.5 landed (2026-07-20) incl. the
+cross-runtime parity fixture; the R2/R4 migration was mid-flight with a holdout
+inventory of **17 CMake + 7 Rust** entries. Migration state for C/C++ lives in
+the CMake `LAUNCH`/`MODEL` keyword, not the source.
+
 Implements RFC-0050 (consumer half) + RFC-0052 (the RTOS mapper).
 Producer side is DONE (play_launch phase 43: `resolve` emits the model,
 the Linux runtime consumes it; shared schema in the vendored
