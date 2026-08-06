@@ -117,16 +117,15 @@ under `lane=tier2`/`tier2-nightly`; the `NROS_FIXTURE_ID` env path already retur
 Fix = on an empty narrowed result, re-query without `--coords-from`: present ⇒ out-of-lane, exit 0;
 absent ⇒ the real 0406 typo. See `0439-*`. (2026-08-06)
 
-**#437** — `just check-fast` is RED on **main**: `check-build-profile-literals` flags four sites in
-`just/px4.just` (three `cargo build --release`, one `target/release/` path) added by `e2f850efa`
-(#0362 pass 2). Reproduced against a pristine `origin/main` worktree, so it is not an interaction
-with any branch. The path spelling is the one that bites — line 168 builds the FFI archive and line
-181 hands PX4 its PATH, so if the profile ever moves they disagree and PX4 links a stale archive,
-failing inside PX4's make far from the cause. Fix = `nros_cargo_profile_arg_string` /
-`nros_cargo_target_profile_dir` so both derive from one answer, or a `# profile-literal-ok:` marker
-if the lane is deliberately release-only. Matters because check-fast is the gate every task runs
-first: while it is red, every unrelated change looks like it broke something. See `0437-*`.
-(2026-08-06)
+RESOLVED 2026-08-06 — **#437** `check-fast` was RED on main: `check-build-profile-literals` flagged
+four sites in `just/px4.just`. The PX4 SITL lane is deliberately release-only (the FFI archive and the
+symbol fixture land in the SAME image; a split link takes half of each), so all four carry
+`# profile-literal-ok: symbol fixture`. The PLACEMENT is the lesson: the window is 3 lines and the
+flagged token sits on a `\`-continuation line where no comment can precede it, so the marker must be
+inline or the LAST comment line before the command — a rationale block between the two puts it out of
+range, which is how this failed twice, once while being fixed. Still uncoupled underneath: line 168
+builds the archive and line 181 hands PX4 its PATH from separate spellings, so a profile move makes
+them disagree and PX4 links a stale archive. See `archived/0437-*`.
 
 RESOLVED 2026-08-06 — **#436** the PX4 uORB→RMW bridge now works end to end (uORB samples translated to CDR px4_msgs and published on zenoh, 100+ forwarded). Five defects fixed: TWO copies of zenoh-pico in one image (each with its own statics — z_open failed silently; zenoh-pico now has ONE source, the umbrella built with a platform feature); uORB registered under the deprecated unnamed shim so it could never be named; `open_multi`'s extra sessions were anonymous; two incompatible executor handles behind one `void*` (fixed by `nros_cpp_init_multi`, which opens multi-RMW sessions into a real CppContext); and four collapsed error seams. See `archived/0436-*`.
 
