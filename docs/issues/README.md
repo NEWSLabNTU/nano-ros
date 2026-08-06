@@ -396,7 +396,7 @@ tutorial server `order + 1`. So no cell's payload is a function of the goal. Thi
 stayed green across the whole native matrix while only the XRCE↔ROS 2 interop test — the one with a
 real `rcl_action` peer — caught it. See `0453-*`. (2026-08-06)
 
-**#448** — RESOLVED 2026-08-06: the Rust `send_goal` serialized with `new_with_header` and handed the
+Recently resolved (2026-08-06): **#448** — the Rust `send_goal` serialized with `new_with_header` and handed the
 result to `send_goal_raw`, which frames the request itself — so every goal shipped TWO encapsulations
 (`encap|uuid|encap|order` = 28 bytes vs ROS 2's 24). Fast-DDS sizes reader history from the type and
 dropped the sample outright ("Change payload size of '28' bytes is larger than the history payload
@@ -405,7 +405,15 @@ result. Fixed by using the headerless `CdrWriter::new`, matching the RFC-0069/#0
 `publish_feedback`/`complete_goal` already carried; `nros-c`/`nros-cpp` already stripped it, so the
 Rust API was the lone live offender. See `archived/0448-*`. (2026-08-06)
 
-**#458** — RESOLVED 2026-08-06: `nros_cpp_executor_open_over_session` never stamped the `CppContext`
+**#462** — `workspace_features` cell `rust/logging`: the node's log lines carry NO `[INFO]` level tag —
+0 of an expected ≥3. The node runs and emits its three marker lines (`talker publishing chatter seq=0..2`);
+only the level metadata is absent, so the record either bypassed the logging facade (a direct write) or
+lost its metadata in the sink. Reproduces SOLO, which separates it from the three sweep-only flakes found
+in the same run (`large_msg::test_xrce_e2e_integrity`, `xrce_ros2_interop::test_xrce_action_ros2_client`,
+`native_example_reqresp` all pass individually). NOT #0422's logging entry — that one was
+`logging_smoke_mps2_baremetal`, a lane-coverage naming problem, since renamed. See `0462-*`. (2026-08-06)
+
+Recently resolved (2026-08-06): **#458** — `nros_cpp_executor_open_over_session` never stamped the `CppContext`
 handle tag. The storage is `MaybeUninit`, so `cpp_ctx_checked` read garbage and every entry point
 taking that handle returned `INVALID_ARGUMENT` (-3) — the generated per-tier setup's
 `nros_cpp_node_create` failed, so `tier 'low' setup FAILED (rc=-3)` and `/telem` never published on
@@ -414,7 +422,7 @@ ALL THREE native C/C++ realtime cells. `tag` came from #0436, which stamped it i
 #0387 (`in_dispatch`, from #0290) one field over, whose warning comment sits at the very same site.
 See `archived/0458-*`. (2026-08-06)
 
-**#447** — RESOLVED 2026-08-06: NOT a dead tier — multi-tier registration RACES on the shared RMW
+Recently resolved (2026-08-06): **#447** — NOT a dead tier — multi-tier registration RACES on the shared RMW
 session. Each spawned tier runs `setup` on its own thread while the boot tier runs the same closure
 after the spawn loop, both declaring entities on one session unsynchronized (the board's
 `SharedSession` comment claimed the backend serialized this; true for publish, false for
