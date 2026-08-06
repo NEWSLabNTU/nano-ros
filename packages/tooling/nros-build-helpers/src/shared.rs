@@ -9,10 +9,15 @@ pub type SizeMap = HashMap<String, u64>;
 /// Identity of the artifact the sizes were probed from, for
 /// [`write_header_if_absent_or_verify`]'s stale-vs-divergent question.
 ///
-/// Both `nros-c` and `nros-cpp` read their `__NROS_SIZE_*` values out of the
-/// SAME `nros` rlib in a given build, so that file's identity is exactly the
-/// discriminator the verify step was missing: same build ⇒ same rlib ⇒ same
-/// stamp. A header left behind by an EARLIER build carries a different one.
+/// The two fields carry different information, and the verify step needs both:
+///
+/// * the **path** says WHICH probe configuration produced the sizes.
+///   `nros-sizes-build` keys its probe directory by (rustc, target, features),
+///   so two crates that resolved different feature sets probe different paths —
+///   that is divergence, not staleness.
+/// * the **mtime/len** say WHEN that same configuration was last built. Same
+///   path, different mtime ⇒ a header from an earlier build of this very
+///   configuration ⇒ staleness.
 ///
 /// Path + mtime + length rather than a content hash: the rlib is tens of
 /// megabytes and this runs in every build script, while the triple already
@@ -478,19 +483,23 @@ pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label
         Ok(existing) if defines_of(&existing) == defines_of(contents) => {}
         Ok(existing) => {
             let on_disk_stamp = std::fs::read_to_string(&stamp_path).ok();
-            if stamps_prove_same_build(on_disk_stamp.as_deref(), current_stamp.as_deref()) {
+            if !stamps_prove_staleness(on_disk_stamp.as_deref(), current_stamp.as_deref()) {
                 panic!(
-                    "{label}: {} was written by another crate with DIFFERENT probed sizes, \
-                     from the SAME probed artifact.\n\
+                    "{label}: {} was written by another crate with DIFFERENT probed sizes.\n\
                      The C and C++ halves of this build resolved different runtime layouts, \
                      so one of them would size its `_opaque` storage wrong (silent overflow \
-                     at runtime). This means nros-c and nros-cpp were built with different \
-                     features.\nDisagreeing defines:\n{}",
+                     at runtime). Usually this means nros-c and nros-cpp were built with \
+                     different features — `nros-sizes-build` keys its probe directory by \
+                     (rustc, target, features), so check whether the two probed different \
+                     rlibs:\n  on disk: {}\n  current: {}\nDisagreeing defines:\n{}",
                     dest.display(),
+                    on_disk_stamp.as_deref().unwrap_or("<no stamp>"),
+                    current_stamp.as_deref().unwrap_or("<unknown>"),
                     disagreeing_defines(&existing, contents),
                 );
             }
-            // Stale: left by an earlier build whose `nros` rlib differed.
+            // Stale: SAME probe artifact path, rebuilt since — a header left by
+            // an earlier build of this same configuration.
             write_to_path(&dest, contents);
             write_stamp(&stamp_path, current_stamp.as_deref());
         }
@@ -501,19 +510,46 @@ pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label
     }
 }
 
-/// Can the two stamps PROVE both headers came from the same build?
+/// Do the two stamps prove the value mismatch is mere STALENESS?
 ///
-/// Only an equal pair of known stamps proves it. Anything unknown answers "no",
-/// which routes a value mismatch to the stale branch — and that asymmetry is
-/// deliberate: treating an unprovable case as stale re-writes a header that may
-/// already have been correct, while treating it as divergence would fail the
-/// build over a question never actually answered. The expensive direction is
-/// the false accusation, so the default leans away from it.
-fn stamps_prove_same_build(on_disk: Option<&str>, current: Option<&str>) -> bool {
-    match (on_disk, current) {
-        (Some(a), Some(b)) => a == b,
-        _ => false,
-    }
+/// Only one shape does: the same probe artifact PATH with a different
+/// mtime/length — i.e. the same crate, same target, same features, rebuilt
+/// since. That is a header left over from an earlier build.
+///
+/// A different PATH is the opposite conclusion, and getting this backwards was
+/// the first version of this function. `nros-sizes-build` keys the probe
+/// directory by `(rustc, target, features)`, so two crates that resolved
+/// DIFFERENT feature sets probe different rlibs — which is exactly the
+/// divergence the guard exists to catch. phase-336 W7 records it happening for
+/// real: `nros-c` and `nros-cpp` resolved `EXECUTOR_SIZE` 88680 vs 89392 in one
+/// workspace. Treating "paths differ" as staleness would overwrite that and
+/// restore the silent last-writer-wins this whole mechanism replaced.
+///
+/// Unknown on either side proves nothing and must NOT be read as staleness, for
+/// the same reason: the unprovable case has to keep the guard's teeth.
+fn stamps_prove_staleness(on_disk: Option<&str>, current: Option<&str>) -> bool {
+    let (Some(a), Some(b)) = (on_disk, current) else {
+        return false;
+    };
+    let (Some((path_a, rest_a)), Some((path_b, rest_b))) =
+        (split_stamp_path(a), split_stamp_path(b))
+    else {
+        return false;
+    };
+    // Same artifact identity entirely: not stale, and the values still differ —
+    // that is a genuine disagreement from one rlib.
+    path_a == path_b && rest_a != rest_b
+}
+
+/// Split `"<path> <mtime> <len>"` into the path and the rest.
+///
+/// The path may contain spaces, so split from the RIGHT: the last two fields
+/// are always the mtime and the length.
+fn split_stamp_path(stamp: &str) -> Option<(&str, &str)> {
+    let (head, len) = stamp.rsplit_once(' ')?;
+    let (path, mtime) = head.rsplit_once(' ')?;
+    let _ = (len, mtime);
+    Some((path, &stamp[path.len() + 1..]))
 }
 
 /// Record which artifact the freshly-written header was probed from. Best
@@ -698,32 +734,50 @@ mod tests {
     /// The stale-vs-divergent question `write_header_if_absent_or_verify` asks
     /// when the probed sizes disagree.
     ///
-    /// Only an equal pair of KNOWN stamps means "same build, so the two crates
-    /// genuinely resolved different layouts" — the case that must fail the
-    /// build. Everything else is a header left by an earlier build, which is
-    /// staleness and gets overwritten. Before this distinction existed, every
-    /// mismatch was reported as divergent features, and a plain stale header on
-    /// the freertos fixtures (10940 on disk vs 11025 probed, no feature
-    /// difference anywhere) was diagnosed as one.
+    /// ONLY "same probe-artifact path, rebuilt since" is staleness. Everything
+    /// else keeps the panic, and the direction matters more than it looks:
+    /// `nros-sizes-build` keys the probe dir by (rustc, target, features), so
+    /// two crates with DIFFERENT features probe different PATHS — which is the
+    /// divergence the guard exists for (phase-336 W7 records it happening:
+    /// `EXECUTOR_SIZE` 88680 vs 89392 in one workspace). Reading "paths differ"
+    /// as staleness would overwrite that and restore the silent
+    /// last-writer-wins this mechanism replaced.
     #[test]
-    fn only_equal_known_stamps_prove_one_build() {
-        assert!(stamps_prove_same_build(
-            Some("rlib 42 100"),
-            Some("rlib 42 100")
+    fn only_same_path_rebuilt_counts_as_stale() {
+        // Same artifact, rebuilt since: staleness.
+        assert!(stamps_prove_staleness(
+            Some("/p/nros.rlib 41 100"),
+            Some("/p/nros.rlib 42 108")
         ));
 
-        // Different artifact identity — an earlier build wrote it.
-        assert!(!stamps_prove_same_build(
-            Some("rlib 41 100"),
-            Some("rlib 42 100")
+        // DIFFERENT probe path = different (rustc, target, features) key. The
+        // divergence case; must NOT be called stale.
+        assert!(!stamps_prove_staleness(
+            Some("/p/featA/nros.rlib 41 100"),
+            Some("/p/featB/nros.rlib 42 108")
         ));
 
-        // Unknown on either side proves nothing, and the unprovable case must
-        // NOT be reported as divergence: a wrongly-overwritten header costs a
-        // rebuild, a wrongly-failed build costs a diagnosis.
-        assert!(!stamps_prove_same_build(None, Some("rlib 42 100")));
-        assert!(!stamps_prove_same_build(Some("rlib 42 100"), None));
-        assert!(!stamps_prove_same_build(None, None));
+        // Identical stamp: one artifact, values still disagree — genuine.
+        assert!(!stamps_prove_staleness(
+            Some("/p/nros.rlib 42 100"),
+            Some("/p/nros.rlib 42 100")
+        ));
+
+        // Unknown proves nothing; keep the guard's teeth.
+        assert!(!stamps_prove_staleness(None, Some("/p/nros.rlib 42 100")));
+        assert!(!stamps_prove_staleness(Some("/p/nros.rlib 42 100"), None));
+        assert!(!stamps_prove_staleness(None, None));
+    }
+
+    /// Probe paths can contain spaces, so the mtime/len split works from the
+    /// RIGHT. Splitting from the left would treat the first path segment as the
+    /// whole path and call two different artifacts the same one.
+    #[test]
+    fn stamp_split_tolerates_spaces_in_the_path() {
+        let (path, rest) = split_stamp_path("/a b/c d/nros.rlib 42 100").unwrap();
+        assert_eq!(path, "/a b/c d/nros.rlib");
+        assert_eq!(rest, "42 100");
+        assert!(split_stamp_path("no-fields").is_none());
     }
 
     /// The cbindgen temp-header sweep removes ONLY orphans of this header
