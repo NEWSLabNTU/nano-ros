@@ -7,7 +7,7 @@ pub mod nuttx;
 pub mod threadx_linux;
 pub mod threadx_riscv64;
 
-use crate::{TestError, TestResult, project_root};
+use crate::{TestError, TestResult, fixtures::staleness, project_root};
 use duct::cmd;
 use once_cell::sync::OnceCell;
 use std::{
@@ -535,52 +535,15 @@ fn dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
     dep_file_newer_than(&binary_path.with_extension("d"), bin_mtime)
 }
 
-/// Committed-but-REGENERATED headers (cbindgen writes them in place inside
-/// the source tree). Their mtimes are build side-effects, not edit events:
-/// two fixture families built with different feature sets ping-pong the same
-/// header path between content variants, so "header newer than my binary"
-/// says nothing about MY inputs (issue #222's cross-family false-stale). The
-/// real signal is already covered — any semantic change to these headers
-/// implies an edited `.rs` source, and those sources ARE in the dep graph.
-const REGENERATED_INPLACE_HEADERS: &[&str] = &[
-    "packages/api/nros-c/include/nros/nros_generated.h",
-    "packages/api/nros-cpp/include/nros/nros_cpp_ffi.h",
-    "packages/rmw/zenoh/zpico-sys/c/include/zpico.h",
-];
-
-fn is_regenerated_inplace_header(path: &Path) -> bool {
-    REGENERATED_INPLACE_HEADERS
-        .iter()
-        .any(|suffix| path.ends_with(suffix))
-}
-
-/// Cargo `OUT_DIR` products (`…/build/<pkg>-<hash>/out/…`) are build
-/// side-effects, not edit events (phase-300 follow-on, same class as the
-/// issue-#222 in-place headers above): ANY cargo invocation in the same
-/// target dir — `just check`'s per-example clippy most of all — reruns
-/// build scripts and refreshes OUT files WITHOUT relinking the binary, so
-/// "OUT file newer than my binary" says nothing about the fixture's
-/// inputs. A semantic OUT change implies an edited tracked source (build.rs
-/// or its inputs), and those ARE in the dep graph. Without this exemption
-/// every `just ci` re-staled the native fixtures its own check phase had
-/// just probed fresh (the issue-0196 probe/gate input-mismatch class).
-fn is_cargo_out_dir_product(path: &Path) -> bool {
-    let mut saw_out = false;
-    for comp in path.components().rev() {
-        let c = comp.as_os_str().to_string_lossy();
-        if !saw_out {
-            if c == "out" {
-                saw_out = true;
-            }
-        } else {
-            // the component just above `out/` is `<pkg>-<hash>` inside `build/`
-            return path
-                .components()
-                .any(|p| p.as_os_str().to_string_lossy() == "build");
-        }
-    }
-    false
-}
+// The exemption rule (which candidate mtimes are edit events and which are
+// build side-effects) lives in `fixtures::staleness`, ONE spelling shared by
+// every probe arm below. It used to live here as two predicates each arm
+// called à la carte, and the arms diverged: `newest_source_after` skipped the
+// in-place headers but not `OUT_DIR` products, the ninja arm the same, the
+// dep-info arm both. That divergence is issue 0442 — every freertos /
+// threadx-linux C and C++ zenoh fixture read STALE against a cbindgen header
+// one arm was already exempting, so those cells stopped running and issue 0444
+// hid behind them for as long as it lasted.
 
 /// Return the first dependency listed in a make-style `.d` dep-info file whose
 /// mtime is newer than `reference`. Shared by the direct-cargo probe
@@ -595,7 +558,7 @@ fn dep_file_newer_than(dep_file: &Path, reference: std::time::SystemTime) -> Opt
         };
         for dep in split_dep_info_line(deps) {
             let dep_path = PathBuf::from(&dep);
-            if is_regenerated_inplace_header(&dep_path) || is_cargo_out_dir_product(&dep_path) {
+            if staleness::note_candidate(&dep_path) {
                 continue;
             }
             if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
@@ -619,16 +582,17 @@ pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<Pa
     if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_some() {
         return Ok(resolved);
     }
+    staleness::begin_probe();
     if let Some(newer) = dep_info_newer_source(binary_path) {
-        return Err(TestError::BuildFailed(format!(
-            "Test fixture is STALE — a source is newer than the built binary:\n  \
-             binary: {}\n  newer:  {}\n\
-             Run `just build-test-fixtures` first \
+        return Err(staleness::stale_error(
+            "Test fixture",
+            binary_path,
+            &newer,
+            "Run `just build-test-fixtures` first \
              (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
-            binary_path.display(),
-            newer.display()
-        )));
+        ));
     }
+    staleness::record_fresh(binary_path);
     Ok(resolved)
 }
 
@@ -838,7 +802,7 @@ fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
         if !dep_path.starts_with(&root) {
             continue;
         }
-        if is_regenerated_inplace_header(&dep_path) {
+        if staleness::note_candidate(&dep_path) {
             continue;
         }
         if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
@@ -877,16 +841,13 @@ fn zpico_c_source_newer(binary_path: &Path, bin_mtime: std::time::SystemTime) ->
 /// first one whose mtime is newer than `bin_mtime`. Bounded to the given tree;
 /// reads directory entries + `stat`, never builds. Symlinks are not followed.
 ///
-/// Skips [`REGENERATED_INPLACE_HEADERS`], same as the dep-info arms. This walk
-/// is a SIBLING of `cmake_dep_info_newer_source`'s ninja-deps loop, which has
-/// always applied that exemption — and the two disagreeing is what made every
-/// freertos / threadx-linux C and C++ zenoh fixture read STALE against
-/// `zpico-sys/c/include/zpico.h`. That header is cbindgen output written IN
-/// PLACE: any build of a different feature set moves its mtime without changing
-/// a byte, so "newer than my binary" says nothing about this fixture's inputs
-/// (issue #222's cross-family false-stale, reached through the other arm).
-///
-/// A guard whose coverage is narrower than the rule it enforces — issue 0196.
+/// Exempts through [`staleness::note_candidate`], the rule every arm shares.
+/// This walk is a SIBLING of `cmake_dep_info_newer_source`'s ninja-deps loop,
+/// and the two carrying DIFFERENT exemption subsets is what made every freertos
+/// / threadx-linux C and C++ zenoh fixture read STALE against a cbindgen header
+/// the other arm was already exempting (issue 0442; issue #222's cross-family
+/// false-stale reached through a new door). A guard narrower than the rule it
+/// enforces — issue 0196 — which is why the rule is no longer per-arm.
 fn newest_source_after(dir: &Path, bin_mtime: std::time::SystemTime) -> Option<PathBuf> {
     let entries = fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {
@@ -902,7 +863,7 @@ fn newest_source_after(dir: &Path, bin_mtime: std::time::SystemTime) -> Option<P
                 Some("c" | "h" | "cpp" | "hpp" | "cc" | "hh")
             );
             if is_source
-                && !is_regenerated_inplace_header(&path)
+                && !staleness::note_candidate(&path)
                 && let Ok(mtime) = fs::metadata(&path).and_then(|m| m.modified())
                 && mtime > bin_mtime
             {
@@ -920,16 +881,17 @@ pub(crate) fn require_prebuilt_binary_fresh_cmake(binary_path: &Path) -> TestRes
     if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_some() {
         return Ok(resolved);
     }
+    staleness::begin_probe();
     if let Some(newer) = cmake_dep_info_newer_source(binary_path) {
-        return Err(TestError::BuildFailed(format!(
-            "Test fixture is STALE — a source is newer than the built binary:\n  \
-             binary: {}\n  newer:  {}\n\
-             Run `just build-test-fixtures` first \
+        return Err(staleness::stale_error(
+            "Test fixture",
+            binary_path,
+            &newer,
+            "Run `just build-test-fixtures` first \
              (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
-            binary_path.display(),
-            newer.display()
-        )));
+        ));
     }
+    staleness::record_fresh(binary_path);
     Ok(resolved)
 }
 
@@ -973,16 +935,17 @@ pub(crate) fn require_prebuilt_binary_fresh_zephyr(zephyr_exe: &Path) -> TestRes
     ) else {
         return Ok(resolved);
     };
+    staleness::begin_probe();
     if let Some(newer) = dep_file_newer_than(&dep_file, exe_mtime) {
-        return Err(TestError::BuildFailed(format!(
-            "Zephyr fixture is STALE — a Rust source is newer than the linked image:\n  \
-             image:  {}\n  newer:  {}\n\
-             Run `just zephyr build-fixtures` first \
+        return Err(staleness::stale_error(
+            "Zephyr fixture",
+            zephyr_exe,
+            &newer,
+            "Run `just zephyr build-fixtures` first \
              (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
-            zephyr_exe.display(),
-            newer.display()
-        )));
+        ));
     }
+    staleness::record_fresh(zephyr_exe);
     Ok(resolved)
 }
 
@@ -2814,13 +2777,16 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
             (None, _) => false,
         };
         if !fresh {
-            return Err(TestError::BuildFailed(format!(
-                "West fixture {id} is STALE — built with a different `nros` CLI \
-                 than the current packages/cli/target/release/nros.\n  stamp: {}\n\
-                 Run `bash scripts/build/west-fixtures.sh` (or `just zephyr \
-                 build-fixtures`) to rebuild.",
-                stamp.display()
-            )));
+            return Err(staleness::stale_error_custom(
+                &fixture_dir.join(rel),
+                format!(
+                    "West fixture {id} is STALE — built with a different `nros` CLI \
+                     than the current packages/cli/target/release/nros.\n  stamp: {}\n\
+                     Run `bash scripts/build/west-fixtures.sh` (or `just zephyr \
+                     build-fixtures`) to rebuild.",
+                    stamp.display()
+                ),
+            ));
         }
     }
 
@@ -4971,5 +4937,73 @@ mod tests {
     fn test_project_root_has_examples() {
         let root = project_root();
         assert!(root.join("examples").exists());
+    }
+
+    /// A staleness verdict must carry what the probe compared and how long the
+    /// coordinate has not run (issue 0445) — otherwise it absorbs the runtime
+    /// result nobody then sees, which is how issue 0444 hid behind 0442.
+    #[test]
+    fn a_stale_verdict_reports_its_own_reasoning_and_its_age() {
+        let dir = project_root().join("target/nros-probe-selftest");
+        fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("fixture-bin");
+        let src = dir.join("edited.rs");
+        // Binary first, then the source, so the source is unambiguously newer.
+        fs::write(&bin, b"binary").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(&src, b"edit").unwrap();
+        // Two deps: one exempt (regenerated in place), one real edit.
+        let exempt = project_root().join("packages/rmw/zenoh/zpico-sys/c/include/zpico.h");
+        fs::write(
+            bin.with_extension("d"),
+            format!(
+                "{}: {} {}\n",
+                bin.display(),
+                exempt.display(),
+                src.display()
+            ),
+        )
+        .unwrap();
+
+        staleness::record_fresh(&bin);
+        let first = require_prebuilt_binary_fresh(&bin).unwrap_err().to_string();
+        assert!(
+            first.contains("probe:") && first.contains("examined 2"),
+            "the verdict must account for what it compared: {first}"
+        );
+        assert!(
+            first.contains("exempted 1 regenerated-in-place header"),
+            "an exemption applied by one arm and not its sibling IS issue 0442, and \
+             it is only visible if the verdict prints it: {first}"
+        );
+        assert!(
+            !first.contains("NOT RUN"),
+            "one stale verdict is the normal case: {first}"
+        );
+
+        let _ = require_prebuilt_binary_fresh(&bin);
+        let third = require_prebuilt_binary_fresh(&bin).unwrap_err().to_string();
+        assert!(
+            third.contains("NOT RUN") && third.contains("3th consecutive"),
+            "a coordinate stale run after run has produced no runtime result and \
+             must say so: {third}"
+        );
+
+        // Resolving fresh ends the non-running run.
+        fs::remove_file(bin.with_extension("d")).unwrap();
+        require_prebuilt_binary_fresh(&bin).unwrap();
+        fs::write(
+            bin.with_extension("d"),
+            format!("{}: {}\n", bin.display(), src.display()),
+        )
+        .unwrap();
+        let after = require_prebuilt_binary_fresh(&bin).unwrap_err().to_string();
+        assert!(
+            !after.contains("NOT RUN"),
+            "the count measures non-running, not age — a cell that ran must reset: {after}"
+        );
+
+        staleness::record_fresh(&bin);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

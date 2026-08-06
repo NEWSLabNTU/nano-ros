@@ -189,6 +189,15 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   filing an issue from it (→ archived issues 0148/0164). A `nros` CLI rebuild also stales every
   WORKSPACE fixture (the codegen tool is in the input signature + CONFIGURE_DEPENDS since #182 —
   rebuild the family, don't debug the "runtime bug").
+- **A STALE verdict is ABSORBING — read the `probe:` and NOT RUN lines before believing it**
+  (issue 0445). The fixture never launches, so whatever it would have done at runtime is
+  replaced by a message that explains itself; issue 0444 hid behind 0442 for exactly that
+  long, and my first explanation of the symptom was plausible and wrong. Verdicts now print
+  what the probe examined and exempted, and count consecutive non-running resolutions —
+  `x2+` means suspect the probe, not just the fixture. `just fixture-staleness` lists every
+  coordinate producing no runtime result. Exemptions have ONE spelling
+  (`nros_tests::fixtures::staleness::exempt_probe_input`, gated by
+  `check-staleness-probe-exemptions`) because per-arm subsets ARE 0442.
 - **Test greps use `nros_tests::output::*` constants, never literal strings** — example
   banners/markers get slimmed (phase-277 broke ~10 tests grepping `"Result:"`/`"[OK]"`/old
   banners while delivery worked). If a test times out, FIRST diff the grep pattern against what

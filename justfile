@@ -364,7 +364,7 @@ check-fast: \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
-    check-board-cargo-config-applied \
+    check-board-cargo-config-applied check-staleness-probe-exemptions \
     check-cargo-profile-mirror check-build-profile-literals check-test-targets \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
@@ -831,6 +831,48 @@ check-nested-workspace-excludes:
 [private]
 check-nuttx-links-snapshot:
     @bash scripts/check-nuttx-links-snapshot.sh
+
+# issue 0445 / 0442 — every freshness probe shares ONE exemption rule and ONE
+# verdict. A staleness verdict is absorbing: the fixture never launches, so the
+# runtime result it would have produced is replaced by a self-explaining
+# message. Issue 0444 hid behind 0442 (an exemption applied on one probe arm
+# and not its sibling) for exactly as long as those cells read STALE.
+[private]
+check-staleness-probe-exemptions:
+    @bash scripts/check-staleness-probe-exemptions.sh
+
+# issue 0445 — which coordinates have produced no runtime result, and for how
+# long. The probes write one line per non-running fixture under
+# `target/nros-fixture-staleness/`; a fresh resolution deletes it. A cell stale
+# for one run is your last edit; a cell stale for eleven is where a runtime
+# defect accumulates unseen.
+[group("test")]
+fixture-staleness:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir=target/nros-fixture-staleness
+    shopt -s nullglob
+    entries=("$dir"/*.stale)
+    if [ ${#entries[@]} -eq 0 ]; then
+        echo "No non-running fixtures recorded — every probed coordinate resolved fresh."
+        echo "(The ledger is written by the freshness probes; it is empty after a clean.)"
+        exit 0
+    fi
+    now=$(date +%s)
+    printf '%-6s  %-10s  %s\n' "STALE" "SINCE" "FIXTURE"
+    for f in "${entries[@]}"; do
+        read -r n since path < "$f"
+        age=$(( now - since ))
+        if   [ "$age" -lt 5400 ];   then human="$(( age / 60 ))m"
+        elif [ "$age" -lt 172800 ]; then human="$(( age / 3600 ))h"
+        else                             human="$(( age / 86400 ))d"
+        fi
+        printf '%-6s  %-10s  %s\n' "x${n}" "$human" "$path"
+    done | sort -r
+    echo ""
+    echo "A coordinate here is NOT failing and NOT passing — it is not running."
+    echo "Rebuild it (\`just build-test-fixtures\`); if the count keeps climbing,"
+    echo "suspect the probe before trusting the verdict (issue 0445)."
 
 # issue 0440 — a leaf that deploys to a board must carry that board's STATIC
 # link args. `nros-board.toml`'s `cargo_config` is the SSoT (RFC-0032 third

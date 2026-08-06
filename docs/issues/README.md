@@ -51,24 +51,31 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#445** — a staleness verdict is TERMINAL and self-explaining, so it absorbs whatever the fixture
-would have done at runtime. Demonstrated: issue 0442 (a probe exemption missing from one arm) made the
-freertos/threadx C/C++ cells read stale; fixing it made them run and immediately exposed issue 0444, a
-real FreeRTOS Rust runtime failure that had been sitting behind it. Broader than 0350, which is about
-skips: in `rtos_e2e` a stale fixture PANICS and still masks, because the failure is attributed to
-staleness rather than investigated. I hit the reader-side half too — asked why those cells were stale I
-gave a plausible, consistent, WRONG answer, because the verdict explains itself well enough to survive
-scrutiny. Directions in the issue; the smallest is counting how long a coordinate has gone without
-producing a runtime result. NOT a request to weaken the probes (0433 was a probe being right, and it
-masked too). See `0445-*`. (2026-08-06)
+Recently resolved (2026-08-06): **#444** — every FreeRTOS **Rust** cell (pubsub, service AND action —
+the issue's action-only scope was drawn from one run and was wrong) booted, printed "Network ready."
+and stalled forever. Reproduced on main with fresh fixtures, so not branch-specific. TWO faults from
+one carve-out in `rtos_e2e`, which excused the Rust lane from the board-net launcher on the premise
+that it "keeps the historical DEFAULT-slirp plan" — a premise the boot banner (`IP: 192.0.3.10`)
+contradicts in the output pasted in the issue itself. (1) unroutable net: default slirp 10.0.2.0/24
+under a firmware statically on 192.0.3.10, dialing `tcp/10.0.2.2:7447` — wrong address AND a port the
+harness never serves; gdb put it in a blocking `_z_open_link`. (2) one ZID for two peers: the platform
+PRNG is (ip, mac)-seeded because zenoh-pico's ZID comes off it, both images booted the same pair, and
+the router keeps ONE peer. RESOLVED: one launcher for all FreeRTOS images, per-variant locators
+matching `zenohd_port_for`, and `ip = "192.0.3.11"` on the second image of each pair (what
+`NROS_ENTRY_IP_LAST` 10/11 has always done for C/C++). All NINE FreeRTOS cells pass. See
+`archived/0444-*`.
 
-**#444** — the FreeRTOS Rust action image boots, prints the platform banner and brings up LAN9118 +
-lwIP ("Network ready"), then never reaches `Application setup complete`. Fails SOLO 3/3, so not the
-QEMU-load flake class. `Freertos::{C,Cpp}` and all six nuttx/threadx cells pass on the same board and
-run — 8 of 9. It had been HIDDEN by issue 0442: the cell reported STALE and never launched, so a probe
-defect masked a runtime one (the 0350 class). Entry wiring looks intact; `ab486a8db` (phase-338 W2's
-`-entry` collapse, the same commit behind 0440) is a suspect but NOT bisected, and this is not yet
-attributed to a branch. Next step: run it on main with fresh fixtures. See `0444-*`. (2026-08-06)
+Recently resolved (2026-08-06): **#445** — a staleness verdict is TERMINAL and self-explaining, so it
+absorbs whatever the fixture would have done at runtime. Demonstrated: issue 0442 made the
+freertos/threadx C/C++ cells read stale; fixing it made them run and immediately exposed issue 0444, a
+real FreeRTOS Rust runtime failure that had been sitting behind it. I hit the reader-side half too —
+asked why those cells were stale I gave a plausible, consistent, WRONG answer, because the verdict
+explains itself well enough to survive scrutiny. RESOLVED without weakening any probe: the exemption
+rule now has ONE spelling (`fixtures::staleness::exempt_probe_input`, which 0442's own fix had left
+divergent on a THIRD arm), every verdict prints what it examined and exempted, and a per-coordinate
+ledger counts consecutive non-running resolutions — from the second, the message says the runtime
+result is being absorbed. `just fixture-staleness` lists them; `check-staleness-probe-exemptions`
+rejects a second spelling or a probe that does not account, report and clear. See `archived/0445-*`.
 
 Recently resolved (2026-08-06): **#442** — the regenerated-header exemption was applied on the ninja
 dep-info arm of the cmake freshness probe but NOT on its sibling directory-walk arm, so every

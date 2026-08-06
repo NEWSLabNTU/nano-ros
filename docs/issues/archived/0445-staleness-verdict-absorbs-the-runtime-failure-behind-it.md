@@ -1,7 +1,7 @@
 ---
 id: 445
 title: A staleness verdict is terminal and self-explaining, so it absorbs whatever the fixture would have done at runtime
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0442, issue-0444, issue-0350, issue-0196, issue-0222]
@@ -81,3 +81,43 @@ Not a request to weaken the probes. 0442 was a probe being WRONG; 0433 was a
 probe being RIGHT about a genuinely shared artifact. Both masked. The property
 under discussion is what a staleness verdict does to everything downstream of
 it, regardless of whether the verdict is correct.
+
+## Resolution (2026-08-06)
+
+Directions 1 and 3 landed; direction 2 ("run anyway, and label") deliberately
+did not — it trades this defect for the museum-binary one the probes exist to
+prevent, and the other two do not require that trade.
+
+**The exemption rule is now spelled once.** `fixtures::staleness::
+exempt_probe_input` is the only place that decides whether a candidate mtime is
+an edit event; the three arms call `note_candidate`, which accounts and decides
+in the same call so an arm cannot count one way and act another. This is the
+structural form of the 0442 fix: 0442 patched the arm that reported it, and
+left `cmake_dep_info_newer_source` skipping in-place headers but not cargo
+`OUT_DIR` products — a third divergence waiting for a third symptom.
+`check-staleness-probe-exemptions` (in `check-fast`) rejects a second spelling
+and rejects a probe entry point that does not account, report and clear.
+
+**Every verdict now says what it compared.** `probe: examined N input(s);
+exempted A regenerated-in-place header + B cargo OUT_DIR product`. On the 0442
+report that line reads "exempted 0" on one arm and "exempted 1" on its sibling
+for the same header — the disagreement is in the output rather than inferable
+only from source.
+
+**A coordinate that does not run is counted.** The probes write
+`target/nros-fixture-staleness/<coordinate>.stale`; a fresh resolution deletes
+it. From the second consecutive verdict the message carries a NOT RUN block with
+the count and the age, saying in as many words that the runtime result is being
+absorbed. `just fixture-staleness` lists every non-running coordinate,
+most-stuck first.
+
+The counter measures NON-RUNNING, not age: any fresh resolution resets it, so
+"x11" means eleven resolutions in a row produced no runtime result — which is
+the state 0444 lived in.
+
+### What this does not do
+
+It does not make a wrong probe right, and it cannot. What it removes is the
+verdict's air of completeness: a reader who sees `x11 / 3d` has a reason to
+suspect the probe, which is the reason I did not have when I answered the same
+question with a plausible and wrong explanation.

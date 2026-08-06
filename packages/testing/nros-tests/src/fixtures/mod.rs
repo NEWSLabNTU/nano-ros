@@ -7,6 +7,7 @@
 //! Also re-exports utilities from sibling modules for convenience.
 
 mod binaries;
+pub mod staleness;
 pub mod tls_certs;
 #[allow(hidden_glob_reexports)] // rstest fixture creates a module matching the fn name
 mod xrce_agent;
