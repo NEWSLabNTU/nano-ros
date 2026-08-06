@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Every `docs/design/NNNN-*.md` and `docs/issues/NNNN-*.md` path written
-# anywhere in the tree must resolve to a file that exists.
+# Every numbered-series document path written anywhere in the tree must resolve
+# to a file that exists: `docs/design/NNNN-*.md`, `docs/issues/NNNN-*.md`, and
+# `docs/roadmap/phase-NNN-*.md`.
 #
 # The numbered series are referenced by PATH from prose, from issue
 # frontmatter, and — the case that motivated this — from user-facing build
@@ -52,7 +53,58 @@ while IFS= read -r hit; do
     fi
     echo "  $src:$line -> $ref" >&2
     broken=$((broken + 1))
-done < <(git grep -onE "docs/(design|issues)/[0-9]{4}-[a-z0-9-]+\.md" -- . \
+done < <(git grep -onE "docs/(design|issues|roadmap)/(phase-)?[0-9]{3,4}-[a-z0-9.-]+\.md" -- . \
+    ':!scripts/check-doc-refs.sh' 2>/dev/null)
+
+# Phase docs link each other by BARE FILENAME from inside `docs/roadmap/`
+# (`[phase-NNN](phase-NNN-slug.md)`), which the absolute-path scan above cannot
+# see. That is the form that broke: completing a phase MOVES it to `archived/`,
+# and five were archived in one pass while the gate reported OK — it was
+# checking two of the three series, and only the `docs/`-prefixed spelling of
+# those. A guard narrower than the rule it enforces (issue 0196), found by
+# having to repair the links by hand right after it said OK.
+#
+# Resolve relative to the LINKING file's directory, then apply the same
+# archived/ fallback as above.
+while IFS= read -r hit; do
+    src="${hit%%:*}"
+    rest="${hit#*:}"
+    line="${rest%%:*}"
+    ref="${hit##*(}"
+    ref="${ref%)}"
+    # Absolute-from-repo-root spellings are already covered by the scan above.
+    case "$ref" in docs/*) continue ;; esac
+    resolved="$(dirname "$src")/$ref"
+    [ -f "$resolved" ] && continue
+    # A bare-filename sibling link is written when both docs sit in the same
+    # directory, and stays behind when EITHER of them is archived. So the two
+    # dirs are one series for resolution purposes and both directions count:
+    # active -> archived (the doc completed) and archived -> active (this doc
+    # completed, the one it cites has not).
+    [ -f "$(dirname "$resolved")/archived/$(basename "$resolved")" ] && continue
+    case "$(dirname "$resolved")" in
+        */archived) [ -f "$(dirname "$(dirname "$resolved")")/$(basename "$resolved")" ] && continue ;;
+    esac
+    # The SOURCE moved. A `../design/NNNN-*.md` written from `docs/issues/` is
+    # correct until that issue is archived, at which point `../` lands in
+    # `docs/issues/` instead of `docs/` and every cross-series link in the file
+    # is one level short. 147 of the 150 hits the first version of this arm
+    # reported were exactly that — links that were right when written and that a
+    # reader still follows without trouble. Re-resolve as if the source were
+    # still un-archived, and only then call it broken.
+    case "$(dirname "$src")" in
+        */archived)
+            unarchived="$(dirname "$(dirname "$src")")/$ref"
+            [ -f "$unarchived" ] && continue
+            [ -f "$(dirname "$unarchived")/archived/$(basename "$unarchived")" ] && continue
+            ;;
+    esac
+    if [ "$broken" -eq 0 ]; then
+        echo "check-doc-refs: references to documents that do not exist:" >&2
+    fi
+    echo "  $src:$line -> $ref (relative to $(dirname "$src"))" >&2
+    broken=$((broken + 1))
+done < <(git grep -onE "\]\(((\.\./)*[a-z][a-z-]*/)*(phase-[0-9]{3}[a-z0-9.-]*|[0-9]{4}-[a-z0-9-]+)\.md\)" -- 'docs/**/*.md' \
     ':!scripts/check-doc-refs.sh' 2>/dev/null)
 
 if [ "$broken" -ne 0 ]; then
@@ -65,4 +117,4 @@ if [ "$broken" -ne 0 ]; then
     exit 1
 fi
 
-echo "check-doc-refs: OK (every referenced design/issue document exists)"
+echo "check-doc-refs: OK (every referenced design/issue/roadmap document exists)"

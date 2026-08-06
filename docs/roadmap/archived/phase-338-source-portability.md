@@ -1300,6 +1300,25 @@ every later wave is unverifiable and every fold is a leap.
 - [x] The book states "the same source runs on every supported target" with the
       gate as its citation (`book/src/introduction.md`, Key Features).
 
+## Close-out (2026-08-06) — COMPLETE
+
+The `**Status.** DRAFT — not started.` line near the top was **wrong** and stayed
+wrong through the entire phase: all 25 items are done, the Acceptance section
+below records every one as met, and `ab40ab25e` landed the last of them. Left
+the original line in place rather than editing history out of the doc — a status
+field that survived a whole phase without being touched is worth seeing, because
+the same drift put four finished phases in the active roadmap and mislabelled two
+issues in the same week.
+
+Verified rather than assumed:
+
+- **The gate runs and passes.** `nros-tests::example_portability
+  report_portability_baseline` — the W1 guard that normalizes every platform copy
+  and asserts byte-identity within a portability group.
+- **The book claim exists and is cited.** `book/src/introduction.md:67` — "The
+  same source runs on every supported target", with the gate as its citation,
+  which is what makes the claim checkable rather than aspirational.
+
 ## Risks
 
 - **Folding too early.** W6 before W1–W3 would delete copies that are not actually

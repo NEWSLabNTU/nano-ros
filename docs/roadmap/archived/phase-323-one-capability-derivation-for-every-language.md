@@ -232,3 +232,11 @@ capability appearing at all is proof the declaration reached the build.
   it is how a STANDALONE project selects the axis with `-D`, which is the
   standalone half of the split phase-315 W3 settled. Rule 6 exempts it
   deliberately.
+
+## Close-out (2026-08-06) — COMPLETE
+
+W1–W4 landed (status line, 2026-07-31) and the issue this phase exists to close,
+**0353** ("declared capabilities never reach the C/C++ feature list"), is
+resolved and archived. That is the acceptance: the phase's whole claim is that
+`system.toml` is the single source of truth for RMW, ROS edition AND capability
+list *in every language*, and 0353 was the standing counter-example.

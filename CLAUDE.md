@@ -128,12 +128,12 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 - **Examples are standalone copy-out projects** (`examples/<plat>/<lang>/<example>/`); no workspace
   walk-up. Non-example bins live under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`.
   Detail → RFC-0026 + `examples/README.md` coverage matrix.
-- **Workspace examples follow RFC-0066 (phase-331, in flight): a FEATURE is a node package,
+- **Workspace examples follow RFC-0066 (phase-331, landed): a FEATURE is a node package,
   a CONFIGURATION is a fixture axis — never a new directory.** Feature demos (params/lifecycle/
   qos/custom-msg/remap) live as node pkgs in the native-only `workspaces/features/`; RMW ×
   feature-set variants are `fixtures.toml` rows over the four large workspaces
-  (`workspaces/{rust,c,cpp,mixed}`); the themed `ws-*` dirs are being DELETED (W3) — don't add
-  one, don't extend one. Naming rules (no language prefixes in single-language workspaces,
+  (`workspaces/{rust,c,cpp,mixed}`). The themed `ws-*` dirs are GONE (W3, verified zero remain) —
+  don't reintroduce one. Naming rules (no language prefixes in single-language workspaces,
   role-not-payload pkg names, one platform vocabulary for entries) →
   `examples/workspaces/README-layout.md`. West-built zephyr entry leaves need BOTH the nested
   workspace `exclude` AND a repo-root `Cargo.toml` exclude, and their dep keys must match the

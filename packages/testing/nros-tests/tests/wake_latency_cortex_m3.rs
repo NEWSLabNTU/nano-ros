@@ -9,7 +9,7 @@
 //! with `percentile_ns`, and asserts the 141 acceptance
 //! threshold.
 //!
-//! Acceptance (spec — `docs/roadmap/phase-141-...md`):
+//! Acceptance (spec — `docs/roadmap/archived/phase-141-wake-callback-cortex-m3.md`):
 //!
 //! - P99 wake-latency ≤ 100 µs on Cortex-M3 QEMU.
 //! - ≥ 10× improvement over the pre-124.B `set_wake_signal`

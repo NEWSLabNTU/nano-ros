@@ -108,7 +108,8 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
       (FreeRTOS / Zephyr / ThreadX / bare-metal). Requires
       `PlatformTimer` trait + `AtomicSporadicState` rewrite — design
       locked in
-      [`docs/design/phase-110-e-platform-timer.md`](../design/phase-110-e-platform-timer.md).
+      in this document (the separate `phase-110-e-platform-timer` design note
+      it used to cite was never written — see the note at the end).
       ~620 LOC across 5 crates, ~3-5 dedicated sessions. Executor
       stays platform-agnostic via opaque-handle pattern (mirrors
       `Executor::open_threaded`'s `apply_policy: fn(...)` shape).
@@ -157,8 +158,8 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
         always resolves cleanly. Calls degrade to a NULL handle /
         `KernelError`; ISR-driven refill on bare-metal still needs
         the per-board `SysTickHook` work flagged in
-        `docs/design/phase-110-e-platform-timer.md` step 9 (separate
-        per-board investment, design-deferred).
+        the `PlatformTimer` design above, step 9 (separate per-board
+        investment, design-deferred).
 
       v1 trait surface + every supported hosted RTOS now has a
       functional `PlatformTimer` port.
@@ -629,3 +630,20 @@ Former Phase 105 was an earlier attempt at the same problem at the RMW / `drive_
 | 105.C Wall-clock time budget per `drive_io` | **Subsumed by 110.A** — `ExecutorConfig::cycle_budget_us` enforces wall-clock budget at the executor's dispatch loop, not at `drive_io`. Same primitive, cleaner layering. |
 
 The earlier 105 design was correct in identifying the problems but wrong about which layer should own the solution. Pushing scheduling concerns into the backend's `drive_io` couples every backend to scheduler internals; pulling them up to the executor (110) keeps backends transport-only.
+
+---
+
+**Note on a dead reference (2026-08-06).** Two places in this doc cited a
+separate `phase-110-e-platform-timer` design note under `docs/design/` as where
+the `PlatformTimer` design was "locked in". That file was never written — no
+such path has existed in the history of the tree. The design content is in this
+document; the citations pointed at an intention. Rewritten to say so.
+
+(The dead path is described here rather than spelled, because a literal stale
+path is a reference like any other and the gate below would flag this note —
+the same reason `check-doc-refs` excludes itself from its own scan.)
+
+Found by widening `check-doc-refs` to the roadmap series, which it had never
+covered — it checked `docs/design/` and `docs/issues/` only, so a dead
+`docs/design/...` path written from a ROADMAP file was in scope all along and a
+dead roadmap path was not. Both are now.

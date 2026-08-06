@@ -889,6 +889,25 @@ Every wave of this phase has landed. What remains is the `just ci-matrix`
 acceptance criterion (see Acceptance) — blocked twice over by fixture-BUILD
 defects, one of which (0439) this phase found and fixed.
 
+## Close-out (2026-08-06) — COMPLETE
+
+Every wave landed (W1–W8). The two remaining unchecked boxes are not outstanding
+work in this phase:
+
+- **W1.a** is explicitly MOVED to phase-338 W4.a (and phase-338 is itself
+  complete). It is tracked there, with one owner, which is what the box says.
+- **W8.e** is marked *optional, only if a hosted non-Linux board is ever wanted*
+  — a `timer_create` fallback that would let macos/freebsd join later as tier-3
+  boards. A conditional future, not a debt.
+
+Leaving both boxes unchecked on purpose: ticking them would claim work that was
+either done elsewhere or never done at all.
+
+Downstream note: this phase's board reshaping is what phase-339 then had to make
+arch-safe, and phase-339's close-out records the one place it bit (issue 0456 —
+two of three riscv recipes never said which arch they were, so the arm defaults
+applied).
+
 ## Risks
 
 - **The matrix set is still under review.** W2 and W7 encode decisions; W3–W6 and

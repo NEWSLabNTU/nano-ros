@@ -149,7 +149,7 @@ cannot disagree because only one is consulted.
 
 ## Fix
 
-Designed in [phase-323](../roadmap/phase-323-one-capability-derivation-for-every-language.md)
+Designed in [phase-323](../roadmap/archived/phase-323-one-capability-derivation-for-every-language.md)
 — one derivation (`capability_enabled`), two generated emitters (the Rust facade,
 `NANO_ROS_FEATURES`), then delete BOTH masks in the same phase.
 

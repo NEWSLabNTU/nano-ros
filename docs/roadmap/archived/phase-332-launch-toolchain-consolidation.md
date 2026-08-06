@@ -133,3 +133,19 @@ answer is then to reject rather than work around it.
 **Ordering.** W1 here depends on play_launch phase-55 W1. Doing them in the
 wrong order leaves a submodule pointing at a commit whose layout does not
 match the Cargo paths.
+
+## Close-out (2026-08-06) — COMPLETE
+
+W0's amendment was accepted (two repositories, not three) and W1/W2 landed.
+Verified in the tree:
+
+- `packages/cli/third-party/play_launch` is the pinned repo.
+- Layer 2 (the resolver, launch tree → SystemModel) is REGULAR FILES at
+  `src/ros-launch-resolve`, not a nested submodule.
+- `ros-launch-manifest` is a git-TAG cargo dep rather than a second vendored
+  copy — the issue-0285 double-vendoring is gone, and with it the `--recursive`
+  landmine.
+
+CLAUDE.md already carries the landed shape, including the non-recursive init and
+the absolute-path rule for `nros-launch-resolve` (issue 0285). Nothing here
+outlives the archive.

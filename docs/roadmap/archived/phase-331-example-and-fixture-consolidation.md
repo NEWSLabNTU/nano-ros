@@ -465,6 +465,19 @@ questions and this phase should NOT wait on it — but this fold is its stronges
 motivating case, and 0065's design should be checked against what W2/W3
 actually cost.
 
+## Close-out (2026-08-06) — COMPLETE
+
+All 28 work items done. Verified against the tree rather than against the
+checkboxes, since the reason this doc sat in the active roadmap is that nobody
+re-read it after the last wave:
+
+- **W3 (the deletions) landed.** `ls -d examples/workspaces/ws-*` matches
+  nothing. The four large workspaces (`rust`, `c`, `cpp`, `mixed`) and the
+  native-only `features/` are in place, which is RFC-0066's shape.
+- CLAUDE.md described this phase as "in flight" and said the themed dirs "are
+  being DELETED (W3)". Corrected in the same commit — a router file that
+  describes finished work as pending is how the next session re-plans it.
+
 ## Risks
 
 - **Coarser bisection.** A QoS regression now fails inside a workspace that also
