@@ -75,9 +75,16 @@ impl log::Log for UartLogger {
             // SAFETY: `p` is only ever set by `install_uart_logger` to a valid
             // `fn(core::fmt::Arguments)` cast to `usize`; 0 means unset (checked).
             let f: fn(core::fmt::Arguments<'_>) = unsafe { core::mem::transmute(p) };
-            // `Arguments` is `Copy`; the examples bake the full human line into
-            // the message, so emit it verbatim (matches the nuttx sink).
-            f(*record.args());
+            // The examples bake the full human line into the message, so the
+            // BODY goes through verbatim; the `[LEVEL]` prefix rides in front
+            // of it, matching the linux/nuttx/mps2 sinks and `nros_log`'s own
+            // (issue 0309 made the logging proof assert the tag on the marker
+            // line, so a sink that drops it renders every `log::` record as
+            // the bare-`printf` bypass that proof exists to catch).
+            //
+            // `format_args!` can't be bound to a `let` — its temporaries live
+            // only for the enclosing expression — so it is built in the call.
+            f(format_args!("[{}] {}", record.level(), record.args()));
         }
     }
 

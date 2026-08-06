@@ -14,10 +14,16 @@
 /// installed one — so it adds a sink where there was none and never fights one
 /// that exists.
 ///
-/// The message is emitted VERBATIM, with no level prefix: the examples bake the
-/// full human line into the message (`Publishing: '...'` / `I heard: [...]`)
-/// and the e2e harness greps those markers, so decorating them here would break
-/// every assertion at once.
+/// The message body is emitted VERBATIM — the examples bake the full human line
+/// into it (`Publishing: '...'` / `I heard: [...]`) and the e2e harness greps
+/// those markers with `contains`, which the `[LEVEL]` prefix leaves intact.
+///
+/// That prefix is not decoration: `nros_log`'s sinks write one, and issue 0309
+/// made `workspace_features_e2e` assert the tag on the same line as the marker
+/// precisely so a bare `printf` cannot satisfy a logging proof. A bridge that
+/// dropped it would make every `log::` record look like that bypass. Same
+/// labels as `nros-board-linux` — `log::Level`'s `Display` is already
+/// `TRACE`/`DEBUG`/`INFO`/`WARN`/`ERROR`.
 pub(crate) fn install_semihosting_log_bridge() {
     struct SemihostingLogger;
 
@@ -27,7 +33,7 @@ pub(crate) fn install_semihosting_log_bridge() {
         }
 
         fn log(&self, record: &::log::Record<'_>) {
-            crate::println!("{}", record.args());
+            crate::println!("[{}] {}", record.level(), record.args());
         }
 
         fn flush(&self) {}

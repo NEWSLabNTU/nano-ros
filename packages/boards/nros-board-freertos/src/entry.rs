@@ -104,7 +104,11 @@ impl log::Log for UartLogger {
             // SAFETY: `p` is only ever set by `install_uart_logger` to a valid
             // `fn(core::fmt::Arguments)` cast to `usize`; 0 means unset (checked).
             let f: fn(core::fmt::Arguments<'_>) = unsafe { core::mem::transmute(p) };
-            f(*record.args());
+            // Body verbatim, `[LEVEL]` in front — same contract as the
+            // linux/nuttx/mps2/threadx sinks and `nros_log`'s (issue 0309).
+            // `format_args!` is built in the call: its temporaries do not
+            // outlive the enclosing expression, so it cannot be `let`-bound.
+            f(format_args!("[{}] {}", record.level(), record.args()));
         }
     }
 
