@@ -4,6 +4,55 @@
 **Informed by:** the 2026-08-03 jobs audit (fifo pools, NVMe relocation, the
 sccache install) and phase-330 W3/W7 (models into the build dir).
 
+**Status (2026-08-06). W1 is ANSWERED — by phase-340, which re-derived W1's
+questions before noticing this doc had already framed them. W2 and W3 are open,
+and W3.a is now decided.**
+
+W1 asked three things and phase-340 measured all three. The overlap is real and
+was not deliberate: phase-340 W2's "findings" F1/F2/F3 restate W1.d, W1.a and
+W1.b respectively. **This doc framed the questions first; phase-340 supplied the
+numbers.** Neither should be read as independent confirmation of the other.
+
+| W1 item | verdict | evidence |
+| --- | --- | --- |
+| **W1.a** cargo sharing vs per-example dirs | **sccache wins; do not share a dir across concurrent invocations** | phase-340 W1 lane A/B |
+| **W1.b** feature-unification hazard / signature count | **bimodal — see below** | measured 2026-08-06 |
+| **W1.d** sccache as the alternative | **prefers separate dirs + sccache**, comfortably inside W1.d's own ~15 % rule | 17846 hits / 222 misses warm |
+| **W1.c** cmake / corrosion sharing | **still open** — but phase-340 W3 shows corrosion's `--target` split is real recompilation that sccache cannot dedupe (different `-C metadata` = different cache key) | — |
+
+**W1.b answered, and the shape matters more than the count.** Over the 117
+`linux` fixture rows there are **60 distinct variant signatures** — about half
+the row count, which W1.b's own rule would read as "sharing buys little". The
+distribution says otherwise:
+
+```
+ 37 rows   (default features)
+ 10 rows   --no-default-features --features rmw-zenoh
+  8 rows   --no-default-features --features rmw-xrce
+  5 rows   --no-default-features --features rmw-cyclonedds
+  2 rows   --features link-tls
+ ---
+ 62 rows in 5 signatures   |   55 rows in 55 singleton signatures
+```
+
+**55 of the 60 signatures are singletons** and can never share with anything —
+sccache is their only dedup. But **five signatures cover 53 % of the rows**, and
+those are worth one shared build each. So the answer is neither "share
+everything" nor "sccache only": share the head, cache the tail. W1.b's
+either/or framing was too coarse, and phase-340 W2.b should target these five
+groups specifically rather than "same-identity groups" in general.
+
+**W3.a is therefore decided:** keep separate dirs under the new root and rely on
+sccache for the tail; where sharing happens it must come from ONE cargo
+invocation over many packages (inner parallelism), never N invocations against
+one dir (lock contention). Rationale and the rejected design are recorded in
+phase-340 W2 F3.
+
+**What remains here:** W1.c (corrosion/cmake sharing), all of W2 (the layout and
+naming rule — untouched, and the part phase-340 does NOT cover), and W3.b/W3.c.
+The layout work is independent of the sharing verdict and is where this phase's
+remaining value is.
+
 ## Problem
 
 Build caches grew organically as suffix-named siblings of their sources, and
@@ -49,7 +98,7 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
 
 ### W1 — Measure the sharing tradeoff before moving anything
 
-- [ ] **W1.a (cargo).** Cargo parallelizes WITHIN a build and locks the whole
+- [x] **W1.a (cargo).** ANSWERED by phase-340 W1 — see Status. Cargo parallelizes WITHIN a build and locks the whole
       target dir per invocation. Measure, for the native example set and one
       QEMU family: (a) today's per-example `target-<rmw>` dirs, cold + warm;
       (b) one shared target dir per (triple, feature-sig) with the SAME
@@ -57,7 +106,7 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       the serialization cost of cargo's target-dir lock under the pool (the
       phase-226 `fixtures-cargo/<group>` sharing is the existing prior —
       report its measured numbers first).
-- [ ] **W1.b (feature unification hazard).** Shared cargo dirs are only
+- [x] **W1.b (feature unification hazard).** ANSWERED 2026-08-06 — see Status. Shared cargo dirs are only
       correct per feature-set: quantify how many distinct `nros` feature
       signatures the fixture manifest actually produces (the `variant-sig`
       key). If the count approaches the example count, sharing buys little
@@ -66,7 +115,7 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       corrosion-embedded cargo trees CAN share a `CARGO_TARGET_DIR` and all
       of them share sccache. Measure a workspace family with (a) today's
       layout, (b) corrosion cargo redirected to the shared cargo root.
-- [ ] **W1.d (sccache as the alternative).** With sccache now provisioned
+- [x] **W1.d (sccache as the alternative).** ANSWERED by phase-340 W1 — see Status. With sccache now provisioned
       (`nros setup --tool sccache`, vendored-openssl recipe), re-measure the
       cold/warm zephyr + native families. If cache-hit builds get within ~15%
       of shared-dir builds, PREFER separate dirs + sccache (no lock

@@ -431,18 +431,53 @@ that union does not fail loudly. It silently builds every backend into every
 fixture and changes what the tests are exercising. A silent behaviour change is
 a worse failure than a build error, so the group key must keep features exact.
 
-Same-feature rows are plentiful: the ~10 native `--features rmw-zenoh` leaves
-are one group, and their entire lower stack is a single identity.
+**How many groups are actually worth sharing — measured 2026-08-06.** Over the
+117 `linux` fixture rows there are 60 distinct variant signatures, and the
+distribution is bimodal:
+
+```
+ 37 rows   (default features)
+ 10 rows   --no-default-features --features rmw-zenoh
+  8 rows   --no-default-features --features rmw-xrce
+  5 rows   --no-default-features --features rmw-cyclonedds
+  2 rows   --features link-tls
+ ---
+ 62 rows in 5 signatures   |   55 rows in 55 singleton signatures
+```
+
+**55 of the 60 signatures are singletons** — they can never share with anything,
+and sccache is their only dedup. **Five signatures cover 53 % of the rows.** So
+W2.b's target is those five groups specifically, not "same-identity groups" in
+general: five umbrella builds replace 62 separate cargo invocations, and the
+long tail keeps today's shape.
+
+#### Relationship to phase-334 — the questions were framed there first
+
+**F1/F2/F3 above are not new questions.** Phase-334 W1 asked all three before
+this phase existed: W1.d ("if cache-hit builds get within ~15 % of shared-dir
+builds, PREFER separate dirs + sccache"), W1.a (measure the target-dir lock's
+serialisation cost, "report [phase-226's] measured numbers first"), and W1.b
+(the feature-unification hazard and the signature count). This phase re-derived
+them without noticing, and what it contributed is the **measurements**, not the
+framing.
+
+The verdicts are recorded in phase-334's status block, which now owns the W1
+answers; phase-334 keeps W1.c and all of W2 (layout and naming), which this
+phase does not touch. Keep the two in sync rather than restating: **334 owns the
+sharing verdict and the layout rule; 340 owns the identity measurements and the
+W2/W3 implementation.**
 
 #### Work items
 
 - [ ] **W2.a** Extend the phase-226.D resolver so a manifest-authored
       `--target-dir` names a GROUP rather than opting the row out, for rows whose
       identity already matches. No new mechanism; widen the existing key.
-- [ ] **W2.b** Convert a same-identity group from N parallel cargo invocations
-      into ONE invocation over a build-time-only umbrella workspace. Leaves keep
-      their standalone manifests (RFC-0026's copy-out promise); the umbrella is
-      generated for the fixture build and never committed.
+- [ ] **W2.b** Convert the FIVE head signatures (above) from N parallel cargo
+      invocations into ONE invocation each over a build-time-only umbrella
+      workspace — 62 of 117 linux rows. Leaves keep their standalone manifests
+      (RFC-0026's copy-out promise); the umbrella is generated for the fixture
+      build and never committed. The 55 singleton signatures are out of scope
+      by construction: they have nothing to share with.
 - [ ] **W2.c** Measure W2.b against the status quo on disk AND wall-clock,
       alternating reps per the W1 method.
 
