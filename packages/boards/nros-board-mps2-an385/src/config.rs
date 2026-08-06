@@ -230,10 +230,7 @@ impl Config {
             baudrate: 115200,
             zenoh_locator: option_env!("NROS_LOCATOR").unwrap_or("tcp/10.0.2.2:7450"),
             domain_id: match option_env!("NROS_DOMAIN_ID") {
-                Some(s) => match parse_u32(s) {
-                    Some(d) => d,
-                    None => 0,
-                },
+                Some(s) => parse_u32(s).unwrap_or_default(),
                 None => 0,
             },
         }
