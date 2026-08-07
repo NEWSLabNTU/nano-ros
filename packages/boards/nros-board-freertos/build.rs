@@ -122,6 +122,10 @@ fn main() {
     }
     freertos.file(port_dir.join("port.c"));
     freertos.file(freertos_dir.join("portable/MemMang/heap_4.c"));
+    // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
+    // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
+    // through neither shared helper, so the policy has to be named here.
+    nros_cc_flags::gcc_safe_frame_pointer(&mut freertos);
     freertos.compile("freertos");
 
     // --- Build lwIP ---
@@ -171,6 +175,10 @@ fn main() {
     ] {
         lwip.file(lwip_dir.join(src));
     }
+    // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
+    // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
+    // through neither shared helper, so the policy has to be named here.
+    nros_cc_flags::gcc_safe_frame_pointer(&mut lwip);
     lwip.compile("lwip");
 
     // --- Build nros-platform-freertos C port ---
@@ -191,6 +199,10 @@ fn main() {
     platform.file(nros_platform_freertos_dir.join("platform.c"));
     platform.file(nros_platform_freertos_dir.join("net.c"));
     platform.file(nros_platform_freertos_dir.join("timer.c"));
+    // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
+    // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
+    // through neither shared helper, so the policy has to be named here.
+    nros_cc_flags::gcc_safe_frame_pointer(&mut platform);
     platform.compile("nros_platform_freertos");
     println!(
         "cargo:rerun-if-changed={}",
@@ -213,6 +225,10 @@ fn main() {
     glue.file(manifest_dir.join("c/freertos_hooks.c"));
     glue.file(manifest_dir.join("c/network_glue.c"));
     glue.file(manifest_dir.join("c/freertos_run_tiers.c"));
+    // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
+    // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
+    // through neither shared helper, so the policy has to be named here.
+    nros_cc_flags::gcc_safe_frame_pointer(&mut glue);
     glue.compile("freertos_glue");
 
     // --- Link order (link-lib propagates transitively to overlays + final binary) ---

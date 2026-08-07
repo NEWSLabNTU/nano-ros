@@ -67,6 +67,45 @@ pub const STRICT_DECL_FLAGS: &[&str] = &[
     "-Werror=int-conversion",
 ];
 
+/// Keep cc-rs from handing gcc a clang-only frame-pointer flag (issue 0478).
+///
+/// When cc-rs decides to force a frame pointer — which it does off cargo's
+/// `DEBUG`, and our `nros-relwithdebinfo` carries `debug = 1` — it emits BOTH
+/// `-fno-omit-frame-pointer` and `-mno-omit-leaf-frame-pointer`. The second is
+/// a **clang** spelling. gcc does not have it and does not merely warn:
+///
+/// ```text
+/// arm-none-eabi-gcc: error: unrecognized command-line option
+///   '-mno-omit-leaf-frame-pointer'; did you mean '-fno-omit-frame-pointer'?
+/// ```
+///
+/// which failed every `freertos` fixture row while the other six platform
+/// modules passed. Nothing in this repo passed the flag; it arrived when the
+/// generated, untracked workspace lock re-resolved `cc` to a newer version, so
+/// no commit is behind it.
+///
+/// The fix keeps the INTENT rather than dropping frame pointers: turn cc-rs's
+/// automatic pair off, then re-add the half gcc actually understands, so a
+/// debug build still gets a frame pointer. clang and MSVC are left alone —
+/// under clang the flag is legal and useful, so a blanket disable would give up
+/// leaf frame pointers on the toolchain that supports them.
+pub fn gcc_safe_frame_pointer(build: &mut cc::Build) -> &mut cc::Build {
+    let Ok(tool) = build.try_get_compiler() else {
+        // Same reasoning as `strict_decls`: outside a build script every cc
+        // call fails anyway. Do nothing rather than guess at a compiler.
+        return build;
+    };
+    if tool.is_like_clang() || tool.is_like_msvc() {
+        return build;
+    }
+    let wants_frame_pointer = std::env::var("DEBUG").as_deref() == Ok("true");
+    build.force_frame_pointer(false);
+    if wants_frame_pointer {
+        build.flag("-fno-omit-frame-pointer");
+    }
+    build
+}
+
 /// Name of the escape-hatch variable ([`strict_decls`] is a no-op when it is `0`).
 pub const DISABLE_ENV: &str = "NROS_CC_STRICT_DECLS";
 
@@ -82,6 +121,14 @@ pub const DISABLE_ENV: &str = "NROS_CC_STRICT_DECLS";
 /// build.compile("platform");
 /// ```
 pub fn strict_decls(build: &mut cc::Build) -> &mut cc::Build {
+    // issue 0478 — applied HERE, not at each call site, for the same reason the
+    // strict diagnostics are: this function is already the one thing every
+    // nano-ros C compile calls, so routing the frame-pointer policy through it
+    // fixes ~20 sites at once and leaves no site for the next one to miss. The
+    // escape hatch below deliberately does NOT cover it: `NROS_CC_STRICT_DECLS=0`
+    // is for bisecting a diagnostics failure, and a build that cannot pass a
+    // flag its compiler rejects is broken either way.
+    gcc_safe_frame_pointer(build);
     println!("cargo:rerun-if-env-changed={DISABLE_ENV}");
     if std::env::var(DISABLE_ENV).as_deref() == Ok("0") {
         return build;

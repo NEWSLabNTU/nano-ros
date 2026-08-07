@@ -1,7 +1,7 @@
 ---
 id: 478
 title: "cc-rs sends `-mno-omit-leaf-frame-pointer` to `arm-none-eabi-gcc`, killing every freertos fixture build"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0477, phase-340, phase-334]
@@ -44,24 +44,44 @@ and the failure still arrived. Same shape as issue 0477 — build state, not cod
 — which is worth noting because two in a row now have looked like regressions
 and were not.
 
-## Fix — one shared constructor, not five call sites
+## Fix (landed)
 
-`cc::Build::new()` appears at ~5 places:
+`nros_cc_flags::gcc_safe_frame_pointer` turns cc-rs's automatic pair off and
+re-adds `-fno-omit-frame-pointer`, the half gcc understands — so a debug build
+still gets a frame pointer instead of the policy being thrown away. clang and
+MSVC are untouched: the flag is legal under clang, and a blanket disable would
+give up leaf frame pointers on the toolchain that supports them.
 
-* `packages/rmw/zenoh/nros-zpico-build/src/runner.rs` — lines 604, 639, 802
-* `packages/tooling/nros-build-helpers/src/c.rs` — line 467
-* `packages/tooling/nros-build-helpers/src/shared.rs`
+**Where it is called matters more than what it does.** `strict_decls` is already
+the one function every nano-ros C compile calls, so the new helper is invoked
+from inside it — that fixed the failing site and ~20 others with zero call-site
+edits, and leaves no site for the next person to miss.
 
-Sprinkling `.force_frame_pointer(false)` across them is the second-spelling
-mistake CLAUDE.md names explicitly — and the next `cc::Build::new()` anyone adds
-would miss it. Add ONE constructor (`nros_cc_build()`) that returns a
-`cc::Build` with the bare-metal defaults already applied, route every site
-through it, and gate on the raw `cc::Build::new()` spelling so a new one cannot
-appear ungoverned.
+Seven sites route through neither helper and had to name it directly:
+`nros-board-freertos/build.rs` (4) and `nros-board-mps2-an385-freertos/build.rs`
+(3). Note they also miss the issue-0383 diagnostics — a real gap, but adding
+`strict_decls` to vendored FreeRTOS/lwIP would turn long-standing warnings into
+errors, which belongs to 0383 and not here.
 
-Check whether it should key on "target is bare-metal" or on "compiler is GCC"
-before writing it; the flag is legal under clang, so a blanket disable gives up
-frame pointers where they work.
+### The gate
+
+`check-cc-build-policy` (in `just check`) requires any file constructing a
+`cc::Build` to name the helper crate. Both classes that escaped — 0383's
+diagnostics and this one — escaped through an unrouted call site, so the
+structural half is refusing to let a new one appear undecided.
+
+It checks presence per FILE, not per construction; a per-site check needs a Rust
+parser. Under the issue-0196 rule that is the right trade: a narrow gate that
+looks healthy is worse than a coarse one that makes someone look. Tripwired both
+ways — it fails on an ungoverned site and passes clean, and it correctly ignores
+`threadx_sources.rs`, whose three `cc::Build::new()` occurrences are all inside
+doc comments.
+
+### Verified
+
+`just build-test-fixtures lane=tier2` — all eight modules OK, `freertos`
+included, zero `-mno-omit-leaf-frame-pointer` occurrences, stamp written. Run
+twice: once for the helper, once again after the seven call sites were hooked.
 
 ## Reproduce
 

@@ -94,6 +94,10 @@ fn main() {
     add_lwip_includes(&mut lan9118, &lwip_dir);
     lan9118.include(lan9118_dir.join("include"));
     lan9118.file(lan9118_dir.join("src/lan9118_lwip.c"));
+    // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
+    // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
+    // through neither shared helper, so the policy has to be named here.
+    nros_cc_flags::gcc_safe_frame_pointer(&mut lan9118);
     lan9118.compile("lan9118_lwip");
 
     // --- Tonbandgeraet trace library (opt-in via NROS_TRACE=1) ---
@@ -110,6 +114,10 @@ fn main() {
         tband.file(tband_dir.join("src/tband.c"));
         tband.file(tband_dir.join("src/tband_freertos.c"));
         tband.file(tband_dir.join("src/tband_backend.c"));
+        // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
+        // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
+        // through neither shared helper, so the policy has to be named here.
+        nros_cc_flags::gcc_safe_frame_pointer(&mut tband);
         tband.compile("tband");
         println!("cargo:rustc-link-lib=static=tband");
         println!("cargo:rustc-cfg=nros_trace");
@@ -164,6 +172,10 @@ fn main() {
     };
     glue.file(emit_app_config_tu(&out_dir, &BaseConfig::default(), &sched));
 
+    // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
+    // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
+    // through neither shared helper, so the policy has to be named here.
+    nros_cc_flags::gcc_safe_frame_pointer(&mut glue);
     glue.compile("startup");
 
     // --- Link order ---

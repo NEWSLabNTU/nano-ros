@@ -51,14 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#478** (build, open 2026-08-08) — cc-rs sends `-mno-omit-leaf-frame-pointer`, a **clang** flag, to
-`arm-none-eabi-gcc`, which rejects it — every `freertos` fixture row dies `rc=101` while all six other
-modules pass. Nothing in-tree passes the flag: cc-rs adds it when forcing a frame pointer off the profile's
-`debug = 1`. It arrived without a commit because the lock pinning `cc` here is
-`examples/workspaces/mixed/`'s, GENERATED per host by `nros sync` and untracked, so a fresh resolve moved
-it (the root lock's `cc 1.2.63` is not what this build reads). Fix is ONE `nros_cc_build()` constructor —
-`cc::Build::new()` has ~5 call sites and patching each is the second-spelling mistake. Now the only thing
-blocking `just ci-matrix`, since 0477 is resolved.
+**#478** (build, RESOLVED 2026-08-08) — cc-rs sent `-mno-omit-leaf-frame-pointer`, a **clang** flag, to
+`arm-none-eabi-gcc`, which rejects it — every `freertos` fixture row died `rc=101` while the other six
+modules passed, and it was the last gate on `just ci-matrix`. Nothing in-tree passed it: cc-rs adds it when
+forcing a frame pointer off `debug = 1`, and it arrived with no commit behind it because the lock pinning
+`cc` here is the mixed workspace's, generated per host and untracked. Fix: `gcc_safe_frame_pointer` drops
+cc-rs's automatic pair and re-adds the half gcc understands (clang/MSVC untouched), called from INSIDE
+`strict_decls` — the one function every nano-ros C compile already calls — so ~20 sites were fixed with no
+call-site edits; 7 unrouted sites in the two freertos board crates name it directly. Gated by
+`check-cc-build-policy`, tripwired both ways. Verified: `lane=tier2` all eight modules OK.
 
 **#477** (nuttx, RESOLVED 2026-08-08) — `nuttx-c-talker-zenoh` overflowed ROM by 448776 bytes and gated
 `lane=all`/`lane=tier2`. **Not a size regression at all.** `nros-board-common`'s `snapshot_root` /

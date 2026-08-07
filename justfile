@@ -405,7 +405,7 @@ check-fast: \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
-    check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
+    check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-artifact-identity-budget
     @echo "Fast checks passed!"
@@ -739,6 +739,13 @@ check-abi-bindings:
 [private]
 check-board-abi-mirror:
     @bash scripts/check-board-abi-mirror.sh
+
+# issue 0478 — every cc::Build must name the nano-ros cc policy helper
+# (the strict diagnostics of 0383, and the clang-only frame-pointer flag gcc
+# rejects). Both classes escaped once through an unrouted call site.
+[private]
+check-cc-build-policy:
+    @bash scripts/check-cc-build-policy.sh
 
 # Issue 0160 — hand-mirrored FFI structs (component.h vs cbindgen's
 # nros_cpp_ffi.h) must not drift on append (the #131 stale-mirror ABI class).
