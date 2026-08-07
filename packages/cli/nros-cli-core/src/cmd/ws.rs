@@ -75,6 +75,25 @@ pub enum Sub {
     /// uses stays the only implementation. Reads a file; needs no ROS.
     #[command(name = "model-dims", hide = true)]
     ModelDims(ModelDimsArgs),
+
+    /// phase-341 W4 — verify every leaf's committed
+    /// `.cargo/nros-board.toml` matches a fresh render of its board
+    /// descriptor. Exits non-zero, naming each disagreement.
+    ///
+    /// Hidden, same seam role as `model-dims`: it exists so a gate can ASK
+    /// rather than re-implement the renderer in shell. The predecessor
+    /// (`check-board-cargo-config-applied`) grepped the leaf for a
+    /// REPRESENTATIVE arg, which caught a lost group but not a lost argument;
+    /// this compares exactly, because the file is now generated.
+    #[command(name = "check-board-projections", hide = true)]
+    CheckBoardProjections(CheckBoardProjectionsArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct CheckBoardProjectionsArgs {
+    /// Workspace or single-package dir to scan. Defaults to the cwd.
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -195,6 +214,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::Clean(a) => run_clean(a),
         Sub::Doctor(a) => run_doctor(a),
         Sub::ModelDims(a) => run_model_dims(a),
+        Sub::CheckBoardProjections(a) => run_check_board_projections(a),
     }
 }
 
@@ -2572,6 +2592,69 @@ fn execution_tier_dims(yaml: &str) -> BTreeSet<String> {
 /// `nros ws model-dims <model.yaml>` — issue 0380's read-only door onto
 /// [`execution_tier_dims`], so the gate and the sync-time guard cannot disagree
 /// about what a "dim" is.
+/// phase-341 W4 — `nros ws check-board-projections`.
+///
+/// Scans the workspace exactly as `sync` does, then asks
+/// [`project_board_configs_with`] in CHECK mode whether every committed
+/// projection still matches a fresh render of its descriptor. Writes nothing.
+fn run_check_board_projections(args: CheckBoardProjectionsArgs) -> Result<()> {
+    let ws_root = args
+        .path
+        .canonicalize()
+        .wrap_err_with(|| format!("check-board-projections: {}", args.path.display()))?;
+    // Mirror `run_sync`'s dispatch exactly. Scanning a single leaf dir with
+    // `scan_workspace` finds NOTHING, and a check that inspects nothing passes —
+    // which is how the first cut of this gate reported OK on 0 leaves while a
+    // deliberately corrupted projection sat next to it.
+    // `has_pkg_subdir` is load-bearing, not decoration: a standalone leaf has a
+    // `src/` too (the CARGO source dir), so `src/.is_dir()` alone routes it down
+    // the colcon branch, scans the wrong directory and finds no packages. Sync's
+    // own comment warns of exactly this; the first cut of this gate ignored it
+    // and reported OK on zero leaves.
+    let colcon_layout = ws_root.join("src").is_dir() && has_pkg_subdir(&ws_root.join("src"));
+    let single_pkg_mode = !colcon_layout && ws_root.join("package.xml").is_file();
+    let mut scan: Vec<WsPkg> = Vec::new();
+    if single_pkg_mode {
+        scan_one_pkg_dir(&ws_root, &mut scan)?;
+    } else if colcon_layout {
+        scan_workspace(&ws_root.join("src"), &mut scan)?;
+    } else {
+        scan_workspace(&ws_root, &mut scan)?;
+    }
+    let leaves: Vec<&WsPkg> = scan.iter().filter(|p| p.needs_patch_authority()).collect();
+    if leaves.is_empty() {
+        // Never "OK, nothing to do": a gate that inspects nothing must say so,
+        // or a mis-pointed path reads as a pass.
+        return Err(eyre!(
+            "check-board-projections: no patch-authority leaf found under {} —              refusing to report OK on a tree it did not understand",
+            ws_root.display()
+        ));
+    }
+    let nano_ros_path = std::env::var_os("NROS_REPO_DIR")
+        .map(PathBuf::from)
+        .or_else(|| autodetect_nano_ros_path(&ws_root));
+
+    let complaints = project_board_configs_with(&leaves, nano_ros_path.as_deref(), false, true)?;
+    if complaints.is_empty() {
+        println!(
+            "check-board-projections: OK ({} leaf/leaves match their descriptor)",
+            leaves.len()
+        );
+        return Ok(());
+    }
+    for c in &complaints {
+        eprintln!("check-board-projections: {c}");
+    }
+    eprintln!();
+    eprintln!("  `.cargo/nros-board.toml` is GENERATED from the board's `cargo_config`");
+    eprintln!("  (RFC-0032 third leg, phase-341). Do not hand-edit it — change the");
+    eprintln!("  descriptor and re-run `nros sync`.");
+    Err(eyre!(
+        "{} board projection(s) disagree with their descriptor",
+        complaints.len()
+    ))
+}
+
 fn run_model_dims(args: ModelDimsArgs) -> Result<()> {
     let raw = std::fs::read_to_string(&args.model)
         .wrap_err_with(|| format!("model-dims: read {}", args.model.display()))?;
@@ -3612,6 +3695,65 @@ fn write_board_projection(
     })
 }
 
+/// phase-341 W4 — the regeneration check that REPLACES
+/// `check-board-cargo-config-applied`.
+///
+/// That gate existed because the leaf mirrored the descriptor by hand, so it
+/// asked "does the leaf still carry a REPRESENTATIVE arg from its board?" —
+/// deliberately loose, catching a lost GROUP but not a lost argument. Once the
+/// block is a projection the question changes: not "did a human copy enough of
+/// it" but "is the committed file what the descriptor renders to". That is an
+/// exact comparison, and it makes drift uncommittable rather than detectable.
+///
+/// Shares `render_board_config` with [`write_board_projection`] — checking with
+/// a second implementation of the renderer is how the two spellings drift, which
+/// is the failure this whole phase exists to remove.
+///
+/// Returns one human-readable complaint per leaf that disagrees.
+fn check_board_projection(
+    leaf_dir: &Path,
+    deploy: &str,
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+) -> Result<Option<String>> {
+    let cfg_dir = leaf_dir.join(".cargo");
+    let dst = cfg_dir.join(BOARD_CONFIG_FILE);
+    let (projected, withheld) = match descriptor.cargo_config.as_deref() {
+        Some(raw) => committable_board_config(raw)?,
+        None => (String::new(), Vec::new()),
+    };
+
+    let on_disk = std::fs::read_to_string(&dst).ok();
+    if config_keys_depth2(&projected).is_empty() {
+        return Ok(on_disk.map(|_| {
+            format!(
+                "{}: has a projection, but board `{}` projects nothing — stale file",
+                dst.display(),
+                deploy
+            )
+        }));
+    }
+
+    let expected = render_board_config(
+        deploy,
+        descriptor.source.as_deref().unwrap_or("nros-board.toml"),
+        &projected,
+        &withheld,
+    );
+    match on_disk {
+        None => Ok(Some(format!(
+            "{}: MISSING — board `{}` projects a config but the leaf has none",
+            dst.display(),
+            deploy
+        ))),
+        Some(body) if body != expected => Ok(Some(format!(
+            "{}: STALE — does not match a fresh render of {}",
+            dst.display(),
+            descriptor.source.as_deref().unwrap_or("nros-board.toml"),
+        ))),
+        Some(_) => Ok(None),
+    }
+}
+
 /// Temp + rename, the write discipline every other sync-owned file here uses
 /// (a parallel fixture build runs many syncs at once).
 fn atomic_write(dst: &Path, body: &str) -> Result<()> {
@@ -3643,10 +3785,23 @@ fn project_board_configs(
     nano_ros_path: Option<&Path>,
     verbose: bool,
 ) -> Result<()> {
+    project_board_configs_with(leaves, nano_ros_path, verbose, false).map(|_| ())
+}
+
+/// [`project_board_configs`] with the write/check split made explicit.
+/// `check` writes NOTHING and returns the leaves whose committed projection
+/// disagrees with a fresh render (phase-341 W4).
+fn project_board_configs_with(
+    leaves: &[&WsPkg],
+    nano_ros_path: Option<&Path>,
+    verbose: bool,
+    check: bool,
+) -> Result<Vec<String>> {
     use crate::orchestration::board_descriptor::{BoardCatalog, DeployResolution};
 
+    let mut complaints: Vec<String> = Vec::new();
     let Some(nrp) = nano_ros_path else {
-        return Ok(());
+        return Ok(complaints);
     };
     let nrp_c = nrp.canonicalize().unwrap_or_else(|_| nrp.to_path_buf());
     let catalog = match BoardCatalog::load(&nrp_c) {
@@ -3656,7 +3811,7 @@ fn project_board_configs(
             // simply has no board knowledge to project. Never silent, because a
             // leaf that expected a projection will otherwise fail much later.
             println!("sync: board configs not projected (no board catalog: {e})");
-            return Ok(());
+            return Ok(complaints);
         }
     };
 
@@ -3688,6 +3843,12 @@ fn project_board_configs(
                 continue;
             }
         };
+        if check {
+            if let Some(c) = check_board_projection(&leaf.dir, &deploy, descriptor)? {
+                complaints.push(c);
+            }
+            continue;
+        }
         match write_board_projection(&leaf.dir, &deploy, descriptor)? {
             BoardProjection::Included(withheld) => {
                 included += 1;
@@ -3742,7 +3903,7 @@ fn project_board_configs(
             unresolved.iter().cloned().collect::<Vec<_>>().join("; ")
         );
     }
-    Ok(())
+    Ok(complaints)
 }
 
 /// Pure DOM transform behind [`write_patch_config`]: given the existing

@@ -962,7 +962,36 @@ fixture-staleness:
 # TOML, happy cargo, and every NuttX Rust entry failing at LINK time.
 [private]
 check-board-cargo-config-applied:
-    @bash scripts/check-board-cargo-config-applied.sh
+    #!/usr/bin/env bash
+    # phase-341 W4 — REPLACED, not deleted. The old gate
+    # (scripts/check-board-cargo-config-applied.sh) asked whether a leaf still
+    # carried a REPRESENTATIVE `-l` arg copied from its board, because the leaf
+    # mirrored the descriptor BY HAND. It caught a lost GROUP (issue 0440) but
+    # not a lost argument, and it covered 8 leaves of the 59 that carried a
+    # board block.
+    #
+    # The block is now a generated projection, so the question changes from "did
+    # a human copy enough of it" to "is the committed file what the descriptor
+    # renders to" — an EXACT comparison, which makes drift uncommittable rather
+    # than detectable. `nros ws check-board-projections` answers it by sharing
+    # the renderer with `nros sync`; a second implementation in shell is the
+    # drift this phase exists to remove.
+    set -euo pipefail
+    nros="packages/cli/target/release/nros"
+    if [ ! -x "$nros" ]; then
+        echo "[SKIP] board projections: no in-tree nros at $nros — build it: just setup-cli"
+        exit 0
+    fi
+    fail=0
+    while IFS= read -r cfg; do
+        leaf="$(dirname "$(dirname "$cfg")")"
+        NROS_REPO_DIR="$PWD" "$nros" ws check-board-projections "$leaf" >/dev/null 2>&1 || {
+            NROS_REPO_DIR="$PWD" "$nros" ws check-board-projections "$leaf" 2>&1 | sed 's/^/  /' >&2
+            fail=1
+        }
+    done < <(git ls-files '*/.cargo/nros-board.toml')
+    [ "$fail" = 0 ] || exit 1
+    echo "board projections OK ($(git ls-files '*/.cargo/nros-board.toml' | wc -l) leaf/leaves match their descriptor)"
 
 # phase-330 W7.e — committed SystemModels are BANNED: the model is a build
 # artifact (generated into <ws>/build/nros/models by `nros sync`); tracking

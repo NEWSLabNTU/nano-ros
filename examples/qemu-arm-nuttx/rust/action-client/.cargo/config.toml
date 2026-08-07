@@ -1,69 +1,7 @@
-include = ["../../../../../nros-patch.toml"]
-[build]
-target = "armv7a-nuttx-eabihf"
+include = [ "../../../../../nros-patch.toml", "nros-board.toml"]
 
-[unstable]
-build-std = ["std", "panic_abort"]
-build-std-features = ["compiler-builtins-mem"]
 
-# #127 — STATIC image-link args only (board-centric link convention,
-# RFC-0032 "third leg"; SSoT: nros-board-nuttx-qemu/nros-board.toml
-# `cargo_config`). The dynamic pieces (processed dramboot.ld in the board
-# OUT_DIR, the vectortab+builtins-stub boot archive, the -L search dirs
-# for OUT_DIR / $NUTTX_DIR/staging / arch/arm/src/board) PROPAGATE from
-# `nros-board-nuttx-qemu`'s build.rs. ZERO entry build.rs.
-# The cpu flags make the gcc driver pick the cortex-a7 hard-float multilib,
-# so the trailing `-lgcc` resolves the ARM intrinsics without an absolute
-# `-print-libgcc-file-name` path. `-Tdramboot.ld` is by NAME — GNU ld
-# resolves it through the propagated `-L` search path. The kernel libs are
-# mutually recursive -> `--start-group`; the Rust rlibs precede this group,
-# so libsched's `nsh_main` reference resolves to the board crate's.
-[target.armv7a-nuttx-eabihf]
-linker = "arm-none-eabi-gcc"
-rustflags = [
-    # issue 0440 — the board's STATIC image-link args, restored.
-    #
-    # phase-338 W2 collapsed the `-entry` packages into their node packages and
-    # kept the NODE package's `.cargo/config.toml`, which had only the three cpu
-    # flags — the `-T` / `--start-group` / `-l…` set lived in the deleted
-    # `*-entry` file. Without them nothing pulls in the kernel archives and every
-    # NuttX Rust entry fails with ~3680 undefined libc references.
-    #
-    # SSoT is `nros-board-nuttx-qemu/nros-board.toml`'s `cargo_config` (RFC-0032
-    # "third leg": static args here, dynamic `-L`/script/boot-archive propagated
-    # from the board crate's build.rs). This file is tracked and `nros sync`
-    # leaves it alone, so the two must be kept in step by hand — which is what
-    # made a silent loss possible.
 
-    "-C", "link-arg=-mcpu=cortex-a7",
-    "-C", "link-arg=-mfloat-abi=hard",
-    "-C", "link-arg=-mfpu=neon-vfpv4",
-    "-C", "link-arg=-Tdramboot.ld",
-    "-C", "link-arg=--entry=__start",
-    "-C", "link-arg=-nostartfiles",
-    "-C", "link-arg=-nodefaultlibs",
-    "-C", "link-arg=-Wl,--start-group",
-    "-C", "link-arg=-lsched",
-    "-C", "link-arg=-ldrivers",
-    "-C", "link-arg=-lboards",
-    "-C", "link-arg=-lc",
-    "-C", "link-arg=-lmm",
-    "-C", "link-arg=-larch",
-    "-C", "link-arg=-lxx",
-    "-C", "link-arg=-lapps",
-    "-C", "link-arg=-lnet",
-    "-C", "link-arg=-lcrypto",
-    "-C", "link-arg=-lfs",
-    "-C", "link-arg=-lbinfmt",
-    "-C", "link-arg=-lopenamp",
-    "-C", "link-arg=-lboard",
-    "-C", "link-arg=-lgcc",
-    "-C", "link-arg=-Wl,--end-group",
-]
-
-[env]
-CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
-CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 
 [patch.crates-io]
 # #127 blocker-1: the patched libc for build-std lives UNDER this single

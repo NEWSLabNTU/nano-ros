@@ -1,7 +1,7 @@
 # Phase 341 — The board's `cargo_config` is generated into the leaf, not mirrored by hand
 
 **Amends:** [RFC-0032](../design/0032-entry-codegen-pipeline.md) §3 (the "third leg").
-**Status (2026-08-07).** IN PROGRESS — **W1, W2 and W3's thumbv7m family landed** (`--gc-sections` hoisted into
+**Status (2026-08-07).** COMPLETE — W1–W4 landed. Archive after a tier-2 sweep confirms the migrated families across the matrix. (`--gc-sections` hoisted into
 the four board descriptors; 54 leaves now carry exactly their board's args).
 W2–W4 not started. The design was corrected after W1: the projection is
 COMMITTED and gated, not gitignored — see "Correction" below.
