@@ -1,8 +1,10 @@
 # Phase 341 — The board's `cargo_config` is generated into the leaf, not mirrored by hand
 
 **Amends:** [RFC-0032](../design/0032-entry-codegen-pipeline.md) §3 (the "third leg").
-**Design corrected 2026-08-07** — the projection is COMMITTED and gated, not
-gitignored. W1 is landed; W2–W4 below are written to the corrected shape.
+**Status (2026-08-07).** IN PROGRESS — **W1 landed** (`--gc-sections` hoisted into
+the four board descriptors; 54 leaves now carry exactly their board's args).
+W2–W4 not started. The design was corrected after W1: the projection is
+COMMITTED and gated, not gitignored — see "Correction" below.
 **Related:** issue 0440 (the drift this prevents), RFC-0048 W9 (`nros sync` owns
 the leaf `.cargo/config.toml`), issue 0457 (the gitignored sidecar this reuses),
 issue 0473 (withdrawn — established that tracked configs carrying sync-managed
