@@ -51,6 +51,23 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#475** — a cmake fixture can be PERMANENTLY stale. Touch an ABI header (`rmw_ret.h`) and every C/C++
+Cyclone fixture reports STALE; `just native build-fixtures` does not clear it, and `cmake --build` on the leaf
+exits 0 WITHOUT relinking — that example never includes the header, so make has no edge to rebuild. Only
+`rm -rf <leaf>/build-cyclonedds` clears it, at 687s per leaf (Cyclone builds from source), across ~8 leaves.
+Both sides are individually right: the probe is conservative (any newer input, 8503 examined), the build graph
+is precise. Issue 0196's rule pointing the OTHER way — the TEST probe is the over-broad one, and no build
+command can satisfy it. Presents as 100+ identical failures across unrelated suites because
+`_check-fixtures-stale` passes (it reads a lane stamp, not freshness). See `0475-*`. (2026-08-07)
+
+**#474** (build, open 2026-08-06) — `just format` is not behind `_require-leaf-includes`, so on a
+checkout with an unsynced leaf it dies with cargo's raw manifest-parse error four frames deep, never
+naming `nros sync`. CLAUDE.md tells you to run `just format` before broad changes, so this blocks the
+workflow it precedes. Not a new bug: issue 0463 established the cause and fixed the SEAM, wiring the
+guard to `build-test-fixtures-leaves` and `rust-rtos-link-check` — the two sites where it had been
+observed. `format` is a third site walking the same leaves. Issue-0196's rule (check the gate covers the
+new site) and CLAUDE.md's fix-the-CLASS rule. Fix: add the guard to `format`, audit `check-example-fmt` /
+`native::check` for the same gap, and check whether the guard's leaf list is derived or hand-maintained.
 Closed as wontfix (2026-08-07): **#473** — filed claiming `nros sync` leaks `# nros-managed` patch rows
 into tracked `.cargo/config.toml`, re-dirtying the worktree. **The premise was wrong**, and asking "why
 are these tracked" gave the opposite answer. `.gitignore:92-105` states the design: a config that is PURE
