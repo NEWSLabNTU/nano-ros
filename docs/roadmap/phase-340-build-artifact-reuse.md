@@ -832,6 +832,226 @@ before choosing.
 `just verify-size-probe` still green in BOTH modes, or the reason it cannot is
 recorded at the manifest edge that causes it.
 
+### W4 follow-up — the budget counts W5's probe dirs, so it drifts with build history
+
+`check-artifact-identity-budget` went RED on my tree today with
+`nros_core has 9 distinct -C metadata identities … (budget 8, recorded
+2026-08-07 by phase-340 W4)`, on a working tree whose only source change was
+documentation. Counted:
+
+```
+52  libnros_core-*.rlib under examples/workspaces/mixed/build-workspace-fixtures
+40  of them (76 %) inside .../build/nros-c-<hash>/out/sizes-probe-target-.../
+ 8  distinct identities once the sizes-probe dirs are excluded  ← the budget
+```
+
+The 9th identity comes entirely from the size probe's NESTED target dirs — one
+per `nros-c` build-script instance, each rebuilding `nros_core` inside its own
+`sizes-probe-target-rustc-…` tree. That is W5's duplicate-inside-one-invocation,
+observed from the gate's side, and it is also what issue 0464 is about.
+
+The consequence for the gate: **its count grows with how many times the tree has
+been built, not with what the source says.** A budget recorded on one tree
+red-lights another that merely built more, and `just check-fast` then fails for
+a reason no diff explains — which is expensive precisely because the gate is in
+the fast tier that every task runs first.
+
+Options, in the spirit of the gate: exclude `*/out/sizes-probe-target-*/` from
+the count (it measures a different phenomenon, already owned by W5), or count
+identities per target-dir root rather than per tree. Excluding the probe dirs
+restores the recorded 8 exactly, which suggests that is the population W4 meant.
+
+### W6 — the ZEPHYR fixture lane, which no measurement above covers
+
+Everything measured so far is the `linux` fixture rows (117 rows, 60 signatures)
+plus the build-dep graph. The **Zephyr west lane is a separate population and a
+bigger one**, and it is opted out of every mechanism this phase has considered.
+Measured 2026-08-07 from the driver's own per-fixture records
+(`build/zephyr-fixture-make-driver/status/<run>/*.status`, which carry
+`start_epoch` / `end_epoch` / `duration_s`).
+
+#### The lane is CPU-bound on duplicated Rust compiles, not on overhead
+
+Two consecutive `just zephyr build-fixtures` runs:
+
+| run | fixtures | wall | CPU-sum | median/fixture |
+| --- | --- | --- | --- | --- |
+| colder | 68 | 33.2 min | 871 min | 776 s |
+| warmer | 68 | 19.4 min | 509 min | 441 s |
+
+Recipe start → driver start is **~40 s**, so the fan-out is essentially the
+whole wall time; there is no setup tax worth chasing. Concurrency is already
+32-way for 58 % of the wall (a 26× compression of 509 CPU-minutes). The lane is
+not under-parallelised — it is doing too much work.
+
+A single fixture's ninja graph is 42 steps, and three of them are the cost:
+
+```
+[1/44] Building nros-c via Cargo
+[2/44] Building nros-cpp via Cargo
+[4/42] Building nros-rmw-zenoh-staticlib via Cargo
+```
+
+`nros_cargo_build()` sets `CARGO_TARGET_DIR` to
+`${CMAKE_BINARY_DIR}/nros-rust` — **per Zephyr build dir**. So all 68 fixtures
+compile those crates into 68 private target dirs. On disk:
+
+```
+415 G   zephyr-workspace/            (85 build dirs)
+286 G     of which per-fixture cargo target dirs (45 `nros-rust` dirs)
+1069    libnros_core-*.rlib copies
+  36    libnros_c.a  /  36  libnros_cpp.a
+```
+
+For scale, the tree-wide count this phase opened with was 327
+`libnros_core-*.rlib`; the Zephyr lane alone holds **1069**.
+
+#### The duplicates are the same compilation, differing only by an embedded path
+
+This is the part that decides the mechanism. Two same-RMW C fixtures
+(`build-c-talker-zenoh`, `build-c-listener-zenoh`) have **identical Kconfig** —
+`diff` over their 29 `CONFIG_NROS_*` knobs is empty — so their `libnros_c.a`
+should be one compilation. The artifacts differ by **8 bytes**:
+
+```
+34796696  build-c-talker-zenoh/.../libnros_c.a
+34796704  build-c-listener-zenoh/.../libnros_c.a
+```
+
+and each embeds its own build-dir path twice (`strings | grep -c` gives 2/0 and
+0/2). They are byte-different only because the target dir lives inside the
+Zephyr build dir and rustc bakes that absolute path in.
+
+That matters beyond disk. sccache's Rust hashing includes the CONTENT of the
+`--extern` rlibs a crate is compiled against. Once the bottom of the graph
+differs by a path string, **every crate above it misses across fixtures** — the
+cache can only hit for leaf crates with no externs. So the lane pays real
+compiles 68 times for work that is identical modulo a string.
+
+#### sccache is wired and sized — but the size is only honoured if `just` starts the server
+
+`RUSTC_WRAPPER` is exported globally (`justfile:13`) and
+`SCCACHE_CACHE_SIZE := "30G"` right below it, with phase-165.perf's reasoning
+attached: the 10 GiB default "evicts mid-sweep once the ~150 standalone
+example/fixture crates plus the Zephyr C objects land in the cache". So the lane
+is neither missing the wrapper nor under-sized, and "raise the cache" is NOT an
+available win. I first wrote that it was, having read `Max cache size 10 GiB`
+from a server I had started myself outside `just`.
+
+That mistake is the finding. As the justfile comment says, the variable is
+"only read at sccache server start" — so whichever process starts the daemon
+fixes the size for every later user. A server started by anything outside `just`
+(a bare `sccache --show-stats`, an editor, rust-analyzer) silently gives the
+whole sweep a 10 GiB cache, and nothing reports it. The sweep gets slower with
+no signal, which is the same silent-degradation shape this repository keeps
+finding elsewhere.
+
+Cheap guard: have the Zephyr lane compare the running server's `Max cache size`
+against `SCCACHE_CACHE_SIZE` and say so when they disagree (restarting the
+daemon is a one-liner, but even just printing it converts an invisible 3×
+capacity loss into a line of output).
+
+#### The remap is PROVEN, not proposed — measured 2026-08-07
+
+Built `nros-c` twice into two different target dirs and compared:
+
+| build | result |
+| --- | --- |
+| plain, two target dirs | differ |
+| `--remap-path-prefix=<dir>=/nros-target`, dev profile | differ — **379 bytes** of 24.5 MB |
+| same remap, non-incremental profile | **IDENTICAL — 0 differing bytes** |
+
+Two things fall out of the middle row. The residual 379 bytes were entirely
+codegen-unit name suffixes (`nros_c.<hash>.1w7uncg.rcgu.o` vs `…10ahzya…`) —
+independent confirmation of this phase's R4, that `incremental` destroys
+byte-reproducibility, arrived at from the opposite direction. And the symbol
+hashes were IDENTICAL across the two builds (`17h41f705d7eeb2beb8E` in both),
+which answers a question the remap raises: each fixture must pass a DIFFERENT
+`--remap-path-prefix` flag (its own dir on the left-hand side), and that flag
+difference does **not** perturb `-C metadata`. So per-fixture remapping still
+yields one shared identity.
+
+W1 having already dropped `incremental = true` from the shared profiles
+(2026-08-06 — it survives only in the interactive `nros-iterate`), the
+non-incremental row is the configuration the fixture lanes are in TODAY.
+**The embedded target-dir path is the only thing left between the Zephyr lane
+and bit-identical artifacts.**
+
+Repro:
+
+```sh
+RUSTFLAGS="--remap-path-prefix=$D/pA=/nros-target" cargo build -p nros-c --release --target-dir $D/pA
+RUSTFLAGS="--remap-path-prefix=$D/pB=/nros-target" cargo build -p nros-c --release --target-dir $D/pB
+cmp $D/pA/release/libnros_c.a $D/pB/release/libnros_c.a   # → equal
+```
+
+#### Tried on the lane: remap is NECESSARY but NOT SUFFICIENT
+
+I implemented the remap in `nros_cargo_build.cmake` and rebuilt the two C
+fixtures. The flag reaches the command (3 occurrences in `build.ninja`) and the
+artifacts remain different — same size, **1539 differing bytes**, and the build
+dir path is STILL embedded twice. Reverted rather than landed: a flag with no
+measured effect is not worth a full-tree rebuild.
+
+Two residuals explain the gap between this and the clean experiment above, and
+both are worth knowing before anyone retries:
+
+* **`env!("OUT_DIR")` is not a source path.** The surviving string is
+  `…/nros-rust/…/build/nros-c-<hash>/out/…`, captured by nros-c's build script
+  and baked in as a string literal. `--remap-path-prefix` rewrites paths in
+  debug info and `file!()`; it does not rewrite the CONTENT of an `env!`
+  literal. Any crate using the standard `include!(concat!(env!("OUT_DIR"), …))`
+  pattern carries its absolute target dir into the artifact regardless.
+* **`codegen-units = 16`.** The clean experiment used `--release`
+  (`codegen-units = 1`) and reached 0 differing bytes; the fixture profile
+  `nros-relwithdebinfo` uses 16, and the residual diff is again CGU name
+  suffixes (`…0omp3nw.rcgu.o` vs `…1dda5ar.rcgu.o`). With 16 units the
+  partitioning is not reproducible run to run. That is a real build-speed
+  tradeoff, not an oversight — CGU=1 is slower to compile.
+
+So cross-fixture artifact identity on this lane needs all three of: the remap,
+an answer for `env!("OUT_DIR")` literals, and `codegen-units = 1` (or accepting
+non-identity). Any one alone changes nothing measurable.
+
+**Which matters for CPU, not just disk.** sccache hashes a crate's inputs
+including the CONTENT of its `--extern` rlibs. CGU nondeterminism and OUT_DIR
+literals both make the bottom of the graph differ, so misses cascade upward
+whichever one is left unfixed. That is why partial application yields nothing:
+the cascade only stops when the artifacts are actually identical.
+
+#### Proposed order — cheapest and least risky first
+
+1. **All three of remap + OUT_DIR + `codegen-units = 1`, together**, since the
+   measurement above shows any subset changes nothing. That converts 68
+   distinct-by-accident compilations into ONE cacheable identity, which fixes
+   CPU (sccache hits cascade up the graph instead of dying at the first extern)
+   AND makes the 1069 rlib copies dedupable. Verify with the two-fixture `cmp`.
+   The `codegen-units` part needs its own A/B — it trades single-build speed for
+   cross-build reuse, and on a 68-way fan-out that trade plausibly pays, but
+   this phase's own W1 shows such intuitions need measuring.
+2. **Report an sccache size/PID mismatch** on the lane (above). Not a speed-up
+   in itself; it stops a 3× capacity loss from being invisible while measuring
+   step 1.
+3. **Only then consider sharing target dirs**, and note W2's F3 applies with
+   full force here: the fan-out is 32-way, so pointing a group at one dir
+   converts 32 parallel builds into serialised ones. Step 1 may make step 3
+   unnecessary, which is the preferred outcome.
+
+Steps 1 and 2 are additive — they neither serialise anything nor change what any
+fixture builds — so they can land independently of W2's umbrella-invocation
+design.
+
+#### One caveat for whoever groups by identity here
+
+The Zephyr lane's identity tuple must include the **resolved Kconfig knobs**,
+not just profile/features/triple: `nros-node`'s `build.rs` bakes
+`NROS_EXECUTOR_MAX_CBS` and friends into constants, so two fixtures with the same
+cargo invocation and different `.config` are genuinely different compilations.
+That divergence is newly REAL as of issue 0460's fix — before it, the Rust lane
+silently compiled crate defaults regardless of Kconfig, so every image happened
+to be identical for the wrong reason.
+
+
 ## Risks
 
 **Shared target dirs serialise.** Cargo takes an exclusive lock per target dir,
