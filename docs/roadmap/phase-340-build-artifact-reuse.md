@@ -1,6 +1,11 @@
 # Phase 340 — Build-artifact reuse: compile each identity once
 
-**Status (2026-08-07).** IN PROGRESS — measurement-first, and the measurements
+**Status (2026-08-07).** IN PROGRESS, and **CONSOLIDATED with**
+[phase-334](phase-334-build-cache-layout.md): the two are one program on two axes
+and their items had begun to overlap (334 W3.a was this phase's W2, W3.b was its
+W3). This phase owns WHAT gets compiled and how often; 334 owns WHERE the result
+lives. The ordered plan for both is "Work order (both phases)" below — the
+authoritative copy. Measurement-first, and the measurements
 are the deliverable so far: W1 answered (`incremental` for the shared profile,
 single-leaf and lane-scale results recorded), W5.a measured (the biggest
 duplicate is INSIDE one invocation — the build-dep graph). W4 landed 2026-08-07:
@@ -234,6 +239,55 @@ nowhere near sufficient. Any grouping key that claims two builds are
 interchangeable must cover the workspace root, the `--target` spelling, RUSTFLAGS
 and every individual profile setting — not the profile NAME, which is a label
 over six independent axes.
+
+## Work order (both phases)
+
+**phase-334 and this phase are one program on two axes**, and their work items
+had begun to overlap: 334's W3.a was this phase's W2, and its W3.b was this
+phase's W3. Two spellings of one mechanism is the drift RFC-0070 R3 forbids for
+paths, applied to work items. Resolved 2026-08-07:
+
+* **phase-334 owns WHERE a cache lives and what it is called** (RFC-0070) —
+  W2.b, W2.c.
+* **this phase owns WHAT gets compiled and how often** — and absorbs 334's W3.a
+  (→ W2), W3.b (→ W3) and W3.c (→ **W7**, new).
+
+They meet at one point: a grouped build needs a derived path to write to. That
+is why 334 W2.b comes before the grouping work here.
+
+| # | item | why here |
+| --- | --- | --- |
+| 1 | **340 W4 follow-up** | a live RED in `check-fast` — the gate counts the size probe's nested dirs, so it fails on a tree that merely built more |
+| 2 | **340 W5.b / W5.c** | near-deletion now that #464 removed the fallback the edge served; also removes the probe dirs inflating (1) |
+| 3 | **340 W6 step 1** | Zephyr remap + `OUT_DIR` + `codegen-units` together — the largest measured population, additive, serialises nothing |
+| 4 | **334 W2.b steps 2–4** | the derivation for source-relative cache data; the precondition for moving any path |
+| 5 | **340 W2** | umbrella invocation per identity group (was also 334 W3.a) |
+| 6 | **340 W3** | normalise the corrosion `--target` split (was also 334 W3.b) |
+| 7 | **334 W2.c** | collapse `.gitignore`, once (4) has moved the paths |
+| 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c) |
+
+(1) and (2) are small and unblock reading the gate honestly. (3) is the biggest
+win needing no restructuring. (4) unblocks every path move. (5) and (6) are the
+restructuring proper and cannot precede the derivation. (7) is cleanup, (8) is
+proof.
+
+**Sequencing hazard.** (5) and (6) both change what a build writes and where.
+Landing either before (4) means editing literals that (4) is about to derive —
+the 236-literal problem, re-created. Landing them together means two path
+conventions in flight at once, which is what makes a family's build, staleness
+probe and test resolver disagree (#393). One at a time, each with its own
+measurement.
+
+### W7 — re-measure both axes (was phase-334 W3.c)
+
+- [ ] Re-run the phase-331 W1/W5 measurement pair after (5) and (6), so the
+      consolidation numbers stay comparable across the layout change.
+- [ ] Record the identity-gate budget's new value in the same commit — a budget
+      left above the truth is a gate that has stopped gating.
+
+**Acceptance:** the numbers in "The measurement" and "The disk story" above are
+restated for the post-change tree, and `check-artifact-identity-budget`'s
+budgets are lowered to match.
 
 ## Work items
 

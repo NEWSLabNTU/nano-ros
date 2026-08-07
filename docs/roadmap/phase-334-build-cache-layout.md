@@ -260,16 +260,48 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       knob (book + AGENTS.md); the jobs-audit NVMe note updates to it.
       *(Book page still to write; AGENTS.md is the normative home.)*
 
-### W3 — Apply the W1 verdict
+### W3 — MOVED to phase-340 (2026-08-07)
 
-- [ ] **W3.a** If sharing wins for cargo: shared dirs keyed by
-      (triple, feature-sig) with the fifo pool bounding concurrency; cargo's
-      own lock replaces per-dir isolation. If sccache wins: keep separate
-      dirs under the new root and rely on the cache for dedup.
-- [ ] **W3.b** Corrosion cargo target redirection for cmake workspaces per
-      W1.c's verdict.
-- [ ] **W3.c** Re-run the phase-331 W1/W5 measurement pair so the
-      consolidation numbers stay comparable across the layout change.
+W3 asked "apply the W1 verdict", and the verdict's application turned out to be
+phase-340's subject, not this one's. Keeping both spellings would have produced
+two designs for one mechanism — the drift RFC-0070 R3 exists to prevent, applied
+to work items instead of paths.
+
+| was | now |
+| --- | --- |
+| W3.a shared dirs keyed by (triple, feature-sig) | **phase-340 W2** — the same grouping, with the umbrella-invocation shape F3 established |
+| W3.b corrosion cargo target redirection | **phase-340 W3** — the corrosion split, measured there as total (∅ overlap with cargo leaves) |
+| W3.c re-run the phase-331 measurement pair | **phase-340 W7** — one re-measure covering both axes |
+
+**This phase's charter is now exactly one axis: WHERE a cache lives and what it
+is called.** phase-340 owns WHAT gets compiled and how often. The two meet at
+one point — a grouped build needs a derived path to write to — which is why the
+work order below runs this phase's W2.b BEFORE phase-340's grouping work.
+
+## Work order (both phases, 2026-08-07)
+
+Authoritative copy in
+[phase-340](phase-340-build-artifact-reuse.md#work-order-both-phases); repeated
+here so a reader of either doc sees the same sequence.
+
+1. **340 W4 follow-up** — the identity gate counts the size probe's nested
+   dirs, so it reds on a tree that merely built more. It is in `check-fast`.
+2. **340 W5.b/c** — make the `nros` build-dep edge optional. Near-deletion now
+   that #464 removed the fallback it served; also removes the probe dirs that
+   inflate (1).
+3. **340 W6 step 1** — Zephyr remap + `OUT_DIR` + `codegen-units`, together.
+   Largest measured population, additive, serialises nothing.
+4. **334 W2.b steps 2–4** — the derivation for source-relative cache data. The
+   precondition for placing anything new.
+5. **340 W2** (was also 334 W3.a) — umbrella invocation per identity group.
+6. **340 W3** (was also 334 W3.b) — normalise the corrosion `--target` split.
+7. **334 W2.c** — collapse `.gitignore` once (4) has moved the paths.
+8. **340 W7** (was 334 W3.c) — re-measure both axes against phase-331's pair.
+
+Rationale for the order: (1) is a live red in the fast tier; (2) shrinks (1)'s
+population and is nearly free; (3) is the biggest win that needs no
+restructuring; (4) unblocks every path move; (5) and (6) are the restructuring,
+and must come after the derivation exists; (7) is cleanup; (8) proves it.
 
 ## Constraints
 
