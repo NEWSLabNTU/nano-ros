@@ -106,9 +106,11 @@ const REGISTRY: &[Entry] = &[
         file: "size_probe_verify.sh",
         kind: Kind::RuntimeException,
         tool: "cargo build",
-        reason: "build-DETERMINISM soak: it repeatedly `cargo clean`+rebuilds under differing \
-                 NROS_SIZES_PROBE_MODE to prove the generated header sizes don't flake — the \
-                 repeated build IS the assertion, antithetical to a cached artifact",
+        reason: "build-DETERMINISM soak: it repeatedly `cargo clean`+rebuilds to prove the \
+                 generated header sizes don't flake — the repeated build IS the assertion, \
+                 antithetical to a cached artifact. (It compared two NROS_SIZES_PROBE_MODE \
+                 values until issue 0464 deleted the polling mode; now it also guards that \
+                 neither fallback comes back.)",
     },
     // (borrowed_c_e2e.sh / borrowed_cpp_e2e.sh removed 2026-08-05 — they were
     //  orphaned + bit-rotted dead code, deleted rather than registered. See

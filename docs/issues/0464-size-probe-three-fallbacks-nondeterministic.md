@@ -1,7 +1,7 @@
 ---
 id: 464
 title: "The size probe has three stacked fallbacks; losing a timing race silently substitutes stale constants into C storage sizes"
-status: open
+status: open   # layers 2+3 removed 2026-08-06; NuttX verification outstanding
 type: bug
 area: build
 related: [phase-340, issue-0196, issue-0351]
@@ -90,7 +90,7 @@ single unhandled target family rather than a general capability gap.
 
 ## Fix shape
 
-**A build must not guess.** Concretely:
+**A build must not guess.** Concretely (1-3 LANDED 2026-08-06; 4 outstanding):
 
 1. **Never fall back silently.** If layer 1 fails, `panic!` with the cause and
    the remedy. A wrong `EXECUTOR_SIZE` is worse than a failed build; this is the
@@ -140,9 +140,48 @@ There is a fourth committed artifact in the same chain:
 constant rather than with a measurement. The stale value therefore exists in two
 committed places that corroborate each other.
 
+## Why this rotted unnoticed: the gate was dead
+
+`just verify-size-probe` — the script whose entire job is proving these sizes
+don't flake — **had been failing at its first assertion**. Its `HEADER` pointed
+at `packages/api/nros-c/include/nros/nros_config_generated.h`, which is a
+Phase-119.3 **stub** containing zero `#define NROS_*_SIZE` lines; the real header
+moved to `$CARGO_TARGET_DIR/nros-c-generated/`. So `extract_sizes` matched
+nothing and, under `set -euo pipefail`, the script exited 1 before comparing
+anything. Confirmed by running it unmodified on HEAD: `exit=1`.
+
+It is in `group("debug")` and not part of any CI tier, so nothing noticed. Fixed
+alongside this issue; the script now resolves the real header and fails loudly if
+it is absent.
+
+## A related path left alone, deliberately
+
+`nros-cpp` emits, on a probe returning zero:
+
+> `EXECUTOR_SIZE probe returned 0 — likely a cargo check --no-default-features
+> run. The emitted CPP_EXECUTOR_OPAQUE_U64S will be 1; do not link the resulting
+> rlib.`
+
+Same shape as layer 3 — degrade and warn — but NOT the same judgement call: a
+`cargo check` run genuinely has no rlib to probe, so hard-failing it would break
+`just check`. It is left as-is. What is missing is enforcement: nothing prevents
+linking an rlib built that way, the instruction lives only in a build-script
+warning, and `CPP_EXECUTOR_OPAQUE_U64S = 1` is the most under-sized value
+possible. Worth its own fix (a poison symbol, or a variant slug that fails to
+resolve at link time — the mechanism issue 0360 already established).
+
 ## Open
 
-* Does the ESP32 `build-std` path currently reach layer 2? Layer 1's build-std
-  branch is gated on `target.contains("nuttx")`, and ESP32 leaves declare
-  `build-std = ["core","alloc"]`. If it does, layer 1 needs an esp32 branch
-  before layer 2 can be removed.
+* ~~Does the ESP32 `build-std` path reach layer 2?~~ **No.** Only `nros-c` and
+  `nros-cpp` build scripts call the probe, and ESP32 is Rust-only — 3 rust
+  fixture rows plus 1 rust workspace row, zero C/C++/mixed, and no esp32 leaf
+  depends on either crate. So no esp32 branch was needed to remove layer 2.
+* **NuttX remains UNVERIFIED for the removal.** It is the target layer 3 existed
+  for, and it now panics rather than substituting. Layer 1 has an explicit NuttX
+  branch (`-Z build-std` + the patched `libc`) added precisely so it stops
+  falling through, so the expectation is that it works — but a cheap local
+  verification was not possible: `nros-nuttx-ffi` needs `APP_MAIN_CPP` and then
+  fails in cc-rs outside its cmake environment, before `nros-c` compiles for the
+  NuttX target at all. **Run `just nuttx build-fixtures` before trusting this.**
+  If the NuttX probe does fail, the result is a loud build failure rather than a
+  short buffer — the intended direction, but a visible red lane.

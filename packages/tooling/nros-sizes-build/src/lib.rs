@@ -31,17 +31,22 @@
 //!    duplicate compile of the probed crate per (target, features) on a
 //!    cold probe cache; warm-cache reruns are sub-second.
 //!
-//! 2. **Filesystem watch (fallback).** Used when the isolated path can't
-//!    reproduce the outer build's environment — typically custom-target
-//!    JSON specs (`armv7a-nuttx-eabihf`) that need `[unstable] build-std`
-//!    configs which don't propagate cleanly across `CARGO_TARGET_DIR`
-//!    boundaries. Watches `<target>/<triple>/<profile>/deps/` for the
-//!    rlib produced by the outer build, with a configurable timeout
-//!    (`NROS_SIZES_PROBE_TIMEOUT_SECS`, default 60s).
+//! There is deliberately NO fallback. A filesystem-watch path used to poll
+//! `<target>/<triple>/<profile>/deps/` for an rlib the outer build might
+//! produce, and it was removed by issue 0464 (completing phase-118.E.6, which
+//! had planned exactly this and deferred it). Two reasons, and the second is
+//! the serious one:
 //!
-//! Force the fallback path with `NROS_SIZES_PROBE_MODE=filesystem` (e.g.
-//! when nested cargo is undesirable on slow filesystems / CI runners
-//! where the extra compile cost outweighs the determinism benefit).
+//! * It was a RACE. Whether the rlib appeared before a 60 s timeout depended on
+//!   the outer cargo's scheduling, so the build was not deterministic.
+//! * It selected the NEWEST matching rlib by mtime, which in a shared probe
+//!   directory could be ANOTHER consumer's build — observed resolving
+//!   `EXECUTOR_SIZE` to 88680 in one crate and 89392 in another within one
+//!   workspace.
+//!
+//! These sizes become the opaque-storage macros C and C++ callers allocate
+//! against, so an approximate answer is a short buffer rather than a wrong
+//! report. The probe now either computes the size or fails the build.
 //!
 //! # Corrosion / cross-toolchain compatibility
 //!
@@ -131,140 +136,11 @@ impl From<object::Error> for Error {
 /// Locate the rlib for `crate_name` containing Phase 87's size-probe
 /// symbols (any defined symbol starting with `symbol_prefix`).
 ///
-/// Tries the deterministic nested-cargo path first; on failure falls
-/// back to watching the outer cargo's target dir for the rlib (the
-/// pre-118.E behaviour, retained for cases where nested cargo can't
-/// reproduce the build environment — typically custom-target JSON
-/// specs with `[unstable] build-std` configs that don't propagate
-/// across `CARGO_TARGET_DIR` boundaries).
-///
-/// Disable the isolated path entirely with
-/// `NROS_SIZES_PROBE_MODE=filesystem`.
+/// Builds `crate_name` in an isolated nested target dir and returns the
+/// resulting rlib. There is no fallback: on failure the caller must fail the
+/// build rather than guess a size (issue 0464).
 pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
-    let force_fs = env::var("NROS_SIZES_PROBE_MODE")
-        .ok()
-        .is_some_and(|s| s.eq_ignore_ascii_case("filesystem"));
-    if !force_fs {
-        match find_dep_rlib_isolated(crate_name, symbol_prefix) {
-            Ok(p) => return Ok(p),
-            Err(e) => {
-                println!(
-                    "cargo:warning=nros-sizes-build: isolated probe failed; \
-                     falling back to filesystem watch. cause: {e}"
-                );
-            }
-        }
-    }
-    find_dep_rlib_filesystem(crate_name, symbol_prefix)
-}
-
-/// Filesystem-watch fallback path. Used when the nested-cargo probe
-/// fails (custom-target JSON specs, `build-std` configs, etc.) or
-/// when `NROS_SIZES_PROBE_MODE=filesystem` is set explicitly.
-///
-/// Resolves the workspace target dir via `cargo metadata` (or
-/// `CARGO_TARGET_DIR` / OUT_DIR walking) and polls
-/// `<target>/<triple>/<profile>/deps/` for the rlib. Timeout via
-/// `NROS_SIZES_PROBE_TIMEOUT_SECS` (default 60s).
-fn find_dep_rlib_filesystem(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
-    let target_dir = cargo_target_dir()?;
-    let triple = env::var("TARGET").ok();
-    let host = env::var("HOST").ok();
-    // Issue 0111 — use the real profile *directory* name (e.g.
-    // `nros-relwithdebinfo`), NOT the `PROFILE` env var. cargo only ever sets
-    // `PROFILE` to `debug`/`release`, but a custom profile writes its
-    // artifacts to a target subdir named after the profile itself — so
-    // `PROFILE` misdirects this search (it would look in `release/deps` while
-    // the rlib lives in `nros-relwithdebinfo/deps`). `OUT_DIR` carries the true
-    // profile dir as the path component before `build`, mirrored from
-    // `cargo_target_dir`. Fall back to `PROFILE` only when `OUT_DIR` is absent.
-    let profile = profile_dir_name()
-        .or_else(|| env::var("PROFILE").ok())
-        .unwrap_or_else(|| "debug".to_string());
-
-    let mut searched = Vec::new();
-    if let Some(triple) = triple.as_deref() {
-        searched.push(target_dir.join(triple).join(&profile).join("deps"));
-    }
-    if triple.as_deref() == host.as_deref() {
-        searched.push(target_dir.join(&profile).join("deps"));
-    }
-
-    let timeout_secs = env::var("NROS_SIZES_PROBE_TIMEOUT_SECS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(60);
-    let timeout = std::time::Duration::from_secs(timeout_secs);
-    let lib_prefix = format!("lib{crate_name}-");
-
-    let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
-    let start = std::time::Instant::now();
-    let mut last_progress = std::time::Instant::now();
-
-    loop {
-        candidates.clear();
-        for dir in &searched {
-            let read_dir = match std::fs::read_dir(dir) {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
-            for entry in read_dir.flatten() {
-                let path = entry.path();
-                let Some(fname) = path.file_name().and_then(|s| s.to_str()) else {
-                    continue;
-                };
-                if !fname.starts_with(&lib_prefix) || !fname.ends_with(".rlib") {
-                    continue;
-                }
-                if let Ok(meta) = entry.metadata() {
-                    candidates.push((
-                        meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH),
-                        path,
-                    ));
-                }
-            }
-        }
-        if !candidates.is_empty() || start.elapsed() >= timeout {
-            break;
-        }
-        if last_progress.elapsed() >= std::time::Duration::from_secs(10) {
-            println!(
-                "cargo:warning=nros-sizes-build: waiting for lib{crate_name}-*.rlib \
-                 (elapsed {}s of {}s timeout)",
-                start.elapsed().as_secs(),
-                timeout_secs
-            );
-            last_progress = std::time::Instant::now();
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
-
-    candidates.sort_by_key(|(mtime, _)| std::cmp::Reverse(*mtime));
-
-    let probe_start = std::time::Instant::now();
-    let probe_timeout = std::time::Duration::from_secs(5);
-    loop {
-        for (_, path) in &candidates {
-            if let Ok(sizes) = extract_sizes(path, symbol_prefix)
-                && !sizes.is_empty()
-            {
-                return Ok(path.clone());
-            }
-        }
-        if probe_start.elapsed() >= probe_timeout {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
-
-    candidates
-        .into_iter()
-        .next()
-        .map(|(_, p)| p)
-        .ok_or_else(|| Error::RlibNotFound {
-            crate_name: crate_name.to_string(),
-            searched,
-        })
+    find_dep_rlib_isolated(crate_name, symbol_prefix)
 }
 
 fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
