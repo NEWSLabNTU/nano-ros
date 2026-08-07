@@ -1,10 +1,10 @@
 ---
 id: 422
 title: "10 runtime E2E failures on FRESH fixtures — triage index"
-status: open
+status: resolved  # every tracked row dispositioned 2026-08-07
 type: bug
 area: testing
-related: [issue-0427, issue-0428, issue-0429, phase-336, rfc-0051]
+related: [issue-0427, issue-0428, issue-0429, issue-0438, issue-0441, issue-0447, issue-0448, issue-0458, issue-0461, issue-0462, issue-0470, phase-336, rfc-0051]
 ---
 
 ## Symptom
@@ -173,3 +173,35 @@ every touched example then read STALE. Rebuilding and re-running without
 touching sources took it to 5. A count from this suite is only meaningful if
 nothing rewrote a source between the build and the run.
 
+## Closed 2026-08-07 — every row dispositioned
+
+This was a triage INDEX, not a defect of its own, so it closes when its rows do.
+All four "remaining, untriaged" entries now have an answer, and every issue it
+spawned is resolved:
+
+| row | disposition |
+| --- | --- |
+| `xrce_ros2_interop::test_ros2_action_xrce_client` | **#0448** — the Rust client shipped TWO CDR encapsulations (28 B vs ROS 2's 24), so Fast-DDS dropped every goal. Fixed + archived. |
+| `realtime_tiers_e2e::realtime_tiers` | **#0447** (tier registration raced on the shared session) + **#0458** (`open_over_session` never stamped the `CppContext` tag, so all three C/C++ tiers died with `-3`). Both fixed; 16/16 rows green over 5 consecutive runs. |
+| `native_example_reqresp` — `cpp/xrce/action` | passes; absent from every run since. Its sibling `cpp/xrce/service` failed once in a full sweep and passes solo — the load class, not a defect. |
+| `logging_smoke` | fixed and renamed here (a lane-coverage naming problem). |
+
+Also spawned and since resolved: **#0427**, **#0428**, **#0429**, **#0438**,
+**#0441**, **#0461**, **#0462**.
+
+### One correction to the record above
+
+The "Triaged since" section states `large_msg::test_xrce_e2e_integrity` — now
+PASSES. That is no longer true: it fails inside a full sweep (every sample
+`valid=false`) while passing solo every time. It is now **#0470**, which records
+why "load-sensitive" is not a sufficient explanation for a payload-INTEGRITY
+verdict on samples that were received.
+
+### What this index was worth
+
+Two of its rows were masking real defects that a single-run reading would have
+dismissed. #0447 in particular was nearly written off as a stale fixture on the
+strength of ONE passing run, and #0470 exists because a sweep-only red was not
+waved through. Successor issues carry that forward: **#0453** records that no
+native action cell can prove goal delivery at all, which is precisely why #0448
+stayed green across the whole matrix.

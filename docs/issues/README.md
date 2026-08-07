@@ -140,14 +140,15 @@ Raising the pool would have hidden a design error behind memory spent on every e
 the templates are in no lane (0/0/0), which is why this sat unnoticed since 2026-05-30 — and a build-only row
 would not have caught it. See `archived/0465-*`.
 
-**#465** — phase 209's acceptance artifact `examples/templates/cpp-port-minimal-publisher` still COMPILES and
-LINKS but no longer RUNS: `nros: NodeError::Transport(ConnectionFailed)` on the README's own steps, while a
-shipped `cpp_talker` connects to the SAME router at the same moment. Not the usual no-backend cause — both
-binaries carry `nros_rmw_zenoh` (154 vs 133 symbols) and `nros_app_register_backends`. It rotted because NONE
-of phase 209's three port templates is in any fixture row, test or recipe (0/0/0), so nothing has executed the
-acceptance since 2026-05-30 while the phase read "MVP DONE". `just check` compiles examples, which kept the
-build half true while the run half died silently — issue 0317's shape, and 0196's rule with no gate at all.
-See `0465-*`. (2026-08-07)
+Recently resolved (2026-08-07): **#465** — phase 209's acceptance artifact
+`examples/templates/cpp-port-minimal-publisher` compiled and linked but no longer RAN
+(`Transport(ConnectionFailed)`) while a shipped `cpp_talker` reached the same router. Root cause was NOT
+the usual missing backend: the rclcpp shim opened a SECOND RMW session and the pool ships with one, and
+an exhausted pool was being reported as a connection failure. It had rotted unnoticed because none of
+phase 209's three port templates sat in any fixture row, test or recipe — `just check` compiled them,
+which kept the build half true while the run half died silently (issue 0317's shape, 0196's rule with no
+gate). Fixed by `4b30c29cb` + `8151819b7`, and `390f4f9eb` gave the port templates a lane that can fail.
+See `archived/0465-*`.
 **#464** (build, open 2026-08-06) — the size probe has THREE stacked fallbacks and the last one is a
 stale literal. `nros-c`/`nros-cpp` derive the C/C++ opaque-storage macros from Rust's `size_of::<T>()`:
 (1) an isolated nested cargo build, (2) a **poll of the outer target dir** with a 60 s timeout, (3)
@@ -610,12 +611,15 @@ default everywhere. Isolation is applied per-DIRECTORY while incompatibility liv
 those are not the same partition. sccache's role is UNVERIFIED — measure before acting. See
 `0446-*`. (2026-08-06)
 
-**#422** — TRIAGE INDEX for the runtime E2E failures. **10** on freshly rebuilt fixtures (tier-1
-gates all pass, 1242/1259 tests do). An earlier run said 19 — nine of those were STALE FIXTURES
-after a rebase touched `nros/src/node.rs`, so rebuild the lane BEFORE triaging or you are measuring
-the rebase. Diagnosed: `0427` (stale SystemModel, verified fixed), `0429` (nano2nano grep drift,
-re-verified on fresh fixtures); `0428` turned out to be #0413's cyclone descriptor bug, resolved
-upstream. Eight remain, listed with their messages. See `0422-*`. (2026-08-05)
+Recently resolved (2026-08-07): **#422** — the runtime-E2E triage INDEX; it closes when its rows do,
+and all four "remaining, untriaged" entries now have an answer. `test_ros2_action_xrce_client` was **#448**
+(the Rust client shipped TWO CDR encapsulations, 28 B vs ROS 2's 24, so Fast-DDS dropped every goal);
+`realtime_tiers` was **#447** (tier registration raced on the shared session) plus **#458**
+(`open_over_session` never stamped the `CppContext` tag, so all three C/C++ tiers died with `-3`);
+`native_example_reqresp`'s cpp/xrce/action cell passes; `logging_smoke` was a lane-coverage naming
+problem, fixed there. Also spawned and resolved: #0427, #0428, #0429, #0438, #0441, #0461, #0462. One
+correction carried forward: its "`large_msg::test_xrce_e2e_integrity` now PASSES" no longer holds — that
+is now **#0470**. See `archived/0422-*`.
 
 RESOLVED 2026-08-05 — **#431** NuttX cells skipped on a host that ran only `nros setup qemu-arm-nuttx`. (1) `NUTTX_DIR` is in fact exported by `sdk-env.sh` (verified clean-env) — the filing's claim was stale. (2) The real gap: no kconfig frontend, and the `pip install kconfiglib` remedy is refused on PEP-668 distros. `scripts/nuttx/build-nuttx.sh` now self-provisions kconfiglib into a repo-local venv (`build/nuttx-kconfig-venv`) when none is present — venv pip isn't PEP-668-blocked, no sudo. (3) `just nuttx doctor` already reports the state. So the cells now run instead of skipping. See `archived/0431-*`.
 
