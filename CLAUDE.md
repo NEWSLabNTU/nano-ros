@@ -316,15 +316,21 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `include = ["…/nros-patch.toml"]` (central, gitignored, absolute paths) + leaf-local
   `generated/*`/platform patches. Never hand-edit; moved checkout → re-run `nros sync`. Central
   membership = only crates registry-named in EVERY graph (else cargo "unused patch" warnings).
-  **Sync's `[patch.crates-io]` block lives in the GITIGNORED sidecar `.cargo/nros-managed-patch.toml`,
-  reached by a second `include` entry — never in `config.toml` (issue 0457).** Its rows name
-  `generated/` crates built from the USER's ament install, so inside a tracked `config.toml` they
-  committed a host-derived path AND re-dirtied the worktree on every sync; the authored half
-  (`[build] target`, a QEMU `runner`, link rustflags, a user `libc` patch) stays tracked because a
-  clone cannot regenerate it. Corollary, gated by `check-cargo-config-tracked`: **a tracked config
-  must never patch an uncommitted `generated/` tree** (`packages/interfaces/*` are exempt — they
-  commit theirs). An out-of-tree consumer keeps the block INLINE: no `include` outside this
-  checkout (#272). **A missing `include` target is a HARD cargo error during MANIFEST PARSE — not the
+  **Sync's `[patch.crates-io]` rows split by ORIGIN, not by "sync wrote it" (issues 0457/0463):**
+  IN-REPO rows (`nros-log`, board crates, `mps2-an385-pac` — relative paths, identical in every
+  checkout) stay INLINE in the tracked `config.toml`, tagged `# nros-managed`; only `generated/`
+  rows go to the GITIGNORED sidecar `.cargo/nros-managed-patch.toml`, whose `include` is written
+  only when that file is. So a leaf with no message dep has no sidecar, no include, and resolves in
+  a fresh clone with NO sync — only ament-derived content sits behind sync. (0457 moved the WHOLE
+  set to the sidecar; that stranded every leaf on `no matching package named 'mps2-an385-pac'`,
+  an in-repo patch a clone needs.) The authored half (`[build] target`, a QEMU `runner`, link
+  rustflags, a user `libc` patch) stays tracked because a clone cannot regenerate it. Corollary,
+  gated by `check-cargo-config-tracked`: **a tracked config must never patch an uncommitted
+  `generated/` tree** (`packages/interfaces/*` are exempt — they commit theirs). An out-of-tree
+  consumer keeps everything INLINE: no `include` outside this checkout (#272).
+  **After a sync the tracked config legitimately gains the sidecar `include` on disk — NEVER commit
+  that line** (`git add -u` scoops it up; it did twice). The invariant is about the COMMITTED blob,
+  so the gate reads `git show HEAD:<path>`, not the worktree. **A missing `include` target is a HARD cargo error during MANIFEST PARSE — not the
   silent drop #272 and #457 both assumed (issue 0463).** Both generated targets are gitignored, so
   before `nros sync` these leaves cannot even be READ (`cargo metadata` fails too, four frames deep,
   never naming sync). Guarded by `_require-leaf-includes`; `check-cargo-config-tracked` also rejects

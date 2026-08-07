@@ -8,6 +8,15 @@ related: [issue-0440, issue-0444, phase-338, rfc-0048, issue-0272]
 resolved_in: phase-338
 ---
 
+> **Superseded in part by #0463 (2026-08-07).** Two claims below did not hold.
+> (1) "cargo ignores a missing `include` SILENTLY" is false — it is a hard error
+> during manifest parse. (2) Moving the WHOLE managed set to the sidecar was
+> wrong: most rows are IN-REPO relative paths a clone needs, and doing so
+> stranded every leaf on `no matching package named 'mps2-an385-pac'`. The
+> managed rows now split by ORIGIN — in-repo inline and tracked, `generated/`
+> to the sidecar. See `archived/0463-leaf-cargo-include-hard-fails-before-sync.md`.
+
+
 ## Resolution
 
 Sync's managed `[patch.crates-io]` block moved OUT of the leaf

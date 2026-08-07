@@ -272,9 +272,33 @@ After rebasing over a remote submodule-pointer change, run `git submodule status
 
 - **`nros sync` owns each Rust leaf's `.cargo/config.toml` managed surface**: one
   `include = ["…/nros-patch.toml"]` line (the central, gitignored, absolute-path
-  patch file at the checkout root) + the leaf-local `generated/*` and
+  patch file at the checkout root) + the leaf-local
   platform-specific `# nros-managed` patch lines. Never hand-edit them; a moved
   checkout needs one `nros sync` to re-point the central file.
+- **The managed rows split by ORIGIN (issues 0457/0463), not by "sync wrote it":**
+  - **in-repo** rows (`nros-log`, board crates, `mps2-an385-pac`) are relative
+    paths identical in every checkout → INLINE in the tracked `config.toml`,
+    tagged `# nros-managed`. A clone needs them; 183 of them across the tree.
+  - **`generated/`** rows are built per host from the consumer's ament install →
+    the gitignored sidecar `.cargo/nros-managed-patch.toml`, whose `include` is
+    written ONLY when that file is. 88 of them.
+
+  A leaf with no message dependency therefore has no sidecar, no include, and
+  resolves in a fresh clone with no sync at all; only ament-derived content sits
+  behind sync. 0457 moved the WHOLE set to the sidecar and stranded every leaf on
+  `no matching package named 'mps2-an385-pac'` — an in-repo patch. Dropping the
+  include alone does not fix that, it only changes the message.
+- **A missing `include` target is a HARD cargo error during MANIFEST PARSE**, not
+  a silent drop — the leaf becomes unreadable, so `cargo metadata` and every gate
+  walking it fail four frames deep without ever naming sync. Both #272 and #457
+  assumed the opposite, inherited from a comment written before `include`
+  stabilised in 1.93; measured false on 1.96/1.97. `_require-leaf-includes` is the
+  preflight that says "run `nros sync`" first, and `check-cargo-config-tracked`
+  rejects an include naming a target no generator writes.
+- **After a sync the tracked config gains the sidecar `include` on disk — never
+  commit that line.** `git add -u` scoops it up (it did, twice). The invariant is
+  about the COMMITTED blob, so the gate reads `git show HEAD:<path>` rather than
+  the working copy.
 - **Central-patch membership rule:** a crate may live in `nros-patch.toml` only
   if it is registry-named in EVERY consumer's dependency graph — cargo emits
   "patch `X` was not used in the crate graph" per unused entry, and the file is

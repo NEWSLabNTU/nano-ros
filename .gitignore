@@ -104,18 +104,28 @@ examples/**/target-*/
 # ever left untracked, so the blanket rule cannot silently swallow a new one.
 **/.cargo/config.toml
 
-# Issue 0457 — sync's managed `[patch.crates-io]` block, split OUT of the leaf
-# `config.toml` above and into its own file that the config `include`s.
+# Issues 0457/0463 — the HOST-SPECIFIC half of sync's managed
+# `[patch.crates-io]`, split out of the leaf `config.toml` above into a file the
+# config `include`s.
 #
-# The entries name `generated/` message crates produced from the USER's ament
-# install, and their membership shifts as a leaf's dependency graph resolves.
-# Held inside a TRACKED config.toml they did two things at once: committed a
-# host-derived path, and dirtied the worktree on every sync. Neither is fixable
-# by ignoring config.toml itself, because the rest of that file (`[build]
-# target`, a QEMU `runner`, link args) is authored content a clone cannot
-# regenerate. Splitting on that seam lets the authored half stay tracked and
-# stable while everything sync owns lives here, unseen by git — the same
-# treatment `nros-patch.toml` and the SystemModels already get.
+# Only `generated/` rows live here. Those name message crates produced from the
+# USER's ament install, so a committed row would assert which ROS install built
+# the tree — the rule that already keeps `generated/` itself and the leaf
+# `Cargo.lock` out of git.
+#
+# The IN-REPO rows (`nros-log`, board crates, `mps2-an385-pac`) stay INLINE in
+# the tracked config: they are relative paths identical in every checkout, and a
+# clone needs them to resolve at all. 0457 moved the whole set here and stranded
+# every leaf on `no matching package named 'mps2-an385-pac'`.
+#
+# Ignoring `config.toml` itself is not an option either — `[build] target`, a
+# QEMU `runner` and link args are authored content no generator can reproduce.
+# Hence the split is by ORIGIN of the row, not by who wrote it.
+#
+# A leaf with no message dependency has no sidecar and no `include`, so it
+# resolves in a fresh clone with no sync. Where a sidecar IS needed, cargo
+# hard-errors on the missing include until `nros sync` runs in that leaf;
+# `_require-leaf-includes` is the preflight that says so.
 **/.cargo/nros-managed-patch.toml
 
 # cmake build dirs in the standalone examples. `examples/**/target-*/` above
