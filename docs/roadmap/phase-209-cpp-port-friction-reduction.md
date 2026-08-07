@@ -16,8 +16,13 @@ glue + one or two `#include`s**, not by rewriting the source. The three survey
 candidates (`autoware_external_cmd_selector`, `topic_state_monitor`,
 `autoware_steer_offset_estimator`) are concrete fixtures to validate against.
 
-**Status.** **MVP DONE in-tree (2026-05-30, branch `phase-209-cpp-port-friction-
-reduction`).** A canonical ROS 2 C++ node (the upstream tutorial's
+**Status.** **MVP BUILDS, DOES NOT RUN — re-measured 2026-08-07 (issue 0465).** The
+template still compiles and links with the three glue lines, but running it by the
+README's own steps gives `nros: NodeError::Transport(ConnectionFailed)` while a shipped
+`cpp_talker` connects to the same router at the same moment. None of this phase's three
+port templates is in any fixture row, test or recipe, so nothing had executed the
+acceptance since it was written. Originally recorded as **MVP DONE in-tree (2026-05-30,
+branch `phase-209-cpp-port-friction-reduction`)**: A canonical ROS 2 C++ node (the upstream tutorial's
 `minimal_publisher.cpp` — vendored verbatim under `examples/templates/cpp-port-
 minimal-publisher/`) compiles + links + runs against nano-ros through the
 shipped 209.A–D compat surface, with only three glue lines prepended to its

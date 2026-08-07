@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#465** — phase 209's acceptance artifact `examples/templates/cpp-port-minimal-publisher` still COMPILES and
+LINKS but no longer RUNS: `nros: NodeError::Transport(ConnectionFailed)` on the README's own steps, while a
+shipped `cpp_talker` connects to the SAME router at the same moment. Not the usual no-backend cause — both
+binaries carry `nros_rmw_zenoh` (154 vs 133 symbols) and `nros_app_register_backends`. It rotted because NONE
+of phase 209's three port templates is in any fixture row, test or recipe (0/0/0), so nothing has executed the
+acceptance since 2026-05-30 while the phase read "MVP DONE". `just check` compiles examples, which kept the
+build half true while the run half died silently — issue 0317's shape, and 0196's rule with no gate at all.
+See `0465-*`. (2026-08-07)
 **#464** (build, open 2026-08-06) — the size probe has THREE stacked fallbacks and the last one is a
 stale literal. `nros-c`/`nros-cpp` derive the C/C++ opaque-storage macros from Rust's `size_of::<T>()`:
 (1) an isolated nested cargo build, (2) a **poll of the outer target dir** with a 60 s timeout, (3)
