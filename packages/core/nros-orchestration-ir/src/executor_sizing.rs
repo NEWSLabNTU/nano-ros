@@ -67,6 +67,21 @@ use ros_launch_manifest_model::SystemModel;
 /// Keep in sync with `packages/core/nros-node/build.rs`.
 pub const DEFAULT_MAX_CBS: usize = 4;
 
+/// issue 0460 — callback slots the `[lifecycle]` capability consumes.
+///
+/// REP-2002's five services, one slot each: `ChangeState`, `GetState`,
+/// `GetAvailableStates`, `GetAvailableTransitions`, `GetTransitionGraph` — the
+/// fields of `nros_node::lifecycle_services::LifecycleServiceServers`.
+pub const LIFECYCLE_SERVICE_SLOTS: usize = 5;
+
+/// issue 0460 — callback slots the `[param_services]` capability consumes.
+///
+/// The six ROS 2 parameter services: `GetParameters`, `SetParameters`,
+/// `SetParametersAtomically`, `ListParameters`, `DescribeParameters`,
+/// `GetParameterTypes` — the fields of
+/// `nros_node::parameter_services::ParameterServiceServers`.
+pub const PARAM_SERVICE_SLOTS: usize = 6;
+
 /// Node FQN owning an endpoint ref (`"/ns/node/endpoint"` → `"/ns/node"`).
 fn endpoint_node(ep: &str) -> &str {
     ep.rsplit_once('/').map(|(node, _)| node).unwrap_or(ep)

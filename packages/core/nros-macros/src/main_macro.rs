@@ -1304,7 +1304,25 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // model cannot see); a derived value only replaces the build default when
     // it is bigger, so every entry whose model has no wiring — i.e. every
     // in-tree example today — emits exactly what it emitted before.
-    let exec_sizing = executor_sizing_for(declared_sizing, model_callbacks)?;
+    // issue 0460 — CAPABILITY services consume callback slots too, and the
+    // model does not count them: `[lifecycle]` registers five REP-2002 services
+    // and `[param_services]` six, so a system declaring both needs eleven slots
+    // beyond its nodes' own callbacks. `DEFAULT_MAX_CBS` is 4.
+    //
+    // This is why three `entry_matrix` cells died. The features workspace holds
+    // ONE `system.toml` for every feature demo (rust cannot hold two systems —
+    // phase-315 W1), so its `features = ["param_services", "lifecycle"]` is a
+    // UNION and EVERY entry there emits both capabilities regardless of which
+    // launch file it selected. Sized for its one node, the params entry then
+    // failed `register_lifecycle_services()` — and the Zephyr entry dropped the
+    // `Result`, so the image printed nothing after "Network ready".
+    // `zephyr/rust/safety` passed throughout because `safety` is a BACKEND
+    // feature that registers no services.
+    let capability_slots = usize::from(lifecycle_code.is_some())
+        * nros_orchestration_ir::executor_sizing::LIFECYCLE_SERVICE_SLOTS
+        + usize::from(param_services_enabled)
+            * nros_orchestration_ir::executor_sizing::PARAM_SERVICE_SLOTS;
+    let exec_sizing = executor_sizing_for(declared_sizing, model_callbacks + capability_slots)?;
     // Issue 0257 — the loud bake-time check. On a board that ignores the
     // per-entry sizing the capacity is whatever `NROS_EXECUTOR_MAX_CBS`
     // compiled in, which the macro cannot read — so assert it in the emitted
@@ -1778,7 +1796,28 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             pub extern "C" fn rust_main() {
                 // SAFETY: `set_logger` is callable once post-kernel-init.
                 unsafe { let _ = ::zephyr::set_logger(); }
-                let _ = __nros_zephyr_entry_run();
+                // issue 0460 — this was `let _ = __nros_zephyr_entry_run();`,
+                // which is the silent early-return this project bans at
+                // runtime. The comment above already SAID errors are "logged
+                // and the Result dropped"; only the dropping was implemented.
+                //
+                // A successful entry never returns (it spins forever), so ANY
+                // return is a failure. Returning quietly leaves Zephyr's main
+                // thread terminated and only kernel threads alive, so the image
+                // idles to the test's timeout having printed nothing after
+                // "Network ready" — three entry_matrix cells (zephyr/rust
+                // params, qos, lifecycle) presented exactly that way, and the
+                // absence of any application thread in a gdb dump is what
+                // finally identified it.
+                if let Err(e) = __nros_zephyr_entry_run() {
+                    ::log::error!("nros: zephyr entry FAILED: {:?}", e);
+                    ::core::panic!("nros: zephyr entry failed: {:?}", e);
+                }
+                ::log::error!(
+                    "nros: zephyr entry RETURNED without error — the spin loop \
+                     exited, which a running entry never does"
+                );
+                ::core::panic!("nros: zephyr entry returned unexpectedly");
             }
 
             fn __nros_zephyr_entry_run() -> ::core::result::Result<

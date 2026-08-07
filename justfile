@@ -371,6 +371,7 @@ check-fast: \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
+    check-capability-slot-counts \
     check-cargo-profile-mirror check-build-profile-literals \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
@@ -882,6 +883,15 @@ check-nuttx-links-snapshot:
 [private]
 check-staleness-probe-exemptions:
     @bash scripts/check-staleness-probe-exemptions.sh
+
+# issue 0460 — a capability's service count must match the slots the executor
+# sizing reserves for it. The counts live in `executor_sizing` (only a crate the
+# proc-macro depends on can supply a const at expansion time) while the services
+# live in `nros-node`, which does not depend on it — so nothing in the type
+# system ties them together.
+[private]
+check-capability-slot-counts:
+    @bash scripts/check-capability-slot-counts.sh
 
 # issue 0445 — which coordinates have produced no runtime result, and for how
 # long. The probes write one line per non-running fixture under

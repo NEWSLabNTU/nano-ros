@@ -130,3 +130,61 @@ This coordinate has produced no runtime result since then …
 ```
 
 Staying open for the three zephyr/rust cells.
+
+## Root cause, mostly (2026-08-07)
+
+The three zephyr/rust cells were not hanging. **The entry was returning an error
+and the generated `rust_main` was dropping it**:
+
+```rust
+pub extern "C" fn rust_main() {
+    unsafe { let _ = ::zephyr::set_logger(); }
+    let _ = __nros_zephyr_entry_run();   // <- Result dropped
+}
+```
+
+Its own comment claimed errors "are logged and the `Result` is dropped"; only
+the dropping was implemented. A successful entry never returns (it spins
+forever), so ANY return is a failure — and returning quietly leaves Zephyr's
+main thread terminated with only kernel threads alive. That is what a gdb dump
+showed: conn_mgr, two workqueues, the shell, the sys workqueue, idle, and **no
+application thread at all**. The image then idles to the test's timeout having
+printed nothing after "Network ready", which is indistinguishable from a hang.
+
+Fixed: the entry now logs and panics. The three cells immediately named
+themselves:
+
+```
+<err> rust: rustapp: nros: zephyr entry FAILED: NodeRegister("lifecycle")
+```
+
+**Why lifecycle, in the params and qos entries.** The features workspace holds
+ONE `system.toml` for every feature demo — deliberately, because rust cannot
+hold two systems (phase-315 W1) — and it declares
+`features = ["param_services", "lifecycle"]`. That list is a UNION over the
+whole workspace, so EVERY entry emits BOTH capabilities regardless of which
+launch file it selected. `register_lifecycle_services()` then fails.
+
+`zephyr/rust/safety` passes throughout, and it is the control that makes this
+readable: `safety` is a BACKEND feature that registers no services.
+
+## What is fixed here, and what is not
+
+Fixed:
+
+* the silent drop (above) — three "hangs" are now named errors;
+* capability services are counted in `executor_sizing`. `[lifecycle]` is five
+  REP-2002 services and `[param_services]` six, none of which the model counts,
+  against a `DEFAULT_MAX_CBS` of 4. Gated by `check-capability-slot-counts`,
+  which ties the constants to the server structs' field counts (the constants
+  must live in `executor_sizing`, which only the proc-macro can read, while the
+  services live in `nros-node`, which does not depend on it — nothing in the
+  type system connects them). Watched to fire.
+
+NOT fixed, and the next thread: raising `CONFIG_NROS_EXECUTOR_MAX_CBS` to 16 in
+the three entries' `prj.conf` does NOT clear it, even though the value is
+confirmed in the build's generated `.config`. So either the failure is not
+capacity, or the Kconfig is not reaching the RUST lane's crate build — the
+Kconfig's own help text says it "was never forwarded to Cargo before issue 0316,
+so every Zephyr C image compiled the crate default of 4", which names exactly
+this forwarding path. Check that before assuming the capacity theory is wrong.
