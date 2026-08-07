@@ -166,8 +166,13 @@ pure-cargo path. The linker script is the third leg — the Entry pkg's
 > `--gc-sections` accounting for 32 of them). `check-board-cargo-config-applied`
 > guards 8 of those 59 and is representative rather than exhaustive by design.
 > [phase-341](../roadmap/phase-341-board-cargo-config-is-generated.md) moves the
-> block to a sync-generated `include`, after which drift is not detected but
-> impossible, and this paragraph's "config-sync bug" stops naming a live class.
+> block to a generated projection of the descriptor, after which drift is not
+> detected but impossible, and this paragraph's "config-sync bug" stops naming a
+> live class. **Where that projection LIVES is not yet settled** — gitignored
+> (a clone then cannot link without `nros sync`) versus committed-and-gated in
+> the `check-abi-bindings` mould (a clone still builds). Two concurrent phase-341
+> drafts take opposite sides; see the Checkpoint section in that doc. The
+> hoisting work both depend on has landed.
 
 ---
 

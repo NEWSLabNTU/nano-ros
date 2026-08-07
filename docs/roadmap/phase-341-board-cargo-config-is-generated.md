@@ -1,6 +1,9 @@
 # Phase 341 — The board's `cargo_config` is generated into the leaf, not mirrored by hand
 
 **Amends:** [RFC-0032](../design/0032-entry-codegen-pipeline.md) §3 (the "third leg").
+**⚠️ Design fork open (2026-08-07)** — a concurrent phase-341 proposes a TRACKED
+board file instead of the gitignored sidecar W2 assumes. See "Checkpoint" below;
+W1 is landed and fork-independent, W2–W4 are not settled.
 **Related:** issue 0440 (the drift this prevents), RFC-0048 W9 (`nros sync` owns
 the leaf `.cargo/config.toml`), issue 0457 (the gitignored sidecar this reuses),
 issue 0473 (withdrawn — established that tracked configs carrying sync-managed
@@ -85,6 +88,46 @@ args: **8 leaves**. Fifty-nine carry board-derived blocks. It is also
 *representative, not exhaustive* by design — it catches a config that lost the
 GROUP, not one that lost a single argument. So ~14 % of the surface is guarded,
 against a failure mode that is invisible until link time.
+
+## Checkpoint 2026-08-07 — an unresolved design fork, and my W2 is probably the wrong half
+
+A second phase-341 is being written concurrently, aiming to move the board info
+into a **git-TRACKED** file. That is the opposite of W2 below, which routes it to
+a gitignored sidecar. Recording the fork here rather than letting whichever lands
+second silently overwrite the other.
+
+**The competing aim is right about something W2 gets wrong.** If the board block
+is gitignored, a fresh clone cannot build an embedded leaf until `nros sync` has
+run — it would not merely lack patches, it would lack its LINK ARGS. That is
+issue 0463's lesson pointed at a worse target: 0463 was about a leaf being
+unreadable before sync, and W2 as written would extend the same dependency to
+whether the image links at all. Today those args are tracked and a clone works.
+**W2 regresses that, and I did not notice when writing it.**
+
+**The repo already has a pattern for "derived, but must exist in a clone":
+generate it and COMMIT it, with a gate for staleness.** `packages/core/*/src/
+generated.rs` is bindgen output, committed, and `check-abi-bindings` fails when
+it does not match a fresh regeneration from the C-header SSoT (RFC-0054). Same
+shape as this problem: one SSoT, a mechanical projection, and a gate that makes
+drift impossible to commit.
+
+So the likely synthesis is neither doc as written:
+
+| | clone builds? | drift possible? |
+| --- | --- | --- |
+| today — hand-mirrored, tracked | yes | **yes** (issue 0440) |
+| W2 below — generated, gitignored | **no** | no |
+| generated + committed + gated | yes | no |
+
+The third row keeps what tracking is for and removes the hand-mirroring that
+0440 punished. It also changes W4: `check-board-cargo-config-applied` is not
+deleted but REPLACED by a regeneration check in the `check-abi-bindings` mould —
+representative-arg matching gives way to exact comparison.
+
+**Status of the work below.** W1 is landed and is unaffected by the fork: folding
+the strays into the descriptors is needed under every option, because it is what
+makes the leaf blocks pure projections of the SSoT. **W2/W3/W4 as written assume
+the gitignored route and should not be implemented until the fork is settled.**
 
 ## Direction
 
