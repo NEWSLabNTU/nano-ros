@@ -27,7 +27,12 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
-out_dir="$repo_root/build/borrowed-e2e"
+# RFC-0070 R1/R3 — cache paths come from the ONE derivation, so
+# `NROS_BUILD_ROOT` moves this writer with every other. Default is
+# `<repo>/build`, so the emitted path is unchanged.
+# shellcheck source=scripts/build/build-root.sh
+. "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
+out_dir="$(nros_build_dir borrowed-e2e)"
 
 echo "== borrowed-e2e fixture: C / C++ borrowed-view proof binaries =="
 rm -rf "$out_dir"

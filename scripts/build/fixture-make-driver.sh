@@ -75,7 +75,12 @@ if [ ! -f "$repo_root/examples/fixtures.toml" ] || [ ! -x "$repo_root/scripts/bu
 fi
 
 stamp="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
-work_root="$repo_root/build/fixture-make-driver"
+# RFC-0070 R1/R3 — cache paths come from the ONE derivation, so
+# `NROS_BUILD_ROOT` moves this writer with every other. Default is
+# `<repo>/build`, so the emitted path is unchanged.
+# shellcheck source=scripts/build/build-root.sh
+. "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
+work_root="$(nros_build_dir fixture-make-driver)"
 log_dir="$work_root/logs/$stamp"
 status_dir="$work_root/status/$stamp"
 joblog="$work_root/joblog-$stamp.tsv"

@@ -240,7 +240,35 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       step-2 pass over that class needs either a source-relative sibling
       derivation (a second function — do not add one casually) or to be folded
       into step 3, where the path changes anyway and the manifest column stops
-      being authored. **Decide that before the next family.** The literals this
+      being authored. **DECIDED 2026-08-07: the manifest column is DELETED, not derived — and that
+      work belongs to phase-340 W2.a, not to a second step-2 pass.**
+
+      Measured over the 137 rows in `examples/fixtures.toml` that author a path:
+
+      ```
+      128  reproducible from (kind, platform, rmw)
+        9  not — target-tls, target-safety, target-zero-copy, target-large-buf,
+           build-workspace-fixtures-threadx
+      ```
+
+      and the 9 are FEATURE-variant dirs, derivable from the feature signature
+      `_nros_fixture_variant_sig` already computes. So the column is not data a
+      derivation would need to reproduce; it is data the coordinate already
+      contains. **A source-relative sibling derivation would be a second
+      function whose only job is to re-emit a redundant column — do not add
+      one.**
+
+      This also means the class is NOT a separate work item. phase-340 W2.a is
+      already "extend the phase-226 resolver so a manifest-authored
+      `--target-dir` names a GROUP rather than opting the row out" — the same
+      137 rows, approached from the identity side. Deleting the column and
+      widening the group key are one change, and doing them separately would put
+      two path conventions in flight at once (the #393 hazard the work order
+      already names).
+
+      **Consequence for the work order:** item 4's remaining class merges into
+      item 5. What stays here as step-2 work is only the ROOTED side listed
+      below, whose bug is R3 (one spelling), not R1 (wrong place). The literals this
       step DID move are the already-rooted `build/<kind>` writers, whose bug was
       narrower: R1-shaped but not R3-derived, so `NROS_BUILD_ROOT` moved the
       build and left the probe and the resolver behind.

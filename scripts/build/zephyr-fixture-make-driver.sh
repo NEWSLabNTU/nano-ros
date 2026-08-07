@@ -65,7 +65,12 @@ if [ ! -f "$runner_script" ]; then
 fi
 
 stamp="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
-work_root="$repo_root/build/zephyr-fixture-make-driver"
+# RFC-0070 R1/R3 — cache paths come from the ONE derivation, so
+# `NROS_BUILD_ROOT` moves this writer with every other. Default is
+# `<repo>/build`, so the emitted path is unchanged.
+# shellcheck source=scripts/build/build-root.sh
+. "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
+work_root="$(nros_build_dir zephyr-fixture-make-driver)"
 record_dir="$work_root/records/$stamp"
 log_dir="$work_root/logs/$stamp"
 status_dir="$work_root/status/$stamp"
@@ -237,7 +242,7 @@ fi
 # lock makes a second invocation queue instead of clobbering the first. The
 # lock is held only for the build phase and auto-releases when fd 9 closes on
 # exit. flock-absent hosts skip it (best-effort).
-lockfile="$repo_root/build/zephyr-fixture-build.lock"
+lockfile="$(nros_build_dir zephyr-fixture-build).lock"
 mkdir -p "$(dirname "$lockfile")"
 exec 9>"$lockfile"
 if command -v flock >/dev/null 2>&1; then

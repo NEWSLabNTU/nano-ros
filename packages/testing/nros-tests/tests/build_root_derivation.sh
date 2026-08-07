@@ -241,6 +241,45 @@ scenario '
     fi
 '
 
+echo "phase-334 W2.b step 2 — the rooted writers emit their pre-migration path:"
+
+# Each of these replaced a `$repo_root/build/<kind>` literal. The assertion is
+# that the DERIVED value is byte-identical to the literal it replaced — step 2 is
+# a pure refactor, so anything else is a regression, not an improvement.
+scenario '
+    unset NROS_BUILD_ROOT
+    export NROS_REPO_ROOT="$repo_root"
+    check "borrowed-e2e"                "$repo_root/build/borrowed-e2e"                "$(nros_build_dir borrowed-e2e)"
+    check "link-determinism"            "$repo_root/build/link-determinism"            "$(nros_build_dir link-determinism)"
+    check "fixture-make-driver"         "$repo_root/build/fixture-make-driver"         "$(nros_build_dir fixture-make-driver)"
+    check "zephyr-fixture-make-driver"  "$repo_root/build/zephyr-fixture-make-driver"  "$(nros_build_dir zephyr-fixture-make-driver)"
+    check "zephyr-fixture-build.lock"   "$repo_root/build/zephyr-fixture-build.lock"   "$(nros_build_dir zephyr-fixture-build).lock"
+'
+
+# And that no literal survives alongside the call — a writer that derives the
+# path in one place and spells it in another is the split step 1 left behind in
+# fixtures-target-dir.sh, which took a second commit to find.
+#
+# `grep -F` on the literal text: an interpolating pattern expands `$repo_root`
+# under `eval` and then searches for the ABSOLUTE path, which never appears in
+# the source — a check that cannot fail. That is exactly what the first version
+# of this block did, and the tripwire caught it.
+rc=0
+for f in scripts/build/borrowed-e2e-fixture.sh \
+         scripts/build/link-determinism-fixture.sh \
+         scripts/build/fixture-make-driver.sh \
+         scripts/build/zephyr-fixture-make-driver.sh; do
+    if grep -qF 'repo_root/build/' "$repo_root/$f"; then
+        echo "  FAIL $f still assigns a rooted literal"
+        rc=1
+    fi
+done
+if [ "$rc" -eq 0 ]; then
+    echo "  ok   no rooted literal remains beside the derivation"
+else
+    fail=1
+fi
+
 if [ "$fail" -ne 0 ]; then
     echo "build_root_derivation: FAILED" >&2
     exit 1
