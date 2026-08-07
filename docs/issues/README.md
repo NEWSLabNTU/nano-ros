@@ -51,14 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#475** — a cmake fixture can be PERMANENTLY stale. Touch an ABI header (`rmw_ret.h`) and every C/C++
-Cyclone fixture reports STALE; `just native build-fixtures` does not clear it, and `cmake --build` on the leaf
-exits 0 WITHOUT relinking — that example never includes the header, so make has no edge to rebuild. Only
-`rm -rf <leaf>/build-cyclonedds` clears it, at 687s per leaf (Cyclone builds from source), across ~8 leaves.
-Both sides are individually right: the probe is conservative (any newer input, 8503 examined), the build graph
-is precise. Issue 0196's rule pointing the OTHER way — the TEST probe is the over-broad one, and no build
-command can satisfy it. Presents as 100+ identical failures across unrelated suites because
-`_check-fixtures-stale` passes (it reads a lane stamp, not freshness). See `0475-*`. (2026-08-07)
+**#475** — `libnros_rmw_cyclonedds.a` is an ORDER-ONLY (`||`) link dep of the C/C++ example binaries, so a
+backend edit rebuilds the archive and NEVER relinks the examples — museum binaries by construction. Measured:
+archive 14:15, `c_talker` 12:28, `cmake --build` rc=0 with no relink. The staleness probe is CORRECT to flag
+it; what is broken is the graph, and the remedy the probe prints (`just build-test-fixtures`) cannot work —
+only `rm -rf <leaf>/build-<rmw>` does, ~687s per leaf across ~8. Strong lead: `NROS_RMW_EXTRA_LINK_LIBS` is
+SET AND NEVER READ, so the archive reaches the link outside `target_link_libraries`, which is exactly how a
+lib ends up order-only. NOTE: filed first as "the probe is over-broad" — that was wrong, and the correction
+is recorded in the issue. See `0475-*`. (2026-08-07)
 
 **#474** (build, open 2026-08-06) — `just format` is not behind `_require-leaf-includes`, so on a
 checkout with an unsynced leaf it dies with cargo's raw manifest-parse error four frames deep, never

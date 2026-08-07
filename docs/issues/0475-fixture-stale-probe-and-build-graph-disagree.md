@@ -1,87 +1,102 @@
 ---
 id: 475
-title: "A cmake fixture can be permanently STALE: the probe says rebuild, the build graph says nothing to do, and only `rm -rf` clears it"
+title: "The RMW static lib is an ORDER-ONLY link dep, so a backend change never relinks the C/C++ examples — museum binaries by construction"
 status: open
 type: bug
 severity: high
-area: testing, cmake
-related: [issue-0196, issue-0445, issue-0466, issue-0268]
+area: cmake, testing
+related: [issue-0196, issue-0391, issue-0445, issue-0466]
 ---
 
-## Symptom
+> **Retitled 2026-08-07 after investigation.** This was filed as "the staleness
+> probe is over-broad". That was WRONG, and the correction is the finding: the
+> probe is right, and the build graph is under-specified. The original framing
+> is kept at the bottom because the reasoning that produced it is the trap.
 
-Touch `packages/core/nros-rmw-abi/include/nros/rmw_ret.h` (any ABI header edit
-does it — mine was adding one constant for #0468). Every C/C++ CycloneDDS
-fixture then reports:
+## Finding
 
-```
-Test fixture is STALE — a source is newer than the built binary:
-  binary: examples/native/c/talker/build-cyclonedds/c_talker
-  newer:  packages/core/nros-rmw-abi/include/nros/rmw_ret.h
-  probe:  examined 8503 input(s); …
-  NOT RUN: 12th consecutive stale verdict for this fixture, first 64m ago.
-```
-
-`just native build-fixtures` does not clear it. Neither does `cmake --build` on
-the leaf directly — it runs, rebuilds `libnros_c.a`, exits 0, and **does not
-relink the binary**, whose mtime is unchanged. The only thing that clears it is
-`rm -rf <leaf>/build-cyclonedds` followed by a full rebuild: **687 s for one
-leaf**, because CycloneDDS self-provisions from source (phase-186).
-
-There are ~8 such leaves. A one-constant header edit therefore costs an hour of
-wiping, or the cells stay red.
-
-## Both sides are individually correct
-
-* The **test probe** is conservative by construction: any input newer than the
-  binary is stale. It examined 8503 inputs and found the header among them.
-* The **build graph** is precise: that C example never `#include`s
-  `nros/rmw_ret.h`. Make has no edge from it to `c_talker`, so there is
-  genuinely nothing to rebuild.
-
-Neither is wrong in isolation; together they deadlock. This is issue 0196's rule
-("build-side stale probes must watch the same inputs as test-side gates")
-pointing the OTHER way from usual — there the build probe was too narrow, here
-the test probe is too broad, and the failure is worse because no build command
-can satisfy it.
-
-The probe's own text anticipates this: *"If the rebuild does not clear it,
-suspect the probe before trusting the verdict."* That instruction was correct
-and I still spent three cycles reading these as regressions, because the message
-is per-fixture and the presentation is 100+ simultaneous failures across
-unrelated suites.
-
-## Why it presents as a wall
-
-`just ci`'s `_check-fixtures-stale` PASSED on the same tree, so the run reached
-`test-all` and produced 115 failures whose text is identical and whose subject
-lines look unrelated (`actions`, `params`, `qos`, `services`, …). The stamp that
-gate reads answers "was this lane built", never "is it still fresh" — see the
-follow-up in #0466.
-
-## Reproduce
+`libnros_rmw_cyclonedds.a` is an **order-only** dependency of the example
+binaries that link it:
 
 ```console
-$ touch packages/core/nros-rmw-abi/include/nros/rmw_ret.h
-$ cmake --build examples/native/c/listener/build-cyclonedds -j    # rc=0
-$ stat -c %y examples/native/c/listener/build-cyclonedds/c_listener   # UNCHANGED
-$ cargo nextest run -p nros-tests --test native_api -E 'test(cyclonedds)'  # all STALE
-$ rm -rf examples/native/c/listener/build-cyclonedds && just native build-fixtures  # 687s, clears it
+$ ninja -C examples/native/c/talker/build-cyclonedds -t query c_talker
+c_talker:
+  input: CXX_EXECUTABLE_LINKER__c_talker_Release
+    CMakeFiles/c_talker.dir/src/main.c.o
+    | libbuiltin_interfaces__nano_ros_c.a          <- implicit: change ⇒ relink
+    …
+    || nano_ros/…/libnros_rmw_cyclonedds.a          <- ORDER-ONLY: change ⇒ nothing
 ```
 
-## Fix directions
+Order-only (`||`) means "must exist before linking"; a change to it never
+triggers a relink. So **editing the CycloneDDS backend rebuilds the archive and
+leaves every example binary containing the old backend code**, indefinitely.
 
-1. **Narrow the probe's input set to the leaf's real dependency graph.** cmake
-   already writes depfiles; the probe could read them instead of walking 8503
-   paths. Most faithful, most work.
-2. **Exempt headers the leaf demonstrably does not include** — the same shape as
-   the existing "regenerated-in-place header" and "cargo OUT_DIR product"
-   exemptions the probe already reports. Cheaper, and it is the class those
-   exemptions were invented for.
-3. **Make the wipe the remedy the message names.** If the probe cannot know
-   whether a rebuild will help, "Run `just build-test-fixtures` first" is
-   actively wrong here; it should say to wipe the build dir when the input is a
-   header outside the leaf's graph.
+Measured, on this tree:
 
-(1) or (2) are the real fixes. (3) alone would at least stop sending people to a
-command that cannot work — which is what burned the time.
+```
+libnros_rmw_cyclonedds.a   14:15:40   (rebuilt, correctly)
+c_talker                   12:28:21   (older than its own link input)
+$ cmake --build examples/native/c/talker/build-cyclonedds -j   # rc=0, no relink
+```
+
+Five objects that feed `c_talker` list `rmw_ret.h` among their deps, all rebuilt
+at 14:15. The binary predates them by two hours and the build is "up to date".
+
+## The probe was right
+
+`cmake_dep_info_newer_source` reports STALE because a real dependency is newer
+than the binary. That is exactly true. What made it look like a probe bug is
+that the remedy it prints — "Run `just build-test-fixtures` first" — cannot
+work: no build command can fix an edge the graph does not have. Only
+`rm -rf <leaf>/build-<rmw>` does, at ~687 s per leaf (Cyclone self-provisions
+from source), across ~8 leaves.
+
+This is issue 0391's class (a fixture running as a museum binary because a real
+input is invisible to the graph), except here the input IS in the graph — with
+the wrong edge kind.
+
+## Lead on the cause
+
+`NROS_RMW_EXTRA_LINK_LIBS` is **set and never read**:
+
+```console
+$ git grep -rn NROS_RMW_EXTRA_LINK_LIBS
+cmake/NanoRosRmwDispatch.cmake:24:  set(NROS_RMW_EXTRA_LINK_LIBS "nros_rmw_cyclonedds;ddsc;stdc++" PARENT_SCOPE)
+packages/cli/cargo-nano-ros/src/rmw_resolver.rs:186:   (the same line, emitted into generated cmake)
+```
+
+Nothing consumes it. So the cyclone archive reaches the link some other way —
+plain link flags or a target-level `add_dependencies` — and a path that does not
+go through `target_link_libraries` is precisely how a lib ends up order-only:
+CMake models "link this" as an implicit dep, but "depend on this target" as
+order-only.
+
+## Fix direction
+
+Attach the RMW archive with `target_link_libraries` on the example targets so
+CMake emits it as an implicit (`|`) input. Verify with `ninja -t query <bin>`
+that the `.a` moves from `||` to `|`, and regression-test by touching a backend
+source and confirming the binary relinks.
+
+Worth auditing the same way: every other `||` entry in those link lines, and the
+zenoh/XRCE equivalents — this was found on cyclone only because that is where
+`rmw_ret.h` happened to land.
+
+## Scope
+
+Every C/C++ example fixture that links an RMW archive. The tests do not silently
+pass on stale binaries — the staleness probe catches them, which is why this
+surfaced at all — but they cannot run until someone wipes, and the failure text
+sends them at a command that will not help.
+
+## Original (incorrect) framing, kept deliberately
+
+Filed as: "the probe examines 8503 inputs and flags a header the leaf does not
+include; the build graph is precise and says nothing to do; both are right and
+they deadlock." Two errors in that. `rmw_ret.h` IS a dependency of objects
+feeding the binary (`ninja -t deps` lists it five times under objects that
+`ninja -t inputs c_talker` also lists), and `cmake --build` doing nothing is not
+correctness — it is the missing edge. The evidence that looked like "probe too
+broad" was: an unscoped `-t deps` read, and a `cmake --build` that exits 0.
+Neither distinguishes "no work needed" from "no edge to notice the work".
