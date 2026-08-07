@@ -650,6 +650,78 @@ D build once for this user.**
 **Acceptance:** the gate catches a deliberately reintroduced duplicate, and the
 mixed-workspace count is recorded so a regression is visible as a number.
 
+### W5 — the duplicate INSIDE one invocation: the build-dependency graph
+
+Everything above is about duplication ACROSS invocations. Measured 2026-08-06,
+the largest single source is inside ONE. `cargo --unit-graph` for `nros-c`
+(`std,rmw-zenoh`, `nros-relwithdebinfo`):
+
+```
+181 units, 4 distinct profiles
+  123 units  opt=0 panic=unwind debuginfo=0   91 lib + 27 custom-build + 5 proc-macro
+   26 units  opt=2 panic=abort  debuginfo=1   25 lib + 1 staticlib   <- the product
+   21 units  opt=0 panic=unwind lto=false     custom-build
+   11 units  opt=2 panic=unwind lto=false     custom-build
+```
+
+**Only 26 of 181 units are the product.** Of the 14 product libraries, **12 are
+ALSO built in the build-script graph** — `heapless`, `log`, `bitflags`,
+`byteorder`, `cfg-if`, `hash32`, `atomic-waker`, `portable-atomic`,
+`portable-atomic-util`, `stable_deref_trait`, `nros-rmw-cffi`, and `nros` itself.
+
+**Features are NOT the cause here.** `nros-core` appears twice with an identical
+feature set:
+
+```
+nros-core feats=['alloc','std']  panic=abort   opt=2     <- product
+nros-core feats=['alloc','std']  panic=unwind  opt=0     <- build-dep graph
+```
+
+Same crate, same features, one invocation, two compilations. And sccache cannot
+absorb it: different profile means different rustc arguments, so a different
+cache key.
+
+**It cannot be fixed by making the profile consistent.** `build-override` aligns
+`opt-level`, `debuginfo`, `lto` and `codegen-units`, but cargo rejects the one
+that matters:
+
+```console
+$ CARGO_PROFILE_NROS_RELWITHDEBINFO_BUILD_OVERRIDE_PANIC=abort cargo build …
+error: `panic` may not be specified in a `build-override` profile
+```
+
+Build scripts and proc macros are always unwinding, by construction. **So while
+the product profile carries `panic = "abort"`, every crate in both graphs is
+compiled twice and no configuration prevents it.** Aligning the other four
+settings buys nothing on its own, because `panic` alone still splits identity.
+
+**The lever is the GRAPH, not the profile.** The whole runtime stack is in the
+build-dependency graph because of one edge in `packages/api/nros-c/Cargo.toml`:
+
+```toml
+[build-dependencies]
+# Phase 77.25: … force nros to compile before
+# this build.rs runs so the size probe has a rlib to read.
+nros = { version = "0.5.0", path = "../nros", default-features = false }
+```
+
+`nros` is a build-dependency **purely to force build ordering** — the size probe
+locates its rlib with `find_dep_rlib`. That one ordering trick pulls
+`nros → nros-node → nros-core → heapless, portable-atomic, log, …` into a graph
+that then compiles all of it a second time at `opt=0 panic=unwind`.
+
+- [ ] **W5.a** Establish whether the ordering edge is still load-bearing. The
+      probe ALSO builds in an isolated nested target dir
+      (`sizes-probe-target-rustc-…`), so there may be two mechanisms where one
+      would do.
+- [ ] **W5.b** If it is, find an ordering mechanism that does not put the runtime
+      stack in the build graph, and measure the unit count before/after.
+- [ ] **W5.c** If it is not, delete the edge — and check `nros-cpp`, which the
+      comment says carries the same pattern.
+
+**Acceptance:** the product/build-graph overlap drops from 12 of 14, or the
+reason it cannot is recorded at the manifest edge that causes it.
+
 ## Risks
 
 **Shared target dirs serialise.** Cargo takes an exclusive lock per target dir,
