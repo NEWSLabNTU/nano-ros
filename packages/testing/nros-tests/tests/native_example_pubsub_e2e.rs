@@ -36,6 +36,7 @@ use nros_tests::{
     output::LISTENER_LOG_PREFIX,
     unique_ros_domain_id,
 };
+use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
 
 /// Build a native example binary for `(lang, case, rmw)`. The cmake target names
@@ -100,61 +101,100 @@ fn rmw_str(r: MR) -> &'static str {
     }
 }
 
-/// THE consumer. Iterates every native pubsub Example runtime cell; per-cell
-/// `catch_unwind` classifies skip vs fail so one missing fixture never aborts
-/// the rest.
-#[test]
-fn native_example_pubsub() {
-    let cells: Vec<&MCell> = nros_tests::matrix::CELLS
+/// The cells this file consumes, as a predicate — ONE definition, used by both
+/// the per-case lookup and the coverage tripwire so they cannot disagree.
+fn is_pubsub_cell(c: &MCell) -> bool {
+    matches!(c.platform, nros_tests::matrix::PlatformId::Linux)
+        && matches!(c.kind, MK::Example)
+        && matches!(c.workload, MW::Pubsub)
+        && matches!(c.tier, MT::Runtime)
+}
+
+/// The `(lang, rmw)` pairs the `#[case]`s below declare. The tripwire asserts
+/// this equals the filtered `matrix::CELLS` set, so a cell added to the matrix
+/// without a case here FAILS rather than being silently unrun.
+const DECLARED_CASES: &[(ML, MR)] = &[
+    (ML::Rust, MR::Zenoh),
+    (ML::C, MR::Zenoh),
+    (ML::Cpp, MR::Zenoh),
+    (ML::Rust, MR::Cyclonedds),
+    (ML::C, MR::Cyclonedds),
+    (ML::Cpp, MR::Cyclonedds),
+    (ML::Rust, MR::Xrce),
+    (ML::C, MR::Xrce),
+    (ML::Cpp, MR::Xrce),
+];
+
+/// THE consumer — ONE TEST PER CELL (phase-342 W1).
+///
+/// This was a single `#[test]` folding over the nine cells, with a hand-rolled
+/// `catch_unwind` that classified skip-vs-fail so one missing fixture could not
+/// abort the rest. Two costs came with that shape:
+///
+///   * **wall clock.** Nine cells ran SERIALLY inside one test at 95.1 s — the
+///     single longest test in tier 1, and therefore the floor the whole lane's
+///     wall time could never drop below, no matter how parallel nextest is. No
+///     scheduler enters a test body.
+///   * **attribution.** A failure read `1 of 9 cell(s) FAILED` and took the
+///     whole test red; the other eight verdicts were lost. Reconstructing which
+///     coordinate actually broke is work issue 0422's triage had to do by hand.
+///
+/// Per-cell tests fix both, and the classification machinery simply goes away:
+/// `run_cell` panics `[SKIPPED] …` on an unmet precondition, which is exactly
+/// what `nros_tests::skip!` does everywhere else, and `just test-all`'s junit
+/// rewrite turns into a skip. The harness now does what the fold hand-rolled.
+#[rstest]
+#[case::rust_zenoh(ML::Rust, MR::Zenoh)]
+#[case::c_zenoh(ML::C, MR::Zenoh)]
+#[case::cpp_zenoh(ML::Cpp, MR::Zenoh)]
+#[case::rust_cyclone(ML::Rust, MR::Cyclonedds)]
+#[case::c_cyclone(ML::C, MR::Cyclonedds)]
+#[case::cpp_cyclone(ML::Cpp, MR::Cyclonedds)]
+#[case::rust_xrce(ML::Rust, MR::Xrce)]
+#[case::c_xrce(ML::C, MR::Xrce)]
+#[case::cpp_xrce(ML::Cpp, MR::Xrce)]
+fn native_example_pubsub(#[case] lang: ML, #[case] rmw: MR) {
+    let cell = nros_tests::matrix::CELLS
         .iter()
-        .filter(|c| {
-            matches!(c.platform, nros_tests::matrix::PlatformId::Linux)
-                && matches!(c.kind, MK::Example)
-                && matches!(c.workload, MW::Pubsub)
-                && matches!(c.tier, MT::Runtime)
-        })
+        .find(|c| is_pubsub_cell(c) && c.lang == lang && c.rmw == rmw)
+        .unwrap_or_else(|| {
+            panic!(
+                "matrix regression: no Linux/Pubsub/Example/Runtime cell for {}/{}",
+                lang_str(lang),
+                rmw_str(rmw)
+            )
+        });
+    run_cell(cell);
+}
+
+/// Tripwire — the `#[case]` list above is hand-written, so something must keep
+/// it bound to the derived truth. Mirrors `interop::assert_test_bound`'s job for
+/// the interop consumer.
+#[test]
+fn pubsub_cases_cover_every_matrix_cell() {
+    use std::collections::BTreeSet;
+    let from_matrix: BTreeSet<(String, String)> = nros_tests::matrix::CELLS
+        .iter()
+        .filter(|c| is_pubsub_cell(c))
+        .map(|c| (lang_str(c.lang).to_string(), rmw_str(c.rmw).to_string()))
         .collect();
+    let declared: BTreeSet<(String, String)> = DECLARED_CASES
+        .iter()
+        .map(|(l, r)| (lang_str(*l).to_string(), rmw_str(*r).to_string()))
+        .collect();
+
     assert!(
-        !cells.is_empty(),
+        !from_matrix.is_empty(),
         "matrix regression: no Native/Pubsub/Example runtime cells"
     );
-
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let mut skipped: Vec<String> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
-    for c in &cells {
-        let label = format!("{}/{}", lang_str(c.lang), rmw_str(c.rmw));
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
-        if let Err(p) = res {
-            let msg = p
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "<non-string panic>".to_string());
-            if msg.contains("[SKIPPED]") {
-                skipped.push(format!("{label}: {msg}"));
-            } else {
-                failed.push(format!("{label}: {msg}"));
-            }
-        }
-    }
-    std::panic::set_hook(prev_hook);
-
+    let missing: Vec<_> = from_matrix.difference(&declared).collect();
+    let extra: Vec<_> = declared.difference(&from_matrix).collect();
     assert!(
-        failed.is_empty(),
-        "native_example_pubsub: {} of {} cell(s) FAILED:\n  {}",
-        failed.len(),
-        cells.len(),
-        failed.join("\n  ")
+        missing.is_empty() && extra.is_empty(),
+        "pubsub #[case] list has drifted from matrix::CELLS.\n  \
+         cells with no case (would never run): {missing:?}\n  \
+         cases with no cell (would panic):     {extra:?}"
     );
-    if skipped.len() == cells.len() {
-        nros_tests::skip!(
-            "all {} native pubsub cell(s) skipped:\n  {}",
-            skipped.len(),
-            skipped.join("\n  ")
-        );
-    }
 }
 
 /// Boot a same-language talker + listener under the cell's RMW isolation and
