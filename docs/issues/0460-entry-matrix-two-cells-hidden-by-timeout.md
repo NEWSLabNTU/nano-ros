@@ -188,3 +188,60 @@ capacity, or the Kconfig is not reaching the RUST lane's crate build — the
 Kconfig's own help text says it "was never forwarded to Cargo before issue 0316,
 so every Zephyr C image compiled the crate default of 4", which names exactly
 this forwarding path. Check that before assuming the capacity theory is wrong.
+
+## The Kconfig never reached the Rust lane (2026-08-07) — fixed, but not the cause
+
+The previous note left one thread: `CONFIG_NROS_EXECUTOR_MAX_CBS=16` was in the
+build's generated `.config` and changed nothing. Measured, and it is worse than
+"not applied":
+
+```
+$ grep -c NROS_EXECUTOR_MAX_CBS <build>/build.ninja
+0
+$ grep -o 'MAX_CBS: usize = [0-9]*' <build>/rust/target/.../nros-node-*/out/*.rs
+MAX_CBS: usize = 4
+```
+
+Zero occurrences in the build graph, and the crate compiled the default of 4
+while Kconfig said 16.
+
+**Why.** `zephyr/cmake/nros_cargo_build.cmake` exports every resolved knob with
+`set(ENV{...})`, which only touches the CONFIGURE-time cmake process. The C lane
+survives that because `nros_cargo_build()` re-bakes the vars into its build
+command (`cmake -E env …`). The RUST lane's command is built by
+zephyr-lang-rust's `rust_cargo_application`, which passes its own fixed variable
+list and inherits nothing — so **every Zephyr Rust image has been compiling
+nros-node's crate defaults regardless of Kconfig**, for every knob, not just
+this one. The Kconfig's own help text says the option "was never forwarded to
+Cargo before issue 0316, so every Zephyr **C** image compiled the crate default
+of 4" — the C wording turns out to be load-bearing.
+
+**Fixed** in `nros-node/build.rs`: when a knob's env var is absent, read
+`CONFIG_<NAME>` from the file named by `$DOTCONFIG`, which IS in that command's
+environment. One place, covers every knob `build.rs` reads, and needs no change
+to the vendored module. Explicit env still wins, so the C lane is untouched.
+Verified: the crate now compiles `MAX_CBS: usize = 16`.
+
+**It is not the cause of these three cells.** With 16 genuinely compiled in, all
+three still fail identically on `NodeRegister("lifecycle")`. So capacity is
+ruled OUT, and the `CONFIG_NROS_EXECUTOR_MAX_CBS=16` lines added to the three
+`prj.conf` files are correct sizing hygiene (11 capability services against a
+default of 4) rather than the fix.
+
+## Where this now stands
+
+The failure is inside `register_lifecycle_services()`, which can only fail two
+ways: `NameTooLong` on the FQN heapless string, or
+`ServiceServerCreationFailed` from `create_lc_srv`. The node FQN comes from the
+executor's own namespace/node_name, so no node needs to be registered first, and
+the names here are short — which points at queryable declaration.
+`Z_FEATURE_QUERYABLE` is 1 in the image's generated zenoh config, so it is not a
+disabled feature.
+
+Naming the cause needs the `NodeError` to survive to a log line. It currently
+cannot: `apply_lifecycle` maps it to `()`, the macro turns that into
+`RuntimeError::NodeRegister("lifecycle")`, and `nros` has no `log` dependency to
+report it from (attempted; it does not compile). The clean fix is to widen those
+trait methods to return `NodeError` so the macro — whose emitted code DOES have
+`log` — can print it. That is the next step, and it is the same
+make-the-failure-name-itself move that got this far.

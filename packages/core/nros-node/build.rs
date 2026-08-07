@@ -128,8 +128,44 @@ fn main() {
 /// Read a usize from an environment variable, falling back to a default.
 fn env_usize(name: &str, default: usize) -> usize {
     println!("cargo:rerun-if-env-changed={name}");
-    env::var(name)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+    if let Some(v) = env::var(name).ok().and_then(|v| v.parse().ok()) {
+        return v;
+    }
+    // issue 0460 — fall back to Zephyr's `.config`.
+    //
+    // `zephyr/cmake/nros_cargo_build.cmake` exports every resolved knob with
+    // `set(ENV{...})`, which only touches the CONFIGURE-time cmake process.
+    // The C lane survives that because `nros_cargo_build()` re-bakes the vars
+    // into its build command (`cmake -E env ...`); the RUST lane's command is
+    // built by zephyr-lang-rust's `rust_cargo_application`, which passes its
+    // own fixed list and inherits nothing. Measured: `grep -c
+    // NROS_EXECUTOR_MAX_CBS build.ninja` = 0 on a Rust image whose
+    // `zephyr/.config` said 16, and the crate compiled `MAX_CBS = 4`.
+    //
+    // So every Zephyr RUST image silently compiled the crate defaults whatever
+    // Kconfig said — which is what capped three feature entries at 4 callback
+    // slots while they registered eleven capability services.
+    //
+    // `DOTCONFIG` IS in that command's env, so read the value from the file
+    // rather than teaching the vendored module a new variable. Explicit env
+    // still wins, so the C lane and any manual override are unchanged.
+    if let Some(v) = dotconfig_usize(name) {
+        return v;
+    }
+    default
+}
+
+/// Read `CONFIG_<name>=<int>` out of the Zephyr `.config` named by `$DOTCONFIG`.
+///
+/// Kconfig ints are unquoted; anything else (missing file, missing key,
+/// non-numeric) yields `None` so the caller falls through to its default.
+fn dotconfig_usize(name: &str) -> Option<usize> {
+    println!("cargo:rerun-if-env-changed=DOTCONFIG");
+    let path = env::var("DOTCONFIG").ok()?;
+    println!("cargo:rerun-if-changed={path}");
+    let text = std::fs::read_to_string(&path).ok()?;
+    let key = format!("CONFIG_{name}=");
+    text.lines()
+        .find_map(|l| l.strip_prefix(&key))
+        .and_then(|v| v.trim().parse().ok())
 }
