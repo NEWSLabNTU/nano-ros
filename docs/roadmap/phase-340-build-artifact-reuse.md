@@ -758,6 +758,13 @@ The remaining 8-crate overlap (`heapless`, `log`, `bitflags`, `byteorder`,
 `cfg-if`, `hash32`, `stable_deref_trait`) comes from the OTHER build-deps —
 `nros-build-helpers`, `nros-zpico-build`, `nros-board-common` — so this edge was
 never the whole story.
+**Update 2026-08-07 — issue 0464 changed W5.b's cost.** The filesystem fallback
+the edge existed to serve is GONE, and NuttX was verified building through the
+isolated probe alone. So the edge now serves nothing on any exercised path: W5.b
+is closer to a deletion than to the feature-gate below, and the feature-gate is
+only needed if a future target reintroduces a fallback requirement. Re-measure
+before choosing.
+
 - [ ] **W5.b** Make the edge OPTIONAL rather than unconditional: an optional
       `[build-dependencies] nros` behind a feature (say `sizes-probe-filesystem`),
       off by default so the isolated path pays nothing, and enabled by the builds

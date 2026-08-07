@@ -1,7 +1,7 @@
 ---
 id: 464
 title: "The size probe has three stacked fallbacks; losing a timing race silently substitutes stale constants into C storage sizes"
-status: open   # layers 2+3 removed 2026-08-06; NuttX verification outstanding
+status: open   # layers 2+3 removed and VERIFIED incl. NuttX 2026-08-07; the unguarded-macro half remains
 type: bug
 area: build
 related: [phase-340, issue-0196, issue-0351]
@@ -88,6 +88,23 @@ boundaries". Checked 2026-08-06:
 So the original justification is largely stale, and the remaining case is a
 single unhandled target family rather than a general capability gap.
 
+## State
+
+| | |
+| --- | --- |
+| layers 2 + 3 deleted, probe fails loudly | **LANDED** 2026-08-06 (`8e3bfc639`) |
+| `just verify-size-probe` resurrected | **LANDED** — it had been exiting 1 before asserting anything |
+| NuttX verified end-to-end | **LANDED** 2026-08-07 |
+| the 13 unguarded opaque macros | **OPEN** — the larger remaining risk |
+| `nros-cpp` zero-size → `OPAQUE_U64S = 1` unenforced | **OPEN** |
+| make the `nros` build-dep edge optional | **OPEN** — phase-340 W5.b |
+
+The probe half is done. What remains is the half that was never about the probe:
+**thirteen opaque arrays have no compile-time size check**, so any future source
+of a wrong size — not just the fallbacks now deleted — lands as a short buffer
+rather than a build error. Fixing that is independent of, and more valuable
+than, anything left in the probe.
+
 ## Fix shape
 
 **A build must not guess.** Concretely (1-3 LANDED 2026-08-06; 4 outstanding):
@@ -154,6 +171,29 @@ It is in `group("debug")` and not part of any CI tier, so nothing noticed. Fixed
 alongside this issue; the script now resolves the real header and fails loudly if
 it is absent.
 
+## NuttX verification (2026-08-07)
+
+`just nuttx build-fixtures`, arm + riscv, with both fallbacks deleted:
+
+* **0 errors, 0 probe panics**, all 8 workspace fixtures built.
+* The probe's own stamp, written DURING the run, names the isolated nested
+  build's rlib for a real NuttX target:
+
+  ```
+  build/sizes-probe/rustc-1.96.0-nightly…/riscv32imac-unknown-nuttx-elf/release/libnros.rlib
+  ```
+
+* Sizes come out at `NROS_EXECUTOR_SIZE 88224` — computed, and ~11 % ABOVE the
+  deleted `79_296` constant, which is the rot this issue was filed about.
+
+So the isolated probe covers the one target layer 3 existed for, and the
+`-Z build-std` branch does its job. The removal is safe.
+
+**Read the stamp, not the header, when re-checking this.** The generated headers
+keep their older mtimes because `write_header_if_absent_or_verify` does not
+rewrite a file whose value already matches — so header freshness is NOT evidence
+the probe ran. The `.h.stamp` beside it is.
+
 ## A related path left alone, deliberately
 
 `nros-cpp` emits, on a probe returning zero:
@@ -176,12 +216,5 @@ resolve at link time — the mechanism issue 0360 already established).
   `nros-cpp` build scripts call the probe, and ESP32 is Rust-only — 3 rust
   fixture rows plus 1 rust workspace row, zero C/C++/mixed, and no esp32 leaf
   depends on either crate. So no esp32 branch was needed to remove layer 2.
-* **NuttX remains UNVERIFIED for the removal.** It is the target layer 3 existed
-  for, and it now panics rather than substituting. Layer 1 has an explicit NuttX
-  branch (`-Z build-std` + the patched `libc`) added precisely so it stops
-  falling through, so the expectation is that it works — but a cheap local
-  verification was not possible: `nros-nuttx-ffi` needs `APP_MAIN_CPP` and then
-  fails in cc-rs outside its cmake environment, before `nros-c` compiles for the
-  NuttX target at all. **Run `just nuttx build-fixtures` before trusting this.**
-  If the NuttX probe does fail, the result is a loud build failure rather than a
-  short buffer — the intended direction, but a visible red lane.
+* ~~NuttX remains unverified for the removal.~~ **VERIFIED 2026-08-07 by
+  `just nuttx build-fixtures`** — see below.
