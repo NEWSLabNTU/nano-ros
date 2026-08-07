@@ -105,19 +105,28 @@ fi
 : "${NROS_CARGO_FLAGS=--locked}"
 export NROS_CARGO_FLAGS
 
-# pyo3 0.24 (vendored by `nros-launch-resolve`, RFC-0060 layer 2) refuses an
-# interpreter newer than 3.13, and a rolling distro outruns that — Arch ships
-# 3.14 and nothing older:
+# pyo3 refuses an interpreter newer than the maximum it knows, and a rolling
+# distro outruns that — this fired as:
 #
 #   error: the configured Python interpreter version (3.14) is newer than
 #          PyO3's maximum supported version (3.13)
 #
-# pyo3's own remedy is to build against the stable ABI. This lived only in
+# pyo3's own remedy is to build against the stable ABI. It lived only in
 # `just setup-launch-resolve`, so every OTHER lane that builds the resolver
 # — `check-cli-clippy`, `check-test-targets`, … — still died on a 3.14 host.
 # One export here covers all of them; it is inert where the interpreter is
-# already supported (Ubuntu 22.04's 3.10, 24.04's 3.12), so there is no version
-# probe and no second code path. Revisit when the pin moves past 0.24.
+# already supported, so there is no version probe and no second code path.
+#
+# The "revisit when the pin moves past 0.24" this comment used to end with has
+# happened: `packages/cli` is on pyo3 0.29, which supports 3.14 NATIVELY —
+# verified by building `colcon-nano-ros` with this variable explicitly UNSET.
+# The export stays anyway, and is not dead weight: it is the forward guard for
+# the next interpreter to outrun the pin, which is the same event that produced
+# it. What it no longer does is paper over the CURRENT host.
+#
+# NOTE: `packages/cli/third-party/play_launch` is VENDORED and still pins 0.24,
+# so that tree does depend on this. Do not remove the export while that pin
+# stands.
 : "${PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1}"
 export PYO3_USE_ABI3_FORWARD_COMPATIBILITY
 case ":$PATH:" in

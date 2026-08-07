@@ -45,7 +45,7 @@ minijinja = "2.5"
 toml = "0.8"
 
 # PyO3 for Python bindings
-pyo3 = { version = "0.24", features = ["extension-module"] }
+pyo3 = { version = "0.29", features = ["extension-module"] }
 
 # Workspace member dependencies
 cargo-nano-ros = { path = "cargo-nano-ros" }

@@ -9,7 +9,10 @@ use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use std::path::PathBuf;
 
 /// Python wrapper for BindgenConfig
-#[pyclass]
+// `from_py_object`, not `skip_from_py_object`: pyo3 0.29 makes the automatic
+// `FromPyObject` derive for a `Clone` `#[pyclass]` opt-in, and `generate_bindings`
+// takes this BY VALUE from Python — skipping it would not compile.
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 struct BindgenConfig {
     #[pyo3(get, set)]
@@ -49,7 +52,9 @@ impl BindgenConfig {
 }
 
 /// Python wrapper for InstallConfig
-#[pyclass]
+// Opt-in for the same reason as `BindgenConfig` above — `install_to_ament`
+// takes this by value from Python.
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 struct InstallConfig {
     #[pyo3(get, set)]
