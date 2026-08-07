@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#477** (nuttx, open 2026-08-07) — `nuttx-c-talker-zenoh` overflows ROM by **448776 bytes**, and it is
+the gate on `just build-test-fixtures lane=all`, which THREE phases are waiting on: phase-341 (archive
+only after a tier-2 sweep), phase-340 W2.a (its next step moves 85+ rows' artifacts and needs a
+known-good baseline), phase-334 W2.c. `native`/`qemu`/`threadx_linux` pass in the same run; `freertos`
+fails separately and is not diagnosed. NOT phase-340 W5.b/c: restoring the `nros` build-dep from
+`aa8be9199~1` reproduces the IDENTICAL byte count, and a build-dep changes what the BUILD graph
+compiles, not what the product links. NOT a leaf this work touched — the row has no `.cargo/config.toml`
+and was not among phase-341 W3's 39. Provenance unestablished, and the obvious test (build at a
+pre-session commit) does NOT work: a fresh worktree has no `generated/` trees and dies on setup, issue
+0466's ordered contract from a new direction. Lead to pull first: a **C** talker's link line contains
+`libnros_cpp`, and 448 KB is the right order of magnitude for dragging in the C++ layer.
+
 Recently resolved (2026-08-07): **#475** — the RMW archive was an ORDER-ONLY (`||`) link dep of the C/C++
 example binaries, because it is whole-archived through a raw `-Wl,...` FLAG (CMake cannot see a file inside a
 flag string) and `add_dependencies()` supplies only build ORDER. A backend edit rebuilt the archive and never
