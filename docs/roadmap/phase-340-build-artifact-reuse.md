@@ -572,6 +572,29 @@ W2/W3 implementation.**
 - [ ] **W2.a** Extend the phase-226.D resolver so a manifest-authored
       `--target-dir` names a GROUP rather than opting the row out, for rows whose
       identity already matches. No new mechanism; widen the existing key.
+
+      **Blocker removed 2026-08-07 — the eligibility rule had TWO spellings.**
+      The shell read `NROS_FIXTURE_SHARED_PLATFORMS`; the Rust resolver
+      hardcoded `match platform { "qemu-arm-baremetal" => … }`. Widening the
+      shell list alone would have made the BUILD write to the shared dir while
+      the TEST kept looking in the leaf — every row of the new platform
+      reporting its binary missing, with nothing naming the cause. That is #393
+      verbatim, latent in the design phase-226.D shipped. The Rust side now
+      reads the same env var with the same default, and
+      `build_root_derivation.sh` asserts the two defaults match and that the
+      Rust side still READS the variable (tripwired: diverging them fails).
+
+      **What the widening is worth, measured.** Of 118 `linux` rows, **85 carry
+      no cargo args at all** — they need only the platform gate, not the
+      authored-dir change, and today each writes its own `<leaf>/target/`. The
+      other 27 carry an authored `--target-dir` (10 zenoh, 8 xrce, 5 cyclonedds,
+      2 tls, 1 zero-copy) and additionally need the authored flag STRIPPED from
+      `cargo_args`, or cargo receives two `--target-dir` flags.
+
+      **Remaining for W2.a**, in order: (1) strip the authored flag when the
+      group governs; (2) add `linux` to the default list; (3) rebuild the native
+      lane and verify every row resolves — this MOVES 85+ rows' artifacts, so it
+      is RFC-0070's "paths last" step and cannot be verified without the lane.
 - [ ] **W2.b** Convert the FIVE head signatures (above) from N parallel cargo
       invocations into ONE invocation each over a build-time-only umbrella
       workspace — 62 of 117 linux rows. Leaves keep their standalone manifests

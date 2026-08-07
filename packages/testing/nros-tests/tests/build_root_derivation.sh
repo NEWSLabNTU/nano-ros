@@ -280,6 +280,25 @@ else
     fail=1
 fi
 
+echo "phase-340 W2.a — shell and Rust agree on WHICH platforms share a dir:"
+
+# One eligibility rule, two readers. The shell reads
+# NROS_FIXTURE_SHARED_PLATFORMS; the Rust resolver used to hardcode
+# "qemu-arm-baremetal". Widening the shell list alone would have made the build
+# write to the shared dir while the test looked in the leaf — #393 exactly.
+scenario '
+    cd "$repo_root"
+    sh_default="$(grep -oE "NROS_FIXTURE_SHARED_PLATFORMS:-[a-z0-9 -]+" scripts/build/fixtures-target-dir.sh | head -1 | sed "s/.*:-//")"
+    rs_default="$(grep -oE "SHARED_PLATFORMS_DEFAULT: &str = \"[a-z0-9 -]+\"" packages/testing/nros-tests/src/fixtures/binaries/mod.rs | head -1 | sed "s/.*= \"//; s/\"$//")"
+    check "shell and Rust share one default list" "$sh_default" "$rs_default"
+    if grep -q "NROS_FIXTURE_SHARED_PLATFORMS" packages/testing/nros-tests/src/fixtures/binaries/mod.rs; then
+        echo "  ok   the Rust side READS the env var (not a hardcoded match)"
+    else
+        echo "  FAIL the Rust side no longer reads NROS_FIXTURE_SHARED_PLATFORMS"
+        rc=1
+    fi
+'
+
 if [ "$fail" -ne 0 ]; then
     echo "build_root_derivation: FAILED" >&2
     exit 1

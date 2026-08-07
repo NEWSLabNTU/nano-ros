@@ -2482,11 +2482,35 @@ pub fn build_test_fixture(
 /// RFC-0070 R3 (phase-334 W2.b step 2) — the shell side moved onto
 /// `nros_build_dir` in step 1; this resolver was the half left on a literal, so
 /// `NROS_BUILD_ROOT` relocated the build but not the lookup. Both now derive.
+/// Platforms whose Rust fixture rows share one cargo target dir.
+///
+/// phase-340 W2.a — this MIRRORS `NROS_FIXTURE_SHARED_PLATFORMS` in
+/// `scripts/build/fixtures-target-dir.sh`, and reads the same env var with the
+/// same default so the two cannot diverge.
+///
+/// It used to be a hardcoded `match platform { "qemu-arm-baremetal" => … }`
+/// while the shell read the env var — two spellings of ONE eligibility rule,
+/// which is the #393 class waiting to happen. Adding a platform to the shell
+/// list alone would have made the BUILD write to the shared dir while the TEST
+/// kept looking in the leaf, and every row of that platform would have reported
+/// its binary missing with nothing pointing at the cause.
+const SHARED_PLATFORMS_DEFAULT: &str = "qemu-arm-baremetal";
+
+fn fixture_shared_platforms() -> Vec<String> {
+    std::env::var("NROS_FIXTURE_SHARED_PLATFORMS")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| SHARED_PLATFORMS_DEFAULT.to_string())
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
+}
+
 fn fixture_shared_target_dir(platform: &str) -> Option<PathBuf> {
-    match platform {
-        "qemu-arm-baremetal" => Some(build_dir("fixtures-cargo", &[platform])),
-        _ => None,
-    }
+    fixture_shared_platforms()
+        .iter()
+        .any(|p| p == platform)
+        .then(|| build_dir("fixtures-cargo", &[platform]))
 }
 
 /// Phase 226.D — resolve a prebuilt standalone Rust fixture that builds
