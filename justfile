@@ -371,7 +371,7 @@ check-fast: \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-sysdep-remedies \
+    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root
     @echo "Fast checks passed!"
 
@@ -1022,6 +1022,13 @@ check-fixtures-manifest:
 # collision is what breaks these.
 check-doc-refs:
     @bash scripts/check-doc-refs.sh
+
+# Every ACTIVE roadmap phase carries a findable status line; a finished one
+# belongs in `docs/roadmap/archived/`. A one-off pass does not hold — four
+# phases lost theirs within days of `ecc195ed6` doing exactly that.
+[private]
+check-roadmap-status:
+    @bash scripts/check-roadmap-status.sh
 
 # A leaf `.cargo/config.toml` is tracked iff it holds content `nros sync`
 # cannot regenerate. `**/.cargo/config.toml` is gitignored (most are pure sync

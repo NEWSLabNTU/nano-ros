@@ -1,5 +1,12 @@
 # Phase 340 — Build-artifact reuse: compile each identity once
 
+**Status (2026-08-07).** IN PROGRESS — measurement-first, and the measurements
+are the deliverable so far: W1 answered (`incremental` for the shared profile,
+single-leaf and lane-scale results recorded), W5.a measured (the biggest
+duplicate is INSIDE one invocation — the build-dep graph). W2/W3/W4 (collapse
+the R1 duplicates, the corrosion `--target` split, gate the property) not yet
+landed.
+
 **Closes:** issue 0446. **Touches:** phase-334 (build-cache layout — this is the
 *identity* question that layout question implies), phase-336 (the profile that
 made `incremental` the default everywhere), RFC-0065 (`nros build` owns the

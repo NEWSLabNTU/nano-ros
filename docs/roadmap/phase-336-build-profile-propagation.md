@@ -1,5 +1,9 @@
 # Phase 336 — Build-profile propagation (one knob per language, no literals)
 
+**Status (2026-08-07).** W1–W7 landed; W7's verification sweep closed it out on
+2026-08-05. Explicitly NOT done here: the per-board size table (the carve-outs
+mean the embedded numbers move independently) — see the W7 note below.
+
 **Touches:** RFC-0042 (platform & build determinism — the profile is now part of
 what "determinism" covers). **Related:** RFC-0026 (fixture/example shape — the
 profile is in every artifact path), issue 0023 / 0024 (size classes that a
