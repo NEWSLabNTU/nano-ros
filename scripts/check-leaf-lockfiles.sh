@@ -193,21 +193,45 @@ while read -r lock; do
 done < <(git ls-files '*/Cargo.lock' | grep -v '^third-party/' | grep -v '^packages/cli/')
 
 if [ ${#unsynced[@]} -gt 0 ]; then
-    echo "ERROR: ${#unsynced[@]} leaf crate(s) cannot resolve because this tree is NOT SYNCED." >&2
+    # Is the TREE unsynced, or is this leaf broken on a synced tree? The central
+    # `nros-patch.toml` answers it: `nros sync` writes it, `.gitignore` excludes
+    # it, so a fresh clone never has one.
+    #
+    # Issue 0466 — this used to `exit 1` either way, which made the gate
+    # unrunnable in the very lane it lives in. `check-fast` is documented
+    # BUILDLESS *and* SOURCE-FREE, and pr-checks.yml deliberately does NOT
+    # provision the CLI or run `nros sync` on a push; so on every push this gate
+    # met two leaves it could not resolve and failed. Per-push CI was red
+    # CONTINUOUSLY for over a day on exactly this, which also buried every other
+    # signal that lane exists to give.
+    #
+    # Not-synced is a statement about the ENVIRONMENT, not about the tree's
+    # correctness, and a gate cannot demand setup the lane is specified not to
+    # do. So: warn and keep going, still gating every leaf that DID resolve.
+    # With the central patch present the tree IS synced, an unresolvable leaf is
+    # then a real defect, and the old hard failure stands unchanged.
+    if [ -f "nros-patch.toml" ]; then
+        echo "ERROR: ${#unsynced[@]} leaf crate(s) cannot resolve on a SYNCED tree." >&2
+        printf '       %s\n' "${unsynced[@]}" >&2
+        echo "" >&2
+        echo "       \`nros-patch.toml\` exists, so this is not the setup gap below —" >&2
+        echo "       these leaves are genuinely unresolvable. Re-run \`nros sync\`; if" >&2
+        echo "       they persist, their patch tables or \`generated/\` trees are wrong." >&2
+        exit 1
+    fi
+    echo "check-leaf-lockfiles: SKIP ${#unsynced[@]} leaf crate(s) — tree not synced" >&2
     printf '       %s\n' "${unsynced[@]}" >&2
     echo "" >&2
     echo "       Their \`.cargo/config.toml\` includes the central \`nros-patch.toml\`" >&2
     echo "       and redirects the message crates at a per-leaf \`generated/\` tree." >&2
     echo "       Both are produced, not committed, so a checkout set up by the book's" >&2
-    echo "       install flow alone does not have them yet." >&2
+    echo "       install flow alone does not have them yet (issue 0378):" >&2
     echo "" >&2
-    echo "       Fix (issue 0378):" >&2
     echo "           nros sync            # writes nros-patch.toml + the leaf patch tables" >&2
     echo "           just setup all       # if the generated/ message crates are missing too" >&2
     echo "" >&2
-    echo "       This is a SETUP gap, not a broken crate — the gate used to report it" >&2
-    echo "       as 'not lock drift' with no remedy, which is unactionable." >&2
-    exit 1
+    echo "       Every OTHER leaf lock was still checked. Run this on a synced tree" >&2
+    echo "       to cover these two as well." >&2
 fi
 
 if [ ${#broken[@]} -gt 0 ]; then
