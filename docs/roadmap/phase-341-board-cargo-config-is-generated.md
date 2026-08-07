@@ -219,33 +219,74 @@ and FORCE_LINK anchors because they are `#[used]` (CLAUDE.md states this), but
 "safe in principle" is what 0440 also looked like. **W3 must link these ten
 specifically**, not merely build the families they sit in.
 
-### W2 — Emit `.cargo/nros-board.toml` from sync (committed)
+### W2 — Emit `.cargo/nros-board.toml` from sync (committed) — **LANDED**
 
-- [ ] Teach `nros sync` board resolution. It has NONE today — `cmd/ws.rs` imports
-      no `BoardRegistry`. The pieces exist: `BoardDescriptor::cargo_config_rendered
-      (workspace)` renders the block with `${workspace}` substituted, and
-      `BoardRegistry::resolve(board, target)` finds the descriptor.
-- [ ] Resolve the leaf's `[package.metadata.nros.entry] deploy` to a descriptor.
-      **Note the ambiguity:** `resolve` takes `(board, target)` and two
-      descriptors can share a triple — `nros-board-mps2-an385` and
-      `-freertos` are both `thumbv7m-none-eabi`, separated by `platform` /
-      `target_contains`. The existing bash gate matches `deploy` against the
-      descriptor's `platform`, which is the mapping to reuse.
-- [ ] Write `.cargo/nros-board.toml` with a DO-NOT-EDIT header, and add the third
-      `include` entry — following `write_patch_config`'s existing eviction/re-add
-      discipline so a stale entry is never left pointing at a deleted file
-      (issue 0463: a missing include is a HARD manifest-parse error).
+- [x] `nros sync` learned board resolution (`cmd/ws.rs::project_board_configs`,
+      running after the patch pass). `BoardCatalog::resolve_deploy` is new:
+      `resolve(board, target)` cannot serve, because the target is what the
+      projection derives.
+- [x] `deploy` → descriptor is **`names` first, `platform` second, each
+      requiring a UNIQUE hit**; anything else writes NOTHING and is reported.
+      `names` is what separates the two NuttX descriptors (same `platform`, same
+      crate, different triple); `platform` is the bash gate's mapping, kept as
+      the fallback.
+- [x] `.cargo/nros-board.toml` carries a DO-NOT-EDIT header naming its
+      descriptor; the `include` entry follows `render_patch_config_with`'s
+      evict-then-re-add discipline and is written ONLY when the file was.
+
+**Two findings that change W3.**
+
+1. **The include is withheld while the leaf still mirrors the block.** Cargo
+   JOINS `rustflags` arrays across merged config files — measured: a leaf
+   carrying its mirror *and* the include hands the linker `-Tdramboot.ld`
+   **twice**. So sync writes the projection but adds the include only when the
+   leaf declares none of the same keys (compared at key depth 2). W3's migration
+   is therefore a pure DELETION: drop the mirrored tables, re-run sync, the
+   include appears. Today that means every resolvable leaf gets a projection and
+   zero get an include — deliberately inert, exactly the overlap this phase asked
+   for.
+2. **`${workspace}` keys are withheld from the projection.**
+   `nros-board-nuttx-qemu` patches `libc` at
+   `${workspace}/third-party/nuttx/libc`; rendered it is an absolute host path,
+   which a COMMITTED file must not carry (issue 0457), and cargo resolves a
+   config `[patch]` path against the invocation CWD, so the descriptor cannot
+   express it relatively either — only the leaf's own depth can. Those top-level
+   keys are dropped from the projection, named in its header and in sync's
+   summary; the leaf keeps declaring them (it already does, relatively). A board
+   whose whole `cargo_config` is placeholder-bearing projects nothing.
+
+**A W3 obligation this creates — four deploy tokens resolve to no descriptor:**
+`qemu-mps2-an385`, `rtic-mps2-an385`, `threadx-qemu-riscv64`,
+`qemu-esp32-baremetal` (≈20 leaves). They are legitimate board identities —
+`nros_orchestration_ir::board_path_for` maps all four — but the descriptors'
+`names` lists do not carry them, so the deploy vocabulary has two SSoTs. W3 must
+add them as `names` aliases (a data edit, cross-checked against `board_path_for`)
+before those families can migrate. Sync names them in a summary line each run.
 
 **Acceptance:** a leaf builds with its `[target.*]` block moved out of the tracked
 config into the generated one, and `just nuttx build-fixtures` LINKS.
+Verified so far (W3 owes the link): on a NuttX-deploying leaf with the mirror
+removed, `cargo config get` reads `build.target`, `unstable.build-std`,
+`target.armv7a-nuttx-eabihf.{linker,rustflags}` — the full 24-arg group — through
+the generated include, beside the leaf's own authored `libc` patch.
 
 ### W3 — Migrate, one board family at a time
 
-- [ ] Per family: move the mirrored block into the generated file, verify the
-      family LINKS. One family per commit. Nothing is untracked — the projection
-      is committed.
+- [ ] Per family: DELETE the mirrored tables from the leaf's tracked config,
+      re-run `nros sync` (which then adds the include), commit the projection
+      alongside, verify the family LINKS. One family per commit. Nothing is
+      untracked — the projection is committed.
 - [ ] Start with `thumbv7m` (32 leaves, one block, the largest single win) and do
       NuttX last (the 0440 family — most args, most to lose).
+- [ ] **First, the four unclaimed deploy tokens** (W2 finding above) — without
+      the `names` aliases, `qemu-mps2-an385` / `rtic-mps2-an385` /
+      `threadx-qemu-riscv64` / `qemu-esp32-baremetal` leaves get no projection at
+      all, which is most of `thumbv7m`.
+- [ ] **Then `check-cargo-config-tracked`'s `has_authored_content`**: it treats
+      the whole `include = ` line as sync output, so a leaf left holding only the
+      board include reads as "pure sync output IS tracked" and the gate demands
+      untracking it — which would delete the very include a clone needs. Either
+      that rule or W4's replacement has to account for the board include.
 
 **Acceptance:** the family's fixtures build and its tests pass; the tracked
 config count drops by the family's size.
@@ -257,6 +298,9 @@ config count drops by the family's size.
       `.cargo/nros-board.toml`, in the `check-abi-bindings` mould. Exact
       comparison, not a representative arg.
 - [ ] Keep it in `check-fast` — it is buildless, like the gate it replaces.
+- [ ] The comparison must re-render through the SAME withholding rule W2 uses
+      (`committable_board_config`), or every NuttX projection reads as drift
+      against a descriptor whose `${workspace}` row can never be committed.
 
 **Acceptance:** the check fails on a hand-edited projection (tripwired, not
 merely observed passing), and no tracked leaf `config.toml` carries a `[target.*]`

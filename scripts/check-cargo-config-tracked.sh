@@ -82,10 +82,12 @@ has_uncommitted_generated_patch() {
 # #457 recorded the opposite — "cargo ignores a missing include SILENTLY" — and
 # built on it; measured on cargo 1.97.1 it does not.)
 #
-# Exactly two targets are generated: the central `nros-patch.toml` and the
-# per-leaf `nros-managed-patch.toml` sidecar. Both are gitignored, so a fresh
-# clone has neither and `_require-leaf-includes` sends the developer to
-# `nros sync`. An include naming anything ELSE has no generator at all, so no
+# Exactly three targets are generated: the central `nros-patch.toml`, the
+# per-leaf `nros-managed-patch.toml` sidecar, and the per-leaf `nros-board.toml`
+# board-`cargo_config` projection (phase-341 W2). The first two are gitignored,
+# so a fresh clone has neither and `_require-leaf-includes` sends the developer
+# to `nros sync`; the third is COMMITTED precisely so a clone can LINK without
+# running sync. An include naming anything ELSE has no generator at all, so no
 # sync run will ever satisfy it — that leaf is bricked for everyone, forever.
 # This gate catches that at authoring time, which the sync-time check in
 # `cmd/ws.rs` cannot: that one only validates the central entry it just wrote.
@@ -98,7 +100,7 @@ has_orphan_include() {
         [ -n "$entry" ] || continue
         base="$(basename "$entry")"
         case "$base" in
-            nros-patch.toml | nros-managed-patch.toml) continue ;;
+            nros-patch.toml | nros-managed-patch.toml | nros-board.toml) continue ;;
         esac
         echo "    $cfg" >&2
         echo "      include -> '$entry' — no generator writes this" >&2
@@ -182,7 +184,8 @@ if [ "$orphan_includes" -ne 0 ]; then
         echo
         echo "  Cargo raises a missing \`include\` as a HARD error during manifest parse,"
         echo "  so these leaves cannot be READ — \`cargo metadata\` fails too. Only"
-        echo "  \`nros-patch.toml\` (central) and \`nros-managed-patch.toml\` (per-leaf) are"
+        echo "  \`nros-patch.toml\` (central), \`nros-managed-patch.toml\` (per-leaf) and"
+        echo "  \`nros-board.toml\` (per-leaf board projection, phase-341) are"
         echo "  generated; an include naming anything else can never be satisfied by any"
         echo "  \`nros sync\` run. Drop the entry, or make sync write the target."
         echo "  (See docs/issues/0463-*.)"

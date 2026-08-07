@@ -1801,6 +1801,13 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         )?;
     }
 
+    // phase-341 W2 — project each Entry leaf's board `cargo_config` into its
+    // `.cargo/nros-board.toml`. AFTER the patch pass: both writers maintain the
+    // same `include` array, each evicting only its OWN entry by basename, and
+    // running last means this one reads (and re-adds onto) what the patch pass
+    // just wrote rather than racing it.
+    project_board_configs(&rust_consumers, nano_ros_path.as_deref(), verbose)?;
+
     refresh_source_metadata(&ws_root, nano_ros_path.clone(), no_metadata, verbose)?;
 
     println!("sync: done.");
@@ -3243,25 +3250,13 @@ fn write_patch_config(
         // Nothing host-specific — leave no stale file behind.
         let _ = std::fs::remove_file(&managed_path);
     } else {
-        let body = render_managed_patch_file(&generated);
-        let tmp = managed_path.with_file_name(format!(
-            ".{MANAGED_PATCH_FILE}.nros-sync-tmp.{}",
-            std::process::id()
-        ));
-        std::fs::write(&tmp, body).wrap_err_with(|| format!("sync: write {}", tmp.display()))?;
-        std::fs::rename(&tmp, &managed_path).wrap_err_with(|| {
-            format!(
-                "sync: rename {} -> {}",
-                tmp.display(),
-                managed_path.display()
-            )
-        })?;
+        // Same temp+rename as every other sync-owned file — one spelling,
+        // in [`atomic_write`] (byte-identical temp names to what this wrote
+        // inline before phase-341).
+        atomic_write(&managed_path, &render_managed_patch_file(&generated))?;
     }
 
-    let tmp = cfg.with_file_name(format!(".config.toml.nros-sync-tmp.{}", std::process::id()));
-    std::fs::write(&tmp, out).wrap_err_with(|| format!("sync: write {}", tmp.display()))?;
-    std::fs::rename(&tmp, &cfg)
-        .wrap_err_with(|| format!("sync: rename {} -> {}", tmp.display(), cfg.display()))?;
+    atomic_write(&cfg, &out)?;
     Ok(())
 }
 
@@ -3308,6 +3303,446 @@ fn render_managed_patch_file(managed: &[(String, String)]) -> String {
         out.push_str(&format!("{name} = {{ path = \"{rel}\" }}\n"));
     }
     out
+}
+
+// --- Board `cargo_config` projection (phase-341 W2) ----------------------------
+//
+// A board's `cargo_config` in `nros-board.toml` is the SSoT for the leaf's
+// `[build] target` / `[unstable] build-std` / `[target.<triple>]` link group
+// (RFC-0032's "third leg"). Until now each leaf carried a HAND-COPIED mirror of
+// it, which is the mirror-drift class: issue 0440 lost the NuttX kernel-archive
+// group in a package collapse and produced ~3680 undefined references, visible
+// only at link time on one platform.
+//
+// Sync projects the descriptor into `<leaf>/.cargo/nros-board.toml` instead,
+// reached by a third `include` entry.
+//
+// COMMITTED, not gitignored — unlike the `nros-managed-patch.toml` sidecar
+// (issue 0457), whose rows name `generated/` trees built from the USER's ament
+// install and are therefore host-derived. A board's `cargo_config` is a fixed
+// string in a committed descriptor, identical in every checkout, and gitignoring
+// its projection would mean a fresh clone could not LINK an embedded leaf until
+// sync ran. Same shape as `packages/core/*/src/generated.rs`: generate, commit,
+// gate (phase-341 W4).
+
+/// Basename of the generated projection, sibling of `config.toml` inside
+/// `.cargo/` and therefore reachable by the bare name from an `include`.
+const BOARD_CONFIG_FILE: &str = "nros-board.toml";
+
+/// `[package.metadata.nros.entry] deploy` — the board this leaf deploys to.
+/// `None` when the leaf is not an Entry pkg (a node/library crate), when the key
+/// is absent, or when the manifest does not parse (every other reader of that
+/// file will produce a better error than this one could).
+fn entry_deploy_key(cargo_toml_body: &str) -> Option<String> {
+    let v: toml::Value = toml::from_str(cargo_toml_body).ok()?;
+    let deploy = v
+        .get("package")?
+        .get("metadata")?
+        .get("nros")?
+        .get("entry")?
+        .get("deploy")?
+        .as_str()?
+        .trim();
+    (!deploy.is_empty()).then(|| deploy.to_string())
+}
+
+/// Does this item hold a `${workspace}` placeholder anywhere in its VALUES?
+///
+/// Walks the DOM rather than the rendered text: `Item`'s `Display` yields
+/// nothing for a table, and matching on raw text would also fire on a comment
+/// that merely mentions the placeholder (the descriptors comment their paths).
+fn item_has_workspace_placeholder(item: &toml_edit::Item) -> bool {
+    fn in_value(v: &toml_edit::Value) -> bool {
+        match v {
+            toml_edit::Value::String(s) => s.value().contains("${workspace}"),
+            toml_edit::Value::Array(a) => a.iter().any(in_value),
+            toml_edit::Value::InlineTable(t) => t.iter().any(|(_, v)| in_value(v)),
+            _ => false,
+        }
+    }
+    match item {
+        toml_edit::Item::None => false,
+        toml_edit::Item::Value(v) => in_value(v),
+        toml_edit::Item::Table(t) => t.iter().any(|(_, i)| item_has_workspace_placeholder(i)),
+        toml_edit::Item::ArrayOfTables(a) => a
+            .iter()
+            .any(|t| t.iter().any(|(_, i)| item_has_workspace_placeholder(i))),
+    }
+}
+
+/// The part of a descriptor's `cargo_config` that may be COMMITTED, plus the
+/// top-level keys withheld from it.
+///
+/// A `${workspace}` placeholder renders to THIS host's checkout (that is what
+/// `BoardDescriptor::cargo_config_rendered` is for), and a committed file may
+/// not assert one machine's layout — the rule that sent sync's `generated/`
+/// patch rows to a gitignored sidecar (issue 0457). It is not hypothetical:
+/// `nros-board-nuttx-qemu` carries `[patch.crates-io] libc = { path =
+/// "${workspace}/third-party/nuttx/libc" }`, and cargo resolves a config
+/// `[patch]` path against the INVOCATION CWD, so the descriptor cannot express
+/// it relatively either — the leaf's own depth is the only thing that can.
+///
+/// So the placeholder-bearing top-level keys are withheld rather than the whole
+/// board being skipped: withholding one `[patch.crates-io]` row leaves the leaf
+/// exactly as it is today (that row is already authored per-leaf, relatively),
+/// while skipping the board would forfeit the projection for the very family
+/// issue 0440 broke. Withheld keys are named in the header and counted in
+/// sync's summary — never dropped silently.
+fn committable_board_config(raw: &str) -> Result<(String, Vec<String>)> {
+    let mut doc: toml_edit::DocumentMut = raw
+        .parse()
+        .wrap_err("parse a board descriptor's `cargo_config`")?;
+    let withheld: Vec<String> = doc
+        .as_table()
+        .iter()
+        .filter(|(_, item)| item_has_workspace_placeholder(item))
+        .map(|(k, _)| k.to_string())
+        .collect();
+    for k in &withheld {
+        doc.as_table_mut().remove(k);
+    }
+    Ok((doc.to_string(), withheld))
+}
+
+/// The DO-NOT-EDIT projection: header naming the descriptor it came from (and
+/// anything withheld from it), then the committable `cargo_config`.
+fn render_board_config(deploy: &str, descriptor: &str, body: &str, withheld: &[String]) -> String {
+    let mut out = format!(
+        "# GENERATED by `nros sync` — DO NOT EDIT.\n\
+         #\n\
+         # Projection of the board `cargo_config` for `deploy = \"{deploy}\"`.\n\
+         # SSoT: {descriptor}\n\
+         #\n\
+         # This file IS committed (unlike sync's `nros-managed-patch.toml`): its\n\
+         # content is a fixed string in a committed descriptor, identical in every\n\
+         # checkout, and a fresh clone must be able to LINK this leaf before any\n\
+         # sync has run. Edit the descriptor and re-run `nros sync`; editing here\n\
+         # is drift, which phase-341 exists to make uncommittable (issue 0440).\n\
+         #\n\
+         # RFC-0032 \"third leg\" / docs/roadmap/phase-341-*.\n"
+    );
+    if !withheld.is_empty() {
+        out.push_str(&format!(
+            "#\n\
+             # WITHHELD from this projection: {}. Those keys carry a `${{workspace}}`\n\
+             # placeholder, which renders to one host's absolute checkout path and so\n\
+             # cannot be committed (issue 0457). They remain the leaf's own authored\n\
+             # `.cargo/config.toml` content.\n",
+            withheld.join(", ")
+        ));
+    }
+    out.push('\n');
+    out.push_str(body.trim_end_matches('\n'));
+    out.push('\n');
+    out
+}
+
+/// Every config key in `text`, to a depth of two (`build.target`,
+/// `target.thumbv7m-none-eabi`, `env`), as a set.
+///
+/// Depth two is the level at which cargo's config merge stops being harmless:
+/// two files declaring `[target.<triple>] rustflags` have their arrays JOINED,
+/// not overridden, so an included projection that repeats a leaf's still-present
+/// mirror would hand the linker `-Tlink.x -Tlink.x`. Depth one would be
+/// needlessly coarse (a leaf `[build] target` beside a projection `[build]
+/// rustflags` merges fine); depth three would be too fine (that array join is
+/// exactly the case we must refuse).
+fn config_keys_depth2(text: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let Ok(toml::Value::Table(top)) = toml::from_str::<toml::Value>(text) else {
+        return out;
+    };
+    for (k, v) in top {
+        match v {
+            toml::Value::Table(sub) => {
+                for (sk, _) in sub {
+                    out.insert(format!("{k}.{sk}"));
+                }
+            }
+            _ => {
+                out.insert(k);
+            }
+        }
+    }
+    out
+}
+
+/// Keys the leaf's tracked `config.toml` and the projection BOTH declare.
+///
+/// Non-empty ⇒ this leaf still carries its hand-mirrored block, so the `include`
+/// must NOT be added yet: the projection is written (so W3 and the W4
+/// regeneration gate have something to compare) but nothing reads it, and the
+/// leaf keeps linking exactly as it does today. W3's migration is then a pure
+/// DELETION — drop the mirrored table, re-run sync, and the include appears.
+fn board_projection_conflicts(existing_cfg: &str, projection_body: &str) -> Vec<String> {
+    let leaf = config_keys_depth2(existing_cfg);
+    let board = config_keys_depth2(projection_body);
+    leaf.intersection(&board).cloned().collect()
+}
+
+/// Add (or evict) the projection's `include` entry, with the same
+/// evict-then-re-add discipline [`render_patch_config_with`] uses for the
+/// central + sidecar entries: our entry is recognised by basename, removed
+/// unconditionally, and re-added only when the file it names is one we just
+/// wrote. Issue 0463 — a missing include target is a HARD error during MANIFEST
+/// PARSE, so an entry pointing at a file no generator wrote does not degrade the
+/// leaf, it makes the leaf unreadable.
+fn render_board_include(existing: &str, present: bool) -> Result<String> {
+    use toml_edit::{DocumentMut, value};
+
+    let mut doc: DocumentMut = existing.parse().wrap_err("parse .cargo/config.toml")?;
+    {
+        let inc_item = doc
+            .as_table_mut()
+            .entry("include")
+            .or_insert_with(|| value(toml_edit::Array::new()));
+        let arr = inc_item
+            .as_value_mut()
+            .and_then(|v| v.as_array_mut())
+            .ok_or_else(|| eyre!("sync: `include` is not an array"))?;
+        arr.retain(|v| {
+            v.as_str()
+                .map(|s| !s.ends_with(BOARD_CONFIG_FILE))
+                .unwrap_or(true)
+        });
+        if present {
+            arr.push(BOARD_CONFIG_FILE);
+        }
+        if arr.is_empty() {
+            doc.as_table_mut().remove("include");
+        }
+    }
+    Ok(doc.to_string())
+}
+
+/// What the projection pass did to one leaf — for the summary sync prints.
+#[derive(Debug, PartialEq, Eq)]
+enum BoardProjection {
+    /// Written, and the leaf's `include` now reaches it. Carries the top-level
+    /// keys [`committable_board_config`] withheld, if any.
+    Included(Vec<String>),
+    /// Written, but the leaf still carries a conflicting hand-mirrored block,
+    /// so no `include` was added (phase-341 W3 removes the mirror).
+    ShadowedByMirror(Vec<String>),
+    /// Nothing to project — the board declares no `cargo_config`, or every key
+    /// of it was withheld. Any prior projection + include is removed.
+    NoBoardConfig,
+}
+
+/// Write (or remove) one leaf's `.cargo/nros-board.toml` and maintain its
+/// `include` entry.
+///
+/// Ordering is the 0463 invariant: the file is written BEFORE the include that
+/// names it, and the include is dropped BEFORE the file it names.
+///
+/// Idempotent — both files are compared before writing, so a re-sync that
+/// changes nothing does not touch an mtime (every prebuilt fixture keyed on
+/// these inputs would otherwise read STALE).
+fn write_board_projection(
+    leaf_dir: &Path,
+    deploy: &str,
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+) -> Result<BoardProjection> {
+    let cfg_dir = leaf_dir.join(".cargo");
+    let cfg = cfg_dir.join("config.toml");
+    let dst = cfg_dir.join(BOARD_CONFIG_FILE);
+    let existing_cfg = std::fs::read_to_string(&cfg).unwrap_or_default();
+
+    // What may be committed, and what `${workspace}` kept out of it. An error
+    // here means the descriptor's `cargo_config` is not valid TOML — a hard
+    // failure, because every other consumer of that string is about to hit the
+    // same thing and this is the only place that can name the board.
+    let (projected, withheld) = match descriptor.cargo_config.as_deref() {
+        Some(raw) => committable_board_config(raw).wrap_err_with(|| {
+            format!(
+                "sync: board `{}` ({})",
+                descriptor.names.join("/"),
+                descriptor.source.as_deref().unwrap_or("nros-board.toml"),
+            )
+        })?,
+        None => (String::new(), Vec::new()),
+    };
+
+    // "Nothing to project" is measured in KEYS, not bytes: a body left holding
+    // only a stray comment is still nothing a leaf can inherit.
+    if config_keys_depth2(&projected).is_empty() {
+        // Drop our include FIRST (so nothing ever names a file that is gone),
+        // then the file.
+        if !existing_cfg.is_empty() {
+            let out = render_board_include(&existing_cfg, false)
+                .wrap_err_with(|| format!("sync: edit {}", cfg.display()))?;
+            if out != existing_cfg {
+                atomic_write(&cfg, &out)?;
+            }
+        }
+        if dst.exists() {
+            std::fs::remove_file(&dst)
+                .wrap_err_with(|| format!("sync: remove {}", dst.display()))?;
+        }
+        return Ok(BoardProjection::NoBoardConfig);
+    }
+
+    let body = render_board_config(
+        deploy,
+        descriptor.source.as_deref().unwrap_or("nros-board.toml"),
+        &projected,
+        &withheld,
+    );
+    if std::fs::read_to_string(&dst).ok().as_deref() != Some(body.as_str()) {
+        std::fs::create_dir_all(&cfg_dir)
+            .wrap_err_with(|| format!("sync: mkdir {}", cfg_dir.display()))?;
+        atomic_write(&dst, &body)?;
+    }
+
+    // Conflicts are computed against what was PROJECTED, not the raw descriptor:
+    // a key we withheld is one the leaf must keep declaring itself, so it is not
+    // a duplicate.
+    let conflicts = board_projection_conflicts(&existing_cfg, &projected);
+    let out = render_board_include(&existing_cfg, conflicts.is_empty())
+        .wrap_err_with(|| format!("sync: edit {}", cfg.display()))?;
+    if out != existing_cfg {
+        std::fs::create_dir_all(&cfg_dir)
+            .wrap_err_with(|| format!("sync: mkdir {}", cfg_dir.display()))?;
+        atomic_write(&cfg, &out)?;
+    }
+    Ok(if conflicts.is_empty() {
+        BoardProjection::Included(withheld)
+    } else {
+        BoardProjection::ShadowedByMirror(conflicts)
+    })
+}
+
+/// Temp + rename, the write discipline every other sync-owned file here uses
+/// (a parallel fixture build runs many syncs at once).
+fn atomic_write(dst: &Path, body: &str) -> Result<()> {
+    let name = dst
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("nros-sync-out");
+    let tmp = dst.with_file_name(format!(".{name}.nros-sync-tmp.{}", std::process::id()));
+    std::fs::write(&tmp, body).wrap_err_with(|| format!("sync: write {}", tmp.display()))?;
+    std::fs::rename(&tmp, dst)
+        .wrap_err_with(|| format!("sync: rename {} -> {}", tmp.display(), dst.display()))
+}
+
+/// phase-341 W2 — project every Entry leaf's board `cargo_config` into
+/// `<leaf>/.cargo/nros-board.toml`.
+///
+/// Deliberately CONSERVATIVE, because the failure it guards against is invisible
+/// until link time (issue 0440) and this writer runs over ~700 leaf configs
+/// (issues 0457 / 0463 are what happens when one is wrong):
+///
+/// * no nano-ros checkout, or no readable board catalog ⇒ touch NOTHING. The
+///   projection is committed, so a clone already has it; skipping is always safe,
+///   whereas "clean up what I cannot see" would delete a committed file.
+/// * a `deploy` no descriptor claims, or one claimed by several ⇒ touch NOTHING
+///   for that leaf and say so once at the end.
+/// * out-of-tree consumers ⇒ skipped, like #272 skips the `include` for them.
+fn project_board_configs(
+    leaves: &[&WsPkg],
+    nano_ros_path: Option<&Path>,
+    verbose: bool,
+) -> Result<()> {
+    use crate::orchestration::board_descriptor::{BoardCatalog, DeployResolution};
+
+    let Some(nrp) = nano_ros_path else {
+        return Ok(());
+    };
+    let nrp_c = nrp.canonicalize().unwrap_or_else(|_| nrp.to_path_buf());
+    let catalog = match BoardCatalog::load(&nrp_c) {
+        Ok(c) => c,
+        Err(e) => {
+            // Not fatal: a consumer whose NROS_REPO_DIR has no `packages/boards`
+            // simply has no board knowledge to project. Never silent, because a
+            // leaf that expected a projection will otherwise fail much later.
+            println!("sync: board configs not projected (no board catalog: {e})");
+            return Ok(());
+        }
+    };
+
+    let mut included = 0usize;
+    let mut shadowed = 0usize;
+    let mut unresolved: BTreeSet<String> = BTreeSet::new();
+    let mut withheld_keys: BTreeSet<String> = BTreeSet::new();
+    for leaf in leaves {
+        // #272 — an out-of-tree consumer's leaf is not ours to write generated,
+        // committed content into.
+        let leaf_c = leaf.dir.canonicalize().unwrap_or_else(|_| leaf.dir.clone());
+        if !leaf_c.starts_with(&nrp_c) {
+            continue;
+        }
+        let Ok(manifest) = std::fs::read_to_string(leaf.dir.join("Cargo.toml")) else {
+            continue;
+        };
+        let Some(deploy) = entry_deploy_key(&manifest) else {
+            continue; // not an Entry pkg — no board to inherit from
+        };
+        let descriptor = match catalog.resolve_deploy(&deploy) {
+            DeployResolution::Board(d) => d,
+            DeployResolution::Unknown => {
+                unresolved.insert(format!("{deploy} (no board descriptor claims it)"));
+                continue;
+            }
+            DeployResolution::Ambiguous(cands) => {
+                unresolved.insert(format!("{deploy} (claimed by {})", cands.join(", ")));
+                continue;
+            }
+        };
+        match write_board_projection(&leaf.dir, &deploy, descriptor)? {
+            BoardProjection::Included(withheld) => {
+                included += 1;
+                for k in withheld {
+                    withheld_keys.insert(format!("{deploy}: {k}"));
+                }
+                if verbose {
+                    println!(
+                        "sync: board config → {}",
+                        leaf.dir.join(".cargo").join(BOARD_CONFIG_FILE).display()
+                    );
+                }
+            }
+            BoardProjection::ShadowedByMirror(keys) => {
+                shadowed += 1;
+                if verbose {
+                    println!(
+                        "sync: board config written but not included for {} — its \
+                         tracked config still declares {} (phase-341 W3 removes the mirror)",
+                        leaf.dir.display(),
+                        keys.join(", ")
+                    );
+                }
+            }
+            BoardProjection::NoBoardConfig => {}
+        }
+    }
+    if included + shadowed > 0 {
+        println!(
+            "sync: board configs — {included} leaf/leaves include \
+             .cargo/{BOARD_CONFIG_FILE}, {shadowed} still governed by their own \
+             [target.*] block (phase-341 W3)"
+        );
+    }
+    if !withheld_keys.is_empty() {
+        // Never silent: the leaf must keep declaring these itself, and a reader
+        // comparing the projection with the descriptor would otherwise think
+        // content had gone missing.
+        println!(
+            "sync: board configs — key(s) withheld from the committed projection \
+             (they carry `${{workspace}}`, an absolute host path): {}",
+            withheld_keys.iter().cloned().collect::<Vec<_>>().join("; ")
+        );
+    }
+    if !unresolved.is_empty() {
+        // Loud but not fatal: these leaves keep the hand-mirrored block they
+        // have today, which is exactly the pre-phase-341 status quo.
+        println!(
+            "sync: board configs — {} deploy key(s) resolve to no single board \
+             descriptor, so no projection was written for them: {}",
+            unresolved.len(),
+            unresolved.iter().cloned().collect::<Vec<_>>().join("; ")
+        );
+    }
+    Ok(())
 }
 
 /// Pure DOM transform behind [`write_patch_config`]: given the existing
@@ -4780,6 +5215,341 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
             ecio.get("libc").is_some() && ecio.get("nros-core").is_some(),
             "external merge failed:\n{ext}"
         );
+    }
+}
+
+/// phase-341 W2 — the board `cargo_config` projection.
+#[cfg(test)]
+mod board_projection_tests {
+    use super::*;
+    use crate::orchestration::board_descriptor::{
+        BoardDescriptor, EntryKind, LinkKind, NetStack, PlatformKind, Toolchain,
+    };
+
+    const NUTTX_BODY: &str = "\
+[build]
+target = \"armv7a-nuttx-eabihf\"
+
+[target.armv7a-nuttx-eabihf]
+linker = \"arm-none-eabi-gcc\"
+rustflags = [
+    \"-C\", \"link-arg=-Tdramboot.ld\",
+]
+";
+
+    fn board(cargo_config: Option<&str>) -> BoardDescriptor {
+        BoardDescriptor {
+            names: vec!["nuttx".into()],
+            platform: PlatformKind::Nuttx,
+            target: None,
+            toolchain: Toolchain::Nightly,
+            platform_feature: "platform-nuttx".into(),
+            local_aliases: vec![],
+            link_kind: LinkKind::NuttxStaging,
+            entry_kind: EntryKind::BoardRun,
+            net_stack: NetStack::RtosOwned,
+            chip: None,
+            board_crate: Some("nros-board-nuttx-qemu".into()),
+            crate_path: None,
+            board_features: vec![],
+            capability_features: vec![],
+            cargo_config: cargo_config.map(str::to_string),
+            entry: None,
+            target_contains: None,
+            capabilities: None,
+            cmake: None,
+            source: Some("packages/boards/nros-board-nuttx-qemu/nros-board.toml".into()),
+        }
+    }
+
+    fn leaf(cfg: Option<&str>) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        if let Some(body) = cfg {
+            std::fs::create_dir_all(dir.path().join(".cargo")).unwrap();
+            std::fs::write(dir.path().join(".cargo/config.toml"), body).unwrap();
+        }
+        dir
+    }
+
+    fn read_cfg(dir: &Path) -> String {
+        std::fs::read_to_string(dir.join(".cargo/config.toml")).unwrap_or_default()
+    }
+
+    fn includes(cfg: &str) -> Vec<String> {
+        let doc: toml_edit::DocumentMut = cfg.parse().expect("config parses");
+        doc.get("include")
+            .and_then(|i| i.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str())
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn entry_deploy_key_reads_the_entry_table() {
+        let manifest =
+            "[package]\nname = \"x\"\n\n[package.metadata.nros.entry]\ndeploy = \"nuttx\"\n";
+        assert_eq!(entry_deploy_key(manifest).as_deref(), Some("nuttx"));
+        // A node pkg with no entry table is not an Entry leaf.
+        assert_eq!(
+            entry_deploy_key(
+                "[package]\nname = \"x\"\n\n[package.metadata.nros.node]\nname = \"t\"\n"
+            ),
+            None
+        );
+        // An empty key is not a board (`entry-deploy-missing` is nros check's job).
+        assert_eq!(
+            entry_deploy_key("[package.metadata.nros.entry]\ndeploy = \"\"\n"),
+            None
+        );
+        // Unparseable manifest — every other reader gives a better error.
+        assert_eq!(entry_deploy_key("not ] toml ["), None);
+    }
+
+    /// The generated file must say who owns it and which descriptor it came
+    /// from — a projection whose header names the wrong file sends the next
+    /// reader to edit the wrong SSoT.
+    #[test]
+    fn projection_carries_a_do_not_edit_header_naming_its_descriptor() {
+        let out = render_board_config(
+            "nuttx",
+            "packages/boards/b/nros-board.toml",
+            NUTTX_BODY,
+            &[],
+        );
+        assert!(
+            out.starts_with("# GENERATED by `nros sync` — DO NOT EDIT."),
+            "{out}"
+        );
+        assert!(out.contains("packages/boards/b/nros-board.toml"), "{out}");
+        assert!(out.contains("deploy = \"nuttx\""), "{out}");
+        assert!(out.contains("link-arg=-Tdramboot.ld"), "{out}");
+        // Still valid cargo config after the header.
+        let doc: toml_edit::DocumentMut = out.parse().expect("projection is valid TOML");
+        assert!(doc.get("build").is_some());
+    }
+
+    /// Issue-0457 rule, applied to a REAL descriptor shape: the in-tree NuttX
+    /// board patches `libc` at `${workspace}/third-party/nuttx/libc`, an
+    /// absolute host path once rendered — and cargo resolves a config `[patch]`
+    /// path against the invocation CWD, so the descriptor cannot express it
+    /// relatively either. That key is withheld from the committed projection
+    /// (named in the header), and everything else still projects.
+    #[test]
+    fn workspace_placeholder_keys_are_withheld_not_committed() {
+        let raw = format!(
+            "{NUTTX_BODY}\n[patch.crates-io]\nlibc = {{ path = \"${{workspace}}/third-party/nuttx/libc\" }}\n"
+        );
+        let (body, withheld) = committable_board_config(&raw).unwrap();
+        assert_eq!(withheld, vec!["patch".to_string()]);
+        assert!(
+            !body.contains("${workspace}"),
+            "host path projected:\n{body}"
+        );
+        assert!(
+            body.contains("link-arg=-Tdramboot.ld"),
+            "the rest must survive:\n{body}"
+        );
+        let out = render_board_config("nuttx", "b/nros-board.toml", &body, &withheld);
+        assert!(
+            out.contains("WITHHELD from this projection: patch"),
+            "a withheld key must be visible in the header:\n{out}"
+        );
+    }
+
+    /// A board whose `cargo_config` is ENTIRELY placeholder-bearing projects
+    /// nothing — and must not leave an empty file with an include naming it.
+    #[test]
+    fn fully_withheld_board_config_writes_nothing() {
+        let dir = leaf(Some("[env]\nCC = \"gcc\"\n"));
+        let outcome = write_board_projection(
+            dir.path(),
+            "nuttx",
+            &board(Some(
+                "[patch.crates-io]\nlibc = { path = \"${workspace}/x\" }\n",
+            )),
+        )
+        .unwrap();
+        assert_eq!(outcome, BoardProjection::NoBoardConfig);
+        assert!(!dir.path().join(".cargo").join(BOARD_CONFIG_FILE).exists());
+        assert!(includes(&read_cfg(dir.path())).is_empty());
+    }
+
+    /// A descriptor whose `cargo_config` is not valid TOML fails loudly, naming
+    /// the board — the projection writer is the only place that knows which
+    /// descriptor the string came from.
+    #[test]
+    fn unparseable_board_config_fails_naming_the_board() {
+        let dir = leaf(Some(""));
+        let err = write_board_projection(dir.path(), "nuttx", &board(Some("[build\n")))
+            .expect_err("invalid TOML must not be written");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("nuttx"), "{msg}");
+        assert!(!dir.path().join(".cargo").join(BOARD_CONFIG_FILE).exists());
+    }
+
+    /// W2 lands the generator ALONGSIDE the hand-mirrored blocks. While a leaf
+    /// still declares the same keys, adding the `include` would make cargo JOIN
+    /// the two rustflags arrays and hand the linker `-Tdramboot.ld` twice — so
+    /// the file is written and the include is withheld.
+    #[test]
+    fn mirror_still_present_blocks_the_include() {
+        let dir = leaf(Some(NUTTX_BODY));
+        let outcome =
+            write_board_projection(dir.path(), "nuttx", &board(Some(NUTTX_BODY))).unwrap();
+        assert!(
+            matches!(outcome, BoardProjection::ShadowedByMirror(_)),
+            "{outcome:?}"
+        );
+        assert!(
+            dir.path().join(".cargo/nros-board.toml").is_file(),
+            "projection must still be written — W3 and the W4 gate compare it"
+        );
+        assert!(
+            includes(&read_cfg(dir.path())).is_empty(),
+            "no include while the mirror governs:\n{}",
+            read_cfg(dir.path())
+        );
+    }
+
+    /// W3's migration step is a pure DELETION: drop the mirrored table, re-run
+    /// sync, and the include appears.
+    #[test]
+    fn removing_the_mirror_turns_the_include_on() {
+        // Authored remainder only — no key the board also declares.
+        let dir = leaf(Some("[env]\nCC = \"arm-none-eabi-gcc\"\n"));
+        let outcome =
+            write_board_projection(dir.path(), "nuttx", &board(Some(NUTTX_BODY))).unwrap();
+        assert_eq!(outcome, BoardProjection::Included(vec![]));
+        let cfg = read_cfg(dir.path());
+        assert_eq!(includes(&cfg), vec![BOARD_CONFIG_FILE.to_string()], "{cfg}");
+        assert!(
+            cfg.contains("CC ="),
+            "authored remainder must survive:\n{cfg}"
+        );
+        // Issue 0463 — the include names a file that exists, always.
+        assert!(dir.path().join(".cargo").join(BOARD_CONFIG_FILE).is_file());
+    }
+
+    /// A `[build] target` in the leaf beside a `[build] rustflags` in the board
+    /// is not a conflict (cargo merges distinct keys fine); the SAME key is.
+    #[test]
+    fn conflicts_are_computed_at_key_depth_two() {
+        assert!(
+            board_projection_conflicts("[build]\nrustflags = []\n", "[build]\ntarget = \"x\"\n")
+                .is_empty()
+        );
+        assert_eq!(
+            board_projection_conflicts("[build]\ntarget = \"x\"\n", "[build]\ntarget = \"x\"\n"),
+            vec!["build.target".to_string()]
+        );
+        // Different triples do not collide; the same one does.
+        assert!(
+            board_projection_conflicts(
+                "[target.riscv32imc-unknown-none-elf]\nrustflags = []\n",
+                NUTTX_BODY
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            board_projection_conflicts(
+                "[target.armv7a-nuttx-eabihf]\nlinker = \"x\"\n",
+                NUTTX_BODY
+            ),
+            vec!["target.armv7a-nuttx-eabihf".to_string()]
+        );
+    }
+
+    /// Issue 0463's invariant, from the other direction: a board that declares
+    /// no `cargo_config` must leave neither the file nor an include naming it.
+    #[test]
+    fn board_without_cargo_config_removes_file_and_include() {
+        let dir = leaf(Some("[env]\nCC = \"gcc\"\n"));
+        write_board_projection(dir.path(), "nuttx", &board(Some(NUTTX_BODY))).unwrap();
+        assert_eq!(includes(&read_cfg(dir.path())).len(), 1);
+
+        // The board loses its cargo_config (or the leaf re-deploys to a board
+        // that never had one).
+        let outcome = write_board_projection(dir.path(), "posix", &board(None)).unwrap();
+        assert_eq!(outcome, BoardProjection::NoBoardConfig);
+        assert!(
+            !dir.path().join(".cargo").join(BOARD_CONFIG_FILE).exists(),
+            "stale projection left behind"
+        );
+        assert!(
+            includes(&read_cfg(dir.path())).is_empty(),
+            "include left pointing at a deleted file:\n{}",
+            read_cfg(dir.path())
+        );
+        assert!(
+            read_cfg(dir.path()).contains("CC ="),
+            "authored content lost"
+        );
+    }
+
+    /// Both writers maintain the same `include` array. Neither may evict the
+    /// other's entry, and a full sync must converge to the same file.
+    #[test]
+    fn board_and_patch_includes_coexist() {
+        let dir = leaf(Some(""));
+        write_board_projection(dir.path(), "nuttx", &board(Some(NUTTX_BODY))).unwrap();
+        let after_board = read_cfg(dir.path());
+        // The patch pass runs over the same file next sync.
+        let after_patch = render_patch_config_with(
+            &after_board,
+            &[("std_msgs".into(), "generated/std_msgs".into())],
+            Some("../../nros-patch.toml"),
+            true,
+        )
+        .unwrap();
+        let inc = includes(&after_patch);
+        assert!(
+            inc.iter().any(|e| e.ends_with(BOARD_CONFIG_FILE)),
+            "patch pass evicted the board include: {inc:?}"
+        );
+        assert!(inc.iter().any(|e| e.ends_with(CENTRAL_PATCH_FILE)));
+        assert!(inc.iter().any(|e| e.ends_with(MANAGED_PATCH_FILE)));
+        // …and the board pass, running last, re-adds exactly one entry.
+        let converged = render_board_include(&after_patch, true).unwrap();
+        assert_eq!(
+            includes(&converged)
+                .iter()
+                .filter(|e| e.ends_with(BOARD_CONFIG_FILE))
+                .count(),
+            1,
+            "duplicate board include:\n{converged}"
+        );
+    }
+
+    /// Re-syncing must not touch either file when nothing changed: a rewritten
+    /// mtime restales every prebuilt fixture keyed on these inputs.
+    #[test]
+    fn resync_is_idempotent_on_disk() {
+        let dir = leaf(Some("[env]\nCC = \"gcc\"\n"));
+        write_board_projection(dir.path(), "nuttx", &board(Some(NUTTX_BODY))).unwrap();
+        let proj = dir.path().join(".cargo").join(BOARD_CONFIG_FILE);
+        let cfg = dir.path().join(".cargo/config.toml");
+        let (m1, m2) = (
+            std::fs::metadata(&proj).unwrap().modified().unwrap(),
+            std::fs::metadata(&cfg).unwrap().modified().unwrap(),
+        );
+        write_board_projection(dir.path(), "nuttx", &board(Some(NUTTX_BODY))).unwrap();
+        assert_eq!(std::fs::metadata(&proj).unwrap().modified().unwrap(), m1);
+        assert_eq!(std::fs::metadata(&cfg).unwrap().modified().unwrap(), m2);
+    }
+
+    /// A placeholder inside a COMMENT is not a path — the descriptors comment
+    /// their `${workspace}` rows, and withholding a whole table because its
+    /// comment mentions one would silently drop link args.
+    #[test]
+    fn a_placeholder_in_a_comment_withholds_nothing() {
+        let raw = "# see ${workspace}/third-party for the script\n[build]\ntarget = \"x\"\n";
+        let (body, withheld) = committable_board_config(raw).unwrap();
+        assert!(withheld.is_empty(), "{withheld:?}");
+        assert!(body.contains("target = \"x\""), "{body}");
     }
 }
 

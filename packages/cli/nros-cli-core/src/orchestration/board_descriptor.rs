@@ -37,6 +37,32 @@ pub enum PlatformKind {
     OrinSpe,
 }
 
+impl PlatformKind {
+    /// The kebab-case token this variant deserializes from — the spelling that
+    /// appears as `platform = "…"` in `nros-board.toml`.
+    ///
+    /// phase-341 W2 needs it because a leaf's `[package.metadata.nros.entry]
+    /// deploy` is matched against the descriptor's `platform` (the mapping
+    /// `scripts/check-board-cargo-config-applied.sh` already uses). Written as
+    /// an exhaustive match rather than a serde round-trip so adding a variant
+    /// is a compile error here instead of a silently unmatched board;
+    /// `platform_kebab_round_trips` proves the two spellings agree.
+    pub fn kebab(self) -> &'static str {
+        match self {
+            PlatformKind::Posix => "posix",
+            PlatformKind::Freertos => "freertos",
+            PlatformKind::BareMetal => "bare-metal",
+            PlatformKind::Nuttx => "nuttx",
+            PlatformKind::Zephyr => "zephyr",
+            PlatformKind::ThreadxLinux => "threadx-linux",
+            PlatformKind::ThreadxRiscv64 => "threadx-riscv64",
+            PlatformKind::Esp32 => "esp32",
+            PlatformKind::Stm32 => "stm32",
+            PlatformKind::OrinSpe => "orin-spe",
+        }
+    }
+}
+
 /// Rust toolchain a generated package pins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -210,6 +236,14 @@ pub struct BoardDescriptor {
     /// toolchain file — their preset carries only `nano_ros_ROOT`.
     #[serde(default)]
     pub cmake: Option<BoardCmake>,
+    /// phase-341 W2 — the `nros-board.toml` this descriptor was read from,
+    /// workspace-relative. Set by [`BoardCatalog::load`], `None` for
+    /// in-memory descriptors. Recorded rather than derived from
+    /// `crate_path_rel()`: a generated projection of `cargo_config` names its
+    /// SSoT in the DO-NOT-EDIT header, and a header that names the wrong file
+    /// sends the next reader to edit the wrong descriptor.
+    #[serde(skip)]
+    pub source: Option<String>,
 }
 
 /// `[board.cmake]` — CMake toolchain facts for the ament-shape preset flow.
@@ -295,7 +329,20 @@ impl BoardCatalog {
                 .map_err(|e| BoardLoadError::Io(descriptor_path.clone(), e))?;
             let file: BoardFile = toml::from_str(&text)
                 .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;
-            descriptors.extend(file.boards);
+            // Workspace-relative, forward slashes — it goes into a COMMITTED
+            // generated header, so an absolute host path would be drift the
+            // moment anyone else regenerates it.
+            let rel = descriptor_path
+                .strip_prefix(workspace)
+                .unwrap_or(&descriptor_path)
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            descriptors.extend(file.boards.into_iter().map(|mut b| {
+                b.source = Some(rel.clone());
+                b
+            }));
         }
         Ok(Self { descriptors })
     }
@@ -342,6 +389,75 @@ impl BoardCatalog {
         }
         None
     }
+
+    /// phase-341 W2 — resolve a leaf's `[package.metadata.nros.entry] deploy`
+    /// token to the descriptor whose `cargo_config` governs that leaf's link.
+    ///
+    /// [`resolve`] cannot serve here: it takes a `(board, target)` pair and the
+    /// target is exactly what the projection is trying to *derive*. Two rules,
+    /// in order, each requiring a UNIQUE hit:
+    ///
+    /// 1. **`names`** — the board's own name/alias list. This is what separates
+    ///    the two descriptors that share a triple *and* a platform:
+    ///    `nuttx` (armv7a) vs `nuttx-riscv` (riscv32imac) are one `names` entry
+    ///    apart, and `target_contains` — [`resolve`]'s discriminator — is
+    ///    useless without a target to test it against.
+    /// 2. **`platform`** — the mapping
+    ///    `scripts/check-board-cargo-config-applied.sh` uses (it matches a
+    ///    leaf's `deploy` against each `platform = "…"`). Reached only when no
+    ///    board CLAIMS the name, and only when exactly one board declares that
+    ///    platform — `nuttx` is declared by two, so a deploy token that reached
+    ///    this rule for it is ambiguous rather than "the first one".
+    ///
+    /// Anything else is [`DeployResolution::Unknown`] / `Ambiguous`, and the
+    /// caller must write NOTHING. A projection carrying the wrong board's link
+    /// args is worse than no projection: the hand-mirrored block it would
+    /// shadow is at least the block that links today (issue 0440).
+    pub fn resolve_deploy(&self, deploy: &str) -> DeployResolution<'_> {
+        let by_name: Vec<&BoardDescriptor> = self
+            .descriptors
+            .iter()
+            .filter(|d| d.names.iter().any(|n| n == deploy))
+            .collect();
+        match by_name.len() {
+            1 => return DeployResolution::Board(by_name[0]),
+            0 => {}
+            _ => return DeployResolution::Ambiguous(descriptor_labels(&by_name)),
+        }
+        let by_platform: Vec<&BoardDescriptor> = self
+            .descriptors
+            .iter()
+            .filter(|d| d.platform.kebab() == deploy)
+            .collect();
+        match by_platform.len() {
+            1 => DeployResolution::Board(by_platform[0]),
+            0 => DeployResolution::Unknown,
+            _ => DeployResolution::Ambiguous(descriptor_labels(&by_platform)),
+        }
+    }
+}
+
+/// Human-readable identity of each candidate, for an ambiguity diagnostic.
+fn descriptor_labels(candidates: &[&BoardDescriptor]) -> Vec<String> {
+    candidates
+        .iter()
+        .map(|d| match &d.source {
+            Some(src) => format!("{} ({src})", d.names.join("/")),
+            None => d.names.join("/"),
+        })
+        .collect()
+}
+
+/// Outcome of [`BoardCatalog::resolve_deploy`].
+#[derive(Debug)]
+pub enum DeployResolution<'a> {
+    /// Exactly one descriptor claims this deploy token.
+    Board(&'a BoardDescriptor),
+    /// No descriptor claims it (e.g. a deploy key known only to
+    /// `nros_orchestration_ir::board_path_for`, or an out-of-tree board).
+    Unknown,
+    /// Several descriptors claim it and nothing here can choose between them.
+    Ambiguous(Vec<String>),
 }
 
 /// Error loading or parsing board descriptors.
@@ -653,9 +769,130 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             target_contains: None,
             capabilities: None,
             cmake: None,
+            source: None,
         };
         let rendered = descriptor.cargo_config_rendered(Path::new("/ws")).unwrap();
         assert_eq!(rendered, "inc = \"/ws/third-party/x\"");
+    }
+
+    /// phase-341 W2 — `PlatformKind::kebab()` must spell each variant exactly
+    /// as serde deserializes it, since the deploy→descriptor fallback compares
+    /// a leaf's `deploy` token against that spelling. A hand-written match can
+    /// drift from `rename_all`; this closes the loop on every variant.
+    #[test]
+    fn platform_kebab_round_trips() {
+        use PlatformKind::*;
+        for p in [
+            Posix,
+            Freertos,
+            BareMetal,
+            Nuttx,
+            Zephyr,
+            ThreadxLinux,
+            ThreadxRiscv64,
+            Esp32,
+            Stm32,
+            OrinSpe,
+        ] {
+            let back: PlatformKind = serde_json::from_str(&format!("\"{}\"", p.kebab()))
+                .unwrap_or_else(|e| panic!("`{}` does not deserialize back: {e}", p.kebab()));
+            assert_eq!(back, p, "kebab() spelling disagrees with serde for {p:?}");
+        }
+    }
+
+    /// phase-341 W2 — the ambiguity the phase doc names: two NuttX descriptors
+    /// share `platform = "nuttx"` (and back the same crate), and are told apart
+    /// only by `names`. Resolution must pick the arm board for `deploy =
+    /// "nuttx"` and the riscv one for `deploy = "nuttx-riscv"` — a projection
+    /// that swapped them would write the wrong triple and link args.
+    #[test]
+    fn deploy_resolves_the_two_nuttx_boards_apart() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let cat = BoardCatalog::load(&root).expect("load real board catalog");
+        let arm = match cat.resolve_deploy("nuttx") {
+            DeployResolution::Board(d) => d,
+            other => panic!("deploy `nuttx` did not resolve: {other:?}"),
+        };
+        let riscv = match cat.resolve_deploy("nuttx-riscv") {
+            DeployResolution::Board(d) => d,
+            other => panic!("deploy `nuttx-riscv` did not resolve: {other:?}"),
+        };
+        let arm_cfg = arm.cargo_config.as_deref().expect("arm board cargo_config");
+        let riscv_cfg = riscv
+            .cargo_config
+            .as_deref()
+            .expect("riscv board cargo_config");
+        assert!(
+            arm_cfg.contains("armv7a-nuttx-eabihf"),
+            "`nuttx` resolved to a board whose cargo_config is not the arm one:\n{arm_cfg}"
+        );
+        assert!(
+            riscv_cfg.contains("riscv"),
+            "`nuttx-riscv` resolved to a board whose cargo_config is not the riscv one:\n{riscv_cfg}"
+        );
+        // Both descriptors are read from the same file; the header a projection
+        // writes must still name it.
+        assert_eq!(
+            arm.source.as_deref(),
+            Some("packages/boards/nros-board-nuttx-qemu/nros-board.toml")
+        );
+    }
+
+    /// A token no descriptor claims resolves to `Unknown` — never to "the first
+    /// board that looked close". The caller writes nothing for these.
+    #[test]
+    fn unclaimed_deploy_token_is_unknown() {
+        let cat = catalog();
+        assert!(matches!(
+            cat.resolve_deploy("some-out-of-tree-board"),
+            DeployResolution::Unknown
+        ));
+    }
+
+    /// Two descriptors sharing a `names` entry (`threadx` → riscv64 vs linux)
+    /// are AMBIGUOUS without a target to test `target_contains` against. Real
+    /// catalog: the pair exists in tree, and no leaf may silently get one.
+    #[test]
+    fn deploy_shared_by_two_boards_is_ambiguous() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let cat = BoardCatalog::load(&root).expect("load real board catalog");
+        match cat.resolve_deploy("threadx") {
+            DeployResolution::Ambiguous(names) => {
+                assert!(
+                    names.len() >= 2,
+                    "expected several candidates, got {names:?}"
+                );
+            }
+            other => panic!("`threadx` is claimed by two boards, got {other:?}"),
+        }
+    }
+
+    /// The `platform` fallback — the mapping
+    /// `check-board-cargo-config-applied.sh` uses — resolves a token no board
+    /// NAMES, and only when a single board declares that platform.
+    #[test]
+    fn deploy_falls_back_to_platform_when_unique() {
+        let cat = catalog();
+        // `stm32` is declared by both stm32 descriptors → ambiguous, not a guess.
+        assert!(matches!(
+            cat.resolve_deploy("stm32"),
+            DeployResolution::Ambiguous(_)
+        ));
+        let mut boards = catalog().descriptors;
+        boards.retain(|d| d.names.iter().any(|n| n == "stm32f407"));
+        let cat = BoardCatalog::from_descriptors(boards);
+        match cat.resolve_deploy("stm32") {
+            DeployResolution::Board(d) => assert_eq!(d.chip.as_deref(), Some("stm32f407")),
+            other => panic!("unique platform must resolve, got {other:?}"),
+        }
     }
 
     #[test]
@@ -681,6 +918,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             target_contains: None,
             capabilities: None,
             cmake: None,
+            source: None,
         });
         let cat = BoardCatalog::from_descriptors(boards);
         let d = cat
