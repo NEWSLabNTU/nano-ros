@@ -1,9 +1,8 @@
 # Phase 341 — The board's `cargo_config` is generated into the leaf, not mirrored by hand
 
 **Amends:** [RFC-0032](../design/0032-entry-codegen-pipeline.md) §3 (the "third leg").
-**⚠️ Design fork open (2026-08-07)** — a concurrent phase-341 proposes a TRACKED
-board file instead of the gitignored sidecar W2 assumes. See "Checkpoint" below;
-W1 is landed and fork-independent, W2–W4 are not settled.
+**Design corrected 2026-08-07** — the projection is COMMITTED and gated, not
+gitignored. W1 is landed; W2–W4 below are written to the corrected shape.
 **Related:** issue 0440 (the drift this prevents), RFC-0048 W9 (`nros sync` owns
 the leaf `.cargo/config.toml`), issue 0457 (the gitignored sidecar this reuses),
 issue 0473 (withdrawn — established that tracked configs carrying sync-managed
@@ -89,79 +88,89 @@ args: **8 leaves**. Fifty-nine carry board-derived blocks. It is also
 GROUP, not one that lost a single argument. So ~14 % of the surface is guarded,
 against a failure mode that is invisible until link time.
 
-## Checkpoint 2026-08-07 — an unresolved design fork, and my W2 is probably the wrong half
+## Correction 2026-08-07 — the projection is committed, not gitignored
 
-A second phase-341 is being written concurrently, aiming to move the board info
-into a **git-TRACKED** file. That is the opposite of W2 below, which routes it to
-a gitignored sidecar. Recording the fork here rather than letting whichever lands
-second silently overwrite the other.
+W2 originally routed the board block to a **gitignored** sidecar, by analogy with
+the `nros-managed-patch.toml` split issue 0457 established. That analogy is
+wrong, and the error is worth stating because it is easy to repeat.
 
-**The competing aim is right about something W2 gets wrong.** If the board block
-is gitignored, a fresh clone cannot build an embedded leaf until `nros sync` has
-run — it would not merely lack patches, it would lack its LINK ARGS. That is
-issue 0463's lesson pointed at a worse target: 0463 was about a leaf being
-unreadable before sync, and W2 as written would extend the same dependency to
-whether the image links at all. Today those args are tracked and a clone works.
-**W2 regresses that, and I did not notice when writing it.**
+**Gitignoring the block means a fresh clone cannot LINK an embedded leaf** until
+`nros sync` has run — the leaf would be missing its link args, not merely its
+patches. That is issue 0463's lesson pointed at a worse target: 0463 was a leaf
+being unreadable before sync; this would make the *image* depend on sync. Today
+those args are tracked and a clone works, so the sidecar route is a regression.
 
-**The repo already has a pattern for "derived, but must exist in a clone":
-generate it and COMMIT it, with a gate for staleness.** `packages/core/*/src/
-generated.rs` is bindgen output, committed, and `check-abi-bindings` fails when
-it does not match a fresh regeneration from the C-header SSoT (RFC-0054). Same
-shape as this problem: one SSoT, a mechanical projection, and a gate that makes
-drift impossible to commit.
+The 0457 analogy fails on the property that actually decided that split:
+**host-derivedness.** Sync's patch rows name `generated/` trees built from the
+user's ament install, so committing them asserts one host's resolution — which is
+why they are gitignored. A board's `cargo_config` is the opposite: a fixed string
+in a committed descriptor, identical in every checkout. Issue 0473 (withdrawn)
+established exactly this distinction, and it points the other way here.
 
-So the likely synthesis is neither doc as written:
+**The repo already has the right pattern for "derived, but must exist in a
+clone": generate it, COMMIT it, and gate staleness.**
+`packages/core/*/src/generated.rs` is bindgen output, committed, with
+`check-abi-bindings` failing when it does not match a fresh regeneration from the
+C-header SSoT (RFC-0054). Same shape as this problem — one SSoT, a mechanical
+projection, and a gate that makes drift impossible to commit.
 
 | | clone builds? | drift possible? |
 | --- | --- | --- |
 | today — hand-mirrored, tracked | yes | **yes** (issue 0440) |
-| W2 below — generated, gitignored | **no** | no |
-| generated + committed + gated | yes | no |
+| gitignored sidecar (original W2) | **no** | no |
+| **generated + committed + gated** | **yes** | **no** |
 
-The third row keeps what tracking is for and removes the hand-mirroring that
-0440 punished. It also changes W4: `check-board-cargo-config-applied` is not
-deleted but REPLACED by a regeneration check in the `check-abi-bindings` mould —
-representative-arg matching gives way to exact comparison.
+The third row is the design. It keeps what tracking is for and removes the
+hand-mirroring 0440 punished.
 
-**Status of the work below.** W1 is landed and is unaffected by the fork: folding
-the strays into the descriptors is needed under every option, because it is what
-makes the leaf blocks pure projections of the SSoT. **W2/W3/W4 as written assume
-the gitignored route and should not be implemented until the fork is settled.**
+**Consequences for the work items**, which are rewritten below to match:
+
+* the projection is a TRACKED file, so `.gitignore` does not change and leaves do
+  NOT become "pure sync output" — the untracking consequence originally claimed
+  here does not happen;
+* **W4 replaces the gate rather than deleting it**: `check-board-cargo-config-
+  applied` gives way to a regeneration check in the `check-abi-bindings` mould,
+  trading representative-arg matching for exact comparison.
 
 ## Direction
 
 `nros sync` already has both inputs — the leaf declares `deploy = <board>`, and
 the board declares `cargo_config` — and already writes managed content into these
-files. Emit the board block as a generated include rather than expecting a human
-to mirror it.
+files. Project the board block into a generated, **committed** include rather
+than expecting a human to mirror it.
 
 ```toml
-# leaf/.cargo/config.toml — TRACKED only if something is left below
+# leaf/.cargo/config.toml — TRACKED, authored content only
 include = [
   "…/nros-patch.toml",              # central host patches      (gitignored, #272)
   ".cargo/nros-managed-patch.toml", # host-specific patch rows  (gitignored, #457)
-  ".cargo/nros-board.toml",         # NEW: the board's cargo_config (gitignored)
+  ".cargo/nros-board.toml",         # NEW: board cargo_config   (GENERATED + TRACKED)
 ]
 # …authored remainder, if any
 ```
 
 `[build] target`, `[unstable] build-std*` and `[target.<triple>]` are all board
-properties and move together. What remains authored is only what a board cannot
-know: a leaf-specific QEMU port, a one-off patch.
+properties and move together into `nros-board.toml`. What remains authored is
+only what a board cannot know: a leaf-specific QEMU port, a one-off patch.
+
+The generated file carries a "DO NOT EDIT — regenerate with `nros sync`" header
+naming its descriptor, like every other committed projection in the tree.
 
 ## Consequences
 
 * **23 distinct blocks collapse to ~8 board descriptors**, which already exist.
-  The 59 copies stop existing.
-* Leaves whose config becomes pure sync output are **already covered by the
-  existing `**/.cargo/config.toml` ignore** — no new policy, and issue 0473
-  established that the tracked/untracked split is decided exactly this way.
-* `check-board-cargo-config-applied` becomes **unnecessary rather than
-  strengthened**: generated content cannot drift, so 0440 becomes unreachable
-  instead of merely detectable. Delete it with the last migrated family, not
-  before.
-* RFC-0032's "a stale pin is a config-sync bug" stops describing a live class.
+  The 59 copies become 59 generated files with no hand-maintained content — a
+  projection each, not a mirror each.
+* **A clone still links.** The projection is committed, so nothing about
+  build-from-clone changes; this is what separates it from the sync-owned patch
+  rows, which are host-derived and must not be committed (#457, #473).
+* `check-board-cargo-config-applied` is **replaced, not deleted**: a regeneration
+  check in the `check-abi-bindings` mould compares the committed projection
+  against a fresh render of the descriptor. Exact comparison replaces the current
+  representative-arg probe, so a leaf that loses ONE argument fails, not only one
+  that loses the whole group.
+* RFC-0032's "a stale pin is a config-sync bug" stops describing a live class —
+  drift becomes uncommittable rather than merely detectable.
 
 ## Work items
 
@@ -208,36 +217,48 @@ and FORCE_LINK anchors because they are `#[used]` (CLAUDE.md states this), but
 "safe in principle" is what 0440 also looked like. **W3 must link these ten
 specifically**, not merely build the families they sit in.
 
-### W2 — Emit `.cargo/nros-board.toml` from sync
+### W2 — Emit `.cargo/nros-board.toml` from sync (committed)
 
-- [ ] `nros sync` resolves `deploy` → board → `cargo_config`, writes the block to
-      the gitignored sidecar, and adds the third `include` entry.
-- [ ] Removing the include target must FAIL LOUDLY, not silently drop the link
-      args — issue 0463 established that cargo errors during manifest parse, and
-      `_require-leaf-includes` is the existing seam that turns that into "run
-      `nros sync`".
+- [ ] Teach `nros sync` board resolution. It has NONE today — `cmd/ws.rs` imports
+      no `BoardRegistry`. The pieces exist: `BoardDescriptor::cargo_config_rendered
+      (workspace)` renders the block with `${workspace}` substituted, and
+      `BoardRegistry::resolve(board, target)` finds the descriptor.
+- [ ] Resolve the leaf's `[package.metadata.nros.entry] deploy` to a descriptor.
+      **Note the ambiguity:** `resolve` takes `(board, target)` and two
+      descriptors can share a triple — `nros-board-mps2-an385` and
+      `-freertos` are both `thumbv7m-none-eabi`, separated by `platform` /
+      `target_contains`. The existing bash gate matches `deploy` against the
+      descriptor's `platform`, which is the mapping to reuse.
+- [ ] Write `.cargo/nros-board.toml` with a DO-NOT-EDIT header, and add the third
+      `include` entry — following `write_patch_config`'s existing eviction/re-add
+      discipline so a stale entry is never left pointing at a deleted file
+      (issue 0463: a missing include is a HARD manifest-parse error).
 
-**Acceptance:** a leaf builds with its `[target.*]` block deleted from the
-tracked config, and `just nuttx build-fixtures` links.
+**Acceptance:** a leaf builds with its `[target.*]` block moved out of the tracked
+config into the generated one, and `just nuttx build-fixtures` LINKS.
 
 ### W3 — Migrate, one board family at a time
 
-- [ ] Per family: delete the mirrored block, verify the family links, untrack any
-      config that is now pure sync output. One family per commit.
+- [ ] Per family: move the mirrored block into the generated file, verify the
+      family LINKS. One family per commit. Nothing is untracked — the projection
+      is committed.
 - [ ] Start with `thumbv7m` (32 leaves, one block, the largest single win) and do
       NuttX last (the 0440 family — most args, most to lose).
 
 **Acceptance:** the family's fixtures build and its tests pass; the tracked
 config count drops by the family's size.
 
-### W4 — Retire the gate
+### W4 — Replace the gate with a regeneration check
 
-- [ ] With the last family migrated, delete `check-board-cargo-config-applied`
-      and its `check-fast` entry, recording in the commit that generation
-      replaced it.
+- [ ] Swap `check-board-cargo-config-applied` for a check that re-renders each
+      board's `cargo_config` and compares it to the committed
+      `.cargo/nros-board.toml`, in the `check-abi-bindings` mould. Exact
+      comparison, not a representative arg.
+- [ ] Keep it in `check-fast` — it is buildless, like the gate it replaces.
 
-**Acceptance:** no tracked leaf config carries a `[target.*]` block that a board
-descriptor also declares.
+**Acceptance:** the check fails on a hand-edited projection (tripwired, not
+merely observed passing), and no tracked leaf `config.toml` carries a `[target.*]`
+block a descriptor also declares.
 
 ## Risks
 
