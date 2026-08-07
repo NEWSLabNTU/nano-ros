@@ -51,6 +51,22 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#464** (build, open 2026-08-06) — the size probe has THREE stacked fallbacks and the last one is a
+stale literal. `nros-c`/`nros-cpp` derive the C/C++ opaque-storage macros from Rust's `size_of::<T>()`:
+(1) an isolated nested cargo build, (2) a **poll of the outer target dir** with a 60 s timeout, (3)
+committed `NUTTX_FALLBACK_SIZES`. Each masks the previous, and all three transitions announce
+themselves only via `cargo:warning`, invisible in a normal build. Layer 3's `EXECUTOR_SIZE = 79_296`
+sits BELOW the measured `89_392`, and these macros size the byte arrays C/C++ callers allocate for Rust
+types — so losing a timing race substitutes a short buffer. The reassurance that "the const assertion
+catches it" holds for **2 of 15** opaque macros (`EXECUTOR`, `CPP_EXECUTOR`); the other thirteen —
+PUBLISHER, SUBSCRIPTION, SESSION, SERVICE_*, ACTION_*, LIFECYCLE_CTX, the RAW_* set — have no
+compile-time size check at all. Layers 1+2 exist to cover each other: layer 2 needs ordering, which is
+why `nros` is a build-dependency purely to force it (phase-340 W5.a: 16 units and 4 duplicated crates
+per invocation), and layer 1 needs no ordering, making that edge dead weight for the default path. The
+fallback's stated justification (custom JSON target specs) is stale — none exist in the tree, and NuttX
+build-std is now handled inside layer 1. Fix: fail loudly instead of falling back, delete the committed
+constants, and give every opaque macro the guard the executor already has.
+
 Recently resolved (2026-08-06): **#444** — every FreeRTOS **Rust** cell (pubsub, service AND action —
 the issue's action-only scope came from one run and was wrong) booted, printed "Network ready." and
 stalled forever. Reproduced on main with fresh fixtures, so not branch-specific. TWO faults, both from
