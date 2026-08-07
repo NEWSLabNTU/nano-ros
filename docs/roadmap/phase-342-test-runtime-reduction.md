@@ -1,0 +1,205 @@
+# Phase 342 — Test runtime reduction: the consumer side
+
+**Status (2026-08-08). DRAFT — opening measurements taken, work items not started.**
+
+**Informed by:** RFC-0061 (the tier ladder and its cost unit), RFC-0051 (the cell
+tables), RFC-0066 (example/fixture consolidation), phase-329 (whose W8 verdict
+sets this phase's non-goals), phase-340 + phase-334 (the build-side program this
+phase deliberately does not duplicate).
+
+## The reframe this phase starts from
+
+"Make the tests faster" is the wrong target, and the measurement that says so is
+already in the tree. phase-318 timed tier 1 on one machine
+(`archived/phase-318-fixture-freshness-and-tiers.md:238-249`):
+
+| stage | cold (post-pull) | warm |
+| --- | --- | --- |
+| `check-fast` + feature checks | 409 s | 69–82 s |
+| `check` complete | 1664 s | ~600 s |
+| + `rust-rtos-link-check` | 2675 s | ~600 s |
+| full lane | **3157 s (52 m)** | **1215 s (20 m)** |
+
+with the verdict: *"the test execution is 226 s"* — 7 % of the cold lane. **`check`
+is the tier's cost, and cache state dominates it.**
+
+That is why this phase is scoped to the CONSUMER side and not to compilation.
+Compilation belongs to phase-340 (WHAT gets compiled, how often) and phase-334
+(WHERE the cache lives). Duplicating them is how 334 and 340 ended up
+re-deriving each other's findings — recorded at `phase-334:13-16`. **This phase
+owns a third axis: how much work a lane ASKS for, and how the tests consume what
+it built.**
+
+## Measurement — tier 1 test execution, 2026-08-07
+
+Full `just ci` run in the ROS distrobox, native lane rebuilt immediately before.
+Parsed from the run log (1259 tests):
+
+```
+summed test time   1476 s
+wall               387 s        => ~3.8x effective parallelism
+```
+
+Distribution — the reason this phase targets tens of tests, not twelve hundred:
+
+| bucket | tests | summed | share |
+| --- | --- | --- | --- |
+| < 0.1 s | 1006 (80 %) | 8 s | **0.5 %** |
+| 0.1–1 s | 92 | 40 s | 2.7 % |
+| 1–5 s | 87 | 217 s | 14.7 % |
+| 5–20 s | 58 | 512 s | 34.7 % |
+| **> 20 s** | **16 (1.3 %)** | **699 s** | **47.4 %** |
+
+Top binaries by summed time:
+
+| binary | summed | tests | s/test |
+| --- | --- | --- | --- |
+| `native_main_macro_misuse` | 199.4 s | 5 | 39.9 |
+| `native_api` | 102.0 s | 32 | 3.2 |
+| `native_example_pubsub_e2e` | **95.1 s** | **1** | 95.1 |
+| `multi_node` | 86.5 s | 8 | 10.8 |
+| `native_example_reqresp_e2e` | **82.8 s** | **1** | 82.8 |
+| `xrce_ros2_interop` | 71.7 s | 9 | 8.0 |
+| `zero_copy` | 63.7 s | 3 | 21.2 |
+| `workspace_features_e2e` | **62.9 s** | **1** | 62.9 |
+| `large_msg` | 58.9 s | 10 | 5.9 |
+| `nano2nano` | 47.7 s | 10 | 4.8 |
+
+**The floor is a single test.** Wall time can never fall below the longest test,
+and that is `native_example_pubsub` at 95.1 s — one `#[test]` that loops over 18
+`matrix::CELLS` internally (`native_example_pubsub_e2e.rs:106-126`). No amount of
+nextest parallelism enters a test body.
+
+## Work items
+
+### W1 — Split the serial cell-loop tests so nextest can schedule them
+
+`native_example_pubsub` (95 s / 18 cells), `native_example_reqresp` (83 s / 18)
+and `workspace_features` (63 s) are each ONE test folding over a derived cell
+list. They serialize by construction, and together they are 241 s of the 1476 s
+summed — but more importantly they set the wall-clock floor at 95 s.
+
+Emit one test per cell (the tree already does this elsewhere — `entry_matrix`
+uses `rstest` case generation, and `interop_e2e` is parametrized per cell), so
+the 18 cells schedule against the 3.8× parallelism the lane already has.
+
+Second, independent benefit: **failure attribution**. Today a failure reads
+`native_example_reqresp: 1 of 18 cell(s) FAILED` and the whole test is red; the
+other 17 cells' verdicts are lost. Per-cell tests name the failing coordinate,
+which is what #0422's triage had to reconstruct by hand.
+
+*Acceptance:* the three binaries report ≥18 tests each; tier-1 wall drops and the
+new floor is measured and recorded here.
+
+*Risk:* these cells share per-RMW routers/agents (`native_example_pubsub_e2e.rs:172`
+keeps a guard alive per cell). Splitting must keep that isolation — the likely
+shape is a nextest test-group, not a shared static.
+
+### W2 — Stop paying five cold `cargo check`s in `native_main_macro_misuse`
+
+199 s, 13 % of all test time, 5 tests. These compile at run time as a
+**documented exception** (`native_main_macro_misuse.rs:3-15`) and the reasoning
+is sound: a build that must FAIL cannot be prebuilt, and the rebuild case needs
+two checks across a file touch. The exception is not the problem — the cost is:
+its own comment records that "a cold check exceeds the 60s default".
+
+Five cases each pay a cold check against a staged copy of the same template. Give
+them one shared, warm `CARGO_TARGET_DIR` (per-binary, not per-case), so only the
+first pays cold.
+
+*Acceptance:* summed time for that binary measured before/after; the exception
+and all five assertions unchanged.
+
+*Care:* the rebuild-tracking case asserts a re-check HAPPENS after a touch. A
+shared warm dir must not mask it — that case may need to keep its own dir, which
+still leaves four sharing.
+
+### W3 — Make the lane arithmetic say the same number in all four places
+
+`lane-coords` is the authority, and three call sites have drifted from it:
+
+| source | says | live |
+| --- | --- | --- |
+| `justfile:2207` | tier 2 = "12 of 47" | 13 coords / 12 cells |
+| `justfile:2245` | tier 2n = "33 of 47" | 35 coords / 35 cells |
+| `ci_lane.rs:153` | "11 of 46 coordinates" | 13 of 47 |
+
+RFC-0061 already had to amend itself once for exactly this class — it quoted
+tier 2 at "~20 % of a full sweep" counting CELLS when the cost unit is
+COORDINATES, where the same cover is 70 % (`0061:211-217`). A stale spelling is
+how a tier gets chosen on a wrong cost estimate.
+
+*Acceptance:* the three sites derive from `lane-coords` or are gated against it;
+no hand-written count survives.
+
+### W4 — Tier 2 builds `all`; scope it to its coordinates
+
+`justfile:2222-2227` states it plainly: tier 2's saving today is in the staleness
+GATE, not the build — it still builds every row. Measured: tier 2 needs **89 of
+333** manifest rows.
+
+This is the largest single lever in the ladder, and it is **blocked on
+phase-329 W4** (fewer boots) per that phase's W8.d. Recorded here so the
+dependency is visible; not startable in this phase alone.
+
+### W5 — Collapse the native example variants
+
+RFC-0066 measured it (`0066:60-67`): the build cost is native, not exotic —
+**37 native example directories are built 2–8 times as variants, accounting for
+120 of 180 native rows**, and **34 of the 42 themed-workspace rows declare no
+`features` / `cmake_defs` / `env` at all**. Linux is 190 of 333 rows (57 %).
+
+This is the one place row-count reduction is defensible, because RFC-0066 already
+identified rows that differ in nothing.
+
+### W6 — Say what tier 1 actually witnesses
+
+Tier 1's five boards are `linux`, `zephyr` (native_sim), `mps2-an385-freertos`,
+`nuttx-qemu` (arm), `threadx-linux`. Two facts worth stating together:
+
+- **All 28 Zephyr runtime configs target `native_sim/native/64`**
+  (`0064:585-596`) — 10 of 47 coordinates, tied for the largest share, all
+  witnessing ONE board, and every one bypasses Zephyr's own IP stack.
+- Build wall clock is dominated by **FreeRTOS (~1370 s) and native (~1300 s)**
+  per lane (`0064:790-791`).
+
+So the platform with the most coordinates is not the one that costs the most, and
+the coverage it buys is narrower than the count suggests. Deliverable is a
+statement of what each tier-1 board is the witness FOR, so a future cut is made
+on coverage rather than on count.
+
+## Non-goals, each with the evidence that closed it
+
+- **Deleting fixture rows.** phase-329 W8 tried it and every candidate was
+  load-bearing: `target-<rmw>/` dirs are the runtime binary locator, edition
+  workloads carry distinct RIHS01 hashes, robot1/2 are talker/listener halves.
+  Verdict: *"The fixture-BUILD burden is NOT reducible by deleting rows — it is
+  structural"* (`archived/phase-329:440-451`). W5 above is the exception it
+  names, and it comes from RFC-0066's measurement, not from row-counting.
+- **Merging board crates to save CI time.** *"merging crates removes no fixture
+  rows, so it buys no CI time"* (`0064:789-793`). phase-322 was closed on
+  2026-08-08 for the adjacent reason.
+- **Filtering the test RUN per platform.** *"every cover touches all ten
+  platforms by construction"*, so a nextest platform filter excludes nothing; the
+  saving is entirely in which FIXTURES get built (`0061:304-308`).
+- **Anything about compilation identity, target-dir layout, or caching.** Owned
+  by phase-340 and phase-334 under their 2026-08-07 axis split.
+
+## Acceptance for the phase
+
+1. Tier-1 wall time re-measured on the same machine and lane, before and after
+   W1+W2, with the distribution table above regenerated.
+2. The wall-clock floor (longest single test) named and reduced.
+3. No coverage lost: cell counts per platform unchanged, and `matrix_fixture_coverage`
+   gates still green.
+4. Every number in this document re-derived at close-out — RFC-0064's row figures
+   were stale twice over within a week, and this phase's own numbers will age the
+   same way.
+
+## Opening measurements — provenance
+
+The distribution and per-binary tables are parsed from a complete `just ci` run
+in the ROS distrobox mirror on 2026-08-07 (1259 tests, `failures=10`, the run
+recorded in issue 0422). The native lane was rebuilt immediately before, per that
+issue's freshness rule. They are ONE machine and ONE run: treat them as the shape
+of the problem, not as a benchmark.
