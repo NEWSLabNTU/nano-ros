@@ -514,6 +514,15 @@ result. Fixed by using the headerless `CdrWriter::new`, matching the RFC-0069/#0
 `publish_feedback`/`complete_goal` already carried; `nros-c`/`nros-cpp` already stripped it, so the
 Rust API was the lone live offender. See `archived/0448-*`. (2026-08-06)
 
+**#467** — `test_xrce_action_ros2_client` (the REVERSE of #448: nano is the action SERVER, ROS 2 the
+client) fails 3/3 solo in two modes — `Goal was rejected` (accepted=false), and `accepted=true
+feedback=true result=false`, where the goal crossed and feedback flowed but the `get_result` reply never
+arrived. Mode 2 rules out plain discovery/transport and points at the server-side result path. NOT a
+load flake: it fails on an idle box (contrast `large_msg::test_xrce_e2e_integrity`, which passes solo
+every time). Whether it is NEW is **not established** — the code-path argument says the #448/#447/#458
+work cannot reach it (client-path / multi-tier-only / cpp-only respectively), but that is an argument,
+not a bisect. See `0467-*`. (2026-08-07)
+
 Recently resolved (2026-08-07): **#462** — `workspace_features` cell `rust/logging` counted 0 of an
 expected ≥3 log lines carrying `[INFO]`. The defect was real — every hosted `log` bridge printed
 `record.args()` bare — but it was already FIXED in source when this was filed: `f0fa793f4`
