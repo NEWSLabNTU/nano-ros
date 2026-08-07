@@ -258,7 +258,7 @@ is why 334 W2.b comes before the grouping work here.
 | # | item | why here |
 | --- | --- | --- |
 | ~~1~~ | ~~**340 W4 follow-up**~~ | **DONE** `ee016145a` — the find prunes `*/out/sizes-probe-target-*`; verified against a replica, and against the pre-fix script to show the prune is load-bearing |
-| 2 | **340 W5.b / W5.c** | near-deletion now that #464 removed the fallback the edge served; also removes the probe dirs inflating (1) |
+| ~~2~~ | ~~**340 W5.b / W5.c**~~ | **DONE** 2026-08-07 — a straight deletion, not a feature gate: 181→165 units, overlap 12→8 |
 | 3 | **340 W6 step 1** | Zephyr remap + `OUT_DIR` + `codegen-units` together — the largest measured population, additive, serialises nothing |
 | 4 | **334 W2.b steps 2–4** | the derivation for source-relative cache data; the precondition for moving any path |
 | 5 | **340 W2** | umbrella invocation per identity group (was also 334 W3.a) |
@@ -869,15 +869,27 @@ is closer to a deletion than to the feature-gate below, and the feature-gate is
 only needed if a future target reintroduces a fallback requirement. Re-measure
 before choosing.
 
-- [ ] **W5.b** Make the edge OPTIONAL rather than unconditional: an optional
-      `[build-dependencies] nros` behind a feature (say `sizes-probe-filesystem`),
-      off by default so the isolated path pays nothing, and enabled by the builds
-      that actually need the fallback — the custom-target/`build-std` embedded
-      configs the fallback exists for. Then `just verify-size-probe`'s filesystem
-      arm enables it explicitly rather than relying on an edge every other build
-      also pays for.
-- [ ] **W5.c** Apply the same to `nros-cpp`, whose comment documents the
-      identical pattern, and re-measure the overlap.
+- [x] **W5.b/W5.c — LANDED 2026-08-07, and as a DELETION, not the feature-gate
+      this item specified.** The gate was scoped when the filesystem fallback
+      still existed; issue 0464 removed it, so `find_dep_rlib` is the isolated
+      nested build alone and never reads the outer graph. The edge therefore
+      orders something nobody waits for — there is no configuration in which it
+      is needed, so there is nothing to gate. Removed from BOTH `nros-c` and
+      `nros-cpp`; `nros` stays a REGULAR dependency, which is what the nested
+      probe's `cargo build -p nros` resolves through.
+
+      Measured on `nros-c` (`std,rmw-zenoh`): **181 → 165 units**, product/
+      build-graph overlap **12 → 8** — exactly W5.a's prediction. Sizes
+      unchanged at `NROS_EXECUTOR_SIZE 89392`, and `just verify-size-probe`
+      passes both `cargo clean` soak rounds.
+
+      **The clean-build scenario 77.25 cited was tested directly**, because that
+      is the case the edge was added for: a fresh target dir emits correct sizes
+      without it. A `cargo build` of `nros-cpp` at DEFAULT features does still
+      warn `EXECUTOR_SIZE probe returned 0`, but that is not this change —
+      restoring the edge reproduces it, and with the edge BOTH crates warn where
+      only one does without. It is the unenforced zero-probe path already filed
+      as issue 0472.
 - [ ] **W5.d** Attack the residual 8: `nros-build-helpers` / `nros-zpico-build` /
       `nros-board-common` pull `heapless`, `log` and friends into the build graph.
       Establish whether those build-deps need the runtime crates at all.

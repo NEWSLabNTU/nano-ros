@@ -232,12 +232,20 @@ critical-section = { version = "1.1", optional = true, features = ["restore-stat
 
 [build-dependencies]
 nros-build-helpers = { workspace = true }
-# Phase 77.25: nros is listed as a build-dep (not only as a regular
-# dep) so the host rlib is compiled *before* this build script runs.
-# Without this, `nros-sizes-build`'s probe ran against a missing rlib
-# on clean builds and silently returned 0 for every `NROS_*_SIZE`
-# macro — see Phase 77.23 / 77.24 for the downstream damage.
-nros = { version = "0.5.0", path = "../nros", default-features = false }
+# phase-340 W5.b/c — the `nros` BUILD-dependency is gone (2026-08-07).
+#
+# Phase 77.25's reason was real at the time: the probe's filesystem path polled
+# the OUTER target dir, so a missing rlib on a clean build silently returned 0
+# for every `NROS_*_SIZE` macro (Phase 77.23/77.24's damage). Issue 0464 deleted
+# that path — the probe now builds `nros` in an isolated nested target dir, and
+# a failure there PANICS rather than returning 0 — so the ordering this edge
+# bought is no longer waited on, and the silent-zero failure mode it guarded
+# against cannot happen.
+#
+# The cost it was paying: nros -> nros-node -> nros-core -> heapless,
+# portable-atomic, log ... pulled into the BUILD-dependency graph and recompiled
+# at opt-level=0/panic=unwind. `nros` stays a REGULAR dependency, which is what
+# the nested probe's `cargo build -p nros` resolves through.
 
 [package.metadata.docs.rs]
 all-features = true
