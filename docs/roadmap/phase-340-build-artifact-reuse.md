@@ -1200,6 +1200,46 @@ the cascade only stops when the artifacts are actually identical.
 
    The C/C++ Zephyr leaves may still benefit from the same flag in
    `nros_cargo_build.cmake`; that is untested and is a separate measurement.
+
+   **Retried 2026-08-07 at the correct injection point — and the premise is
+   REFUTED for this lane.** `scripts/zephyr/cargo-features-patch.sh` is the
+   sanctioned seam for the vendored module (Phase 168.1 added the
+   `EXTRA_CARGO_ARGS` pass-through there). Injecting the `--config` remap the
+   same way DID reach the command — 3 occurrences in `build.ninja`, the check W6
+   itself used. It changed nothing:
+
+   | comparison | result |
+   | --- | --- |
+   | talker vs listener | differ 609918 B — but these have DIFFERENT Kconfig, so W6's own caveat says they are genuinely different compilations. Wrong pair. |
+   | **talker vs talker, two build dirs** | **differ 609919 B** — same Kconfig, path variable isolated |
+
+   And the artifacts contain **zero** references to either the build dir or the
+   remap target, so there was no embedded path for the remap to rewrite.
+
+   **The blocker on this lane is `incremental`, which is R4, not the path.** The
+   Zephyr build runs at the `dev`/`debug` profile — 185 MB of
+   `rust/target/debug/incremental` per fixture — and the differing bytes are
+   precisely the per-session codegen-unit tokens R4 describes:
+
+   ```
+   nros_core-…0ixf3k5w57bzqjd27sxorel8t.03jlxue.rcgu.o
+   nros_core-…0lo4ubhov927acmimhig7h5ke.04jgqw0.rcgu.o
+   ```
+
+   W1 dropped `incremental` from `nros-relwithdebinfo` and `nros-minsizerel`,
+   but cargo defaults it ON for `dev`, and nothing pointed this lane at a
+   nano-ros profile. **So step 1 for the Zephyr lane is a one-line profile
+   question, not a remap**: give the lane a non-incremental profile (or set
+   `incremental = false` on `dev`) and re-run the two-dir `cmp` above before
+   adding any flag.
+
+   Reverted the patch-script change rather than leaving it: it reaches the
+   command and demonstrably changes no artifact, which is the same standard W6
+   applied to its own first attempt.
+
+   *Method note for the retry:* compare the SAME fixture built into two dirs.
+   Two different fixtures cannot answer this — their Kconfig differs, so they are
+   allowed to differ, which is how the first comparison here misled.
 2. **Report an sccache size/PID mismatch** on the lane (above). Not a speed-up
    in itself; it stops a 3× capacity loss from being invisible while measuring
    step 1.
