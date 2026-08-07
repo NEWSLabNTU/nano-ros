@@ -57,13 +57,22 @@ So **54 of 56** in-scope leaves are the board's block verbatim or a superset. Th
 extras are three distinct arguments in total:
 
 ```
-32  -C link-arg=--gc-sections
+33  -C link-arg=--gc-sections     (thumbv7m 25, riscv64gc 6, riscv32imc 2)
  1  -C link-arg=-Wl,--wrap=poll
  1  -C link-arg=--nmagic
 ```
 
-`--gc-sections` appearing in 32 of 32 `thumbv7m` leaves is not leaf-specific
-content; it is a board property that never made it into the descriptor.
+**Two corrections to the first pass of this measurement**, both found while
+executing W1:
+
+* `--gc-sections` spans **three triples and four boards**, not "32 thumbv7m
+  leaves" as first written. It is 25 of 32 `thumbv7m`, 6 of 7 `riscv64gc`, 2 of
+  4 `riscv32imc` — carried by most leaves of every embedded board, which makes it
+  a board property whose absence in the remainder is drift rather than intent.
+* A reported "6 × `third leg`" extra on the NuttX arm leaves was a **parser
+  artifact**: the regex read words out of a comment sitting inside the
+  `rustflags` array. Those leaves carry no extra at all. Any future run of this
+  measurement must strip comments before tokenising.
 
 **The two "missing" leaves are not drift.** `examples/workspaces/realtime-rust`
 (a workspace-root config) and `nros-nuttx-ffi` (a library crate) declare no
@@ -113,17 +122,48 @@ know: a leaf-specific QEMU port, a one-off patch.
 
 ## Work items
 
-### W1 — Fold the strays into the descriptors
+### W1 — Fold the strays into the descriptors — **LANDED 2026-08-07**
 
-- [ ] Move `--gc-sections` into the `thumbv7m` boards' `cargo_config` (32 leaves
-      carry it; none is the exception that would make it leaf-specific).
-- [ ] Decide `-Wl,--wrap=poll` and `--nmagic`: board property, or genuinely
-      leaf-local? One instance each — cheap to settle, and settling them is what
-      determines whether the "authored remainder" concept is needed at all.
-- [ ] Give the 3 uncovered triples a descriptor, or record why they have none.
+- [x] `--gc-sections` hoisted into all FOUR boards that own an affected triple:
+      `nros-board-mps2-an385`, `nros-board-mps2-an385-freertos`,
+      `nros-board-threadx-qemu-riscv64`, `nros-board-esp32-qemu`.
+- [x] `-Wl,--wrap=poll` — **stays leaf-local.** It is on
+      `nros-nuttx-riscv-ffi`, a library crate with no
+      `[package.metadata.nros.entry] deploy`, so it is not an entry leaf and has
+      no board to inherit from.
+- [x] `--nmagic` — **stays leaf-local.** One leaf
+      (`logging-smoke-mps2-baremetal`) carries it while the other 31 `thumbv7m`
+      leaves do not. Hoisting would change section layout for all 32 to serve
+      one, and the leaf declares no `deploy` either. It becomes the "authored
+      remainder" this design leaves room for — and is the only such case in the
+      tree, so the concept is load-bearing exactly once.
+- [x] The 3 uncovered `thumbv7em-none-eabihf` leaves (`stm32f4-porting/{polling,
+      rtic}`, `stm32f4-smoltcp-echo`) — **no descriptor, deliberately.**
+      phase-337 demoted stm32f4 out of the support matrix to be the book's
+      customization example; there is no `nros-board-stm32f4` crate to declare
+      one. They stay fully authored and never migrate.
 
-**Acceptance:** every in-scope leaf's `[target.*]` args are a SUBSET of its
-board's, measured by the set comparison above, not textually.
+**Result:** **54 leaves now carry exactly their board's args** (was 14 equal /
+40 superset). The 2 remaining non-matches are the two leaf-local decisions
+above, both out of the entry-leaf scope. Board gates re-verified green
+(`check-board-cargo-config-applied`, `check-board-manifest-drift`,
+`check-board-tiers`).
+
+**A W3 obligation this creates.** Ten leaves currently LACK `--gc-sections` and
+will gain it when the board block starts governing:
+
+```
+thumbv7m    nros-bench/{large-msg-baremetal,wake-latency-cortex-m3,wcet-cycles-qemu}
+            nros-tests/bins/{cdr-roundtrip-qemu,lan9118-qemu,
+                             logging-smoke-freertos-mps2,logging-smoke-mps2-baremetal}
+riscv64gc   nros-tests/bins/logging-smoke-threadx-riscv64
+riscv32imc  nros-smoke/esp32-hello-world, nros-tests/bins/logging-smoke-esp32-qemu
+```
+
+All ten are test/bench binaries. `--gc-sections` is safe for the `__NROS_SIZE_*`
+and FORCE_LINK anchors because they are `#[used]` (CLAUDE.md states this), but
+"safe in principle" is what 0440 also looked like. **W3 must link these ten
+specifically**, not merely build the families they sit in.
 
 ### W2 — Emit `.cargo/nros-board.toml` from sync
 

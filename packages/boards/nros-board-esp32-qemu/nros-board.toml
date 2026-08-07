@@ -21,6 +21,8 @@ target = "riscv32imc-unknown-none-elf"
 rustflags = [
     "-C", "link-arg=-Tlinkall.x",
     "-C", "force-frame-pointers",
+    # phase-341 W1 — hoisted from the leaves; 2 of 4 carried it.
+    "-C", "link-arg=--gc-sections",
 ]
 
 [env]

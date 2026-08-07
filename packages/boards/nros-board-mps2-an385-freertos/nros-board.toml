@@ -18,6 +18,8 @@ runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihos
 rustflags = [
     "-C", "link-arg=-Tmps2_an385.ld",
     "-C", "link-arg=--nmagic",
+    # phase-341 W1 — hoisted from the leaves (see nros-board-mps2-an385).
+    "-C", "link-arg=--gc-sections",
 ]
 '''
 

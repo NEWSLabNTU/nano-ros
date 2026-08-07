@@ -21,6 +21,8 @@ target = "riscv64gc-unknown-none-elf"
 rustflags = [
     "-C", "link-arg=-Tlink.lds",
     "-C", "link-arg=--nmagic",
+    # phase-341 W1 — hoisted from the leaves; 6 of 7 carried it.
+    "-C", "link-arg=--gc-sections",
 ]
 
 [env]
