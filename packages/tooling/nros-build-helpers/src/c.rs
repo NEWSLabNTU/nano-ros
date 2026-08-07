@@ -468,6 +468,18 @@ fn emit_variant_symbol(out_dir: &str, suffix: Option<&str>) {
     // issue 0383 — implicit-function-declaration / int-conversion as errors.
     nros_cc_flags::strict_decls(&mut build);
     build.file(&c_src).warnings(false);
+    // phase-340 W6 — this TU is generated into `OUT_DIR`, so its absolute path
+    // is the one thing that made otherwise-identical `libnros_c.a` artifacts
+    // differ between two target dirs. Measured: it was the ONLY carrier, in
+    // `nros_variant_symbol.o`, twice.
+    //
+    // The phase originally attributed the embedded path to
+    // `include!(concat!(env!("OUT_DIR"), …))` baking a Rust string literal.
+    // That is not it — the generated `.rs` files hold no absolute path. It is
+    // the C compiler recording `__FILE__` and the debug-info compilation dir,
+    // which `--remap-path-prefix` (a RUSTC flag) cannot reach. `-ffile-prefix-map`
+    // is the C-side equivalent and covers both.
+    build.flag_if_supported(&format!("-ffile-prefix-map={}=/nros-out", out.display()));
     crate::shared::apply_baremetal_libc(&mut build);
     build.compile("nros_variant_symbol");
 }

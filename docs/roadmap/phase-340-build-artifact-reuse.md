@@ -1102,6 +1102,44 @@ So cross-fixture artifact identity on this lane needs all three of: the remap,
 an answer for `env!("OUT_DIR")` literals, and `codegen-units = 1` (or accepting
 non-identity). Any one alone changes nothing measurable.
 
+**Corrected 2026-08-07 by measurement — it is TWO ingredients, and the middle
+one was misattributed.** The embedded path is NOT an `env!("OUT_DIR")` Rust
+literal: the generated `.rs` files under `OUT_DIR` contain no absolute path at
+all. It came from `nros_variant_symbol.o` — a C translation unit that
+`nros-build-helpers` GENERATES into `OUT_DIR` and compiles with `cc`, which
+records `__FILE__` and the debug compilation dir. `--remap-path-prefix` is a
+RUSTC flag and cannot reach a C compile; `-ffile-prefix-map` is the C-side
+equivalent.
+
+Measured on `nros-c` (`std,rmw-zenoh`, `nros-relwithdebinfo`), two target dirs:
+
+| | `libnros_c.a` | path strings |
+| --- | --- | --- |
+| before (W6's attempt) | differ, 1539 B | present twice |
+| `-ffile-prefix-map` alone | differ, **15 B** | **0** |
+
+And per-rlib, which is what sccache actually keys on (`--extern` CONTENT):
+
+| crate | C fix only | C fix + rustc remap |
+| --- | --- | --- |
+| `nros_core`, `nros_serdes` | **identical** | identical |
+| `nros_node`, `nros_rmw_zenoh` | differ (34 B / 50 B) | **identical** |
+
+So the two flags fix DIFFERENT populations and both are needed; together every
+rlib compared is byte-identical with matching `-C metadata`.
+
+**`codegen-units = 1` is NOT needed.** W6 predicted it as the third ingredient
+from the residual CGU-suffixed names, but with the C path fixed the codegen-unit
+member names are already deterministic — `nros_c.…1d51717e27cab089-cgu.00/01/02`
+matched exactly across both dirs. The remaining 15 bytes in `libnros_c.a` are
+cc-rs's OBJECT FILENAME hash (`5046a7ee…-nros_variant_symbol.o` vs
+`f43824e5…-`), which it derives from the source path; neither flag renames it,
+and no `codegen-units` value would. That is a cc-rs naming artifact, not a
+reproducibility failure — the object's CONTENT is identical.
+
+Dropping `codegen-units = 1` from the plan removes the one ingredient that cost
+build speed and needed its own A/B.
+
 **Which matters for CPU, not just disk.** sccache hashes a crate's inputs
 including the CONTENT of its `--extern` rlibs. CGU nondeterminism and OUT_DIR
 literals both make the bottom of the graph differ, so misses cascade upward
@@ -1110,14 +1148,23 @@ the cascade only stops when the artifacts are actually identical.
 
 #### Proposed order — cheapest and least risky first
 
-1. **All three of remap + OUT_DIR + `codegen-units = 1`, together**, since the
-   measurement above shows any subset changes nothing. That converts 68
-   distinct-by-accident compilations into ONE cacheable identity, which fixes
-   CPU (sccache hits cascade up the graph instead of dying at the first extern)
-   AND makes the 1069 rlib copies dedupable. Verify with the two-fixture `cmp`.
-   The `codegen-units` part needs its own A/B — it trades single-build speed for
-   cross-build reuse, and on a 68-way fan-out that trade plausibly pays, but
-   this phase's own W1 shows such intuitions need measuring.
+1. **Two flags, together** (revised — see the correction above):
+   `-ffile-prefix-map` on the generated C TU and `--remap-path-prefix` on the
+   Rust side. `codegen-units = 1` is NOT required, so the build-speed A/B this
+   step used to need is gone.
+
+   **Half of it has LANDED (2026-08-07):** `-ffile-prefix-map` is in
+   `nros-build-helpers`' `variant_symbol` compile. It removes every embedded
+   path string and makes `nros_core` / `nros_serdes` rlibs byte-identical across
+   target dirs on its own.
+
+   **Remaining:** the rustc `--remap-path-prefix`, which is what `nros_node` and
+   `nros_rmw_zenoh` still need. It belongs in the cmake build path
+   (`nros_cargo_build.cmake`) where W6 first tried it, and each fixture passes
+   its OWN dir on the left-hand side — measured NOT to perturb `-C metadata`, so
+   per-fixture flags still yield one shared identity. Verify on the lane with
+   the two-fixture `cmp`, since the host measurement above cannot see west-lane
+   effects.
 2. **Report an sccache size/PID mismatch** on the lane (above). Not a speed-up
    in itself; it stops a 3× capacity loss from being invisible while measuring
    step 1.
