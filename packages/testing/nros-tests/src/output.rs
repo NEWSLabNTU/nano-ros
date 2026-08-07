@@ -299,6 +299,26 @@ pub const SERVICE_SERVER_READY_MARKER: &str = "Waiting for service requests";
 /// (`"Received goal request with order"`, followed by the order).
 pub const ACTION_GOAL_REQUEST_PREFIX: &str = "Received goal request with order";
 
+/// issue 0461 — the order every `action-client` example sends.
+///
+/// Named so a test can assert the value ROUND-TRIPS rather than merely that a
+/// goal arrived. Nothing checked this, which is how a server that read `1`
+/// (Rust), `256` (C/C++) or `0` for every goal passed every action e2e for
+/// months: the assertions covered delivery markers, and the one consumer of the
+/// decoded order was a log line.
+pub const ACTION_GOAL_ORDER: i32 = 10;
+
+/// Parse the order out of a server's `Received goal request with order N` line.
+///
+/// `None` when the line is absent or unparseable — the caller decides whether
+/// that is a failure, since some cells legitimately never receive a goal.
+pub fn goal_order_in(log: &str) -> Option<i32> {
+    log.lines()
+        .find_map(|l| l.split_once(ACTION_GOAL_REQUEST_PREFIX))
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .and_then(|tok| tok.trim_end_matches(['.', ',']).parse().ok())
+}
+
 /// Action server log line when goal execution starts (`"Executing goal"`).
 pub const ACTION_EXECUTING_MARKER: &str = "Executing goal";
 

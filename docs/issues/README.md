@@ -51,16 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#461** — an action server reads `1` for every goal's `order`. A client sending `order: 10` and one
-sending `order: 7` both make the server log `Received goal request with order 1` — CONSTANT, not merely
-wrong, so it is reading a different field rather than slipping an offset (a wrong offset would land in
-the 16-byte goal UUID and vary per goal). Fresh binaries, live router, isolated port. Invisible until
-#0450 made the server COMPUTE from the received order: the stub published a fixed `[0, 1, 1]`, so the
-one consumer of the mis-read value was a log line nothing asserted on, and every action e2e passed then
-and passes now (they check delivery markers, not the order). The stub was masking a wire defect. Until
-this is fixed the demo streams the sequence for the order it actually receives, so a client asking 10
-gets `[0, 1]` — a faithful report of a broken input. First checks in the issue. See `0461-*`.
-(2026-08-06)
+**#463** — 48 tracked leaf `.cargo/config.toml` files `include` `nros-managed-patch.toml`, which
+`.gitignore:119` ignores — so a leaf cannot be *parsed* (not merely built: `cargo metadata` fails too)
+until `nros sync` writes the sidecar. `just rust-rtos-link-check`, a `ci-full` step, is red on any tree
+that has not re-synced since #0457 landed. The resolution of #0457 states cargo "ignores a missing
+`include` SILENTLY"; on cargo 1.97.1 it is a hard error, and that premise is what the split rests on.
+Measured: 48 tracked configs carry the include, **0** sidecars exist on a host that has been building
+these leaves all week; dropping a one-comment placeholder in makes the leaf parse, so the include is
+the whole failure. Same shape as the leaf-lockfile rule — a committed file naming something absent from
+a bare clone. See `0463-*`. (2026-08-06)
 
 Recently resolved (2026-08-06): **#444** — every FreeRTOS **Rust** cell (pubsub, service AND action —
 the issue's action-only scope came from one run and was wrong) booted, printed "Network ready." and
@@ -164,6 +163,20 @@ from `nros-board.toml`'s `cargo_config` (the SSoT, not the deleted files), rustf
 Gated by `check-board-cargo-config-applied`, watched to fire. Nothing caught it because the broken
 config was valid TOML that cargo and `nros sync` both accepted — the loss showed only at link time,
 on one platform. See `archived/0440-*`. (2026-08-06)
+
+RESOLVED 2026-08-07 — **#461** an action server read a wrong `order` for every goal, differently per
+language: Rust `1`, C/C++ `256`. The filed guess ("something structural, e.g. a CDR word") was half
+right — `1` is the GOAL COUNTER (`goal_id_from_counter` writes it LE into the uuid's first bytes, so
+goal two would have read `2`; the "constant" came from only ever looking at goal one). Dumping the wire
+found TWO bugs. (1) `TickCtx::send_goal` serialized the goal `new_with_header` and handed it to
+`send_goal_raw`, which frames `[header][uuid][those bytes]` itself — a SECOND encapsulation, 28 bytes
+where ROS 2's SendGoal_Request is one message with one (24). The `action-client-multigoal` fixture used
+the typed handle and sent the correct 24, which is why IT decoded fine and the example never did.
+(2) `CallbackCtx::message()` deserialized from the uuid, independent of (1). C/C++ needed no change.
+Recorded in the issue: my first attempt fixed it server-side at four seams, made all three languages
+read 10, and took `action_multigoal` from 4 accepted goals to 0 — the wire dump is what reduced it to
+two one-line changes. Guarded by `goal_order_reaches_the_server`, which asserts the value ROUND-TRIPS;
+every pre-existing action test asserted delivery markers only. 5/5 pass. See `archived/0461-*`.
 
 RESOLVED 2026-08-06 — **#450** the group-A action-server published a fixed `[0, 1, 1]` whatever the
 request, and converging riscv64 had deleted the only body that computed anything. RESOLVED: the group

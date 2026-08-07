@@ -117,3 +117,60 @@ fn test_action_binaries_exist() {
         }
     }
 }
+
+/// issue 0461 — the requested `order` must REACH the server.
+///
+/// Every other action test asserts delivery markers (`Publish feedback`,
+/// `Goal succeeded`, a result arriving), none of which depends on the goal
+/// payload being decoded correctly. So a server that read a constant for every
+/// goal — Rust `1` (the goal_id counter), C/C++ `256` (a CDR header word) —
+/// passed all of them, for months, while the value sat 20 bytes further into
+/// the buffer. This is the assertion that was missing.
+#[rstest]
+fn goal_order_reaches_the_server(
+    zenohd_unique: ZenohRouter,
+    action_server_binary: PathBuf,
+    action_client_binary: PathBuf,
+) {
+    use std::process::Command;
+
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    let locator = zenohd_unique.locator();
+
+    let mut scmd = Command::new(&action_server_binary);
+    scmd.env("NROS_LOCATOR", &locator);
+    let mut server =
+        ManagedProcess::spawn_command(scmd, "action-server-order").expect("spawn action server");
+    server
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_SERVER_READY_MARKER,
+            Duration::from_secs(20),
+        )
+        .expect("action server did not become ready");
+
+    let mut ccmd = Command::new(&action_client_binary);
+    ccmd.env("NROS_LOCATOR", &locator);
+    let mut client =
+        ManagedProcess::spawn_command(ccmd, "action-client-order").expect("spawn action client");
+
+    let server_out = server
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_GOAL_REQUEST_PREFIX,
+            Duration::from_secs(30),
+        )
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    let expected = nros_tests::output::ACTION_GOAL_ORDER;
+    let seen = nros_tests::output::goal_order_in(&server_out);
+    assert_eq!(
+        seen,
+        Some(expected),
+        "the server decoded order {seen:?}, but the client sent {expected}. \
+         A constant here means the goal payload is being read from the wrong \
+         offset, not that the goal is missing (issue 0461).\nserver:\n{server_out}"
+    );
+}

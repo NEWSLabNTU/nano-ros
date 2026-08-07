@@ -1653,6 +1653,10 @@ enum DecisionSink<'a> {
 /// `DecisionSink` the body fills via
 /// [`set_goal_response`](Self::set_goal_response) /
 /// [`set_cancel_response`](Self::set_cancel_response) (W.5.3).
+/// issue 0461 — bytes of `unique_identifier_msgs/UUID` that precede the goal
+/// fields in a SendGoal request. A fixed `uint8[16]` array: no length prefix.
+const GOAL_UUID_LEN: usize = 16;
+
 pub struct CallbackCtx<'a> {
     payload: &'a [u8],
     publishers: &'a dyn PublisherResolver,
@@ -1862,6 +1866,20 @@ impl<'a> CallbackCtx<'a> {
     pub fn message<M: RosMessage>(&self) -> NodeResult<M> {
         let mut reader =
             crate::CdrReader::new_with_header(self.payload).map_err(|_| NodeDeclError::Runtime)?;
+        // issue 0461 — an action GOAL callback's payload is the whole SendGoal
+        // request, `[CDR header][goal_id uuid][goal fields]`. Without this skip
+        // the reader is sitting on the uuid and a goal type decodes its first
+        // four bytes — the goal counter, so every goal looked like `order = 1`.
+        //
+        // The goal_id reaches the callback by other means (the server's
+        // `for_each_active_goal_for_name`), so it is framing here, not data.
+        // Same shape as the typed `try_accept_goal` path, which has always
+        // skipped it and has always decoded correctly.
+        if matches!(self.decision, Some(DecisionSink::Goal(_))) {
+            for _ in 0..GOAL_UUID_LEN {
+                let _ = reader.read_u8();
+            }
+        }
         M::deserialize(&mut reader).map_err(|_| NodeDeclError::Runtime)
     }
 
@@ -2274,6 +2292,11 @@ impl<'a> TickCtx<'a> {
         // history payload size of '27'"), so the goal never reached the server
         // and the client saw a zeroed default result. nros-c / nros-cpp already
         // stripped the header; only this Rust path was missed.
+        //
+        // Confirmed independently while root-causing issue 0461: the extra
+        // header also made every SERVER decode the wrong offset over zenoh
+        // (C/C++ read the inner header as the first field, so an order of 10
+        // arrived as 256). Same defect, a second symptom.
         let mut buf = [0u8; N];
         let mut writer = crate::CdrWriter::new(&mut buf);
         goal.serialize(&mut writer)
