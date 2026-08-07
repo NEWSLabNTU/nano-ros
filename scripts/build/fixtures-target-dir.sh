@@ -96,6 +96,11 @@ nros_fixture_target_dir_flag() {
     local group
     group="$(nros_fixture_group "$platform" "$cargo_args" "$envstr")" || return 0
     [ -n "$group" ] || return 0
-    local root="${NROS_REPO_ROOT:-$PWD}"
-    printf ' --target-dir %s/build/fixtures-cargo/%s' "$root" "$group"
+    # RFC-0070 R1/R3 — the root comes from `nros_build_root`, not a literal, so
+    # `NROS_BUILD_ROOT` moves this family with everything else. The default is
+    # `<repo>/build`, so the emitted path is unchanged (phase-334 W2.b step 1:
+    # derivation first, paths later).
+    # shellcheck source=scripts/build/build-root.sh
+    . "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
+    printf ' --target-dir %s' "$(nros_build_dir fixtures-cargo "$group")"
 }

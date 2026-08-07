@@ -189,14 +189,27 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
 
 ### W2 — The layout + naming rule
 
-- [ ] **W2.a** Write the rule into RFC-0065 (or a new RFC if 0065 stays
+- [x] **W2.a** LANDED 2026-08-06 as **[RFC-0070](../design/0070-build-cache-layout.md)**
+      (a new RFC — 0065 stays builder-scoped, and this rule governs every cache in
+      THIS repo, not a user workspace's build root).
+      Write the rule into RFC-0065 (or a new RFC if 0065 stays
       builder-scoped): every build cache lives under `NROS_BUILD_ROOT`;
       NOTHING under `examples/**/src` or a workspace/source dir; names are
       `<kind>/<coordinate>` where coordinate reuses the fixture-manifest
       vocabulary (platform, lang, rmw, feature-sig) — never a new ad-hoc
       suffix. `target-<rmw>`, `build-<rmw>`, `build-workspace-fixtures[-<plat>]`
       all become derivations of the one scheme.
-- [ ] **W2.b** Migrate the writers: `fixtures-build.sh` /
+- [ ] **W2.b** IN PROGRESS — **step 1 of 4 landed 2026-08-06**:
+      `scripts/build/build-root.sh` (`nros_build_root` / `nros_build_dir`) is the
+      derivation, `fixtures-target-dir.sh` is its first caller, and
+      `check-build-root` (in `check-fast`) asserts the emitted path is UNCHANGED.
+      `NROS_BUILD_ROOT` now relocates that family. **Steps 2–4 remain: 236
+      hardcoded cache-path literals across 17 files** — justfile, five
+      `just/*.just`, six `scripts/build/*`, `fixtures.toml`,
+      `check-fixtures-stale.sh`, three Rust resolvers under
+      `packages/testing/nros-tests/src/`. Each family's build + staleness probe +
+      test resolver must move in ONE commit.
+      Migrate the writers: `fixtures-build.sh` /
       `workspace-fixtures-build.sh` / `fixtures-target-dir.sh` (the
       phase-226 group logic generalizes), the per-example `--target-dir`
       rows in `fixtures.toml`, cmake configure sites, and the freshness
@@ -205,8 +218,10 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       derivation, not 300 edited literals.
 - [ ] **W2.c** Gitignore collapses to `build/` (plus the transition set);
       delete the per-dir ignore sprawl as dirs migrate.
-- [ ] **W2.d** `.env`/`NROS_BUILD_ROOT` documented as the ONE relocation
+- [x] **W2.d** LANDED 2026-08-06 — AGENTS.md "Build-Cache Root (RFC-0070)".
+      `.env`/`NROS_BUILD_ROOT` documented as the ONE relocation
       knob (book + AGENTS.md); the jobs-audit NVMe note updates to it.
+      *(Book page still to write; AGENTS.md is the normative home.)*
 
 ### W3 — Apply the W1 verdict
 

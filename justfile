@@ -372,7 +372,7 @@ check-fast: \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-sysdep-remedies \
-    check-activate-shells
+    check-activate-shells check-build-root
     @echo "Fast checks passed!"
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
@@ -3068,6 +3068,16 @@ verify-verus:
     cd packages/verification/nros-verification
     cargo verus verify
     echo "[OK] All Verus proofs verified"
+
+# RFC-0070 R1/R3 — the build-cache root derivation.
+#
+# phase-334 W2.b step 1 replaced `fixtures-target-dir.sh`'s hardcoded
+# `$root/build/...` with `nros_build_dir`. Buildless and instant, so it belongs
+# in `check-fast`: its whole value is asserting the emitted path is UNCHANGED,
+# which is the property that makes "derivation first, paths later" safe.
+[private]
+check-build-root:
+    @bash packages/testing/nros-tests/tests/build_root_derivation.sh
 
 # Verify Phase 118.E size-probe rigorization: cross-mode parity,
 # cross-target build under isolated mode, concurrency soak.

@@ -98,6 +98,28 @@ Do not duplicate those defaults in package code, tests, examples, CMake, or scri
 
 Shells that need the same defaults should source `scripts/sdk-env.sh`, which evaluates `just/sdk-env.just` and exports only missing variables. `.envrc`, `setup.bash`, and `setup.fish` all use that adapter. When a direct `cargo test` or `cargo nextest` run needs these defaults, either source `scripts/sdk-env.sh` first or run it through a `just` recipe so `just/sdk-env.just` is imported and exported to the child process. Prefer adding a focused `just` test helper over adding repo-path fallbacks inside `packages/`.
 
+## Build-Cache Root (RFC-0070)
+
+`NROS_BUILD_ROOT` names the ONE directory every build cache lives under; it
+defaults to `<repo>/build`, so an unset environment behaves exactly as before.
+Set it to move the whole cache tree to a faster or larger volume — the
+generalisation of what `NROS_ZEPHYR_BUILD_ROOT` already does for one family.
+This matters more than it sounds: the native fixture lane alone holds ~115 GiB
+of target dirs, and phase-340 measured the checkout's volume at 96 % full.
+
+Scripts must derive cache paths through `scripts/build/build-root.sh`
+(`nros_build_root`, `nros_build_dir <kind> [<coordinate>...]`) rather than
+spelling a literal. A cache directory is `<root>/<kind>/<coordinate>` where the
+coordinate uses the fixture-manifest vocabulary (platform, lang, rmw,
+feature-sig); a new ad-hoc suffix is a bug, not a naming choice.
+
+The build, the staleness gate and the test resolver must call the SAME
+derivation — the #393 rule applied to paths. `check-build-root` (in
+`check-fast`) asserts the derivation's output, and the migration is deliberately
+ordered derivation → callers → paths → gate, because there are still 236
+hardcoded cache-path literals across 17 files. Do not move a directory before
+its readers agree on where to look. → RFC-0070, phase-334 W2.
+
 ## Toolchain & SDK Provisioning
 
 Design rationale → RFC-0014 (`docs/design/0014-nros-setup-toolchain-management.md`). Operational
