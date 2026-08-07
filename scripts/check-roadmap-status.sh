@@ -46,7 +46,16 @@ checked=0
 
 while IFS= read -r doc; do
     checked=$((checked + 1))
-    if ! grep -qiE '^[[:space:]]*(#+[[:space:]]*)?(\*\*)?Status[[:space:]]*([(.:*]|\*\*)' "$doc"; then
+    # The rule is stated above as "a line whose first non-markup word is
+    # Status", so the match ends at a WORD BOUNDARY. The first spelling of this
+    # regex demanded punctuation immediately after `Status` — which rejected
+    # `**Status of the work below.**` (phase-341), a line that satisfies the
+    # stated rule perfectly well. That is the gate being narrower than the rule
+    # it enforces, and the same trap the comment above already describes: a
+    # first cut recognising only `**Status` flagged `303-xcdr2-interop`, and
+    # reformatting the phase would have been "the gate bending the tree to
+    # itself". Widening here keeps every shape listed above passing.
+    if ! grep -qiE '^[[:space:]]*(#+[[:space:]]*)?(\*\*)?Status\b' "$doc"; then
         if [ "$missing" -eq 0 ]; then
             echo "check-roadmap-status: active phase with no findable status line:" >&2
         fi
