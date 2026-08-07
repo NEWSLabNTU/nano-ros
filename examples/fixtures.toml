@@ -2958,6 +2958,34 @@ output = "target/debug/posix_entry"
 
 # --- cmake-configure: configure (and build) into build/cmake-fixtures/<id>.
 #     Several also produce runnable binaries, not just nros-metadata.json.
+# Issue 0469 — phase 209's C++ port templates. These are the acceptance for
+# "a normal ROS 2 C++ node builds against nano-ros by swapping the build glue",
+# and they were in NO lane at all: nothing built or ran them between 2026-05-30
+# and 2026-08-07, during which the acceptance quietly stopped holding (0465 —
+# the rclcpp shim opened a second RMW session and the node died at startup).
+#
+# A build row alone would NOT have caught that: the template compiled and linked
+# cleanly the whole time it was broken. `port_templates_e2e` RUNS the publisher
+# against a router; these rows exist so it has something prebuilt to run (tests
+# never compile — AGENTS.md Testing).
+[[compile_check_fixture]]
+id = "cpp_port_minimal_publisher"
+builder = "cmake-configure"
+dir = "examples/templates/cpp-port-minimal-publisher"
+output = "minimal_publisher"
+
+[[compile_check_fixture]]
+id = "cpp_port_rclcpp_compat_smoke"
+builder = "cmake-configure"
+dir = "examples/templates/rclcpp-compat-smoke"
+output = "rclcpp_compat_smoke"
+
+[[compile_check_fixture]]
+id = "cpp_port_topic_state_monitor"
+builder = "cmake-configure"
+dir = "examples/templates/topic-state-monitor-port"
+output = "topic_state_monitor"
+
 [[compile_check_fixture]]
 id = "cpp_robot_entry"
 builder = "cmake-configure"

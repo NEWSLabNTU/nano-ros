@@ -105,7 +105,10 @@ pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
         TransportError::BufferTooSmall => NROS_RMW_RET_BUFFER_TOO_SMALL,
         TransportError::MessageTooLarge => NROS_RMW_RET_MESSAGE_TOO_LARGE,
         TransportError::InvalidArgument => NROS_RMW_RET_INVALID_ARGUMENT,
-        TransportError::InvalidConfig => NROS_RMW_RET_INVALID_ARGUMENT,
+        // Issue 0468 — InvalidConfig used to borrow INVALID_ARGUMENT, so a
+        // capacity the BUILD cannot honour arrived looking like a caller
+        // passing something wrong. It has its own code now.
+        TransportError::InvalidConfig => NROS_RMW_RET_INVALID_CONFIG,
         TransportError::Unsupported => NROS_RMW_RET_UNSUPPORTED,
         TransportError::BadAlloc => NROS_RMW_RET_BAD_ALLOC,
         TransportError::IncompatibleQos => NROS_RMW_RET_INCOMPATIBLE_QOS,
@@ -152,6 +155,7 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
         NROS_RMW_RET_TIMEOUT => TransportError::Timeout,
         NROS_RMW_RET_BAD_ALLOC => TransportError::BadAlloc,
         NROS_RMW_RET_INVALID_ARGUMENT => TransportError::InvalidArgument,
+        NROS_RMW_RET_INVALID_CONFIG => TransportError::InvalidConfig,
         NROS_RMW_RET_UNSUPPORTED => TransportError::Unsupported,
         NROS_RMW_RET_INCOMPATIBLE_QOS => TransportError::IncompatibleQos,
         NROS_RMW_RET_TOPIC_NAME_INVALID => TransportError::TopicNameInvalid,

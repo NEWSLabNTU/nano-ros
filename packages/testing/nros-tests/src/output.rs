@@ -245,6 +245,13 @@ pub const WS_CUSTOM_MSG_TEMP_FIELD: &str = "temp=";
 /// (`"talker publishing chatter seq=N"` — phase-263 A5 logging demo).
 pub const WS_RUST_LOGGING_MARKER: &str = "talker publishing chatter";
 
+/// Issue 0469 — the per-tick line the phase-209 port template publishes. The
+/// template vendors the upstream ROS 2 tutorial's `minimal_publisher.cpp`
+/// VERBATIM, so this string is the tutorial's, not ours: changing the template
+/// to make a test pass would defeat the point of the fixture (a stock rclcpp
+/// node building and running against nano-ros unmodified).
+pub const CPP_PORT_PUBLISH_MARKER: &str = "Publishing: 'Hello, world!";
+
 /// The C workspace talker's per-tick `NROS_LOG_INFO` line marker
 /// (`"c_talker logging seq=N"`); the MIXED workspace reuses the C talker,
 /// so its logging cell greps the same marker.

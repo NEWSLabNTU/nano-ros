@@ -51,6 +51,30 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#471** — `wait_for_output_pattern` returns `Ok` on TIMEOUT whenever the process printed anything at all;
+the pattern is consulted only for the early-exit path. So `wait_for_output_pattern(MARKER, …)?` means "the
+process was not silent", NOT "the marker appeared". **233 of 283 call sites** ignore the returned string and
+check only the `Result`. Found by verifying a NEW test against a known-broken fixture (#0469): it passed,
+because the failing node's error line is non-empty output. Many of the 233 are genuine readiness waits, but
+the ones where the marker IS the assertion are vacuous today. Fix is one line plus a triage pass — flipping it
+turns every vacuous assertion red at once, a mix of stale markers, hidden regressions, and intentional
+leniency. Sequenced in the issue. See `0471-*`. (2026-08-07)
+
+Recently resolved (2026-08-07): **#469** — phase 209's three C++ port templates were in NO lane (0 fixture
+rows, 0 tests, 0 recipes), so nothing built or ran them for two months while the acceptance silently broke
+(#0465). RESOLVED: three `cmake-configure` fixture rows + `port_templates_e2e` asserting the vendored ROS 2
+tutorial node actually publishes. A build row alone would NOT have caught it — the template compiled and
+linked cleanly the whole time it was broken. The test was verified to FAIL against the pre-fix shim before
+being trusted, which is how the `wait_for_output_pattern` trap surfaced. See `archived/0469-*`.
+
+Recently resolved (2026-08-07): **#468** — `TransportError::InvalidConfig` had no ABI code: it encoded to
+`NROS_RMW_RET_INVALID_ARGUMENT` and decoded back as `InvalidArgument`, so a capacity the BUILD cannot honour
+(an exhausted `ZPICO_MAX_SESSIONS` pool) arrived looking like a caller passing something wrong — opposite
+remedies: fix the call vs rebuild. Last hop of #0465's collision. RESOLVED by adding
+`NROS_RMW_RET_INVALID_CONFIG = -19` following the `-18 CONNECTION_FAILED` precedent, plus both mapping
+directions and regenerated bindings. Verified: `Err(Transport(InvalidConfig))` end to end.
+See `archived/0468-*`.
+
 Recently resolved (2026-08-07): **#465** — phase 209's acceptance template built and linked but did not RUN
 (`Transport(ConnectionFailed)`). Root cause was NOT transport: the rclcpp shim opened TWO sessions —
 `rclcpp::init()` builds the global executor, and `rclcpp::Node` then called `Executor::create()` for its OWN.

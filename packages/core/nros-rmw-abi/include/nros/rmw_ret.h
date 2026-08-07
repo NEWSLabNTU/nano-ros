@@ -125,4 +125,19 @@ typedef int32_t nros_rmw_ret_t;
  *  `TransportError::ConnectionFailed` and `Disconnected`. */
 #define NROS_RMW_RET_CONNECTION_FAILED      -18
 
+/** Issue 0468 — a COMPILE-TIME capacity or configuration made the call
+ *  impossible: the zenoh session pool (`ZPICO_MAX_SESSIONS`) or a
+ *  publisher/queryable table is sized smaller than what the application
+ *  asked for. Distinct from `NROS_RMW_RET_INVALID_ARGUMENT`, which means
+ *  the CALLER passed something wrong — here the arguments are fine and the
+ *  BUILD cannot honour them, so the remedy is a rebuild (or not asking for
+ *  the extra resource), never a different argument.
+ *
+ *  Added because `TransportError::InvalidConfig` had no code of its own and
+ *  encoded to `INVALID_ARGUMENT`, so an exhausted session pool arrived on
+ *  the far side indistinguishable from a bad pointer — the last hop of the
+ *  same collision that made issue 0465 read as a connection failure. Maps
+ *  to / from `TransportError::InvalidConfig`. */
+#define NROS_RMW_RET_INVALID_CONFIG         -19
+
 #endif /* NROS_RMW_RET_H */
