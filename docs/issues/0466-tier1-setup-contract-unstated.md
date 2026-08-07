@@ -106,10 +106,42 @@ Ordered by how much each buys, not by effort:
 2. **Make the degrading probes loud when they matter.** A lane that silently
    drops to serial should say so as a WARNING with the remedy (done for
    `check-examples`); better, `ci` should refuse a degraded lane unless asked.
-3. **A cheap `just ci --gates-only`** (or a documented subset) that runs the
-   source-level gates WITHOUT fixtures. All four of the (B) reds would have been
-   caught in minutes by a lane that needs no CLI, no fixtures, no toolchain.
-   This is the highest-value item: it attacks the backlog directly.
+3. ~~A cheap `just ci --gates-only`~~ — **CORRECTION: this lane already exists,
+   and was itself blocked.** `check-fast` is documented as exactly that
+   ("BUILDLESS, SOURCE-FREE gates only … needs neither the nros CLI nor any
+   provisioned source … ~1 min … the per-push CI gate"). Its FIRST dependency
+   was `check-cli-fresh`, so on a tree whose only sin was a `git pull`:
+
+   ```
+   just check-fast   ->  failed in 0.77s, having checked NOTHING
+   ```
+
+   The early placement came from #0363 — front-run `check-dep-chain`, which
+   surfaced a stale CLI minutes in as nine cells failing with a cargo resolution
+   error. Correct intent, wrong lane: `check-dep-chain` is a check-BUILD gate,
+   and no fast-tier gate execs the CLI at all.
+
+   **FIXED (ccd63f474):** moved to the head of `check-build`, which still
+   front-runs `check-dep-chain` and gives `check-fast` its contract back. Same
+   tree, same stale CLI: 0.77s -> 73s, 19+ gates reporting, including all three
+   fast-tier gates that caught this issue's own reds — `check-leaf-lockfiles`,
+   `check-build-profile-literals`, `check-staleness-probe-exemptions`.
+
+   So (B) was never a missing-lane problem. The lane existed, ran per-push in
+   `check.yml`, and had been disabled for anyone whose CLI was out of date —
+   which is anyone who pulled.
+
+   Two things this did NOT fix, both left deliberately:
+   - `check-fast` still is not purely buildless: `check-test-targets` compiles
+     the test targets, added on purpose after two incidents where a struct field
+     broke every test initializer while `check-fast` stayed green. Re-scoping
+     what the per-push lane covers is a coverage decision, not a cleanup.
+   - On an Arch host that compiling gate now fails for an unrelated reason:
+     `pyo3-ffi 0.24.2` caps at Python 3.13 and Arch ships 3.14, so anything
+     building `packages/cli` dies with "the configured Python interpreter
+     version (3.14) is newer than PyO3's maximum supported version (3.13)".
+     Ubuntu 22.04 (Python 3.10) is unaffected, which is why every box run got
+     past it. Probably its own issue.
 4. Fold "any refresh re-arms the CLI stamp and every fixture" into the pitfall
    index next to the mtime treadmill, which currently names fixtures only.
 
