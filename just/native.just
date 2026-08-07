@@ -306,7 +306,7 @@ format:
         'cd {} && cargo +{{NIGHTLY}} fmt && echo "  fmt {}"'
     echo "All examples formatted!"
 
-# Check all Rust examples (auto-discovered, parallel via GNU parallel).
+# Check all Rust examples (auto-discovered; fan-out under the make jobserver).
 check JOBS="75%":
     #!/usr/bin/env bash
     set -e
@@ -317,36 +317,25 @@ check JOBS="75%":
     source scripts/build/cargo.sh
     export NROS_EXAMPLE_PROFILE_FLAGS="$(nros_cargo_profile_arg_string)"
 
-    # Fan-out choice. Two ways to be serial here, for opposite reasons:
+    # Fan-out choice.
     #
     #   NROS_JOBSERVER=1  an OUTER pool already owns the tokens. A serial walk
     #                     still saturates the machine, because cargo is itself a
     #                     jobserver client and every one it spawns draws from
     #                     that pool. Fanning out on top would double-count the
-    #                     budget — the nesting `nros_pool_available` refuses for
-    #                     the same reason, and the `build-all` extras lane in
-    #                     the root justfile already handles it exactly this way.
-    #   no `parallel`     nothing to fan out WITH. One frontend at a time, each
-    #                     free to use the whole machine.
+    #                     budget — `nros_pool_available` refuses to nest for the
+    #                     same reason.
     #
-    # Only the middle case — parallel present, no outer pool — needs the inner
-    # width capped, and only there is NROS_EXAMPLE_INNER_JOBS set.
+    # Otherwise the units go to `nros_pool_run`, which owns the degrade path
+    # itself (serial when no pinned make 4.4). Issue 0466 — GNU parallel is no
+    # longer used here, so its absence is no longer a tier-1 prerequisite that
+    # silently turned this lane into a ~99-leaf serial walk looking like a hang.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
         echo "Checking examples (serial; outer jobserver owns the tokens)..."
         SERIAL=1
-    elif ! command -v parallel >/dev/null 2>&1; then
-        echo "GNU parallel not found — falling back to serial check."
-        echo "  (provision it: \`nros setup --system\`; \`just doctor\` lists it as gnu-parallel)"
-        SERIAL=1
     else
         SERIAL=0
-        # Without this each of the {{JOBS}} frontends runs `cargo clippy` at its
-        # own default width — one whole machine EACH. Nominally
-        # 0.75*ncpu * ncpu on a 32-core host; the real width stayed survivable
-        # only because each example's dep graph is small, which is luck, not a
-        # bound.
-        export NROS_EXAMPLE_INNER_JOBS="$(nros_cargo_inner_jobs '{{JOBS}}')"
-        echo "Checking examples (parallel, JOBS={{JOBS}}, cargo -j$NROS_EXAMPLE_INNER_JOBS each)..."
+        echo "Checking examples (jobserver fan-out)..."
     fi
 
     toml_list="$(mktemp "${TMPDIR:-/tmp}/nros_check_toml.XXXXXX")"
@@ -431,19 +420,61 @@ check JOBS="75%":
         # followed the setup instructions. A fresh clone has no `generated/`,
         # so CI never saw it and main stayed green.
         pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.toml" | head -1)"
-        # Empty unless the caller fanned out with GNU parallel — see the
-        # dispatch above. Never set under an outer jobserver, where an explicit
-        # `-j` would override the inherited token pool.
-        local jflag="${NROS_EXAMPLE_INNER_JOBS:+-j $NROS_EXAMPLE_INNER_JOBS}"
-        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check -p "$pkg" && eval $env_prefix cargo clippy --quiet $jflag $flags )
+        # No `-j`: this path runs one leaf at a time (outer jobserver owns the
+        # tokens, and cargo joins it). The old NROS_EXAMPLE_INNER_JOBS cap went
+        # with the GNU parallel fan-out that needed it — issue 0466.
+        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check -p "$pkg" && eval $env_prefix cargo clippy --quiet $flags )
     }
     export -f check_one
     export NIGHTLY="{{NIGHTLY}}"
 
+    # Issue 0466 — fan out under the JOBSERVER, not GNU parallel.
+    #
+    # Every unit here is `cargo clippy`, and cargo is a jobserver CLIENT: given
+    # an inherited jobserver it uses that budget instead of creating its own
+    # (rust-lang/cargo#4110; rustc does the same via MAKEFLAGS). So N units
+    # under one pool draw rustc slots from ONE set of tokens, which is what
+    # `NROS_EXAMPLE_INNER_JOBS` was hand-simulating — the cap whose own comment
+    # admitted the width "stayed survivable only because each example's dep
+    # graph is small, which is luck, not a design". Under the pool the luck is
+    # not needed and the knob is gone.
+    #
+    # `-P N` on top of self-parallelising tools is the multiplication the
+    # ecosystem moved off years ago (12 tokens x 4 packages = 48 jobs); one
+    # jobserver shared by every descendant is the current answer, and it is
+    # already this repo's idiom in `workspace-fixtures-build.sh`,
+    # `zephyr-fixture-make-driver.sh` and `compile-check-fixtures.sh`.
+    #
+    # `nros_pool_run` degrades to a serial walk by itself when a pool is
+    # unavailable (outer jobserver, or no pinned make 4.4) — same commands,
+    # same order — so this lane no longer needs its own serial branch, and
+    # GNU parallel is no longer a tier-1 prerequisite at all.
     if [ "$SERIAL" = "1" ]; then
         while read -r toml; do check_one "$toml"; done < "$toml_list"
     else
-        parallel --halt now,fail=1 --line-buffer -j {{JOBS}} check_one :::: "$toml_list"
+        source scripts/build/jobserver-pool.sh
+        # ONE self-contained line per leaf. A make recipe is one command per
+        # line, so the unit cannot be an exported bash function spliced in with
+        # `declare -f` (multi-line, and make runs recipes under /bin/sh). Derive
+        # the per-leaf bits here — the same three `check_one` computes — and
+        # emit a flat command.
+        units="$(mktemp "${TMPDIR:-/tmp}/nros_check_units.XXXXXX")"
+        trap 'rm -f "$toml_list" "$missing" "$units"' EXIT
+        while read -r toml; do
+            d="$(dirname "$toml")"
+            plat="$(echo "$d" | cut -d/ -f2)"
+            f=""
+            [ "$plat" != "native" ] && f="$NROS_EXAMPLE_PROFILE_FLAGS"
+            e=""
+            case "$plat" in
+                esp32 | qemu-esp32-baremetal) e="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}" ;;
+            esac
+            pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$d/Cargo.toml" | head -1)"
+            # No `-j`: the pool's tokens are the budget now (cargo joins it).
+            printf 'cd %s && cargo +%s fmt --check -p %s && %s cargo clippy --quiet %s\n' \
+                "$d" "{{NIGHTLY}}" "$pkg" "$e" "$f"
+        done < "$toml_list" > "$units"
+        nros_pool_run check-examples < "$units"
     fi
     echo "All examples check passed!"
 

@@ -204,7 +204,33 @@ build_cmake_fixture() {
     # (NROS_CLI_BIN vs NROS_BIN); the unused one is harmless.
     CMAKE_PREFIX_PATH="$prefix_path" \
         cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN"
-    CMAKE_PREFIX_PATH="$prefix_path" cmake --build "$bld" -j
+    # Issue 0466 — how a cmake fixture gets its parallelism.
+    #
+    # These templates configure with the DEFAULT generator ("Unix Makefiles"),
+    # so `cmake --build` runs a sub-make — and GNU make is the jobserver
+    # protocol's native client. Under `nros_pool_run` the unit already carries
+    # `MAKEFLAGS=-j<N> --jobserver-auth=fifo:/tmp/GMfifoNNN`, and make 4.4's FIFO
+    # style is openable by any descendant (the pipe-FD style is what historically
+    # forced projects to unset MAKEFLAGS around cmake). So the sub-make joins the
+    # pool and the WHOLE fixture sweep shares one token budget.
+    #
+    # Passing `-j` here breaks exactly that. Measured under the pool:
+    #
+    #   cmake --build <dir>        -> silent; joins the jobserver
+    #   cmake --build <dir> -j     -> "warning: -j0 forced in submake:
+    #                                  resetting jobserver mode"
+    #
+    # i.e. the bare `-j` (unlimited) evicted the build from the pool and let it
+    # run unbounded — the oversubscription the pool exists to prevent, caused by
+    # the flag meant to make it fast.
+    #
+    # Outside a pool there is no budget to join, so ask for a bounded width
+    # rather than the unlimited bare `-j`.
+    if [ -n "${MAKEFLAGS:-}" ] && case "${MAKEFLAGS:-}" in *jobserver-auth*) true ;; *) false ;; esac; then
+        CMAKE_PREFIX_PATH="$prefix_path" cmake --build "$bld"
+    else
+        CMAKE_PREFIX_PATH="$prefix_path" cmake --build "$bld" -j "$(nproc 2>/dev/null || echo 4)"
+    fi
     echo "   built $bld"
 }
 

@@ -215,10 +215,30 @@ build-example-extras:
     export -f build_one
     export NIGHTLY="{{NIGHTLY}}"
 
-    if [ "${NROS_JOBSERVER:-}" = "1" ] || ! command -v parallel >/dev/null 2>&1; then
+    # Issue 0466 — fan out under the JOBSERVER, not GNU parallel. cargo is a
+    # jobserver client (rust-lang/cargo#4110), so N of them under one pool share
+    # ONE token budget instead of each starting its own full-width build; `-P N`
+    # on top of a self-parallelising tool is the classic multiplication. This
+    # branch also used to collapse two DIFFERENT reasons into one silent serial
+    # walk — an outer jobserver (correct) and a missing `parallel` (a degrade) —
+    # so you could not tell which one you got. Only the first remains, and the
+    # pool owns the rest of the degrade path itself.
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
         while read -r dir; do build_one "$dir"; done < "$list"
     else
-        parallel --halt now,fail=1 --line-buffer -j "$cargo_frontends" build_one :::: "$list"
+        source scripts/build/jobserver-pool.sh
+        units="$(mktemp "${TMPDIR:-/tmp}/nros_build_units.XXXXXX")"
+        while read -r dir; do
+            plat="$(echo "$dir" | cut -d/ -f2)"
+            e=""; tc=""
+            case "$plat" in
+                esp32 | qemu-esp32-baremetal)
+                    e="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"; tc="+{{NIGHTLY}}" ;;
+            esac
+            printf 'cd %s && %s cargo %s build %s\n' "$dir" "$e" "$tc" "$cargo_profile_args"
+        done < "$list" > "$units"
+        nros_pool_run build-all-extras < "$units"
+        rm -f "$units"
     fi
     rm -f "$list"
     echo "Build-all example extras built."

@@ -89,6 +89,29 @@ probe "test fixtures missing or stale for this lane" \
     "just build-test-fixtures lane=${NROS_FIXTURE_LANE:-all}   (bypass: NROS_SKIP_FIXTURE_CHECK=1)" \
     just _require-fixtures
 
+# 5. The pinned make. `nros_pool_run` needs make 4.4's FIFO jobserver: the
+#    system make on Ubuntu 22.04 is 4.3, whose pipe-FD jobserver a grandchild
+#    (cargo, or cmake's sub-make) cannot join. Without it every jobserver
+#    fan-out in the tree — example checks, fixture builds, the compile-check
+#    sweep — silently walks SERIALLY. `just install-make` builds it to
+#    `third-party/make/` and `.envrc` puts it first on PATH.
+#
+#    Deliberately NOT a `[system.make]` entry in nros-sdk-index.toml: the apt
+#    package is 4.3 on the LTS we target, so provisioning it would satisfy a
+#    `check = { cmd = "make" }` probe while still not giving a usable jobserver.
+#    The index has no version predicate (cmd / sharedlib / pkg_config only), so
+#    an entry there would assert something false.
+#
+#    WARN, not fail: a serial walk is correct, only slow.
+if [ ! -x "third-party/make/make" ] ||
+    ! third-party/make/make --version 2>/dev/null | head -1 | grep -q "4\.4"; then
+    echo "check-tier-preconditions: WARNING — pinned GNU make 4.4 absent;" >&2
+    echo "  every jobserver fan-out degrades to a SERIAL walk (the system make" >&2
+    echo "  is 4.3 on Ubuntu LTS, and its pipe-FD jobserver cannot be joined by" >&2
+    echo "  cargo or by cmake's sub-make)." >&2
+    echo "  Remedy: just install-make" >&2
+fi
+
 # 5. A lane that silently DEGRADES is worse than one that fails: without GNU
 #    parallel the example check walks ~99 leaves serially and reads as a hung
 #    tier, not a missing package. Warn — do not fail — since the lane is correct,
