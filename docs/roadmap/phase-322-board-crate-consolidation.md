@@ -1,8 +1,34 @@
 # Phase 322 — Board crate consolidation
 
-**Status (2026-07-31): drafted, DEFERRED.** Deliberately sequenced after
-[phase-320](archived/phase-320-board-support-tiers.md) (support tiers) and
-[phase-321](archived/phase-321-package-org-cuts-and-reorg.md) (cuts + reorganization).
+**Status (2026-08-07): UNBLOCKED, but MOSTLY OVERTAKEN — re-scope before
+starting.** phase-320 and phase-321 are both archived, so the deferral condition
+is cleared. In the interim, however, phases 320/321/337/341 removed most of what
+this phase was written to merge, and **both of W1's empirical examples are
+gone**:
+
+| W1's evidence | today |
+| --- | --- |
+| `nros-platform-esp32s3` missing the #190 `foreign_free_count()` fix its C3 twin has | the **crate no longer exists**; only `nros-platform-esp32-qemu` remains, and it carries the fix (2 occurrences) |
+| `nros-board-rtic-mps2-an385`'s `qemu_config()` diverging on IP/locator | the crate was **folded into `nros-board-mps2-an385`** — confirmed while doing phase-341 W3, whose deploy-alias work depended on knowing it |
+
+The merge table has shrunk the same way:
+
+| cluster | W1 said | today |
+| --- | --- | --- |
+| NuttX qemu arm/riscv + façade | 3 crates → 1 | **2 crates** (`nros-board-nuttx` 778 lines, `nros-board-nuttx-qemu` 82) |
+| ESP32 platform crates | 4 → 3 | **1** |
+
+So the "~1300 + ~600 lines removed" figures are stale, and the case W1 argues —
+"the forks have already rotted, twice, in ways nobody noticed" — no longer has
+its two witnesses. **Do not start from this doc's numbers.** What may survive is
+the NuttX pair, and even there the 82-line crate looks like a thin overlay
+rather than a fork. Re-measure before proposing a merge.
+
+The structural argument in W1 (no board crate emits a reset vector; the
+board-key→crate mapping is already a table) is still true and still worth
+keeping — it is the reason a merge is cheap *if* one is warranted.
+
+**Superseded prerequisite:** originally sequenced after 320/321.
 
 **Why deferred.** This is the largest and riskiest of the three: it rewrites
 board crates that several platforms boot from, and every merge needs its
