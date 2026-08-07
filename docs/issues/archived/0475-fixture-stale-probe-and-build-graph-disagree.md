@@ -1,11 +1,12 @@
 ---
 id: 475
 title: "The RMW static lib is an ORDER-ONLY link dep, so a backend change never relinks the C/C++ examples — museum binaries by construction"
-status: open
+status: resolved
 type: bug
 severity: high
 area: cmake, testing
 related: [issue-0196, issue-0391, issue-0445, issue-0466]
+resolved_in: phase-209
 ---
 
 > **Retitled 2026-08-07 after investigation.** This was filed as "the staleness
@@ -72,7 +73,50 @@ go through `target_link_libraries` is precisely how a lib ends up order-only:
 CMake models "link this" as an implicit dep, but "depend on this target" as
 order-only.
 
-## Fix direction
+## Resolution
+
+`LINK_DEPENDS` on the consuming target, set in `nano_ros_link_rmw`
+(`cmake/NanoRosLink.cmake`) — the one seam every consumer passes through,
+whatever verb created the target:
+
+```cmake
+if(TARGET nros_rmw_${_chosen})
+    set_property(TARGET ${TARGET} APPEND PROPERTY
+        LINK_DEPENDS "$<TARGET_FILE:nros_rmw_${_chosen}>")
+endif()
+```
+
+That adds the file edge the flag cannot carry, without touching the link LINE.
+
+Verified behaviourally, not just structurally:
+
+```console
+$ ninja -C examples/native/c/talker/build-cyclonedds -t query c_talker
+    | …/libnros_rmw_cyclonedds.a      <- implicit now (was only ||)
+    || …/libnros_rmw_cyclonedds.a
+
+$ cmake --build …/build-cyclonedds -j   # rc=0
+$ touch packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/vtable.cpp
+$ cmake --build …/build-cyclonedds -j   # rc=0
+c_talker 1786089172 -> 1786089191        RELINKED
+```
+
+### Two approaches that do NOT work, recorded so they are not retried
+
+* **`INTERFACE_LINK_DEPENDS` on the `NanoRos` INTERFACE library.** Looks like the
+  natural home. On CMake 3.22 the edge stayed `||` after a clean reconfigure.
+* **Also `target_link_libraries(NanoRos INTERFACE nros_rmw_cyclonedds)`** next to
+  the raw flag, to get the dependency "for free". This BREAKS THE LINK:
+  `undefined reference to ddsrt_malloc/calloc/free`. The archive must stay
+  inside the `--whole-archive … libddsc.a --no-whole-archive` group; adding it
+  separately reorders ld's single pass. The root CMakeLists already warns about
+  this ordering for the platform lib — the same trap, one library over.
+
+The lesson generalises past cmake: the dependency graph and the command line are
+separate channels here, and a fix aimed at the wrong one either does nothing
+(`INTERFACE_LINK_DEPENDS`) or breaks the build (`target_link_libraries`).
+
+## Fix direction (original analysis)
 
 Attach the RMW archive with `target_link_libraries` on the example targets so
 CMake emits it as an implicit (`|`) input. Verify with `ninja -t query <bin>`

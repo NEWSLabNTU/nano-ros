@@ -51,14 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#475** — `libnros_rmw_cyclonedds.a` is an ORDER-ONLY (`||`) link dep of the C/C++ example binaries, so a
-backend edit rebuilds the archive and NEVER relinks the examples — museum binaries by construction. Measured:
-archive 14:15, `c_talker` 12:28, `cmake --build` rc=0 with no relink. The staleness probe is CORRECT to flag
-it; what is broken is the graph, and the remedy the probe prints (`just build-test-fixtures`) cannot work —
-only `rm -rf <leaf>/build-<rmw>` does, ~687s per leaf across ~8. Strong lead: `NROS_RMW_EXTRA_LINK_LIBS` is
-SET AND NEVER READ, so the archive reaches the link outside `target_link_libraries`, which is exactly how a
-lib ends up order-only. NOTE: filed first as "the probe is over-broad" — that was wrong, and the correction
-is recorded in the issue. See `0475-*`. (2026-08-07)
+Recently resolved (2026-08-07): **#475** — the RMW archive was an ORDER-ONLY (`||`) link dep of the C/C++
+example binaries, because it is whole-archived through a raw `-Wl,...` FLAG (CMake cannot see a file inside a
+flag string) and `add_dependencies()` supplies only build ORDER. A backend edit rebuilt the archive and never
+relinked the examples — museum binaries by construction, clearable only by `rm -rf` (~687s per Cyclone leaf).
+The staleness probe was RIGHT; the graph was wrong, and the remedy the probe printed could not work. FIXED
+with `LINK_DEPENDS` in `nano_ros_link_rmw` — the file edge, without touching the link line. Verified by
+touching a backend source and watching `c_talker` relink. Two non-fixes recorded in the issue:
+`INTERFACE_LINK_DEPENDS` does nothing on CMake 3.22, and `target_link_libraries`-ing the archive BREAKS the
+link (`undefined reference to ddsrt_*` — it reorders ld's single pass out of the whole-archive group).
+See `archived/0475-*`.
 
 Recently resolved (2026-08-07): **#474** — `just format` was not behind `_require-leaf-includes`, so on a
 checkout with an unsynced leaf it died with cargo's raw manifest-parse error four frames deep, never

@@ -298,6 +298,16 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   fields (`Z_FEATURE_LOCAL_QUERYABLE`…) make mismatched TUs a silent ABI break (queries went
   session-local-only). `build_c_shim` injects `ZENOH_GENERIC` + the OUT_DIR config. → issue 0135
   (archived). Local fixture binaries embed the shim — rebuild fixtures after zpico config changes.
+- **A lib reached through a raw `-Wl,...` link FLAG gets no rebuild edge (issue 0475)** — CMake cannot
+  see a file inside a flag string, and `add_dependencies()` only adds build ORDER, which ninja renders
+  `||` (order-only): "must exist before linking", never "relink when it changes". The RMW backends are
+  whole-archived exactly that way, so a backend edit rebuilt the archive and left every C/C++ example
+  binary holding the OLD code — museum binaries by construction, clearable only by `rm -rf` on the build
+  dir (~687 s per Cyclone leaf). Fix is `LINK_DEPENDS` on the consuming target (`nano_ros_link_rmw`),
+  which adds the file edge without touching the link LINE — do NOT also `target_link_libraries()` the
+  archive: that reorders ld's single pass and breaks the whole-archive group (`undefined reference to
+  ddsrt_*`). Verify with `ninja -C <build-dir> -t query <exe>`: the `.a` must appear under `|`, and a
+  `touch` of a backend source must relink.
 - **cmake `include()` inside a FUNCTION drops the file's normal vars when the frame pops** —
   capture module dirs `CACHE INTERNAL` (the `_NROS_ENTRY_DIR` pattern); a plain
   `set(_X_DIR ${CMAKE_CURRENT_LIST_DIR})` broke every freertos ws member's `configure_file`

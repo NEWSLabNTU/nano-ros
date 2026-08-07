@@ -75,6 +75,34 @@ function(nano_ros_link_rmw TARGET)
         "NANO_ROS_DEFAULT_RMW;NANO_ROS_RMW")
     set_property(TARGET ${TARGET} PROPERTY NANO_ROS_RMW "${_chosen}")
 
+    # Issue 0475 — make a backend REBUILD relink this target.
+    #
+    # The Linux/BSD path whole-archives the RMW backend through a raw
+    # `-Wl,--whole-archive,$<TARGET_FILE:...>` flag (root CMakeLists), because the
+    # registration object must not be GC'd. CMake cannot see a file inside a flag
+    # string, so it emits no link-rule dependency on it; the root's
+    # `add_dependencies()` supplies only build ORDER, which ninja renders as an
+    # ORDER-ONLY (`||`) edge — "must exist before linking", never "relink when it
+    # changes".
+    #
+    # Consequence measured on examples/native/c/talker/build-cyclonedds: the
+    # archive rebuilt at 14:15 while `c_talker` stayed at 12:28 and
+    # `cmake --build` exited 0 doing nothing. The executable kept the OLD backend
+    # indefinitely — museum binaries by construction — and only `rm -rf` on the
+    # build dir cleared it (~687 s per leaf; Cyclone self-provisions from source).
+    #
+    # `LINK_DEPENDS` is the file-level edge the flag cannot carry: it attaches to
+    # THIS target's link rule, so a changed archive relinks. Applied here rather
+    # than at the root because this function is the one seam every consumer goes
+    # through, whatever verb created the target.
+    #
+    # Verify: the archive must appear under `|` (implicit), not `||`, in
+    #   ninja -C <build-dir> -t query <exe>
+    if(TARGET nros_rmw_${_chosen})
+        set_property(TARGET ${TARGET} APPEND PROPERTY
+            LINK_DEPENDS "$<TARGET_FILE:nros_rmw_${_chosen}>")
+    endif()
+
     # Phase 104.B.6 — accumulate the chosen RMW into the target's
     # `_NANO_ROS_LINKED_RMWS` list and (re)generate the strong-stub
     # `nros_app_register_backends()` TU. Idempotent across repeat calls.
