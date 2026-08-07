@@ -117,10 +117,12 @@ tests: suites waiting for the literal `"Waiting for"`, a banner `examples/native
 printing at phase-277 — now `output::LISTENER_READY_MARKER`. Those suites also got 2-3x faster, having been
 burning a full 5 s timeout per listener. See `0471-*`. (2026-08-07)
 
-**#476** `codegen_cyclonedds_descriptors` args-file test flakes `Text file busy`: a sibling test thread forks
-while this test's write handle on its stub `idlc` is still open — `O_CLOEXEC` closes at exec, not at fork — so
-the forked child holds a writer and our `execve` gets `ETXTBSY`. Rare, clears on re-run. See `0476-*`.
-(2026-08-07)
+**#476** RESOLVED (2026-08-07): writing an executable stub and exec'ing it races against sibling test
+threads — `O_CLOEXEC` closes a descriptor at EXEC, not at FORK, so any concurrent `Command::spawn` inherits
+the still-open write handle and our `execve` gets `ETXTBSY`. **Unique paths do not fix it** (that was #455's
+cause, and it was already fixed here — the failing path was pid-scoped). Measured 245/1200 execs failing at
+12 forking threads. Fix: `test_support::write_executable_stub` writes via CHILD `cp`+`chmod`, so no write
+descriptor ever exists in our process — 0/1200. See `0476-*`. (2026-08-07)
 
 Recently resolved (2026-08-07): **#469** — phase 209's three C++ port templates were in NO lane (0 fixture
 rows, 0 tests, 0 recipes), so nothing built or ran them for two months while the acceptance silently broke

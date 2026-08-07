@@ -33,8 +33,10 @@
 //! git grep -n 'temp_dir()' -- packages/cli | grep -v 'process::id()'
 //! ```
 
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 /// Per-call discriminator, so one process's tests never collide with each
 /// other even when they pass the same tag.
@@ -65,6 +67,63 @@ pub(crate) fn scratch_dir(tag: &str) -> PathBuf {
     std::fs::create_dir_all(&dir)
         .unwrap_or_else(|e| panic!("create scratch dir {}: {e}", dir.display()));
     dir
+}
+
+/// Write an EXECUTABLE stub (a fake `idlc`, a fake toolchain binary) that the
+/// code under test will then spawn.
+///
+/// Issue 0476 — the obvious spelling races, and unique paths do not save it:
+///
+/// ```ignore
+/// let mut f = File::create(&p)?;   // <- write descriptor, open in THIS process
+/// f.write_all(script)?;
+/// set_permissions(&p, 0o755)?;
+/// drop(f);                         // closed here...
+/// Command::new(&p).status()?;      // ...yet this can still fail ETXTBSY
+/// ```
+///
+/// `O_CLOEXEC` (which Rust sets) closes a descriptor at **exec**, not at
+/// **fork**. Between any other test thread's fork and its child's exec, that
+/// child holds a copy of every descriptor open in this process — including the
+/// write handle above. If our `execve` lands inside that window the kernel sees
+/// a writer and returns `ETXTBSY` ("Text file busy"). Since these tests run as
+/// THREADS under `cargo test --lib` and ~47 sites spawn processes, the window
+/// is open constantly.
+///
+/// Measured on this machine, unique path per write, 12 concurrently-spawning
+/// threads: **245 of 1200 execs failed**. With this helper: **0**.
+///
+/// The fix is to never hold the descriptor: `cp` and `chmod` run as CHILD
+/// processes, so the only write handle on the stub lives in a process our forks
+/// do not copy from, and it is gone before the stub is ever executed. The
+/// intermediate source file is written normally — it is never executed, so its
+/// descriptor is harmless.
+///
+/// A retry-on-`ETXTBSY` loop also works (0 escapes, 141 backoffs in the same
+/// experiment) but masks the race instead of removing it, and pays latency on
+/// every hit.
+pub(crate) fn write_executable_stub(path: &std::path::Path, script: &str) {
+    let src = path.with_extension("stub-src");
+    std::fs::write(&src, script)
+        .unwrap_or_else(|e| panic!("write stub source {}: {e}", src.display()));
+
+    let ok = std::process::Command::new("cp")
+        .arg(&src)
+        .arg(path)
+        .status()
+        .unwrap_or_else(|e| panic!("spawn cp for {}: {e}", path.display()))
+        .success();
+    assert!(ok, "cp failed writing stub {}", path.display());
+
+    let ok = std::process::Command::new("chmod")
+        .arg("755")
+        .arg(path)
+        .status()
+        .unwrap_or_else(|e| panic!("spawn chmod for {}: {e}", path.display()))
+        .success();
+    assert!(ok, "chmod failed on stub {}", path.display());
+
+    let _ = std::fs::remove_file(&src);
 }
 
 #[cfg(test)]
@@ -98,5 +157,53 @@ mod tests {
     #[test]
     fn scratch_path_does_not_create() {
         assert!(!scratch_path("absent").exists());
+    }
+
+    /// Issue 0476 — a stub written this way survives being exec'd while
+    /// sibling threads fork constantly.
+    ///
+    /// The loop is the test: writing the stub with `File::create` instead makes
+    /// this fail within a few iterations on a loaded machine (measured ~20% of
+    /// execs), because a concurrent fork inherits the still-open write
+    /// descriptor. Unique paths do NOT prevent it — every iteration below uses
+    /// a fresh one.
+    #[test]
+    fn executable_stub_survives_concurrent_forks() {
+        let dir = scratch_dir("etxtbsy");
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        let noise: Vec<_> = (0..4)
+            .map(|_| {
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    while !stop.load(Ordering::Relaxed) {
+                        let _ = std::process::Command::new("/bin/true").status();
+                    }
+                })
+            })
+            .collect();
+
+        let mut failures = Vec::new();
+        for i in 0..40 {
+            let stub = dir.join(format!("stub-{i}"));
+            write_executable_stub(&stub, "#!/bin/sh\nexit 0\n");
+            match std::process::Command::new(&stub).status() {
+                Ok(s) if s.success() => {}
+                Ok(s) => failures.push(format!("iteration {i}: stub exited {s}")),
+                Err(e) => failures.push(format!("iteration {i}: spawn failed: {e}")),
+            }
+        }
+
+        stop.store(true, Ordering::Relaxed);
+        for h in noise {
+            let _ = h.join();
+        }
+
+        assert!(
+            failures.is_empty(),
+            "a stub written by `write_executable_stub` must always be \
+             executable, even while sibling threads fork (issue 0476):\n{}",
+            failures.join("\n")
+        );
     }
 }

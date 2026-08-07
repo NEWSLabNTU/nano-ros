@@ -415,10 +415,12 @@ extern const int ${stem}_marker;
 #endif
 EOF
 "#;
-        fs::write(&path, script).expect("write stub idlc");
-        let mut perm = fs::metadata(&path).unwrap().permissions();
-        perm.set_mode(0o755);
-        fs::set_permissions(&path, perm).unwrap();
+        // Issue 0476 — NOT `fs::write` + `set_permissions`. That leaves a write
+        // descriptor open in this process, and a sibling test thread's fork
+        // inherits it (O_CLOEXEC closes at exec, not at fork), so exec'ing the
+        // stub intermittently fails `ETXTBSY`. The helper writes it from a
+        // child process instead. See `crate::test_support`.
+        crate::test_support::write_executable_stub(&path, script);
         path
     }
 
