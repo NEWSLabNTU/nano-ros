@@ -3,9 +3,10 @@
 **Status (2026-08-07).** IN PROGRESS — measurement-first, and the measurements
 are the deliverable so far: W1 answered (`incremental` for the shared profile,
 single-leaf and lane-scale results recorded), W5.a measured (the biggest
-duplicate is INSIDE one invocation — the build-dep graph). W2/W3/W4 (collapse
-the R1 duplicates, the corrosion `--target` split, gate the property) not yet
-landed.
+duplicate is INSIDE one invocation — the build-dep graph). W4 landed 2026-08-07:
+the measured numbers are now a gate (`check-artifact-identity-budget`), so they
+cannot regrow quietly while the rest is in flight. W2/W3 (collapse the R1
+duplicates, the corrosion `--target` split) not yet landed.
 
 **Closes:** issue 0446. **Touches:** phase-334 (build-cache layout — this is the
 *identity* question that layout question implies), phase-336 (the profile that
@@ -645,17 +646,66 @@ explicit `--target`. Same driver, same flag, same features — and still no
 sharing, because they are different workspaces. **Fixing W3 alone would not make
 D build once for this user.**
 
-#### Work item
+#### Work item — LANDED 2026-08-07
 
-- [ ] A check that fails when the same `-C metadata` identity is built into more
+- [x] A check that fails when the same `-C metadata` identity is built into more
       than N target dirs in one lane, so this cannot silently regrow.
-- [ ] Use the mixed workspace as the gate's fixture: assert `nros-core` is built
+- [x] Use the mixed workspace as the gate's fixture: assert `nros-core` is built
       at most K times for one workspace at one feature set. It is the smallest
       honest reproducer of the whole phase, it already exists, and today it
       answers 8.
 
-**Acceptance:** the gate catches a deliberately reintroduced duplicate, and the
-mixed-workspace count is recorded so a regression is visible as a number.
+`scripts/check-artifact-identity-budget.sh`, wired into `check-fast` as
+`check-artifact-identity-budget`. It reads `lib<crate>-<hash>.rlib` filenames
+under `examples/workspaces/mixed/build-workspace-fixtures` — cargo's own
+`-C metadata` judgement, so "same compilation?" is answered by construction —
+and asserts three numbers, all measured 2026-08-07 on a full native-lane tree:
+
+| budget | value | what it pins |
+| --- | --- | --- |
+| `nros_core` identities | 8 | the headline number this phase measured |
+| any crate's identities | ≤9 | `nros_serdes` is the max: the 8 plus one more from the nested per-msg-package `nros-minsizerel` trees |
+| copies of ONE identity | ≤5 | the five `src/*/nano_ros_cpp_ffi_*/target/` trees each write their own copy of the SAME hash — R1, verbatim |
+
+The named budget pins the crate the phase measured; the two ceilings are the
+class-wide arm, so regrowth in a crate nobody named still fails. **When W2/W3/W5
+land, lower the numbers in the script** — a budget left above the truth is a
+gate that has stopped gating.
+
+Tier, and its cost: the gate is buildless (filenames only, no cargo/rustc/
+resolution) but not source-free, since it needs a tree someone already built. On
+the pristine per-push CI checkout it therefore SKIPS — loudly, naming the build
+command. It is deliberately NOT in `build-test-fixtures`: a long-lived
+incremental tree accumulates rlibs from earlier builds, so an over-count from
+history alone is possible, and a gate that can red a BUILD on stale history gets
+switched off. Failing a static check whose remedy is "wipe the tree and rebuild"
+is survivable.
+
+**Acceptance — met.** Tripwired on a filename-only replica of the real tree
+(`find … -name 'lib*-*.rlib'` mirrored as empty files, which reproduces the real
+verdict exactly): a 9th `nros_core` identity fails the named budget; a 10th
+`nros_serdes` identity fails the ceiling; a 6th copy of one identity fails the
+copies arm; and a tree holding rlibs but none for `nros_core` fails rather than
+passing on a tree it did not understand. All four restored to green afterwards.
+
+**What it cannot catch.**
+
+- It counts **rlibs**. Proc-macro dylibs, build-script executables, staticlibs
+  and binaries are invisible to it, so duplication that lands only in those
+  forms is not counted.
+- It reports a **number, not a cause**. It cannot say which of the axes grew,
+  and a swap — one identity disappearing while a different one appears — keeps
+  the count at 8 and passes.
+- Only the **native mixed tree**. `build-workspace-fixtures-freertos`,
+  `-threadx`, and the other three workspaces are unread; a regression confined
+  to them is silent unless someone points `NROS_IDENTITY_BUDGET_TREE` at them.
+- **Nothing at all** on a checkout that has not built the mixed workspace, which
+  includes the per-push CI lane.
+- It **over-counts on a long-lived incremental tree**: cargo never collects old
+  rlibs, so identities from earlier builds accumulate on disk. That is the
+  deliberate direction of the error — it can cry wolf, it cannot under-count —
+  and the failure text says so, naming "wipe the tree and rebuild" before
+  believing the number.
 
 ### W5 — the duplicate INSIDE one invocation: the build-dependency graph
 

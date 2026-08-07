@@ -387,7 +387,7 @@ check-fast: \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-roadmap-status check-sysdep-remedies \
-    check-activate-shells check-build-root
+    check-activate-shells check-build-root check-artifact-identity-budget
     @echo "Fast checks passed!"
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
@@ -3145,6 +3145,27 @@ verify-verus:
 [private]
 check-build-root:
     @bash packages/testing/nros-tests/tests/build_root_derivation.sh
+
+# phase-340 W4 — the artifact-identity budget: how many times one crate is
+# COMPILED, and how many dirs one compilation is written into, for a single
+# workspace at a single feature set. `examples/workspaces/mixed` is the fixture
+# (Rust + C++ node packages over a shared `nros-core`), and today it answers 8
+# identities for `nros-core` — three ×2 axes, zero sharing. The numbers and the
+# reasoning live in the script; when W2/W3/W5 land, lower them there.
+#
+# `check-fast`, for two reasons. It is buildless in the strict sense — it reads
+# FILENAMES under a build tree that already exists, never invoking cargo, rustc
+# or workspace resolution — and it must not be able to fail a BUILD: a
+# long-lived incremental tree accumulates rlibs from earlier builds, so an
+# over-count from history alone is possible, and a gate that reds a build on
+# that gets switched off. Failing a static check whose remedy is "wipe the tree
+# and rebuild" is survivable. Consequence, stated rather than hidden: on the
+# pristine per-push CI checkout there is no tree and this gate SKIPS (loudly,
+# naming the build command); its live coverage is the developer who just built
+# fixtures and then ran the tier their change earned.
+[private]
+check-artifact-identity-budget:
+    @bash scripts/check-artifact-identity-budget.sh
 
 # Verify Phase 118.E size-probe rigorization: cross-mode parity,
 # cross-target build under isolated mode, concurrency soak.
