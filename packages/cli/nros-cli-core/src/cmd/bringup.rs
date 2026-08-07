@@ -317,18 +317,9 @@ fn read_workspace_members(workspace_root: &Path) -> Result<Option<Vec<String>>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root(tag: &str) -> PathBuf {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir =
-            std::env::temp_dir().join(format!("nros-bringup-{tag}-{}-{stamp}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        dir
+        crate::test_support::scratch_dir(&format!("nros-bringup-{tag}"))
     }
 
     fn write_pure_bringup(dir: &Path) {

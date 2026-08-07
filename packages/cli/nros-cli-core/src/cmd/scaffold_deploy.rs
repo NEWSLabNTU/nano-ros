@@ -197,10 +197,7 @@ fn insert_deploy(doc: &mut DocumentMut, name: &str, table: Table) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        path::Path,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::path::Path;
 
     const SYSTEM_TOML: &str = "\
 [system]
@@ -218,12 +215,7 @@ name = \"talker\"
     /// Cargo.toml) so `NrosConfig::from_workspace` discovers it without
     /// invoking cargo.
     fn temp_ws(tag: &str) -> (PathBuf, PathBuf) {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("{tag}-{}-{stamp}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = crate::test_support::scratch_dir(tag);
         let bringup = root.join("demo_bringup");
         std::fs::create_dir_all(&bringup).unwrap();
         std::fs::write(
@@ -357,11 +349,7 @@ name = \"talker\"
 
     #[test]
     fn errors_without_a_bringup_system_toml() {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("nros-scaffold-noboot-{stamp}"));
+        let root = crate::test_support::scratch_dir("scaffold-noboot");
         std::fs::create_dir_all(&root).unwrap();
         let err = scaffold_deploy(&scaffold(&root, "x", Some("self")))
             .unwrap_err()
@@ -373,11 +361,7 @@ name = \"talker\"
 
     #[test]
     fn requires_bringup_selector_when_multiple() {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("nros-scaffold-multi-{stamp}"));
+        let root = crate::test_support::scratch_dir("scaffold-multi");
         let _ = std::fs::remove_dir_all(&root);
         for name in ["alpha_bringup", "beta_bringup"] {
             let dir = root.join(name);

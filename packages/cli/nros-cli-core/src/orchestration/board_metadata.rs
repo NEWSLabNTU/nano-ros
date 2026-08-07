@@ -428,12 +428,7 @@ rmw_source    = "cyclonedds-src"
 "#;
 
     fn write_tmp(name: &str, body: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "nros-board-metadata-test-{}-{}",
-            std::process::id(),
-            name
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_support::scratch_dir(&format!("nros-board-metadata-{name}"));
         let p = dir.join("Cargo.toml");
         let mut f = std::fs::File::create(&p).unwrap();
         f.write_all(body.as_bytes()).unwrap();

@@ -103,25 +103,10 @@ mod tests {
     use std::{
         fs,
         path::PathBuf,
-        sync::atomic::{AtomicU64, Ordering},
-        time::{SystemTime, UNIX_EPOCH},
     };
 
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-
     fn scratch_pkg(name: &str) -> PathBuf {
-        let n = SEQ.fetch_add(1, Ordering::Relaxed);
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "nros-ament-{name}-{}-{stamp}-{n}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).expect("scratch");
-        dir
+        crate::test_support::scratch_dir(&format!("nros-ament-{name}"))
     }
 
     #[test]

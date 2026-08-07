@@ -12,6 +12,11 @@ pub mod cmd;
 // recomputes it. Replaces the mtime comparison that fired on every rebase.
 pub mod source_stamp;
 pub mod stale_guard;
+// Issue 0455 — one `scratch_dir` for every unit test in this crate. Nine
+// hand-written `temp_dir().join(...)` spellings raced each other; the
+// differences between them WERE the bug. Test-only, so it ships nothing.
+#[cfg(test)]
+mod test_support;
 // Phase 219.A — Entry-pkg codegen (`nros codegen entry`). The shared
 // pkg-index walk + launch.xml parser also live here so the cmake-fn
 // path (`nano_ros_entry(LAUNCH …)`), the Rust proc-macro

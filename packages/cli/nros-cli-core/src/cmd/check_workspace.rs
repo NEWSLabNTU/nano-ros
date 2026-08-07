@@ -654,21 +654,10 @@ mod tests {
     use super::*;
     use std::{
         path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
     };
 
     fn temp_root(tag: &str) -> PathBuf {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "nros-check-ws-{tag}-{}-{stamp}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        dir
+        crate::test_support::scratch_dir(&format!("nros-check-ws-{tag}"))
     }
 
     fn write_component_pkg(dir: &Path, name: &str) {

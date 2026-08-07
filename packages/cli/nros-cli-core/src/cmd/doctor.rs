@@ -504,11 +504,7 @@ mod tests {
     /// file is missing relative to the bringup dir.
     #[test]
     fn deploy_targets_flag_missing_launch_file() {
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("nros_doctor_deploy_{n}"));
+        let dir = crate::test_support::scratch_dir("doctor_deploy");
         std::fs::create_dir_all(&dir).unwrap();
         let system_toml = dir.join("system.toml");
 
@@ -550,11 +546,7 @@ mod tests {
 
     #[test]
     fn license_gate_flags_misconfigured_env_only() {
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let ws = std::env::temp_dir().join(format!("nros_gate_{n}"));
+        let ws = crate::test_support::scratch_dir("gate");
         std::fs::create_dir_all(&ws).unwrap();
         std::fs::write(
             ws.join("nros-sdk-index.toml"),
@@ -582,11 +574,7 @@ mod tests {
     /// (binary discovery); a missing FVP is WARN-only (problems == 0).
     #[test]
     fn license_gate_board_filter_arm_fvp_warns_only() {
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let ws = std::env::temp_dir().join(format!("nros_gate_fvp_{n}"));
+        let ws = crate::test_support::scratch_dir("gate_fvp");
         std::fs::create_dir_all(&ws).unwrap();
         std::fs::write(
             ws.join("nros-sdk-index.toml"),
@@ -660,11 +648,7 @@ mod tests {
     /// (matches `nros setup`'s policy — no silent wrong package set).
     #[test]
     fn license_gate_board_filter_rejects_unknown() {
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let ws = std::env::temp_dir().join(format!("nros_gate_unk_{n}"));
+        let ws = crate::test_support::scratch_dir("gate_unk");
         std::fs::create_dir_all(&ws).unwrap();
         std::fs::write(
             ws.join("nros-sdk-index.toml"),

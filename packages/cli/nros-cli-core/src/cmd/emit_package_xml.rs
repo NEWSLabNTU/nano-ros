@@ -689,10 +689,7 @@ name = "p"
     mod tempfile_lite {
         use std::{
             path::{Path, PathBuf},
-            sync::atomic::{AtomicU64, Ordering},
         };
-
-        static SEQ: AtomicU64 = AtomicU64::new(0);
 
         pub struct TempDir {
             path: PathBuf,
@@ -700,14 +697,7 @@ name = "p"
 
         impl TempDir {
             pub fn new() -> std::io::Result<Self> {
-                let n = SEQ.fetch_add(1, Ordering::Relaxed);
-                let pid = std::process::id();
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_nanos())
-                    .unwrap_or(0);
-                let path = std::env::temp_dir().join(format!("nros-emit-pkgxml-{pid}-{now}-{n}"));
-                std::fs::create_dir_all(&path)?;
+                let path = crate::test_support::scratch_dir("nros-emit-pkgxml");
                 Ok(Self { path })
             }
 

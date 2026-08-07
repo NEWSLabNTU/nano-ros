@@ -501,14 +501,20 @@ an `rmeta`/`.o` path. RESOLVED by recognising a cargo build dir instead of listi
 `CACHEDIR.TAG` plus a `target-` prefix for the not-yet-built case. Listing the dirs would have been
 the hand-maintained-exclude-list shape issue 0287 already replaced. See `archived/0416-*`.)
 
-**#455** — CLI unit tests share a FIXED `/tmp/nros-cli-core-tests/` scratch path:
-`CARGO_TARGET_TMPDIR` is set for INTEGRATION tests only, and `check-cli-tests` runs `--lib`, so the
-fallback branch is what every run actually takes. Two concurrent runs (second checkout, parallel agent
-session, CI beside a local run) then race one directory — one exec's the stub `idlc` it wrote while the
-other truncates it (`Text file busy`), and `remove_dir_all` deletes the other's scratch. Reads as a
-codegen regression, passes 3/3 solo. Fixed in the two sites carrying that exact idiom (which shared a
-base name with each other); ~9 other CLI scratch paths lack a pid and want one shared helper rather
-than a tenth spelling. The first pass said it had fixed "both sites that carried this idiom" — the sweep it prescribes found a THIRD, `orchestration/nros_config.rs`, byte-identical down to the base name (fixed 2026-08-06). See `0455-*`. (2026-08-06)
+Recently resolved (2026-08-07): **#455** — CLI unit tests hand-rolled 22 scratch-path spellings and the
+differences between them WERE the bug: 6 keyed on a nanosecond stamp only (two processes collide), 3 on
+a stamp with nothing else (same tick collides), 1 on nothing at all. Two shared a base name and raced —
+one exec'd the stub `idlc` it wrote while the other truncated it (`Text file busy`), and the opening
+`remove_dir_all` deleted the other's scratch. RESOLVED by one helper (`src/test_support.rs`): 26 call
+sites across 19 files, and `git grep 'env::temp_dir' -- nros-cli-core/src` is now EMPTY — the ability to
+spell it wrong is gone, not just the sites that had failed. Uniqueness no longer depends on the clock
+(pid + process-wide atomic seq), and the pid segment is appended whether or not `CARGO_TARGET_TMPDIR`
+is set — the earlier passes put it in the fallback only, so two concurrent runs of one INTEGRATION test
+would still have shared a path. Two lessons recorded in the issue: its own residual table listed 9 sites
+when the sweep finds 11 (third recurrence of the shape this issue documents), and the prescribed sweep
+is line-based, so 8 of its hits are false positives on multi-line `format!(` calls that DO carry a pid.
+Verified: 512 lib tests, three CONCURRENT suites clean, `check-cli-tests` 975 tests, clippy `-D warnings`.
+See `archived/0455-*`.
 **#454** — the two `*_send_goal_raw` FFIs (`nros-c` + `nros-cpp`) take a param named `goal_cdr` —
 the same name their STRIPPING siblings use for `[CDR_HEADER][fields]` input — and pass it through
 untouched, while every non-`_raw` sibling calls `strip_cdr_header`. `PollingActionClient::send_goal`

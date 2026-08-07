@@ -1498,7 +1498,6 @@ mod probe_target_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU32, Ordering};
 
     /// issue 0318 — `[deploy.<target>]` marks a package deploy-bound just as
     /// `[entry]` does. Keying only on `entry` let 27 standalone examples
@@ -1605,14 +1604,7 @@ name = "demo"
     struct Scratch(PathBuf);
     impl Scratch {
         fn new(tag: &str) -> Self {
-            static N: AtomicU32 = AtomicU32::new(0);
-            let dir = std::env::temp_dir().join(format!(
-                "nros-ws-test-{}-{}-{}",
-                tag,
-                std::process::id(),
-                N.fetch_add(1, Ordering::Relaxed)
-            ));
-            fs::create_dir_all(&dir).unwrap();
+            let dir = crate::test_support::scratch_dir(&format!("nros-ws-test-{tag}"));
             Scratch(dir)
         }
         fn write(&self, rel: &str, body: &str) {

@@ -293,19 +293,9 @@ pub fn synthesise_self_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_pkg(name: &str) -> PathBuf {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let p = std::env::temp_dir().join(format!(
-            "nros-launch-synth-{name}-{}-{stamp}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&p).unwrap();
-        p
+        crate::test_support::scratch_dir(&format!("nros-launch-synth-{name}"))
     }
 
     #[test]

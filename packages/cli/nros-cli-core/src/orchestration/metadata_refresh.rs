@@ -448,7 +448,7 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("nros-md-refresh-{name}"));
+        let dir = crate::test_support::scratch_dir(&format!("md-refresh-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).unwrap();
         dir

@@ -553,11 +553,7 @@ mod tests {
     use crate::orchestration::sdk_index::SdkIndex;
 
     fn tmp(tag: &str) -> PathBuf {
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!("nros_store_{tag}_{n}"))
+        crate::test_support::scratch_path(&format!("store_{tag}"))
     }
 
     #[test]

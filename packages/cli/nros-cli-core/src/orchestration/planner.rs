@@ -3310,7 +3310,6 @@ fn sanitize_id(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn parses_launch_args_in_ros_and_shell_forms() {
@@ -5522,11 +5521,7 @@ topics:
     }
 
     fn temp_workspace(name: &str) -> PathBuf {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!("{name}-{}-{stamp}", std::process::id()))
+        crate::test_support::scratch_path(name)
     }
 
     // ---- Phase 172.B — callback-chain inference ----

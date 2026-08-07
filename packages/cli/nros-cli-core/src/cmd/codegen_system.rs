@@ -1272,21 +1272,11 @@ mod tests {
     use super::*;
     use std::fs;
 
-    /// Issue 0455 — same fallback bug as `codegen_cyclonedds_descriptors`, and
-    /// the two even shared this base name. `CARGO_TARGET_TMPDIR` is unset for
-    /// `--lib` runs, so the fallback was a FIXED `/tmp` path shared by every
-    /// concurrent run; the `remove_dir_all` below then deletes another run's
-    /// scratch out from under it. Scope it to this process.
+    /// Issue 0455 — scratch naming lives in ONE place; see
+    /// `crate::test_support`. The local spellings this replaced differed
+    /// from each other, and those differences were the bug.
     fn scratch_dir(test: &str) -> PathBuf {
-        let base = std::env::var_os("CARGO_TARGET_TMPDIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                std::env::temp_dir().join(format!("nros-cli-core-tests-{}", std::process::id()))
-            });
-        let dir = base.join(format!("codegen_system_{test}"));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).expect("scratch dir");
-        dir
+        crate::test_support::scratch_dir(&format!("codegen_system_{test}"))
     }
 
     /// Write a "zephyr_native_sim" style fixture: 2 Rust components + bringup.

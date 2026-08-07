@@ -1757,11 +1757,7 @@ mod tests {
 
     #[test]
     fn locate_index_falls_back_to_workspace() {
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let ws = std::env::temp_dir().join(format!("nros_idx_{n}"));
+        let ws = crate::test_support::scratch_dir("idx");
         std::fs::create_dir_all(&ws).unwrap();
         // No index in the workspace yet → None (cwd has none under `cargo test`).
         assert_eq!(locate_index(Some(&ws)), None);
@@ -1775,11 +1771,7 @@ mod tests {
     #[test]
     fn ensure_tools_noop_without_index() {
         // No index near a temp workspace ⇒ Ok no-op.
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let ws = std::env::temp_dir().join(format!("nros_noidx_{n}"));
+        let ws = crate::test_support::scratch_dir("noidx");
         std::fs::create_dir_all(&ws).unwrap();
         assert!(ensure_tools("native", Some(&ws)).is_ok());
         std::fs::remove_dir_all(&ws).ok();
@@ -1822,7 +1814,7 @@ mod tests {
         )
         .unwrap();
         // An empty store, so nothing resolves to `Present`.
-        let root = std::env::temp_dir().join("nros-source-build-names-test");
+        let root = crate::test_support::scratch_dir("source-build-names");
 
         let pkgs = ["qemu", "zenohd", "mbedtls"];
         assert_eq!(

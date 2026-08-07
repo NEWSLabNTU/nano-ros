@@ -390,13 +390,6 @@ version = "1.2.3"
     }
 
     fn tempdir_path(tag: &str) -> std::path::PathBuf {
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir =
-            std::env::temp_dir().join(format!("phase-218-e-{tag}-{}-{stamp}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        dir
+        crate::test_support::scratch_path(&format!("phase-218-e-{tag}"))
     }
 }
