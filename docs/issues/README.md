@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#479** (examples, open 2026-08-08) — `5f4eda8a4` fixed issue 0453 (an action server whose output ignored
+the goal payload) on the **native** cells only; all 8 embedded copies still carry the old body, so the
+defect 0453 was filed about is live on 8 of 10 cells. Two divergences: the four embedded C++ copies run
+`i < goal.order` where native runs `i <= goal.order` (an order-N goal yields N elements, siblings yield
+N+1), and the four embedded C copies never gained the `accepted_order` slot, so the bound is right and the
+input is still dropped. Caught by `example_portability copies_within_a_group_are_identical` — one of the
+few `ci-matrix` failures that is not a QEMU flake; reproduces solo in 0.4 s. NOT propagated blindly: the
+nuttx C copy has `(void)context;` where native casts it to `server_context_t*`, so the embedded cells may
+surface the callback context differently and a paste could break four platforms.
+
 **#478** (build, RESOLVED 2026-08-08) — cc-rs sent `-mno-omit-leaf-frame-pointer`, a **clang** flag, to
 `arm-none-eabi-gcc`, which rejects it — every `freertos` fixture row died `rc=101` while the other six
 modules passed, and it was the last gate on `just ci-matrix`. Nothing in-tree passed it: cc-rs adds it when
