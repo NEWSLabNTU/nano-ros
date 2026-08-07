@@ -51,14 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#474** (build, open 2026-08-06) — `just format` is not behind `_require-leaf-includes`, so on a
-checkout with an unsynced leaf it dies with cargo's raw manifest-parse error four frames deep, never
-naming `nros sync`. CLAUDE.md tells you to run `just format` before broad changes, so this blocks the
-workflow it precedes. Not a new bug: issue 0463 established the cause and fixed the SEAM, wiring the
-guard to `build-test-fixtures-leaves` and `rust-rtos-link-check` — the two sites where it had been
-observed. `format` is a third site walking the same leaves. Issue-0196's rule (check the gate covers the
-new site) and CLAUDE.md's fix-the-CLASS rule. Fix: add the guard to `format`, audit `check-example-fmt` /
-`native::check` for the same gap, and check whether the guard's leaf list is derived or hand-maintained.
+Recently resolved (2026-08-07): **#474** — `just format` died on an unsynced leaf with cargo's raw
+manifest-parse error, never naming `nros sync`, blocking the very workflow CLAUDE.md says to run before
+broad changes. Not a new bug: #463 fixed the SEAM at the two sites where it had been seen
+(`build-test-fixtures-leaves`, `rust-rtos-link-check`) and `format` was a third walking the same leaves —
+the issue-0196 rule about a gate's coverage being narrower than its rule. FIXED by adding
+`_require-leaf-includes` to `format`. Siblings audited rather than fixing the reported site alone:
+`check-example-fmt` is NOT exposed (it calls `rustfmt` per file via the git index and parses no manifest),
+`native::check` IS exposed by the same mechanism but is unreached by `just check` and left noted rather
+than guarded. Caveat for re-testers: the leaf that exposed this was re-synced by an unrelated NuttX build,
+so the original symptom no longer reproduces here. See `archived/0474-*`.
 
 **#472** (build, open 2026-08-06) — thirteen of fifteen opaque-storage macros have NO compile-time size
 check. C/C++ callers allocate opaque byte arrays sized from Rust's `size_of::<T>()`; only
@@ -75,11 +77,15 @@ gated, not fifteen hand-written asserts — the thirteen are unguarded because e
 TWO **tracked** `.cargo/config.toml` files (`examples/workspaces/{rust,realtime-rust}`), so every build
 that syncs them re-dirties the worktree. Exactly the shape issue 0457 removed by moving the managed block
 to the gitignored `nros-managed-patch.toml` sidecar — and `check-cargo-config-tracked` PASSES, because its
-rule is about uncommitted `generated/` trees and `nros-zephyr-build` is a committed in-tree package. Root
-cause is upstream of sync: `zephyr_entry` and `zephyr_entry_robot1` name it `nros-zephyr-build = "*"`, and
-a registry-named dep is what obliges a patch row at all (also #378's public-crates.io exposure). Fix:
-path-dep the two leaves so no row exists to misplace; failing that, route it to the sidecar and make an
-`# nros-managed` marker inside a tracked config a gate failure.
+rule is about uncommitted `generated/` trees and `nros-zephyr-build` is a committed in-tree package. The
+governing principle: `**/.cargo/config.toml` is GITIGNORED — 696 on disk, 75 tracked — because these and
+generated pkg sources depend on the user's ROS env; a config is tracked only for the hand-authored half a
+clone cannot regenerate, which these two do qualify for (NuttX `libc` patch, per-target CFLAGS), so
+untracking is not the fix. Everything SYNC generates belongs in the gitignored sidecar whatever it points
+at. Fix: route the row to `nros-managed-patch.toml`, and make an `# nros-managed` marker inside a tracked
+config a gate failure — the gate today asks only about uncommitted `generated/` trees, narrower than the
+rule it enforces. Path-dep'ing `nros-zephyr-build` in the two zephyr entry leaves (it is registry-named
+`"*"`, #378's public-crates.io exposure) is worthwhile but treats the instance, not the class.
 
 **#471** — `wait_for_output_pattern` returns `Ok` on TIMEOUT whenever the process printed anything at all;
 the pattern is consulted only for the early-exit path. So `wait_for_output_pattern(MARKER, …)?` means "the

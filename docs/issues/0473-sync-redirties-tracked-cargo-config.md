@@ -60,15 +60,40 @@ crate instead. `nros-zephyr-build = "*"` also resolves against the PUBLIC
 crates.io whenever the patch is not in the loaded config chain, which is issue
 0378's failure mode.
 
+## The governing principle
+
+`**/.cargo/config.toml` is **gitignored** (`.gitignore:105`). Counted 2026-08-07:
+**696 exist on disk, 75 are tracked** — tracking is the rare, deliberate
+exception, not the norm. The same applies to generated package sources. Both
+depend on the user's ROS environment, so a tracked copy asserts one host's
+resolution for everyone.
+
+A config is tracked ONLY for the hand-authored half a clone cannot regenerate —
+`[build] target`, a QEMU `runner`, link rustflags, a user `libc` patch. The two
+files here qualify on that basis (they carry the NuttX `libc` patch and
+per-target CFLAGS), so untracking them outright is NOT the fix.
+
+**Everything sync generates belongs in the gitignored sidecar, whatever it points
+at.** That is what #457 established, and it is the rule the `# nros-managed` row
+breaks — not because `nros-zephyr-build` is a `generated/` tree (it is not), but
+because a sync-written row in a tracked file commits one host's view and
+re-dirties every other worktree.
+
 ## Fix shape
 
-Preferred: make the two leaves path-depend on `nros-zephyr-build`, so no patch
-row exists to misplace. That removes the symptom and the 0378 exposure together.
-
-Failing that: route the row to the `nros-managed-patch.toml` sidecar like every
-other managed patch, and tighten `check-cargo-config-tracked` so an
-`# nros-managed` marker inside a tracked config is itself the failure — the
-marker is unambiguous and would have caught this.
+1. **Route the row to `.cargo/nros-managed-patch.toml`**, like every other
+   managed patch. This is the direct fix and needs no manifest changes.
+2. **Tighten `check-cargo-config-tracked`**: an `# nros-managed` marker inside a
+   TRACKED config is itself the failure. The marker is unambiguous and already
+   written by sync, so the gate costs a grep. Today the gate asks only whether a
+   tracked config patches an uncommitted `generated/` tree, which is why this
+   passed — the rule was narrower than the principle it enforces (the audit
+   pattern CLAUDE.md records: gates whose coverage is narrower than their rule).
+3. **Optionally** path-dep `nros-zephyr-build` in the two zephyr entry leaves, so
+   no patch row is generated at all. Independently worthwhile — a registry-named
+   in-tree crate resolves against PUBLIC crates.io whenever the patch is absent
+   from the loaded config chain (#378) — but it treats this instance rather than
+   the class, so it does not substitute for (2).
 
 ## Notes
 

@@ -1,7 +1,7 @@
 ---
 id: 474
 title: "`just format` is not behind `_require-leaf-includes`, so an unsynced leaf fails it with cargo's raw four-frames-deep error"
-status: open
+status: resolved  # guard added to `format` 2026-08-07
 type: bug
 area: build
 related: [issue-0463, issue-0457, issue-0196]
@@ -61,6 +61,29 @@ it was omitted.
 
 Worth checking at the same time whether the guard's own leaf list is derived or
 hand-maintained; a hand-maintained list would be the next instance of this class.
+
+## Resolution (2026-08-07)
+
+`_require-leaf-includes` added as `format`'s first dependency. `just format` now
+runs green and, on an unsynced leaf, says "run `nros sync`" instead of surfacing
+cargo's manifest-parse error.
+
+Audited the siblings named above rather than fixing only the reported site:
+
+* `check-example-fmt` — **not exposed.** It calls `rustfmt` per file via the git
+  index, deliberately (its comment: "Formatting needs no dependency graph"), so
+  it never parses a manifest.
+* `native::check` — walks leaves with `cargo clippy`, so it IS exposed by the
+  same mechanism. Left unguarded here because it is not reached by `just check`
+  and no failure has been observed; noted so the next reader does not have to
+  re-derive it.
+
+**A caveat on the reproducer.** By the time the fix landed, the leaf that
+exposed this (`examples/qemu-arm-baremetal/rust/action-server-rtic`) had been
+re-synced by an unrelated NuttX fixture build, and its config no longer includes
+the sidecar — so the original symptom no longer reproduces on this checkout. The
+guard gap was real and is what was fixed; the specific broken leaf healed on its
+own. Anyone re-testing needs a freshly-cloned or unsynced leaf.
 
 ## Provenance
 

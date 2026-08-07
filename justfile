@@ -316,8 +316,16 @@ _cmake-cargo-stale-guard build_dir:
 # per-example `build/` directories; flush by removing those.
 
 # Format everything: Rust workspace + examples, C, C++, Python
+#
+# Issue 0474 — `_require-leaf-includes` FIRST. `native::format` runs
+# `cargo fmt` in every example leaf, and an unsynced leaf makes cargo fail
+# during MANIFEST PARSE with a path that never mentions `nros sync` (issue
+# 0463). That guard was wired to `build-test-fixtures-leaves` and
+# `rust-rtos-link-check` — the two sites where the failure had been seen — and
+# `format` is a third walking the same leaves. CLAUDE.md tells you to run
+# `just format` BEFORE broad changes, so it is the site a newcomer hits first.
 [group("main")]
-format: format-workspace native::format format-c format-cpp format-python
+format: _require-leaf-includes format-workspace native::format format-c format-cpp format-python
     @echo "All formatting completed!"
 
 # Profile a project's build — passive, read-only (phase-251). Parses the timing

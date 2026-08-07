@@ -699,6 +699,79 @@ pub fn non_zero_or(probe: usize, fallback: usize) -> usize {
     if probe != 0 { probe } else { fallback }
 }
 
+/// Issue 0360 — the cargo feature set of THIS build, as a stable slug.
+///
+/// Sorted and underscore-joined, which is exactly what the checked-in stub
+/// headers have documented since Phase 119.3 as `<variant_slug>` — a path
+/// component nothing ever implemented. It is used here for a different and
+/// cheaper purpose than the documented one: stamping the variant INTO the
+/// generated header (and a matching symbol into the archive) so that compiling
+/// against one feature set and linking another is a LINK error instead of a
+/// silent size mismatch.
+///
+/// Silent is the whole problem: the header carries `NROS_EXECUTOR_SIZE` and the
+/// `_OPAQUE_U64S` counts, a consumer sizes its buffers from them, and the Rust
+/// side writes according to whatever it was actually built with. Disagreement
+/// overflows at runtime rather than failing to build — the reason issues
+/// 0088 / 0114 / 0122 / 0123 / 0245 / 0268 exist as a family.
+pub fn variant_slug() -> String {
+    let mut feats: Vec<String> = env::vars()
+        .filter_map(|(k, _)| k.strip_prefix("CARGO_FEATURE_").map(str::to_string))
+        .map(|f| f.to_ascii_lowercase())
+        .collect();
+    feats.sort();
+    if feats.is_empty() {
+        "default".to_string()
+    } else {
+        feats.join("_")
+    }
+}
+
+/// The same slug reduced to a C identifier suffix (`[a-z0-9_]`).
+pub fn variant_symbol_suffix() -> String {
+    variant_slug()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
+}
+
+/// issue 0369 — the variant ANCHOR suffix, derived from the header's own
+/// size-determining VALUES rather than the cargo feature spelling.
+///
+/// The feature-list suffix was over-broad: a mixed C+C++ workspace builds
+/// nros-c twice with legitimately different rmw-feature SPELLINGS
+/// (`cffi-zenoh-cffi` vs the union with `rmw-cffi` that nros-cpp pulls in)
+/// that resolve to IDENTICAL sizes — yet the shared generated header
+/// (first-writer) named one build's slug and the other build's archive
+/// emitted the other, an undefined reference at link (issue 0369; blocked
+/// the native/threadx mixed fixtures).
+///
+/// The anchor's guarantee is the SIZE contract (the 0088…0268 family:
+/// header sizes vs archive sizes), so the suffix hashes exactly the
+/// `(name, value)` pairs the header ships. Two builds that agree on every
+/// size agree on the symbol by construction; a consumer holding a header
+/// with different sizes still fails to link, which is the point. The
+/// wrong-backend case the feature slug also caught (phase-325 W3's
+/// overwritten archive) keeps failing on its own missing backend symbols,
+/// as it did before the anchor existed.
+pub fn variant_suffix_from_sizes(sizes: &[(&str, usize)]) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for (name, value) in sizes {
+        for b in name
+            .as_bytes()
+            .iter()
+            .chain(b"=")
+            .chain(value.to_string().as_bytes())
+        {
+            h ^= *b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        h ^= b';' as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("sz_{h:016x}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -862,77 +935,4 @@ mod tests {
 
         let _ = std::fs::remove_file(&key);
     }
-}
-
-/// Issue 0360 — the cargo feature set of THIS build, as a stable slug.
-///
-/// Sorted and underscore-joined, which is exactly what the checked-in stub
-/// headers have documented since Phase 119.3 as `<variant_slug>` — a path
-/// component nothing ever implemented. It is used here for a different and
-/// cheaper purpose than the documented one: stamping the variant INTO the
-/// generated header (and a matching symbol into the archive) so that compiling
-/// against one feature set and linking another is a LINK error instead of a
-/// silent size mismatch.
-///
-/// Silent is the whole problem: the header carries `NROS_EXECUTOR_SIZE` and the
-/// `_OPAQUE_U64S` counts, a consumer sizes its buffers from them, and the Rust
-/// side writes according to whatever it was actually built with. Disagreement
-/// overflows at runtime rather than failing to build — the reason issues
-/// 0088 / 0114 / 0122 / 0123 / 0245 / 0268 exist as a family.
-pub fn variant_slug() -> String {
-    let mut feats: Vec<String> = env::vars()
-        .filter_map(|(k, _)| k.strip_prefix("CARGO_FEATURE_").map(str::to_string))
-        .map(|f| f.to_ascii_lowercase())
-        .collect();
-    feats.sort();
-    if feats.is_empty() {
-        "default".to_string()
-    } else {
-        feats.join("_")
-    }
-}
-
-/// The same slug reduced to a C identifier suffix (`[a-z0-9_]`).
-pub fn variant_symbol_suffix() -> String {
-    variant_slug()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect()
-}
-
-/// issue 0369 — the variant ANCHOR suffix, derived from the header's own
-/// size-determining VALUES rather than the cargo feature spelling.
-///
-/// The feature-list suffix was over-broad: a mixed C+C++ workspace builds
-/// nros-c twice with legitimately different rmw-feature SPELLINGS
-/// (`cffi-zenoh-cffi` vs the union with `rmw-cffi` that nros-cpp pulls in)
-/// that resolve to IDENTICAL sizes — yet the shared generated header
-/// (first-writer) named one build's slug and the other build's archive
-/// emitted the other, an undefined reference at link (issue 0369; blocked
-/// the native/threadx mixed fixtures).
-///
-/// The anchor's guarantee is the SIZE contract (the 0088…0268 family:
-/// header sizes vs archive sizes), so the suffix hashes exactly the
-/// `(name, value)` pairs the header ships. Two builds that agree on every
-/// size agree on the symbol by construction; a consumer holding a header
-/// with different sizes still fails to link, which is the point. The
-/// wrong-backend case the feature slug also caught (phase-325 W3's
-/// overwritten archive) keeps failing on its own missing backend symbols,
-/// as it did before the anchor existed.
-pub fn variant_suffix_from_sizes(sizes: &[(&str, usize)]) -> String {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for (name, value) in sizes {
-        for b in name
-            .as_bytes()
-            .iter()
-            .chain(b"=")
-            .chain(value.to_string().as_bytes())
-        {
-            h ^= *b as u64;
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        h ^= b';' as u64;
-        h = h.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    format!("sz_{h:016x}")
 }
