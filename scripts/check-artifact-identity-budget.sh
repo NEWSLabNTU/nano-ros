@@ -105,7 +105,28 @@ fi
 # `*/deps/*` — that is where cargo writes the metadata-suffixed artifacts.
 # Anything else with an rlib-shaped name (a staged copy, a vendored blob) is
 # not a compilation and must not be counted as one.
-rlibs="$(find "$TREE" -path '*/deps/*' -name 'lib*-*.rlib' 2>/dev/null | sort)"
+#
+# `*/out/sizes-probe-target-*/` is PRUNED (phase-340 W6, 2026-08-07). The size
+# probe runs a nested cargo build inside `nros-c`'s build script OUT_DIR, one
+# per build-script instance, and each rebuilds the dependency graph in its own
+# target dir. Those are duplicates of a DIFFERENT kind — the
+# duplicate-inside-one-invocation W5 owns, and issue 0464's subject — and
+# counting them here conflates two phenomena in one number.
+#
+# It also made the gate un-actionable. Measured on a tree that had built the
+# lane repeatedly: 52 `libnros_core-*.rlib`, of which 40 (76 %) sat under
+# sizes-probe dirs, giving 9 identities against a budget of 8 — a FAIL on a
+# working tree whose only change was documentation. Excluding them yields
+# exactly 8, the recorded budget, which is evidence that the non-probe
+# population is what W4 measured when it set the number.
+#
+# Left in, the count grows with how many times a tree has been built rather
+# than with what its source says, and it fails in the fast tier that every task
+# runs first — where a red nobody's diff explains is the expensive kind
+# (issue 0437).
+rlibs="$(find "$TREE" \
+    -type d -path '*/out/sizes-probe-target-*' -prune -o \
+    -path '*/deps/*' -name 'lib*-*.rlib' -print 2>/dev/null | sort)"
 
 if [ -z "$rlibs" ]; then
     echo "[SKIP] artifact-identity budget: $TREE holds no compiled rlibs"
