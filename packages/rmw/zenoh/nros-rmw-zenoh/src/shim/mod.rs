@@ -265,7 +265,17 @@ impl From<ZpicoError> for TransportError {
             ZpicoError::Session => TransportError::ConnectionFailed,
             ZpicoError::Task => TransportError::TaskStartFailed,
             ZpicoError::KeyExpr => TransportError::TopicNameInvalid,
-            ZpicoError::Full => TransportError::PublisherCreationFailed,
+            // Issue 0465 — `Full` means a COMPILE-TIME capacity was exceeded
+            // (`ZPICO_MAX_SESSIONS`, `ZPICO_MAX_PUBLISHERS`, …), so it is a
+            // configuration fact, not a runtime failure of whatever call
+            // happened to hit the ceiling. It used to say
+            // `PublisherCreationFailed`, which is actively wrong when the
+            // exhausted pool is the SESSION pool and no publisher is involved.
+            //
+            // `InvalidConfig` also maps to `NROS_RMW_RET_INVALID_ARGUMENT` (-4)
+            // rather than the generic -1, so the distinction survives the C ABI
+            // instead of arriving as an indistinguishable "rmw_ret error".
+            ZpicoError::Full => TransportError::InvalidConfig,
             ZpicoError::Invalid => TransportError::InvalidArgument,
             ZpicoError::Publish => TransportError::PublishFailed,
             ZpicoError::NotOpen => TransportError::Disconnected,

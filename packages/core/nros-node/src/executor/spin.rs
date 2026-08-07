@@ -160,7 +160,16 @@ impl<'s> Executor<'s> {
         } else {
             nros_rmw_cffi::CffiRmw.open(&rmw_config)
         }
-        .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+        .map_err(|e| {
+            // Issue 0465 — do not relabel. This used to discard the backend's
+            // error and report `ConnectionFailed` for every open failure, so an
+            // exhausted session pool (`InvalidConfig`) and a router that is not
+            // there produced the same sentence. Same lesson as the selection
+            // arm above: say which failure happened.
+            #[cfg(feature = "std")]
+            std::eprintln!("nros: RMW session open failed — {e:?}");
+            NodeError::Transport(e)
+        })?;
         // SAFETY: forwarded from this fn's contract — `backing`/`sizing` sized
         // + alive for `'s`.
         let mut executor = unsafe { Self::from_session_in(session, backing, sizing) };

@@ -313,6 +313,21 @@ impl Context {
             // Acquire a pool slot up front; release it on any init/open failure.
             let handle = unsafe { zpico_session_acquire() };
             if handle.is_null() {
+                // Issue 0465 — this is the ONLY frame that knows why. Downstream
+                // the C ABI collapses it to an int and the reason is gone, which
+                // is how an exhausted session pool spent two months looking like
+                // `Transport(ConnectionFailed)` — a router/network problem, and
+                // chased as one.
+                #[cfg(feature = "std")]
+                std::eprintln!(
+                    "nros: zenoh session pool exhausted — this build allows \
+                     ZPICO_MAX_SESSIONS={} and one is already open. A non-bridge \
+                     application opens exactly ONE session; two usually means \
+                     something opened a second executor instead of reusing the \
+                     global one. Rebuild with ZPICO_MAX_SESSIONS=<n> only if the \
+                     extra session is genuinely wanted (a bridge).",
+                    crate::zpico::ZPICO_MAX_SESSIONS,
+                );
                 return Err(ZpicoError::Full);
             }
             let connect = Self::connect_with_retry(handle, || {
@@ -384,6 +399,21 @@ impl Context {
         ffi_guard(|| {
             let handle = unsafe { zpico_session_acquire() };
             if handle.is_null() {
+                // Issue 0465 — this is the ONLY frame that knows why. Downstream
+                // the C ABI collapses it to an int and the reason is gone, which
+                // is how an exhausted session pool spent two months looking like
+                // `Transport(ConnectionFailed)` — a router/network problem, and
+                // chased as one.
+                #[cfg(feature = "std")]
+                std::eprintln!(
+                    "nros: zenoh session pool exhausted — this build allows \
+                     ZPICO_MAX_SESSIONS={} and one is already open. A non-bridge \
+                     application opens exactly ONE session; two usually means \
+                     something opened a second executor instead of reusing the \
+                     global one. Rebuild with ZPICO_MAX_SESSIONS=<n> only if the \
+                     extra session is genuinely wanted (a bridge).",
+                    crate::zpico::ZPICO_MAX_SESSIONS,
+                );
                 return Err(ZpicoError::Full);
             }
             let connect = Self::connect_with_retry(handle, || {
