@@ -53,21 +53,35 @@ fi
 #
 # `.cargo-target-box` is the box's redirected dir from before this existed; it
 # sits beside the checkout and must not be dragged in.
-# Patterns are ANCHORED where a bare name would also match SOURCE. `--exclude
-# 'build'` matches any directory called `build` at any depth — including
-# `scripts/build/`, which is tracked source, and dropping it broke the mirror's
-# `check-board-manifest-drift` with a missing `scripts/build/cargo.sh`. Only
-# `scripts/build` is tracked under that name (`git ls-files` confirms), so the
-# root `/build` is anchored and everything else stays name-matched.
+# EVERY build-output pattern here ends in `/`, which makes rsync match
+# DIRECTORIES ONLY. That is not style — it is the fix for a bug this file has
+# now produced three times, because an rsync pattern without a slash matches a
+# BASENAME AT ANY DEPTH, files included:
+#
+#   `build`     matched `scripts/build/` (tracked source). The mirror lost
+#               `scripts/build/cargo.sh` and `check-board-manifest-drift` failed.
+#               Anchoring to `/build` fixed that instance.
+#   `build-*`   matched `scripts/build/build-root.sh` — a tracked SCRIPT, not a
+#               build dir. The mirror's fixture build died with
+#               "scripts/build/build-root.sh: No such file or directory".
+#               21 tracked files have a `build-*` basename (book pages, CI
+#               workflows); all were silently absent from the mirror.
+#
+# Anchoring cures one instance and leaves the class: the intent was always
+# "directories that hold build OUTPUT", and only `/` expresses that. A source
+# file can then be named anything without vanishing from the box.
+#
+# `/build` keeps its anchor as well as its slash — a nested `build/` IS output
+# (leaf cmake dirs), but the root one is the only one this rule means.
 exclusions=(
-    --exclude 'target'
-    --exclude 'target-*'
-    --exclude '/build'
-    --exclude 'build-*'
-    --exclude '.cargo-target-box'
-    --exclude '/tmp'
-    --exclude '/test-logs'
-    --exclude 'node_modules'
+    --exclude 'target/'
+    --exclude 'target-*/'
+    --exclude '/build/'
+    --exclude 'build-*/'
+    --exclude '.cargo-target-box/'
+    --exclude '/tmp/'
+    --exclude '/test-logs/'
+    --exclude 'node_modules/'
     # issue 0401 follow-up — path-carrying GENERATED files must NOT be mirrored.
     # `nros sync` writes ABSOLUTE paths (RFC-0048 W9), so a copied
     # `nros-patch.toml` / leaf `.cargo/config.toml` points at the SOURCE tree.
