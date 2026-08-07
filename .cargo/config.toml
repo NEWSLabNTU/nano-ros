@@ -10,6 +10,14 @@
 [build]
 rustflags = ["-C", "symbol-mangling-version=v0"]
 
+# phase-340 W6 — mirrors the root `Cargo.toml`'s `[profile.dev]`. A leaf under
+# this checkout resolves `dev` through cargo's config walk-up, not through the
+# root manifest (which governs only the root workspace), so the Zephyr west lane
+# needs the setting HERE to see it. See the manifest for the measurement.
+[profile.dev]
+opt-level = 1
+incremental = false
+
 # phase-336 — the nano-ros presets, so a bare `cargo build --profile
 # nros-relwithdebinfo` in any leaf UNDER this checkout resolves without the
 # environment injection the build scripts use. Mirrors the root `Cargo.toml`;

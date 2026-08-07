@@ -652,6 +652,14 @@ panic = "abort"      # Smaller binary, no unwinding
 
 [profile.dev]
 opt-level = 1        # Some optimization even in dev for embedded
+# phase-340 W6 — `dev` is the profile the ZEPHYR west lane builds at, and cargo
+# defaults `incremental` ON there. W1 removed it from the two `nros-*` profiles
+# but this one is a cargo built-in, so nothing had touched it: each Zephyr
+# fixture carried ~185 MB of `incremental/` and its rlibs differed from every
+# other fixture's by the per-session codegen-unit tokens R4 describes — measured
+# 609919 differing bytes between two builds of the SAME fixture. That is what
+# breaks sccache's `--extern` content hashing and cascades misses up the graph.
+incremental = false
 
 # The development default: fast to build, still optimized enough to run under
 # QEMU's timing floors. Was `nros-fast-release` before phase-336.

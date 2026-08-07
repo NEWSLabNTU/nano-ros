@@ -259,7 +259,7 @@ is why 334 W2.b comes before the grouping work here.
 | --- | --- | --- |
 | ~~1~~ | ~~**340 W4 follow-up**~~ | **DONE** `ee016145a` — the find prunes `*/out/sizes-probe-target-*`; verified against a replica, and against the pre-fix script to show the prune is load-bearing |
 | ~~2~~ | ~~**340 W5.b / W5.c**~~ | **DONE** 2026-08-07 — a straight deletion, not a feature gate: 181→165 units, overlap 12→8 |
-| 3 | **340 W6 step 1** | Zephyr remap + `OUT_DIR` + `codegen-units` together — the largest measured population, additive, serialises nothing |
+| ~~3~~ | ~~**340 W6 step 1**~~ | **DONE** 2026-08-07 — not the remap: `incremental = false` on `dev`. 115/143 rlibs byte-identical, incremental state 185 MB → 1 MB per fixture |
 | 4 | **334 W2.b steps 2–4** | the derivation for source-relative cache data; the precondition for moving any path |
 | 5 | **340 W2** | umbrella invocation per identity group (was also 334 W3.a) |
 | 6 | **340 W3** | normalise the corrosion `--target` split (was also 334 W3.b) |
@@ -1240,6 +1240,35 @@ the cascade only stops when the artifacts are actually identical.
    *Method note for the retry:* compare the SAME fixture built into two dirs.
    Two different fixtures cannot answer this — their Kconfig differs, so they are
    allowed to differ, which is how the first comparison here misled.
+
+   **DONE 2026-08-07 — `incremental = false` on `dev`, and it is the whole
+   blocker.** Set in the root `Cargo.toml` AND in `.cargo/config.toml` (a leaf
+   resolves `dev` through cargo's config walk-up, not through the root manifest,
+   so the lane only sees it in the second copy). Rebuilt the same fixture into
+   two dirs:
+
+   | | before | after |
+   | --- | --- | --- |
+   | `incremental/` per fixture | 185 MB | **1 MB** |
+   | `nros_core` rlib | differs 609919 B | **IDENTICAL** |
+   | `nros_node`, `nros_serdes`, `nros_rmw_zenoh` | differ | **IDENTICAL** |
+   | all shared rlibs | — | **115 of 143 byte-identical** |
+
+   No remap, no `codegen-units` change, no `OUT_DIR` work. One profile setting
+   that W1 had already applied to the two `nros-*` profiles and that nobody had
+   applied to the cargo built-in this lane actually builds at.
+
+   **Not yet identical: the final `zephyr.elf`** (8.6 MB differing, and the two
+   images are different SIZES). The remaining 28 of 143 rlibs also still differ.
+   Those are the next question — likely the C objects, which carry build paths
+   the way `nros_variant_symbol.o` did before its `-ffile-prefix-map`. Worth
+   noting the image was never the goal here: sccache keys on `--extern` rlib
+   CONTENT, and that is what now matches.
+
+   **What this costs.** `incremental` on `dev` served interactive rebuilds of the
+   root workspace. Those keep it via `nros-iterate` (W1's opt-in profile); what
+   loses it is `dev` itself, which the fixture lanes use and never benefit from —
+   the same argument W1 made, applied to the profile W1 missed.
 2. **Report an sccache size/PID mismatch** on the lane (above). Not a speed-up
    in itself; it stops a 3× capacity loss from being invisible while measuring
    step 1.
