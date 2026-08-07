@@ -377,7 +377,11 @@ fn c_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, os::unix::fs::PermissionsExt, path::Path};
+    // `PermissionsExt` is gone with issue 0476: this module no longer sets the
+    // exec bit itself — `test_support::write_executable_stub` does it from a
+    // child process, so no write descriptor for a sibling thread's fork to
+    // inherit.
+    use std::{fs, path::Path};
 
     /// Issue 0455 — scratch naming lives in ONE place; see
     /// `crate::test_support`. The local spellings this replaced differed
