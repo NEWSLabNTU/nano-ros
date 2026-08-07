@@ -355,7 +355,14 @@ check: check-fast check-build
 # AND no `cargo tree`/metadata (which would need the workspace — i.e. every `-sys`
 # source submodule — to resolve). So it needs neither the nros CLI nor any
 # provisioned source, finishes in ~1 min, and survives the per-push cadence. This
-# is the per-push CI gate (`check.yml`).
+# is the per-push CI gate (`pr-checks.yml`).
+#
+# That description is now TRUE, and was not (issue 0466): `check-cli-fresh` and
+# `check-test-targets` both lived here and both needed what the paragraph says
+# this tier does without. Verified rather than asserted — a pristine detached
+# worktree with no CLI, no sources and no `nros sync` runs this lane green in
+# 23s. If you add a gate here, check it against that, not against your own
+# provisioned tree, where everything passes for the wrong reason.
 [group("main")]
 check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
@@ -364,7 +371,7 @@ check-fast: \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
-    check-cargo-profile-mirror check-build-profile-literals check-test-targets \
+    check-cargo-profile-mirror check-build-profile-literals \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -397,6 +404,28 @@ check-workspace-fmt:
 # `cargo check`, not `cargo test`: this is about COMPILING the test targets;
 # running them belongs to `test-all`. Warm cost ~13s (root) + ~19s (CLI); the
 # first run on a cold target dir is minutes, like any other compile here.
+#
+# Issue 0466 — this is a check-BUILD gate, and used to sit in `check-fast`.
+# Compiling the workspace needs the `-sys` SOURCE submodules, which the push
+# lane deliberately does not provision (pr-checks.yml gates that on
+# `event_name != 'push'`), so on every push it died:
+#
+#     error: failed to run custom build command for `zpico-sys`
+#
+# `just` stops at the first failed dependency, and 25 gates sat behind this one
+# — every fmt gate, the FFI/sizes mirrors, doc-refs, string conventions. So its
+# real per-push coverage was ZERO while it masked all of them. Four source-level
+# reds reached main during exactly that window.
+#
+# Moving it costs no coverage anyone actually runs: `just check` is
+# `check-fast` + `check-build`, so a local `just check` / `just ci` runs the
+# identical set, and CI still runs it on PR + nightly. What changes is that the
+# push lane can now finish — measured on a pristine, source-free, CLI-free
+# checkout: `just check-fast` green in 23s, two graceful skips, no failures.
+#
+# The reason it was written (a struct field breaking every test initializer
+# while buildless gates stay green — twice in one session) is untouched: the
+# gate still runs, in the tier that can actually compile.
 [private]
 check-test-targets:
     #!/usr/bin/env bash
@@ -422,6 +451,7 @@ check-test-targets:
 [group("main")]
 check-build: \
     check-cli-fresh \
+    check-test-targets \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-borrowed-e2e check-dep-chain \
     check-embedded-feature-unification \
