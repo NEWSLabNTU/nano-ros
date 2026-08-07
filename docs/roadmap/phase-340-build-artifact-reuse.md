@@ -524,6 +524,41 @@ cargo-driven builds of an identical crate miss each other's entries. Unlike R1,
 this duplication is real compilation even with a warm cache — which makes W3 the
 better CPU target and W2 the better disk target.
 
+#### Measured 2026-08-06 — the split is total, and it is the FLAG not the driver
+
+Same crate, same features (`std,rmw-zenoh`), same triple, one factor varied:
+
+| build | `nros_core` `-C metadata` |
+| --- | --- |
+| implicit host (what a cargo leaf does) | `d43b191ebc13de43`, `ef26eca89af52b10` |
+| `--target x86_64-unknown-linux-gnu` (what corrosion does) | `2b8d1fd2adda0290` |
+
+Intersecting the identity SETS actually on disk:
+
+```
+corrosion trees  ∩  native cargo leaves      = {}          <- zero overlap
+corrosion trees  ∩  explicit --target build  = {2b8d1fd2adda0290, 482da2a2e947742f}
+corrosion trees  ∩  implicit host build      = {2b8d1fd2adda0290}
+```
+
+Three things follow.
+
+1. **Feature-set equality is NOT sufficient for sharing.** The cmake-driven and
+   cargo-driven halves of this repo share *nothing* — the intersection is empty,
+   not small. Every crate in the shared stack is built at least twice.
+
+2. **The cause is the `--target` flag, not cmake or corrosion.** A plain cargo
+   build that passes the same explicit `--target` immediately shares two of
+   corrosion's four identities. So this is normalisable by changing one flag's
+   spelling, which is what W3 is.
+
+3. **Part of the tree already normalised, by accident.** `2b8d1fd2adda0290`
+   appears even in the IMPLICIT build — via the nested `nros-sizes-build` probe,
+   which passes its own explicit `--target` regardless of the outer mode. The
+   probe's sub-builds therefore already sit on corrosion's side of the split.
+   That is a working demonstration that the fix produces sharing rather than a
+   theory that it would.
+
 **Acceptance:** either the two paths share an identity, or the reason they
 cannot is written down where the next reader will find it.
 
