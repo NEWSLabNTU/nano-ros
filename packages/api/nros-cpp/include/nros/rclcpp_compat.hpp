@@ -303,9 +303,10 @@ class Node : public std::enable_shared_from_this<Node> {
     }
 
     ~Node() {
-        if (initialized_) {
-            executor_.shutdown();
-        }
+        // Issue 0465 — nothing to tear down per Node any more: the session is
+        // the GLOBAL executor's, and `rclcpp::shutdown()` → `nros::shutdown()`
+        // owns its lifetime. Shutting down here would have closed the shared
+        // session out from under any sibling Node.
     }
 
     Node(const Node&) = delete;
@@ -315,7 +316,6 @@ class Node : public std::enable_shared_from_this<Node> {
 
     const ::nros::Node& nros_node() const { return node_; }
     ::nros::Node& nros_node() { return node_; }
-    ::nros::Executor& nros_executor() { return executor_; }
 
     bool initialized() const { return initialized_; }
 
@@ -323,18 +323,28 @@ class Node : public std::enable_shared_from_this<Node> {
 
   private:
     void initialize(const std::string& name, const char* namespace_) {
-        // Bring up the executor + the underlying nros::Node. Initialization
-        // failures throw at construction time (the rclcpp idiom), so a caller
-        // that uses `std::make_shared<rclcpp::Node>("n")` mirrors rclcpp's
-        // "constructor never returns an error code" contract.
-        ::nros::Result r = ::nros::Executor::create(executor_);
-        if (r.ok() == false) {
-            // nros-cpp is freestanding by default — no `<stdexcept>`. Mark the
-            // node as uninitialized; subsequent `create_*` will fail visibly.
-            initialized_ = false;
-            return;
-        }
-        r = executor_.create_node(node_, name.c_str(), namespace_);
+        // Bring up the underlying nros::Node on the GLOBAL executor — the one
+        // `rclcpp::init()` already created. Initialization failures leave the
+        // node marked uninitialized rather than throwing (nros-cpp is
+        // freestanding by default — no `<stdexcept>`), so a caller using
+        // `std::make_shared<rclcpp::Node>("n")` still mirrors rclcpp's
+        // "constructor never returns an error code" contract and subsequent
+        // `create_*` fail visibly.
+        //
+        // Issue 0465 — this used to call `Executor::create(executor_)`, giving
+        // every shim Node its OWN executor and therefore its own RMW session.
+        // A non-bridge application has exactly one session; two is the bridge
+        // shape. With `ZPICO_MAX_SESSIONS` at its default of 1 the second open
+        // exhausted the pool and returned -1, surfacing as
+        // `Transport(ConnectionFailed)` — the same text a real connection
+        // failure gives, which is why it read as one for two months. Raising
+        // the pool would have hidden the design error behind memory spent on
+        // every embedded target.
+        //
+        // `::nros::create_node` targets `Node::global_storage()`, so N shim
+        // Nodes now share the single session, which is also what rclcpp's own
+        // process-level Context model implies.
+        ::nros::Result r = ::nros::create_node(node_, name.c_str(), namespace_);
         initialized_ = r.ok();
     }
 
@@ -425,7 +435,6 @@ class Node : public std::enable_shared_from_this<Node> {
     }
 
   private:
-    ::nros::Executor executor_;
     ::nros::Node node_;
     NodeOptions node_options_;
     bool initialized_ = false;
@@ -448,7 +457,7 @@ inline void spin(const Node::SharedPtr& node) {
     }
     while (::nros::ok()) {
         node->pump(); // polling subscription dispatch (capturing-lambda path)
-        (void)node->nros_executor().spin_once(10);
+        (void)::nros::spin_once(10);
     }
 }
 
@@ -457,7 +466,7 @@ inline void spin_some(const Node::SharedPtr& node) {
         return;
     }
     node->pump();
-    (void)node->nros_executor().spin_once(0);
+    (void)::nros::spin_once(0);
 }
 
 /// Mirror of `rclcpp::FutureReturnCode` (issue 0339).
@@ -504,7 +513,7 @@ inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node,
         if (future.is_ready()) {
             return FutureReturnCode::SUCCESS;
         }
-        (void)node->nros_executor().spin_once(kPollMs);
+        (void)::nros::spin_once(kPollMs);
         // Re-check before the deadline test: a future that became ready on the
         // spin just above must report SUCCESS even if the budget expired in
         // the same slice.

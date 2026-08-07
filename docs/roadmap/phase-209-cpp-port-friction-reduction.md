@@ -16,7 +16,15 @@ glue + one or two `#include`s**, not by rewriting the source. The three survey
 candidates (`autoware_external_cmd_selector`, `topic_state_monitor`,
 `autoware_steer_offset_estimator`) are concrete fixtures to validate against.
 
-**Status.** **MVP BUILDS, DOES NOT RUN — re-measured 2026-08-07 (issue 0465).** The
+**Status.** **MVP RUNS AGAIN — issue 0465 fixed 2026-08-07.** The rclcpp shim was
+opening a SECOND RMW session (`rclcpp::init()` builds the global executor, then
+`rclcpp::Node` created its own); a non-bridge app has exactly one, and the second
+open exhausted the default 1-entry pool and surfaced as `Transport(ConnectionFailed)`.
+The shim now creates its node on the global executor, verified at the shipped
+default with the template unmodified. STILL OPEN: none of this phase's three port
+templates is in any fixture row, test or recipe, which is why the acceptance went
+unexecuted from 2026-05-30 until it was re-measured — a runtime cell is the
+follow-up, and a build-only row would not have caught this. Previously: The
 template still compiles and links with the three glue lines, but running it by the
 README's own steps gives `nros: NodeError::Transport(ConnectionFailed)` while a shipped
 `cpp_talker` connects to the same router at the same moment. None of this phase's three

@@ -1,11 +1,12 @@
 ---
 id: 465
 title: "Phase 209's C++ port templates are in NO lane, and the acceptance one exists to prove no longer runs"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: testing, cpp, cmake
-related: [phase-209, issue-0317, issue-0196]
+related: [phase-209, issue-0317, issue-0196, issue-0348]
+resolved_in: phase-209
 ---
 
 ## Finding
@@ -132,7 +133,58 @@ phase-328 / issue 0348 (multi-session support, default 1); before that the shim
 presumably shared a session. Either way the acceptance has not been executed
 since, so nothing noticed the default stopped being sufficient.
 
-### Fix options
+### Resolution (2026-08-07) — the shim now shares the one session
+
+A non-bridge application has exactly ONE RMW session; two is the bridge shape.
+The shim was opening two, so the fix is the shim, not the pool.
+
+`rclcpp::Node::initialize()` called `::nros::Executor::create(executor_)`,
+giving every shim Node its own executor and therefore its own session — while
+`rclcpp::init()` had already built the global one. It now calls
+`::nros::create_node(node_, …)`, which targets `Node::global_storage()`, so N
+shim Nodes share the single session. That is also what rclcpp's own
+process-level Context model implies.
+
+Three consequences in the same header:
+
+* the spin helpers call the free `::nros::spin_once(...)` (global executor)
+  instead of `node->nros_executor().spin_once(...)`;
+* `~Node` no longer shuts anything down — the session belongs to the global
+  executor and `rclcpp::shutdown()` → `nros::shutdown()` owns its lifetime.
+  Per-Node shutdown would have closed the shared session out from under a
+  sibling Node;
+* the `executor_` member and the `nros_executor()` accessor are gone (no
+  consumer outside the header).
+
+Verified at the SHIPPED default (`ZPICO_MAX_SESSIONS=1`, no knob, template
+unmodified):
+
+```console
+$ cmake -S examples/templates/cpp-port-minimal-publisher -B /tmp/p465fix && cmake --build /tmp/p465fix -j8
+$ build/zenohd/zenohd -l tcp/127.0.0.1:7447 &
+$ NROS_RMW_TRACE_OPEN=1 /tmp/p465fix/minimal_publisher
+[nros-rmw-cffi] open: locator="" mode=0 ret=0 backend_data=0x614ce5a11000     <- ONE open
+[INFO] …/minimal_publisher.cpp:48 Publishing: 'Hello, world! 0'
+[INFO] …/minimal_publisher.cpp:48 Publishing: 'Hello, world! 1'
+```
+
+`rclcpp-compat-smoke` and `topic-state-monitor-port` both still build; `just
+check-cpp` green.
+
+Raising `ZPICO_MAX_SESSIONS` to 2 would also have made the symptom disappear —
+and that is exactly why it was the wrong fix: it spends pool memory on every
+embedded target to accommodate a session the application never wanted.
+
+## Still open — the lane
+
+The diagnosis above stands as the reason this went unnoticed: none of the three
+port templates is in a fixture row, test or recipe, so nothing executed the
+acceptance between 2026-05-30 and now. **This issue is resolved; the lane is
+not.** A runtime cell for the minimal publisher is the follow-up — and note a
+build-only row would not have caught this one, since the template compiled and
+linked cleanly the entire time it was broken.
+
+## Fix options (superseded — kept for the reasoning)
 
 1. **Make the shim share one session.** `Executor::open_over_session` already
    exists for exactly this (the borrowed-tier pattern), and the shim comment

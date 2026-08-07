@@ -51,35 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#465** — phase 209's acceptance artifact `examples/templates/cpp-port-minimal-publisher` still COMPILES and
-LINKS but no longer RUNS: `nros: NodeError::Transport(ConnectionFailed)` on the README's own steps, while a
-shipped `cpp_talker` connects to the SAME router at the same moment. Not the usual no-backend cause — both
-binaries carry `nros_rmw_zenoh` (154 vs 133 symbols) and `nros_app_register_backends`. It rotted because NONE
-of phase 209's three port templates is in any fixture row, test or recipe (0/0/0), so nothing has executed the
-acceptance since 2026-05-30 while the phase read "MVP DONE". `just check` compiles examples, which kept the
-build half true while the run half died silently — issue 0317's shape, and 0196's rule with no gate at all.
-See `0465-*`. (2026-08-07) **DIAGNOSED 2026-08-07:** not a connection failure — the template opens the session TWICE and the
-SECOND open fails. `rclcpp::init()` opens one; the `Node` shim owns its own `nros::Executor` (its own comment:
-"each currently gets its own Executor") which opens another. `ZPICO_MAX_SESSIONS` defaults to **1**, so the
-second exhausts the pool and returns -1 — surfaced as `Transport(ConnectionFailed)`, the same text a real
-connection failure gives, which is why it read as one. Rebuilding the template UNCHANGED with
-`ZPICO_MAX_SESSIONS=2` prints exactly the README's expected output. Fix: make the shim share one session via
-`Executor::open_over_session` (keeps 209's promise; raising the default would cost every embedded target).
-**#464** (build, open 2026-08-06) — the size probe has THREE stacked fallbacks and the last one is a
-stale literal. `nros-c`/`nros-cpp` derive the C/C++ opaque-storage macros from Rust's `size_of::<T>()`:
-(1) an isolated nested cargo build, (2) a **poll of the outer target dir** with a 60 s timeout, (3)
-committed `NUTTX_FALLBACK_SIZES`. Each masks the previous, and all three transitions announce
-themselves only via `cargo:warning`, invisible in a normal build. Layer 3's `EXECUTOR_SIZE = 79_296`
-sits BELOW the measured `89_392`, and these macros size the byte arrays C/C++ callers allocate for Rust
-types — so losing a timing race substitutes a short buffer. The reassurance that "the const assertion
-catches it" holds for **2 of 15** opaque macros (`EXECUTOR`, `CPP_EXECUTOR`); the other thirteen —
-PUBLISHER, SUBSCRIPTION, SESSION, SERVICE_*, ACTION_*, LIFECYCLE_CTX, the RAW_* set — have no
-compile-time size check at all. Layers 1+2 exist to cover each other: layer 2 needs ordering, which is
-why `nros` is a build-dependency purely to force it (phase-340 W5.a: 16 units and 4 duplicated crates
-per invocation), and layer 1 needs no ordering, making that edge dead weight for the default path. The
-fallback's stated justification (custom JSON target specs) is stale — none exist in the tree, and NuttX
-build-std is now handled inside layer 1. Fix: fail loudly instead of falling back, delete the committed
-constants, and give every opaque macro the guard the executor already has.
+Recently resolved (2026-08-07): **#465** — phase 209's acceptance template built and linked but did not RUN
+(`Transport(ConnectionFailed)`). Root cause was NOT transport: the rclcpp shim opened TWO sessions —
+`rclcpp::init()` builds the global executor, and `rclcpp::Node` then called `Executor::create()` for its OWN.
+A non-bridge app has exactly one session; two is the bridge shape. With `ZPICO_MAX_SESSIONS` at its default 1
+the second open exhausted the pool and returned -1, wearing the same error text a real connection failure gives.
+FIXED in the shim, not the pool: `Node` now creates on the global executor (`::nros::create_node`), spins via
+the free `::nros::spin_once`, and no longer shuts the shared session down per-Node; `executor_` and
+`nros_executor()` are gone. Verified at the SHIPPED default — ONE open, and the README's expected output.
+Raising the pool would have hidden a design error behind memory spent on every embedded target. STILL OPEN:
+the templates are in no lane (0/0/0), which is why this sat unnoticed since 2026-05-30 — and a build-only row
+would not have caught it. See `archived/0465-*`.
 
 Recently resolved (2026-08-06): **#444** — every FreeRTOS **Rust** cell (pubsub, service AND action —
 the issue's action-only scope came from one run and was wrong) booted, printed "Network ready." and
