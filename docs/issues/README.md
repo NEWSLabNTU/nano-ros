@@ -443,6 +443,19 @@ in the same run (`large_msg::test_xrce_e2e_integrity`, `xrce_ros2_interop::test_
 `native_example_reqresp` all pass individually). NOT #0422's logging entry — that one was
 `logging_smoke_mps2_baremetal`, a lane-coverage naming problem, since renamed. See `0462-*`. (2026-08-06)
 
+**#466** — Tier 1 has an unstated, ORDERED setup contract. Eight consecutive attempts at `just ci` on a
+clean, provisioned tree each stopped on a DIFFERENT precondition, and only one stop was a test: missing
+GNU `parallel` (the lane degrades to serial and reads as a hang), a stale in-tree `nros` after a tree
+refresh, `nros_box_publish` reading an intentionally-unset `$CARGO_TARGET_DIR`, then four source-level
+reds already sitting on main — including a crate that did not COMPILE (`mod log_bridge;` committed
+without its file). Two halves: (A) the required sequence — `nros setup --system`, CLI rebuild, publish,
+resolver, lane-scoped fixtures — is documented only in pieces, is order-dependent, and is re-armed by ANY
+refresh (pull/rebase/stash/rsync restages the CLI stamp and every fixture mtime); (B) those gates run
+ONLY in `just ci`, so while it is unreachable, reds accumulate — measurably, since two of the four were
+being fixed by a concurrent session in the same hour and landed as duplicate patches. Proposed: one
+precondition gate at the head of `ci` reporting every unmet item at once, and a fixture-free
+`gates-only` lane. See `0466-*`. (2026-08-07)
+
 Recently resolved (2026-08-06): **#458** — `nros_cpp_executor_open_over_session` never stamped the `CppContext`
 handle tag. The storage is `MaybeUninit`, so `cpp_ctx_checked` read garbage and every entry point
 taking that handle returned `INVALID_ARGUMENT` (-3) — the generated per-tier setup's
