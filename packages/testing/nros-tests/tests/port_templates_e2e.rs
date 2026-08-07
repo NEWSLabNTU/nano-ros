@@ -64,9 +64,7 @@ fn cpp_port_minimal_publisher_publishes(zenohd_unique: ZenohRouter) {
     // `Result` is how this test first passed against a deliberately broken
     // fixture: the failing node's `Transport(InvalidConfig)` line is non-empty
     // output, so the call returned `Ok`. Assert on the CONTENT.
-    let out = node
-        .wait_for_output_pattern(CPP_PORT_PUBLISH_MARKER, Duration::from_secs(20))
-        .unwrap_or_default();
+    let out = node.collect_until(CPP_PORT_PUBLISH_MARKER, Duration::from_secs(20));
     assert!(
         out.contains(CPP_PORT_PUBLISH_MARKER),
         "the vendored ROS 2 tutorial node did not publish through nano-ros \

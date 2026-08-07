@@ -41,9 +41,7 @@ fn test_talker_uses_default_param(zenohd_unique: ZenohRouter) {
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
     // Wait for talker to start publishing (ensures parameters are loaded)
-    let early_output = proc
-        .wait_for_output_pattern("Publishing", Duration::from_secs(5))
-        .unwrap_or_default();
+    let early_output = proc.collect_until("Publishing", Duration::from_secs(5));
 
     // Kill the process before collecting output
     proc.kill();
@@ -97,9 +95,7 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
     // grace window missed the "Counter start value" line, flaking
     // the test (Phase 96.2). Waiting for the exact pattern
     // eliminates the timing dependency.
-    let early_output = proc
-        .wait_for_output_pattern("Counter start value", Duration::from_secs(15))
-        .unwrap_or_default();
+    let early_output = proc.collect_until("Counter start value", Duration::from_secs(15));
 
     // Kill the process before collecting any remaining output.
     proc.kill();
@@ -379,12 +375,10 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
 
     // Wait for the first timer publish, not just the startup log.
-    let early_output = proc
-        .wait_for_output_pattern(
-            nros_tests::output::INT32_TALKER_LOG_PREFIX,
-            Duration::from_secs(5),
-        )
-        .unwrap_or_default();
+    let early_output = proc.collect_until(
+        nros_tests::output::INT32_TALKER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
 
     // Kill the process before collecting output
     proc.kill();

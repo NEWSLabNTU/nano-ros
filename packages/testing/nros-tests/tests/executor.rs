@@ -46,12 +46,10 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
     // Wait for ~5 messages at 1Hz (event-driven: wait for "Published: 4" which means 5 publishes)
-    let output = proc
-        .wait_for_output_pattern(
-            nros_tests::output::talker_line(4).as_str(),
-            Duration::from_secs(10),
-        )
-        .unwrap_or_default();
+    let output = proc.collect_until(
+        nros_tests::output::talker_line(4).as_str(),
+        Duration::from_secs(10),
+    );
 
     proc.kill();
 
@@ -91,12 +89,10 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
 
     // Wait for at least 2 sequential messages (N counts from 1 — the official
     // ROS 2 demo behavior since phase-277 W4)
-    let output = proc
-        .wait_for_output_pattern(
-            nros_tests::output::talker_line(2).as_str(),
-            Duration::from_secs(10),
-        )
-        .unwrap_or_default();
+    let output = proc.collect_until(
+        nros_tests::output::talker_line(2).as_str(),
+        Duration::from_secs(10),
+    );
 
     proc.kill();
 
@@ -152,12 +148,10 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     // Wait for listener to receive messages (event-driven)
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(10),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(10),
+    );
 
     // Kill both
     talker.kill();
@@ -216,12 +210,10 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     // Wait for listener to receive messages (event-driven)
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(10),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(10),
+    );
 
     talker.kill();
     listener.kill();
@@ -280,12 +272,10 @@ fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
 
     // Wait for at least one publish (event-driven)
-    let output = proc
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
-            Duration::from_secs(5),
-        )
-        .unwrap_or_default();
+    let output = proc.collect_until(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
 
     proc.kill();
 
@@ -336,18 +326,14 @@ fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker2_cmd, "talker2").expect("Failed to start talker2");
 
     // Wait for both to publish at least once (event-driven)
-    let output1 = talker1
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
-            Duration::from_secs(5),
-        )
-        .unwrap_or_default();
-    let output2 = talker2
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
-            Duration::from_secs(5),
-        )
-        .unwrap_or_default();
+    let output1 = talker1.collect_until(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
+    let output2 = talker2.collect_until(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
 
     talker1.kill();
     talker2.kill();
@@ -390,12 +376,10 @@ fn test_spin_result_timers_fired(zenohd_unique: ZenohRouter) {
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
 
     // Wait for at least one publish (event-driven)
-    let output = proc
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
-            Duration::from_secs(5),
-        )
-        .unwrap_or_default();
+    let output = proc.collect_until(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
 
     proc.kill();
 

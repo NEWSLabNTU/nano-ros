@@ -181,9 +181,7 @@ fn contract_monitor_compliant_pair_stays_silent(zenohd_unique: ZenohRouter) {
         .expect("compliant sub received no messages — graph not alive");
 
     // Drain the observer across two rate windows (~12 s): no rule may appear.
-    let diag_out = diagsink
-        .wait_for_output_pattern(CONTRACT_MONITOR_DIAG_PREFIX, Duration::from_secs(12))
-        .unwrap_or_default();
+    let diag_out = diagsink.collect_until(CONTRACT_MONITOR_DIAG_PREFIX, Duration::from_secs(12));
 
     publisher.kill();
     sub.kill();

@@ -203,9 +203,7 @@ fn test_native_talker_starts(
     // Wait for initialization — bounded by the init marker rather than
     // a fixed sleep. `wait_for_output_pattern` times out at 10s but
     // normally returns in <1s once `nros::init` completes.
-    let output = talker
-        .wait_for_output_pattern(lang.talker_ready_marker(), Duration::from_secs(30))
-        .unwrap_or_default();
+    let output = talker.collect_until(lang.talker_ready_marker(), Duration::from_secs(30));
 
     eprintln!("{} talker output:\n{}", lang.label(), output);
     assert!(
@@ -228,9 +226,7 @@ fn test_native_listener_starts(
     let binary = lang.listener_binary();
     let mut listener = spawn_native(&binary, lang, "listener", &locator);
 
-    let output = listener
-        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(30))
-        .unwrap_or_default();
+    let output = listener.collect_until(lang.init_marker(), Duration::from_secs(30));
 
     eprintln!("{} listener output:\n{}", lang.label(), output);
     assert!(
@@ -253,9 +249,7 @@ fn test_native_service_server_starts(
     let binary = lang.service_server_binary();
     let mut server = spawn_native(&binary, lang, "service-server", &locator);
 
-    let output = server
-        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(30))
-        .unwrap_or_default();
+    let output = server.collect_until(lang.init_marker(), Duration::from_secs(30));
 
     eprintln!("{} service server output:\n{}", lang.label(), output);
     assert!(
@@ -278,9 +272,7 @@ fn test_native_action_server_starts(
     let binary = lang.action_server_binary();
     let mut server = spawn_native(&binary, lang, "action-server", &locator);
 
-    let output = server
-        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(30))
-        .unwrap_or_default();
+    let output = server.collect_until(lang.init_marker(), Duration::from_secs(30));
 
     eprintln!("{} action server output:\n{}", lang.label(), output);
     assert!(
@@ -1140,13 +1132,9 @@ fn test_threadx_linux_cyclonedds_service() {
     );
     let mut client = spawn_cyclone_binary(&client_bin, "native-cyclonedds-service-client", "107");
 
-    let client_out = client
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(30))
-        .unwrap_or_default();
+    let client_out = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(30));
     std::thread::sleep(Duration::from_millis(500));
-    let server_out = server
-        .wait_for_output_pattern("Incoming request", Duration::from_secs(2))
-        .unwrap_or_default();
+    let server_out = server.collect_until("Incoming request", Duration::from_secs(2));
     client.kill();
     server.kill();
 
@@ -1184,9 +1172,7 @@ fn test_threadx_linux_cyclonedds_action() {
     let _ = server.wait_for_output_pattern(ACTION_SERVER_READY_MARKER, Duration::from_secs(30));
     let mut client = spawn_cyclone_binary(&client_bin, "native-cyclonedds-action-client", "107");
 
-    let client_out = client
-        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(40))
-        .unwrap_or_default();
+    let client_out = client.collect_until(ACTION_RESULT_PREFIX, Duration::from_secs(40));
     client.kill();
     server.kill();
 
@@ -1333,13 +1319,9 @@ fn test_native_cyclonedds_rust_service() {
     );
     let mut client = spawn_cyclone_binary(&client_bin, "rust-cyclonedds-service-client", &domain);
 
-    let client_out = client
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(30))
-        .unwrap_or_default();
+    let client_out = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(30));
     std::thread::sleep(Duration::from_millis(500));
-    let server_out = server
-        .wait_for_output_pattern("Incoming request", Duration::from_secs(2))
-        .unwrap_or_default();
+    let server_out = server.collect_until("Incoming request", Duration::from_secs(2));
     client.kill();
     server.kill();
 
@@ -1393,13 +1375,9 @@ fn test_native_cyclonedds_rust_action() {
     let _ = server.wait_for_output_pattern(ACTION_SERVER_READY_MARKER, Duration::from_secs(30));
     let mut client = spawn_cyclone_binary(&client_bin, "rust-cyclonedds-action-client", &domain);
 
-    let client_out = client
-        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(40))
-        .unwrap_or_default();
+    let client_out = client.collect_until(ACTION_RESULT_PREFIX, Duration::from_secs(40));
     std::thread::sleep(Duration::from_millis(500));
-    let server_out = server
-        .wait_for_output_pattern(ACTION_GOAL_REQUEST_PREFIX, Duration::from_secs(2))
-        .unwrap_or_default();
+    let server_out = server.collect_until(ACTION_GOAL_REQUEST_PREFIX, Duration::from_secs(2));
     client.kill();
     server.kill();
 
@@ -1440,9 +1418,7 @@ fn test_native_cyclonedds_service_callback(#[values(Language::C, Language::Cpp)]
         &domain,
     );
 
-    let client_out = client
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(30))
-        .unwrap_or_default();
+    let client_out = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(30));
     client.kill();
     server.kill();
 

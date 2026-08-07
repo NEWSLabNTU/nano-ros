@@ -161,9 +161,7 @@ fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() -> nros_tes
     // the reachable slirp locator. With adequate tier stacks (system.toml 64 KiB,
     // not the old 8/4 KiB that overflowed once the connect succeeded), both tiers
     // set up and the boot tier enters its spin loop.
-    let connected = qemu
-        .wait_for_output_pattern("Multi-tier setup complete", Duration::from_secs(25))
-        .unwrap_or_default();
+    let connected = qemu.collect_until("Multi-tier setup complete", Duration::from_secs(25));
     qemu.kill();
     assert!(
         connected.contains("Multi-tier setup complete"),

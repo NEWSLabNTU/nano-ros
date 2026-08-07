@@ -118,9 +118,7 @@ fn wake_latency_cortex_m3_p99_within_bound() {
     // 100 Hz * 200 samples (~2 s) + scenario setup. The subscriber
     // writes its CSV block over semihosting then exits via `panic-semihosting`'s
     // `EXIT_SUCCESS` route.
-    let output = sub_qemu
-        .wait_for_output_pattern("END", Duration::from_secs(60))
-        .unwrap_or_default();
+    let output = sub_qemu.collect_until("END", Duration::from_secs(60));
 
     drop(sub_qemu);
     drop(pub_qemu);

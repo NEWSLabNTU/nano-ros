@@ -326,7 +326,10 @@ fn interop(#[case] cell: Cell) {
             let locator = router.locator();
             let mut listener = spawn_nano_zenoh(&listener_binary(), "native-rs-listener", &locator);
             listener
-                .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+                .wait_for_output_pattern(
+                    nros_tests::output::LISTENER_READY_MARKER,
+                    Duration::from_secs(5),
+                )
                 .expect("nros listener did not become ready");
 
             let mut ros2 = match Ros2Process::topic_pub(
@@ -515,9 +518,7 @@ fn interop(#[case] cell: Cell) {
             )
             .expect("start ros2 cyclone pub");
 
-            let out = listener
-                .wait_for_output_pattern(output::LISTENER_LOG_PREFIX, Duration::from_secs(10))
-                .unwrap_or_default();
+            let out = listener.collect_until(output::LISTENER_LOG_PREFIX, Duration::from_secs(10));
             ros2.kill();
             listener.kill();
 

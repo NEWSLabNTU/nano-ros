@@ -44,6 +44,33 @@ pub const LISTENER_LOG_PREFIX: &str = "I heard:";
 /// that only need liveness (not a specific N) stay self-documenting.
 pub const TALKER_READY_MARKER: &str = TALKER_LOG_PREFIX;
 
+/// Readiness marker: the Rust chatter LISTENER is subscribed and ready.
+///
+/// `examples/native/rust/listener` prints
+/// `Subscriber created for topic: /chatter` once its subscription exists —
+/// the line its own source names as the readiness gate.
+///
+/// Issue 0471: several suites (`qos`, `multi_node`, `safety_e2e`,
+/// `nano2nano`) waited for the literal `"Waiting for"` instead, a banner this
+/// binary does not print. That wait could never succeed, and NOTHING noticed,
+/// because `wait_for_output_pattern` returned `Ok` on timeout as long as the
+/// process had printed anything — which a starting listener always has. The
+/// literal is exactly what the "use `output::*` constants, never literal
+/// strings" rule exists to prevent (phase-277); this constant is the fix, and
+/// the strict wait is what made the breakage visible.
+pub const LISTENER_READY_MARKER: &str = "Subscriber created for topic:";
+
+/// Readiness marker for the SAFETY chatter listener
+/// (`safety_chatter_listener`), which prints
+/// `Safety subscriber created for topic: /chatter`.
+///
+/// Deliberately a separate constant rather than a prefix of
+/// [`LISTENER_READY_MARKER`]: the safety binary spells it
+/// `Safety subscriber` (lower-case `s`), so the plain listener's marker is
+/// NOT a substring of it and matching one against the other would silently
+/// never fire — the same failure mode issue 0471 exposed.
+pub const SAFETY_LISTENER_READY_MARKER: &str = "Safety subscriber created for topic:";
+
 /// Talker line WITH the opening payload quote — distinguishes a real
 /// publish line from setup prose containing "Publishing" (phase-295 W2).
 pub const TALKER_PAYLOAD_PREFIX: &str = "Publishing: '";

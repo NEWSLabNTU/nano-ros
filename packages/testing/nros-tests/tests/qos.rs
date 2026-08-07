@@ -61,7 +61,10 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("listener did not become ready");
 
     // Start talker
@@ -147,7 +150,10 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("listener did not become ready");
 
     // Start talker
@@ -235,7 +241,10 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("listener did not become ready");
 
     // Start talker
@@ -309,7 +318,10 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("listener did not become ready");
 
     // Start talker
@@ -389,10 +401,16 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
         .expect("Failed to start listener2");
 
     listener1
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("listener1 did not become ready");
     listener2
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("listener2 did not become ready");
 
     // Start talker
@@ -471,9 +489,7 @@ fn test_qos_keyexpr_encoding(zenohd_unique: ZenohRouter) {
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
     // Wait for talker to publish (ensures liveliness keyexpr is logged)
-    let early_output = proc
-        .wait_for_output_pattern("Publishing", Duration::from_secs(5))
-        .unwrap_or_default();
+    let early_output = proc.collect_until("Publishing", Duration::from_secs(5));
 
     proc.kill();
 

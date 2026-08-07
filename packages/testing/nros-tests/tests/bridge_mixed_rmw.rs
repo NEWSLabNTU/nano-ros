@@ -112,7 +112,10 @@ fn test_zenoh_to_xrce_bridge_e2e(
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener-bridge-e2e")
         .expect("spawn xrce listener");
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(8))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(8),
+        )
         .expect("xrce listener did not become ready");
 
     // 3. Spawn zenoh talker.

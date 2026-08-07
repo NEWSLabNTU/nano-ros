@@ -46,9 +46,7 @@ fn test_zenoh_large_publish_sizes(zenohd_unique: ZenohRouter, zenoh_stress_test_
         let mut proc = ManagedProcess::spawn_command(cmd, format!("zenoh-stress-{}", size))
             .expect("Failed to start stress test");
 
-        let output = proc
-            .wait_for_output_pattern("PUBLISH_DONE:", Duration::from_secs(15))
-            .unwrap_or_default();
+        let output = proc.collect_until("PUBLISH_DONE:", Duration::from_secs(15));
 
         proc.kill();
 
@@ -101,9 +99,7 @@ fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary
         .expect("Failed to start talker");
 
     // Wait for listener to receive messages
-    let listener_output = listener
-        .wait_for_output_pattern("RECV_DONE:", Duration::from_secs(20))
-        .unwrap_or_default();
+    let listener_output = listener.collect_until("RECV_DONE:", Duration::from_secs(20));
 
     talker.kill();
     listener.kill();
@@ -272,9 +268,7 @@ fn test_zenoh_e2e_large_receive(
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "zenoh-large-recv-talker").expect("spawn talker");
 
-    let output = listener
-        .wait_for_output_pattern("RECV_DONE:", Duration::from_secs(20))
-        .unwrap_or_default();
+    let output = listener.collect_until("RECV_DONE:", Duration::from_secs(20));
 
     talker.kill();
     listener.kill();
@@ -334,9 +328,7 @@ fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "zenoh-100hz-talker")
         .expect("Failed to start talker");
 
-    let listener_output = listener
-        .wait_for_output_pattern("RECV_DONE:", Duration::from_secs(15))
-        .unwrap_or_default();
+    let listener_output = listener.collect_until("RECV_DONE:", Duration::from_secs(15));
 
     talker.kill();
     listener.kill();
@@ -393,9 +385,7 @@ fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
         .expect("Failed to start talker");
 
     // Wait longer for burst messages to propagate
-    let listener_output = listener
-        .wait_for_output_pattern("RECV_DONE:", Duration::from_secs(15))
-        .unwrap_or_default();
+    let listener_output = listener.collect_until("RECV_DONE:", Duration::from_secs(15));
 
     talker.kill();
     listener.kill();
@@ -457,9 +447,7 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "xrce-stress-talker")
         .expect("Failed to start talker");
 
-    let listener_output = listener
-        .wait_for_output_pattern("RECV_DONE:", Duration::from_secs(25))
-        .unwrap_or_default();
+    let listener_output = listener.collect_until("RECV_DONE:", Duration::from_secs(25));
 
     talker.kill();
     listener.kill();
@@ -511,9 +499,7 @@ fn test_xrce_large_publish_sizes(xrce_stress_test_binary: PathBuf) {
         let mut proc = ManagedProcess::spawn_command(cmd, format!("xrce-stress-{}", size))
             .expect("Failed to start stress test");
 
-        let output = proc
-            .wait_for_output_pattern("PUBLISH_DONE:", Duration::from_secs(15))
-            .unwrap_or_default();
+        let output = proc.collect_until("PUBLISH_DONE:", Duration::from_secs(15));
 
         proc.kill();
 
@@ -567,9 +553,7 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "xrce-100hz-talker")
         .expect("Failed to start talker");
 
-    let listener_output = listener
-        .wait_for_output_pattern("RECV_DONE:", Duration::from_secs(20))
-        .unwrap_or_default();
+    let listener_output = listener.collect_until("RECV_DONE:", Duration::from_secs(20));
 
     talker.kill();
     listener.kill();
@@ -627,9 +611,7 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "xrce-burst-talker")
         .expect("Failed to start talker");
 
-    let listener_output = listener
-        .wait_for_output_pattern("RECV_DONE:", Duration::from_secs(20))
-        .unwrap_or_default();
+    let listener_output = listener.collect_until("RECV_DONE:", Duration::from_secs(20));
 
     talker.kill();
     listener.kill();
@@ -694,9 +676,7 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
     let mut proc =
         ManagedProcess::spawn_command(cmd, "qemu-large-msg-test").expect("Failed to start QEMU");
 
-    let output = proc
-        .wait_for_output_pattern("All tests passed", Duration::from_secs(30))
-        .unwrap_or_default();
+    let output = proc.collect_until("All tests passed", Duration::from_secs(30));
 
     proc.kill();
 

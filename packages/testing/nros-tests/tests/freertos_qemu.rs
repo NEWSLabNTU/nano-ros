@@ -105,12 +105,10 @@ fn test_freertos_rust_talker_cyclonedds_boot() {
 
     let mut qemu = QemuProcess::start_mps2_an385_networked(&path)
         .expect("spawn FreeRTOS Rust CycloneDDS talker");
-    let output = qemu
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
-            Duration::from_secs(90),
-        )
-        .unwrap_or_default();
+    let output = qemu.collect_until(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(90),
+    );
     qemu.kill();
 
     eprintln!("FreeRTOS Rust CycloneDDS talker output:\n{}", output);
@@ -189,12 +187,10 @@ fn test_freertos_rust_cyclonedds_local_pubsub_e2e() {
 
     let mut qemu = QemuProcess::start_mps2_an385_networked(&talker_path)
         .expect("spawn FreeRTOS Rust CycloneDDS local pubsub fixture");
-    let output = qemu
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(90),
-        )
-        .unwrap_or_default();
+    let output = qemu.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(90),
+    );
     qemu.kill();
 
     eprintln!("FreeRTOS Rust CycloneDDS local pubsub output:\n{}", output);

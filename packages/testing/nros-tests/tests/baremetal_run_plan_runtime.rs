@@ -69,9 +69,7 @@ fn baremetal_board_run_executes_run_plan() {
 
     // Boot reaches `Executor::open` (its failure banner without a peer is the
     // lifecycle proof). The accumulated output carries the earlier boot banner.
-    let output = qemu
-        .wait_for_output_pattern("Executor::open", Duration::from_secs(25))
-        .unwrap_or_default();
+    let output = qemu.collect_until("Executor::open", Duration::from_secs(25));
     qemu.kill();
 
     println!("=== qemu-baremetal-main-e2e boot output ===\n{output}");

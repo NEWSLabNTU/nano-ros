@@ -43,7 +43,10 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
 
     // Wait for listener readiness
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::SAFETY_LISTENER_READY_MARKER,
+            Duration::from_secs(10),
+        )
         .expect("Listener did not start");
 
     // Start talker

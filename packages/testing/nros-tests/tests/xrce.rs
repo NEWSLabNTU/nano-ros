@@ -129,9 +129,7 @@ fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
         .expect("Failed to start large-msg-test");
 
     // Wait for the test to complete (prints "ALL PASSED" or "SOME FAILED")
-    let output = test_proc
-        .wait_for_output_pattern("Results:", Duration::from_secs(30))
-        .unwrap_or_default();
+    let output = test_proc.collect_until("Results:", Duration::from_secs(30));
 
     test_proc.kill();
 
@@ -266,12 +264,10 @@ fn test_xrce_serial_communication(
         .expect("Failed to start serial talker");
 
     // Wait for listener to receive messages
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(25),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(25),
+    );
 
     // Kill both processes
     talker.kill();

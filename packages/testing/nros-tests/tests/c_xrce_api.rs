@@ -228,19 +228,15 @@ fn test_c_xrce_service_request_response() {
     let mut client = ManagedProcess::spawn_command(client_cmd, "c-xrce-service-client")
         .expect("start c-xrce-service-client");
 
-    let client_output = client
-        .wait_for_output_pattern(
-            nros_tests::output::SERVICE_RESULT_PREFIX,
-            Duration::from_secs(20),
-        )
-        .unwrap_or_default();
+    let client_output = client.collect_until(
+        nros_tests::output::SERVICE_RESULT_PREFIX,
+        Duration::from_secs(20),
+    );
     std::thread::sleep(Duration::from_millis(500));
-    let server_output = server
-        .wait_for_output_pattern(
-            nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
-            Duration::from_secs(2),
-        )
-        .unwrap_or_default();
+    let server_output = server.collect_until(
+        nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
+        Duration::from_secs(2),
+    );
     client.kill();
     server.kill();
     drop(agent);
@@ -285,16 +281,12 @@ fn test_c_xrce_action_fibonacci() {
     let mut client = ManagedProcess::spawn_command(client_cmd, "c-xrce-action-client")
         .expect("start c-xrce-action-client");
 
-    let client_output = client
-        .wait_for_output_pattern(
-            nros_tests::output::ACTION_RESULT_PREFIX,
-            Duration::from_secs(20),
-        )
-        .unwrap_or_default();
+    let client_output = client.collect_until(
+        nros_tests::output::ACTION_RESULT_PREFIX,
+        Duration::from_secs(20),
+    );
     std::thread::sleep(Duration::from_millis(500));
-    let server_output = server
-        .wait_for_output_pattern("Received goal request", Duration::from_secs(2))
-        .unwrap_or_default();
+    let server_output = server.collect_until("Received goal request", Duration::from_secs(2));
     client.kill();
     server.kill();
     drop(agent);

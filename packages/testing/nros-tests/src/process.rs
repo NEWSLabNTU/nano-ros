@@ -260,15 +260,45 @@ impl ManagedProcess {
         Ok(output)
     }
 
-    /// Wait until a pattern appears in stdout+stderr, then return all output so far.
+    /// Wait until `pattern` appears in stdout+stderr — the STRICT wait.
     ///
-    /// Useful for waiting until a process prints a readiness marker or until
-    /// enough messages have been received, without a fixed sleep.
+    /// `Ok(output)` means the pattern appeared, and carries everything printed
+    /// up to that point. `Err` means it did not, either because the timeout
+    /// elapsed or because the process exited first; the error quotes the output
+    /// so the failure explains itself.
+    ///
+    /// Issue 0471: this used to return `Ok` on BOTH of those failure paths as
+    /// long as the process had printed anything at all, so
+    /// `wait_for_output_pattern(MARKER, …)?` asserted only "was not completely
+    /// silent". A test written against a knowingly-broken fixture passed,
+    /// because the error explaining the breakage is itself non-empty output.
+    ///
+    /// When a missing pattern is NOT a failure — a readiness wait, or a test
+    /// that asserts on the content itself — use [`Self::collect_until`], which
+    /// says so in its name and hands back the output unconditionally.
     pub fn wait_for_output_pattern(
         &mut self,
         pattern: &str,
         timeout: Duration,
     ) -> Result<String, TestError> {
+        match self.wait_until_pattern(pattern, timeout) {
+            (out, true) => Ok(out),
+            (out, false) => Err(TestError::ProcessFailed(format!(
+                "{} did not print `{}` within {:?}. Output:\n{}",
+                self.name, pattern, timeout, out
+            ))),
+        }
+    }
+
+    /// The shared engine behind [`Self::wait_for_output_pattern`] (strict) and
+    /// [`Self::collect_until`] (lenient): collect output until `pattern` shows
+    /// up, the process exits, or `timeout` elapses.
+    ///
+    /// Returns the output collected AND whether the pattern actually appeared.
+    /// Keeping both facts in one return value is the point — issue 0471 existed
+    /// because the single `Result` conflated them, so the only path that carried
+    /// the output was also the path that claimed success.
+    fn wait_until_pattern(&mut self, pattern: &str, timeout: Duration) -> (String, bool) {
         use std::io::Read;
         #[cfg(unix)]
         use std::os::unix::io::AsRawFd;
@@ -305,10 +335,12 @@ impl ManagedProcess {
                 // Put handles back so drop can still kill the process
                 self.handle.stdout = stdout;
                 self.handle.stderr = stderr;
-                if output.is_empty() {
-                    return Err(TestError::Timeout);
-                }
-                return Ok(output);
+                // The loop below checks `contains` every iteration, so reaching
+                // the deadline means the pattern is absent — but say it by
+                // testing, not by assuming, so a future edit cannot silently
+                // make this lie.
+                let matched = output.contains(pattern);
+                return (output, matched);
             }
 
             if let Ok(Some(_)) = self.handle.try_wait() {
@@ -341,7 +373,7 @@ impl ManagedProcess {
                 // Put handles back for further use
                 self.handle.stdout = stdout;
                 self.handle.stderr = stderr;
-                return Ok(output);
+                return (output, true);
             }
 
             if !got_data {
@@ -378,29 +410,38 @@ impl ManagedProcess {
         // Put handles back
         self.handle.stdout = stdout;
         self.handle.stderr = stderr;
-        Ok(output)
+        // Reached by the process EXITING. This was the second lenient return
+        // (issue 0471 named only the timeout one): a process that died without
+        // ever printing the marker also reported success.
+        let matched = output.contains(pattern);
+        (output, matched)
     }
 
-    /// Issue 0471 — the assertion [`Self::wait_for_output_pattern`] is not.
+    /// Collect output, stopping early once `pattern` appears — the LENIENT wait.
     ///
-    /// Returns the collected output only if `pattern` actually appeared;
-    /// otherwise `Err(TestError::Timeout)` — including the case the lenient
-    /// version lets through, where the process printed something else entirely
-    /// (typically the error explaining why it failed).
+    /// Infallible by design: it returns whatever the process printed, whether or
+    /// not the pattern showed up. That is the honest name for what
+    /// [`Self::wait_for_output_pattern`] used to do on every path (issue 0471),
+    /// and it is the right primitive for the two cases where leniency is
+    /// correct:
     ///
-    /// Prefer this wherever the marker IS what the test is proving. The
-    /// returned `String` is the full output, so a failure message can quote it.
-    pub fn expect_output_pattern(
-        &mut self,
-        pattern: &str,
-        timeout: Duration,
-    ) -> Result<String, TestError> {
-        let out = self.wait_for_output_pattern(pattern, timeout)?;
-        if out.contains(pattern) {
-            Ok(out)
-        } else {
-            Err(TestError::Timeout)
-        }
+    /// * a **readiness wait** — "give the server a moment to say `Spinning`",
+    ///   where the real assertion comes later and a missing marker is not
+    ///   itself the failure;
+    /// * an **assert-on-content** test — `let out = p.collect_until(M, t);
+    ///   assert!(out.contains(M), "…{out}")`, where the caller wants the output
+    ///   in its own failure message.
+    ///
+    /// The second case is why this returns `String` rather than a `Result` the
+    /// caller would `unwrap_or_default()`. Under the strict contract that
+    /// idiom yields an EMPTY string on timeout, so the assertion that follows
+    /// reports the failure with no output attached — the diagnostic is
+    /// destroyed by the very call that was supposed to gather it.
+    ///
+    /// Use [`Self::wait_for_output_pattern`] when a missing pattern IS the
+    /// failure; it says so with `Err`.
+    pub fn collect_until(&mut self, pattern: &str, timeout: Duration) -> String {
+        self.wait_until_pattern(pattern, timeout).0
     }
 
     /// Wait until a pattern appears at least `expected` times in stdout+stderr.
@@ -863,5 +904,77 @@ mod tests {
     fn test_cmake_detection() {
         let available = is_cmake_available();
         eprintln!("cmake available: {}", available);
+    }
+
+    /// Spawn a shell that prints `text` and then either exits or sleeps.
+    fn echoing(text: &str, then_sleep: bool) -> ManagedProcess {
+        let script = if then_sleep {
+            format!("printf '%s\\n' '{text}'; sleep 30")
+        } else {
+            format!("printf '%s\\n' '{text}'", text = text)
+        };
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg("-c").arg(script);
+        ManagedProcess::spawn_command(cmd, "0471-contract").expect("spawn sh")
+    }
+
+    /// Issue 0471, the whole point: output that is not the pattern is NOT a
+    /// match, on the TIMEOUT path.
+    ///
+    /// This is the case that made the defect invisible — a process printing the
+    /// error explaining its own failure is non-empty output, so the old
+    /// implementation returned `Ok`. A test written against a knowingly-broken
+    /// fixture passed.
+    #[test]
+    fn wait_for_output_pattern_rejects_non_matching_output() {
+        let mut p = echoing("Transport(InvalidConfig)", true);
+        let r = p.wait_for_output_pattern("READY", Duration::from_secs(2));
+        p.kill();
+        let err = r.expect_err(
+            "printing something OTHER than the pattern must not count as a match \
+             — that is issue 0471 exactly",
+        );
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("Transport(InvalidConfig)"),
+            "the error must quote the output so a failure explains itself, got: {msg}"
+        );
+    }
+
+    /// The second lenient path, which issue 0471 did not name: a process that
+    /// EXITS without ever printing the pattern.
+    #[test]
+    fn wait_for_output_pattern_rejects_exit_without_pattern() {
+        let mut p = echoing("goodbye", false);
+        let r = p.wait_for_output_pattern("READY", Duration::from_secs(5));
+        p.kill();
+        assert!(
+            r.is_err(),
+            "a process that exited without printing the pattern did not match it"
+        );
+    }
+
+    #[test]
+    fn wait_for_output_pattern_accepts_a_real_match() {
+        let mut p = echoing("READY", true);
+        let out = p
+            .wait_for_output_pattern("READY", Duration::from_secs(5))
+            .expect("the pattern was printed");
+        p.kill();
+        assert!(out.contains("READY"), "Ok must carry the output: {out}");
+    }
+
+    /// The lenient counterpart keeps the old behavior under an honest name:
+    /// output comes back whether or not the pattern appeared.
+    #[test]
+    fn collect_until_returns_output_even_without_a_match() {
+        let mut p = echoing("Transport(InvalidConfig)", true);
+        let out = p.collect_until("READY", Duration::from_secs(2));
+        p.kill();
+        assert!(
+            out.contains("Transport(InvalidConfig)"),
+            "collect_until must hand back what was printed so the caller's own \
+             assertion can quote it, got: {out}"
+        );
     }
 }

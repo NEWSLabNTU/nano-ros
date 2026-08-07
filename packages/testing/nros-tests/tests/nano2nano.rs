@@ -90,8 +90,11 @@ fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: Path
     let mut listener =
         ManagedProcess::spawn_command(cmd, "native-rs-listener").expect("Failed to start listener");
 
-    // Wait for readiness (listener prints "Waiting for" after setup)
-    match listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5)) {
+    // Wait for readiness (listener prints its `Subscriber created` line)
+    match listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(5),
+    ) {
         Ok(_) => eprintln!("native-rs-listener started successfully"),
         Err(_) => {
             if listener.is_running() {
@@ -131,7 +134,10 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
 
     // Wait for listener readiness
     if listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .is_err()
         && !listener.is_running()
     {
@@ -155,12 +161,10 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
 
     // Wait for listener to receive messages (event-driven)
     eprintln!("Waiting for peer communication...");
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(10),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(10),
+    );
 
     // Kill talker first
     talker.kill();
@@ -374,7 +378,10 @@ fn test_tls_talker_listener_communication(
         .expect("Failed to start TLS listener");
 
     // Wait for listener to be ready
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(10));
+    let _ = listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(10),
+    );
 
     // Start talker with TLS locator and CA certificate
     let mut talker_cmd = Command::new(&talker_tls_binary);
@@ -385,12 +392,10 @@ fn test_tls_talker_listener_communication(
         .expect("Failed to start TLS talker");
 
     // Wait for listener to receive messages
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(15),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(15),
+    );
 
     talker.kill();
 
@@ -442,7 +447,10 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
         .expect("Failed to start rtic-listener");
 
     // Wait for listener readiness
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
+    let _ = listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(5),
+    );
 
     // Start talker
     let mut talker_cmd = Command::new(rtic_talker);
@@ -459,12 +467,10 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
     );
 
     // Wait for listener to receive messages
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(10),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(10),
+    );
 
     talker.kill();
 
@@ -519,12 +525,10 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
         .expect("Failed to start rtic-service-client");
 
     // Wait for the client's single result line
-    let client_output = client
-        .wait_for_output_pattern(
-            nros_tests::output::SERVICE_RESULT_PREFIX,
-            Duration::from_secs(30),
-        )
-        .unwrap_or_default();
+    let client_output = client.collect_until(
+        nros_tests::output::SERVICE_RESULT_PREFIX,
+        Duration::from_secs(30),
+    );
 
     server.kill();
 
@@ -583,9 +587,7 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
         .expect("Failed to start rtic-action-client");
 
     // Wait for the client to report acceptance
-    let client_output = client
-        .wait_for_output_pattern("Goal accepted", Duration::from_secs(30))
-        .unwrap_or_default();
+    let client_output = client.collect_until("Goal accepted", Duration::from_secs(30));
 
     server.kill();
 

@@ -224,18 +224,14 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
     // Boot to network bringup (the deterministic part); #46's memory fix lets
     // the `nros_app` task reach this instead of stack-overflowing at Executor
     // creation.
-    let output = qemu
-        .wait_for_output_pattern("Network ready.", Duration::from_secs(15))
-        .unwrap_or_default();
+    let output = qemu.collect_until("Network ready.", Duration::from_secs(15));
     // The post-network connected run goes through `Executor::open`. #48 (both
     // causes) is fixed, so it now establishes: the zenoh RMW backend is linked +
     // registered (cause 2) AND the deploy overlay threads the reachable slirp
     // locator/ip (the baked slirp locator on guest `10.0.2.15`) into the firmware
     // (cause 1), so the firmware connects to the host zenohd above and the
     // run-plan closure returns `Ok` ("Application setup complete").
-    let extra = qemu
-        .wait_for_output_pattern("Application", Duration::from_secs(25))
-        .unwrap_or_default();
+    let extra = qemu.collect_until("Application", Duration::from_secs(25));
     let combined = format!("{output}{extra}");
     qemu.kill();
 

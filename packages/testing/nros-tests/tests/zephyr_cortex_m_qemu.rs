@@ -102,9 +102,7 @@ fn run_pubsub_cell(lang: &str, matrix_lang: Lang) {
     // still unflushed, and the driver assertion below then fails on a run that
     // is in fact perfectly healthy. Waiting for the later-flushed line makes the
     // accumulated output a superset, so both assertions see what they need.
-    let output = qemu
-        .wait_for_output_pattern(NET_STACK_READY_MARKER, BOOT_BUDGET)
-        .unwrap_or_default();
+    let output = qemu.collect_until(NET_STACK_READY_MARKER, BOOT_BUDGET);
     qemu.kill();
 
     eprintln!("Zephyr mps2_an385 {lang} zenoh talker output:\n{output}");

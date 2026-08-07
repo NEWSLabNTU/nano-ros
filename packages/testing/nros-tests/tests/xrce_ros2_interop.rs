@@ -199,12 +199,10 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
     };
 
     // Wait for XRCE listener to receive messages
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(5),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
 
     ros2_publisher.kill();
     listener.kill();
@@ -527,12 +525,10 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
         .expect("Failed to start xrce action client");
     // The example streams `Next number in sequence received: [...]` feedback
     // and ends with the terminal `Result received: [...]` line.
-    let client_output = client
-        .wait_for_output_pattern(
-            nros_tests::output::ACTION_RESULT_PREFIX,
-            Duration::from_secs(20),
-        )
-        .unwrap_or_default();
+    let client_output = client.collect_until(
+        nros_tests::output::ACTION_RESULT_PREFIX,
+        Duration::from_secs(20),
+    );
     client.kill();
     // Drain the ROS 2 server BEFORE killing it. Its script prints `SERVER READY`
     // at startup and `SERVER DONE [...]` after `execute` returns, so this one
@@ -627,12 +623,10 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
         .env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-service-client")
         .expect("Failed to start xrce service client");
-    let client_output = client
-        .wait_for_output_pattern(
-            nros_tests::output::SERVICE_RESULT_PREFIX,
-            Duration::from_secs(20),
-        )
-        .unwrap_or_default();
+    let client_output = client.collect_until(
+        nros_tests::output::SERVICE_RESULT_PREFIX,
+        Duration::from_secs(20),
+    );
     client.kill();
     ros2_server.kill();
     drop(agent);

@@ -109,11 +109,18 @@ gated, not fifteen hand-written asserts — the thirteen are unguarded because e
 **#471** — `wait_for_output_pattern` returns `Ok` on TIMEOUT whenever the process printed anything at all;
 the pattern is consulted only for the early-exit path. So `wait_for_output_pattern(MARKER, …)?` means "the
 process was not silent", NOT "the marker appeared". **233 of 283 call sites** ignore the returned string and
-check only the `Result`. Found by verifying a NEW test against a known-broken fixture (#0469): it passed,
-because the failing node's error line is non-empty output. Many of the 233 are genuine readiness waits, but
-the ones where the marker IS the assertion are vacuous today. Fix is one line plus a triage pass — flipping it
-turns every vacuous assertion red at once, a mix of stale markers, hidden regressions, and intentional
-leniency. Sequenced in the issue. See `0471-*`. (2026-08-07)
+check only the `Result`. RESOLVED (2026-08-07): the contract is now strict — `Ok` means the pattern appeared,
+`Err` quotes the output — with `collect_until()` as the lenient counterpart under an honest name; both share
+one `(String, bool)` engine, since conflating "what was printed" with "did it match" WAS the defect. The same
+two lenient paths existed in `QemuProcess` and were fixed with it. The flip caught exactly one class, 15-16
+tests: suites waiting for the literal `"Waiting for"`, a banner `examples/native/rust/listener` stopped
+printing at phase-277 — now `output::LISTENER_READY_MARKER`. Those suites also got 2-3x faster, having been
+burning a full 5 s timeout per listener. See `0471-*`. (2026-08-07)
+
+**#476** `codegen_cyclonedds_descriptors` args-file test flakes `Text file busy`: a sibling test thread forks
+while this test's write handle on its stub `idlc` is still open — `O_CLOEXEC` closes at exec, not at fork — so
+the forked child holds a writer and our `execve` gets `ETXTBSY`. Rare, clears on re-run. See `0476-*`.
+(2026-08-07)
 
 Recently resolved (2026-08-07): **#469** — phase 209's three C++ port templates were in NO lane (0 fixture
 rows, 0 tests, 0 recipes), so nothing built or ran them for two months while the acceptance silently broke

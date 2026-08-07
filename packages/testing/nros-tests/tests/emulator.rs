@@ -322,18 +322,14 @@ fn test_qemu_bsp_pubsub_e2e() {
     let mut talker =
         QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker");
 
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(60),
-        )
-        .unwrap_or_default();
-    let talker_output = talker
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
-            Duration::from_secs(30),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(60),
+    );
+    let talker_output = talker.collect_until(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(30),
+    );
 
     talker.kill();
     listener.kill();
@@ -429,20 +425,16 @@ fn test_qemu_serial_pubsub_e2e() {
         .expect("Failed to start talker QEMU");
 
     // Wait for listener to receive messages (examples now run forever)
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(60),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(60),
+    );
 
     // Wait for talker to publish messages
-    let talker_output = talker
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
-            Duration::from_secs(30),
-        )
-        .unwrap_or_default();
+    let talker_output = talker.collect_until(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(30),
+    );
 
     talker.kill();
     listener.kill();
@@ -503,12 +495,10 @@ fn test_qemu_xrce_pubsub_e2e() {
     let mut talker = QemuProcess::start_mps2_an385_with_serial(talker_bin, &client_pty)
         .expect("Failed to start talker-xrce QEMU");
 
-    let talker_output = talker
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
-            Duration::from_secs(60),
-        )
-        .unwrap_or_default();
+    let talker_output = talker.collect_until(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(60),
+    );
 
     talker.kill();
     drop(agent);
@@ -574,20 +564,16 @@ fn test_qemu_rtic_pubsub_e2e() {
         QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
 
     // Wait for listener to receive messages
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(60),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(60),
+    );
 
     // Wait for talker to publish messages
-    let talker_output = talker
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
-            Duration::from_secs(30),
-        )
-        .unwrap_or_default();
+    let talker_output = talker.collect_until(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(30),
+    );
 
     talker.kill();
     listener.kill();
@@ -662,12 +648,10 @@ fn test_qemu_rtic_service_e2e() {
     // shared `SERVICE_RESULT_PREFIX` constant); the old imperative client's
     // "All service calls completed" 4-call banner is retired. Grep the
     // constant, not a literal (#157 class).
-    let client_output = client
-        .wait_for_output_pattern(
-            nros_tests::output::SERVICE_RESULT_PREFIX,
-            Duration::from_secs(90),
-        )
-        .unwrap_or_default();
+    let client_output = client.collect_until(
+        nros_tests::output::SERVICE_RESULT_PREFIX,
+        Duration::from_secs(90),
+    );
 
     // Collect server output
     let server_output = server
@@ -745,12 +729,10 @@ fn test_qemu_rtic_action_e2e() {
     // Wait for the client's terminal `Result received: [...]` line; on
     // timeout the collected output is still returned, so this never captures
     // less than a blind 60 s wait.
-    let client_output = client
-        .wait_for_output_pattern(
-            nros_tests::output::ACTION_RESULT_PREFIX,
-            Duration::from_secs(60),
-        )
-        .unwrap_or_default();
+    let client_output = client.collect_until(
+        nros_tests::output::ACTION_RESULT_PREFIX,
+        Duration::from_secs(60),
+    );
 
     // Collect server output
     let server_output = server
@@ -829,20 +811,16 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
         QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
 
     // Wait for listener to receive messages
-    let listener_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(60),
-        )
-        .unwrap_or_default();
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(60),
+    );
 
     // Wait for talker to publish messages
-    let talker_output = talker
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
-            Duration::from_secs(30),
-        )
-        .unwrap_or_default();
+    let talker_output = talker.collect_until(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(30),
+    );
 
     talker.kill();
     listener.kill();

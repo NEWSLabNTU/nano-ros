@@ -211,9 +211,10 @@ fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     // Wait for listener readiness
-    let ready_output = listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
-        .unwrap_or_default();
+    let ready_output = listener.collect_until(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(5),
+    );
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -226,12 +227,10 @@ fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     // Wait for first message to confirm communication works
-    let recv_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(5),
-        )
-        .unwrap_or_default();
+    let recv_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
 
     // Kill router mid-communication
     drop(zenohd_unique);
@@ -298,9 +297,10 @@ fn test_router_reconnect() {
         ManagedProcess::spawn_command(listener_cmd, "listener1").expect("Failed to start listener");
 
     // Wait for listener readiness
-    let ready1 = listener1
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
-        .unwrap_or_default();
+    let ready1 = listener1.collect_until(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(5),
+    );
 
     let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
@@ -312,12 +312,10 @@ fn test_router_reconnect() {
         ManagedProcess::spawn_command(talker_cmd, "talker1").expect("Failed to start talker");
 
     // Wait for first message to confirm communication works
-    let recv1 = listener1
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(5),
-        )
-        .unwrap_or_default();
+    let recv1 = listener1.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
 
     // Kill everything
     talker1.kill();
@@ -347,9 +345,10 @@ fn test_router_reconnect() {
         .expect("Failed to start listener");
 
     // Wait for listener readiness
-    let ready2 = listener2
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
-        .unwrap_or_default();
+    let ready2 = listener2.collect_until(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(5),
+    );
 
     let mut talker2_cmd = Command::new(talker_binary);
     talker2_cmd
@@ -361,12 +360,10 @@ fn test_router_reconnect() {
         ManagedProcess::spawn_command(talker2_cmd, "talker2").expect("Failed to start talker");
 
     // Wait for first message to confirm communication resumes
-    let recv2 = listener2
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(5),
-        )
-        .unwrap_or_default();
+    let recv2 = listener2.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
 
     talker2.kill();
     listener2.kill();
@@ -477,9 +474,10 @@ fn test_debug_logging_overhead(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     // Wait for listener readiness
-    let ready_output = listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
-        .unwrap_or_default();
+    let ready_output = listener.collect_until(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(5),
+    );
 
     let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
@@ -491,12 +489,10 @@ fn test_debug_logging_overhead(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     // Wait for first message to confirm communication works with debug logging
-    let recv_output = listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_LOG_PREFIX,
-            Duration::from_secs(5),
-        )
-        .unwrap_or_default();
+    let recv_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
 
     talker.kill();
     listener.kill();

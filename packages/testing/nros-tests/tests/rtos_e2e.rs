@@ -81,10 +81,15 @@ enum RtosProcess {
 }
 
 impl RtosProcess {
-    fn wait_for_output_pattern(&mut self, pattern: &str, timeout: Duration) -> TestResult<String> {
+    /// Collect output, stopping early once `pattern` appears (issue 0471).
+    ///
+    /// There is no strict counterpart here: every wait in this file asserts on
+    /// the collected text itself, so the strict wrapper this replaced had no
+    /// callers left once they were migrated.
+    fn collect_until(&mut self, pattern: &str, timeout: Duration) -> String {
         match self {
-            RtosProcess::Qemu(p) => p.wait_for_output_pattern(pattern, timeout),
-            RtosProcess::Managed(p) => p.wait_for_output_pattern(pattern, timeout),
+            RtosProcess::Qemu(p) => p.collect_until(pattern, timeout),
+            RtosProcess::Managed(p) => p.collect_until(pattern, timeout),
         }
     }
 
@@ -658,9 +663,7 @@ fn test_rtos_pubsub_e2e(
         }
         _ => "Waiting for messages",
     };
-    let listener_boot = listener
-        .wait_for_output_pattern(ready_marker, Duration::from_secs(30))
-        .unwrap_or_default();
+    let listener_boot = listener.collect_until(ready_marker, Duration::from_secs(30));
     ensure_ready(&listener_boot, ready_marker, platform);
 
     // Let the talker run a bit and drain its output to avoid pipe back-pressure.
@@ -683,9 +686,8 @@ fn test_rtos_pubsub_e2e(
         (Platform::Nuttx, Lang::C) => Duration::from_secs(90),
         _ => Duration::from_secs(30),
     };
-    let final_out = listener
-        .wait_for_output_pattern(nros_tests::output::LISTENER_LOG_PREFIX, listener_window)
-        .unwrap_or_default();
+    let final_out =
+        listener.collect_until(nros_tests::output::LISTENER_LOG_PREFIX, listener_window);
     let full_listener = format!("{}{}", listener_boot, final_out);
 
     talker.kill();
@@ -759,9 +761,7 @@ fn test_rtos_service_e2e(
         }
         _ => nros_tests::output::SERVICE_SERVER_READY_MARKER,
     };
-    let server_boot = server
-        .wait_for_output_pattern(server_ready_marker, Duration::from_secs(30))
-        .unwrap_or_default();
+    let server_boot = server.collect_until(server_ready_marker, Duration::from_secs(30));
     ensure_ready(&server_boot, server_ready_marker, platform);
 
     // Give the client the same boot delay as the server so its first
@@ -784,9 +784,8 @@ fn test_rtos_service_e2e(
     // `wait_for_output_pattern` still returns whatever it read (it only errors
     // when nothing was captured), so this never collects less than a blind
     // wait — it just returns as soon as the run completes.
-    let client_out = client
-        .wait_for_output_pattern(nros_tests::output::SERVICE_RESULT_PREFIX, client_timeout)
-        .unwrap_or_default();
+    let client_out =
+        client.collect_until(nros_tests::output::SERVICE_RESULT_PREFIX, client_timeout);
 
     server.kill();
     client.kill();
@@ -871,9 +870,7 @@ fn test_rtos_action_e2e(
         }
         _ => nros_tests::output::ACTION_SERVER_READY_MARKER,
     };
-    let server_boot = server
-        .wait_for_output_pattern(action_ready_marker, Duration::from_secs(30))
-        .unwrap_or_default();
+    let server_boot = server.collect_until(action_ready_marker, Duration::from_secs(30));
     ensure_ready(&server_boot, action_ready_marker, platform);
 
     if !matches!(platform, Platform::Nuttx | Platform::ThreadxLinux) {
@@ -901,9 +898,7 @@ fn test_rtos_action_e2e(
     // collected output on timeout too (errors only when nothing was read), so
     // a variant that never reaches the result falls back to exactly the old
     // blind-wait behaviour — never collecting less.
-    let client_out = client
-        .wait_for_output_pattern(nros_tests::output::ACTION_RESULT_PREFIX, client_timeout)
-        .unwrap_or_default();
+    let client_out = client.collect_until(nros_tests::output::ACTION_RESULT_PREFIX, client_timeout);
 
     let server_post = server
         .wait_for_output(Duration::from_secs(2))

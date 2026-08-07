@@ -501,13 +501,56 @@ impl QemuProcess {
         Ok(output)
     }
 
-    /// Wait until the output contains the given pattern, then return all output collected so far.
-    /// Kills the process on timeout.
+    /// Wait until the output contains `pattern` — the STRICT wait. Kills the
+    /// process on timeout.
+    ///
+    /// `Ok(output)` means the pattern appeared. `Err` means it did not, whether
+    /// because the timeout elapsed or because QEMU exited first, and quotes the
+    /// output collected so far.
+    ///
+    /// Issue 0471 was filed against [`crate::process::ManagedProcess`]; this is
+    /// the same defect in the same shape, found by fixing the class rather than
+    /// the reported site. Both types had TWO lenient returns — timeout with
+    /// non-empty output, and process exit — and on an emulator target the exit
+    /// path is the common one, so this copy mattered more.
+    ///
+    /// When a missing pattern is not itself the failure, use
+    /// [`Self::collect_until`].
     pub fn wait_for_output_pattern(
         &mut self,
         pattern: &str,
         timeout: Duration,
     ) -> TestResult<String> {
+        let out = self.collect_until_inner(pattern, timeout)?;
+        if out.contains(pattern) {
+            Ok(out)
+        } else {
+            Err(TestError::ProcessFailed(format!(
+                "qemu did not print `{pattern}` within {timeout:?}. Output:\n{out}"
+            )))
+        }
+    }
+
+    /// Collect output, stopping early once `pattern` appears — the LENIENT wait.
+    ///
+    /// Returns whatever QEMU printed, pattern or not. Correct for readiness
+    /// waits and for tests that assert on the content themselves (and want the
+    /// output in their own failure message). See
+    /// [`crate::process::ManagedProcess::collect_until`].
+    ///
+    /// Returns `String`, not `TestResult`, to match `ManagedProcess` — callers
+    /// use the value in their own assertion message. A harness-level failure
+    /// (stdout already taken, or QEMU silent until the deadline) is rendered
+    /// INTO the returned text rather than dropped, so the assertion that
+    /// follows prints the reason instead of an empty diff.
+    pub fn collect_until(&mut self, pattern: &str, timeout: Duration) -> String {
+        match self.collect_until_inner(pattern, timeout) {
+            Ok(out) => out,
+            Err(e) => format!("<no output collected: {e}>"),
+        }
+    }
+
+    fn collect_until_inner(&mut self, pattern: &str, timeout: Duration) -> TestResult<String> {
         let start = Instant::now();
         let mut output = String::new();
 

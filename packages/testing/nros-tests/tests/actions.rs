@@ -155,12 +155,10 @@ fn goal_order_reaches_the_server(
     let mut client =
         ManagedProcess::spawn_command(ccmd, "action-client-order").expect("spawn action client");
 
-    let server_out = server
-        .wait_for_output_pattern(
-            nros_tests::output::ACTION_GOAL_REQUEST_PREFIX,
-            Duration::from_secs(30),
-        )
-        .unwrap_or_default();
+    let server_out = server.collect_until(
+        nros_tests::output::ACTION_GOAL_REQUEST_PREFIX,
+        Duration::from_secs(30),
+    );
     client.kill();
     server.kill();
 

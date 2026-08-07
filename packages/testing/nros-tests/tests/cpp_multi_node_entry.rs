@@ -176,17 +176,22 @@ fn multi_node_workspace_cpp_typed_pubsub_e2e(
     };
 
     let mut a = spawn("entry_a")?;
-    a.wait_for_output_pattern("Waiting for messages", Duration::from_secs(10))
-        .map_err(|e| TestError::ProcessFailed(format!("entry_a not ready: {e:?}")))?;
+    // Readiness = the entry's first publish. Issue 0471: this waited for
+    // `"Waiting for messages"`, a banner `cpp_robot_entry` does not print — it
+    // logs `Published: N` / `Received: N`. The wait could never match, and the
+    // lenient contract reported success anyway.
+    a.wait_for_output_pattern(
+        nros_tests::output::INT32_TALKER_LOG_PREFIX,
+        Duration::from_secs(10),
+    )
+    .map_err(|e| TestError::ProcessFailed(format!("entry_a not ready: {e:?}")))?;
     let mut b = spawn("entry_b")?;
 
     // a's listener receives b's talker pubs (cross-process).
-    let out = a
-        .wait_for_output_pattern(
-            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
-            Duration::from_secs(20),
-        )
-        .unwrap_or_default();
+    let out = a.collect_until(
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+        Duration::from_secs(20),
+    );
     a.kill();
     b.kill();
 

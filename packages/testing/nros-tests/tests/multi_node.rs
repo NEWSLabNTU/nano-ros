@@ -62,7 +62,10 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("listener did not become ready");
 
     // Start 3 talkers
@@ -142,7 +145,10 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
 
     for listener in &mut listeners {
         listener
-            .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+            .wait_for_output_pattern(
+                nros_tests::output::LISTENER_READY_MARKER,
+                Duration::from_secs(5),
+            )
             .expect("listener did not become ready");
     }
 
@@ -236,7 +242,10 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
 
     for listener in &mut listeners {
         listener
-            .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+            .wait_for_output_pattern(
+                nros_tests::output::LISTENER_READY_MARKER,
+                Duration::from_secs(5),
+            )
             .expect("listener did not become ready");
     }
 
@@ -313,7 +322,10 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("listener did not become ready");
 
     // Start talker
@@ -392,7 +404,10 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("listener did not become ready");
 
     // Start talker
@@ -489,7 +504,10 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
 
     for listener in &mut listeners {
         listener
-            .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+            .wait_for_output_pattern(
+                nros_tests::output::LISTENER_READY_MARKER,
+                Duration::from_secs(5),
+            )
             .expect("listener did not become ready");
     }
 
@@ -564,7 +582,10 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("listener did not become ready");
 
     // Start 5 talkers
