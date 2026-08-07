@@ -710,17 +710,63 @@ locates its rlib with `find_dep_rlib`. That one ordering trick pulls
 `nros → nros-node → nros-core → heapless, portable-atomic, log, …` into a graph
 that then compiles all of it a second time at `opt=0 panic=unwind`.
 
-- [ ] **W5.a** Establish whether the ordering edge is still load-bearing. The
-      probe ALSO builds in an isolated nested target dir
-      (`sizes-probe-target-rustc-…`), so there may be two mechanisms where one
-      would do.
-- [ ] **W5.b** If it is, find an ordering mechanism that does not put the runtime
-      stack in the build graph, and measure the unit count before/after.
-- [ ] **W5.c** If it is not, delete the edge — and check `nros-cpp`, which the
-      comment says carries the same pattern.
+- [x] **W5.a** ANSWERED 2026-08-06 — **the edge is dead weight for the DEFAULT
+      probe path and load-bearing for the FALLBACK one.** It is a trade, not a
+      free deletion. Detail below.
 
-**Acceptance:** the product/build-graph overlap drops from 12 of 14, or the
-reason it cannot is recorded at the manifest edge that causes it.
+#### W5.a result
+
+`find_dep_rlib` has two implementations and tries them in order:
+
+* **`find_dep_rlib_isolated`** (default, first) — builds the crate in its own
+  nested target dir. Needs no ordering from the outer cargo, so the build-dep
+  buys it nothing.
+* **`find_dep_rlib_filesystem`** (fallback, and what
+  `NROS_SIZES_PROBE_MODE=filesystem` forces) — polls the OUTER target dir for the
+  rlib with a 60 s timeout. The build-dep is what makes that deterministic
+  instead of a race.
+
+Removing the edge from `nros-c` and rebuilding:
+
+| | units | product libs | build-graph libs | built twice |
+| --- | --- | --- | --- | --- |
+| with the edge | 181 | 14 | 68 | **12** |
+| without | 165 | 14 | 64 | **8** |
+
+The build succeeds, the isolated probe does NOT fall back (no
+`cargo:warning=… isolated probe failed`), and the generated sizes are
+**byte-identical** (`NROS_EXECUTOR_SIZE 89392`, …) to the with-edge tree. So
+correctness is preserved on the default path, and removal buys 16 units and
+drops `nros`, `nros-rmw-cffi`, `atomic-waker`, `portable-atomic` and
+`portable-atomic-util` out of the duplicated set.
+
+**But do not delete it outright.** `NROS_SIZES_PROBE_MODE=filesystem` still ran
+green twice without the edge — which is NOT evidence of safety. That path is a
+poll with a timeout, so it usually wins; the manifest comment records it losing
+historically ("the probe ran against a missing rlib on clean" builds), and
+`just verify-size-probe` exercises both modes as a parity gate. Two green runs
+cannot refute a race the code was written to prevent.
+
+The remaining 8-crate overlap (`heapless`, `log`, `bitflags`, `byteorder`,
+`cfg-if`, `hash32`, `stable_deref_trait`) comes from the OTHER build-deps —
+`nros-build-helpers`, `nros-zpico-build`, `nros-board-common` — so this edge was
+never the whole story.
+- [ ] **W5.b** Make the edge OPTIONAL rather than unconditional: an optional
+      `[build-dependencies] nros` behind a feature (say `sizes-probe-filesystem`),
+      off by default so the isolated path pays nothing, and enabled by the builds
+      that actually need the fallback — the custom-target/`build-std` embedded
+      configs the fallback exists for. Then `just verify-size-probe`'s filesystem
+      arm enables it explicitly rather than relying on an edge every other build
+      also pays for.
+- [ ] **W5.c** Apply the same to `nros-cpp`, whose comment documents the
+      identical pattern, and re-measure the overlap.
+- [ ] **W5.d** Attack the residual 8: `nros-build-helpers` / `nros-zpico-build` /
+      `nros-board-common` pull `heapless`, `log` and friends into the build graph.
+      Establish whether those build-deps need the runtime crates at all.
+
+**Acceptance:** the product/build-graph overlap drops from 12 of 14 with
+`just verify-size-probe` still green in BOTH modes, or the reason it cannot is
+recorded at the manifest edge that causes it.
 
 ## Risks
 
