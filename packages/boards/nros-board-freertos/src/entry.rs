@@ -690,6 +690,10 @@ where
     B::println(format_args!(""));
 
     B::init_hardware();
+    // Wire the default nros_log sink (platform console) at the boot funnel,
+    // as the linux/zephyr run_tiers do — idempotent; without it Node-pkg
+    // `nros_info!` output is silently dropped on multi-tier entries.
+    ::nros_log::init(::nros_log::sinks::default());
 
     let app_pri = Config::to_freertos_priority(config.app_priority);
     let app_stack_words = config.app_stack_bytes / 4;

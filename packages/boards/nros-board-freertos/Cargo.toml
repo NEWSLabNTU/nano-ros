@@ -25,6 +25,10 @@ name = "nros_board_freertos"
 # delivery on lanes that actually work. Mirrors the threadx board's
 # `install_uart_logger` wiring.
 log = { version = "0.4", default-features = false }
+# run_tiers_entry wires the nros_log dispatcher at boot (mirrors the
+# nros-board-linux/zephyr funnels); without it a Node pkg's `nros_info!`
+# is silently dropped on FreeRTOS multi-tier entries.
+nros-log = { path = "../../core/nros-log", default-features = false }
 # 152.1.B.5 — `BoardInit` / `BoardPrint` / `BoardExit` traits the
 # generic `run<B>` is generic over. Trait-only surface; no
 # build-script transitive deps pulled.
