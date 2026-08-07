@@ -552,9 +552,17 @@ without its file). Two halves: (A) the required sequence — `nros setup --syste
 resolver, lane-scoped fixtures — is documented only in pieces, is order-dependent, and is re-armed by ANY
 refresh (pull/rebase/stash/rsync restages the CLI stamp and every fixture mtime); (B) those gates run
 ONLY in `just ci`, so while it is unreachable, reds accumulate — measurably, since two of the four were
-being fixed by a concurrent session in the same hour and landed as duplicate patches. Proposed: one
-precondition gate at the head of `ci` reporting every unmet item at once, and a fixture-free
-`gates-only` lane. See `0466-*`. (2026-08-07)
+being fixed by a concurrent session in the same hour and landed as duplicate patches. **PARTLY FIXED
+2026-08-07:** the fixture-free lane was never missing — `check-fast` IS it, and had been unreachable
+because `check-cli-fresh` (needs a fresh CLI) and `check-test-targets` (needs the `-sys` sources)
+both sat in it, contradicting its own "buildless and SOURCE-FREE" docstring. With those moved to
+`check-build`, plus `check-leaf-lockfiles` no longer treating an unsynced tree as a failure, per-push
+CI went green after **20+ consecutive red runs** — and a third red behind them, `scaffold-journey`
+asking `nros new` for a platform it has refused since 2026-07-28, only became visible once the first
+two cleared. That sequence is the issue's own thesis observed rather than argued: a permanent red does
+not fail, it hides its neighbours. Still open: proposal (1), one precondition gate reporting every
+unmet item at once — worth more than first argued, since `just` stops at the first failed dependency
+and 25 gates sat behind `check-test-targets` alone. See `0466-*`. (2026-08-07)
 
 Recently resolved (2026-08-06): **#458** — `nros_cpp_executor_open_over_session` never stamped the `CppContext`
 handle tag. The storage is `MaybeUninit`, so `cpp_ctx_checked` read garbage and every entry point

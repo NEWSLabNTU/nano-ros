@@ -164,3 +164,60 @@ changes in `ros2-distrobox-setup.sh` + `docs/development/ros2-on-non-ubuntu.md`.
 The one genuine test failure across all eight attempts is #0422's triage index,
 which is being worked separately — 10 real failures, independently reproduced on
 a second tree.
+
+## Outcome — the thesis reproduced while being fixed (2026-08-07)
+
+Per-push CI was RED on **20+ consecutive runs**, back past 2026-08-06. Fixing it
+took three commits, and the shape of that sequence is the argument this issue
+makes, observed rather than reasoned:
+
+| # | red | why nobody saw it |
+| --- | --- | --- |
+| 1 | `check-leaf-lockfiles` demanded a synced tree | first failure in the lane; everything after it never ran |
+| 2 | `check-test-targets` needs `-sys` sources | only became visible once (1) was fixed |
+| 3 | `scaffold-journey` asked `nros new` for a platform it refuses | a different JOB; unread while the check job was red |
+
+Each was invisible until its predecessor cleared. (3) had been failing since
+2026-07-28 — ten days — because `fix(#333)` narrowed `nros new` to platforms
+with runnable Rust templates and did not move the one CI job pinned to a
+now-refused one.
+
+**A permanent red does not fail, it hides its neighbours.** That is the whole of
+(B) in one sentence, and it is why "how long has main been broken" is the wrong
+question: main was broken in four places, and the lane could only ever report
+the first.
+
+Fixed:
+
+```
+b931fc4d3  check-leaf-lockfiles: not-synced is the ENVIRONMENT, warn instead of exit 1
+398237d4a  check-test-targets moved to check-build — a compile gate cannot live
+           in a source-free lane
+29153eab3  scaffold-journey: use a platform the CLI still scaffolds (baremetal)
+```
+
+Result — first green push run, and green on the three pushes after it, including
+other sessions' commits:
+
+```
+success  changes
+success  check (fast on push; full on PR/nightly)
+success  nros new -> sync -> resolve
+success  colcon build examples/templates/local-msg-package/src/
+```
+
+### What this changes about the proposals above
+
+Proposal (1) — one precondition gate reporting every unmet item at once — is
+worth MORE than first argued, and for a reason the fixing exposed. `just` stops
+at the first failed dependency, so a lane does not report "these four things are
+wrong"; it reports one, and re-reports one after each fix. Twenty-five gates sat
+behind `check-test-targets` alone. Batching the verdict is not ergonomics, it is
+the difference between four sequential 40-minute discoveries and one listing.
+
+Also worth recording, since it cost time twice here: verify a fast-tier gate
+against a PRISTINE checkout, not a provisioned one. `check-fast` carried a
+docstring promising buildless and source-free while two of its gates needed
+neither property to hold — and it passed locally the whole time, for the wrong
+reason. A `git worktree add --detach` into a scratch dir reproduces CI's
+condition in seconds and is now named in the `check-fast` comment.
