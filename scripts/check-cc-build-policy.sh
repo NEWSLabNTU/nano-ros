@@ -12,6 +12,11 @@
 # constructs a `cc::Build` must also name the helper crate, so a new site cannot
 # be added without deciding which policy it takes.
 #
+# `git grep` sees TRACKED files only, which is the repo rule (a filesystem walk
+# over tracked paths measured 7m36s against 0.8s) and also means a brand-new
+# build.rs is governed from the moment it is `git add`ed, not before. That is
+# the right boundary for a pre-push gate, but it is a boundary.
+#
 # It checks PRESENCE per file, not per construction — a precise per-site check
 # would need to parse Rust. That is deliberate under the issue-0196 rule: a
 # narrow gate that looks healthy is worse than a coarse one that makes someone
@@ -29,7 +34,7 @@ while IFS= read -r f; do
         echo "  $f — $n cc::Build::new() and no nros_cc_flags:: call"
         fail=1
     fi
-done < <(grep -rl "cc::Build::new()" --include="*.rs" packages/ 2>/dev/null)
+done < <(git grep -l "cc::Build::new()" -- 'packages/**/*.rs' 2>/dev/null)
 
 if [ "$fail" -ne 0 ]; then
     cat >&2 <<'EOF'
