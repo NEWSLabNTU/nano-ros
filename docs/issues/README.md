@@ -523,13 +523,17 @@ double encapsulation verbatim. LATENT, not live: `PollingActionClient` has no co
 neither `_raw` is called from `examples/` or `packages/testing/` — which is exactly why nothing
 caught it. Found by sweeping the #448 class rather than by a failure. See `0454-*`. (2026-08-06)
 
-**#453** — no native action cell can prove the goal payload was DELIVERED. The cells assert only
-`ACTION_RESULT_PREFIX` ("Result received:"), a line the client prints even when it decoded a zeroed
-default result, and the example servers share no convention: the Rust one publishes a fixed
-`[0, 1, 1]` and never reads `goal.order` at all, the C++ one computes `order` elements, the ROS 2
-tutorial server `order + 1`. So no cell's payload is a function of the goal. This is exactly how #448
-stayed green across the whole native matrix while only the XRCE↔ROS 2 interop test — the one with a
-real `rcl_action` peer — caught it. See `0453-*`. (2026-08-06)
+Recently resolved (2026-08-07): **#453** — no native action cell could prove the goal payload was
+DELIVERED: the cells asserted only `ACTION_RESULT_PREFIX`, which a client prints even when it decoded a
+zeroed default result. That blind spot hid TWO real bugs in one week — **#448** (the client shipped two
+CDR encapsulations, so Fast-DDS dropped every goal) and **#461** (the server decoded the goal UUID as
+`order`, invisible with a nano-ros client whose UUID begins with a counter). A nano↔nano test cannot see
+either, because both sides share the defect. Unblocked once all three example servers derived their
+output from `goal.order` on ONE convention (order N → N+1 elements, matching ROS 2): #0450 fixed the
+Rust server, the C server now stashes the order it already parsed instead of hard-coding 10, and the C++
+loop moved from `i < order` to `i <= order`. The action rows now assert `FIBONACCI_ORDER_10_SEQUENCE`.
+Verified by BREAKING it: a wrong expected sequence fails 9 of 18 cells — every action cell, 3 langs × 3
+RMWs. See `archived/0453-*`.
 
 Recently resolved (2026-08-06): **#448** — the Rust `send_goal` serialized with `new_with_header` and handed the
 result to `send_goal_raw`, which frames the request itself — so every goal shipped TWO encapsulations

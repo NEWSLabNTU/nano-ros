@@ -23,7 +23,7 @@ use nros_tests::{
         require_zenohd,
     },
     matrix::{Cell as MCell, Kind as MK, Lang as ML, Rmw as MR, Tier as MT, Workload as MW},
-    output::{ACTION_RESULT_PREFIX, SERVICE_RESULT_PREFIX},
+    output::{ACTION_RESULT_PREFIX, FIBONACCI_ORDER_10_SEQUENCE, SERVICE_RESULT_PREFIX},
 };
 use std::{path::PathBuf, process::Command, time::Duration};
 
@@ -288,17 +288,32 @@ fn run_cell(cell: &MCell) {
         wl_str(cell.workload),
     );
 
-    // NOTE (issue 0448): the service rows assert a server-COMPUTED value
-    // (`… : 5`), but the action rows can only assert `ACTION_RESULT_PREFIX` — a
-    // line the client prints even when the goal never reached the server and it
-    // decoded a zeroed default result. That is how 0448 stayed invisible here
-    // while the XRCE↔ROS 2 interop test failed.
+    // Issue 0453 — the action rows assert the PAYLOAD, not just the prefix.
     //
-    // It is NOT fixable by asserting the sequence, because the example servers
-    // do not share a convention: the Rust server publishes a fixed `[0, 1, 1]`
-    // and never reads `goal.order` at all, while the C++ server computes
-    // `order` elements and the ROS 2 tutorial server computes `order + 1`. No
-    // native cell's payload is a function of the goal, so none of them can prove
-    // the goal survived the round-trip. Tracked as issue 0453; the payload
-    // assertion lives in `xrce_ros2_interop`, which runs a real ROS 2 server.
+    // `ACTION_RESULT_PREFIX` alone is printed by a client that decoded a zeroed
+    // default result, so it cannot tell a delivered goal from a dropped one.
+    // That is how #0448 (the Rust client shipped two CDR encapsulations, so
+    // Fast-DDS dropped every goal) stayed green across this whole matrix while
+    // only the XRCE↔ROS 2 interop test caught it — and how #0461 (the server
+    // decoded the goal UUID as `order`) hid too, because a nano-ros client's
+    // UUID begins with a counter and so `order` always looked plausible.
+    //
+    // This is assertable now that all three example servers derive their output
+    // from `goal.order` on the SAME convention (order N yields N+1 elements,
+    // matching ROS 2 `action_tutorials`): the Rust server stores the accepted
+    // order (#0450), the C server does too (#0453), and the C++ loop moved from
+    // `i < order` to `i <= order` (#0453). Every client requests order 10, and
+    // all three print the sequence `", "`-separated, so one constant serves the
+    // whole matrix.
+    if cell.workload == MW::Action {
+        assert!(
+            out.contains(FIBONACCI_ORDER_10_SEQUENCE),
+            "[{}/{}/action] client logged `{result}` but NOT the order-10 sequence \
+             `{FIBONACCI_ORDER_10_SEQUENCE}` — the goal payload did not survive the \
+             round-trip. A result line proves the client DECODED something, not that \
+             the server ever saw the goal (issues 0453 / 0448 / 0461):\n{out}",
+            lang_str(lang),
+            rmw_str(cell.rmw),
+        );
+    }
 }
