@@ -100,3 +100,4 @@ rustflags = [
 # relative to the workspace root. Mirrors `examples/workspaces/rust`.
 [patch.crates-io]
 libc = { path = "../../../third-party/nuttx/libc" }
+nros-zephyr-build = { path = "../../../packages/tooling/nros-zephyr-build" }  # nros-managed
