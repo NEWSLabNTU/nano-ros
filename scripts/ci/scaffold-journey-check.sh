@@ -21,9 +21,24 @@ scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 
 # An embedded cell — `--platform native` scaffolds nros commented out (a stub),
-# so it would not exercise the patch block; freertos emits active `nros` + board
-# deps, the real convention surface.
-plat="freertos"
+# so it would not exercise the patch block. An embedded platform emits active
+# `nros` + board deps, which is the real convention surface.
+#
+# `baremetal`, not `freertos`: since `fix(#333)` (2026-07-28) `nros new` REFUSES
+# freertos for Rust —
+#
+#   nros new: single-package Rust scaffolding for --platform freertos is not
+#   available yet — the tracked shape is a split node-lib + `*-entry` bin pair
+#
+# which is deliberate (that shape has no single-package template), but this job
+# was not moved with it and has failed on every run since. Any platform the CLI
+# still scaffolds and that emits ACTIVE deps satisfies this check; baremetal,
+# esp32 and posix all do. Verified with `nros new`: each yields an uncommented
+# `nros` dep and a board dep.
+#
+# If freertos scaffolding lands, moving back is fine — the check is about the
+# dependency convention, not about which platform carries it.
+plat="baremetal"
 name="uj_demo"
 
 echo "::group::nros new ${name} --platform ${plat}"
