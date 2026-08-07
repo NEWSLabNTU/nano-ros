@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#478** (build, open 2026-08-08) — cc-rs sends `-mno-omit-leaf-frame-pointer`, a **clang** flag, to
+`arm-none-eabi-gcc`, which rejects it — every `freertos` fixture row dies `rc=101` while all six other
+modules pass. Nothing in-tree passes the flag: cc-rs adds it when forcing a frame pointer off the profile's
+`debug = 1`. It arrived without a commit because the lock pinning `cc` here is
+`examples/workspaces/mixed/`'s, GENERATED per host by `nros sync` and untracked, so a fresh resolve moved
+it (the root lock's `cc 1.2.63` is not what this build reads). Fix is ONE `nros_cc_build()` constructor —
+`cc::Build::new()` has ~5 call sites and patching each is the second-spelling mistake. Now the only thing
+blocking `just ci-matrix`, since 0477 is resolved.
+
 **#477** (nuttx, RESOLVED 2026-08-08) — `nuttx-c-talker-zenoh` overflowed ROM by 448776 bytes and gated
 `lane=all`/`lane=tier2`. **Not a size regression at all.** `nros-board-common`'s `snapshot_root` /
 `snapshot_or_tree` prefer the per-arch NuttX export snapshot and fall back to the live `staging/` tree, but
