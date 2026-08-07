@@ -1083,6 +1083,13 @@ check-fixtures-manifest:
 check-doc-refs:
     @bash scripts/check-doc-refs.sh
 
+# Issue 0466 — report EVERY unmet tier precondition at once (CLI stamp, leaf
+# includes, build sources, fixtures for the lane) instead of one per ~40-minute
+# attempt. Run at the head of `ci`; callable directly to check a tree before
+# committing to a run.
+check-tier-preconditions:
+    @bash scripts/check-tier-preconditions.sh
+
 # Every ACTIVE roadmap phase carries a findable status line; a finished one
 # belongs in `docs/roadmap/archived/`. A one-off pass does not hold — four
 # phases lost theirs within days of `ecc195ed6` doing exactly that.
@@ -2126,6 +2133,7 @@ rust-rtos-link-check: _require-leaf-includes
 # set, not the gate set.
 [group("ci")]
 ci:
+    @NROS_FIXTURE_LANE=native bash scripts/check-tier-preconditions.sh
     @NROS_FIXTURE_SCOPE=native NROS_TEST_SCOPE=native NROS_FIXTURE_LANE=native just check rust-rtos-link-check test-all
     @echo "CI passed (tier 1 — host only; platform coverage needs `just ci-matrix`)!"
 

@@ -381,6 +381,28 @@ impl ManagedProcess {
         Ok(output)
     }
 
+    /// Issue 0471 — the assertion [`Self::wait_for_output_pattern`] is not.
+    ///
+    /// Returns the collected output only if `pattern` actually appeared;
+    /// otherwise `Err(TestError::Timeout)` — including the case the lenient
+    /// version lets through, where the process printed something else entirely
+    /// (typically the error explaining why it failed).
+    ///
+    /// Prefer this wherever the marker IS what the test is proving. The
+    /// returned `String` is the full output, so a failure message can quote it.
+    pub fn expect_output_pattern(
+        &mut self,
+        pattern: &str,
+        timeout: Duration,
+    ) -> Result<String, TestError> {
+        let out = self.wait_for_output_pattern(pattern, timeout)?;
+        if out.contains(pattern) {
+            Ok(out)
+        } else {
+            Err(TestError::Timeout)
+        }
+    }
+
     /// Wait until a pattern appears at least `expected` times in stdout+stderr.
     pub fn wait_for_output_count(
         &mut self,

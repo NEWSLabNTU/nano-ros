@@ -182,7 +182,12 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   cells there too), not new hand-coordinated files — the consolidation plan is phase-329.
 - **Fixture mtime treadmill:** any pull/rebase — and any `git stash push`/`pop`, which rewrites
   tracked files just the same — refreshes source mtimes → EVERY prebuilt fixture
-  reads STALE. Rebase once → rebuild affected fixtures → test WITHOUT pulling again. Core-crate
+  reads STALE. **A refresh re-arms the in-tree CLI's source stamp too, not just fixtures
+  (issue 0466)** — and the order is load-bearing: rebuild the CLI FIRST (`just setup-cli`),
+  THEN fixtures, because fixtures key on that stamp; doing it the other way re-stales
+  everything you just built. `just check-tier-preconditions` reports every unmet
+  precondition at once (CLI, leaf `nros sync`, build sources, fixtures for the lane)
+  instead of one per attempt; it runs at the head of `just ci`. Rebase once → rebuild affected fixtures → test WITHOUT pulling again. Core-crate
   or repr(C)-struct changes ⇒ wipe workspace build dirs (incremental mixes pre/post-append
   objects → garbage-pointer SEGVs). Long-unrebuilt families "pass" on museum binaries — trust
   only a fresh full sweep, and re-measure any perf number on cleanly rebuilt fixtures before
