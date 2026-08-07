@@ -1,13 +1,5 @@
-include = ["../../../../../nros-patch.toml"]
-[build]
-target = "riscv64gc-unknown-none-elf"
+include = ["../../../../../nros-patch.toml", "nros-board.toml"]
 
-[target.riscv64gc-unknown-none-elf]
-rustflags = [
-    "-C", "link-arg=--gc-sections",
-    "-C", "link-arg=-Tlink.lds",
-    "-C", "link-arg=--nmagic",
-]
 
 [env]
 NETX_CONFIG_DIR = { value = "../../../../packages/boards/nros-board-threadx-qemu-riscv64/config", relative = true, force = true }

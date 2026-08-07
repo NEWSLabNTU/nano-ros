@@ -306,6 +306,33 @@ config count drops by the family's size.
 merely observed passing), and no tracked leaf `config.toml` carries a `[target.*]`
 block a descriptor also declares.
 
+## Two more traps W3 hit — the tables a projection may take are per-BOARD
+
+**A leaf keeps whatever the descriptor does not declare, and the set differs by
+board.** Deleting a fixed list of tables is wrong; the projection's own tables
+are the list.
+
+* **mps2** declares only `[target.*]` → the leaf keeps `[build]`.
+* **threadx** declares `[build]` + `[target.*]`, and its `[env]` is WITHHELD
+  (`${workspace}` renders to an absolute host path). Deleting only `[target.*]`
+  left the leaf's `[build]` conflicting with the projection's, so W2 correctly
+  withheld the include and **all six leaves went ungoverned** until `[build]`
+  went too. The conflict check did its job; the migration step was wrong.
+* **esp32** declares `[build]`, `[target.*]`, `[env]`, `[unstable]` — but its
+  `[env]` is ONLY `ESP_LOG`, while the leaf's carries three more keys that are
+  genuine per-leaf tuning:
+
+  ```toml
+  NROS_EXECUTOR_ARENA_SIZE     = "16384"
+  NROS_SMOLTCP_MAX_UDP_SOCKETS = "2"
+  ZPICO_SUBSCRIBER_LARGE_SIZE  = "4096"   # or `.bss` overflows DRAM by ~54 KiB
+  ```
+
+  Deleting the whole `[env]` produced exactly that: `rust-lld: section '.bss'
+  will not fit in region 'DRAM': overflowed by 50476 bytes`. The leaf's own
+  comment had predicted the number. **A table name matching is not permission to
+  delete the table** — only the keys the projection actually supplies may go.
+
 ## A trap W3 hit, recorded for the remaining families
 
 **Two fixture leaves have no `package.xml`, so `nros sync` never visits them** —

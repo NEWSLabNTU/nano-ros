@@ -1,16 +1,7 @@
-include = ["../../../../../nros-patch.toml"]
-[build]
-target = "riscv32imc-unknown-none-elf"
+include = ["../../../../../nros-patch.toml", "nros-board.toml"]
 
-[target.riscv32imc-unknown-none-elf]
-rustflags = [
-    "-C", "link-arg=--gc-sections",
-  "-C", "link-arg=-Tlinkall.x",
-  "-C", "force-frame-pointers",
-]
 
 [env]
-ESP_LOG = "info"
 NROS_EXECUTOR_ARENA_SIZE = "16384"
 NROS_SMOLTCP_MAX_UDP_SOCKETS = "2"
 # issue 0024: shrink the Phase 231 (RFC-0038) size-class large receive buffer
@@ -21,8 +12,6 @@ NROS_SMOLTCP_MAX_UDP_SOCKETS = "2"
 # cannot buffer 16 KiB messages anyway. Mirrors the esp32 workspace fixture env.
 ZPICO_SUBSCRIBER_LARGE_SIZE = "4096"
 
-[unstable]
-build-std = ["core", "alloc"]
 
 [patch.crates-io]
 nros-board-esp32-qemu = { path = "../../../../packages/boards/nros-board-esp32-qemu" }  # nros-managed
