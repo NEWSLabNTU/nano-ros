@@ -71,12 +71,23 @@ fi
 # "directories that hold build OUTPUT", and only `/` expresses that. A source
 # file can then be named anything without vanishing from the box.
 #
-# `/build` keeps its anchor as well as its slash — a nested `build/` IS output
-# (leaf cmake dirs), but the root one is the only one this rule means.
+# `build/` is excluded at ANY depth, and the single tracked directory with that
+# name is re-included AHEAD of it (rsync takes the first matching rule, so an
+# include must precede the exclude it carves out of).
+#
+# The anchor this replaces was costing gigabytes. Nested `build/` dirs are leaf
+# CMAKE OUTPUT — `examples/templates/multi-node-workspace-cpp/build` alone is
+# 2.7 GB and there are 46 such dirs — so `/build/` mirrored the exact class of
+# glibc-incompatible artifact the two-tree split exists to keep apart, and made
+# a routine re-sync take tens of minutes. It was anchored only to dodge
+# `scripts/build/`; `git ls-files` says that is the ONLY tracked `build/`, so
+# naming it is the precise fix where the anchor was a blunt one that happened
+# to work.
 exclusions=(
+    --include '/scripts/build/***'
     --exclude 'target/'
     --exclude 'target-*/'
-    --exclude '/build/'
+    --exclude 'build/'
     --exclude 'build-*/'
     --exclude '.cargo-target-box/'
     --exclude '/tmp/'
