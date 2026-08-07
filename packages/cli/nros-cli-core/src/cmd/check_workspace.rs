@@ -652,9 +652,7 @@ fn lint_dispatch_matrix(entry_dir: &Path, entry_pkg_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        path::PathBuf,
-    };
+    use std::path::PathBuf;
 
     fn temp_root(tag: &str) -> PathBuf {
         crate::test_support::scratch_dir(&format!("nros-check-ws-{tag}"))

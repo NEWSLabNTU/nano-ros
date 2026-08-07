@@ -687,9 +687,7 @@ name = "p"
     // add a workspace-level dev-dep.
     // -----------------------------------------------------------------------
     mod tempfile_lite {
-        use std::{
-            path::{Path, PathBuf},
-        };
+        use std::path::{Path, PathBuf};
 
         pub struct TempDir {
             path: PathBuf,

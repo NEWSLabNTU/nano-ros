@@ -100,10 +100,7 @@ pub fn parse_ament_metadata_value(value: &serde_json::Value) -> Result<AmentMeta
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        fs,
-        path::PathBuf,
-    };
+    use std::{fs, path::PathBuf};
 
     fn scratch_pkg(name: &str) -> PathBuf {
         crate::test_support::scratch_dir(&format!("nros-ament-{name}"))
