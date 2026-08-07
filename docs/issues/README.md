@@ -426,13 +426,16 @@ result. Fixed by using the headerless `CdrWriter::new`, matching the RFC-0069/#0
 `publish_feedback`/`complete_goal` already carried; `nros-c`/`nros-cpp` already stripped it, so the
 Rust API was the lone live offender. See `archived/0448-*`. (2026-08-06)
 
-**#462** — `workspace_features` cell `rust/logging`: the node's log lines carry NO `[INFO]` level tag —
-0 of an expected ≥3. The node runs and emits its three marker lines (`talker publishing chatter seq=0..2`);
-only the level metadata is absent, so the record either bypassed the logging facade (a direct write) or
-lost its metadata in the sink. Reproduces SOLO, which separates it from the three sweep-only flakes found
-in the same run (`large_msg::test_xrce_e2e_integrity`, `xrce_ros2_interop::test_xrce_action_ros2_client`,
-`native_example_reqresp` all pass individually). NOT #0422's logging entry — that one was
-`logging_smoke_mps2_baremetal`, a lane-coverage naming problem, since renamed. See `0462-*`. (2026-08-06)
+Recently resolved (2026-08-07): **#462** — `workspace_features` cell `rust/logging` counted 0 of an
+expected ≥3 log lines carrying `[INFO]`. The defect was real — every hosted `log` bridge printed
+`record.args()` bare — but it was already FIXED in source when this was filed: `f0fa793f4`
+(nros-board-linux, the sink this cell exercises) is an ancestor of the filing commit, and `6863de1cc`
+covered the other four sinks. What the issue captured was a STALE FIXTURE. The filed output settles
+it: `nros: session open` is emitted by the BOARD bridge, not the node, and it too was untagged — so the
+`native_entry` binary predated the fix. On rebuilt fixtures the same hand-run gives 8 of 8 marker lines
+tagged, and all 17 cells pass. Note it did not present as `STALE`: the probe passed the binary through
+and the assertion failed on its merits, reading as a live runtime defect (issue 0445's shape from the
+other side). See `archived/0462-*`.
 
 **#466** — Tier 1 has an unstated, ORDERED setup contract. Eight consecutive attempts at `just ci` on a
 clean, provisioned tree each stopped on a DIFFERENT precondition, and only one stop was a test: missing
