@@ -177,17 +177,55 @@ independent reps. Take the disk column from here and the timing from W1.
 
 ## The complete incompatibility set
 
-Measured one factor at a time, fresh target dir, `CARGO_INCREMENTAL=0`:
+Re-measured 2026-08-06 on `nros-core`, **features held constant**
+(`--no-default-features --features alloc,std`), one factor varied per arm, each
+into its own target dir. The value is `libnros_core-<hash>.rlib`:
 
-| Factor | Changes identity? |
-| --- | --- |
-| Same build, different target dir | **no** |
-| Profile (`relwithdebinfo` / `release` / `dev`) | yes |
-| Feature set | yes |
-| RUSTFLAGS | yes |
-| Explicit `--target` vs implicit host | **yes, same triple** |
-| Workspace root (leaf vs root) | yes |
-| `incremental` | no (identity), but breaks byte-equality |
+| Factor | Changes identity? | hash |
+| --- | --- | --- |
+| *(baseline)* | — | `ef26eca89af52b10` |
+| Same build, different target dir | **no** | `ef26eca89af52b10` |
+| Workspace root (leaf vs root) | yes | `18ad8b827eebc4b1` |
+| Explicit `--target` vs implicit host | **yes, same triple** | `2b8d1fd2adda0290` |
+| RUSTFLAGS | yes | `a2b0dc427d43178a` |
+| Profile name — `release` | yes | `4b39f882b3c08c23` |
+| Profile name — `dev` | yes | `ec004e0c9f10d286` |
+| `opt-level` | yes | `742760f17a80b8cc` |
+| `debug-assertions` | yes | `118191be48cc117d` |
+| `panic` | yes | `866fba4594ca08e4` |
+| `codegen-units` | yes | `9ffc8f9e7768b1ce` |
+| `lto` | yes | `1f752f577b8e31d5` |
+| `incremental` | **yes** | `b8ac6e54ff73351f` |
+
+**Two corrections to the earlier version of this table.**
+
+1. **`incremental` DOES change identity.** The old row said "no (identity), but
+   breaks byte-equality". Measured twice over: `CARGO_INCREMENTAL=1` yields
+   `b8ac6e54ff73351f`, and so does the `nros-iterate` profile — two independent
+   routes to "relwithdebinfo plus incremental" landing on the same hash, distinct
+   from the baseline. This is also why W1's change forced a rebuild of 37 units:
+   it altered the identity, not merely the on-disk bytes.
+
+2. **"Profile" is not one factor — it is at least six.** `opt-level`,
+   `debug-assertions`, `panic`, `codegen-units`, `lto` and `incremental` each
+   change identity ON THEIR OWN. Two builds can therefore name the SAME profile
+   and still not share, if any single setting is overridden.
+
+That second point is not hypothetical here: `nros_cargo_profile_env()` injects
+`CARGO_PROFILE_<NAME>_*` variables for corrosion targets, so the cmake path
+constructs its profile from environment rather than inheriting the manifest's.
+Any divergence in one injected setting silently splits the identity. A build
+tree bears this out — `examples/workspaces/mixed` carries **ten distinct profile
+hashes at a single `--profile nros-relwithdebinfo`**, which is what produced the
+"unattributed ×2" recorded in W4: those two `nros-core` fingerprints agree on
+rustc, features, target, path, rustflags, config, compile_kind and all three
+deps, and differ ONLY in `profile`.
+
+**Practical consequence for W2/W3.** Feature-set equality is necessary and
+nowhere near sufficient. Any grouping key that claims two builds are
+interchangeable must cover the workspace root, the `--target` spelling, RUSTFLAGS
+and every individual profile setting — not the profile NAME, which is a label
+over six independent axes.
 
 ## Work items
 
