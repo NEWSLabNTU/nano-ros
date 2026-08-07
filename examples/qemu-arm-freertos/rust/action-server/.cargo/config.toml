@@ -1,4 +1,4 @@
-include = ["../../../../../nros-patch.toml", "nros-board.toml"]
+include = [ "../../../../../nros-patch.toml", "nros-board.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 # nros-board-freertos/build.rs needs these to locate the FreeRTOS + CFFI platform
