@@ -156,6 +156,19 @@ pure-cargo path. The linker script is the third leg — the Entry pkg's
 `cargo_config` (the board build.rs emits the script to `OUT_DIR`); a stale pin
 (`-Tlink.x`) is a config-sync bug, not a codegen one.
 
+> **Amendment (2026-08-07) — "must track" is being replaced by "is generated".**
+> Making the leaf mirror the descriptor by hand is the mirror-drift class, and it
+> fired as issue 0440: phase-338 W2 kept a node package's config, the NuttX
+> entries lost their kernel-archive group, and the result was ~3680 undefined
+> references visible only at link time. Measured 2026-08-07: 59 tracked leaf
+> configs carry a `[target.*]` block, **23 distinct**, and 54 of 56 in-scope are
+> their board's block verbatim or a superset (three extra args exist in total,
+> `--gc-sections` accounting for 32 of them). `check-board-cargo-config-applied`
+> guards 8 of those 59 and is representative rather than exhaustive by design.
+> [phase-341](../roadmap/phase-341-board-cargo-config-is-generated.md) moves the
+> block to a sync-generated `include`, after which drift is not detected but
+> impossible, and this paragraph's "config-sync bug" stops naming a live class.
+
 ---
 
 ## 4. The single-tier contract (today)
