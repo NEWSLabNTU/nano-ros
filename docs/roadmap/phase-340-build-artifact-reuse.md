@@ -257,7 +257,7 @@ is why 334 W2.b comes before the grouping work here.
 
 | # | item | why here |
 | --- | --- | --- |
-| 1 | **340 W4 follow-up** | a live RED in `check-fast` — the gate counts the size probe's nested dirs, so it fails on a tree that merely built more |
+| ~~1~~ | ~~**340 W4 follow-up**~~ | **DONE** `ee016145a` — the find prunes `*/out/sizes-probe-target-*`; verified against a replica, and against the pre-fix script to show the prune is load-bearing |
 | 2 | **340 W5.b / W5.c** | near-deletion now that #464 removed the fallback the edge served; also removes the probe dirs inflating (1) |
 | 3 | **340 W6 step 1** | Zephyr remap + `OUT_DIR` + `codegen-units` together — the largest measured population, additive, serialises nothing |
 | 4 | **334 W2.b steps 2–4** | the derivation for source-relative cache data; the precondition for moving any path |
@@ -886,7 +886,7 @@ before choosing.
 `just verify-size-probe` still green in BOTH modes, or the reason it cannot is
 recorded at the manifest edge that causes it.
 
-### W4 follow-up — the budget counts W5's probe dirs, so it drifts with build history
+### W4 follow-up — the budget counted W5's probe dirs, so it drifted with build history — FIXED
 
 `check-artifact-identity-budget` went RED on my tree today with
 `nros_core has 9 distinct -C metadata identities … (budget 8, recorded
@@ -910,10 +910,33 @@ red-lights another that merely built more, and `just check-fast` then fails for
 a reason no diff explains — which is expensive precisely because the gate is in
 the fast tier that every task runs first.
 
-Options, in the spirit of the gate: exclude `*/out/sizes-probe-target-*/` from
-the count (it measures a different phenomenon, already owned by W5), or count
-identities per target-dir root rather than per tree. Excluding the probe dirs
-restores the recorded 8 exactly, which suggests that is the population W4 meant.
+**RESOLVED 2026-08-07 (`ee016145a`)** — the first option was taken: the find
+prunes `*/out/sizes-probe-target-*` before counting.
+
+```sh
+rlibs="$(find "$TREE" \
+    -type d -path '*/out/sizes-probe-target-*' -prune -o \
+    -path '*/deps/*' -name 'lib*-*.rlib' -print 2>/dev/null | sort)"
+```
+
+Verified on a replica carrying 8 ordinary identities plus a 9th existing ONLY
+inside a probe dir: the current script reports `nros_core 8/8` and passes, while
+the same tree run through the pre-fix script (the prune removed) exits 1. So the
+prune is doing the work, not merely present.
+
+**What excluding costs, stated so it is not silently lost.** Those probe
+compilations are real duplicates — they are exactly W5's
+duplicate-inside-one-invocation — and this gate no longer counts them. That is
+deliberate: their number tracks how many times the tree was built, so as a
+BUDGET they are unusable, and W5 owns the population with a measurement that
+does not depend on build history. Work item 2 of the work order (`W5.b/c`)
+removes most of them at the source; when it lands, this exclusion should be
+re-examined rather than assumed permanent.
+
+**Second-order note.** With the probe dirs pruned, the `worst identity ≤ 5
+copies` ceiling now measures a smaller population than when it was recorded, so
+it is looser than intended rather than tighter. W7's re-measure must reset all
+three budgets together.
 
 ### W6 — the ZEPHYR fixture lane, which no measurement above covers
 
