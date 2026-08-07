@@ -564,10 +564,53 @@ cannot is written down where the next reader will find it.
 
 ### W4 — gate the property
 
+#### The user-facing reproducer, measured 2026-08-06
+
+The question a user actually asks: *my project needs a Rust leaf R and a C++
+leaf C, both depending on a Rust dependency D, and I choose the feature set — is
+D built once?*
+
+`examples/workspaces/mixed` IS that project: Rust and C++ node packages in one
+workspace over a shared `nros-core`. Counting `nros-core` in its build tree:
+
+```
+08130df18f473a4b  nano-ros_0b88c/x86_64-unknown-linux-gnu/nros-relwithdebinfo
+2b8d1fd2adda0290  nano-ros_0b88c/x86_64-unknown-linux-gnu/nros-relwithdebinfo
+482da2a2e947742f  nano-ros_0b88c/nros-relwithdebinfo
+b2744896132993cc  nano-ros_0b88c/nros-relwithdebinfo
+4a86c738c0e9ce80  nros_ws_runtime_14eac/x86_64-unknown-linux-gnu/nros-relwithdebinfo
+623c410f90cfce6a  nros_ws_runtime_14eac/x86_64-unknown-linux-gnu/nros-relwithdebinfo
+a46af0c36bd41dd5  nros_ws_runtime_14eac/nros-relwithdebinfo
+cf7d853a4c3ed530  nros_ws_runtime_14eac/nros-relwithdebinfo
+```
+
+**D is built EIGHT times, with eight distinct identities — zero sharing**, in a
+single workspace, at one user-chosen feature set. The split is three-way and
+each axis is a different cause:
+
+| axis | copies | cause |
+| --- | --- | --- |
+| two corrosion roots — `nano-ros_0b88c` (the C++ side) vs `nros_ws_runtime_14eac` (the Rust umbrella) | ×2 | **R2** — separate cargo invocations resolving through DIFFERENT workspace manifests. Corrosion keys its dir on `sha1(workspace_manifest_path)`, so they cannot even land in the same tree. |
+| host vs `x86_64-unknown-linux-gnu` | ×2 | **R3** — the explicit `--target` split, here appearing WITHIN one invocation (build scripts/proc macros vs the library). |
+| two identities per root+arch cell | ×2 | **unattributed.** Both fingerprints report identical `features = ["alloc","std"]`, so it is not feature-driven; `-C metadata` folds in dependency metadata, so the likeliest cause is the two staticlibs (`nros-c`, `nros-cpp`) resolving an intermediate crate differently. Not yet proven — do not quote a cause. |
+
+Note what this rules out: the R/C split here is **not** the corrosion-vs-cargo
+flag difference measured in W3, because BOTH sides go through corrosion with an
+explicit `--target`. Same driver, same flag, same features — and still no
+sharing, because they are different workspaces. **Fixing W3 alone would not make
+D build once for this user.**
+
+#### Work item
+
 - [ ] A check that fails when the same `-C metadata` identity is built into more
       than N target dirs in one lane, so this cannot silently regrow.
+- [ ] Use the mixed workspace as the gate's fixture: assert `nros-core` is built
+      at most K times for one workspace at one feature set. It is the smallest
+      honest reproducer of the whole phase, it already exists, and today it
+      answers 8.
 
-**Acceptance:** the gate catches a deliberately reintroduced duplicate.
+**Acceptance:** the gate catches a deliberately reintroduced duplicate, and the
+mixed-workspace count is recorded so a regression is visible as a number.
 
 ## Risks
 
