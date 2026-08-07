@@ -57,6 +57,14 @@ pub fn snapshot_root(nuttx_dir: &Path) -> Option<PathBuf> {
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").ok()?;
     let arch = snapshot_arch(&target_arch)?;
     let p = nuttx_dir.join(format!("nros-nuttx-export-{arch}"));
+    // issue 0477 — watch the candidate WHETHER OR NOT it exists. A
+    // `rerun-if-changed` on a path cargo cannot find still registers: the
+    // artifact is invalidated when that path later APPEARS. Without this line
+    // the edge is emitted only on whatever won, so a build that resolved to the
+    // `staging/` fallback keeps its artifact forever once the snapshot shows
+    // up — which is how a NuttX C image ended up linked against another arch's
+    // staging tree and overflowed ROM by 448 KB with nothing wrong in the code.
+    println!("cargo:rerun-if-changed={}", p.join("libs").display());
     p.join("libs").is_dir().then_some(p)
 }
 
@@ -108,6 +116,10 @@ pub fn snapshot_or_tree(
 ) -> PathBuf {
     if let Some(root) = &libs.root {
         let p = root.join(snapshot_rel);
+        // issue 0477 — same rule as `snapshot_root`: watch the preferred path
+        // even on the losing branch, so this artifact rebuilds when the
+        // snapshot gains the file rather than staying pinned to the fallback.
+        println!("cargo:rerun-if-changed={}", p.display());
         if p.exists() {
             return p;
         }

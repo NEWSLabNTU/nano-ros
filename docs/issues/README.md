@@ -51,17 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#477** (nuttx, open 2026-08-07) — `nuttx-c-talker-zenoh` overflows ROM by **448776 bytes**, and it is
-the gate on `just build-test-fixtures lane=all`, which THREE phases are waiting on: phase-341 (archive
-only after a tier-2 sweep), phase-340 W2.a (its next step moves 85+ rows' artifacts and needs a
-known-good baseline), phase-334 W2.c. `native`/`qemu`/`threadx_linux` pass in the same run; `freertos`
-fails separately and is not diagnosed. NOT phase-340 W5.b/c: restoring the `nros` build-dep from
-`aa8be9199~1` reproduces the IDENTICAL byte count, and a build-dep changes what the BUILD graph
-compiles, not what the product links. NOT a leaf this work touched — the row has no `.cargo/config.toml`
-and was not among phase-341 W3's 39. Provenance unestablished, and the obvious test (build at a
-pre-session commit) does NOT work: a fresh worktree has no `generated/` trees and dies on setup, issue
-0466's ordered contract from a new direction. Lead to pull first: a **C** talker's link line contains
-`libnros_cpp`, and 448 KB is the right order of magnitude for dragging in the C++ layer.
+**#477** (nuttx, RESOLVED 2026-08-08) — `nuttx-c-talker-zenoh` overflowed ROM by 448776 bytes and gated
+`lane=all`/`lane=tier2`. **Not a size regression at all.** `nros-board-common`'s `snapshot_root` /
+`snapshot_or_tree` prefer the per-arch NuttX export snapshot and fall back to the live `staging/` tree, but
+emitted `cargo:rerun-if-changed` on the path that WON — so a build that ran before the ARM export existed
+pinned its edge to `staging/`, and the snapshot later appearing changed nothing it watched. A `lane=all`
+sweep builds RISC-V and ARM, so the board artifact stayed staged against the wrong tree. Fix: emit the edge
+on the preferred path even on the losing branch (a `rerun-if-changed` on a missing path still fires when it
+APPEARS). Proof: after provisioning + `cargo clean` of the two crates, HEAD linked with the same code —
+691468 bytes vs 687112 on Aug 6, +0.6 %; the ARM lane now completes with zero overflows. The bisect never
+took a step: the confounder surfaced while validating the endpoints, which is why both ends get validated
+first.
 
 Recently resolved (2026-08-07): **#475** — the RMW archive was an ORDER-ONLY (`||`) link dep of the C/C++
 example binaries, because it is whole-archived through a raw `-Wl,...` FLAG (CMake cannot see a file inside a
