@@ -523,14 +523,14 @@ under concurrency and solo runs never apply the pressure. Nothing so far separat
 re-run the sweep with this test's agent isolated via the `nros_tests::alloc` allocator. #0422 had
 recorded it as "now PASSES". See `0470-*`. (2026-08-07)
 
-**#467** — `test_xrce_action_ros2_client` (the REVERSE of #448: nano is the action SERVER, ROS 2 the
-client) fails 3/3 solo in two modes — `Goal was rejected` (accepted=false), and `accepted=true
-feedback=true result=false`, where the goal crossed and feedback flowed but the `get_result` reply never
-arrived. Mode 2 rules out plain discovery/transport and points at the server-side result path. NOT a
-load flake: it fails on an idle box (contrast `large_msg::test_xrce_e2e_integrity`, which passes solo
-every time). Whether it is NEW is **not established** — the code-path argument says the #448/#447/#458
-work cannot reach it (client-path / multi-tier-only / cpp-only respectively), but that is an argument,
-not a bisect. See `0467-*`. (2026-08-07)
+Recently resolved (2026-08-07): **#467** — `test_xrce_action_ros2_client` (the REVERSE of #448: nano is
+the action SERVER, ROS 2 the client) rejected ~half the goals. The typed goal callback handed
+`CallbackCtx` the WHOLE SendGoal request and `message::<M>()` skipped only the 4-byte encap, so the goal
+type decoded its fields starting at the UUID. With a nano-ros client the UUID begins with a COUNTER, so
+`order` always looked like a small positive number and the bug was invisible; with a ROS 2 client the
+UUID is RANDOM, so `order` was a random i32 — negative half the time, hence the alternating
+accept/reject. Already fixed upstream as **#0461**; verified here 3/3 solo runs pass against 3/3
+failures before. Kept as a duplicate for the independent derivation. See `archived/0467-*`.
 
 Recently resolved (2026-08-07): **#462** — `workspace_features` cell `rust/logging` counted 0 of an
 expected ≥3 log lines carrying `[INFO]`. The defect was real — every hosted `log` bridge printed
