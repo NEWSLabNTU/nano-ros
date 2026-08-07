@@ -1,10 +1,39 @@
 # Phase 322 — Board crate consolidation
 
-**Status (2026-08-07): UNBLOCKED, but MOSTLY OVERTAKEN — re-scope before
-starting.** phase-320 and phase-321 are both archived, so the deferral condition
-is cleared. In the interim, however, phases 320/321/337/341 removed most of what
-this phase was written to merge, and **both of W1's empirical examples are
-gone**:
+**Status (2026-08-08): CLOSED — FULLY OVERTAKEN. Do not start.** The 08-07 pass
+below found both of W1's witnesses gone and left one candidate open, the NuttX
+pair, with "re-measure before proposing a merge". Measured now, and it does not
+survive either:
+
+| | 08-07 note | measured 08-08 |
+| --- | --- | --- |
+| `nros-board-nuttx` | 778 lines | 778 |
+| `nros-board-nuttx-qemu` | "82 lines … a thin overlay" | **816** — phase-337 W3 grew it (one crate, both QEMU witnesses) |
+| relationship | assumed fork | **layered**: the overlay DEPENDS ON the base (`nros-board-nuttx = { path = "../nros-board-nuttx" }`) |
+
+So the last candidate is not duplication at all. `nros-board-nuttx` is the
+generic layer-2 scaffolding — "THIN by design", per its own module docs, shipping
+`Config` + `run` + board-init hooks — and `nros-board-nuttx-qemu` is the board
+overlay its `reference-qemu` feature pulls. Merging them would collapse the
+layer-2 / board-overlay boundary RFC-0012 defines, which is the opposite of what
+this phase wanted. Every cluster in the merge table is now either gone or
+correctly layered; there is nothing left to consolidate.
+
+WHAT SURVIVES, and it is worth keeping: the structural observation in W1 — no
+board crate emits a reset vector, and the board-key→crate mapping is already a
+table. That is the reason a merge would be CHEAP if one is ever warranted again,
+and it stays true whether or not this phase runs.
+
+The rest of this document is retained as the record of a merge case that
+dissolved under four other phases (320/321/337/341) rather than being executed.
+**Its line-count figures were stale twice over — do not cite them.**
+
+---
+
+Original 08-07 re-scope, kept for the trail: phase-320 and phase-321 are both
+archived, so the deferral condition is cleared. In the interim, however, phases
+320/321/337/341 removed most of what this phase was written to merge, and **both
+of W1's empirical examples are gone**:
 
 | W1's evidence | today |
 | --- | --- |
