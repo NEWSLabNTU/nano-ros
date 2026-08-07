@@ -630,11 +630,32 @@ fn entry_matrix() {
     }
     std::panic::set_hook(prev_hook);
 
-    assert!(
-        failed.is_empty(),
-        "entry_matrix: {} of {} cell(s) FAILED:\n  {}",
+    // issue 0460 — say how many cells actually RAN, always. `skipped` used to be
+    // reported only when EVERY cell skipped, so a run that skipped nine and
+    // passed six looked identical to one that passed fifteen: the assertion
+    // below names failures, and a green line named nothing at all. That is the
+    // issue-0445 shape inside the harness used to judge these very cells — I
+    // could not tell whether this issue's two cells had been fixed or had
+    // stopped running.
+    let ran = cells.len() - skipped.len() - failed.len();
+    eprintln!(
+        "entry_matrix: {ran} ran, {} skipped, {} failed (of {} cells){}",
+        skipped.len(),
         failed.len(),
         cells.len(),
+        if skipped.is_empty() {
+            String::new()
+        } else {
+            format!("\n  skipped:\n  {}", skipped.join("\n  "))
+        }
+    );
+
+    assert!(
+        failed.is_empty(),
+        "entry_matrix: {} of {} cell(s) FAILED ({ran} ran, {} skipped):\n  {}",
+        failed.len(),
+        cells.len(),
+        skipped.len(),
         failed.join("\n  ")
     );
     if skipped.len() == cells.len() {
