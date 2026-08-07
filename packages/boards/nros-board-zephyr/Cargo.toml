@@ -22,7 +22,7 @@ name = "nros_board_zephyr"
 # Off by default: NetworkWait-only consumers keep the tiny dep graph; the
 # `nros::main!` Zephyr arm's multi-tier emit needs an entry crate that
 # enables this on its `nros-board-zephyr` dep.
-tiers = ["dep:nros", "dep:log"]
+tiers = ["dep:nros", "dep:log", "dep:nros-log"]
 # phase-296 W5.5 — gate the k_thread_deadline_set call path. On ⇒ real-time
 # tiers with a deadline get kernel EDF ordering; off ⇒ executor-only
 # (cooperative) deadline monitor. Must match the image's CONFIG_SCHED_DEADLINE.
@@ -31,4 +31,8 @@ zephyr-edf = []
 [dependencies]
 nros-platform = { path = "../../platform/nros-platform", default-features = false }
 nros = { path = "../../api/nros", default-features = false, features = ["alloc", "rmw-cffi"], optional = true }
+# run_tiers wires the nros_log dispatcher to the platform console at boot
+# (mirrors nros-board-linux); without it a Node pkg's `nros_info!` on a
+# Zephyr multi-tier entry produced no output at all.
+nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
 log = { version = "0.4", optional = true }

@@ -1442,11 +1442,18 @@ fn decl_err_from_node(e: nros_node::NodeError) -> NodeDeclError {
     // only runs when a declaration is already failing), so the register seam names
     // WHAT failed, not just WHERE.
     // `#![no_std]` crate with `extern crate std` under the std feature — the
-    // eprintln! macro is not in the no_std prelude, so qualify it; the whole
-    // diagnostic is std-gated so a no_std build sees nothing.
+    // eprintln! macro is not in the no_std prelude, so qualify it.
     #[cfg(feature = "std")]
     if !matches!(e, nros_node::NodeError::ExecutorFull) {
         std::eprintln!("nros: node declaration failed — NodeError::{e:?}");
+    }
+    // no_std targets get the same diagnostic through the `log` facade (every
+    // RTOS board bridges it); without this the collapse left only an opaque
+    // `NodeRegister("<pkg>")` on embedded — e.g. a static subscriber-pool
+    // exhaustion (NROS_RMW_SUBSCRIBER_SLOTS) surfaced with no cause at all.
+    #[cfg(not(feature = "std"))]
+    if !matches!(e, nros_node::NodeError::ExecutorFull) {
+        log::error!("nros: node declaration failed — NodeError::{e:?}");
     }
     match e {
         nros_node::NodeError::ExecutorFull => NodeDeclError::ExecutorFull,

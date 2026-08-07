@@ -175,9 +175,14 @@ impl<'s> Executor<'s> {
         let mut executor = unsafe { Self::from_session_in(session, backing, sizing) };
         #[cfg(not(feature = "std"))]
         {
-            executor.clock_us_fn = config.clock_us;
+            // `config.clock_us` overrides the constructor's platform default
+            // (issue: assigning `None` here clobbered it and re-enabled the
+            // credit-the-requested-timeout fallback).
+            if let Some(clock) = config.clock_us {
+                executor.clock_us_fn = Some(clock);
+                executor.last_spin_end_us = Some(clock());
+            }
             executor.epoch_us_fn = config.epoch_us;
-            executor.last_spin_end_us = config.clock_us.map(|clock| clock());
         }
         executor.set_node_identity(config.node_name, config.namespace);
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
@@ -388,9 +393,14 @@ impl<'s> Executor<'s> {
         let mut executor = unsafe { Self::from_session_in(session, backing, sizing) };
         #[cfg(not(feature = "std"))]
         {
-            executor.clock_us_fn = config.clock_us;
+            // `config.clock_us` overrides the constructor's platform default
+            // (issue: assigning `None` here clobbered it and re-enabled the
+            // credit-the-requested-timeout fallback).
+            if let Some(clock) = config.clock_us {
+                executor.clock_us_fn = Some(clock);
+                executor.last_spin_end_us = Some(clock());
+            }
             executor.epoch_us_fn = config.epoch_us;
-            executor.last_spin_end_us = config.clock_us.map(|clock| clock());
         }
         executor.set_node_identity(config.node_name, config.namespace);
         // Phase 156 — record primary identity for the session-
@@ -1369,9 +1379,9 @@ impl<'s> Executor<'s> {
             #[cfg(feature = "std")]
             last_spin_end: Some(std::time::Instant::now()),
             #[cfg(not(feature = "std"))]
-            last_spin_end_us: None,
+            last_spin_end_us: default_clock_us_fn().map(|clock| clock()),
             #[cfg(not(feature = "std"))]
-            clock_us_fn: None,
+            clock_us_fn: default_clock_us_fn(),
             consecutive_io_failures: 0,
             // RFC-0052 W3b.5 — hosted builds get a wall clock by default so
             // native age monitors activate without extra wiring; embedded
@@ -7016,5 +7026,42 @@ fn check_deadline_miss(
                 );
             }
         }
+    }
+}
+
+// Timer-accounting clock default (issue: no_std tiers with no `clock_us`
+// credited each spin the REQUESTED timeout — spin.rs `delta_ms` fallback —
+// so shared-session wakes made low-rate timers fire early (a 100 ms timer
+// at ~67 ms on Zephyr native_sim) and tick rounding made fast tiers fire
+// late. Measured on-target; mechanism documented at the fallback site.)
+//
+// Every platform port exports `nros_platform_clock_us` through the same
+// linkage contract the wake primitives rely on (`nros_platform_export_clock!`
+// in nros-platform-cffi), so an rmw-cffi no_std build can safely default the
+// executor clock to it; `ExecutorConfig::clock_us` stays as an override.
+#[cfg(all(not(feature = "std"), feature = "rmw-cffi"))]
+unsafe extern "C" {
+    fn nros_platform_clock_us() -> u64;
+}
+
+#[cfg(all(not(feature = "std"), feature = "rmw-cffi"))]
+fn default_platform_clock_us() -> u64 {
+    // SAFETY: bare query of the platform's monotonic µs counter; the symbol
+    // is guaranteed by whichever platform port linked the binary (the same
+    // contract `nros_platform_wake_*` already depends on).
+    unsafe { nros_platform_clock_us() }
+}
+
+/// The executor's default timer clock: the platform monotonic counter on
+/// no_std rmw-cffi builds, nothing elsewhere (std uses `Instant`).
+#[cfg(not(feature = "std"))]
+pub(crate) fn default_clock_us_fn() -> Option<fn() -> u64> {
+    #[cfg(feature = "rmw-cffi")]
+    {
+        Some(default_platform_clock_us)
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        None
     }
 }

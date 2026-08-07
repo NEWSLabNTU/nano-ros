@@ -171,6 +171,8 @@ nros-serdes = { version = "0.5.0", path = "../../core/nros-serdes", default-feat
 # behind `target_has_atomic = "ptr"`; `portable_atomic_util::Arc`
 # uses the portable-atomic polyfill (consumer brings a
 # `critical-section` impl on no-atomic targets).
+# decl_err_from_node's no_std diagnostic (std builds use eprintln!).
+log = { version = "0.4", default-features = false }
 portable-atomic = { version = "1", default-features = false }
 portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"] }
 paste = "1"

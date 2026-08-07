@@ -401,6 +401,10 @@ impl LinuxBoard {
         <Self as BoardInit>::init_hardware();
         // Phase 264 W3 — default log sink at boot (see `run`).
         ::nros_log::init(::nros_log::sinks::default());
+        // Same rationale as `run` (phase-338 W3): bridge the `log` facade
+        // too, or a node body using `log::info!` prints nothing on the
+        // multi-tier native entry while working on every RTOS board.
+        install_stdout_log_bridge();
 
         if tiers.is_empty() {
             <Self as BoardPrint>::println(format_args!(
