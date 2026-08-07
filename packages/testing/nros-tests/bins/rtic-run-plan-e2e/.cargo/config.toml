@@ -1,14 +1,7 @@
-include = ["../../../../../../nros-patch.toml"]
+include = ["../../../../../../nros-patch.toml", "nros-board.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 
-[target.thumbv7m-none-eabi]
-runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
-rustflags = [
-    "-C", "link-arg=--gc-sections",
-    "-C",
-    "link-arg=-Tlink.x",
-]
 
 [patch.crates-io]
 mps2-an385-pac = { path = "../../../../boards/mps2-an385-pac" }  # nros-managed

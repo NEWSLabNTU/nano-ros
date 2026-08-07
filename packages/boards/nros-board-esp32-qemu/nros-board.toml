@@ -1,7 +1,8 @@
 # Phase 195.C — board profile descriptor. ESP32-C3 under QEMU (esp-hal).
 
 [[board]]
-names = ["esp32-qemu", "esp32", "esp32c3", "esp32-c3"]
+# phase-341 W3 — 2 leaves deploy to `qemu-esp32-baremetal`.
+names = ["esp32-qemu", "esp32", "esp32c3", "esp32-c3", "qemu-esp32-baremetal"]
 platform = "esp32"
 toolchain = "nightly"
 platform_feature = "platform-bare-metal"

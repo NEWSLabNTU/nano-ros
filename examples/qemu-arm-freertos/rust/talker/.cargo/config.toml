@@ -1,4 +1,4 @@
-include = ["../../../../../nros-patch.toml"]
+include = ["../../../../../nros-patch.toml", "nros-board.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 
@@ -10,17 +10,6 @@ target = "thumbv7m-none-eabi"
 NROS_PLATFORM_FREERTOS_SRC = { value = "../../../../packages/platform/nros-platform-freertos/src", relative = true }
 NROS_PLATFORM_CFFI_INCLUDE = { value = "../../../../packages/platform/nros-platform-api/include", relative = true }
 
-[target.thumbv7m-none-eabi]
-runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
-# Issue #45 — link against the board's own `mps2_an385.ld` (emitted to OUT_DIR by
-# `nros-board-mps2-an385-freertos/build.rs`), not the generic cortex-m-rt
-# `link.x`. Matches the working freertos bins (e.g. logging-smoke-freertos-mps2);
-# `--nmagic` disables page alignment for the small MPS2 image.
-rustflags = [
-    "-C", "link-arg=--gc-sections",
-    "-C", "link-arg=-Tmps2_an385.ld",
-    "-C", "link-arg=--nmagic",
-]
 
 [patch.crates-io]
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }  # nros-managed

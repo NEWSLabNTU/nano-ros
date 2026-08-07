@@ -3,7 +3,10 @@
 # when the requested target is riscv64.
 
 [[board]]
-names = ["threadx", "threadx-riscv64"]
+# phase-341 W3 — 12 leaves deploy to `threadx-qemu-riscv64`, which no
+# descriptor named. Note `threadx` alone stays AMBIGUOUS (the threadx-linux
+# descriptor also claims it); this alias is the unambiguous spelling.
+names = ["threadx", "threadx-riscv64", "threadx-qemu-riscv64"]
 target_contains = "riscv64"
 platform = "threadx-riscv64"
 toolchain = "stable"

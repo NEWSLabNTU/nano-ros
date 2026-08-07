@@ -1,7 +1,7 @@
 # Phase 341 — The board's `cargo_config` is generated into the leaf, not mirrored by hand
 
 **Amends:** [RFC-0032](../design/0032-entry-codegen-pipeline.md) §3 (the "third leg").
-**Status (2026-08-07).** IN PROGRESS — **W1 landed** (`--gc-sections` hoisted into
+**Status (2026-08-07).** IN PROGRESS — **W1, W2 and W3's thumbv7m family landed** (`--gc-sections` hoisted into
 the four board descriptors; 54 leaves now carry exactly their board's args).
 W2–W4 not started. The design was corrected after W1: the projection is
 COMMITTED and gated, not gitignored — see "Correction" below.
@@ -305,6 +305,28 @@ config count drops by the family's size.
 **Acceptance:** the check fails on a hand-edited projection (tripwired, not
 merely observed passing), and no tracked leaf `config.toml` carries a `[target.*]`
 block a descriptor also declares.
+
+## A trap W3 hit, recorded for the remaining families
+
+**Two fixture leaves have no `package.xml`, so `nros sync` never visits them** —
+`fixtures/multi_pkg_workspace_freertos/firmware` and
+`fixtures/orchestration_tiers_freertos`. Deleting their mirrored block therefore
+removed the link args and put NOTHING in their place: no projection, no include,
+no `[target.*]`. Caught by auditing every leaf for "lost a block, gained
+nothing" and reverted; they stay mirrored until sync can reach them.
+
+This is issue 0440's exact shape — a silently lost link group — reintroduced by
+the change meant to prevent it. **Before migrating a family, confirm sync
+actually visits every leaf in it.** The audit is cheap:
+
+```
+for each tracked .cargo/config.toml:
+    if HEAD had [target.*] and the worktree has neither [target.*] nor an
+    nros-board.toml include -> UNGOVERNED, revert it
+```
+
+Final state of the thumbv7m migration by that audit: 22 migrated, 37 still
+mirroring, **0 ungoverned**.
 
 ## Risks
 
