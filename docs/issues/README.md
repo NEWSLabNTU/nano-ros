@@ -51,6 +51,36 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#474** (build, open 2026-08-06) — `just format` is not behind `_require-leaf-includes`, so on a
+checkout with an unsynced leaf it dies with cargo's raw manifest-parse error four frames deep, never
+naming `nros sync`. CLAUDE.md tells you to run `just format` before broad changes, so this blocks the
+workflow it precedes. Not a new bug: issue 0463 established the cause and fixed the SEAM, wiring the
+guard to `build-test-fixtures-leaves` and `rust-rtos-link-check` — the two sites where it had been
+observed. `format` is a third site walking the same leaves. Issue-0196's rule (check the gate covers the
+new site) and CLAUDE.md's fix-the-CLASS rule. Fix: add the guard to `format`, audit `check-example-fmt` /
+`native::check` for the same gap, and check whether the guard's leaf list is derived or hand-maintained.
+
+**#472** (build, open 2026-08-06) — thirteen of fifteen opaque-storage macros have NO compile-time size
+check. C/C++ callers allocate opaque byte arrays sized from Rust's `size_of::<T>()`; only
+`EXECUTOR_OPAQUE_U64S` and `CPP_EXECUTOR_OPAQUE_U64S` assert the type fits. For PUBLISHER, SUBSCRIPTION,
+SESSION, SERVICE_*, ACTION_*, LIFECYCLE_CTX and the RAW_* set, a too-small value is a short buffer at
+runtime rather than a build error. Split out of #464: that issue removed two SOURCES of wrong sizes (a
+poll that could return another consumer's rlib; constants rotted ~11% low) and is done, but the guards
+outlive it — they are what makes any future wrong size fail instead of corrupt. Also here: nros-cpp's
+"probe returned 0 -> OPAQUE_U64S = 1, do not link" is advice in a build-script warning with nothing
+enforcing it; issue 0360's variant-symbol mechanism would make it a link error. Fix must be generated +
+gated, not fifteen hand-written asserts — the thirteen are unguarded because each was added one at a time.
+
+**#473** (build, open 2026-08-06) — `nros sync` writes an `# nros-managed` `[patch.crates-io]` row into
+TWO **tracked** `.cargo/config.toml` files (`examples/workspaces/{rust,realtime-rust}`), so every build
+that syncs them re-dirties the worktree. Exactly the shape issue 0457 removed by moving the managed block
+to the gitignored `nros-managed-patch.toml` sidecar — and `check-cargo-config-tracked` PASSES, because its
+rule is about uncommitted `generated/` trees and `nros-zephyr-build` is a committed in-tree package. Root
+cause is upstream of sync: `zephyr_entry` and `zephyr_entry_robot1` name it `nros-zephyr-build = "*"`, and
+a registry-named dep is what obliges a patch row at all (also #378's public-crates.io exposure). Fix:
+path-dep the two leaves so no row exists to misplace; failing that, route it to the sidecar and make an
+`# nros-managed` marker inside a tracked config a gate failure.
+
 **#471** — `wait_for_output_pattern` returns `Ok` on TIMEOUT whenever the process printed anything at all;
 the pattern is consulted only for the early-exit path. So `wait_for_output_pattern(MARKER, …)?` means "the
 process was not silent", NOT "the marker appeared". **233 of 283 call sites** ignore the returned string and

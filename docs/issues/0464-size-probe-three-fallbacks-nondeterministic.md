@@ -95,15 +95,15 @@ single unhandled target family rather than a general capability gap.
 | layers 2 + 3 deleted, probe fails loudly | **LANDED** 2026-08-06 (`8e3bfc639`) |
 | `just verify-size-probe` resurrected | **LANDED** — it had been exiting 1 before asserting anything |
 | NuttX verified end-to-end | **LANDED** 2026-08-07 |
-| the 13 unguarded opaque macros | **OPEN** — the larger remaining risk |
-| `nros-cpp` zero-size → `OPAQUE_U64S = 1` unenforced | **OPEN** |
+| the 13 unguarded opaque macros | **MOVED to [issue 0472](0472-opaque-storage-macros-unguarded.md)** |
+| `nros-cpp` zero-size → `OPAQUE_U64S = 1` unenforced | **MOVED to [issue 0472](0472-opaque-storage-macros-unguarded.md)** |
 | make the `nros` build-dep edge optional | **OPEN** — phase-340 W5.b |
 
-The probe half is done. What remains is the half that was never about the probe:
-**thirteen opaque arrays have no compile-time size check**, so any future source
-of a wrong size — not just the fallbacks now deleted — lands as a short buffer
-rather than a build error. Fixing that is independent of, and more valuable
-than, anything left in the probe.
+The probe half is done and this issue covers it. The half that was never about
+the probe — **thirteen opaque arrays with no compile-time size check** — is now
+[issue 0472](0472-opaque-storage-macros-unguarded.md), because it outlives this
+fix: the guards are what make a wrong size FAIL rather than CORRUPT, whatever
+produces it. Deferred deliberately, not forgotten.
 
 ## Fix shape
 
