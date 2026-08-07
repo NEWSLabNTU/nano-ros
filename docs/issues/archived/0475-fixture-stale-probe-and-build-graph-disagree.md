@@ -144,3 +144,32 @@ feeding the binary (`ninja -t deps` lists it five times under objects that
 correctness — it is the missing edge. The evidence that looked like "probe too
 broad" was: an unscoped `-t deps` read, and a `cmake --build` that exits 0.
 Neither distinguishes "no work needed" from "no edge to notice the work".
+
+## Audit (2026-08-07) — was any other backend affected?
+
+Swept every built example: **348 build dirs, 391 executables**, looking for an
+archive that has an order-only edge and NO implicit one.
+
+* **zenoh / XRCE — not affected, structurally.** Since phase-241 D3 those
+  backends are BUNDLED into the umbrella staticlib (`libnros_c.a` /
+  `libnros_cpp.a`) via a cargo feature; there is no separate backend archive and
+  therefore no raw-flag link. Verified on the zenoh and XRCE talkers: every `.a`
+  carries an implicit edge, and the order-only-only entries are phony/utility
+  targets (config-header generation, corrosion's cargo custom command), which is
+  what order-only is FOR.
+* **cyclonedds — the only one**, as diagnosed.
+
+22 executables still show the old shape, all ThreadX × cyclonedds
+(`qemu-riscv64-threadx`, `threadx-linux`). Those are stale build dirs, not a gap
+in the fix: `cmake/platform/nano-ros-threadx.cmake:330` routes every app target
+through `nano_ros_link_rmw`, which is where `LINK_DEPENDS` now lives, and their
+`build.ninja` files date from 2026-08-01 — before the fix. The native cyclone
+dir reconfigured after it shows the implicit edge. They pick it up on their next
+reconfigure.
+
+Sweep command, worth re-running after any link-wiring change:
+
+```python
+# for each examples/**/build.ninja, for each C/CXX_EXECUTABLE_LINKER target:
+#   ninja -t query <exe>; flag archives in the `||` set but not the `|` set
+```
