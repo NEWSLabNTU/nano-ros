@@ -90,6 +90,22 @@ exclusions=(
     --exclude 'build/'
     --exclude 'build-*/'
     --exclude '.cargo-target-box/'
+    # HOST-BUILT TOOL BINARIES. Everything else under `third-party/` is SOURCE
+    # and must be mirrored (zenoh-pico, cyclonedds, px4, …); these two are
+    # compiled executables that `just workspace install-make` / `install-ninja`
+    # produce for the tree they run in. Mirroring them is the very failure this
+    # split exists to prevent — a make(1) built on Arch lands in Ubuntu 22.04
+    # and dies before doing anything:
+    #
+    #   make: error while loading shared libraries: libguile-3.0.so.1
+    #
+    # and it dies at the TOP of the fixture build, where it reads as a broken
+    # recipe rather than as a wrong-libc binary. Each tree builds its own; the
+    # box's absence of one is caught by `check-tier-preconditions.sh`, which
+    # warns that jobserver fan-outs degrade to a serial walk and names
+    # `just install-make`.
+    --exclude '/third-party/make/'
+    --exclude '/third-party/ninja/'
     --exclude '/tmp/'
     --exclude '/test-logs/'
     --exclude 'node_modules/'
