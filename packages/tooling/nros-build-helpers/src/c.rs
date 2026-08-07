@@ -479,7 +479,7 @@ fn emit_variant_symbol(out_dir: &str, suffix: Option<&str>) {
     // the C compiler recording `__FILE__` and the debug-info compilation dir,
     // which `--remap-path-prefix` (a RUSTC flag) cannot reach. `-ffile-prefix-map`
     // is the C-side equivalent and covers both.
-    build.flag_if_supported(&format!("-ffile-prefix-map={}=/nros-out", out.display()));
+    build.flag_if_supported(format!("-ffile-prefix-map={}=/nros-out", out.display()));
     crate::shared::apply_baremetal_libc(&mut build);
     build.compile("nros_variant_symbol");
 }
