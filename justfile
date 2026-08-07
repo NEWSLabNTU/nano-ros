@@ -406,7 +406,7 @@ check-fast: \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-roadmap-status check-sysdep-remedies \
+    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-artifact-identity-budget
     @echo "Fast checks passed!"
 
@@ -1102,6 +1102,15 @@ check-fixtures-manifest:
 # collision is what breaks these.
 check-doc-refs:
     @bash scripts/check-doc-refs.sh
+
+# The "Open issues" list in docs/issues/README.md must name EXACTLY the files in
+# docs/issues/. The rule is already written in that file's Conventions #3 —
+# nothing enforced it, and it drifted twice in two consecutive pulls (#0465,
+# #0474): each was archived with a `git mv` while its README row stayed in the
+# OPEN spelling, so the index advertised an open issue whose file was gone.
+[private]
+check-issue-index:
+    @bash scripts/check-issue-index.sh
 
 # Issue 0466 — report EVERY unmet tier precondition at once (CLI stamp, leaf
 # includes, build sources, fixtures for the lane) instead of one per ~40-minute

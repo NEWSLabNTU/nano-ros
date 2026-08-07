@@ -60,14 +60,14 @@ SET AND NEVER READ, so the archive reaches the link outside `target_link_librari
 lib ends up order-only. NOTE: filed first as "the probe is over-broad" — that was wrong, and the correction
 is recorded in the issue. See `0475-*`. (2026-08-07)
 
-**#474** (build, open 2026-08-06) — `just format` is not behind `_require-leaf-includes`, so on a
-checkout with an unsynced leaf it dies with cargo's raw manifest-parse error four frames deep, never
-naming `nros sync`. CLAUDE.md tells you to run `just format` before broad changes, so this blocks the
-workflow it precedes. Not a new bug: issue 0463 established the cause and fixed the SEAM, wiring the
-guard to `build-test-fixtures-leaves` and `rust-rtos-link-check` — the two sites where it had been
-observed. `format` is a third site walking the same leaves. Issue-0196's rule (check the gate covers the
-new site) and CLAUDE.md's fix-the-CLASS rule. Fix: add the guard to `format`, audit `check-example-fmt` /
-`native::check` for the same gap, and check whether the guard's leaf list is derived or hand-maintained.
+Recently resolved (2026-08-07): **#474** — `just format` was not behind `_require-leaf-includes`, so on a
+checkout with an unsynced leaf it died with cargo's raw manifest-parse error four frames deep, never
+naming `nros sync` — blocking the very workflow CLAUDE.md says to run before broad changes. Not a new
+bug: #0463 had established the cause and fixed the SEAM at `build-test-fixtures-leaves` and
+`rust-rtos-link-check`, the two sites where it had been observed; `format` was a third site walking the
+same leaves (issue-0196's rule that the gate must cover the new site). Fixed by `2a89b5040`, which also
+cleared the clippy red. See `archived/0474-*`.
+
 Closed as wontfix (2026-08-07): **#473** — filed claiming `nros sync` leaks `# nros-managed` patch rows
 into tracked `.cargo/config.toml`, re-dirtying the worktree. **The premise was wrong**, and asking "why
 are these tracked" gave the opposite answer. `.gitignore:92-105` states the design: a config that is PURE
