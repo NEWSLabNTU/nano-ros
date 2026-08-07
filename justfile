@@ -358,7 +358,6 @@ check: check-fast check-build
 # is the per-push CI gate (`check.yml`).
 [group("main")]
 check-fast: \
-    check-cli-fresh \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
@@ -422,6 +421,7 @@ check-test-targets:
 # (`check.yml` non-push), not on every direct push to main.
 [group("main")]
 check-build: \
+    check-cli-fresh \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-borrowed-e2e check-dep-chain \
     check-embedded-feature-unification \
@@ -785,6 +785,18 @@ check-board-tiers:
 # Issue 0363 — a stale in-tree `nros` used to surface at `check-dep-chain`,
 # minutes in, as nine failed cells whose printed cause was a cargo resolution
 # error. Same predicate (it CALLS `nros_cli_bin`), better position. Buildless.
+#
+# Issue 0466 — that position is the head of `check-build`, NOT of `check-fast`.
+# `check-dep-chain`, the gate this exists to front-run, is a build-tier gate; no
+# fast-tier gate execs the CLI at all. Sitting in the fast tier it contradicted
+# that tier's whole contract ("needs neither the nros CLI nor any provisioned
+# source"): every buildless gate became unreachable on a tree whose CLI was
+# merely out of date — which ANY pull, rebase or stash makes it, since the stamp
+# covers CLI sources. Measured: `just check-fast` failed in 0.77s having checked
+# nothing. Four source-level reds sat on main behind exactly this.
+#
+# Front-running `check-dep-chain` still works, because it is now first in the
+# lane that CONTAINS `check-dep-chain`.
 [private]
 check-cli-fresh:
     @bash scripts/check-cli-fresh.sh
