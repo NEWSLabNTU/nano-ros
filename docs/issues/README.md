@@ -514,6 +514,15 @@ result. Fixed by using the headerless `CdrWriter::new`, matching the RFC-0069/#0
 `publish_feedback`/`complete_goal` already carried; `nros-c`/`nros-cpp` already stripped it, so the
 Rust API was the lone live offender. See `archived/0448-*`. (2026-08-06)
 
+**#470** — `large_msg::test_xrce_e2e_integrity` fails ONLY inside the full sweep, and fails as
+`valid=false` on every received sample — a payload-INTEGRITY verdict, not a timeout or a missing
+message. Passes solo every time (2/2, ~5 s), so by the retest-solo rule it reads "load-sensitive". But
+load normally shows up as ABSENCE, not as delivered-but-corrupt, so either the CHECK is racy (shared
+XRCE agent / expected-pattern source crossed with a concurrent test) or the data really is corrupt
+under concurrency and solo runs never apply the pressure. Nothing so far separates those. First step:
+re-run the sweep with this test's agent isolated via the `nros_tests::alloc` allocator. #0422 had
+recorded it as "now PASSES". See `0470-*`. (2026-08-07)
+
 **#467** — `test_xrce_action_ros2_client` (the REVERSE of #448: nano is the action SERVER, ROS 2 the
 client) fails 3/3 solo in two modes — `Goal was rejected` (accepted=false), and `accepted=true
 feedback=true result=false`, where the goal crossed and feedback flowed but the `get_result` reply never
