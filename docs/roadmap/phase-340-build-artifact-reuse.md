@@ -1258,12 +1258,25 @@ the cascade only stops when the artifacts are actually identical.
    that W1 had already applied to the two `nros-*` profiles and that nobody had
    applied to the cargo built-in this lane actually builds at.
 
-   **Not yet identical: the final `zephyr.elf`** (8.6 MB differing, and the two
-   images are different SIZES). The remaining 28 of 143 rlibs also still differ.
-   Those are the next question — likely the C objects, which carry build paths
-   the way `nros_variant_symbol.o` did before its `-ffile-prefix-map`. Worth
-   noting the image was never the goal here: sccache keys on `--extern` rlib
-   CONTENT, and that is what now matches.
+   **Not yet identical — OPEN, deferred for later investigation.** Two residuals,
+   both measured, neither blocking the sccache win above:
+
+   * **28 of 143 rlibs still differ.** Unidentified — the 115 that match include
+     the whole nros stack, so these are likely third-party crates with their own
+     `OUT_DIR`-generated content or build-script-baked paths. Nobody has listed
+     WHICH 28; that is the first step, and it may split into two or three causes
+     rather than one.
+   * **`zephyr.elf` differs by 8.6 MB and the two images are different SIZES.**
+     Size divergence means this is not merely embedded strings — something is
+     genuinely built differently, or linked in a different order. The C objects
+     are the obvious suspect (they carried build paths until
+     `-ffile-prefix-map` fixed `nros_variant_symbol.o`), but a size delta is not
+     explained by a path substitution alone.
+
+   Neither is on the critical path: sccache keys on `--extern` rlib CONTENT, and
+   that is what now matches. The image being non-reproducible costs disk dedup
+   and any future content-addressed cache, not compile time. **Do not treat
+   "115/143" as done** — record the remaining figure whenever it moves.
 
    **What this costs.** `incremental` on `dev` served interactive rebuilds of the
    root workspace. Those keep it via `nros-iterate` (W1's opt-in profile); what
