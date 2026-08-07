@@ -1159,12 +1159,47 @@ the cascade only stops when the artifacts are actually identical.
    target dirs on its own.
 
    **Remaining:** the rustc `--remap-path-prefix`, which is what `nros_node` and
-   `nros_rmw_zenoh` still need. It belongs in the cmake build path
-   (`nros_cargo_build.cmake`) where W6 first tried it, and each fixture passes
-   its OWN dir on the left-hand side — measured NOT to perturb `-C metadata`, so
-   per-fixture flags still yield one shared identity. Verify on the lane with
-   the two-fixture `cmp`, since the host measurement above cannot see west-lane
-   effects.
+   `nros_rmw_zenoh` still need. Each fixture passes its OWN dir on the
+   left-hand side — measured NOT to perturb `-C metadata`, so per-fixture flags
+   still yield one shared identity.
+
+   **Attempted 2026-08-07 in `zephyr/cmake/nros_cargo_build.cmake` and REVERTED
+   — that file is the wrong code path for the population W6 targets.** A Rust
+   Zephyr leaf's cargo command is not emitted by nano-ros at all. Forcing a
+   reconfigure of `build-rs-talker-zenoh` and reading the generated
+   `build.ninja` shows:
+
+   ```
+   cargo build --no-default-features --features rmw-zenoh \
+       --config patch.crates-io.zephyr.path=…
+   ```
+
+   Those `--config` entries come from **zephyr-lang-rust**, and the added
+   remap does not appear — `nros_cargo_build` is the path for the C/C++ side
+   (`nros_c_cargo_build`, `zephyr/CMakeLists.txt:202`), not for a Rust leaf.
+   Reverted rather than left in, on this phase's own precedent: W6 reverted its
+   first attempt because "a flag with no measured effect is not worth a
+   full-tree rebuild", and a flag that provably never reaches the command is a
+   stronger case for the same call.
+
+   **What a retry needs**, in order:
+   1. Find where zephyr-lang-rust builds its cargo argv and whether nano-ros can
+      contribute a flag to it. The `--config` mechanism itself is sound and
+      MEASURED: it MERGES with `target.<triple>.rustflags` rather than replacing
+      them (`["-C","link-arg=-DFROM_CONFIG","-C","link-arg=-DFROM_CLI"]`),
+      unlike `RUSTFLAGS`, whose env-var precedence would silently DISCARD the
+      board's link args — issue 0440's failure by another route. Whatever the
+      injection point, use `--config`, never `RUSTFLAGS`.
+   2. Note it must go on `target.<triple>.rustflags` when a triple is set: cargo
+      takes target-specific rustflags OR `build.rustflags`, never both, so a
+      `build.rustflags` entry is ignored wherever a target block exists.
+   3. Verify on the lane, not the host — and force it, because the fixture
+      freshness check silently skips a leaf whose signature still matches
+      (`zephyr-fixture-run-one.sh` exits 0 printing nothing). Delete the build
+      dir to force a reconfigure.
+
+   The C/C++ Zephyr leaves may still benefit from the same flag in
+   `nros_cargo_build.cmake`; that is untested and is a separate measurement.
 2. **Report an sccache size/PID mismatch** on the lane (above). Not a speed-up
    in itself; it stops a 3× capacity loss from being invisible while measuring
    step 1.
