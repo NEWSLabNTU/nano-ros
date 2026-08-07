@@ -82,15 +82,35 @@ fix and does not exist yet.
   indistinguishable at the output level.
 - `large_msg::test_xrce_e2e_integrity` — now PASSES.
 
-## Remaining, untriaged (4)
+## Remaining, untriaged — CLEARED (2026-08-07, measured)
 
-- `xrce_ros2_interop::test_ros2_action_xrce_client` — accepted=true,
-  got_feedback=false
-- `realtime_tiers_e2e::realtime_tiers` — 1 of 16 rows
-- `native_example_reqresp` — 1 of 18 cells, `cpp/xrce/action`: client never logs
-  `Result received:`. Surfaced by the box run below, so it is NOT in the host
-  baseline at the top. Third XRCE action-path row here — see that section.
+Both XRCE rows below now PASS. Re-run in the distrobox mirror at `e7ec43516`,
+against a native lane rebuilt IMMEDIATELY before the run — the freshness rule
+this issue opens with:
+
+```
+PASS [ 10.543s] nros-tests::xrce_ros2_interop      test_ros2_action_xrce_client
+PASS [ 64.720s] nros-tests::native_example_reqresp_e2e  native_example_reqresp
+Summary [64.729s] 2 tests run: 2 passed, 620 skipped
+```
+
+- ~~`xrce_ros2_interop::test_ros2_action_xrce_client`~~ — accepted=true,
+  got_feedback=false. **Fixed by #0461**, the same UUID-decode defect that
+  closed #0467 for the opposite direction (nano server ← ROS 2 client). The two
+  tests' names differ only in word order, which is worth noting for anyone
+  matching them by eye.
+- ~~`native_example_reqresp`~~ — 1 of 18 cells, `cpp/xrce/action`. Passes with
+  all 18 cells green, so the grouping guess below was right: one defect on the
+  XRCE action RETURN path, not three independent tests.
+- `realtime_tiers_e2e::realtime_tiers` — 1 of 16 rows. NOT re-measured here;
+  it was absent from the box baseline, so this run says nothing about it.
 - (the `logging_smoke` line is diagnosed and fixed above)
+
+Method note, since it is the cheap move and was nearly skipped: these were
+VERIFIED rather than triaged. Three rows shared one symptom — goal accepted,
+nothing returns — and a sibling had just been fixed, so re-running cost minutes
+where triage would have cost hours. Check whether a fix landed before opening
+the debugger.
 
 ## Independently reproduced on a second tree (2026-08-06)
 
