@@ -58,7 +58,13 @@ binaries carry `nros_rmw_zenoh` (154 vs 133 symbols) and `nros_app_register_back
 of phase 209's three port templates is in any fixture row, test or recipe (0/0/0), so nothing has executed the
 acceptance since 2026-05-30 while the phase read "MVP DONE". `just check` compiles examples, which kept the
 build half true while the run half died silently — issue 0317's shape, and 0196's rule with no gate at all.
-See `0465-*`. (2026-08-07)
+See `0465-*`. (2026-08-07) **DIAGNOSED 2026-08-07:** not a connection failure — the template opens the session TWICE and the
+SECOND open fails. `rclcpp::init()` opens one; the `Node` shim owns its own `nros::Executor` (its own comment:
+"each currently gets its own Executor") which opens another. `ZPICO_MAX_SESSIONS` defaults to **1**, so the
+second exhausts the pool and returns -1 — surfaced as `Transport(ConnectionFailed)`, the same text a real
+connection failure gives, which is why it read as one. Rebuilding the template UNCHANGED with
+`ZPICO_MAX_SESSIONS=2` prints exactly the README's expected output. Fix: make the shim share one session via
+`Executor::open_over_session` (keeps 209's promise; raising the default would cost every embedded target).
 **#464** (build, open 2026-08-06) — the size probe has THREE stacked fallbacks and the last one is a
 stale literal. `nros-c`/`nros-cpp` derive the C/C++ opaque-storage macros from Rust's `size_of::<T>()`:
 (1) an isolated nested cargo build, (2) a **poll of the outer target dir** with a 60 s timeout, (3)
