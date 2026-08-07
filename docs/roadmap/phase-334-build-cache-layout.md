@@ -203,19 +203,56 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       `scripts/build/build-root.sh` (`nros_build_root` / `nros_build_dir`) is the
       derivation, `fixtures-target-dir.sh` is its first caller, and
       `check-build-root` (in `check-fast`) asserts the emitted path is UNCHANGED.
-      `NROS_BUILD_ROOT` now relocates that family. **Steps 2–4 remain: 236
-      hardcoded cache-path literals across 17 files** — justfile, five
-      `just/*.just`, six `scripts/build/*`, `fixtures.toml`,
-      `check-fixtures-stale.sh`, three Rust resolvers under
-      `packages/testing/nros-tests/src/`. Each family's build + staleness probe +
-      test resolver must move in ONE commit.
-      Migrate the writers: `fixtures-build.sh` /
-      `workspace-fixtures-build.sh` / `fixtures-target-dir.sh` (the
-      phase-226 group logic generalizes), the per-example `--target-dir`
-      rows in `fixtures.toml`, cmake configure sites, and the freshness
-      probes that hardcode today's paths (`rust-fixture-stale.sh`,
-      inputsig stamps, `legacy_files` pruning). One `lane-coords`-style
-      derivation, not 300 edited literals.
+      `NROS_BUILD_ROOT` now relocates that family.
+      **Step 2 (CALLERS) — first three families landed 2026-08-07**, each with
+      its build + staleness probe + test resolver in ONE commit:
+      * **compile-check / cmake-fixtures** — `compile-check-fixtures.sh` (build),
+        `scripts/test/compile-check-stale.sh` (probe),
+        `require_compile_check{,_bin}` / `require_cmake_fixture` +
+        `build_failure_marker` (resolver). The probe comment "the same roots the
+        resolvers use" is now a derivation rather than a promise.
+      * **idf-fixtures / west-fixtures** — `idf-fixtures.sh` / `west-fixtures.sh`
+        (build) + `require_idf_fixture` / `require_west_fixture` (resolver).
+      * **fixtures-cargo** — closes the split step 1 left: the shell half moved
+        then, the Rust `fixture_shared_target_dir` was still a literal, so
+        `NROS_BUILD_ROOT` relocated the build but not the lookup. **Also fixes a
+        step-1 regression**: `fixtures-target-dir.sh` sourced `build-root.sh`
+        from INSIDE `nros_fixture_target_dir_flag`, and `fixtures-build.sh`
+        ships that function to its make leaves with `export -f`. In a leaf
+        `${BASH_SOURCE[0]}` is not a file path, the source resolved to
+        `./build-root.sh`, and every eligible qemu-arm-baremetal row got
+        ` --target-dir ` with an EMPTY value. Sourcing moved to file scope and
+        the two helpers joined the `export -f` list; the test now exercises the
+        leaf, which an in-process-only assertion could never have caught.
+      The Rust half cannot source bash, so `nros_tests::build_root` /
+      `build_dir` is the ONE mirror; both halves are pinned to the same expected
+      strings (`build_root_derivation.sh` + `nros-tests` unit tests), and the
+      shell fallback moved off `$PWD` onto this file's own checkout.
+      **Finding — the 236 count did NOT move, and cannot in step 2 as framed.**
+      All 236 are the in-SOURCE suffix zoo (`target-<rmw>`,
+      `build-workspace-fixtures[-<plat>]`), 140 of them in `examples/fixtures.toml`
+      as manifest DATA (`target_dir = "target-zenoh"`,
+      `build_subdir = "build-workspace-fixtures"`) and the rest as the matching
+      default-argument strings in `binaries/mod.rs`
+      (`build_workspace_cmake_entry{,_in}`). Those paths are *source-relative by
+      construction* — there is no root in them to derive, which is exactly the R1
+      violation. `nros_build_dir` cannot emit them without changing them, so a
+      step-2 pass over that class needs either a source-relative sibling
+      derivation (a second function — do not add one casually) or to be folded
+      into step 3, where the path changes anyway and the manifest column stops
+      being authored. **Decide that before the next family.** The literals this
+      step DID move are the already-rooted `build/<kind>` writers, whose bug was
+      narrower: R1-shaped but not R3-derived, so `NROS_BUILD_ROOT` moved the
+      build and left the probe and the resolver behind.
+      Still to migrate on the rooted side: `fixtures-build.sh` /
+      `workspace-fixtures-build.sh`, cmake configure sites,
+      `check-fixtures-stale.sh` / `legacy_files` pruning, and the `tools/` kinds
+      (`build/zenohd`, `build/xrce-agent`, `build/qemu*`). Known NOT moved and
+      why: `just/qemu-baremetal.just`'s `FIXTURE_TARGET` (a parse-time
+      `absolute_path()`, which cannot call a bash function without a `shell()`
+      on every justfile parse) and `check-weak-symbols-image.sh`'s COVERAGE
+      table (relative find-bases mixing source dirs with cache dirs).
+      One `lane-coords`-style derivation, not 300 edited literals.
 - [ ] **W2.c** Gitignore collapses to `build/` (plus the transition set);
       delete the per-dir ignore sprawl as dirs migrate.
 - [x] **W2.d** LANDED 2026-08-06 — AGENTS.md "Build-Cache Root (RFC-0070)".

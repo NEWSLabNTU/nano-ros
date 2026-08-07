@@ -17,12 +17,21 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$li
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 
-# cmake rows stamp under build/cmake-fixtures/<id>; everything else under
-# build/compile-check/<id> (the same roots the resolvers use).
+# cmake rows stamp under `cmake-fixtures/<id>`; everything else under
+# `compile-check/<id>`. RFC-0070 R3 (phase-334 W2.b step 2) — "the same roots the
+# resolvers use" is now a fact rather than a comment: this probe, the writer
+# (`scripts/build/compile-check-fixtures.sh`) and the Rust resolver all derive
+# the root, so the probe cannot end up inspecting a tree the build did not write.
+# `NROS_REPO_ROOT` is pinned to this script's own repo root — see the note in
+# compile-check-fixtures.sh.
+NROS_REPO_ROOT="$repo_root"
+# shellcheck source=scripts/build/build-root.sh
+source "$repo_root/scripts/build/build-root.sh"
+
 if [ "$builder" = "cmake-configure" ]; then
-    stamp="$repo_root/build/cmake-fixtures/$id/.inputsig"
+    stamp="$(nros_build_dir cmake-fixtures "$id")/.inputsig"
 else
-    stamp="$repo_root/build/compile-check/$id/.inputsig"
+    stamp="$(nros_build_dir compile-check "$id")/.inputsig"
 fi
 
 expected="$(bash "$repo_root/scripts/build/compile-check-signature.sh" "$line" 2>/dev/null)" || {

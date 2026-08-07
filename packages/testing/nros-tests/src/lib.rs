@@ -390,6 +390,49 @@ pub fn project_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
+/// RFC-0070 R1 — the ONE build-cache root, Rust side.
+///
+/// The MIRROR of `nros_build_root` in `scripts/build/build-root.sh`. A test
+/// resolver cannot source a bash function, and R3 requires the build, the
+/// staleness probe and the resolver to agree on the path, so exactly one Rust
+/// mirror exists and every resolver goes through it — a second `join("build/…")`
+/// literal is the split R3 forbids. Both halves are pinned to the same expected
+/// strings: `packages/testing/nros-tests/tests/build_root_derivation.sh` for the
+/// shell, the unit tests below for Rust.
+///
+/// With `NROS_BUILD_ROOT` unset this is `<repo>/build`, i.e. byte-identical to
+/// the `project_root().join("build/…")` literals it replaces (phase-334 W2.b
+/// step 2: derivation and callers first, paths later).
+pub fn build_root() -> std::path::PathBuf {
+    match std::env::var("NROS_BUILD_ROOT") {
+        Ok(v) if !v.is_empty() => std::path::PathBuf::from(v.trim_end_matches('/')),
+        _ => project_root().join("build"),
+    }
+}
+
+/// RFC-0070 R2 — `<root>/<kind>/<coordinate>…`, the ONE naming shape.
+///
+/// `kind` is mandatory (a rootless cache dir is the bug R2 exists to prevent)
+/// and empty coordinate parts are skipped, matching `nros_build_dir`.
+///
+/// ```ignore
+/// build_dir("compile-check", &[id])   // <root>/compile-check/<id>
+/// build_dir("fixtures-cargo", &[])    // <root>/fixtures-cargo
+/// ```
+pub fn build_dir(kind: &str, coords: &[&str]) -> std::path::PathBuf {
+    assert!(
+        !kind.is_empty(),
+        "build_dir: kind is required (RFC-0070 R2)"
+    );
+    let mut out = build_root().join(kind);
+    for part in coords {
+        if !part.is_empty() {
+            out = out.join(part);
+        }
+    }
+    out
+}
+
 /// The `nros-launch-resolve` helper, by ABSOLUTE path (issue 0285 — never
 /// `$PATH`, where a stale `~/.nros/bin` copy shadows the in-tree one).
 /// `just setup-launch-resolve` builds it; `None` means it has not been built.
@@ -526,6 +569,68 @@ mod tests {
         let root = project_root();
         assert!(root.join("Cargo.toml").exists());
         assert!(root.join("packages").exists());
+    }
+
+    /// phase-334 W2.b step 2 — the Rust half of "the emitted path did not
+    /// change". Every literal this commit deleted is written out here against
+    /// the derivation that replaced it; if `build_root`/`build_dir` ever stop
+    /// agreeing with the pre-migration spelling, this fails rather than the
+    /// resolver silently looking in a tree no builder wrote.
+    ///
+    /// Skipped (not silently passed — the assertions below would be comparing
+    /// the relocated root against the old literal, which is the POINT of
+    /// `NROS_BUILD_ROOT`) when the root has been relocated.
+    #[test]
+    fn build_dirs_match_pre_migration_literals() {
+        if std::env::var_os("NROS_BUILD_ROOT").is_some_and(|v| !v.is_empty()) {
+            return;
+        }
+        let root = project_root();
+        assert_eq!(build_root(), root.join("build"));
+
+        // scripts/build/compile-check-fixtures.sh + scripts/test/compile-check-stale.sh
+        assert_eq!(
+            build_dir("compile-check", &[]),
+            root.join("build/compile-check")
+        );
+        assert_eq!(
+            build_dir("compile-check", &["n9_form1"]),
+            root.join("build/compile-check").join("n9_form1")
+        );
+        assert_eq!(
+            build_dir("cmake-fixtures", &[]),
+            root.join("build/cmake-fixtures")
+        );
+        assert_eq!(
+            build_dir("cmake-fixtures", &["shadowing"]),
+            root.join("build/cmake-fixtures").join("shadowing")
+        );
+        // scripts/build/idf-fixtures.sh / west-fixtures.sh
+        assert_eq!(
+            build_dir("idf-fixtures", &["esp_idf_bringup"]),
+            root.join("build/idf-fixtures").join("esp_idf_bringup")
+        );
+        assert_eq!(
+            build_dir("west-fixtures", &["west_board_import"]),
+            root.join("build/west-fixtures").join("west_board_import")
+        );
+        // scripts/build/fixtures-target-dir.sh (migrated in step 1)
+        assert_eq!(
+            build_dir("fixtures-cargo", &["qemu-arm-baremetal"]),
+            root.join("build/fixtures-cargo").join("qemu-arm-baremetal")
+        );
+
+        // R2 — empty coordinate parts are skipped, as in the shell helper.
+        assert_eq!(
+            build_dir("cargo", &["", "x"]),
+            build_root().join("cargo").join("x")
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "kind is required")]
+    fn build_dir_rejects_empty_kind() {
+        let _ = build_dir("", &["x"]);
     }
 
     #[test]

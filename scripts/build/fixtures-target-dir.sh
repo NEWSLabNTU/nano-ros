@@ -24,6 +24,22 @@
 # fixtures-cargo/<group>`): fixtures-build.sh runs cargo after
 # `cd "$dir"`, so a relative dir would resolve against the example dir.
 
+# RFC-0070 R1/R3 — the root comes from `nros_build_root`, not a literal, so
+# `NROS_BUILD_ROOT` moves this family with everything else. The default is
+# `<repo>/build`, so the emitted path is unchanged (phase-334 W2.b step 1:
+# derivation first, paths later).
+#
+# Sourced HERE at file scope, not inside `nros_fixture_target_dir_flag`. Step 1
+# put it in the function and that silently broke the `export -f` path below: a
+# make leaf is a fresh bash where the function came from the ENVIRONMENT, so
+# `${BASH_SOURCE[0]}` is not a file path, `. "$(dirname …)/build-root.sh"`
+# resolved to `./build-root.sh`, and the resolver emitted ` --target-dir ` with
+# an EMPTY value — the build writing somewhere the probe and the test resolver
+# would never look. Sourcing at file scope makes the two helpers ordinary
+# functions of this file, shipped to the leaf by the same `export -f`.
+# shellcheck source=scripts/build/build-root.sh
+. "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
+
 # Platforms whose default Rust fixture rows share one fixture target dir.
 # ESP32 flash packaging and RTOS rows are deferred to a later patch
 # (they carry extra postprocessing that reads fixed per-fixture paths).
@@ -96,11 +112,5 @@ nros_fixture_target_dir_flag() {
     local group
     group="$(nros_fixture_group "$platform" "$cargo_args" "$envstr")" || return 0
     [ -n "$group" ] || return 0
-    # RFC-0070 R1/R3 — the root comes from `nros_build_root`, not a literal, so
-    # `NROS_BUILD_ROOT` moves this family with everything else. The default is
-    # `<repo>/build`, so the emitted path is unchanged (phase-334 W2.b step 1:
-    # derivation first, paths later).
-    # shellcheck source=scripts/build/build-root.sh
-    . "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
     printf ' --target-dir %s' "$(nros_build_dir fixtures-cargo "$group")"
 }

@@ -20,7 +20,17 @@ cd "$repo_root"
 # shellcheck source=scripts/build/cargo.sh
 source "$repo_root/scripts/build/cargo.sh"
 
-out_root="$repo_root/build/compile-check"
+# RFC-0070 R1/R3 (phase-334 W2.b step 2) — the compile-check family's roots come
+# from the ONE derivation, not from a literal. `NROS_REPO_ROOT` is pinned to THIS
+# script's own repo root so the emitted path is byte-identical to the
+# `<repo>/build/<kind>` literal it replaces even when an inherited
+# `NROS_REPO_ROOT`/`NROS_REPO_DIR` names a different checkout (worktrees). Not
+# exported: the pool re-invokes this script as a fresh bash, which pins its own.
+NROS_REPO_ROOT="$repo_root"
+# shellcheck source=scripts/build/build-root.sh
+source "$repo_root/scripts/build/build-root.sh"
+
+out_root="$(nros_build_dir compile-check)"
 mkdir -p "$out_root"
 
 # id : source template dir (carries @NANO_ROS_ROOT@ placeholders)
@@ -157,7 +167,7 @@ stage_and_build() {
 # executable — instead of running cmake at test time (issue 0034). The codegen
 # step shells the `nros` CLI; the build is skipped (no stamp → test skips/fails
 # per tier) when cmake or a `codegen entry`-capable `nros` is unavailable.
-cmake_out="$repo_root/build/cmake-fixtures"
+cmake_out="$(nros_build_dir cmake-fixtures)"
 
 cmake_fixture_prereqs_ok() {
     command -v cmake >/dev/null 2>&1 || { echo "cmake-fixtures: cmake absent — skipping" >&2; return 1; }

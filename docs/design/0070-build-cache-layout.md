@@ -115,6 +115,17 @@ Non-negotiable ordering, because the 236 literals are what makes this risky:
 2. **Callers second.** Replace literals with calls, one family at a time. Each
    family's build, staleness probe and test resolver move in ONE commit — a
    family split across commits is a red sweep.
+
+   Step 2 splits in two, and the split was not visible when this was written
+   (phase-334 W2.b, 2026-08-07). The **already-rooted** families
+   (`build/compile-check`, `build/cmake-fixtures`, `build/idf-fixtures`,
+   `build/west-fixtures`, `build/fixtures-cargo`) migrate cleanly: they are
+   R1-shaped but not R3-derived, so `nros_build_dir` reproduces them byte for
+   byte and only `NROS_BUILD_ROOT` behaviour changes. The **in-source** suffix
+   zoo — which is all 236 of the counted literals — has no root in it to derive,
+   so there is no call that emits today's path. That class either needs a
+   source-relative sibling derivation or belongs to step 3. Deciding which is a
+   precondition for touching it, not a detail to settle mid-migration.
 3. **Paths last.** Only once a family reads its path from the derivation does
    the derivation's output change. Then the family rebuilds once.
 4. **Gate.** A check that fails on a `target-*` or `build-*` directory inside a

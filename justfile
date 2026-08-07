@@ -3139,9 +3139,15 @@ verify-verus:
 # RFC-0070 R1/R3 — the build-cache root derivation.
 #
 # phase-334 W2.b step 1 replaced `fixtures-target-dir.sh`'s hardcoded
-# `$root/build/...` with `nros_build_dir`. Buildless and instant, so it belongs
+# `$root/build/...` with `nros_build_dir`; step 2 did the same for the
+# compile-check / cmake-fixtures / idf-fixtures / west-fixtures writers, their
+# staleness probe and their Rust resolvers. Buildless and instant, so it belongs
 # in `check-fast`: its whole value is asserting the emitted path is UNCHANGED,
 # which is the property that makes "derivation first, paths later" safe.
+#
+# It also covers the `export -f` make-leaf path, where step 1 shipped a resolver
+# that emitted an EMPTY `--target-dir` because it sourced build-root.sh from
+# inside a function. An in-process-only assertion could not see that.
 [private]
 check-build-root:
     @bash packages/testing/nros-tests/tests/build_root_derivation.sh

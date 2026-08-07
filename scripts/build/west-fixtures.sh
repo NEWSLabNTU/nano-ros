@@ -12,7 +12,15 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 cd "$repo_root"
 
-out_root="$repo_root/build/west-fixtures"
+# RFC-0070 R1/R3 (phase-334 W2.b step 2) — root from the ONE derivation, with
+# `NROS_REPO_ROOT` pinned to this script's own repo root so the emitted path is
+# byte-identical to the literal it replaces. Paired in the same commit with
+# `nros_tests::fixtures::require_west_fixture`, the only reader of this tree.
+NROS_REPO_ROOT="$repo_root"
+# shellcheck source=scripts/build/build-root.sh
+source "$repo_root/scripts/build/build-root.sh"
+
+out_root="$(nros_build_dir west-fixtures)"
 mkdir -p "$out_root"
 
 # ZEPHYR_BASE: discover the provisioned west workspace the same way the

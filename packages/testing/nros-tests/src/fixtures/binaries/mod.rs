@@ -7,7 +7,7 @@ pub mod nuttx;
 pub mod threadx_linux;
 pub mod threadx_riscv64;
 
-use crate::{TestError, TestResult, fixtures::staleness, project_root};
+use crate::{TestError, TestResult, build_dir, fixtures::staleness, project_root};
 use duct::cmd;
 use once_cell::sync::OnceCell;
 use std::{
@@ -422,9 +422,10 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
 /// the stamp dir (`<id>/target/debug/bin`, `<id>/src/entry/entry`); the search
 /// stops at the two known roots so it can never wander into an unrelated tree.
 fn build_failure_marker(binary_path: &Path) -> Option<String> {
+    // RFC-0070 R3 — the same derivation the writer and the stale probe use.
     let roots = [
-        project_root().join("build/compile-check"),
-        project_root().join("build/cmake-fixtures"),
+        build_dir("compile-check", &[]),
+        build_dir("cmake-fixtures", &[]),
     ];
     let mut cur = binary_path.parent()?;
     loop {
@@ -2477,9 +2478,13 @@ pub fn build_test_fixture(
 /// extra features/env) is mirrored here, matching the only rows this
 /// platform carries today; a future feature/env variant would get a
 /// hashed group slug on the shell side and would need an explicit mirror.
+///
+/// RFC-0070 R3 (phase-334 W2.b step 2) — the shell side moved onto
+/// `nros_build_dir` in step 1; this resolver was the half left on a literal, so
+/// `NROS_BUILD_ROOT` relocated the build but not the lookup. Both now derive.
 fn fixture_shared_target_dir(platform: &str) -> Option<PathBuf> {
     match platform {
-        "qemu-arm-baremetal" => Some(project_root().join("build/fixtures-cargo").join(platform)),
+        "qemu-arm-baremetal" => Some(build_dir("fixtures-cargo", &[platform])),
         _ => None,
     }
 }
@@ -2682,10 +2687,7 @@ pub fn xrce_action_server_concurrent_binary() -> PathBuf {
 /// `require_prebuilt_binary` (hard-fail in full tier → run `build-test-fixtures`;
 /// `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL=1`).
 pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
-    let stamp = project_root()
-        .join("build/compile-check")
-        .join(id)
-        .join(".compile-ok");
+    let stamp = build_dir("compile-check", &[id]).join(".compile-ok");
     require_prebuilt_binary_fresh(&stamp)
 }
 
@@ -2695,10 +2697,7 @@ pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
 /// `target/debug/demo_entry`) that a test executes. Tier-aware like
 /// `require_compile_check`.
 pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
-    let bin = project_root()
-        .join("build/compile-check")
-        .join(id)
-        .join(rel);
+    let bin = build_dir("compile-check", &[id]).join(rel);
     require_prebuilt_binary_fresh(&bin)
 }
 
@@ -2711,10 +2710,7 @@ pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
 /// fixture file is missing → `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL`, hard
 /// fail in the full tier).
 pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
-    let p = project_root()
-        .join("build/cmake-fixtures")
-        .join(id)
-        .join(rel);
+    let p = build_dir("cmake-fixtures", &[id]).join(rel);
     require_prebuilt_binary_fresh(&p)
 }
 
@@ -2727,7 +2723,7 @@ pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
 pub fn require_idf_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // Toolchain-gated via the test-all env_exclude (deselect when idf.py absent);
     // resolves the prebuilt ELF here. Built by `just esp32 build-fixtures`.
-    let p = project_root().join("build/idf-fixtures").join(id).join(rel);
+    let p = build_dir("idf-fixtures", &[id]).join(rel);
     require_prebuilt_binary_fresh(&p)
 }
 
@@ -2741,7 +2737,7 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // Toolchain-gated via the test-all env_exclude (deselect when west / Zephyr
     // SDK absent); resolves the prebuilt artifact here. Built by `just zephyr
     // build-fixtures`.
-    let fixture_dir = project_root().join("build/west-fixtures").join(id);
+    let fixture_dir = build_dir("west-fixtures", &[id]);
 
     // #185 (the #182 guard, west edition) — the bake is a function of the
     // `nros` CLI (nros_system_generate / nros_generate_interfaces run it at

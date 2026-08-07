@@ -263,7 +263,10 @@ else
     # shellcheck source=scripts/build/fixtures-target-dir.sh
     source scripts/build/fixtures-target-dir.sh
     export platform
-    export -f nros_fixture_target_dir_flag nros_fixture_group _nros_fixture_variant_sig
+    # `nros_build_{root,dir}` come along: the resolver calls them, and a leaf
+    # never sources build-root.sh (phase-334 W2.b — the step-1 regression).
+    export -f nros_fixture_target_dir_flag nros_fixture_group _nros_fixture_variant_sig \
+              nros_build_root nros_build_dir
     # Phase 214.I.2 — fail-loud prereq guard: `nros_fixture_build_one`
     # below invokes `nros sync`, absent from the shipped 0.3.7 release.
     # Probe once here in the parent before make fans out workers; pre-probe
