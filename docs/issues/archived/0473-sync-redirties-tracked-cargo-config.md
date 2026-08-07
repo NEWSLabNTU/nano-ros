@@ -1,11 +1,66 @@
 ---
 id: 473
-title: "`nros sync` writes an `# nros-managed` patch row into TWO tracked `.cargo/config.toml` files, re-dirtying the worktree on every build"
-status: open
+title: "`nros sync` writing `# nros-managed` rows into tracked `.cargo/config.toml` is BY DESIGN — this issue was filed on a wrong premise"
+status: wontfix  # not a defect — analysed 2026-08-07, see Correction
 type: tech-debt
 area: build
 related: [issue-0457, issue-0463, issue-0272]
 ---
+
+## Correction (2026-08-07) — filed on a wrong premise
+
+**This is not a defect, and the framing below is wrong.** Investigating "why are
+these tracked" produced the opposite answer to the one the issue assumes.
+
+The design is stated in `.gitignore:92-105`:
+
+> A leaf whose config holds nothing else is pure sync output — `nros sync`
+> recreates it from scratch — and 54 of them were tracked, churning on every
+> sync… It cannot be scoped by path: leaves with hand-authored content
+> (`[build] target`, a QEMU `runner`, link args) sit in the same directories,
+> and sync only refreshes the patch block INSIDE them. **Those stay tracked.**
+
+So a tracked config carrying `# nros-managed` rows is the INTENDED shape, not a
+leak. The measurements:
+
+| | |
+| --- | --- |
+| `.cargo/config.toml` on disk | 696 |
+| tracked | 75 |
+| tracked **containing `# nros-managed`** | **50** (133 rows) |
+| tracked managed rows naming a `generated/` tree | **0** |
+| worktree state at rest | **clean** |
+
+Two facts kill the premise:
+
+* It is **50 files, not 2.** Had this been a leak, two-thirds of every tracked
+  config would be leaking — it is simply the documented category.
+* Every managed row is a **repo-relative path to a committed in-tree crate**
+  (`nros-platform`, `nros-rmw-zenoh`, the board crates, PACs). None is
+  host-derived, and **zero** name a `generated/` tree. So they reproduce
+  identically from a clone, which is exactly why they may be committed — and why
+  `check-cargo-config-tracked` passes rather than being too narrow, as this issue
+  claimed. Issue 0457 already moved the genuinely host-specific half to the
+  gitignored `nros-managed-patch.toml`, and that split is holding.
+
+The observed dirt was a **transient delta**, not steady state: a new dependency
+(`nros-zephyr-build`) entered the graph, so sync added a row that was not yet
+committed. Commit it once and it is stable — the worktree is clean at rest,
+verified.
+
+**What survives.** One sub-observation is independently real and does not depend
+on any of the above: `zephyr_entry` and `zephyr_entry_robot1` name
+`nros-zephyr-build = "*"` — a REGISTRY name for an in-tree crate. It resolves
+correctly only while the patch is in the loaded config chain; outside it, it
+resolves against PUBLIC crates.io, which is issue 0378's failure mode. Path-dep
+would remove the exposure and the patch row together. Tracked there, not here.
+
+**Lesson for the next filing.** The issue was written after seeing two dirty
+files and reasoning from the 0457 rule, without first asking how many tracked
+configs carry managed rows or whether the rows were host-derived. Either check
+would have refuted it in a minute. Counting before theorising.
+
+## Original filing (premise refuted — kept for the record)
 
 ## Symptom
 

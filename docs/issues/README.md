@@ -51,6 +51,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Closed as wontfix (2026-08-07): **#473** — filed claiming `nros sync` leaks `# nros-managed` patch rows
+into tracked `.cargo/config.toml`, re-dirtying the worktree. **The premise was wrong**, and asking "why
+are these tracked" gave the opposite answer. `.gitignore:92-105` states the design: a config that is PURE
+sync output is untracked, but one carrying hand-authored content (`[build] target`, a QEMU `runner`, link
+args) STAYS tracked and "sync only refreshes the patch block INSIDE them". Measured: 696 configs on disk,
+75 tracked, **50 of those carry managed rows** (133 rows) — the documented category, not a two-file leak —
+and every row is a repo-relative path to a COMMITTED in-tree crate, with **zero** naming a `generated/`
+tree, so they reproduce identically from a clone. `check-cargo-config-tracked` passes because it is
+correct, not because it is too narrow. #457's host-specific split into `nros-managed-patch.toml` is
+holding. The dirt observed was a transient delta (a new dep, `nros-zephyr-build`, added a row not yet
+committed); at rest the worktree is clean. SURVIVES independently: those two zephyr entry leaves name
+`nros-zephyr-build = "*"`, a registry name for an in-tree crate — #378's public-crates.io exposure —
+which path-dep'ing would remove along with the patch row. See `archived/0473-*`.
+
 Recently resolved (2026-08-07): **#474** — `just format` died on an unsynced leaf with cargo's raw
 manifest-parse error, never naming `nros sync`, blocking the very workflow CLAUDE.md says to run before
 broad changes. Not a new bug: #463 fixed the SEAM at the two sites where it had been seen
@@ -72,20 +86,6 @@ outlive it — they are what makes any future wrong size fail instead of corrupt
 "probe returned 0 -> OPAQUE_U64S = 1, do not link" is advice in a build-script warning with nothing
 enforcing it; issue 0360's variant-symbol mechanism would make it a link error. Fix must be generated +
 gated, not fifteen hand-written asserts — the thirteen are unguarded because each was added one at a time.
-
-**#473** (build, open 2026-08-06) — `nros sync` writes an `# nros-managed` `[patch.crates-io]` row into
-TWO **tracked** `.cargo/config.toml` files (`examples/workspaces/{rust,realtime-rust}`), so every build
-that syncs them re-dirties the worktree. Exactly the shape issue 0457 removed by moving the managed block
-to the gitignored `nros-managed-patch.toml` sidecar — and `check-cargo-config-tracked` PASSES, because its
-rule is about uncommitted `generated/` trees and `nros-zephyr-build` is a committed in-tree package. The
-governing principle: `**/.cargo/config.toml` is GITIGNORED — 696 on disk, 75 tracked — because these and
-generated pkg sources depend on the user's ROS env; a config is tracked only for the hand-authored half a
-clone cannot regenerate, which these two do qualify for (NuttX `libc` patch, per-target CFLAGS), so
-untracking is not the fix. Everything SYNC generates belongs in the gitignored sidecar whatever it points
-at. Fix: route the row to `nros-managed-patch.toml`, and make an `# nros-managed` marker inside a tracked
-config a gate failure — the gate today asks only about uncommitted `generated/` trees, narrower than the
-rule it enforces. Path-dep'ing `nros-zephyr-build` in the two zephyr entry leaves (it is registry-named
-`"*"`, #378's public-crates.io exposure) is worthwhile but treats the instance, not the class.
 
 **#471** — `wait_for_output_pattern` returns `Ok` on TIMEOUT whenever the process printed anything at all;
 the pattern is consulted only for the early-exit path. So `wait_for_output_pattern(MARKER, …)?` means "the
