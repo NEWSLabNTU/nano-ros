@@ -1,7 +1,7 @@
 ---
 id: 459
 title: "The Zephyr C++ realtime entry produces nothing after boot — reported as a missing EDF marker, actually a hang"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: zephyr, cpp
@@ -110,3 +110,39 @@ carrier, `nros_cpp_init`/session open, and `ZephyrBoard::run_tiers`. The image
 stops before any nros line, so suspect the entry carrier or the session open
 rather than the tier loop. `NROS_RMW_TRACE_OPEN=1` and a gdb `run` (yama blocks
 attach) on the native_sim binary are the usual tools.
+
+## Does not reproduce (2026-08-07)
+
+Rebuilt the zephyr fixtures and ran the C++ realtime entry against its baked
+router (port 7691, the second `tcp/…` in the binary — the method this issue
+prescribes):
+
+```
+$ timeout 18 zephyr-workspace/build-ws-cpp-realtime-entry-zenoh/zephyr/zephyr.exe
+1644 lines
+[nros] tier task entered
+nros: EDF deadline set tier=`high` 10000us
+```
+
+1644 lines against the 4 reported, and BOTH markers — `[nros] tier task
+entered`, which this issue notes never printed, and the EDF line the assertion
+wanted. `sched_dims_applied_e2e` passes (12 cells, 0 failures).
+
+The rebuild mattered for confidence, not for the outcome: the image already on
+disk (built 2026-08-06 14:05) also emitted both markers when I ran it, so this
+was not a museum binary either way.
+
+**The fixing change is not identified, and I am not going to claim one.**
+`73a3c4e44` (#458 — `nros_cpp_executor_open_over_session` never stamped `tag`,
+so every C++ tier setup got `-3` and the tier was abandoned) matches the
+mechanism exactly: "the C++ entry never reaches tier startup". But the working
+image predates that commit by most of a day, so it cannot be the explanation for
+THIS image. The likeliest remaining reading is that the run behind this report
+used an image built before the 14:05 rebuild.
+
+Also correcting the note at the end of the issue: the rust image is NOT absent.
+It is `build-ws-rs-realtime-entry-zenoh` — `rs`, not `rust` — so the check that
+looked for it was looking at the wrong path. All three realtime images exist.
+
+Closing as not-reproducing rather than as fixed, since the difference matters if
+it comes back.

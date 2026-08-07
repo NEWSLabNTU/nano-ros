@@ -123,22 +123,16 @@ mapping is the board-crate dep, 54 leaves, 0 ambiguous), and three tracked confi
 DID patch generated msg crates — `tests/` was outside the gate's walk. `check-cargo-config-tracked` now
 walks it and rejects a tracked config patching an uncommitted `generated/` tree. See `archived/0457-*`.
 
-**#460** — `entry_e2e::entry_matrix` reported `TIMEOUT [60s]` with no output on every run. Not a hang: the
-matrix boots up to 15 RTOS images and takes **228s**, aggregating its verdict at the end. phase-295 W3.b
-consolidated 15 per-cell tests into one `entry_matrix`, but `.config/nextest.toml`'s timeout override still
-filtered on `test(zephyr_rust_lifecycle)` — a name that no longer exists — so it matched NOTHING and the
-matrix ran under the default 60s ceiling. Filter fixed; with the run allowed to finish, 13/15 cells pass and
-TWO real failures appear that the TIMEOUT had been absorbing (issue 0445's shape at the harness level):
-`nuttx-arm/rust/entry_pubsub` (observer never gets /chatter) and `zephyr/rust/params` (never sees the baked
-250). Neither is in #0422. See `0460-*`. (2026-08-06)
-
-**#459** — `sched_dims_applied_e2e` fails EdfDeadline/zephyr/**cpp** ('expected exactly 1 EDF marker, saw 0'),
-but that is not a scheduling problem: run against its baked router the C image emits 1872 lines including the
-marker, while the C++ image boots and emits NOTHING for 20s — it hangs before any tier work, and the narrow
-assertion names only the last missing thing. Ruled out: the `deadline_us` declaration (all three workspaces
-have it), `CONFIG_SCHED_DEADLINE` (all three prj.conf set it), staleness (the cpp binary is NEWER than the
-passing C one and `strings` finds the marker compiled in), and the shared shim (C uses it and works). Note the
-rust lane's image does not exist here, so that cell only appears to pass. See `0459-*`. (2026-08-06)
+**#460** — RE-MEASURED 2026-08-07 on fully fresh fixtures: **half fixed, and the shape changed.**
+`nuttx-arm/rust/entry_pubsub` now PASSES (not attributed). `zephyr/rust/params` still fails — and so do
+`zephyr/rust/lifecycle` and `zephyr/rust/qos`: `12 ran, 0 skipped, 3 failed (of 15)`. Three cells, one
+platform+language, three different FEATURE entries — a family, so the suspect is the zephyr-rust
+entry's feature wiring rather than three unrelated runtime paths. The measurement itself was the
+obstacle: the first re-run reported "1 of 15 FAILED" listing neither cell, which reads as "both fixed",
+because the harness reported skips ONLY when every cell skipped — ten passes and four skips printed
+identically to fourteen passes. Now always prints `N ran, M skipped, K failed` with the list (fixed in
+`463748763`). Rebuilding zephyr also needed `nros sync` in the seven zephyr rust leaves first, per
+#0463. See `0460-*`. (2026-08-07)
 
 **#451** — the embedded SDK env vars live only in `just/sdk-env.just`, so a direct `cargo build` of an
 embedded example fails one variable at a time (5 freertos, 4 threadx, 1+ nuttx) even though every SDK sits
@@ -183,6 +177,15 @@ from `nros-board.toml`'s `cargo_config` (the SSoT, not the deleted files), rustf
 Gated by `check-board-cargo-config-applied`, watched to fire. Nothing caught it because the broken
 config was valid TOML that cargo and `nros sync` both accepted — the loss showed only at link time,
 on one platform. See `archived/0440-*`. (2026-08-06)
+
+RESOLVED 2026-08-07 — **#459** the Zephyr C++ realtime entry reportedly emitted nothing after boot
+(4 lines), reported as a missing EDF marker. Does NOT reproduce: on a rebuilt image it emits 1644 lines
+including both `[nros] tier task entered` and the EDF line, and `sched_dims_applied_e2e` passes 12/12.
+The fixing change is NOT identified and is not claimed — `73a3c4e44` (#458, unstamped C++ handle tag so
+every tier setup got -3) matches the mechanism exactly, but the working image predates it by most of a
+day, so the likeliest reading is that the reported run used a pre-rebuild image. Also corrected: the
+rust realtime image is not missing, it is `build-ws-rs-` not `build-ws-rust-`. Closed as
+not-reproducing rather than fixed, because the difference matters if it returns. See `archived/0459-*`.
 
 RESOLVED 2026-08-07 — **#461** an action server read a wrong `order` for every goal, differently per
 language: Rust `1`, C/C++ `256`. The filed guess ("something structural, e.g. a CDR word") was half

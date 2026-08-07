@@ -88,3 +88,45 @@ silent one") is now enforced by the message rather than left to the reader.
 entry_pubsub` and `zephyr/rust/params` still fail. The first checks are
 unchanged: whether `entry_net_init` still pushes the guest IP into `eth0` before
 `Executor::open`, and whether the params observer is the TYPED int32 sink.
+
+## Re-measured on fresh fixtures (2026-08-07) — half fixed, and the shape changed
+
+**`nuttx-arm/rust/entry_pubsub` PASSES.** Fixed by someone else's work between
+the filing and now; not attributed.
+
+**`zephyr/rust/params` still fails**, and it is not alone. With every fixture
+rebuilt (linux-rust, nuttx, and zephyr — the last needed a `nros sync` in the
+seven `examples/zephyr/rust/*` leaves first, because #0463 makes an unsynced
+leaf unparseable):
+
+```
+entry_matrix: 12 ran, 0 skipped, 3 failed (of 15 cells)
+  zephyr/rust/params:    subscriber never saw the live-read baked param value (250)
+  zephyr/rust/lifecycle: `ros2 lifecycle nodes` listed no managed node
+  zephyr/rust/qos:       observer never saw 3 `/qos_ok` republishes
+```
+
+Three cells, one platform+language, three different FEATURE entries. That is a
+family, not three bugs: the common suspect is the zephyr-rust entry's feature
+wiring (each cell asserts a different declared capability reaching the running
+image), not three unrelated runtime paths. Whoever takes this should look there
+first rather than at params, lifecycle and qos separately.
+
+## What the measurement itself cost
+
+The first re-run said "1 of 15 FAILED" and listed neither of this issue's cells,
+which reads as "both fixed". They had been SKIPPED on stale fixtures — the
+harness collected skips and only reported them when EVERY cell skipped, so ten
+passes and four skips printed identically to fourteen passes. Fixed in the same
+commit as this note: `entry_matrix` now always prints `N ran, M skipped, K
+failed`, with the skip list.
+
+The skip text was already carrying the issue-0445 ledger, which is what made the
+staleness legible once the count was visible:
+
+```
+NOT RUN: 2th consecutive stale verdict for this fixture, first 8m ago.
+This coordinate has produced no runtime result since then …
+```
+
+Staying open for the three zephyr/rust cells.
