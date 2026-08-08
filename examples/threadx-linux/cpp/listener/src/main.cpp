@@ -55,6 +55,11 @@ int nros_app_main(int argc, char** argv) {
 
     nros::Subscription<std_msgs::msg::String> sub;
     NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
+    // phase-342 W7 — the READINESS marker the test harness waits on
+    // (`nros_tests::output::LISTENER_READY_MARKER`, via `expect_ready`). Every
+    // listener in every language prints this same line; the demo should not
+    // spell its own readiness differently per platform.
+    printf("Subscriber created for topic: %s\n", "/chatter");
 
     // Set up signal handler
     signal(SIGINT, signal_handler);

@@ -28,6 +28,11 @@ impl Node for ListenerNode {
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
         node.create_subscription_for_callback_name::<StringMsg>("on_message", "/chatter")?;
         log::info!("Subscribing to /chatter (std_msgs/String)");
+        // phase-342 W7 — the READINESS marker the harness waits on
+        // (`output::LISTENER_READY_MARKER`, via `expect_ready`). Every listener
+        // prints this same line; "Subscriber declared" below is kept because
+        // the baremetal QEMU logs are read by eye as well as by grep.
+        log::info!("Subscriber created for topic: /chatter");
         log::info!("Subscriber declared");
         log::info!("Waiting for messages...");
         Ok(())

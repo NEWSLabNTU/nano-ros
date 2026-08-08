@@ -53,15 +53,17 @@ use std::{collections::BTreeSet, fs, path::PathBuf};
 /// test waits on that binary's readiness, which is why the list is a backlog and
 /// not a config.
 const KNOWN_DIVERGENT: &[&str] = &[
-    "examples/qemu-arm-baremetal/rust/listener",
-    "examples/qemu-arm-freertos/c/listener",
-    "examples/qemu-arm-freertos/cpp/listener",
-    "examples/qemu-arm-nuttx/c/listener",
-    "examples/qemu-arm-nuttx/cpp/listener",
-    "examples/qemu-riscv64-threadx/c/listener",
-    "examples/qemu-riscv64-threadx/cpp/listener",
-    "examples/threadx-linux/c/listener",
-    "examples/threadx-linux/cpp/listener",
+    // The three Zephyr listeners are node COMPONENTS, not standalone demos:
+    // `Listener.c` / `Listener.hpp` / `lib.rs` register a subscription and carry
+    // no `main`, so their output reaches a test through the ZEPHYR ENTRY's
+    // serial log rather than their own stdout. Giving them the standalone demo's
+    // readiness marker would be a category error until it is established what
+    // the zephyr harness actually greps — which is a `zephyr.rs` question, not
+    // an example question.
+    //
+    // Kept here rather than excluded from the survey on purpose: an exclusion
+    // would make the gate silently stop looking, and this list is the visible
+    // form of "known, unresolved".
     "examples/zephyr/c/listener",
     "examples/zephyr/cpp/listener",
     "examples/zephyr/rust/listener",
