@@ -1,9 +1,23 @@
 # Phase 342 — Test runtime reduction: the consumer side
 
-**Status (2026-08-08). W1–W3 LANDED; W4 blocked (structurally); W5 retracted on
-measurement; W6 answered; W7 COMPLETE.** Every work item is resolved — four
-landed, one blocked with its condition named, one retracted on measurement, two
-answered.
+**Status (2026-08-08). W1, W2, W3, W7 LANDED; W8 partly landed; W4 blocked
+(structurally); W5 retracted on measurement; W6 answered. Remainder RE-SEQUENCED
+— see "Remaining waves, REORDERED" below.**
+
+Measured, same machine, same lane:
+
+| item | before | after | |
+| --- | --- | --- | --- |
+| W1 three cell-loop folds | 241 s | 67 s | 3.6× |
+| W2 macro-misuse cold checks | 108.5 s | 10.3 s warm | 10.5× |
+| W7 `rust_cyclone` readiness marker | 34.1 s | 4.0 s | 8.5× |
+| W8 `native_api` sleeps | 102.0 s | 25.2 s | 4.0× |
+| W8 `nano2nano` sleeps | 47.7 s | 8.8 s | 5.4× |
+
+Plus ~140 s of timeouts that were being waited out in SILENCE (issue 0481), and
+the tier's wall-clock floor down from 95.1 s to ~34 s. Three gates now enforce
+what had been convention: lane arithmetic, readiness literals, example output
+conformance.
 
 | item | before | after | |
 | --- | --- | --- | --- |
@@ -98,6 +112,47 @@ Top binaries by summed time:
 and that is `native_example_pubsub` at 95.1 s — one `#[test]` that loops over 18
 `matrix::CELLS` internally (`native_example_pubsub_e2e.rs:106-126`). No amount of
 nextest parallelism enters a test body.
+
+## Remaining waves, REORDERED (2026-08-08)
+
+The first six waves were planned before any of them ran. Seven waves of evidence
+later, the ordering they implied is wrong in two specific ways, so the remainder
+is re-sequenced here rather than worked in the order it was written.
+
+**What the evidence changed:**
+
+1. **A harness gap outranks the work it blocks.** W8 could not convert
+   `xrce_ros2_interop`'s sleep — not for lack of an observable (the ROS 2
+   listener prints `data:`) but because `Ros2Process` has no wait-until-pattern.
+   The same gap will block every future ROS 2 sleep. Fixing the harness first
+   turns a class of "cannot convert" into "convert".
+2. **Gate first, converge second.** W7 proved it: the gate landed with 12
+   baselined, then each convergence was VERIFIED as it happened, ending at 0.
+   W5 shows the alternative — a convergence proposed from row counts, retracted
+   on measurement. Any remaining wave that changes many files starts with the
+   check that will judge it.
+
+**The re-sequenced remainder:**
+
+| order | wave | why here |
+| --- | --- | --- |
+| 1 | **W9 (new)** — `wait_for_output_count` on `Ros2Process` / `ZephyrProcess` | Unblocks W8's remainder and every future one. Small, self-contained, verifiable against suites that already run. |
+| 2 | **W8b** — the 123 s of settle sleeps | Needs W9 for the ROS 2 half, and needs W7's machinery (observable, then gate, then converge) for the embedded half. |
+| 3 | **W4** — tier-2 build scoping | Unchanged and still blocked; its condition is "every test cell-bound", which phase-329's disposition pass showed is false. Nothing here moves it. |
+
+**W8b is not a rewrite, it is W7 again with a different marker.** Those 123 s wait
+on events that are never announced — `emulator.rs` sleeps 8 s for "bare-metal
+boot + smoltcp init + zenoh connect" on an image that prints no boot marker. The
+fix is the one W7 established: give the thing an observable line, put the marker
+in the shared table, gate that examples print it, then wait on it. Attempting the
+conversion without the observable is what makes a wait silently useless — the
+exact defect issue 0481 catalogues.
+
+**What is explicitly NOT next**, though it is the largest number in this
+document: the ~2900 s of `check` that dominates a cold tier-1 run. That belongs
+to phase-340 and phase-334 under their 2026-08-07 axis split, they have an
+8-step work order, and this phase's opening reframe exists precisely to stay out
+of it.
 
 ## Work items
 
