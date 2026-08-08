@@ -152,6 +152,23 @@ int nros_freertos_create_task(
 }
 
 /*
+ * Set the CALLING task's priority (raw FreeRTOS units), clamped to
+ * configMAX_PRIORITIES - 1 (the shared FreeRTOSConfig.h defines a live
+ * configASSERT, so an out-of-range value must not reach
+ * vTaskPrioritySet). Used by the multi-tier boot path: the boot task is
+ * created at the generic app priority but then RUNS tiers[0] (the
+ * highest tier), so it must assume that tier's declared priority the
+ * same way a spawned tier task is born with its own.
+ */
+void nros_freertos_set_current_task_priority(uint32_t priority)
+{
+    if (priority >= (uint32_t)configMAX_PRIORITIES) {
+        priority = (uint32_t)configMAX_PRIORITIES - 1u;
+    }
+    vTaskPrioritySet(NULL, (UBaseType_t)priority);
+}
+
+/*
  * Test TCP connectivity to a given IPv4 address and port.
  * Returns 0 on success, or the positive errno value on failure.
  */

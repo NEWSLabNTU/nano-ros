@@ -159,10 +159,20 @@ impl Config {
     /// The shared `FreeRTOSConfig.h` sets `configMAX_PRIORITIES = 8`,
     /// so the output range is 0–7.
     ///
-    /// Mapping: `freertos_pri = normalized * 7 / 31` (linear).
+    /// Mapping: `freertos_pri = round(normalized * 7 / 31)` (linear,
+    /// round-to-nearest). The rounding matters: `FreertosScheduling`'s
+    /// defaults were normalized FROM the old raw constants expecting
+    /// this map to round-trip (16 ≈ 3.6 → 4, the historical
+    /// POLL_TASK_PRIORITY; 12 ≈ 2.7 → 3, the historical
+    /// APP_TASK_PRIORITY). The previous flooring map sent 16 → 3,
+    /// which dropped the zenoh read/lease/poll tasks BELOW
+    /// `TCPIP_THREAD_PRIO` (4) and below typical application tiers,
+    /// so under inbound load the RX drain starved, the LAN9118 path
+    /// dropped frames, and every publisher stalled on lwIP's
+    /// retransmission timeout (observed as 1-3 s island-wide stalls).
     pub fn to_freertos_priority(normalized: u8) -> u32 {
         let n = if normalized > 31 { 31 } else { normalized };
-        (n as u32 * 7) / 31
+        (n as u32 * 7 * 2 + 31) / 62
     }
 
     /// Parse configuration from a TOML string.

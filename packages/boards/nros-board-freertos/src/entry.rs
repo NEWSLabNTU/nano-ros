@@ -77,6 +77,8 @@ unsafe extern "C" {
     ) -> i32;
 
     fn nros_freertos_get_netif_state() -> i32;
+
+    fn nros_freertos_set_current_task_priority(priority: u32);
 }
 
 /// Network polling task stack size in words (1 KB = 256 words).
@@ -577,6 +579,18 @@ where
         B::println(format_args!("nros: run_tiers called with no tiers"));
         B::exit_failure();
     }
+
+    // The boot task was created at the generic `app_priority`, but from here
+    // on it IS tiers[0] (the highest tier: session open, tier setup, then the
+    // tier spin loop, forever). Spawned tiers are born at their declared
+    // priority (see `spawn_next_tier`); without this the boot tier silently
+    // ran at the app default (normalized 12, FreeRTOS 3) regardless of what
+    // the system declared, so "high tier" priority ablations did not change
+    // the boot tier at all. Assume the declared priority now, before the
+    // session opens. Same raw-units conversion as `spawn_next_tier`; the C
+    // helper clamps to configMAX_PRIORITIES - 1.
+    let boot_prio = ctx.tiers[0].priority.clamp(0, u32::MAX as i64) as u32;
+    unsafe { nros_freertos_set_current_task_priority(boot_prio) };
 
     // Open the one session on the boot task, then move it into its final
     // location (`crt`) BEFORE handing out `SessionHandle`s — the handle aliases
