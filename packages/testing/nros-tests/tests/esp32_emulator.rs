@@ -321,7 +321,12 @@ fn test_esp32_to_native() {
         .expect("Failed to start native listener");
 
     // Wait for native listener to be ready
-    let _ = native_proc.wait_for_output_pattern(nros_tests::output::LISTENER_READY_MARKER, Duration::from_secs(10));
+    native_proc
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(10),
+        )
+        .unwrap_or_else(|e| panic!("native listener never signalled readiness: {e}"));
 
     // Stabilization delay
     std::thread::sleep(Duration::from_secs(5));
@@ -412,10 +417,12 @@ fn test_native_to_esp32() {
         .expect("Failed to start native talker");
 
     // Wait for native talker to start publishing
-    let _ = native_proc.wait_for_output_pattern(
-        nros_tests::output::TALKER_LOG_PREFIX,
-        Duration::from_secs(10),
-    );
+    native_proc
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(10),
+        )
+        .unwrap_or_else(|e| panic!("native talker never started publishing: {e}"));
 
     // Wait for ESP32 listener to receive messages
     let listener_output = esp32_listener.collect_until(
@@ -525,7 +532,12 @@ fn test_esp32_workspace_entry_e2e() {
         .env("RUST_LOG", "info");
     let mut native_proc = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start native listener");
-    let _ = native_proc.wait_for_output_pattern(nros_tests::output::LISTENER_READY_MARKER, Duration::from_secs(10));
+    native_proc
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(10),
+        )
+        .unwrap_or_else(|e| panic!("native listener never signalled readiness: {e}"));
     std::thread::sleep(Duration::from_secs(5));
 
     // Boot the single-process Entry (talker + listener).

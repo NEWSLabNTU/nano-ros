@@ -305,8 +305,15 @@ fn run_cell(cell: &MCell) {
     // Cyclone/xrce discovery is slower — wait for the listener's ready marker,
     // then let the subscription propagate before the talker publishes.
     if needs_settle {
-        let _ = listener_proc
-            .wait_for_output_pattern(listener_ready_marker(lang), Duration::from_secs(30));
+        listener_proc
+            .wait_for_output_pattern(listener_ready_marker(lang), Duration::from_secs(30))
+            .unwrap_or_else(|e| {
+                panic!(
+                    "[{}/{}] listener never signalled readiness: {e}",
+                    lang_str(lang),
+                    rmw_str(cell.rmw)
+                )
+            });
         std::thread::sleep(Duration::from_secs(2));
     }
     let mut talker_proc = ManagedProcess::spawn_command(talker_cmd, "native-example-talker")
