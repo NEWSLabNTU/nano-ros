@@ -90,23 +90,29 @@ fn tmpdir() -> PathBuf {
 fn shell_build_lane_matches_the_rust_declaration() {
     use nros_tests::ci_lane::{ALL, CiLane};
 
-    let lane_token = |l: CiLane| match l {
-        CiLane::Tier1 => "tier1",
-        CiLane::Tier2 => "tier2",
-        CiLane::Tier2Nightly => "tier2-nightly",
-    };
-
     for lane in ALL {
-        let token = lane_token(lane);
+        let token = lane.lane_token();
         let (code, out) = lane_sh(&format!("nros_lane_build_lane {token}"), None);
         assert_eq!(code, 0, "nros_lane_build_lane {token} failed:\n{out}");
         assert_eq!(
             out.trim(),
-            lane.run_scope().build_lane(),
-            "fixture-lane.sh and CiLane::run_scope disagree about what a {token} RUN \
+            lane.build_lane(),
+            "fixture-lane.sh and CiLane::build_lane disagree about what a {token} RUN \
              needs built. They are two spellings of ONE fact; fix both."
         );
+        // The token itself is part of the contract: `_NROS_LANES` must know the
+        // name Rust spells the lane with, or every lookup above answers about a
+        // different lane.
+        let (code, out) = lane_sh(&format!("nros_lane_validate {token}"), None);
+        assert_eq!(
+            code, 0,
+            "fixture-lane.sh does not know the lane token CiLane::lane_token \
+             emits ({token}):\n{out}"
+        );
     }
+    // Keep the type in use so a removal of `CiLane` here fails to compile
+    // rather than silently dropping the binding.
+    let _: CiLane = CiLane::Tier2;
 
     // The module-level lanes are their own build lane, in both places by
     // construction — asserted so a future edit cannot quietly make `native`
@@ -130,25 +136,65 @@ fn an_undeclared_lane_is_refused() {
     assert_ne!(code, 0, "an unknown lane must fail, got:\n{out}");
 }
 
-/// **The regression.** A `lane=tier2` build must NOT satisfy a tier-2 run.
+/// **The regression, in the only form it can still take.**
 ///
-/// This is the assertion that fails on the shipped code. The consistency test
-/// above would pass unchanged if both sides said "tier 2 needs tier 2" — it
-/// gates drift, not correctness — so the concrete case is pinned separately.
+/// Issue 0482's defect was that a `lane=tier2` build satisfied a tier-2
+/// preflight while `ci-matrix` ran the WHOLE suite — preflight green, then ~231
+/// STALE failures on coordinates the lane never built. 0482 closed that by
+/// refusing the narrow build. phase-340 W3 closes it the other way instead, by
+/// narrowing the RUN, so the narrow build is now ACCEPTED.
+///
+/// Which means the acceptance on its own is no longer evidence of anything: it
+/// is correct only while the run really is narrowed. So this pins the two
+/// together — the preflight accepts `lane=tier2`, AND tier 2 declares a
+/// coordinate-scoped run whose build lane is itself. Assert only the first and
+/// a future edit reverting `run_scope` to `All` would leave this test green over
+/// exactly the original bug.
 #[test]
-fn a_tier2_build_does_not_satisfy_the_tier2_run() {
+fn a_tier2_build_satisfies_the_tier2_run_because_that_run_is_narrowed() {
+    use nros_tests::ci_lane::{CiLane, RunScope};
+
+    assert_eq!(
+        CiLane::Tier2.run_scope(),
+        RunScope::LaneCoords,
+        "tier 2 must narrow its RUN to its own coordinates; if it stops doing \
+         that, its build lane must go back to `all` (issue 0482) — accepting a \
+         `lane=tier2` build for an unnarrowed run is the original defect"
+    );
+    assert_eq!(CiLane::Tier2.build_lane(), "tier2");
+
     let dir = tmpdir();
     let stamp = write_stamp(&dir, "tier2", &["linux,rust,zenoh", "nuttx,c,zenoh"]);
     let (code, out) = lane_sh(
         "nros_fixtures_stamp_require tier2",
         Some(stamp.to_str().unwrap()),
     );
+    assert_eq!(
+        code, 0,
+        "a lane=tier2 fixture build must now satisfy the tier-2 preflight — \
+         phase-340 W3 narrows the tier-2 RUN to the same coordinates, which is \
+         what makes the middle rung of the ladder affordable:\n{out}"
+    );
+    let _ = std::fs::remove_file(&stamp);
+}
+
+/// A `lane=tier1` build must still NOT satisfy a tier-2 run.
+///
+/// The affordability fix must not degenerate into "any stamp will do". Tier 1's
+/// cover (10 of 47 coordinates) is a strict subset of tier 2's (13), so the
+/// coordinate diff has to report the difference and refuse.
+#[test]
+fn a_narrower_lane_build_still_does_not_satisfy_a_wider_run() {
+    let dir = tmpdir();
+    let stamp = write_stamp(&dir, "tier1", &["linux,rust,zenoh"]);
+    let (code, out) = lane_sh(
+        "nros_fixtures_stamp_require tier2 < /dev/null",
+        Some(stamp.to_str().unwrap()),
+    );
     assert_ne!(
         code, 0,
-        "a lane=tier2 fixture build satisfied the tier-2 preflight — but `just \
-         ci-matrix` runs the WHOLE suite, so this is exactly issue 0482: the \
-         preflight passes and the run then fails STALE on every coordinate the \
-         lane never built.\n{out}"
+        "a lane=tier1 build satisfied a tier-2 run; the coverage diff has \
+         stopped diffing:\n{out}"
     );
     assert!(
         out.contains("build-test-fixtures"),
@@ -240,7 +286,7 @@ fn every_fixture_row_is_reachable_through_the_coordinate_filter() {
     let mut plain_rows = 0usize;
     for line in coords_text.lines().filter(|l| !l.is_empty()) {
         let f: Vec<&str> = line.split('\x1f').collect();
-        assert_eq!(f.len(), 5, "unexpected coords record: {line:?}");
+        assert_eq!(f.len(), 7, "unexpected coords record: {line:?}");
         triples.insert(format!("{},{},{}", f[1], f[2], f[3]));
         if f[0] == "fixture" {
             plain_rows += 1;

@@ -2234,23 +2234,24 @@ ci:
 # Note the gate and the BUILD read the same coordinate file, so they cannot
 # disagree about what this lane covers.
 #
-# Issue 0393 / 0482 — this lane's BUILD is `all`, and now ENFORCED to be. Unlike
-# tier 1 it does not scope its run (`test-all` with no `NROS_TEST_SCOPE`), so
-# every test binary executes and every fixture must exist. The tier-2 saving is
-# in the staleness GATE, which insists only the lane's coordinates are fresh.
+# Issue 0393 / 0482 / phase-340 W3 — this lane's BUILD is its own lane:
 #
-# That was already written here, and was not true of anything that RUNS: 0368 F8
-# had made `_require-fixtures` accept a `lane=tier2` stamp, so
-# `just build-test-fixtures lane=tier2 && just ci-matrix` passed its preflight
-# and then produced ~231 STALE failures on the 34 coordinates the lane never
-# built. A comment is not a gate. `CiLane::run_scope` now declares that this lane
-# runs everything, `nros_lane_build_lane` maps that to the required build, and
-# the preflight fails in seconds naming `just build-test-fixtures`.
+#     just build-test-fixtures lane=tier2 && just ci-matrix
 #
-# Narrowing the build here still needs the RUN narrowed to match first — see
-# `CiLane::run_scope` for why neither lane-filter nor the fixture resolver can
-# express a coordinate-granular selection today, and issue 0482 for what it would
-# take.
+# That was false until phase-340 W3 and cost ~231 STALE failures when someone
+# tried it: 0368 F8 had made `_require-fixtures` accept a `lane=tier2` stamp
+# while `ci-matrix` still ran the WHOLE suite, so 34 of 47 coordinates were
+# resolved and none of them had been built. 0482 fixed the honesty half by
+# demanding an `all` build; W3 fixes the affordability half by narrowing the RUN
+# to match the build instead.
+#
+# The narrowing is NOT name-based — `lane-filter.sh` selects platform families
+# and this lane contains every platform (issue 0357 / 0482). It happens in the
+# fixture RESOLVER: `NROS_TEST_COORDS` hands it this lane's coordinate file and
+# a fixture whose `examples/fixtures.toml` row sits outside it reports SKIPPED
+# instead of missing. Build-set and run-set are then one computation — the same
+# `row_coord` against the same coordinate file — which is the invariant issue
+# 0482 exists to protect. See `nros_tests::fixtures::lane`.
 [group("ci")]
 ci-matrix:
     #!/usr/bin/env bash
@@ -2262,11 +2263,14 @@ ci-matrix:
     # gate inside test-all audits the whole tier-3 fixture set and dies demanding
     # out-of-lane freshness the tier ladder said to skip.
     #
-    # What this does NOT license (issue 0482) is a narrower BUILD. The lane name
-    # scopes FRESHNESS; `nros_fixtures_stamp_require` maps it through
-    # `nros_lane_build_lane` to get EXISTENCE, which for an unnarrowed run is
-    # `all`. Those are two questions and 0368 F8 answered both with the lane.
-    NROS_FIXTURE_LANE=tier2 just check rust-rtos-link-check test-all
+    # NROS_TEST_COORDS is the RUN's half of the same fact, and it is the SAME
+    # file `nros_lane_coords_file` gives the build and the staleness gate — one
+    # computation reaching all three, not three spellings of a lane.
+    source scripts/build/fixture-lane.sh
+    coords="$(nros_lane_coords_file tier2)"
+    coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
+    NROS_FIXTURE_LANE=tier2 NROS_TEST_COORDS="$coords" \
+        just check rust-rtos-link-check test-all
     echo "CI passed (tier 2 — 1-wise cover; pairwise interactions need \`just ci-matrix-nightly\`)!"
 
 # Tier 2 nightly — the pairwise cover over platform x lang x rmw x kind (35 of 47
@@ -2287,8 +2291,14 @@ ci-matrix-nightly:
     just _lane-gate tier2-nightly
     # issue 0368 F8 (same class as ci-matrix) — require the tier2-nightly lane so
     # the inner `_require-fixtures` accepts a per-family build instead of
-    # demanding the `all` stamp the lane ladder said to avoid.
-    NROS_FIXTURE_LANE=tier2-nightly just check rust-rtos-link-check test-all test-ignored
+    # demanding the `all` stamp the lane ladder said to avoid. phase-340 W3 —
+    # NROS_TEST_COORDS narrows the RUN to the same cover, so that acceptance is
+    # earned rather than asserted.
+    source scripts/build/fixture-lane.sh
+    coords="$(nros_lane_coords_file tier2-nightly)"
+    coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
+    NROS_FIXTURE_LANE=tier2-nightly NROS_TEST_COORDS="$coords" \
+        just check rust-rtos-link-check test-all test-ignored
     echo "CI passed (tier 2 nightly — pairwise cover)!"
 
 # Run the staleness gate over exactly one lane's fixture coordinates.

@@ -112,40 +112,75 @@ pub enum CiLane {
 /// Every computed lane, so tests and tooling iterate rather than enumerate.
 pub const ALL: [CiLane; 3] = [CiLane::Tier1, CiLane::Tier2, CiLane::Tier2Nightly];
 
-/// How wide a lane's TEST RUN is — the `NROS_TEST_SCOPE` its recipe sets.
+/// How wide a lane's TEST RUN is.
 ///
 /// Deliberately a separate type from [`CiLane`], because it answers a different
 /// question. See [`CiLane::run_scope`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RunScope {
-    /// The recipe filters the run to host binaries (`scripts/test/lane-filter.sh
-    /// native`).
+    /// The recipe filters the run to host binaries by NAME
+    /// (`scripts/test/lane-filter.sh native`, via `NROS_TEST_SCOPE=native`).
     Native,
-    /// The recipe runs the whole suite — no filtering.
+    /// The recipe runs the whole suite — no filtering of any kind.
     All,
+    /// The recipe runs every test binary, but the fixture RESOLVER skips any
+    /// fixture whose manifest row sits outside [`coords`] — phase-340 W3.
+    ///
+    /// Name-based filtering cannot express this (issue 0357 / 0482): tier 2 is
+    /// 1-wise over platform, so every platform is in the lane and a
+    /// platform-token filter excludes nothing, while the actual saving is in
+    /// lang × rmw *within* a platform, which test names do not encode. The
+    /// selection therefore happens where the test↔fixture binding physically
+    /// exists — see `crate::fixtures::lane`, which derives it from the same
+    /// `row_coord` the BUILD filters on.
+    LaneCoords,
 }
 
 impl RunScope {
-    /// The `NROS_TEST_SCOPE` token. `lane-filter.sh` takes exactly these two.
+    /// The `NROS_TEST_SCOPE` token. `lane-filter.sh` takes exactly two values;
+    /// [`RunScope::LaneCoords`] does not filter by NAME at all, so it maps to
+    /// `all` here and does its narrowing at resolution time instead.
     pub fn test_scope(self) -> &'static str {
         match self {
             RunScope::Native => "native",
-            RunScope::All => "all",
+            RunScope::All | RunScope::LaneCoords => "all",
+        }
+    }
+}
+
+impl CiLane {
+    /// The lane token `just build-test-fixtures lane=…` and
+    /// `scripts/build/fixture-lane.sh` spell this lane with.
+    pub fn lane_token(self) -> &'static str {
+        match self {
+            CiLane::Tier1 => "tier1",
+            CiLane::Tier2 => "tier2",
+            CiLane::Tier2Nightly => "tier2-nightly",
         }
     }
 
-    /// The FIXTURE BUILD LANE that covers this run — the `lane=` a
+    /// The FIXTURE BUILD LANE that covers this lane's run — the `lane=` a
     /// `build-test-fixtures` must have been given for the run's fixtures to
     /// exist.
     ///
-    /// `native` is a module-level selection (every row of the host module, no
-    /// coordinate filter), which is exactly what a host-filtered run resolves.
-    /// An unfiltered run resolves fixtures at every coordinate, so nothing but
-    /// `all` covers it.
+    /// Derived from [`CiLane::run_scope`], never declared twice:
+    ///
+    /// * [`RunScope::Native`] — a module-level build of every host row, which is
+    ///   a strict superset of any coordinate cover of the host.
+    /// * [`RunScope::All`] — every coordinate is resolved, so nothing short of
+    ///   `all` covers it.
+    /// * [`RunScope::LaneCoords`] — the run resolves exactly this lane's
+    ///   coordinates, so this lane's own build covers it. That equality is the
+    ///   whole of phase-340 W3: build-set and run-set are one computation.
+    ///
+    /// `nros_lane_build_lane` in `scripts/build/fixture-lane.sh` is the runtime
+    /// implementation; `tests/lane_build_covers_run.rs` asserts the two agree
+    /// for every lane.
     pub fn build_lane(self) -> &'static str {
-        match self {
+        match self.run_scope() {
             RunScope::Native => "native",
             RunScope::All => "all",
+            RunScope::LaneCoords => self.lane_token(),
         }
     }
 }
@@ -174,22 +209,30 @@ impl CiLane {
     ///
     /// The justfile already said the build had to be `all`; a comment is not a
     /// gate. Declaring it here makes `_require-fixtures` derive the requirement
-    /// from the same place the recipe derives its `NROS_TEST_SCOPE`, so the two
-    /// cannot drift, and narrowing a lane's run later is ONE edit here that both
+    /// from the same place the recipe derives its run narrowing, so the two
+    /// cannot drift, and narrowing a lane's run is ONE edit here that both
     /// consumers follow.
+    ///
+    /// # phase-340 W3 — tier 2 became cheap as well as honest
+    ///
+    /// This used to read `Tier2 | Tier2Nightly => RunScope::All`, with a comment
+    /// saying a coordinate-granular test selection was inexpressible. It is not:
+    /// the fixture RESOLVER can attribute a resolved artifact back to its
+    /// manifest row (`crate::fixtures::lane`), because the row's artifact root
+    /// is where the build wrote it. So these lanes narrow at resolution time
+    /// and their own build now covers their run.
     pub fn run_scope(self) -> RunScope {
         match self {
             // Host-only by construction (`tier1_is_native_only`), and `just ci`
-            // filters the run to match.
+            // filters the run to match. Kept NAME-based: tier 1's build lane is
+            // `native`, a module-level superset of `coords(Tier1)`, so a
+            // coordinate filter would skip host fixtures that were built and
+            // buy nothing.
             CiLane::Tier1 => RunScope::Native,
-            // Not narrowed. Making these `Native`-style narrow needs a DERIVED
-            // test selection at coordinate granularity, which neither
-            // `lane-filter.sh` (platform-family tokens; tier 2 is 1-wise over
-            // platform, so every platform is in it and nothing gets excluded)
-            // nor the fixture resolver (identifies fixtures by path, no link
-            // back to the manifest row) can express today. Until one of them
-            // can, these lanes cost a full fixture build and say so.
-            CiLane::Tier2 | CiLane::Tier2Nightly => RunScope::All,
+            // Every test binary still executes; the resolver skips fixtures
+            // outside `coords(lane)` — exactly the rows `--coords-from` told the
+            // build to omit.
+            CiLane::Tier2 | CiLane::Tier2Nightly => RunScope::LaneCoords,
         }
     }
 }
@@ -464,7 +507,20 @@ mod tests {
                     "{lane:?} declares RunScope::All but `just {recipe}` narrows the run with \
                      NROS_TEST_SCOPE — narrow the declaration too, or the required fixture \
                      build (`{}`) is computed for a run that no longer happens:\n{body}",
-                    scope.build_lane()
+                    lane.build_lane()
+                ),
+                // phase-340 W3 — the narrowing is not name-based, so the recipe
+                // must hand the RESOLVER the lane's coordinate file. Without it
+                // the run silently resolves every coordinate while
+                // `_require-fixtures` accepts the lane's own (narrow) build:
+                // issue 0482's ~231 STALE failures, with the two sides swapped.
+                RunScope::LaneCoords => assert!(
+                    body.contains(&format!("{}=", crate::fixtures::lane::RUN_COORDS_ENV)),
+                    "{lane:?} declares RunScope::LaneCoords but `just {recipe}` never exports \
+                     {} — the run would resolve every coordinate while the preflight accepts a \
+                     `lane={}` build:\n{body}",
+                    crate::fixtures::lane::RUN_COORDS_ENV,
+                    lane.build_lane()
                 ),
             }
 

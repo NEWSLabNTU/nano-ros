@@ -105,12 +105,15 @@ fn fixture_coords() -> (BTreeSet<Coord>, Vec<String>) {
     let mut coords = BTreeSet::new();
     let mut unmapped = Vec::new();
     for line in stdout.lines().filter(|l| !l.is_empty()) {
-        // <kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>
+        // <kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>\x1f<id>\x1f<artifact_root>
+        // (`id`/`artifact_root` are phase-340 W3's run-narrowing columns; this
+        // gate does not read them, but it pins the SHAPE so a column added or
+        // dropped fails here rather than silently shifting `dir`.)
         let f: Vec<&str> = line.split('\x1f').collect();
         assert_eq!(
             f.len(),
-            5,
-            "unexpected `coords` record shape (expected 5 \\x1f-separated fields): {line:?}"
+            7,
+            "unexpected `coords` record shape (expected 7 \\x1f-separated fields): {line:?}"
         );
         let (table, p, l, r, dir) = (f[0], f[1], f[2], f[3], f[4]);
         let is_ws = table == "workspace_fixture";

@@ -179,6 +179,47 @@ def cargo_args(entry, *, include_target_dir=True):
     return " ".join(args)
 
 
+def cmake_build_subdir(entry):
+    """The cmake build dir a C/C++ `[[fixture]]` row builds into, relative to
+    its `dir`.
+
+    Deliberately keyed on the RAW `rmw` and not on `row_coord`: an rmw-less C/C++
+    row builds into plain `build/`, and routing the zenoh default through here
+    would move where the build writes. `row_coord`'s default answers "which lane
+    is this row in"; this answers "where do its bytes land". Two questions.
+    """
+    return entry.get("build_subdir") or (
+        f"build-{entry['rmw']}" if entry.get("rmw") else "build"
+    )
+
+
+def row_artifact_root(entry):
+    """Where a row's built artifacts land, as a repo-relative path — phase-340 W3.
+
+    THE single computation of a row's artifact root, for the same reason
+    `row_coord` is the single computation of its coordinate. The fixture BUILD
+    writes here (`cargo --target-dir` / `cmake -B <build_subdir>`) and the test
+    RESOLVER reads from here, so it is also the only honest way to map a
+    resolved binary path back to the manifest row that produced it — which is
+    what a coordinate-scoped test RUN needs (issue 0482's "the resolver has no
+    link back to the manifest row").
+
+    Rust/mixed rows: `<dir>/<target_dir or "target">`.
+    C/C++ rows:      `<dir>/<cmake_build_subdir>`.
+
+    A row that authors no `target_dir` shares `<dir>/target` with every sibling
+    row of the same dir, so this is a prefix a path may match ambiguously; the
+    consumer resolves that by preferring the LONGEST match and by treating an
+    ambiguous match as "not attributable" (fail closed — never skip).
+    """
+    d = (entry.get("dir") or "").rstrip("/")
+    if not d:
+        return ""
+    if entry.get("lang") in ("c", "cpp"):
+        return f"{d}/{cmake_build_subdir(entry)}"
+    return f"{d}/{entry.get('target_dir') or 'target'}"
+
+
 def env_str(entry):
     return " ".join(f"{k}={v}" for k, v in (entry.get("env") or {}).items())
 
@@ -634,8 +675,9 @@ def main():
         return
 
     if a.command == "coords":
-        # Issue 0482. One `<kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>` line
-        # per BUILDABLE row of both coordinate-bearing tables, with the
+        # Issue 0482. One
+        # `<kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>\x1f<id>\x1f<artifact_root>`
+        # line per BUILDABLE row of both coordinate-bearing tables, with the
         # coordinate resolved by `row_coord` — the same function the lane filter
         # uses. `skip_build` rows are omitted for the same reason
         # `matches_filters` omits them: a row nothing builds occupies no
@@ -644,6 +686,12 @@ def main():
         # `dir` rides along so a consumer can NAME the offending row instead of
         # printing a bare triple; the coverage gate's failure messages were
         # unreadable without it.
+        #
+        # phase-340 W3 — `id` and `artifact_root` ride along so a consumer can
+        # go the OTHER way: from a resolved fixture artifact back to the row
+        # that produced it, and hence to its coordinate. That is what lets a
+        # coordinate-scoped test RUN skip exactly the rows its lane's BUILD
+        # omitted, deciding both from this one table with this one `row_coord`.
         for kind, rows in (
             ("fixture", load(a.manifest)),
             ("workspace_fixture", load_workspace_fixtures(a.manifest)),
@@ -660,6 +708,8 @@ def main():
                             str(lang or ""),
                             str(rmw or ""),
                             str(e.get("dir", e.get("id", ""))),
+                            str(e.get("id", "")),
+                            row_artifact_root(e),
                         )
                     )
                     + "\n"
@@ -771,7 +821,10 @@ def main():
             continue
         if e.get("lang") in ("c", "cpp"):
             # cmake record: <dir>\x1f<build-subdir>\x1f<cmake -D defs>\x1f<target>
-            sub = e.get("build_subdir") or (f"build-{e['rmw']}" if e.get("rmw") else "build")
+            # `cmake_build_subdir` is shared with `row_artifact_root`, so where
+            # the build WRITES and where the resolver's attribution LOOKS are
+            # one expression (phase-340 W3).
+            sub = cmake_build_subdir(e)
             sys.stdout.write(
                 f"{e['dir']}{SEP}{sub}{SEP}{cmake_defs(e)}{SEP}{e.get('target', '')}\n"
             )

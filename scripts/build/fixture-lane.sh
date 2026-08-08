@@ -46,14 +46,19 @@ NROS_FIXTURE_STAMP="${NROS_FIXTURE_STAMP:-target/nextest/.fixtures-built}"
 #                  preflight exists to prevent.
 #   tier1/tier2/   the computed `CiLane` covers — i.e. which fixtures the lane
 #   tier2-nightly  keeps FRESH. Correct for a BUILD only when the run is scoped
-#                  to match, which `nros_lane_build_lane` is now the arbiter of:
-#                  tier 1 maps to `native`, tier 2 and nightly map to `all`
-#                  because they run the whole suite. Passing one of these to
-#                  `build-test-fixtures` builds the cover; passing it to
-#                  `_require-fixtures` requires the RUN's superset. That
-#                  asymmetry is deliberate and is issue 0482 — the two used to
-#                  be the same lookup, so a `lane=tier2` build satisfied a
-#                  `ci-matrix` that then failed on 34 unbuilt coordinates.
+#                  to match, which `nros_lane_build_lane` is the arbiter of:
+#                  tier 1 maps to `native` (its run is filtered by NAME, which
+#                  selects a broader set than its cover), while tier 2 and
+#                  nightly map to THEMSELVES since phase-340 W3 — their run is
+#                  narrowed at fixture-resolution time to the same coordinates.
+#                  Passing one of these to `build-test-fixtures` builds the
+#                  cover; passing it to `_require-fixtures` requires whatever
+#                  that lane's RUN resolves. The two are different questions
+#                  (issue 0482 — they used to be the same lookup, so a
+#                  `lane=tier2` build satisfied a `ci-matrix` that then failed on
+#                  34 unbuilt coordinates); they now have the same ANSWER for
+#                  tier 2, which is the point of W3 rather than a reason to
+#                  collapse them again.
 _NROS_LANES="all native tier1 tier2 tier2-nightly"
 
 # Normalize a lane argument as it arrives from `just`.
@@ -139,22 +144,28 @@ nros_lane_coords_file() {
 # `packages/testing/nros-tests/tests/lane_build_covers_run.rs` has to be able to
 # exercise it without compiling anything (CLAUDE.md: no compilation inside
 # tests). That test is what binds the two: it runs this function for every lane
-# and asserts the answer equals `run_scope().build_lane()`, so the second
-# spelling cannot drift the way `matches_filters` drifted from
-# `matrix_fixture_coverage`.
+# and asserts the answer equals `CiLane::build_lane()`, so the second spelling
+# cannot drift the way `matches_filters` drifted from `matrix_fixture_coverage`.
 nros_lane_build_lane() {
     local lane="$1"
     nros_lane_validate "$lane" || return 2
     case "$lane" in
         # Module-level lanes are their own build lane.
         all | native) echo "$lane" ;;
-        # `just ci` narrows its run to host binaries, which a `native` build
-        # covers exactly.
+        # `just ci` narrows its run to host binaries by NAME, which a `native`
+        # build covers exactly. Deliberately NOT `tier1`: `NROS_TEST_SCOPE=
+        # native` selects every host test BINARY, a broader set than
+        # `coords(Tier1)` (10 of 47), so a coordinate-scoped build would leave
+        # the rest absent.
         tier1) echo native ;;
-        # These two do NOT narrow their run — `test-all` with no
-        # `NROS_TEST_SCOPE` — so every coordinate's fixtures are resolved and
-        # nothing short of a full build covers them.
-        tier2 | tier2-nightly) echo all ;;
+        # phase-340 W3 — these narrow their run at fixture-RESOLUTION time
+        # (`RunScope::LaneCoords`; `NROS_TEST_COORDS` -> `fixtures::lane`), to
+        # exactly the coordinates `--coords-from` told the build to produce. So
+        # a lane's own build now covers its own run, and this maps each to
+        # itself. Before phase-340 W3 both mapped to `all`, because the run was
+        # unnarrowed and every coordinate had to exist — which is what made the
+        # middle rung cost the top rung's build (issue 0482).
+        tier2 | tier2-nightly) echo "$lane" ;;
         *)
             # Unreachable while `_NROS_LANES` and this case agree; a new lane
             # that lands in neither arm must fail LOUDLY, because the silent

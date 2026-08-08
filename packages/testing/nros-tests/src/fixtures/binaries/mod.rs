@@ -444,6 +444,13 @@ fn build_failure_marker(binary_path: &Path) -> Option<String> {
 }
 
 pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf> {
+    // phase-340 W3 (issue 0482) — a coordinate-scoped RUN skips exactly the
+    // manifest rows its lane's BUILD was told to omit. BEFORE the existence
+    // check on purpose: the whole point is that an out-of-lane fixture reports
+    // as skipped rather than as a missing binary. In-lane fixtures fall through
+    // to every check below unchanged, so this can never launder "never built"
+    // into "skipped" — see `fixtures::lane`.
+    crate::fixtures::lane::require_in_lane(binary_path)?;
     if binary_path.exists() {
         return Ok(binary_path.to_path_buf());
     }
@@ -1028,6 +1035,10 @@ fn require_prebuilt_workspace_binary(
     binary_path: &Path,
     stamp_path: &Path,
 ) -> TestResult<PathBuf> {
+    // phase-340 W3 — attributed by `id` rather than by path: both workspace
+    // resolvers already take the manifest row's id, and several rows share one
+    // `dir`, so `id` is the exact key where a path prefix would be ambiguous.
+    crate::fixtures::lane::require_workspace_in_lane(fixture_id)?;
     if !binary_path.exists() {
         return Err(TestError::BuildFailed(format!(
             "Workspace fixture binary not prebuilt: {}\n\

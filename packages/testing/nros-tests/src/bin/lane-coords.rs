@@ -37,11 +37,16 @@
 //!
 //! The coordinate modes above say which fixtures a lane must have FRESH. These
 //! two say which fixtures must EXIST, which is a property of the RUN, not of the
-//! cell selection: `ci-matrix` executes the whole suite, so it needs a full
-//! fixture build however narrow its cell cover is. Answering both from the lane
-//! name alone is what let `just build-test-fixtures lane=tier2` satisfy the
-//! preflight for a run that then failed on 34 unbuilt coordinates. Both are
-//! consumed by `scripts/build/fixture-lane.sh`.
+//! cell selection. Answering both from the lane name alone is what let `just
+//! build-test-fixtures lane=tier2` satisfy the preflight for a run that then
+//! failed on 34 unbuilt coordinates. Both are consumed by
+//! `scripts/build/fixture-lane.sh`.
+//!
+//! They still differ for tier 1, whose run is filtered by NAME
+//! (`NROS_TEST_SCOPE=native`) and so needs the broader `native` build. Since
+//! phase-340 W3 tier 2 and the nightly lane narrow their run at fixture
+//! RESOLUTION time instead, to exactly `coords(lane)` — so for those two the
+//! answers coincide, and `--build-lane` prints the lane itself.
 
 use nros_tests::{
     ci_lane::{CiLane, cells, coords},
@@ -84,7 +89,7 @@ fn main() {
         }
         // Issue 0482 — one line, no trailing anything, so a shell can `$( )` it.
         Some("--run-scope") => println!("{}", lane.run_scope().test_scope()),
-        Some("--build-lane") => println!("{}", lane.run_scope().build_lane()),
+        Some("--build-lane") => println!("{}", lane.build_lane()),
         Some("--modules") => {
             // Deduped: `nuttx` owns both NuttxArm and NuttxRiscv, `zephyr` owns
             // both ZephyrNativeSim and Fvp — one job each, not two.
