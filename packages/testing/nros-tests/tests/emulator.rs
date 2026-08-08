@@ -555,8 +555,17 @@ fn test_qemu_rtic_pubsub_e2e() {
     let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
         .expect("Failed to start listener QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
-    std::thread::sleep(Duration::from_secs(8));
+    // phase-342 W8b — wait for the listener to SAY it is subscribed, instead of
+    // sleeping 8 s for "bare-metal boot + smoltcp init + zenoh connect". The
+    // image prints `Waiting for messages on /chatter...` once the subscription
+    // is live, which is the event this sleep was approximating; the marker comes
+    // from the shared table (issue 0481 — never a literal).
+    listener
+        .wait_for_output_pattern(
+            nros_tests::output::WS_C_LISTENER_READY_MARKER,
+            Duration::from_secs(40),
+        )
+        .unwrap_or_else(|e| panic!("RTIC listener never subscribed: {e}"));
 
     // Start talker QEMU
     eprintln!("Starting RTIC talker QEMU...");
@@ -718,8 +727,18 @@ fn test_qemu_rtic_action_e2e() {
     let mut server =
         QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
-    std::thread::sleep(Duration::from_secs(8));
+    // phase-342 W8b — wait for the server to SAY it is ready, instead of sleeping
+    // 8 s for "bare-metal boot + smoltcp init + zenoh connect". The image prints
+    // `Waiting for service requests...` once it can serve, which is the event
+    // this sleep was approximating; the marker comes from the shared table
+    // (issue 0481 — never a literal). Note the ROLE differs per site here: two
+    // of these settles front a listener, one fronts a service server.
+    server
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(40),
+        )
+        .unwrap_or_else(|e| panic!("RTIC service server never became ready: {e}"));
 
     // Start client QEMU
     eprintln!("Starting RTIC action client QEMU...");
@@ -802,8 +821,17 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
         .expect("Failed to start listener QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
-    std::thread::sleep(Duration::from_secs(8));
+    // phase-342 W8b — wait for the listener to SAY it is subscribed, instead of
+    // sleeping 8 s for "bare-metal boot + smoltcp init + zenoh connect". The
+    // image prints `Waiting for messages on /chatter...` once the subscription
+    // is live, which is the event this sleep was approximating; the marker comes
+    // from the shared table (issue 0481 — never a literal).
+    listener
+        .wait_for_output_pattern(
+            nros_tests::output::WS_C_LISTENER_READY_MARKER,
+            Duration::from_secs(40),
+        )
+        .unwrap_or_else(|e| panic!("RTIC listener never subscribed: {e}"));
 
     // Start talker QEMU
     eprintln!("Starting RTIC mixed-priority talker QEMU...");

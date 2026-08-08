@@ -253,7 +253,32 @@ how a tier gets chosen on a wrong cost estimate.
 *Acceptance:* the three sites derive from `lane-coords` or are gated against it;
 no hand-written count survives.
 
-### W4 — BLOCKED, and structurally so (verdict 2026-08-08)
+### W4 — BLOCKED, re-confirmed WITH A NUMBER (2026-08-08)
+
+Re-checked rather than inherited. The blocker is "every test cell-bound", and
+the measurement is:
+
+```
+test files deriving cases from matrix::CELLS / interop::CELLS :  24
+test files in packages/testing/nros-tests/tests             : 155
+```
+
+A coordinate-scoped RUN selects by coordinate. **131 files have no coordinate to
+be selected on**, so scoping the run would not narrow it — it would silently drop
+them. That is the same failure `lane-filter.sh` guards against on the platform
+axis (issue 0357), one axis over.
+
+This does not mean the 131 are wrong: phase-329's disposition pass established
+that most are genuine one-offs — behaviour, boot, error and edge tests no cell
+covers. A test without a coordinate is not a test missing metadata; it is a test
+whose subject is not a matrix cell.
+
+So W4 stays parked, and the condition to reopen is now precise: either those
+files gain coordinates (they should not, mostly), or the run learns to select
+"cells for this lane PLUS everything uncoordinated", which is a different design
+than the one W4 assumed. Recorded so the next reader does not re-derive it.
+
+### W4 — original verdict (2026-08-08)
 
 Not attempted. The justfile states the dependency and it has not moved:
 
