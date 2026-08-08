@@ -224,21 +224,127 @@ function(_nros_predict_generated_outputs _hdr_var _src_var _rs_var)
     set(${_rs_var} "${_rs}" PARENT_SCOPE)
 endfunction()
 
+# _nros_resolve_rust_target(<out_var>)
+#
+# THE cargo target triple for everything this repo builds through a cmake custom
+# command. Never empty — a host build resolves to the host triple, not to "no
+# --target".
+#
+# WHY EXPLICIT-ALWAYS, INCLUDING ON THE HOST (phase-340 W3)
+#
+# `--target <host-triple>` and no `--target` at all are DIFFERENT cargo
+# identities on the same machine. Measured on `nros-core`
+# (`--no-default-features --features alloc,std`, `nros-relwithdebinfo`):
+#
+#   implicit host                        libnros_core-0f6269f7a00e4b29.rlib
+#   --target x86_64-unknown-linux-gnu    libnros_core-842ac3b7840799eb.rlib
+#
+# Same triple, same features, same profile, two compilations. And the compiler
+# cache does NOT paper over it: on a private cold sccache, building one spelling
+# and then the other gave **0 hits / 7 misses** for `nros-core` and **0 hits /
+# 62 misses** for `nros`, where an immediate repeat of the FIRST spelling
+# scored 7 and 44 hits. Zero sharing, so this is duplicated CPU and not merely
+# duplicated bytes.
+#
+# Corrosion always passes `--target` — hardcoded, because its whole artifact
+# path model is `<target-dir>/<triple>/<profile>/` ("We always set `--target`,
+# so that cargo always places artifacts into a directory with the target
+# triple", Corrosion.cmake). It is an upstream dependency we do not fork, so
+# corrosion's spelling is the fixed point and everything else normalises TO it.
+# The alternative was rejected on cost, not taste.
+#
+# The normalisation is free in work done: `cargo --unit-graph` for `nros-c`
+# (`std,rmw-zenoh`) reports 165 units and 160 distinct compilation signatures
+# with EITHER spelling. The explicit form only relabels 37 of them from the host
+# half to the target half. Its one measured cost is that cargo stops stripping
+# debuginfo from the 128 build-graph units (`debuginfo` 0 → 1).
+#
+# WHY THE CACHE COPY AND NOT JUST `Rust_CARGO_TARGET`
+#
+# `Rust_CARGO_TARGET` is a NORMAL variable in the scope that called
+# `find_package(Corrosion)`, and toolchain helpers publish it with
+# `PARENT_SCOPE` — which does not cross an `add_subdirectory()` boundary. A
+# generator that reads only the normal variable therefore sees it UNSET in some
+# scopes and silently builds for the wrong machine; phase-155 is exactly that
+# bug, host x86_64 objects landing in an ARM link. FindRust also writes
+# `Rust_CARGO_TARGET_CACHED` as CACHE INTERNAL, and a cache entry is visible
+# from every scope, so it is the reliable read.
+function(_nros_resolve_rust_target _out)
+    if(DEFINED CACHE{_NROS_RUST_TARGET})
+        set(${_out} "$CACHE{_NROS_RUST_TARGET}" PARENT_SCOPE)
+        return()
+    endif()
+
+    set(_t "")
+    if(DEFINED Rust_CARGO_TARGET AND NOT Rust_CARGO_TARGET STREQUAL "")
+        # A toolchain file or an in-scope find_package() said so. Wins outright.
+        set(_t "${Rust_CARGO_TARGET}")
+    elseif(DEFINED CACHE{Rust_CARGO_TARGET_CACHED} AND NOT "$CACHE{Rust_CARGO_TARGET_CACHED}" STREQUAL "")
+        set(_t "$CACHE{Rust_CARGO_TARGET_CACHED}")
+    elseif(DEFINED CACHE{_CORROSION_RUST_CARGO_TARGET} AND NOT "$CACHE{_CORROSION_RUST_CARGO_TARGET}" STREQUAL "")
+        set(_t "$CACHE{_CORROSION_RUST_CARGO_TARGET}")
+    endif()
+
+    if(_t STREQUAL "")
+        # No Corrosion in this configure (a pure C++ consumer can reach the
+        # codegen path without it). Ask rustc for its own host triple.
+        execute_process(
+            COMMAND rustc -vV
+            OUTPUT_VARIABLE _vv
+            RESULT_VARIABLE _rc
+            ERROR_QUIET
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(_rc EQUAL 0 AND _vv MATCHES "host:[ \t]*([^\n\r]+)")
+            string(STRIP "${CMAKE_MATCH_1}" _t)
+        endif()
+    endif()
+
+    if(_t STREQUAL "")
+        # Fail loudly rather than fall back to the implicit spelling: a silent
+        # fallback is how this split became invisible in the first place.
+        message(FATAL_ERROR
+            "nano-ros: cannot determine the cargo target triple. Neither "
+            "Rust_CARGO_TARGET nor Corrosion's cached copy is set, and "
+            "`rustc -vV` did not report a host. Set -DRust_CARGO_TARGET=<triple>.")
+    endif()
+
+    set(_NROS_RUST_TARGET "${_t}" CACHE INTERNAL
+        "cargo target triple for nano-ros' own cargo custom commands (phase-340 W3)")
+    set(${_out} "${_t}" PARENT_SCOPE)
+endfunction()
+
 # _nros_ffi_cargo_args(<out_var> MANIFEST <path> TARGET_DIR <path> PROFILE <name>
-#     [RUST_TARGET <triple>] [BUILD_STD <comma-list>])
+#     RUST_TARGET <triple> [TARGET_IN_CONFIG] [BUILD_STD <comma-list>])
 #
 # Assemble the `cargo <args>` for building an FFI staticlib crate (everything
 # AFTER the optional `+<toolchain>` prefix, which the caller prepends). Shared
 # skeleton: `build --manifest-path … --target-dir …` plus, conditionally:
 #   PROFILE     `dev` → no flag (cargo's default debug); `release` → --release;
 #               anything else (e.g. nros-relwithdebinfo) → --profile <name>.
-#   RUST_TARGET non-empty → --target <triple>.
+#   RUST_TARGET the triple. REQUIRED and non-empty — see below.
+#   TARGET_IN_CONFIG
+#               the crate's own `.cargo/config.toml` already sets
+#               `[build] target`, so do NOT pass `--target` as well (cargo would
+#               see it twice). RUST_TARGET is still required, because the
+#               ARTIFACT still lands under `<target-dir>/<triple>/<profile>/`
+#               and the caller has to spell that path.
 #   BUILD_STD   non-empty → -Z build-std=<comma-list> (tier-2/3 embedded triples
 #               that ship no precompiled std).
 # Toolchain pinning differs per consumer (canonical `+<tc>` prefix + .cargo/
 # config.toml; zephyr rust-toolchain.toml), so it stays in each generator.
+#
+# WHY AN EMPTY RUST_TARGET IS FATAL (phase-340 W3)
+#
+# It used to mean "host build — omit --target", and that made this helper the
+# one place in the repo that could emit cargo's IMPLICIT host spelling. Implicit
+# and explicit are different cargo identities on the same machine and share
+# nothing, not even through sccache (0 hits / 62 misses, measured) — while
+# corrosion, which builds the rest of the same cmake tree, always passes
+# `--target`. So "no triple" is not a mode, it is an unanswered question, and
+# `_nros_resolve_rust_target()` above answers it for every caller. Failing here
+# is what keeps the next generator from quietly re-opening the split.
 function(_nros_ffi_cargo_args _out)
-    cmake_parse_arguments(_A "" "MANIFEST;TARGET_DIR;PROFILE;RUST_TARGET;BUILD_STD" "" ${ARGN})
+    cmake_parse_arguments(_A "TARGET_IN_CONFIG" "MANIFEST;TARGET_DIR;PROFILE;RUST_TARGET;BUILD_STD" "" ${ARGN})
     set(_args build --manifest-path "${_A_MANIFEST}" --target-dir "${_A_TARGET_DIR}")
     if(_A_PROFILE STREQUAL "dev")
         # cargo's default profile — no flag
@@ -252,7 +358,14 @@ function(_nros_ffi_cargo_args _out)
     # literal string "_A_K" (auto-deref of an unset var is the name) → non-empty
     # → branch fires with an empty value, emitting a bare `--target` / `-Z
     # build-std=`. `if(_A_K)` derefs and treats unset/empty as false.
-    if(_A_RUST_TARGET)
+    if(NOT _A_RUST_TARGET)
+        message(FATAL_ERROR
+            "_nros_ffi_cargo_args: RUST_TARGET is required and must name a "
+            "triple. Resolve it with _nros_resolve_rust_target() — a host "
+            "build spells its triple explicitly here, like corrosion does "
+            "(phase-340 W3).")
+    endif()
+    if(NOT _A_TARGET_IN_CONFIG)
         list(APPEND _args --target ${_A_RUST_TARGET})
     endif()
     if(_A_BUILD_STD)

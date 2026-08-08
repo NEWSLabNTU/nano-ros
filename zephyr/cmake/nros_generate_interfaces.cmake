@@ -395,11 +395,11 @@ function(nros_generate_interfaces target)
       set(_nros_cargo_profile "${_NROS_FFI_PROFILE}")
       set(_nros_cargo_profile_dir "${_NROS_FFI_DIR}")
 
-      if(NROS_RUST_TARGET)
-        set(_ffi_lib "${_ffi_target_dir}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/libnano_ros_cpp_ffi_${target}.a")
-      else()
-        set(_ffi_lib "${_ffi_target_dir}/${_nros_cargo_profile_dir}/libnano_ros_cpp_ffi_${target}.a")
-      endif()
+      # phase-340 W3 — the triple is always named (host included), so the
+      # artifact always sits under it. `_nros_ffi_cargo_args` rejects an empty
+      # RUST_TARGET, so a missing `nros_detect_rust_target()` fails loudly
+      # rather than writing to a path this line would not have predicted.
+      set(_ffi_lib "${_ffi_target_dir}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/libnano_ros_cpp_ffi_${target}.a")
 
       # Generate Cargo.toml from template
       set(FFI_TARGET "${target}")
@@ -448,7 +448,8 @@ targets = [\"${NROS_RUST_TARGET}\"]
       # Assemble cargo args via the shared core (Phase 246.3). Tier-2/3 embedded
       # triples ship no precompiled std → build core+alloc from rust-src (inline
       # -Z, not a .cargo/config.toml). Toolchain pin lives in rust-toolchain.toml
-      # written above. NROS_RUST_TARGET empty → host build (no --target/build-std).
+      # written above. A host board still names its triple (phase-340 W3); only
+      # `-Z build-std` is conditional, on the embedded triples that ship no std.
       set(_zephyr_build_std "")
       if(NROS_RUST_TARGET MATCHES "^(armv7a|thumbv|riscv32)")
         set(_zephyr_build_std "core,alloc,compiler_builtins")

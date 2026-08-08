@@ -66,8 +66,17 @@ function(nros_detect_rust_target)
         # build-fixtures` time.
         set(NROS_RUST_TARGET "aarch64-unknown-none" PARENT_SCOPE)
     else()
-        message(WARNING "nros: Unknown Zephyr target, defaulting to host")
-        set(NROS_RUST_TARGET "" PARENT_SCOPE)
+        # phase-340 W3 — "defaulting to host" now NAMES the host triple instead
+        # of leaving the variable empty. Empty used to mean "omit --target",
+        # cargo's IMPLICIT host spelling, which is a different `-C metadata`
+        # identity from `--target <host-triple>` and shares nothing with the
+        # rest of the tree (measured: 0 sccache hits across the two spellings).
+        # The warning still stands — this branch is a guess about the ARCH — but
+        # the guess is now spelled the same way every other build spells it.
+        _nros_resolve_rust_target(_nros_host_triple)
+        message(WARNING
+            "nros: Unknown Zephyr target, defaulting to host (${_nros_host_triple})")
+        set(NROS_RUST_TARGET "${_nros_host_triple}" PARENT_SCOPE)
     endif()
 endfunction()
 
@@ -274,13 +283,20 @@ function(nros_cargo_build)
     set(_nros_cargo_profile "${NROS_CARGO_PROFILE}")
     set(_nros_cargo_profile_dir "${NROS_CARGO_PROFILE_DIR}")
 
-    if(NROS_RUST_TARGET)
-        set(LIB_PATH ${CARGO_TARGET_DIR}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/${LIB_NAME})
-        set(TARGET_ARGS --target ${NROS_RUST_TARGET})
-    else()
-        set(LIB_PATH ${CARGO_TARGET_DIR}/${_nros_cargo_profile_dir}/${LIB_NAME})
-        set(TARGET_ARGS "")
+    # phase-340 W3 — one spelling, host included. `nros_detect_rust_target()`
+    # always names a triple now (its unknown-arch fallback resolves the host
+    # one), so the "no --target, no triple in the path" branch is gone. It was
+    # the only way for this lane to emit cargo's implicit host spelling, which
+    # is a distinct `-C metadata` identity that shares nothing with the
+    # explicit one.
+    if(NOT NROS_RUST_TARGET)
+        message(FATAL_ERROR
+            "nros_cargo_build: NROS_RUST_TARGET is empty. Call "
+            "nros_detect_rust_target() first — a host build names its triple "
+            "explicitly here (phase-340 W3).")
     endif()
+    set(LIB_PATH ${CARGO_TARGET_DIR}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/${LIB_NAME})
+    set(TARGET_ARGS --target ${NROS_RUST_TARGET})
 
     # Bridge Kconfig → env vars before invoking Cargo
     nros_set_cargo_env_from_kconfig()

@@ -422,15 +422,26 @@ function(nros_generate_interfaces target)
       # internalizes it. (This is why the generated manifest pinned `lto = true`
       # while the profile was hardcoded `release`.)
       nros_resolve_carve_out_profile(cpp-ffi-glue _NROS_FFI)
-      # Cross-compilation: when Rust_CARGO_TARGET is set (e.g. by a CMake
-      # toolchain file), pass --target to cargo and adjust the output path.
-      if(DEFINED Rust_CARGO_TARGET)
-        set(_ffi_rust_target "${Rust_CARGO_TARGET}")
-        set(_ffi_lib "${_ffi_target_dir}/${Rust_CARGO_TARGET}/${_NROS_FFI_DIR}/libnano_ros_cpp_ffi_${target}.a")
-      else()
-        set(_ffi_rust_target "")
-        set(_ffi_lib "${_ffi_target_dir}/${_NROS_FFI_DIR}/libnano_ros_cpp_ffi_${target}.a")
-      endif()
+      # phase-340 W3 — ONE spelling of `--target`, host included.
+      #
+      # This used to branch: `--target <triple>` when `Rust_CARGO_TARGET` was
+      # visible, and NO `--target` otherwise. On a native build the variable is
+      # not visible here (it is a normal variable owned by whichever scope
+      # called `find_package(Corrosion)`), so the else-branch fired and this
+      # glue crate was the ONE cargo invocation in a cmake build that spelled
+      # the host build implicitly — while corrosion, in the same build tree,
+      # always passes `--target`. Verified on a built native workspace:
+      # `src/*/nano_ros_cpp_ffi_*/target/` held `nros-minsizerel/` with no
+      # triple directory above it, next to corrosion trees that had one.
+      #
+      # Those two spellings are different cargo identities and share NOTHING,
+      # not even through sccache (measured: 0 hits / 62 misses). The resolver
+      # never returns empty, so the branch is gone and the artifact path always
+      # carries the triple — which is also corrosion's layout, so the whole
+      # cmake lane now reads one way. Rationale + numbers live at
+      # `_nros_resolve_rust_target` in NanoRosCodegenCore.cmake.
+      _nros_resolve_rust_target(_ffi_rust_target)
+      set(_ffi_lib "${_ffi_target_dir}/${_ffi_rust_target}/${_NROS_FFI_DIR}/libnano_ros_cpp_ffi_${target}.a")
 
       file(MAKE_DIRECTORY "${_ffi_crate_src}")
 
@@ -464,21 +475,29 @@ function(nros_generate_interfaces target)
       # For Tier 3 targets (e.g. armv7a-nuttx-eabi), generate a .cargo/config.toml
       # with build-std=core and use nightly toolchain.
       set(_ffi_cargo_prefix "")
-      if(DEFINED Rust_CARGO_TARGET AND Rust_CARGO_TARGET MATCHES "nuttx")
+      # Reset per iteration: this runs inside a foreach over packages, and a
+      # value left over from a previous target would silently drop `--target`.
+      set(_ffi_target_in_config "")
+      # Read the RESOLVED triple, not `Rust_CARGO_TARGET` directly: the resolver
+      # falls back to Corrosion's cache copy, which survives the
+      # `add_subdirectory()` boundary that a PARENT_SCOPE publish does not
+      # (phase-155 — the normal variable went missing here and a NuttX build
+      # quietly emitted host x86_64 objects into an ARM link).
+      if(_ffi_rust_target MATCHES "nuttx")
         # Per-arch cross compiler for the generated config (#199 follow-up —
         # this block used to hardcode the arm pair, breaking the riscv board).
         # The env key is the triple with `-`→`_` (cc-rs convention).
-        if(Rust_CARGO_TARGET MATCHES "^riscv32")
+        if(_ffi_rust_target MATCHES "^riscv32")
           set(_ffi_cross_gcc "riscv-none-elf-gcc")
         else()
           set(_ffi_cross_gcc "arm-none-eabi-gcc")
         endif()
-        string(REPLACE "-" "_" _ffi_cc_env_key "${Rust_CARGO_TARGET}")
+        string(REPLACE "-" "_" _ffi_cc_env_key "${_ffi_rust_target}")
         file(MAKE_DIRECTORY "${_ffi_crate_dir}/.cargo")
         file(WRITE "${_ffi_crate_dir}/.cargo/config.toml"
-          "[build]\ntarget = \"${Rust_CARGO_TARGET}\"\n\n"
+          "[build]\ntarget = \"${_ffi_rust_target}\"\n\n"
           "[unstable]\nbuild-std = [\"core\"]\n\n"
-          "[target.${Rust_CARGO_TARGET}]\nlinker = \"${_ffi_cross_gcc}\"\n\n"
+          "[target.${_ffi_rust_target}]\nlinker = \"${_ffi_cross_gcc}\"\n\n"
           "[env]\nCC_${_ffi_cc_env_key} = \"${_ffi_cross_gcc}\"\n"
         )
         # Pin to the EXACT nightly the rest of the build uses — the dated
@@ -487,8 +506,12 @@ function(nros_generate_interfaces target)
         # Rust_TOOLCHAIN). Generic `+nightly` resolves to an UNinstalled
         # `nightly-x86_64-unknown-linux-gnu` → rustlib src/Cargo.lock missing.
         set(_ffi_cargo_prefix "+${Rust_TOOLCHAIN}")
-        # With .cargo/config.toml, --target is set there; don't pass it again.
-        set(_ffi_rust_target "")
+        # With .cargo/config.toml, `[build] target` is set there; don't pass
+        # `--target` as well. The triple itself STAYS set — the artifact still
+        # lands under `<target-dir>/<triple>/<profile>/` and `_ffi_lib` above
+        # already spells it that way. (Blanking the variable here is what used
+        # to make "no triple" ambiguous between this case and a host build.)
+        set(_ffi_target_in_config TARGET_IN_CONFIG)
       endif()
 
       # Assemble cargo args via the shared core (Phase 246.3). phase-336: the
@@ -500,7 +523,8 @@ function(nros_generate_interfaces target)
         MANIFEST "${_ffi_crate_dir}/Cargo.toml"
         TARGET_DIR "${_ffi_target_dir}"
         PROFILE "${_NROS_FFI_PROFILE}"
-        RUST_TARGET "${_ffi_rust_target}")
+        RUST_TARGET "${_ffi_rust_target}"
+        ${_ffi_target_in_config})
 
       # Build the FFI staticlib after codegen runs
       # The preset's definition has to ride ON the command: this is a plain

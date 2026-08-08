@@ -408,7 +408,8 @@ check-fast: \
     check-c-fmt check-cpp-fmt check-python \
     check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
-    check-activate-shells check-build-root check-fixture-groups check-artifact-identity-budget
+    check-activate-shells check-build-root check-fixture-groups check-artifact-identity-budget \
+    check-cargo-target-spelling
     @echo "Fast checks passed!"
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
@@ -3287,6 +3288,25 @@ check-fixture-groups:
 [private]
 check-artifact-identity-budget:
     @bash scripts/check-artifact-identity-budget.sh
+
+# phase-340 W3 — ONE `--target` spelling for every cargo command cmake emits.
+#
+# `--target <host-triple>` and no `--target` are different cargo identities on
+# the same machine, and they share nothing — not even sccache entries (0 hits /
+# 62 misses across the two spellings, measured on a private cold cache). Every
+# corrosion target already passes `--target` (corrosion hardcodes it), so
+# nano-ros' own cargo custom commands normalise to the explicit spelling and
+# `_nros_resolve_rust_target()` is the single answer to "which triple".
+#
+# The gate configures a NONE-language cmake project against the module in the
+# scopes that matter — no Corrosion at all, a toolchain variable, only
+# Corrosion's CACHE copy (the phase-155 scope where a PARENT_SCOPE publish did
+# not cross `add_subdirectory()`), and nothing at all — and asserts the last one
+# FAILS rather than falling back to the implicit spelling. Buildless: no
+# compiler, no cargo, no fixtures.
+[private]
+check-cargo-target-spelling:
+    @bash packages/testing/nros-tests/tests/cargo_target_spelling.sh
 
 # Verify Phase 118.E size-probe rigorization: cross-mode parity,
 # cross-target build under isolated mode, concurrency soak.
