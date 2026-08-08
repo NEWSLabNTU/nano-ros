@@ -261,7 +261,7 @@ is why 334 W2.b comes before the grouping work here.
 | ~~2~~ | ~~**340 W5.b / W5.c**~~ | **DONE** 2026-08-07 — a straight deletion, not a feature gate: 181→165 units, overlap 12→8 |
 | ~~3~~ | ~~**340 W6 step 1**~~ | **DONE** 2026-08-07 — not the remap: `incremental = false` on `dev`. 115/143 rlibs byte-identical, incremental state 185 MB → 1 MB per fixture |
 | ~~4~~ | ~~**334 W2.b steps 2–4**~~ | **DONE 2026-08-08** — step 2 complete: four more families + a four-site tail, `git grep` for rooted literals now returns nothing. Steps 3-4 merged into item 5 (below), since the path changes there anyway. Original note: **DECIDED 2026-08-07** — the source-relative class is NOT a separate pass: 128 of 137 authored manifest paths are reproducible from (kind, platform, rmw) and the other 9 from the feature signature, so the column is DELETED, not derived. That merges into item 5. What remains here is the ROOTED side only (R3, one spelling) |
-| 5 | **340 W2** | umbrella invocation per identity group (was also 334 W3.a) — **now also absorbs the manifest `target_dir` / `build_subdir` column**, since widening the group key and deleting the column are one change |
+| 5 | **340 W2** | umbrella invocation per identity group (was also 334 W3.a) — **now also absorbs the manifest `target_dir` / `build_subdir` column**, since widening the group key and deleting the column are one change. **IN PROGRESS 2026-08-08**: the key widening + `check-fixture-groups` landed; W2.a steps 2–3, W2.b and the column deletion (W2.d) are blocked on findings recorded under W2 — the umbrella-workspace shape is impossible as specified (every leaf is its own workspace root), `linux` fails two group preconditions, and the column is a predicate as well as a path |
 | 6 | **340 W3** | normalise the corrosion `--target` split (was also 334 W3.b) |
 | 7 | **334 W2.c** | collapse `.gitignore`, once (4) has moved the paths |
 | 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c) |
@@ -591,16 +591,112 @@ W2/W3 implementation.**
       2 tls, 1 zero-copy) and additionally need the authored flag STRIPPED from
       `cargo_args`, or cargo receives two `--target-dir` flags.
 
-      **Remaining for W2.a**, in order: (1) strip the authored flag when the
-      group governs; (2) add `linux` to the default list; (3) rebuild the native
-      lane and verify every row resolves — this MOVES 85+ rows' artifacts, so it
-      is RFC-0070's "paths last" step and cannot be verified without the lane.
+      **Step (1) LANDED 2026-08-08.** `nros_fixture_group_slug` splits the group
+      KEY out of `nros_fixture_group`, which conflated it with ELIGIBILITY;
+      `nros_fixture_target_dir_flag` no longer bails on an authored dir; and
+      `nros_fixture_strip_authored_target_dir` removes the row's own flag in
+      BOTH callers (`fixtures-build.sh`, `rust-fixture-stale.sh`). Inert at
+      today's default list — no `qemu-arm-baremetal` row authors a
+      `--target-dir`, so nothing moved (RFC-0070's "paths last"). Four new
+      tripwired arms in `build_root_derivation.sh`.
+
+      The split was forced by the gate below rather than chosen: a check on the
+      preconditions for MIGRATING a platform has to ask "which group would this
+      row land in?" for a platform that is by definition not migrated, and the
+      old function answered "none".
+
+      **Steps (2)/(3) are BLOCKED, and the blockers were not known.** Adding
+      `linux` looked like a one-word edit; it fails two preconditions, now gated
+      by `check-fixture-groups` (`check-fast`):
+
+      * **Artifact-name collisions.** A group's members write into ONE flat
+        `<group>/[<triple>/]<profile>/` namespace. Cargo hashes `deps/` by
+        `-C metadata`; it does NOT hash the final artifact name. Measured over
+        the whole manifest with the widened key, `linux`'s default group has two
+        names claimed twice: `talker` (`native-rs-custom-transport-talker` vs
+        `native-rs-talker`) and `listener` (same pair). Last writer wins and one
+        test silently runs the other's binary — strictly worse than the
+        missing-binary error #393 produced. `qemu-arm-baremetal` is
+        collision-free, so phase-226.D has been protecting this invariant by
+        luck for two phases. **Cargo does not save you here even in the umbrella
+        shape**: measured, it emits `warning: output filename collision … this
+        may become a hard error in the future` (rust-lang/cargo#6313) and
+        builds anyway.
+      * **The Rust resolver cannot express a variant group.**
+        `fixture_shared_target_dir` returns `build_dir("fixtures-cargo",
+        &[platform])`. Its own doc comment says a feature/env variant "would
+        need an explicit mirror" — a comment, not a gate. `linux` produces SIX
+        variant groups today, so the build would write
+        `fixtures-cargo/linux-<cksum>` while the test looked in
+        `fixtures-cargo/linux`. Note the mirror problem is real: the shell slug
+        is a `cksum` of the variant signature, and reimplementing a checksum in
+        Rust is a second spelling. Prefer shelling into
+        `nros_fixture_group_slug` (nros-tests already shells into
+        `fixtures-manifest.py` for `current_workspace_fixture_record`) over
+        porting the hash.
+
+      So the order is now: fix the two colliding binary names → teach the Rust
+      resolver the variant slug → add `linux` → rebuild the native lane. Only
+      the last of those needs the lane.
 - [ ] **W2.b** Convert the FIVE head signatures (above) from N parallel cargo
       invocations into ONE invocation each over a build-time-only umbrella
       workspace — 62 of 117 linux rows. Leaves keep their standalone manifests
       (RFC-0026's copy-out promise); the umbrella is generated for the fixture
       build and never committed. The 55 singleton signatures are out of scope
       by construction: they have nothing to share with.
+
+      **The literal shape is IMPOSSIBLE — measured 2026-08-08.** "Leaves keep
+      their standalone manifests" and "one workspace over those leaves" are
+      mutually exclusive. Every example leaf carries an empty `[workspace]`
+      table (Phase 208.F1, which is *how* RFC-0026's copy-out promise is kept),
+      and cargo refuses a member that is itself a workspace root:
+
+      ```console
+      $ cargo metadata          # umbrella whose members are two such leaves
+      error: multiple workspace roots found in the same workspace:
+        …/leafA
+        …/leafB
+        …/root
+      ```
+
+      **41 of 41** `linux` rust fixture leaf dirs carry that table, so this is
+      the whole population, not an edge.
+
+      **The shape that DOES work, verified in the same session:** a generated
+      symlink farm under the build root. Each member dir holds a REWRITTEN
+      `Cargo.toml` (the `[workspace]` table stripped, everything else copied)
+      plus symlinks to `src/`, `generated/`, `package.xml`. Two members with
+      colliding bin names built in ONE invocation into ONE target dir. What that
+      shape costs, stated before anyone builds it:
+
+      * It is **generated build state with a staleness input** — the rewritten
+        manifests go stale whenever a leaf manifest changes. That is issue
+        0196's class, so the farm's freshness has to be probed by the same
+        derivation the build and the test resolver use, not by a sibling check.
+      * `--locked` is injected project-wide by the `scripts/bin/cargo` PATH
+        shim. A generated umbrella has no committed lock, so the driver needs a
+        deliberate answer (generate then pin, or a scoped `NROS_CARGO_FLAGS=`),
+        not an accidental one.
+      * Identity changes again by R2 — one lock, one resolution — so the
+        umbrella's artifacts share with nothing outside the group. That is the
+        point, but it means "did this reduce duplication?" cannot be answered by
+        comparing an umbrella artifact against a leaf artifact.
+      * One suspected blocker that is NOT one: **0 of 41** linux leaves carry
+        their own `.cargo/config.toml`, so they already resolve
+        `[patch.crates-io]` through the repo-root config walk-up — which an
+        umbrella under `build/` reaches identically.
+- [ ] **W2.d** Delete the manifest `target_dir` / `build_subdir` column (absorbed
+      from phase-334 W2.b, work-order item 5). Not done here: the column is still
+      read as a **predicate**, not only as a path. `fixtures-manifest.py`'s
+      `--core-only` (issue #29) treats "authored `target_dir`" as "is this a
+      variant row?", and the obvious replacement is not equivalent — measured
+      over the 122 rust rows, 30 author a `target_dir` while 37 have a non-empty
+      variant signature, the 7 extra being the whole `qemu-arm-nuttx` rust set
+      plus `logging-smoke-nuttx-qemu-arm`. Swapping the predicate would silently
+      drop those from the host-integration lane, so it is a decision, not a
+      mechanical substitution. The other consumers are `fixture-inventory.py` and
+      the `binaries/mod.rs` resolvers that spell `target-tls` / `target-fixtures`
+      / `target-large-buf` directly, and those move only when the paths do.
 - [ ] **W2.c** Measure W2.b against the status quo on disk AND wall-clock,
       alternating reps per the W1 method.
 

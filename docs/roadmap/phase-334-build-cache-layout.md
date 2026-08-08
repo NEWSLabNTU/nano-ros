@@ -355,6 +355,13 @@ here so a reader of either doc sees the same sequence.
 4. **334 W2.b steps 2–4** — the derivation for source-relative cache data. The
    precondition for placing anything new.
 5. **340 W2** (was also 334 W3.a) — umbrella invocation per identity group.
+   IN PROGRESS 2026-08-08: the group key widened (an authored `--target-dir`
+   names a group instead of opting the row out) and `check-fixture-groups`
+   gates the preconditions. The umbrella shape itself is blocked — every
+   example leaf is its own workspace root, so cargo rejects the umbrella
+   outright; findings and the shape that does work are in phase-340 W2.b. **The
+   manifest column this item absorbed from W2.b is therefore still authored**;
+   its deletion is phase-340 W2.d.
 6. **340 W3** (was also 334 W3.b) — normalise the corrosion `--target` split.
 7. **334 W2.c** — collapse `.gitignore` once (4) has moved the paths.
 8. **340 W7** (was 334 W3.c) — re-measure both axes against phase-331's pair.
