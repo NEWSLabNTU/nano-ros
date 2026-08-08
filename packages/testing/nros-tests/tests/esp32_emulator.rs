@@ -321,7 +321,7 @@ fn test_esp32_to_native() {
         .expect("Failed to start native listener");
 
     // Wait for native listener to be ready
-    let _ = native_proc.wait_for_output_pattern("Waiting for", Duration::from_secs(10));
+    let _ = native_proc.wait_for_output_pattern(nros_tests::output::LISTENER_READY_MARKER, Duration::from_secs(10));
 
     // Stabilization delay
     std::thread::sleep(Duration::from_secs(5));
@@ -525,7 +525,7 @@ fn test_esp32_workspace_entry_e2e() {
         .env("RUST_LOG", "info");
     let mut native_proc = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start native listener");
-    let _ = native_proc.wait_for_output_pattern("Waiting for", Duration::from_secs(10));
+    let _ = native_proc.wait_for_output_pattern(nros_tests::output::LISTENER_READY_MARKER, Duration::from_secs(10));
     std::thread::sleep(Duration::from_secs(5));
 
     // Boot the single-process Entry (talker + listener).

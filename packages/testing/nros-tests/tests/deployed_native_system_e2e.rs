@@ -66,7 +66,7 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("spawn listener");
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(8))
+        .wait_for_output_pattern(nros_tests::output::INT32_SINK_READY_MARKER, Duration::from_secs(8))
         .expect("listener did not become ready");
 
     // The PLANNED deploy: spins for ~10 s (NROS_ENTRY_SPIN_MS) publishing

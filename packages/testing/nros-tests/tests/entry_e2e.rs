@@ -461,7 +461,7 @@ fn spawn_rust_listener_observer(locator: &str) -> ManagedProcess {
     cmd.env("RUST_LOG", "info").env("NROS_LOCATOR", locator);
     let mut obs = ManagedProcess::spawn_command(cmd, "native-observer")
         .unwrap_or_else(|e| panic!("spawn observer: {e}"));
-    obs.wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+    obs.wait_for_output_pattern(nros_tests::output::LISTENER_READY_MARKER, Duration::from_secs(10))
         .unwrap_or_else(|_| {
             obs.kill();
             panic!("native observer listener never became ready")

@@ -402,6 +402,7 @@ check-fast: \
     check-capability-slot-counts \
     check-cargo-profile-mirror check-build-profile-literals \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
+    check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
@@ -653,6 +654,12 @@ check-codegen-invocation:
 [private]
 check-string-conventions:
     @scripts/ci/string-conventions-check.sh
+
+# Issue 0481 — a readiness grep naming an AMBIGUOUS literal waits out its whole
+# timeout in silence and still passes. Buildless: reads sources only.
+[private]
+check-readiness-marker-literals:
+    @bash scripts/check-readiness-marker-literals.sh
 
 # Issue-id integrity: ids unique across docs/issues/ + archived/, and each
 # file's `id:` frontmatter matching its filename. Parallel sessions kept

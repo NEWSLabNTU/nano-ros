@@ -135,7 +135,7 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     // Wait for listener readiness
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
+    let _ = listener.wait_for_output_pattern(nros_tests::output::LISTENER_READY_MARKER, Duration::from_secs(5));
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -197,7 +197,7 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     // Wait for listener readiness
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
+    let _ = listener.wait_for_output_pattern(nros_tests::output::LISTENER_READY_MARKER, Duration::from_secs(5));
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);

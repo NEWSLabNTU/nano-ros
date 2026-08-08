@@ -112,7 +112,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
         ManagedProcess::spawn_command(listener_cmd, "xrce-listener-declarative-bridge")
             .expect("spawn xrce listener");
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(8))
+        .wait_for_output_pattern(nros_tests::output::INT32_SINK_READY_MARKER, Duration::from_secs(8))
         .expect("xrce listener did not become ready");
 
     let talker_binary = match build_native_talker_header() {
