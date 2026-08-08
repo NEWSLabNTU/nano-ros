@@ -249,12 +249,20 @@ pub fn config_header(
     // node of a launch on ONE zenoh-pico session, so in-process node-to-node delivery —
     // pub→sub AND client query→queryable — depends on these flags. With them 0 the
     // loopback path (src/session/loopback.c) is compiled out and same-session callbacks
-    // never fire. Enable on the HOST/native build (multi-process is optional there, so
-    // single-process multi-node demos are common); keep OFF on embedded, where RAM is
-    // tight and the loopback + write-filter code is unbudgeted (revisit per-target with a
-    // size probe). The flags are purely additive: a local match sets the write filter to
-    // OFF (filtering.c), so the network publication to external subscribers is preserved.
-    let local_loopback = if is_embedded_target(target) { 0 } else { 1 };
+    // never fire. Enabled on EVERY target, embedded included: the multi-tier entries
+    // (FreeRTOS `run_tiers_entry`, Zephyr `run_tiers`) put all nodes of a launch on one
+    // shared session, so intra-image pub→sub is the norm on embedded, not a host-only
+    // convenience — and a vanilla zenohd never echoes a put back to the session it came
+    // from (issue 0317), so with the flag 0 NO same-session route can deliver, over any
+    // path. Remote routes keep working, which disguises the config error as a per-route
+    // delivery bug (the rt-eval safety island's cross-tier gate→actuator command on
+    // FreeRTOS stayed silent while the identical image on Zephyr, whose cmake forces =1
+    // in `zephyr/cmake/nros_rmw_zenoh.cmake`, delivered). This brings the cargo-built
+    // embedded lanes (FreeRTOS / NuttX / ThreadX / bare-metal) in line with Zephyr and
+    // the host build. The flags are purely additive:
+    // a local match sets the write filter to OFF (filtering.c), so the network
+    // publication to external subscribers is preserved.
+    let local_loopback = 1;
     writeln!(
         header,
         "#define Z_FEATURE_LOCAL_SUBSCRIBER {}",
@@ -813,9 +821,13 @@ int32_t zpico_init(void);\n";
         // signature used to carry; with the board gone they are unconditional.
         assert!(header.contains("#define Z_FEATURE_ENCODING_VALUES 1"));
         assert!(header.contains("#define Z_FEATURE_AUTO_RECONNECT 1"));
-        // issue 0096 — same-session loopback stays OFF on embedded (RAM-budgeted).
-        assert!(header.contains("#define Z_FEATURE_LOCAL_SUBSCRIBER 0"));
-        assert!(header.contains("#define Z_FEATURE_LOCAL_QUERYABLE 0"));
+        // issue 0096 — same-session loopback is ON everywhere, embedded included:
+        // the multi-tier entries share one session across all tiers, and zenohd
+        // never echoes a put back to its source session (issue 0317), so without
+        // the loopback no intra-image route can deliver (the silent gate→actuator
+        // drop on FreeRTOS).
+        assert!(header.contains("#define Z_FEATURE_LOCAL_SUBSCRIBER 1"));
+        assert!(header.contains("#define Z_FEATURE_LOCAL_QUERYABLE 1"));
     }
 
     #[test]

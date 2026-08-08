@@ -209,10 +209,14 @@ Consequences and rules:
   wedges). Fork patch in `zenoh-pico/include/zenoh-pico/config.h` (+ the
   `zenoh_generic_config.h` twin); NuttX intentionally keeps 5000.
 - **Intra-image pub→sub needs `Z_FEATURE_LOCAL_SUBSCRIBER=1`** (set by
-  `zephyr/cmake/nros_rmw_zenoh.cmake`): all nodes in an image share ONE session
+  `zephyr/cmake/nros_rmw_zenoh.cmake` on Zephyr; the generated
+  `zenoh_generic_config.h` from `nros-zpico-build` sets it for every
+  cargo-built lane, embedded included): all nodes in an image share ONE session
   (RFC-0015 Model 1), and neither zenoh-pico nor zenohd loops a publication back
   to the session it came from. Without it a same-image pair (e.g. ws-qos-rust's
-  `reliable_talker → qos_listener`) never delivers, silently.
+  `reliable_talker → qos_listener`, or the multi-tier FreeRTOS safety island's
+  gate→actuator command) never delivers, silently — remote routes keep working,
+  so the drop masquerades as a per-route scheduling bug.
 - The #129 per-node-liveliness "deadlock" was this same mechanism — the first
   declare to hit the recv window. The `platform-zephyr` gate it prompted was
   LIFTED after the timeout fix (issue 0143): per-node NN tokens declare fine
