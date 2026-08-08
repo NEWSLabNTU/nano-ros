@@ -55,6 +55,20 @@ fn lane_sh_env(snippet: &str, stamp: Option<&str>, env: &[(&str, &str)]) -> (i32
             "set -u; source scripts/build/fixture-lane.sh; {snippet}"
         ))
         .current_dir(&root);
+    // The child must not INHERIT the lane environment. `ci-matrix` exports
+    // NROS_TEST_COORDS (that is the whole point of W3), so a test asserting
+    // "unset is refused" passed standalone and FAILED inside a real run — the
+    // child saw the ambient value and the guard correctly declined to refuse.
+    // A guard that reads green in isolation while the hole is open in situ is
+    // worse than no guard, so the helper now OWNS these variables: cleared
+    // first, then set only by an explicit `env` entry below.
+    for k in [
+        "NROS_TEST_COORDS",
+        "NROS_FIXTURE_LANE",
+        "NROS_FIXTURE_STAMP",
+    ] {
+        cmd.env_remove(k);
+    }
     if let Some(s) = stamp {
         cmd.env("NROS_FIXTURE_STAMP", s);
     }
@@ -414,6 +428,19 @@ fn a_narrow_build_is_refused_when_the_run_is_not_narrowed() {
     let coord_lines = std::fs::read_to_string(&coords).expect("read tier2 coords");
     let coord_refs: Vec<&str> = coord_lines.lines().filter(|l| !l.is_empty()).collect();
     let stamp = write_stamp(&dir, "tier2", &coord_refs);
+
+    // Assert the PRECONDITION, so this can never pass vacuously again: the
+    // child must really see NROS_TEST_COORDS absent. Without this the test is
+    // only as true as the ambient environment happens to be.
+    let (pre_code, pre_out) = lane_sh(
+        "if [ -n \"${NROS_TEST_COORDS:-}\" ]; then echo LEAKED; exit 9; fi; echo ABSENT",
+        Some(stamp.to_str().unwrap()),
+    );
+    assert_eq!(
+        pre_code, 0,
+        "precondition: NROS_TEST_COORDS leaked into the child, so the refusal \
+         below would not be testing anything:\n{pre_out}"
+    );
 
     let (code, out) = lane_sh(
         "nros_fixtures_stamp_require tier2 < /dev/null",
