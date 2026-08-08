@@ -173,7 +173,10 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
         .expect("Failed to start listener");
 
     // Wait for listener to be ready
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
+    let _ = listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(5),
+    );
 
     // Wait for DDS discovery + XRCE Agent to propagate subscription
     std::thread::sleep(Duration::from_secs(1));

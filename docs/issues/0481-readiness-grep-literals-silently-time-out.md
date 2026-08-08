@@ -128,12 +128,49 @@ was also rejected — it matched `"Listener"` against
 so the file cannot become a permanent exemption. Both arms verified to fail
 before being trusted.
 
-## Remaining
+## The 35 audited (2026-08-08) — 3 more defects, 32 harmless
 
-- **The 35 baselined sites.** Each needs the same treatment: identify the binary,
-  confirm what it prints, pick the constant. Most are `zephyr.rs` and the
-  emulator lanes, whose targets are on-device images rather than host
-  binaries — that is why they were not swept here.
+Audited all 35 rather than assuming. The decisive split is not which literal is
+used, it is **whether the caller checks the result**:
+
+| | sites | can it be silently wrong? |
+| --- | --- | --- |
+| CHECKED (`.expect` / `is_err()` / `unwrap_or_else`) | 26 | **No.** A wrong marker fails LOUDLY, and the suite is green — so those markers demonstrably match. Ambiguous, not broken. |
+| DISCARDED (`let _ =` or unhandled) | 9 | Yes — only these can hide. |
+
+Of the 9 discarded, six wait on a process that DOES print a `Waiting for…`
+line, verified by reading each binary's source rather than its name:
+
+- `zero_copy.rs:45` — `message-info-observer` prints BOTH
+  `"Subscriber created for topic:"` AND `"Waiting for messages with
+  MessageInfo…"`.
+- `xrce.rs:209`, `xrce.rs:253` — `native/rust/serial-listener` prints BOTH
+  `"Subscriber created on /chatter"` and `"Waiting for messages..."`. The serial
+  listener is not the plain listener; the name suggested otherwise.
+- `actions.rs:76` (`"Sending goal"`, an exact `ACTION_SENDING_GOAL_MARKER`
+  duplicate), `params.rs:144`, `nano2nano.rs:66` (waits `"Publishing"` and DOES
+  test the result).
+
+**Three were real**, all resolving to `native/rust/listener`, which prints only
+`"Subscriber created for topic:"`:
+
+| site | timeout burned |
+| --- | --- |
+| `xrce.rs:96` | **30 s** |
+| `zephyr.rs:1050` | 5 s |
+| `xrce_ros2_interop.rs:176` | 5 s |
+
+40 s more silent waiting, on top of the 50 s already fixed. Fixed; baseline
+shrank 35 → 32.
+
+The remaining 32 are ambiguous literals whose markers work — worth converting for
+the rule's sake, worth nothing for runtime. They are not a defect backlog.
+
+**The generalisable finding:** `build_xrce_listener()`, `xrce_listener_binary`
+and `native_listener` all resolve to the same `native/rust/listener`. Three names
+for one binary is why "which language does this wait on" could not be answered by
+reading the call site, and why the audit had to resolve every builder to a
+source path.
 - **Issue 0471 is the deeper half, and this gate does not touch it.** While a
   timeout can return `Ok`, no amount of marker correctness makes these waits
   self-reporting: the gate stops a KNOWN-ambiguous literal landing, it cannot

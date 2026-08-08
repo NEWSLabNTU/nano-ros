@@ -93,7 +93,10 @@ fn test_xrce_listener_starts(xrce_listener_binary: PathBuf) {
         ManagedProcess::spawn_command(cmd, "xrce-listener").expect("Failed to start listener");
 
     // Wait for readiness (listener prints "Waiting for" after setup)
-    match listener.wait_for_output_pattern("Waiting for", Duration::from_secs(30)) {
+    match listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(30),
+    ) {
         Ok(_) => eprintln!("xrce-listener started successfully"),
         Err(_) => {
             if listener.is_running() {

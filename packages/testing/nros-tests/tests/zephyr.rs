@@ -1047,7 +1047,10 @@ fn test_bidirectional_native_zephyr_e2e() {
     .expect("Failed to start Zephyr listener");
 
     native_listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("native listener did not become ready");
     let _ = zephyr_listener.wait_for_pattern(NODE_READY_MARKER, Duration::from_secs(30));
 
