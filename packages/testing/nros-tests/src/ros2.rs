@@ -350,7 +350,24 @@ NROS_PYEOF"
     }
 
     /// Wait for output and return it
-    pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
+    /// Collect output until `stop` is satisfied, the process exits, or `timeout`
+    /// elapses — the shared engine behind [`Self::wait_for_output`] (drain to the
+    /// deadline) and [`Self::wait_for_output_count`] (stop early on a pattern).
+    ///
+    /// Returns the output AND whether `stop` was satisfied. Both facts in one
+    /// return value on purpose: `ManagedProcess` had to learn this the hard way
+    /// (issue 0471) when a single `Result` conflated them and the only path
+    /// carrying the output was also the path claiming success.
+    ///
+    /// phase-342 W9 — this exists so a ROS 2 wait can be a CONDITION rather than
+    /// a duration. Before it, the only way to "give ROS 2 time to receive" was
+    /// `sleep`, because `wait_for_output` drains to its deadline and cannot be
+    /// asked about a pattern.
+    fn collect_until(
+        &mut self,
+        stop: Option<(&str, usize)>,
+        timeout: Duration,
+    ) -> TestResult<(String, bool)> {
         use std::io::Read;
         #[cfg(unix)]
         use std::os::unix::io::AsRawFd;
@@ -375,11 +392,22 @@ NROS_PYEOF"
             fd
         };
 
+        let satisfied = |out: &str| match stop {
+            Some((pat, n)) => out.matches(pat).count() >= n,
+            None => false,
+        };
+
         let mut buffer = [0u8; 4096];
         loop {
+            if satisfied(&output) {
+                // Put stdout back: a caller that stopped early may still want to
+                // collect the rest, which the old drain-only shape made impossible.
+                self.handle.stdout = Some(stdout);
+                return Ok((output, true));
+            }
             if start.elapsed() > timeout {
                 kill_process_group(&mut self.handle);
-                if output.is_empty() {
+                if output.is_empty() && stop.is_none() {
                     return Err(TestError::Timeout);
                 }
                 break;
@@ -414,7 +442,38 @@ NROS_PYEOF"
             }
         }
 
-        Ok(output)
+        let matched = satisfied(&output);
+        Ok((output, matched))
+    }
+
+    /// Drain output until the process exits or `timeout` elapses. Unchanged
+    /// behaviour; now a thin caller of [`Self::collect_until`].
+    pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
+        self.collect_until(None, timeout).map(|(out, _)| out)
+    }
+
+    /// Wait until `pattern` has appeared `expected` times, returning as soon as
+    /// it has (phase-342 W9).
+    ///
+    /// This is what lets a ROS 2 test wait for the delivery it asserts instead
+    /// of sleeping a fixed duration and hoping — the W8 rule, previously
+    /// unavailable here for want of this method.
+    ///
+    /// On timeout the error carries the collected output, so a failure reads
+    /// like the assertion that would have followed.
+    pub fn wait_for_output_count(
+        &mut self,
+        pattern: &str,
+        expected: usize,
+        timeout: Duration,
+    ) -> TestResult<String> {
+        match self.collect_until(Some((pattern, expected)), timeout)? {
+            (out, true) => Ok(out),
+            (out, false) => Err(TestError::ProcessFailed(format!(
+                "{} printed `{}` fewer than {} time(s) within {:?}. Output:\n{}",
+                self.name, pattern, expected, timeout, out
+            ))),
+        }
     }
 
     /// Wait for data on a file descriptor (or sleep on non-Unix).
@@ -1263,7 +1322,19 @@ rclpy.spin(node)
     }
 
     /// Wait for output and return it
-    pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
+    /// Collect output until `stop` is satisfied, the process exits, or `timeout`
+    /// elapses — the shared engine behind [`Self::wait_for_output`] and
+    /// [`Self::wait_for_output_count`] (phase-342 W9).
+    ///
+    /// Same shape as `Ros2Process::collect_until`, and deliberately a second
+    /// copy rather than a trait: these two structs own different handles and
+    /// differ in their exit handling, so the honest move is two small engines
+    /// over one abstraction that fits neither. If a third appears, extract.
+    fn collect_until(
+        &mut self,
+        stop: Option<(&str, usize)>,
+        timeout: Duration,
+    ) -> TestResult<(String, bool)> {
         use std::io::Read;
         #[cfg(unix)]
         use std::os::unix::io::AsRawFd;
@@ -1288,8 +1359,17 @@ rclpy.spin(node)
             fd
         };
 
+        let satisfied = |out: &str| match stop {
+            Some((pat, n)) => out.matches(pat).count() >= n,
+            None => false,
+        };
+
         let mut buffer = [0u8; 4096];
         loop {
+            if satisfied(&output) {
+                self.handle.stdout = Some(stdout);
+                return Ok((output, true));
+            }
             if start.elapsed() > timeout {
                 kill_process_group(&mut self.handle);
                 if output.is_empty() {
@@ -1327,7 +1407,32 @@ rclpy.spin(node)
             }
         }
 
-        Ok(output)
+        let matched = satisfied(&output);
+        Ok((output, matched))
+    }
+
+    /// Drain output until the process exits or `timeout` elapses. Unchanged
+    /// behaviour; now a thin caller of [`Self::collect_until`].
+    pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
+        self.collect_until(None, timeout).map(|(out, _)| out)
+    }
+
+    /// Wait until `pattern` has appeared `expected` times, returning as soon as
+    /// it has (phase-342 W9) — so a DDS-side test waits for the delivery it
+    /// asserts rather than sleeping a fixed duration.
+    pub fn wait_for_output_count(
+        &mut self,
+        pattern: &str,
+        expected: usize,
+        timeout: Duration,
+    ) -> TestResult<String> {
+        match self.collect_until(Some((pattern, expected)), timeout)? {
+            (out, true) => Ok(out),
+            (out, false) => Err(TestError::ProcessFailed(format!(
+                "{} printed `{}` fewer than {} time(s) within {:?}. Output:\n{}",
+                self.name, pattern, expected, timeout, out
+            ))),
+        }
     }
 
     /// Wait for data on a file descriptor (or sleep on non-Unix).

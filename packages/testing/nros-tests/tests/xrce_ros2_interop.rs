@@ -108,23 +108,20 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
         Duration::from_secs(5),
     );
 
-    // phase-342 W8 — one of the few sleeps that CANNOT become a marker wait
-    // today, and the reason is an API gap rather than a missing marker. The
-    // observable exists (the ROS 2 listener prints `data:`, which this test
-    // counts below), but `Ros2Process` has only `wait_for_output(timeout)`: it
-    // `take()`s stdout and drains until the deadline, so there is no
-    // wait-until-pattern and no way to call it twice.
-    //
-    // Giving `Ros2Process` a `wait_for_output_count` means refactoring that
-    // shared IO loop, which is worth doing deliberately — every ROS 2 wait in
-    // the tree would benefit — but not as a side effect of reclaiming 2 s.
-    std::thread::sleep(Duration::from_secs(2));
-
-    // Collect ROS 2 output
-    talker.kill();
+    // phase-342 W9 — wait for the DELIVERY this test asserts (`data:` lines from
+    // the ROS 2 listener) instead of sleeping 2 s for it. W8 could not convert
+    // this site: `Ros2Process` had only `wait_for_output(timeout)`, which drains
+    // to its deadline and cannot be asked about a pattern. W9 added the shared
+    // `collect_until` engine, so the wait is now the condition rather than a
+    // guess at how long it takes.
     let ros2_output = ros2_listener
-        .wait_for_output(Duration::from_secs(1))
-        .unwrap_or_default();
+        .wait_for_output_count("data:", 1, Duration::from_secs(20))
+        .unwrap_or_else(|e| {
+            eprintln!("ROS 2 listener saw no `data:` within 20s: {e}");
+            String::new()
+        });
+
+    talker.kill();
 
     eprintln!("ROS 2 DDS output:\n{}", ros2_output);
 
