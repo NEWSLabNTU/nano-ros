@@ -258,6 +258,12 @@ scenario '
     check "make leaf resolves the same dir as the parent" "$inproc" "$leaf"
     check "make leaf dir is the pre-migration path" \
         " --target-dir $repo_root/build/fixtures-cargo/qemu-arm-baremetal" "$leaf"
+    # phase-340 W2 — the strip runs in the leaf too, and it is the half that
+    # would fail SILENTLY: a leaf missing it passes cargo two --target-dir
+    # flags and the build still succeeds, into the wrong tree.
+    stripped="$(cd examples && env bash -c \
+        "nros_fixture_strip_authored_target_dir \"--target-dir target-zenoh --features a\"" 2>/dev/null)"
+    check "make leaf can strip the authored flag" "--features a" "$stripped"
 '
 
 echo "no literal remains in the migrated families:"
