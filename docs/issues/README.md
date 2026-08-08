@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#480** (testing, open 2026-08-08) — the 29 `ci-matrix` test failures are NOT the QEMU-under-load flake
+class: retested solo, **27 of 29 reproduce alone** and only 4 are flakes. Most share one cause — a test
+waits for a banner its binary never prints (`native-rs-listener did not print \`Waiting for\``, while the
+Rust listener prints `Subscriber created for topic:`). Issue 0471 documented exactly this, made the wait
+STRICT so a missed banner fails instead of silently passing, and converted 4 suites — but **101 literal
+`wait_for_output_pattern("…")` calls remain**, and the strictness is what turned them from falsely-green
+into loud reds. A blanket replace is WRONG: `"Waiting for"` is correct for the C/C++ listeners and
+service-server, wrong only for the Rust listener, so each site must be mapped to the binary it spawns.
+Needs a gate forbidding string literals there — the rule has been in CLAUDE.md since phase-277 and is
+violated 101 times.
+
 **#479** (examples, open 2026-08-08) — `5f4eda8a4` fixed issue 0453 (an action server whose output ignored
 the goal payload) on the **native** cells only; all 8 embedded copies still carry the old body, so the
 defect 0453 was filed about is live on 8 of 10 cells. Two divergences: the four embedded C++ copies run
