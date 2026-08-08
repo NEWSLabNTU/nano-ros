@@ -318,6 +318,13 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   archive: that reorders ld's single pass and breaks the whole-archive group (`undefined reference to
   ddsrt_*`). Verify with `ninja -C <build-dir> -t query <exe>`: the `.a` must appear under `|`, and a
   `touch` of a backend source must relink.
+- **Every cargo command cmake emits passes `--target`, HOST INCLUDED (phase-340 W3)** —
+  `--target <host-triple>` and no `--target` are different `-C metadata` identities that
+  share nothing, not even sccache entries (measured 0 hits / 62 misses). Corrosion hardcodes
+  the flag and is upstream, so it is the fixed point; resolve the triple with
+  `_nros_resolve_rust_target()` (never `Rust_CARGO_TARGET` directly — it is a normal var that
+  does not cross `add_subdirectory()`, which is phase-155's wrong-arch link). Gate:
+  `check-cargo-target-spelling`.
 - **cmake `include()` inside a FUNCTION drops the file's normal vars when the frame pops** —
   capture module dirs `CACHE INTERNAL` (the `_NROS_ENTRY_DIR` pattern); a plain
   `set(_X_DIR ${CMAKE_CURRENT_LIST_DIR})` broke every freertos ws member's `configure_file`
