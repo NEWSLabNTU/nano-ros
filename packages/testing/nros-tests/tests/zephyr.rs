@@ -76,12 +76,32 @@ const ZEPHYR_BOOT_BANNER: &str = "Booting Zephyr";
 /// M-F.23: the single-node `zephyr_component_main!` macro emits the
 /// canonical `"Waiting for messages"` readiness marker for every node kind
 /// (pub/sub/service/action); the C/C++ listeners print the same line.
-const NODE_READY_MARKER: &str = "Waiting for messages";
+///
+/// phase-342 W7 — bound to the shared table rather than respelled. The value is
+/// byte-identical to what was here, so this changes nothing at runtime; what it
+/// changes is ownership. A file-local copy of a marker string is how a test and
+/// the example it watches drift apart, which is issue 0481 in one sentence.
+const NODE_READY_MARKER: &str = nros_tests::output::WS_C_LISTENER_READY_MARKER;
 
 /// Lax server-readiness prefix: matches BOTH the component-main
 /// `"Waiting for messages"` marker (rust servers) and the canonical
 /// `SERVICE_SERVER_READY_MARKER` (`"Waiting for service requests"`, C/C++
 /// servers) — the historical per-cell service tests keyed on this prefix.
+///
+/// phase-342 W7 — this one is DELIBERATE, not the issue-0481 defect it
+/// resembles. 0481 was about a literal that matched some binaries by accident;
+/// this is a union that must match two legitimate spellings, because a zephyr
+/// server cell's readiness line depends on whether the node is rust
+/// (component-main) or C/C++ (the canonical server marker). One constant cannot
+/// be both, so the prefix is the honest encoding of "either of these".
+///
+/// The real improvement is per-cell markers keyed on the cell's LANGUAGE — the
+/// shape `output::ready_marker(role, lang)` already uses — which would remove
+/// the union entirely. NOT done here: it changes which line each cell waits on,
+/// and no zephyr tree is provisioned on this host to verify it against
+/// (`third-party/zephyr` is absent; provisioning is a west init plus SDK). A
+/// readiness change that cannot be run is exactly the change that fails
+/// silently.
 const SERVER_READY_LAX: &str = "Waiting";
 
 fn count_zephyr_received(output: &str) -> usize {

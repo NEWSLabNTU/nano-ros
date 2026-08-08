@@ -1,8 +1,9 @@
 # Phase 342 — Test runtime reduction: the consumer side
 
 **Status (2026-08-08). W1–W3 LANDED; W4 blocked (structurally); W5 retracted on
-measurement; W6 answered; W7 OPEN — the example-output conformance campaign,
-opened by what W1 turned up.** The measurable half is done:
+measurement; W6 answered; W7 COMPLETE.** Every work item is resolved — four
+landed, one blocked with its condition named, one retracted on measurement, two
+answered.
 
 | item | before | after | |
 | --- | --- | --- | --- |
@@ -320,7 +321,34 @@ the coverage it buys is narrower than the count suggests. Deliverable is a
 statement of what each tier-1 board is the witness FOR, so a future cut is made
 on coverage rather than on count.
 
-### W7 — Example output conformance, enforced by the harness (NEW, 2026-08-08)
+### W7 — Example output conformance, enforced by the harness — COMPLETE (2026-08-08)
+
+**Result: 12 divergent example listeners → 0, across five platforms and three
+languages, with the gate that proves it.** `KNOWN_DIVERGENT` is empty; the gate
+was verified to fire against an empty baseline, which is when a gate is most
+likely to have gone decorative.
+
+One correction to this item's original framing, worth keeping. It named
+`zephyr.rs`'s `SERVER_READY_LAX = "Waiting"` as "the exact ambiguity issue 0481
+is about". It is not. 0481 was a literal matching some binaries BY ACCIDENT;
+this is a union that must match two legitimate spellings, because a zephyr
+server cell's readiness depends on whether the node is rust (component-main
+emits `"Waiting for messages"`) or C/C++ (the canonical server marker). One
+constant cannot be both. The prefix is the honest encoding of "either of these",
+and it is now documented as deliberate rather than left looking like a defect.
+
+`NODE_READY_MARKER` was rebound to `output::WS_C_LISTENER_READY_MARKER` — a
+byte-identical value, so nothing changes at runtime; what changes is that the
+shared table owns the string instead of a file-local copy.
+
+**Deliberately NOT done: per-cell markers keyed on each zephyr cell's language**,
+which would remove the union entirely and is the right end state. It changes
+which line each cell waits on, and no zephyr tree is provisioned on this host
+(`third-party/zephyr` absent; provisioning is a west init plus SDK). A readiness
+change that cannot be run is precisely the change that fails silently — the
+lesson this entire work item exists to record.
+
+#### Original statement of the item
 
 Opened by the W1 follow-up. Fixing `rust_cyclone` turned out to be a one-word
 disagreement between three implementations of the SAME standard ROS demo:
