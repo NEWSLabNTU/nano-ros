@@ -280,6 +280,12 @@ the tree was never the thing being worked on — which is worth stating plainly,
 because it is the second time in this phase that a documented premise did not
 survive measurement (the first was F3).
 
+> **The byte total is confirmed; the sentence after it is not** (2026-08-08,
+> [phase-343](phase-343-host-build-graph-duplication.md)). These units are NOT
+> feature-invariant — 0 of 91 host-only crates carry one identity — and 32 % of
+> the mass is in nested build-script target dirs rather than in leaves. Read the
+> Wave 2 block below with its correction, and phase-343 for the decomposition.
+
 ### Wave 1 — cash the win that is already proven
 
 The mechanism is decided and measured (arm B: 455 MiB vs 9.70 GiB, 100 % of the
@@ -400,7 +406,38 @@ call site. Two further specifics, both already recorded and still true: 0 of 65
 hardcoded `{triple}/` component is one directory too deep for a host build; and
 `build_example` / `build_example_rmw` are the two funnels, not ~30 sites.
 
-### Wave 2 — the lever nobody priced (needs its own phase)
+### Wave 2 — the lever nobody priced → **measured, and the premise failed; see [phase-343](phase-343-host-build-graph-duplication.md)**
+
+> **Superseded 2026-08-08.** The 240.2 GiB / 91.1 % reproduces (241.3 / 91.1 on a
+> tree three days newer). **Everything this wave said about it does not.** Kept
+> unedited below so the reasoning that produced the wrong plan stays legible —
+> this is the THIRD documented premise in this phase to fail under measurement,
+> after F3 and the umbrella shape.
+>
+> * **"feature-INVARIANT, one identity each, so no group key is needed"** — false
+>   as stated. **0 of 91** host-only crates carry a single `-C metadata`
+>   identity; `syn` has 45, `winnow` 32, `toml_edit` 31. The conclusion happens
+>   to survive, for a different reason: identities coexist in one dir *because
+>   the hash is in the filename*, not because there is only one of them. That
+>   reason applies to the PRODUCT half too — which settles **W2.a's A2 blocker
+>   in favour of the coarse platform-grained key**, without needing the lane.
+> * **"one shared host target-dir across leaves"** — cannot be written. Cargo's
+>   `--target-dir` is "Directory for all generated artifacts"; there is no
+>   host-scoped target dir, as a flag, a config key, or behind `-Z`. The host
+>   half is an output LAYOUT, not an input knob, so it can only be shared by
+>   sharing the whole dir — which is arm B, already decided above.
+> * **The mass is not where this wave looked.** 32 % of it (**76.8 GiB**) is
+>   inside 425 nested target dirs that BUILD SCRIPTS create — the sizes probe
+>   (63.1 GiB, 98.8 % duplicate, 81:1) and the cmake metadata probe (13.7 GiB).
+>   Their sharing mechanism already exists, is already keyed correctly, and
+>   landed as `82b31d08e` on 2026-08-04; it leaks because it is opt-in through
+>   one exported variable in `scripts/build/cargo.sh`. That is a wiring fix.
+> * The remaining ~160 GiB is the leaf + corrosion population, which is **this
+>   phase's arm B applied to more platforms** — Wave 1, not a new wave.
+>
+> Net: there is no separate Wave-2-shaped phase to build. phase-343 carries the
+> decomposition, the rejected mechanisms with their evidence, and the probe-dir
+> work items.
 
 Target the host proc-macro / build-dep graph directly — one shared host
 target-dir across leaves, or sccache tuned for it. Deserves a phase doc of its
@@ -1009,6 +1046,30 @@ W2/W3 implementation.**
       `current_workspace_fixture_record` already shells into
       `fixtures-manifest.py`. It is strictly more work, and the measured prize
       below says it is worth doing.
+
+      **Reconciling phase-343's parallel finding (both are right, about
+      different namespaces).** phase-343 concluded the coarse platform-grained
+      key is "semantically sound" because distinct identities coexist in one
+      directory by construction — `-C metadata` is in the `deps/` filename, and
+      17 195 distinct artifact names currently share 366 directories without
+      colliding. That is TRUE OF `deps/` AND IRRELEVANT TO THE DECISION, because
+      a fixture consumes the FINAL artifact, `<group>/<profile>/<bin>`, whose
+      name cargo does not hash.
+
+      Measured on a two-feature probe crate, two sequential invocations into one
+      target dir: `deps/` kept BOTH identities; `debug/probe` was replaced —
+      different sha256, different behaviour, and NO warning, because cargo's
+      `output filename collision` diagnostic only fires when a single invocation
+      builds both, and a group is N invocations. Under the coarse key `linux`
+      produces 17 such collisions.
+
+      So the two findings do not conflict once the namespace is named: identity
+      coexistence is a `deps/` property, and the group's output path is where
+      the decision is made. phase-343's other handback — that the collision gate
+      scans BINARY names while `libnros_c.a` sits unhashed at x174 across 30
+      distinct sizes — stands, and widening it is still required before any path
+      moves.
+
 
       **One lesson from building the gate, because it generalises.** Its three
       arms initially shared a filter: the collision INVENTORY skipped platforms
