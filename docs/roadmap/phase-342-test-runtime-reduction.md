@@ -412,6 +412,56 @@ that branch is the measurable signal the divergence is gone.
 *Care:* embedded listeners have their own test greps. Each converges with its
 own check, like the natives did — no blanket rename.
 
+### W8 — No unconditional sleeps: wait for a marker (NEW, 2026-08-08)
+
+**The rule: a test must not sleep for a duration when it can wait for an event.**
+
+Measured across `packages/testing/nros-tests/tests`: **189 s of unconditional
+`sleep` at 56 call sites**, classified by what immediately follows:
+
+| pattern | sites | seconds | verdict |
+| --- | --- | --- | --- |
+| settle / stabilisation | 43 | 123 s | may be genuine — needs a per-site observable |
+| sleep-then-**kill** | 7 | 39 s | replaceable |
+| sleep-then-**assert** | 6 | 27 s | replaceable |
+
+The bottom two rows are the same defect W1–W7 chased, wearing the opposite
+clothes. Those were TIMEOUTS — waiting for something that never came. These are
+SLEEPS — not waiting for anything at all. Both substitute the clock for a
+condition, and both are invisible because the test passes either way.
+
+The replaceable shape is unmistakable once seen (`native_api.rs:806`):
+
+```rust
+let mut talker = spawn_native(...);
+std::thread::sleep(Duration::from_secs(6));   // "long enough"
+talker.kill();
+// … count_pattern(&out, LISTENER_LOG_PREFIX) >= 2
+```
+
+The condition is ALREADY WRITTEN, three lines down, in the assertion. The sleep
+is that same condition guessed at — and it costs its full duration even when
+delivery landed in one second.
+
+**Landed:** the five `native_api` sites (6/6/6/8/8 s = 34 s) now
+`wait_for_output_count(LISTENER_LOG_PREFIX, 2, 20 s)` and kill on success. The
+timeout carries the collected output in its error, so a failure reads exactly as
+it did before.
+
+**Remaining replaceable:** `nano2nano.rs:223` (3 s), `xrce_ros2_interop.rs:112`
+(2 s) — different shapes, each needs its own read.
+
+**The 123 s of settle is NOT bulk-convertible**, and pretending otherwise would
+repeat W5's mistake. `emulator.rs:559` sleeps 8 s for "bare-metal boot + smoltcp
+init + zenoh connect" on a QEMU image that prints no readiness marker. Converting
+it requires the image to SAY it is ready — which is exactly what W7 did for
+listeners, and the same argument applies: give the thing an observable event,
+then wait on it. Survey first, per platform, and convert only where an event
+exists.
+
+*Acceptance:* zero `sleep-then-kill` / `sleep-then-assert` sites; the settle
+sites each either converted or annotated with why no observable exists.
+
 ## Non-goals, each with the evidence that closed it
 
 - **Deleting fixture rows.** phase-329 W8 tried it and every candidate was

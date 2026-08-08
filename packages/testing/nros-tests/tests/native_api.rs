@@ -803,12 +803,19 @@ fn native_rust_pubsub_interop(lang: Language, locator: &str) {
     let talker_bin = lang.talker_binary();
     let mut talker = spawn_native(&talker_bin, lang, "talker", locator);
 
-    std::thread::sleep(Duration::from_secs(6));
-    talker.kill();
-
+    // phase-342 W8 — wait for the delivery this test ASSERTS, instead of
+    // sleeping 6 s and hoping it happened. The condition is the assertion
+    // below; a fixed sleep is that condition guessed at, and it costs the full
+    // 6 s even when delivery landed in one. On timeout the error carries the
+    // collected output, so a failure reads the same as before.
     let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| panic!("listener never received 2 messages: {e}"));
+    talker.kill();
     eprintln!(
         "Rust listener output ({} talker):\n{}",
         lang.label(),
@@ -930,12 +937,19 @@ fn test_native_cyclonedds_talker_to_rust_listener(
         &domain_id,
     );
 
-    std::thread::sleep(Duration::from_secs(6));
-    talker.kill();
-
+    // phase-342 W8 — wait for the delivery this test ASSERTS, instead of
+    // sleeping 6 s and hoping it happened. The condition is the assertion
+    // below; a fixed sleep is that condition guessed at, and it costs the full
+    // 6 s even when delivery landed in one. On timeout the error carries the
+    // collected output, so a failure reads the same as before.
     let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| panic!("listener never received 2 messages: {e}"));
+    talker.kill();
     eprintln!(
         "Rust Cyclone listener output ({} talker):\n{}",
         lang.label(),
@@ -974,12 +988,19 @@ fn test_native_cyclonedds_rust_talker_to_listener(
 
     let mut talker = spawn_cyclone_binary(&talker_bin, "rust-cyclonedds-talker", &domain_id);
 
-    std::thread::sleep(Duration::from_secs(6));
-    talker.kill();
-
+    // phase-342 W8 — wait for the delivery this test ASSERTS, instead of
+    // sleeping 6 s and hoping it happened. The condition is the assertion
+    // below; a fixed sleep is that condition guessed at, and it costs the full
+    // 6 s even when delivery landed in one. On timeout the error carries the
+    // collected output, so a failure reads the same as before.
     let listener_tail = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| panic!("listener never received 2 messages: {e}"));
+    talker.kill();
     let listener_output = listener_boot_output + &listener_tail;
     eprintln!(
         "{} Cyclone listener output (Rust talker):\n{}",
@@ -1047,12 +1068,19 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
     // and ignores this env arg; passed for parity with the listener.
     let mut talker = spawn_cyclone_binary(&talker_bin, "threadx-linux-cyclonedds-talker", "107");
 
-    std::thread::sleep(Duration::from_secs(8));
-    talker.kill();
-
+    // phase-342 W8 — wait for the delivery this test ASSERTS, instead of
+    // sleeping 8 s and hoping it happened. The condition is the assertion
+    // below; a fixed sleep is that condition guessed at, and it costs the full
+    // 8 s even when delivery landed in one. On timeout the error carries the
+    // collected output, so a failure reads the same as before.
     let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| panic!("listener never received 2 messages: {e}"));
+    talker.kill();
     eprintln!("Native listener output (threadx-linux talker):\n{listener_output}");
 
     let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
@@ -1087,12 +1115,19 @@ fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
         .expect("native C++ cyclonedds listener did not become ready");
 
     let mut talker = spawn_cyclone_binary(&talker_bin, "threadx-cpp-cyclonedds-talker", "107");
-    std::thread::sleep(Duration::from_secs(8));
-    talker.kill();
-
+    // phase-342 W8 — wait for the delivery this test ASSERTS, instead of
+    // sleeping 8 s and hoping it happened. The condition is the assertion
+    // below; a fixed sleep is that condition guessed at, and it costs the full
+    // 8 s even when delivery landed in one. On timeout the error carries the
+    // collected output, so a failure reads the same as before.
     let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| panic!("listener never received 2 messages: {e}"));
+    talker.kill();
     eprintln!("Native C++ listener output (threadx-linux C++ talker):\n{listener_output}");
 
     let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
