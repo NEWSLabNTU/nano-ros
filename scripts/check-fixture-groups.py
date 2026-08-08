@@ -38,10 +38,13 @@ Three arms, all fatal:
       (a regression) AND when a recorded one is fixed (so the migration list
       and this file move together instead of drifting apart).
 
-The group key itself is NOT reimplemented here.  `nros_fixture_group` in
+The group key itself is NOT reimplemented here.  `nros_fixture_group_slug` in
 `scripts/build/fixtures-target-dir.sh` is the one derivation (RFC-0070 R3) and
 this gate shells into it, so a change to the key cannot pass a gate that
-mirrors the old one.
+mirrors the old one.  (That function exists BECAUSE of this gate: the key and
+the eligibility rule shared one spelling, and a precondition check for
+migrating a platform must ask "which group would this row land in?" about a
+platform that is by definition not migrated.)
 
 Buildless and source-free: it reads `examples/fixtures.toml` and the leaf
 `Cargo.toml`s, both tracked, so it runs on a pristine per-push checkout.
@@ -114,8 +117,8 @@ def groups_for(records):
     """Group slug per record, computed by the SHELL derivation.
 
     One `bash` invocation for the whole manifest rather than one per row: the
-    point is to call `nros_fixture_group` itself, not to be fast about it, but
-    240 shell spawns would make this gate the slowest thing in `check-fast`.
+    point is to call `nros_fixture_group_slug` itself, not to be fast about it,
+    but 240 shell spawns would make this gate the slowest thing in `check-fast`.
     """
     program = (
         "set -u\n"
