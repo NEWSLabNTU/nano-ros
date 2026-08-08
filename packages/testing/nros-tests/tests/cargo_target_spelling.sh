@@ -71,6 +71,16 @@ if(NOT _t STREQUAL "${_t2}")
     message(FATAL_ERROR "resolver is not idempotent: [${_t}] vs [${_t2}]")
 endif()
 
+if(NROS_PROBE_ZEPHYR)
+    # The Zephyr module ALONE — it must reach the resolver through its own
+    # include chain, and its unknown-arch fallback must NAME the host triple
+    # instead of leaving the variable empty (empty meant "omit --target").
+    include("${NROS_REPO}/zephyr/cmake/nros_cargo_build.cmake")
+    nros_detect_rust_target()
+    message(STATUS "NROS_PROBE_ZEPHYR_FALLBACK=[${NROS_RUST_TARGET}]")
+    return()
+endif()
+
 if(NROS_PROBE_EMPTY_TARGET)
     # The rejected shape: "host build" spelled as no triple at all.
     _nros_ffi_cargo_args(_args MANIFEST /x/Cargo.toml TARGET_DIR /x/target
@@ -170,6 +180,14 @@ configure "an empty RUST_TARGET is rejected" expect-fail \
 configure "TARGET_IN_CONFIG omits the flag, not the triple" expect-pass \
     "NROS_PROBE_ARGS=[build;--manifest-path;/x/Cargo.toml;--target-dir;/x/target;--profile;nros-minsizerel]" \
     - -DNROS_PROBE_EXTRA_ARG=TARGET_IN_CONFIG
+
+# 7 — the second and third sites of the class. The Zephyr generators key on
+#     NROS_RUST_TARGET, whose unknown-arch fallback used to be the empty string;
+#     it must now name the host triple, and the module must reach the resolver
+#     through its OWN include chain rather than the caller's.
+configure "the zephyr unknown-arch fallback names the host triple" expect-pass \
+    "NROS_PROBE_ZEPHYR_FALLBACK=[$host_triple]" \
+    - -DNROS_PROBE_ZEPHYR=ON
 
 if [ "$fail" -ne 0 ]; then
     echo "cargo-target-spelling: FAILED" >&2

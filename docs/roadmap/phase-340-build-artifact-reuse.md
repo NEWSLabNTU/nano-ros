@@ -10,8 +10,12 @@ are the deliverable so far: W1 answered (`incremental` for the shared profile,
 single-leaf and lane-scale results recorded), W5.a measured (the biggest
 duplicate is INSIDE one invocation — the build-dep graph). W4 landed 2026-08-07:
 the measured numbers are now a gate (`check-artifact-identity-budget`), so they
-cannot regrow quietly while the rest is in flight. W2/W3 (collapse the R1
-duplicates, the corrosion `--target` split) not yet landed.
+cannot regrow quietly while the rest is in flight. **W3 landed 2026-08-08 for
+the cmake lane**: explicit-always, decided by measurement (zero sccache sharing
+across the two spellings; zero extra units from normalising), with the three
+generators that could emit cargo's implicit host spelling collapsed onto one
+resolver and gated. Its cargo-LEAF half is deferred into W2's path pass. W2
+(collapse the R1 duplicates) not yet landed.
 
 **Closes:** issue 0446. **Touches:** phase-334 (build-cache layout — this is the
 *identity* question that layout question implies), phase-336 (the profile that
@@ -148,6 +152,12 @@ Same triple, different identity. Corrosion always passes `--target=` (
 do. So the cmake-driven and cargo-driven builds of an identical crate can never
 share, and nothing in the manifests makes that visible.
 
+**Decided in W3 (2026-08-08): normalise toward EXPLICIT.** Corrosion hardcodes
+the flag and is upstream, and the explicit spelling costs zero extra
+compilations. The cmake lane is done and gated; the cargo-leaf half is a path
+move that waits on W2. It was also not only "cmake vs cargo" — nano-ros' own
+FFI-glue generator used the implicit spelling INSIDE a corrosion build.
+
 ### R4 — `incremental = true` destroys byte-reproducibility
 
 ```console
@@ -261,8 +271,8 @@ is why 334 W2.b comes before the grouping work here.
 | ~~2~~ | ~~**340 W5.b / W5.c**~~ | **DONE** 2026-08-07 — a straight deletion, not a feature gate: 181→165 units, overlap 12→8 |
 | ~~3~~ | ~~**340 W6 step 1**~~ | **DONE** 2026-08-07 — not the remap: `incremental = false` on `dev`. 115/143 rlibs byte-identical, incremental state 185 MB → 1 MB per fixture |
 | ~~4~~ | ~~**334 W2.b steps 2–4**~~ | **DONE 2026-08-08** — step 2 complete: four more families + a four-site tail, `git grep` for rooted literals now returns nothing. Steps 3-4 merged into item 5 (below), since the path changes there anyway. Original note: **DECIDED 2026-08-07** — the source-relative class is NOT a separate pass: 128 of 137 authored manifest paths are reproducible from (kind, platform, rmw) and the other 9 from the feature signature, so the column is DELETED, not derived. That merges into item 5. What remains here is the ROOTED side only (R3, one spelling) |
-| 5 | **340 W2** | umbrella invocation per identity group (was also 334 W3.a) — **now also absorbs the manifest `target_dir` / `build_subdir` column**, since widening the group key and deleting the column are one change. **IN PROGRESS 2026-08-08**: the key widening + `check-fixture-groups` landed; W2.a steps 2–3, W2.b and the column deletion (W2.d) are blocked on findings recorded under W2 — the umbrella-workspace shape is impossible as specified (every leaf is its own workspace root), `linux` fails two group preconditions, and the column is a predicate as well as a path |
-| 6 | **340 W3** | normalise the corrosion `--target` split (was also 334 W3.b) |
+| 5 | **340 W2** | umbrella invocation per identity group (was also 334 W3.a) — **now also absorbs the manifest `target_dir` / `build_subdir` column**, since widening the group key and deleting the column are one change |
+| ~~6~~ | ~~**340 W3**~~ | **DONE for the cmake lane 2026-08-08** (`c1cec0ef4`) — direction decided by measurement: EXPLICIT-ALWAYS, because corrosion hardcodes `--target` and is not ours to fork, and because the explicit spelling costs zero extra units (165 = 165). Three generators that could still emit the implicit spelling now share one resolver that cannot return empty; gated by `check-cargo-target-spelling`. The cargo-LEAF half is deliberately left to item 5 — it is a 115-site path move that buys nothing until R2 moves |
 | 7 | **334 W2.c** | collapse `.gitignore`, once (4) has moved the paths |
 | 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c) |
 
@@ -739,12 +749,169 @@ counted differently — an rlib count can fall because the probe changed.
 
 ### W3 — the corrosion `--target` split
 
-- [ ] Establish whether corrosion's explicit `--target` is load-bearing for the
-      host-native case or incidental. Corrosion sets it from
-      `Rust_CARGO_TARGET`; for a host build that may be redundant.
-- [ ] If incidental, align it so cmake-driven and cargo-driven host builds share
+- [x] Establish whether corrosion's explicit `--target` is load-bearing for the
+      host-native case or incidental. **ANSWERED 2026-08-08: load-bearing, and
+      not ours to change** — see "The direction is decided" below.
+- [x] If incidental, align it so cmake-driven and cargo-driven host builds share
       one identity. If load-bearing, record WHY at the call site so the split
-      stops looking like an accident.
+      stops looking like an accident. **DONE for the cmake lane 2026-08-08**
+      (`c1cec0ef4`): the reason is written at
+      `_nros_resolve_rust_target()` in `cmake/NanoRosCodegenCore.cmake`, and the
+      three generators that could still emit the implicit spelling now cannot.
+      **The cargo-leaf half remains OPEN** — scope and why it is deferred below.
+
+#### The direction is decided: EXPLICIT-ALWAYS (2026-08-08)
+
+Three measurements, taken in this order, and the third is the one that settles
+it.
+
+**1. The split is real and reproduces here.** `nros-core`,
+`--no-default-features --features alloc,std`, `nros-relwithdebinfo`, one factor
+varied:
+
+| build | artifact |
+| --- | --- |
+| implicit host | `target/nros-relwithdebinfo/deps/libnros_core-0f6269f7a00e4b29.rlib` |
+| `--target x86_64-unknown-linux-gnu` | `target/x86_64-unknown-linux-gnu/nros-relwithdebinfo/deps/libnros_core-842ac3b7840799eb.rlib` |
+
+Note the second column carries the whole problem: `--target` is not only an
+identity knob, it is a PATH knob.
+
+**2. sccache does NOT bridge the two — measured, where it had only been
+asserted.** The claim above ("a different `-C metadata` is a different cache
+key") was reasoning about sccache's hashing. Against the shared host cache
+every arm reads as a hit, because that cache has seen both spellings; the
+question is only answerable on a cache that has seen neither. On a PRIVATE cold
+sccache (own dir, own port):
+
+| arm | `nros-core` | `nros` |
+| --- | --- | --- |
+| 1. implicit, cold | 0 hits / 7 misses | 0 hits / 62 misses |
+| 2. explicit, same cache | **0 hits / 7 misses** | **0 hits / 62 misses** |
+| 3. implicit again (control) | 7 hits / 0 misses | 44 hits / 18 misses |
+
+Arm 3 proves the cache does serve a repeat, so arm 2's zero is the answer and
+not a broken harness. **The split is duplicated CPU, not just duplicated
+bytes.**
+
+**3. Normalising toward explicit costs nothing in work done.** The obvious
+objection to explicit-always is that `--target` splits the unit graph into a
+host half and a target half, so shared crates get built twice.
+`cargo --unit-graph` for `nros-c` (`std,rmw-zenoh`, `nros-relwithdebinfo`)
+refutes it:
+
+| | units | distinct compilation signatures | `platform=host` | `platform=<triple>` |
+| --- | --- | --- | --- | --- |
+| implicit | 165 | 160 | 165 | 0 |
+| explicit | 165 | 160 | 128 | 37 |
+
+Same count, same partition. Comparing the two unit multisets modulo the
+platform label, the ONLY per-unit difference is `debuginfo`, which goes 0 → 1
+on the 128 build-graph units: cargo stops stripping debuginfo from build
+dependencies. That is the one measured cost of the explicit spelling, and it is
+confined to the build graph. Wall clock on a cold private cache moved 7.3 s →
+8.1 s for `nros`, a single rep and not a claim.
+
+**So the direction is not a preference.** Corrosion hardcodes `--target` —
+"We always set `--target`, so that cargo always places artifacts into a
+directory with the target triple" (`Corrosion.cmake`) — because its artifact
+path model IS `<target-dir>/<triple>/<profile>/`. It is an upstream dependency
+this repo deliberately does not fork (`nros-sdk-index.toml` pins a stock
+`v0.5.1`; the root `CMakeLists.txt` FetchContents stock `v0.6.1` as a
+fallback). Implicit-always would mean carrying a patch on the cmake↔cargo
+bridge in both provisioning paths. Corrosion is therefore the fixed point, and
+everything else normalises TO it.
+
+#### What landed: the cmake lane, as a class (2026-08-08)
+
+The inconsistency was not only "cmake vs cargo". It was **inside one cmake
+build**: `nros_generate_interfaces()` built the C++ FFI glue crate with
+
+```cmake
+if(DEFINED Rust_CARGO_TARGET)   # cross → --target
+else()                          # host  → no --target
+```
+
+and on a native build `Rust_CARGO_TARGET` is NOT visible there — it is a normal
+variable owned by whichever scope called `find_package(Corrosion)`. Verified on
+a built native workspace: `src/*/nano_ros_cpp_ffi_*/target/` held
+`nros-minsizerel/` with no triple directory, sitting next to corrosion trees
+that had one. Five such trees in `examples/workspaces/mixed` alone.
+
+Three generators carried the same "empty triple ⇒ omit `--target`" shape, and
+all three now go through ONE resolver, `_nros_resolve_rust_target()`, which
+cannot return empty (explicit `Rust_CARGO_TARGET`, else FindRust's CACHE copy,
+else Corrosion's, else `rustc -vV`, else FATAL):
+
+* `cmake/NanoRosGenerateInterfaces.cmake` — the native/corrosion lane
+* `zephyr/cmake/nros_cargo_build.cmake` — the unknown-arch fallback
+* `zephyr/cmake/nros_generate_interfaces.cmake`
+
+Reading the CACHE copy also closes phase-155's bug class as a side effect: the
+normal variable is published `PARENT_SCOPE`, which does not cross
+`add_subdirectory()`, and a generator reading only it built host x86_64 objects
+into an ARM link.
+
+`_nros_ffi_cargo_args()` now REJECTS an empty `RUST_TARGET`, so the retired
+spelling cannot return through a new caller. The one legitimate reason to omit
+the FLAG — a generated `.cargo/config.toml` already carrying `[build] target`,
+the NuttX path — is the explicit `TARGET_IN_CONFIG` option, which drops the
+flag and KEEPS the triple, because the artifact still lands under it.
+
+Gate: `check-cargo-target-spelling` in `check-fast`
+(`packages/testing/nros-tests/tests/cargo_target_spelling.sh`). Buildless — it
+configures a NONE-language cmake project against the module in four scopes and
+asserts the "nothing readable" one FAILS rather than falling back. Tripwired:
+reverting the FATAL reds the empty-`RUST_TARGET` arm; blanking the resolver's
+fallback reds five arms.
+
+Not verified on the Zephyr lane (no west workspace in the worktree this landed
+from). The zephyr edits are symmetric — artifact path and flag key on the same
+variable — and every KNOWN board already resolved a non-empty triple, so only
+the already-warned unknown-arch fallback changes behaviour.
+
+#### What is still OPEN, and why it is not a "finish the job" away
+
+The cargo-LEAF half. Every native example leaf and fixture row still builds
+implicit, so `just check` at the root and a corrosion build of the same crate
+still miss each other. Two reasons it is not next:
+
+1. **It is a path move, not a flag flip.** `--target` relocates artifacts from
+   `target/<profile>/` to `target/<triple>/<profile>/`. 45 sites call
+   `cargo_target_profile_dir()` / `nros_cargo_profile::target_dir()`, and a
+   wider grep for a hardcoded `target/<profile>/` segment across `just`,
+   `scripts`, `packages`, `cmake` and `zephyr` returns 115 hits. That is the
+   issue-0196 class, so it is a class-wide sweep or nothing.
+2. **It buys nothing until R2 moves.** Corrosion resolves the shared crates
+   through the ROOT workspace manifest (`nano-ros_0b88c` in every workspace —
+   phase-334 W1.c). A native example leaf resolves through its OWN
+   `Cargo.lock`, which is a different identity whatever the `--target` spelling
+   is. So normalising the LEAVES changes their hashes without making them share
+   with anything. The population that would actually start sharing is the
+   root-workspace host builds, and moving those means moving the developer's
+   `target/` — the same 115-site sweep, for a benefit W4 already showed is
+   partial ("Fixing W3 alone would not make D build once for this user").
+
+The honest sequencing is therefore: leave the leaf half to the same pass that
+derives the paths (work-order item 5), rather than opening a second path
+convention beside it (#393's shape).
+
+#### Reading the axis, from now on
+
+`check-artifact-identity-budget` now reports the R3 split it could previously
+only contribute to, since cargo encodes it in the path. Measured on the mixed
+tree BEFORE the cmake change is rebuilt into it:
+
+```
+nros_core 4/8 identities; worst crate 5/9; worst identity 5/5 copies
+R3 axis (host vs explicit --target): identities 137/46, copies 188/54
+```
+
+The host column has exactly two populations there: the two corrosion roots'
+host halves (`cargo/<root>/nros-relwithdebinfo/deps` — build scripts and proc
+macros, unavoidable) and the five `nano_ros_cpp_ffi_*/target/nros-minsizerel/`
+trees, which are what this work item moved. It is a REPORT and not a budget on
+purpose: the host column has a floor nobody controls.
 
 **Direction, given W2's reframing.** Unifying means picking ONE spelling for
 every host build, and the cheap-looking direction is the wrong one. Dropping
@@ -799,7 +966,10 @@ Three things follow.
    theory that it would.
 
 **Acceptance:** either the two paths share an identity, or the reason they
-cannot is written down where the next reader will find it.
+cannot is written down where the next reader will find it. **Met for the cmake
+lane** (they share; the split was inside nano-ros' own generators and is gone,
+gated). **Met by the second arm for the cargo-leaf lane** — the reason is
+recorded above and at the resolver, and it is R2, not `--target`.
 
 ### W4 — gate the property
 
