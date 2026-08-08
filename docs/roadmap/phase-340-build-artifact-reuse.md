@@ -635,9 +635,16 @@ W2/W3 implementation.**
         `fixtures-manifest.py` for `current_workspace_fixture_record`) over
         porting the hash.
 
+      A third, smaller one that costs an hour if met by surprise:
+      `require_shared_fixture_binary` hard-codes a `{triple}/` path component,
+      because every migrated row so far cross-compiles. **0 of 65 `linux` rust
+      rows carry a `--target`**, so a host build writes
+      `<group>/<profile>/<bin>` with no triple component and the existing
+      resolver would look one directory too deep.
+
       So the order is now: fix the two colliding binary names → teach the Rust
-      resolver the variant slug → add `linux` → rebuild the native lane. Only
-      the last of those needs the lane.
+      resolver the variant slug and the no-triple case → add `linux` → rebuild
+      the native lane. Only the last of those needs the lane.
 - [ ] **W2.b** Convert the FIVE head signatures (above) from N parallel cargo
       invocations into ONE invocation each over a build-time-only umbrella
       workspace — 62 of 117 linux rows. Leaves keep their standalone manifests
