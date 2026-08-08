@@ -97,8 +97,76 @@ scenario '
         "$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
     check "unmigrated platform -> no flag (unchanged)" \
         "" "$(nros_fixture_target_dir_flag linux "" "")"
-    check "authored --target-dir still wins" \
-        "" "$(nros_fixture_target_dir_flag qemu-arm-baremetal "--target-dir target-zenoh" "")"
+'
+
+# phase-340 W2 — an authored `--target-dir` used to opt the row OUT; it now
+# names a GROUP. Those authored dirs are the R1 duplicate population this phase
+# measures, so the old rule excluded exactly the rows worth grouping.
+echo "phase-340 W2 — an authored --target-dir names a group, not an opt-out:"
+scenario '
+    unset NROS_BUILD_ROOT
+    export NROS_REPO_ROOT="$repo_root"
+    source scripts/build/fixtures-target-dir.sh
+    # Same group as a bare row: the authored STRING is not in the key, so a row
+    # that only differs by spelling its own dir joins the default group.
+    check "authored dir no longer opts out" \
+        " --target-dir $repo_root/build/fixtures-cargo/qemu-arm-baremetal" \
+        "$(nros_fixture_target_dir_flag qemu-arm-baremetal "--target-dir target-zenoh" "")"
+    # …and features still split it, because THOSE change the compilation.
+    bare="$(nros_fixture_group_slug qemu-arm-baremetal "" "")"
+    authored="$(nros_fixture_group_slug qemu-arm-baremetal "--target-dir target-zenoh" "")"
+    feats="$(nros_fixture_group_slug qemu-arm-baremetal "--no-default-features --features rmw-zenoh" "")"
+    check "authored dir does not change the group key" "$bare" "$authored"
+    if [ "$bare" = "$feats" ]; then
+        echo "  FAIL a feature set must change the group key (it changes -C metadata)"
+        rc=1
+    else
+        echo "  ok   a feature set changes the group key"
+    fi
+    # The slug function is eligibility-FREE: `check-fixture-groups` has to ask
+    # "which group WOULD this row land in?" for a platform that is by
+    # definition not migrated yet.
+    check "slug is emitted for an unmigrated platform" \
+        "linux" "$(nros_fixture_group_slug linux "" "")"
+    check "eligibility still gates the FLAG" \
+        "" "$(nros_fixture_target_dir_flag linux "" "")"
+'
+
+# The strip. Passing both the authored flag and the group flag hands cargo two
+# `--target-dir`s; cargo takes the last, so the build would silently work while
+# the manifest lied about where it wrote.
+echo "phase-340 W2 — the authored flag is stripped when the group governs:"
+scenario '
+    source scripts/build/fixtures-target-dir.sh
+    check "strips the pair"      "--features a" \
+        "$(nros_fixture_strip_authored_target_dir "--target-dir target-zenoh --features a")"
+    check "strips mid-string"    "--no-default-features --features a" \
+        "$(nros_fixture_strip_authored_target_dir "--no-default-features --target-dir t --features a")"
+    check "leaves --target alone" "--target thumbv7m-none-eabi" \
+        "$(nros_fixture_strip_authored_target_dir "--target thumbv7m-none-eabi")"
+    check "empty in, empty out"  "" "$(nros_fixture_strip_authored_target_dir "")"
+'
+
+# Both callers must strip, or the probe builds into the leaf while the build
+# writes the group dir — permanent false-stale, which is the family split R3
+# exists to prevent. Read out of the files rather than asserted in prose.
+echo "phase-340 W2 — build and staleness probe both strip:"
+scenario '
+    for f in scripts/build/fixtures-build.sh scripts/test/rust-fixture-stale.sh; do
+        if grep -q "nros_fixture_strip_authored_target_dir" "$f"; then
+            echo "  ok   $f strips the authored flag"
+        else
+            echo "  FAIL $f appends the group dir without stripping the authored one"
+            rc=1
+        fi
+    done
+    # …and the make leaves get the helper, or they die "command not found".
+    if leaf_exported_fns | grep -q "nros_fixture_strip_authored_target_dir"; then
+        echo "  ok   the strip helper is shipped to the make leaves"
+    else
+        echo "  FAIL nros_fixture_strip_authored_target_dir is not in the export -f list"
+        rc=1
+    fi
 '
 
 # And it follows NROS_BUILD_ROOT once set — the reason for the migration.

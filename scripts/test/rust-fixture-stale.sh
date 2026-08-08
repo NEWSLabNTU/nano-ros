@@ -33,6 +33,14 @@ NROS_REPO_ROOT="${NROS_REPO_ROOT:-$PWD}"
 # shellcheck source=scripts/build/fixtures-target-dir.sh
 source scripts/build/fixtures-target-dir.sh 2>/dev/null || exit 0
 tdir_flag="$(nros_fixture_target_dir_flag "$platform" "$cargo_args" "$envstr")"
+# phase-340 W2 — an authored `--target-dir` now names a GROUP rather than
+# opting the row out, so when the group governs the row's own flag is stripped.
+# This MUST mirror the same two lines in fixtures-build.sh: a probe that passed
+# both flags would build into the leaf while the build wrote the group dir, and
+# report permanent false-stale — the exact failure the header above describes.
+if [ -n "$tdir_flag" ]; then
+    cargo_args="$(nros_fixture_strip_authored_target_dir "$cargo_args")"
+fi
 
 # $cargo_args / $prof_args / $tdir_flag are intentionally word-split into cargo
 # flags; $envstr ("KEY=VAL ...") is exported into the build subshell when present.

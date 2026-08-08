@@ -265,7 +265,8 @@ else
     export platform
     # `nros_build_{root,dir}` come along: the resolver calls them, and a leaf
     # never sources build-root.sh (phase-334 W2.b — the step-1 regression).
-    export -f nros_fixture_target_dir_flag nros_fixture_group _nros_fixture_variant_sig \
+    export -f nros_fixture_target_dir_flag nros_fixture_group nros_fixture_group_slug \
+              nros_fixture_strip_authored_target_dir _nros_fixture_variant_sig \
               nros_build_root nros_build_dir
     # Phase 214.I.2 — fail-loud prereq guard: `nros_fixture_build_one`
     # below invokes `nros sync`, absent from the shipped 0.3.7 release.
@@ -308,10 +309,22 @@ else
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_nuttx_libc_patch "$dir"
         fi
         # Phase 226.D — append the shared fixture-only --target-dir for
-        # eligible rows (no-op for rows that authored their own
-        # target_dir or whose platform isn't migrated yet).
+        # eligible rows (no-op for rows whose platform isn't migrated yet).
+        #
+        # phase-340 W2 — when the group governs, the row's OWN `--target-dir`
+        # is stripped first: an authored dir now names a group instead of
+        # opting the row out, and passing both would hand cargo two flags.
+        # The strip must happen on the same side as the append, or the probe
+        # (rust-fixture-stale.sh) and the build would differ by one flag.
+        #
+        # `if`, not `[ -n … ] && args=…`: the make leaves run under
+        # `.SHELLFLAGS := -eu`, where an and-list whose left side is false is
+        # itself a failing command and aborts the recipe.
         local tdir_flag
         tdir_flag="$(nros_fixture_target_dir_flag "$platform" "$args" "$envstr")"
+        if [ -n "$tdir_flag" ]; then
+            args="$(nros_fixture_strip_authored_target_dir "$args")"
+        fi
         # shellcheck disable=SC2086
         ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args $tdir_flag --quiet )
     }
