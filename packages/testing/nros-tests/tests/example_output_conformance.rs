@@ -53,20 +53,11 @@ use std::{collections::BTreeSet, fs, path::PathBuf};
 /// test waits on that binary's readiness, which is why the list is a backlog and
 /// not a config.
 const KNOWN_DIVERGENT: &[&str] = &[
-    // The three Zephyr listeners are node COMPONENTS, not standalone demos:
-    // `Listener.c` / `Listener.hpp` / `lib.rs` register a subscription and carry
-    // no `main`, so their output reaches a test through the ZEPHYR ENTRY's
-    // serial log rather than their own stdout. Giving them the standalone demo's
-    // readiness marker would be a category error until it is established what
-    // the zephyr harness actually greps — which is a `zephyr.rs` question, not
-    // an example question.
-    //
-    // Kept here rather than excluded from the survey on purpose: an exclusion
-    // would make the gate silently stop looking, and this list is the visible
-    // form of "known, unresolved".
-    "examples/zephyr/c/listener",
-    "examples/zephyr/cpp/listener",
-    "examples/zephyr/rust/listener",
+    // EMPTY, and that is the point (phase-342 W7 complete): every example whose
+    // directory names a role prints that role's readiness marker. The list stays
+    // so a future divergence has an obvious, reviewable place to be recorded —
+    // and the gate's second arm makes an entry that stops diverging fail, so it
+    // cannot quietly become an exemption.
 ];
 
 fn project_root() -> PathBuf {

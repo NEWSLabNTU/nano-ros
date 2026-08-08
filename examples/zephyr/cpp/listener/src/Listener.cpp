@@ -29,6 +29,9 @@ void Listener::on_raw(const uint8_t* data, size_t len) {
         node, "/chatter", std_msgs::msg::String::TYPE_NAME, this);
     if (r.ok()) {
         // Readiness marker the rtos_e2e harness greps before driving the talker.
+        // Shared readiness marker (phase-342 W7) plus zephyr.rs's own
+        // NODE_READY_MARKER, which stays until that file uses the shared table.
+        std::printf("Subscriber created for topic: %s\n", "/chatter");
         std::printf("Waiting for messages\n");
     }
     return r;

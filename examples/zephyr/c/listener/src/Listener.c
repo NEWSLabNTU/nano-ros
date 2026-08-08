@@ -46,7 +46,12 @@ static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor
                                        /*sched_context=*/0, &handle,
                                        /*callback_group=*/NULL);
     if (rc == 0) {
-        /* Readiness marker the rtos_e2e harness greps before driving the talker. */
+        /* Readiness markers the harness greps before driving the talker.
+         * The first is the SHARED one every nano-ros listener prints
+         * (`nros_tests::output::LISTENER_READY_MARKER`, phase-342 W7); the
+         * second is zephyr.rs's own `NODE_READY_MARKER` and stays until that
+         * file moves onto the shared table. */
+        printf("Subscriber created for topic: %s\n", "/chatter");
         printf("Waiting for messages\n");
     }
     return rc;

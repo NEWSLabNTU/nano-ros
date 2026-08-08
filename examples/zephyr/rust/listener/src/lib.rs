@@ -23,6 +23,11 @@ impl Node for Listener {
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
         let _sub =
             node.create_subscription_for_callback_name::<StringMsg>("on_chatter", "/chatter")?;
+        // Shared readiness marker every nano-ros listener prints
+        // (`nros_tests::output::LISTENER_READY_MARKER`, phase-342 W7). This
+        // component had none: the zephyr rust cells waited on the ENTRY's boot
+        // banner instead, so "the subscription exists" was never observable.
+        log::info!("Subscriber created for topic: /chatter");
         Ok(())
     }
 }
