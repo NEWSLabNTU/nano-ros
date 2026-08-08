@@ -14,8 +14,19 @@ cannot regrow quietly while the rest is in flight. **W3 landed 2026-08-08 for
 the cmake lane**: explicit-always, decided by measurement (zero sccache sharing
 across the two spellings; zero extra units from normalising), with the three
 generators that could emit cargo's implicit host spelling collapsed onto one
-resolver and gated. Its cargo-LEAF half is deferred into W2's path pass. W2
-(collapse the R1 duplicates) not yet landed.
+resolver and gated. Its cargo-LEAF half is deferred into W2's path pass.
+
+**W2's MECHANISM is decided as of 2026-08-08, by measurement, and it is not the
+one W2.b proposed.** Three arms were timed against each other at the real group
+size: separate dirs (status quo), one shared `--target-dir` with N invocations,
+and the generated umbrella workspace. The shared dir gets **100 % of the disk
+win** — 9.70 GiB → 455 MiB over 37 leaves, `deps/` dedup 27.9:1 → 1.0:1,
+identical to the umbrella's — and is **never slower** than the status quo, which
+refutes F3 and the phase-334 W1.a verdict that cites it. So W2 ships the
+mechanism that already exists rather than a generated-manifest subsystem. **No
+paths have moved yet**: `linux`'s first migration blocker (artifact-name
+collisions) is fixed and gated, the second (the Rust resolver's group key) needs
+a provisioned tree to settle. Work-order items 7 and 8 stay blocked.
 
 **Closes:** issue 0446. **Touches:** phase-334 (build-cache layout — this is the
 *identity* question that layout question implies), phase-336 (the profile that
@@ -271,10 +282,10 @@ is why 334 W2.b comes before the grouping work here.
 | ~~2~~ | ~~**340 W5.b / W5.c**~~ | **DONE** 2026-08-07 — a straight deletion, not a feature gate: 181→165 units, overlap 12→8 |
 | ~~3~~ | ~~**340 W6 step 1**~~ | **DONE** 2026-08-07 — not the remap: `incremental = false` on `dev`. 115/143 rlibs byte-identical, incremental state 185 MB → 1 MB per fixture |
 | ~~4~~ | ~~**334 W2.b steps 2–4**~~ | **DONE 2026-08-08** — step 2 complete: four more families + a four-site tail, `git grep` for rooted literals now returns nothing. Steps 3-4 merged into item 5 (below), since the path changes there anyway. Original note: **DECIDED 2026-08-07** — the source-relative class is NOT a separate pass: 128 of 137 authored manifest paths are reproducible from (kind, platform, rmw) and the other 9 from the feature signature, so the column is DELETED, not derived. That merges into item 5. What remains here is the ROOTED side only (R3, one spelling) |
-| 5 | **340 W2** | umbrella invocation per identity group (was also 334 W3.a) — **now also absorbs the manifest `target_dir` / `build_subdir` column**, since widening the group key and deleting the column are one change |
+| 5 | **340 W2** | **mechanism DECIDED 2026-08-08 — one shared `--target-dir` per group, NOT the umbrella** (measured: same bytes, no wall-clock regression, no generated state). Blocker 1 of 2 cleared (`3ebc32110`, artifact-name collisions). Blocker 2 (the Rust resolver's group key) needs a provisioned tree. Still absorbs the manifest `target_dir` / `build_subdir` column |
 | ~~6~~ | ~~**340 W3**~~ | **DONE for the cmake lane 2026-08-08** (`c1cec0ef4`) — direction decided by measurement: EXPLICIT-ALWAYS, because corrosion hardcodes `--target` and is not ours to fork, and because the explicit spelling costs zero extra units (165 = 165). Three generators that could still emit the implicit spelling now share one resolver that cannot return empty; gated by `check-cargo-target-spelling`. The cargo-LEAF half is deliberately left to item 5 — it is a 115-site path move that buys nothing until R2 moves |
-| 7 | **334 W2.c** | collapse `.gitignore`, once (4) has moved the paths |
-| 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c) |
+| 7 | **334 W2.c** | collapse `.gitignore`, once (4) has moved the paths — **BLOCKED: no path has moved. (5) decided its mechanism but did not migrate a platform** |
+| 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c) — **BLOCKED on the same thing.** Do not lower the identity budgets before the paths move: the tree is unchanged, so a lowered budget would fail on the truth |
 
 (1) and (2) are small and unblock reading the gate honestly. (3) is the biggest
 win needing no restructuring. (4) unblocks every path move. (5) and (6) are the
@@ -517,6 +528,14 @@ extending an existing, proven resolver rather than writing a new one.
 
 #### F3 — sharing a dir across CONCURRENT cargo processes is the wrong shape
 
+> **REFUTED by measurement, 2026-08-08. Read "The mechanism, decided" below
+> before acting on anything in this subsection.** F3 was a prediction from
+> cargo's flock, never an experiment: the evidence phase-334 W1.a cites for it
+> is this phase's W1 lane A/B, and that A/B varied `incremental` — it never
+> varied target-dir sharing, in either arm. The serialisation F3 describes is
+> real and reproduces exactly; the conclusion drawn from it does not. Kept
+> unedited below so the reasoning that produced the wrong answer stays legible.
+
 Cargo takes an **exclusive** lock on a target dir for the whole build. The
 fixture fan-out is parallel (`run()` → `run_with_make`, unless
 `NROS_JOBSERVER=1`), so pointing N concurrent rows at one shared dir converts N
@@ -530,6 +549,119 @@ once, builds each identity once by construction, parallelises internally through
 its own jobserver, and writes one copy to disk. That is the difference between
 lock contention and inner parallelism, and it is the whole design question in
 this work item.
+
+#### The disk number this phase should have been quoting
+
+Before the mechanism: the size of the thing. Read-only over the provisioned
+checkout, 2026-08-08, 366 `target*` / `build*` dirs under `examples/`:
+
+| | GiB | files |
+| --- | --- | --- |
+| total | **478.9** | 1 489 146 |
+| `deps/` | 263.8 | 284 376 |
+| build-script output | 165.1 | 476 892 |
+| `incremental/` | 34.6 | 255 603 |
+| `.fingerprint` | 0.1 | 342 770 |
+
+Deduplicate `deps/` by artifact NAME — which is cargo's own judgement, since
+`-C metadata` is *in* the filename — and 263.7 GiB of materialised artifacts
+collapse to **23.5 GiB across 17 163 distinct names**. So **240.2 GiB, 91.1 % of
+`deps/`, is duplicate identity.** That is the quantity W2 is about, and it is an
+order of magnitude larger than anything else this phase has priced.
+
+The top of that list is not what R1 predicts:
+
+```
+391x  11.4 MiB   4.34 GiB  libnros_macros-574421335b3823cb.so
+174x  24.5 MiB   4.15 GiB  libnros_c.a
+391x   9.8 MiB   3.72 GiB  libros_launch_manifest_model-3eb7ae0fc81a9650.rlib
+391x   8.6 MiB   3.28 GiB  libsyn-20f98dae27aa346c.rlib
+391x   7.0 MiB   2.67 GiB  libtoml_edit-234bebb8e17a39fb.rlib
+512x   3.5 MiB   1.73 GiB  libwinnow-0a8647b48c0c8892.rlib
+504x   2.9 MiB   1.40 GiB  libcc-831acfa26eb8eb1f.rlib
+```
+
+`syn`, `winnow`, `toml_edit`, `serde_derive`, `cc`, `cbindgen`, `nros_macros`,
+both `ros_launch_manifest` crates — the **host build-dependency and proc-macro
+graph**, one identity each, 391–512 copies. One hash, appearing in every leaf
+regardless of that leaf's RMW: this block is **feature-invariant**, so the
+largest single mass of duplicate bytes is precisely the part the RMW split does
+not partition. It is W5's build-dep graph, seen on the disk axis instead of the
+CPU axis, and no grouping key needs to be clever to catch it.
+
+#### The mechanism, decided — three arms, measured 2026-08-08
+
+**Set-up.** 37 generated clones of `examples/native/rust/lifecycle-node` built
+`--no-default-features --features lifecycle-services` (117 packages, no vendored
+submodule in the graph, so it runs on an unprovisioned worktree). Each clone is
+a genuine standalone leaf — its own empty `[workspace]` table, its own
+`.cargo/config.toml` patch table, its own lock — differing only in package and
+binary name. That is a fixture group's shape: N standalone leaves that resolve
+identically. 20 cores, sccache live, `NROS_CARGO_FLAGS=` (see below), arms
+rotated *inside* each rep per the W1 method. The harness is deliberately out of
+tree (`tmp/w2exp/`) — it is a measurement, not a fixture.
+
+| arm | mechanism |
+| --- | --- |
+| **A** | N separate target dirs, N parallel invocations — **status quo** |
+| **B** | ONE shared `--target-dir`, N parallel invocations — **phase-226.D, as widened by W2.a** |
+| **C** | ONE umbrella workspace (generated symlink farm), 1 invocation — **W2.b's proposal** |
+
+Wall clock at N = 37, the real size of `linux`'s default group:
+
+| rep | A | B | C |
+| --- | --- | --- | --- |
+| 1 | 117.4 s | 26.6 s | 5.8 s |
+| 2 | 82.7 s | 76.8 s | 11.5 s |
+| 3 | 93.0 s | 54.7 s | 9.8 s |
+
+Disk and identity, same 37 leaves:
+
+| arm | target bytes | `nros_core` rlibs / identities | all `deps/` files / distinct names |
+| --- | --- | --- | --- |
+| A | **9.70 GiB** | 74 / 2 = **37.0 : 1** | 8214 / 294 = 27.9 : 1 |
+| B | **455 MiB** | 2 / 2 = **1.0 : 1** | 294 / 294 = **1.0 : 1** |
+| C | **455 MiB** | 2 / 2 = **1.0 : 1** | 294 / 294 = **1.0 : 1** |
+
+N = 8 for scale: A 17.4 / 16.7 s, B 10.3 / 10.8 s, C 5.3 / 6.7 s; 2.10 GiB /
+305 MiB / 305 MiB.
+
+**1. F3 is refuted. A shared dir is not a net loss; it is a smaller win.** The
+serialisation is exactly as described — instrumenting each invocation's own
+elapsed at N = 8 shows them finishing 0.6 s apart in a staircase, which is the
+flock — but B is **never slower than A in any rep at either N**, and averages
+1.9× faster at N = 37. The reason F3 missed is that it priced the serialisation
+and not what the serialisation *removes*: every invocation after the first finds
+the whole shared graph already fresh in the dir and has only its own crate left
+to build. Serialising work that no longer exists is cheap.
+
+**2. B captures 100 % of the disk win. Not most of it — all of it.** B and C
+agree to within 8 KiB on 455 MiB, and produce byte-identical dedup ratios
+(294 / 294). Since F1 established that W2's target is bytes rather than CPU,
+this is the criterion that decides, and it does not distinguish the two
+mechanisms at all.
+
+**3. C is genuinely much faster, and that buys nothing here.** One invocation is
+~9× A and ~1.7× B at N = 37 — inner parallelism works exactly as RFC-0070 R4
+says it does. But it converts a disk problem this phase has measured at 240 GiB
+into a wall-clock saving on a lane whose wall clock W1 already improved, at the
+price of a generated-state subsystem (below).
+
+**Decision: W2 ships B.** It is a flag, not a subsystem — `phase-226.D`'s
+resolver, already widened by W2.a step 1, already gated by
+`check-fixture-groups`, with a Rust-side mirror that already reads the same env
+var. C is recorded as a real and measured option, not rejected on principle;
+revisit it if wall clock ever becomes the binding constraint, and re-price it
+first, because two of the three costs W2.b listed were wrong in opposite
+directions.
+
+**One caveat on B's numbers.** Its wall clock is the noisiest column here
+(26.6 / 76.8 / 54.7 at N = 37) because which invocation wins the lock first
+decides how much overlaps before it. One standalone re-run of arm B at N = 8
+came in at 28 s against four other observations of 9–11 s, and that outlier is
+unexplained. B's *disk* figure, by contrast, reproduced to the kilobyte across
+every rep — take B's disk as settled and B's timing as "not worse than A", which
+is all the decision needs.
 
 **The constraint that bounds group size: feature unification.** Cargo unions
 features across workspace members built in one invocation (resolver 2 only
@@ -656,6 +788,37 @@ W2/W3 implementation.**
       resolver the variant slug and the no-triple case → add `linux` → rebuild
       the native lane. Only the last of those needs the lane.
 
+      **Step 2 of that order LANDED 2026-08-08** (`3ebc32110`). The two binaries
+      are `custom-transport-talker` / `custom-transport-listener`; renamed rather
+      than recorded, so `KNOWN_COLLISIONS` is now empty and that is its end
+      state. Recomputed at platform granularity as well: **0 collisions across
+      all 7 platforms / 122 rust rows**. Tripwired both ways — the record
+      populated against a fixed tree fails "observed: []", and an empty record
+      against a deliberately re-collided `native-rs-xrce-serial-talker` fails
+      "observed: [1 entry]". With it in, `NROS_FIXTURE_SHARED_PLATFORMS=
+      "qemu-arm-baremetal linux"` no longer trips A1 at all.
+
+      **The A2 blocker is probably smaller than it looks, and the reason is the
+      same one that shrinks W2.b.** A2 says the Rust resolver cannot express a
+      variant group, and `linux` produces six. But the variant sig is in the
+      group key because an umbrella invocation would UNION features across its
+      members; arm B never does, so under arm B the key can be
+      platform-grained and `fixture_shared_target_dir`'s existing
+      `build_dir("fixtures-cargo", &[platform])` is already the right answer.
+      The namespace half of that is checked: at platform granularity `linux`'s
+      41 rows collide on nothing. The churn half is phase-334 W1.c's ~6 %.
+
+      **Not decided here, because it needs the lane.** Choosing the coarser key
+      changes `nros_fixture_group_slug`, which two callers and one gate derive
+      from, and its only honest verification is a native-lane rebuild plus the
+      tests that consume those fixtures — neither of which runs on an
+      unprovisioned worktree. The alternative (teach the Rust side the hashed
+      slug by shelling into `nros_fixture_group_slug`, as
+      `current_workspace_fixture_record` already shells into
+      `fixtures-manifest.py`) stays on the table and is strictly more work.
+      Whoever has a provisioned tree should measure the two keys against each
+      other on the real `linux` rows rather than reason about them.
+
       **One lesson from building the gate, because it generalises.** Its three
       arms initially shared a filter: the collision INVENTORY skipped platforms
       already in the shared list, on the theory that the enforcement arm owned
@@ -668,12 +831,28 @@ W2/W3 implementation.**
       run in BOTH directions** — collisions present (must not claim stale) and one
       genuinely fixed (must claim stale). This defect existed because the arm had
       only ever been exercised in one of them.
-- [ ] **W2.b** Convert the FIVE head signatures (above) from N parallel cargo
-      invocations into ONE invocation each over a build-time-only umbrella
+- [ ] **W2.b — NOT THE MECHANISM. Superseded by "The mechanism, decided"
+      above; kept for the shape analysis, which stands.** The umbrella works and
+      is the fastest of the three arms, but it buys zero bytes over arm B and
+      costs a generated-state subsystem. Do not build it to close W2.
+
+      Original item: convert the FIVE head signatures (above) from N parallel
+      cargo invocations into ONE invocation each over a build-time-only umbrella
       workspace — 62 of 117 linux rows. Leaves keep their standalone manifests
       (RFC-0026's copy-out promise); the umbrella is generated for the fixture
       build and never committed. The 55 singleton signatures are out of scope
       by construction: they have nothing to share with.
+
+      **The five-head/55-singleton split is an artefact of the umbrella
+      shape, and does not carry over to arm B.** Feature unification is what
+      forces a group's features to be exact, and cargo unions features only
+      across members of ONE invocation. Arm B is N separate invocations: each
+      resolves its own features, gets its own `-C metadata`, and the variants
+      coexist in `deps/` — measured directly in phase-334 W1.c (alternating two
+      feature sets in one dir reused 139 of 149 units, ~6 % churn, and saved
+      25 % disk). So under arm B the 55 singletons are **not** out of scope;
+      they share the whole feature-invariant lower stack — which the disk
+      measurement above shows is where the bytes actually are.
 
       **The literal shape is IMPOSSIBLE — measured 2026-08-08.** "Leaves keep
       their standalone manifests" and "one workspace over those leaves" are
@@ -707,14 +886,36 @@ W2/W3 implementation.**
         shim. A generated umbrella has no committed lock, so the driver needs a
         deliberate answer (generate then pin, or a scoped `NROS_CARGO_FLAGS=`),
         not an accidental one.
-      * Identity changes again by R2 — one lock, one resolution — so the
-        umbrella's artifacts share with nothing outside the group. That is the
-        point, but it means "did this reduce duplication?" cannot be answered by
-        comparing an umbrella artifact against a leaf artifact.
-      * One suspected blocker that is NOT one: **0 of 41** linux leaves carry
-        their own `.cargo/config.toml`, so they already resolve
-        `[patch.crates-io]` through the repo-root config walk-up — which an
-        umbrella under `build/` reaches identically.
+      * ~~Identity changes again by R2~~ — **did NOT happen, measured
+        2026-08-08.** The farm and the standalone leaves produced the *same two*
+        `libnros_core-<hash>.rlib` identities (`8173b710b3981013`,
+        `b1294a2e7ccd3459`), so an umbrella artifact and a leaf artifact were
+        directly comparable after all. The correction generalises past this
+        bullet: **R2's mechanism is the RESOLUTION, not the workspace-root
+        path.** Leaf-vs-root changed identity in the incompatibility table
+        because the root workspace resolves different versions and features, not
+        because cargo puts the root's path in `-C metadata`. An umbrella whose
+        members resolve what the leaves resolved therefore shares with them; one
+        whose unified lock picks different versions does not, and that is a
+        property of the members, not of the shape.
+      * ~~One suspected blocker that is NOT one: 0 of 41 linux leaves carry
+        their own `.cargo/config.toml`~~ — **that measurement was taken on an
+        unprovisioned worktree, where the file does not exist yet.** On any tree
+        that can actually build, **22 of 22** native rust leaves carry one:
+        gitignored, written by `nros sync`, holding a leaf-RELATIVE
+        `[patch.crates-io]` plus `include = ["…/nros-patch.toml"]`. And the
+        repo-root `.cargo/config.toml` has **no `[patch.crates-io]` at all** —
+        so the walk-up this bullet relied on does not exist, and without the
+        leaf's own file `nros-log = "*"` resolves against public crates.io,
+        which is #378's class.
+
+        Cargo reads `.cargo/config.toml` from the **invocation directory**
+        upward, so a farm member's config is never consulted whatever depth it
+        sits at: the umbrella root must carry a **merged** patch table covering
+        every member — including each member's *optional* backend deps, which
+        must resolve even when the feature is off. That is a second spelling of
+        `nros sync`'s output, and RFC-0070 R3 exists to forbid exactly that. It
+        is the largest of C's costs and it was recorded as a non-cost.
 - [ ] **W2.d** Delete the manifest `target_dir` / `build_subdir` column (absorbed
       from phase-334 W2.b, work-order item 5). Not done here: the column is still
       read as a **predicate**, not only as a path. `fixtures-manifest.py`'s
@@ -730,10 +931,23 @@ W2/W3 implementation.**
 - [ ] **W2.c** Measure W2.b against the status quo on disk AND wall-clock,
       alternating reps per the W1 method.
 
-**Rejected design, recorded so it is not re-proposed:** N concurrent cargo
-processes sharing one target dir. It serialises on cargo's exclusive flock while
-sccache had already made the duplicate compiles cheap. Any future "just point
-them at the same dir" proposal must first show a cold-cache scenario.
+**~~Rejected design, recorded so it is not re-proposed~~ — UN-rejected
+2026-08-08, and it is now the chosen mechanism.** The rejection below asked any
+future proposal to "first show a cold-cache scenario". That test was aimed at
+the wrong axis and has been answered on the right one: with a **warm** cache, at
+the real group size, this shape is 1.9× faster than the status quo and removes
+21.8:1 of duplicate bytes. What follows was the reasoning, and it was never
+measured:
+
+> N concurrent cargo processes sharing one target dir. It serialises on cargo's
+> exclusive flock while sccache had already made the duplicate compiles cheap.
+> Any future "just point them at the same dir" proposal must first show a
+> cold-cache scenario.
+
+The flock is real; sccache making the duplicate *compiles* cheap is real. What
+neither covers is that sccache does not make the duplicate **materialisations**
+cheap — 37 leaves each still write their own copy of the whole graph and link
+their own binary, which is the 82–117 s and the 9.70 GiB in arm A.
 
 **Considered and not taken:** post-build hardlink dedup of identical artifacts.
 W1 restored byte-reproducibility so this is now *possible*, but the volume is
@@ -746,6 +960,15 @@ the native lane's wall-clock does not regress, and the target-dir bytes for the
 grouped leaves drop by roughly the share the duplicates accounted for. The disk
 figure is the one that proves the duplicates are GONE rather than merely
 counted differently — an rlib count can fall because the probe changed.
+
+**Status against that acceptance, 2026-08-08.** All three criteria are met *by
+the mechanism, on a controlled 37-leaf group* — 37.0:1 → 1.0:1 on `nros_core`,
+27.9:1 → 1.0:1 on all of `deps/`, 9.70 GiB → 455 MiB, and no wall-clock
+regression in any rep. **None of them is met on the tree**, because no fixture
+row has moved into a shared dir yet. W2 is therefore *decided* and not *done*,
+and the remaining work is a platform migration (`linux`) that only a provisioned
+tree can verify. Do not read the controlled numbers as tree numbers; that is the
+distinction W7 exists to close.
 
 ### W3 — the corrosion `--target` split
 

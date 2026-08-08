@@ -77,14 +77,39 @@ second one.
 
 ### R4 — Sharing is a property of the root, not of a build
 
-A shared cache directory is only ever driven by **one** cargo invocation at a
-time. Cargo takes an exclusive lock per target dir, so N concurrent invocations
-against one directory serialise — measured in phase-334 W1.a/W1.c as a net loss
-against sccache, which already deduplicates the compilations.
+**Amended 2026-08-08 (phase-340 W2), because the original prohibition rested on
+a measurement that was never taken.** It read:
 
-Where sharing is wanted, it comes from **one invocation over many packages**
-(cargo's internal jobserver parallelism), or from bounded worker concurrency —
-never from pointing concurrent workers at a common directory.
+> A shared cache directory is only ever driven by **one** cargo invocation at a
+> time. Cargo takes an exclusive lock per target dir, so N concurrent invocations
+> against one directory serialise — measured in phase-334 W1.a/W1.c as a net loss
+> against sccache, which already deduplicates the compilations.
+>
+> Where sharing is wanted, it comes from **one invocation over many packages**
+> (cargo's internal jobserver parallelism), or from bounded worker concurrency —
+> never from pointing concurrent workers at a common directory.
+
+The serialisation is real and reproduces exactly. "A net loss" does not: the
+A/B phase-334 W1.a cites varied `incremental`, not target-dir sharing. Timed
+directly over 37 standalone leaves in one group, N concurrent invocations
+against one dir came out **1.9× faster** than N separate dirs and removed
+**21.8:1** of duplicate bytes (9.70 GiB → 455 MiB), never losing in any rep.
+
+**The rule, restated.** Sharing comes from one invocation over many packages, or
+from N invocations against one directory — and **which is right is a
+measurement, not a principle**. One invocation is faster (measured ~9× against
+separate dirs at that group size, ~1.7× against the shared dir) because inner
+parallelism beats a flock. It is also the only shape that unions features across
+its members, so it constrains the group key where N invocations do not, and in
+this repository it requires generating manifests and a merged
+`[patch.crates-io]` — a second spelling of `nros sync`'s output, which R3
+forbids.
+
+So: **prefer the shape that needs no generated state unless wall clock is the
+binding constraint.** Both shapes deduplicate the bytes identically, and bytes
+are what R1 exists for. What remains categorically wrong is pricing the flock
+without pricing what it removes: every invocation after the first finds the
+shared graph already fresh, so it serialises work that no longer exists.
 
 ## Consequences
 

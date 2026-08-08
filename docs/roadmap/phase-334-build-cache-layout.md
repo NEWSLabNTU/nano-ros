@@ -15,9 +15,19 @@ was not deliberate: phase-340 W2's "findings" F1/F2/F3 restate W1.d, W1.a and
 W1.b respectively. **This doc framed the questions first; phase-340 supplied the
 numbers.** Neither should be read as independent confirmation of the other.
 
+**W1.a's verdict was WITHDRAWN 2026-08-08 — its cited evidence does not test its
+claim.** "phase-340 W1 lane A/B" is the `incremental` on/off A/B; neither arm
+varied target-dir sharing, so the shared-dir shape had never been run when the
+verdict was recorded. Measured directly (phase-340 W2, "The mechanism,
+decided"): over 37 standalone leaves in one group, N concurrent invocations
+against one shared dir are **1.9× faster** than N separate dirs and remove
+**21.8:1** of duplicate bytes, losing in no rep at either N=8 or N=37. RFC-0070
+R4 is amended to match. The table below is left as recorded; read the W1.a row
+as refuted and the rest as standing.
+
 | W1 item | verdict | evidence |
 | --- | --- | --- |
-| **W1.a** cargo sharing vs per-example dirs | **sccache wins; do not share a dir across concurrent invocations** | phase-340 W1 lane A/B |
+| **W1.a** cargo sharing vs per-example dirs | ~~**sccache wins; do not share a dir across concurrent invocations**~~ **REFUTED — see above** | phase-340 W1 lane A/B — *which measured `incremental`, not sharing* |
 | **W1.b** feature-unification hazard / signature count | **bimodal — see below** | measured 2026-08-06 |
 | **W1.d** sccache as the alternative | **prefers separate dirs + sccache**, comfortably inside W1.d's own ~15 % rule | 17846 hits / 222 misses warm |
 | **W1.c** cmake / corrosion sharing | **sharing is safe and worth ~25 % disk, but W2 is its precondition** | measured 2026-08-06, below |
@@ -44,11 +54,22 @@ everything" nor "sccache only": share the head, cache the tail. W1.b's
 either/or framing was too coarse, and phase-340 W2.b should target these five
 groups specifically rather than "same-identity groups" in general.
 
-**W3.a is therefore decided:** keep separate dirs under the new root and rely on
-sccache for the tail; where sharing happens it must come from ONE cargo
-invocation over many packages (inner parallelism), never N invocations against
-one dir (lock contention). Rationale and the rejected design are recorded in
-phase-340 W2 F3.
+**W3.a — RE-DECIDED 2026-08-08, since it was decided on W1.a's withdrawn
+verdict.** It read: "keep separate dirs under the new root and rely on sccache
+for the tail; where sharing happens it must come from ONE cargo invocation over
+many packages (inner parallelism), never N invocations against one dir (lock
+contention)."
+
+Now: **share via N invocations against one dir per group**, which is
+phase-226.D's existing mechanism as widened by phase-340 W2.a. It gets 100 % of
+the byte win the umbrella gets (455 MiB either way over 37 leaves) with no
+generated manifests and no merged patch table, and it does not regress wall
+clock. The "share the head, cache the tail" split below is also softer than it
+looked: feature-exactness bounds a group only because ONE invocation unions
+features across its members, so under N invocations the 55 singleton signatures
+still share the whole feature-invariant lower stack — which is where the bytes
+actually are (phase-340 W2 measured 391–512 copies of the host proc-macro and
+build-dep graph, one identity each). See phase-340 W2, "The mechanism, decided".
 
 **W1.c answered 2026-08-06 — see below. What remains:** all of W2 (the layout
 and naming rule — the part phase-340 does NOT cover) and W3.b/W3.c.
