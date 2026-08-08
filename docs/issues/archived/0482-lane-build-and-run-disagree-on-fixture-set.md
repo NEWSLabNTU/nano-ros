@@ -1,10 +1,11 @@
 ---
 id: 482
 title: "tier 2 needs fixtures its own lane build does not produce — a row's coordinate is computed twice, and the lane's RUN is never narrowed"
-status: open
+status: resolved
 type: bug
 area: testing
-related: [issue-0393, issue-0196, issue-0443, issue-0445, issue-0351, rfc-0061, phase-318, phase-337]
+related: [issue-0393, issue-0196, issue-0443, issue-0445, issue-0351, issue-0357, rfc-0061, phase-318, phase-337, phase-340]
+resolved_in: phase-340 W3
 ---
 
 ## Symptom (measured 2026-08-07)
@@ -178,12 +179,60 @@ issue 0341 removed. Two candidate designs, neither small:
    the #328 shape. It would need the row identity threaded through first, and it
    risks laundering "never built" into "skipped", which is the 0445 hazard.
 
-Both are phase-sized. Until one lands, `just ci-matrix` needs a full fixture
-build, and the ladder's cost claim now says so — CLAUDE.md's "~26 % of a sweep"
-was quoting the FRESHNESS gate as if it were the build, and has been corrected
-in CLAUDE.md, AGENTS.md and `book/src/internals/build-system.md`.
+### Resolved by phase-340 W3 (2026-08-08) — design 2, with the link DERIVED
+
+Design 1 is a dead end for the reason stated above and stays one. Design 2
+shipped, and its stated blocker turned out to be about the ~30 *hand-written*
+functions rather than about the resolver:
+
+**Every one of those functions computes its path under the manifest row's own
+artifact root** — necessarily, because that is where the build wrote it. So the
+link back to the row is DERIVABLE and needs no per-resolver edit (which would
+have been the #328 shape it was accused of). `fixtures-manifest.py` gained
+`row_artifact_root()` beside `row_coord()` — one expression, shared with the
+cmake record's `build_subdir` so where the build WRITES and where attribution
+LOOKS cannot drift — and `nros_tests::fixtures::lane` inverts it at the two
+resolution chokepoints (`require_prebuilt_binary`, and
+`require_prebuilt_workspace_binary` by `id`, since several workspace rows share
+a `dir`). Measured over the manifest as shipped: **all 240 buildable
+`[[fixture]]` rows have distinct, pairwise-unnested artifact roots**, so the
+inversion is exact rather than heuristic, and a gate keeps it so.
+
+The result is one predicate on one coordinate file:
+
+```text
+BUILD skips row R  ⟺  row_coord(R) ∉ lane_coords   (fixtures-manifest.py --coords-from)
+RUN   skips row R  ⟺  row_coord(R) ∉ lane_coords   (fixtures::lane)
+```
+
+`CiLane::run_scope` gained `RunScope::LaneCoords`, `nros_lane_build_lane` now
+maps `tier2`/`tier2-nightly` to themselves, and the recipes export
+`NROS_TEST_COORDS` pointing at the SAME `nros_lane_coords_file` output the build
+and the staleness gate use.
+
+**The 0445 laundering hazard, addressed by what the skip is keyed on.** It fires
+on "this row's coordinate is outside the lane", never on "the artifact is
+missing". An in-lane fixture that is absent or stale fails exactly as hard as
+before; a path no row claims is never skipped (the Zephyr west leaves, the
+compile-check lane and the shared `build/fixtures-cargo` dirs are built
+module-level, so a lane omits nothing there); an empty or unreadable
+`NROS_TEST_COORDS` is a hard error rather than "no narrowing". Verified at
+process level on an unprovisioned tree: with `linux,rust,zenoh` out of the lane
+a resolver reports `[SKIPPED] out of lane …`, with it in the lane the same
+resolver still reports `Test fixture binary not prebuilt`.
+
+Gates: `tests/lane_run_narrowing.rs` (build-set == run-set over four coordinate
+subsets, for BOTH row kinds; attribution totality; fail-closed; the skip
+decision in both directions), plus the unnested-artifact-root and
+component-wise-containment unit tests in `fixtures::lane`. Seven tripwires run,
+each confirmed to turn its gate red and then restored.
+
+CLAUDE.md's "~26 % of a sweep" was quoting the FRESHNESS gate as if it were the
+build; it now describes the build, which is again ~28 % of the coordinates.
 
 ## Reproduce
+
+As shipped before the fix:
 
 ```console
 $ just build-test-fixtures lane=tier2      # succeeds, stamp lane=tier2
@@ -191,6 +240,10 @@ $ just ci-matrix                           # ~231 STALE / not-found failures
 $ just build-test-fixtures                 # lane=all
 $ just ci-matrix                           # ~19 real failures
 ```
+
+After phase-340 W3 the first pair is the SUPPORTED sequence: the run narrows to
+the same coordinates, so out-of-lane fixtures report `[SKIPPED] out of lane`
+rather than STALE.
 
 Cause A alone, without building a single fixture:
 

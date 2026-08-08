@@ -51,21 +51,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#482** (testing, open 2026-08-07) — **tier 2 needs fixtures its own lane build does not produce.** After a
-clean, fully successful `just build-test-fixtures lane=tier2`, `just ci-matrix` produced ~231 STALE/not-found
-failures; the same tree rebuilt `lane=all` dropped to ~19. Two "computed twice" defects, the issue-0196 / #393
-family applied to lane membership. (A) A row's `(platform, lang, rmw)` coordinate is computed in two places with
-two answers — `matrix_fixture_coverage.rs` reads an omitted `rmw` as `zenoh`, `fixtures-manifest.py` reads it as
-`None` and matches nothing — so **67 of 240 buildable rows are in NO coordinate-scoped lane** (tier 2 selected
-46/240 where it should select 109/240; the 63 missing rows are every native Rust example and every bench,
-including the one in the symptom). The staleness gate uses the SAME filter, so it could not report what the build
-had skipped. (B) `ci-matrix` never narrows its RUN, so BUILD ⊉ RUN, and `_require-fixtures` accepts a `lane=tier2`
-stamp for a run that executes everything — the justfile comment says the build must be `all` but nothing enforces
-it. Fixed: one `row_coord()` in the manifest reader consumed by both sides, and `CiLane::run_scope()`/`build_lane()`
-deriving the required build from the run so `ci-matrix` fails at preflight in seconds. Still open because fix B
-makes tier 2 honest, not cheap — narrowing the run (lane-filter or the fixture resolver) is phase-sized. See
-`0482-*`. (2026-08-07)
-
 **#481** — readiness greps use string LITERALS, so a wrong marker burns the whole timeout in silence and the
 test still passes. Found by measurement: after phase-342 W1 split the pubsub fold, `rust_cyclone` sat at 34.1 s
 against `cpp_cyclone`'s 5.2 s — 30 s timeout + 2 s settle + 2 s delivery — because the settle greped `"Waiting for"`,
@@ -135,6 +120,26 @@ run": 0 passed/16 skipped in ~1 s versus 16 passed/0 skipped in 116 s once built
 the message now names `just qemu build-zenoh-pico` (which `just qemu setup` already called, so only the message
 was wrong), and `build-fixtures` now builds it idempotently, because "I built the fixtures" is exactly when the
 suite is expected to run. See `archived/0483-*`.
+
+Recently resolved (2026-08-08, phase-340 W3): **#482** — after a clean, fully successful
+`just build-test-fixtures lane=tier2`, `just ci-matrix` produced ~231 STALE/not-found failures; the same
+tree rebuilt `lane=all` dropped to ~19. Two "computed twice" defects, the issue-0196 / #393 family applied
+to lane membership. (A) A row's `(platform, lang, rmw)` coordinate was computed in two places with two
+answers — `matrix_fixture_coverage.rs` read an omitted `rmw` as `zenoh`, `fixtures-manifest.py` read it as
+`None` and matched nothing — so **67 of 240 buildable rows sat in NO coordinate-scoped lane** (tier 2
+selected 46/240 where it should select 109/240; the 63 missing rows were every native Rust example and
+every bench, including the one in the symptom). The staleness gate used the SAME filter, so it could not
+report what the build had skipped. (B) `ci-matrix` never narrowed its RUN, so BUILD ⊉ RUN, and
+`_require-fixtures` accepted a `lane=tier2` stamp for a run that executed everything. Fixed in two steps:
+2026-08-07 made it HONEST — one `row_coord()` consumed by both sides, and `CiLane::run_scope()` deriving
+the required build (`all`) from the run, so `ci-matrix` fails at preflight in seconds. 2026-08-08
+(phase-340 W3) made it CHEAP — the RUN now narrows to the same coordinates in the fixture RESOLVER
+(`NROS_TEST_COORDS` → `nros_tests::fixtures::lane`), which attributes an artifact back to its manifest row
+through `row_artifact_root()`, the sibling of `row_coord()`. Build-set and run-set are then one predicate
+on one coordinate file, `nros_lane_build_lane` maps tier 2 to itself, and
+`just build-test-fixtures lane=tier2 && just ci-matrix` is the supported pair. The skip is keyed on the
+COORDINATE, never on "artifact absent", so an in-lane fixture that is missing or stale still fails hard
+(issue 0445). See `archived/0482-*`. (2026-08-08)
 
 Recently resolved (2026-08-07): **#475** — the RMW archive was an ORDER-ONLY (`||`) link dep of the C/C++
 example binaries, because it is whole-archived through a raw `-Wl,...` FLAG (CMake cannot see a file inside a

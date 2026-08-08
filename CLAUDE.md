@@ -54,11 +54,13 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   - `just ci` — **tier 1**, minutes, host only. The default. Gates and runs only
     native fixtures, so a stale ThreadX fixture cannot block it.
   - `just ci-matrix` — **tier 2**, when the diff touches `packages/core`, codegen,
-    or `cmake/`. 1-wise over platform/lang/rmw/kind: every value once. It sees
-    each platform and each language, but NOT their pairing. **The ~26 % is the
-    FRESHNESS gate, not the build** (#482): this lane does not narrow its test
-    RUN, so every fixture must EXIST — build `lane=all`, not `lane=tier2`. The
-    preflight enforces that now instead of letting the run discover it.
+    or `cmake/`. 1-wise over platform/lang/rmw/kind: every value once, ~28 % of
+    the coordinates. It sees each platform and each language, but NOT their
+    pairing. `just build-test-fixtures lane=tier2` is the build it needs
+    (phase-340 W3): the RUN narrows to the same coordinates at fixture
+    RESOLUTION time, so an out-of-lane fixture SKIPS rather than failing. Between
+    #482 and W3 this lane required `lane=all` — the ~26 % was the FRESHNESS gate,
+    not the build.
   - `just ci-matrix-nightly` — the pairwise cover (~70 %). Where the
     platform×language and rmw×language classes actually surface (0268/0245 sizes
     headers, 0332 freestanding headers, 0331 vtable ABI). Tier 2 costs a day of
@@ -182,12 +184,20 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   records `lane=` + per-coordinate rows, and `_require-fixtures` checks COVERAGE against the run's
   lane. Build the lane you'll test — tier 1 doesn't need all 337 rows.
   **A lane answers TWO questions and they have different answers (#482):** which fixtures must be
-  FRESH (its cell cover — narrow, and the whole saving) vs which must EXIST (a property of the
-  RUN). Only `native`/tier 1 narrows its run, so only tier 1 gets a narrow build;
-  `nros_lane_build_lane` maps lane→required build and `CiLane::run_scope` declares it. And a
-  fixture ROW's coordinate has exactly one computation, `row_coord()` in `fixtures-manifest.py`
-  (`rmw` defaults to zenoh THERE) — `matrix_fixture_coverage.rs` consumes its `coords` subcommand
-  rather than re-deriving. The second derivation left 67 of 240 rows in no lane at all. New runtime tests join a
+  FRESH (its cell cover) vs which must EXIST (a property of the RUN). `nros_lane_build_lane` maps
+  lane→required build and `CiLane::run_scope` declares it. Tier 1 narrows its run by NAME
+  (`NROS_TEST_SCOPE`) so it needs the broader `native` build; **tier 2 / nightly narrow by
+  COORDINATE in the fixture RESOLVER** (`NROS_TEST_COORDS` → `nros_tests::fixtures::lane`,
+  phase-340 W3), so each is its own build lane. Name filtering cannot express tier 2 — it is
+  1-wise over platform, so every platform is in it (#357/#482); the resolver attributes an
+  artifact back to its manifest row via `row_artifact_root()`, the sibling of `row_coord()`, so
+  build-set and run-set are ONE predicate on one coordinate file. The skip is keyed on the
+  COORDINATE, never on "artifact absent": an in-lane fixture that is missing or stale still fails
+  hard, and an unattributable path (zephyr west leaves, compile-check — built module-level) is
+  never skipped. A row's coordinate still has exactly one computation, `row_coord()` in
+  `fixtures-manifest.py` (`rmw` defaults to zenoh THERE) — `matrix_fixture_coverage.rs` consumes
+  its `coords` subcommand rather than re-deriving. The second derivation left 67 of 240 rows in
+  no lane at all. New runtime tests join a
   matrix: cells in `matrix::CELLS` / `interop::CELLS` (RFC-0051; phase-331 W4 put workspace RMW
   cells there too), not new hand-coordinated files — the consolidation plan is phase-329.
 - **Fixture mtime treadmill:** any pull/rebase — and any `git stash push`/`pop`, which rewrites

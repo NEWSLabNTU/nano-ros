@@ -446,16 +446,74 @@ goal AND the mechanism is different in kind: these units are feature-invariant,
 so no group key is needed. Measurement-first, like W2: establish what a shared
 host dir actually saves before building anything.
 
-### Wave 3 — make tier 2 honest AND cheap
+### Wave 3 — make tier 2 honest AND cheap — **LANDED 2026-08-08**
 
-Issue 0482 fixed correctness (tier 2 selected 46 of 240 rows; now 109). It did
-NOT restore affordability — tier 2 still only passes on top of an `all` build.
-Two designs are written up in 0482; both need coordinate-granular test selection,
-which neither `lane-filter.sh` (platform-family tokens) nor the fixture resolver
-(~30 path-keyed functions with no link to a manifest row — the #328 shape) can
-express today. Until then the ladder's middle rung is a fiction, and CLAUDE.md's
-own argument is that an unaffordable instruction gets followed selectively,
-"which is worse than a smaller instruction followed honestly".
+Issue 0482 fixed correctness (tier 2 selected 46 of 240 rows; now 109) but not
+affordability: tier 2 only passed on top of an `all` build, so the ladder's
+middle rung was a fiction.
+
+W3 narrows the RUN so a `lane=tier2` build suffices. Of 0482's two candidate
+designs it ships **design 2 (filter at resolution time)**; design 1
+(`lane-filter.sh`) stays a dead end for the reason 0482 gives — tier 2 is 1-wise
+over platform, so every platform is in the lane, platform-token filtering
+excludes nothing, and the saving is in lang × rmw *within* a platform, which
+test names do not encode (issue 0357).
+
+**The blocker on design 2 was about the ~30 hand-written resolver functions, not
+about the resolver.** Every one of them computes its path under the manifest
+row's own artifact root — necessarily, because that is where the build wrote it.
+So the link back to the row is DERIVABLE:
+
+* `fixtures-manifest.py` gained `row_artifact_root()` beside `row_coord()`, one
+  expression shared with the cmake record's `build_subdir`, so where the build
+  WRITES and where attribution LOOKS cannot drift.
+* `nros_tests::fixtures::lane` inverts it at the two resolution chokepoints
+  (`require_prebuilt_binary`; `require_prebuilt_workspace_binary` by `id`, since
+  several workspace rows share a `dir`). No per-resolver edit — that would have
+  been the #328 shape the objection named.
+* Measured over the manifest as shipped: **all 240 buildable `[[fixture]]` rows
+  have distinct, pairwise-unnested artifact roots**, so the inversion is exact
+  rather than heuristic, and a gate keeps it so.
+
+The result is the invariant this whole area exists to protect — one predicate,
+one coordinate file:
+
+```text
+BUILD skips row R  ⟺  row_coord(R) ∉ lane_coords   (fixtures-manifest.py --coords-from)
+RUN   skips row R  ⟺  row_coord(R) ∉ lane_coords   (fixtures::lane)
+```
+
+`CiLane::run_scope` gained `RunScope::LaneCoords`; `nros_lane_build_lane` maps
+`tier2`/`tier2-nightly` to themselves; the recipes export `NROS_TEST_COORDS`
+naming the same `nros_lane_coords_file` output the build and the staleness gate
+already use.
+
+**Why this is not the 0445 laundering hazard.** The skip is keyed on "this row's
+coordinate is outside the lane" and never on "the artifact is missing". An
+in-lane fixture that is absent or stale fails exactly as hard as before; a path
+no row claims is never skipped (the Zephyr west leaves, the compile-check lane
+and the shared `build/fixtures-cargo` dirs are built module-level, so a lane
+omits nothing there); an empty or unreadable `NROS_TEST_COORDS` is a hard error,
+not "no narrowing".
+
+**Verified.** Gate level: `tests/lane_run_narrowing.rs` (build-set == run-set
+over four coordinate subsets for BOTH row kinds; attribution totality;
+fail-closed; the skip decision in both directions) plus the unnested-root and
+component-wise-containment units in `fixtures::lane`. Seven tripwires, each
+confirmed to turn its gate red and then restored. Process level, on an
+UNPROVISIONED tree — which is the only lane check a worktree agent can make:
+with `linux,rust,zenoh` out of the lane a resolver reports `[SKIPPED] out of
+lane …`; with it in the lane the same resolver still reports `Test fixture
+binary not prebuilt`; with no `NROS_TEST_COORDS` behaviour is unchanged.
+
+**NOT verified, and it is the acceptance criterion.** `just build-test-fixtures
+lane=tier2 && just ci-matrix` has not been run — a fresh worktree is
+unprovisioned and the volume had ~20 GB free. The post-merge `lane=all` +
+`ci-matrix` this phase already mandates should be a `lane=tier2` + `ci-matrix`
+this time, read from `target/nextest/default/junit.xml` and not the console
+count (which reports `skip!` panics as failures — and W3 deliberately produces
+many more of them). Expect the ~12 standing failures of Wave 4 minus whichever
+sit at out-of-lane coordinates.
 
 ### Wave 4 — standing debt
 
@@ -471,8 +529,10 @@ own argument is that an unaffordable instruction gets followed selectively,
 
 * **Parallel worktree agents verify at GATE level only** — a fresh worktree is
   unprovisioned, so no agent can build a fixture or run a sweep. A post-merge
-  `lane=all` + `ci-matrix` is mandatory, and it is what caught the
+  fixture build + `ci-matrix` is mandatory, and it is what caught the
   `enforce_registry` regression that four green `check-fast` runs did not.
+  Since W3 that build is `lane=tier2`, not `lane=all` — and the FIRST such run
+  is also W3's own acceptance check.
 * **Re-measure an "N of M" claim before building on it.** F3 stood for months on
   evidence that varied `incremental` rather than sharing.
 * **A gate cannot vet a change to the thing it is keyed on — apply the change and

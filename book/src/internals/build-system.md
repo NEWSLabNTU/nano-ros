@@ -151,11 +151,34 @@ wrong binary. The discipline:
 
   Note "the run", not "the lane" (issue 0482). A lane's coordinates are what it
   keeps **fresh**; what must **exist** is decided by which tests the recipe
-  executes. Only tier 1 narrows its run, so `nros_lane_build_lane` maps `tier1`
-  to `native` and both tier-2 lanes to `all` — they invoke `test-all` unscoped,
-  and a `lane=tier2` build used to satisfy the preflight for a run that then
-  failed STALE on 34 unbuilt coordinates. The declaration is `CiLane::run_scope`;
-  `lane-coords <lane> --build-lane` prints the answer.
+  executes. The two are answered separately, and `nros_lane_build_lane` is the
+  mapping between them (`CiLane::run_scope` is the declaration;
+  `lane-coords <lane> --build-lane` prints it).
+
+  Each lane narrows its run in the way its cost actually lives:
+
+  | lane | run narrowed by | build lane |
+  | --- | --- | --- |
+  | tier 1 | test/binary NAME (`NROS_TEST_SCOPE=native`) | `native` |
+  | tier 2, nightly | fixture COORDINATE (`NROS_TEST_COORDS`) | itself |
+
+  Tier 2 needs the second kind because it is 1-wise over platform: every
+  platform is in the lane, so a platform-token filter excludes nothing, and the
+  saving is in lang × rmw *within* a platform, which test names do not encode
+  (issues 0357, 0482). So the narrowing happens in the fixture **resolver**
+  (phase-340 W3, `nros_tests::fixtures::lane`): a resolved artifact is
+  attributed back to its `examples/fixtures.toml` row through
+  `row_artifact_root()`, and a row outside the lane reports **SKIPPED** instead
+  of missing. Build and run then apply the same `row_coord()` predicate to the
+  same coordinate file, so `just build-test-fixtures lane=tier2 && just
+  ci-matrix` is a coherent pair. Before W3 tier 2 ran the whole suite, and a
+  `lane=tier2` build satisfied the preflight for a run that then failed STALE on
+  34 unbuilt coordinates.
+
+  The skip is keyed on the coordinate, never on the artifact being absent: an
+  **in-lane** fixture that is missing or stale still fails hard, and a path the
+  manifest cannot attribute (Zephyr west leaves, the compile-check lane — both
+  built module-level, so nothing is omitted) is never skipped.
 - **Rust cells.** `scripts/test/rust-fixture-stale.sh` reuses cargo's own
   fingerprint — `cargo build … --message-format=json` reports `"fresh":false`
   for a stale unit, so the probe both detects **and** self-heals.
