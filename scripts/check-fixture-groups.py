@@ -32,11 +32,25 @@ Three arms, all fatal:
       When the Rust side learns variant groups, replace this arm with the
       agreement check; do not simply delete it.
 
-  A3  The collisions that BLOCK each not-yet-shared platform are frozen in
-      `BLOCKED` below.  A budget, in the same spirit as
+  A3  Every artifact-name collision the manifest contains is frozen in
+      `KNOWN_COLLISIONS` below.  A budget, in the same spirit as
       `check-artifact-identity-budget`: it fails when a new collision appears
-      (a regression) AND when a recorded one is fixed (so the migration list
-      and this file move together instead of drifting apart).
+      (a regression) AND when a recorded one is fixed (so the record and the
+      migration move together instead of drifting apart).
+
+**A3 observes EVERY platform, shared or not, and that independence is the
+point.**  The first version skipped platforms already in the shared list, on
+the theory that A1 owns those.  It made A3's remediation actively wrong the
+moment anyone ran the obvious experiment: with
+`NROS_FIXTURE_SHARED_PLATFORMS="qemu-arm-baremetal linux"`, A1 correctly
+reported the two `linux` collisions while A3 observed `[]` — because it had
+stopped looking, not because they were gone — and told the reader to delete two
+live blockers from the record.  Following that advice would have erased the only
+written trace of the collisions and let a later migration hit cargo's silent
+`output filename collision` warning.  The gate still exited 1, so the exit code
+hid the defect; only reading the message showed it.  A gate whose remedy is
+wrong is worse than one that only says "blocked" — issue 0196's rule (a probe
+must watch what the gate enforces) applied to a message instead of to coverage.
 
 The group key itself is NOT reimplemented here.  `nros_fixture_group_slug` in
 `scripts/build/fixtures-target-dir.sh` is the one derivation (RFC-0070 R3) and
@@ -54,16 +68,32 @@ import collections
 import os
 import subprocess
 import sys
+from typing import NamedTuple
 
+# The repo's existing spelling — identical to `scripts/build/fixtures-manifest.py`,
+# which this gate already shells into. `tomllib` is 3.11+, `tomli` is the 3.10
+# backport; a type checker resolves exactly one of the two and flags the other,
+# on both files. Keep the two spellings in step rather than inventing a third.
 try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:  # 3.10 and earlier
     import tomli as tomllib
 
+
+class Row(NamedTuple):
+    """One rust fixture row, as `fixtures-manifest.py list --with-platform` emits it."""
+
+    platform: str
+    directory: str
+    env: str
+    cargo_args: str
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEP = "\x1f"
 
-# A3 — the frozen blocker list.  Measured 2026-08-08 over the whole manifest.
+# A3 — the frozen collision inventory.  Measured 2026-08-08 over the whole
+# manifest, EVERY platform, independent of the shared list (see the module
+# docstring for why that independence is load-bearing).
 #
 # `linux` is the platform phase-340 W2.a step 2 wants to add to
 # NROS_FIXTURE_SHARED_PLATFORMS.  These two artifact names are what stops it:
@@ -78,7 +108,7 @@ SEP = "\x1f"
 # claiming an already-recorded name: renaming `native-rs-xrce-serial-talker`'s
 # binary to `talker` left the budget reading exactly the same two entries and
 # the gate green. Tripwired again with the owners in the key, which fails.
-BLOCKED = {
+KNOWN_COLLISIONS = {
     "linux": [
         "linux::listener <- native-rs-custom-transport-listener, native-rs-listener",
         "linux::talker <- native-rs-custom-transport-talker, native-rs-talker",
@@ -87,7 +117,7 @@ BLOCKED = {
 
 
 def rows():
-    """Every rust fixture row as (platform, dir, env, cargo_args).
+    """Every rust fixture row, as `Row`s.
 
     Straight from `fixtures-manifest.py`, which is the manifest's only reader —
     this gate does not parse `examples/fixtures.toml` itself.
@@ -109,8 +139,7 @@ def rows():
     for line in out.splitlines():
         if not line.strip():
             continue
-        platform, directory, env, args = line.split(SEP)
-        yield platform, directory, env, args
+        yield Row(*line.split(SEP))
 
 
 def groups_for(records):
@@ -127,7 +156,9 @@ def groups_for(records):
         '    printf "%s\\n" "$(nros_fixture_group_slug "$platform" "$args" "$envstr")"\n'
         "done\n"
     )
-    stdin = "".join(f"{p}{SEP}{a}{SEP}{e}\n" for p, _d, e, a in records)
+    stdin = "".join(
+        f"{r.platform}{SEP}{r.cargo_args}{SEP}{r.env}\n" for r in records
+    )
     res = subprocess.run(
         ["bash", "-c", program],
         cwd=ROOT,
@@ -204,8 +235,8 @@ def main():
     slugs = groups_for(records)
 
     per_platform = collections.defaultdict(lambda: collections.defaultdict(set))
-    for (platform, directory, _env, _args), slug in zip(records, slugs):
-        per_platform[platform][slug].add(directory)
+    for record, slug in zip(records, slugs):
+        per_platform[record.platform][slug].add(record.directory)
 
     shared = shared_platforms()
     failures = []
@@ -236,14 +267,17 @@ def main():
                     f"slug — and update this arm — before sharing this platform."
                 )
 
-    # --- A3: the frozen blocker budget for everything else -----------------
+    # --- A3: the frozen collision inventory, over EVERY platform -----------
+    #
+    # Deliberately NOT filtered by `shared`. A1 and A3 answer different
+    # questions about the same facts — "is this platform safe to share?" and
+    # "has the set of collisions changed?" — and coupling them made A3's
+    # remediation invert exactly when A1 fired. See the module docstring.
     observed = {}
     for platform, by_group in per_platform.items():
-        if platform in shared:
-            continue
         keys = sorted(
             "{}::{} <- {}".format(
-                group, name, ", ".join(sorted(pkg for pkg, _d in owners))
+                group, name, ", ".join(sorted(pkg for pkg, _dir in owners))
             )
             for group, clash in collisions(by_group).items()
             for name, owners in clash.items()
@@ -251,17 +285,19 @@ def main():
         if keys:
             observed[platform] = keys
 
-    for platform in sorted(set(observed) | set(BLOCKED)):
-        want = BLOCKED.get(platform, [])
+    for platform in sorted(set(observed) | set(KNOWN_COLLISIONS)):
+        want = KNOWN_COLLISIONS.get(platform, [])
         got = observed.get(platform, [])
         if want != got:
             failures.append(
-                f"A3: the recorded blocker list for {platform!r} is stale.\n"
+                f"A3: the recorded collision list for {platform!r} is stale.\n"
                 f"      recorded: {want}\n"
                 f"      observed: {got}\n"
-                f"      If you FIXED one, delete it from BLOCKED in this file (and "
-                f"say so in the phase-340 W2 notes). If you ADDED one, you have "
-                f"just made {platform!r} harder to migrate — rename the binary."
+                f"      Every entry below was observed on THIS tree, so a shorter "
+                f"`observed` means one was genuinely fixed — delete it from "
+                f"KNOWN_COLLISIONS (and say so in the phase-340 W2 notes). A longer "
+                f"one means a new artifact-name clash just made {platform!r} harder "
+                f"to share — rename the binary rather than recording it."
             )
 
     if failures:
@@ -272,10 +308,12 @@ def main():
 
     n_groups = sum(len(per_platform[p]) for p in shared)
     n_rows = sum(len(m) for p in shared for m in per_platform[p].values())
+    n_recorded = sum(len(v) for v in KNOWN_COLLISIONS.values())
     print(
         f"fixture groups: {len(shared)} shared platform(s), {n_groups} group(s), "
         f"{n_rows} row(s) — no artifact-name collisions; "
-        f"{len(BLOCKED)} platform(s) recorded as blocked."
+        f"{n_recorded} collision(s) recorded across "
+        f"{len(KNOWN_COLLISIONS)} unshared platform(s)."
     )
     return 0
 

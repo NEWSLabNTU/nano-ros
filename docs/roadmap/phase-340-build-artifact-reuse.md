@@ -645,6 +645,19 @@ W2/W3 implementation.**
       So the order is now: fix the two colliding binary names → teach the Rust
       resolver the variant slug and the no-triple case → add `linux` → rebuild
       the native lane. Only the last of those needs the lane.
+
+      **One lesson from building the gate, because it generalises.** Its three
+      arms initially shared a filter: the collision INVENTORY skipped platforms
+      already in the shared list, on the theory that the enforcement arm owned
+      those. Running the gate's own tripwire and *reading the message* — not the
+      exit code — showed the inventory reporting "observed: []" for `linux` and
+      instructing the reader to delete two live blockers from the record.
+      Following that would have erased the only written trace of the collisions.
+      The gate still exited 1 throughout, which is exactly why the exit code hid
+      it. **Arms of one gate must observe independently, and a tripwire has to be
+      run in BOTH directions** — collisions present (must not claim stale) and one
+      genuinely fixed (must claim stale). This defect existed because the arm had
+      only ever been exercised in one of them.
 - [ ] **W2.b** Convert the FIVE head signatures (above) from N parallel cargo
       invocations into ONE invocation each over a build-time-only umbrella
       workspace — 62 of 117 linux rows. Leaves keep their standalone manifests
