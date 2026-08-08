@@ -95,10 +95,43 @@ fn check_demo_entry(root: &Path) -> std::process::Output {
 /// `cargo check` the fixture, optionally pointing the macro at a build-output
 /// model directory (`NROS_MODEL_DIR` — the first entry in
 /// `nros_orchestration_ir::model_location`'s search order).
+/// A target dir SHARED by every case in this binary (phase-342 W2).
+///
+/// Each case stages its own copy of the fixture into a fresh tempdir, so
+/// without this every case also gets a fresh, EMPTY target dir inside that
+/// tempdir and pays a cold `cargo check` of the whole graph — the cost this
+/// file's own header notes when it says "a cold check exceeds the 60s default".
+/// The staged copies differ only in the misuse edit under test, so the
+/// dependency graph they compile is identical and one warm dir serves all of
+/// them.
+///
+/// It lives under the build ROOT, NOT in a tempdir, precisely so it survives
+/// between runs — a per-run temp dir would be cold every time and this would buy
+/// nothing. Via `nros_tests::build_root()` so it follows `NROS_BUILD_ROOT`
+/// (phase-334) instead of hardcoding `<repo>/build`.
+///
+/// Measured, 5 cases at `--test-threads=4`:
+///
+///     per-case temp target dirs   108.5 s
+///     shared dir, first run        38.3 s
+///     shared dir, warm             10.3 s      (383 MB)
+///
+/// Concurrent cargos DO serialize on this dir's lock (phase-340 F3), and that
+/// is fine here and only here: the alternative is not parallel warm builds, it
+/// is five COLD ones. The lock makes the first case compile while the other four
+/// wait, then all four hit a warm cache — which is why even the cold run is 2.8x
+/// faster than the status quo it replaces.
+fn shared_check_target_dir() -> PathBuf {
+    let dir = nros_tests::build_root().join("nros-tests/native_main_macro_misuse-target");
+    fs::create_dir_all(&dir).expect("create shared check target dir");
+    dir
+}
+
 fn check_demo_entry_with_model_dir(root: &Path, model_dir: Option<&Path>) -> std::process::Output {
     let mut cmd = Command::new("cargo");
     cmd.args(["check", "-p", "demo_entry", "--manifest-path"])
-        .arg(root.join("Cargo.toml"));
+        .arg(root.join("Cargo.toml"))
+        .env("CARGO_TARGET_DIR", shared_check_target_dir());
     if let Some(d) = model_dir {
         cmd.env("NROS_MODEL_DIR", d);
     }
