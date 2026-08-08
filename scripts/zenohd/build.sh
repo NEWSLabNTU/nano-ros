@@ -18,7 +18,11 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-BUILD_DIR="$REPO_ROOT/build/zenohd"
+# phase-334 W2.b step 2 — RFC-0070 R3: one derivation, not a literal per
+# caller. Emits today's path unchanged; step 3 moves it.
+# shellcheck source=scripts/build/build-root.sh
+source "$REPO_ROOT/scripts/build/build-root.sh"
+BUILD_DIR="$(nros_build_dir zenohd)"
 ZENOH_DIR="$REPO_ROOT/third-party/zenoh/zenoh"
 
 # Parse arguments

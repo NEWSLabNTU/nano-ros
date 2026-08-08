@@ -727,11 +727,16 @@ impl Drop for ManagedProcess {
 
 /// Get the path to the locally-built zenohd binary.
 ///
-/// Returns `build/zenohd/zenohd` within the project root.
+/// Returns `<build root>/zenohd/zenohd`.
 /// Build it with `just build-zenohd`.
 pub fn zenohd_binary_path() -> std::path::PathBuf {
-    // Prefer the locally-built zenohd from the submodule
-    let local = crate::project_root().join("build/zenohd/zenohd");
+    // phase-334 W2.b step 2 — the Rust half of the `zenohd` family reads the
+    // path from the ONE derivation (`crate::build_dir`, the mirror of
+    // `nros_build_dir`), not a literal. The shell half — `just zenohd` and
+    // `scripts/zenohd/build.sh` — moved in the same commit, which is the point:
+    // a build that moves without its resolver is how a family ends up looking
+    // in two places. Step 2 emits today's path; step 3 moves it, once.
+    let local = crate::build_dir("zenohd", &[]).join("zenohd");
     if local.exists() {
         return local;
     }
