@@ -268,6 +268,69 @@ nros_fixtures_stamp_lane() {
     echo "${lane:-all}"
 }
 
+# nros_lane_run_is_narrowed <build-lane>
+#
+# For a MODULE-level build lane (`all`, `native`) there is nothing to check —
+# those cover any run. For a COORDINATE-scoped one, the run must be narrowed to
+# the same coordinates or the lane is back to issue 0482: a build that produced
+# 152 of 333 rows, accepted for a run that resolves all 333.
+#
+# The narrowing is `NROS_TEST_COORDS`, read by `nros_tests::fixtures::lane`. It
+# must be SET, non-empty, and hold exactly the lane's coordinates — an
+# arbitrary file would let a caller widen the build's acceptance while narrowing
+# the run somewhere else entirely, which is the two-spellings-of-one-fact defect
+# (issue 0443) with a new pair of names.
+nros_lane_run_is_narrowed() {
+    local want="$1"
+    case "$want" in
+        all | native) return 0 ;;
+    esac
+
+    local want_file
+    want_file="$(nros_lane_coords_file "$want")" || return 1
+    # `all`/`native` returned above, so a coordinate lane always has a file;
+    # an empty name here would feed `comm` an empty filename and hang.
+    [ -n "$want_file" ] || {
+        echo "fixture-lane: no coordinate file for '$want' — refusing rather than" >&2
+        echo "              comparing against nothing" >&2
+        return 1
+    }
+
+    if [ -z "${NROS_TEST_COORDS:-}" ] || [ ! -s "${NROS_TEST_COORDS}" ]; then
+        echo "ERROR: lane '$want' is coordinate-scoped, but NROS_TEST_COORDS is unset" >&2
+        echo "       or empty — so the RUN would resolve every coordinate while this" >&2
+        echo "       preflight accepts a build of only ${want}'s." >&2
+        echo "" >&2
+        echo "       That is issue 0482: preflight green, then ~231 failures on" >&2
+        echo "       fixtures the lane never built. The tier recipes export it;" >&2
+        echo "       a hand-run 'NROS_FIXTURE_LANE=$want just test-all' must too." >&2
+        echo "" >&2
+        echo "  Run:  just ci-matrix        (or ci-matrix-nightly)" >&2
+        echo "  Or:   NROS_TEST_COORDS=\"\$(bash -c 'source scripts/build/fixture-lane.sh; nros_lane_coords_file $want')\"" >&2
+        echo "" >&2
+        echo "  (bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+        return 1
+    fi
+
+    local differing
+    differing="$(comm -3 \
+        <(grep -v '^[[:space:]]*\(#.*\)\?$' "$want_file" | sort -u) \
+        <(grep -v '^[[:space:]]*\(#.*\)\?$' "$NROS_TEST_COORDS" | sort -u))"
+    if [ -n "$differing" ]; then
+        echo "ERROR: NROS_TEST_COORDS does not hold lane '$want''s coordinates." >&2
+        echo "       The RUN would then be narrowed to a different set from the one" >&2
+        echo "       this preflight is accepting a build for — two spellings of one" >&2
+        echo "       fact (issue 0443), which is how they drift." >&2
+        echo "       Differing coordinate(s):" >&2
+        printf '         %s\n' $differing >&2
+        echo "" >&2
+        echo "  file: $NROS_TEST_COORDS" >&2
+        echo "  lane: $want_file" >&2
+        return 1
+    fi
+    return 0
+}
+
 # nros_fixtures_stamp_require <lane>
 #
 # The `_require-fixtures` preflight. Fails when no build has run, or when the
@@ -310,10 +373,25 @@ nros_fixtures_stamp_require() {
 
     local have
     have="$(nros_fixtures_stamp_lane)"
-    # A build of everything covers every lane; nothing else to check.
+    # A build of everything covers every lane; nothing else to check. Note this
+    # returns BEFORE the narrowing check below on purpose: with every fixture
+    # present, an unnarrowed run is fine, and `NROS_FIXTURE_LANE=tier2` on top
+    # of a full build is a legitimate combination (scope the FRESHNESS gate,
+    # keep the run wide).
     if [ "$have" = "all" ]; then
         return 0
     fi
+
+    # phase-340 W3 — from here on the caller is relying on a build NARROWER than
+    # everything, which is only a correct answer while the RUN is narrowed too.
+    # What narrows it is `NROS_TEST_COORDS` reaching the test processes: the
+    # tier recipes export it and `recipes_run_the_scope_their_lane_declares`
+    # gates that, but a HAND-RUN `NROS_FIXTURE_LANE=tier2 just test-all`
+    # bypasses both and reproduces issue 0482 exactly — narrow stamp accepted,
+    # whole suite resolved, ~231 failures. Checked HERE, where the acceptance is
+    # actually granted, not only where it is configured; gating one of the two
+    # would be a gate narrower than the rule it enforces (issue 0196).
+    nros_lane_run_is_narrowed "$want" || return 1
 
     # Requiring everything from a scoped build cannot be satisfied — say so in
     # those terms rather than listing 150 missing coordinates.

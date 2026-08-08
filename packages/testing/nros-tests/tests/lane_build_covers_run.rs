@@ -39,6 +39,15 @@ fn project_root() -> PathBuf {
 
 /// Run a snippet with `fixture-lane.sh` sourced. Returns (exit code, stdout+stderr).
 fn lane_sh(snippet: &str, stamp: Option<&str>) -> (i32, String) {
+    lane_sh_env(snippet, stamp, &[])
+}
+
+/// [`lane_sh`] with extra environment. phase-340 W3 made
+/// `nros_fixtures_stamp_require` also check that a narrow build is paired with a
+/// narrowed RUN (`NROS_TEST_COORDS`), so tests that exercise the coverage logic
+/// have to supply it — and the tests that exercise the PAIRING requirement
+/// deliberately do not.
+fn lane_sh_env(snippet: &str, stamp: Option<&str>, env: &[(&str, &str)]) -> (i32, String) {
     let root = project_root();
     let mut cmd = Command::new("bash");
     cmd.arg("-c")
@@ -49,10 +58,26 @@ fn lane_sh(snippet: &str, stamp: Option<&str>) -> (i32, String) {
     if let Some(s) = stamp {
         cmd.env("NROS_FIXTURE_STAMP", s);
     }
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
     let out = cmd.output().expect("run fixture-lane.sh");
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
     text.push_str(&String::from_utf8_lossy(&out.stderr));
     (out.status.code().unwrap_or(-1), text)
+}
+
+/// The coordinate file `nros_lane_coords_file <lane>` produces, as an absolute
+/// path — i.e. exactly what `just ci-matrix` exports as `NROS_TEST_COORDS`.
+///
+/// Read from the shell rather than recomputed, so a test cannot pass against a
+/// coordinate set the recipe would never produce.
+fn lane_coords_file(lane: &str) -> String {
+    let (code, out) = lane_sh(&format!("nros_lane_coords_file {lane}"), None);
+    assert_eq!(code, 0, "nros_lane_coords_file {lane} failed:\n{out}");
+    let rel = out.trim();
+    assert!(!rel.is_empty(), "{lane} has no coordinate file");
+    project_root().join(rel).display().to_string()
 }
 
 /// Write a stamp in the format `nros_fixtures_stamp_write` produces.
@@ -164,10 +189,17 @@ fn a_tier2_build_satisfies_the_tier2_run_because_that_run_is_narrowed() {
     assert_eq!(CiLane::Tier2.build_lane(), "tier2");
 
     let dir = tmpdir();
-    let stamp = write_stamp(&dir, "tier2", &["linux,rust,zenoh", "nuttx,c,zenoh"]);
-    let (code, out) = lane_sh(
+    let coords = lane_coords_file("tier2");
+    // The stamp must carry the lane's REAL coordinates now that the preflight
+    // diffs them against the run's — a hand-picked pair would fail on coverage
+    // for reasons unrelated to what this test is about.
+    let coord_lines = std::fs::read_to_string(&coords).expect("read tier2 coords");
+    let coord_refs: Vec<&str> = coord_lines.lines().filter(|l| !l.is_empty()).collect();
+    let stamp = write_stamp(&dir, "tier2", &coord_refs);
+    let (code, out) = lane_sh_env(
         "nros_fixtures_stamp_require tier2",
         Some(stamp.to_str().unwrap()),
+        &[("NROS_TEST_COORDS", coords.as_str())],
     );
     assert_eq!(
         code, 0,
@@ -187,9 +219,12 @@ fn a_tier2_build_satisfies_the_tier2_run_because_that_run_is_narrowed() {
 fn a_narrower_lane_build_still_does_not_satisfy_a_wider_run() {
     let dir = tmpdir();
     let stamp = write_stamp(&dir, "tier1", &["linux,rust,zenoh"]);
-    let (code, out) = lane_sh(
+    let (code, out) = lane_sh_env(
         "nros_fixtures_stamp_require tier2 < /dev/null",
         Some(stamp.to_str().unwrap()),
+        // Correctly narrowed run — so this exercises the COVERAGE diff, not the
+        // pairing check.
+        &[("NROS_TEST_COORDS", lane_coords_file("tier2").as_str())],
     );
     assert_ne!(
         code, 0,
@@ -361,4 +396,65 @@ fn a_coordinate_scoped_build_is_refused_for_a_module_lane() {
          rows:\n{out}"
     );
     let _ = std::fs::remove_file(&stamp);
+}
+
+/// **phase-340 W3's own 0482 guard.** A narrow build must be refused when the
+/// RUN is not narrowed to match.
+///
+/// The recipes export `NROS_TEST_COORDS`, and `ci_lane::tests::
+/// recipes_run_the_scope_their_lane_declares` gates that they do. But
+/// `NROS_FIXTURE_LANE=tier2 just test-all` typed by hand reaches the SAME
+/// acceptance with no narrowing — a narrow stamp accepted for a run that
+/// resolves all 333 rows, which is issue 0482 verbatim. Gated where the
+/// acceptance is granted, not only where it is configured.
+#[test]
+fn a_narrow_build_is_refused_when_the_run_is_not_narrowed() {
+    let dir = tmpdir();
+    let coords = lane_coords_file("tier2");
+    let coord_lines = std::fs::read_to_string(&coords).expect("read tier2 coords");
+    let coord_refs: Vec<&str> = coord_lines.lines().filter(|l| !l.is_empty()).collect();
+    let stamp = write_stamp(&dir, "tier2", &coord_refs);
+
+    let (code, out) = lane_sh(
+        "nros_fixtures_stamp_require tier2 < /dev/null",
+        Some(stamp.to_str().unwrap()),
+    );
+    assert_ne!(
+        code, 0,
+        "a lane=tier2 stamp was accepted with NROS_TEST_COORDS unset — the run \
+         would resolve every coordinate against a build of 13 of them:\n{out}"
+    );
+    assert!(
+        out.contains("NROS_TEST_COORDS"),
+        "the refusal must name the missing narrowing:\n{out}"
+    );
+
+    // A coordinate file that is not this lane's is refused too: accepting any
+    // file would let the build's acceptance and the run's narrowing come from
+    // two different places, which is issue 0443's shape with new names.
+    let other = dir.join("wrong-coords.txt");
+    std::fs::write(&other, "linux,rust,zenoh\n").expect("write coords");
+    let (code, out) = lane_sh_env(
+        "nros_fixtures_stamp_require tier2 < /dev/null",
+        Some(stamp.to_str().unwrap()),
+        &[("NROS_TEST_COORDS", other.to_str().unwrap())],
+    );
+    assert_ne!(code, 0, "a foreign coordinate file was accepted:\n{out}");
+
+    // …and a full build still needs no narrowing at all, or scoping only the
+    // freshness gate on top of `lane=all` would stop working.
+    let full = write_stamp(&dir, "all", &[]);
+    let (code, out) = lane_sh(
+        "nros_fixtures_stamp_require tier2",
+        Some(full.to_str().unwrap()),
+    );
+    assert_eq!(
+        code, 0,
+        "`NROS_FIXTURE_LANE=tier2` on top of a full build must still be allowed \
+         — every fixture exists, so an unnarrowed run is fine:\n{out}"
+    );
+
+    let _ = std::fs::remove_file(&stamp);
+    let _ = std::fs::remove_file(&other);
+    let _ = std::fs::remove_file(&full);
 }
