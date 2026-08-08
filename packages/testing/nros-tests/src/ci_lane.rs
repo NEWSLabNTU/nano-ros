@@ -36,9 +36,18 @@
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
 //! | [`CiLane::Tier1`] | native, 1-wise w,k + pairwise l × r | 16 | 10 | 21 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 11 | 12 | 26 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 37 | 33 | 70 % |
-//! | tier 3 | everything | 182 | 47 | 100 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 12 | 13 | 28 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 35 | 35 | 74 % |
+//! | tier 3 | everything | 191 | 47 | 100 % |
+//!
+//! **These numbers are GATED, not transcribed** — `documented_lane_table_is_live`
+//! recomputes them and fails if this table drifts (phase-342 W3). They had:
+//! the table said 11/12 for tier 2 and 37/33 for nightly while the code selected
+//! 12/13 and 35/35, and three more spellings elsewhere disagreed with both.
+//! RFC-0061 had already amended itself once over exactly this — it quoted tier 2
+//! at "~20 % of a full sweep" counting CELLS when the cost unit is COORDINATES,
+//! where the same cover is 70 %. A stale cost estimate is how the wrong tier gets
+//! chosen.
 //!
 //! The pairwise cover reduces cells by 80 % and fixtures by only 30 %, and the
 //! floor is structural: pairwise(platform × lang) needs one fixture per pair and
@@ -150,7 +159,7 @@ fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
             vec![Axis::Lang, Axis::Rmw],
         ),
         // 1-wise(platform, lang, rmw, kind) — every declared value once, no
-        // pairing. 11 of 46 coordinates.
+        // pairing. 13 of 47 coordinates (gated by `documented_lane_table_is_live`).
         CiLane::Tier2 => (
             vec![Axis::Platform, Axis::Lang, Axis::Rmw, Axis::Kind],
             vec![],
@@ -354,6 +363,66 @@ mod tests {
     /// 1's cells are all native and a native fixture is nearly free. Cell count is
     /// the wrong unit for cost; asserting on it would encode the very confusion
     /// that put "tier 2 is 20 % of the sweep" in RFC-0061.
+    /// phase-342 W3 — the module's cost table is DOCUMENTATION OF A COMPUTATION,
+    /// so recompute it and fail when they part company.
+    ///
+    /// Four places carried this arithmetic by hand and three had drifted: the
+    /// table above said tier 2 = 11 cells / 12 coords and nightly = 37 / 33,
+    /// `justfile` said "12 of 47" and "33 of 47", and the code selected 12 / 13
+    /// and 35 / 35. Nobody was wrong on purpose — cells move whenever
+    /// `matrix::CELLS` does, and prose does not recompute.
+    ///
+    /// The counts are asserted, the percentages are not: those are a judgement
+    /// about cost that rounds, and pinning them would make this gate fire on
+    /// noise. Coordinates are the unit (see `the_ladder_is_monotone_in_fixture_cost`).
+    #[test]
+    fn documented_lane_table_is_live() {
+        let total_coords = {
+            let all: BTreeSet<String> = all_runtime_cells()
+                .flat_map(|c| {
+                    let (lang, rmw) = (
+                        format!("{:?}", c.lang).to_lowercase(),
+                        format!("{:?}", c.rmw).to_lowercase(),
+                    );
+                    c.platform
+                        .fixture_tokens()
+                        .iter()
+                        .map(|p| format!("{p},{lang},{rmw}"))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            all.len()
+        };
+
+        // (lane, cells, coords) exactly as the module docs above state them.
+        let documented = [
+            (CiLane::Tier1, 16, 10),
+            (CiLane::Tier2, 12, 13),
+            (CiLane::Tier2Nightly, 35, 35),
+        ];
+        for (lane, want_cells, want_coords) in documented {
+            assert_eq!(
+                cells(lane).len(),
+                want_cells,
+                "{lane:?}: the ci_lane module table says {want_cells} cells; recomputed \
+                 {}. Update the table (and the justfile comments that quote it).",
+                cells(lane).len()
+            );
+            assert_eq!(
+                coords(lane).len(),
+                want_coords,
+                "{lane:?}: the ci_lane module table says {want_coords} coords; \
+                 recomputed {}. Update the table (and the justfile comments).",
+                coords(lane).len()
+            );
+        }
+        assert_eq!(
+            total_coords, 47,
+            "the table's tier-3 denominator (47 coordinates) is stale; recomputed \
+             {total_coords}"
+        );
+    }
+
     #[test]
     fn the_ladder_is_monotone_in_fixture_cost() {
         let all: BTreeSet<String> = all_runtime_cells()

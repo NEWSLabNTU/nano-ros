@@ -2205,11 +2205,13 @@ ci:
 # Tier 2 — phase-318 W4.d. Gate exactly the fixture COORDINATES the lane selected.
 #
 # The selection is 1-wise over platform x lang x rmw x kind (`nros_tests::ci_lane`),
-# computed from `matrix::CELLS` and emitted by `lane-coords`. 12 of 47 coordinates.
+# computed from `matrix::CELLS` and emitted by `lane-coords`. 13 of 47 coordinates
+# (the count is gated by `ci_lane::tests::documented_lane_table_is_live`; do not
+# hand-edit it here — run `lane-coords tier2 | wc -l`).
 #
 # Why 1-wise and not pairwise, which is what this lane originally specified: cost
 # is COORDINATES, not cells, because cells share fixtures and fixtures are what
-# take hours. The pairwise cover is 37 of 182 cells (20 %) but 33 of 47
+# take hours. The pairwise cover is 35 of 191 cells (18 %) but 35 of 47
 # coordinates (70 %) — a middle tier costing 70 % of the sweep is one nobody runs,
 # which is the failure mode RFC-0061 exists to fix. The pairwise coverage moved to
 # `ci-matrix-nightly` rather than being dropped: platform x lang is exactly where
@@ -2241,7 +2243,7 @@ ci-matrix:
     NROS_FIXTURE_LANE=tier2 just check rust-rtos-link-check test-all
     echo "CI passed (tier 2 — 1-wise cover; pairwise interactions need \`just ci-matrix-nightly\`)!"
 
-# Tier 2 nightly — the pairwise cover over platform x lang x rmw x kind (33 of 47
+# Tier 2 nightly — the pairwise cover over platform x lang x rmw x kind (35 of 47
 # coordinates). The interaction coverage `ci-matrix` gives up to stay affordable:
 # same class of defect, caught a day later instead of pre-merge.
 #
