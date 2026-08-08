@@ -42,9 +42,26 @@ set -euo pipefail
 FLAGS="${NROS_CARGO_FLAGS-"--locked"}"
 
 # --- locate the REAL cargo -------------------------------------------------
-# Walk PATH and take the first `cargo` that is not this shim. Comparing
-# resolved directories, not names, so a differently-named copy of this
-# directory cannot fool it into calling itself.
+# Walk PATH and take the first `cargo` that is not A SHIM — not merely "not
+# THIS shim".
+#
+# The identity test used to be `$_rd = $self_dir`, which is correct for one
+# checkout and catastrophic for two. A git worktree has its own
+# `scripts/bin/cargo`, so an agent whose shell inherited the MAIN checkout's
+# activate.sh and then sourced the worktree's has both dirs on PATH. The
+# worktree shim skips itself, finds the main shim, and execs it; the main shim
+# skips ITSELF, walks PATH from the start, finds the worktree shim, and execs
+# that. Neither is ever "this" shim, so neither guard fires: cargo spins at
+# 100 % CPU and never runs, with no output to say why. Three parallel worktree
+# agents hit this simultaneously; one burned ~50 minutes on it and two more sat
+# stuck for 20+ minutes each, which is also why a `just check-fast` inside a
+# worktree looked like cargo-lock contention.
+#
+# So identify a shim by CONTENT, not by location: any `cargo` on PATH carrying
+# the marker below is one of ours, in whatever checkout, and must be skipped.
+# `$0`-based or env-guard schemes were considered and rejected — an env guard
+# survives into the real cargo's own subprocesses, and this test needs no state.
+_NROS_CARGO_SHIM_MARKER='nros cargo shim: no real `cargo` found on PATH'
 self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 real_cargo=""
 IFS=':' read -r -a _path_entries <<<"$PATH"
@@ -53,6 +70,11 @@ for _d in "${_path_entries[@]}"; do
     _rd="$(cd "$_d" 2>/dev/null && pwd -P)" || continue
     [ "$_rd" = "$self_dir" ] && continue
     if [ -x "$_rd/cargo" ]; then
+        # A shim in ANOTHER checkout is still a shim. grep -q on a small text
+        # file, once per cargo invocation, against an infinite loop.
+        if grep -qF "$_NROS_CARGO_SHIM_MARKER" "$_rd/cargo" 2>/dev/null; then
+            continue
+        fi
         real_cargo="$_rd/cargo"
         break
     fi
