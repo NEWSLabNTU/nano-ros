@@ -166,6 +166,21 @@ build-fixtures:
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         echo "QEMU bare-metal skip: arm-none-eabi-gcc not found"; exit 0
     fi
+    # Issue 0483 — the emulator suite needs libzenohpico.a, and building fixtures
+    # without it produced the worst possible outcome: this recipe succeeded and
+    # all 16 `emulator.rs` tests then SKIPPED, so the lane reported a green that
+    # meant "did not run". Measured: 0 passed/16 skipped in ~1 s, versus 16
+    # passed/0 skipped in 116 s once the library existed.
+    #
+    # Built here rather than left to `just qemu setup`, because "I built the
+    # fixtures" is exactly when someone expects the suite to be runnable. The
+    # script is idempotent and returns immediately when the archive is current.
+    source scripts/build/build-root.sh
+    zpdir="$(nros_build_dir qemu-zenoh-pico)"
+    if [ ! -f "$zpdir/libzenohpico.a" ]; then
+        echo "Building zenoh-pico for ARM (required by the emulator suite)..."
+        ./scripts/qemu/build-zenoh-pico.sh
+    fi
     echo "Building QEMU bare-metal test fixtures..."
     scripts/build/fixtures-build.sh qemu-arm-baremetal rust
     # packages/testing/qemu-smoltcp-bridge remains ad-hoc until reference

@@ -1154,7 +1154,18 @@ pub fn is_arm_toolchain_available() -> bool {
 /// Check if zenoh-pico ARM library is available
 ///
 /// The BSP examples require the zenoh-pico library to be cross-compiled for
-/// ARM Cortex-M3. This library is built with `just build-zenoh-pico-arm`.
+/// ARM Cortex-M3.
+///
+/// Built by `just qemu build-zenoh-pico` (which runs
+/// `scripts/qemu/build-zenoh-pico.sh`), or by `just qemu setup`, which calls it.
+///
+/// Issue 0483 — this used to say `just build-zenoh-pico-arm`, a recipe that has
+/// never existed. All 16 `emulator.rs` tests skip when the library is absent, so
+/// the suite reported a green that meant "did not run" and the printed remedy
+/// could not be followed. `just qemu build-fixtures` does NOT build it, which is
+/// how a developer reaches that state without doing anything wrong. Measured
+/// after building it by hand: 0 passed/16 skipped in ~1 s became 16 passed/0
+/// skipped in 116 s.
 pub fn is_zenoh_pico_arm_available() -> bool {
     // Check if the library exists at the expected location relative to project root
     let lib_path = crate::build_dir("qemu-zenoh-pico", &[]).join("libzenohpico.a");
@@ -1165,7 +1176,8 @@ pub fn is_zenoh_pico_arm_available() -> bool {
 pub fn require_zenoh_pico_arm() -> bool {
     if !is_zenoh_pico_arm_available() {
         eprintln!("Skipping test: libzenohpico.a not found");
-        eprintln!("Build with: just build-zenoh-pico-arm");
+        eprintln!("Build with: just qemu build-zenoh-pico   (or: just qemu setup)");
+        eprintln!("Note: `just qemu build-fixtures` does NOT build it (issue 0483).");
         return false;
     }
     true

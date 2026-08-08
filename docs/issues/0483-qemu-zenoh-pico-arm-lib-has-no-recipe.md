@@ -2,7 +2,7 @@
 id: 483
 title: "All 16 emulator tests skip on a missing libzenohpico.a, and the skip
   message names a recipe that does not exist"
-status: open
+status: resolved  # 2026-08-08 — remedy made real + build-fixtures builds it
 type: bug
 area: testing
 related: [issue-0481, phase-342, issue-0196]
@@ -73,7 +73,28 @@ already recorded: `check-fast` failing in 0.77 s having checked nothing (0466),
 on timeout (0471). Same signature every time — the green means "did not run",
 not "passed".
 
-## Fix
+## FIXED (2026-08-08)
+
+Both ends, because either alone leaves the trap:
+
+1. **The remedy is now true.** `qemu.rs` prints
+   `just qemu build-zenoh-pico   (or: just qemu setup)` — recipes that exist;
+   `just qemu setup` already called the former at
+   `just/qemu-baremetal.just:366`, so the knowledge was in the tree and only the
+   message was wrong. The skip also now says outright that
+   `just qemu build-fixtures` does not build it.
+2. **`just qemu build-fixtures` builds it.** "I built the fixtures" is exactly
+   when someone expects the suite to run, and it was the step that left it
+   unrunnable. Idempotent: it checks for the archive first and the script returns
+   immediately when current.
+
+Verified on a host without the library: the guard fired, built it (125 sources →
+3.2 MiB), and continued into the fixture build.
+
+The stale name `build-zenoh-pico-arm` now appears in exactly one place — the
+comment recording that it never existed.
+
+## Original fix proposals
 
 1. **Make the printed remedy real.** Either add `just build-zenoh-pico-arm` as a
    thin wrapper over `scripts/qemu/build-zenoh-pico.sh`, or change the message to
