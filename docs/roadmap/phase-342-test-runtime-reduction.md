@@ -1,7 +1,8 @@
 # Phase 342 — Test runtime reduction: the consumer side
 
 **Status (2026-08-08). W1–W3 LANDED; W4 blocked (structurally); W5 retracted on
-measurement; W6 answered.** The measurable half is done:
+measurement; W6 answered; W7 OPEN — the example-output conformance campaign,
+opened by what W1 turned up.** The measurable half is done:
 
 | item | before | after | |
 | --- | --- | --- | --- |
@@ -19,6 +20,15 @@ W3 gated the lane arithmetic that four sites carried by hand and three had got
 wrong. W4 is parked with its blocker named. W5 is retracted rather than
 attempted — the measurement said the rows it wanted to delete are load-bearing,
 which is the same answer phase-329 W8 got. W6 is answered below.
+
+**W7 is the one still open, and it is not a performance item.** Chasing W1's
+`rust_cyclone` outlier (34.1 s against a 5.2 s sibling) ended at a one-word
+disagreement between three implementations of the same standard ROS demo. Nine
+call sites had guessed which spelling applied and guessed wrong — ~90 s of
+timeouts that passed silently (issue 0481). The fix so far is a harness
+(`DemoRole` + `expect_ready`) and three converged listeners; W7 is the campaign
+to finish that across every example and to ENFORCE it with the same checker the
+tests use, so an example cannot drift back.
 
 **Informed by:** RFC-0061 (the tier ladder and its cost unit), RFC-0051 (the cell
 tables), RFC-0066 (example/fixture consolidation), phase-329 (whose W8 verdict
@@ -309,6 +319,70 @@ So the platform with the most coordinates is not the one that costs the most, an
 the coverage it buys is narrower than the count suggests. Deliverable is a
 statement of what each tier-1 board is the witness FOR, so a future cut is made
 on coverage rather than on count.
+
+### W7 — Example output conformance, enforced by the harness (NEW, 2026-08-08)
+
+Opened by the W1 follow-up. Fixing `rust_cyclone` turned out to be a one-word
+disagreement between three implementations of the SAME standard ROS demo:
+
+```
+rust/listener   "Subscriber created for topic: /chatter"
+c/listener      "Subscription created for topic: %s"     <- one word
+cpp/listener    (none — only "Node created:" + a banner)
+```
+
+That is why a hand-picked literal matched two languages out of three and timed
+out silently on the third, nine times over (~90 s, issue 0481).
+
+**The divergence is wider than the three natives.** Across all 30 example
+listener sources:
+
+| spelling | files |
+| --- | --- |
+| `"Subscriber created for topic: …"` | 8 |
+| `"Subscriber created"` | 6 |
+| `"Subscription created for topic: …"` | 4 |
+| `"Waiting for messages\n"` | 2 |
+| `"Waiting for messages..."` | 1 |
+
+**Five spellings for one role.** By contrast the TALKER role is already uniform —
+21 of 21 print `"Publishing: …"` — which is the proof that convergence is
+achievable and that the listener is the outlier, not the rule. Service servers
+are nearly uniform (9 print `"Waiting for service requests"`, 5 also print
+`"Service created: …"`).
+
+**The campaign.** Every example is an implementation of the same standard ROS
+demo, so its output should be a contract, not a per-file choice:
+
+1. **Delivery lines already comply** and must not be touched — `"Publishing: …"`
+   and `"I heard: […]"` mirror `demo_nodes_cpp`, and `TALKER_LOG_PREFIX` /
+   `LISTENER_LOG_PREFIX` already pin them.
+2. **Readiness lines are a nano-ros addition** and need an internal standard, one
+   per role, which is exactly what `output::ready_marker(role, _)` now returns.
+3. **Converge each role's examples onto that marker, additively.** Add the line;
+   do not replace an existing banner. phase-277 slimmed banners and broke ~10
+   tests — the constraint is real, and additive change respects it. Done for the
+   three native listeners; 27 example sources remain, spanning freertos, nuttx,
+   threadx, zephyr and esp32.
+4. **Then enforce it with the SAME checker the tests use.** A gate maps
+   `example dir -> DemoRole -> required marker` and asserts the source prints it.
+   Tests call `expect_ready(role, …)`, the gate asserts the example satisfies
+   that role — so the harness and the gate cannot disagree, because they read one
+   table.
+
+**Why this is the durable fix and the `output::` constants are not.** The
+constants describe what the examples happen to print; nothing makes an example
+keep printing it. `LISTENER_READY_MARKER`'s own doc records that this class
+already bit once (issue 0471). A conformance gate inverts the direction: the
+marker becomes the requirement, and an example that stops printing it fails at
+`check-fast` rather than at a 30-second timeout nobody reads.
+
+*Acceptance:* one spelling per role across every example; the gate green; and
+`ready_marker`'s `lang` parameter provably unused by every arm — the collapse of
+that branch is the measurable signal the divergence is gone.
+
+*Care:* embedded listeners have their own test greps. Each converges with its
+own check, like the natives did — no blanket rename.
 
 ## Non-goals, each with the evidence that closed it
 

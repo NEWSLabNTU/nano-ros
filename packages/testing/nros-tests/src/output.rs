@@ -886,19 +886,21 @@ pub enum DemoRole {
 
 /// The readiness marker for `(role, lang)` — the ONE place that mapping lives.
 ///
-/// `lang` is ignored where every implementation agrees (servers and the sink
-/// print the same line in all languages); it is load-bearing for
-/// [`DemoRole::Listener`], which is exactly where the bugs were.
-pub fn ready_marker(role: DemoRole, lang: crate::matrix::Lang) -> &'static str {
-    use crate::matrix::Lang;
+/// `lang` is currently ignored by every arm — the native demos were converged on
+/// one spelling per role (phase-342), which is what makes that possible. It stays
+/// in the signature because the divergence is a property of the EXAMPLES, not of
+/// this table: a future language whose demo cannot print the shared line gets an
+/// arm here instead of a literal at the call site.
+pub fn ready_marker(role: DemoRole, _lang: crate::matrix::Lang) -> &'static str {
     match role {
         DemoRole::Talker => TALKER_READY_MARKER,
-        DemoRole::Listener => match lang {
-            // Rust prints its subscription line and no `Waiting for…` banner.
-            Lang::Rust | Lang::Mixed => LISTENER_READY_MARKER,
-            // C and C++ print `Waiting for messages (Ctrl+C to exit)...`.
-            Lang::C | Lang::Cpp => WS_C_LISTENER_READY_MARKER,
-        },
+        // phase-342 — ONE marker for every language. The three native listeners
+        // used to spell readiness three ways (rust "Subscriber created…", C
+        // "Subscription created…", C++ nothing but a "Waiting for messages"
+        // banner), which is what made a hand-picked literal match two languages
+        // out of three and silently time out on the third. They now all print
+        // `LISTENER_READY_MARKER`, so this arm no longer branches on `lang`.
+        DemoRole::Listener => LISTENER_READY_MARKER,
         DemoRole::SafetyListener => SAFETY_LISTENER_READY_MARKER,
         DemoRole::ServiceServer => SERVICE_SERVER_READY_MARKER,
         DemoRole::ActionServer => ACTION_SERVER_READY_MARKER,

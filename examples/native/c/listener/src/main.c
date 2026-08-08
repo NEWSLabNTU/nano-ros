@@ -116,7 +116,11 @@ int nros_app_main(int argc, char** argv) {
                                           std_msgs_msg_string_get_type_support(), "/chatter",
                                           subscription_callback, &app.listener_ctx),
                    1);
-    printf("Subscription created for topic: %s\n",
+    // phase-342 — "Subscriber", matching the rust and C++ listeners: this line
+    // is the READINESS marker the test matrix waits on
+    // (`nros_tests::output::LISTENER_READY_MARKER`), and one demo should not
+    // spell its own readiness three ways.
+    printf("Subscriber created for topic: %s\n",
            nros_subscription_get_topic_name(&app.subscription));
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
