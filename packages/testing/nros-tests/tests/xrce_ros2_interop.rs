@@ -108,7 +108,16 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
         Duration::from_secs(5),
     );
 
-    // Give ROS 2 time to receive messages via DDS
+    // phase-342 W8 — one of the few sleeps that CANNOT become a marker wait
+    // today, and the reason is an API gap rather than a missing marker. The
+    // observable exists (the ROS 2 listener prints `data:`, which this test
+    // counts below), but `Ros2Process` has only `wait_for_output(timeout)`: it
+    // `take()`s stdout and drains until the deadline, so there is no
+    // wait-until-pattern and no way to call it twice.
+    //
+    // Giving `Ros2Process` a `wait_for_output_count` means refactoring that
+    // shared IO loop, which is worth doing deliberately — every ROS 2 wait in
+    // the tree would benefit — but not as a side effect of reclaiming 2 s.
     std::thread::sleep(Duration::from_secs(2));
 
     // Collect ROS 2 output

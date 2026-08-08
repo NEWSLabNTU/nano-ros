@@ -219,14 +219,24 @@ fn capture_publisher_msginfo_trace(
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
-    // Accumulate several publishes (need ≥2 for the increment/consistency checks).
-    std::thread::sleep(Duration::from_secs(3));
+    // phase-342 W8 — wait for the publishes this helper's callers need (≥2 for
+    // the increment/consistency checks) instead of sleeping 3 s for them. The
+    // marker is the same one the assertion below greps, so the wait and the
+    // assertion cannot disagree about what "published" means.
+    let talker_output = talker
+        .wait_for_output_count(
+            output::MESSAGE_INFO_ATTACHMENT_MARKER,
+            2,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| {
+            talker.kill();
+            listener.kill();
+            panic!("talker emitted fewer than 2 MessageInfo trace lines: {e}")
+        });
 
     talker.kill();
     listener.kill();
-    let talker_output = talker
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     eprintln!("Talker trace output:\n{}", talker_output);
     assert!(
