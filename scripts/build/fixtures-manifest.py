@@ -680,31 +680,30 @@ def main():
         # row carrying this id, across every kind, IGNORING --platform/--lang
         # (the caller already knows those did not match; what it needs is where
         # the id actually lives). No output = the id exists nowhere.
+        #
+        # Issue 0482 — the triple is the row's resolved COORDINATE (`row_coord`),
+        # not its raw keys. This exists to explain why a filter did not match,
+        # and a diagnostic that reports a different coordinate from the filter it
+        # is explaining is this very bug in miniature: an rmw-less row would say
+        # `rmw=` while the filter sees `zenoh`.
         if not a.id:
             sys.stderr.write("fixtures-manifest.py: describe-id needs --id\n")
             sys.exit(2)
-        for e in load(a.manifest):
-            if e.get("id") == a.id:
+        for kind, rows in (
+            ("fixture", load(a.manifest)),
+            ("workspace_fixture", load_workspace_fixtures(a.manifest)),
+        ):
+            for e in rows:
+                if e.get("id") != a.id:
+                    continue
+                platform, lang, rmw = row_coord(e)
                 sys.stdout.write(
                     SEP.join(
                         (
-                            "fixture",
-                            str(e.get("platform", "")),
-                            str(e.get("lang", "")),
-                            str(e.get("rmw", "")),
-                        )
-                    )
-                    + "\n"
-                )
-        for e in load_workspace_fixtures(a.manifest):
-            if e.get("id") == a.id:
-                sys.stdout.write(
-                    SEP.join(
-                        (
-                            "workspace_fixture",
-                            str(e.get("platform", "")),
-                            str(e.get("lang", "")),
-                            str(e.get("rmw", "")),
+                            kind,
+                            str(platform or ""),
+                            str(lang or ""),
+                            str(rmw or ""),
                         )
                     )
                     + "\n"
