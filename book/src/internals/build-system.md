@@ -144,10 +144,18 @@ wrong binary. The discipline:
 - **Coverage gate.** `build-test-fixtures` stamps `target/nextest/.fixtures-built`
   with the **lane and the fixture coordinates it built**, not just a timestamp;
   `test-all`'s `_require-fixtures` fast-fails (~1 s) if the stamp is absent *or
-  does not cover* the lane named by `NROS_FIXTURE_LANE` (bypass:
+  does not cover* the **run** implied by `NROS_FIXTURE_LANE` (bypass:
   `NROS_SKIP_FIXTURE_CHECK=1`). So a `lane=native` build satisfies `just ci`
   (tier 1) and is correctly rejected by an unscoped `test-all`. A pre-issue-0393
   timestamp-only stamp is read as `lane=all`, which is what it meant.
+
+  Note "the run", not "the lane" (issue 0482). A lane's coordinates are what it
+  keeps **fresh**; what must **exist** is decided by which tests the recipe
+  executes. Only tier 1 narrows its run, so `nros_lane_build_lane` maps `tier1`
+  to `native` and both tier-2 lanes to `all` — they invoke `test-all` unscoped,
+  and a `lane=tier2` build used to satisfy the preflight for a run that then
+  failed STALE on 34 unbuilt coordinates. The declaration is `CiLane::run_scope`;
+  `lane-coords <lane> --build-lane` prints the answer.
 - **Rust cells.** `scripts/test/rust-fixture-stale.sh` reuses cargo's own
   fingerprint — `cargo build … --message-format=json` reports `"fresh":false`
   for a stale unit, so the probe both detects **and** self-heals.
