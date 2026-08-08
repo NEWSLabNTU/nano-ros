@@ -134,10 +134,15 @@ nros_fixture_group() {
 #
 # The group governs the target dir for every eligible row, so the row's own
 # flag has to GO — appending the group's dir beside it hands cargo two
-# `--target-dir` flags. (Cargo takes the last, so the build would silently
-# work while the manifest lied about where it wrote; the failure would surface
-# as a `--core-only` lane, which keys on `target_dir` being authored, building
-# somewhere the row does not name.)
+# `--target-dir` flags, and cargo rejects that outright:
+#
+#   error: the argument '--target-dir <DIRECTORY>' cannot be used multiple times
+#
+# (Measured, because the first version of this comment guessed "cargo takes the
+# last" and reasoned about a silent wrong-tree build that cannot happen. The
+# real hazard is one-sided: strip in the BUILD and not in the staleness probe —
+# or the reverse — and one of them errors out while the other quietly inspects
+# the wrong tree. That is why both callers strip, and why a test asserts it.)
 nros_fixture_strip_authored_target_dir() {
     # shellcheck disable=SC2206
     local toks=(${1:-}) out=() i=0
