@@ -1,6 +1,24 @@
 # Phase 342 — Test runtime reduction: the consumer side
 
-**Status (2026-08-08). DRAFT — opening measurements taken, work items not started.**
+**Status (2026-08-08). W1–W3 LANDED; W4 blocked (structurally); W5 retracted on
+measurement; W6 answered.** The measurable half is done:
+
+| item | before | after | |
+| --- | --- | --- | --- |
+| W1 `native_example_pubsub` | 95.1 s (1 test) | 34.1 s (10) | 2.8× |
+| W1 `native_example_reqresp` | 82.8 s (1) | 15.1 s (19) | 5.5× |
+| W1 `workspace_features` | 62.9 s (1) | 18.2 s (18) | 3.5× |
+| W2 `native_main_macro_misuse` | 108.5 s | 10.3 s warm | 10.5× |
+
+**~350 s of tier-1 test time → ~78 s**, and the lane's wall-clock FLOOR — the
+longest single test — moves from 95.1 s to 34.1 s. Coverage identical
+throughout; every `#[case]` list is bound to `matrix::CELLS` by a tripwire that
+was verified to FAIL before being trusted.
+
+W3 gated the lane arithmetic that four sites carried by hand and three had got
+wrong. W4 is parked with its blocker named. W5 is retracted rather than
+attempted — the measurement said the rows it wanted to delete are load-bearing,
+which is the same answer phase-329 W8 got. W6 is answered below.
 
 **Informed by:** RFC-0061 (the tier ladder and its cost unit), RFC-0051 (the cell
 tables), RFC-0066 (example/fixture consolidation), phase-329 (whose W8 verdict
@@ -169,7 +187,94 @@ how a tier gets chosen on a wrong cost estimate.
 *Acceptance:* the three sites derive from `lane-coords` or are gated against it;
 no hand-written count survives.
 
-### W4 — Tier 2 builds `all`; scope it to its coordinates
+### W4 — BLOCKED, and structurally so (verdict 2026-08-08)
+
+Not attempted. The justfile states the dependency and it has not moved:
+
+> Narrowing the build here would need the run narrowed to match first; until
+> then, saying so beats a lane that silently under-builds.
+
+Narrowing the RUN is phase-329 W8.d, which is blocked on "every test
+cell-bound". That did not become true when phase-329 closed: its W4 was a
+DISPOSITION pass, and it concluded the opposite — ~36 of the candidate files are
+genuine one-offs (behaviour/boot/QoS/error/edge tests no matrix cell covers).
+A test with no coordinate cannot be selected by a coordinate-scoped run, so
+scoping the run today would silently drop them.
+
+Reopen only when tests without a cell are either bound to one or explicitly
+exempted. Until then this item is correctly parked, and the lane is honest about
+building more than it gates.
+
+### W5 — RETRACTED, the premise does not survive measurement (2026-08-08)
+
+W5 proposed collapsing the native example variants on RFC-0066's figures. Those
+figures are real — 47 dirs are built more than once, accounting for 119 of 240
+`[[fixture]]` rows — but they do not mean what the work item assumed. The four
+`examples/native/rust/talker` rows are:
+
+```
+(bare)                     compile-ASSERT fixture, no rmw, skipped by coord lanes
+target-tls                 the TLS variant
+rmw=zenoh  -> target-zenoh runtime fixture for the zenoh cells
+rmw=xrce   -> target-xrce  runtime fixture for the xrce cells
+```
+
+which is precisely what phase-329 W8.a RETRACTED after testing it: *"the
+`target-<rmw>/` dirs are NOT redundant duplicates; they are the RUNTIME fixture
+locations the binary-locator requires"* (`fixtures/binaries/mod.rs:718-724` maps
+`Rmw::Zenoh -> "target-zenoh"`). Deleting a twin breaks binary resolution.
+
+The "34 of 42 rows declare no `features`/`cmake_defs`/`env`" statistic does not
+identify redundancy either: for these rows the variance IS the `rmw` and
+`target_dir`, so a metric that only looks at feature keys reports every runtime
+fixture as variance-free.
+
+**This item should not have been written.** This phase's own non-goals cite
+329 W8's verdict — "the fixture-BUILD burden is NOT reducible by deleting rows" —
+and W5 then proposed an exception on the strength of a row count, which is the
+unit that verdict rejects. Left in place, retracted and explained, so the next
+reader inherits the measurement rather than the idea.
+
+### W6 — What each tier-1 board witnesses (2026-08-08)
+
+Runtime cells and the `(lang, rmw)` pairs each tier-1 board covers, computed
+from `matrix::CELLS`:
+
+| board | runtime cells | (lang,rmw) pairs | pairs unique to it |
+| --- | --- | --- | --- |
+| `linux` | 72 | 10 | none |
+| `zephyr` (native_sim) | 39 | 10 | none |
+| `threadx-linux` | 18 | 6 | none |
+| `mps2-an385-freertos` | 15 | 4 | none |
+| `nuttx-qemu` (arm) | 14 | 3 | none |
+
+**No tier-1 board contributes a `(lang, rmw)` pair the others lack.** That is not
+an argument for cutting one: it says their value is entirely on the PLATFORM
+axis — toolchain, libc, linker, image ownership — which is exactly the axis
+RFC-0061 assigns platform ("selects toolchain + libc + linker; pairwise with
+lang") and where the 0268 / 0245 / 0332 defect class lives. Judge a tier-1 board
+by the platform property it witnesses, never by its cell count.
+
+So, what each is the witness FOR:
+
+- **`linux`** — the functional surface. All three RMWs, all languages, and the
+  only board where a failure is cheap to debug. 72 of 176 runtime cells.
+- **`zephyr` (native_sim)** — the Zephyr API surface, and **only** that. All 28
+  Zephyr runtime configs target `native_sim/native/64` (`0064:585-596`), so every
+  Zephyr test bypasses Zephyr's own IP stack. Ten coordinates — tied with linux
+  for the most — witnessing one board that is not the interesting one. This is
+  the weakest coverage-per-coordinate in the tier, and phase-337 W2 added the
+  Cortex-M witness at tier 2 precisely because of it.
+- **`threadx-linux`** — the NSOS shim: ThreadX's API over a host libc, so the
+  RTOS abstraction is exercised without an emulator in the loop.
+- **`mps2-an385-freertos`** — ARMv7-M with a nano-ros-OWNED image (we place the
+  linker script and the boot path). Also the most expensive build in the tier at
+  ~1370 s (`0064:790-791`).
+- **`nuttx-qemu` (arm)** — ARMv7-A where the KERNEL owns the build: NuttX's
+  Kconfig/Make.defs drive it and nano-ros is an app. The complement to the
+  FreeRTOS row, and the reason both are in tier 1.
+
+### W4 (original text) — Tier 2 builds `all`; scope it to its coordinates
 
 `justfile:2222-2227` states it plainly: tier 2's saving today is in the staleness
 GATE, not the build — it still builds every row. Measured: tier 2 needs **89 of
