@@ -276,6 +276,39 @@ impl ManagedProcess {
     /// When a missing pattern is NOT a failure — a readiness wait, or a test
     /// that asserts on the content itself — use [`Self::collect_until`], which
     /// says so in its name and hands back the output unconditionally.
+    /// Wait until `role` signals readiness, or FAIL (issue 0481 / phase-342).
+    ///
+    /// The hardened form of [`Self::wait_for_output_pattern`], and the one tests
+    /// should reach for. Two things it removes from the call site:
+    ///
+    /// 1. **Choosing the marker string.** It comes from
+    ///    [`crate::output::ready_marker`], which knows that the same demo spells
+    ///    readiness differently in rust and in C/C++. Nine sites picked wrong by
+    ///    hand and each waited out its whole timeout in silence.
+    /// 2. **Deciding whether a timeout matters.** It does. A process that never
+    ///    signals readiness has not met the precondition the next line depends
+    ///    on, so this panics rather than returning a `Result` the caller can
+    ///    drop with `let _ =` — which is precisely how the silence survived.
+    ///
+    /// Use [`Self::wait_for_output_pattern`] directly only when waiting for
+    /// something that is NOT a role's readiness — a payload line, a shutdown
+    /// notice — where a timeout may legitimately be tolerable.
+    pub fn expect_ready(
+        &mut self,
+        role: crate::output::DemoRole,
+        lang: crate::matrix::Lang,
+        timeout: Duration,
+    ) -> String {
+        let marker = crate::output::ready_marker(role, lang);
+        match self.wait_until_pattern(marker, timeout) {
+            (out, true) => out,
+            (out, false) => panic!(
+                "{} never signalled {:?} readiness: no `{}` within {:?}.\nOutput:\n{}",
+                self.name, role, marker, timeout, out
+            ),
+        }
+    }
+
     pub fn wait_for_output_pattern(
         &mut self,
         pattern: &str,

@@ -834,3 +834,74 @@ mod silence_tests {
         assert!(runtime_silence_note("nros: session open\n").is_none());
     }
 }
+
+// =============================================================================
+// Readiness, by ROLE — issue 0481 / phase-342
+// =============================================================================
+
+/// The role a fixture binary plays in the standard ROS demo (talker/listener,
+/// service, action, sink).
+///
+/// # Why this exists
+///
+/// The native examples are three implementations of the SAME demo, and they do
+/// not print the same readiness line:
+///
+/// ```text
+/// rust/listener   "Subscriber created for topic: /chatter"
+/// c/listener      "Waiting for messages (Ctrl+C to exit)..."
+/// cpp/listener    "Node created: …" then "Waiting for messages (…)..."
+/// ```
+///
+/// So "wait until the listener is ready" has three spellings, and every call
+/// site used to pick one by hand. That is not a hypothetical: nine sites picked
+/// wrong, each waiting out its FULL timeout in silence — 90 s across the suite,
+/// found only by noticing one cell was 7x its siblings (issue 0481).
+///
+/// Naming the ROLE instead of the STRING moves the choice to one place. A test
+/// says what it is waiting for; this module knows how that role spells it in
+/// each language.
+///
+/// The deeper fix is for the demos to agree on one banner, which would collapse
+/// this mapping to a single constant. That is an EXAMPLE-facing change — the
+/// banners are load-bearing for other greps (phase-277 slimmed them and broke
+/// ~10 tests) — so it wants its own change with its own sweep. Until then, the
+/// divergence is real and belongs in exactly one table.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DemoRole {
+    /// Publishes on `/chatter`.
+    Talker,
+    /// Subscribes to `/chatter` — the role whose spelling differs most.
+    Listener,
+    /// The CRC-validating safety listener, which deliberately does NOT share the
+    /// plain listener's marker (see [`SAFETY_LISTENER_READY_MARKER`]).
+    SafetyListener,
+    /// `add_two_ints` server.
+    ServiceServer,
+    /// Fibonacci action server.
+    ActionServer,
+    /// The `int32-sink` observer.
+    Int32Sink,
+}
+
+/// The readiness marker for `(role, lang)` — the ONE place that mapping lives.
+///
+/// `lang` is ignored where every implementation agrees (servers and the sink
+/// print the same line in all languages); it is load-bearing for
+/// [`DemoRole::Listener`], which is exactly where the bugs were.
+pub fn ready_marker(role: DemoRole, lang: crate::matrix::Lang) -> &'static str {
+    use crate::matrix::Lang;
+    match role {
+        DemoRole::Talker => TALKER_READY_MARKER,
+        DemoRole::Listener => match lang {
+            // Rust prints its subscription line and no `Waiting for…` banner.
+            Lang::Rust | Lang::Mixed => LISTENER_READY_MARKER,
+            // C and C++ print `Waiting for messages (Ctrl+C to exit)...`.
+            Lang::C | Lang::Cpp => WS_C_LISTENER_READY_MARKER,
+        },
+        DemoRole::SafetyListener => SAFETY_LISTENER_READY_MARKER,
+        DemoRole::ServiceServer => SERVICE_SERVER_READY_MARKER,
+        DemoRole::ActionServer => ACTION_SERVER_READY_MARKER,
+        DemoRole::Int32Sink => INT32_SINK_READY_MARKER,
+    }
+}

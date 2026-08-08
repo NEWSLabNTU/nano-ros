@@ -33,7 +33,7 @@ use nros_tests::{
         require_zenohd,
     },
     matrix::{Cell as MCell, Kind as MK, Lang as ML, Rmw as MR, Tier as MT, Workload as MW},
-    output::{LISTENER_LOG_PREFIX, LISTENER_READY_MARKER, WS_C_LISTENER_READY_MARKER},
+    output::LISTENER_LOG_PREFIX,
     unique_ros_domain_id,
 };
 use rstest::rstest;
@@ -85,27 +85,6 @@ fn listener_prefix(_l: ML) -> &'static str {
     LISTENER_LOG_PREFIX
 }
 
-/// The listener's READINESS marker, which differs by language — and getting it
-/// wrong costs 30 s in silence (phase-342 W1 follow-up).
-///
-/// The settle path below greps this before starting the talker. It used the
-/// LITERAL `"Waiting for"`, which the C and C++ demos print
-/// (`"Waiting for messages (Ctrl+C to exit)..."`) and the Rust one never does —
-/// it prints `"Subscriber created for topic: /chatter"`. So every rust cell that
-/// settles waited out the FULL 30 s timeout and then continued, and because the
-/// result is discarded nothing said so. Measured: `rust_cyclone` 34.1 s against
-/// `cpp_cyclone` 5.2 s, with every other cell at 4–5 s.
-///
-/// CLAUDE.md: "Test greps use `nros_tests::output::*` constants, never literal
-/// strings." Both spellings were already there; the literal matched one of them
-/// by luck.
-fn listener_ready_marker(l: ML) -> &'static str {
-    match l {
-        ML::Rust => LISTENER_READY_MARKER,
-        ML::C | ML::Cpp => WS_C_LISTENER_READY_MARKER,
-        ML::Mixed => LISTENER_READY_MARKER,
-    }
-}
 fn lang_str(l: ML) -> &'static str {
     match l {
         ML::Rust => "rust",
@@ -305,15 +284,13 @@ fn run_cell(cell: &MCell) {
     // Cyclone/xrce discovery is slower — wait for the listener's ready marker,
     // then let the subscription propagate before the talker publishes.
     if needs_settle {
-        listener_proc
-            .wait_for_output_pattern(listener_ready_marker(lang), Duration::from_secs(30))
-            .unwrap_or_else(|e| {
-                panic!(
-                    "[{}/{}] listener never signalled readiness: {e}",
-                    lang_str(lang),
-                    rmw_str(cell.rmw)
-                )
-            });
+        // phase-342 — role, not string: the harness knows this demo spells
+        // readiness differently in rust and C/C++, and it FAILS on timeout.
+        listener_proc.expect_ready(
+            nros_tests::output::DemoRole::Listener,
+            lang,
+            Duration::from_secs(30),
+        );
         std::thread::sleep(Duration::from_secs(2));
     }
     let mut talker_proc = ManagedProcess::spawn_command(talker_cmd, "native-example-talker")

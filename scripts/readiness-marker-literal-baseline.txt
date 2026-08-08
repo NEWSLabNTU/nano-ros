@@ -1,36 +1,16 @@
 # Issue 0481 — readiness greps naming an ambiguous literal, predating the gate.
-# SHRINKING backlog: fix a site, delete its line. The gate fails if a listed
-# site stops matching, so this file cannot become a permanent exemption.
-# Fix = name the output:: constant for the binary being waited on.
-packages/testing/nros-tests/tests/actions.rs:76
-packages/testing/nros-tests/tests/interop_e2e.rs:383
-packages/testing/nros-tests/tests/nano2nano.rs:66
-packages/testing/nros-tests/tests/nano2nano.rs:155
-packages/testing/nros-tests/tests/native_api.rs:316
-packages/testing/nros-tests/tests/native_api.rs:365
-packages/testing/nros-tests/tests/native_api.rs:441
-packages/testing/nros-tests/tests/native_api.rs:498
-packages/testing/nros-tests/tests/native_api.rs:583
-packages/testing/nros-tests/tests/native_api.rs:650
-packages/testing/nros-tests/tests/native_api.rs:703
-packages/testing/nros-tests/tests/native_api.rs:745
-packages/testing/nros-tests/tests/native_api.rs:972
-packages/testing/nros-tests/tests/native_api.rs:1043
-packages/testing/nros-tests/tests/native_api.rs:1086
-packages/testing/nros-tests/tests/native_api.rs:1198
-packages/testing/nros-tests/tests/native_async_roundtrip_e2e.rs:49
-packages/testing/nros-tests/tests/native_async_roundtrip_e2e.rs:85
-packages/testing/nros-tests/tests/params.rs:144
-packages/testing/nros-tests/tests/qos_overrides_runtime_delivery.rs:96
-packages/testing/nros-tests/tests/safety_e2e.rs:127
-packages/testing/nros-tests/tests/safety_e2e.rs:195
-packages/testing/nros-tests/tests/safety_e2e.rs:275
-packages/testing/nros-tests/tests/safety_e2e.rs:324
-packages/testing/nros-tests/tests/xrce.rs:209
-packages/testing/nros-tests/tests/xrce.rs:253
-packages/testing/nros-tests/tests/zephyr.rs:840
-packages/testing/nros-tests/tests/zephyr.rs:1420
-packages/testing/nros-tests/tests/zephyr.rs:1624
-packages/testing/nros-tests/tests/zero_copy.rs:45
-packages/testing/nros-tests/tests/zero_copy.rs:87
-packages/testing/nros-tests/tests/zero_copy.rs:147
+# Keyed file<TAB>literal<TAB>count, NOT by line: a line-keyed baseline broke
+# the moment a doc comment shifted four sites that had not changed.
+# SHRINKING backlog — fix sites, lower the count.
+# New code should use ManagedProcess::expect_ready(DemoRole::…, lang, timeout).
+packages/testing/nros-tests/tests/actions.rs	Sending goal	1
+packages/testing/nros-tests/tests/interop_e2e.rs	Waiting for	1
+packages/testing/nros-tests/tests/nano2nano.rs	Publishing	2
+packages/testing/nros-tests/tests/native_api.rs	Waiting for	12
+packages/testing/nros-tests/tests/native_async_roundtrip_e2e.rs	Waiting for	2
+packages/testing/nros-tests/tests/params.rs	Publishing	1
+packages/testing/nros-tests/tests/qos_overrides_runtime_delivery.rs	Waiting for	1
+packages/testing/nros-tests/tests/safety_e2e.rs	Waiting for	4
+packages/testing/nros-tests/tests/xrce.rs	Waiting for	2
+packages/testing/nros-tests/tests/zephyr.rs	Waiting for	3
+packages/testing/nros-tests/tests/zero_copy.rs	Waiting for	3
