@@ -51,16 +51,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#483** — all 16 `emulator.rs` tests skip in ~0.06 s on a missing `build/qemu-zenoh-pico/libzenohpico.a`,
-and the skip's own remedy names `just build-zenoh-pico-arm`, a recipe that DOES NOT EXIST. `just qemu
-build-fixtures` completes successfully without building it, so the suite reports a green that means "did not
-run". The real producer is `scripts/qemu/build-zenoh-pico.sh` (via `just qemu setup`), which `just qemu doctor`
-already knows about — the knowledge is in doctor and in the script, and absent from the guard that stops the
-tests. Measured: 0 passed/16 skipped in ~1 s before, 16 passed/0 skipped in 116 s after building it by hand.
-116 s of real QEMU coverage was being reported as a pass in one second, and the phase-342 W8b change that
-exposed this ALSO found a real wrong-role readiness marker once it could finally run. Same class as #0466 and
-#0471: the green means "did not run". See `0483-*`. (2026-08-08)
-
 **#482** (testing, open 2026-08-07) — **tier 2 needs fixtures its own lane build does not produce.** After a
 clean, fully successful `just build-test-fixtures lane=tier2`, `just ci-matrix` produced ~231 STALE/not-found
 failures; the same tree rebuilt `lane=all` dropped to ~19. Two "computed twice" defects, the issue-0196 / #393
@@ -137,6 +127,14 @@ APPEARS). Proof: after provisioning + `cargo clean` of the two crates, HEAD link
 691468 bytes vs 687112 on Aug 6, +0.6 %; the ARM lane now completes with zero overflows. The bisect never
 took a step: the confounder surfaced while validating the endpoints, which is why both ends get validated
 first.
+
+Recently resolved (2026-08-08): **#483** — all 16 `emulator.rs` tests skipped in ~0.06 s on a missing
+`build/qemu-zenoh-pico/libzenohpico.a`, and the skip named `just build-zenoh-pico-arm`, a recipe that never
+existed. `just qemu build-fixtures` succeeded without building it, so the lane reported a green meaning "did not
+run": 0 passed/16 skipped in ~1 s versus 16 passed/0 skipped in 116 s once built by hand. FIXED at both ends —
+the message now names `just qemu build-zenoh-pico` (which `just qemu setup` already called, so only the message
+was wrong), and `build-fixtures` now builds it idempotently, because "I built the fixtures" is exactly when the
+suite is expected to run. See `archived/0483-*`.
 
 Recently resolved (2026-08-07): **#475** — the RMW archive was an ORDER-ONLY (`||`) link dep of the C/C++
 example binaries, because it is whole-archived through a raw `-Wl,...` FLAG (CMake cannot see a file inside a
