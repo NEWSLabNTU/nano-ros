@@ -302,18 +302,20 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 
 # issue 0312 — see [test-groups.native-qos-discovery].
 #
-# The `and test(qos)` clause is gone because there is no longer a per-cell test
-# to match: phase-329 W1 collapsed this binary into ONE `workspace_features`
-# test that iterates all 17 cells in a single process. The qos cells still need
-# the serialized discovery group, so the whole binary joins it.
+# The `and test(qos)` clause is BACK (phase-342 W1). It was dropped because
+# phase-329 W1 collapsed this binary into ONE test iterating all 17 cells, which
+# left no per-cell test to match — so the whole binary had to join a
+# `max-threads = 1` group that only THREE cells actually need. That is stated
+# below as "the consolidation's cost", and it was: measured 58.8 s wall for 18
+# tests whose slowest cell is 5.7 s, because 14 cells that share nothing were
+# serialized behind the three that do.
 #
-# And the budget follows: 17 cells run back to back take ~50-60 s, which the
-# default (30 s period, terminate-after 2 = 60 s hard kill) cuts off mid-suite.
-# It was timing out even when run alone. This is the consolidation's cost — one
-# test that cannot be shorter than the sum of its cells — so the budget is sized
-# for the sum rather than for a cell.
+# W1 restored one test per cell, so the group can be narrow again: the qos cells
+# serialize on discovery (issue 0312 — a stock `ros2 topic info` peer
+# intermittently misses one pair's SUBSCRIPTION when they run concurrently), and
+# the other fourteen schedule freely.
 [[profile.default.overrides]]
-filter = "binary(workspace_features_e2e)"
+filter = "binary(workspace_features_e2e) and test(qos)"
 test-group = "native-qos-discovery"
 slow-timeout = { period = "120s", terminate-after = 3 }
 

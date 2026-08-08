@@ -25,6 +25,7 @@ use nros_tests::{
     matrix::{Cell as MCell, Kind as MK, Lang as ML, Rmw as MR, Tier as MT, Workload as MW},
     output::{ACTION_RESULT_PREFIX, FIBONACCI_ORDER_10_SEQUENCE, SERVICE_RESULT_PREFIX},
 };
+use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
 
 fn fixture_rmw(r: MR) -> FixtureRmw {
@@ -136,63 +137,119 @@ fn wl_str(w: MW) -> &'static str {
     }
 }
 
-#[test]
-fn native_example_reqresp() {
-    let cells: Vec<&MCell> = nros_tests::matrix::CELLS
+/// The cells this file consumes, as a predicate — ONE definition, shared by the
+/// per-case lookup and the coverage tripwire so they cannot disagree.
+fn is_reqresp_cell(c: &MCell) -> bool {
+    matches!(c.platform, nros_tests::matrix::PlatformId::Linux)
+        && matches!(c.kind, MK::Example)
+        && matches!(c.workload, MW::Service | MW::Action)
+        && matches!(c.tier, MT::Runtime)
+}
+
+/// The `(lang, rmw, workload)` triples the `#[case]`s declare. Bound to
+/// `matrix::CELLS` by `reqresp_cases_cover_every_matrix_cell`.
+const DECLARED_CASES: &[(ML, MR, MW)] = &[
+    (ML::Rust, MR::Zenoh, MW::Service),
+    (ML::C, MR::Zenoh, MW::Service),
+    (ML::Cpp, MR::Zenoh, MW::Service),
+    (ML::Rust, MR::Cyclonedds, MW::Service),
+    (ML::C, MR::Cyclonedds, MW::Service),
+    (ML::Cpp, MR::Cyclonedds, MW::Service),
+    (ML::Rust, MR::Xrce, MW::Service),
+    (ML::C, MR::Xrce, MW::Service),
+    (ML::Cpp, MR::Xrce, MW::Service),
+    (ML::Rust, MR::Zenoh, MW::Action),
+    (ML::C, MR::Zenoh, MW::Action),
+    (ML::Cpp, MR::Zenoh, MW::Action),
+    (ML::Rust, MR::Cyclonedds, MW::Action),
+    (ML::C, MR::Cyclonedds, MW::Action),
+    (ML::Cpp, MR::Cyclonedds, MW::Action),
+    (ML::Rust, MR::Xrce, MW::Action),
+    (ML::C, MR::Xrce, MW::Action),
+    (ML::Cpp, MR::Xrce, MW::Action),
+];
+
+/// THE consumer — ONE TEST PER CELL (phase-342 W1).
+///
+/// Was a single #[test] folding over all 18 cells at 82.8 s, with a hand-rolled
+/// `catch_unwind` classifying skip-vs-fail. Same two costs the pubsub consumer
+/// had, and the same fix — see `native_example_pubsub_e2e.rs` for the full
+/// reasoning:
+///
+///   * the fold serialized 18 cells no scheduler could enter;
+///   * a failure read `1 of 18 cell(s) FAILED`, losing the other 17 verdicts —
+///     which is exactly what issue 0422 had to reconstruct by hand for the
+///     `cpp/xrce/action` cell.
+///
+/// The classification code is gone rather than ported: `run_cell` panics
+/// `[SKIPPED] …`, and the harness already knows what that means.
+#[rstest]
+#[case::rust_zenoh_service(ML::Rust, MR::Zenoh, MW::Service)]
+#[case::c_zenoh_service(ML::C, MR::Zenoh, MW::Service)]
+#[case::cpp_zenoh_service(ML::Cpp, MR::Zenoh, MW::Service)]
+#[case::rust_cyclone_service(ML::Rust, MR::Cyclonedds, MW::Service)]
+#[case::c_cyclone_service(ML::C, MR::Cyclonedds, MW::Service)]
+#[case::cpp_cyclone_service(ML::Cpp, MR::Cyclonedds, MW::Service)]
+#[case::rust_xrce_service(ML::Rust, MR::Xrce, MW::Service)]
+#[case::c_xrce_service(ML::C, MR::Xrce, MW::Service)]
+#[case::cpp_xrce_service(ML::Cpp, MR::Xrce, MW::Service)]
+#[case::rust_zenoh_action(ML::Rust, MR::Zenoh, MW::Action)]
+#[case::c_zenoh_action(ML::C, MR::Zenoh, MW::Action)]
+#[case::cpp_zenoh_action(ML::Cpp, MR::Zenoh, MW::Action)]
+#[case::rust_cyclone_action(ML::Rust, MR::Cyclonedds, MW::Action)]
+#[case::c_cyclone_action(ML::C, MR::Cyclonedds, MW::Action)]
+#[case::cpp_cyclone_action(ML::Cpp, MR::Cyclonedds, MW::Action)]
+#[case::rust_xrce_action(ML::Rust, MR::Xrce, MW::Action)]
+#[case::c_xrce_action(ML::C, MR::Xrce, MW::Action)]
+#[case::cpp_xrce_action(ML::Cpp, MR::Xrce, MW::Action)]
+fn native_example_reqresp(#[case] lang: ML, #[case] rmw: MR, #[case] workload: MW) {
+    let cell = nros_tests::matrix::CELLS
         .iter()
-        .filter(|c| {
-            matches!(c.platform, nros_tests::matrix::PlatformId::Linux)
-                && matches!(c.kind, MK::Example)
-                && matches!(c.workload, MW::Service | MW::Action)
-                && matches!(c.tier, MT::Runtime)
-        })
+        .find(|c| is_reqresp_cell(c) && c.lang == lang && c.rmw == rmw && c.workload == workload)
+        .unwrap_or_else(|| {
+            panic!(
+                "matrix regression: no Linux/Example/Runtime cell for {}/{}/{}",
+                lang_str(lang),
+                rmw_str(rmw),
+                wl_str(workload)
+            )
+        });
+    run_cell(cell);
+}
+
+/// Tripwire — keeps the hand-written `#[case]` list bound to the derived truth.
+#[test]
+fn reqresp_cases_cover_every_matrix_cell() {
+    use std::collections::BTreeSet;
+    let key = |l: ML, r: MR, w: MW| {
+        (
+            lang_str(l).to_string(),
+            rmw_str(r).to_string(),
+            wl_str(w).to_string(),
+        )
+    };
+    let from_matrix: BTreeSet<_> = nros_tests::matrix::CELLS
+        .iter()
+        .filter(|c| is_reqresp_cell(c))
+        .map(|c| key(c.lang, c.rmw, c.workload))
         .collect();
+    let declared: BTreeSet<_> = DECLARED_CASES
+        .iter()
+        .map(|(l, r, w)| key(*l, *r, *w))
+        .collect();
+
     assert!(
-        !cells.is_empty(),
+        !from_matrix.is_empty(),
         "matrix regression: no Native Service/Action example runtime cells"
     );
-
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let mut skipped: Vec<String> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
-    for c in &cells {
-        let label = format!(
-            "{}/{}/{}",
-            lang_str(c.lang),
-            rmw_str(c.rmw),
-            wl_str(c.workload)
-        );
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
-        if let Err(p) = res {
-            let msg = p
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "<non-string panic>".to_string());
-            if msg.contains("[SKIPPED]") {
-                skipped.push(format!("{label}: {msg}"));
-            } else {
-                failed.push(format!("{label}: {msg}"));
-            }
-        }
-    }
-    std::panic::set_hook(prev_hook);
-
+    let missing: Vec<_> = from_matrix.difference(&declared).collect();
+    let extra: Vec<_> = declared.difference(&from_matrix).collect();
     assert!(
-        failed.is_empty(),
-        "native_example_reqresp: {} of {} cell(s) FAILED:\n  {}",
-        failed.len(),
-        cells.len(),
-        failed.join("\n  ")
+        missing.is_empty() && extra.is_empty(),
+        "reqresp #[case] list has drifted from matrix::CELLS.\n  \
+         cells with no case (would never run): {missing:?}\n  \
+         cases with no cell (would panic):     {extra:?}"
     );
-    if skipped.len() == cells.len() {
-        nros_tests::skip!(
-            "all {} native req/resp cell(s) skipped:\n  {}",
-            skipped.len(),
-            skipped.join("\n  ")
-        );
-    }
 }
 
 /// Boot server → client and prove the client logs the server-computed result.

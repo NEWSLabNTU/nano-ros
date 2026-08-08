@@ -81,6 +81,7 @@ use nros_tests::{
         topic_endpoint_block,
     },
 };
+use rstest::rstest;
 use std::{
     path::PathBuf,
     process::Command,
@@ -451,56 +452,98 @@ fn resolve(r: Resolver, lang: &str, workload: &str, role: &str) -> PathBuf {
 /// CustomMsg/Logging/Qos/Lifecycle/Safety/Remap) — derived from `matrix::CELLS`
 /// — and runs each in one process, catching per-cell skips/failures so one
 /// missing fixture never aborts the rest.
-#[test]
-fn workspace_features() {
-    let cells: Vec<&MCell> = nros_tests::matrix::CELLS
+/// The cells this file consumes — ONE definition, shared by the per-case lookup
+/// and the coverage tripwire so they cannot disagree.
+fn is_wsfeature_cell(c: &MCell) -> bool {
+    w1_consumer_of(c) == Some(W1Consumer::WorkspaceFeatures) && matches!(c.tier, MT::Runtime)
+}
+
+/// The `(lang, workload)` pairs the `#[case]`s declare. Every cell here is
+/// Zenoh, so the pair is unique. A SPARSE grid, not a product: rust carries no
+/// CustomMsg/Qos cell and mixed carries only three — which is why this list is
+/// written out and gated rather than generated from the enums.
+const DECLARED_CASES: &[(ML, MW)] = &[
+    (ML::Rust, MW::Lifecycle),
+    (ML::Rust, MW::Logging),
+    (ML::Rust, MW::Remap),
+    (ML::Rust, MW::Safety),
+    (ML::C, MW::CustomMsg),
+    (ML::C, MW::Lifecycle),
+    (ML::C, MW::Logging),
+    (ML::C, MW::Qos),
+    (ML::C, MW::Safety),
+    (ML::Cpp, MW::CustomMsg),
+    (ML::Cpp, MW::Lifecycle),
+    (ML::Cpp, MW::Logging),
+    (ML::Cpp, MW::Qos),
+    (ML::Cpp, MW::Safety),
+    (ML::Mixed, MW::CustomMsg),
+    (ML::Mixed, MW::Logging),
+    (ML::Mixed, MW::Qos),
+];
+
+/// THE consumer — ONE TEST PER CELL (phase-342 W1). Was a single #[test]
+/// folding 17 cells at 62.9 s; see `native_example_pubsub_e2e.rs` for the full
+/// reasoning. Same two wins: the cells now schedule, and a failure names the
+/// `(lang, workload)` instead of reporting `N of 17`.
+#[rstest]
+#[case::rust_lifecycle(ML::Rust, MW::Lifecycle)]
+#[case::rust_logging(ML::Rust, MW::Logging)]
+#[case::rust_remap(ML::Rust, MW::Remap)]
+#[case::rust_safety(ML::Rust, MW::Safety)]
+#[case::c_custom_msg(ML::C, MW::CustomMsg)]
+#[case::c_lifecycle(ML::C, MW::Lifecycle)]
+#[case::c_logging(ML::C, MW::Logging)]
+#[case::c_qos(ML::C, MW::Qos)]
+#[case::c_safety(ML::C, MW::Safety)]
+#[case::cpp_custom_msg(ML::Cpp, MW::CustomMsg)]
+#[case::cpp_lifecycle(ML::Cpp, MW::Lifecycle)]
+#[case::cpp_logging(ML::Cpp, MW::Logging)]
+#[case::cpp_qos(ML::Cpp, MW::Qos)]
+#[case::cpp_safety(ML::Cpp, MW::Safety)]
+#[case::mixed_custom_msg(ML::Mixed, MW::CustomMsg)]
+#[case::mixed_logging(ML::Mixed, MW::Logging)]
+#[case::mixed_qos(ML::Mixed, MW::Qos)]
+fn workspace_features(#[case] lang: ML, #[case] workload: MW) {
+    let cell = nros_tests::matrix::CELLS
         .iter()
-        .filter(|c| {
-            w1_consumer_of(c) == Some(W1Consumer::WorkspaceFeatures)
-                && matches!(c.tier, MT::Runtime)
-        })
+        .find(|c| is_wsfeature_cell(c) && c.lang == lang && c.workload == workload)
+        .unwrap_or_else(|| {
+            panic!(
+                "matrix regression: no WorkspaceFeatures runtime cell for {}/{}",
+                lang_str(lang),
+                wl_str(workload)
+            )
+        });
+    run_cell(cell);
+}
+
+/// Tripwire — keeps the hand-written `#[case]` list bound to the derived truth.
+/// Load-bearing here in particular, because the grid is sparse: an eyeball
+/// cannot tell a missing cell from a deliberately absent one.
+#[test]
+fn workspace_features_cases_cover_every_matrix_cell() {
+    use std::collections::BTreeSet;
+    let key = |l: ML, w: MW| (lang_str(l).to_string(), wl_str(w).to_string());
+    let from_matrix: BTreeSet<_> = nros_tests::matrix::CELLS
+        .iter()
+        .filter(|c| is_wsfeature_cell(c))
+        .map(|c| key(c.lang, c.workload))
         .collect();
+    let declared: BTreeSet<_> = DECLARED_CASES.iter().map(|(l, w)| key(*l, *w)).collect();
+
     assert!(
-        !cells.is_empty(),
+        !from_matrix.is_empty(),
         "matrix regression: no WorkspaceFeatures runtime cells for this consumer"
     );
-
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let mut skipped: Vec<String> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
-    for c in &cells {
-        let label = format!("{}/{}", lang_str(c.lang), wl_str(c.workload));
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
-        if let Err(p) = res {
-            let msg = p
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "<non-string panic>".to_string());
-            if msg.contains("[SKIPPED]") {
-                skipped.push(format!("{label}: {msg}"));
-            } else {
-                failed.push(format!("{label}: {msg}"));
-            }
-        }
-    }
-    std::panic::set_hook(prev_hook);
-
+    let missing: Vec<_> = from_matrix.difference(&declared).collect();
+    let extra: Vec<_> = declared.difference(&from_matrix).collect();
     assert!(
-        failed.is_empty(),
-        "workspace_features: {} of {} cell(s) FAILED:\n  {}",
-        failed.len(),
-        cells.len(),
-        failed.join("\n  ")
+        missing.is_empty() && extra.is_empty(),
+        "workspace_features #[case] list has drifted from matrix::CELLS.\n  \
+         cells with no case (would never run): {missing:?}\n  \
+         cases with no cell (would panic):     {extra:?}"
     );
-    if skipped.len() == cells.len() {
-        nros_tests::skip!(
-            "all {} workspace-feature cell(s) skipped:\n  {}",
-            skipped.len(),
-            skipped.join("\n  ")
-        );
-    }
 }
 
 /// Boot the workspace entr(y/ies) on an ephemeral router and prove the
