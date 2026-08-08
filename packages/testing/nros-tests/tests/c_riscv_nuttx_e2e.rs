@@ -69,11 +69,14 @@ fn c_riscv_nuttx_talker_delivers_cross_process() {
         ManagedProcess::spawn_command(cmd, "native-listener")
             .unwrap_or_else(|e| panic!("spawn native listener: {e}"))
     };
-    obs.wait_for_output_pattern(nros_tests::output::LISTENER_READY_MARKER, Duration::from_secs(10))
-        .unwrap_or_else(|_| {
-            obs.kill();
-            panic!("native listener never became ready")
-        });
+    obs.wait_for_output_pattern(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(10),
+    )
+    .unwrap_or_else(|_| {
+        obs.kill();
+        panic!("native listener never became ready")
+    });
 
     // Boot the rv-virt kernel image (runs until killed).
     let mut qemu = QemuProcess::start_nuttx_riscv(&talker, true)
