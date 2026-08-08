@@ -64,6 +64,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 
 # shellcheck source=scripts/build/cargo.sh
+# shellcheck source=scripts/build/build-root.sh
+source "$repo_root/scripts/build/build-root.sh"
 source "$repo_root/scripts/build/cargo.sh"
 # shellcheck source=scripts/build/cmake-incremental.sh
 source "$repo_root/scripts/build/cmake-incremental.sh"
@@ -441,7 +443,11 @@ fi
 # is unset for the pool path), so every ninja/cargo joins the pool and total
 # concurrency stays at the budget no matter how many groups run at once.
 pool_jobs="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
-work_root="${NROS_BUILD_LOG_DIR:-$repo_root/build}/workspace-fixtures-make"
+# phase-334 W2.b step 2 — the make-scratch root comes from the ONE derivation
+# (RFC-0070 R3). NROS_BUILD_LOG_DIR still wins when set, because a caller that
+# redirected its logs meant the scratch to follow them; what changes is that the
+# FALLBACK is derived rather than a second spelling of "$repo_root/build".
+work_root="${NROS_BUILD_LOG_DIR:-$(nros_build_root)}/workspace-fixtures-make"
 mkdir -p "$work_root"
 stamp="$(date +%Y%m%d-%H%M%S)-$$"
 makefile="$work_root/ws-$platform-$stamp.mk"
