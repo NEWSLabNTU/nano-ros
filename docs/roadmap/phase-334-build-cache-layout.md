@@ -199,7 +199,7 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       vocabulary (platform, lang, rmw, feature-sig) — never a new ad-hoc
       suffix. `target-<rmw>`, `build-<rmw>`, `build-workspace-fixtures[-<plat>]`
       all become derivations of the one scheme.
-- [ ] **W2.b** IN PROGRESS — **step 1 of 4 landed 2026-08-06**:
+- [x] **W2.b** **STEP 2 COMPLETE 2026-08-08** (step 1 landed 2026-08-06):
       `scripts/build/build-root.sh` (`nros_build_root` / `nros_build_dir`) is the
       derivation, `fixtures-target-dir.sh` is its first caller, and
       `check-build-root` (in `check-fast`) asserts the emitted path is UNCHANGED.
@@ -281,6 +281,39 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       on every justfile parse) and `check-weak-symbols-image.sh`'s COVERAGE
       table (relative find-bases mixing source dirs with cache dirs).
       One `lane-coords`-style derivation, not 300 edited literals.
+
+      **Step 2 finished 2026-08-08.** The remaining rooted callers migrated as
+      four more one-commit families — `zenohd`, `xrce-agent`, `qemu` /
+      `qemu-zenoh-pico`, and the workspace builder's make-scratch root — plus a
+      tail of four single call sites belonging to no family (`qemu.rs`
+      libzenohpico, `ros2.rs` rmw_zenoh_ws overlay, `zephyr.rs`
+      zephyr-workspace-builds, `cargo.sh` sizes-probe). That tail is worth
+      naming: single sites in no family are how a "one derivation" rule ends up
+      with five unplanned exceptions.
+
+      Completion is CHECKABLE, not asserted:
+      `git grep 'repo_root/build/|project_root().join("build/'` over `scripts/`
+      and `nros-tests/src/` returns nothing but the doc comment naming the
+      pattern it replaced. That mattered here because this work item's earlier
+      finding was a count that did NOT move when it looked like it should.
+
+      Verified by running the things, not reading them: `just zenohd/xrce/qemu
+      doctor` all resolve through the derivation, `check-build-root` passes,
+      `workspace-fixtures-build.sh linux` is rc=0, and the suites that exec
+      these binaries are green — qos 6/6, xrce 6/6, emulator 16/16.
+
+      Two deliberate non-migrations, recorded at their sites: `QEMU_PREFIX`
+      (parse-time `absolute_path()`; a bash call there needs a `shell()` on
+      every justfile parse) and `check-weak-symbols-image.sh`'s COVERAGE table.
+      `qemu.rs`'s private `project_root()` walk-up was DELETED rather than
+      `#[allow]`ed — two spellings of "where is the repo" is the R3 drift this
+      step removes.
+
+      **Steps 3-4 are NOT pending here.** Per the work-order consequence above,
+      the source-relative class merges into phase-340 W2 (item 5), where the
+      path changes anyway and the manifest column stops being authored. Doing a
+      path move here would put two path conventions in flight at once — the #393
+      hazard.
 - [ ] **W2.c** Gitignore collapses to `build/` (plus the transition set);
       delete the per-dir ignore sprawl as dirs migrate.
 - [x] **W2.d** LANDED 2026-08-06 — AGENTS.md "Build-Cache Root (RFC-0070)".
