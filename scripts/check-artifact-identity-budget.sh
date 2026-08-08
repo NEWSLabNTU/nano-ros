@@ -148,6 +148,37 @@ fi
 
 fail=0
 
+# --- the R3 axis, reported (phase-340 W3) -----------------------------------
+# Cargo writes an explicitly-targeted unit to `<target-dir>/<triple>/<profile>/`
+# and a host unit to `<target-dir>/<profile>/`, so the path says which half of
+# the R3 split an artifact came from — and the gate's headline number cannot.
+# W4 listed exactly that as a limitation ("it reports a number, not a cause"),
+# and W7/item 8 has to lower the budgets per axis rather than in one lump.
+#
+# This is a REPORT, not a budget. The host half can never reach zero: build
+# scripts and proc macros are host units by construction, so an explicitly
+# targeted invocation contributes to BOTH columns. What the column does show is
+# a whole cargo invocation using the implicit spelling — before phase-340 W3 the
+# five `nano_ros_cpp_ffi_*/target/nros-minsizerel/` trees were exactly that.
+axis_report() {
+    printf '%s\n' "$triples" | awk '
+        {
+            n = split($3, c, "/")
+            # `…/<triple>/<profile>/deps/lib….rlib` → c[n-3] is the triple slot.
+            if (c[n-3] ~ /^(x86_64|i686|aarch64|armv7[ar]?|thumbv[0-9]|riscv32|riscv64|arm)[A-Za-z0-9_.]*-/)
+                k = "target"
+            else
+                k = "host"
+            ids[$1 SUBSEP $2 SUBSEP k] = 1
+            copies[k]++
+        }
+        END {
+            for (i in ids) { split(i, p, SUBSEP); n_ids[p[3]]++ }
+            printf "  R3 axis (host vs explicit --target): identities %d/%d, copies %d/%d (host/target)\n",
+                n_ids["host"] + 0, n_ids["target"] + 0, copies["host"] + 0, copies["target"] + 0
+        }'
+}
+
 # --- axis 1: identities per crate (how many times it was COMPILED) ----------
 identity_counts="$(printf '%s\n' "$triples" | awk '{print $1, $2}' | sort -u \
     | awk '{print $1}' | uniq -c)"
@@ -179,6 +210,7 @@ if [ "$budgeted_n" -gt "$BUDGET_IDENTITIES" ]; then
     echo "  (budget $BUDGET_IDENTITIES, recorded 2026-08-07 by phase-340 W4)." >&2
     echo "  Each identity is a separate compilation of the same crate:" >&2
     report_crate "$BUDGET_CRATE" >&2
+    axis_report >&2
     echo "  A new identity means a new incompatibility axis — workspace root," >&2
     echo "  explicit --target, RUSTFLAGS, or any ONE of opt-level /" >&2
     echo "  debug-assertions / panic / codegen-units / lto / incremental." >&2
@@ -224,3 +256,4 @@ max_copies="$(printf '%s\n' "$triples" | awk '{print $1, $2}' | sort | uniq -c \
     | awk '{print $1}' | sort -rn | head -1)"
 echo "artifact-identity budget OK ($TREE): $BUDGET_CRATE $budgeted_n/$BUDGET_IDENTITIES identities;" \
      "worst crate $max_ids/$CEILING_IDENTITIES; worst identity $max_copies/$CEILING_COPIES copies."
+axis_report
