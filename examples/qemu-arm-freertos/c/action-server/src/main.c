@@ -23,6 +23,14 @@
 
 typedef struct {
     int goal_count;
+    // issue 0453 — the order most recently ACCEPTED, so `accepted_callback` can
+    // compute the sequence the client actually asked for. The goal handle
+    // surfaces the uuid and status but not the request payload, which is why
+    // this used to hard-code 10: it had nothing else to go on. Mirrors the Rust
+    // server's `State` (issue 0450). One slot is enough for the demo (a single
+    // goal at a time); a server handling concurrent goals would key this by
+    // goal uuid.
+    int32_t accepted_order;
 } server_context_t;
 
 static struct {
@@ -58,7 +66,6 @@ static nros_goal_response_t goal_callback(nros_action_server_t* server,
                                           void* context) {
     (void)server;
     (void)goal;
-    (void)context;
 
     // Deserialize goal using generated function
     example_interfaces_action_fibonacci_goal goal_msg;
@@ -74,6 +81,15 @@ static nros_goal_response_t goal_callback(nros_action_server_t* server,
     if (goal_msg.order < 0 || goal_msg.order >= 64) {
         printf("Goal rejected: order out of range\n");
         return NROS_GOAL_REJECT;
+    }
+
+    // issue 0453 — remember what was requested. Reading the order for the
+    // range check and then ignoring it when computing the result is what made
+    // this server's output independent of its input, so no test could tell a
+    // delivered goal from a dropped one.
+    server_context_t* ctx = (server_context_t*)context;
+    if (ctx != NULL) {
+        ctx->accepted_order = goal_msg.order;
     }
 
     return NROS_GOAL_ACCEPT_AND_EXECUTE;
@@ -94,10 +110,11 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
 
     printf("Executing goal\n");
 
-    // NOTE: In a real application you'd track per-goal state (parsed goal
-    // data, progress, etc.) in a user-side {uuid → state} table keyed by
-    // goal->uuid. For this example we hard-code order = 10.
-    int32_t order = 10;
+    // issue 0453 — compute the sequence the client ASKED for. `goal_callback`
+    // stashed the accepted order in the server context; a real application
+    // handling concurrent goals would key that by `goal->uuid` instead of
+    // keeping one slot.
+    int32_t order = ctx->accepted_order;
 
     // Transition to executing state
     nros_ret_t ret = nros_action_execute(server, goal);

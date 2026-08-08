@@ -63,11 +63,17 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     int32_t b = 1;
     Fibonacci::Result result;
 
-    for (int32_t i = 0; i < goal.order && i < 64; i++) {
+    // issue 0453 — `i <= goal.order`, so an order-N goal yields N+1 elements.
+    // That is the ROS 2 `action_tutorials` convention, which the Rust and C
+    // servers already follow (`0..=order` / `i <= order`); this loop was the
+    // one `i < order` and produced 10 elements for order 10 while its siblings
+    // produced 11. One convention across the three languages is what lets a
+    // single expected sequence assert delivery for EVERY cell.
+    for (int32_t i = 0; i <= goal.order && i < 64; i++) {
         result.sequence.push_back(a);
 
         // Publish feedback periodically
-        if (i > 0 && (i % 3 == 0 || i == goal.order - 1)) {
+        if (i > 0 && (i % 3 == 0 || i == goal.order)) {
             Fibonacci::Feedback fb;
             for (uint32_t k = 0; k < result.sequence.length(); k++) {
                 fb.sequence.push_back(result.sequence[k]);

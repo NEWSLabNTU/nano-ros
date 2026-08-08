@@ -71,6 +71,16 @@ service-server, wrong only for the Rust listener, so each site must be mapped to
 Needs a gate forbidding string literals there — the rule has been in CLAUDE.md since phase-277 and is
 violated 101 times.
 
+**#480** (testing, open 2026-08-08) — **substantially duplicates #481, which is better evidenced — read
+that one first.** Kept for the part it adds: a full audit of **101 literal `wait_for_output_pattern("…")`
+calls** with each mapped to the binary it waits on. #481 found the same class by MEASUREMENT (a wrong
+marker burns the whole timeout in silence: 34.1 s -> 4.0 s once fixed); this issue found it from a failing
+test and carries the site table. **CORRECTED:** #480 originally claimed this explained the 29 ci-matrix
+reds. It does not. Re-running all 27 with full capture shows fixture coverage/staleness dominates (10 "not
+prebuilt", 3 "failed to build", 2 STALE), and the bare-`cargo nextest` retest miscounted `skip!` panics as
+failures — the caveat CLAUDE.md states outright. Both issues agree a blanket replace is WRONG: most sites
+wait on C/C++ binaries that DO print `"Waiting for"`.
+
 **#479** (examples, open 2026-08-08) — `5f4eda8a4` fixed issue 0453 (an action server whose output ignored
 the goal payload) on the **native** cells only; all 8 embedded copies still carry the old body, so the
 defect 0453 was filed about is live on 8 of 10 cells. Two divergences: the four embedded C++ copies run

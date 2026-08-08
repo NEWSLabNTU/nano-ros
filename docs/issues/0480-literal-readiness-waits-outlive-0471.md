@@ -4,7 +4,71 @@ title: "0471 made readiness waits strict but converted 4 suites — 101 literal 
 status: open
 type: bug
 area: testing
-related: [issue-0471, phase-277, issue-0157, issue-0164]
+related: [issue-0481, issue-0471, phase-277, issue-0157, issue-0164]
+---
+
+## Duplicates #481 — read that first
+
+While this was being written, another session filed **#481** for the same class,
+found by MEASUREMENT rather than by a failing test: after phase-342 W1 split the
+pubsub fold, `rust_cyclone` sat at 34.1 s against `cpp_cyclone`'s 5.2 s, because
+a settle step greped `"Waiting for"` — which C/C++ print and the Rust listener
+never does. Fixed there: 34.1 s -> 4.0 s.
+
+That is the stronger evidence, and it makes the real cost visible: a wrong
+marker does not fail, it **burns the whole timeout in silence** and the test
+still passes. #481 is the authoritative write-up.
+
+What THIS issue adds and should be kept for: the full site audit — 101 literal
+`wait_for_output_pattern` calls, each mapped to the binary it waits on (table
+below). #481 names 12 further call sites with the same literal and 4 suspects;
+the audit here is the superset and the mapping is the work needed either way.
+
+Both issues independently reached the same conclusion about the fix: **do not
+replace blindly**, because most sites wait on C/C++ binaries that DO print the
+string.
+
+## CORRECTION (2026-08-08, before any fix landed)
+
+**The premise below is wrong about scale, and the issue is kept only for the
+101-literal audit — not as the explanation of the ci-matrix reds.**
+
+Two mistakes, both mine:
+
+1. **The solo retest used bare `cargo nextest`**, which counts
+   `nros_tests::skip!` panics as FAILURES — only `just test-all`'s junit rewrite
+   turns them into skips. CLAUDE.md warns about this explicitly. Several
+   "FAIL-SOLO" verdicts are actually `[SKIPPED] … build-fixture emitted the
+   offline Placeholder stub` (`board_agnostic_run_plan`, `nav2_compat`), i.e.
+   not failures at all.
+
+2. **The banner diagnosis generalized from ONE test.** Re-running all 27 with
+   full output captured shows the real distribution:
+
+   | reason | n |
+   | --- | --- |
+   | `Test fixture binary not prebuilt` | 10 |
+   | unclassified / skip-stubs / other | 12 |
+   | `Failed to build <fixture>` | 3 |
+   | `Test fixture is STALE` | 2 |
+
+   `test_zephyr_to_native_e2e` — the single test the banner claim rested on —
+   reports `not prebuilt` in the second run. The fixture state differed between
+   the two runs, so the `did not print \`Waiting for\`` panic was reachable only
+   once the binary existed. Real, but nowhere near the dominant cause.
+
+So the ci-matrix reds are overwhelmingly **fixture coverage and staleness**, the
+same family as the tier-2-needs-`lane=all` gap — not stale greps.
+
+**What survives:** the 101 literal `wait_for_output_pattern` calls are still a
+genuine latent violation of a rule CLAUDE.md has carried since phase-277, and
+0471's strictness makes any wrong one fail loudly rather than silently pass. The
+audit and the proposed gate below stay valid. What is retracted is the claim
+that this explains the 27 failures.
+
+Fixing 101 sites on a premise this weak would have been churn justified by a
+number I had not checked.
+
 ---
 
 ## Symptom
