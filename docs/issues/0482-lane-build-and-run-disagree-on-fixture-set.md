@@ -118,7 +118,7 @@ The justfile already *says* the right thing —
 
 > Issue 0393 — this lane's BUILD is deliberately still `all`. […] Narrowing the
 > build here would need the run narrowed to match first; until then, saying so
-> beats a lane that silently under-building.
+> beats a lane that silently under-builds.
 
 — but nothing ENFORCES it. `just build-test-fixtures lane=tier2` is an
 advertised command, its stamp satisfies the preflight, and the contradiction
@@ -140,11 +140,19 @@ and `matrix_fixture_coverage.rs` consumes that instead of re-parsing the TOML
 with its own default. There is then no second spelling to drift.
 
 **B — the required BUILD derives from the lane's RUN.** `CiLane::run_scope()`
-(the `NROS_TEST_SCOPE` a lane's recipe sets) and `CiLane::build_lane()` (the
-fixture lane that covers that run) are declared once in `ci_lane.rs`, emitted by
-`lane-coords --run-scope` / `--build-lane`, and consumed by
-`nros_fixtures_stamp_require`. `ci-matrix` therefore fails at PREFLIGHT, in
-seconds, naming `just build-test-fixtures` — instead of after 231 test failures.
+(the `NROS_TEST_SCOPE` a lane's recipe sets) and `RunScope::build_lane()` (the
+fixture lane that covers that run) are declared once in `ci_lane.rs` and emitted
+by `lane-coords --run-scope` / `--build-lane`. `nros_lane_build_lane` is the
+runtime implementation — pure bash, so a preflight whose job is to fail in
+seconds compiles nothing, and so the gate can exercise it without a build; the
+Rust declaration and the shell are bound by an assertion, not by hope.
+`nros_fixtures_stamp_require` consumes it, so `ci-matrix` fails at PREFLIGHT
+naming `just build-test-fixtures` — instead of after 231 test failures.
+
+A latent hang fell out of the same change: with `want=native` there is no
+coordinate file, and `comm -23 <(sort -u "$want_file")` then hands `sort` an
+empty filename, so it reads stdin forever. A preflight that hangs is worse than
+one that is wrong, because nothing reports it.
 
 ## What this does NOT fix, and what would
 
@@ -171,7 +179,9 @@ issue 0341 removed. Two candidate designs, neither small:
    risks laundering "never built" into "skipped", which is the 0445 hazard.
 
 Both are phase-sized. Until one lands, `just ci-matrix` needs a full fixture
-build and the ladder's cost table should say so.
+build, and the ladder's cost claim now says so — CLAUDE.md's "~26 % of a sweep"
+was quoting the FRESHNESS gate as if it were the build, and has been corrected
+in CLAUDE.md, AGENTS.md and `book/src/internals/build-system.md`.
 
 ## Reproduce
 
