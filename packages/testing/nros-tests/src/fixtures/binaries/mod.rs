@@ -3297,7 +3297,15 @@ pub fn build_native_logging() -> TestResult<&'static Path> {
 pub fn build_native_custom_transport_talker() -> TestResult<&'static Path> {
     NATIVE_CT_TALKER_BINARY
         .get_or_try_init(|| {
-            build_example("native/rust/custom-transport-talker", "talker", None, None)
+            build_example(
+                "native/rust/custom-transport-talker",
+                // phase-340 W2 — was `talker`, which collided with
+                // `native-rs-talker`'s binary inside the `linux` default
+                // fixture group's one flat output namespace.
+                "custom-transport-talker",
+                None,
+                None,
+            )
         })
         .map(|p| p.as_path())
 }
@@ -3402,7 +3410,8 @@ pub fn build_native_custom_transport_listener() -> TestResult<&'static Path> {
         .get_or_try_init(|| {
             build_example(
                 "native/rust/custom-transport-listener",
-                "listener",
+                // phase-340 W2 — was `listener`; see the talker sibling.
+                "custom-transport-listener",
                 None,
                 None,
             )

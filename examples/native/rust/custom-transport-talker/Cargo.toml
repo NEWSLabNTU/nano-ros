@@ -11,7 +11,14 @@ publish = false
 deploy = ["native"]
 
 [[bin]]
-name = "talker"
+# phase-340 W2 — the artifact name must be unique across the fixture GROUP, not
+# just across this directory. A group's members share one flat
+# `<group>/[<triple>/]<profile>/` output namespace, and cargo hashes `deps/` by
+# `-C metadata` while leaving the FINAL artifact name alone: two members both
+# emitting `talker` overwrite each other, last writer wins, and one test then
+# runs the other's binary. `native-rs-talker` already claims `talker`, so this
+# one carries its own name. Gated by `scripts/check-fixture-groups.py` (A1/A3).
+name = "custom-transport-talker"
 path = "src/main.rs"
 
 [features]

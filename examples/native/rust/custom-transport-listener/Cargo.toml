@@ -11,7 +11,10 @@ publish = false
 deploy = ["native"]
 
 [[bin]]
-name = "listener"
+# phase-340 W2 — unique across the fixture GROUP, not just this directory; see
+# the sibling `custom-transport-talker` manifest for the full rationale.
+# `native-rs-listener` already claims `listener`.
+name = "custom-transport-listener"
 path = "src/main.rs"
 
 [features]

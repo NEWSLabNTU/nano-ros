@@ -95,11 +95,15 @@ SEP = "\x1f"
 # manifest, EVERY platform, independent of the shared list (see the module
 # docstring for why that independence is load-bearing).
 #
-# `linux` is the platform phase-340 W2.a step 2 wants to add to
-# NROS_FIXTURE_SHARED_PLATFORMS.  These two artifact names are what stops it:
-# the custom-transport examples name their binaries `talker` / `listener`, the
-# same names the plain talker / listener examples use, and all four rows are
-# default-feature `linux` rows — i.e. the SAME group.
+# **EMPTY, and that is the end state, not an omission** (phase-340 W2,
+# 2026-08-08).  It used to hold `linux`'s two entries — the custom-transport
+# examples named their binaries `talker` / `listener`, the same names the plain
+# talker / listener examples use, and all four are default-feature `linux` rows,
+# i.e. the SAME group.  Both were FIXED rather than recorded further: the two
+# binaries are now `custom-transport-talker` / `custom-transport-listener`, so
+# the manifest contains no artifact-name collision on ANY platform.  A3 was the
+# arm that noticed the fix (it fails in both directions), and it is the arm that
+# will notice a regression.
 #
 # Format: platform -> sorted list of "group::binary <- pkg, pkg" strings.
 #
@@ -108,12 +112,11 @@ SEP = "\x1f"
 # claiming an already-recorded name: renaming `native-rs-xrce-serial-talker`'s
 # binary to `talker` left the budget reading exactly the same two entries and
 # the gate green. Tripwired again with the owners in the key, which fails.
-KNOWN_COLLISIONS = {
-    "linux": [
-        "linux::listener <- native-rs-custom-transport-listener, native-rs-listener",
-        "linux::talker <- native-rs-custom-transport-talker, native-rs-talker",
-    ],
-}
+#
+# Adding an entry here is the LAST resort — it says "this collision is known and
+# unfixed", which blocks the platform from ever being shared.  Rename the binary
+# instead; that is what unblocked `linux`.
+KNOWN_COLLISIONS: dict[str, list[str]] = {}
 
 
 def rows():
