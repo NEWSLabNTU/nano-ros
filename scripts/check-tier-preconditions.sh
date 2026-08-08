@@ -85,8 +85,18 @@ fi
 
 # 4. Fixtures, for the LANE this run will test. Coverage is per-lane (#393), so
 #    "some fixtures exist" is not the question.
+#
+#    The remedy names the BUILD lane, not the run's lane (#482). They differ
+#    whenever a lane does not narrow its test run: `ci-matrix` gates freshness
+#    over the tier-2 cover but EXECUTES everything, so `lane=tier2` is the wrong
+#    advice — it builds only the coordinates the gate checks and the run then
+#    fails on the rest. `_require-fixtures` derives the same mapping, so this
+#    line and the error it prints cannot disagree.
+# shellcheck source=scripts/build/fixture-lane.sh
+source scripts/build/fixture-lane.sh
+_fixture_build_lane="$(nros_lane_build_lane "${NROS_FIXTURE_LANE:-all}" 2>/dev/null || echo "${NROS_FIXTURE_LANE:-all}")"
 probe "test fixtures missing or stale for this lane" \
-    "just build-test-fixtures lane=${NROS_FIXTURE_LANE:-all}   (bypass: NROS_SKIP_FIXTURE_CHECK=1)" \
+    "just build-test-fixtures lane=${_fixture_build_lane}   (bypass: NROS_SKIP_FIXTURE_CHECK=1)" \
     just _require-fixtures
 
 # 5. The pinned make. `nros_pool_run` needs make 4.4's FIFO jobserver: the

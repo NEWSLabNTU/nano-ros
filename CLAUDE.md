@@ -54,8 +54,11 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   - `just ci` — **tier 1**, minutes, host only. The default. Gates and runs only
     native fixtures, so a stale ThreadX fixture cannot block it.
   - `just ci-matrix` — **tier 2**, when the diff touches `packages/core`, codegen,
-    or `cmake/`. 1-wise over platform/lang/rmw/kind: every value once, ~26 % of a
-    sweep. It sees each platform and each language, but NOT their pairing.
+    or `cmake/`. 1-wise over platform/lang/rmw/kind: every value once. It sees
+    each platform and each language, but NOT their pairing. **The ~26 % is the
+    FRESHNESS gate, not the build** (#482): this lane does not narrow its test
+    RUN, so every fixture must EXIST — build `lane=all`, not `lane=tier2`. The
+    preflight enforces that now instead of letting the run discover it.
   - `just ci-matrix-nightly` — the pairwise cover (~70 %). Where the
     platform×language and rmw×language classes actually surface (0268/0245 sizes
     headers, 0332 freestanding headers, 0331 vtable ABI). Tier 2 costs a day of
@@ -177,7 +180,14 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 - **Fixture builds are LANE-SCOPED (#393):** `just build-test-fixtures lane=<all|native|tier1|tier2|tier2-nightly>`
   narrows both the platform-family fan-out and the manifest rows; the `.fixtures-built` stamp
   records `lane=` + per-coordinate rows, and `_require-fixtures` checks COVERAGE against the run's
-  lane. Build the lane you'll test — tier 1 doesn't need all 337 rows. New runtime tests join a
+  lane. Build the lane you'll test — tier 1 doesn't need all 337 rows.
+  **A lane answers TWO questions and they have different answers (#482):** which fixtures must be
+  FRESH (its cell cover — narrow, and the whole saving) vs which must EXIST (a property of the
+  RUN). Only `native`/tier 1 narrows its run, so only tier 1 gets a narrow build;
+  `nros_lane_build_lane` maps lane→required build and `CiLane::run_scope` declares it. And a
+  fixture ROW's coordinate has exactly one computation, `row_coord()` in `fixtures-manifest.py`
+  (`rmw` defaults to zenoh THERE) — `matrix_fixture_coverage.rs` consumes its `coords` subcommand
+  rather than re-deriving. The second derivation left 67 of 240 rows in no lane at all. New runtime tests join a
   matrix: cells in `matrix::CELLS` / `interop::CELLS` (RFC-0051; phase-331 W4 put workspace RMW
   cells there too), not new hand-coordinated files — the consolidation plan is phase-329.
 - **Fixture mtime treadmill:** any pull/rebase — and any `git stash push`/`pop`, which rewrites

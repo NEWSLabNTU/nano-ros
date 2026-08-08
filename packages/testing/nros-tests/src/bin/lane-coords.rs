@@ -6,6 +6,8 @@
 //! $ lane-coords tier2-nightly --module nuttx     # …every token that module owns
 //! $ lane-coords tier2-nightly --modules          # the `just <mod>` set, deduped
 //! $ lane-coords tier2 --cells                    # full cells, for inspection
+//! $ lane-coords tier2 --run-scope                # NROS_TEST_SCOPE for this lane
+//! $ lane-coords tier2 --build-lane               # build-test-fixtures lane= it needs
 //! ```
 //!
 //! # Why coordinates and not cells
@@ -30,6 +32,16 @@
 //! * `--modules` — the CI job MATRIX itself, so the platform list in a workflow
 //!   yml is computed from `matrix::CELLS` instead of hand-written (it was
 //!   hand-written in `nightly.yml`, where nothing notices it going stale).
+//!
+//! # `--run-scope` / `--build-lane` answer a DIFFERENT question (issue 0482)
+//!
+//! The coordinate modes above say which fixtures a lane must have FRESH. These
+//! two say which fixtures must EXIST, which is a property of the RUN, not of the
+//! cell selection: `ci-matrix` executes the whole suite, so it needs a full
+//! fixture build however narrow its cell cover is. Answering both from the lane
+//! name alone is what let `just build-test-fixtures lane=tier2` satisfy the
+//! preflight for a run that then failed on 34 unbuilt coordinates. Both are
+//! consumed by `scripts/build/fixture-lane.sh`.
 
 use nros_tests::{
     ci_lane::{CiLane, cells, coords},
@@ -40,7 +52,8 @@ use std::collections::BTreeSet;
 fn usage(got: Option<&str>) -> ! {
     eprintln!(
         "usage: lane-coords <tier1|tier2|tier2-nightly> \
-[--cells | --modules | --platform <token> | --module <name>]   (got {got:?})\n\
+[--cells | --modules | --platform <token> | --module <name> | --run-scope | \
+--build-lane]   (got {got:?})\n\
          \n\
          Prints `platform,lang,rmw` triples — the FIXTURE coordinates a lane\n\
          needs, which is what its cost is measured in. Cells share fixtures, so\n\
@@ -69,6 +82,9 @@ fn main() {
                 println!("{c:?}");
             }
         }
+        // Issue 0482 — one line, no trailing anything, so a shell can `$( )` it.
+        Some("--run-scope") => println!("{}", lane.run_scope().test_scope()),
+        Some("--build-lane") => println!("{}", lane.run_scope().build_lane()),
         Some("--modules") => {
             // Deduped: `nuttx` owns both NuttxArm and NuttxRiscv, `zephyr` owns
             // both ZephyrNativeSim and Fvp — one job each, not two.

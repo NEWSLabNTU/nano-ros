@@ -39,6 +39,37 @@ DEFAULT_MANIFEST = "examples/fixtures.toml"
 # SSoT for the rule — see the note in `validate_workspace_fixture`.
 DEFAULT_LAUNCH_FILE = "system.launch.xml"
 
+# The RMW a `[[fixture]]` row that names none is built with — issue 0482.
+#
+# `rmw` is optional on `[[fixture]]` (67 of 240 buildable rows omit it: a rust
+# leaf with default features gets the default backend, and for C/C++ rows the
+# key doubles as `-DNROS_RMW=` so it is always written out). But a row's
+# COORDINATE is `(platform, lang, rmw)`, and that is what every lane-scoped
+# consumer filters on — the fixture BUILD (`--coords-from`) and the staleness
+# GATE (`check-fixtures-stale.sh`, same filter).
+#
+# The default therefore has to be applied HERE, where rows are read, or a lane
+# and a coverage check end up with two different answers for the same row. That
+# is exactly what happened: `matrix_fixture_coverage.rs` applied
+# `unwrap_or("zenoh")` and reported the rows modeled, while `matches_filters`
+# compared a bare `None` against the lane's triples and matched nothing — so 67
+# rows sat in NO coordinate-scoped lane, invisible to both the build and the
+# gate that would have reported the build's omission. `just build-test-fixtures
+# lane=tier2` then produced a stamp the preflight accepted and a run that
+# mass-failed STALE.
+#
+# One spelling, in the reader every consumer goes through. `row_coord()` is the
+# only place a row's coordinate is computed; `matrix_fixture_coverage.rs`
+# consumes the `coords` subcommand rather than re-deriving it.
+DEFAULT_RMW = "zenoh"
+
+# The RMW vocabulary a coordinate may name. Mirrors `nros_tests::matrix::Rmw`;
+# `matrix_fixture_coverage.rs::fixture_rows_all_modeled_by_matrix` is the gate
+# that keeps the two in step (a row naming an RMW the matrix has no cell for
+# fails there). Listed here so a TYPO fails as a typo, at validation, instead of
+# silently landing the row on a coordinate no lane will ever select.
+KNOWN_RMWS = ("zenoh", "cyclonedds", "xrce")
+
 
 def load(path):
     with open(path, "rb") as f:
@@ -213,6 +244,25 @@ def _coords_for(path):
     return _COORDS_CACHE[path]
 
 
+def row_coord(entry):
+    """The `(platform, lang, rmw)` coordinate a row occupies — issue 0482.
+
+    THE single computation of a fixture row's coordinate. Every consumer that
+    asks "is this row in lane L?" must go through here, in either language:
+    the lane build and the staleness gate via `matches_filters`/`coords`, the
+    matrix cross-check via the `coords` subcommand. A second derivation with its
+    own default is the defect this function exists to remove.
+
+    `platform` and `lang` are required on every row (`validate_fixtures`);
+    `rmw` falls back to `DEFAULT_RMW`.
+    """
+    return (
+        entry.get("platform"),
+        entry.get("lang"),
+        entry.get("rmw") or DEFAULT_RMW,
+    )
+
+
 def matches_filters(entry, args, *, for_probe=False):
     # `skip_build` rows stay in the manifest for documentation/inventory but
     # are intentionally NOT built as fixtures (e.g. an incomplete example).
@@ -224,18 +274,18 @@ def matches_filters(entry, args, *, for_probe=False):
         return False
     if args.lang and entry.get("lang") != args.lang:
         return False
-    if args.rmw and entry.get("rmw") != args.rmw:
+    # Issue 0482 — the `rmw` filter reads the row's COORDINATE, not its raw key,
+    # for the same reason `--coords-from` does: `--rmw zenoh` and the coordinate
+    # `(…, …, zenoh)` are the same question asked two ways, and answering them
+    # differently is how a row ends up buildable by one caller and invisible to
+    # another.
+    if args.rmw and row_coord(entry)[2] != args.rmw:
         return False
     if args.id and entry.get("id") != args.id:
         return False
     coords_from = getattr(args, "coords_from", None)
     if coords_from:
-        coord = (
-            entry.get("platform"),
-            entry.get("lang"),
-            entry.get("rmw"),
-        )
-        if coord not in _coords_for(coords_from):
+        if row_coord(entry) not in _coords_for(coords_from):
             return False
     # Issue #29 — `--core-only` excludes the isolated-`target_dir` variant cells
     # (the RMW/feature rebuilds that duplicate the dep graph + overrun disk).
@@ -247,7 +297,11 @@ def matches_filters(entry, args, *, for_probe=False):
 
 
 def _fail(entry, message):
-    fixture_id = entry.get("id", "<missing id>")
+    # `id` is required on workspace/compile-check rows but OPTIONAL on plain
+    # `[[fixture]]` rows, most of which are identified only by their dir — so
+    # fall back to it rather than reporting `<missing id>` for a row whose real
+    # name is right there (issue 0482).
+    fixture_id = entry.get("id") or entry.get("dir") or "<unidentifiable row>"
     raise ValueError(f"{fixture_id}: {message}")
 
 
@@ -374,8 +428,19 @@ def validate_workspace_fixture(entry):
             _fail(entry, f"missing required key {key!r}")
 
     lang = entry["lang"]
-    if lang not in ("rust", "c", "cpp", "mixed"):
+    if lang not in FIXTURE_LANGS:
         _fail(entry, f"unsupported workspace fixture lang {lang!r}")
+
+    # Issue 0482 — the same vocabulary check `validate_fixture` makes. Both
+    # tables carry coordinates and a typo has the same consequence in either:
+    # the row lands on a coordinate no lane selects and no matrix cell holds, so
+    # it is never built and never reported missing. Checking only one table is
+    # the "gate narrower than the rule it enforces" shape (issue 0196).
+    if entry["rmw"] not in KNOWN_RMWS:
+        _fail(
+            entry,
+            f"unknown rmw {entry['rmw']!r} (expected one of: {', '.join(KNOWN_RMWS)})",
+        )
 
     platform = entry["platform"]
     if platform == "zephyr" and not entry.get("board"):
@@ -438,6 +503,49 @@ def validate_workspace_fixtures(entries):
     return count
 
 
+# The languages a `[[fixture]]` row may declare. Same set
+# `validate_workspace_fixture` enforces; kept here rather than shared through a
+# constant only because that function spells it inline and moving it is a
+# separate change.
+FIXTURE_LANGS = ("rust", "c", "cpp", "mixed")
+
+
+def validate_fixture(entry):
+    """Shape-check one `[[fixture]]` row — issue 0482.
+
+    Only the COORDINATE keys, deliberately. `dir`/`features`/`target_dir` are
+    already exercised by every build that reads them, and a wrong one fails
+    loudly at build time. A missing `platform` or `lang` does not: the row keeps
+    building under `lane=all` and quietly leaves every coordinate-scoped lane,
+    which is issue 0482's whole shape. `rmw` stays optional — `row_coord`
+    resolves it — but it must NAME a real RMW when present, or the row lands on
+    a coordinate no lane and no matrix cell can ever hold.
+    """
+    for key in ("platform", "lang", "dir"):
+        if not entry.get(key):
+            _fail(entry, f"missing required key {key!r}")
+
+    lang = entry["lang"]
+    if lang not in FIXTURE_LANGS:
+        _fail(
+            entry,
+            f"unsupported fixture lang {lang!r} "
+            f"(expected one of: {', '.join(FIXTURE_LANGS)})",
+        )
+
+    rmw = entry.get("rmw")
+    if rmw is not None and rmw not in KNOWN_RMWS:
+        _fail(entry, f"unknown rmw {rmw!r} (expected one of: {', '.join(KNOWN_RMWS)})")
+
+
+def validate_fixtures(entries):
+    count = 0
+    for entry in entries:
+        validate_fixture(entry)
+        count += 1
+    return count
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument(
@@ -455,6 +563,18 @@ def main():
             # Issue 0406 — the platform vocabulary, so a builder can reject a
             # typo instead of sweeping zero rows successfully.
             "list-platforms",
+            # Issue 0482 — every row's COORDINATE, from `row_coord`. The one
+            # export of the one computation: `matrix_fixture_coverage.rs`
+            # consumes this instead of re-parsing fixtures.toml with a default
+            # of its own, which is how the build and the coverage gate came to
+            # disagree about 67 rows.
+            "coords",
+            # Issue 0482 — shape-check `[[fixture]]` rows. `validate-workspaces`
+            # has required `platform`/`lang`/`rmw` on workspace rows since
+            # phase-295; plain rows had no validator at all, so a row missing
+            # `platform` or `lang` had NO coordinate and fell out of every lane
+            # silently.
+            "validate-fixtures",
         ],
     )
     p.add_argument("--manifest", default=DEFAULT_MANIFEST)
@@ -511,6 +631,48 @@ def main():
                 platforms.add(e["platform"])
         for name in sorted(platforms):
             sys.stdout.write(f"{name}\n")
+        return
+
+    if a.command == "coords":
+        # Issue 0482. One `<kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>` line
+        # per BUILDABLE row of both coordinate-bearing tables, with the
+        # coordinate resolved by `row_coord` — the same function the lane filter
+        # uses. `skip_build` rows are omitted for the same reason
+        # `matches_filters` omits them: a row nothing builds occupies no
+        # coordinate.
+        #
+        # `dir` rides along so a consumer can NAME the offending row instead of
+        # printing a bare triple; the coverage gate's failure messages were
+        # unreadable without it.
+        for kind, rows in (
+            ("fixture", load(a.manifest)),
+            ("workspace_fixture", load_workspace_fixtures(a.manifest)),
+        ):
+            for e in rows:
+                if e.get("skip_build"):
+                    continue
+                platform, lang, rmw = row_coord(e)
+                sys.stdout.write(
+                    SEP.join(
+                        (
+                            kind,
+                            str(platform or ""),
+                            str(lang or ""),
+                            str(rmw or ""),
+                            str(e.get("dir", e.get("id", ""))),
+                        )
+                    )
+                    + "\n"
+                )
+        return
+
+    if a.command == "validate-fixtures":
+        try:
+            count = validate_fixtures(load(a.manifest))
+        except ValueError as exc:
+            sys.stderr.write(f"fixtures-manifest.py: {exc}\n")
+            sys.exit(1)
+        sys.stdout.write(f"validated {count} fixture row(s)\n")
         return
 
     if a.command == "describe-id":

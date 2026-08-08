@@ -112,6 +112,88 @@ pub enum CiLane {
 /// Every computed lane, so tests and tooling iterate rather than enumerate.
 pub const ALL: [CiLane; 3] = [CiLane::Tier1, CiLane::Tier2, CiLane::Tier2Nightly];
 
+/// How wide a lane's TEST RUN is — the `NROS_TEST_SCOPE` its recipe sets.
+///
+/// Deliberately a separate type from [`CiLane`], because it answers a different
+/// question. See [`CiLane::run_scope`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RunScope {
+    /// The recipe filters the run to host binaries (`scripts/test/lane-filter.sh
+    /// native`).
+    Native,
+    /// The recipe runs the whole suite — no filtering.
+    All,
+}
+
+impl RunScope {
+    /// The `NROS_TEST_SCOPE` token. `lane-filter.sh` takes exactly these two.
+    pub fn test_scope(self) -> &'static str {
+        match self {
+            RunScope::Native => "native",
+            RunScope::All => "all",
+        }
+    }
+
+    /// The FIXTURE BUILD LANE that covers this run — the `lane=` a
+    /// `build-test-fixtures` must have been given for the run's fixtures to
+    /// exist.
+    ///
+    /// `native` is a module-level selection (every row of the host module, no
+    /// coordinate filter), which is exactly what a host-filtered run resolves.
+    /// An unfiltered run resolves fixtures at every coordinate, so nothing but
+    /// `all` covers it.
+    pub fn build_lane(self) -> &'static str {
+        match self {
+            RunScope::Native => "native",
+            RunScope::All => "all",
+        }
+    }
+}
+
+impl CiLane {
+    /// Which TESTS this lane's recipe executes — and therefore, through
+    /// [`RunScope::build_lane`], which fixtures must EXIST for it.
+    ///
+    /// # Why this is not `coords(lane)` (issue 0482)
+    ///
+    /// Two different questions get asked of a lane, and they have different
+    /// answers:
+    ///
+    /// * **which fixtures must be FRESH** — [`coords`], the lane's own cell
+    ///   selection. Legitimately narrow; this is the whole tier-2 saving.
+    /// * **which fixtures must EXIST** — a property of the RUN. `ci-matrix`
+    ///   invokes `test-all` with no `NROS_TEST_SCOPE`, so every test binary
+    ///   executes and every coordinate's fixtures are resolved.
+    ///
+    /// They used to be answered from the one lane name as if they were the same
+    /// question: `_require-fixtures` was handed `NROS_FIXTURE_LANE=tier2` and
+    /// asked "does the stamp cover tier 2?", to which a `lane=tier2` build is a
+    /// perfectly good answer. The preflight passed and the RUN then discovered,
+    /// one test at a time, that 34 of 47 coordinates had never been built —
+    /// ~231 failures after a build that reported success.
+    ///
+    /// The justfile already said the build had to be `all`; a comment is not a
+    /// gate. Declaring it here makes `_require-fixtures` derive the requirement
+    /// from the same place the recipe derives its `NROS_TEST_SCOPE`, so the two
+    /// cannot drift, and narrowing a lane's run later is ONE edit here that both
+    /// consumers follow.
+    pub fn run_scope(self) -> RunScope {
+        match self {
+            // Host-only by construction (`tier1_is_native_only`), and `just ci`
+            // filters the run to match.
+            CiLane::Tier1 => RunScope::Native,
+            // Not narrowed. Making these `Native`-style narrow needs a DERIVED
+            // test selection at coordinate granularity, which neither
+            // `lane-filter.sh` (platform-family tokens; tier 2 is 1-wise over
+            // platform, so every platform is in it and nothing gets excluded)
+            // nor the fixture resolver (identifies fixtures by path, no link
+            // back to the manifest row) can express today. Until one of them
+            // can, these lanes cost a full fixture build and say so.
+            CiLane::Tier2 | CiLane::Tier2Nightly => RunScope::All,
+        }
+    }
+}
+
 /// The axes, addressed positionally so requirements can be built generically.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Axis {
@@ -318,6 +400,90 @@ mod tests {
              selecting that module would build nothing for it.\n  listed:  {listed:?}\n  \
              matrix:  {needed:?}"
         );
+    }
+
+    /// Issue 0482 — the justfile recipe must set the `NROS_TEST_SCOPE` its lane
+    /// declares, and must not build a NARROWER fixture lane than that run needs.
+    ///
+    /// The defect: `ci-matrix` runs the whole suite (no `NROS_TEST_SCOPE`) while
+    /// `_require-fixtures` was asked only "does the stamp cover tier 2?". A
+    /// `just build-test-fixtures lane=tier2` therefore satisfied the preflight
+    /// and the run mass-failed on fixtures the lane had never built.
+    /// `run_scope()` is now the one declaration both sides read; this asserts
+    /// the recipes agree with it, because the recipes are where the lane
+    /// actually reaches a runner.
+    ///
+    /// Deliberately checked against the RECIPE TEXT rather than trusting the
+    /// declaration: the declaration is only worth something if the thing that
+    /// runs obeys it, and `ci_tier_ladder_matches_justfile_recipes` set the
+    /// precedent that the justfile is a checked consumer of this ladder.
+    #[test]
+    fn recipes_run_the_scope_their_lane_declares() {
+        use crate::buckets::CiTier;
+
+        let justfile = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../justfile");
+        let Ok(text) = std::fs::read_to_string(justfile) else {
+            return; // out-of-tree checkout; nothing to gate
+        };
+
+        for lane in ALL {
+            let recipe = CiTier::of_lane(lane).just_recipe();
+            // The recipe body: from the `<name>:`/`<name> <args>:` line to the
+            // next line at column 0 that is not blank and not indented.
+            let mut lines = text.lines().skip_while(|l| {
+                !(l.starts_with(recipe)
+                    && l[recipe.len()..].starts_with([':', ' '])
+                    && l.contains(':'))
+            });
+            let header = lines.next().unwrap_or_else(|| {
+                panic!("justfile has no `{recipe}` recipe (gated by ci_tier_ladder_matches_justfile_recipes)")
+            });
+            // Stop at the first column-0 non-blank line — including a comment,
+            // which is where the NEXT recipe's doc block starts. Running past it
+            // would let a neighbouring recipe's prose satisfy (or break) this
+            // assertion, and the tier recipes document each other constantly.
+            let mut body = String::from(header);
+            for l in lines {
+                if !l.is_empty() && !l.starts_with([' ', '\t']) {
+                    break;
+                }
+                body.push('\n');
+                body.push_str(l);
+            }
+
+            let scope = lane.run_scope();
+            match scope {
+                RunScope::Native => assert!(
+                    body.contains("NROS_TEST_SCOPE=native"),
+                    "{lane:?} declares RunScope::Native but `just {recipe}` does not set \
+                     NROS_TEST_SCOPE=native — the run would execute every platform's tests \
+                     on fixtures the lane never built:\n{body}"
+                ),
+                RunScope::All => assert!(
+                    !body.contains("NROS_TEST_SCOPE="),
+                    "{lane:?} declares RunScope::All but `just {recipe}` narrows the run with \
+                     NROS_TEST_SCOPE — narrow the declaration too, or the required fixture \
+                     build (`{}`) is computed for a run that no longer happens:\n{body}",
+                    scope.build_lane()
+                ),
+            }
+
+            // The other half: whatever fixture lane the recipe names must be one
+            // `nros_fixtures_stamp_require` will map to a covering build. The
+            // recipe may legitimately name the CELL lane (that is what scopes
+            // the freshness gate); what it must never do is name a lane the
+            // stamp check would then accept a narrower build for. That mapping
+            // lives in `fixture-lane.sh` and is exercised by
+            // `tests/lane_build_covers_run.rs`; here we only pin that the
+            // recipe declares SOME lane, since an unset one silently means
+            // `all` and would hide a narrowing.
+            assert!(
+                body.contains("NROS_FIXTURE_LANE="),
+                "`just {recipe}` sets no NROS_FIXTURE_LANE; the fixture gates would \
+                 silently fall back to `all` and the lane's scope would be invisible \
+                 to them (issue 0443's shape):\n{body}"
+            );
+        }
     }
 
     /// The regression this whole module exists for: adding a platform (or RMW, or

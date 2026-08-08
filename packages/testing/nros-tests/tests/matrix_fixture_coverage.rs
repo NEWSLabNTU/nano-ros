@@ -63,29 +63,66 @@ fn rmw_from_str(s: &str) -> Option<Rmw> {
 type Coord = (u16, u16, u16, bool);
 
 /// Coordinates present in fixtures.toml + rows whose strings didn't map.
+///
+/// # Why this shells out instead of parsing the TOML (issue 0482)
+///
+/// A row's coordinate is `(platform, lang, rmw)`, `rmw` is optional, and this
+/// function used to resolve the omission itself:
+/// `get("rmw").unwrap_or("zenoh")`, commented "fixtures.toml convention". The
+/// LANE side — `fixtures-manifest.py::matches_filters`, which every
+/// coordinate-scoped fixture build and the whole staleness gate go through —
+/// compared a bare `None` instead. So the two sides of the same question had two
+/// answers: this gate reported 67 rows modeled and green while no lane could
+/// select any of them. `just build-test-fixtures lane=tier2` produced a stamp
+/// the preflight accepted and a `just ci-matrix` that mass-failed STALE on
+/// fixtures its own lane had never built.
+///
+/// The fix is not to copy the default into the second reader — that is the
+/// second spelling CLAUDE.md's fix-the-class rule forbids. `row_coord()` in
+/// `fixtures-manifest.py` is now the ONE computation and `coords` exports it, so
+/// this gate audits the coordinates the BUILD actually uses. If they ever part
+/// company again there is nowhere for the disagreement to live.
+///
+/// One deliberate consequence: `coords` omits `skip_build` rows, which the old
+/// in-Rust parser counted. That is the point — a coordinate no build produces
+/// cannot satisfy `every_runtime_cell_has_a_fixture_row`, which claims the cell
+/// is BUILT. (There are none today; the semantics matter for the next one.)
 fn fixture_coords() -> (BTreeSet<Coord>, Vec<String>) {
-    let text = std::fs::read_to_string(project_root().join("examples/fixtures.toml"))
-        .expect("read examples/fixtures.toml");
-    let doc: toml::Table = toml::from_str(&text).expect("parse fixtures.toml");
+    let root = project_root();
+    let out = std::process::Command::new("python3")
+        .arg(root.join("scripts/build/fixtures-manifest.py"))
+        .arg("coords")
+        .current_dir(&root)
+        .output()
+        .expect("run fixtures-manifest.py coords");
+    assert!(
+        out.status.success(),
+        "fixtures-manifest.py coords failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).expect("coords output is utf-8");
+
     let mut coords = BTreeSet::new();
     let mut unmapped = Vec::new();
-    for (table, is_ws) in [("fixture", false), ("workspace_fixture", true)] {
-        let Some(rows) = doc.get(table).and_then(|v| v.as_array()) else {
-            continue;
-        };
-        for row in rows {
-            let get = |k: &str| row.get(k).and_then(|v| v.as_str());
-            let (Some(p), Some(l)) = (get("platform"), get("lang")) else {
-                continue;
-            };
-            // rmw defaults to zenoh when omitted (fixtures.toml convention).
-            let r = get("rmw").unwrap_or("zenoh");
-            match (platform_from_str(p), lang_from_str(l), rmw_from_str(r)) {
-                (Some(p), Some(l), Some(r)) => {
-                    coords.insert((p.index(), l.port_index(), r.index(), is_ws));
-                }
-                _ => unmapped.push(format!("{table}: platform={p} lang={l} rmw={r}")),
+    for line in stdout.lines().filter(|l| !l.is_empty()) {
+        // <kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>
+        let f: Vec<&str> = line.split('\x1f').collect();
+        assert_eq!(
+            f.len(),
+            5,
+            "unexpected `coords` record shape (expected 5 \\x1f-separated fields): {line:?}"
+        );
+        let (table, p, l, r, dir) = (f[0], f[1], f[2], f[3], f[4]);
+        let is_ws = table == "workspace_fixture";
+        match (platform_from_str(p), lang_from_str(l), rmw_from_str(r)) {
+            (Some(p), Some(l), Some(r)) => {
+                coords.insert((p.index(), l.port_index(), r.index(), is_ws));
             }
+            // Unlike the old parser, a row with an unreadable platform/lang is
+            // REPORTED rather than skipped: `continue`-ing past it is how a row
+            // with no coordinate stayed invisible to this gate as well as to
+            // every lane.
+            _ => unmapped.push(format!("{table}: platform={p} lang={l} rmw={r} dir={dir}")),
         }
     }
     (coords, unmapped)

@@ -1139,6 +1139,12 @@ check-example-matrix:
 check-fixtures-manifest:
     @python3 scripts/build/fixtures-manifest.py validate-workspaces
     @python3 scripts/build/fixtures-manifest.py validate-compile-checks
+    # Issue 0482 — plain `[[fixture]]` rows had NO validator at all, while the
+    # other two kinds had one. A row missing `platform` or `lang` has no
+    # coordinate, so it keeps building under `lane=all` and silently leaves
+    # every coordinate-scoped lane; a row naming a typo'd `rmw` lands on a
+    # coordinate no lane and no matrix cell can hold.
+    @python3 scripts/build/fixtures-manifest.py validate-fixtures
 
 # Every `docs/{design,issues}/NNNN-*.md` path written anywhere — prose, issue
 # frontmatter, or a cmake error message — must resolve. Renumbering on an id
@@ -2227,26 +2233,38 @@ ci:
 # Note the gate and the BUILD read the same coordinate file, so they cannot
 # disagree about what this lane covers.
 #
-# Issue 0393 — this lane's BUILD is deliberately still `all`. Unlike tier 1 it
-# does not scope its run (`test-all` with no `NROS_TEST_SCOPE`), so every test
-# binary executes and every fixture must exist. The tier-2 saving is in the
-# staleness GATE, which insists only the lane's coordinates are fresh. Narrowing
-# the build here would need the run narrowed to match first; until then, saying
-# so beats a lane that silently under-builds.
+# Issue 0393 / 0482 — this lane's BUILD is `all`, and now ENFORCED to be. Unlike
+# tier 1 it does not scope its run (`test-all` with no `NROS_TEST_SCOPE`), so
+# every test binary executes and every fixture must exist. The tier-2 saving is
+# in the staleness GATE, which insists only the lane's coordinates are fresh.
+#
+# That was already written here, and was not true of anything that RUNS: 0368 F8
+# had made `_require-fixtures` accept a `lane=tier2` stamp, so
+# `just build-test-fixtures lane=tier2 && just ci-matrix` passed its preflight
+# and then produced ~231 STALE failures on the 34 coordinates the lane never
+# built. A comment is not a gate. `CiLane::run_scope` now declares that this lane
+# runs everything, `nros_lane_build_lane` maps that to the required build, and
+# the preflight fails in seconds naming `just build-test-fixtures`.
+#
+# Narrowing the build here still needs the RUN narrowed to match first — see
+# `CiLane::run_scope` for why neither lane-filter nor the fixture resolver can
+# express a coordinate-granular selection today, and issue 0482 for what it would
+# take.
 [group("ci")]
 ci-matrix:
     #!/usr/bin/env bash
     set -euo pipefail
     just _lane-gate tier2
-    # issue 0368 F8 — tell the inner `_require-fixtures` (inside test-all) that
-    # this run needs the tier-2 lane, not the default `all`. Without it the two
-    # fixture gates DISAGREE: `_lane-gate tier2` (content-based, over the tier-2
-    # coordinates) passes a per-family tier-2 build, then `_require-fixtures`
-    # demands the `all`/tier-3 stamp and dies telling you to run the very build
-    # the tier ladder said to avoid. Provably safe: an `all` build still covers
-    # tier-2 (stamp-require returns 0 for `have=all`), so this only STOPS
-    # rejecting a valid tier-2 build. Mirrors how `just ci` sets
-    # NROS_FIXTURE_LANE=native.
+    # issue 0368 F8 — tell the inner gates that this run is the tier-2 lane, not
+    # the default `all`. Without it they DISAGREE: `_lane-gate tier2`
+    # (content-based, over the tier-2 coordinates) passes, then the staleness
+    # gate inside test-all audits the whole tier-3 fixture set and dies demanding
+    # out-of-lane freshness the tier ladder said to skip.
+    #
+    # What this does NOT license (issue 0482) is a narrower BUILD. The lane name
+    # scopes FRESHNESS; `nros_fixtures_stamp_require` maps it through
+    # `nros_lane_build_lane` to get EXISTENCE, which for an unnarrowed run is
+    # `all`. Those are two questions and 0368 F8 answered both with the lane.
     NROS_FIXTURE_LANE=tier2 just check rust-rtos-link-check test-all
     echo "CI passed (tier 2 — 1-wise cover; pairwise interactions need \`just ci-matrix-nightly\`)!"
 

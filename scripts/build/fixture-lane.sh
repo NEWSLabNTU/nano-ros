@@ -44,9 +44,16 @@ NROS_FIXTURE_STAMP="${NROS_FIXTURE_STAMP:-target/nextest/.fixtures-built}"
 #                  leave the other native binaries absent and the run would
 #                  mass-fail "Binary not found", which is the failure this
 #                  preflight exists to prevent.
-#   tier1/tier2/   the computed `CiLane` covers. Correct for a build ONLY when
-#   tier2-nightly  the run is scoped to match; `ci-matrix` deliberately runs the
-#                  full suite, so it still builds `all` (see the recipe).
+#   tier1/tier2/   the computed `CiLane` covers — i.e. which fixtures the lane
+#   tier2-nightly  keeps FRESH. Correct for a BUILD only when the run is scoped
+#                  to match, which `nros_lane_build_lane` is now the arbiter of:
+#                  tier 1 maps to `native`, tier 2 and nightly map to `all`
+#                  because they run the whole suite. Passing one of these to
+#                  `build-test-fixtures` builds the cover; passing it to
+#                  `_require-fixtures` requires the RUN's superset. That
+#                  asymmetry is deliberate and is issue 0482 — the two used to
+#                  be the same lookup, so a `lane=tier2` build satisfied a
+#                  `ci-matrix` that then failed on 34 unbuilt coordinates.
 _NROS_LANES="all native tier1 tier2 tier2-nightly"
 
 # Normalize a lane argument as it arrives from `just`.
@@ -104,6 +111,60 @@ nros_lane_coords_file() {
         return 1
     fi
     echo "$out"
+}
+
+# The fixture BUILD lane a RUN of `<lane>` needs — issue 0482.
+#
+# `nros_lane_coords_file` answers "which fixtures must be FRESH": the lane's own
+# cell selection, and legitimately narrow — that narrowing IS the tier-2 saving.
+# This answers the other question, "which fixtures must EXIST", which is a
+# property of the RUN and not of the cell cover:
+#
+#   just ci             filters the run to host binaries -> a `native` build covers it
+#   just ci-matrix      runs the WHOLE suite             -> only an `all` build covers it
+#
+# Both were being answered from the one lane name. `_require-fixtures` was
+# handed `NROS_FIXTURE_LANE=tier2`, asked "does the stamp cover tier 2?", and a
+# `just build-test-fixtures lane=tier2` is a perfectly good answer to THAT
+# question — so the preflight passed and the run then discovered 34 of 47
+# coordinates missing, one test at a time (~231 failures after a build that
+# reported success). The justfile already said tier 2's build had to be `all`;
+# a comment is not a gate.
+#
+# The DECLARATION of which lanes narrow their run lives in `CiLane::run_scope`,
+# next to the cell selection it has to stay consistent with, and is emitted by
+# `lane-coords <lane> --build-lane`. This is the runtime implementation of the
+# same mapping — deliberately pure bash and NOT a `cargo run`, because this runs
+# inside a preflight whose whole job is to fail in seconds, and because
+# `packages/testing/nros-tests/tests/lane_build_covers_run.rs` has to be able to
+# exercise it without compiling anything (CLAUDE.md: no compilation inside
+# tests). That test is what binds the two: it runs this function for every lane
+# and asserts the answer equals `run_scope().build_lane()`, so the second
+# spelling cannot drift the way `matches_filters` drifted from
+# `matrix_fixture_coverage`.
+nros_lane_build_lane() {
+    local lane="$1"
+    nros_lane_validate "$lane" || return 2
+    case "$lane" in
+        # Module-level lanes are their own build lane.
+        all | native) echo "$lane" ;;
+        # `just ci` narrows its run to host binaries, which a `native` build
+        # covers exactly.
+        tier1) echo native ;;
+        # These two do NOT narrow their run — `test-all` with no
+        # `NROS_TEST_SCOPE` — so every coordinate's fixtures are resolved and
+        # nothing short of a full build covers them.
+        tier2 | tier2-nightly) echo all ;;
+        *)
+            # Unreachable while `_NROS_LANES` and this case agree; a new lane
+            # that lands in neither arm must fail LOUDLY, because the silent
+            # readings ("" or `all`) are respectively a hang and a laundered
+            # requirement.
+            echo "fixture-lane: no build lane declared for '$lane' — add it to" >&2
+            echo "              nros_lane_build_lane AND CiLane::run_scope" >&2
+            return 2
+            ;;
+    esac
 }
 
 # Echo the `just <module>` names a lane needs, one per line (deduped by
@@ -199,12 +260,24 @@ nros_fixtures_stamp_lane() {
 # nros_fixtures_stamp_require <lane>
 #
 # The `_require-fixtures` preflight. Fails when no build has run, or when the
-# build that did run does not COVER the lane about to be tested — naming the
-# missing coordinates instead of telling a tier-1 user to build 157 cross
-# fixtures they will never run.
+# build that did run does not COVER the RUN the named lane is about to perform —
+# naming the missing coordinates instead of telling a tier-1 user to build 157
+# cross fixtures they will never run.
+#
+# Issue 0482 — note the argument is the lane the RUN is scoped by, and the
+# requirement is `nros_lane_build_lane "$lane"`, NOT the lane itself. Those are
+# the same thing only for lanes whose run is narrowed to match their cover
+# (`native`), and asking the wrong one is the whole defect: a `lane=tier2` build
+# satisfied a `ci-matrix` that then executed every test binary in the tree.
 nros_fixtures_stamp_require() {
-    local want="${1:-all}"
-    nros_lane_validate "$want" || return 2
+    local lane="${1:-all}"
+    nros_lane_validate "$lane" || return 2
+
+    # What this RUN needs to EXIST. `$lane` is kept for the diagnostics, which
+    # have to be able to say "you asked for lane X, whose run needs build Y" —
+    # collapsing them would reproduce the confusion in the error message.
+    local want
+    want="$(nros_lane_build_lane "$lane")" || return 1
 
     if [ ! -f "$NROS_FIXTURE_STAMP" ]; then
         echo "ERROR: test fixtures not built — 'just test-all' would mass-fail with 'Binary not found'." >&2
@@ -213,6 +286,11 @@ nros_fixtures_stamp_require() {
             echo "  Run:  just build-test-fixtures" >&2
         else
             echo "  Run:  just build-test-fixtures lane=$want" >&2
+        fi
+        if [ "$want" != "$lane" ]; then
+            echo "" >&2
+            echo "  (lane '$lane' does not narrow its test RUN, so every fixture must exist" >&2
+            echo "   — 'lane=$lane' would build only the coordinates it keeps FRESH.)" >&2
         fi
         echo "" >&2
         echo "  (built them another way? bypass with  NROS_SKIP_FIXTURE_CHECK=1 just test-all )" >&2
@@ -230,6 +308,14 @@ nros_fixtures_stamp_require() {
     # those terms rather than listing 150 missing coordinates.
     if [ "$want" = "all" ]; then
         echo "ERROR: fixtures were built for lane '$have', but this run needs ALL of them." >&2
+        if [ "$lane" != "all" ]; then
+            echo "" >&2
+            echo "       '$lane' narrows which fixtures must be FRESH (its cell cover)," >&2
+            echo "       not which must EXIST: the recipe runs the whole test suite, so" >&2
+            echo "       every coordinate's fixtures are resolved. Issue 0482 — a" >&2
+            echo "       'lane=$lane' build used to satisfy this check and the run then" >&2
+            echo "       failed STALE on ~34 coordinates it had never built." >&2
+        fi
         echo "" >&2
         echo "  Run:  just build-test-fixtures" >&2
         echo "" >&2
@@ -242,8 +328,32 @@ nros_fixtures_stamp_require() {
     fi
 
     # Different lanes: the built set must be a superset of the wanted one.
+    #
+    # `want` is what a COVERING BUILD would have been given, so it is either
+    # module-level (`native`; `all` returned above) or — once some lane narrows
+    # its run and `run_scope` says so — coordinate-scoped. Both shapes are
+    # handled: the coordinate diff below needs a coordinate file, and a
+    # module-level requirement has none.
     local want_file missing
     want_file="$(nros_lane_coords_file "$want")" || return 1
+
+    if [ -z "$want_file" ]; then
+        # want=native — a MODULE-level requirement: every row of the host
+        # module, which is a strict SUPERSET of any coordinate cover of the host
+        # (tier 1 selects 10 of the 47 coordinates). A coordinate-scoped build
+        # therefore cannot satisfy it and there is no diff to show. Without this
+        # arm the `comm` below would be handed an empty filename and `sort` would
+        # read stdin — the preflight would HANG rather than fail.
+        echo "ERROR: fixtures were built for lane '$have', which is coordinate-scoped and" >&2
+        echo "       cannot cover the module-level lane '$want' (a coordinate cover is a" >&2
+        echo "       strict subset of a module's rows, so the run would fail 'Binary not" >&2
+        echo "       found' on the remainder)." >&2
+        echo "" >&2
+        echo "  Run:  just build-test-fixtures lane=$want" >&2
+        echo "" >&2
+        echo "  (bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+        return 1
+    fi
 
     if [ "$have" = "native" ]; then
         # NOTE the two spellings here, which are NOT a typo (phase-337 W8.c).
@@ -259,13 +369,8 @@ nros_fixtures_stamp_require() {
         # by construction. Checked rather than assumed: if the tier-1 selection
         # ever grows a cross-platform cell this reports it instead of waving a
         # run through on fixtures that were never built.
-        if [ -z "$want_file" ]; then
-            # want=native handled by the equality above; nothing else is
-            # module-level except `all`, handled earlier.
-            missing=""
-        else
-            missing="$(grep -v '^linux,' "$want_file" || true)"
-        fi
+        # An empty `want_file` (a module-level requirement) returned above.
+        missing="$(grep -v '^linux,' "$want_file" || true)"
     else
         missing="$(comm -23 \
             <(sort -u "$want_file") \

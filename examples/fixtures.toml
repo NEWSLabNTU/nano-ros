@@ -16,7 +16,17 @@
 #   platform   required  "linux" | "qemu-arm-baremetal" | "freertos" | ...
 #   lang       required  "rust" | "c" | "cpp"
 #   dir        required  build cwd (cargo: the crate dir; cmake: the example dir)
-#   rmw        optional  "zenoh" | "xrce" | "cyclonedds" (informational/filter)
+#   rmw        optional  "zenoh" | "xrce" | "cyclonedds"; DEFAULTS TO "zenoh"
+#              (platform, lang, rmw) is this row's COORDINATE — not an
+#              annotation. It is what every lane-scoped fixture BUILD and the
+#              whole staleness GATE filter on, and what the matrix cross-check
+#              matches cells against. The default is resolved in exactly one
+#              place, `row_coord()` in scripts/build/fixtures-manifest.py;
+#              this line used to say "(informational/filter)" and a second
+#              reader applied a different default, which left 67 rows in no
+#              lane at all (issue 0482). Omitting `rmw` is fine for a leaf whose
+#              default features select zenoh; naming a DIFFERENT backend and
+#              omitting it puts the row in the wrong lane.
 #   id         optional  stable id (default: derived from dir+target_dir+features)
 #   # --- rust (cargo) ---
 #   features            optional  string[] passed as --features a,b
