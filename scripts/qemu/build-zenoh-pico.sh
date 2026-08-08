@@ -18,7 +18,10 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-BUILD_DIR="$REPO_ROOT/build/qemu-zenoh-pico"
+# phase-334 W2.b step 2 — RFC-0070 R3: one derivation, not a literal.
+# shellcheck source=scripts/build/build-root.sh
+source "$REPO_ROOT/scripts/build/build-root.sh"
+BUILD_DIR="$(nros_build_dir qemu-zenoh-pico)"
 ZENOH_PICO_DIR="$REPO_ROOT/packages/rmw/zenoh/zpico-sys/zenoh-pico"
 C_DIR="$REPO_ROOT/packages/rmw/zenoh/zpico-sys/c"
 PLATFORM_DIR="$C_DIR/platform"

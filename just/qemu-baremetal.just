@@ -371,9 +371,16 @@ setup:
 doctor:
     #!/usr/bin/env bash
     set +e
+    # phase-334 W2.b step 2 — path from the ONE derivation (RFC-0070 R3).
+    # NOTE: `QEMU_PREFIX` at the top of this file stays a literal on purpose —
+    # it is a PARSE-TIME `absolute_path()`, and calling a bash function there
+    # would need a `shell()` on every justfile parse. Recorded as a known
+    # exception in phase-334 W2.b, not an oversight.
+    source scripts/build/build-root.sh
+    zpdir="$(nros_build_dir qemu-zenoh-pico)"
     fail=0
-    if [ -f build/qemu-zenoh-pico/libzenohpico.a ]; then
-        echo "  [OK] qemu-zenoh-pico: build/qemu-zenoh-pico/libzenohpico.a"
+    if [ -f "$zpdir/libzenohpico.a" ]; then
+        echo "  [OK] qemu-zenoh-pico: $zpdir/libzenohpico.a"
     else
         echo "  [MISSING] qemu-zenoh-pico (run: just qemu setup)"
         fail=1

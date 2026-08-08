@@ -8,8 +8,11 @@ default:
 setup:
     #!/usr/bin/env bash
     set -e
-    if [ -x build/xrce-agent/MicroXRCEAgent ]; then
-        echo "Micro-XRCE-DDS Agent already built: build/xrce-agent/MicroXRCEAgent"
+    # phase-334 W2.b step 2 — path from the ONE derivation (RFC-0070 R3).
+    source scripts/build/build-root.sh
+    adir="$(nros_build_dir xrce-agent)"
+    if [ -x "$adir/MicroXRCEAgent" ]; then
+        echo "Micro-XRCE-DDS Agent already built: $adir/MicroXRCEAgent"
     else
         ./scripts/xrce-agent/build.sh
     fi
@@ -19,8 +22,10 @@ setup:
 doctor:
     #!/usr/bin/env bash
     set +e
-    if [ -x build/xrce-agent/MicroXRCEAgent ]; then
-        echo "  [OK] Micro-XRCE-DDS Agent: build/xrce-agent/MicroXRCEAgent"
+    source scripts/build/build-root.sh
+    adir="$(nros_build_dir xrce-agent)"
+    if [ -x "$adir/MicroXRCEAgent" ]; then
+        echo "  [OK] Micro-XRCE-DDS Agent: $adir/MicroXRCEAgent"
         exit 0
     else
         echo "  [MISSING] Micro-XRCE-DDS Agent (run: just xrce setup)"

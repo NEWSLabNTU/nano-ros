@@ -57,11 +57,14 @@ pub fn qemu_system_arm_path() -> std::ffi::OsString {
     if let Some(env) = std::env::var_os("QEMU_SYSTEM_ARM") {
         return env;
     }
-    if let Some(root) = project_root() {
-        let patched = root.join("build/qemu/bin/qemu-system-arm");
-        if patched.exists() {
-            return patched.into_os_string();
-        }
+    // phase-334 W2.b step 2 — the Rust mirror of `nros_build_dir`. Unlike the
+    // other families this one has no shell twin to move: `QEMU_PREFIX` in
+    // just/qemu-baremetal.just is a parse-time `absolute_path()` and stays a
+    // literal (a known, recorded exception), so the two spellings agree by the
+    // derivation emitting today's path rather than by both being migrated.
+    let patched = crate::build_dir("qemu", &["bin"]).join("qemu-system-arm");
+    if patched.exists() {
+        return patched.into_os_string();
     }
     // `nros setup` store qemu (the patched `11.0.0-nros*` dist).
     if let Some(store) = crate::nros_store_bin("qemu", "qemu-system-arm") {
@@ -107,26 +110,12 @@ fn drain_into<R: Read>(src: &mut R, buffer: &mut [u8], dst: &mut String) -> bool
     }
 }
 
-/// upward from `CARGO_MANIFEST_DIR` looking for a `Cargo.toml` that
-/// declares `[workspace]`. Used by [`qemu_system_arm_path`] to find
-/// the patched `build/qemu/bin/qemu-system-arm` without forcing
-/// callers to set `QEMU_SYSTEM_ARM`.
-fn project_root() -> Option<std::path::PathBuf> {
-    let start = std::env::var_os("CARGO_MANIFEST_DIR")
-        .map(std::path::PathBuf::from)
-        .or_else(|| std::env::current_dir().ok())?;
-    let mut cur: &std::path::Path = start.as_path();
-    loop {
-        let cargo_toml = cur.join("Cargo.toml");
-        if cargo_toml.is_file()
-            && let Ok(s) = std::fs::read_to_string(&cargo_toml)
-            && s.contains("[workspace]")
-        {
-            return Some(cur.to_path_buf());
-        }
-        cur = cur.parent()?;
-    }
-}
+// phase-334 W2.b step 2 — the private `project_root()` walk-up that used to
+// live here is GONE, not silenced. Its only caller was `qemu_system_arm_path`,
+// and the root it recomputed is what `crate::build_dir` already derives. Two
+// spellings of "where is the repo" is the R3 drift this step exists to remove;
+// keeping it behind an `#[allow(dead_code)]` would have preserved the second
+// spelling for the next caller to find.
 
 /// Managed QEMU process for Cortex-M3 emulation
 ///

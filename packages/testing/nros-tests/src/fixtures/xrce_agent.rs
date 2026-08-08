@@ -117,7 +117,9 @@ fn allocate_ephemeral_udp_port() -> std::io::Result<u16> {
 /// first, then the `nros setup` store (`xrce-agent` tool), then falls back to
 /// `MicroXRCEAgent` on the system PATH.
 pub fn xrce_agent_binary_path() -> std::path::PathBuf {
-    let local = crate::project_root().join("build/xrce-agent/MicroXRCEAgent");
+    // phase-334 W2.b step 2 — the Rust mirror of `nros_build_dir`; the shell
+    // half moved in the same commit.
+    let local = crate::build_dir("xrce-agent", &[]).join("MicroXRCEAgent");
     if local.exists() {
         return local;
     }

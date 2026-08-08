@@ -19,7 +19,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 AGENT_SRC="$REPO_ROOT/third-party/xrce/agent"
-BUILD_DIR="$REPO_ROOT/build/xrce-agent"
+# phase-334 W2.b step 2 — RFC-0070 R3: one derivation, not a literal.
+# shellcheck source=scripts/build/build-root.sh
+source "$REPO_ROOT/scripts/build/build-root.sh"
+BUILD_DIR="$(nros_build_dir xrce-agent)"
 
 # Parse arguments
 if [ "$1" = "--clean" ]; then
