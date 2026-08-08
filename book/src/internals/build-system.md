@@ -179,6 +179,13 @@ wrong binary. The discipline:
   **in-lane** fixture that is missing or stale still fails hard, and a path the
   manifest cannot attribute (Zephyr west leaves, the compile-check lane — both
   built module-level, so nothing is omitted) is never skipped.
+
+  The preflight enforces the pairing rather than trusting it: accepting a
+  build **narrower than `all`** requires `NROS_TEST_COORDS` to be set and to hold
+  exactly that lane's coordinates, so a hand-run `NROS_FIXTURE_LANE=tier2 just
+  test-all` is refused instead of reproducing issue 0482. A full build needs no
+  narrowing, so `NROS_FIXTURE_LANE=tier2` on top of `lane=all` still works —
+  scope the freshness gate, keep the run wide.
 - **Rust cells.** `scripts/test/rust-fixture-stale.sh` reuses cargo's own
   fingerprint — `cargo build … --message-format=json` reports `"fresh":false`
   for a stale unit, so the probe both detects **and** self-heals.
