@@ -43,6 +43,21 @@ struct Entry {
 /// The registry. Adding a runtime compile/build to a test means adding a row here
 /// (or, preferably, moving the build to the fixture stage so no row is needed).
 const REGISTRY: &[Entry] = &[
+    // phase-340 W3 / issue 0482 sweep — added 2026-08-08. The post-merge sweep
+    // caught this; `check-fast` does not run `enforce_registry`, so the gate's
+    // own author could not have seen it from a buildless run.
+    Entry {
+        file: "cargo_target_spelling.sh",
+        kind: Kind::RuntimeException,
+        tool: "cmake (configure only)",
+        reason: "asserts every cargo command cmake EMITS carries one `--target` spelling. \
+                 It configures four synthetic scopes (no Corrosion; Corrosion in a parent \
+                 scope; a cross toolchain; nothing readable) and greps the generated \
+                 command lines — configure-only, it compiles nothing. The four scopes ARE \
+                 the assertion, so there is no single prebuilt that could stand in: a \
+                 cached artifact would prove the resolver ran once, not that it resolves \
+                 the same way in every scope cmake presents",
+    },
     // ---- FAIL-PATH diagnostics (must fail; can't be a passing prebuilt) ----
     Entry {
         file: "diagnostic_verbatim.rs",
