@@ -1157,7 +1157,7 @@ pub fn is_arm_toolchain_available() -> bool {
 /// ARM Cortex-M3. This library is built with `just build-zenoh-pico-arm`.
 pub fn is_zenoh_pico_arm_available() -> bool {
     // Check if the library exists at the expected location relative to project root
-    let lib_path = crate::project_root().join("build/qemu-zenoh-pico/libzenohpico.a");
+    let lib_path = crate::build_dir("qemu-zenoh-pico", &[]).join("libzenohpico.a");
     lib_path.exists()
 }
 

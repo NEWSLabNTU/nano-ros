@@ -157,7 +157,9 @@ nros_sizes_probe_dir() {
         repo_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || repo_root=""
     fi
     if [ -n "$repo_root" ]; then
-        printf '%s' "$repo_root/build/sizes-probe"
+        # phase-334 W2.b step 2 — derived, not a second spelling of the root.
+        source "$repo_root/scripts/build/build-root.sh"
+        printf '%s' "$(nros_build_dir sizes-probe)"
     fi
 }
 
