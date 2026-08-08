@@ -408,7 +408,7 @@ check-fast: \
     check-c-fmt check-cpp-fmt check-python \
     check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
-    check-activate-shells check-build-root check-artifact-identity-budget
+    check-activate-shells check-build-root check-fixture-groups check-artifact-identity-budget
     @echo "Fast checks passed!"
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
@@ -3233,6 +3233,21 @@ verify-verus:
 [private]
 check-build-root:
     @bash packages/testing/nros-tests/tests/build_root_derivation.sh
+
+# phase-340 W2 — the preconditions for putting a platform's rows in a SHARED
+# cargo target dir. A group writes into one flat `<profile>/` namespace, and
+# cargo does not hash the final artifact name the way it hashes `deps/`, so two
+# rows in one group producing a binary of the same name overwrite each other
+# and one test silently runs the other's binary. Nothing checked this: the one
+# migrated platform (qemu-arm-baremetal) is collision-free by luck, and `linux`
+# — the next candidate — is not.
+#
+# `check-fast`: buildless and source-free (it reads examples/fixtures.toml and
+# the tracked leaf Cargo.tomls, invokes no cargo and no rustc), so it runs green
+# on the pristine per-push checkout the tier is measured against.
+[private]
+check-fixture-groups:
+    @python3 scripts/check-fixture-groups.py
 
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single
