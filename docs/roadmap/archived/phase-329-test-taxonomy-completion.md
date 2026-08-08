@@ -487,6 +487,20 @@ tree. Refinements, so execution targets the real sites:
   delivery dupe was folded; a lower count now requires deleting real coverage.
   Remaining folds that WOULD lower it are deferred, not blocked: the `xrce.rs`
   dedicated-bin delivery overlap, and the `emulator.rs`/`esp32_emulator.rs` triage.
+
+  **CAVEAT ADDED 2026-08-08 (phase-342 W1) — if those folds happen, fold the
+  FILE and keep one test per cell.** This phase's single-test folds were measured
+  and reversed: `native_example_pubsub` (W4) 95.1 s, `native_example_reqresp`
+  (W4) 82.8 s and `workspace_features` (W1) 62.9 s were each ONE test iterating
+  its cells, and re-splitting them to `#[rstest]` cases took 241 s of serial
+  critical path to 67 s at identical coverage.
+
+  Speed was the smaller half. The `workspace_features` fold also forced
+  `.config/nextest.toml` to drop its `and test(qos)` filter — there was no
+  per-cell test left to name — so all 17 cells joined a `max-threads = 1` group
+  that only three require. A fold erases the vocabulary schedulers, `-E` filters,
+  timeout budgets and failure reports depend on; the file count cannot see that,
+  and neither could this phase's acceptance.
 - A ROS-less host's `just test-all` reports skips grouped by matrix
   (interop / editions), not per-file.
 - **Build cost drops via the consumer side, not manifest dedup (W8 verdict):**

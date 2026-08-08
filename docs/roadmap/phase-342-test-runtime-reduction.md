@@ -95,6 +95,43 @@ new floor is measured and recorded here.
 keeps a guard alive per cell). Splitting must keep that isolation — the likely
 shape is a nextest test-group, not a shared static.
 
+#### W1 RESULT (2026-08-08) — landed, and it changes a rule
+
+| consumer | before | after | |
+| --- | --- | --- | --- |
+| `native_example_pubsub` | 1 test, 95.1 s | 10 tests, 34.1 s | 2.8× |
+| `native_example_reqresp` | 1 test, 82.8 s | 19 tests, 15.1 s | 5.5× |
+| `workspace_features` | 1 test, 62.9 s | 18 tests, 18.2 s | 3.5× |
+
+241 s of serial critical path → 67 s; the tier's floor moves from 95.1 s to
+34.1 s. Coverage identical — same cells, assertions and isolation — each
+`#[case]` list bound to `matrix::CELLS` by a tripwire **verified to fail on
+drift** before being trusted.
+
+**The lesson is not about speed.** `workspace_features` did not get faster when
+split: 58.8 s for 18 tests whose slowest cell is 5.7 s. The cause was already
+written in `.config/nextest.toml` — the `and test(qos)` filter had been DROPPED
+because the fold left no per-cell test to match, so all 17 cells joined a
+`max-threads = 1` group that only THREE need (issue 0312, discovery contention).
+Restoring per-cell tests made the narrow filter expressible again: 58.8 → 18.2 s
+with no change to what is serialized.
+
+> **A fold does not just serialize its own cells — it erases the names that
+> everything else needs to talk about them:** schedulers, `-E` filters, timeout
+> budgets, test groups, and failure reports. The serialization is recoverable;
+> the lost vocabulary is what made it invisible.
+
+**Consequence for consolidation work.** All three folds came from the phase-329
+program (W4 for the two example consumers, W1 for `workspace_features`), whose
+goal was fewer test FILES. That goal is fine; the shape it used is not. Phase-329
+is complete and lists two deferred folds — `xrce.rs` and
+`emulator.rs`/`esp32_emulator.rs`. Those files hold 6, 16 and 8 tests today.
+
+**If they are ever consolidated, consolidate the FILE and keep one test per
+cell** (`#[rstest]` + `#[case]`, as W1 leaves all three consumers). A single-test
+fold would re-create exactly the cost measured here, and the file-count metric
+would not notice.
+
 ### W2 — Stop paying five cold `cargo check`s in `native_main_macro_misuse`
 
 199 s, 13 % of all test time, 5 tests. These compile at run time as a
