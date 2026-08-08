@@ -25,8 +25,13 @@ identical to the umbrella's — and is **never slower** than the status quo, whi
 refutes F3 and the phase-334 W1.a verdict that cites it. So W2 ships the
 mechanism that already exists rather than a generated-manifest subsystem. **No
 paths have moved yet**: `linux`'s first migration blocker (artifact-name
-collisions) is fixed and gated, the second (the Rust resolver's group key) needs
-a provisioned tree to settle. Work-order items 7 and 8 stay blocked.
+collisions) is fixed and gated; the second (the Rust resolver's group key) was
+settled on 2026-08-08 and **the cheap answer lost**. The platform-grained key
+W2 proposed is refuted by measurement — it makes 17 artifact-name collisions
+across `linux` and `threadx-linux`, and it disarms the two gate arms that would
+have said so. The remaining shape is the Rust-side variant slug, whose prize is
+now measured (`linux` alone: 46.1 GiB → ~7.0 GiB, −84.9 %). Work-order items 7
+and 8 stay blocked, re-confirmed against the tree rather than assumed.
 
 **Closes:** issue 0446. **Touches:** phase-334 (build-cache layout — this is the
 *identity* question that layout question implies), phase-336 (the profile that
@@ -280,19 +285,120 @@ survive measurement (the first was F3).
 The mechanism is decided and measured (arm B: 455 MiB vs 9.70 GiB, 100 % of the
 umbrella's benefit at 1/9 its complexity). It is deployed on ONE platform.
 
-1. Platform-grained group key, then migrate `linux` (41 rows). W2 recorded the
-   candidate answer: arm B never unions features (cargo unions only within one
-   invocation), so the variant sig is in the key only because of the umbrella
-   shape that is now abandoned. Namespace half is checked (linux's 41 rows
-   collide on nothing, and `KNOWN_COLLISIONS` is empty as its end state); churn
-   half is phase-334 W1.c's ~6 %. Verification is a native-lane rebuild.
+1. ~~Platform-grained group key~~, then migrate `linux`. **The platform-grained
+   key is REFUTED (2026-08-08) — see "W1 — the platform-grained key, refuted"
+   below.** The remaining shape is the alternative W2.a kept on the table: teach
+   the Rust resolver the hashed variant slug by shelling into
+   `nros_fixture_group_slug`, then migrate. The prize is measured and large
+   (`linux` alone: 46.1 GiB → ~7.0 GiB). Verification is a native-lane rebuild.
 2. **Item 7 (334 W2.c)** — collapse `.gitignore` once those paths move.
 3. **Item 8 (340 W7)** — re-measure both axes; lower all three identity budgets
    IN THE SAME COMMIT.
 
 (2) and (3) are hours once (1) lands, and neither can precede it: a budget
 lowered against an unchanged tree fails on the truth, and there is no ignore
-sprawl to collapse until a path moves.
+sprawl to collapse until a path moves. **Both were re-confirmed blocked on
+2026-08-08**: `build/fixtures-cargo/` holds exactly one entry
+(`qemu-arm-baremetal`), against 116 live per-leaf target dirs under `examples/`
+(64 `target/`, 52 `target-*/`), so every ignore line still names live output;
+and the identity gate reads `nros_core 4/8; worst crate 6/9; worst identity 5/5`
+on the provisioned tree, i.e. one of the three has drifted UP since W4 recorded
+it (`worst crate` was 5) — a lowered budget would fail on the truth in exactly
+the way W2 predicted.
+
+### W1 — the platform-grained key, refuted (2026-08-08)
+
+**A group's members share a flat artifact namespace, and cargo does not hash the
+final artifact name.** That is already the premise of `check-fixture-groups`; W2
+applied it between packages and not within one. A platform-grained key puts
+every variant of a leaf in one group, so all of them write ONE
+`<group>/<profile>/<bin>`:
+
+| key | colliding artifact names |
+| --- | --- |
+| variant-grained (today) | **0**, across all 7 platforms |
+| platform-grained | **17** — 11 on `linux`, 6 on `threadx-linux` |
+
+All 17 are *same-package* clashes: one leaf, several manifest rows. `talker`,
+`listener`, `action-client`, `action-server`, `service-client`,
+`service-server`, `int32-sink` and four more each have 2–4 rows.
+
+**These are different binaries, not redundant copies.** Measured read-only on
+the provisioned checkout, `examples/native/rust/talker`:
+
+| row | dir today | bytes | sha256 (16) |
+| --- | --- | --- | --- |
+| default | `target/` | 8 616 504 | `f8a81814edec155e` |
+| `rmw-zenoh` | `target-zenoh/` | 8 616 504 | `183853240bc2014c` |
+| `rmw-xrce` | `target-xrce/` | 6 514 392 | `10b8273c6723f534` |
+| `link-tls` | `target-tls/` | 9 034 536 | `4ac89bf3f73cc73a` |
+
+**And cargo does it silently.** The `output filename collision` warning W2
+measured fires only when ONE invocation builds both targets. Arm B is N
+sequential invocations, so there is no warning at all — verified with a minimal
+two-feature crate into one `CARGO_TARGET_DIR`: `deps/` correctly held both
+identities (`probe-58132cd911fcb933`, `probe-aaff35a67a56532a`) while
+`debug/probe` was replaced, hash and behaviour both. Last writer wins and the
+test resolver greens on the other variant — the outcome this gate exists to
+prevent.
+
+**Why the earlier check said "collide on nothing".** `check-fixture-groups`'s A1
+keyed its owner set on `(package, directory)`. `linux` has 65 rust rows and 41
+distinct leaf dirs; the four `talker` rows deduped to one owner, so A1 reported
+zero. Run against a coarsened key it printed *"2 shared platform(s), 2 group(s),
+61 row(s) — no artifact-name collisions"* and exited 0. **The coarse key also
+disarms A2 by construction** — A2 requires every group to be the default group,
+which becomes vacuously true — so neither arm of the gate could have caught it.
+
+Fixed here: A1's owner is now the manifest ROW. Same experiment, 11 failures on
+`linux`. Tripwired both directions (widened gate + coarse key → FAIL; shipped
+gate + coarse key → PASS, which is the defect).
+
+The key-level assertion in `build_root_derivation.sh` *did* already block the
+coarse key — but its failure message said "it changes `-C metadata`", which is
+true and useless (`deps/` puts that hash in the filename, so variants coexist
+there fine) and reads as an obsolete artefact of the umbrella shape. It now
+names the flat artifact namespace instead, and gained a sibling arm for the
+build env, which is in the key for the same reason
+(`nros-bench/stress-zenoh` has a bare row and a
+`ZPICO_SUBSCRIBER_BUFFER_SIZE=8192` row, one package, one binary name).
+
+#### What the variant-grained key is worth on `linux`
+
+Measured read-only over the provisioned checkout — for each row, the target dir
+it actually built into; `deps/` deduplicated by artifact NAME, which is cargo's
+own judgement since `-C metadata` is in the filename:
+
+| group | rows | on disk | shared-dir estimate | deps files | distinct |
+| --- | --- | --- | --- | --- | --- |
+| `linux` (default) | 38 | 31.67 G | 3.14 G | 19 921 | 2 152 |
+| `linux-3263301353` (zenoh) | 10 | 6.21 G | 0.86 G | 3 998 | 500 |
+| `linux-3000917972` (xrce) | 8 | 3.45 G | 0.58 G | 2 338 | 384 |
+| `linux-553222167` (cyclonedds) | 5 | 2.34 G | 0.55 G | 1 558 | 366 |
+| `linux-1147932602` (tls) | 2 | 1.23 G | 0.65 G | 796 | 420 |
+| `linux-865285299` (zero-copy) | 1 | 0.63 G | 0.63 G | 392 | 392 |
+| `linux-228170020` (large-buf) | 1 | 0.54 G | 0.54 G | 335 | 335 |
+| **total** | **65** | **46.08 G** | **~6.95 G** | | |
+
+**~39 GiB, an 84.9 % reduction, on one platform** — and the seven groups are not
+a cost: six of them are the reason the migration is correct at all. The two
+singleton groups save nothing by construction, which is the honest shape of the
+long tail W2 described.
+
+#### What is left to build
+
+`fixture_shared_target_dir(platform)` must become
+`fixture_shared_target_dir(platform, variant)`. The variant cannot be
+re-derived in Rust (that is a second spelling of a `cksum`); shell into
+`nros_fixture_group_slug`. The caller-side problem is that a resolver knows the leaf
+and the binary but not the row: `build_example("native/rust/talker", "talker")`
+and `build_example_rmw(…, Rmw::Zenoh)` distinguish variants today only by the
+authored dir name (`target/` vs `target-zenoh/`), which is exactly the string
+the group strips. So the mapping has to come from the manifest, not from the
+call site. Two further specifics, both already recorded and still true: 0 of 65
+`linux` rust rows carry a `--target`, so `require_shared_fixture_binary`'s
+hardcoded `{triple}/` component is one directory too deep for a host build; and
+`build_example` / `build_example_rmw` are the two funnels, not ~30 sites.
 
 ### Wave 2 — the lever nobody priced (needs its own phase)
 
@@ -332,6 +438,13 @@ own argument is that an unaffordable instruction gets followed selectively,
   `enforce_registry` regression that four green `check-fast` runs did not.
 * **Re-measure an "N of M" claim before building on it.** F3 stood for months on
   evidence that varied `incremental` rather than sharing.
+* **A gate cannot vet a change to the thing it is keyed on — apply the change and
+  read the gate's MESSAGE, not its exit code.** W2 asked "does a platform-grained
+  key collide?" of a gate whose collision key was coarser than the question, and
+  got "no". The tell was in the passing message: *61 rows* for two platforms that
+  carry 85. Both counts a gate prints are assertions; check them. (This is the
+  second defect in this same gate found by reading a message rather than an exit
+  code — the first is recorded in W2.a.)
 
 ## Work order (both phases)
 
@@ -354,10 +467,10 @@ is why 334 W2.b comes before the grouping work here.
 | ~~2~~ | ~~**340 W5.b / W5.c**~~ | **DONE** 2026-08-07 — a straight deletion, not a feature gate: 181→165 units, overlap 12→8 |
 | ~~3~~ | ~~**340 W6 step 1**~~ | **DONE** 2026-08-07 — not the remap: `incremental = false` on `dev`. 115/143 rlibs byte-identical, incremental state 185 MB → 1 MB per fixture |
 | ~~4~~ | ~~**334 W2.b steps 2–4**~~ | **DONE 2026-08-08** — step 2 complete: four more families + a four-site tail, `git grep` for rooted literals now returns nothing. Steps 3-4 merged into item 5 (below), since the path changes there anyway. Original note: **DECIDED 2026-08-07** — the source-relative class is NOT a separate pass: 128 of 137 authored manifest paths are reproducible from (kind, platform, rmw) and the other 9 from the feature signature, so the column is DELETED, not derived. That merges into item 5. What remains here is the ROOTED side only (R3, one spelling) |
-| 5 | **340 W2** | **mechanism DECIDED 2026-08-08 — one shared `--target-dir` per group, NOT the umbrella** (measured: same bytes, no wall-clock regression, no generated state). Blocker 1 of 2 cleared (`3ebc32110`, artifact-name collisions). Blocker 2 (the Rust resolver's group key) needs a provisioned tree. Still absorbs the manifest `target_dir` / `build_subdir` column |
+| 5 | **340 W2** | **mechanism DECIDED 2026-08-08 — one shared `--target-dir` per group, NOT the umbrella** (measured: same bytes, no wall-clock regression, no generated state). Blocker 1 of 2 cleared (`3ebc32110`, artifact-name collisions). Blocker 2 (the Rust resolver's group key) **settled 2026-08-08: the platform-grained shortcut is refuted (17 artifact collisions), so the variant slug gets built**. Prize measured at 46.1 → ~7.0 GiB on `linux`. Still absorbs the manifest `target_dir` / `build_subdir` column |
 | ~~6~~ | ~~**340 W3**~~ | **DONE for the cmake lane 2026-08-08** (`c1cec0ef4`) — direction decided by measurement: EXPLICIT-ALWAYS, because corrosion hardcodes `--target` and is not ours to fork, and because the explicit spelling costs zero extra units (165 = 165). Three generators that could still emit the implicit spelling now share one resolver that cannot return empty; gated by `check-cargo-target-spelling`. The cargo-LEAF half is deliberately left to item 5 — it is a 115-site path move that buys nothing until R2 moves |
-| 7 | **334 W2.c** | collapse `.gitignore`, once (4) has moved the paths — **BLOCKED: no path has moved. (5) decided its mechanism but did not migrate a platform** |
-| 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c) — **BLOCKED on the same thing.** Do not lower the identity budgets before the paths move: the tree is unchanged, so a lowered budget would fail on the truth |
+| 7 | **334 W2.c** | collapse `.gitignore`, once (4) has moved the paths — **BLOCKED: no path has moved.** Re-confirmed 2026-08-08: `build/fixtures-cargo/` holds one entry, against 116 live per-leaf target dirs (64 `target/`, 52 `target-*/`). Every ignore line still names live output |
+| 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c) — **BLOCKED on the same thing.** Re-confirmed 2026-08-08: the gate reads `nros_core 4/8; worst crate 6/9; worst identity 5/5`, so `worst crate` has drifted UP one since W4 and a lowered budget would fail on the truth |
 
 (1) and (2) are small and unblock reading the gate honestly. (3) is the biggest
 win needing no restructuring. (4) unblocks every path move. (5) and (6) are the
@@ -870,26 +983,32 @@ W2/W3 implementation.**
       "observed: [1 entry]". With it in, `NROS_FIXTURE_SHARED_PLATFORMS=
       "qemu-arm-baremetal linux"` no longer trips A1 at all.
 
-      **The A2 blocker is probably smaller than it looks, and the reason is the
-      same one that shrinks W2.b.** A2 says the Rust resolver cannot express a
-      variant group, and `linux` produces six. But the variant sig is in the
-      group key because an umbrella invocation would UNION features across its
-      members; arm B never does, so under arm B the key can be
-      platform-grained and `fixture_shared_target_dir`'s existing
-      `build_dir("fixtures-cargo", &[platform])` is already the right answer.
-      The namespace half of that is checked: at platform granularity `linux`'s
-      41 rows collide on nothing. The churn half is phase-334 W1.c's ~6 %.
+      ~~**The A2 blocker is probably smaller than it looks…**~~ **REFUTED
+      2026-08-08 (W1). The platform-grained key does not work, and the reason is
+      not feature unification at all.** The paragraph below is kept unedited
+      because the reasoning that produced the wrong answer is the useful part —
+      it is correct about cargo and wrong about what a group's output namespace
+      is. See "W1 — the platform-grained key, refuted" for the measurement.
 
-      **Not decided here, because it needs the lane.** Choosing the coarser key
-      changes `nros_fixture_group_slug`, which two callers and one gate derive
-      from, and its only honest verification is a native-lane rebuild plus the
-      tests that consume those fixtures — neither of which runs on an
-      unprovisioned worktree. The alternative (teach the Rust side the hashed
-      slug by shelling into `nros_fixture_group_slug`, as
+      > The variant sig is in the group key because an umbrella invocation would
+      > UNION features across its members; arm B never does, so under arm B the
+      > key can be platform-grained and `fixture_shared_target_dir`'s existing
+      > `build_dir("fixtures-cargo", &[platform])` is already the right answer.
+      > The namespace half of that is checked: at platform granularity `linux`'s
+      > 41 rows collide on nothing. The churn half is phase-334 W1.c's ~6 %.
+
+      The load-bearing error is in "the namespace half is checked". It was
+      checked with `check-fixture-groups`, whose A1 arm keyed its owner set on
+      the leaf DIRECTORY — so `linux`'s 65 rows collapsed to 41 dirs before any
+      collision logic ran, and the four rows of `examples/native/rust/talker`
+      (default, `rmw-zenoh`, `rmw-xrce`, `link-tls`) counted as one owner of the
+      name `talker`. **41 rows was the tell**: the platform has 65.
+
+      **So the alternative is now the only path: teach the Rust side the variant
+      slug** by shelling into `nros_fixture_group_slug`, as
       `current_workspace_fixture_record` already shells into
-      `fixtures-manifest.py`) stays on the table and is strictly more work.
-      Whoever has a provisioned tree should measure the two keys against each
-      other on the real `linux` rows rather than reason about them.
+      `fixtures-manifest.py`. It is strictly more work, and the measured prize
+      below says it is worth doing.
 
       **One lesson from building the gate, because it generalises.** Its three
       arms initially shared a filter: the collision INVENTORY skipped platforms
