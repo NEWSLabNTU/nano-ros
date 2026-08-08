@@ -17,10 +17,31 @@ Nothing enforced this before.  `qemu-arm-baremetal` — the one migrated platfor
 (`NROS_FIXTURE_SHARED_PLATFORMS`) has been protecting the property by accident.
 `linux`, the platform phase-340 W2.a wants to add next, is NOT collision-free.
 
+**The gate is also what refuted phase-340 W1's proposed platform-grained group
+key** (2026-08-08).  Under that key `linux`'s 65 rows become one group, and
+`examples/native/rust/talker`'s four rows — default, `rmw-zenoh`, `rmw-xrce`,
+`link-tls` — all write `fixtures-cargo/linux/<profile>/talker`.  The shipped
+version of this gate reported "no artifact-name collisions" for exactly that
+configuration, because A1 keyed its owner set on the leaf DIRECTORY and the four
+rows share one.  Widening the key to the ROW turns the same experiment into 11
+failures on `linux` and 6 on `threadx-linux`.  To reproduce: replace the body of
+`nros_fixture_group_slug` with `printf '%s' "$platform"` and run this gate with
+`NROS_FIXTURE_SHARED_PLATFORMS="qemu-arm-baremetal linux"`.  Note also that the
+coarse key disarms A2 by construction — every group becomes the default group —
+so A2 could not have caught it either.  A change to the KEY must be evaluated
+against this gate with the key actually applied, not reasoned about.
+
+The tell was in the PASSING message, not the exit code: it read "2 shared
+platform(s), 2 group(s), 61 row(s)" for two platforms carrying 85 rust rows.
+61 is 20 + 41 — the dir count.  Both numbers a gate prints are assertions.
+
 Three arms, all fatal:
 
   A1  For every platform ALREADY in `NROS_FIXTURE_SHARED_PLATFORMS`, no two
-      distinct packages inside one group claim the same artifact name.
+      manifest ROWS inside one group claim the same artifact name.  **Rows, not
+      leaf directories** — one example built twice with different cargo args is
+      two rows and one artifact path.  See `collisions()` for why that
+      distinction is the whole arm.
 
   A2  For every such platform, every group it produces is the DEFAULT group
       (slug == platform).  This is not a style rule: the Rust resolver
@@ -105,7 +126,10 @@ SEP = "\x1f"
 # arm that noticed the fix (it fails in both directions), and it is the arm that
 # will notice a regression.
 #
-# Format: platform -> sorted list of "group::binary <- pkg, pkg" strings.
+# Format: platform -> sorted list of "group::binary <- pkg[variant], …" strings.
+# The VARIANT (cargo args + env, `--target-dir` stripped) joined the key in
+# phase-340 W1 together with the owner widening in `collisions()`: without it a
+# same-package clash records as "pkg, pkg" and cannot say which two rows.
 #
 # The OWNERS are part of the key on purpose. The first version keyed on
 # `group::binary` alone and could not fail when a THIRD package started
@@ -218,17 +242,61 @@ def artifacts(directory):
 
 
 def collisions(by_group):
-    """group -> {binary -> {(package, dir), ...}} for names claimed twice."""
+    """group -> {binary -> {(package, dir, variant), ...}} for names claimed twice.
+
+    **The owner is a manifest ROW, not a leaf directory** (phase-340 W1,
+    2026-08-08).  The first version keyed on `(package, directory)`, which reads
+    as "two different examples must not produce the same binary name" — and that
+    is only half the invariant.  The other half is that ONE example built twice
+    with different cargo args is also two rows, and a shared `--target-dir` gives
+    both of them the same `<group>/<profile>/<bin>` path.
+
+    That half was not academic.  W1 tested the platform-grained group key the
+    phase doc proposed and this function reported ZERO collisions for `linux`,
+    because `examples/native/rust/talker`'s four rows (default, `rmw-zenoh`,
+    `rmw-xrce`, `link-tls`) dedup to one `(package, directory)` owner.  Measured
+    on the provisioned tree, those four rows are four DIFFERENT binaries at one
+    name — 8616504 / 8616504 / 6514392 / 9034536 bytes, four distinct sha256 —
+    and cargo replaces the artifact silently on the second invocation (it warns
+    only when one invocation builds both).  Widened, the same experiment reports
+    11 collisions on `linux` and 6 on `threadx-linux`.
+
+    Keying on the row also means `--target-dir` must NOT be part of the variant:
+    the whole point of a group is that the row's authored dir is stripped
+    (`nros_fixture_strip_authored_target_dir`), so two rows differing only there
+    would land in one group AND one artifact path — which is a collision to
+    report, not a distinction to hide behind.
+    """
     found = {}
     for group, members in sorted(by_group.items()):
         owners = collections.defaultdict(set)
-        for directory in sorted(members):
-            for name, package in artifacts(directory):
-                owners[name].add((package, directory))
+        for record in sorted(members):
+            for name, package in artifacts(record.directory):
+                owners[name].add((package, record.directory, variant_of(record)))
         clash = {n: o for n, o in owners.items() if len(o) > 1}
         if clash:
             found[group] = clash
     return found
+
+
+def variant_of(record):
+    """The row's cargo args + env with any `--target-dir <v>` pair removed.
+
+    Mirrors what `_nros_fixture_variant_sig` drops, for the same reason: under a
+    group the authored dir is stripped before cargo sees it, so it cannot
+    distinguish two artifacts.  `--target` is deliberately KEPT here even though
+    the shell sig drops it — a cross-compiled row writes under `<triple>/` and so
+    does not share the host row's artifact path.
+    """
+    toks = record.cargo_args.split()
+    out, i = [], 0
+    while i < len(toks):
+        if toks[i] == "--target-dir":
+            i += 2
+            continue
+        out.append(toks[i])
+        i += 1
+    return " ".join(out) + "|" + " ".join(sorted(record.env.split()))
 
 
 def main():
@@ -239,7 +307,11 @@ def main():
 
     per_platform = collections.defaultdict(lambda: collections.defaultdict(set))
     for record, slug in zip(records, slugs):
-        per_platform[record.platform][slug].add(record.directory)
+        # The ROW is the member, not its directory — see `collisions`. Storing
+        # the directory here is what made the same-package variant clash
+        # invisible: 65 `linux` rows collapsed to 41 distinct dirs before any
+        # collision logic ran.
+        per_platform[record.platform][slug].add(record)
 
     shared = shared_platforms()
     failures = []
@@ -256,10 +328,20 @@ def main():
             continue
         for group, clash in collisions(by_group).items():
             for name, owners in sorted(clash.items()):
-                who = ", ".join(f"{pkg} ({d})" for pkg, d in sorted(owners))
+                who = ", ".join(
+                    f"{pkg} ({d} [{var}])" for pkg, d, var in sorted(owners)
+                )
+                same_pkg = len({pkg for pkg, _d, _v in owners}) == 1
+                how = (
+                    "one package built with two different cargo arg sets — "
+                    "the group key is too COARSE to separate them; make the key "
+                    "discriminate, do not rename"
+                    if same_pkg
+                    else "two packages claiming one name — rename one binary"
+                )
                 failures.append(
-                    f"A1: group {group!r} has two packages claiming artifact "
-                    f"{name!r}: {who}"
+                    f"A1: group {group!r} has {len(owners)} rows claiming artifact "
+                    f"{name!r}: {who} ({how})"
                 )
         for group in sorted(by_group):
             if group != platform:
@@ -280,7 +362,9 @@ def main():
     for platform, by_group in per_platform.items():
         keys = sorted(
             "{}::{} <- {}".format(
-                group, name, ", ".join(sorted(pkg for pkg, _dir in owners))
+                group,
+                name,
+                ", ".join(sorted(f"{pkg}[{var}]" for pkg, _dir, var in owners)),
             )
             for group, clash in collisions(by_group).items()
             for name, owners in clash.items()

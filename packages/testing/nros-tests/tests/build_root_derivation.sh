@@ -112,16 +112,55 @@ scenario '
     check "authored dir no longer opts out" \
         " --target-dir $repo_root/build/fixtures-cargo/qemu-arm-baremetal" \
         "$(nros_fixture_target_dir_flag qemu-arm-baremetal "--target-dir target-zenoh" "")"
-    # …and features still split it, because THOSE change the compilation.
+    # NOTE: this scenario body is a SINGLE-QUOTED string. No apostrophes in
+    # these comments — one closes the body, and everything after it evaluates in
+    # the wrong context. (Cost one debugging round; the symptom was
+    # "nros_fixture_group_slug: command not found" four checks later.)
+    #
+    # ...and features still split it. THE REASON IS THE FLAT ARTIFACT NAMESPACE,
+    # NOT -C metadata (phase-340 W1, 2026-08-08). The first spelling of this
+    # check said "it changes -C metadata", which is true and useless: deps/ puts
+    # the metadata hash IN the filename, so two feature variants coexist there
+    # perfectly. W1 read that message, reasonably concluded the assertion was an
+    # artefact of the abandoned umbrella shape, and proposed a platform-grained
+    # key that deletes it.
+    #
+    # What actually breaks is <group>/<profile>/<bin>, which cargo does NOT
+    # hash. Under a platform-grained key the four manifest rows of
+    # examples/native/rust/talker (default / rmw-zenoh / rmw-xrce / link-tls)
+    # all write ONE path; measured on a provisioned tree they are four different
+    # binaries (8616504 / 8616504 / 6514392 / 9034536 bytes, four distinct
+    # sha256), and a second cargo invocation replaces the artifact with no
+    # warning at all -- the "output filename collision" warning fires only when
+    # ONE invocation builds both. Last writer wins and a test greens on the
+    # other variant binary.
+    #
+    # So if you are here because you want a coarser key, this check is the thing
+    # you must satisfy, not the thing you must delete. Coarsening also disarms
+    # the A2 arm of check-fixture-groups by construction (every group becomes
+    # the default group), which is why the key-level assertion lives here and
+    # not only in the gate.
     bare="$(nros_fixture_group_slug qemu-arm-baremetal "" "")"
     authored="$(nros_fixture_group_slug qemu-arm-baremetal "--target-dir target-zenoh" "")"
     feats="$(nros_fixture_group_slug qemu-arm-baremetal "--no-default-features --features rmw-zenoh" "")"
     check "authored dir does not change the group key" "$bare" "$authored"
     if [ "$bare" = "$feats" ]; then
-        echo "  FAIL a feature set must change the group key (it changes -C metadata)"
+        echo "  FAIL a feature set must change the group key — two variants of ONE"
+        echo "       package would otherwise share <group>/<profile>/<bin>, which"
+        echo "       cargo does not hash, and silently overwrite each other"
         rc=1
     else
         echo "  ok   a feature set changes the group key"
+    fi
+    # The env is in the key for the same reason: nros-bench/stress-zenoh has a
+    # bare row and a ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 row, same package, same
+    # binary name.
+    envd="$(nros_fixture_group_slug qemu-arm-baremetal "" "ZPICO_SUBSCRIBER_BUFFER_SIZE=8192")"
+    if [ "$bare" = "$envd" ]; then
+        echo "  FAIL a build env var must change the group key (same artifact path)"
+        rc=1
+    else
+        echo "  ok   a build env var changes the group key"
     fi
     # The slug function is eligibility-FREE: `check-fixture-groups` has to ask
     # "which group WOULD this row land in?" for a platform that is by
