@@ -261,6 +261,78 @@ interchangeable must cover the workspace root, the `--target` spelling, RUSTFLAG
 and every individual profile setting — not the profile NAME, which is a label
 over six independent axes.
 
+## Roadmap after the W2 decision (2026-08-08)
+
+W2's measurement changed what this phase should optimise, so the remaining work
+is organised as WAVES rather than as the original item list. The ordering is
+(value x confidence) / cost, and the reason for it is one number:
+
+**240.2 GiB — 91.1 % of `deps/` — is duplicate identity, and its largest mass is
+the feature-INVARIANT host build-dep graph** (`libwinnow` x512, `libcc` x504,
+`libsyn` x391, `libnros_macros` x391). This phase has been partitioning by RMW
+and platform. That split does not touch these units at all. The biggest lever in
+the tree was never the thing being worked on — which is worth stating plainly,
+because it is the second time in this phase that a documented premise did not
+survive measurement (the first was F3).
+
+### Wave 1 — cash the win that is already proven
+
+The mechanism is decided and measured (arm B: 455 MiB vs 9.70 GiB, 100 % of the
+umbrella's benefit at 1/9 its complexity). It is deployed on ONE platform.
+
+1. Platform-grained group key, then migrate `linux` (41 rows). W2 recorded the
+   candidate answer: arm B never unions features (cargo unions only within one
+   invocation), so the variant sig is in the key only because of the umbrella
+   shape that is now abandoned. Namespace half is checked (linux's 41 rows
+   collide on nothing, and `KNOWN_COLLISIONS` is empty as its end state); churn
+   half is phase-334 W1.c's ~6 %. Verification is a native-lane rebuild.
+2. **Item 7 (334 W2.c)** — collapse `.gitignore` once those paths move.
+3. **Item 8 (340 W7)** — re-measure both axes; lower all three identity budgets
+   IN THE SAME COMMIT.
+
+(2) and (3) are hours once (1) lands, and neither can precede it: a budget
+lowered against an unchanged tree fails on the truth, and there is no ignore
+sprawl to collapse until a path moves.
+
+### Wave 2 — the lever nobody priced (needs its own phase)
+
+Target the host proc-macro / build-dep graph directly — one shared host
+target-dir across leaves, or sccache tuned for it. Deserves a phase doc of its
+own because the prize is roughly an order of magnitude above this phase's stated
+goal AND the mechanism is different in kind: these units are feature-invariant,
+so no group key is needed. Measurement-first, like W2: establish what a shared
+host dir actually saves before building anything.
+
+### Wave 3 — make tier 2 honest AND cheap
+
+Issue 0482 fixed correctness (tier 2 selected 46 of 240 rows; now 109). It did
+NOT restore affordability — tier 2 still only passes on top of an `all` build.
+Two designs are written up in 0482; both need coordinate-granular test selection,
+which neither `lane-filter.sh` (platform-family tokens) nor the fixture resolver
+(~30 path-keyed functions with no link to a manifest row — the #328 shape) can
+express today. Until then the ladder's middle rung is a fiction, and CLAUDE.md's
+own argument is that an unaffordable instruction gets followed selectively,
+"which is worse than a smaller instruction followed honestly".
+
+### Wave 4 — standing debt
+
+* The ~12 real `ci-matrix` failures (junit, not the console count): ~3 fixture
+  coverage, ~6 readiness marker, ~5 delivery assertions (zephyr cortex-m, rtic,
+  riscv-nuttx). ALL predate this work — the count went 19 -> 12 across the
+  wave-0 merges.
+* Issue 0481's readiness-marker conversion (0480 is the site audit; 0481 owns
+  the class and has the measurement).
+* Issue 0472's 13 unguarded opaque macros.
+
+### Two process rules this phase paid for
+
+* **Parallel worktree agents verify at GATE level only** — a fresh worktree is
+  unprovisioned, so no agent can build a fixture or run a sweep. A post-merge
+  `lane=all` + `ci-matrix` is mandatory, and it is what caught the
+  `enforce_registry` regression that four green `check-fast` runs did not.
+* **Re-measure an "N of M" claim before building on it.** F3 stood for months on
+  evidence that varied `incremental` rather than sharing.
+
 ## Work order (both phases)
 
 **phase-334 and this phase are one program on two axes**, and their work items
