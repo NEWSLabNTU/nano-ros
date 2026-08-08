@@ -354,6 +354,26 @@ else
     fail=1
 fi
 
+# phase-340 W2 — the THIRD spelling of the fixtures-cargo group path.
+# `just/qemu-baremetal.just` computes FIXTURE_TARGET with a parse-time
+# `absolute_path()` literal, recorded in phase-334 W2.b as a deliberate
+# non-migration (a bash call there needs a `shell()` on every justfile parse).
+# Deliberate or not, it is a literal that must track the derivation, and until
+# now nothing said so. It compares against the DEFAULT root only — the justfile
+# cannot follow NROS_BUILD_ROOT, which is exactly why it was not migrated.
+echo "phase-340 W2 — the justfile's FIXTURE_TARGET literal tracks the derivation:"
+scenario '
+    unset NROS_BUILD_ROOT
+    export NROS_REPO_ROOT="$repo_root"
+    lit="$(sed -n "s/^FIXTURE_TARGET := absolute_path(\"\([^\"]*\)\").*/\1/p" just/qemu-baremetal.just)"
+    if [ -z "$lit" ]; then
+        echo "  FAIL could not read FIXTURE_TARGET out of just/qemu-baremetal.just"
+        rc=1
+    fi
+    check "FIXTURE_TARGET == the derived qemu-arm-baremetal group dir" \
+        "$(nros_build_dir fixtures-cargo qemu-arm-baremetal)" "$repo_root/$lit"
+'
+
 echo "phase-340 W2.a — shell and Rust agree on WHICH platforms share a dir:"
 
 # One eligibility rule, two readers. The shell reads
