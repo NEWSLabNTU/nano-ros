@@ -728,17 +728,21 @@ fn test_qemu_rtic_action_e2e() {
         QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     // phase-342 W8b — wait for the server to SAY it is ready, instead of sleeping
-    // 8 s for "bare-metal boot + smoltcp init + zenoh connect". The image prints
-    // `Waiting for service requests...` once it can serve, which is the event
-    // this sleep was approximating; the marker comes from the shared table
-    // (issue 0481 — never a literal). Note the ROLE differs per site here: two
-    // of these settles front a listener, one fronts a service server.
+    // 8 s for "bare-metal boot + smoltcp init + zenoh connect". This site is
+    // inside `test_qemu_rtic_action_e2e`, so the binary is the ACTION server and
+    // the marker is `Waiting for action goals...`.
+    //
+    // Getting this wrong is instructive: a first pass keyed on the variable name
+    // (`server`) and used the SERVICE marker, which the action image never
+    // prints — and the converted wait FAILED LOUDLY with "did not print
+    // `Waiting for service requests` within 40s" instead of sleeping 8 s and
+    // carrying on. The 8 s sleep could not have told anyone the role was wrong.
     server
         .wait_for_output_pattern(
-            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            nros_tests::output::ACTION_SERVER_READY_MARKER,
             Duration::from_secs(40),
         )
-        .unwrap_or_else(|e| panic!("RTIC service server never became ready: {e}"));
+        .unwrap_or_else(|e| panic!("RTIC action server never became ready: {e}"));
 
     // Start client QEMU
     eprintln!("Starting RTIC action client QEMU...");
