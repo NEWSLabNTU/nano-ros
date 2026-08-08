@@ -492,6 +492,54 @@ that branch is the measurable signal the divergence is gone.
 *Care:* embedded listeners have their own test greps. Each converges with its
 own check, like the natives did — no blanket rename.
 
+### W8b RESULT — the settle survey, completed (2026-08-08)
+
+The 123 s of "settle" turned out to be three different things, and the plan's
+assumption ("events that are never announced") was right for only one of them.
+
+**1. Converted and verified — `emulator.rs`, 24 s.** The assumption was FALSE
+here: the RTIC images already printed `Waiting for messages on /chatter...` and
+`Waiting for action goals...`, and `QemuProcess` already had
+`wait_for_output_pattern`. Observable and API both existed; only the call site
+still slept. Now waits per role — and the conversion immediately caught a wrong
+marker (a service marker in front of an action server) that the 8 s sleep could
+never have reported. **16/16 emulator tests pass**, where all 16 had been
+skipping (issue 0483).
+
+**2. Convertible, not verifiable here — `threadx_riscv64_qemu.rs`, 24 s at six
+sites.** The listener is `examples/qemu-riscv64-threadx/c/listener`, which W7
+converged onto `LISTENER_READY_MARKER` and which `example_output_conformance`
+now GATES — so the marker is guaranteed present. Two things stop this landing
+blind: every site binds `let listener` immutably (the wait needs `&mut`), and the
+threadx-riscv64 fixtures are not built here, so the change could not be run.
+Two blanket replacements in this work item already introduced bugs — a wrong role
+in `emulator.rs`, and six over-matched sites here — and both were caught only by
+compiling or running. Converting six unverifiable sites by hand is how the third
+one ships. **Do it when the lane can run; the marker work is already done.**
+
+**3. Genuine settles — `interop_e2e`, the bridge tests, `params.rs`, ~30 s.**
+These wait on PEER DISCOVERY, and no process announces it:
+
+```rust
+// Listener first — its subscription must be discoverable before the bridge's
+// cyclone egress publisher matches over SPDP.
+let mut listener = spawn_cyclone_listener(&listener_bin, domain);
+std::thread::sleep(Duration::from_secs(3));
+```
+
+The event is "the remote matched me", which neither side prints.
+`params.rs:147` is the clearest case: it ALREADY waits for a `Publishing`
+marker, then sleeps 1 s more for "parameter service discovery propagation
+through zenohd". The observable it wants does not exist on either endpoint.
+
+Removing these needs a new observable (a bridge that logs when its egress
+matches) or a discovery API to poll — different work from replacing a sleep with
+a wait, and the honest boundary of this work item.
+
+**Rule for new code, which is what W8 was really for:** never `sleep` toward a
+condition a process announces. Where nothing announces it, say so in the comment
+— every remaining sleep in class 3 now does.
+
 ### W8 — No unconditional sleeps: wait for a marker (NEW, 2026-08-08)
 
 **The rule: a test must not sleep for a duration when it can wait for an event.**
