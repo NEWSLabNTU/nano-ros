@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#481** — readiness greps use string LITERALS, so a wrong marker burns the whole timeout in silence and the
+test still passes. Found by measurement: after phase-342 W1 split the pubsub fold, `rust_cyclone` sat at 34.1 s
+against `cpp_cyclone`'s 5.2 s — 30 s timeout + 2 s settle + 2 s delivery — because the settle greped `"Waiting for"`,
+which C/C++ print and the Rust listener never does (it prints `"Subscriber created for topic:"`). Both spellings were
+ALREADY constants; the literal matched one language by luck. Fixed there (34.1 s -> 4.0 s, binary 95.1 -> 7.9 s), and
+12 more call sites carry the same literal — 4 suspect (`executor.rs:138,200`, `esp32_emulator.rs:324,528`). NOT swept
+blind: most wait on C/C++ binaries that do print it, and a wrong marker is silent, so each needs its own measurement.
+Compounded by #0471 (a timeout returns `Ok`), so even a checked result would not notice. See `0481-*`. (2026-08-08)
+
 **#480** (testing, open 2026-08-08) — the 29 `ci-matrix` test failures are NOT the QEMU-under-load flake
 class: retested solo, **27 of 29 reproduce alone** and only 4 are flakes. Most share one cause — a test
 waits for a banner its binary never prints (`native-rs-listener did not print \`Waiting for\``, while the
