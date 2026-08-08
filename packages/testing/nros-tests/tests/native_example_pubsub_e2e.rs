@@ -33,7 +33,7 @@ use nros_tests::{
         require_zenohd,
     },
     matrix::{Cell as MCell, Kind as MK, Lang as ML, Rmw as MR, Tier as MT, Workload as MW},
-    output::LISTENER_LOG_PREFIX,
+    output::{LISTENER_LOG_PREFIX, LISTENER_READY_MARKER, WS_C_LISTENER_READY_MARKER},
     unique_ros_domain_id,
 };
 use rstest::rstest;
@@ -83,6 +83,28 @@ fn listener_bin(l: ML) -> &'static str {
 /// per-lang split this replaced made c/cpp/zenoh falsely fail.)
 fn listener_prefix(_l: ML) -> &'static str {
     LISTENER_LOG_PREFIX
+}
+
+/// The listener's READINESS marker, which differs by language — and getting it
+/// wrong costs 30 s in silence (phase-342 W1 follow-up).
+///
+/// The settle path below greps this before starting the talker. It used the
+/// LITERAL `"Waiting for"`, which the C and C++ demos print
+/// (`"Waiting for messages (Ctrl+C to exit)..."`) and the Rust one never does —
+/// it prints `"Subscriber created for topic: /chatter"`. So every rust cell that
+/// settles waited out the FULL 30 s timeout and then continued, and because the
+/// result is discarded nothing said so. Measured: `rust_cyclone` 34.1 s against
+/// `cpp_cyclone` 5.2 s, with every other cell at 4–5 s.
+///
+/// CLAUDE.md: "Test greps use `nros_tests::output::*` constants, never literal
+/// strings." Both spellings were already there; the literal matched one of them
+/// by luck.
+fn listener_ready_marker(l: ML) -> &'static str {
+    match l {
+        ML::Rust => LISTENER_READY_MARKER,
+        ML::C | ML::Cpp => WS_C_LISTENER_READY_MARKER,
+        ML::Mixed => LISTENER_READY_MARKER,
+    }
 }
 fn lang_str(l: ML) -> &'static str {
     match l {
@@ -283,7 +305,8 @@ fn run_cell(cell: &MCell) {
     // Cyclone/xrce discovery is slower — wait for the listener's ready marker,
     // then let the subscription propagate before the talker publishes.
     if needs_settle {
-        let _ = listener_proc.wait_for_output_pattern("Waiting for", Duration::from_secs(30));
+        let _ = listener_proc
+            .wait_for_output_pattern(listener_ready_marker(lang), Duration::from_secs(30));
         std::thread::sleep(Duration::from_secs(2));
     }
     let mut talker_proc = ManagedProcess::spawn_command(talker_cmd, "native-example-talker")
