@@ -222,9 +222,23 @@ def shared_platforms():
 def artifacts(directory):
     """Artifact names a leaf manifest produces, as (name, package) pairs.
 
-    Only `[[bin]]` targets and the implicit `src/main.rs` binary: those are what
-    land in the flat `<profile>/` namespace under a shared target dir.  Libs are
-    hashed into `deps/` and cannot collide.
+    Everything that lands UNHASHED in the flat `<profile>/` namespace under a
+    shared target dir, which is where a collision silently overwrites:
+
+      * `[[bin]]` targets and the implicit `src/main.rs` binary
+      * `[lib]` targets whose crate-type includes `staticlib` / `cdylib` /
+        `dylib`
+
+    phase-340 B1 — the second bullet used to be excluded, on the stated ground
+    that "libs are hashed into `deps/` and cannot collide".  That is true of
+    RLIBS and false of the others, and the tree shows it: `libnros_c.a` exists
+    at 438 copies across ~30 distinct sizes.  Measured on a probe crate with
+    `crate-type = ["staticlib", "rlib"]` — ONE crate emits BOTH
+    `debug/libslibprobe.a` (flat, unhashed, collides) and
+    `debug/deps/libslibprobe-6f20517143bd9146.rlib` (hashed, cannot).  So the
+    old rule was not wrong about rlibs; it was applied to a category it did not
+    cover, which is why the gate could report "no collisions" over a namespace
+    it was not looking at.
     """
     manifest = os.path.join(ROOT, directory, "Cargo.toml")
     if not os.path.isfile(manifest):
@@ -238,6 +252,18 @@ def artifacts(directory):
     names = [(b["name"], package) for b in data.get("bin", []) if b.get("name")]
     if not names and os.path.isfile(os.path.join(ROOT, directory, "src/main.rs")):
         names = [(package, package)]
+
+    # phase-340 B1 — the unhashed LIB artifacts.  A lib target's default name is
+    # the package name with dashes turned into underscores; cargo prefixes the
+    # file with `lib`, so two packages whose lib names agree land on one path.
+    lib = data.get("lib", {})
+    kinds = set(lib.get("crate-type", lib.get("crate_type", [])))
+    if kinds & {"staticlib", "cdylib", "dylib"}:
+        lib_name = lib.get("name") or package.replace("-", "_")
+        # Report the FILE name, not the crate name: `libnros_c.a` is what the
+        # reader will grep for, and it is what actually collides.
+        ext = "a" if "staticlib" in kinds else "so"
+        names.append((f"lib{lib_name}.{ext}", package))
     return names
 
 
