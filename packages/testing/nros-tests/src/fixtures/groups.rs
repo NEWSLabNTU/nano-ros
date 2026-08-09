@@ -300,6 +300,8 @@ mod tests {
         let t = table();
         let (row, suffix) = attribute(
             &t,
+            // profile-literal-ok: dir vocabulary: synthetic leaf paths exercising the
+            // artifact-root rewrite; no build is invoked from this test data
             Path::new("examples/native/rust/talker/target/debug/talker"),
         )
         .unwrap();
@@ -308,6 +310,8 @@ mod tests {
 
         let (row, suffix) = attribute(
             &t,
+            // profile-literal-ok: dir vocabulary: synthetic leaf paths exercising the
+            // artifact-root rewrite; no build is invoked from this test data
             Path::new("examples/native/rust/talker/target-xrce/debug/talker"),
         )
         .unwrap();
@@ -326,6 +330,8 @@ mod tests {
         assert!(
             attribute(
                 &table(),
+                // profile-literal-ok: dir vocabulary: synthetic leaf paths exercising the
+                // artifact-root rewrite; no build is invoked from this test data
                 Path::new("examples/freertos/rust/talker/target/debug/talker")
             )
             .is_none()
@@ -347,6 +353,8 @@ mod tests {
         }];
         let (_, suffix) = attribute(
             &t,
+            // profile-literal-ok: dir vocabulary: synthetic leaf paths exercising the
+            // artifact-root rewrite; no build is invoked from this test data
             Path::new("examples/qemu-arm-baremetal/rust/talker/target/thumbv7m-none-eabi/debug/t"),
         )
         .unwrap();
@@ -354,6 +362,8 @@ mod tests {
 
         let (_, suffix) = attribute(
             &table(),
+            // profile-literal-ok: dir vocabulary: synthetic leaf paths exercising the
+            // artifact-root rewrite; no build is invoked from this test data
             Path::new("examples/native/rust/talker/target/debug/talker"),
         )
         .unwrap();
