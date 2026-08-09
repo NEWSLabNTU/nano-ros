@@ -1,8 +1,8 @@
 # Phase 342 — Test runtime reduction: the consumer side
 
-**Status (2026-08-08). W1, W2, W3, W7 LANDED; W8 partly landed; W4 blocked
-(structurally); W5 retracted on measurement; W6 answered. Remainder RE-SEQUENCED
-— see "Remaining waves, REORDERED" below.**
+**Status (2026-08-10). COMPLETE. W1, W2, W3, W7, W8, W8b, W9 LANDED; W4
+delivered by phase-340 W3 (it was parked here as blocked, wrongly — see W4);
+W5 retracted on measurement; W6 answered.**
 
 Measured, same machine, same lane:
 
@@ -13,6 +13,8 @@ Measured, same machine, same lane:
 | W7 `rust_cyclone` readiness marker | 34.1 s | 4.0 s | 8.5× |
 | W8 `native_api` sleeps | 102.0 s | 25.2 s | 4.0× |
 | W8 `nano2nano` sleeps | 47.7 s | 8.8 s | 5.4× |
+| W8b `emulator` settle sleeps | 24 s, 16 skipping | 16/16 run | issue 0483 |
+| W8b `threadx_riscv64_qemu` | 7.37 s | 1.505 s | 4.9× |
 
 Plus ~140 s of timeouts that were being waited out in SILENCE (issue 0481), and
 the tier's wall-clock floor down from 95.1 s to ~34 s. Three gates now enforce
@@ -32,11 +34,26 @@ throughout; every `#[case]` list is bound to `matrix::CELLS` by a tripwire that
 was verified to FAIL before being trusted.
 
 W3 gated the lane arithmetic that four sites carried by hand and three had got
-wrong. W4 is parked with its blocker named. W5 is retracted rather than
-attempted — the measurement said the rows it wanted to delete are load-bearing,
+wrong. W4 was parked with its blocker named, and the block turned out not to
+exist: phase-340 W3 had already built the escape the blocker named, the same day
+it was re-confirmed. W5 is retracted rather than attempted — the measurement said the rows it wanted to delete are load-bearing,
 which is the same answer phase-329 W8 got. W6 is answered below.
 
-**W7 is the one still open, and it is not a performance item.** Chasing W1's
+**What this phase turned out to be about.** It was opened to make tier 1
+affordable, and it did that — ~350 s to ~78 s, the wall-clock floor from 95.1 s
+to 34.1 s. But four of its results were not speedups at all. W7 found six
+readiness greps waiting on markers their process never prints (issue 0481).
+W8b found sixteen emulator tests that had been skipping in silence (issue 0483).
+W8b again found a 2 s sleep that only Rust images paid, making one language 3.9×
+slower than its siblings on a shared stack (issue 0484). W4 found a blocker that
+had already been dissolved.
+
+Each of those was uncovered by deleting a fixed delay, and none of them was
+visible while the delay was there. **A sleep long enough to cover the worst case
+is long enough to hide every case** — that is the sentence this phase bought, and
+it is worth more than the seconds.
+
+**W7 is not a performance item either.** Chasing W1's
 `rust_cyclone` outlier (34.1 s against a 5.2 s sibling) ended at a one-word
 disagreement between three implementations of the same standard ROS demo. Nine
 call sites had guessed which spelling applied and guessed wrong — ~90 s of
@@ -136,9 +153,9 @@ is re-sequenced here rather than worked in the order it was written.
 
 | order | wave | why here |
 | --- | --- | --- |
-| 1 | **W9 (new)** — `wait_for_output_count` on `Ros2Process` / `ZephyrProcess` | Unblocks W8's remainder and every future one. Small, self-contained, verifiable against suites that already run. |
-| 2 | **W8b** — the 123 s of settle sleeps | Needs W9 for the ROS 2 half, and needs W7's machinery (observable, then gate, then converge) for the embedded half. |
-| 3 | **W4** — tier-2 build scoping | Unchanged and still blocked; its condition is "every test cell-bound", which phase-329's disposition pass showed is false. Nothing here moves it. |
+| 1 | ~~**W9 (new)**~~ **LANDED** — `wait_for_output_count` on `Ros2Process` / `ZephyrProcess` | Unblocked W8's remainder as intended. |
+| 2 | ~~**W8b**~~ **LANDED** — the 123 s of settle sleeps | Class 1 and 2 converted (24 s + 24 s); class 3 (~30 s) is genuine peer-discovery waiting with no observable, and stays, documented. Found issues 0483 and 0484 on the way. |
+| 3 | ~~**W4** — tier-2 build scoping~~ | **DELIVERED by phase-340 W3**, not by this phase. Its reopen condition ("the run learns to select cells-for-this-lane PLUS everything uncoordinated") was built at fixture RESOLUTION rather than test selection. See the W4 section. |
 
 **W8b is not a rewrite, it is W7 again with a different marker.** Those 123 s wait
 on events that are never announced — `emulator.rs` sleeps 8 s for "bare-metal
@@ -253,7 +270,68 @@ how a tier gets chosen on a wrong cost estimate.
 *Acceptance:* the three sites derive from `lane-coords` or are gated against it;
 no hand-written count survives.
 
-### W4 — BLOCKED, re-confirmed WITH A NUMBER (2026-08-08)
+### W4 — UNBLOCKED, and DELIVERED ELSEWHERE (2026-08-10)
+
+**W4 is done. Phase-340 W3 did it — on the SAME DAY this section declared the
+item parked — by building the design this section named as the way out.**
+
+The reopen condition recorded below was:
+
+> either those files gain coordinates (they should not, mostly), or the run
+> learns to select "cells for this lane PLUS everything uncoordinated", which is
+> a different design than the one W4 assumed.
+
+Phase-340 W3 (`5aa680c95`) built the second one. The insight is that the
+narrowing does not belong at test SELECTION at all — it belongs at fixture
+RESOLUTION:
+
+```text
+BUILD  skips row R  ⟺  row_coord(R) ∉ lane_coords   (fixtures-manifest.py --coords-from)
+RUN    skips row R  ⟺  row_coord(R) ∉ lane_coords   (nros_tests::fixtures::lane)
+```
+
+Every test still RUNS. What narrows is which fixtures a test may find missing.
+A test with no coordinate resolves nothing attributable to a manifest row, so it
+never skips — `fixtures/lane.rs:66` states this as "a path that attributes to NO
+row never skips (fail closed)". That is precisely "cells for this lane PLUS
+everything uncoordinated", obtained without giving the 131 files coordinates they
+should not have.
+
+So the number below — 24 coordinate-bound files against 155 — was measured
+correctly and reasoned about wrongly. It was read as "131 files cannot be
+selected, therefore the run cannot be narrowed". The correct reading is that
+selection was the wrong lever: nothing has to select those files, because
+narrowing the fixture set already leaves them untouched.
+
+The build half W4 actually asked for now exists too. `just build-test-fixtures
+lane=tier2` is the tier-2 build, and `justfile:2241` records both the change and
+its cost:
+
+> That was false until phase-340 W3 and cost ~231 STALE failures when someone
+> tried it: 0368 F8 had made `_require-fixtures` accept a `lane=tier2` stamp
+> while `ci-matrix` still ran the WHOLE suite, so 34 of 47 coordinates were
+> resolved and none of them had been built.
+
+`ci-matrix` now exports `NROS_TEST_COORDS` from the SAME `nros_lane_coords_file
+tier2` that scoped the build and the staleness gate — one computation reaching
+three consumers, which is the invariant issue 0482 exists to protect.
+
+**The lesson worth keeping is not about W4.** This blocker was re-confirmed with
+a number on 2026-08-08, and `5aa680c95` dissolved it at 18:28 on 2026-08-08 —
+the same day, from a phase that never mentions W4. Two phases owned different
+halves of one lane and neither watched the other, so one wrote "still blocked"
+into a roadmap while the other was landing the unblock.
+
+That is a multi-session hazard, not a reasoning failure: nothing either session
+could read would have told it. The cheap defence is the one this entry now
+provides — when a blocker names a design as its way out, grep for that design
+before re-confirming the block. `NROS_TEST_COORDS` was already in the justfile.
+A parked item is a claim about the world and goes stale like any other.
+
+The original analysis follows, kept because its measurement is still true and
+its reasoning is a useful thing to have been wrong about.
+
+### W4 — the blocker as recorded, and why the reading was wrong (2026-08-08)
 
 Re-checked rather than inherited. The blocker is "every test cell-bound", and
 the measurement is:

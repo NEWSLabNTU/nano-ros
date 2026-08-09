@@ -1,6 +1,32 @@
 # Phase 343 — The host build-dep graph: where the 240 GiB actually is
 
-**Status (2026-08-08). MEASUREMENT COMPLETE, NOTHING IMPLEMENTED — deliberately.**
+**Status (2026-08-10). MEASUREMENT COMPLETE; W1 LANDED (`7db7e72b5`, phase-343 I1)
+— 63.1 GiB recovered, 33 % of the phase. W2/W3 open.** The header below is the
+2026-08-08 measurement, unchanged because it still reproduces; what changed is
+that the one thing this phase said was worth building has been built.
+
+**W1 — the shared sizes-probe dir is now the DEFAULT.** The sharing mechanism had
+existed since `82b31d08e` (2026-08-04), keyed correctly, and was reachable only by
+exporting `NROS_SIZES_PROBE_TARGET_DIR`, which only `scripts/build/cargo.sh` does.
+Everything else — a bare `cargo build` in a leaf, a nested cmake/corrosion probe,
+an IDE — took the other branch and paid ~195 MiB for a private copy under
+`$OUT_DIR`. Both branches were live in the same tree in the same week, the
+wasteful one was the default, and there was no diagnostic either way. 425 leaked
+probe dirs, 63.1 GiB, deduplicating 81:1. The new default is keyed IDENTICALLY to
+the env branch — (rustc slug, target, features) — because phase-336 W7 keyed by
+rustc slug alone, piled nine differently-featured `nros` rlibs into one directory,
+and the mtime-newest fallback then handed a consumer another consumer's build.
+Verified both directions with the env var explicitly unset (the case that leaked):
+fix present, 0 private dirs; fix removed, 1.
+
+That is the phase's recommendation carried out exactly as written — a wiring fix,
+not a subsystem. **W2 and W3 remain**, and the decision below still stands: there
+is no separate Wave-2-shaped phase to build, and the ~160 GiB of leaf + corrosion
+target dirs belongs to phase-340 W2, not here.
+
+---
+
+**Original status (2026-08-08). MEASUREMENT COMPLETE, NOTHING IMPLEMENTED — deliberately.**
 The 240.2 GiB / 91.1 % claim in [phase-340](phase-340-build-artifact-reuse.md)'s
 "Wave 2" reproduces (241.3 GiB / 91.1 % on a tree three days newer). **The
 diagnosis attached to it does not.** Wave 2 named the population "the
@@ -322,25 +348,25 @@ The 236.3 GiB splits into three jobs with three different owners:
 | population | GiB dup | owner | status |
 | --- | ---: | --- | --- |
 | leaf + corrosion target dirs | ~160 | **phase-340 W2 / Wave 1** | mechanism decided, migration blocked on paths |
-| nested probe dirs | **76.8** | **this phase, W1–W3** | mechanism exists, wired at one site |
+| nested probe dirs | **76.8** | **this phase, W1–W3** | W1 LANDED — 63.1 GiB of it recovered; W2/W3 open |
 | unhashed-name collision risk | (hazard) | **phase-340 W2 gate** | gate narrower than the class |
 
 ## Work items
 
-### W1 — make the shared probe dir the DEFAULT, not an opt-in
+### W1 — make the shared probe dir the DEFAULT, not an opt-in — **LANDED** (`7db7e72b5`)
 
-- [ ] Invert the resolution in `nros-sizes-build`: derive the shared root when
+- [x] Invert the resolution in `nros-sizes-build`: derive the shared root when
       one is discoverable, fall back to `$OUT_DIR` only when it is not.
       `NROS_SIZES_PROBE_TARGET_DIR` stays as the explicit override and keeps
       winning — issue 0400's box-private tree depends on that.
-- [ ] The discoverable root must not become a **second spelling** of
+- [x] The discoverable root must not become a **second spelling** of
       `build-root.sh`'s `nros_build_dir`. That is the failure mode phase-334
       W2.b spent a pass eliminating and the one `nros_fixture_group` /
       `NROS_FIXTURE_SHARED_PLATFORMS` divergence (phase-340 W2.a) cost most.
       Prefer: keep the shell as the single deriver and have it export the
       variable from a place every entry point transits, rather than teaching the
       Rust side to re-derive a repo root.
-- [ ] Out-of-tree consumers must keep working. A `nano_ros` installed outside
+- [x] Out-of-tree consumers must keep working. A `nano_ros` installed outside
       this checkout has no repo root and MUST land on `$OUT_DIR` — verify, do
       not assume.
 
