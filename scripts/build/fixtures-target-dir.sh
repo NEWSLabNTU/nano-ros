@@ -59,7 +59,19 @@
 # environment — a plain (non-exported) assignment is visible in the
 # sourcing process but vanishes in the leaf, making every row look
 # ineligible and silently fall back to the example-local `target/`.
-export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal}"
+# phase-340 B3 — `linux` joins the shared groups 2026-08-10. Its preconditions
+# were each cleared rather than assumed: A1 reports 0 artifact-name collisions
+# under the WIDENED gate (B1 taught it about unhashed staticlib/cdylib output;
+# 0 of 22 tracked native manifests emit one), and A2's "the Rust resolver cannot
+# express a variant group" blocker was removed by B2, which resolves through the
+# manifest row rather than the platform.
+#
+# The coarse platform-only key that would have made this trivial is REFUTED: it
+# puts talker's four variants on one flat path, and cargo overwrites the final
+# artifact SILENTLY across invocations (deps/ keeps both identities; the flat
+# output does not, and no warning fires because the collision diagnostic only
+# triggers within ONE invocation).
+export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal linux}"
 
 # _nros_fixture_variant_sig <cargo-args> <envstr>
 # Signature of everything in the grouping key BEYOND platform+triple.

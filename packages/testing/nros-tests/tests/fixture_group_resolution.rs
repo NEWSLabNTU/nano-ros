@@ -115,29 +115,55 @@ fn migrating_linux_never_synthesises_a_triple_component() {
 }
 
 #[test]
-fn the_shipped_eligibility_list_redirects_no_linux_row() {
-    // Inertness. B2 is the resolver; B3 is the migration, and it needs a
-    // native-lane rebuild because #393's failure mode is the build, the
-    // staleness probe and the test resolver disagreeing.
-    //
-    // Deliberately the LIVE table (`manifest_rows`, no env override), not
-    // `export_with("qemu-arm-baremetal")`. The first version passed the list in
-    // — and so kept passing when the shipped default was widened to include
-    // `linux`, which is the one change it exists to notice. B3 must edit this
-    // test; that is the point of it.
+fn the_shipped_eligibility_list_redirects_every_linux_row() {
+    // phase-340 B3 landed 2026-08-10: `linux` IS migrated, so the assertion
+    // inverts. B2 wrote this test to force exactly this edit — it read the LIVE
+    // table rather than an injected list, so widening the shipped default could
+    // not slip past it. Keeping that property: still the live table.
     let rows = nros_tests::fixtures::groups::manifest_rows();
     for root in TALKER_ROOTS {
+        let hit = attribute(rows, &Path::new(root).join("debug/talker"));
         assert!(
-            attribute(rows, &Path::new(root).join("debug/talker")).is_none(),
-            "{root} is redirected on the shipped tree — B2 must land inert. If \
-             this is B3, update this test along with NROS_FIXTURE_SHARED_PLATFORMS."
+            hit.is_some(),
+            "{root} is NOT redirected on the shipped tree — B3 added `linux` to \
+             NROS_FIXTURE_SHARED_PLATFORMS, so every linux talker root must \
+             resolve through a group"
+        );
+        let (row, suffix) = hit.unwrap();
+        assert!(
+            row.slug == "linux" || row.slug.starts_with("linux-"),
+            "{root} resolved to slug {:?}, which is not a linux group",
+            row.slug
+        );
+        // The variant slug is the whole point: talker's variants must NOT all
+        // land on one group, which is what the refuted coarse key did.
+        assert_eq!(
+            suffix,
+            Path::new("debug/talker"),
+            "the redirect altered the path below {root}'s artifact root"
         );
     }
+
+    // Vacuity guard, kept and widened: both migrated platforms must report.
+    for p in ["qemu-arm-baremetal", "linux"] {
+        assert!(
+            rows.iter().any(|r| r.shared && r.platform == p),
+            "no {p} row reports as shared — the export lost a migrated platform, \
+             and every assertion above would then be vacuous"
+        );
+    }
+
+    // The variants must occupy MORE THAN ONE group, or the coarse key has crept
+    // back in under a different name.
+    let slugs: std::collections::BTreeSet<&str> = rows
+        .iter()
+        .filter(|r| r.shared && r.platform == "linux")
+        .map(|r| r.slug.as_str())
+        .collect();
     assert!(
-        rows.iter()
-            .any(|r| r.shared && r.platform == "qemu-arm-baremetal"),
-        "no qemu-arm-baremetal row reports as shared — the export lost the one \
-         migrated platform, and this test would then be vacuous"
+        slugs.len() > 1,
+        "every linux row landed in ONE group ({slugs:?}) — that is the refuted \
+         platform-grained key, which silently overwrites the flat artifact"
     );
 }
 
@@ -159,9 +185,15 @@ fn an_empty_eligibility_list_means_the_default_list_not_the_empty_one() {
         !rows.is_empty(),
         "the export must still describe every cargo row"
     );
+    // Compare against the LIVE table, not a hardcoded list. The first version
+    // named `qemu-arm-baremetal` literally and so had to be edited when B3
+    // widened the default to `qemu-arm-baremetal linux` — a test that pins the
+    // value it is checking becomes a maintenance tax and, worse, a place where
+    // someone "fixes" the test instead of noticing the change. `manifest_rows()`
+    // already resolves through the shell's own `:-` default, so this derives.
     assert_eq!(
         rows.iter().filter(|r| r.shared).count(),
-        export_with("qemu-arm-baremetal")
+        nros_tests::fixtures::groups::manifest_rows()
             .iter()
             .filter(|r| r.shared)
             .count(),

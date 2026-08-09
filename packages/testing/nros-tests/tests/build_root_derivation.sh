@@ -95,8 +95,20 @@ scenario '
     check "shared platform -> old literal path" \
         " --target-dir $repo_root/build/fixtures-cargo/qemu-arm-baremetal" \
         "$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
+    # phase-340 B3 — the "unmigrated" example must be a platform that is
+    # actually unmigrated. This arm named `linux`, which B3 migrated, so it
+    # started asserting the opposite of its own title. Derive one instead of
+    # naming a second value that a later migration will invalidate again.
+    unmigrated=""
+    for _p in nuttx freertos esp32 threadx-linux; do
+        case " $NROS_FIXTURE_SHARED_PLATFORMS " in
+            *" $_p "*) ;;
+            *) unmigrated="$_p"; break ;;
+        esac
+    done
+    [ -n "$unmigrated" ] || { echo "FAIL no unmigrated platform left to test with"; exit 1; }
     check "unmigrated platform -> no flag (unchanged)" \
-        "" "$(nros_fixture_target_dir_flag linux "" "")"
+        "" "$(nros_fixture_target_dir_flag "$unmigrated" "" "")"
 '
 
 # phase-340 W2 — an authored `--target-dir` used to opt the row OUT; it now
@@ -165,10 +177,21 @@ scenario '
     # The slug function is eligibility-FREE: `check-fixture-groups` has to ask
     # "which group WOULD this row land in?" for a platform that is by
     # definition not migrated yet.
+    # phase-340 B3 — same correction: pick a platform still outside the shipped
+    # list, so this keeps testing "eligibility gates the flag" rather than
+    # quietly testing a migrated platform.
+    unmigrated=""
+    for _p in nuttx freertos esp32 threadx-linux; do
+        case " $NROS_FIXTURE_SHARED_PLATFORMS " in
+            *" $_p "*) ;;
+            *) unmigrated="$_p"; break ;;
+        esac
+    done
+    [ -n "$unmigrated" ] || { echo "FAIL no unmigrated platform left to test with"; exit 1; }
     check "slug is emitted for an unmigrated platform" \
-        "linux" "$(nros_fixture_group_slug linux "" "")"
+        "$unmigrated" "$(nros_fixture_group_slug "$unmigrated" "" "")"
     check "eligibility still gates the FLAG" \
-        "" "$(nros_fixture_target_dir_flag linux "" "")"
+        "" "$(nros_fixture_target_dir_flag "$unmigrated" "" "")"
 '
 
 # The strip. Passing both the authored flag and the group flag hands cargo two
