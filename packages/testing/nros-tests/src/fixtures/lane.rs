@@ -286,7 +286,12 @@ pub fn attribute_path(path: &Path) -> Option<&'static Row> {
 /// the real manifest the longest-match rule happens to hide the difference, so a
 /// test that only exercised `attribute_path` would pass under both rules and
 /// gate nothing.
-fn path_under(path: &Path, dir: &Path) -> bool {
+///
+/// `pub(crate)` for [`crate::fixtures::groups`], which inverts `artifact_root`
+/// for a different question (which shared cargo group did the build redirect
+/// this row into?) and must answer containment identically — the two
+/// inversions disagreeing is the same defect in two places.
+pub(crate) fn path_under(path: &Path, dir: &Path) -> bool {
     let p: Vec<_> = path.components().collect();
     let d: Vec<_> = dir.components().collect();
     p.len() >= d.len() && p[..d.len()] == d[..]

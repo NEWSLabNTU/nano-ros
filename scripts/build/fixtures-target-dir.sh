@@ -114,19 +114,80 @@ nros_fixture_group_slug() {
     if [ -z "$variant" ]; then
         printf '%s' "$platform"
     else
-        printf '%s-%s' "$platform" "$(printf '%s' "$variant" | cksum | cut -d' ' -f1)"
+        # `set --` instead of `| cut -d' ' -f1`: cksum prints "<sum> <bytes>",
+        # and word-splitting it is one fewer exec per row. The batch driver
+        # below runs this over the whole manifest, where the pipeline's third
+        # process was a measurable share of the cost.
+        # shellcheck disable=SC2046
+        set -- $(printf '%s' "$variant" | cksum)
+        printf '%s-%s' "$platform" "$1"
     fi
+}
+
+# nros_fixture_platform_is_shared <platform>
+# True when the platform has been migrated to a shared fixture target dir.
+# ONE spelling of the eligibility rule, split out so a caller can ask the
+# question WITHOUT paying for the key (`nros_fixture_group` is a command
+# substitution, i.e. a fork, and the batch driver below asks this once per row).
+nros_fixture_platform_is_shared() {
+    case " $NROS_FIXTURE_SHARED_PLATFORMS " in
+        *" $1 "*) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 # nros_fixture_group <platform> <cargo-args> <envstr>
 # Echoes the group slug for an ELIGIBLE row, or nothing (not eligible).
 nros_fixture_group() {
     local platform="$1" cargo_args="${2:-}" envstr="${3:-}"
-    case " $NROS_FIXTURE_SHARED_PLATFORMS " in
-        *" $platform "*) ;;
-        *) return 0 ;;
-    esac
+    nros_fixture_platform_is_shared "$platform" || return 0
     nros_fixture_group_slug "$platform" "$cargo_args" "$envstr"
+}
+
+# nros_fixture_group_batch
+# stdin:  one `<platform>\x1f<cargo-args>\x1f<envstr>` record per line.
+# stdout: one `<slug>\x1f<eligible 0|1>` record per line, SAME ORDER.
+#
+# The batch driver lives HERE, in the file that owns the key, because more than
+# one consumer needs "resolve the whole manifest's groups in one process":
+# `check-fixture-groups.py` (the migration precondition gate) and
+# `fixtures-manifest.py fixture-groups` (the export the Rust test resolver
+# reads, phase-340 B2). Each had to spawn `bash` once rather than once per row —
+# 240 spawns would make `check-fast` crawl — and the first version of that loop
+# was written out longhand inside the gate. A second consumer copying it is the
+# R3 drift this phase keeps deleting, so the loop is a function of this file and
+# both callers are `bash -c '. fixtures-target-dir.sh; nros_fixture_group_batch'`.
+#
+# Emits BOTH answers because the two questions are genuinely different and this
+# file is where they are separated (see `nros_fixture_group_slug` vs
+# `nros_fixture_group`): the gate asks "which group WOULD this row land in?"
+# about platforms that are by definition not migrated, while the resolver asks
+# "is this row's build actually redirected today?".
+#
+# Memoised on the raw record because a manifest is overwhelmingly repetitive —
+# 122 cargo rows resolve to 19 distinct slugs, and the default group alone is 38
+# identical `linux||` records. Each miss costs a subshell plus a `cksum` exec;
+# the first version recomputed every row and took 583 ms, which the Rust
+# resolver pays once per TEST PROCESS. Memoised (and with the eligibility fork
+# removed) it is ~15x cheaper. The memo is per-invocation, so it can never go
+# stale.
+nros_fixture_group_batch() {
+    local platform args envstr slug eligible record
+    declare -A _slug_memo=()
+    while IFS=$'\x1f' read -r platform args envstr; do
+        record="${platform}|${args}|${envstr}"
+        slug="${_slug_memo[$record]:-}"
+        if [ -z "$slug" ]; then
+            slug="$(nros_fixture_group_slug "$platform" "$args" "$envstr")"
+            _slug_memo[$record]="$slug"
+        fi
+        if nros_fixture_platform_is_shared "$platform"; then
+            eligible=1
+        else
+            eligible=0
+        fi
+        printf '%s\x1f%s\n' "$slug" "$eligible"
+    done
 }
 
 # nros_fixture_strip_authored_target_dir <cargo-args>

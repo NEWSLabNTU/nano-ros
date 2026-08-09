@@ -7,6 +7,7 @@
 //! Also re-exports utilities from sibling modules for convenience.
 
 mod binaries;
+pub mod groups;
 pub mod lane;
 pub mod staleness;
 pub mod tls_certs;

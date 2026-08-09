@@ -413,23 +413,64 @@ scenario '
         "$(nros_build_dir fixtures-cargo qemu-arm-baremetal)" "$repo_root/$lit"
 '
 
-echo "phase-340 W2.a — shell and Rust agree on WHICH platforms share a dir:"
+echo "phase-340 B2 — the Rust resolver holds NO copy of the eligibility rule:"
 
-# One eligibility rule, two readers. The shell reads
-# NROS_FIXTURE_SHARED_PLATFORMS; the Rust resolver used to hardcode
-# "qemu-arm-baremetal". Widening the shell list alone would have made the build
-# write to the shared dir while the test looked in the leaf — #393 exactly.
+# There used to be a mirror here: `SHARED_PLATFORMS_DEFAULT` in nros-tests
+# beside `NROS_FIXTURE_SHARED_PLATFORMS` in the shell, and this scenario checked
+# the two literals matched. W2.a had already narrowed a hardcoded `match
+# platform` down to a duplicated env read, which is a smaller copy of the rule,
+# not the absence of one — and a copy that read EMPTY as "share nothing" while
+# the shell's `${…:-default}` reads it as "use the default".
+#
+# phase-340 B2 deleted the copy. Eligibility is decided once, by the shell, and
+# arrives PER ROW in `fixtures-manifest.py fixture-groups`, which is also where
+# the variant slug comes from. So the assertion flips: the Rust side must
+# mention the variable NOWHERE, and must reach the export instead.
+#
+# Matched on the READ (`env::var…("NROS_FIXTURE_SHARED_PLATFORMS")`), not on the
+# name: the name appears in several doc comments and in one error message, which
+# is exactly where it SHOULD appear — a resolver that points at the rule it does
+# not own. A bare name grep failed on those comments, which is this phase s
+# "the tripwire landed in a docstring" trap with the polarity reversed.
 scenario '
     cd "$repo_root"
-    sh_default="$(grep -oE "NROS_FIXTURE_SHARED_PLATFORMS:-[a-z0-9 -]+" scripts/build/fixtures-target-dir.sh | head -1 | sed "s/.*:-//")"
-    rs_default="$(grep -oE "SHARED_PLATFORMS_DEFAULT: &str = \"[a-z0-9 -]+\"" packages/testing/nros-tests/src/fixtures/binaries/mod.rs | head -1 | sed "s/.*= \"//; s/\"$//")"
-    check "shell and Rust share one default list" "$sh_default" "$rs_default"
-    if grep -q "NROS_FIXTURE_SHARED_PLATFORMS" packages/testing/nros-tests/src/fixtures/binaries/mod.rs; then
-        echo "  ok   the Rust side READS the env var (not a hardcoded match)"
+    rs="packages/testing/nros-tests/src"
+    if grep -rnE "var(_os)?\(\"NROS_FIXTURE_SHARED_PLATFORMS" "$rs"; then
+        echo "  FAIL the Rust side READS NROS_FIXTURE_SHARED_PLATFORMS again —"
+        echo "       that is a second copy of the eligibility rule. It belongs in"
+        echo "       scripts/build/fixtures-target-dir.sh, reported per row by"
+        echo "       fixtures-manifest.py fixture-groups."
+        rc=1
     else
-        echo "  FAIL the Rust side no longer reads NROS_FIXTURE_SHARED_PLATFORMS"
+        echo "  ok   no Rust copy of the eligibility list"
+    fi
+    if grep -q "fixture-groups" "$rs/fixtures/groups.rs"; then
+        echo "  ok   the Rust resolver consumes the manifest group export"
+    else
+        echo "  FAIL fixtures/groups.rs no longer consumes fixture-groups"
         rc=1
     fi
+'
+
+echo "phase-340 B2 — the batch driver agrees with the per-row key:"
+
+# `nros_fixture_group_batch` exists so two Python consumers (the migration gate
+# and the resolver export) need one `bash` rather than 240. A batch that drifted
+# from the per-row function would hand the test resolver a different dir from
+# the one the BUILD uses — #393 with an extra layer. Compare them directly.
+scenario '
+    cd "$repo_root"
+    . scripts/build/fixtures-target-dir.sh
+    one="$(nros_fixture_group_slug linux "--no-default-features --features rmw-xrce" "")"
+    two="$(printf "linux\x1f--no-default-features --features rmw-xrce\x1f\n" \
+            | nros_fixture_group_batch | cut -d"$(printf "\x1f")" -f1)"
+    check "batch slug == per-row slug" "$one" "$two"
+    # And the memo must not leak one row s answer into the next.
+    mixed="$(printf "linux\x1f\x1f\nlinux\x1f--features link-tls\x1f\nlinux\x1f\x1f\n" \
+            | nros_fixture_group_batch | cut -d"$(printf "\x1f")" -f1 | tr "\n" " ")"
+    check "memo keeps distinct records distinct" \
+        "linux linux-$(printf "%s" "--features link-tls|" | cksum | cut -d" " -f1) linux " \
+        "$mixed"
 '
 
 if [ "$fail" -ne 0 ]; then

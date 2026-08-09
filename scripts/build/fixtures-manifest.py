@@ -21,6 +21,7 @@ the profile is added by the caller; word-split <cargo-args> into an argv array.
 """
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -32,6 +33,13 @@ except ModuleNotFoundError:  # 3.10 and earlier
     import tomli as tomllib
 
 DEFAULT_MANIFEST = "examples/fixtures.toml"
+
+# This script's own repo root — `scripts/build/fixtures-manifest.py`. Used to
+# locate the shell group resolver, which every other consumer reaches by a
+# repo-relative path from a cwd it controls. Deriving it from `__file__` rather
+# than from `--manifest` keeps `fixture-groups` correct when the manifest is
+# passed from elsewhere.
+SCRIPT_ROOT = Path(__file__).resolve().parents[2]
 
 # The launch file a bringup resolves to when it declares no
 # `[system].default_launch`. Mirrors the fallback in
@@ -179,6 +187,20 @@ def cargo_args(entry, *, include_target_dir=True):
     return " ".join(args)
 
 
+def is_cargo_row(entry):
+    """Does this row build with `cargo` (as opposed to `cmake`)?
+
+    ONE spelling of the `lang in ("c", "cpp")` split, which decides three things
+    that must agree: which record shape `list` emits, where `row_artifact_root`
+    says the bytes land, and (phase-340 B2) whether the row can be redirected
+    into a shared cargo `--target-dir` group at all. `fixtures-build.sh` only
+    ever hands the cargo path to `nros_fixture_target_dir_flag`, so a cmake row
+    must never appear in the group export — a cmake artifact redirected to
+    `fixtures-cargo/<slug>` is a resolver looking somewhere nothing was written.
+    """
+    return entry.get("lang") not in ("c", "cpp")
+
+
 def cmake_build_subdir(entry):
     """The cmake build dir a C/C++ `[[fixture]]` row builds into, relative to
     its `dir`.
@@ -215,7 +237,7 @@ def row_artifact_root(entry):
     d = (entry.get("dir") or "").rstrip("/")
     if not d:
         return ""
-    if entry.get("lang") in ("c", "cpp"):
+    if not is_cargo_row(entry):
         return f"{d}/{cmake_build_subdir(entry)}"
     return f"{d}/{entry.get('target_dir') or 'target'}"
 
@@ -283,6 +305,52 @@ def _coords_for(path):
             raise SystemExit(f"{path}: no coordinates — refusing to select nothing")
         _COORDS_CACHE[path] = coords
     return _COORDS_CACHE[path]
+
+
+GROUP_RESOLVER = "scripts/build/fixtures-target-dir.sh"
+
+
+def shell_group_batch(records, *, root=None):
+    """`[(slug, eligible), …]` for `[(platform, cargo_args, envstr), …]`.
+
+    The group KEY is **not** computed here. `nros_fixture_group_slug` /
+    `nros_fixture_group` in `scripts/build/fixtures-target-dir.sh` are the one
+    derivation (RFC-0070 R3) and this shells into them, batched by that file's
+    own `nros_fixture_group_batch` — because the alternative is a `cksum`
+    reimplemented in Python, which is precisely the second spelling phase-340
+    keeps deleting. (`check-fixture-groups.py` shells into the same batch driver
+    for the same reason; the driver itself lives in the shell file so the two
+    callers cannot drift.)
+
+    One `bash` for the whole table: 240 spawns would make every consumer of this
+    slower than the thing it is checking.
+    """
+    records = list(records)
+    if not records:
+        return []
+    stdin = "".join(f"{p}{SEP}{a}{SEP}{e}\n" for p, a, e in records)
+    res = subprocess.run(
+        ["bash", "-c", f". {GROUP_RESOLVER}\nnros_fixture_group_batch\n"],
+        cwd=str(root or SCRIPT_ROOT),
+        input=stdin,
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode != 0:
+        raise SystemExit(
+            f"fixtures-manifest.py: the shell group derivation failed:\n{res.stderr}"
+        )
+    out = res.stdout.splitlines()
+    if len(out) != len(records):
+        raise SystemExit(
+            f"fixtures-manifest.py: the group derivation emitted {len(out)} slugs "
+            f"for {len(records)} rows — the batch driver and this table disagree"
+        )
+    parsed = []
+    for line in out:
+        slug, _, elig = line.partition(SEP)
+        parsed.append((slug, elig == "1"))
+    return parsed
 
 
 def row_coord(entry):
@@ -610,6 +678,12 @@ def main():
             # of its own, which is how the build and the coverage gate came to
             # disagree about 67 rows.
             "coords",
+            # phase-340 B2 — where each cargo row's artifacts ACTUALLY land:
+            # its leaf artifact root paired with the shared `--target-dir`
+            # group the build redirects it into. The Rust fixture resolver
+            # consumes this instead of re-deriving a group key it cannot spell
+            # (the key is a `cksum` over the row's variant signature).
+            "fixture-groups",
             # Issue 0482 — shape-check `[[fixture]]` rows. `validate-workspaces`
             # has required `platform`/`lang`/`rmw` on workspace rows since
             # phase-295; plain rows had no validator at all, so a row missing
@@ -716,6 +790,47 @@ def main():
                 )
         return
 
+    if a.command == "fixture-groups":
+        # phase-340 B2. One
+        # `<artifact_root>\x1f<platform>\x1f<group_slug>\x1f<eligible 0|1>`
+        # line per buildable CARGO `[[fixture]]` row: where the row's artifacts
+        # would land if nothing were shared (`row_artifact_root`, the same
+        # function `coords` exports and the test resolver already inverts), and
+        # the group the fixture BUILD actually redirects it into.
+        #
+        # This is the join the Rust fixture resolver cannot make for itself.
+        # `build_example("native/rust/talker", …)` and
+        # `build_example_rmw(…, Rmw::Zenoh)` distinguish variants ONLY by the
+        # authored dir string (`target/` vs `target-zenoh/`) — which is exactly
+        # the string a group strips — so the variant has to come from the
+        # manifest ROW. And the slug itself is a `cksum` owned by
+        # `fixtures-target-dir.sh`, so Rust must not re-derive it either.
+        # Manifest row + shell key, joined once, here.
+        #
+        # Deliberately NOT filtered by --platform/--lang, like `coords`: a
+        # filtered table would make some rows silently un-redirectable, and the
+        # resolver would look in the leaf dir the build no longer writes to.
+        #
+        # cmake rows are excluded (`is_cargo_row`) because `fixtures-build.sh`
+        # only routes the cargo path through `nros_fixture_target_dir_flag`.
+        rows = [e for e in load(a.manifest) if not e.get("skip_build") and is_cargo_row(e)]
+        derived = shell_group_batch(
+            (e.get("platform", ""), cargo_args(e), env_str(e)) for e in rows
+        )
+        for e, (slug, eligible) in zip(rows, derived):
+            sys.stdout.write(
+                SEP.join(
+                    (
+                        row_artifact_root(e),
+                        str(e.get("platform", "")),
+                        slug,
+                        "1" if eligible else "0",
+                    )
+                )
+                + "\n"
+            )
+        return
+
     if a.command == "validate-fixtures":
         try:
             count = validate_fixtures(load(a.manifest))
@@ -819,7 +934,7 @@ def main():
     for e in load(a.manifest):
         if not matches_filters(e, a, for_probe=a.for_probe):
             continue
-        if e.get("lang") in ("c", "cpp"):
+        if not is_cargo_row(e):
             # cmake record: <dir>\x1f<build-subdir>\x1f<cmake -D defs>\x1f<target>
             # `cmake_build_subdir` is shared with `row_artifact_root`, so where
             # the build WRITES and where the resolver's attribution LOOKS are

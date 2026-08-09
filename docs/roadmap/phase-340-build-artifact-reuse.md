@@ -307,22 +307,88 @@ different behaviour, and no warning fired (the `output filename collision`
 diagnostic only fires when ONE invocation builds both; a group is N). A path
 move before B1 corrupts fixtures that still "build". Cheap; do it first.
 
-**B2. Teach the resolver the variant slug.** W2.a called this "strictly more
-work"; Wave 1 proved it is the ONLY path (the coarse platform-grained key gives
-17 artifact-name collisions). Two sub-blockers, already scoped:
+**B2. Teach the resolver the variant slug. — LANDED (inert), 2026-08-10.**
+W2.a called this "strictly more work"; Wave 1 proved it is the ONLY path (the
+coarse platform-grained key gives 17 artifact-name collisions).
 
-* `build_example` / `build_example_rmw` are the TWO funnels — not the "~30
-  path-keyed functions" the earlier note claims — but they distinguish variants
-  only by the authored dir string (`target/` vs `target-zenoh/`), which is
-  exactly what a group strips. The variant must come from the MANIFEST ROW, not
-  the call site.
-* `require_shared_fixture_binary` hardcodes a `{triple}/` component, and **0 of
-  65** `linux` rows carry `--target` — one directory too deep for a host build.
+The shape is a **prefix rewrite keyed on the manifest row**:
+`fixtures-manifest.py fixture-groups` pairs each cargo row's
+`row_artifact_root()` with the slug the SHELL derives for it
+(`nros_fixture_group_batch`, new, so the gate and the export share one loop),
+and `nros_tests::fixtures::groups` inverts the root the way
+`fixtures::lane` already inverts it for coordinate narrowing — leaf artifact
+path → row → `build/fixtures-cargo/<slug>`, carrying every component below the
+root verbatim.
+
+Both recorded sub-blockers dissolve rather than get solved:
+
+* the variant no longer comes from the call site at all, so `build_example` /
+  `build_example_rmw` are untouched. The rewrite sits at
+  `require_prebuilt_binary`, the chokepoint — which also covers the ~30 inline
+  `target/`-spelling resolvers (`bins/int32-sink`, `bins/param-chatter-talker`,
+  …) that the two funnels do NOT front. Fixing only the funnels was the #328
+  shape.
+* the `{triple}/` component is never synthesised. `--target-dir` moves the ROOT
+  and nothing below it, so a cross row's leaf path carries its triple and keeps
+  it, and a host row has none and does not gain one. No triple table.
+
+Also gone: the Rust mirror of `NROS_FIXTURE_SHARED_PLATFORMS`. Eligibility is
+decided once, in the shell, and arrives per row in the export. The mirror was
+already WRONG — it read an empty value as "share nothing" while the shell's
+`${…:-default}` reads it as "use the default". `build_root_derivation.sh` now
+fails if any Rust `env::var` of that name reappears.
+
+`check-fixture-groups`'s A2 arm was replaced with the agreement check its own
+comment demanded: **A2a** the export and the gate's derivation must agree row
+for row, **A2b** for every shared platform `artifact_root -> slug` must be a
+function over non-empty, pairwise-unnested roots (the precondition that makes
+the inversion unambiguous).
+
+Cost: one `fixtures-manifest.py fixture-groups` per test process, measured
+**111 ms** (122 cargo rows, 19 distinct slugs), lazy and `OnceLock`-cached. The
+first cut was 583 ms; memoising the batch driver and dropping a fork per row
+did the rest. If a sweep shows that mattering, make the EXPORT cheaper — never
+add a second eligibility rule in Rust.
+
+Verified without a provisioned tree: `just check-fast`, `check-fixture-groups`,
+`build_root_derivation.sh` (54 checks), `nros-tests` lib + lane +
+`tests/fixture_group_resolution.rs`. That last one drives the export with
+`NROS_FIXTURE_SHARED_PLATFORMS` widened to include `linux` — B3's exact change —
+and asserts the four `talker` rows land in four different group dirs. Tripwires
+(each verified to perturb its target): coarse key → the four-dirs test fails and
+A1 reports the recorded 11 `linux` collisions; a resolver that assumes a triple
+→ the triple test fails; two shared rows at one artifact root → A2b and its Rust
+twin fail; export row-selection drift → A2a fails; widening the shipped list →
+the inertness test fails. The make-leaf scenario in `build_root_derivation.sh`
+caught a REAL bug during the work: the new `nros_fixture_platform_is_shared`
+was missing from `fixtures-build.sh`'s `export -f` list, which would have made
+every leaf emit an empty `--target-dir`.
+
+**NOT verified:** anything requiring a fixture build (this was done in an
+unprovisioned worktree). That is B3's acceptance, by construction.
 
 **B3. Migrate `linux`, then the remaining platforms.** Measured prize on
 `linux` alone: **46.08 GiB -> ~6.95 GiB, -84.9 %**. Acceptance is a native-lane
 rebuild, because #393's failure mode is the build, the staleness probe and the
 test resolver disagreeing — a gate-level check cannot see it.
+
+After B2 the code change is one line — add `linux` to
+`NROS_FIXTURE_SHARED_PLATFORMS` in `scripts/build/fixtures-target-dir.sh` — plus
+two things the change makes fail on purpose:
+
+* `tests/fixture_group_resolution.rs::the_shipped_eligibility_list_redirects_no_linux_row`
+  asserts the inertness B2 claims; B3 must rewrite it to assert the migration
+  instead.
+* the leaf `target*/` trees under `examples/` and
+  `packages/testing/nros-tests/bins/` become dead output the moment the build
+  redirects. They are NOT deleted by the migration, and a stale one sitting
+  beside a redirected build is invisible (the resolver stops looking there) —
+  which is fine for correctness and is exactly the ignore sprawl item 7 collapses.
+
+Then re-check: `require_shared_fixture_binary` is now a hard error for a
+multi-group platform, so if any `linux` resolver still reaches it (none do
+today — its only callers are `qemu-arm-baremetal`), it will say so by name
+rather than silently answering for the default group.
 
 **B4. Items 7 and 8 fall out of B3.**
 * Item 7 becomes real once 110 collapses toward 1; until then every ignore line

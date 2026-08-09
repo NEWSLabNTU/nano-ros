@@ -265,7 +265,16 @@ else
     export platform
     # `nros_build_{root,dir}` come along: the resolver calls them, and a leaf
     # never sources build-root.sh (phase-334 W2.b — the step-1 regression).
+    # `nros_fixture_platform_is_shared` is in the list because
+    # `nros_fixture_group` CALLS it (phase-340 B2 split the eligibility test out
+    # of it so the batch driver could ask without forking). A leaf is a fresh
+    # bash that has only what `export -f` gave it, so an un-exported callee is
+    # an unbound command: `nros_fixture_group` would emit nothing, the row would
+    # look ineligible, and the build would write the example-local `target/`
+    # while the probe and the test resolver looked in the group dir. Caught by
+    # `build_root_derivation.sh`'s make-leaf scenario, which reads THIS list.
     export -f nros_fixture_target_dir_flag nros_fixture_group nros_fixture_group_slug \
+              nros_fixture_platform_is_shared \
               nros_fixture_strip_authored_target_dir _nros_fixture_variant_sig \
               nros_build_root nros_build_dir
     # Phase 214.I.2 — fail-loud prereq guard: `nros_fixture_build_one`

@@ -451,6 +451,18 @@ pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf>
     // to every check below unchanged, so this can never launder "never built"
     // into "skipped" — see `fixtures::lane`.
     crate::fixtures::lane::require_in_lane(binary_path)?;
+    // phase-340 B2 — and AFTER the lane check, also on purpose: lane narrowing
+    // attributes a path to its manifest row via the LEAF artifact root, which
+    // the redirect below replaces. Reordering these two silently disables
+    // coordinate-scoped runs for every migrated platform.
+    //
+    // The redirect is at the chokepoint rather than at the two `build_example*`
+    // funnels because the funnels are not the whole class: `bins/int32-sink`,
+    // `bins/param-chatter-talker` and ~30 siblings spell their leaf `target/`
+    // path inline, and each of those is a manifest row that the fixture build
+    // will redirect the moment its platform is migrated. Fixing only the
+    // funnels is the #328 shape (4 resolvers fixed, ~30 left).
+    let binary_path = &crate::fixtures::groups::resolved(binary_path);
     if binary_path.exists() {
         return Ok(binary_path.to_path_buf());
     }
@@ -592,6 +604,14 @@ pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<Pa
         return Ok(resolved);
     }
     staleness::begin_probe();
+    // phase-340 B2 — probe the RESOLVED path, not the authored one.
+    // `require_prebuilt_binary` may have redirected a leaf-local path onto its
+    // shared cargo group dir, and the `.d` dep-info file lives beside the
+    // artifact cargo actually wrote. Probing the leaf path instead would find
+    // no `.d`, report `None`, and treat every redirected fixture as fresh
+    // forever — a museum binary with a passing freshness check, which is issue
+    // 0196 in the resolver.
+    let binary_path: &Path = &resolved;
     if let Some(newer) = dep_info_newer_source(binary_path) {
         return Err(staleness::stale_error(
             "Test fixture",
@@ -2475,70 +2495,37 @@ pub fn build_test_fixture(
     require_prebuilt_binary_fresh(&binary_path)
 }
 
-/// Phase 226.D — migrated platforms whose default-config standalone Rust
-/// fixtures share one fixture-only Cargo target dir
-/// (`build/fixtures-cargo/<platform>`). This mirrors the shell resolver in
-/// `scripts/build/fixtures-target-dir.sh`: `scripts/build/fixtures-build.sh`
-/// builds eligible rows into the shared dir, so the test harness must
-/// resolve the prebuilt binary there instead of the example-local
-/// `target/`. ESP32 flash packaging and RTOS rows are deferred to a later
-/// patch (they carry extra postprocessing).
+/// Phase 226.D — resolve a prebuilt standalone Rust fixture that builds into
+/// the shared fixture target dir, for a caller that knows a PLATFORM and a
+/// binary name but no manifest row.
 ///
-/// Returns `None` for platforms not yet migrated, so unrelated callers
-/// keep their example-local resolution. Only the *default* group (no
-/// extra features/env) is mirrored here, matching the only rows this
-/// platform carries today; a future feature/env variant would get a
-/// hashed group slug on the shell side and would need an explicit mirror.
+/// `platform` selects the group, `triple` is the cross target the leaf's
+/// `.cargo/config.toml [build] target` puts in the path, `binary_name` is the
+/// Cargo `[[bin]]` name; the binary lands at
+/// `build/fixtures-cargo/<group>/<triple>/<profile>/<binary_name>`.
 ///
-/// RFC-0070 R3 (phase-334 W2.b step 2) — the shell side moved onto
-/// `nros_build_dir` in step 1; this resolver was the half left on a literal, so
-/// `NROS_BUILD_ROOT` relocated the build but not the lookup. Both now derive.
-/// Platforms whose Rust fixture rows share one cargo target dir.
+/// phase-340 B2 — the group now comes from
+/// [`crate::fixtures::groups::sole_group_dir`] instead of a hardcoded
+/// `fixtures-cargo/<platform>`, which is what made this the DEFAULT-group-only
+/// resolver `check-fixture-groups`'s A2 arm was blocking migrations on. Two
+/// consequences, both deliberate:
 ///
-/// phase-340 W2.a — this MIRRORS `NROS_FIXTURE_SHARED_PLATFORMS` in
-/// `scripts/build/fixtures-target-dir.sh`, and reads the same env var with the
-/// same default so the two cannot diverge.
-///
-/// It used to be a hardcoded `match platform { "qemu-arm-baremetal" => … }`
-/// while the shell read the env var — two spellings of ONE eligibility rule,
-/// which is the #393 class waiting to happen. Adding a platform to the shell
-/// list alone would have made the BUILD write to the shared dir while the TEST
-/// kept looking in the leaf, and every row of that platform would have reported
-/// its binary missing with nothing pointing at the cause.
-const SHARED_PLATFORMS_DEFAULT: &str = "qemu-arm-baremetal";
-
-fn fixture_shared_platforms() -> Vec<String> {
-    std::env::var("NROS_FIXTURE_SHARED_PLATFORMS")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| SHARED_PLATFORMS_DEFAULT.to_string())
-        .split_whitespace()
-        .map(str::to_string)
-        .collect()
-}
-
-fn fixture_shared_target_dir(platform: &str) -> Option<PathBuf> {
-    fixture_shared_platforms()
-        .iter()
-        .any(|p| p == platform)
-        .then(|| build_dir("fixtures-cargo", &[platform]))
-}
-
-/// Phase 226.D — resolve a prebuilt standalone Rust fixture that builds
-/// into the shared fixture target dir. `platform` selects the group,
-/// `triple` is the cross target, `binary_name` is the Cargo `[[bin]]`
-/// name. The binary lands at
-/// `build/fixtures-cargo/<platform>/<triple>/<profile>/<binary_name>`.
+/// * the Rust-side mirror of `NROS_FIXTURE_SHARED_PLATFORMS` is GONE.
+///   Eligibility is decided once, by the shell, and arrives per row in the
+///   export — a mirror of an eligibility list is the #393 class, and this one
+///   had already been reduced from a hardcoded `match` to a duplicated env read
+///   without removing the duplication.
+/// * a platform with MORE than one group is an error here rather than a silent
+///   answer for the default group. Such a platform's resolvers must route
+///   through a leaf artifact path (the two `build_example*` funnels and their
+///   ~30 inline siblings all do), because only the path names the row and hence
+///   the variant. `linux` will have seven groups.
 fn require_shared_fixture_binary(
     platform: &str,
     triple: &str,
     binary_name: &str,
 ) -> TestResult<PathBuf> {
-    let target_dir = fixture_shared_target_dir(platform).ok_or_else(|| {
-        TestError::BuildFailed(format!(
-            "Phase 226.D: platform {platform:?} is not migrated to a shared fixture target dir"
-        ))
-    })?;
+    let target_dir = crate::fixtures::groups::sole_group_dir(platform)?;
     let binary_path = target_dir.join(format!(
         "{triple}/{}/{}",
         cargo_target_profile_dir(),

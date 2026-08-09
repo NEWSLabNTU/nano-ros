@@ -43,15 +43,36 @@ Three arms, all fatal:
       two rows and one artifact path.  See `collisions()` for why that
       distinction is the whole arm.
 
-  A2  For every such platform, every group it produces is the DEFAULT group
-      (slug == platform).  This is not a style rule: the Rust resolver
-      (`fixture_shared_target_dir` in nros-tests) can express no other shape —
-      it returns `build_dir("fixtures-cargo", &[platform])` and has no mirror of
-      the shell's hashed variant slug.  Adding a platform whose rows carry
-      features or env would make the BUILD write `fixtures-cargo/<plat>-<hash>`
-      while the TEST looked in `fixtures-cargo/<plat>` — issue #393 verbatim.
-      When the Rust side learns variant groups, replace this arm with the
-      agreement check; do not simply delete it.
+  A2  The AGREEMENT check — phase-340 B2 replaced the old arm here, as that
+      arm's own instructions required.
+
+      It used to read "every group a shared platform produces is the DEFAULT
+      group (slug == platform)", because the Rust resolver
+      (`fixture_shared_target_dir`) returned `build_dir("fixtures-cargo",
+      &[platform])` and had no mirror of the shell's hashed variant slug.  A
+      platform whose rows carry features or env would have made the BUILD write
+      `fixtures-cargo/<plat>-<hash>` while the TEST looked in
+      `fixtures-cargo/<plat>` — issue #393 verbatim — so the arm blocked every
+      migration except the one accidentally collision-free platform.
+
+      The Rust resolver now reads `fixtures-manifest.py fixture-groups`, which
+      pairs each cargo row's `row_artifact_root()` with the slug this same shell
+      derivation produces, and rewrites a leaf artifact path onto the group dir
+      (`nros_tests::fixtures::groups`).  It can express ANY slug.  What it still
+      cannot do is tell apart two rows that share an artifact root — that is the
+      key it inverts.  So the arm becomes the two things that are now actually
+      load-bearing:
+
+        A2a  the export and this gate's own derivation must agree, row for row.
+             Both shell into `nros_fixture_group_batch`, but by different paths
+             (`list --lang rust --with-platform` here, `is_cargo_row` +
+             `cargo_args()` there), and a resolver reading a table this gate
+             never checked is the two-derivations defect one level up.
+        A2b  for every SHARED platform, `artifact_root -> slug` must be a
+             FUNCTION, with non-empty, pairwise-unnested roots.  Two rows at one
+             root resolve to whichever group the inversion happens to pick — a
+             green test on the wrong artifact, which is what A1 exists to
+             prevent inside a group and this prevents between groups.
 
   A3  Every artifact-name collision the manifest contains is frozen in
       `KNOWN_COLLISIONS` below.  A budget, in the same spirit as
@@ -175,14 +196,14 @@ def groups_for(records):
     One `bash` invocation for the whole manifest rather than one per row: the
     point is to call `nros_fixture_group_slug` itself, not to be fast about it,
     but 240 shell spawns would make this gate the slowest thing in `check-fast`.
+
+    phase-340 B2 — the batch LOOP moved into `fixtures-target-dir.sh` as
+    `nros_fixture_group_batch` when a second consumer appeared
+    (`fixtures-manifest.py fixture-groups`, which the Rust test resolver reads).
+    Two hand-written copies of "source the resolver and loop" is the drift this
+    phase deletes; the loop now lives in the file that owns the key.
     """
-    program = (
-        "set -u\n"
-        ". scripts/build/fixtures-target-dir.sh\n"
-        "while IFS=$'\\x1f' read -r platform args envstr; do\n"
-        '    printf "%s\\n" "$(nros_fixture_group_slug "$platform" "$args" "$envstr")"\n'
-        "done\n"
-    )
+    program = ". scripts/build/fixtures-target-dir.sh\nnros_fixture_group_batch\n"
     stdin = "".join(
         f"{r.platform}{SEP}{r.cargo_args}{SEP}{r.env}\n" for r in records
     )
@@ -203,7 +224,52 @@ def groups_for(records):
             f"check-fixture-groups: derivation emitted {len(out)} slugs for "
             f"{len(records)} rows — the batch program and the manifest disagree"
         )
-    return out
+    # `<slug>\x1f<eligible>`; this gate wants the key, and asks
+    # `shared_platforms()` about eligibility itself.
+    return [line.split(SEP)[0] for line in out]
+
+
+class ExportRow(NamedTuple):
+    """One line of `fixtures-manifest.py fixture-groups` — the table the Rust
+    fixture resolver reads."""
+
+    artifact_root: str
+    platform: str
+    slug: str
+    shared: bool
+
+
+def export_rows():
+    """The group export, as the Rust resolver sees it (phase-340 B2)."""
+    out = subprocess.run(
+        [
+            sys.executable,
+            os.path.join(ROOT, "scripts/build/fixtures-manifest.py"),
+            "fixture-groups",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        root, platform, slug, shared = line.split(SEP)
+        yield ExportRow(root, platform, slug, shared == "1")
+
+
+def path_under(path, directory):
+    """Is `path` inside `directory`, comparing whole path COMPONENTS?
+
+    Mirrors `nros_tests::fixtures::lane::path_under`, which is the rule the Rust
+    resolver actually inverts with: a textual prefix would say
+    `examples/x/target` contains `examples/x/target-zenoh`, a different row in a
+    different group.
+    """
+    p = path.strip("/").split("/")
+    d = directory.strip("/").split("/")
+    return len(p) >= len(d) and p[: len(d)] == d
 
 
 def shared_platforms():
@@ -341,13 +407,69 @@ def main():
 
     shared = shared_platforms()
     failures = []
+    exported = list(export_rows())
 
-    # --- A1 + A2: the platforms that ALREADY share a dir -------------------
+    # --- A2a: the export the Rust resolver reads agrees with this gate ------
+    #
+    # Multiset of (platform, slug), because the two derivations select rows by
+    # different predicates (`--lang rust` here, `is_cargo_row` there) and
+    # assemble the cargo args by different call paths. Same shell function
+    # underneath — which is the point: if these ever differ, one of the two
+    # CALLERS is feeding it something else, and the Rust resolver would be
+    # keying on a table nothing else validates.
+    here = collections.Counter((r.platform, s) for r, s in zip(records, slugs))
+    there = collections.Counter((r.platform, r.slug) for r in exported)
+    if here != there:
+        only_here = sorted((here - there).elements())
+        only_there = sorted((there - here).elements())
+        failures.append(
+            "A2a: `fixtures-manifest.py fixture-groups` (the table the Rust "
+            "fixture resolver reads) disagrees with this gate's derivation.\n"
+            f"      only in this gate: {only_here}\n"
+            f"      only in the export: {only_there}\n"
+            "      Both shell into `nros_fixture_group_batch`, so the key is not "
+            "the suspect — the row SELECTION or the cargo-arg assembly on one "
+            "side is."
+        )
+
+    # --- A2b: the export is invertible for every SHARED platform -----------
+    #
+    # `nros_tests::fixtures::groups` resolves a leaf artifact path to a group by
+    # matching `artifact_root`. That is only well-defined when the root
+    # DETERMINES the slug and no root sits inside another.
+    shared_export = [r for r in exported if r.shared]
+    by_root = collections.defaultdict(set)
+    for r in shared_export:
+        if not r.artifact_root:
+            failures.append(
+                f"A2b: a shared {r.platform!r} row in group {r.slug!r} has no "
+                f"artifact root, so no resolver can find its binary"
+            )
+            continue
+        by_root[r.artifact_root].add(r.slug)
+    for root, group_slugs in sorted(by_root.items()):
+        if len(group_slugs) > 1:
+            failures.append(
+                f"A2b: artifact root {root!r} is claimed by {len(group_slugs)} "
+                f"groups ({', '.join(sorted(group_slugs))}). The resolver inverts "
+                f"the root, so it would pick one of them arbitrarily and the test "
+                f"would run the other group's binary. Give one row its own "
+                f"`target_dir`."
+            )
+    for a in sorted(by_root):
+        for b in sorted(by_root):
+            if a != b and path_under(a, b):
+                failures.append(
+                    f"A2b: artifact root {a!r} is nested inside {b!r}; longest-match "
+                    f"attribution cannot separate them"
+                )
+
+    # --- A1: the platforms that ALREADY share a dir ------------------------
     for platform in shared:
         by_group = per_platform.get(platform)
         if not by_group:
             failures.append(
-                f"A1/A2: {platform!r} is in NROS_FIXTURE_SHARED_PLATFORMS but the "
+                f"A1: {platform!r} is in NROS_FIXTURE_SHARED_PLATFORMS but the "
                 f"manifest has no rust rows for it — the eligibility list names a "
                 f"platform this gate cannot check"
             )
@@ -369,15 +491,6 @@ def main():
                     f"A1: group {group!r} has {len(owners)} rows claiming artifact "
                     f"{name!r}: {who} ({how})"
                 )
-        for group in sorted(by_group):
-            if group != platform:
-                failures.append(
-                    f"A2: {platform!r} produces the variant group {group!r}, which "
-                    f"the Rust resolver cannot express (fixture_shared_target_dir "
-                    f"returns fixtures-cargo/<platform> only). Teach it the variant "
-                    f"slug — and update this arm — before sharing this platform."
-                )
-
     # --- A3: the frozen collision inventory, over EVERY platform -----------
     #
     # Deliberately NOT filtered by `shared`. A1 and A3 answer different
@@ -422,11 +535,19 @@ def main():
     n_groups = sum(len(per_platform[p]) for p in shared)
     n_rows = sum(len(m) for p in shared for m in per_platform[p].values())
     n_recorded = sum(len(v) for v in KNOWN_COLLISIONS.values())
+    # Every number here is an assertion — see the module docstring on how the
+    # PASSING message, not the exit code, was what exposed the coarse key.
+    # `{len(exported)} exported` vs `{n_rows} row(s)` is the one to read: the
+    # export covers every cargo row on every platform, the row count only the
+    # shared ones, so exported < rows would mean the resolver's table is
+    # narrower than what this gate checked.
     print(
         f"fixture groups: {len(shared)} shared platform(s), {n_groups} group(s), "
         f"{n_rows} row(s) — no artifact-name collisions; "
         f"{n_recorded} collision(s) recorded across "
-        f"{len(KNOWN_COLLISIONS)} unshared platform(s)."
+        f"{len(KNOWN_COLLISIONS)} unshared platform(s); "
+        f"{len(exported)} cargo row(s) exported to the resolver, "
+        f"{len(by_root)} shared artifact root(s), all invertible."
     )
     return 0
 
