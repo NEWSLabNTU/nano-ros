@@ -131,6 +131,74 @@ def rewrite(junit_path: str) -> int:
     return total_rewritten
 
 
+# A skip message that tells you to RUN something describes a SETUP gap: this
+# machine could satisfy it. One that reports an absent tool or platform is a
+# CAPABILITY gap and is the legitimate use of a skip.
+#
+# Crude on purpose — it keys on the remedy verb, not on a taxonomy nobody would
+# maintain. Issue 0483's message ("Build with: just ...") is a setup gap; "qemu
+# not found" is a capability gap.
+_REMEDY_HINTS = ("just ", "run:", "run `", "build with", "cargo install", "nros setup")
+
+
+def report_silent_suites(junit_path: str) -> int:
+    """Name every test BINARY that ran and asserted nothing (issue 0483 class).
+
+    A suite where 100 % of cases skipped is a green that means "did not run".
+    Tonight's catalogue of that shape: `check-fast` failing in 0.77 s having
+    checked nothing (0466), `wait_for_output_pattern` returning Ok on timeout
+    (0471), and 16 emulator tests skipping on a library whose remedy named a
+    recipe that did not exist (0483) — 116 s of QEMU coverage reported as a pass
+    in one second.
+
+    Reported, not fatal, by default: a partial environment legitimately cannot
+    run every suite, and a check that reddens every developer machine gets
+    disabled rather than heeded. `NROS_STRICT_SKIPS=1` makes it fatal, which is
+    what a provisioned lane should set.
+    """
+    try:
+        tree = ET.parse(junit_path)
+    except (OSError, ET.ParseError):
+        return 0
+
+    by_suite: dict[str, list[ET.Element]] = {}
+    for case in tree.getroot().iter("testcase"):
+        by_suite.setdefault(case.get("classname") or "?", []).append(case)
+
+    silent = []
+    for suite, cases in sorted(by_suite.items()):
+        if not cases:
+            continue
+        if any(c.find("skipped") is None for c in cases):
+            continue  # something ran
+        reasons = set()
+        for c in cases:
+            el = c.find("skipped")
+            msg = (el.get("message") if el is not None else "") or ""
+            reasons.add(msg.strip().splitlines()[0][:120] if msg.strip() else "(no reason given)")
+        setup = any(any(h in r.lower() for h in _REMEDY_HINTS) for r in reasons)
+        silent.append((suite, len(cases), sorted(reasons), setup))
+
+    if not silent:
+        return 0
+
+    setup_gaps = [s for s in silent if s[3]]
+    print("")
+    print(f"rewrite-skipped-junit: {len(silent)} suite(s) ran and asserted NOTHING:")
+    for suite, n, reasons, is_setup in silent:
+        tag = "SETUP GAP" if is_setup else "capability"
+        print(f"  [{tag}] {suite}: all {n} case(s) skipped")
+        for r in reasons[:2]:
+            print(f"      {r}")
+    if setup_gaps:
+        print("")
+        print("  The [SETUP GAP] suites skipped because something was NOT BUILT, not")
+        print("  because this machine cannot run them — their own messages name a")
+        print("  command. That is a green meaning \"did not run\" (issue 0483).")
+    print("")
+    return len(setup_gaps)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     junit = args[0] if args else DEFAULT_JUNIT
@@ -140,6 +208,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"rewrite-skipped-junit: rewrote {n} [SKIPPED] failure(s) "
             f"to <skipped> in {junit}"
         )
+    setup_gaps = report_silent_suites(junit)
+    if setup_gaps and os.environ.get("NROS_STRICT_SKIPS", "0") != "0":
+        print(
+            f"rewrite-skipped-junit: {setup_gaps} suite(s) skipped entirely on a "
+            f"SETUP gap and NROS_STRICT_SKIPS=1",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
