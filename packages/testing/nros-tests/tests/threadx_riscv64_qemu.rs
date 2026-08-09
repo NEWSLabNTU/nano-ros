@@ -151,14 +151,23 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
         let sock_talker = sock_talker.to_str().expect("utf-8 socket path");
         let sock_listener = sock_listener.to_str().expect("utf-8 socket path");
 
-        let listener = QemuProcess::start_riscv64_virt_dgram(
+        let mut listener = QemuProcess::start_riscv64_virt_dgram(
             &listener_bin,
             sock_listener,
             sock_talker,
             LISTENER_MAC,
         )
         .expect("start listener QEMU (dgram)");
-        std::thread::sleep(Duration::from_secs(4));
+        // phase-342 W8b — wait for the listener to SAY it is subscribed.
+        // All three threadx listeners print `LISTENER_READY_MARKER` (W7
+        // converged them; `example_output_conformance` gates that they keep
+        // doing so), so this cannot rot into a silent timeout.
+        listener
+            .wait_for_output_pattern(
+                nros_tests::output::LISTENER_READY_MARKER,
+                Duration::from_secs(30),
+            )
+            .unwrap_or_else(|e| panic!("threadx riscv64 listener never subscribed: {e}"));
         let talker = QemuProcess::start_riscv64_virt_dgram(
             &talker_bin,
             sock_talker,
@@ -173,9 +182,19 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
         // platforms' mcast-socket harnesses (threadx tests run single-threaded
         // in their nextest group).
         const MCAST: &str = "230.0.0.7:11700";
-        let listener = QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
-            .expect("start listener QEMU (socket,mcast)");
-        std::thread::sleep(Duration::from_secs(4));
+        let mut listener =
+            QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
+                .expect("start listener QEMU (socket,mcast)");
+        // phase-342 W8b — wait for the listener to SAY it is subscribed.
+        // All three threadx listeners print `LISTENER_READY_MARKER` (W7
+        // converged them; `example_output_conformance` gates that they keep
+        // doing so), so this cannot rot into a silent timeout.
+        listener
+            .wait_for_output_pattern(
+                nros_tests::output::LISTENER_READY_MARKER,
+                Duration::from_secs(30),
+            )
+            .unwrap_or_else(|e| panic!("threadx riscv64 listener never subscribed: {e}"));
         let talker = QemuProcess::start_riscv64_virt_mcast(&talker_bin, MCAST, TALKER_MAC)
             .expect("start talker QEMU (socket,mcast)");
         (listener, talker)
@@ -266,14 +285,23 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub() {
         let sock_talker = sock_talker.to_str().expect("utf-8 socket path");
         let sock_listener = sock_listener.to_str().expect("utf-8 socket path");
 
-        let listener = QemuProcess::start_riscv64_virt_dgram(
+        let mut listener = QemuProcess::start_riscv64_virt_dgram(
             &listener_bin,
             sock_listener,
             sock_talker,
             LISTENER_MAC,
         )
         .expect("start listener QEMU (dgram)");
-        std::thread::sleep(Duration::from_secs(4));
+        // phase-342 W8b — wait for the listener to SAY it is subscribed.
+        // All three threadx listeners print `LISTENER_READY_MARKER` (W7
+        // converged them; `example_output_conformance` gates that they keep
+        // doing so), so this cannot rot into a silent timeout.
+        listener
+            .wait_for_output_pattern(
+                nros_tests::output::LISTENER_READY_MARKER,
+                Duration::from_secs(30),
+            )
+            .unwrap_or_else(|e| panic!("threadx riscv64 listener never subscribed: {e}"));
         let talker = QemuProcess::start_riscv64_virt_dgram(
             &talker_bin,
             sock_talker,
@@ -286,9 +314,19 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub() {
         // Dedicated mcast group — distinct from the C test's so the two can
         // run concurrently within the serialized qemu group.
         const MCAST: &str = "230.0.0.7:11701";
-        let listener = QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
-            .expect("start listener QEMU (socket,mcast)");
-        std::thread::sleep(Duration::from_secs(4));
+        let mut listener =
+            QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
+                .expect("start listener QEMU (socket,mcast)");
+        // phase-342 W8b — wait for the listener to SAY it is subscribed.
+        // All three threadx listeners print `LISTENER_READY_MARKER` (W7
+        // converged them; `example_output_conformance` gates that they keep
+        // doing so), so this cannot rot into a silent timeout.
+        listener
+            .wait_for_output_pattern(
+                nros_tests::output::LISTENER_READY_MARKER,
+                Duration::from_secs(30),
+            )
+            .unwrap_or_else(|e| panic!("threadx riscv64 listener never subscribed: {e}"));
         let talker = QemuProcess::start_riscv64_virt_mcast(&talker_bin, MCAST, TALKER_MAC)
             .expect("start talker QEMU (socket,mcast)");
         (listener, talker)
@@ -358,14 +396,23 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
         let sock_talker = sock_talker.to_str().expect("utf-8 socket path");
         let sock_listener = sock_listener.to_str().expect("utf-8 socket path");
 
-        let listener = QemuProcess::start_riscv64_virt_dgram(
+        let mut listener = QemuProcess::start_riscv64_virt_dgram(
             &listener_bin,
             sock_listener,
             sock_talker,
             LISTENER_MAC,
         )
         .expect("start C++ listener QEMU (dgram)");
-        std::thread::sleep(Duration::from_secs(4));
+        // phase-342 W8b — wait for the listener to SAY it is subscribed.
+        // All three threadx listeners print `LISTENER_READY_MARKER` (W7
+        // converged them; `example_output_conformance` gates that they keep
+        // doing so), so this cannot rot into a silent timeout.
+        listener
+            .wait_for_output_pattern(
+                nros_tests::output::LISTENER_READY_MARKER,
+                Duration::from_secs(30),
+            )
+            .unwrap_or_else(|e| panic!("threadx riscv64 listener never subscribed: {e}"));
         let talker = QemuProcess::start_riscv64_virt_dgram(
             &talker_bin,
             sock_talker,
@@ -379,9 +426,19 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
         // never cross-talk; threadx lanes are serialized in their nextest group
         // regardless.
         const MCAST: &str = "230.0.0.8:11701";
-        let listener = QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
-            .expect("start C++ listener QEMU (socket,mcast)");
-        std::thread::sleep(Duration::from_secs(4));
+        let mut listener =
+            QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
+                .expect("start C++ listener QEMU (socket,mcast)");
+        // phase-342 W8b — wait for the listener to SAY it is subscribed.
+        // All three threadx listeners print `LISTENER_READY_MARKER` (W7
+        // converged them; `example_output_conformance` gates that they keep
+        // doing so), so this cannot rot into a silent timeout.
+        listener
+            .wait_for_output_pattern(
+                nros_tests::output::LISTENER_READY_MARKER,
+                Duration::from_secs(30),
+            )
+            .unwrap_or_else(|e| panic!("threadx riscv64 listener never subscribed: {e}"));
         let talker = QemuProcess::start_riscv64_virt_mcast(&talker_bin, MCAST, TALKER_MAC)
             .expect("start C++ talker QEMU (socket,mcast)");
         (listener, talker)
