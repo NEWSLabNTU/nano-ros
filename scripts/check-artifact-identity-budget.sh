@@ -43,14 +43,34 @@
 #
 # THE NUMBERS (measured 2026-08-07 on a full native-lane mixed tree)
 #
-#   nros_core                8 identities   the headline number, pinned exactly
-#   any crate               <=9 identities  nros_serdes is the max (8 + one
-#                                           more from the nested per-msg-package
-#                                           `nros-minsizerel` trees)
+#   nros_core                4 identities   the headline number, pinned exactly
+#   any crate              <=12 identities  `nros` is the max
 #   any single identity     <=5 copies      the five `src/*/nano_ros_cpp_ffi_*/
 #                                           target/` trees each write their own
 #                                           copy of the SAME hash — R1, the
 #                                           per-directory isolation
+#
+# **The 2026-08-07 numbers were produced by a broken counter and are NOT
+# comparable to these** (found 2026-08-10 — see "axis 1" below). `uniq -c` on
+# locale-collated input reported `nros` twice, as 7 and 5, so the tree-wide
+# ceiling of 9 was compared against two halves of a crate that actually had 12.
+# It never measured what it claimed. The old note here read "nros_serdes is the
+# max" at 8-9; `nros_serdes` measures 5, and it is not the max.
+#
+# So `12` is not a raised ceiling — it is the FIRST honest reading of this axis,
+# and it decomposes exactly:
+#
+#     2 workspace roots  x  2 R3 halves  x  3 feature identities  =  12
+#
+# `nano-ros_23c15` and `nros_ws_runtime_16b35` are the roots (the "22/22 leaves
+# are workspace roots" fact Wave 1 measured); host `debug/deps` vs explicit
+# `x86_64-unknown-linux-gnu/debug/deps` is the R3 split phase-340 W3 made
+# universal. Nothing here is unexplained, which is the precondition item 8
+# demanded before any number moved.
+#
+# `nros_core` drops 8 -> 4 in the same edit: it reads 4 and has read 4 across
+# every session, it is contiguous under any collation (its four hashes start
+# 0/4/6/9), and item 8 named it as separately well understood.
 #
 # The named budget pins the crate the phase measured; the two ceilings are the
 # class-wide arm, so regrowth in a crate nobody thought to name still fails
@@ -88,8 +108,8 @@ TREE="${NROS_IDENTITY_BUDGET_TREE:-examples/workspaces/mixed/build-workspace-fix
 # --- the budget -------------------------------------------------------------
 # Recorded 2026-08-07. See "THE NUMBERS" above before changing any of these.
 BUDGET_CRATE="nros_core"
-BUDGET_IDENTITIES=8
-CEILING_IDENTITIES=9
+BUDGET_IDENTITIES=4
+CEILING_IDENTITIES=12
 CEILING_COPIES=5
 # ----------------------------------------------------------------------------
 
@@ -180,8 +200,67 @@ axis_report() {
 }
 
 # --- axis 1: identities per crate (how many times it was COMPILED) ----------
-identity_counts="$(printf '%s\n' "$triples" | awk '{print $1, $2}' | sort -u \
-    | awk '{print $1}' | uniq -c)"
+#
+# Counted in ONE awk pass, deliberately: the `sort -u | awk | uniq -c` pipeline
+# this replaces was WRONG under any non-C locale, and had been since the gate
+# landed (found 2026-08-10, phase-340 item 8).
+#
+# `uniq -c` collapses only ADJACENT duplicates, and glibc's en_US.UTF-8
+# collation ignores the space and the underscore when ordering, so
+#
+#     nros 079babbedb254517        collates as  nros079babbedb254517
+#     nros_board_common 2f72d54…   collates as  nrosboardcommon2f72d54…
+#     nros ecf7643749b10a78        collates as  nrosecf7643749b10a78
+#
+# put `nros_board_common`, `nros_core` and `nros_cpp` BETWEEN two halves of
+# `nros`. The crate then appeared twice in `identity_counts` — as 7 and as 5 —
+# and every consumer read one run as the whole crate:
+#
+#   * the tree-wide ceiling (`$1 > CEILING_IDENTITIES`) compared 7 and 5
+#     separately, so `nros` at **12** identities passed a ceiling of 9;
+#   * the headline "worst crate N/9" under-reported for the same reason;
+#   * `crate_identities` would have emitted TWO lines for a split crate, and
+#     `[ "$n" -gt "$k" ]` on a two-line value is a bash syntax error — the
+#     budgeted crate `nros_core` is contiguous only because its four hashes all
+#     start 0/4/6/9. One starting with `e` or `f` would have split it and taken
+#     the gate down.
+#
+# This is the phase's own standing rule turned on the gate that enforces it:
+# "re-measure an N of M claim before building on it". Item 8 was blocked on
+# explaining a `worst crate` figure that moved 5 -> 6 -> 7 across sessions on an
+# ostensibly unchanged tree. It was never drift. It was the RUN BOUNDARY moving
+# as hashes changed.
+#
+# An associative array over (crate, hash) has no ordering to get wrong.
+count_identities() {
+    # stdin: `crate hash [path]` lines.  stdout: `<n> <crate>`, one per crate.
+    awk '
+        { if (!seen[$1 SUBSEP $2]++) n[$1]++ }
+        END { for (c in n) print n[c], c }'
+}
+
+# The counter is SELF-TESTED on every run, against input engineered to split
+# under glibc collation but not under C: `nros 0…`, `nros_board 1…`, `nros f…`
+# collate as `nros0…` < `nrosboard1…` < `nrosf…`, so the two `nros` rows are
+# non-adjacent exactly the way the real tree's were.
+#
+# Standing, not a one-off, because the bug is INVISIBLE in output: the old
+# pipeline printed a plausible smaller number and exited 0. Nothing about a
+# wrong reading looks wrong. It cost this phase a blocked work item chasing a
+# "drifting" figure that was only ever the run boundary moving.
+_selftest="$(printf 'nros 0aaaaaaaa\nnros_board 1bbbbbbbb\nnros fccccccccc\n' \
+    | count_identities | awk '$2 == "nros" {print $1}')"
+if [ "$_selftest" != "2" ]; then
+    echo "artifact-identity budget: FAIL" >&2
+    echo "  the identity counter is not collation-independent: it reported" >&2
+    echo "  '$_selftest' identities for a crate that has exactly 2." >&2
+    echo "  A counter that splits one crate into two runs under-reports the" >&2
+    echo "  worst-crate figure and lets a crate over the ceiling pass — it did," >&2
+    echo "  for `nros` at 12 against a ceiling of 9, until 2026-08-10." >&2
+    exit 1
+fi
+
+identity_counts="$(printf '%s\n' "$triples" | count_identities)"
 
 crate_identities() {
     printf '%s\n' "$identity_counts" | awk -v c="$1" '$2 == c {print $1}'
@@ -233,6 +312,11 @@ if [ -n "$over_ceiling" ]; then
 fi
 
 # --- axis 2: copies of ONE identity (R1 — per-directory isolation) ----------
+# `sort | uniq -c` IS correct here, unlike axis 1 above: this counts IDENTICAL
+# lines (one crate+hash pair against itself), and identical lines are adjacent
+# after any sort, in any locale. The axis-1 bug needed two DIFFERENT lines to be
+# reduced to a common key first. Left as a pipeline on purpose, with the reason
+# stated, so nobody "fixes" a correct site — or copies the broken idiom.
 over_copies="$(printf '%s\n' "$triples" | awk '{print $1, $2}' | sort | uniq -c \
     | awk -v k="$CEILING_COPIES" '$1 > k {print $2, $3, $1}')"
 if [ -n "$over_copies" ]; then

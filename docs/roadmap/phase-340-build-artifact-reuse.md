@@ -429,12 +429,63 @@ The drifting crate is **`nros_serdes`, at 6 identities** (the recorded budget wa
 written when it was 5). B3 cannot explain it: B3 moved `examples/native`, and
 this gate reads `examples/workspaces/mixed`, which B3 does not touch.
 
-**Do not lower `worst crate` to 6 while that is unexplained** — a ceiling set to
-an unexplained value does not tighten the gate, it ratifies the drift and makes
-the next increase look normal. The tractable next step is to diff the six
-`libnros_serdes-*.rlib` identities' feature sets and find which axis is new;
-`nros_core` at 4/8 is separately well understood and can be tightened on its own
-once someone is looking at this file anyway.
+**RESOLVED 2026-08-10 — there was no drift. The instrument was broken (issue
+0485).**
+
+`nros_serdes` was never at 6. It measures **5**, under both the old counter and
+the new one, and it is not the worst crate. The figure that moved 5 → 6 → 7
+across sessions was `worst crate`, and it moved because
+`check-artifact-identity-budget` counted one crate as two:
+
+```sh
+awk '{print $1, $2}' | sort -u | awk '{print $1}' | uniq -c
+```
+
+`uniq -c` collapses only ADJACENT duplicates, and glibc `en_US.UTF-8` collation
+ignores the space and the underscore. `nros 079babbe…` and `nros ecf76437…`
+therefore sorted on either side of `nros_board_common`, `nros_core` and
+`nros_cpp`, and the crate was emitted twice — as 7 and as 5. **The run boundary
+moved as hashes changed between builds.** That is the whole "drift".
+
+The cost was not only a misreported headline. `awk '$1 > CEILING_IDENTITIES'`
+compared 7 and 5 against 9, so `nros` at **12** identities passed the tree-wide
+ceiling silently on every run since the gate landed on 2026-08-07 — the ceiling
+had stopped gating the moment it was written. And `crate_identities()` returns
+two lines for a split crate, which makes `[ "$n" -gt "$k" ]` a bash syntax
+error; the budgeted crate `nros_core` stayed contiguous only because its four
+hashes start 0/4/6/9.
+
+Fixed by counting in one awk pass over an array keyed `(crate, hash)`, plus a
+self-test that runs on every invocation — because nothing about a wrong reading
+looks wrong, and the old pipeline printed a plausible smaller number and exited
+0. Both fixes verified by reverting the counter and watching the self-test fail.
+
+**First honest numbers, and the budgets now set to them:**
+
+| | recorded 2026-08-07 | true, 2026-08-10 |
+| --- | ---: | ---: |
+| `nros_core` (budgeted) | 8 | **4** |
+| worst crate | 9 (`nros_serdes`) | **12** (`nros`) |
+| worst identity, copies | 5 | 5 |
+
+`12` is not a raised ceiling — it is the first reading of this axis that
+measured what it claimed, and it decomposes exactly: **2 workspace roots × 2 R3
+halves × 3 feature identities**. `nano-ros_23c15` and `nros_ws_runtime_16b35`
+are the roots (Wave 1's "22/22 leaves are workspace roots"); host `debug/deps`
+versus explicit `x86_64-unknown-linux-gnu/debug/deps` is the R3 split W3 made
+universal. Nothing is unexplained, which is exactly the precondition this item
+demanded before any number moved. `nros_core` tightens 8 → 4 in the same edit,
+as the item asked.
+
+**Item 8 is therefore CLOSED, and by its own rule rather than in spite of it.**
+The rule said not to ratify an unexplained number; the resolution was that the
+number was an artifact, and the explained one is now pinned.
+
+**This is the phase's standing rule applied to the phase's own instrument.**
+"Re-measure an N of M claim before building on it" had already been paid for
+three times here — F3's "net loss", the impossible umbrella workspace, the
+platform-grained key. This is the fourth, and the first where the unreliable
+measurement came from the gate this phase built.
 
 #### Independent — no blocker, best value/effort on the board
 

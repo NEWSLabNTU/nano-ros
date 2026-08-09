@@ -51,6 +51,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-10, phase-340): **#485** — `check-artifact-identity-budget` counted one crate
+as TWO. `uniq -c` collapses only ADJACENT duplicates and glibc `en_US.UTF-8` collation ignores the space and
+underscore, so `nros 079…` and `nros ecf7…` sorted on either side of `nros_board_common` / `nros_core` /
+`nros_cpp` and the crate was reported as `7` and `5`. The tree-wide ceiling compared each half against 9 and
+never saw the real **12** — a crate 33 % over the ceiling passed silently on every run since the gate landed.
+It also blocked phase-340 item 8 on explaining a `worst crate` figure that moved 5→6→7 across sessions: there
+was no drift, only the run boundary moving as hashes changed. And it was one hash away from crashing the gate
+(`crate_identities` returns two lines for a split crate, and `[ "$n" -gt "$k" ]` on two lines is a bash syntax
+error; `nros_core` stayed contiguous only because its hashes start 0/4/6/9). Fixed with a one-pass awk array —
+not `LC_ALL=C`, which configures around a gate that reads plausibly while being wrong — plus a self-test on
+every run, since nothing about a wrong reading looks wrong. First honest numbers: `nros_core` 8→**4**, worst
+crate 9→**12** (= 2 workspace roots × 2 R3 halves × 3 feature identities, fully decomposed).
+See `archived/0485-*`. (2026-08-10)
+
 Recently resolved (2026-08-10, phase-342): **#484** — the ThreadX-rv64 RUST image took **2.11 s** to print `Subscriber created for topic:`
 against **0.10 s** for the C and C++ images, on the same test file, the same QEMU invocation and the same RMW.
 Cause: a `tx_thread_sleep(200)` "network stabilisation delay" in the RUST entry wrapper only
