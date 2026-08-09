@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#484** — the ThreadX-rv64 RUST image takes **2.11 s** to print `Subscriber created for topic:` against
+**0.10 s** for the C and C++ images — same test file, same QEMU invocation, same RMW. The delay propagates
+(its talker boots the same way), so the cell runs 5.26 s against 1.25 s. Invisible until phase-342 W8b replaced
+the test's fixed `sleep(4s)` with a wait on the readiness marker: 4 s was longer than either image needed, so
+0.1 s and 2.1 s looked identical. Second instance of that shape in one phase — splitting the pubsub fold
+exposed `rust_cyclone` at 34 s against 5 s siblings. A fixed delay does not just cost its duration, it hides the
+distribution underneath it. Filed on the measurement alone: the image is 17 % larger (7.64 MB vs 6.53 MB) but
+that does not buy 2 s, and it is NOT a harness artifact (the binary resolver only joins a path). See `0484-*`.
+(2026-08-09)
+
 **#481** — readiness greps use string LITERALS, so a wrong marker burns the whole timeout in silence and the
 test still passes. Found by measurement: after phase-342 W1 split the pubsub fold, `rust_cyclone` sat at 34.1 s
 against `cpp_cyclone`'s 5.2 s — 30 s timeout + 2 s settle + 2 s delivery — because the settle greped `"Waiting for"`,
