@@ -71,7 +71,16 @@
 # artifact SILENTLY across invocations (deps/ keeps both identities; the flat
 # output does not, and no warning fires because the collision diagnostic only
 # triggers within ONE invocation).
-export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal linux}"
+# phase-340 B3 wave 2 — nuttx, freertos and both threadx platforms join
+# 2026-08-10. Each cleared A1 (0 collisions under B1's widened gate) and A2 (B2
+# resolves through the manifest row) BEFORE being added; the check is one
+# command per platform and is recorded in the commit.
+#
+# `esp32` and `nuttx-riscv` are deliberately absent: the gate reports they have
+# no rust rows in the manifest under those names, so adding them would name a
+# platform the gate cannot check — an eligibility entry nothing verifies is
+# worse than an unmigrated platform.
+export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal linux nuttx freertos threadx-linux threadx-riscv64}"
 
 # _nros_fixture_variant_sig <cargo-args> <envstr>
 # Signature of everything in the grouping key BEYOND platform+triple.
