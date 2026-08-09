@@ -434,10 +434,8 @@ where
         B::exit_failure();
     }
 
-    // Network stabilisation (mirrors `run_app_thread`).
-    unsafe {
-        tx_thread_sleep(200);
-    }
+    // Issue 0484 — the 2 s "network stabilisation" sleep that used to be here is
+    // GONE. See `run_app_thread` below for the measurement.
 
     let baked = boot_config
         .map(::nros::BootConfig::from_baked)
@@ -759,12 +757,31 @@ where
         ));
     }
 
-    // Network stabilisation delay. Ticks at TX_TIMER_TICKS_PER_SECOND
-    // (100 by default) — 200 ticks ≈ 2 s, matching the legacy per-
-    // overlay wait in `node::app_task_entry`.
-    unsafe {
-        tx_thread_sleep(200);
-    }
+    // Issue 0484 — a `tx_thread_sleep(200)` "network stabilisation delay" used to
+    // sit here. At TX_TIMER_TICKS_PER_SECOND = 100 that is exactly 2 s, and it
+    // was inherited ("matching the legacy per-overlay wait in
+    // `node::app_task_entry`") rather than derived from a measurement.
+    //
+    // It was costing every RUST ThreadX image 2 s that the C and C++ images
+    // never paid, because their `main` calls the nros-c API directly and never
+    // passes through this entry. Same board, same platform, same RMW — and the
+    // C/C++ API is a thin wrapper over this same Rust API, so the asymmetry was
+    // the bug, not just the duration.
+    //
+    // Measured on qemu-riscv64-threadx, CycloneDDS, listener-ready then delivery:
+    //
+    //     cell    before          after
+    //     c       1.35 s          1.40 s
+    //     cpp     1.45 s          1.35 s
+    //     rust    5.31 s          1.40 s      <- was 2.11 s just to subscribe
+    //
+    // The condition it was approximating is already met before this code runs:
+    // the board prints `[virtio] enable: link UP` at 0.07 s and the app thread
+    // starts at 0.08 s. There is nothing left to stabilise for.
+    //
+    // If a board ever does need to wait here, wait for the LINK, not for a
+    // duration — a fixed delay does not just cost its time, it hides the
+    // distribution underneath it (phase-342 W8).
 
     // Issue #98 / RFC-0045 — node name from the baked `.nros_boot_config`
     // (a launch that names the node overrides the board default); locator +

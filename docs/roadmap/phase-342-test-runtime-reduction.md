@@ -506,16 +506,34 @@ marker (a service marker in front of an action server) that the 8 s sleep could
 never have reported. **16/16 emulator tests pass**, where all 16 had been
 skipping (issue 0483).
 
-**2. Convertible, not verifiable here — `threadx_riscv64_qemu.rs`, 24 s at six
-sites.** The listener is `examples/qemu-riscv64-threadx/c/listener`, which W7
-converged onto `LISTENER_READY_MARKER` and which `example_output_conformance`
-now GATES — so the marker is guaranteed present. Two things stop this landing
-blind: every site binds `let listener` immutably (the wait needs `&mut`), and the
-threadx-riscv64 fixtures are not built here, so the change could not be run.
-Two blanket replacements in this work item already introduced bugs — a wrong role
-in `emulator.rs`, and six over-matched sites here — and both were caught only by
-compiling or running. Converting six unverifiable sites by hand is how the third
-one ships. **Do it when the lane can run; the marker work is already done.**
+**2. Converted, and it found a 2 s product bug — `threadx_riscv64_qemu.rs`, 24 s
+at six sites.** The listener is `examples/qemu-riscv64-threadx/c/listener`, which
+W7 converged onto `LISTENER_READY_MARKER` and which `example_output_conformance`
+now GATES, so the marker was guaranteed present. Converted per site (a blanket
+replacement had already over-matched here once, and in `emulator.rs` had put a
+service marker in front of an action server — both caught only by compiling or
+running; the rule is per-site edits).
+
+What the conversion exposed is the point of the whole work item. With the fixed
+`sleep(4s)` gone, the per-cell numbers separated: c 1.35 s, cpp 1.45 s, **rust
+5.31 s**. Filed as issue 0484, then diagnosed to a `tx_thread_sleep(200)` in the
+RUST entry wrapper only (`nros-board-threadx/src/entry.rs`, two sites) — at
+`TX_TIMER_TICKS_PER_SECOND = 100` that is exactly 2.00 s, the whole gap. C and C++
+never paid it: their `main` calls the nros-c API directly and never enters that
+wrapper. The delay was inherited ("matching the legacy per-overlay wait"), not
+measured, and the link it waited for is already UP at 0.07 s — before the app
+thread even starts.
+
+Both sites deleted. The suite went **7.37 s to 1.505 s**, and the three languages
+now land within 100 ms of each other (rust 1.407 s, c 1.465 s, cpp 1.504 s), which
+is the property that should have held from the start: shared platform crate,
+shared board crate, and a C API that thinly wraps the same Rust API. **The
+asymmetry was the bug — the four seconds were only how it announced itself.**
+
+That is the second time in this phase that deleting a fixed delay surfaced a real
+defect rather than merely saving its duration (the first: splitting the pubsub
+fold exposed `rust_cyclone` at 34 s, issue 0481). A sleep long enough to cover the
+worst case is long enough to hide every case.
 
 **3. Genuine settles — `interop_e2e`, the bridge tests, `params.rs`, ~30 s.**
 These wait on PEER DISCOVERY, and no process announces it:
