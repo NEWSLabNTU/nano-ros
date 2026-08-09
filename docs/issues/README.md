@@ -51,7 +51,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#484** — RESOLVED. The ThreadX-rv64 RUST image took **2.11 s** to print `Subscriber created for topic:`
+Recently resolved (2026-08-10, phase-342): **#484** — the ThreadX-rv64 RUST image took **2.11 s** to print `Subscriber created for topic:`
 against **0.10 s** for the C and C++ images, on the same test file, the same QEMU invocation and the same RMW.
 Cause: a `tx_thread_sleep(200)` "network stabilisation delay" in the RUST entry wrapper only
 (`nros-board-threadx/src/entry.rs`, two sites) — at `TX_TIMER_TICKS_PER_SECOND = 100` that is exactly 2.00 s,

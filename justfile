@@ -3274,9 +3274,20 @@ check-build-root:
 # `check-fast`: buildless and source-free (it reads examples/fixtures.toml and
 # the tracked leaf Cargo.tomls, invokes no cargo and no rustc), so it runs green
 # on the pristine per-push checkout the tier is measured against.
+#
+# phase-343 W3 — the gate itself is tripwired. It has been widened twice (W1's
+# row-keyed owners, B1's unhashed LIB artifacts) and both widenings were verified
+# by hand into a commit message, which is not something a later reader can
+# re-run. `fixture_group_collision_gate.sh` collides a binary name and a
+# staticlib name on real leaf manifests and asserts the gate REPORTS each by
+# name — matching the message, not just the exit code, because a malformed
+# perturbation exits non-zero too (the first draft's T2 passed with B1 reverted,
+# on a TOMLDecodeError). Each arm was confirmed to fail when its half of the gate
+# is disabled.
 [private]
 check-fixture-groups:
     @python3 scripts/check-fixture-groups.py
+    @bash packages/testing/nros-tests/tests/fixture_group_collision_gate.sh
 
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single

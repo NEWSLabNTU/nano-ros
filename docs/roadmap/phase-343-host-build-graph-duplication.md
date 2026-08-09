@@ -1,7 +1,10 @@
 # Phase 343 — The host build-dep graph: where the 240 GiB actually is
 
-**Status (2026-08-10). MEASUREMENT COMPLETE; W1 LANDED (`7db7e72b5`, phase-343 I1)
-— 63.1 GiB recovered, 33 % of the phase. W2/W3 open.** The header below is the
+**Status (2026-08-10). MEASUREMENT COMPLETE; W1, W2, W3 LANDED. W4/W5 are
+deliberately-not-doing items.** W1 (`7db7e72b5`) recovered 63.1 GiB, 33 % of the
+phase; W2 confirmed by measurement that the cmake metadata probe was fixed for
+free by W1 (4 private probe dirs in this tree, now 0); W3 was already widened by
+phase-340 B1 and gained the standing tripwire it was missing. The header below is the
 2026-08-08 measurement, unchanged because it still reproduces; what changed is
 that the one thing this phase said was worth building has been built.
 
@@ -348,7 +351,7 @@ The 236.3 GiB splits into three jobs with three different owners:
 | population | GiB dup | owner | status |
 | --- | ---: | --- | --- |
 | leaf + corrosion target dirs | ~160 | **phase-340 W2 / Wave 1** | mechanism decided, migration blocked on paths |
-| nested probe dirs | **76.8** | **this phase, W1–W3** | W1 LANDED — 63.1 GiB of it recovered; W2/W3 open |
+| nested probe dirs | **76.8** | **this phase, W1–W3** | **W1–W3 LANDED** — 63.1 GiB recovered directly, cmake-probe row measured to zero |
 | unhashed-name collision risk | (hazard) | **phase-340 W2 gate** | gate narrower than the class |
 
 ## Work items
@@ -379,22 +382,81 @@ predecessor paid for): a test that asserts the private branch is taken when no
 root is discoverable **and** the shared branch when one is — each arm must fail
 when the other's condition is forced.
 
-### W2 — close the same leak in the cmake metadata probe
+### W2 — close the same leak in the cmake metadata probe — **LANDED** (2026-08-10)
 
-- [ ] `metadata_probe_cmake` spawns a nested `cmake` that runs a full cargo
+- [x] `metadata_probe_cmake` spawns a nested `cmake` that runs a full cargo
       build (13.7 GiB, 90.2 % duplicate). It inherits `nros`'s environment, so
       it is fixed for free **if and only if** W1 makes the default shared rather
-      than relying on an exported variable. Confirm by measurement, not by
-      reading: re-run the origin decomposition and check the row goes to zero.
+      than relying on an exported variable. Confirmed by measurement.
 
-### W3 — extend the collision gate from binary names to all unhashed artifacts
+**The measurement, and the two false readings it took to get one.**
 
-- [ ] `check-fixture-groups` scans binary names. Widen to every artifact name a
+The obvious check — "no private probe dirs newer than the fix" — returned zero
+in both the main tree and the box mirror. It meant nothing: `build/sizes-probe`
+had no entries newer than the fix either, so **no probe had run in either tree
+since W1 landed**. Today's fixture builds were incremental and the build scripts
+were cached. A passive count over a population nothing has written to is the
+same green-on-nothing this repo keeps catching one layer up.
+
+Second attempt, `nros sync` on `examples/workspaces/cpp` with
+`NROS_SIZES_PROBE_TARGET_DIR` explicitly unset: `sync: source metadata — 0
+rebuilt, 6 already current`. Still nothing ran; the sidecars were current.
+
+The measurement only became real after invalidating the six sidecars and the
+stale probe tree, which forced `6 rebuilt, 0 already current`:
+
+| | before W1 (same tree) | after, cold probe |
+| --- | ---: | ---: |
+| private `sizes-probe-target-*` under the probe tree | **4** (2026-08-02/03) | **0** |
+| shared `build/sizes-probe` written | — | yes, `<rustc-slug>/695abfac671af99c/` |
+| probe tree on disk | 5.7 GiB accumulated | 843 MiB rebuilt cold |
+
+The four private dirs are the 13.7 GiB row's live instance in this checkout, and
+they are gone. The env var was unset for the run, so this is the branch that
+leaked, taking the shared path.
+
+**Note the sizes honestly:** 5.7 GiB was accumulated across runs since
+2026-08-02, and 843 MiB is one cold rebuild. They are not the same measurement
+and the ratio between them is not a saving. The saving this item claims is the
+row going to zero, which is the line above it.
+
+### W3 — extend the collision gate from binary names to all unhashed artifacts — **LANDED** (2026-08-10)
+
+- [x] `check-fixture-groups` scans binary names. Widen to every artifact name a
       group member can emit without a metadata hash — staticlibs and cdylibs
-      included. Measured population above; `libnros_c.a` at 30 distinct sizes is
-      the live example.
-- [ ] Tripwire: a deliberately re-collided staticlib name must fail the gate,
+      included. **Done by phase-340 B1** (`d8c46b446`), which cites this item's
+      own example: `libnros_c.a` at 438 copies across ~30 distinct sizes.
+- [x] Tripwire: a deliberately re-collided staticlib name must fail the gate,
       and a fixed tree must report an empty record.
+
+**The widening was already done; the tripwire was not.** B1 ran both directions
+by hand and recorded them in its commit message, which is not something a later
+reader can re-run — and this gate has now been widened twice (W1's row-keyed
+owners, B1's LIB artifacts), each time because it had been reporting "no
+collisions" over a namespace it was not looking at. A gate with that history
+needs a standing check, so `packages/testing/nros-tests/tests/
+fixture_group_collision_gate.sh` now runs inside `check-fixture-groups`:
+
+| arm | asserts |
+| --- | --- |
+| T3 | the real tree passes with an empty record — run FIRST, so a red baseline cannot make T1/T2 pass for the wrong reason |
+| T1 | two rows claiming one BINARY name are reported by name |
+| T2 | two rows claiming one STATICLIB name are reported by name (the B1 arm) |
+| T3' | the perturbed manifests were restored |
+
+**Its first draft was itself the defect it exists to catch.** T1/T2 asserted only
+`rc != 0`, and T2 passed with B1 reverted — because appending a second `[lib]` to
+a leaf that already declares one is invalid TOML, so the gate died in
+`tomllib.load` with rc=1 and the assertion could not tell a crash from a
+detection. Both halves were fixed: the perturbation EDITS the existing table, and
+every expectation greps the gate's message for the artifact name it should have
+found. **A non-zero exit is not evidence of detection** — that is the same shape
+as issue 0445 (a STALE verdict absorbing the run) and as the passing-message tell
+in this gate's own docstring, where "61 row(s)" for 85 rows was the clue.
+
+Each arm was then confirmed to FAIL when its half of the gate is disabled —
+`artifacts()`'s lib branch off makes only T2 fail; its bin branch off makes only
+T1 fail. A tripwire nobody has seen fail is a tripwire nobody should trust.
 
 ### W4 — an operational reclaim, kept honest about what it is
 
