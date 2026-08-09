@@ -286,6 +286,86 @@ survive measurement (the first was F3).
 > the mass is in nested build-script target dirs rather than in leaves. Read the
 > Wave 2 block below with its correction, and phase-343 for the decomposition.
 
+### The unblock plan (2026-08-09) — follow this order
+
+Waves 1-3 are resolved (1 and 2 by REFUTATION, 3 landed). What is left is one
+serial chain plus two independent items. Numbers below are from the tree on
+2026-08-09, not inherited.
+
+**Everything still blocked traces to ONE fact: paths have not moved.**
+`build/fixtures-cargo/` holds **1** entry against **110** live per-leaf target
+dirs.
+
+#### Critical path — strictly serial
+
+**B1. Widen the collision gate beyond `[[bin]]` names.** It scans binary names
+only. `libnros_c.a` is unhashed at **438 copies** across ~30 distinct sizes.
+This must land BEFORE any path move, because cargo replaces the final artifact
+SILENTLY across invocations — measured on a two-feature probe crate: `deps/`
+kept both identities, `debug/probe` was overwritten with a different sha256 and
+different behaviour, and no warning fired (the `output filename collision`
+diagnostic only fires when ONE invocation builds both; a group is N). A path
+move before B1 corrupts fixtures that still "build". Cheap; do it first.
+
+**B2. Teach the resolver the variant slug.** W2.a called this "strictly more
+work"; Wave 1 proved it is the ONLY path (the coarse platform-grained key gives
+17 artifact-name collisions). Two sub-blockers, already scoped:
+
+* `build_example` / `build_example_rmw` are the TWO funnels — not the "~30
+  path-keyed functions" the earlier note claims — but they distinguish variants
+  only by the authored dir string (`target/` vs `target-zenoh/`), which is
+  exactly what a group strips. The variant must come from the MANIFEST ROW, not
+  the call site.
+* `require_shared_fixture_binary` hardcodes a `{triple}/` component, and **0 of
+  65** `linux` rows carry `--target` — one directory too deep for a host build.
+
+**B3. Migrate `linux`, then the remaining platforms.** Measured prize on
+`linux` alone: **46.08 GiB -> ~6.95 GiB, -84.9 %**. Acceptance is a native-lane
+rebuild, because #393's failure mode is the build, the staleness probe and the
+test resolver disagreeing — a gate-level check cannot see it.
+
+**B4. Items 7 and 8 fall out of B3.**
+* Item 7 becomes real once 110 collapses toward 1; until then every ignore line
+  still names live output and the collapse is cosmetic.
+* Item 8 re-measures and lowers budgets IN THE SAME COMMIT — but first explain
+  the `worst crate` 5 -> **6**/9 drift on an ostensibly unchanged tree (Wave 1
+  suspected another session's build state). Lowering against an unexplained
+  number is how a gate starts lying. Current reading: `nros_core 4/8; worst
+  crate 6/9; worst identity 5/5`.
+
+#### Independent — no blocker, best value/effort on the board
+
+**I1. phase-343's probe-dir wiring fix — 76.8 GiB.** The sharing mechanism
+already EXISTS, is already keyed correctly, and landed 2026-08-04 — but it is
+opt-in via one exported variable in `scripts/build/cargo.sh`, and **the default
+is the 195 MiB-per-instance branch**. 425 nested probe dirs leaked; the sizes
+probe alone is 63.1 GiB deduplicating 81:1. Wiring, not design; needs no path
+move. **Highest value per unit of work currently available — do it first of
+everything.**
+
+**I2. Standing debt.** Issue 0481 owns the readiness-marker class (do NOT
+duplicate it); issue 0472's 13 unguarded opaque macros; the ~13 real
+`ci-matrix` failures (junit, not console — several are confirmed to pass solo,
+so part of that set is flake triage).
+
+#### Order
+
+`I1` -> `B1` -> `B2` -> `B3` -> `B4`, with `I2` filling gaps. I1 and B1 are
+parallelisable; B2..B4 are strictly serial.
+
+#### The standing rule this phase paid for three times
+
+**Re-measure an "N of M" claim before building on it.** F3's "net loss" stood
+for months on evidence that varied `incremental` rather than sharing; the
+umbrella workspace was impossible (22/22 leaves are workspace roots); the
+platform-grained key silently overwrites artifacts. Each was refuted by
+measurement, and each had been written down as settled.
+
+Corollary, paid for twice in one session: **verify that a tripwire actually
+perturbs the code path it targets.** One landed in a docstring and passed; one
+used a coords path bogus enough that the guard refused for the wrong reason.
+Both looked like green tripwires.
+
 ### Wave 1 — cash the win that is already proven
 
 The mechanism is decided and measured (arm B: 455 MiB vs 9.70 GiB, 100 % of the
