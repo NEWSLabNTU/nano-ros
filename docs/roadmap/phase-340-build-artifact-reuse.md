@@ -399,6 +399,43 @@ rather than silently answering for the default group.
   number is how a gate starts lying. Current reading: `nros_core 4/8; worst
   crate 6/9; worst identity 5/5`.
 
+#### Items 7 and 8 — attempted 2026-08-10, BOTH still blocked (evidence, not deferral)
+
+**Item 7 is NOT unblocked by B3, contrary to what B3's own note implied.** The
+ignore pattern is GLOBAL — `examples/**/target-*/` (`.gitignore:90`) — not
+per-platform, and 26 per-leaf target dirs are still LIVE across the four
+unmigrated platforms:
+
+```
+qemu-arm-nuttx        6      qemu-riscv64-threadx    6
+qemu-arm-freertos    12      qemu-esp32-baremetal    2
+```
+
+Deleting that line now un-ignores real build output for those platforms.
+Scoping it per-platform instead would ADD spellings to a sprawl this item exists
+to remove. So item 7 unblocks when the REMAINING PLATFORMS migrate (a repeat of
+B3's recipe, not new design) — not when the first one did. `/build/` is already
+collapsed at `.gitignore:23`, so the target end-state is partly in place.
+
+**Item 8 — the precondition is now specific rather than vague.** Post-B3 reading
+on a current mixed tree (rebuilt during the 2026-08-10 `lane=all` run):
+
+```
+nros_core 4/8 identities; worst crate 6/9; worst identity 5/5 copies
+R3 axis (host vs explicit --target): identities 141/52, copies 192/80
+```
+
+The drifting crate is **`nros_serdes`, at 6 identities** (the recorded budget was
+written when it was 5). B3 cannot explain it: B3 moved `examples/native`, and
+this gate reads `examples/workspaces/mixed`, which B3 does not touch.
+
+**Do not lower `worst crate` to 6 while that is unexplained** — a ceiling set to
+an unexplained value does not tighten the gate, it ratifies the drift and makes
+the next increase look normal. The tractable next step is to diff the six
+`libnros_serdes-*.rlib` identities' feature sets and find which axis is new;
+`nros_core` at 4/8 is separately well understood and can be tightened on its own
+once someone is looking at this file anyway.
+
 #### Independent — no blocker, best value/effort on the board
 
 **I1. phase-343's probe-dir wiring fix — 76.8 GiB.** The sharing mechanism
