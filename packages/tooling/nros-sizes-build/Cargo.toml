@@ -24,6 +24,9 @@ serde_json = "1"
 # phase-336 — the profile the nested size probe compiles at must match the
 # outer build's; the mapping lives in the shared table, not here.
 nros-cargo-profile = { path = "../nros-cargo-profile" }
+# phase-343 I1 — `try_repo_root` for the SHARED probe dir default. One
+# spelling of "where is the repo"; do not re-implement the walk here.
+nros-build-paths = { path = "../nros-build-paths" }
 
 [lints]
 workspace = true

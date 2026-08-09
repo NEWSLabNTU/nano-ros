@@ -22,16 +22,31 @@ pub fn repo_root() -> PathBuf {
     let start = std::env::var("CARGO_MANIFEST_DIR").expect(
         "nros-build-paths: CARGO_MANIFEST_DIR not set (must be called from a build script)",
     );
-    let mut dir = PathBuf::from(&start);
+    try_repo_root().unwrap_or_else(|| {
+        panic!(
+            "nros-build-paths: could not locate nros-sdk-index.toml walking up from {start}. \
+             Out-of-tree consumer? Set the relevant NROS_PLATFORM_* env vars explicitly."
+        )
+    })
+}
+
+/// [`repo_root`] for callers that have a legitimate out-of-tree fallback.
+///
+/// phase-343 I1 — the sizes probe needs the repo root to place its SHARED
+/// cache, but must still work for an out-of-tree consumer that has no nano-ros
+/// checkout to find. Panicking there would be wrong, and re-implementing the
+/// walk in the caller would be a second spelling of "where is the repo" — the
+/// R3 drift this repo keeps paying for (a private `project_root()` in
+/// `qemu.rs` was deleted for exactly this reason).
+pub fn try_repo_root() -> Option<PathBuf> {
+    let start = std::env::var("CARGO_MANIFEST_DIR").ok()?;
+    let mut dir = PathBuf::from(start);
     loop {
         if dir.join("nros-sdk-index.toml").is_file() {
-            return dir;
+            return Some(dir);
         }
         if !dir.pop() {
-            panic!(
-                "nros-build-paths: could not locate nros-sdk-index.toml walking up from {start}. \
-                 Out-of-tree consumer? Set the relevant NROS_PLATFORM_* env vars explicitly."
-            );
+            return None;
         }
     }
 }
