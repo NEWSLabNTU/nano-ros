@@ -1678,6 +1678,18 @@ build-test-fixtures lane="all": _require-build-sources _clear-fixture-stamp gene
     # timestamp, so the preflight can ask "does what was built cover what I am
     # about to run?" instead of "did a build finish?".
     nros_fixtures_stamp_write "$(nros_lane_arg "{{lane}}")"
+    # issue 0499 option 2 — record the identity reading HERE, where the tree is
+    # known-fresh, because this is the one moment its number can be trusted. In
+    # `check-fast` the same script reads whatever a long-lived tree accumulated;
+    # here the stamp was just written, so `started_at` filters to exactly what
+    # this build produced.
+    #
+    # REPORT, never fail: a build that produced its artifacts correctly must not
+    # be failed by a budget, and a red at the end of a 40-minute build is the
+    # kind nobody can act on. The gate in `check-fast` still fails; this only
+    # makes the trustworthy reading visible, so drift shows up as a moving
+    # number in build logs instead of surfacing days later on a stale tree.
+    bash scripts/check-artifact-identity-budget.sh || true
 
 # phase-319 W1 (issue 0351) — clear the stamp BEFORE building, so a failed or
 # interrupted run leaves none and `_require-fixtures` fails with its build hint

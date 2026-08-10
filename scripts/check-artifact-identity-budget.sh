@@ -221,6 +221,22 @@ fi
 # Absence is "cannot filter", never "nothing is new": a stamp with no
 # `started_at` (legacy, or hand-made) falls back to counting everything and the
 # verdict says so, so an unfilterable reading is visible rather than silent.
+# issue 0499 option 3 — close a failure with the DIAGNOSIS, not a request to
+# guess. When the filter is active, accumulation is already excluded, so
+# "delete the tree and rebuild" is wrong advice: it destroys the evidence of a
+# real regression and re-measures to green. Only say it when the reading really
+# could be history.
+era_verdict() {
+    if [ -n "${_started:-}" ]; then
+        echo "  These are artifacts of THIS build (filtered on started_at=$_started)," >&2
+        echo "  so accumulation is ruled out — the count is a real change, not history." >&2
+        echo "  Do NOT delete the tree: that would erase the evidence and re-measure green." >&2
+    else
+        echo "  This stamp has no started_at, so the count MAY be accumulation from" >&2
+        echo "  earlier builds. Rebuild ($BUILD_HINT) and re-read before believing it." >&2
+    fi
+}
+
 STAMP="${NROS_FIXTURE_STAMP:-target/nextest/.fixtures-built}"
 _all="$(find "$TREE" \
     -type d -path '*/out/sizes-probe-target-*' -prune -o \
@@ -406,8 +422,8 @@ if [ "$budgeted_n" -gt "$BUDGET_IDENTITIES" ]; then
     echo "  explicit --target, RUSTFLAGS, or any ONE of opt-level /" >&2
     echo "  debug-assertions / panic / codegen-units / lto / incremental." >&2
     echo "  Target dir is NOT one of them. See phase-340 'The complete" >&2
-    echo "  incompatibility set'. If a long-lived tree accumulated these from" >&2
-    echo "  earlier builds, delete $TREE and rebuild before believing the count." >&2
+    echo "  incompatibility set'." >&2
+    era_verdict
     fail=1
 fi
 
