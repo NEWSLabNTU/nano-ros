@@ -60,8 +60,17 @@ workspace also gets the synthesised `nros_ws_runtime` umbrella (own workspace); 
 from `CMAKE_BINARY_DIR` with no override (phase-344), so both land in one `deps/`. `cargo metadata` reports ONE
 package — the graph is fine, the IDENTITY is not. Only MIXED workspaces fail (needs umbrella + plain import).
 Likely the same mechanism behind the disputed identity-budget reading (nros at 12 = 2 roots × 2 R3 halves × 3
-feature sets) in this very tree. Fix options in the issue; recommendation is to skip the plain import when the
-umbrella exists, with target-dir-keyed-by-workspace-root as the class fix. See `0493-*`. (2026-08-10)
+feature sets) in this very tree. **The framing that settles it: ONE implementation provider** — in C exactly one site builds the archive and every
+other site is headers-plus-link. `nros-cpp-headers` is already that INTERFACE target and the umbrella already SWAPS
+the provider it links; the bug is that the swap is PARTIAL. The displaced `nros_cpp-static` "stays built but
+unreferenced" (its own comment), forced by a header mirror that depends on `$<TARGET_FILE:nros_cpp-static>` — so
+after the swap, SYMBOLS come from the umbrella while HEADERS come from the plain crate, and those headers carry the
+`*_OPAQUE_U64S` sizes: the 0088→0245→0268 sizes-mirror class through a new door. Separate target dirs would remove
+the link error and KEEP the defect. Fix is to make the umbrella the sole provider (skip the plain import; mirror
+headers from the umbrella), which needs `links = "nros_cpp"` + `cargo:include` — the provider mechanism Cargo has
+and this tree does not use. `links` would NOT have caught this (per-graph; here two invocations each have a valid
+graph); the enforceable invariant is a CMake gate: one Rust staticlib exporting the nros symbols per configure.
+See `0493-*`. (2026-08-10)
 
 **#492** — the CMake self-provisioned CycloneDDS builds **slim GCC-LTO objects** and `ld.lld` cannot read GCC LTO
 IR, so `build-test-fixtures lane=native` dies with 36 `undefined symbol: dds_*` while every obvious check says the

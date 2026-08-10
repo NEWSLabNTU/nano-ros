@@ -89,30 +89,115 @@ intended split: "pure-C / pure-C++ workspaces keep `nros-cpp-headers` pointed at
 the plain `nros_cpp-static`" — i.e. the plain import was meant as the *fallback*
 for configures with no Rust node, but it is imported unconditionally.
 
+## The framing that settles it: ONE implementation provider
+
+In C there is exactly one site that produces the implementation — an archive,
+built once — and every other site is *headers plus a link to that archive*. The
+symbol implementation has a single source of truth.
+
+Measured against that, the current wiring is already 90 % right and the last
+10 % is the bug:
+
+* `nros-cpp-headers` is an INTERFACE library (aliased `NanoRos::NanoRosCpp`)
+  carrying only includes, and `target_link_libraries(nros-cpp-headers INTERFACE
+  nros_cpp-static)` names ONE implementation provider. Consumers already do
+  "scan the header, link the one archive".
+* `nros_synth_runtime_umbrella` SWAPS that provider — it rewrites the INTERFACE
+  link from `nros_cpp-static` to `nros_ws_runtime-static`.
+
+The swap is not atomic, in two ways, and its own comment admits the first:
+
+> All other INTERFACE wiring (includes, cyclone, stdc++) is preserved;
+> **`nros_cpp-static` stays built but unreferenced.**
+
+1. **The displaced provider keeps building.** It is forced by the header mirror,
+   which depends on `$<TARGET_FILE:nros_cpp-static>` — deliberately, because
+   issue 0268 showed an order-only dep lets the mirror go stale. Unreferenced is
+   not free: it shares the corrosion target dir with the referenced provider,
+   which is the duplication above.
+2. **Headers and symbols come from DIFFERENT providers.** After the swap the
+   interface links the umbrella but still mirrors headers produced by the plain
+   crate's `build.rs`. Those headers carry the variant storage sizes
+   (`*_OPAQUE_U64S`). If the two builds' feature sets ever diverge, the sizes
+   header describes code that was not the code linked — the 0088 → 0114 → 0122 →
+   0123 → 0245 → 0268 sizes-mirror class, re-entered through a new door.
+
+So "two providers" is the defect, and separate target dirs (option A below)
+would preserve it: two archives would still each contain a full copy of the nros
+implementation, still be compiled twice, and any binary that ever linked both
+would be back here. **A treats the collision, not the duplication.**
+
+### What the fix has to satisfy
+
+*Exactly one provider per configure, owning BOTH the archive and the generated
+headers, chosen atomically.*
+
+That is also a hard constraint rather than a preference: a Rust `staticlib` is a
+self-contained bundle, so two of them can never appear in one link — which is
+why Option D (phase-241 W11) bundles `nros-cpp` into the umbrella in the first
+place. The umbrella IS the single-provider design; it is just not yet exclusive.
+
+### Cargo already models this and the tree does not use it
+
+`links = "nros_cpp"` on the providing package declares "this crate provides the
+nros_cpp native implementation", and **Cargo enforces that at most one package
+in a graph may claim a given `links` name** — the C model's guarantee,
+built in. The provider's build script then publishes its artifacts
+(`cargo:include=…`, `cargo:root=…`) and every dependent reads them as
+`DEP_NROS_CPP_INCLUDE`. Neither `nros-cpp` nor `nros-c` declares `links`, and no
+build script emits that metadata.
+
+Two honest limits on what that buys:
+
+* It would **not** have caught this bug. The check is per-graph, and here there
+  are two separate cargo invocations each with a perfectly valid single-provider
+  graph. Claiming otherwise would be overselling it.
+* What it DOES buy is the missing mechanism for fix B: the umbrella's build
+  script could read `DEP_NROS_CPP_INCLUDE` and re-export the provider's headers
+  to a stable path, so CMake can mirror headers from whichever provider is
+  active. Without it there is no supported way to reach the nros-cpp `OUT_DIR`
+  inside the umbrella's build.
+
+The invariant that WOULD have caught it is a CMake-level one: **a configure must
+build exactly one Rust staticlib exporting the nros symbol set.** That is
+checkable and belongs in a gate, in the spirit of `check-fixture-groups`.
+
 ## Fixes considered
 
-**A — key the target dir by workspace ROOT (principled).** phase-340 established
-that workspace root is an incompatibility axis; the corollary is that a target
-dir must never be shared across two of them. Corrosion has no override, so this
-needs the plain import to land in its own CMake binary dir (a nested
-`add_subdirectory` with its own `cargo/`) or an equivalent isolation. Costs a
-second build tree; fixes the class rather than this instance.
+**A — give the plain import its own target dir.** Isolates the two roots so the
+`deps/` collision cannot happen. **Not the fix.** Under the single-provider rule
+it is the wrong shape: two archives would still each carry a full copy of the
+nros implementation, still be compiled twice, still feed headers from one while
+symbols come from the other. It removes the link error and keeps the defect.
+Worth stating because it is the obvious first move and it is a trap.
 
-**B — do not build the plain staticlib when the umbrella exists (cheapest).**
-Take the generated headers from the umbrella's own `nros-cpp` build and skip the
-plain `corrosion_import_crate` in that configure. This matches what the code
-comment already says the design is; the bug is the missing condition. Needs the
-header rule re-pointed, and needs care that a consumer adding `nano_ros` for
-headers alone still works.
+**B — the umbrella becomes the SOLE provider (recommended).** When
+`nros_synth_runtime_umbrella` runs, make the swap total rather than partial:
+
+  1. skip the plain `corrosion_import_crate` for that configure — the code
+     comment already says the plain archive is the no-Rust-node fallback, so the
+     bug is a missing condition, not a missing design;
+  2. mirror the generated headers from the UMBRELLA's build, so headers and
+     symbols come from one compilation.
+
+Step 2 is the part with no mechanism today, and it is what makes `links` worth
+adding: with `links = "nros_cpp"` + `cargo:include` on the provider, the
+synthesised umbrella's build script can read `DEP_NROS_CPP_INCLUDE` and
+re-export the headers to a stable path for CMake to mirror. Without that there
+is no supported way to reach nros-cpp's `OUT_DIR` from inside the umbrella
+build.
 
 **C — stop bundling `nros-cpp` in the umbrella and link the plain archive.**
-Rejected: Option D exists precisely to get rid of
-`--allow-multiple-definition` and to split the stateful REGISTRY, so this
-reintroduces what it was built to remove.
+Rejected. Two Rust staticlibs cannot coexist in one link (each is a
+self-contained bundle), which is exactly why Option D bundles it; this
+reintroduces the `--allow-multiple-definition` problem that design removed.
 
-Recommendation: **B** to unblock, with **A** recorded as the class fix, because
-B leaves two roots capable of sharing a dir the moment another consumer imports
-a root-workspace crate.
+**Enforcement, either way.** The invariant is *one Rust staticlib exporting the
+nros symbol set per configure*. `links` does not enforce it — that check is
+per-graph, and here two independent invocations each have a valid single-provider
+graph. A CMake-level gate does: assert a configure builds exactly one such
+archive, in the spirit of `check-fixture-groups`. Without it, the next consumer
+that imports a root-workspace crate re-creates this silently.
 
 ## Connection to the phase-340 identity budget
 
