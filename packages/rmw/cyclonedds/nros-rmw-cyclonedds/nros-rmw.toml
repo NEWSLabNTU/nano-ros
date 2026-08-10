@@ -13,6 +13,11 @@ cmake_value = "cyclonedds"
 c_define_token = "CYCLONEDDS"
 cffi_feature = "rmw-cyclonedds-cffi"
 
+# The C++ define `nros-cpp` puts on its INTERFACE for this backend. Spellings
+# are INCONSISTENT across backends by history (`_CFFI` on two, bare on two) and
+# are preserved exactly — consumers `#if` on them.
+cpp_define = "NROS_RMW_CYCLONEDDS"
+
 # NOT special — just the only backend that fills the cargo-consumer x
 # cmake-provider cell (RFC-0071 D7). Its register symbol is C++, so there is no
 # rlib to bundle; a Rust-rooted consumer reaches it through the `-sys` bridge

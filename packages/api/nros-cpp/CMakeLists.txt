@@ -50,6 +50,8 @@ nros_feature_set(_cpp_features
 # Relative to THIS file, like the FeatureSet include above — a raw
 # `add_subdirectory(<repo>)` consumer never defines NANO_ROS_ROOT.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosCargoProfile.cmake")
+# phase-347 W3 — `nros_rmw_dispatch()` / `nros_rmw_is_known()` (RFC-0071).
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosRmwDispatch.cmake")
 nros_resolve_cargo_profile()
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"
@@ -191,38 +193,35 @@ cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
 # pull in the standalone `nros-rmw-cyclonedds` library + Cyclone DDS
 # itself transitively, and flip on the auto-register call inside
 # `nros::init` via the `NROS_RMW_CYCLONEDDS` macro.
-if(NANO_ROS_RMW STREQUAL "cyclonedds")
-    # The root NanoRos umbrella owns Cyclone backend linkage. Linking
-    # nros_rmw_cyclonedds directly here places the archive before the
-    # umbrella's whole-archive group on CMake 3.22 and lets ld discard
-    # the registration constructor object, leaving the runtime with an
-    # empty backend registry.
-    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_CYCLONEDDS=1)
-elseif(NANO_ROS_RMW STREQUAL "xrce")
-    # Phase 144.3 — XRCE via the `nros-rmw-xrce-cffi` Rust shim, which
-    # is built+linked by the root `CMakeLists.txt` xrce branch (see
-    # add_subdirectory path). Mirrors the dds/zenoh shape above: no
-    # find_package required — the `nros_rmw_xrce_register()` symbol
-    # lives in the staticlib and auto-registers via the `linkme`
-    # distributed-slice (Phase 128.B.3). The compile define is kept
-    # under the `_CFFI` suffix to distinguish from the legacy
-    # `NROS_RMW_XRCE` define still emitted by `NanoRosCppTargets.cmake`
-    # for installed find_package consumers.
-    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_XRCE_CFFI=1)
-elseif(NANO_ROS_RMW STREQUAL "zenoh")
-    # Phase 115.L.2: zenoh-pico via the C vtable. Same shape as
-    # the `dds` path above — `nros_rmw_zenoh_register()` lives
-    # in the Rust shim.
-    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_ZENOH_CFFI=1)
-elseif(NANO_ROS_RMW STREQUAL "uorb")
-    # Phase 140 — PX4 uORB backend (C++ port). Consumed via the
-    # `integrations/px4/` shell which add_subdirectory's
-    # `packages/rmw/uorb/nros-rmw-uorb` and exposes the `nros_rmw_uorb`
-    # target. Mirrors the cyclonedds shape above.
-    if(TARGET nros_rmw_uorb)
-        target_link_libraries(nros-cpp-headers INTERFACE nros_rmw_uorb)
+# phase-347 W3 — one descriptor-driven block, replacing a four-arm
+# `if(NANO_ROS_RMW STREQUAL ...)` chain. That chain was the THIRD closed list of
+# backends in the tree: it accepted uorb, `NanoRosFeatureSet` accepted uorb, and
+# the generated `nros_rmw_dispatch` FATAL_ERROR'd on it. Three lists, and they
+# disagreed.
+#
+# The defines are unchanged and come from each backend's `nros-rmw.toml`
+# (`cpp_define`). Their spellings are INCONSISTENT by history — `_CFFI` on
+# xrce/zenoh, bare on cyclonedds/uorb — and are preserved exactly, because
+# consumer headers `#if` on them. Normalising them is a separate, breaking
+# change; this wave moves the fact, it does not rename it.
+#
+# The per-backend comments that lived on each arm are now on the descriptors.
+if(NANO_ROS_RMW AND NOT NANO_ROS_RMW STREQUAL "none")
+    nros_rmw_is_known("${NANO_ROS_RMW}" _nros_cpp_rmw_known)
+    if(NOT _nros_cpp_rmw_known)
+        message(FATAL_ERROR
+            "nros-cpp: unknown RMW '${NANO_ROS_RMW}' "
+            "(provided by a descriptor: ${NROS_RMW_KNOWN})")
     endif()
-    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_UORB=1)
+    nros_rmw_dispatch("${NANO_ROS_RMW}")
+    if(NROS_RMW_CPP_DEFINE)
+        target_compile_definitions(nros-cpp-headers INTERFACE ${NROS_RMW_CPP_DEFINE}=1)
+    endif()
+    # uorb's PX4 shell add_subdirectory's the backend and exposes this target;
+    # the guard stays because a consumer may select the rmw without that shell.
+    if(NROS_RMW_CMAKE_TARGET AND TARGET ${NROS_RMW_CMAKE_TARGET})
+        target_link_libraries(nros-cpp-headers INTERFACE ${NROS_RMW_CMAKE_TARGET})
+    endif()
 endif()
 
 # Issue 0073 — when the E2E-safety cargo feature is compiled into nros-cpp (above),

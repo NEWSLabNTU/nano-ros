@@ -13,6 +13,13 @@ cmake_value = "uorb"
 c_define_token = "UORB"
 cffi_feature = "rmw-uorb-cffi"
 
+# The C++ define `nros-cpp` puts on its INTERFACE for this backend. Spellings
+# are INCONSISTENT across backends by history (`_CFFI` on two, bare on two) and
+# are preserved exactly — consumers `#if` on them.
+cpp_define = "NROS_RMW_UORB"
+# The cmake target `nros-cpp` links when present (uorb's PX4 shell path).
+cmake_target = "nros_rmw_uorb"
+
 # uorb is NOT special (phase-347 W3). It populates the vtable and self-registers
 # like every other backend; what is unusual is its CONSUMER — PX4 links it
 # through the `integrations/px4/` shell rather than a nano-ros entry, which is a

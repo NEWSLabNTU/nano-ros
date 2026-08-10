@@ -19,6 +19,10 @@
 
 include_guard(GLOBAL)
 
+# phase-347 W3 — `NROS_RMW_KNOWN` / `nros_rmw_is_known()`, derived from the
+# per-backend `nros-rmw.toml` descriptors (RFC-0071).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
+
 # nros_feature_set(<out>
 #     CRATE        <c|cpp>               which crate's feature vocabulary
 #     EDITION      <humble|iron|jazzy>   default: NANO_ROS_ROS_EDITION, else humble
@@ -61,12 +65,16 @@ function(nros_feature_set out_var)
     # ---- rmw ---------------------------------------------------------------
     # Selection happens at link time (`NanoRos::Rmw::<name>`); the feature only
     # decides which backend the umbrella bundles into the one Rust staticlib.
-    if(NOT (_FS_RMW STREQUAL "zenoh" OR _FS_RMW STREQUAL "xrce"
-            OR _FS_RMW STREQUAL "cyclonedds" OR _FS_RMW STREQUAL "uorb"
-            OR _FS_RMW STREQUAL "none"))
+    # phase-347 W3 — validity comes from the DESCRIPTORS, not a list kept here.
+    # This used to enumerate zenoh/xrce/cyclonedds/uorb/none while
+    # `nros_rmw_dispatch` accepted only the first three and FATAL_ERROR'd on
+    # uorb: two lists disagreeing about the same tree. Both now read
+    # `NROS_RMW_KNOWN`, which is derived from `packages/rmw/*/*/nros-rmw.toml`.
+    nros_rmw_is_known("${_FS_RMW}" _fs_rmw_known)
+    if(NOT _fs_rmw_known AND NOT _FS_RMW STREQUAL "none")
         message(FATAL_ERROR
             "nros_feature_set: unknown RMW '${_FS_RMW}' "
-            "(expected: zenoh, xrce, cyclonedds, uorb, none)")
+            "(provided by a descriptor: ${NROS_RMW_KNOWN}; or 'none')")
     endif()
     # The two crates spell the same selection differently — nros-cpp has
     # `rmw-{zenoh,xrce}-cffi`, nros-c has `cffi-zenoh-cffi` / `cffi-xrce-c`.

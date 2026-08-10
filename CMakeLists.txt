@@ -19,8 +19,14 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 # Options / cache vars (set BEFORE add_subdirectory in the user project).
 # ---------------------------------------------------------------------------
 option(NANO_ROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
-set(NANO_ROS_RMW "zenoh" CACHE STRING "RMW backend: zenoh, xrce, or cyclonedds")
-set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce dds cyclonedds)
+# phase-347 W3 — the FOURTH closed list of backends, and the one that had rotted
+# furthest: it offered `dds`, retired in Phase 169, and omitted `uorb`, which the
+# tree ships. Both the default and the cmake-gui choices now come from the
+# descriptors (`packages/rmw/*/*/nros-rmw.toml`) via `NROS_RMW_KNOWN`.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRmwDispatch.cmake")
+set(NANO_ROS_RMW "zenoh" CACHE STRING
+    "RMW backend — one of: ${NROS_RMW_KNOWN}")
+set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS ${NROS_RMW_KNOWN})
 set(NANO_ROS_PLATFORM "posix" CACHE STRING
     "Target platform (canonical: posix/freertos/nuttx/threadx; legacy: freertos_armcm3, nuttx_armv7a, threadx_linux, threadx_riscv64)")
 set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS

@@ -18,8 +18,20 @@
 
 use std::fmt;
 
-/// The RMW backends nano-ros supports today. `dust-dds` was retired (Phase 169).
-pub const KNOWN_RMW: &[&str] = &["zenoh", "xrce", "cyclonedds"];
+include!(concat!(env!("OUT_DIR"), "/rmw_table.rs"));
+
+/// The RMW backends this checkout provides, **derived from the descriptors**
+/// (`packages/rmw/*/*/nros-rmw.toml`) rather than enumerated here.
+///
+/// phase-347 W3 — this was a hand-written `const &["zenoh", "xrce",
+/// "cyclonedds"]`, and it was already wrong: `uorb` is a first-class
+/// `NANO_ROS_RMW` value in `NanoRosFeatureSet.cmake` and in
+/// `nros-cpp/CMakeLists.txt`, but absent here, so `nros_rmw_dispatch`
+/// FATAL_ERROR'd on a backend the tree ships. A closed list stopped covering
+/// the tree it governed; that is why it is no longer a list.
+pub fn known_rmw() -> Vec<&'static str> {
+    RMW_ROWS.iter().map(|r| r.declared).collect()
+}
 
 /// A declared RMW value lowered to its per-language build forms.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,7 +76,7 @@ pub struct RmwDispatch {
     pub needs_cxx_linker: bool,
 }
 
-/// A declared RMW value that is not one of [`KNOWN_RMW`].
+/// A declared RMW value no descriptor claims (see [`known_rmw`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownRmw {
     pub declared: String,
@@ -76,7 +88,7 @@ impl fmt::Display for UnknownRmw {
             f,
             "unknown rmw `{}` (known: {})",
             self.declared,
-            KNOWN_RMW.join(", ")
+            known_rmw().join(", ")
         )
     }
 }
@@ -90,12 +102,10 @@ impl std::error::Error for UnknownRmw {}
 /// This is the single alias table; the orchestration layer's `normalize_rmw`
 /// delegates here so there is one source of truth for RMW name recognition.
 pub fn canonical_rmw(input: &str) -> Option<&'static str> {
-    match input {
-        "zenoh" | "rmw-zenoh" | "rmw-zenoh-cffi" => Some("zenoh"),
-        "xrce" | "rmw-xrce" | "rmw-xrce-cffi" => Some("xrce"),
-        "cyclonedds" | "rmw-cyclonedds" | "rmw-cyclonedds-cffi" => Some("cyclonedds"),
-        _ => None,
-    }
+    RMW_ROWS
+        .iter()
+        .find(|r| r.names.contains(&input))
+        .map(|r| r.declared)
 }
 
 /// Lower a declared RMW string to its per-language build forms.
@@ -104,49 +114,24 @@ pub fn canonical_rmw(input: &str) -> Option<&'static str> {
 /// value is an error — caught early in the loader so a typo fails with a clear
 /// message rather than producing a broken build.
 pub fn resolve_rmw(declared: &str) -> Result<ResolvedRmw, UnknownRmw> {
-    match canonical_rmw(declared) {
-        Some("zenoh") => Ok(ResolvedRmw {
-            declared: "zenoh",
-            cargo_feature: "rmw-zenoh",
-            cmake_value: "zenoh",
-            c_define_token: "ZENOH",
+    RMW_ROWS
+        .iter()
+        .find(|r| r.names.contains(&declared))
+        .map(|r| ResolvedRmw {
+            declared: r.declared,
+            cargo_feature: r.cargo_feature,
+            cmake_value: r.cmake_value,
+            c_define_token: r.c_define_token,
             dispatch: RmwDispatch {
-                umbrella_cffi_feature: "rmw-zenoh-cffi",
-                rlib_dep: Some("nros-rmw-zenoh"),
-                extra_link_libs: &[],
-                needs_cxx_linker: false,
+                umbrella_cffi_feature: r.cffi_feature,
+                rlib_dep: (!r.rlib_dep.is_empty()).then_some(r.rlib_dep),
+                extra_link_libs: r.extra_link_libs,
+                needs_cxx_linker: r.needs_cxx_linker,
             },
-        }),
-        Some("xrce") => Ok(ResolvedRmw {
-            declared: "xrce",
-            cargo_feature: "rmw-xrce",
-            cmake_value: "xrce",
-            c_define_token: "XRCE",
-            dispatch: RmwDispatch {
-                umbrella_cffi_feature: "rmw-xrce-cffi",
-                rlib_dep: Some("nros-rmw-xrce-cffi"),
-                extra_link_libs: &[],
-                needs_cxx_linker: false,
-            },
-        }),
-        Some("cyclonedds") => Ok(ResolvedRmw {
-            declared: "cyclonedds",
-            cargo_feature: "rmw-cyclonedds",
-            cmake_value: "cyclonedds",
-            c_define_token: "CYCLONEDDS",
-            dispatch: RmwDispatch {
-                umbrella_cffi_feature: "rmw-cyclonedds-cffi",
-                // cyclonedds is a C++ library, NOT a Rust rlib bundled in the
-                // umbrella — linked separately via `extra_link_libs`.
-                rlib_dep: None,
-                extra_link_libs: &["nros_rmw_cyclonedds", "ddsc", "stdc++"],
-                needs_cxx_linker: true,
-            },
-        }),
-        _ => Err(UnknownRmw {
+        })
+        .ok_or_else(|| UnknownRmw {
             declared: declared.to_string(),
-        }),
-    }
+        })
 }
 
 /// Phase 241 W13/R1 — render the per-backend link dispatch ([`RmwDispatch`]) as a
@@ -168,11 +153,17 @@ pub fn render_cmake_dispatch() -> String {
          #   NROS_RMW_RLIB_DEP               backend rlib crate bundled in the umbrella, or \"\"\n\
          #   NROS_RMW_EXTRA_LINK_LIBS        ;-list of extra link libs (cyclonedds C++ path), or \"\"\n\
          #   NROS_RMW_NEEDS_CXX_LINKER       ON/OFF — force the C++ linker driver (libstdc++)\n\
+         #   NROS_RMW_CPP_DEFINE             the define nros-cpp puts on its INTERFACE\n\
+         #   NROS_RMW_CMAKE_TARGET           a cmake target to link when present, or \"\"\n\
          function(nros_rmw_dispatch rmw)\n",
     );
     let mut first = true;
-    for name in KNOWN_RMW {
-        let r = resolve_rmw(name).expect("KNOWN_RMW resolves");
+    for name in known_rmw() {
+        let row = RMW_ROWS
+            .iter()
+            .find(|x| x.declared == name)
+            .expect("known_rmw() names come from RMW_ROWS");
+        let r = resolve_rmw(name).expect("a descriptor-provided name resolves");
         let d = &r.dispatch;
         let branch = if first { "if" } else { "elseif" };
         first = false;
@@ -184,18 +175,45 @@ pub fn render_cmake_dispatch() -> String {
              \x20       set(NROS_RMW_UMBRELLA_CFFI_FEATURE \"{feat}\" PARENT_SCOPE)\n\
              \x20       set(NROS_RMW_RLIB_DEP \"{rlib}\" PARENT_SCOPE)\n\
              \x20       set(NROS_RMW_EXTRA_LINK_LIBS \"{extra}\" PARENT_SCOPE)\n\
-             \x20       set(NROS_RMW_NEEDS_CXX_LINKER {needs_cxx} PARENT_SCOPE)\n",
+             \x20       set(NROS_RMW_NEEDS_CXX_LINKER {needs_cxx} PARENT_SCOPE)\n\
+             \x20       set(NROS_RMW_CPP_DEFINE \"{cpp_define}\" PARENT_SCOPE)\n\
+             \x20       set(NROS_RMW_CMAKE_TARGET \"{cmake_target}\" PARENT_SCOPE)\n",
             decl = r.declared,
             feat = d.umbrella_cffi_feature,
+            cpp_define = row.cpp_define,
+            cmake_target = row.cmake_target,
         ));
     }
     out.push_str(
         "    else()\n\
          \x20       message(FATAL_ERROR \"nros_rmw_dispatch: unknown rmw '${rmw}' \"\n\
-         \x20           \"(known: zenoh xrce cyclonedds)\")\n\
+         \x20           \"(known: KNOWN_PLACEHOLDER)\")\n\
          \x20   endif()\n\
          endfunction()\n",
     );
+    // phase-347 W3 — the "known:" list in the FATAL_ERROR is DERIVED. It used to
+    // be the literal "zenoh xrce cyclonedds", which is how the message came to
+    // omit `uorb`: a hand-written list inside a generator is still a hand-written
+    // list.
+    out = out.replace("KNOWN_PLACEHOLDER", &known_rmw().join(" "));
+    // phase-347 W3 — one derived list every cmake consumer shares, so
+    // `NanoRosFeatureSet`'s validator and `nros-cpp`'s dispatch stop keeping
+    // their own. Those two accepted `uorb` while `nros_rmw_dispatch` fatal'd on
+    // it: three lists, two of which were right.
+    out.push_str(&format!(
+        "\n# Every rmw a descriptor in this checkout provides. DERIVED — see above.\n\
+         set(NROS_RMW_KNOWN \"{}\" CACHE INTERNAL \"rmw names provided by nros-rmw.toml descriptors\")\n\
+         \n\
+         # nros_rmw_is_known(<name> <out_var>) — TRUE when a descriptor claims <name>.\n\
+         function(nros_rmw_is_known name out_var)\n\
+         \x20   if(name IN_LIST NROS_RMW_KNOWN)\n\
+         \x20       set(${{out_var}} TRUE PARENT_SCOPE)\n\
+         \x20   else()\n\
+         \x20       set(${{out_var}} FALSE PARENT_SCOPE)\n\
+         \x20   endif()\n\
+         endfunction()\n",
+        known_rmw().join(";")
+    ));
     out
 }
 
@@ -230,7 +248,7 @@ mod tests {
 
     #[test]
     fn every_known_rmw_resolves() {
-        for name in KNOWN_RMW {
+        for name in known_rmw() {
             assert!(resolve_rmw(name).is_ok(), "{name} should resolve");
         }
     }
@@ -260,7 +278,7 @@ mod tests {
         // Phase 248 C5b — the cargo lowering target is the board crate's
         // `rmw-X` feature; guards against drift from the board crates' (and
         // nros's) `rmw-<name>` feature naming.
-        for name in KNOWN_RMW {
+        for name in known_rmw() {
             let r = resolve_rmw(name).unwrap();
             assert_eq!(r.cargo_feature, format!("rmw-{name}"));
         }

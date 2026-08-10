@@ -13,6 +13,11 @@ cmake_value = "zenoh"
 c_define_token = "ZENOH"
 cffi_feature = "rmw-zenoh-cffi"
 
+# The C++ define `nros-cpp` puts on its INTERFACE for this backend. Spellings
+# are INCONSISTENT across backends by history (`_CFFI` on two, bare on two) and
+# are preserved exactly — consumers `#if` on them.
+cpp_define = "NROS_RMW_ZENOH_CFFI"
+
 # How this backend reaches a consumer's link. Pure Rust: an rlib bundled into
 # the C/C++ umbrella, nothing extra on the link line.
 [rmw.provides.cargo]
