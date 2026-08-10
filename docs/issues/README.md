@@ -124,17 +124,7 @@ portable node code had NO clock at all; new `nros::time::now()/now_us()` mirrors
 selection (std `Instant`; no_std+rmw-cffi platform clock; compiled out elsewhere),
 monotonic-since-unspecified-epoch, explicitly not ROS time. See `archived/0502-*..0504-*`.
 
-**#499** (build, open 2026-08-10) — `check-artifact-identity-budget` failed tier 1 at its FIRST step on a
-build tree three days old and untouched by the diff, so the whole build tier / clippy / `test-all` never
-ran. Not the gate being wrong — the gate being **unfalsifiable where it runs**. Its own comment accepts
-that a long-lived tree accumulates rlibs and prescribes "delete the tree and rebuild", but (a) it SKIPS on
-a pristine CI checkout, so it reports only on the tree that accumulates and is silent where it would be
-exact, (b) that remedy is a full native fixture rebuild — tens of minutes, and it re-stales everything
-keyed on the CLI stamp — demanded from the lane CLAUDE.md says to run after every task, which is how a gate
-gets bypassed rather than obeyed, and (c) wiping is also how a REAL regression gets erased, since the
-prescribed response to a red is to destroy the evidence and re-measure. Direction: count only artifacts
-newer than the `.fixtures-built` stamp, or run it off a known-clean tree as a report. Sibling of #485,
-which found this same gate reporting a wrong number for a different reason. See `0499-*`. (2026-08-10)
+Recently resolved (2026-08-11, phase-340): **#0499** — `check-artifact-identity-budget` counted every rlib in a long-lived tree, so accumulation and a real regression printed the same message, and the remedy ("delete the tree and rebuild") both cost a 40-minute wipe at tier-1 cadence AND erased the evidence of a genuine red. Fixed on all three axes: the stamp gained a `started_at` lower bound and the gate filters on it, `build-test-fixtures` reports the reading where the tree is known-fresh, and a failure now states whether accumulation is ruled out instead of asking the reader to guess. See `archived/0499-*`.
 
 Recently resolved (2026-08-10): **#498** (build) — `just build-test-fixtures lane=native` died `metadata
 harness emitted invalid JSON … EOF while parsing a value at line 1 column 0` — an EMPTY file, which was

@@ -1,12 +1,47 @@
 ---
 id: 499
 title: "`check-artifact-identity-budget` runs only where its reading cannot be trusted, and skips where it can — a stale tree fails tier 1 at step one"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: build
 related: [issue-0485, phase-340, issue-0446]
+resolved_in: phase-340
 ---
+
+## Resolution (2026-08-11) — all three options landed
+
+**Option 1 — count only this build's artifacts.** The gate filters rlib mtimes
+against `started_at`, a LOWER bound added to the fixtures stamp for this
+purpose. Not `built_at` and not the stamp file's mtime: both are written on
+SUCCESS, so every artifact a run produced is older than them, and filtering on
+either marks the whole current build as history — that version was written,
+measured, and reverted because it made the gate skip permanently, which is this
+issue inverted rather than fixed.
+
+**Option 2 — read it where the tree is pristine.** `build-test-fixtures` runs
+the gate as a post-step, REPORTING rather than failing. A build whose artifacts
+are correct must not be failed by a budget, and a red at the end of a 40-minute
+build is one nobody acts on. This fixes the inverted coverage: the number is now
+recorded at the one moment it is trustworthy.
+
+**Option 3 — fail with the diagnosis.** The old close ("delete the tree and
+rebuild before believing the count") is actively harmful once filtering works:
+accumulation is already excluded, so deleting the tree erases the evidence of a
+real regression and re-measures to green — this issue's own third complaint.
+`era_verdict` now says which case it is:
+
+* filtered — "accumulation is ruled out; do NOT delete the tree"
+* unfiltered — "no `started_at`, so this MAY be accumulation; rebuild and re-read"
+
+Each behaviour was tripwired with the perturbation ASSERTED before the output
+was believed, after a first attempt perturbed a copy of the script in a scratch
+dir (which `cd`s to its own parent, read a different tree, and reported a false
+pass).
+
+**The tier-1 cost complaint is addressed by construction:** a red no longer
+requires a wipe to interpret, so the remedy this issue called unsurvivable is no
+longer the remedy.
 
 ## Symptom
 

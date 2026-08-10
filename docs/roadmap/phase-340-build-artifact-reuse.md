@@ -2517,9 +2517,37 @@ before choosing.
       restoring the edge reproduces it, and with the edge BOTH crates warn where
       only one does without. It is the unenforced zero-probe path already filed
       as issue 0472.
-- [ ] **W5.d** Attack the residual 8: `nros-build-helpers` / `nros-zpico-build` /
-      `nros-board-common` pull `heapless`, `log` and friends into the build graph.
-      Establish whether those build-deps need the runtime crates at all.
+- [x] **W5.d** **ANSWERED 2026-08-11 via the acceptance's second clause** — the
+      reason is recorded rather than the overlap removed, because the edge is
+      not a stray dependency.
+
+      None of the three names a runtime crate. Measured from their manifests:
+
+      ```
+      nros-build-helpers   cbindgen cc nros-cc-flags nros-sizes-build
+      nros-zpico-build     cbindgen cc nros-cc-flags nros-board-common
+                           nros-build-paths nros-zephyr-build pkg-config
+      nros-board-common    serde toml cc nros-build-paths
+      ```
+
+      All build tooling. `heapless`, `log` and the rest enter through
+      **`nros-sizes-build`, which spawns a nested `cargo build -p <crate>`** to
+      read `__nros_size_*` symbols — the probe must COMPILE the product crate to
+      measure it, so the product graph is inside the build graph by
+      construction, not by a manifest mistake.
+
+      **Removing the overlap would mean removing the probe**, and the probe is
+      what keeps the C `_opaque` buffers correctly sized (the silent 0-byte
+      `NROS_*_SIZE` class, phase 77.23/77.24). The overlap is the price of
+      measuring sizes at build time, and the manifest edge that causes it is
+      `nros-build-helpers -> nros-sizes-build`.
+
+      Two things this phase changed already reduce its COST without removing it:
+      issue 0490 (the probe's chain no longer rebuilds permanently) and the
+      shared probe dir becoming the default (phase-343 I1, ~76.8 GiB).
+
+      Left open would be misleading: the number cannot drop while the mechanism
+      is wanted.
 
 **Acceptance:** the product/build-graph overlap drops from 12 of 14 with
 `just verify-size-probe` still green in BOTH modes, or the reason it cannot is
