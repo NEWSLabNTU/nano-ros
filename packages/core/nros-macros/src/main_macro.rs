@@ -3016,13 +3016,17 @@ enum Framework {
     /// with its board crate. The variant and its emit branch stay because they
     /// are the seam an out-of-tree Embassy board consumes — `EmbassyBoardEntry`
     /// is public in `nros-platform` and `nros ws check` already routes on the
-    /// board crate's `framework = "embassy"` metadata. Deleting the emit would
-    /// mean issue 0415's fix (teach THIS table to read that same metadata) has
-    /// to re-write it. The expect fires the day it becomes constructible.
-    #[expect(
-        dead_code,
-        reason = "no in-tree deploy key selects Embassy after phase-337 W7.a; issue 0415"
-    )]
+    /// board crate's `framework = "embassy"` metadata.
+    ///
+    /// **Issue 0415 FIXED (phase-346 W1) — and this variant is how you can
+    /// tell.** It carried `#[expect(dead_code)]` with the note "the expect
+    /// fires the day it becomes constructible", because no in-tree deploy key
+    /// selected it after phase-337 W7.a. It is constructible now:
+    /// [`framework_from_name`] maps the `"embassy"` a board declares in its own
+    /// `[package.metadata.nros.board]`, which reaches expansion through
+    /// `NROS_BOARD_FRAMEWORK` (emitted by `nros_build::emit_board_framework`).
+    /// So an out-of-tree Embassy board selects this branch without any in-tree
+    /// table entry — which was the whole point.
     Embassy,
     /// Phase 225.P — Zephyr RTOS owns boot + `main`. The macro emits a
     /// `#[unsafe(no_mangle)] pub extern "C" fn rust_main()` staticlib
@@ -3055,23 +3059,71 @@ enum Framework {
 // emit is needed; emitting our own `nsh_main` would both collide with
 // the board's and skip the critical `nsh_initialize()` network bringup.
 
-fn framework_for(deploy: &str) -> Framework {
-    match deploy {
-        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => Framework::Rtic,
-        // phase-337 W7.a — `embassy-stm32f4` was the ONLY deploy key that
-        // selected `Framework::Embassy`, and it left with its board crate. The
-        // framework itself stays: `EmbassyBoardEntry` and the emit branch below
-        // are the seam an out-of-tree Embassy board consumes, and `nros ws
-        // check` still reaches it through the board crate's
-        // `[package.metadata.nros.board] framework = "embassy"`. Issue 0415
-        // tracks the gap this leaves in THIS table (deploy-keyed, so an
-        // out-of-tree Embassy board currently emits OwnedSpin here).
+/// Map a canonical framework NAME (the `nros-orchestration-ir` spelling) to the
+/// emit shape. `None` for a name this macro has no branch for — the caller
+/// turns that into a compile error rather than a silent `OwnedSpin`.
+fn framework_from_name(name: &str) -> Option<Framework> {
+    Some(match name {
+        "owned-spin" => Framework::OwnedSpin,
+        "rtic" => Framework::Rtic,
+        "embassy" => Framework::Embassy,
         "zephyr" => Framework::Zephyr,
-        "esp32-qemu" | "qemu-esp32-baremetal" => Framework::Esp32,
-        // NuttX ("nuttx" / "qemu-arm-nuttx") rides OwnedSpin — the board
-        // crate's `nsh_main` bridges the kernel init task to the emitted
-        // `fn main()`. See the `Framework` enum NOTE.
-        _ => Framework::OwnedSpin,
+        "esp32" => Framework::Esp32,
+        _ => return None,
+    })
+}
+
+/// Issue 0415 — resolve the entry shape from the BOARD, not from a table of
+/// in-tree deploy strings.
+///
+/// Order, and the reason for it:
+///
+/// 1. `NROS_BOARD_FRAMEWORK`, set by the Entry package's build script (see
+///    `nros_build::emit_board_framework`, which reads the board crate's
+///    `[package.metadata.nros.board] framework`). This is the only route that
+///    reaches an OUT-OF-TREE board, and it wins when present.
+/// 2. `nros_orchestration_ir::framework_for_board_key` — the in-tree fast path,
+///    the same SSoT `nros ws check` and the CLI's Rust emitter consult.
+/// 3. `OwnedSpin`, which is what a board with no framework opinion means.
+///
+/// An UNKNOWN framework name is an error, never a fall-through. That
+/// fall-through was the whole of issue 0415: an out-of-tree board declaring
+/// `framework = "embassy"` got a plain `fn main()`, which links and then does
+/// nothing the framework was for.
+fn framework_for(deploy: &str) -> Framework {
+    try_framework_for(deploy).unwrap_or_else(|e| {
+        // A proc-macro cannot return a Result here without reshaping every
+        // caller; the emitted `compile_error!` is produced by the caller that
+        // owns the token stream. Panicking with this message surfaces at the
+        // same place, with the same text.
+        panic!("{e}")
+    })
+}
+
+fn try_framework_for(deploy: &str) -> Result<Framework, String> {
+    if let Ok(name) = std::env::var("NROS_BOARD_FRAMEWORK") {
+        let name = name.trim();
+        if !name.is_empty() {
+            return framework_from_name(name).ok_or_else(|| {
+                format!(
+                    "nros::main!: the board declares `framework = \"{name}\"`, which this \
+                     version of nano-ros has no entry shape for. Known frameworks: {}. \
+                     (The value came from NROS_BOARD_FRAMEWORK, emitted by the Entry \
+                     package's build script from the board crate's \
+                     `[package.metadata.nros.board]`.)",
+                    nros_orchestration_ir::FRAMEWORKS.join(", ")
+                )
+            });
+        }
+    }
+    match nros_orchestration_ir::framework_for_board_key(deploy) {
+        Some(name) => framework_from_name(name).ok_or_else(|| {
+            format!(
+                "nros::main!: internal — the in-tree board table maps deploy `{deploy}` to \
+                 framework `{name}`, which this macro has no emit branch for"
+            )
+        }),
+        None => Ok(Framework::OwnedSpin),
     }
 }
 
@@ -3488,5 +3540,81 @@ mod derived_sizing_tests {
                 "{name}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod framework_ssot_tests {
+    use super::*;
+
+    /// Issue 0415 — the shared framework vocabulary and this macro's emit
+    /// shapes must stay in step. If `nros-orchestration-ir` gains a framework
+    /// and the macro grows no branch for it, a board declaring it would hit the
+    /// "no entry shape" error at expansion — better caught here.
+    #[test]
+    fn every_declared_framework_has_an_emit_shape() {
+        for name in nros_orchestration_ir::FRAMEWORKS {
+            assert!(
+                framework_from_name(name).is_some(),
+                "`{name}` is in nros_orchestration_ir::FRAMEWORKS but this macro \
+                 has no emit branch for it"
+            );
+        }
+    }
+
+    /// …and the reverse: a name the macro accepts but the vocabulary does not
+    /// declare could never be produced by a board, so it would be dead emit.
+    #[test]
+    fn the_macro_accepts_no_framework_outside_the_vocabulary() {
+        for name in ["owned-spin", "rtic", "embassy", "zephyr", "esp32"] {
+            assert!(
+                nros_orchestration_ir::is_known_framework(name),
+                "the macro maps `{name}` but the shared vocabulary does not declare it"
+            );
+        }
+        assert!(framework_from_name("not-a-framework").is_none());
+    }
+
+    /// Every in-tree board key must resolve to a framework this macro emits —
+    /// the fast path has to stay usable without the build-script route.
+    #[test]
+    fn in_tree_board_keys_resolve_to_an_emit_shape() {
+        for key in [
+            "native",
+            "freertos",
+            "threadx-linux",
+            "threadx-qemu-riscv64",
+            "nuttx",
+            "nuttx-riscv",
+            "esp32-qemu",
+            "zephyr",
+            "rtic-mps2-an385",
+            "qemu-mps2-an385",
+        ] {
+            let fw = nros_orchestration_ir::framework_for_board_key(key).unwrap_or("owned-spin");
+            assert!(
+                framework_from_name(fw).is_some(),
+                "board key `{key}` maps to framework `{fw}`, which has no emit branch"
+            );
+        }
+    }
+
+    /// The regression 0415 names: an unknown framework must be an ERROR, not a
+    /// silent fall-through to `OwnedSpin` (an image that links and does nothing
+    /// the framework was for).
+    #[test]
+    fn an_unknown_framework_is_an_error_not_owned_spin() {
+        // SAFETY: single-threaded test process; the var is removed below.
+        unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embasy") };
+        let err = try_framework_for("native").unwrap_err();
+        assert!(
+            err.contains("embasy"),
+            "the error must name the bad value: {err}"
+        );
+        assert!(err.contains("embassy"), "and list the known ones: {err}");
+
+        unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embassy") };
+        assert_eq!(try_framework_for("native").unwrap(), Framework::Embassy);
+        unsafe { std::env::remove_var("NROS_BOARD_FRAMEWORK") };
     }
 }

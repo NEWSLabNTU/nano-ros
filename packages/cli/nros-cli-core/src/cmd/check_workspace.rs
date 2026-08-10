@@ -441,6 +441,21 @@ fn read_board_framework(board_cargo_toml: &Path) -> Framework {
     match fw {
         Some("rtic") => Framework::Rtic,
         Some("embassy") => Framework::Embassy,
+        // Issue 0415 — a framework this lint has no arm for is NOT silently
+        // owned-spin. `zephyr` and `esp32` are known repo-wide (the proc-macro
+        // emits for them) but carry no dispatch-matrix rule here, so they read
+        // as owned-spin for THIS lint's purposes; anything outside the shared
+        // set is a typo and must be reported rather than absorbed.
+        Some(other) if !nros_orchestration_ir::is_known_framework(other) => {
+            eprintln!(
+                "warning: {}: `[package.metadata.nros.board] framework = \"{other}\"` is not a \
+                 known framework ({}). `nros::main!` will refuse to expand for this board. \
+                 [diagnostic: unknown-board-framework]",
+                board_cargo_toml.display(),
+                nros_orchestration_ir::FRAMEWORKS.join(", ")
+            );
+            Framework::OwnedSpin
+        }
         _ => Framework::OwnedSpin,
     }
 }

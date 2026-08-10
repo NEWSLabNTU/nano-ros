@@ -44,6 +44,9 @@
 //! the planner output and will be wired in over follow-up patches as
 //! the Entry pkg shape stabilises.
 
+mod board_framework;
+pub use board_framework::emit_board_framework;
+
 use std::{
     env, fs,
     path::{Path, PathBuf},

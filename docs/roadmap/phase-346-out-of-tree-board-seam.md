@@ -1,6 +1,7 @@
 # Phase 346 — The RFC-0064 seam, actually reachable from out of tree
 
-**Status (2026-08-10). OPEN — no code landed; the measurements below are done
+**Status (2026-08-10). W1 LANDED; W2 and W3 BLOCKED on a Zephyr workspace this
+checkout does not have (see their section). The measurements below are done
 and reproduce on this tree. W1's blocking design question is ANSWERED by a
 spike** (see "W1 SPIKE RESULT"): the framework IS resolvable for an out-of-tree
 board, but the resolution moves out of macro expansion and into the Entry's
@@ -13,7 +14,8 @@ loudly (issue 0432). Neither touches the build-cache program, so this phase runs
 in parallel with [phase-340](phase-340-build-artifact-reuse.md) and
 [phase-345](phase-345-one-door-build-parity.md) with no fence.
 
-**Closes:** issue 0415, issue 0432.
+**Closes:** issue 0415 (W1, landed). **Does not close** issue 0432 — W2/W3 are
+blocked on a Zephyr workspace this checkout lacks.
 **Implements:** [RFC-0064](../design/0064-board-support-organization.md) (a board
 is a config, not a crate) for the out-of-tree case.
 **Touches:** RFC-0032 (entry codegen pipeline — the macro's emit shape),
@@ -227,7 +229,54 @@ Testbed: `scratchpad/spike` (6 crates, throwaway) — board with `links` +
 descriptor metadata, proc-macro probing all four routes, three entry shapes
 (direct/transitive/build-script), run from both CWDs with forced rebuilds.
 
-### W1 — the framework mapping has one SSoT, and an unknown framework is an ERROR
+### W1 LANDED 2026-08-10 — built on the spike's M3, with one telling side effect
+
+**Shipped**
+
+| piece | where |
+| --- | --- |
+| the shared vocabulary + in-tree table | `nros_orchestration_ir::{FRAMEWORKS, is_known_framework, framework_for_board_key}` — beside `board_path_for`, the table both the macro and the CLI emitter already delegate to |
+| the out-of-tree route | `nros_build::emit_board_framework()`, called from the Entry package's `build.rs`: resolves the board dep, reads its `[package.metadata.nros.board] framework`, emits `cargo::rustc-env=NROS_BOARD_FRAMEWORK` plus `rerun-if-changed` on every file it read |
+| the macro | `NROS_BOARD_FRAMEWORK` wins → in-tree table → `OwnedSpin`; an **unknown name is an error naming the accepted set**, never a fall-through |
+| the lint | `nros ws check` warns on a framework outside the shared vocabulary instead of absorbing it as owned-spin |
+
+The build-script resolver handles both dependency shapes measured in the spike:
+a `path` dep (28 leaves) and a bare version resolved through a
+`[patch.crates-io]` row in the leaf's own cargo config (39 leaves). It reads
+only the leaf's own config — walking the cargo hierarchy would mean
+reimplementing cargo's merge rules, and an out-of-tree consumer keeps everything
+inline anyway (#272).
+
+**The side effect that proves it.** `Framework::Embassy` carried
+`#[expect(dead_code)]` whose note read *"the expect fires the day it becomes
+constructible"* — no in-tree deploy key had selected it since phase-337 W7.a.
+Building this change made that expectation **unfulfilled**, i.e. the compiler
+reported that Embassy is now reachable. That is the fix, observed from the
+outside rather than asserted: a board declaring `framework = "embassy"` selects
+the Embassy emit with no in-tree table entry.
+
+**Tests** (7, all new): every name in the shared vocabulary has an emit branch
+and vice versa (the two-way binding that keeps macro and IR in step); every
+in-tree board key resolves to an emit shape; an unknown framework errors and the
+message names both the bad value and the accepted set; the resolver handles path
+deps, patched version deps, a board with no framework key, and — locked in
+deliberately — a transitive board dep, which is **not** resolved.
+
+**What W1 did NOT do, stated so it is not mistaken for done:**
+
+* **`nros sync` does not yet generate the build script.** An out-of-tree
+  integrator adds three lines (`fn main() { nros_build::emit_board_framework(); }`)
+  themselves. Generating it is the ergonomic half and reuses phase-341's
+  generate-commit-gate machinery; it is not needed for the seam to work.
+* **The DIRECT-dependency constraint is a test, not a repo-wide gate.** The
+  spike measured that every route fails on a transitive board; the resolver
+  test locks that in as a documented limit rather than a gate over all leaves.
+* **No out-of-tree Embassy image was compiled.** That needs an embassy
+  dependency set for a Cortex-M target, which this repo does not carry. The
+  evidence is the resolution tests plus the retired `#[expect]`, not a linked
+  image.
+
+### W1 (original plan) — the framework mapping has one SSoT, and an unknown framework is an ERROR
 
 - [ ] Move the deploy→`Framework` mapping into **`nros-orchestration-ir`**,
       beside `board_path_for`. Both existing readers delegate to it: the macro's
@@ -266,7 +315,29 @@ fixture that lives outside the workspace the same way the copy-out check does
 (`scripts/zephyr/check-copy-out.sh` is the existing shape), not by a unit test
 that constructs the input in memory.
 
-### W2 — the `zephyr-lang-rust` patches reach downstream consumers
+### W2 / W3 — BLOCKED on a Zephyr workspace, 2026-08-10
+
+Not attempted, and deliberately not half-attempted. `zephyr-workspace/` is
+absent from this checkout (it is a gitignored symlink created by
+`scripts/zephyr/setup.sh`), so the `modules/lang/rust` sources the patch edits
+are not here. Two things follow:
+
+* the patch cannot be AUTHORED honestly — `patches.yml` entries carry a
+  `sha256sum` of the patch file, which requires the real pre-image;
+* it cannot be VERIFIED — W2's acceptance is W3, and W3's acceptance is a west
+  build of a Rust image for `mps2_an385`.
+
+Landing an unverified patch would be worse than leaving this open: the in-tree
+`scripts/zephyr/*.sh` chain runs during Zephyr setup for everyone, so a wrong
+script breaks a working path to fix one that is already known-broken.
+
+What is ready for whoever has a workspace: §2.2 establishes that the in-tree sed
+path ALREADY patches `modules/lang/rust` (so only `patches.yml` needs the new
+module), and §2.3 points at the exact carve-out to delete — the `cm_lang` loop
+in `scripts/build/zephyr-fixture-leaves.sh`, whose comment already names this
+issue as the reason there is no Rust leaf.
+
+### W2 (original plan) — the `zephyr-lang-rust` patches reach downstream consumers
 
 - [ ] Author the two upstream fixes: emit the second phandle cell (`dt_flags`)
       for `!Phandle gpios` instances in `zephyr-build`'s devicetree generator,

@@ -24,6 +24,9 @@ path = "src/lib.rs"
 nros-cli-core = { path = "../nros-cli-core" }
 
 eyre = "0.6"
+# Issue 0415 — read the board crate's `[package.metadata.nros.board]` from an
+# Entry package build script (`emit_board_framework`).
+toml = "0.8"
 serde.workspace = true
 serde_json.workspace = true
 # Phase 219.A — the `pkg_index` + `launch_parser` modules moved into

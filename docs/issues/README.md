@@ -862,13 +862,16 @@ measures primitives), and provenance/staleness. Blocked on 0403 — designing th
 producer emits an artifact answers the keying question by guess. Invariant: absent stays representable
 and stays the DEFAULT, else zeros get written in by hand. See `0404-*`. (2026-08-03)
 
-**#415** — `nros::main!` picks the framework emit shape from a hardcoded **deploy-string** table,
-while `nros ws check` reads `[package.metadata.nros.board] framework` off the board crate. Two
-spellings of one fact, and the macro's falls through to `OwnedSpin` on an unknown key — a silently
-wrong entry shape, not a diagnostic. Invisible until phase-337 W7.a deleted `embassy-stm32f4`, the
-only in-tree key that selected `Framework::Embassy`; `Framework::Rtic` is in the same shape and only
-still reachable via `rtic-mps2-an385`. Fix = let the macro read the same manifest key (needs the
-expansion-time fs round-trip `rtic_board_spec_for` already defers). See `0415-*`. (2026-08-04)
+Recently resolved (2026-08-10): **#415** — `nros::main!`'s framework table was deploy-keyed, so an
+out-of-tree board declaring `framework = "embassy"`/`"rtic"` silently got a plain `fn main()` — an image
+that links and then does not do what the framework was for. RESOLVED by phase-346 W1: the mapping moved
+to `nros_orchestration_ir` (beside `board_path_for`), and an out-of-tree board reaches it through its own
+manifest via `nros_build::emit_board_framework()` in the Entry package's build script. NOT at expansion
+time as the issue proposed — a spike measured that proc-macro env/file reads are invisible to cargo's
+fingerprint and that cargo-config values vanish when cargo runs from a workspace root, so that route
+serves stale or empty answers, which is the same defect again. An unknown framework is now an ERROR
+naming the accepted set. Proof it is reachable: `Framework::Embassy`'s `#[expect(dead_code)]` ("fires the
+day it becomes constructible") went unfulfilled on build. See `archived/0415-*`. (2026-08-10)
 
 RESOLVED 2026-08-05 — **#418** raw action feedback/result carried a SECOND CDR header, breaking raw↔{ROS 2, typed} decode. RFC-0069 (option A) made the producer header-less; the `nros-node` `payload_has_cdr_encap` value-sniff (a 2nd instance of #35) was deleted (splice unconditionally); C/C++/ffi audited clean. Verified: `action_envelope_tests` 3/3, a native typed-client ↔ Node-class server pair decodes result `[0,1,1]`, and `ros2 action send_goal --feedback` returns SUCCEEDED. 14/18 action cells green; the 4 remaining are blocked by build defects that predate this (freertos sizes-header / nuttx #0433), tracked under #0433 + #0422. See `archived/0418-*`.
 (#416 resolved 2026-08-05 — `nros sync`'s source digest pruned build dirs by EXACT name, so it skipped

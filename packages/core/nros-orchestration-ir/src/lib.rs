@@ -73,6 +73,50 @@ pub mod sidecar_slots;
 ///
 /// Keys match the `deploy = "…"` strings in
 /// `[package.metadata.nros.deploy.<board>]` (RFC-0014 §3).
+/// The canonical framework names an `nros` board may declare.
+///
+/// Issue 0415 — the SSoT for "which entry shape does this board want". Kept as
+/// strings rather than an enum because the two consumers model it differently:
+/// `nros-macros` maps to an emit shape (it also has `Zephyr` and `Esp32`
+/// variants), `nros ws check` maps to a lint matrix. What must NOT differ is
+/// the accepted SET and its spelling, which is why parsing lives here.
+pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "embassy", "zephyr", "esp32"];
+
+/// Is `name` a framework this repo understands?
+///
+/// Callers use this to reject an unknown `[package.metadata.nros.board]
+/// framework = "…"` LOUDLY. Before issue 0415's fix an unrecognised value fell
+/// through to `OwnedSpin`, which is not a diagnostic — it is a silently wrong
+/// entry shape that links and then does not do what the framework was for.
+pub fn is_known_framework(name: &str) -> bool {
+    FRAMEWORKS.contains(&name)
+}
+
+/// The framework an IN-TREE board key implies, as a canonical name.
+///
+/// Issue 0415 — this table used to live in `nros-macros`, keyed on the deploy
+/// string, with an `_ => OwnedSpin` fall-through. That made it invisible to
+/// `nros ws check` (which reads the board crate's
+/// `[package.metadata.nros.board] framework` instead) and unreachable for any
+/// board that is not in this repo.
+///
+/// It is the IN-TREE FAST PATH only. An out-of-tree board declares its
+/// framework in its own manifest, and the build script that resolves it wins
+/// over this table — see `nros_build::emit_board_framework`.
+///
+/// `None` means "no in-tree opinion", which callers read as `owned-spin`.
+pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "rtic",
+        "zephyr" => "zephyr",
+        "esp32-qemu" | "qemu-esp32-baremetal" => "esp32",
+        // NuttX, FreeRTOS, ThreadX and native ride `owned-spin`: the RTOS (or
+        // the board crate's own entry symbol) calls `main`, and the macro emits
+        // the plain `fn main()` those expect.
+        _ => return None,
+    })
+}
+
 pub fn board_path_for(key: &str) -> Option<&'static str> {
     Some(match key {
         "native" | "posix" => "::nros_board_linux::LinuxBoard",
