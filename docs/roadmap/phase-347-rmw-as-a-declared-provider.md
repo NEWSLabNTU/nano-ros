@@ -9,7 +9,7 @@ condition recorded before the work began, not on time.**
 | W2 descriptor + gate | landed — 4 descriptors (not 8: only 4 of the 8 `packages/rmw` dirs are backends) |
 | W3 resolution by name | landed — retired **FOUR** closed lists, not the three the plan named |
 | W4 capabilities | landed, acceptance PARTIAL — `packages/core/**` clean, `packages/api/**` not (21 features) |
-| W5 codegen hook | **not started** — its own pre-registered condition is unmet, see below |
+| W5 codegen hook | **landed** — condition settled by measurement; cyclonedds in the shared codegen file 27 -> 1 |
 | W6 platform leak | **not started** — see below |
 
 **Original status (2026-08-10). PROPOSED — no code landed.** Implements
@@ -152,7 +152,40 @@ NOT go green in W4; it is scoped to `packages/core/**` for now.
 
 *Acceptance:* cyclonedds appears in `cmake/` only inside its own package.
 
-**NOT STARTED — the condition this wave set for itself is unmet.** W5 says, in
+**LANDED 2026-08-11. The condition was settled first, by measurement.**
+
+The blocking question was whether one contract could cover both the CMake hook
+and the cargo-rooted path. It can, and the two turned out to be the same work:
+
+  CMake `nros_rmw_cyclonedds_generate_from_msg`  -> msg_to_cyclone_idl.py -> idlc -> <pkg>_<Msg>.{c,h}
+  CLI  `nros codegen cyclonedds-descriptors`     -> msg -> IDL -> idlc -> the same pair
+                                                    (+ the `_register_descriptors` entry point)
+
+Same tools, same outputs; the CLI verb is the more complete of the two. So the
+contract is "per message, run this command", and a cargo-rooted consumer
+satisfies it through the verb while cmake satisfies it through the hook. No two
+flavours were needed.
+
+**Result: `cyclonedds` in `cmake/NanoRosGenerateInterfaces.cmake` went 27 -> 1**,
+and the one is the comment explaining the move. ~180 lines moved into the
+backend's own package as `nros_rmw_cyclonedds_typesupport_for_target`, reached
+through the descriptor's `[rmw.codegen].per_message` surfaced as
+`NROS_RMW_PER_MESSAGE_HOOK`. Nothing in those lines was generic — they know that
+Cyclone 0.10.5's idlc aborts on `wstring`, that descriptors are C so the consumer
+must enable that language, how the shared IDL include root is laid out, and how
+to force-load a static-init registration TU past `--gc-sections`.
+
+Verified by BUILD, not configure: `examples/native/c/talker/build-cyclonedds`
+produces `builtin_interfaces__cyclonedds_ts` and `std_msgs__cyclonedds_ts`, and
+links a 13 MB `c_talker` carrying 28 descriptor symbols — the pipeline behaves
+identically from its new home.
+
+**Not done here:** RFC-0031's blanket "cyclone always routes through the
+CMake/Corrosion build path" is now *unnecessary* but not yet deleted — retiring
+it needs the cargo-rooted consumer actually exercised, which no in-tree fixture
+does today.
+
+**Superseded note —** W5 says, in
 its own second bullet, that the cargo-rooted twin "is unresolved — settle that
 before starting, or split W5 into its own phase". It is still unresolved:
 `[rmw.codegen].per_message` names a CMake function, and a cargo-rooted consumer

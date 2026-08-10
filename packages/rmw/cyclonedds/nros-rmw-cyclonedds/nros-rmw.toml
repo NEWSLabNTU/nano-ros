@@ -37,7 +37,9 @@ needs_cxx_linker = true
 # The per-message IDL descriptor step no other backend needs. W5 consumes this;
 # W2/W3 only record it.
 [rmw.codegen]
-per_message = "nros_rmw_cyclonedds_generate_from_msg"
+# phase-347 W5 — the TARGET-level hook (the wrapper that owns the whole idlc
+# pipeline), not the inner per-file generate function it calls.
+per_message = "nros_rmw_cyclonedds_typesupport_for_target"
 
 [rmw.capabilities]
 type-descriptors = "needs-type-descriptors"   # -> nros-node cfg(rmw_needs_type_descriptors)

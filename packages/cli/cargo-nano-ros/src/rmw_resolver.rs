@@ -191,6 +191,7 @@ pub fn render_cmake_dispatch() -> String {
          #   NROS_RMW_CPP_DEFINE             the define nros-cpp puts on its INTERFACE\n\
          #   NROS_RMW_CMAKE_TARGET           a cmake target to link when present, or \"\"\n\
          #   NROS_RMW_CAPABILITIES           ;-list of capabilities this backend declares\n\
+         #   NROS_RMW_PER_MESSAGE_HOOK       cmake command run per message type, or \"\"\n\
          function(nros_rmw_dispatch rmw)\n",
     );
     let mut first = true;
@@ -214,11 +215,13 @@ pub fn render_cmake_dispatch() -> String {
              \x20       set(NROS_RMW_NEEDS_CXX_LINKER {needs_cxx} PARENT_SCOPE)\n\
              \x20       set(NROS_RMW_CPP_DEFINE \"{cpp_define}\" PARENT_SCOPE)\n\
              \x20       set(NROS_RMW_CMAKE_TARGET \"{cmake_target}\" PARENT_SCOPE)\n\
-             \x20       set(NROS_RMW_CAPABILITIES \"{caps}\" PARENT_SCOPE)\n",
+             \x20       set(NROS_RMW_CAPABILITIES \"{caps}\" PARENT_SCOPE)\n\
+             \x20       set(NROS_RMW_PER_MESSAGE_HOOK \"{hook}\" PARENT_SCOPE)\n",
             decl = r.declared,
             feat = d.umbrella_cffi_feature,
             cpp_define = row.cpp_define,
             cmake_target = row.cmake_target,
+            hook = row.per_message_hook,
             caps = row
                 .capabilities
                 .iter()

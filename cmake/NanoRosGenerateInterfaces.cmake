@@ -699,183 +699,26 @@ function(nros_generate_interfaces target)
     endif()
   endif()
 
-  # Phase 171.C.runtime — Cyclone DDS topic-descriptor typesupport.
-  # When building against the cyclonedds RMW, the publisher/subscriber
-  # need a per-message `dds_topic_descriptor_t` registered in the
-  # backend registry. `nros_generate_interfaces` only emits the CDR/C
-  # message bindings, so generate + link the idlc descriptor +
-  # static-init register TU here (the helper is defined globally once
-  # `add_subdirectory(packages/rmw/cyclonedds/nros-rmw-cyclonedds)` runs, which
-  # the cyclonedds branch of the root CMake does).
-  if(NANO_ROS_RMW STREQUAL "cyclonedds"
-     AND COMMAND nros_rmw_cyclonedds_generate_from_msg)
-    # .msg / .srv / .action all carry data types. Actions are
-    # synthesized into their eight wrapper descriptors by
-    # `msg_to_cyclone_idl.py` (see generate_from_msg's `.action` branch).
-    set(_cyc_ifaces "")
-    foreach(_if ${_interface_files})
-      if(_if MATCHES "\\.(msg|srv|action)$")
-        # Cyclone DDS 0.10.5's idlc crashes on `wstring` (wide-string)
-        # fields — it parses the type then aborts in delete_const_expr.
-        # The full ROS `example_interfaces` (resolved via
-        # AMENT_PREFIX_PATH) ships `WString[MultiArray]`, which no
-        # example uses as a topic. Skip any interface declaring a
-        # wstring field rather than letting one unused type abort the
-        # whole package's descriptor build. Documented upstream limit.
-        file(READ "${_if}" _if_body)
-        if(_if_body MATCHES "(\n|^)[ \t]*wstring[ \t<\\[]")
-          message(STATUS
-            "nros_generate_interfaces(${target}): skipping cyclonedds "
-            "descriptor for ${_if} — `wstring` is unsupported by the "
-            "bundled Cyclone DDS 0.10.5 idlc.")
-        else()
-          list(APPEND _cyc_ifaces "${_if}")
-        endif()
-      endif()
-    endforeach()
-    if(_cyc_ifaces)
-      # NOTE: idlc emits the topic descriptors as C source, so the
-      # consuming project must enable the C language. C++ examples
-      # therefore declare `project(... LANGUAGES CXX C)` — see the
-      # native cpp/cyclonedds examples. (enable_language() from inside
-      # this function does not reliably register the C toolchain in the
-      # caller's directory scope, hence the project()-level requirement.)
-      # PKG_DIR = the package root (parent of msg/ or srv/). All
-      # interface files for one `target` share a package root.
-      list(GET _cyc_ifaces 0 _cyc_first)
-      get_filename_component(_cyc_ifdir "${_cyc_first}" DIRECTORY)
-      get_filename_component(_cyc_pkgdir "${_cyc_ifdir}" DIRECTORY)
-      # Shared IDL include root for the whole build. Composite messages
-      # (`std_msgs/Header` → `builtin_interfaces/Time`, the `*MultiArray`
-      # family → `MultiArrayLayout`) `#include` sibling / cross-package
-      # IDLs; idlc resolves those against `-I <root>` with each package
-      # laid out as `<root>/<pkg>/msg/<Type>.idl`. Anchor the root at the
-      # binary dir of the call that first creates it so every package in
-      # one example shares it.
-      set(_cyc_idl_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_idlroot")
-      set(_cyc_gen_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_genroot")
-      # phase-306 W2 (issue 0258) — cross-package includes are FILE-level:
-      # a package's lowered IDL `#include`s dep-package IDLs (`Odometry.idl`
-      # → `std_msgs/msg/Header.idl`), which idlc reads at generate time.
-      # Target-level `add_dependencies` below orders SIBLING ts libs, but a
-      # dep whose ts lib never materializes (or a scope where the target is
-      # not visible) left the include unresolved → cryptic idlc preprocessor
-      # error. Thread each dep's generated .idl list (stashed in the CACHE,
-      # same multi-scope pattern as `_NROS_PKG_<pkg>_GENERATED_RS_FILES` in
-      # NanoRosCodegenCore.cmake) into IDL_DEPENDS: every idlc command then
-      # carries file-level deps on the dep IDLs, and a missing dep root
-      # fails the build with a clear "no rule to make <dep>.idl". The stash
-      # holds each pkg's CLOSURE (deps' stashes + own files), so transitive
-      # includes are covered without re-walking the graph here.
-      set(_cyc_dep_idls "")
-      foreach(_dep ${_ARG_DEPENDENCIES})
-        if(DEFINED CACHE{_NROS_PKG_${_dep}_CYC_IDL_FILES})
-          list(APPEND _cyc_dep_idls "$CACHE{_NROS_PKG_${_dep}_CYC_IDL_FILES}")
-        endif()
-      endforeach()
-      if(_cyc_dep_idls)
-        list(REMOVE_DUPLICATES _cyc_dep_idls)
-      endif()
-      nros_rmw_cyclonedds_generate_from_msg(_cyc_sources
-        PKG_NAME   "${target}"
-        PKG_DIR    "${_cyc_pkgdir}"
-        INTERFACES ${_cyc_ifaces}
-        INCLUDE_ROOT "${_cyc_idl_root}"
-        GEN_ROOT     "${_cyc_gen_root}"
-        OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-ts/${target}"
-        IDL_DEPENDS ${_cyc_dep_idls}
-        IDL_FILES_VAR _cyc_own_idls)
-      # Stash this package's IDL closure for consumers generated later —
-      # possibly in a DIFFERENT directory scope (the phase-219 idempotency
-      # guard early-returns there, but the CACHE stash written on the first,
-      # generating call persists globally, so guard-skipped packages still
-      # contribute their files to dependents' IDL_DEPENDS).
-      set(_cyc_stash "${_cyc_dep_idls}")
-      list(APPEND _cyc_stash ${_cyc_own_idls})
-      if(_cyc_stash)
-        list(REMOVE_DUPLICATES _cyc_stash)
-      endif()
-      set(_NROS_PKG_${target}_CYC_IDL_FILES "${_cyc_stash}" CACHE INTERNAL
-        "phase-306 W2: ${target}'s generated cyclone .idl closure")
-      if(_cyc_sources)
-        add_library(${target}__cyclonedds_ts STATIC ${_cyc_sources})
-        # idlc lays the descriptor `.c`/`.h` out as
-        # `<gen-root>/<pkg>/msg/<Type>.{c,h}`; the register TUs `#include`
-        # their sibling `<Type>.h`, and composite descriptors cross-
-        # `#include "<pkg>/msg/<Dep>.h"`. Both resolve against the shared
-        # gen root.
-        target_include_directories(${target}__cyclonedds_ts PRIVATE
-          "${_cyc_gen_root}")
-        # The descriptor `.c` files `#include "dds/dds.h"`, so the ts
-        # lib needs Cyclone's ddsc *headers*. Pull only the backend's
-        # INTERFACE include dirs — do NOT link the backend library.
-        # Linking it (even PUBLIC) makes `libnros_rmw_cyclonedds.a`
-        # reappear as a plain transitive dependency on the final exe
-        # link line; CMake then de-duplicates it out of the
-        # `--whole-archive` group NanoRos sets up, so the backend's
-        # `.nros_rmw_init` self-registration entry gets GC'd and the
-        # RMW registry comes up empty (`nros_support_init -> -3`). The
-        # `nros_rmw_cyclonedds_register_descriptor` symbol the register
-        # TUs call is resolved at exe link via NanoRos's whole-archived
-        # backend, so the ts lib never needs to link it directly.
-        if(TARGET nros_rmw_cyclonedds)
-          target_include_directories(${target}__cyclonedds_ts PRIVATE
-            "$<TARGET_PROPERTY:nros_rmw_cyclonedds,INTERFACE_INCLUDE_DIRECTORIES>")
-        endif()
-        if(TARGET freertos_kernel)
-          target_link_libraries(${target}__cyclonedds_ts PRIVATE freertos_kernel)
-        endif()
-        # Cross-package include ordering: a dependency package's IDLs
-        # must populate the shared root before this package's idlc runs.
-        # idlc reads them at generate-time, so order the ts-lib targets.
-        foreach(_dep ${_ARG_DEPENDENCIES})
-          if(TARGET ${_dep}__cyclonedds_ts)
-            add_dependencies(${target}__cyclonedds_ts ${_dep}__cyclonedds_ts)
-          endif()
-        endforeach()
-        # The descriptor self-registration is a static-init TU with no
-        # symbol the app references directly, so a plain static-lib link
-        # GC's it. Force-load it through the interface message lib so
-        # any consumer of `${_lib_target}` keeps the registrations. Do
-        # the same for dependency descriptor libs: action endpoints need
-        # action_msgs service/status descriptors even when the app only
-        # references the concrete user action type.
-        if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24"
-           AND NOT CMAKE_SYSTEM_NAME STREQUAL "Generic")
-          foreach(_dep ${_ARG_DEPENDENCIES})
-            if(TARGET ${_dep}__cyclonedds_ts)
-              target_link_libraries(${_lib_target} INTERFACE
-                "$<LINK_LIBRARY:WHOLE_ARCHIVE,${_dep}__cyclonedds_ts>")
-            endif()
-          endforeach()
-          target_link_libraries(${_lib_target} INTERFACE
-            "$<LINK_LIBRARY:WHOLE_ARCHIVE,${target}__cyclonedds_ts>")
-        else()
-          set(_cyc_force_load_libs "")
-          foreach(_dep ${_ARG_DEPENDENCIES})
-            if(TARGET ${_dep}__cyclonedds_ts)
-              list(APPEND _cyc_force_load_libs ${_dep}__cyclonedds_ts)
-            endif()
-          endforeach()
-          list(APPEND _cyc_force_load_libs ${target}__cyclonedds_ts)
-          # issue #193 — CMake < 3.24 has no $<LINK_LIBRARY:WHOLE_ARCHIVE>.
-          # Emitting the group via target_link_LIBRARIES lets CMake de-dupe the
-          # ts lib out of the `--whole-archive` group (it keeps a bare, GC-able
-          # copy), so the descriptor static-init ctors get GC'd →
-          # `find_descriptor -> nullptr -> register_subscription -> -1`. The
-          # de-dup-safe pre-3.24 idiom (per CMake's marc.chevrier,
-          # discourse.cmake.org/t/5883) is target_link_OPTIONS with a `SHELL:`
-          # group: link options are raw flags, not library items, so they are
-          # never de-duped, and `$<TARGET_FILE:…>` carries the build-order edge.
-          # Link the target normally too (ordinary archive membership) — the
-          # documented cost is the lib appearing twice on the link line.
-          foreach(_wl ${_cyc_force_load_libs})
-            target_link_libraries(${_lib_target} INTERFACE ${_wl})
-            target_link_options(${_lib_target} INTERFACE
-              "SHELL:-Wl,--whole-archive $<TARGET_FILE:${_wl}> -Wl,--no-whole-archive")
-          endforeach()
-        endif()
-      endif()
+  # phase-347 W5 — per-message typesupport, DECLARED not named.
+  #
+  # This was ~180 lines guarded by `if(NANO_ROS_RMW STREQUAL "cyclonedds" ...)`:
+  # one backend's idlc pipeline living in the pipeline every backend goes
+  # through. It now lives in that backend's own package and is reached through
+  # its descriptor (`[rmw.codegen].per_message`, RFC-0071 D4), surfaced by
+  # `nros_rmw_dispatch` as `NROS_RMW_PER_MESSAGE_HOOK`.
+  #
+  # A backend that declares no hook pays nothing. The `COMMAND` guard stays: a
+  # backend may declare a hook whose package has not been add_subdirectory'd in
+  # this configure (cyclone's is defined only once its package is added), and
+  # that is a legitimate no-op rather than an error.
+  if(NANO_ROS_RMW AND NOT NANO_ROS_RMW STREQUAL "none")
+    nros_rmw_dispatch("${NANO_ROS_RMW}")
+    if(NROS_RMW_PER_MESSAGE_HOOK AND COMMAND ${NROS_RMW_PER_MESSAGE_HOOK})
+      cmake_language(CALL ${NROS_RMW_PER_MESSAGE_HOOK}
+        TARGET          "${target}"
+        LIB_TARGET      "${_lib_target}"
+        INTERFACE_FILES ${_interface_files}
+        DEPENDENCIES    ${_ARG_DEPENDENCIES})
     endif()
   endif()
 
