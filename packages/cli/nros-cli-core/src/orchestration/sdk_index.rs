@@ -114,8 +114,14 @@ impl SystemDep {
     }
 }
 
-/// A presence probe for a [`SystemDep`] / [`PythonDep`]. Exactly one field —
-/// validated, since serde alone would accept an ambiguous table.
+/// A presence probe for a [`SystemDep`] / [`PythonDep`]. At LEAST one field —
+/// validated, since serde alone would accept an empty table.
+///
+/// Issue 0487 — the fields are OR-ed, not exclusive: a package can need two
+/// spellings to be found on two distros (libgcrypt ships a `.pc` on Arch and a
+/// `libgcrypt-config` script on Ubuntu 22.04, never both), so declaring several
+/// is correct usage rather than ambiguity. `336eb1724` relaxed the check and
+/// left this sentence saying the opposite.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckProbe {
@@ -832,8 +838,10 @@ check = { cmd = "west" }
         // assertion inverted with it. The old rule was "exactly one"; 0487 made
         // it "at least one" because probes are OR-ed (see `run_probe`), which is
         // what let libgcrypt read as missing on Arch when only one of its
-        // spellings matched. Declaring both is now the answer to that, not an
-        // error.
+        // spellings matched. libgcrypt genuinely needs both spellings (Arch
+        // ships the `.pc` and no `libgcrypt-config`; Ubuntu 22.04 ships the
+        // script and no `.pc`), so either probe ALONE is a false negative on one
+        // of the two distros. Declaring both is now the answer, not an error.
         let multi_probe = SdkIndex::parse(
             "[system.x]\napt=[\"x\"]\ncheck = { cmd = \"x\", sharedlib = \"libx.so\" }\n",
         )
@@ -841,6 +849,17 @@ check = { cmd = "west" }
         assert!(
             multi_probe.validate().is_ok(),
             "issue 0487: [system.*].check ORs its probes, so two fields is valid",
+        );
+
+        // A `[system.*]` probe declaring NO field at all is still rejected —
+        // the rule relaxed to at-least-one, not to zero.
+        let no_probe = SdkIndex::parse("[system.x]\napt=[\"x\"]\ncheck = { }\n").unwrap();
+        assert!(
+            no_probe
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("at least one"),
         );
 
         // ...but the OTHER kinds still take exactly one, and 0487 did not touch
@@ -855,7 +874,7 @@ check = { cmd = "west" }
                 .validate()
                 .unwrap_err()
                 .to_string()
-                .contains("exactly one"),
+                .contains("at least one"),
         );
 
         // A target referencing an undefined toolchain alias is rejected.
