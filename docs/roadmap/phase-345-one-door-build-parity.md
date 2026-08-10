@@ -1,7 +1,8 @@
 # Phase 345 — One door: the build behaves the same however you enter it
 
-**Status (2026-08-10). W1 and W3 LANDED; W2 RETRACTED (its cause was fixed
-elsewhere — see W1's section); W4 open. The measurements below are done
+**Status (2026-08-10). COMPLETE: W1, W3 and W4 LANDED; W2 RETRACTED (its cause
+was fixed elsewhere — see W1's section). Archive once a tier-2 sweep confirms
+the activation change across the matrix. The measurements below are done
 and reproduce on this tree.** This phase is not a build-cache phase and moves no
 path, so it never collided with [phase-340](phase-340-build-artifact-reuse.md)
 item 5 / P4. The one item that would have — W2, which proposed editing leaf
@@ -462,7 +463,53 @@ it just makes them agree today. Moving alone (without the pin) makes
 `check-cbindgen-headers` fail differently on different machines. Land the pin
 first so the gate has a fixed point, then the move.
 
-### W4 — a source recipe stops pulling a second Rust toolchain (issue 0374, direction 4)
+### W4 LANDED 2026-08-10 — measured first, and the measurement said yes
+
+W4's own text made the fix conditional: *"zenoh 1.7.2 may not build on the
+nano-ros pin. If it does not, the deliverable is the diagnostic."* The gap is
+wide enough that this was a real question — zenoh pins `channel = "1.85.0"`,
+nano-ros pins `stable`, today **1.97.1**, twelve minor versions apart.
+
+**It builds.** Escalating, cheapest first, on the store's own checkout:
+
+| probe | result |
+| --- | --- |
+| `cargo metadata --locked` | ok — manifest and lock resolve under the newer cargo |
+| `cargo check -p zenohd --locked` | 0 errors |
+| the same plus `--features zenoh/transport_serial` (what the recipe passes) | 0 errors |
+| `cargo install --path zenohd --root <tmp> --locked --features zenoh/transport_serial` | **exit 0**, 15 MB binary |
+| `zenohd --version` | `zenohd v790faad built with rustc 1.97.1` |
+
+The full `cargo install` was run rather than stopping at `check`, because a
+type-check is neither a release build nor a link — and the binary reporting
+`rustc 1.97.1` is direct evidence the override reached the compiler rather than
+an inference from a green check.
+
+**Shipped.** The executor (`sdk_store.rs`) sets `RUSTUP_TOOLCHAIN` for a source
+recipe's configure and install steps, read from the workspace
+`rust-toolchain.toml`. Two escape hatches, both deliberate:
+
+* `respect_toolchain = true` on a `[tool.*.source]` keeps the checkout's own
+  pin — a nightly-only crate cannot be built by a stable channel, and forcing
+  one would turn a working recipe into a compile error;
+* an unreadable or channel-less `rust-toolchain.toml` means **no override**,
+  because guessing a toolchain is worse than the download it avoids.
+
+Of the four `cargo install` recipes in the index (zenohd, sccache,
+play_launch_parser, espflash), zenohd is the only checkout that pins a
+toolchain today — but the fix is at the executor, so it covers the next one too.
+
+The heads-up is corrected in the same change: it told the user a pinning recipe
+"also makes rustup fetch that toolchain", which is now true only for a recipe
+that opted out.
+
+**Not fixed, and not pretended:** this host still carries the `1.85.0` toolchain
+the old behaviour installed. W4 prevents the next download; it does not clean up
+the last one. **Issue 0374 stays open** — its direction 1 (seeding the
+`1.7.2-nros2` prebuilt on `NEWSLabNTU/nano-ros-sdk`) is out-of-repo, and that is
+the direction that would stop the source build happening at all.
+
+### W4 (original plan) — a source recipe stops pulling a second Rust toolchain (issue 0374, direction 4)
 
 - [ ] Make `nros setup`'s source recipes build with the workspace's pinned
       toolchain (`RUSTUP_TOOLCHAIN` / `cargo +<pin>`) instead of letting the

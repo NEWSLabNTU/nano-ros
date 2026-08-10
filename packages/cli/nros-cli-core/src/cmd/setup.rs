@@ -1028,8 +1028,13 @@ fn warn_source_builds(names: &[&str], host: &str) {
          the source checkout and its build dir stay in the store.",
         store_root().display()
     );
+    // Issue 0374 d4 — this used to say a recipe pinning its own Rust toolchain
+    // "also makes rustup fetch that toolchain". It no longer does by default:
+    // source recipes build with the workspace channel (RUSTUP_TOOLCHAIN), so
+    // the only recipes that still pull one are those that opted out.
     eprintln!(
-        "  A recipe that pins its own Rust toolchain also makes rustup fetch that toolchain."
+        "  Rust recipes build with this workspace's pinned channel, so no extra \
+         toolchain is downloaded — unless a recipe sets `respect_toolchain = true`."
     );
     eprintln!("  `nros setup … --dry-run` prints the full plan and fetches nothing.");
 }

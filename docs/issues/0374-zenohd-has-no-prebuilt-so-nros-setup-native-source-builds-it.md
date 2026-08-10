@@ -81,8 +81,36 @@ Pick one, they are not exclusive:
 3. **Reword installation.md** — DONE. The page now says prebuilt *where the
    index has a binary for your host, source-built otherwise*, shows the
    heads-up, and names zenohd as today's exception with the ~800 MB figure.
-4. PARTLY DONE — the heads-up states that a recipe pinning its own Rust
-   toolchain makes rustup fetch it. Still worth considering: reusing the
-   workspace's pinned toolchain for source recipes instead of merely declaring
-   the extra download, so a `nros setup` on a metered
-   or air-gapped host is predictable.
+4. **DONE 2026-08-10 (phase-345 W4).** Source recipes now build with the
+   WORKSPACE's pinned channel: the executor sets `RUSTUP_TOOLCHAIN` for the
+   configure and install steps (`sdk_store.rs`), read from the workspace
+   `rust-toolchain.toml`. A recipe that genuinely needs its own pin opts out
+   with `respect_toolchain = true` on its `[tool.*.source]` — because forcing a
+   stable channel onto a nightly-only crate would turn a working recipe into a
+   compile error. An unreadable pin means no override, since guessing a
+   toolchain is worse than the download it avoids.
+
+   **Measured before implementing, as the phase required.** zenoh 1.7.2 pins
+   `channel = "1.85.0"` while nano-ros pins `stable` (today 1.97.1) — 12 minor
+   versions apart, so "does it even build?" was the blocker. It does:
+
+   ```
+   cargo metadata --locked                          -> ok
+   cargo check -p zenohd --locked                   -> 0 errors
+   cargo check … --features zenoh/transport_serial  -> 0 errors   (the recipe's own features)
+   cargo install --path zenohd --locked --features zenoh/transport_serial
+                                                    -> exit 0, 15 MB binary
+   $ zenohd --version
+   zenohd v790faad built with rustc 1.97.1
+   ```
+
+   The `cargo install` was run in full rather than stopping at `check`, because
+   a type-check is not a release build plus a link. The binary reporting
+   `rustc 1.97.1` is the direct evidence that the override reached the compiler.
+
+   The heads-up text is corrected in the same change: it used to tell the user
+   a pinning recipe "also makes rustup fetch that toolchain", which is now only
+   true for a recipe that opted out.
+
+   Note this host still carries the `1.85.0` toolchain that the old behaviour
+   installed — the fix prevents the next one, it does not clean up the last.

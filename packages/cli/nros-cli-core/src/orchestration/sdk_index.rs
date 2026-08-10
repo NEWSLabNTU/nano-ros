@@ -308,6 +308,19 @@ pub struct ToolSource {
     /// Build + install step.
     #[serde(default)]
     pub install: Option<String>,
+    /// Issue 0374 direction 4 — honour the CHECKOUT's own `rust-toolchain.toml`
+    /// instead of building with the workspace's pinned channel.
+    ///
+    /// Default `false`: a recipe whose checkout pins a different Rust version
+    /// makes rustup download a whole second toolchain during `nros setup`,
+    /// unannounced (zenoh 1.7.2 pins 1.85.0 and does exactly that). Building it
+    /// with the channel the workspace already has avoids the download.
+    ///
+    /// Set `true` for a recipe that genuinely needs its own pin — a
+    /// nightly-only crate cannot be built by a stable channel, and forcing one
+    /// would turn a working recipe into a compile error.
+    #[serde(default)]
+    pub respect_toolchain: bool,
 }
 
 /// A package compiled with the user's app for their chosen target.

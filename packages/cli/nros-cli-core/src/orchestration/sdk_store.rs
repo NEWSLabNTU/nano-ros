@@ -131,6 +131,9 @@ pub enum InstallAction {
         git_ref: String,
         configure: Option<String>,
         install: Option<String>,
+        /// Issue 0374 d4 — build with the checkout's own `rust-toolchain.toml`
+        /// rather than the workspace channel.
+        respect_toolchain: bool,
     },
     /// No prebuilt for this host and no source recipe.
     Unavailable,
@@ -154,6 +157,7 @@ pub fn plan_install(tool: &ToolPackage, host: &str, prefix: &Path) -> InstallAct
             git_ref: s.git_ref.clone(),
             configure: s.configure.clone(),
             install: s.install.clone(),
+            respect_toolchain: s.respect_toolchain,
         };
     }
     InstallAction::Unavailable
@@ -230,7 +234,22 @@ pub fn execute(
             git_ref,
             configure,
             install,
+            respect_toolchain,
         } => {
+            // Issue 0374 d4 — build with the workspace's pinned channel unless
+            // the recipe opts out. `None` (unreadable pin, or opted out) keeps
+            // the old behaviour: rustup resolves from the checkout, which may
+            // download a second toolchain.
+            let toolchain: Option<String> = if *respect_toolchain {
+                None
+            } else {
+                std::env::var("NROS_REPO_DIR")
+                    .ok()
+                    .map(PathBuf::from)
+                    .as_deref()
+                    .and_then(workspace_rust_channel)
+            };
+            let toolchain = toolchain.as_deref();
             let src = prefix.with_extension("src");
             let _ = std::fs::remove_dir_all(&src);
             let src_str = src.to_string_lossy();
@@ -260,16 +279,25 @@ pub fn execute(
             .wrap_err_with(|| format!("git checkout FETCH_HEAD ({tool})"))?;
             let prefix_abs = prefix.to_string_lossy().to_string();
             if let Some(cfg) = configure {
-                sh(
+                sh_with_toolchain(
                     &["sh", "-c", &cfg.replace("{prefix}", &prefix_abs)],
                     Some(&src),
+                    toolchain,
                 )
                 .wrap_err("configure step")?;
             }
             if let Some(inst) = install {
-                sh(
+                if let Some(tc) = toolchain {
+                    eprintln!(
+                        "nros setup: building {tool} with the workspace Rust channel \
+                         ({tc}) rather than the checkout's own pin — set \
+                         `respect_toolchain = true` on this recipe if it needs its own."
+                    );
+                }
+                sh_with_toolchain(
                     &["sh", "-c", &inst.replace("{prefix}", &prefix_abs)],
                     Some(&src),
+                    toolchain,
                 )
                 .wrap_err("install step")?;
             }
@@ -519,17 +547,53 @@ fn command_on_path(cmd: &str) -> bool {
 }
 
 fn sh(args: &[&str], cwd: Option<&Path>) -> Result<()> {
+    sh_with_toolchain(args, cwd, None)
+}
+
+/// Issue 0374 direction 4 — run a source recipe under a CHOSEN Rust toolchain.
+///
+/// A source recipe runs with its cwd inside the upstream checkout, and rustup
+/// resolves the toolchain from the directory it is invoked in. zenoh 1.7.2
+/// carries `rust-toolchain.toml` `channel = "1.85.0"`, so `nros setup native`
+/// silently downloads a SECOND toolchain — measured in 0374 as
+/// `info: syncing channel updates for '1.85.0-…'` on a host that already had
+/// the nano-ros pin, and this host still carries that 1.85.0 as a result.
+///
+/// Setting `RUSTUP_TOOLCHAIN` overrides the directory's pin for that command
+/// only. It is a per-recipe opt-out (`respect_toolchain = true`) because a
+/// recipe MAY legitimately need its own pin — a nightly-only crate cannot be
+/// built by a stable pin, and forcing one would turn a working recipe into a
+/// compile error.
+fn sh_with_toolchain(args: &[&str], cwd: Option<&Path>, toolchain: Option<&str>) -> Result<()> {
     let (cmd, rest) = args.split_first().ok_or_else(|| eyre!("empty command"))?;
     let mut c = Command::new(cmd);
     c.args(rest);
     if let Some(d) = cwd {
         c.current_dir(d);
     }
+    if let Some(tc) = toolchain {
+        c.env("RUSTUP_TOOLCHAIN", tc);
+    }
     let status = c.status().wrap_err_with(|| format!("spawn {cmd}"))?;
     if !status.success() {
         bail!("`{}` failed ({status})", args.join(" "));
     }
     Ok(())
+}
+
+/// The workspace's pinned Rust channel, read from `rust-toolchain.toml`.
+///
+/// `None` when it cannot be read or carries no `channel` — in which case source
+/// recipes keep their previous behaviour (the checkout's own pin wins), because
+/// guessing a toolchain is worse than the extra download this avoids.
+pub fn workspace_rust_channel(workspace: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(workspace.join("rust-toolchain.toml")).ok()?;
+    let value: toml::Value = toml::from_str(&raw).ok()?;
+    value
+        .get("toolchain")?
+        .get("channel")?
+        .as_str()
+        .map(str::to_string)
 }
 
 /// Run a command and capture trimmed stdout (for reading a gitlink SHA, etc.).
@@ -554,6 +618,75 @@ mod tests {
 
     fn tmp(tag: &str) -> PathBuf {
         crate::test_support::scratch_path(&format!("store_{tag}"))
+    }
+
+    /// Issue 0374 d4 — the workspace channel is what source recipes build with,
+    /// so reading it must not depend on formatting or on extra keys being absent.
+    #[test]
+    fn workspace_rust_channel_reads_the_pin() {
+        let dir = tmp("channel");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("rust-toolchain.toml"),
+            "[toolchain]\nchannel = \"stable\"\ncomponents = [\"clippy\"]\n",
+        )
+        .unwrap();
+        assert_eq!(workspace_rust_channel(&dir).as_deref(), Some("stable"));
+
+        // A pin that names an exact version reads the same way.
+        std::fs::write(
+            dir.join("rust-toolchain.toml"),
+            "[toolchain]\nchannel = \"1.85.0\"\n",
+        )
+        .unwrap();
+        assert_eq!(workspace_rust_channel(&dir).as_deref(), Some("1.85.0"));
+
+        // No file, and a file with no channel, both mean "do not override" —
+        // guessing a toolchain is worse than the download this avoids.
+        std::fs::remove_file(dir.join("rust-toolchain.toml")).unwrap();
+        assert_eq!(workspace_rust_channel(&dir), None);
+        std::fs::write(dir.join("rust-toolchain.toml"), "[toolchain]\n").unwrap();
+        assert_eq!(workspace_rust_channel(&dir), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The opt-out must survive the index → action hop, or a recipe that needs
+    /// its own nightly would be built with the workspace channel anyway.
+    #[test]
+    fn respect_toolchain_reaches_the_install_action() {
+        let idx: SdkIndex = toml::from_str(
+            r#"
+            [tool.plain]
+            version = "1"
+            [tool.plain.source]
+            git = "https://example.invalid/a"
+            ref = "v1"
+            install = "cargo install --path ."
+
+            [tool.pinned]
+            version = "1"
+            [tool.pinned.source]
+            git = "https://example.invalid/b"
+            ref = "v1"
+            install = "cargo install --path ."
+            respect_toolchain = true
+            "#,
+        )
+        .unwrap();
+        let fresh = tmp("respect");
+        let _ = std::fs::remove_dir_all(&fresh);
+        match plan_install(&idx.tool["plain"], "linux-x86_64", &fresh) {
+            InstallAction::Source {
+                respect_toolchain, ..
+            } => assert!(!respect_toolchain, "default must be false"),
+            other => panic!("expected Source, got {other:?}"),
+        }
+        match plan_install(&idx.tool["pinned"], "linux-x86_64", &fresh) {
+            InstallAction::Source {
+                respect_toolchain, ..
+            } => assert!(respect_toolchain, "the opt-out must reach the action"),
+            other => panic!("expected Source, got {other:?}"),
+        }
     }
 
     #[test]
