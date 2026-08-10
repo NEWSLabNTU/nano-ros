@@ -102,11 +102,24 @@ nros_lane_coords_file() {
     fi
     local out="target/nextest/lane-coords-${lane}.txt"
     mkdir -p target/nextest
-    if ! cargo run -q -p nros-tests --bin lane-coords -- "$lane" > "$out"; then
+    # issue 0494 — write to a TEMP file and rename. `> "$out"` truncates the
+    # file the instant the redirection is set up, and `cargo run` then COMPILES
+    # for seconds-to-minutes before writing a byte. Every reader in that window
+    # sees an empty file, and because the narrowing fails CLOSED on empty
+    # coordinates (correctly), one truncated file fails every narrowed test at
+    # once. Measured on one tree at one commit: 223 real failures, 203 of them
+    # `no coordinates`; the immediate re-run with the file already populated
+    # gave 20. Same tree — the gate was non-deterministic.
+    #
+    # rename(2) within one directory is atomic, so a concurrent reader now sees
+    # either the previous content or the new content, never a truncated one.
+    local tmp="${out}.tmp.$$"
+    if ! cargo run -q -p nros-tests --bin lane-coords -- "$lane" > "$tmp"; then
         echo "fixture-lane: lane-coords failed for '$lane'" >&2
-        rm -f "$out"
+        rm -f "$tmp"
         return 1
     fi
+    mv -f "$tmp" "$out"
     # An empty selection would make the caller build (or require) nothing and
     # look instant rather than broken — the same refusal `_coords_for` makes in
     # fixtures-manifest.py.

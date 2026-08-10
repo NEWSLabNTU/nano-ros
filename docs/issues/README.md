@@ -82,6 +82,16 @@ not. `nros setup --tool cyclonedds` is inert because phase 186 sets `CMAKE_DISAB
 native" — the CMake path, which every C/C++ example takes, never got it. One of two sibling paths fixed; the
 third instance of that class this session. See `0492-*`. (2026-08-10)
 
+**#494** (testing, RESOLVED 2026-08-10) — `just ci-matrix` was NON-DETERMINISTIC: same tree, same commit,
+**223 real failures then 20** on an immediate re-run, 203 of the first run's being
+`lane-coords-tier2.txt: no coordinates`. `nros_lane_coords_file` used `cargo run … > "$out"`, and the shell
+truncates the target the instant the redirection is set up while cargo compiles for seconds-to-minutes — so
+every reader in that window saw a zero-length file. Blast radius came from a CORRECT decision: 0482's
+narrowing fails closed on empty coordinates (an empty file must not read as "no narrowing"), so one
+truncated file failed every narrowed test at once. Fixed by writing to a temp file and `mv`-ing into place
+(atomic `rename(2)`). The determinism is the point — a gate that reports 223 then 20 teaches people to
+re-run instead of read.
+
 Recently resolved (2026-08-10, phase-340): **#489** — every ESP32 test skipped `"qemu-system-riscv32 not
 available"` on a host where `nros setup --tool esp32-qemu` had JUST succeeded — the skip message named the command
 that had already been run. `esp32.rs` spelled the binary by bare name at three sites, so it resolved through PATH
