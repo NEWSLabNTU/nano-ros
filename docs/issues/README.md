@@ -83,6 +83,7 @@ lane-narrowing skip is untouched — it keys on `NROS_FIXTURE_COORDS`, not on th
 three 4.2 MB images produced, and exit 1 with a remedy when the dir is stripped from PATH. No `system = [...]`:
 `serialport v4.9.0` builds with no libudev present, probed rather than assumed. See `archived/0486-*`. (2026-08-10)
 
+
 Recently resolved (2026-08-10, phase-340 P2): **#490** — `packages/rmw/cffi/build.rs` declared
 `cargo:rerun-if-changed=../nros-rmw-abi/include/nros`, a path that **does not exist** (the headers are
 `packages/core/nros-rmw-abi/…`; phase-321 W2.e `12c365774` moved the crate out of `core/` and the relative
