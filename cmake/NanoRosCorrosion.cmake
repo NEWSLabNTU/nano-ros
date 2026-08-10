@@ -51,20 +51,38 @@ function(_nros_corrosion_store out_var)
     endif()
 endfunction()
 
-# Candidate `find_package` prefixes for an SDK-provisioned Corrosion, versioned
-# layout first. A candidate is kept only when a `CorrosionConfig.cmake` actually
+# Candidate `find_package` prefixes for an SDK-provisioned Corrosion, NEWEST
+# VERSION first. A candidate is kept only when a `CorrosionConfig.cmake` actually
 # sits under it — the pre-0493 glob's failure was emitting prefixes that could
 # not resolve, so filter rather than hope.
+#
+# The ordering is load-bearing (issue 0500). `find_package` takes the first
+# prefix that resolves, and the store accumulates: a host provisioned months ago
+# keeps `0.5.1-nros1` beside a freshly installed `0.6.1-nros1`. Glob order is
+# lexicographic, so the OLD one won — `nros setup --tool corrosion` installed the
+# pin, reported success, and the very next configure still resolved 0.5.1. That
+# is the worst shape a provisioning step can have: it appears to work. And the
+# two versions are not interchangeable — 0.5.1 gives every workspace one shared
+# `cargo/build`, which is what put two `nros-rmw-zenoh` identities in one
+# `libnros_ws_runtime.a` and made `examples/workspaces/mixed` unlinkable.
+#
+# NATURAL sort so `0.10.x` sorts above `0.9.x`; DESCENDING so newest wins. The
+# flat prefix stays LAST — it is the fallback layout, and a versioned entry is
+# the one a provisioning run just wrote.
 function(_nros_corrosion_prefixes out_var)
     _nros_corrosion_store(_store)
-    set(_candidates "")
+    set(_versioned_dirs "")
     # `nros setup --tool corrosion` — $NROS_HOME/sdk/corrosion/<version>/
     file(GLOB _versioned LIST_DIRECTORIES true "${_store}/corrosion/*")
     foreach(_dir IN LISTS _versioned)
         if(IS_DIRECTORY "${_dir}")
-            list(APPEND _candidates "${_dir}")
+            list(APPEND _versioned_dirs "${_dir}")
         endif()
     endforeach()
+    if(_versioned_dirs)
+        list(SORT _versioned_dirs COMPARE NATURAL ORDER DESCENDING)
+    endif()
+    set(_candidates "${_versioned_dirs}")
     # `just workspace install-corrosion` — $NROS_HOME/sdk/corrosion/ itself.
     list(APPEND _candidates "${_store}/corrosion")
 

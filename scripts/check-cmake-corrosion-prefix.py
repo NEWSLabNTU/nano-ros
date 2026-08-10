@@ -47,6 +47,7 @@ Run: python3 scripts/check-cmake-corrosion-prefix.py
 """
 
 import os
+import pathlib
 import re
 import subprocess
 import sys
@@ -198,8 +199,51 @@ def self_test():
         sys.exit(2)
 
 
+def check_newest_first():
+    """Both prefix derivations must order the store NEWEST VERSION first.
+
+    issue 0500. The two rules already have to agree on WHICH prefixes are
+    emitted; they also have to agree on their ORDER, because `find_package`
+    takes the first one that resolves. The SDK store accumulates — a host
+    provisioned months ago keeps `0.5.1-nros1` next to a freshly written
+    `0.6.1-nros1` — and under plain glob order the OLD entry won. `nros setup
+    --tool corrosion` then installed the pin, printed success, and the very next
+    configure still resolved 0.5.1: a provisioning step that appears to work.
+
+    It is not a cosmetic ordering. Corrosion < 0.6.0 gives every workspace root
+    one shared `cargo/build`, which is what put two `nros-rmw-zenoh` identities
+    into one `libnros_ws_runtime.a` and made `examples/workspaces/mixed`
+    unlinkable until the store was hand-pruned.
+    """
+    cmake = pathlib.Path("cmake/NanoRosCorrosion.cmake").read_text()
+    shell = pathlib.Path("scripts/build/cmake-prefix.sh").read_text()
+    problems = []
+    if "COMPARE NATURAL ORDER DESCENDING" not in cmake:
+        problems.append(
+            "cmake/NanoRosCorrosion.cmake: `_nros_corrosion_prefixes` does not sort the\n"
+            "    versioned store dirs `COMPARE NATURAL ORDER DESCENDING`"
+        )
+    if "sort -Vr" not in shell:
+        problems.append(
+            "scripts/build/cmake-prefix.sh: `nros_cmake_corrosion_prefixes` does not\n"
+            "    order the versioned store dirs with `sort -Vr`"
+        )
+    if problems:
+        sys.stderr.write(
+            "check-cmake-corrosion-prefix: the store is enumerated in glob order, so an\n"
+            "OLDER Corrosion can shadow the one just installed (issue 0500).\n\n"
+        )
+        for p in problems:
+            sys.stderr.write(f"  {p}\n")
+        sys.stderr.write(
+            "\n  Newest version first, flat prefix last, in BOTH derivations.\n"
+        )
+        sys.exit(1)
+
+
 def main():
     self_test()
+    check_newest_first()
     files = tracked_files()
     bad = offenders(files)
     if bad:

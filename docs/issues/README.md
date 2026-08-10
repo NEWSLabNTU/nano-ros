@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+RESOLVED 2026-08-10 — **#500** `examples/workspaces/mixed` could not LINK: seven duplicate symbols
+(`nros_rmw_zenoh_register`, `REGISTRY`, `nros_rmw_cffi_*`) from two `nros-rmw-zenoh` identities in one
+`libnros_ws_runtime.a`. The cause was NOT the workspace — the build was using **Corrosion 0.5.1 on a host
+where 0.6.1 was installed**, and `< 0.6.0` names the cargo target dir with a constant, so two workspace
+roots share one `deps/` (#0493's topology finding). `_nros_corrosion_prefixes` globbed the SDK store and
+`find_package` took the first prefix that resolved, so a months-old `0.5.1-nros1` outranked the
+`0.6.1-nros1` a provisioning run had just written: `just workspace install-corrosion` and `nros setup
+--tool corrosion` both printed success and changed nothing. Fixed by ordering the store newest-first in
+BOTH derivations (cmake `COMPARE NATURAL ORDER DESCENDING`, shell `sort -Vr`), asserted by
+`check-cmake-corrosion-prefix` and mutation-tested. Only #0493's resolution-reporting line made this
+visible; without it the retry would have been logged as "rebuilt on v0.6.1, still broken". Verified with
+both versions present: resolves 0.6.1, exit 0, 0 duplicate symbols. See `archived/0500-*`. (2026-08-10)
+
 **#499** (build, open 2026-08-10) — `check-artifact-identity-budget` failed tier 1 at its FIRST step on a
 build tree three days old and untouched by the diff, so the whole build tier / clippy / `test-all` never
 ran. Not the gate being wrong — the gate being **unfalsifiable where it runs**. Its own comment accepts

@@ -297,6 +297,13 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **Zephyr Rust allocator is picolibc `malloc`** — size `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`
   (default 16 KB; executor backing alone needs ~75 KB), NOT `CONFIG_HEAP_MEM_POOL_SIZE`.
   → issue 0163 (archived).
+- **The SDK store ACCUMULATES, so a stale Corrosion can shadow the pin you just installed**
+  (issue 0500) — prefixes are enumerated newest-version-first (`COMPARE NATURAL ORDER
+  DESCENDING` / `sort -Vr`) precisely because `find_package` takes the FIRST that resolves,
+  and both provisioning paths print success either way. Corrosion `< 0.6.0` shares one
+  `cargo/build` across workspace roots ⇒ duplicate `#[no_mangle]` ⇒ `mixed` cannot link.
+  **Read the configure's `nano-ros: Corrosion <ver> via <origin>` line — never infer the
+  version from having run the installer.** Gate: `check-cmake-corrosion-prefix`.
 - **A Kconfig knob reaches the Zephyr C lane and NOT the RUST one** — `nros_cargo_build.cmake`
   publishes knobs with `set(ENV{…})`, which only touches the configure-time process; the C lane
   re-bakes them into its command (`cmake -E env`), zephyr-lang-rust's `rust_cargo_application`

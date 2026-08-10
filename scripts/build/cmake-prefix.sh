@@ -36,14 +36,30 @@
 # host with the flat layout: prefix `…/corrosion` resolves; `…/corrosion/lib`
 # and `…/corrosion/share` do not.
 
-# Echo the SDK prefixes (newline-separated, versioned layout first). Empty when
-# nothing is provisioned — an unprovisioned host is a supported state; the
-# configure then reports a FetchContent fallback.
+# Echo the SDK prefixes (newline-separated, NEWEST VERSION first, flat layout
+# last). Empty when nothing is provisioned — an unprovisioned host is a
+# supported state; the configure then reports a FetchContent fallback.
+#
+# The ordering is load-bearing and must match `_nros_corrosion_prefixes` in
+# `cmake/NanoRosCorrosion.cmake` (issue 0500): the store ACCUMULATES, and
+# `find_package` takes the first prefix that resolves, so plain glob order lets
+# a months-old `0.5.1-nros1` shadow the `0.6.1-nros1` a provisioning run just
+# wrote — silently, with the install reporting success. `sort -V` is the shell
+# spelling of cmake's `COMPARE NATURAL ORDER DESCENDING`.
 nros_cmake_corrosion_prefixes() {
     local store="${NROS_HOME:-$HOME/.nros}/sdk"
     local prefix
-    for prefix in "$store"/corrosion/*/ "$store/corrosion"; do
-        prefix="${prefix%/}"
+    local -a ordered=()
+    while IFS= read -r prefix; do
+        [ -n "$prefix" ] && ordered+=("$prefix")
+    done < <(
+        for prefix in "$store"/corrosion/*/; do
+            [ -d "$prefix" ] || continue
+            printf '%s\n' "${prefix%/}"
+        done | sort -Vr
+    )
+    ordered+=("$store/corrosion")
+    for prefix in "${ordered[@]}"; do
         [ -d "$prefix" ] || continue
         # Keep only a prefix a `find_package` can actually resolve FROM.
         if compgen -G "$prefix/lib*/cmake/Corrosion/CorrosionConfig.cmake" >/dev/null ||
