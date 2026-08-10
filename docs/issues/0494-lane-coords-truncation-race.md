@@ -21,7 +21,7 @@ runs:
 The failure message is
 
 ```
-/mnt/evo/aeon/nano-ros/target/nextest/lane-coords-tier2.txt: no coordinates — refusing
+<repo>/target/nextest/lane-coords-tier2.txt: no coordinates — refusing
 ```
 
 ## Cause
