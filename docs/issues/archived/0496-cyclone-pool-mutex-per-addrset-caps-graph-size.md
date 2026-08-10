@@ -213,24 +213,35 @@ Two things about it worth keeping:
   aimed at them. A concurrency test that has never been seen to fail is not
   evidence of anything.
 
-### Verification gap on the native backend — read before trusting it
+### Verification of the native backend — gap now closed
 
-The Zephyr sync backend is verified by construction and by boot, not by traffic:
-the island builds with it, and cyclone initialises fully at a 256-slot pool
-(`dds_create_participant` succeeds, which exercises the new mutexes and condvars
-across ddsi init, thread states, dqueues and the timed waits in xevents). Native
-POSIX is unaffected (`just cyclonedds ci` 17/17, dispatch falls through).
+Initially this shipped verified only by construction and boot, because the only
+zephyr+cyclone integration harness is the safety-island demo and no cyclone
+participant could be created on the build host's domain 1 — another project's
+Autoware was occupying it. That has since been resolved by moving the demo to
+domain 10 (the box is shared; the other project owns 1-3), and the demo was run:
 
-What is NOT verified is two-party data flow on it. The only zephyr+cyclone
-integration harness in reach is the safety-island demo, and no cyclone
-participant can be created on **domain 1** of the build host at present: another
-project's Autoware is squatting that domain's index space (92 bound ports in
-7650..8200, none of them ours). That is measured rather than assumed — cyclone on
-domain 1 fails for any config *including no config*, while fastrtps on domain 1
-and cyclone on domain 7 both create nodes fine, and the sim half-starts before
-the island binary is even launched. Re-run `just demo-all` when the box is quiet,
-or on an unused `ROS_DOMAIN_ID` (the island's domain is compile-time, so that
-needs a rebuild).
+```
+VERDICT: PASS — island stopped the vehicle (4.26 -> 0.00 m/s),
+                MRM recovered, vehicle resumed (1.54 m/s)
+island aborts: 0
+MRM State: NORMAL -> MRM_OPERATING -> MRM_SUCCEEDED -> NORMAL
+```
+
+against the full 33/33-node / 13/13-container / 68/68-composable Autoware graph,
+with `CONFIG_MAX_PTHREAD_MUTEX_COUNT` at **256** — the example default, and a
+value that used to fail during boot. So the k_mutex/k_condvar backend moves data
+both ways under a real graph, not just initialises. Native POSIX unaffected
+(`just cyclonedds ci` 17/17; the dispatch falls through off-Zephyr).
+
+Worth keeping for the next time a "the code is broken" hypothesis appears: that
+domain-1 blockage produced a sim that half-started (18/33 nodes, 0/13
+containers) and an island that could not get a participant index, and it was
+tempting both times to read it as fallout from the change under test. What
+settled it was ordering and probes, not intuition — the sim half-starts BEFORE
+the island binary is launched, and cyclone on domain 1 failed for any config
+including no config while fastrtps on domain 1 and cyclone on domain 7 both
+worked.
 
 One correction this exposed: an earlier claim here that the graph had outgrown
 `MaxAutoParticipantIndex=120` (~158 participants) was **confounded** — that count
