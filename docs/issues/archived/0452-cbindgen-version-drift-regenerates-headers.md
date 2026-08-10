@@ -1,11 +1,43 @@
 ---
 id: 452
 title: "Embedded builds regenerate the cbindgen headers with different output, dirtying tracked files"
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-338, phase-345]
 ---
+
+> **RESOLVED 2026-08-10 by phase-345 W3, with THREE corrections to this issue's
+> own text. Acceptance discharged on this issue's own repro:
+> `just nuttx build-examples` exit 0, all three headers untouched, zero stale
+> warnings.**
+>
+> * **There are THREE committed cbindgen headers, not two.** The sweep for the
+>   class found `packages/rmw/zenoh/zpico-sys/c/include/zpico.h`, tracked and
+>   rewritten in place by `nros-zpico-build`'s own `generate_header`. It is not
+>   raw cbindgen output — it goes through `post_process_header` plus a
+>   plausibility guard — so the regenerator carries a per-header post-pass.
+> * **The pin is an exact cargo requirement, not a `.cbindgen-version` file.**
+>   The "Fix" section below proposes mirroring clang-format / bindgen-cli. Those
+>   are PATH binaries with no resolver; cbindgen is a cargo dependency, so
+>   `cbindgen = "=0.29.3"` in `[workspace.dependencies]` IS the pin, and it binds
+>   the lockless leaves a lock cannot reach. A separate version file would have
+>   been a second spelling.
+>
+> * **The drift was already COMMITTED, not merely possible.** Both tracked NuttX
+>   FFI leaf locks (`nros-nuttx-ffi`, `nros-nuttx-riscv-ffi`) pinned
+>   `cbindgen 0.29.4` against the root's 0.29.3 — the graphs that were rewriting
+>   the headers, caught in the tracked tree rather than inferred. The exact
+>   requirement refused to build them until they agreed; moved with
+>   `just lock-update cbindgen 0.29.3 <leaf>`.
+>
+> Builds now COMPARE and warn instead of writing; `just regen-c-headers` is the
+> only writer; `check-cbindgen-pin` and `check-cbindgen-headers` gate both halves.
+>
+> Verified: 0.29.3 reproduces all three headers byte-for-byte; appended drift now
+> SURVIVES a rebuild (previously the build overwrote it); and the NuttX lane runs
+> green with the headers untouched and no `is STALE` warning, i.e. the committed
+> copies match what the EMBEDDED graph generates too.
 
 ## Symptom
 

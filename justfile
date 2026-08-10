@@ -397,6 +397,7 @@ check-fast: \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
+    check-cbindgen-pin check-cbindgen-headers \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
     check-capability-slot-counts check-kconfig-knob-forwarding \
@@ -1042,6 +1043,31 @@ check-no-tracked-models:
 [private]
 check-cargo-locked:
     @bash scripts/check-cargo-locked.sh
+
+# Issue 0452 — cbindgen's requirement must stay EXACT and inherited, because the
+# headers it writes are COMMITTED and it rewrites them in place on every build.
+# The root lock does not govern the leaves that regenerate them (an example's
+# lock is never committed), so a caret req is how 0.29.4 output lands in a tree
+# whose lock says 0.29.3. Buildless.
+[private]
+check-cbindgen-pin:
+    @bash scripts/check-cbindgen-pin.sh
+
+# Issue 0452 — the committed cbindgen headers must match a fresh generation.
+# The Rust->C mirror of `check-abi-bindings`, which has guarded the C->Rust
+# direction since RFC-0054. Builds no longer regenerate these in place, so
+# without this gate a stale header could sit in the tree indefinitely.
+[private]
+check-cbindgen-headers:
+    @cargo run -q -p nros-cbindgen-headers -- --check
+
+# Regenerate the committed cbindgen headers (issue 0452). THE single writer:
+# `nros_generated.h`, `nros_cpp_ffi.h` and `zpico.h` are committed, and build
+# scripts only compare against them and warn. Run this after changing any
+# `#[repr(C)]` / `extern "C"` surface, and commit the result.
+[group("main")]
+regen-c-headers:
+    @cargo run -q -p nros-cbindgen-headers
 
 # A cargo profile defined in BOTH `Cargo.toml` and `.cargo/config.toml` must
 # agree. Both are load-bearing — the manifest one applies to the root

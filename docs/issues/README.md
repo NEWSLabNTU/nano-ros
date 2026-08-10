@@ -515,11 +515,17 @@ reference to open / socket / malloc` — mistaken for a link regression during p
 `activate.sh` the env SSoT; for these it is not. Same shape as 0407 and 0420's real finding.
 See `0451-*`. (2026-08-06)
 
-**#452** — embedded builds regenerate `nros_generated.h` / `nros_cpp_ffi.h` with an OLDER cbindgen, so any
-embedded lane silently dirties two tracked headers, and committing it REVERTS the C23 enum-base guard (had
-to be hand-reverted twice during phase-338). The repo already pins `clang-format` and `bindgen-cli 0.72.1`
-for the C→Rust direction for exactly this reason; the Rust→C direction has no pin.
-See `0452-*`. (2026-08-06)
+Recently resolved (2026-08-10): **#452** — embedded builds regenerated `nros_generated.h` /
+`nros_cpp_ffi.h` with a DIFFERENT cbindgen, so any embedded lane silently dirtied tracked headers, and
+committing it REVERTED the C23 enum-base guard (hand-reverted twice during phase-338). RESOLVED by
+phase-345 W3, with three corrections to the issue's own text: there are **three** such headers (the sweep
+found `zpico-sys/c/include/zpico.h`), the pin is an **exact cargo requirement** rather than a
+`.clang-format-version`-style file (cbindgen is a dependency, so cargo's resolver IS the pin, and it binds
+the lockless leaves a lock cannot reach), and the drift was **already committed** — two tracked NuttX FFI
+leaf locks pinned `cbindgen 0.29.4` against the root's 0.29.3. Builds now COMPARE and warn;
+`just regen-c-headers` is the only writer; `check-cbindgen-pin` + `check-cbindgen-headers` gate both halves.
+Acceptance discharged on the issue's own repro: `just nuttx build-examples` green, all three headers
+untouched, zero stale warnings. See `archived/0452-*`. (2026-08-10)
 
 Recently resolved (2026-08-06): **#445** — a staleness verdict is TERMINAL and self-explaining, so
 it absorbs whatever the fixture would have done at runtime. Demonstrated: issue 0442 made the

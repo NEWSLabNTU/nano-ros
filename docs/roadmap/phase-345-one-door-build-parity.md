@@ -1,6 +1,6 @@
 # Phase 345 — One door: the build behaves the same however you enter it
 
-**Status (2026-08-10). OPEN — nothing landed; the measurements below are done
+**Status (2026-08-10). W3 LANDED; W1, W2 and W4 open. The measurements below are done
 and reproduce on this tree.** This phase is not a build-cache phase. It does not
 move a path, so it does not collide with [phase-340](phase-340-build-artifact-reuse.md)
 item 5 / P4 — with one exception, W2, which edits leaf `.cargo/config.toml`
@@ -207,6 +207,122 @@ variable owned by the W1 source.
 
 **Acceptance:** 0491's probe C is fresh, AND the same probe is fresh in a shell
 that never sourced `activate.sh` (the case §2.3 created).
+
+### W3 LANDED 2026-08-10 — with two deviations from the plan below
+
+**Deviation 1: the pin is an exact cargo requirement, not a `.cbindgen-version`
+file plus a provisioning recipe.** §2.4 proposed mirroring `.clang-format-version`
+/ `bindgen-cli`. That analogy does not transfer: those are PATH binaries with no
+resolver, so they need a version file and a `just setup-*`. **cbindgen is a
+cargo dependency**, so cargo's resolver IS the pinning mechanism —
+`cbindgen = "=0.29.3"` in `[workspace.dependencies]`, inherited by both consumers
+via `{ workspace = true }`. An exact requirement binds every graph including the
+lockless leaves, which is exactly the population a lock could not reach, and a
+separate pin file would have been a second spelling of the same fact.
+
+Pin value **verified, not assumed**: built `nros-c` on the root lock's 0.29.3 and
+the committed headers came back byte-identical. §6's caveat is discharged.
+
+**Deviation 2: there are THREE committed cbindgen headers, not two.** The sweep
+for the class (CLAUDE.md's rule) found `packages/rmw/zenoh/zpico-sys/c/include/
+zpico.h`, tracked and rewritten in place by `nros-zpico-build`'s own
+`generate_header` — same defect, different crate, unnamed in issue 0452. It is
+not raw cbindgen output: it goes through `post_process_header` and a
+plausibility guard, so the regenerator carries a per-header post-pass rather
+than assuming all three are alike.
+
+**What shipped**
+
+| piece | where |
+| --- | --- |
+| exact pin, inherited | `Cargo.toml` `[workspace.dependencies]`, both consumers on `{ workspace = true }` |
+| builds COMPARE, never write | `nros_build_helpers::generate_cbindgen_header` + `nros-zpico-build`'s `generate_header` — a mismatch is a `cargo::warning`, and the fresh copy is stashed in `OUT_DIR` for diffing |
+| the single writer | `just regen-c-headers` → the `nros-cbindgen-headers` **crate** (its own member, not a `[[bin]]` in `nros-build-helpers` — see "What the acceptance caught") |
+| gates | `check-cbindgen-pin` (exact req / inherited / lock agrees) and `check-cbindgen-headers` (all three match a fresh generation), both in `check-fast` |
+
+`Cargo.lock` moved by exactly one line (the new optional dep edge), via
+`just lock-update` — the only sanctioned mover.
+
+**Verified**
+
+* all three gate arms of `check-cbindgen-pin` fail before being trusted (caret
+  regression, a crate re-spelling its own version, pin ahead of the lock);
+* `check-cbindgen-headers` fails on a drifted header and `just regen-c-headers`
+  restores it;
+* **the write path is gone**: appended drift to `nros_generated.h`, rebuilt
+  `nros-c`, and the drift SURVIVED with a STALE warning — previously the build
+  would have overwritten it;
+* `cargo clippy -D warnings` clean on both changed crates; `cargo +nightly fmt`
+  applied.
+
+**What the acceptance caught — and it was a real defect, not a flake.**
+
+The first shape put the regenerator binary inside `nros-build-helpers`, taking
+`nros-zpico-build` as an *optional* dependency behind `required-features`. That
+looked free: default builds never enable it. It is not free. **A dependency EDGE
+is recorded in every tracked lockfile that contains the crate**, feature-gated or
+not, and `nros-build-helpers` appears in three tracked locks (the root plus both
+`nros-nuttx-ffi` leaves). The NuttX lane died on:
+
+```
+error: cannot update the lock file .../nros-nuttx-ffi/Cargo.lock
+       because --locked was passed to prevent this
+```
+
+The `--locked` PATH shim (issues 0359/0378) did exactly its job — it refused to
+silently rewrite a lock nobody had reviewed. Fixed structurally rather than by
+churning three locks: **the regenerator is its own crate**
+(`packages/tooling/nros-cbindgen-headers`), so a developer tool's dependencies
+stay out of every build script's graph. The root lock gains one member; the two
+leaf locks do not move at all. That is also the general rule this uncovered —
+*adding any dependency to a crate that build scripts link is a lockfile change
+across the tree*, which is worth remembering the next time something looks like
+it belongs in `nros-build-helpers`.
+
+**Two lane attempts before that were not results at all**, and both are the
+absorbing-STALE pattern (issue 0445) rather than evidence:
+
+1. `nros: unrecognized subcommand 'profile'` — the in-tree CLI was stale, so the
+   lane exited before building anything. `git status` was clean afterwards and
+   that cleanliness meant nothing. This is issue 0466's ordering trap: the rebase
+   earlier in the session refreshed source mtimes, which re-arms the CLI stamp,
+   and `just setup-cli` must come first.
+2. The lockfile refusal above — again a precondition, again before any header
+   could be written.
+
+**The smoking gun, found by the third attempt.** With the dep problem fixed, the
+lane still refused to build — and this time the pin was working as designed:
+
+```
+error: cannot update the lock file .../nros-nuttx-ffi/Cargo.lock
+```
+
+Both tracked NuttX FFI leaf locks pinned **`cbindgen 0.29.4`** while the root
+pinned 0.29.3. Those are the graphs that were rewriting the headers, and the
+drift was not hypothetical — **it was committed, in two lockfiles**. §2.4 inferred
+this population from an OUT_DIR artifact in an unrelated bench leaf; here it is
+in the tracked tree. The exact requirement refuses to build them until they
+agree, which is the entire point. Moved with
+`just lock-update cbindgen 0.29.3 <leaf>`; the diff is the version and its
+checksum, nothing else.
+
+**Acceptance DISCHARGED 2026-08-10, fourth attempt.** `just nuttx build-examples`
+→ exit 0, zero errors, "NuttX QEMU examples built!", and:
+
+* the three committed headers are **untouched** — `git status` clean on all of
+  them after a lane that previously dirtied two;
+* **zero** `is STALE against this crate` warnings, i.e. the committed headers
+  also match what the embedded graph generates, not merely what the host does.
+
+The first three attempts are kept above deliberately. Each produced a clean
+worktree while proving nothing, and the difference between those and this one is
+only that the lane actually compiled.
+
+**Consequence worth noting:** the cross-process advisory lock in `shared.rs`
+exists because N parallel build trees regenerated one source-tree path
+(known-issues #15). Builds no longer write, so that race cannot occur; the lock
+is kept only because the regenerator is still a writer, and it is no longer
+load-bearing for #15.
 
 ### W3 — the Rust→C headers get the treatment the C→Rust ones already have
 

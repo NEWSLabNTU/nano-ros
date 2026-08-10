@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    env,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -142,55 +142,130 @@ pub fn picolibc_include() -> Option<String> {
     None
 }
 
-pub fn generate_cbindgen_header(manifest_dir: &Path, config_name: &str, output_rel: &str) {
+/// Render a committed cbindgen header's CONTENT, without writing anything.
+///
+/// Split out of [`generate_cbindgen_header`] so the regenerator binary and the
+/// build-script comparison path run the *same* generation — a second spelling
+/// here is how the two would drift and the gate would start passing for the
+/// wrong reason.
+///
+/// Generation is a pure function of the crate's own sources plus its
+/// `cbindgen.toml`: both configs set `parse_deps = false` and leave
+/// `[parse.expand]` off, so no dependency graph and no `cargo expand` are
+/// involved, which is exactly what lets a standalone binary reproduce what a
+/// build script used to produce in place.
+pub fn render_cbindgen_header(manifest_dir: &Path, config_name: &str) -> Result<String, String> {
     let config_path = manifest_dir.join(config_name);
-    let output_path = manifest_dir.join(output_rel);
+    let config = cbindgen::Config::from_file(&config_path)
+        .map_err(|e| format!("failed to load {}: {e}", config_path.display()))?;
 
-    let config = match cbindgen::Config::from_file(&config_path) {
-        Ok(c) => c,
+    let bindings = cbindgen::Builder::new()
+        .with_crate(manifest_dir)
+        .with_config(config)
+        .generate()
+        .map_err(|e| format!("cbindgen generation failed: {e}"))?;
+
+    let mut buf = Vec::new();
+    bindings.write(&mut buf);
+    String::from_utf8(buf).map_err(|e| format!("cbindgen emitted non-UTF-8: {e}"))
+}
+
+/// Issue 0452 — COMPARE the committed header against a freshly rendered one.
+/// **Never writes the source tree.**
+///
+/// These headers (`nros_generated.h`, `nros_cpp_ffi.h`, `zpico.h`) are
+/// committed, and until now every `build.rs` rewrote them IN PLACE. Two things
+/// followed from that, and both are fixed by not writing:
+///
+/// * **A build dirtied the worktree.** When the graph resolved a different
+///   cbindgen patch release, ~36 lines flipped and `git status` showed changes
+///   nobody made; committing them reverted an upstream improvement, which had
+///   to be undone by hand twice during phase-338. The exact `=` requirement in
+///   `[workspace.dependencies]` closes the version half; this closes the
+///   "a build writes tracked source at all" half.
+/// * **N concurrent build trees raced on one path**, which is why a
+///   cross-process advisory lock exists below (known-issues #15). Only the
+///   regenerator writes now, and it is one process.
+///
+/// Drift is reported as a `cargo::warning` rather than a hard error on purpose:
+/// mid-edit divergence is the normal state while someone is changing an FFI
+/// signature, and failing their build would teach them to bypass this. The
+/// enforcement point is `check-cbindgen-headers`, which runs in `just check`.
+pub fn generate_cbindgen_header(manifest_dir: &Path, config_name: &str, output_rel: &str) {
+    let output_path = manifest_dir.join(output_rel);
+    println!("cargo:rerun-if-changed={}", output_path.display());
+
+    let fresh = match render_cbindgen_header(manifest_dir, config_name) {
+        Ok(s) => s,
         Err(e) => {
-            println!("cargo:warning=Failed to load cbindgen config: {e}");
+            println!("cargo:warning=cbindgen header check skipped: {e}");
             return;
         }
     };
 
-    let result = cbindgen::Builder::new()
-        .with_crate(manifest_dir)
-        .with_config(config)
-        .generate();
+    // Stash the fresh copy in OUT_DIR so a developer can diff it without
+    // re-running cbindgen by hand. Best-effort: a missing OUT_DIR (doc builds,
+    // some IDE probes) must not break the build.
+    if let Ok(out_dir) = std::env::var("OUT_DIR") {
+        let name = Path::new(output_rel)
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("cbindgen-header"));
+        let _ = fs::write(Path::new(&out_dir).join(name), &fresh);
+    }
 
-    match result {
-        Ok(bindings) => write_cbindgen_header_serialized(&output_path, bindings),
+    match fs::read_to_string(&output_path) {
+        Ok(committed) if committed == fresh => {}
+        Ok(_) => {
+            println!(
+                "cargo:warning={} is STALE against this crate's sources — run \
+                 `just regen-c-headers` and commit the result (issue 0452). \
+                 The build used the committed copy.",
+                output_path.display()
+            );
+        }
         Err(e) => {
-            println!("cargo:warning=cbindgen header generation skipped: {e}");
+            println!(
+                "cargo:warning=cannot read committed header {}: {e} — run \
+                 `just regen-c-headers` (issue 0452)",
+                output_path.display()
+            );
         }
     }
 }
 
-/// Serialize concurrent regenerators of this shared source-tree header.
+/// The one writer: render and replace the committed header in place.
 ///
-/// The cbindgen headers (`nros_generated.h` / `nros_cpp_ffi.h`) are committed
-/// to the source tree and regenerated **in place** by every parallel `build.rs`
-/// invocation. On a cold workspace build, N independent Corrosion / Cargo build
-/// trees (e.g. the threadx-linux C++ fixtures, which — unlike nuttx — are not
-/// serialized with `NROS_CARGO_FRONTENDS=1`) run this code concurrently against
-/// the *same* output path. The inner `write_cbindgen_header_atomically` makes a
-/// single writer's replacement atomic, but nothing serializes N writers racing
-/// on the write/compare/rename sequence, so a concurrent reader (a C++ compile
-/// `#include`-ing the header) could observe an intermediate state across the
-/// burst (known-issues #15: transient "multiple definition / conflicting
-/// declaration of `nros_cpp_qos_t`").
+/// Used by the `nros-cbindgen-headers` binary (`just regen-c-headers`), never by
+/// a build script.
+/// Takes FINAL content rather than rendering it, because not every committed
+/// header is raw cbindgen output — `zpico.h` is post-processed. Rendering here
+/// would force the caller that needs the post-pass to write the file some other
+/// way, and then there would be two writers again.
 ///
-/// A cross-process advisory lock keyed on the *absolute output path* (so it is
-/// shared across distinct target dirs that all write the one source-tree file)
-/// makes the whole "generate fresh contents → atomically replace" critical
-/// section mutually exclusive. The lockfile lives in the host temp dir, so it
-/// adds no source-tree / git noise. On non-unix hosts the lock is a no-op and we
-/// fall back to the atomic rename alone.
-fn write_cbindgen_header_serialized(output_path: &Path, bindings: cbindgen::Bindings) {
+/// Returns whether the file changed.
+pub fn write_committed_header(output_path: &Path, content: &str) -> bool {
     let _guard = HeaderLock::acquire(output_path);
-    write_cbindgen_header_atomically(output_path, bindings);
+    write_cbindgen_header_atomically(output_path, content)
 }
+
+// WHY A CROSS-PROCESS LOCK STILL EXISTS BELOW, AND WHY IT NO LONGER CARRIES
+// WHAT IT USED TO (issue 0452).
+//
+// These headers were regenerated IN PLACE by every parallel `build.rs`
+// invocation. On a cold workspace build, N independent Corrosion / Cargo trees
+// (e.g. the threadx-linux C++ fixtures, which — unlike nuttx — are not
+// serialized with `NROS_CARGO_FRONTENDS=1`) ran that code concurrently against
+// the SAME output path. An atomic rename makes one writer's replacement safe,
+// but nothing serialized N writers racing on write/compare/rename, so a
+// concurrent reader (a C++ compile `#include`-ing the header) could observe an
+// intermediate state — known-issues #15, transient "multiple definition /
+// conflicting declaration of `nros_cpp_qos_t`".
+//
+// Builds no longer write these files at all: they compare and warn. The only
+// writer is `just regen-c-headers`, one process. The lock is kept because that
+// regenerator is still a writer to a shared path and the machinery is already
+// tested — but the N-way race it was built for cannot occur any more, so it is
+// no longer load-bearing for #15.
 
 /// Cross-process advisory lock guarding regeneration of one shared header.
 ///
@@ -271,7 +346,8 @@ impl HeaderLock {
     }
 }
 
-fn write_cbindgen_header_atomically(output_path: &Path, bindings: cbindgen::Bindings) {
+/// Returns whether the committed file actually changed.
+fn write_cbindgen_header_atomically(output_path: &Path, content: &str) -> bool {
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
@@ -291,13 +367,14 @@ fn write_cbindgen_header_atomically(output_path: &Path, bindings: cbindgen::Bind
             .unwrap_or("cbindgen-header"),
         std::process::id()
     ));
-    bindings.write_to_file(&tmp);
+    std::fs::write(&tmp, content.as_bytes()).ok();
     let differs = std::fs::read(&tmp).ok() != std::fs::read(output_path).ok();
     if differs {
         std::fs::rename(&tmp, output_path).ok();
     } else {
         std::fs::remove_file(&tmp).ok();
     }
+    differs
 }
 
 /// # Write policy for generated artifacts

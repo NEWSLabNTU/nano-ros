@@ -19,12 +19,17 @@ host-only = true
 host-only-reason = "build-script helper library, runs on the host"
 
 [dependencies]
-cbindgen = "0.29"
+cbindgen = { workspace = true }
 cc = "1"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
 nros-cc-flags = { path = "../nros-cc-flags" }
 nros-sizes-build = { workspace = true }
+# NOTE (issue 0452): the regenerator that WRITES the committed cbindgen headers
+# deliberately lives in its own crate, `nros-cbindgen-headers`, not as a
+# `[[bin]]` here. It needs `nros-zpico-build`, and any dependency added to this
+# crate lands in every tracked lockfile that contains it — which broke the NuttX
+# lane under `--locked`. See that crate's manifest for the full reasoning.
 
 [lints]
 workspace = true

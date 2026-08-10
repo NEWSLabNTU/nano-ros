@@ -19,7 +19,7 @@ host-only = true
 host-only-reason = "host build-script helper for zenoh-pico"
 
 [dependencies]
-cbindgen = "0.29"
+cbindgen = { workspace = true }
 cc = "1.0"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.

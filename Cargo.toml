@@ -39,6 +39,7 @@ members = [
     "packages/tooling/nros-cc-flags",
     # Phase 221.A.2 — shared build-script helpers for nros-c/nros-cpp.
     "packages/tooling/nros-build-helpers",
+    "packages/tooling/nros-cbindgen-headers",
     # Phase 149.5 — shared build-script helpers (manifest parser +
     # link-feature policy) consumed by zpico-sys + the per-kernel
     # generic board crates as `[build-dependencies]`.
@@ -575,6 +576,29 @@ proc-macro2 = "1"
 
 # Optional std dependencies
 thiserror = "1"
+
+# Build-time C header generation (issue 0452). The requirement is EXACT, and
+# that exactness is the whole point: cbindgen's output moves between patch
+# releases — 0.29.4 narrows the C23 enum-base guard the committed headers carry
+# (`__STDC_VERSION__ >= 202311L` becomes `__cplusplus`), ~36 lines across
+# `nros_generated.h` and `nros_cpp_ffi.h`. Those headers are COMMITTED and
+# regenerated in place by `build.rs`, so a graph that resolves a different patch
+# release silently dirties the worktree, and committing the result REVERTS an
+# upstream improvement (it had to be hand-reverted twice during phase-338).
+#
+# A caret `"0.29"` does not prevent that. The root lock pins 0.29.3, but the
+# leaves that regenerate these headers have no tracked `Cargo.lock` (CLAUDE.md:
+# an example's lock is never committed), so each resolves the caret freshly —
+# `packages/testing/nros-bench/wake-latency-cortex-m3` was measured building
+# 0.29.4 against the root's 0.29.3. An exact requirement binds every graph,
+# locked or not, with nothing to provision.
+#
+# NOT the `.clang-format-version` / bindgen-cli treatment: those are PATH
+# binaries with no resolver, so they need a pin file and a provisioning recipe.
+# cbindgen is a cargo dependency, so cargo IS the pinning mechanism and a second
+# pin file would be a second spelling. Gate: `check-cbindgen-pin`.
+# Verified: 0.29.3 reproduces both committed headers byte-for-byte.
+cbindgen = "=0.29.3"
 
 # Embedded runtime (QEMU testing)
 cortex-m = "0.7"

@@ -1149,29 +1149,24 @@ fn generate_header(manifest_dir: &Path, include_dir: &Path) {
                 return;
             }
 
-            // Race-free write under parallel cargo invocations (one per
-            // example/target-dir, all rebuilding zpico-sys against this same
-            // source-tree path). std::fs::write would interleave bytes on
-            // concurrent writers; instead write to a per-pid temp then
-            // atomic-rename. Same-content skip avoids redundant churn that
-            // confuses cargo's rerun-if-changed.
+            // Issue 0452 — this header is COMMITTED, and a build must not write
+            // the source tree. It used to: a per-pid temp plus an atomic rename,
+            // which made ONE writer safe but still meant every build could dirty
+            // the worktree when the graph resolved a different cbindgen patch
+            // release. Now the build only COMPARES; `just regen-c-headers` is
+            // the single writer, and `check-cbindgen-headers` is the gate.
+            //
+            // The whole reason the race machinery existed — N parallel cargo
+            // invocations, one per example/target-dir, all rebuilding zpico-sys
+            // against this same source-tree path — is gone with the write.
             let existing = std::fs::read(&output_file).ok();
-            if existing.as_deref() == Some(processed.as_bytes()) {
-                return;
-            }
-            let tmp = output_file
-                .parent()
-                .map(|p| p.join(format!(".zpico.h.tmp.{}", std::process::id())))
-                .unwrap_or_else(|| {
-                    output_file.with_extension(format!("h.tmp.{}", std::process::id()))
-                });
-            if let Err(e) = std::fs::write(&tmp, processed) {
-                println!("cargo:warning=Failed to write tmp header {tmp:?}: {e}");
-                return;
-            }
-            if let Err(e) = std::fs::rename(&tmp, &output_file) {
-                println!("cargo:warning=Failed to rename tmp header into place: {e}");
-                let _ = std::fs::remove_file(&tmp);
+            if existing.as_deref() != Some(processed.as_bytes()) {
+                println!(
+                    "cargo:warning={} is STALE against this crate's sources — run \
+                     `just regen-c-headers` and commit the result (issue 0452). \
+                     The build used the committed copy.",
+                    output_file.display()
+                );
             }
         }
         Err(e) => {

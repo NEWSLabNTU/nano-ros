@@ -1,0 +1,38 @@
+[package]
+name = "nros-cbindgen-headers"
+version.workspace = true
+edition = "2024"
+description = "Regenerate (or check) the committed cbindgen headers — issue 0452"
+license = "MIT OR Apache-2.0"
+repository.workspace = true
+publish = false
+
+# issue 0287 — HOST-ONLY, same reason as nros-build-helpers: a workspace-wide
+# embedded build unifies features across ALL members, so a host tool left
+# undeclared turns `std` on for firmware crates and the lane dies somewhere
+# unrelated.
+[package.metadata.nros]
+host-only = true
+host-only-reason = "developer tool, regenerates committed headers on the host"
+
+# WHY THIS IS ITS OWN CRATE AND NOT A `[[bin]]` IN nros-build-helpers.
+#
+# It needs `nros-zpico-build`, to reproduce `zpico.h` exactly (that header is
+# cbindgen output PLUS `post_process_header`). Putting that dependency on
+# nros-build-helpers — even optional, even behind `required-features` — adds a
+# dependency EDGE that every tracked lockfile containing nros-build-helpers must
+# then record. The first attempt did exactly that and broke the NuttX lane:
+#
+#   error: cannot update the lock file .../nros-nuttx-ffi/Cargo.lock
+#          because --locked was passed to prevent this
+#
+# Three tracked locks carry nros-build-helpers (the root plus both nuttx-ffi
+# leaves), and lockfiles move only when a dev means it (issues 0359/0378). A
+# separate crate keeps the tool's dependencies out of every build script's graph:
+# only the root lock gains the new member.
+[dependencies]
+nros-build-helpers = { workspace = true }
+nros-zpico-build = { path = "../../rmw/zenoh/nros-zpico-build" }
+
+[lints]
+workspace = true
