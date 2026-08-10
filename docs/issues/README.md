@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+RESOLVED 2026-08-10 — **#510** the px4 companion lane skipped `nros sync`, so all three leaves
+(`px4-stub`, `px4-probe`, `offboard-companion`) resolved their registry-named nros deps
+(`nros = { version = "*" }`, `nros-platform-cffi`, `nros-rmw-xrce-cffi`) against the PUBLIC crates.io:
+`error: no matching package named 'nros' found`. The recipe's comment — "no `nros sync` path — px4_msgs
+isn't an ament package" — is true of the CODEGEN half and false of the other one: sync also writes the
+leaf's `[patch.crates-io]`, which is gitignored and therefore absent in every clone. #378's class. It
+takes `build-test-fixtures lane=all` down with rc=2, so no tier needing the full existence set can finish
+— and it hid because `lane=tier2` reports the same three as a soft `cargo-check FAILED … (no stamp)` and
+still exits 0. Fixed by syncing each leaf after codegen, before the cargo build. See `archived/0510-*`.
+(2026-08-10)
+
 **#509** (build/testing, open 2026-08-10) — the Zephyr fixture lane is PER-LEAF-OVERHEAD bound, not compile
 bound. Measured mid-sweep: **40 min for 68 leaves**, and across all of them just **1254 ninja edges**
 (mean 18/leaf), only 8 reconfigures, sccache at 96.8 %, and 4 rustc + 2 C compilers live on a 32-core box.

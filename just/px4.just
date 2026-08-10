@@ -210,10 +210,23 @@ build-examples: build-sitl-cpp
 #
 # Phase 233.4 — the XRCE companion host test (`nros-tests::px4_xrce`) runs the
 # prebuilt `px4-stub` example. Generate its `px4_msgs` bindings from the PX4
-# `.msg` tree (no `nros sync` path — px4_msgs isn't an ament package) then
-# build the standalone example to `target-xrce/` where `build_example_rmw`
-# resolves it. Companion gets the same bindings so a `just px4 build-examples`
-# copy-out builds too.
+# `.msg` tree, run `nros sync` for the patch config, then build the standalone
+# example to `target-xrce/` where `build_example_rmw` resolves it. Companion gets
+# the same bindings so a `just px4 build-examples` copy-out builds too.
+#
+# issue 0510 — this used to say "no `nros sync` path — px4_msgs isn't an ament
+# package" and skip sync entirely. True of the CODEGEN half and false of the
+# other one: sync also writes the leaf's `[patch.crates-io]`, and these three
+# manifests registry-name their nros deps (`nros = { version = "*" }`,
+# `nros-platform-cffi`, `nros-rmw-xrce-cffi`). With no `.cargo/config.toml` at
+# all, cargo resolved them against the PUBLIC crates.io and the lane died with
+#
+#     error: no matching package named `nros` found
+#     location searched: crates.io index
+#
+# which reads as a missing crate rather than a missing sync. That failure takes
+# `build-test-fixtures lane=all` down with it (rc=2), so no tier needing the full
+# existence set can complete. Same class as #378.
 [group("full-matrix")]
 build-fixtures:
     #!/usr/bin/env bash
@@ -234,6 +247,10 @@ build-fixtures:
         dir="examples/px4/rust/companion/$ex"
         echo "  → generate px4_msgs for $dir"
         "$nros_cli" generate-px4-msgs --px4 "$PX4_DIR" --output "$dir/generated" >/dev/null
+        # issue 0510 — the patch config, without which the registry-named nros
+        # deps resolve against crates.io. Gitignored, so a fresh clone has none.
+        echo "  → nros sync $dir"
+        "$nros_cli" sync "$dir" >/dev/null
     done
     # phase-336 W7 — the three companion examples build into their own
     # `target-xrce/` dirs, so they are independent; run them under the jobserver
