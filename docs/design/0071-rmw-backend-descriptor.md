@@ -209,17 +209,94 @@ The point of the RFC is falsifiable by grep, which is how it should be gated:
   with zero core edits** — until that is demonstrated the RFC is unproven,
   because every closed list in this area looked open until someone tried.
 
-## Open questions
+## Open questions — answered 2026-08-10
 
-1. **Descriptor discovery.** In-tree backends are findable by convention; an
-   out-of-tree one needs a declared path (workspace `system.toml`, or the SDK
-   index). Unresolved.
-2. **`has_rmw` semantics.** Today it is also true under `cfg(test)` for
-   `MockSession`. A `rmw-present` feature must keep that working without a
-   backend present.
-3. **uorb's absence from the dispatch** — is it a gap to fix in passing, or does
-   the PX4 path deliberately bypass `nros_rmw_dispatch`? Answer before
-   generalising, because it decides whether the descriptor set must cover it.
-4. **Interaction with issue 0493.** The provider/identity work is in flight and
-   touches the same `nros-c`/`nros-cpp` feature tables. Sequence, do not
-   parallelise.
+### Q1 — Descriptor discovery: copy the board pattern exactly
+
+**Resolved.** Boards already solved this with TWO artifacts, not one:
+
+* `packages/boards/board-support.toml` — a central registry of known boards;
+* per-board `nros-board.toml` — the descriptor with the details;
+* `scripts/check-board-tiers.py` — a gate cross-checking the registry against
+  what is on disk ("20 entries, 17 directories").
+
+Adopt the same triple: `packages/rmw/rmw-support.toml` + per-backend
+`nros-rmw.toml` + a drift gate. The gate is not optional garnish — the board
+tooling has it precisely because a registry and a directory tree drift, and this
+RFC's whole thesis is that a list which cannot drift beats a list that can.
+Out-of-tree backends register by adding a path to the registry (workspace-level),
+which is the same escape hatch `nros-sdk-index.toml` gives tools.
+
+### Q2 — `has_rmw`: three quarters of it is already dead code
+
+**Resolved, and D2 gets smaller.** `nros-node` declares these features:
+
+```
+default std alloc scheduler-* rmw-cffi __cyclonedds-link signal-fd-wake
+wake-latency-probe rmw-lending posix-serial ros-* log safety-e2e
+unstable-zenoh-api stream ffi-sync param-services lifecycle-services
+```
+
+There is **no `rmw-zenoh`, `rmw-xrce` or `rmw-uorb` feature**. So in
+`build.rs`, three of the four disjuncts can never fire:
+
+```rust
+let has_rmw = env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()   // no such feature
+    || env::var("CARGO_FEATURE_RMW_XRCE").is_ok()           // no such feature
+    || env::var("CARGO_FEATURE_RMW_CFFI").is_ok()           // the only live one
+    || env::var("CARGO_FEATURE_RMW_UORB").is_ok();          // no such feature
+```
+
+`has_rmw` is already `rmw-cffi` alone — a capability trigger wearing a
+four-backend disguise, left over from before the phase-248 cffi convergence.
+D2 is therefore a rename plus a deletion of dead disjuncts, not a semantic
+change.
+
+The comment above that block also claims `has_rmw` is set "when compiling for
+tests (unit tests use MockSession)". **There is no such branch in the code.**
+Fix the comment or restore the behaviour, but do not carry the claim forward
+unexamined.
+
+### Q2b — a backend name in core the RFC missed
+
+`nros-node` declares **`unstable-zenoh-api`** (an empty feature, read at
+`src/executor/handles.rs`). That is a backend-named feature on a core package —
+the same class this RFC exists to remove, and not covered by D2, which only
+addresses the two `build.rs` triggers. Decide before the grep gate lands:
+rename to a capability (`unstable-backend-api`), or move the surface it gates
+out of core. The gate in "Verification" would otherwise fail on day one.
+
+### Q3 — uorb: a real gap, and the tree has THREE disagreeing lists
+
+**Resolved: a gap, not a deliberate bypass.** `uorb` is a first-class
+`NANO_ROS_RMW` value in two places and fatal in a third:
+
+| site | accepts |
+| --- | --- |
+| `cmake/NanoRosFeatureSet.cmake` (validator) | zenoh, xrce, cyclonedds, **uorb**, none |
+| `packages/api/nros-cpp/CMakeLists.txt` (own `if/elseif`) | zenoh, xrce, cyclonedds, **uorb** |
+| `NanoRosRmwDispatch.cmake` (generated from `resolve_rmw`) | zenoh, xrce, cyclonedds — **`FATAL_ERROR` on uorb** |
+
+uorb never reaches the dispatch because the PX4 shell (`integrations/px4/`)
+`add_subdirectory`s the backend and links the `nros_rmw_uorb` target directly.
+That is how the inconsistency has survived: the path that would fail is the one
+uorb does not take.
+
+Two consequences. The descriptor set **must** cover uorb. And the descriptor
+should absorb **all three** lists — this RFC's D5 as written only replaces the
+first, which would leave two closed lists still disagreeing and the strongest
+piece of evidence for the RFC unfixed.
+
+### Q4 — sequencing against issue 0493
+
+**Sequence, do not parallelise, and 0493 goes first.** Both touch the
+`nros-c` / `nros-cpp` feature tables: 0493's provider work decides which
+staticlib owns the nros symbol set, and D2/D3 here rewrite the feature rows that
+put backends into that archive. 0493 is also still diagnosing — its central
+question ("why does one staticlib bundle two identities?") is unanswered, and
+building a descriptor mechanism on top of an unexplained linking model risks
+encoding the bug into the declaration format.
+
+The cheap ordering: land 0493's measurement, then Q2/Q2b (pure deletions and a
+rename, no new mechanism), then D1/D5, then D4 last as the only genuinely new
+machinery.
