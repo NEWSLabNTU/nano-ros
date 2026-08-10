@@ -104,7 +104,16 @@ fn maybe_build_c_stub() {
     println!("cargo:rerun-if-changed=tests/c_stubs/c_stub_transport.c");
     println!("cargo:rerun-if-changed=tests/c_stubs/c_stub_transport.h");
     println!("cargo:rerun-if-changed=tests/c_stubs/abi_layout_check.c");
-    println!("cargo:rerun-if-changed=../nros-rmw-abi/include/nros");
+    // issue 0490 — `../../core/nros-rmw-abi`, not `../nros-rmw-abi`. This crate
+    // was `packages/core/nros-rmw-cffi` when the line was written; phase-321
+    // W2.e (`12c365774`) moved it to `packages/rmw/cffi` and the relative path
+    // came along unchanged, naming a directory that does not exist. Cargo treats
+    // a MISSING `rerun-if-changed` input as permanently dirty
+    // (`StaleItem(MissingFile{..})`), so this build script — and every crate
+    // above it, which for a fixture image is all of them — recompiled on every
+    // single invocation. Silent: the build always succeeded, it was just never
+    // fresh. Keep it pointing at a real path.
+    println!("cargo:rerun-if-changed=../../core/nros-rmw-abi/include/nros");
 
     if std::env::var_os("CARGO_FEATURE_C_STUB_TEST").is_none() {
         return;
