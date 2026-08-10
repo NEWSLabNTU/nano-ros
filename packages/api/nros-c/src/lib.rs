@@ -61,10 +61,13 @@ extern crate alloc;
 // `nros_heap_platform_used_bytes()` + `nros_heap_total_bytes()` that forward to
 // the platform query for the unified figure. Both return `0` on ports that
 // don't instrument their heap.
+//
+// phase-341 W8.c — the counter itself moved to `nros-platform` with the
+// allocator it instruments (there is only one allocator now). What stays here
+// is the C surface: these `#[no_mangle]` names are part of the C/C++ API and
+// must keep coming from this crate.
 #[cfg(feature = "alloc-stats")]
 mod heap_stats {
-    pub static STATS: zpico_alloc::HeapStats = zpico_alloc::HeapStats::new();
-
     // Canonical platform heap query (RFC-0034 D7). Resolved at the final
     // C-binary link step from the linked `nros-platform-<rtos>` cffi shim.
     unsafe extern "C" {
@@ -75,13 +78,13 @@ mod heap_stats {
     /// Bytes currently outstanding through the Rust global allocator.
     #[unsafe(no_mangle)]
     pub extern "C" fn nros_heap_used_bytes() -> usize {
-        STATS.used()
+        nros_platform::heap_stats::used()
     }
 
     /// Peak outstanding bytes through the Rust global allocator since boot.
     #[unsafe(no_mangle)]
     pub extern "C" fn nros_heap_peak_bytes() -> usize {
-        STATS.peak()
+        nros_platform::heap_stats::peak()
     }
 
     /// Bytes currently outstanding from the platform's *unified* heap — the
@@ -101,49 +104,32 @@ mod heap_stats {
     }
 }
 
-// Global allocator (C/C++ API path). RFC-0034 D6 — routes Rust
-// `Box`/`Vec` through the platform vtable (`nros_platform_alloc` → the
+// Global allocator: NOT defined here. RFC-0034 D6 still holds — Rust
+// `Box`/`Vec` route through the platform vtable (`nros_platform_alloc` → the
 // port's kernel allocator: FreeRTOS `pvPortMalloc`, Zephyr `k_malloc`,
-// ThreadX `tx_byte_allocate`, …) so the C/C++ API Rust heap and
-// zenoh-pico's C-side `z_malloc` share the one `nros_platform_alloc`
-// funnel and the unified heap query (`nros_platform_heap_used_bytes`) is
-// exact. Phase 248 — platform-agnostic: the concrete allocator lives
-// behind the vtable, not in this crate. Installed when the build opts
-// into `global-allocator` (RTOS ports whose kernel owns the unified heap
-// and that don't bring an external allocator such as zephyr-lang-rust's
-// static_alloc); `std` builds use the system allocator instead.
+// ThreadX `tx_byte_allocate`, …) so the C/C++ API Rust heap and zenoh-pico's
+// C-side `z_malloc` share one funnel and one arena. What changed in phase-341
+// W8.c is WHO installs the lang item.
+//
+// This crate used to define its own `#[global_allocator]` under the gate
+// `all(global-allocator, not(std))` — the SAME gate `nros-platform` uses for
+// its own, reaching the same heap by a different route (a direct `extern "C"`
+// rather than `<ConcretePlatform as PlatformAlloc>`). `nros-c` deps
+// `nros-platform` non-optionally, so an image enabling both features got a
+// duplicate lang item, and nothing but a manifest comment stood in the way.
+// `global-allocator` now forwards to `nros-platform/global-allocator`, which
+// makes two impossible instead of merely discouraged.
+//
+// The `extern crate` is load-bearing, not decorative. A `#[global_allocator]`
+// only reaches the image if the crate DEFINING it is actually linked, and a
+// dependency this crate never names in code is dropped before that — the same
+// DCE class as the backend `FORCE_LINK` statics. Without this line,
+// `nros-c --features platform-threadx,alloc` fails with "no global memory
+// allocator found" while `cargo tree` happily shows
+// `nros-platform feature "global-allocator"` enabled. `alloc-stats` masked it
+// by giving the crate an unrelated reason to be referenced.
 #[cfg(all(feature = "global-allocator", not(feature = "std")))]
-mod platform_alloc {
-    use core::alloc::{GlobalAlloc, Layout};
-
-    unsafe extern "C" {
-        fn nros_platform_alloc(size: usize) -> *mut core::ffi::c_void;
-        fn nros_platform_dealloc(ptr: *mut core::ffi::c_void);
-    }
-
-    struct PlatformAllocator;
-
-    unsafe impl GlobalAlloc for PlatformAllocator {
-        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            let p = unsafe { nros_platform_alloc(layout.size()) as *mut u8 };
-            #[cfg(feature = "alloc-stats")]
-            if !p.is_null() {
-                crate::heap_stats::STATS.on_alloc(layout.size());
-            }
-            p
-        }
-
-        unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-            unsafe { nros_platform_dealloc(ptr as *mut core::ffi::c_void) }
-            #[cfg(feature = "alloc-stats")]
-            crate::heap_stats::STATS.on_dealloc(_layout.size());
-        }
-    }
-
-    #[global_allocator]
-    static ALLOCATOR: PlatformAllocator = PlatformAllocator;
-}
-
+extern crate nros_platform;
 // Minimal panic handler for the no_std C/C++ API staticlib when no other
 // panic strategy is linked (no `std`, no `panic-halt`). The Rust API path
 // defers to the platform crate / zephyr-lang-rust's panic_handler; the

@@ -2571,10 +2571,6 @@ NROS_PUBLIC size_t nros_heap_platform_used_bytes(void);
  */
 NROS_PUBLIC size_t nros_heap_total_bytes(void);
 
-extern void *nros_platform_alloc(size_t size);
-
-extern void nros_platform_dealloc(void *ptr);
-
 extern uint32_t nros_platform_critical_section_acquire(void);
 
 extern void nros_platform_critical_section_release(uint32_t token);

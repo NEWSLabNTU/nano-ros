@@ -102,13 +102,18 @@ xrce-serial = ["nros-node/posix-serial"]
 # replaces the per-platform `#[global_allocator]` cfg in lib.rs so the crate
 # stays platform-agnostic. Enabled by RTOS ports whose kernel owns the
 # unified heap and that don't bring an external allocator (zephyr-lang-rust
-# etc.); the concrete allocator lives behind the vtable. Mirrors
-# nros-platform's `global-allocator`.
+# etc.); the concrete allocator lives behind the vtable.
 # phase-341 W8.a / issue 0471 — does NOT enable `alloc`. The allocator module
 # uses only `core::alloc::GlobalAlloc`; `extern crate alloc` is gated separately
 # on the `alloc` feature. Installing a `#[global_allocator]` says "this platform
 # owns a heap", not "this image may allocate" — the second is the user's call.
-global-allocator = []
+# phase-341 W8.c / issue 0471 — it no longer MIRRORS nros-platform's feature, it
+# FORWARDS to it. This crate's own `#[global_allocator]` is deleted: it sat under
+# a gate identical to nros-platform's and reached the same heap by a different
+# route, and since `nros-platform` is a non-optional dep below, an image turning
+# on both got a duplicate lang item. One owner, so the collision cannot be
+# spelled.
+global-allocator = ["nros-platform/global-allocator"]
 
 # Functional capability — register the `critical_section::Impl` backed by
 # the platform vtable (`nros_platform_critical_section_{acquire,release}`).
@@ -185,11 +190,13 @@ panic-spin = []
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
 # pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
 # bytes routed through the Rust `#[global_allocator]` and exposes them via
-# `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`. Mirrors zpico-alloc's
-# bare-metal `stats` feature. NOTE: counts only the Rust allocator's
-# footprint — zenoh-pico's direct C-side z_malloc/pvPortMalloc traffic is not
-# included (see issue #6).
-alloc-stats = ["dep:zpico-alloc", "zpico-alloc/stats"]
+# `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`. NOTE: counts only the
+# Rust allocator's footprint — zenoh-pico's direct C-side z_malloc/pvPortMalloc
+# traffic is not included (see issue #6).
+# phase-341 W8.c — the counter moved to `nros-platform` with the allocator it
+# instruments; what stays here is the C surface that reads it. The old body
+# pulled `zpico-alloc` (an RMW-layer crate) in for a pair of `AtomicUsize`.
+alloc-stats = ["nros-platform/alloc-stats"]
 
 # Expose ROS 2 parameter services (~/get_parameters, ~/set_parameters, etc.)
 # via `nros_executor_register_parameter_services`. Requires alloc for boxed
@@ -231,8 +238,9 @@ nros-platform = { workspace = true, default-features = false }
 nros-log = { workspace = true }
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
-# Opt-in RTOS heap-usage counter (HeapStats), gated by `alloc-stats`.
-zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc", optional = true, default-features = false }
+# phase-341 W8.c — the `zpico-alloc` dep is gone with the `HeapStats` static it
+# provided; `alloc-stats` now forwards to `nros-platform/alloc-stats`, whose
+# counter lives beside the one global allocator.
 paste = "1"
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on

@@ -92,18 +92,13 @@ lifecycle-services = ["rmw-cffi", "nros-c/lifecycle-services"]
 xrce-udp = ["nros-c/xrce-udp"]
 xrce-serial = ["nros-c/xrce-serial"]
 
-# Functional capability — install the Rust `#[global_allocator]` routing
-# through the platform vtable (`nros_platform_alloc`/`_dealloc`). Phase 248:
-# replaces the per-platform `#[global_allocator]` cfg in lib.rs so the crate
-# stays platform-agnostic. Enabled by RTOS ports whose kernel owns the
-# unified heap and that don't bring an external allocator (zephyr-lang-rust
-# etc.); the concrete allocator lives behind the vtable. Mirrors
-# nros-platform's `global-allocator`.
-# phase-341 W8.a / issue 0471 — does NOT enable `alloc`. The allocator module
-# uses only `core::alloc::GlobalAlloc`; `extern crate alloc` is gated separately
-# on the `alloc` feature. Installing a `#[global_allocator]` says "this platform
-# owns a heap", not "this image may allocate" — the second is the user's call.
-global-allocator = []
+# phase-341 W8.c / issue 0471 — `global-allocator` is GONE from this crate. It
+# was a dead declaration: zero `cfg` sites, forwarding nowhere, while the
+# comment claimed it installed an allocator. The single-runtime rule below
+# already says nros-c owns the lang item and nros-cpp's `platform-*` must not
+# enable a second copy — so the feature could only ever mislead. Consumers that
+# want the allocator select a `platform-*` feature, which reaches
+# `nros-c/global-allocator` → `nros-platform/global-allocator`, the one owner.
 
 # Functional capability — register the `critical_section::Impl` backed by
 # the platform vtable (`nros_platform_critical_section_{acquire,release}`).
@@ -172,11 +167,14 @@ panic-spin = ["nros-c/panic-spin"]
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
 # pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
 # bytes routed through the Rust `#[global_allocator]` and exposes them via
-# `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`. Mirrors zpico-alloc's
-# bare-metal `stats` feature. NOTE: counts only the Rust allocator's
-# footprint — zenoh-pico's direct C-side z_malloc/pvPortMalloc traffic is not
-# included (see issue #6).
-alloc-stats = ["dep:zpico-alloc", "zpico-alloc/stats"]
+# `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`. NOTE: counts only the
+# Rust allocator's footprint — zenoh-pico's direct C-side z_malloc/pvPortMalloc
+# traffic is not included (see issue #6).
+# phase-341 W8.c — FORWARDS to nros-c rather than defining a second copy. Both
+# crates exported the same four `#[no_mangle]` names off their own `HeapStats`
+# static, so enabling this on both was a duplicate-symbol link error waiting to
+# happen. Same single-runtime rule as the allocator and the panic handler.
+alloc-stats = ["nros-c/alloc-stats"]
 
 # issue 0287 — HOST-ONLY. `just check-workspace-embedded` builds the whole
 # workspace for a thumb target, and cargo unifies features across ALL members
@@ -217,8 +215,8 @@ nros-rmw = { version = "0.5.0", path = "../../core/nros-rmw", default-features =
 nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
-# Opt-in RTOS heap-usage counter (HeapStats), gated by `alloc-stats`.
-zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc", optional = true, default-features = false }
+# phase-341 W8.c — `zpico-alloc` is gone with the duplicate `HeapStats` static;
+# `alloc-stats` forwards to `nros-c`, which forwards to `nros-platform`.
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on
 # platform-zephyr. DDS + portable-atomic depend on it being set.

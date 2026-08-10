@@ -117,7 +117,20 @@ threading = []
 # uses only `core::alloc::GlobalAlloc`; `extern crate alloc` is gated separately
 # on the `alloc` feature. Installing a `#[global_allocator]` says "this platform
 # owns a heap", not "this image may allocate" — the second is the user's call.
+# phase-341 W8.c / issue 0471 — this crate is now the SOLE owner of the lang
+# item. `nros-c/global-allocator` forwards here instead of defining a second
+# one; `nros-platform-mps2-an385` and `zpico-alloc` keep their arena and no
+# longer install a competing `#[global_allocator]` of their own.
 global-allocator = []
+
+# phase-341 W8.c — opt-in instrumentation of the global allocator above:
+# `nros_platform::heap_stats::{used, peak}` report the Rust footprint. Moved
+# here from `nros-c` with the allocator it measures. Counts only what the Rust
+# `#[global_allocator]` sees — the port's own `nros_platform_heap_used_bytes`
+# is the unified C+Rust figure (RFC-0034 D7). No dependency: the counter is a
+# pair of `AtomicUsize`, and pulling `zpico-alloc` (an RMW-layer crate) down
+# into the platform layer would invert RFC-0001's layer map.
+alloc-stats = []
 
 # Phase 97.1.cs — opt-in `critical_section::Impl` registered against
 # the active platform's interrupt-disable primitive. DDS's

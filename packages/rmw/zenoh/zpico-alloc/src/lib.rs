@@ -33,25 +33,19 @@
 //! }
 //! ```
 //!
-//! ## Unified Rust global allocator (opt-in, `global-alloc` feature)
+//! ## Unified heap — this crate is the ARENA, not the allocator
 //!
-//! With the `global-alloc` feature, [`FreeListHeap`] also implements
-//! [`core::alloc::GlobalAlloc`], so a bare-metal board can use the *same*
-//! free-list heap for both zenoh-pico's `z_malloc` and Rust's `alloc`
-//! (`Box`/`Vec`/`String`) — a single unified heap instead of two. This is
-//! strictly opt-in: without the feature, no global allocator is installed and
-//! existing bare-metal targets are unchanged.
+//! A bare-metal board uses the *same* free-list heap for zenoh-pico's
+//! `z_malloc` and for Rust's `alloc` (`Box`/`Vec`/`String`) — one heap, not
+//! two. The Rust half reaches it through the platform's `PlatformAlloc` impl,
+//! and `nros-platform` installs the single `#[global_allocator]` in the tree.
 //!
-//! ```rust,ignore
-//! use zpico_alloc::FreeListHeap;
-//!
-//! #[global_allocator]
-//! static HEAP: FreeListHeap<{64 * 1024}> = FreeListHeap::new();
-//!
-//! // z_malloc/z_free still route through the same static:
-//! #[unsafe(no_mangle)]
-//! pub extern "C" fn z_malloc(size: usize) -> *mut core::ffi::c_void { HEAP.alloc(size) }
-//! ```
+//! phase-341 W8.c / issue 0471 — [`FreeListHeap`] no longer implements
+//! [`core::alloc::GlobalAlloc`] itself. Doing so made this crate a second
+//! allocator provider whose users bypassed `nros_platform_alloc`, the sole
+//! allocation funnel of RFC-0034 D6. The C side still allocates from the arena
+//! directly (the `z_malloc` shim above); the Rust side arrives via
+//! `PlatformAlloc for <YourPlatform>`, which reaches the same static.
 //!
 //! All allocations are 8-byte aligned. Requested alignments greater than 8 are
 //! not supported and yield a null pointer (the caller's `handle_alloc_error`
@@ -88,8 +82,8 @@ const SLAB_REGION_SIZE: usize = SLAB_SLOT_SIZE * SLAB_SLOT_COUNT;
 /// A bare `[u8; N]` has alignment 1, so the free-list base could land on an
 /// odd address. Forcing the storage to 8-byte alignment makes every returned
 /// pointer 8-aligned (headers and aligned sizes are 8-byte multiples), which
-/// is required for the `GlobalAlloc` impl to be sound on strict-alignment
-/// targets. Strictly stronger than before — never weakens existing behaviour.
+/// is what lets the platform's `#[global_allocator]` hand this memory to Rust
+/// on strict-alignment targets. Strictly stronger than a bare `[u8; N]`.
 #[repr(C, align(8))]
 struct Aligned<const M: usize>([u8; M]);
 
@@ -487,44 +481,21 @@ impl<const N: usize> FreeListHeap<N> {
 }
 
 // ============================================================================
-// Opt-in: use FreeListHeap as the Rust #[global_allocator]
+// No `GlobalAlloc` impl here — phase-341 W8.c / issue 0471
 // ============================================================================
-
-/// `GlobalAlloc` lets a bare-metal board install the free-list heap as the Rust
-/// `#[global_allocator]`, unifying the C (`z_malloc`) and Rust (`Box`/`Vec`)
-/// heaps. Opt-in via the `global-alloc` feature — never installed implicitly.
-///
-/// All allocations are 8-byte aligned (the backing storage is `align(8)` and
-/// block headers / aligned sizes are 8-byte multiples). Alignments greater
-/// than 8 are unsupported and return null so the caller's `handle_alloc_error`
-/// fires rather than handing back misaligned memory — no nros runtime type
-/// requires more than 8-byte alignment.
-#[cfg(feature = "global-alloc")]
-unsafe impl<const N: usize> core::alloc::GlobalAlloc for FreeListHeap<N> {
-    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        if layout.align() > ALIGN {
-            return ptr::null_mut();
-        }
-        // Inherent `alloc(size)` wins method resolution over the trait method.
-        self.alloc(layout.size()) as *mut u8
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, _layout: core::alloc::Layout) {
-        self.free(ptr as *mut core::ffi::c_void);
-    }
-
-    unsafe fn realloc(
-        &self,
-        ptr: *mut u8,
-        layout: core::alloc::Layout,
-        new_size: usize,
-    ) -> *mut u8 {
-        if layout.align() > ALIGN {
-            return ptr::null_mut();
-        }
-        self.realloc(ptr as *mut core::ffi::c_void, new_size) as *mut u8
-    }
-}
+//
+// `FreeListHeap` used to implement `GlobalAlloc` behind a `global-alloc`
+// feature so a bare-metal board could install it as the Rust
+// `#[global_allocator]` directly. That made this crate a second allocator
+// provider, and its one consumer reached the heap without passing through
+// `nros_platform_alloc` — the sole allocation funnel RFC-0034 D6 defines.
+//
+// The heap is still the board's ARENA. The Rust side reaches it through the
+// platform's `PlatformAlloc` impl, and `nros-platform` owns the single
+// `#[global_allocator]` in the tree. The alignment contract that lived on the
+// deleted impl now lives there: allocations are 8-byte aligned, and a request
+// for more is answered with null so the caller's `handle_alloc_error` fires
+// rather than receiving misaligned memory.
 
 // ============================================================================
 // Reusable heap-usage counter (stats feature)
@@ -723,33 +694,6 @@ mod tests {
         assert_eq!(p2 as usize % ALIGN, 0);
         heap.free(p1);
         heap.free(p2);
-    }
-
-    #[cfg(feature = "global-alloc")]
-    #[test]
-    fn global_alloc_trait() {
-        use core::alloc::{GlobalAlloc, Layout};
-
-        let heap: FreeListHeap<4096> = FreeListHeap::new();
-
-        // Standard (<=8) alignment: alloc, write, realloc preserving data, free.
-        let layout = Layout::from_size_align(128, 8).unwrap();
-        let p = unsafe { GlobalAlloc::alloc(&heap, layout) };
-        assert!(!p.is_null());
-        assert_eq!(p as usize % 8, 0);
-        unsafe { ptr::write_bytes(p, 0xCD, 128) };
-
-        let p2 = unsafe { GlobalAlloc::realloc(&heap, p, layout, 256) };
-        assert!(!p2.is_null());
-        unsafe {
-            let slice = core::slice::from_raw_parts(p2, 128);
-            assert!(slice.iter().all(|&b| b == 0xCD));
-        }
-        unsafe { GlobalAlloc::dealloc(&heap, p2, Layout::from_size_align(256, 8).unwrap()) };
-
-        // Over-aligned request (>8) is rejected with null, not misaligned memory.
-        let over = Layout::from_size_align(64, 32).unwrap();
-        assert!(unsafe { GlobalAlloc::alloc(&heap, over) }.is_null());
     }
 
     #[cfg(feature = "stats")]

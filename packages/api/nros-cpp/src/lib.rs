@@ -51,45 +51,15 @@ use panic_halt as _;
 // `nros_heap_platform_used_bytes()` + `nros_heap_total_bytes()` that forward to
 // the platform query for the unified figure. Both return `0` on ports that
 // don't instrument their heap.
-#[cfg(feature = "alloc-stats")]
-mod heap_stats {
-    pub static STATS: zpico_alloc::HeapStats = zpico_alloc::HeapStats::new();
-
-    // Canonical platform heap query (RFC-0034 D7). Resolved at the final
-    // C-binary link step from the linked `nros-platform-<rtos>` cffi shim.
-    unsafe extern "C" {
-        fn nros_platform_heap_used_bytes() -> usize;
-        fn nros_platform_heap_total_bytes() -> usize;
-    }
-
-    /// Bytes currently outstanding through the Rust global allocator.
-    #[unsafe(no_mangle)]
-    pub extern "C" fn nros_heap_used_bytes() -> usize {
-        STATS.used()
-    }
-
-    /// Peak outstanding bytes through the Rust global allocator since boot.
-    #[unsafe(no_mangle)]
-    pub extern "C" fn nros_heap_peak_bytes() -> usize {
-        STATS.peak()
-    }
-
-    /// Bytes currently outstanding from the platform's *unified* heap — the
-    /// true figure spanning both the Rust global allocator and the C side
-    /// (zenoh-pico etc.), where the port owns one shared kernel heap. `0` if
-    /// the port does not instrument heap usage.
-    #[unsafe(no_mangle)]
-    pub extern "C" fn nros_heap_platform_used_bytes() -> usize {
-        unsafe { nros_platform_heap_used_bytes() }
-    }
-
-    /// Total managed heap size in bytes (used + free) reported by the
-    /// platform, or `0` if unknown.
-    #[unsafe(no_mangle)]
-    pub extern "C" fn nros_heap_total_bytes() -> usize {
-        unsafe { nros_platform_heap_total_bytes() }
-    }
-}
+//
+// phase-341 W8.c / issue 0471 — this crate defines NONE of it. The four
+// `#[no_mangle]` names above are the same symbols `nros-c` exports, and
+// `nros-c` is a hard dependency below, so enabling `alloc-stats` on both
+// crates produced duplicate definitions of `nros_heap_used_bytes` and friends.
+// That is the single-runtime rule already stated for `#[global_allocator]` /
+// `#[panic_handler]` / `critical_section::set_impl!` — exactly ONE of each
+// across the crate graph — applied to the heap counter too:
+// `nros-cpp/alloc-stats` forwards to `nros-c/alloc-stats`.
 
 // Phase 241.D3-rev (W12) × phase-248 — nros-cpp bundles `nros-c` as a HARD dependency,
 // and nros-c (behind the platform vtable) owns the no_std `#[global_allocator]`

@@ -55,16 +55,18 @@ const fn parse_usize(s: &str) -> usize {
     n
 }
 
-// Issue #6 — opt-in unified heap. With the `global-alloc` feature, the same
-// `FreeListHeap` that backs `z_malloc` is also installed as the Rust
-// `#[global_allocator]`, so zenoh-pico C allocations and Rust `Box`/`Vec`
-// draw from one heap. Without the feature (the default) no global allocator
-// is installed and the bare-metal target is unchanged.
-#[cfg(feature = "global-alloc")]
-#[global_allocator]
-static HEAP: FreeListHeap<HEAP_SIZE> = FreeListHeap::new();
-
-#[cfg(not(feature = "global-alloc"))]
+// Issue #6 — the unified heap. This `FreeListHeap` is the board's ARENA: it
+// backs `z_malloc` on the C side and, through `Mps2An385Platform`'s
+// `PlatformAlloc` impl below, the Rust `#[global_allocator]` too. One arena,
+// both languages.
+//
+// phase-341 W8.c / issue 0471 — it no longer installs the lang item itself.
+// The `global-alloc` feature used to put `#[global_allocator]` on this static
+// while `nros-platform/global-allocator` put one on its own adapter over
+// `PlatformAlloc`; a board enabling both got two, which is a hard error, and
+// enabling only this one bypassed the platform ABI that RFC-0034 D6 makes the
+// sole funnel. `nros-platform` owns the lang item for every platform now, and
+// it reaches exactly this arena.
 static HEAP: FreeListHeap<HEAP_SIZE> = FreeListHeap::new();
 
 pub fn alloc(size: usize) -> *mut core::ffi::c_void {

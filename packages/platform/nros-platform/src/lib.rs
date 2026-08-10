@@ -129,6 +129,20 @@ pub mod zephyr {
 // allocator. Enable via `nros-platform/global-allocator` in the
 // example crate's `Cargo.toml` to wire it in.
 
+// phase-341 W8.c / issue 0471 — this is the ONE `#[global_allocator]` in the
+// tree. `nros-c` used to define a second one under an identical gate, reaching
+// the same heap by a different route (a direct `extern "C" nros_platform_alloc`
+// rather than the trait), and the two were kept apart only by a manifest
+// comment: `nros-c` deps `nros-platform` non-optionally, so any image that
+// enabled both features got a duplicate lang item. `nros-c/global-allocator`
+// now forwards here, which makes the duplication impossible rather than
+// merely discouraged — cargo unifies one crate's one feature into one unit.
+//
+// This adapter covers BOTH link shapes, which the `nros-c` copy did not:
+// every `platform-*` feature resolves `ConcretePlatform` to `CffiPlatform`
+// (see `resolve.rs`), whose `PlatformAlloc` impl IS `nros_platform_alloc`, and
+// the bare-metal Rust crates (mps2-an385, stm32f4, esp32-qemu) reach their own
+// arena through the same trait. One API, one arena, per RFC-0034 D6.
 #[cfg(all(feature = "global-allocator", not(feature = "std")))]
 mod global_allocator {
     use core::{
@@ -139,25 +153,119 @@ mod global_allocator {
     use crate::ConcretePlatform;
     use nros_platform_api::PlatformAlloc;
 
+    /// Alignment the platform ABI guarantees. `nros_platform_alloc` has no
+    /// alignment parameter, and every port behind it returns memory aligned
+    /// for the widest scalar — 8 bytes on every target nano-ros builds for.
+    const PLATFORM_ALIGN: usize = 8;
+
     /// `GlobalAlloc` adapter over `<ConcretePlatform as PlatformAlloc>`.
     pub struct PlatformGlobalAllocator;
 
     unsafe impl GlobalAlloc for PlatformGlobalAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            // Most RTOS heaps don't honor alignment > sizeof(void*).
-            // DDS's heaviest types are pointer-aligned, so this
-            // matches the typical 8-byte heap alignment without
-            // over-allocating. Callers that need larger alignment
-            // (e.g. SIMD) should layer a custom allocator on top.
-            let _ = layout.align();
-            <ConcretePlatform as PlatformAlloc>::alloc(layout.size()) as *mut u8
+            // phase-341 W8.c — an over-aligned request FAILS rather than
+            // silently returning under-aligned memory. The ABI cannot express
+            // alignment, so the honest answer to `align > 8` is null, which
+            // routes the caller into `handle_alloc_error`. The previous
+            // `let _ = layout.align();` produced UB no build could see;
+            // `zpico-alloc` already answered the same question with null.
+            if layout.align() > PLATFORM_ALIGN {
+                return core::ptr::null_mut();
+            }
+            let p = <ConcretePlatform as PlatformAlloc>::alloc(layout.size()) as *mut u8;
+            #[cfg(feature = "alloc-stats")]
+            if !p.is_null() {
+                super::heap_stats::STATS.on_alloc(layout.size());
+            }
+            p
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-            <ConcretePlatform as PlatformAlloc>::dealloc(ptr as *mut c_void)
+            <ConcretePlatform as PlatformAlloc>::dealloc(ptr as *mut c_void);
+            #[cfg(feature = "alloc-stats")]
+            super::heap_stats::STATS.on_dealloc(_layout.size());
         }
     }
 
     #[global_allocator]
     static ALLOCATOR: PlatformGlobalAllocator = PlatformGlobalAllocator;
+}
+
+// phase-341 W8.c — the Rust-footprint heap counter, moved here with the
+// allocator it instruments. It counts only what passes through the
+// `#[global_allocator]`; the C side's direct `nros_platform_alloc` traffic
+// (zenoh-pico's `z_malloc` etc.) is not seen, so it under-reports true heap
+// pressure. The *unified* figure is the platform's own
+// `nros_platform_heap_used_bytes` (RFC-0034 D7).
+//
+// No `#[no_mangle]` here: the C names (`nros_heap_used_bytes` …) belong to the
+// C/C++ API surface and stay exported by `nros-c` / `nros-cpp`, which read
+// these accessors. A pure-Rust image gets the counter without gaining C
+// symbols it never asked for.
+#[cfg(feature = "alloc-stats")]
+pub mod heap_stats {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Bytes outstanding through the Rust global allocator, and the high-water
+    /// mark since boot. `Relaxed` throughout — this is instrumentation, and no
+    /// other state is ordered against it.
+    pub struct HeapStats {
+        used_bytes: AtomicUsize,
+        peak_bytes: AtomicUsize,
+    }
+
+    impl HeapStats {
+        /// Create a zeroed counter. `const` so it can back a `static`.
+        pub const fn new() -> Self {
+            Self {
+                used_bytes: AtomicUsize::new(0),
+                peak_bytes: AtomicUsize::new(0),
+            }
+        }
+
+        /// Record a successful allocation of `size` bytes and update the peak.
+        #[inline]
+        pub fn on_alloc(&self, size: usize) {
+            let used = self.used_bytes.fetch_add(size, Ordering::Relaxed) + size;
+            let _ = self.peak_bytes.fetch_max(used, Ordering::Relaxed);
+        }
+
+        /// Record a deallocation of `size` bytes.
+        #[inline]
+        pub fn on_dealloc(&self, size: usize) {
+            self.used_bytes.fetch_sub(size, Ordering::Relaxed);
+        }
+
+        /// Bytes currently outstanding.
+        #[inline]
+        pub fn used(&self) -> usize {
+            self.used_bytes.load(Ordering::Relaxed)
+        }
+
+        /// Peak outstanding bytes since boot.
+        #[inline]
+        pub fn peak(&self) -> usize {
+            self.peak_bytes.load(Ordering::Relaxed)
+        }
+    }
+
+    impl Default for HeapStats {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    pub static STATS: HeapStats = HeapStats::new();
+
+    /// Bytes currently outstanding through the Rust global allocator.
+    #[inline]
+    pub fn used() -> usize {
+        STATS.used()
+    }
+
+    /// Peak outstanding bytes through the Rust global allocator since boot.
+    #[inline]
+    pub fn peak() -> usize {
+        STATS.peak()
+    }
 }

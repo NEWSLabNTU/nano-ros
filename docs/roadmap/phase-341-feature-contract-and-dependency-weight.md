@@ -266,15 +266,28 @@ carry `default = []`, and the `generate-lifecycle-msgs` recipe's own closing
 `NOTE` says those manifests get workspace inheritance re-applied by hand after
 generation, so they were never a byte-for-byte template product.
 
-**W4 — the gate.** `scripts/check-feature-contract.sh`, wired into `just ci`,
-asserting over every workspace member: (a) a crate declaring both `std` and
-`alloc` lists `alloc` in `std`; (b) no `no_std`-capable crate declares a
-non-empty `default`; (c) every declared `std`/`alloc` feature has a `cfg` site
-or forwards to a dependency; (d) no feature listed in a `default` set is
-UNREACHABLE from every non-`default-features` dep-site in the workspace.
-(c) is what would have caught `nros-platform/alloc`; (d) is what would have
-caught issue 0470. Acceptance: the script fails on a deliberate reintroduction
-of each of the four.
+**W4 — the gate (OPEN — the state is right, nothing holds it there).**
+`scripts/check-feature-contract.sh`, wired into `just ci`, asserting over every
+workspace member:
+
+- **(a)** no feature body other than `std`/`alloc`/`default` enables `std` or
+  `alloc` — the user spells the heap at their own dep-site, per package.
+  *An earlier draft of this clause said the opposite* ("a crate declaring both
+  `std` and `alloc` lists `alloc` in `std`"), written before W1/W2 decided to
+  DELETE the `std ⇒ alloc` edge. Enforcing it would re-break issue 0467.
+- **(b)** no `no_std`-capable crate declares a non-empty `default` containing
+  `std` or `alloc`.
+- **(c)** every declared `std`/`alloc` feature has a `cfg` site or forwards to a
+  dependency — catches `nros-platform/alloc`, `nros-rmw-cyclonedds/std` and
+  `nros-cpp/global-allocator`, all dead declarations found by hand.
+- **(d)** no feature listed in a `default` set is UNREACHABLE from every
+  non-`default-features` dep-site in the workspace — catches issue 0470.
+- **(e)** exactly ONE `#[global_allocator]` definition exists in the tree, and
+  it is `nros-platform`'s — the W8.c invariant. A grep-level check: the audit
+  that found four of them was a grep, and the fifth will be too.
+
+Acceptance: the script fails on a deliberate reintroduction of each of the five.
+Until it exists, every number in this phase is a measurement, not an invariant.
 
 **W5 — gate the `model = "…"` arm.** Feature-gate
 `ros-launch-manifest-{model,sched}` in `nros-orchestration-ir` (which has no
@@ -295,8 +308,9 @@ consumer that hand-writes its entry point (already supported) drops all 47.
 Acceptance: `cargo tree -e normal -p nros --no-default-features --features std
 --target thumbv7em-none-eabihf` is the 11 runtime crates plus `paste`.
 
-**W8 — no feature may enable `alloc` or `std` but `alloc`/`std` (LANDED a,b,d,e;
-c OPEN).** Issue 0471 enumerated 34 sites. **0 remain.**
+**W8 — no feature may enable `alloc` or `std` but `alloc`/`std` (LANDED).**
+Issue 0471 enumerated 34 sites. **0 remain**, and the `#[global_allocator]`
+count is 4 → 1.
 
 - **W8.a (done)** — `global-allocator = []` on `nros-c`, `nros-cpp`,
   `nros-platform`. The `["alloc"]` was gratuitous: all three allocator modules
@@ -307,13 +321,73 @@ c OPEN).** Issue 0471 enumerated 34 sites. **0 remain.**
   not(panic-halt))` onto `all(panic-spin, not(std), not(panic-halt))`, so "I
   need a panic handler" is sayable without "I need a heap". The `platform-*`
   rows select it, keeping malloc and panic unified per platform.
-- **W8.c (OPEN — a design call, not a mechanical edit)** — `nros-c` and
-  `nros-platform` both define `#[global_allocator]` under identical gates, via
-  two DIFFERENT mechanisms: nros-c through the C vtable (`nros_platform_alloc`),
-  nros-platform through `<ConcretePlatform as PlatformAlloc>`. Choosing which
-  one owns the image is a decision about the C/C++ vs pure-Rust link shape.
-  Cargo also offers no way for either crate to detect the other's feature, so
-  the overlap cannot be turned into a `compile_error!` from inside. Left open.
+- **W8.c (LANDED) — `nros-platform` is the single owner of the allocator.**
+  Four crates could install a `#[global_allocator]`: `nros-platform` (over
+  `<ConcretePlatform as PlatformAlloc>`), `nros-c` (a direct `extern "C"
+  nros_platform_alloc`), `nros-platform-mps2-an385` (its own `FreeListHeap`
+  static) and `zpico-alloc` (a `GlobalAlloc` impl for that heap). The first two
+  sat under *identical* gates and were kept apart by a manifest comment —
+  `nros-c` deps `nros-platform` non-optionally, so any image enabling both got
+  a duplicate lang item.
+
+  The earlier note called this undecidable because "cargo offers no way for
+  either crate to detect the other's feature". That framed it as a detection
+  problem when it is an ownership problem: with ONE definition site, cargo's own
+  feature unification makes the collision unspellable, and no detection is
+  needed. `nros-c/global-allocator` forwards to
+  `nros-platform/global-allocator`; the other three definitions are deleted.
+
+  `nros-platform` is the right owner because it is the only one that covers
+  both link shapes. Every `platform-*` feature resolves `ConcretePlatform` to
+  `CffiPlatform` (`resolve.rs`), whose `PlatformAlloc` impl *is*
+  `nros_platform_alloc` — the same funnel nros-c called directly — while the
+  bare-metal Rust crates (mps2-an385, stm32f4, esp32-qemu) reach their own
+  arena through the same trait. One API, one arena, per RFC-0034 D6.
+
+  Three things fell out of it:
+
+  - **`extern crate nros_platform` is load-bearing.** A `#[global_allocator]`
+    reaches the image only if the crate DEFINING it is linked, and a dependency
+    never named in code is dropped first — the `FORCE_LINK` DCE class again.
+    Without it `nros-c --features platform-threadx,alloc` fails with *"no global
+    memory allocator found"* while `cargo tree` shows
+    `nros-platform feature "global-allocator"` enabled. `alloc-stats` masked the
+    failure by giving the crate an unrelated reason to be referenced, so the
+    matrix below deliberately tests `alloc` WITHOUT it.
+  - **The `alloc-stats` counter moved to `nros-platform`,** beside the allocator
+    it instruments. `nros-c`/`nros-cpp` keep the four `#[no_mangle]` C names and
+    read the accessors. Both had defined their own `HeapStats` static exporting
+    the SAME symbols, so enabling `alloc-stats` on both was a duplicate-symbol
+    error waiting to happen. The counter is a pair of `AtomicUsize` written
+    inline; pulling `zpico-alloc` (RMW layer) into the platform layer for it
+    would invert RFC-0001's layer map, and the dep is gone from both API crates.
+  - **Over-aligned requests now FAIL instead of silently succeeding.** Both
+    deleted allocators discarded `layout.align()` and returned 8-aligned memory
+    for any alignment — UB no build could observe. The platform ABI has no
+    alignment parameter, so the surviving allocator answers `align > 8` with
+    null and lets `handle_alloc_error` fire, which is what `zpico-alloc`'s impl
+    already did. Behaviour change, deliberate: nothing in the nros runtime
+    exceeds 8-byte alignment, so a request that does was already broken.
+
+  `nros-cpp/global-allocator` was deleted outright — a dead declaration with
+  zero `cfg` sites whose comment claimed it installed an allocator, while the
+  single-runtime rule two lines below said nros-c owns it. This is exactly the
+  class W4 clause (c) exists to catch.
+
+  Verified:
+
+  ```
+  nros-c    platform-{threadx,zephyr,freertos},alloc  (thumbv7em)      ok
+  nros-c    platform-threadx (no alloc) | +alloc,alloc-stats           ok
+  nros-c    std,rmw-cffi,platform-posix,ros-humble [,alloc-stats]      ok
+  nros-cpp  platform-{zephyr,threadx},alloc [,alloc-stats] (thumbv7em) ok
+  nros-platform  platform-threadx,global-allocator[,alloc-stats]       ok
+  nros-platform-mps2-an385  [cffi-export]  (thumbv7m)                  ok
+  boards: mps2-an385, mps2-an385-freertos, threadx-qemu-riscv64        ok
+  zpico-alloc  --no-default-features | stats  (10 tests)               ok
+  check-no-direct-kernel-alloc.sh                                      clean
+  `#[global_allocator]` definitions in the tree              4 -> 1
+  ```
 - **W8.d (done)** — 13 `platform-*` bodies across `nros-c`, `nros-cpp`,
   `nros-rmw-zenoh-staticlib` (plus the `n_board_agnostic_run_plan` fixture's
   `posix`) no longer list `alloc`/`std`. They still select the malloc/panic

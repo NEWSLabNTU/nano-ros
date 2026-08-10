@@ -32,11 +32,13 @@ critical-section = ["cortex-m/critical-section-single-core"]
 # symbols by expanding the `nros-platform-cffi` macro against
 # `Mps2An385Platform`.
 cffi-export = ["dep:nros-platform-cffi"]
-# Issue #6 — opt in to using the bare-metal free-list heap as the Rust
-# `#[global_allocator]`, so zenoh-pico `z_malloc` and Rust `alloc`
-# (`Box`/`Vec`) share ONE heap. Off by default: bare-metal targets that
-# don't enable it install no global allocator and are unchanged.
-global-alloc = ["zpico-alloc/global-alloc"]
+# phase-341 W8.c / issue 0471 — `global-alloc` is GONE. Its job (zenoh-pico
+# `z_malloc` and Rust `Box`/`Vec` on ONE heap) is unchanged and now automatic:
+# this crate's free-list heap is the arena, `Mps2An385Platform: PlatformAlloc`
+# is how the Rust side reaches it, and `nros-platform/global-allocator` is the
+# single owner of the `#[global_allocator]` lang item. The feature installed a
+# SECOND one and bypassed the RFC-0034 D6 funnel doing it; a board that enabled
+# both it and `nros-platform/global-allocator` failed to compile.
 
 [dependencies]
 # Platform trait definitions (trait impls live in lib.rs)
