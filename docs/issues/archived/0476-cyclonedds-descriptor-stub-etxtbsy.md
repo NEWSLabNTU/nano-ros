@@ -2,6 +2,7 @@
 id: 476
 title: "Writing an executable stub and exec'ing it races against sibling test threads (`Text file busy`) — unique paths do not fix it"
 status: resolved
+resolved_in: d88aea3d8
 type: bug
 severity: low
 area: cli

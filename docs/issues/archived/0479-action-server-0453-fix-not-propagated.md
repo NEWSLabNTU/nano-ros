@@ -1,11 +1,38 @@
 ---
 id: 479
 title: "issue 0453's action-server fix landed on the native cells only — 8 embedded copies still ignore the goal payload"
-status: open
+status: resolved
+resolved_in: 46a8fe1d3
 type: bug
 area: examples
 related: [issue-0453, issue-0450, phase-287]
 ---
+
+## Resolution (2026-08-10) — option 1, and the risk did not survive contact
+
+Propagated. `46a8fe1d3` copied native over all eight embedded copies;
+`example_portability` is **6/6**, `copies_within_a_group_are_identical`
+included, so no `KNOWN_DIVERGENCE` entry was needed.
+
+The compile fear below was unfounded and worth recording as such: the embedded
+C copies **already** had `server_context_t* ctx = (server_context_t*)context;`
+in `execute` — the `(void)context;` sighting was a different callback. The diff
+against native was exactly 0453's four hunks with nothing platform-specific,
+and the four copies per language were byte-identical to each other. So it was
+one edit replicated, not eight judgment calls.
+
+C++ needed only the loop bound (`i <= goal.order`, feedback tick at
+`i == goal.order`), so an order-N goal now yields N+1 elements like its Rust
+and C siblings.
+
+**The open question in "The class" is answered: yes.** 0450's Rust `State`
+(`MAX_ORDER`, the accepted-order slot, `for i in 0..=order`) is present in all
+four embedded Rust copies — checked per copy, not assumed. The Rust copies
+still differ from native, but only in the per-platform entry wrapper, which is
+what the portability groups already model.
+
+Acceptance is a fixture rebuild per embedded family proving each still
+compiles; the freertos family was rebuilt for this issue.
 
 ## Symptom
 

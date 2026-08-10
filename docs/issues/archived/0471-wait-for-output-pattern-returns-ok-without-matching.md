@@ -2,6 +2,7 @@
 id: 471
 title: "`wait_for_output_pattern` returns Ok on timeout whenever the process printed anything, so ~233 call sites assert nothing"
 status: resolved
+resolved_in: f46c92840
 type: bug
 severity: high
 area: testing

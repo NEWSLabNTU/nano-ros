@@ -205,47 +205,37 @@ the four seconds were only how it announced itself.** Invisible until phase-342 
 `sleep(4s)` with a wait on the readiness marker — 4 s was longer than either image needed, so 0.1 s and 2.1 s
 looked identical. See `archived/0484-*`. (2026-08-09)
 
-**#481** — readiness greps use string LITERALS, so a wrong marker burns the whole timeout in silence and the
-test still passes. Found by measurement: after phase-342 W1 split the pubsub fold, `rust_cyclone` sat at 34.1 s
-against `cpp_cyclone`'s 5.2 s — 30 s timeout + 2 s settle + 2 s delivery — because the settle greped `"Waiting for"`,
-which C/C++ print and the Rust listener never does (it prints `"Subscriber created for topic:"`). Both spellings were
-ALREADY constants; the literal matched one language by luck. Fixed there (34.1 s -> 4.0 s, binary 95.1 -> 7.9 s), and
-12 more call sites carry the same literal — 4 suspect (`executor.rs:138,200`, `esp32_emulator.rs:324,528`). NOT swept
-blind: most wait on C/C++ binaries that do print it, and a wrong marker is silent, so each needs its own measurement.
-Compounded by #0471 (a timeout returns `Ok`), so even a checked result would not notice. See `0481-*`. (2026-08-08)
+Recently resolved (2026-08-10, phase-342): **#480** + **#481** — readiness greps used string LITERALS, so a
+wrong marker burned the whole timeout in silence and the test still passed. 0481 found it by MEASUREMENT
+(`rust_cyclone` at 34.1 s against `cpp_cyclone`'s 5.2 s, because a settle greped `"Waiting for"` — which C/C++
+print and the Rust listener never does), fixed 11 sites and landed the
+`check-readiness-marker-literals` gate with **32 baselined**. 0480 carried the audit. Closed together by
+converting all 32: each mapped to the binary its site spawns, then pointed at that binary's `output::*`
+constant, so the baseline is **empty** and the gate enforces the rule with nothing exempted. **Three were
+real defects, not ambiguity** — `zephyr.rs:860`, `zephyr.rs:1443` and `interop_e2e.rs:383` `.expect(…)` on a
+marker their binary does not print, i.e. failing outright since 0471 made the wait strict. The other 29 were
+correct-by-luck, which is what the class IS. Also collapsed TWO SPELLINGS rather than adding a constant per
+spelling: `serial-listener` + `custom-transport-listener` said `Subscriber created on` where everything else
+says `Subscriber created for topic:` — a `SERIAL_LISTENER_READY_MARKER` was written, immediately made
+`"Subscriber created"` ambiguous, and the gate flagged a 30th site that had been invisible; the constant was
+deleted and both binaries converged instead (phase-342's listener convergence, one binary further).
+`WS_C_LISTENER_READY_MARKER` → `LISTENER_WAITING_BANNER` (four non-workspace binaries print it, so the
+workspace-only name invited exactly that second-spelling problem). Gate verified both ways.
+#480's earlier claim that this explained the 29 ci-matrix reds stays RETRACTED — those are fixture coverage
+and staleness. What it explains is the silence. See `archived/0480-*`, `archived/0481-*`. (2026-08-10)
 
-**#480** (testing, open 2026-08-08) — the 29 `ci-matrix` test failures are NOT the QEMU-under-load flake
-class: retested solo, **27 of 29 reproduce alone** and only 4 are flakes. Most share one cause — a test
-waits for a banner its binary never prints (`native-rs-listener did not print \`Waiting for\``, while the
-Rust listener prints `Subscriber created for topic:`). Issue 0471 documented exactly this, made the wait
-STRICT so a missed banner fails instead of silently passing, and converted 4 suites — but **101 literal
-`wait_for_output_pattern("…")` calls remain**, and the strictness is what turned them from falsely-green
-into loud reds. A blanket replace is WRONG: `"Waiting for"` is correct for the C/C++ listeners and
-service-server, wrong only for the Rust listener, so each site must be mapped to the binary it spawns.
-Needs a gate forbidding string literals there — the rule has been in CLAUDE.md since phase-277 and is
-violated 101 times.
+Recently resolved (2026-08-10): **#479** (examples) — `5f4eda8a4` fixed issue 0453 (an action server whose
+output ignored the goal payload) on the **native** cells only, leaving the defect live on 8 of 10 cells.
+Propagated in `46a8fe1d3`; `example_portability` is 6/6, so no `KNOWN_DIVERGENCE` was needed. **The risk
+that kept it filed did not survive contact:** the embedded C copies already had
+`server_context_t* ctx = (server_context_t*)context;` in `execute`, so only the `accepted_order` field and
+its store in `goal_callback` were missing, and the four copies per language were byte-identical to each
+other — one edit replicated, not eight judgment calls. C++ needed only the loop bound (`i <= goal.order`),
+so an order-N goal now yields N+1 elements like its Rust and C siblings. The issue's own open question is
+answered YES: 0450's Rust `State` did reach all four embedded Rust copies, checked per copy.
+See `archived/0479-*`. (2026-08-10)
 
-**#480** (testing, open 2026-08-08) — **substantially duplicates #481, which is better evidenced — read
-that one first.** Kept for the part it adds: a full audit of **101 literal `wait_for_output_pattern("…")`
-calls** with each mapped to the binary it waits on. #481 found the same class by MEASUREMENT (a wrong
-marker burns the whole timeout in silence: 34.1 s -> 4.0 s once fixed); this issue found it from a failing
-test and carries the site table. **CORRECTED:** #480 originally claimed this explained the 29 ci-matrix
-reds. It does not. Re-running all 27 with full capture shows fixture coverage/staleness dominates (10 "not
-prebuilt", 3 "failed to build", 2 STALE), and the bare-`cargo nextest` retest miscounted `skip!` panics as
-failures — the caveat CLAUDE.md states outright. Both issues agree a blanket replace is WRONG: most sites
-wait on C/C++ binaries that DO print `"Waiting for"`.
-
-**#479** (examples, open 2026-08-08) — `5f4eda8a4` fixed issue 0453 (an action server whose output ignored
-the goal payload) on the **native** cells only; all 8 embedded copies still carry the old body, so the
-defect 0453 was filed about is live on 8 of 10 cells. Two divergences: the four embedded C++ copies run
-`i < goal.order` where native runs `i <= goal.order` (an order-N goal yields N elements, siblings yield
-N+1), and the four embedded C copies never gained the `accepted_order` slot, so the bound is right and the
-input is still dropped. Caught by `example_portability copies_within_a_group_are_identical` — one of the
-few `ci-matrix` failures that is not a QEMU flake; reproduces solo in 0.4 s. NOT propagated blindly: the
-nuttx C copy has `(void)context;` where native casts it to `server_context_t*`, so the embedded cells may
-surface the callback context differently and a paste could break four platforms.
-
-**#478** (build, RESOLVED 2026-08-08) — cc-rs sent `-mno-omit-leaf-frame-pointer`, a **clang** flag, to
+Recently resolved (2026-08-08): **#478** (build) — cc-rs sent `-mno-omit-leaf-frame-pointer`, a **clang** flag, to
 `arm-none-eabi-gcc`, which rejects it — every `freertos` fixture row died `rc=101` while the other six
 modules passed, and it was the last gate on `just ci-matrix`. Nothing in-tree passed it: cc-rs adds it when
 forcing a frame pointer off `debug = 1`, and it arrived with no commit behind it because the lock pinning
@@ -254,8 +244,9 @@ cc-rs's automatic pair and re-adds the half gcc understands (clang/MSVC untouche
 `strict_decls` — the one function every nano-ros C compile already calls — so ~20 sites were fixed with no
 call-site edits; 7 unrouted sites in the two freertos board crates name it directly. Gated by
 `check-cc-build-policy`, tripwired both ways. Verified: `lane=tier2` all eight modules OK.
+See `archived/0478-*`. (2026-08-08)
 
-**#477** (nuttx, RESOLVED 2026-08-08) — `nuttx-c-talker-zenoh` overflowed ROM by 448776 bytes and gated
+Recently resolved (2026-08-08): **#477** (nuttx) — `nuttx-c-talker-zenoh` overflowed ROM by 448776 bytes and gated
 `lane=all`/`lane=tier2`. **Not a size regression at all.** `nros-board-common`'s `snapshot_root` /
 `snapshot_or_tree` prefer the per-arch NuttX export snapshot and fall back to the live `staging/` tree, but
 emitted `cargo:rerun-if-changed` on the path that WON — so a build that ran before the ARM export existed
@@ -265,7 +256,7 @@ on the preferred path even on the losing branch (a `rerun-if-changed` on a missi
 APPEARS). Proof: after provisioning + `cargo clean` of the two crates, HEAD linked with the same code —
 691468 bytes vs 687112 on Aug 6, +0.6 %; the ARM lane now completes with zero overflows. The bisect never
 took a step: the confounder surfaced while validating the endpoints, which is why both ends get validated
-first.
+first. See `archived/0477-*`. (2026-08-08)
 
 Recently resolved (2026-08-08): **#483** — all 16 `emulator.rs` tests skipped in ~0.06 s on a missing
 `build/qemu-zenoh-pico/libzenohpico.a`, and the skip named `just build-zenoh-pico-arm`, a recipe that never
@@ -350,7 +341,7 @@ outlive it — they are what makes any future wrong size fail instead of corrupt
 enforcing it; issue 0360's variant-symbol mechanism would make it a link error. Fix must be generated +
 gated, not fifteen hand-written asserts — the thirteen are unguarded because each was added one at a time.
 
-**#471** — `wait_for_output_pattern` returns `Ok` on TIMEOUT whenever the process printed anything at all;
+Recently resolved (2026-08-07): **#471** — `wait_for_output_pattern` returns `Ok` on TIMEOUT whenever the process printed anything at all;
 the pattern is consulted only for the early-exit path. So `wait_for_output_pattern(MARKER, …)?` means "the
 process was not silent", NOT "the marker appeared". **233 of 283 call sites** ignore the returned string and
 check only the `Result`. RESOLVED (2026-08-07): the contract is now strict — `Ok` means the pattern appeared,
@@ -359,14 +350,14 @@ one `(String, bool)` engine, since conflating "what was printed" with "did it ma
 two lenient paths existed in `QemuProcess` and were fixed with it. The flip caught exactly one class, 15-16
 tests: suites waiting for the literal `"Waiting for"`, a banner `examples/native/rust/listener` stopped
 printing at phase-277 — now `output::LISTENER_READY_MARKER`. Those suites also got 2-3x faster, having been
-burning a full 5 s timeout per listener. See `0471-*`. (2026-08-07)
+burning a full 5 s timeout per listener. See `archived/0471-*`. (2026-08-07)
 
-**#476** RESOLVED (2026-08-07): writing an executable stub and exec'ing it races against sibling test
+Recently resolved (2026-08-07): **#476** — writing an executable stub and exec'ing it races against sibling test
 threads — `O_CLOEXEC` closes a descriptor at EXEC, not at FORK, so any concurrent `Command::spawn` inherits
 the still-open write handle and our `execve` gets `ETXTBSY`. **Unique paths do not fix it** (that was #455's
 cause, and it was already fixed here — the failing path was pid-scoped). Measured 245/1200 execs failing at
 12 forking threads. Fix: `test_support::write_executable_stub` writes via CHILD `cp`+`chmod`, so no write
-descriptor ever exists in our process — 0/1200. See `0476-*`. (2026-08-07)
+descriptor ever exists in our process — 0/1200. See `archived/0476-*`. (2026-08-07)
 
 Recently resolved (2026-08-07): **#469** — phase 209's three C++ port templates were in NO lane (0 fixture
 rows, 0 tests, 0 recipes), so nothing built or ran them for two months while the acceptance silently broke

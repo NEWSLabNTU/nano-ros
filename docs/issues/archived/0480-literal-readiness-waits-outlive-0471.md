@@ -1,11 +1,60 @@
 ---
 id: 480
 title: "0471 made readiness waits strict but converted 4 suites — 101 literal waits remain, and ~23 of them now fail"
-status: open
+status: resolved
+resolved_in: phase-342
 type: bug
 area: testing
 related: [issue-0481, issue-0471, phase-277, issue-0157, issue-0164]
 ---
+
+## Resolution (2026-08-10) — all 32 remaining sites mapped, baseline emptied
+
+The audit was the work, and it is done. Every literal the gate could still see
+was resolved to the binary its site spawns, then pointed at that binary's
+`output::*` constant. `scripts/readiness-marker-literal-baseline.txt` is now
+**empty**: the gate enforces the rule outright, with nothing exempted, so there
+is no longer a backlog to shrink.
+
+**Three were real defects, not ambiguity** — each an `.expect(…)` on a marker
+its binary does not print, i.e. a test that fails outright now that 0471 made
+the wait strict:
+
+| site | waits on | prints |
+| --- | --- | --- |
+| `zephyr.rs:860` | `build_native_listener()` | `Subscriber created for topic:` only |
+| `zephyr.rs:1443` | `build_native_listener()` | `Subscriber created for topic:` only |
+| `interop_e2e.rs:383` | `ros2-string-interop` | matched only by the accident that its prose line starts `Waiting for` |
+
+The other 29 were correct-by-luck: they named a literal that happened to be a
+prefix of the marker their binary prints. Correct-by-luck is what this class
+is; the same literal one binary over is 5–30 s of silence.
+
+### Two spellings collapsed, rather than a constant per spelling
+
+`serial-listener` and `custom-transport-listener` printed
+`Subscriber created on /chatter` where every other subscriber prints
+`Subscriber created for topic: …` — one fact, two spellings, and no shared
+constant can cover both. A `SERIAL_LISTENER_READY_MARKER` was written and then
+deleted: adding it made `"Subscriber created"` newly ambiguous and the gate
+immediately flagged a 30th site (`custom_transport_loopback.rs:73`) that had
+been invisible while only one constant started that way. Both binaries were
+converged on the shared line instead, which is phase-342's listener convergence
+one binary further. `ros2-string-interop` gained the shared line too.
+
+`WS_C_LISTENER_READY_MARKER` was renamed `LISTENER_WAITING_BANNER`: four
+non-workspace binaries print `"Waiting for messages"`, so the workspace-only
+name had stopped being true and invited exactly the second-spelling problem
+above. Two constants were added for markers nothing covered —
+`PARAM_TALKER_READY_MARKER` (`param-chatter-talker` publishes Int32, so
+`TALKER_READY_MARKER`'s `"Publishing:"` never matches it).
+
+### What the gate is worth now
+
+Verified both directions: green at 0 baselined / 0 new, and red when a single
+`"Waiting for"` is reintroduced. The CORRECTION below still stands — this class
+never explained the ci-matrix reds, which are fixture coverage and staleness.
+What it explains is the silence.
 
 ## Duplicates #481 — read that first
 

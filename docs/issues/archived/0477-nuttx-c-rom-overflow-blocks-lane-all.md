@@ -2,6 +2,7 @@
 id: 477
 title: "`nuttx-c-talker-zenoh` overflows ROM by 448776 bytes — a stale board artifact, not a code regression"
 status: resolved
+resolved_in: 03221fcba
 type: bug
 area: nuttx
 related: [phase-334, phase-340, phase-341, phase-337, issue-0466]

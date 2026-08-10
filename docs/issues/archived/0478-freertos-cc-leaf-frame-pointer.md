@@ -2,6 +2,7 @@
 id: 478
 title: "cc-rs sends `-mno-omit-leaf-frame-pointer` to `arm-none-eabi-gcc`, killing every freertos fixture build"
 status: resolved
+resolved_in: 51abb1151
 type: bug
 area: build
 related: [issue-0477, phase-340, phase-334]

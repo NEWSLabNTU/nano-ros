@@ -2,11 +2,23 @@
 id: 481
 title: "Readiness greps use string literals, so a wrong marker burns the whole
   timeout in silence — 8 fixed + gated, 35 baselined"
-status: open  # 8 sites fixed + gate landed 2026-08-08; 35 baselined
+status: resolved
+resolved_in: phase-342
 type: tech-debt
 area: testing
-related: [issue-0471, phase-342, phase-277]
+related: [issue-0471, phase-342, phase-277, issue-0480]
 ---
+
+## Closed by issue 0480 (2026-08-10) — the baseline is empty
+
+This issue's remaining work WAS the baseline: 8 sites fixed + 3 more found by
+audit, 32 left as "ambiguous literals whose markers work". Issue 0480 converted
+all 32, so `scripts/readiness-marker-literal-baseline.txt` now holds zero rows
+and the gate enforces the rule with nothing exempted. Three of the 32 turned out
+to be real defects rather than ambiguity — see 0480 for which and why.
+
+The note below that "issue 0471 is the deeper half" is also settled: 0471
+landed, so a wrong marker now fails loudly instead of passing in silence.
 
 ## Symptom
 
