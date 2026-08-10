@@ -318,6 +318,62 @@ This issue's attempted fix is evidence on exactly that hypothesis, and it is
 negative: retiring `nros-cpp` entirely changed nothing, so `nros-cpp` is not the
 second producer by itself. That narrows their candidate without settling it.
 
+## Q2 ANSWERED (2026-08-10) — the topology is the CORROSION VERSION, and both measurements were right
+
+The handoff's highest-value question was "which corrosion topology is current:
+hashed per-workspace dirs (phase-340, 344 §2.2) or the hashless shared
+`cargo/build` measured here — both reproduce on different worktrees". They
+reproduce on different worktrees because they are **different corrosion
+versions**, reached by the two provisioning paths:
+
+| which corrosion the CONFIGURE resolves | version | target dirs | consequence |
+| --- | --- | --- | --- |
+| SDK install, when `find_package(Corrosion)` FINDS it | **v0.5.1** (pinned, `nros-sdk-index.toml`) | hashless shared `cargo/build` | two workspace roots write one `deps/` -> duplicate `#[no_mangle]` -> **CANNOT LINK** |
+| FetchContent fallback, when it does NOT | **v0.6.1** | hashed `nano-ros_0b88c`, `nros_ws_runtime_14eac` | no collision -> **wasted disk only** |
+
+**The discriminator is `find_package`, NOT whether the SDK is installed** — a
+correction to my first version of this table, which said "no SDK corrosion
+installed" on the measured tree. That was wrong: v0.5.1 IS installed here
+(`~/.nros/sdk/corrosion`, `.installed-version` = v0.5.1). I had listed
+`share/corrosion/`, which does not exist — the layout is `share/cmake/` — and
+read the empty listing as absence. Recorded because the same wrong probe is
+easy to repeat.
+
+What actually happened on this tree: `find_package(Corrosion QUIET)`
+(`cmake/nano_ros_workspace_metadata.cmake:118`) did not resolve the SDK install,
+so the configure fell through to FetchContent and fetched v0.6.1 —
+`_deps/corrosion-subbuild` confirms the tag, and the dirs are hashed. So the two
+investigations measured the same repo with different RESOLUTION outcomes, not
+different installs.
+
+That sharpens the probe: the question is why `find_package` misses an installed
+SDK corrosion (`CMAKE_PREFIX_PATH` / `Corrosion_DIR` not carrying
+`~/.nros/sdk/corrosion/share/cmake`), because that resolution — not a
+provisioning step someone forgot — is what decides whether a host gets the
+linkable topology or the broken one.
+
+**This makes the class WORSE than either investigation concluded alone**, and
+non-deterministic on top: which topology a host gets depends on whether its
+configure resolves the SDK corrosion, and BOTH outcomes occur on trees that were
+provisioned the same way. phase-340/344's tree only looked healthy because
+`find_package` missed an install that was present — an accident of resolution,
+not a property of the code, and not something a user would know to check.
+
+**Consequence for Q1.** "Why does one staticlib bundle both identities when its
+graph has one package?" — under a HASHLESS shared dir the two workspace roots
+write into one `deps/`, so the archive can pick up rlibs from both roots while
+`cargo metadata` still reports one package. The graph is fine and the DIRECTORY
+is shared. Test that before hunting a provider bug; it also explains why
+retiring `nros-cpp` changed nothing, since the second producer is a second
+workspace ROOT rather than a second package.
+
+**Consequence for the fix.** "Separate target dirs is a trap rather than a fix"
+still holds for v0.6.1, where they are already separate and the cost is disk. On
+v0.5.1 the sharing is not a design choice anyone made — it is the older
+corrosion's naming. So the cheapest probe before any provider redesign is
+whether the SDK pin moving 0.5.1 -> 0.6.1 removes the link failure outright.
+That is a one-line index change plus a rebuild, and it is NOT yet done.
+
 ## HANDOFF (2026-08-10) — to whoever owns phase-340 / phase-344
 
 This issue is being handed over rather than continued. Everything below is
