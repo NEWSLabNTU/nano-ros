@@ -2075,6 +2075,19 @@ each axis is a different cause:
 | host vs `x86_64-unknown-linux-gnu` | ×2 | **R3** — the explicit `--target` split, here appearing WITHIN one invocation (build scripts/proc macros vs the library). |
 | two identities per root+arch cell | ×2 | **unattributed.** Both fingerprints report identical `features = ["alloc","std"]`, so it is not feature-driven; `-C metadata` folds in dependency metadata, so the likeliest cause is the two staticlibs (`nros-c`, `nros-cpp`) resolving an intermediate crate differently. Not yet proven — do not quote a cause. |
 
+> **Cross-reference — issue 0493 (2026-08-10).** The same multi-identity class
+> shows up as a HARD LINK FAILURE, not just disk: `libnros_ws_runtime.a` bundles
+> two `-C metadata` identities of ten crates and every `#[no_mangle]` export
+> collides. Two things there bear on this table. (1) The claim above that the two
+> corrosion roots "cannot even land in the same tree" holds for the tree measured
+> here, but NOT after a from-scratch rebuild on 2026-08-10: there is then one
+> `cargo/build` holding both `libnros_rmw_cffi-*.rlib`. The per-workspace keying
+> is what was keeping them apart, and something removed it — unidentified, and
+> deliberately not guessed. (2) The "unattributed ×2" row's stated likeliest
+> cause (the two staticlibs resolving an intermediate crate differently) now has
+> NEGATIVE evidence: retiring `nros-cpp` entirely left the duplication intact, so
+> `nros-cpp` alone is not the second producer.
+
 Note what this rules out: the R/C split here is **not** the corrosion-vs-cargo
 flag difference measured in W3, because BOTH sides go through corrosion with an
 explicit `--target`. Same driver, same flag, same features — and still no

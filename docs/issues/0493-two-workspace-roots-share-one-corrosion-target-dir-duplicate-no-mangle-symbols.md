@@ -260,3 +260,59 @@ two must be built from ONE workspace root.
 umbrella's own staticlib bundles BOTH identities when `cargo metadata` reports a
 single `nros-rmw-cffi` package in its graph. Until that is answered, any fix is
 a guess — mine was.
+
+## Reconciliation with phase-340 (2026-08-10, after `2d1e8d76e`)
+
+Another session reached the SAME phenomenon from the other side. phase-340's
+"D is built EIGHT times, with eight distinct identities — zero sharing" census
+measures it as **disk**; this issue measures it as a **link failure**. One class,
+two vantage points, and they should not be rediscovered separately.
+
+Their three-way split, and how it maps here:
+
+| their axis | here |
+| --- | --- |
+| two corrosion roots (`nano-ros_…` C++ side vs `nros_ws_runtime_…`) — R2 | the two identities in this issue |
+| host vs explicit `--target` — R3 | the ×2 inside each root |
+| "two identities per root+arch cell — **unattributed**" | this issue's open question |
+
+**A factual conflict between the two accounts, now settled.** phase-340 says:
+
+> Corrosion keys its dir on `sha1(workspace_manifest_path)`, so they cannot even
+> land in the same tree.
+
+That was true of the tree it measured — `cargo/nano-ros_23c15/` and
+`cargo/nros_ws_runtime_16b35/` existed side by side, and I saw them too before
+rebuilding. It is **not** true of the current tree: after a from-scratch
+rebuild there is ONE corrosion dir, `cargo/build`, and it holds BOTH
+`libnros_rmw_cffi-*.rlib`.
+
+That difference is the whole issue. The per-workspace keying is what USED to keep
+the two roots apart; with it gone they share one `deps/` and the umbrella bundles
+both, turning a disk-waste finding into a hard link error. **What removed the
+isolation is not identified** — several changes landed the same day
+(B3 + wave 2's shared target dirs, phase-344 W2's builder-keyed driver) and I am
+not going to name one without measuring it, having guessed wrong more than once
+today.
+
+**Vocabulary collision, which will otherwise mis-route the next reader.**
+"Umbrella" means two different things in these documents:
+
+* **phase-340 W2.b's umbrella** = one cargo WORKSPACE spanning the example
+  leaves (a generated symlink farm). **CLOSED as impossible**: 22/22 leaves
+  carry `[workspace]` — that IS the copy-out promise — and cargo hard-errors on
+  nested roots.
+* **`nros_synth_runtime_umbrella`** = a synthesised staticlib PROVIDER crate in
+  the build dir.
+
+The revised design in this issue proposes making the SECOND the single provider.
+It does not re-propose the first, and W2.b's refutation does not touch it. Any
+reading that bounces this design off "the umbrella is impossible" has conflated
+the two.
+
+**Convergent conclusion on the unexplained ×2.** phase-340 says of it:
+"the likeliest cause is the two staticlibs (`nros-c`, `nros-cpp`) resolving an
+intermediate crate differently. Not yet proven — **do not quote a cause**."
+This issue's attempted fix is evidence on exactly that hypothesis, and it is
+negative: retiring `nros-cpp` entirely changed nothing, so `nros-cpp` is not the
+second producer by itself. That narrows their candidate without settling it.
