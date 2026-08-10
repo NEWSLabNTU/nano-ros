@@ -352,6 +352,23 @@ SDK corrosion (`CMAKE_PREFIX_PATH` / `Corrosion_DIR` not carrying
 provisioning step someone forgot — is what decides whether a host gets the
 linkable topology or the broken one.
 
+**PROBE ATTEMPTED 2026-08-10, INCONCLUSIVE — the v0.5.1 half of the table above
+is still INFERENCE, not measurement.** Verified directly: this tree resolves
+FetchContent **v0.6.1** and gets hashed dirs with zero duplicate symbols. NOT
+verified: that v0.5.1 produces the hashless shared `cargo/build`. That half is
+inferred from 0493's report, and the attempt to confirm it here failed —
+forcing the SDK install with `-DCMAKE_PREFIX_PATH` / `-DCorrosion_DIR` through
+`NROS_CMAKE_EXTRA_DEFS` did not reach the configure (`CMakeCache.txt` shows
+`Corrosion_DIR:PATH=Corrosion_DIR-NOTFOUND`, and `_deps/corrosion-subbuild`
+fetched v0.6.1 again). So the build ran the SAME arm as before and proved
+nothing about the other one.
+
+Whoever picks this up: find the supported way to make the configure resolve the
+SDK corrosion — `NROS_CMAKE_EXTRA_DEFS` is evidently not it for this script —
+reproduce the hashless topology, and only then test whether the 0.5.1 -> 0.6.1
+pin bump removes the link failure. Do NOT treat the version mapping as
+established until the v0.5.1 arm has been observed on a tree someone controls.
+
 **This makes the class WORSE than either investigation concluded alone**, and
 non-deterministic on top: which topology a host gets depends on whether its
 configure resolves the SDK corrosion, and BOTH outcomes occur on trees that were

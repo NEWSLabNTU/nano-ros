@@ -694,18 +694,7 @@ doing beyond the bridge: using `px4_msgs` makes the bridge's ROS-2-facing contra
 indistinguishability is the interop claim. Blocks W3 only; the W2 direct demo needs no CDR at all,
 which is the point of it. See `0362-*`. (2026-07-31)
 
-**#371** [severity **high**] — RESOLVED 2026-08-10, archived. native_sim cyclone app abort()s at a
-near-deterministic 19–21 s joining the full Autoware graph. **Root cause: the Zephyr POSIX pthread
-MUTEX pool is exhausted** (`posix_mutex_bitarray: 16384/16384`, cond pool 250/16384).
-`pthread_mutex_init` returns ENOMEM and leaves the handle at `-1`; `ddsrt_mutex_init` discarded that
-return, so the first lock failed EINVAL and hit one of the 13 bare `abort()`s in the ddsrt POSIX
-sync port — on another thread, in an unrelated function, ~20 s later. Cyclone takes a pool object
-per proxy entity AND per addrset, so demand scales with the JOINED graph: shadowing
-autoware_manual_lane_change_handler only moved peak demand back under the ceiling, which is why the
-A/B looked like that node was the trigger. Fixed by raising the pool demo-side and by
-`cyclonedds@5b87ee52` (name the exhausted pool + close cond/rwlock). NOTE the old entry's "gdb masks
-it" was wrong — a plain `break abort` reproduces it; only a hot-path breakpoint masks it.
-See `archived/0371-*`. (2026-08-01, resolved 2026-08-10)
+Recently resolved (2026-08-10): **#0371** — RESOLVED 2026-08-10, archived. See `archived/0371-*`.
 
 **#374** (filed as #373; renumbered) — `nros setup native --rmw zenoh` source-builds zenohd
 (`[tool.zenohd]` has no `dist.linux-x86_64`; assets never seeded) and pulls a SECOND rust toolchain
