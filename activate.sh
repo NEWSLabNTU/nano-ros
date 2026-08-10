@@ -206,9 +206,16 @@ if [ -d "$_nros_sdk" ]; then
         # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c),
         # and sccache (issue #74) — the justfile's `RUSTC_WRAPPER` + the zephyr
         # fixture CMake launcher auto-use it once it's on PATH.
+        # espflash joined for issue 0486: `just esp32 build-qemu` packs its
+        # flash image by invoking `espflash` by BARE NAME, so provisioning it
+        # into the store is not enough — `nros setup --tool espflash` succeeded
+        # and the pack step still skipped, because nothing put the store bin
+        # dir on PATH. Same reason genromfs is here (an RTOS `make` calls it by
+        # bare name).
         if _nros_dir_has_gcc "$_nros_tcbin" \
             || [ -x "$_nros_tcbin/genromfs" ] \
             || [ -x "$_nros_tcbin/sccache" ] \
+            || [ -x "$_nros_tcbin/espflash" ] \
             || [ -x "$_nros_tcbin/zenohd" ]; then
             export PATH="$_nros_tcbin:$PATH"
         fi

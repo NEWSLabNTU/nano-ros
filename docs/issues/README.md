@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-10, phase-340): **#486** — `espflash` was documented in prose only, so a host that
+completed `just esp32 setup` built every ELF and then produced NO flash images: the pack step warned and the lane
+exited 0. Issue 0399's shape one dependency over (0399 declared `riscv-none-elf-gcc` because a
+documented-provisioned host could not COMPILE; this is the same claim about the PACK step). Fixed in three parts,
+because provisioning alone was not enough: `[tool.espflash]` pinned to v4.5.0 + added to the board's `packages`;
+`activate.sh` puts the store bin dir on PATH (setup SUCCEEDED and the step still skipped — **provisioned is not
+reachable**, and the whitelist there keys on tool basename); and a missing espflash is now FATAL at both sites,
+since a warning would turn a broken host into a green lane with no artifacts (#181's shape). The 0439
+lane-narrowing skip is untouched — it keys on `NROS_FIXTURE_COORDS`, not on the tool. Verified both directions:
+three 4.2 MB images produced, and exit 1 with a remedy when the dir is stripped from PATH. No `system = [...]`:
+`serialport v4.9.0` builds with no libudev present, probed rather than assumed. See `archived/0486-*`. (2026-08-10)
+
 Recently resolved (2026-08-10, phase-340): **#485** — `check-artifact-identity-budget` counted one crate
 as TWO. `uniq -c` collapses only ADJACENT duplicates and glibc `en_US.UTF-8` collation ignores the space and
 underscore, so `nros 079…` and `nros ecf7…` sorted on either side of `nros_board_common` / `nros_core` /

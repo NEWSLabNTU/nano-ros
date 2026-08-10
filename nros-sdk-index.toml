@@ -231,6 +231,36 @@ ref = "esp-develop-9.2.2-20260417"
 configure = "./configure --target-list=riscv32-softmmu --prefix={prefix} --enable-gcrypt --enable-slirp --disable-strip --disable-user --disable-capstone --disable-vnc --disable-gtk --disable-sdl --disable-docs"
 install = "ninja -C build -j$(nproc) && ninja -C build install"
 
+# issue 0486 — espflash packs an ELF into the ESP32 flash image the QEMU runner
+# and the e2e tests actually boot (`espflash save-image --merge`). It was
+# documented in prose only (`docs/guides/esp32-setup.md`) and reachable solely by
+# a hand-run `cargo install`, so a host that completed `just esp32 setup` still
+# produced NO flash images — the pack step warned and the lane exited 0. That is
+# issue 0399's shape one dependency over: 0399 declared `riscv-none-elf-gcc`
+# because a documented-provisioned host could not COMPILE the example; this is
+# the same claim about the PACK step.
+#
+# Source-built and pinned like every other cargo tool here (`[tool.sccache]`,
+# `[tool.play_launch_parser]`) rather than a bare `cargo install espflash`, which
+# would resolve against crates.io at whatever version is current that day — the
+# drift the pinning convention and the project-wide `--locked` shim exist to
+# prevent. The binary lives in the `espflash/` subdir of the workspace
+# (`cargo-espflash/` is the separate cargo-subcommand front end and is not
+# wanted here).
+#
+# NO `system = [...]`: verified by building it on a clean host 2026-08-10 —
+# `serialport v4.9.0` compiles with no libudev dev package present, so the
+# historical libudev requirement no longer applies. Probed rather than assumed,
+# because an undeclared system dep is the RFC-0062 class that `[tool.sccache]`
+# carries `--features vendored-openssl` to avoid.
+[tool.espflash]
+version = "4.5.0-nros1"
+upstream = "v4.5.0" # = source.ref (esp-rs/espflash release tag)
+[tool.espflash.source]
+git = "https://github.com/esp-rs/espflash"
+ref = "v4.5.0"
+install = "cargo install --path espflash --root {prefix} --locked"
+
 # 194.3c — genromfs: the NuttX rv-virt board's src/Makefile unconditionally bakes
 # an etc/ ROMFS (RCSRCS = etc/init.d/{rc.sysinit,rcS}) via `genromfs`, so any
 # rv-virt `make export` needs it on PATH. The qemu-armv7a board has no RCSRCS, so
@@ -493,7 +523,10 @@ platform = "bare-metal"
 # ilp32 capable); declaring it here means `nros setup qemu-esp32-baremetal`
 # provisions the compiler zpico-build's detection now looks for, instead of
 # leaving a documented-provisioned host unable to build the example.
-packages = ["riscv-none-elf-gcc"]
+# issue 0486 — `espflash` joins `riscv-none-elf-gcc` for the same reason 0399
+# added that one: without it a documented-provisioned host builds every ELF and
+# then produces no flash image, with the lane exiting 0.
+packages = ["riscv-none-elf-gcc", "espflash"]
 
 [board.fvp-aemv8r-smp]
 arch = "aarch64"

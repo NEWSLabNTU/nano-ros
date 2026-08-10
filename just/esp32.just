@@ -142,13 +142,21 @@ build-qemu:
             echo "       The build step above should have produced it." >&2
             exit 1
         fi
-        if command -v espflash &>/dev/null; then
-            espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$out"
-            echo "  $out"
-        else
-            echo "  WARNING: espflash not found, skipping flash image for $ex"
-            echo "  Install with: cargo install espflash"
+        # Issue 0486 — a MISSING espflash is now a provisioning failure, not a
+        # skip. It used to warn and continue, which was honest while nothing
+        # promised the tool; `[tool.espflash]` + the board's `packages` now do,
+        # so warning here would turn a broken host into a green lane with no
+        # artifacts — the same shape as #181, which this recipe already refuses
+        # for a missing ELF two lines up.
+        if ! command -v espflash &>/dev/null; then
+            echo "ERROR: espflash not found, so no flash image can be packed." >&2
+            echo "       It is declared in nros-sdk-index.toml and provisioned by" >&2
+            echo "         just esp32 setup      (or: nros setup --tool espflash)" >&2
+            echo "       and put on PATH by \`source ./activate.sh\`." >&2
+            exit 1
         fi
+        espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$out"
+        echo "  $out"
     done
     echo "ESP32 QEMU examples built!"
 
@@ -184,13 +192,15 @@ build-logging-smoke:
         echo "ERROR: $elf is missing, and nothing narrowed this build." >&2
         exit 1
     fi
-    if command -v espflash &>/dev/null; then
-        espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$bin"
-        echo "  $bin"
-    else
-        echo "  WARNING: espflash not found, skipping flash image"
-        echo "  Install with: cargo install espflash"
+    # Issue 0486 — same as `build-qemu`: provisioned means required.
+    if ! command -v espflash &>/dev/null; then
+        echo "ERROR: espflash not found, so no flash image can be packed." >&2
+        echo "       Provision it:  just esp32 setup   (nros setup --tool espflash)" >&2
+        echo "       then re-source ./activate.sh to put it on PATH." >&2
+        exit 1
     fi
+    espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$bin"
+    echo "  $bin"
 
 # Build ESP32 test fixtures.
 [group("full-matrix")]
