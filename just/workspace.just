@@ -21,7 +21,10 @@ MAKE_VERSION := "4.4.1"
 # Corrosion)` without polluting the host system; the H.4 and 212.D
 # Corrosion tests look it up via `cmake --find-package` with
 # `CMAKE_PREFIX_PATH=$HOME/.nros/sdk/corrosion`. Phase 212.H.4.
-CORROSION_VERSION := "v0.5.1"
+# issue 0493 — must stay in step with `nros-sdk-index.toml`'s [tool.corrosion]
+# ref; the two provisioning paths land at ONE prefix and a mismatch means the
+# stamp check reinstalls on every invocation.
+CORROSION_VERSION := "v0.6.1"
 
 # Pinned play_launch_parser SHA. Used by the Phase 212.L.6 launch-graph
 # resolver in `nros plan` / `nros codegen-system` (synth-from-Component

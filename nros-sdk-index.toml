@@ -199,17 +199,29 @@ install = "cargo install --path crates/play_launch_parser --root {prefix} --lock
 # `docs/development/sdk-tiers.md`, idempotent — `just workspace install-corrosion`
 # already gates on a `.installed-version` stamp). Source-built only — upstream
 # `corrosion-rs/corrosion` releases ship source tarballs, not prebuilt binaries
-# we mirror, so no `dist.<host>` rows. Pinned to the same `v0.5.1` tag the
+# we mirror, so no `dist.<host>` rows. Pinned to the same `v0.6.1` tag the
 # `just workspace install-corrosion` recipe uses, so a `nros setup --tool corrosion`
 # and a `just workspace install-corrosion` land the same Corrosion version at the
 # same prefix. The Phase 212 `cmake_mixed_corrosion_bridge_builds` test (and the
 # `just workspace doctor` check) both expect `~/.nros/sdk/corrosion/`.
 [tool.corrosion]
-version = "0.5.1-nros1"
-upstream = "v0.5.1" # = source.ref (corrosion-rs/corrosion release tag)
+# issue 0493 — bumped v0.5.1 -> v0.6.1 on 2026-08-10. This is ADOPTING AN
+# UPSTREAM FIX, not an experiment: read from the two installed sources,
+# v0.5.1's Corrosion.cmake:751 sets the cargo target dir to a CONSTANT
+# `${CMAKE_BINARY_DIR}/${build_dir}/cargo/build`, so two workspace roots
+# configured into one binary dir share one `deps/` and their `#[no_mangle]`
+# exports collide at link. v0.6.1:781-784 hashes the workspace manifest path
+# into the directory name (`SHA1`, first 5 chars), which cannot collide.
+#
+# v0.6.1 is ALREADY exercised on every workspace/fixture build here — those
+# configures miss the SDK prefix and fall through to FetchContent v0.6.1. So the
+# bump makes the SUPPORTED path match the one already proven green, rather than
+# introducing an untested version.
+version = "0.6.1-nros1"
+upstream = "v0.6.1" # = source.ref (corrosion-rs/corrosion release tag)
 [tool.corrosion.source]
 git = "https://github.com/corrosion-rs/corrosion"
-ref = "v0.5.1"
+ref = "v0.6.1"
 configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_TYPE=Release -DCORROSION_BUILD_TESTS=OFF"
 install = "cmake --build build --parallel $(nproc) --target install"
 
