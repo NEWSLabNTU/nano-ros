@@ -173,40 +173,84 @@ genuine design risk: it makes the codegen pipeline call backend-supplied code.
 The mitigation is that the call site is one, the contract is one function
 signature, and a backend that declares nothing pays nothing.
 
-### D5 — resolution is BY NAME, not by list (revised 2026-08-10)
+### D5 — resolution is BY NAME over a SEARCH PATH OF WORKSPACES (revised twice)
 
-The first draft replaced the closed `match` with a central registry. That is
-still a list, and a list is the thing that drifts. **The stronger model is
-`RMW_IMPLEMENTATION` moved to build time:** the declared value IS the package
-name, and the build system goes and finds it.
+The first draft used a central registry. The second replaced it with name-based
+resolution plus a search path. This third revision fixes what the search path
+*is*, and the answer generalises past RMW.
+
+**Why not colcon.** nano-ros does not adopt colcon, for a reason that also
+explains the shape of what replaces it: colcon's discovery artifact — the ament
+index reached by sourcing `setup.sh` — **exists only after an install step**.
+Our build products are per-target static objects for RTOS targets that generally
+have no dynamic linking, so there is no install-and-source stage for an index to
+appear in. An install-time index is not merely inconvenient here; it has nowhere
+to live.
+
+**Therefore discovery is SOURCE-TIME.** We scan source trees for `package.xml`
+rather than consulting a built index. That is the one real divergence from
+colcon, and it is forced by the target, not chosen.
+
+**The convention: an ordered list of workspace roots.** There is one concept, not
+a special case for nano-ros plus a special case for the user:
 
 ```
-rmw = "cyclonedds"   ->   find the package providing rmw `cyclonedds`
-                          (in-tree: packages/rmw/*/nros-rmw-cyclonedds/nros-rmw.toml
-                           out-of-tree: NROS_RMW_PATH / a workspace-declared path)
-                     ->   read its nros-rmw.toml
-                     ->   lower [rmw.build] and [rmw.capabilities]
+search path = [ <nano-ros root>, <user workspace> ]      # the default
 ```
 
-ROS 2 does exactly this at runtime — `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
-resolves through the ament resource index — and nano-ros needs the same
-indirection one stage earlier, because our selection has build consequences
-(which driver, which link libs, which codegen) that ROS 2's does not.
+Each root is scanned for `package.xml`; a package that announces itself is a
+provider. **The nano-ros tree is simply the first entry** — its `packages/rmw/*`
+are not builtins reached by a different path, they are providers found the same
+way a user's are. Resolution takes the first match, so a workspace package
+shadows a nano-ros one of the same name (colcon's overlay-beats-underlay rule).
 
-Consequences:
+Only two roots are accepted, and both live in the user's repo:
 
-* `KNOWN_RMW`, `canonical_rmw`'s `match`, and the generated `if/elseif` chain in
-  `NanoRosRmwDispatch.cmake` all **disappear** rather than move. The alias table
-  moves into each descriptor's `names`.
-* "Unknown rmw" becomes "no package provides rmw `x`; searched: …" — an error
-  about the search, which is actionable, instead of an error about a constant.
-* **A registry is no longer the discovery mechanism.** `board-support.toml` is
-  still the right precedent for *support-tier bookkeeping* (which backends are
-  maintained, at what tier), and a drift gate over that is still worth having —
-  but discovery itself is convention plus a search path, so adding a backend
-  cannot require editing a central file.
+| accepted | rejected |
+| --- | --- |
+| the nano-ros source tree (vendored / `add_subdirectory`'d) | an installed index under `~/.nros` |
+| the user's workspace | an env var such as `NROS_RMW_PATH` |
 
-D5 must retire **all three** closed lists (see Q3), not just the dispatch.
+Rejecting machine state is what makes a build reproducible from the checkout
+alone, and keeps CI from diverging from a developer's box because someone
+installed a vendor backend. Dropping the installed case also costs nothing
+today: `packages/api/nros-cpp/CMakeLists.txt` contains no `install()`, and the
+`NanoRosCppTargets.cmake` its comments reference **is not in the tree** — the
+installed-consumer path is historical, so this declines to build a capability
+rather than removing one.
+
+**Both roots are already discoverable.** `_nros_find_root()` in
+`NanoRosWorkspace.cmake` walks up for `nros-sdk-index.toml`, "the sentinel that
+marks every nano-ros checkout root", with an explicit-arg / `-D` / env /
+auto-walk chain. The scan reuses it; the user workspace is where `system.toml`
+and `src/` are. The list exists so a third root can be ADDED later without a new
+mechanism — not so the two defaults have to be configured.
+
+**Consequences:**
+
+* `KNOWN_RMW`, `canonical_rmw`'s `match` and the generated `if/elseif` chain
+  disappear rather than move; the alias table lives in each descriptor's `names`.
+* "Unknown rmw" becomes "no package provides rmw `x`; searched: `<ws>/src`,
+  `<nano-ros>/packages` " — an error about the search, which is actionable. Where
+  no nano-ros root is found (a copied-out example), the message must say so
+  rather than implying the user deleted something.
+* D5 must retire **all three** closed lists (Q3), not only the dispatch.
+
+**This is deliberately not finished now.** Full equality requires nano-ros's own
+provider packages to carry `package.xml`, and today none do — the 99 in the tree
+are interface packages and test fixtures. The cost, measured:
+
+| axis | dirs needing `package.xml` | with a descriptor today |
+| --- | ---: | ---: |
+| `packages/rmw` | 8 families | 0 |
+| `packages/boards` | 17 | **8** |
+| `packages/platform` | 14 | — |
+
+So the descriptor family is roughly half-populated even where it exists. The
+migration is therefore incremental and must stay so: **a provider without a
+`package.xml` is simply not discoverable by the scan**, and the existing paths
+keep working until it has one. Nothing is deleted before its replacement covers
+the same set.
 
 ### D6 — user-selectable backend capabilities (revised 2026-08-10)
 
@@ -361,14 +405,37 @@ The point of the RFC is falsifiable by grep, which is how it should be gated:
 
 ## Open questions — answered 2026-08-10
 
-### Q1 — Discovery: by NAME, not by registry (superseded, see D5)
+### Q1 — Discovery: a search path of WORKSPACES, scanned at source time (see D5)
 
-First answered as "copy the board triple" — central registry + per-item
-descriptor + drift gate. **Superseded.** A registry is still a list that can
-drift from the tree, and the RFC's thesis is that the list should not exist.
-Discovery is name → package on a search path (D5); the board registry remains
-the right precedent for *support-tier bookkeeping*, which is a different job
-from resolution.
+Answered twice and superseded twice. First "copy the board triple" (registry +
+descriptor + gate) — rejected, a registry is a list that drifts. Then "name plus
+a search path" — right, but vague about what the path contains.
+
+Settled: **an ordered list of workspace ROOTS, defaulting to
+`[<nano-ros root>, <user workspace>]`, scanned for `package.xml` at source
+time.** Two accepted sources, both in the user's repo; no installed index, no
+env var. The nano-ros tree is the first entry rather than a special case.
+
+The rationale that makes this more than a preference: colcon's index is reached
+by sourcing `setup.sh` and therefore **exists only after an install step**, and
+our per-target static artifacts have no such stage. Source-time scanning is
+forced by the target.
+
+Remaining sub-questions, none blocking the RFC:
+
+* **Shadowing.** A workspace provider overlaying a nano-ros one is a legitimate
+  workflow (testing a patched backend). Allow it, warn with both paths — silently
+  ignoring the user's copy would be worse.
+* **Scan cost and invalidation.** Two source trees walked per configure, cached
+  into `build/nros/`. The cache key is the fiddly part and is the
+  `CONFIGURE_DEPENDS` class this repo already knows how to get wrong.
+* **Topological order.** A provider in `src/` may need building before the
+  consumer links it, and `nano_ros_workspace(SUBDIRS …)` is an explicit list
+  today. Discovery becomes scheduling; this is the piece with real teeth and it
+  is unchanged by anything above.
+* **`<depend>` is already in `package.xml`** and could supply that order rather
+  than a second dependency declaration — worth using, since the file is being
+  parsed anyway.
 
 ### Q2 — `has_rmw`: three quarters of it is already dead code
 
