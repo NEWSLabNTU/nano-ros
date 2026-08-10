@@ -41,8 +41,7 @@ use core::time::Duration;
 #[cfg(feature = "std")]
 #[must_use]
 pub fn now() -> Duration {
-    use std::sync::OnceLock;
-    use std::time::Instant;
+    use std::{sync::OnceLock, time::Instant};
     static EPOCH: OnceLock<Instant> = OnceLock::new();
     EPOCH.get_or_init(Instant::now).elapsed()
 }

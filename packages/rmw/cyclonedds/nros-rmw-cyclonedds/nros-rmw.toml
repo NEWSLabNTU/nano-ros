@@ -1,0 +1,38 @@
+# nano-ros RMW backend descriptor — RFC-0071 D1/D7, phase-347 W2.
+#
+# The backend declares itself here; the toolchain lowers it. Nothing in
+# `packages/core/**` or `packages/api/**` may name this backend (RFC-0071).
+#
+# W2 is INERT: `nros_rmw_dispatch()` and `resolve_rmw()` remain the live path,
+# and `check-rmw-descriptors` asserts this file agrees with them row for row.
+# W3 inverts that — the descriptor becomes the source and the closed lists go.
+[rmw]
+names = ["cyclonedds", "rmw-cyclonedds", "rmw-cyclonedds-cffi"]
+cargo_feature = "rmw-cyclonedds"
+cmake_value = "cyclonedds"
+c_define_token = "CYCLONEDDS"
+cffi_feature = "rmw-cyclonedds-cffi"
+
+# NOT special — just the only backend that fills the cargo-consumer x
+# cmake-provider cell (RFC-0071 D7). Its register symbol is C++, so there is no
+# rlib to bundle; a Rust-rooted consumer reaches it through the `-sys` bridge
+# crate whose build.rs drives `cmake::Config`.
+[rmw.provides.cmake]
+dir = "."
+target = "nros_rmw_cyclonedds"
+
+[rmw.provides.cargo]
+sys_crate = "cyclonedds-sys"
+
+[rmw.link]
+rlib_dep = ""                       # none — it is a C++ library, not an rlib
+extra_link_libs = ["nros_rmw_cyclonedds", "ddsc", "stdc++"]
+needs_cxx_linker = true
+
+# The per-message IDL descriptor step no other backend needs. W5 consumes this;
+# W2/W3 only record it.
+[rmw.codegen]
+per_message = "nros_rmw_cyclonedds_generate_from_msg"
+
+[rmw.capabilities]
+type-descriptors = "__cyclonedds-link"   # W4 replaces the RHS with a capability feature

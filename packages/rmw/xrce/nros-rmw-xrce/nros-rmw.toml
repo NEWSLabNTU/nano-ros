@@ -1,0 +1,31 @@
+# nano-ros RMW backend descriptor — RFC-0071 D1/D7, phase-347 W2.
+#
+# The backend declares itself here; the toolchain lowers it. Nothing in
+# `packages/core/**` or `packages/api/**` may name this backend (RFC-0071).
+#
+# W2 is INERT: `nros_rmw_dispatch()` and `resolve_rmw()` remain the live path,
+# and `check-rmw-descriptors` asserts this file agrees with them row for row.
+# W3 inverts that — the descriptor becomes the source and the closed lists go.
+[rmw]
+names = ["xrce", "rmw-xrce", "rmw-xrce-cffi"]
+cargo_feature = "rmw-xrce"
+cmake_value = "xrce"
+c_define_token = "XRCE"
+cffi_feature = "rmw-xrce-cffi"
+
+# The backend's own sources are C (`publisher.c`, `service.c`) built by CMake;
+# the rlib bundled into the umbrella is the cffi shim crate beside it. Both
+# provisions are real, which is why `provides` is a set and not a `driver` enum.
+[rmw.provides.cargo]
+crate = "nros-rmw-xrce-cffi"
+
+[rmw.provides.cmake]
+dir = "."
+target = "nros_rmw_xrce"
+
+[rmw.link]
+rlib_dep = "nros-rmw-xrce-cffi"
+extra_link_libs = []
+needs_cxx_linker = false
+
+[rmw.capabilities]

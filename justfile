@@ -409,7 +409,7 @@ check-fast: \
     check-c-fmt check-cpp-fmt check-python \
     check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
-    check-activate-shells check-build-root check-fixture-groups check-artifact-identity-budget \
+    check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-atomic-sync-writes \
     check-cmake-corrosion-prefix \
@@ -3338,6 +3338,18 @@ check-build-root:
 # perturbation exits non-zero too (the first draft's T2 passed with B1 reverted,
 # on a TOMLDecodeError). Each arm was confirmed to fail when its half of the gate
 # is disabled.
+# phase-347 W2 — the RMW descriptors (RFC-0071) agree with the live lowering.
+#
+# W2 adds `nros-rmw.toml` per backend and changes nothing else, so a descriptor
+# is a SECOND derivation of what `resolve_rmw()` already computes. This gate is
+# what makes it one: while both exist they must agree, and W3 may only delete
+# the closed lists once this has been green. Buildless — it reads the generated
+# `NanoRosRmwDispatch.cmake`, which is itself gated for staleness against the
+# resolver, so agreeing with it IS agreeing with the resolver.
+[private]
+check-rmw-descriptors:
+    @python3 scripts/check-rmw-descriptors.py
+
 [private]
 check-fixture-groups:
     @python3 scripts/check-fixture-groups.py

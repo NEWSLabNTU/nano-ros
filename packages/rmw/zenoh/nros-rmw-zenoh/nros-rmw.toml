@@ -1,0 +1,30 @@
+# nano-ros RMW backend descriptor — RFC-0071 D1/D7, phase-347 W2.
+#
+# The backend declares itself here; the toolchain lowers it. Nothing in
+# `packages/core/**` or `packages/api/**` may name this backend (RFC-0071).
+#
+# W2 is INERT: `nros_rmw_dispatch()` and `resolve_rmw()` remain the live path,
+# and `check-rmw-descriptors` asserts this file agrees with them row for row.
+# W3 inverts that — the descriptor becomes the source and the closed lists go.
+[rmw]
+names = ["zenoh", "rmw-zenoh", "rmw-zenoh-cffi"]
+cargo_feature = "rmw-zenoh"        # the BOARD crate's feature (RFC-0031, phase-248 C5b)
+cmake_value = "zenoh"
+c_define_token = "ZENOH"
+cffi_feature = "rmw-zenoh-cffi"
+
+# How this backend reaches a consumer's link. Pure Rust: an rlib bundled into
+# the C/C++ umbrella, nothing extra on the link line.
+[rmw.provides.cargo]
+crate = "nros-rmw-zenoh"
+
+[rmw.link]
+rlib_dep = "nros-rmw-zenoh"
+extra_link_libs = []
+needs_cxx_linker = false
+
+# Optional capabilities a user may select (RFC-0071 D6). The KEY is the
+# capability; the VALUE is this backend's own feature. Core never learns the
+# right-hand side.
+[rmw.capabilities]
+zero-copy-receive = "unstable-zenoh-api"   # -> zpico-sys -> Z_FEATURE_UNSTABLE_API

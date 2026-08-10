@@ -1,0 +1,35 @@
+# nano-ros RMW backend descriptor — RFC-0071 D1/D7, phase-347 W2.
+#
+# The backend declares itself here; the toolchain lowers it. Nothing in
+# `packages/core/**` or `packages/api/**` may name this backend (RFC-0071).
+#
+# W2 is INERT: `nros_rmw_dispatch()` and `resolve_rmw()` remain the live path,
+# and `check-rmw-descriptors` asserts this file agrees with them row for row.
+# W3 inverts that — the descriptor becomes the source and the closed lists go.
+[rmw]
+names = ["uorb", "rmw-uorb"]
+cargo_feature = "rmw-uorb"
+cmake_value = "uorb"
+c_define_token = "UORB"
+cffi_feature = "rmw-uorb-cffi"
+
+# uorb is NOT special (phase-347 W3). It populates the vtable and self-registers
+# like every other backend; what is unusual is its CONSUMER — PX4 links it
+# through the `integrations/px4/` shell rather than a nano-ros entry, which is a
+# property of the deployment, not of the backend.
+#
+# It is absent from `resolve_rmw()`/`nros_rmw_dispatch()` today while being a
+# first-class value in `NanoRosFeatureSet.cmake` and `nros-cpp/CMakeLists.txt` —
+# the three-disagreeing-lists bug W3 retires. `check-rmw-descriptors` therefore
+# EXEMPTS uorb from the agreement check and says why, rather than pretending the
+# dispatch has a row it does not.
+[rmw.provides.cmake]
+dir = "."
+target = "nros_rmw_uorb"
+
+[rmw.link]
+rlib_dep = ""
+extra_link_libs = ["nros_rmw_uorb"]
+needs_cxx_linker = true             # C++ port
+
+[rmw.capabilities]
