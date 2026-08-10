@@ -287,6 +287,29 @@ nros-build-helpers = { workspace = true }
 # `cargo build -p nros` resolves through — with `ffi-size-markers` requested at
 # that dep-site (issue 0495), so the probe's `--features=<resolved>` carries it.
 
+# phase-345 W3 fallout — the crate's OWN tests need `std` spelled.
+#
+# `default = []` is the contract: an embedded user picks `std`/`alloc`/platform
+# deliberately, and nothing is enabled behind their back. But it applies to this
+# crate's test build too, and there the "user" is `cargo test --workspace`, which
+# passes no features at all. With no `std`, `platform.rs` takes its `no_std` arm
+# and calls `nros_platform_clock_us` / `_sleep_us` — C ABI symbols supplied by a
+# platform port that no feature selected — so the lib test failed to LINK:
+#
+#     rust-lld: error: undefined symbol: nros_platform_clock_us
+#       >>> referenced by platform.rs:58 (nros_c::platform::get_time_ns)
+#
+# A self dev-dependency is how a crate enables its own features for tests only:
+# it leaves the published feature set untouched (a consumer still gets
+# `default = []`) while making the test target hosted, which is what these tests
+# are. This is NOT a default in disguise — `cargo build -p nros-c` is unchanged.
+#
+# It went unnoticed because every check in phase-345 named its features
+# explicitly (`std,rmw-cffi,platform-posix,ros-humble`, `platform-threadx,alloc`,
+# …); the featureless configuration is the one nobody built.
+[dev-dependencies]
+nros-c = { path = ".", features = ["std"] }
+
 [package.metadata.docs.rs]
 all-features = true
 

@@ -1690,6 +1690,7 @@ dependencies = [
  "critical-section",
  "nros",
  "nros-build-helpers",
+ "nros-c",
  "nros-core",
  "nros-log",
  "nros-node",
