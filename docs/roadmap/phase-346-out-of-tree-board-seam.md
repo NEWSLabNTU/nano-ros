@@ -1,7 +1,12 @@
 # Phase 346 — The RFC-0064 seam, actually reachable from out of tree
 
-**Status (2026-08-10). OPEN — nothing landed; the measurements below are done
-and reproduce on this tree.** Two issues, one claim: RFC-0064 says a board
+**Status (2026-08-10). OPEN — no code landed; the measurements below are done
+and reproduce on this tree. W1's blocking design question is ANSWERED by a
+spike** (see "W1 SPIKE RESULT"): the framework IS resolvable for an out-of-tree
+board, but the resolution moves out of macro expansion and into the Entry's
+build script, because expansion-time env and file reads are invisible to cargo's
+fingerprint. Two of the four routes tried are rejected on measurement.
+Two issues, one claim: RFC-0064 says a board
 arrives through an integration shell that nano-ros never sees, and today that
 path is blocked in two independent places — one silently (issue 0415), one
 loudly (issue 0432). Neither touches the build-cache program, so this phase runs
@@ -152,15 +157,95 @@ W3 is therefore not "invent a fixture" — it is deleting that carve-out: one mo
 
 ## 3. Work items
 
+### W1 SPIKE RESULT (2026-08-10) — resolvable, but NOT at expansion
+
+§6's first open question is answered: **yes, an out-of-tree board's framework is
+resolvable — but the resolution belongs in the Entry's BUILD SCRIPT, not in the
+macro's expansion.** Four routes were built and run in a throwaway 6-crate
+workspace; the table is measured, not reasoned.
+
+| route | mechanism | from leaf CWD | from workspace root | verdict |
+| --- | --- | --- | --- | --- |
+| **M0** | `nros sync` writes `[env] NROS_BOARD_FRAMEWORK` into the leaf's committed `.cargo/nros-board.toml`; expansion reads the var | Ok | **UNAVAILABLE** | **rejected** |
+| **M1** | expansion parses the Entry manifest, follows the board dep, reads its `[package.metadata.nros.board] framework` | Ok | Ok | partial — see below |
+| **M2** | board declares `links`, its build script emits `cargo::metadata=framework=…`, Entry's build script re-emits it as `rustc-env` | Ok | Ok | **rejected** |
+| **M3** | Entry's build script does M1's resolution, declares `rerun-if-changed` on every file it reads, emits `cargo::rustc-env=NROS_BOARD_FRAMEWORK` | Ok | Ok | **adopt** |
+
+**Why M0 is rejected, and it is the most tempting one.** The leaf's
+`.cargo/nros-board.toml` is already a committed, `nros sync`-generated projection
+of the board descriptor (phase-341), present in 33 leaves, with a generator and a
+gate already built — adding one `[env]` row looks free. It is not: cargo
+discovers config from the **current directory upward, not per package**, so the
+row vanishes when cargo is invoked from a workspace root, and cargo does not
+fingerprint config files, so the stale value survives until something else forces
+a rebuild. Both were observed: the same binary printed `Ok(embassy)` from the
+root (cached) and `UNAVAILABLE` after a forced rebuild. **A route that silently
+yields "no framework" is 0415 again through a new door** — the defect being fixed
+is precisely a silent fall-through to `OwnedSpin`.
+
+**Why M2 is rejected.** `links` is exclusive per dependency graph, and board
+crates depend on OTHER board crates — `nros-board-threadx` pulls 5,
+`nros-board-threadx-qemu-riscv64` 4, `nros-board-nuttx-qemu` 3. A blanket `links`
+on board crates hard-errors on every real graph. Restricting `links` to
+entry-facing boards works only while no entry-facing board depends on another
+entry-facing board, which is an unstated invariant needing its own gate — cost
+with no benefit over M3.
+
+**Why M1 is only partial.** It works, but the Entry names its board **by bare
+version** in 39 of 60 leaves (`nros-board-x = { version = "*" }`), with the real
+location in a `[patch.crates-io]` row inline in the leaf's own
+`.cargo/config.toml`. So expansion would have to read cargo config — the
+unfingerprinted, CWD-discovered file M0 was rejected for. A further **21 of 60**
+(the `nros-board-linux` native leaves) have no leaf config at all and resolve
+through the repo-root config, so a parent walk is needed too.
+
+**M3 keeps M1's resolution and fixes its invalidation.** A build script may
+declare `rerun-if-changed` on every file it reads, which is the edge neither M0
+nor expansion-time reading can create: proc-macro file reads and env reads are
+invisible to cargo's fingerprint. Note the one nuance the isolation test
+exposed — reading a *dependency's `Cargo.toml`* is already safe, because that
+file is fingerprinted through the dependency edge; it is the **cargo config**
+reads that need the explicit `rerun-if-changed`.
+
+**Two constraints hold for every route, both measured rather than assumed:**
+
+* **The board must be a DIRECT dependency of the Entry.** Built the transitive
+  case (entry → lib → board) and both M1 and M2 failed on it — M2 silently. All
+  60 in-tree leaves dep their board directly, so this is a constraint to
+  *document and gate*, not a blocker.
+* **Entries need a build script, and 9 of 92 have one.** That is M3's whole cost.
+  `nros sync` already generates committed per-leaf files (`.cargo/nros-board.toml`
+  in 33 leaves), so it is the natural generator — and phase-341 already built the
+  "generate it, commit it, gate the drift" machinery this would reuse.
+
+**Amendment to W1 below:** step 2 changes from "read the metadata at
+macro-expansion time" to "resolve in the Entry's build script and hand the answer
+to expansion as `NROS_BOARD_FRAMEWORK`". The macro still owns the emit shape and
+the hard error; it no longer owns the resolution. Everything else in W1 stands.
+
+Testbed: `scratchpad/spike` (6 crates, throwaway) — board with `links` +
+descriptor metadata, proc-macro probing all four routes, three entry shapes
+(direct/transitive/build-script), run from both CWDs with forced rebuilds.
+
 ### W1 — the framework mapping has one SSoT, and an unknown framework is an ERROR
 
 - [ ] Move the deploy→`Framework` mapping into **`nros-orchestration-ir`**,
       beside `board_path_for`. Both existing readers delegate to it: the macro's
       `framework_for` and `check_workspace.rs`'s `read_board_framework`.
 - [ ] Resolve the board crate for an out-of-tree deploy through the **Entry
-      package's board dependency**, read `[package.metadata.nros.board]
-      framework` from that crate's manifest at expansion, and let the metadata
-      answer win when both it and the in-tree table have one.
+      package's board dependency** and read `[package.metadata.nros.board]
+      framework` from that crate's manifest — **in the Entry's build script**
+      (route M3, see the spike above), which emits
+      `cargo::rustc-env=NROS_BOARD_FRAMEWORK` plus `rerun-if-changed` on every
+      file it reads. Expansion consumes the variable; the metadata answer wins
+      when both it and the in-tree table have one.
+- [ ] `nros sync` generates that build script into the leaf, the way it already
+      generates `.cargo/nros-board.toml` (phase-341's generate-commit-gate
+      machinery, reused rather than re-invented). 9 of 92 leaves have a build
+      script today.
+- [ ] Gate that the board is a DIRECT dependency of the Entry — every route
+      fails on a transitive board, M2 silently. True for all 60 leaves today,
+      which is exactly when an invariant is cheap to lock in.
 - [ ] **A `framework = "<unknown string>"` must be a compile error naming the
       accepted values**, not a fall-through to `OwnedSpin`. The current
       fall-through is what makes 0415 silent; keeping it while adding the
@@ -240,12 +325,17 @@ exercised them.
 
 ## 6. What is NOT verified yet
 
-* **The board crate's filesystem path for an out-of-tree deploy** — W1's second
-  checkbox is the unbuilt half. The Entry's board dependency is the proposed
-  route, but whether it is resolvable from the macro's expansion context
-  (manifest dir + `toml`, with no cargo metadata call) has not been demonstrated.
-  If it is not, that is the phase's real finding and W1 needs a different shape,
-  not a wider table.
+* ~~**The board crate's filesystem path for an out-of-tree deploy.**~~
+  **ANSWERED 2026-08-10 by the W1 spike above** — resolvable, but not from the
+  macro's expansion context: the resolution moves into the Entry's build script.
+  The phase's real finding was that expansion-time reads (of env or of files) are
+  invisible to cargo's fingerprint, so the obvious route silently serves a stale
+  or empty answer, which is the very defect 0415 is.
+* **Whether `[patch.crates-io]` preserves the direct dependency edge** the M3
+  build script walks. The spike modelled the path-dep shape; 39 of 60 leaves use
+  a bare version plus an inline patch row. Patching replaces a package's SOURCE
+  and not the graph edge, so the walk should hold — but it was not run, and it is
+  the majority shape.
 * **The west project name for the `lang/rust` module** — `patches.yml`'s `module:`
   key takes a west project name, and §2.2 confirms only that the scripts patch
   the `modules/lang/rust` *directory*. Read the manifest before writing the entry.
