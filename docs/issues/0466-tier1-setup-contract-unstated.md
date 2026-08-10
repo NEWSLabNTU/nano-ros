@@ -221,3 +221,66 @@ docstring promising buildless and source-free while two of its gates needed
 neither property to hold — and it passed locally the whole time, for the wrong
 reason. A `git worktree add --detach` into a scratch dir reproduces CI's
 condition in seconds and is now named in the `check-fast` comment.
+
+## Reproduced again 2026-08-11 — five blockers, and the batched gate caught ONE
+
+The precondition gate this issue asked for (fix 1) now exists and works:
+`just check-tier-preconditions` at the head of `ci` reported the stale CLI with
+its ordered remedy, in one shot. It is a real improvement and it is not enough.
+A tier-1 run on a long-lived provisioned tree still stopped **five** times, and
+four of the five were invisible until the previous cleared:
+
+| # | where it stopped | what it actually was | pre-checkable? |
+| --- | --- | --- | --- |
+| 1 | `check-tier-preconditions` | in-tree CLI stale after a rebase | **yes — caught** |
+| 2 | `check-workspace-build-output` | a Jul-14 `target/` inside `examples/workspaces/mixed/src/rust_heartbeat_pkg` | yes, not checked |
+| 3 | `check-artifact-identity-budget` | 1.9 GB of Aug-7 rlibs under `mixed/build-workspace-fixtures` | yes, not checked |
+| 4 | workspace fixture LINK | corrosion **0.5.1** still provisioned, so #0493's landed 0.6.1 fix was inert here | yes, not checked |
+| 5 | `test-all`, 101 failures | native fixtures never built — every failure was `Test fixture binary not prebuilt` | yes, not checked |
+
+Nothing exotic again. Clean tree, SDKs provisioned, ROS sourced. The pattern this
+issue named is intact: the contract is ordered, and each item is discoverable up
+front but discovered last.
+
+### Three findings worth acting on
+
+**(a) The gate checks the CONTRACT, not the TREE'S HISTORY.** Items 2 and 3 are
+residue a long-lived checkout accumulates; item 4 is a provisioned tool whose
+version drifted behind its pin. All three are cheap to detect before a run — the
+gates for 2 and 3 already exist and could simply run inside the precondition
+batch, and 4 wants a `nros setup --tool <t> --check` that compares installed
+against pinned. A tree that has been building for a month is the normal case, not
+the exception.
+
+**(b) A landed fix is not an applied fix.** #0493 was verified end-to-end on
+2026-08-10 by bumping corrosion 0.5.1 → 0.6.1; on this tree the duplicate-symbol
+link failure reproduced in full on 2026-08-11 because only 0.5.1-nros1 was ever
+provisioned here. Its own remedy section says so ("provisioning alone is not
+enough… the stale build dirs carry the old topology"), which is precisely the
+knowledge a precondition check should carry instead of a prose paragraph.
+
+**(c) NEW DEFECT — the fixture freshness gate is stamp-based where the tests are
+existence-based.** In the run that produced the 101 failures,
+`check-fixtures-stale: scope=native` **PASSED** while
+`build/fixtures-cargo/linux/nros-relwithdebinfo/talker` did not exist; the tests
+then failed one-by-one with `Test fixture binary not prebuilt: … Run
+just build-test-fixtures first`. A gate that clears on a coverage stamp while the
+artifacts it vouches for are absent is CLAUDE.md's issue-0196 rule inverted:
+build-side probes and test-side gates must watch the same inputs. This one should
+assert the artifacts exist, not merely that the lane was once stamped.
+
+### Two others, already-known classes rather than new ones
+
+- `check-workspace-fmt` failed on `packages/api/nros/src/time.rs`, which reached
+  main un-nightly-formatted in `6f9881aec` — this issue's item 8 ("main is red")
+  recurring. Another session pushed the identical fix concurrently.
+- Satisfying item 3 by deleting the tree the gate named then broke
+  `_check-fixtures-stale`, whose `.inputsig` stamps live in **that same
+  directory**. Two gates with opposing demands on one path: clearing one costs a
+  rebuild of the other's inputs. Worth a note in whichever gate is cheaper to
+  teach about the other.
+
+Endpoint, for calibration: after all five, `just ci` runs to completion. The only
+failures are five of ~1359 tests, and the four retested solo all pass — the
+documented sweep-under-load flake, with `large_msg::test_xrce_e2e_integrity`
+being #0470 exactly as filed.

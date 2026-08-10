@@ -938,7 +938,7 @@ asking `nros new` for a platform it has refused since 2026-07-28, only became vi
 two cleared. That sequence is the issue's own thesis observed rather than argued: a permanent red does
 not fail, it hides its neighbours. Still open: proposal (1), one precondition gate reporting every
 unmet item at once — worth more than first argued, since `just` stops at the first failed dependency
-and 25 gates sat behind `check-test-targets` alone. See `0466-*`. (2026-08-07)
+and 25 gates sat behind `check-test-targets` alone. See `0466-*`. (2026-08-07) **REPRODUCED 2026-08-11 with the batched gate in place:** it caught 1 of 5 — the other four were month-old build residue (2 gates), a corrosion pin provisioned at 0.5.1 so #0493's landed 0.6.1 fix was INERT here, and never-built native fixtures surfacing as 101 `not prebuilt` test failures. Adds a NEW defect: `check-fixtures-stale` passed on a coverage stamp while the artifacts were absent (issue-0196 rule, inverted), plus the note that clearing the artifact-identity residue deletes the `.inputsig` stamps `_check-fixtures-stale` reads — two gates, one directory, opposing demands.
 
 Recently resolved (2026-08-06): **#458** — `nros_cpp_executor_open_over_session` never stamped the `CppContext`
 handle tag. The storage is `MaybeUninit`, so `cpp_ctx_checked` read garbage and every entry point
