@@ -4,11 +4,27 @@
 **Informed by:** the 2026-08-03 jobs audit (fifo pools, NVMe relocation, the
 sccache install) and phase-330 W3/W7 (models into the build dir).
 
-**Status (2026-08-06). ALL of W1 is ANSWERED** — W1.a/W1.b/W1.d by phase-340,
-which re-derived those questions before noticing this doc had already framed
-them, and W1.c measured here. **W2 is open and is now the critical path**: it is
-both the remaining value in this phase and the precondition for W1.c's win.
-W3.a is decided.
+**Status (2026-08-10). COMPLETE — archived.** Every work item is closed, and
+the closures are not all "landed", which is the point:
+
+* **W1** — ANSWERED (W1.a/b/d by phase-340, W1.c measured here).
+* **W2.a** — LANDED as [RFC-0070](../design/0070-build-cache-layout.md), whose
+  R1 was later AMENDED (2026-08-10) to be scoped by context: `examples/**`
+  copy-out leaves keep the Cargo/CMake convention; only the nano-ros workspace
+  takes the colcon-style shared `build/`.
+* **W2.b** — COMPLETE. Zero rooted cache literals remain, and that is CHECKABLE:
+  `git grep 'repo_root/build/|project_root().join("build/'` over `scripts/` and
+  `nros-tests/src/` returns only the doc comment naming the pattern it replaced.
+* **W2.c** — WITHDRAWN. It was landed and then reverted the same day: the 391
+  per-leaf `.gitignore` files ARE the copy-out contract, not sprawl, and the
+  workspace half was already satisfied by `/build/` at `.gitignore:23`.
+* **W3.a/b/c** — ABSORBED into phase-340 (its W2 / W3 / W7) on 2026-08-07,
+  because two spellings of one mechanism is the drift RFC-0070 R3 forbids.
+
+What this phase actually produced is the RULE and the derivation everything else
+now keys on. The identity work it implied lives in phase-340; the cmake half in
+phase-344, which measured that relocation frees ZERO bytes and withdrew its own
+move waves as a result.
 
 W1 asked three things and phase-340 measured all three. The overlap is real and
 was not deliberate: phase-340 W2's "findings" F1/F2/F3 restate W1.d, W1.a and

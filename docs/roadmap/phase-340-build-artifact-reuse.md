@@ -1514,7 +1514,11 @@ W2/W3 implementation.**
 
 #### Work items
 
-- [ ] **W2.a** Extend the phase-226.D resolver so a manifest-authored
+- [x] **W2.a** DONE 2026-08-08 — the group KEY was split from ELIGIBILITY, so an
+      authored `--target-dir` names a group instead of opting the row out. Landed
+      INERT (0 of 20 qemu-arm-baremetal rows author one) per RFC-0070's
+      "paths last"; B3 then migrated `linux` and wave 2 four more platforms.
+      Original text: Extend the phase-226.D resolver so a manifest-authored
       `--target-dir` names a GROUP rather than opting the row out, for rows whose
       identity already matches. No new mechanism; widen the existing key.
 
@@ -1664,7 +1668,12 @@ W2/W3 implementation.**
       run in BOTH directions** — collisions present (must not claim stale) and one
       genuinely fixed (must claim stale). This defect existed because the arm had
       only ever been exercised in one of them.
-- [ ] **W2.b — NOT THE MECHANISM. Superseded by "The mechanism, decided"
+- [x] **W2.b — NOT THE MECHANISM, and now formally CLOSED (2026-08-10).**
+      The umbrella is IMPOSSIBLE as specified, not merely unattractive: 22/22
+      example leaves carry `[workspace]` (that is how RFC-0026's copy-out promise
+      is kept) and cargo hard-errors `multiple workspace roots in the same
+      workspace`. Arm B captures 100 % of the disk win at 1/9 the complexity.
+      Original heading: NOT THE MECHANISM. Superseded by "The mechanism, decided"
       above; kept for the shape analysis, which stands.** The umbrella works and
       is the fastest of the three arms, but it buys zero bytes over arm B and
       costs a generated-state subsystem. Do not build it to close W2.
@@ -1749,7 +1758,11 @@ W2/W3 implementation.**
         must resolve even when the feature is off. That is a second spelling of
         `nros sync`'s output, and RFC-0070 R3 exists to forbid exactly that. It
         is the largest of C's costs and it was recorded as a non-cost.
-- [ ] **W2.d** Delete the manifest `target_dir` / `build_subdir` column (absorbed
+- [ ] **W2.d — STILL OPEN, and the reason is now sharper.** The column is read
+      as a PREDICATE, not only as a path, and phase-344 W2 showed the predicate
+      itself was language-shaped when it needed to be builder-shaped. Deleting
+      the column means first giving every consumer a coordinate-derived answer.
+      Original text: Delete the manifest `target_dir` / `build_subdir` column (absorbed
       from phase-334 W2.b, work-order item 5). Not done here: the column is still
       read as a **predicate**, not only as a path. `fixtures-manifest.py`'s
       `--core-only` (issue #29) treats "authored `target_dir`" as "is this a
@@ -1761,7 +1774,10 @@ W2/W3 implementation.**
       mechanical substitution. The other consumers are `fixture-inventory.py` and
       the `binaries/mod.rs` resolvers that spell `target-tls` / `target-fixtures`
       / `target-large-buf` directly, and those move only when the paths do.
-- [ ] **W2.c** Measure W2.b against the status quo on disk AND wall-clock,
+- [x] **W2.c** DONE 2026-08-08, and it is what killed W2.b: three arms over 37
+      leaves gave separate-dirs 9.70 GiB, shared-dir 455 MiB, umbrella 455 MiB —
+      arm B and the umbrella agree to 8 KiB, so the deciding criterion does not
+      distinguish them. Original text: Measure W2.b against the status quo,
       alternating reps per the W1 method.
 
 **~~Rejected design, recorded so it is not re-proposed~~ — UN-rejected
