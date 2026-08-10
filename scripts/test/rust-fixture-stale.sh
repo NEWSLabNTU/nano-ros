@@ -55,11 +55,38 @@ if [ -n "$tdir_flag" ]; then
     cargo_args="$(nros_fixture_strip_authored_target_dir "$cargo_args")"
 fi
 
+# issue 0466 — a probe build that FAILS must not read as fresh.
+#
+# This used to be `( cargo build … 2>/dev/null ) | grep -q '"fresh":false'`,
+# which keeps only grep's status: cargo's exit code was discarded and its errors
+# went to /dev/null. So a fixture that could not compile at all printed no
+# `"fresh":false` line and was reported FRESH — the gate cleared having verified
+# nothing, the artifact was never produced, and the failure resurfaced later as
+# ~100 tests panicking with "Test fixture binary not prebuilt". A gate that
+# passes because its probe broke is worse than no gate, because it launders the
+# lane green (the same laundering the SCOPE handling in check-fixtures-stale.sh
+# exists to prevent, one layer down).
+#
+# So capture the status, and report the three outcomes distinctly: FRESH (say
+# nothing), stale-and-now-rebuilt (the dir, as before — cargo self-healed it),
+# and could-not-build (a `FAILED\t` record the caller escalates to an ERROR).
+# Keep cargo's own first error line: it is the difference between "you forgot
+# `nros sync`" and a real compile break, and re-running the probe by hand to
+# find out costs minutes.
+#
 # $cargo_args / $prof_args / $tdir_flag are intentionally word-split into cargo
 # flags; $envstr ("KEY=VAL ...") is exported into the build subshell when present.
 # shellcheck disable=SC2086
-if ( cd "$dir"; [ -n "$envstr" ] && export $envstr; \
-        cargo build $prof_args $cargo_args $tdir_flag --message-format=json --quiet 2>/dev/null ) \
-        | grep -q '"fresh":false'; then
+build_out="$( cd "$dir"; [ -n "$envstr" ] && export $envstr; \
+        cargo build $prof_args $cargo_args $tdir_flag --message-format=json --quiet 2>&1 )"
+build_rc=$?
+
+if [ "$build_rc" -ne 0 ]; then
+    # `--message-format=json` puts diagnostics on stdout as JSON too, so prefer a
+    # bare `error[E...]`/`error:` line and fall back to naming the exit code.
+    reason="$(printf '%s\n' "$build_out" | grep -m1 -E '^error' || true)"
+    printf 'FAILED\t%s\t%s\n' "$dir${cargo_args:+ ($cargo_args)}" \
+        "${reason:-cargo exited $build_rc}"
+elif printf '%s\n' "$build_out" | grep -q '"fresh":false'; then
     echo "$dir${cargo_args:+ ($cargo_args)}"
 fi

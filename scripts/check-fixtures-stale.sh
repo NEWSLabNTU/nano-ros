@@ -109,10 +109,37 @@ else
         [ -n "$out" ] && rust_stale+=("$out")
     done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust "${scope_args[@]}")
 fi
-if [ ${#rust_stale[@]} -gt 0 ]; then
-    echo "WARNING: ${#rust_stale[@]} rust fixture(s) were STALE and have now been rebuilt by cargo:" >&2
-    printf '  %s\n' "${rust_stale[@]}" >&2
+# issue 0466 — split the probe's two outcomes. "Stale, and cargo rebuilt it" is a
+# WARNING because the artifact now exists; "could not build" is an ERROR, because
+# nothing was verified and no artifact was produced. Folding the second into the
+# first is how a green lane preceded ~100 tests panicking with "Test fixture
+# binary not prebuilt": the probe swallowed cargo's failure, so the gate reported
+# self-heal for a fixture that had never compiled.
+rust_failed=()
+rust_rebuilt=()
+for line in ${rust_stale[@]+"${rust_stale[@]}"}; do
+    case "$line" in
+        FAILED$'\t'*) rust_failed+=("${line#FAILED$'\t'}") ;;
+        *)            rust_rebuilt+=("$line") ;;
+    esac
+done
+
+if [ ${#rust_rebuilt[@]} -gt 0 ]; then
+    echo "WARNING: ${#rust_rebuilt[@]} rust fixture(s) were STALE and have now been rebuilt by cargo:" >&2
+    printf '  %s\n' "${rust_rebuilt[@]}" >&2
     echo "  (cargo incremental self-heal; bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+fi
+
+if [ ${#rust_failed[@]} -gt 0 ]; then
+    echo "ERROR: ${#rust_failed[@]} rust fixture(s) could NOT be built by the staleness probe:" >&2
+    printf '  %s\n' "${rust_failed[@]}" | sed 's/\t/\n      /' >&2
+    echo "  These are NOT fresh — the probe never verified them and no artifact was" >&2
+    echo "  produced, so the tests that consume them will fail with" >&2
+    echo "  \"Test fixture binary not prebuilt\". Build the lane before testing:" >&2
+    echo "      source ./activate.sh && just build-test-fixtures lane=<the lane you will test>" >&2
+    echo "  A leaf that needs codegen also needs \`nros sync\` first (its generated/" >&2
+    echo "  tree is not in a fresh clone). Bypass with  NROS_SKIP_FIXTURE_CHECK=1 ." >&2
+    exit 1
 fi
 
 # issue 0030 — gate the workspace-fixture preflight on cross-toolchain presence.
