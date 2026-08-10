@@ -5,7 +5,7 @@ title: "Leaf `[env] relative = true` values are per-leaf STRINGS, so siblings in
 status: open
 type: bug
 area: build
-related: [phase-340, rfc-0070, issue-0490, rfc-0048]
+related: [phase-340, phase-345, rfc-0070, issue-0490, issue-0451, rfc-0048]
 ---
 
 ## Symptom

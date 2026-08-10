@@ -4,7 +4,7 @@ title: "`nros::main!`'s framework table is deploy-keyed, so an out-of-tree RTIC/
 status: open
 type: bug
 area: codegen
-related: [phase-337, rfc-0064, issue-0248]
+related: [phase-337, phase-346, rfc-0064, issue-0248]
 ---
 
 ## Symptom

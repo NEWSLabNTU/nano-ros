@@ -4,7 +4,7 @@ title: "Embedded SDK env vars are set only by the `just` recipes, so a bare carg
 status: open
 type: bug
 area: build
-related: [issue-0407, issue-0420, issue-0431, phase-338]
+related: [issue-0407, issue-0420, issue-0431, issue-0491, phase-338, phase-345]
 ---
 
 ## Symptom

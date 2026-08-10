@@ -503,7 +503,27 @@ already written to say it should be deleted rather than extended.
 class (do not duplicate); issue 0472's 13 unguarded opaque macros; the ~13 real
 `ci-matrix` failures, several confirmed flakes.
 
-Order: P1 and P2 in parallel -> P3 -> P4, with P5 filling gaps.
+**P6 — validation: run issue 0200's timing campaign, AFTER item 5.** 0200 has sat
+blocked since phase-226 on "needs a runner with ≥200 GiB scratch", a requirement
+that is a consequence of the duplication this phase removes. phase-343 W1 already
+recovered 63.1 GiB and B3 took `linux` from 26796 MB to 5226 MB; item 5's measured
+prize is another −84.9 %. **Re-derive 0200's disk requirement against the
+post-item-5 tree before treating it as blocked** — it may simply run on the
+maintainer host now. It belongs after item 5, not before: item 5 changes both
+quantities the campaign measures, so a pre-item-5 number is obsolete on arrival.
+0200's own follow-up candidate ("shared Corrosion `--target-dir` per role group")
+is this phase's W2 and is already decided; the issue should stop carrying it.
+
+Order: P1 and P2 in parallel -> P3 -> P4 -> P6, with P5 filling gaps.
+
+**Note for P4.** The per-leaf `.gitignore` files that `8f5cb2d18` restored carry
+more than build DIRECTORIES: the NuttX leaves' `/.built`, `/.depend`,
+`/Make.dep`, `/src/*.o` cover output the apps build writes **in place**, beside
+the sources. That is a FILE-grained R1 violation no coordinate can express and no
+`--target-dir` can redirect (issue 0488 residue 4), so those lines outlive P4 —
+they die only when the NuttX apps build moves out of tree. Deleting a leaf's
+whole ignore file on P4's schedule un-ignores 60 files across 12 leaves; that
+regression was observed in the window between `53681ecbc` and `8f5cb2d18`.
 
 **Carry this rule into P3:** re-measure before building. This phase refuted FOUR
 documented premises that way — F3's "net loss", the umbrella workspace, the

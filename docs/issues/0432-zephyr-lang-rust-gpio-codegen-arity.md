@@ -4,7 +4,7 @@ title: "zephyr-lang-rust's DT codegen emits a 5-arg `GpioPin::new` against a 6-a
 status: open
 type: bug
 area: platform-zephyr
-related: [phase-337, rfc-0064]
+related: [phase-337, phase-346, rfc-0064]
 ---
 
 ## Symptom

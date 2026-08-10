@@ -4,7 +4,7 @@ title: "Embedded builds regenerate the cbindgen headers with different output, d
 status: open
 type: bug
 area: build
-related: [phase-338]
+related: [phase-338, phase-345]
 ---
 
 ## Symptom

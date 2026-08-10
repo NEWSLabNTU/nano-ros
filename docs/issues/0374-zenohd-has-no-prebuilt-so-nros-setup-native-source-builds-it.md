@@ -4,7 +4,7 @@ title: "`nros setup native` source-builds zenohd and pulls a second rust toolcha
 status: open
 type: tech-debt
 area: build
-related: [rfc-0014, issue-0204, issue-0368, issue-0373]
+related: [rfc-0014, issue-0204, issue-0368, issue-0373, phase-345]
 ---
 
 # `nros setup native` source-builds zenohd — the book promises prebuilt
