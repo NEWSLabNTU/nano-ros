@@ -410,7 +410,8 @@ check-fast: \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
-    check-atomic-sync-writes
+    check-atomic-sync-writes \
+    check-cmake-corrosion-prefix
     @echo "Fast checks passed!"
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
@@ -3333,6 +3334,25 @@ check-example-leaf-target-dirs:
 [private]
 check-build-rs-rerun-paths:
     @python3 scripts/check-build-rs-rerun-paths.py
+
+# issue 0493 — every cmake CONFIGURE must route through the one
+# `CMAKE_PREFIX_PATH` derivation (`scripts/build/cmake-prefix.sh`), or say in
+# writing why it does not.
+#
+# The prefix decides whether `find_package(Corrosion)` resolves the SDK install
+# or falls through to FetchContent — i.e. WHICH CORROSION VERSION, and that
+# decides the cargo target-dir topology: `< 0.6.0` names the dir with a
+# constant, so two cargo workspace roots configured into one binary dir share
+# one `deps/` and their `#[no_mangle]` exports collide at link; `>= 0.6.0`
+# hashes the workspace manifest path. Exactly one of three builders had the
+# wiring, so ONE host with ONE install produced BOTH topologies — which is how
+# issue 0493 and phase-340/344 measured contradictory trees and both were right.
+#
+# Buildless: reads tracked shell/just files. Self-tests its classifier in both
+# directions on every run.
+[private]
+check-cmake-corrosion-prefix:
+    @python3 scripts/check-cmake-corrosion-prefix.py
 
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single

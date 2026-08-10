@@ -110,6 +110,8 @@ build-rmw:
     # Pass the .msg → IDL converter as an absolute path so the
     # project never has to assume the layout above its own dir
     # (CLAUDE.md "CMake Path Convention").
+    # nros-cmake-prefix-exempt: the CycloneDDS RMW's own C/C++ project — it
+    # builds no Rust and never calls corrosion_import_crate().
     cmake -S "$PROJ" -B "$PROJ/build" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON \

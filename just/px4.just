@@ -187,6 +187,8 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # profile-literal-ok: symbol fixture: same PX4 SITL link as above.
     # The POSIX platform archive nros_px4_add_module links (its guard names this
     # exact command when it is missing).
+    # nros-cmake-prefix-exempt: the POSIX platform's C archive — no Rust target
+    # in that project, so no Corrosion to resolve.
     cmake -S "$ROOT/packages/platform/nros-platform-posix" -B "$ROOT/build/nros-platform-posix" >/dev/null
     cmake --build "$ROOT/build/nros-platform-posix" >/dev/null
 

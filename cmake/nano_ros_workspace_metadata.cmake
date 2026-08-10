@@ -115,8 +115,13 @@ function(nano_ros_workspace_metadata)
     endif()
 
     if(_have_rust)
-        find_package(Corrosion QUIET)
-        if(NOT Corrosion_FOUND AND NOT COMMAND corrosion_import_crate)
+        # issue 0493 — route through the ONE resolver rather than a bare
+        # `find_package`: this site used to answer "not found" on a host whose
+        # SDK Corrosion was installed but under a layout the search did not
+        # cover, and it never said which copy it did resolve.
+        include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosion.cmake")
+        nros_resolve_corrosion()
+        if(NOT COMMAND corrosion_import_crate)
             message(STATUS
                 "nano_ros_workspace_metadata: plan contains Rust component(s); "
                 "Corrosion not found — user must FetchContent/find_package "

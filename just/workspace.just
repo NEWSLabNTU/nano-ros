@@ -179,6 +179,8 @@ install-corrosion:
     echo "[corrosion] cloning $want..."
     git clone --depth=1 --branch "$want" https://github.com/corrosion-rs/corrosion.git "$tmp/src"
     echo "[corrosion] configuring..."
+    # nros-cmake-prefix-exempt: this IS the Corrosion build — putting an
+    # installed Corrosion on its prefix path would be circular.
     cmake -S "$tmp/src" -B "$tmp/build" \
         -DCMAKE_INSTALL_PREFIX="$prefix" \
         -DCORROSION_BUILD_TESTS=OFF >/dev/null

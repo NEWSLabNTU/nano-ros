@@ -20,6 +20,13 @@ cd "$repo_root"
 # shellcheck source=scripts/build/cargo.sh
 source "$repo_root/scripts/build/cargo.sh"
 
+# issue 0493 — the ONE CMAKE_PREFIX_PATH derivation (SDK Corrosion). This script
+# is where the wiring used to live INLINE, and being the only builder that had
+# it is what made one host produce two different cargo target-dir topologies.
+# shellcheck source=scripts/build/cmake-prefix.sh
+source "$repo_root/scripts/build/cmake-prefix.sh"
+nros_cmake_export_prefix_path
+
 # RFC-0070 R1/R3 (phase-334 W2.b step 2) — the compile-check family's roots come
 # from the ONE derivation, not from a literal. `NROS_REPO_ROOT` is pinned to THIS
 # script's own repo root so the emitted path is byte-identical to the
@@ -189,21 +196,13 @@ build_cmake_fixture() {
     echo "== cmake-fixture: $id =="
     rm -rf "$bld"
     mkdir -p "$bld"
-    # Put the `nros setup`-provisioned Corrosion (source-built into
-    # `~/.nros/sdk/corrosion/<ver>/`) on CMAKE_PREFIX_PATH so a fixture's
-    # `find_package(Corrosion)` resolves it. Harmless for fixtures that only
-    # `find_package(Corrosion QUIET)` (no Rust import); required by the
-    # threadx-bringup fixture, whose codegen helper imports the Rust component
-    # crates via Corrosion when present. cmake's config search walks
-    # `<prefix>/<name>*/...`, so the un-versioned parent prefix suffices.
-    local prefix_path="${CMAKE_PREFIX_PATH:-}"
-    if [ -d "$HOME/.nros/sdk/corrosion" ]; then
-        prefix_path="$HOME/.nros/sdk/corrosion${prefix_path:+:$prefix_path}"
-    fi
+    # The SDK-Corrosion prefix was derived HERE, inline, and in no other builder
+    # — see `scripts/build/cmake-prefix.sh` for what that cost (issue 0493). It
+    # is exported once at script scope now; this configure inherits it.
+    #
     # Pass both nros cmake vars — different templates name it differently
     # (NROS_CLI_BIN vs NROS_BIN); the unused one is harmless.
-    CMAKE_PREFIX_PATH="$prefix_path" \
-        cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN"
+    cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN"
     # Issue 0466 — how a cmake fixture gets its parallelism.
     #
     # These templates configure with the DEFAULT generator ("Unix Makefiles"),
@@ -227,9 +226,9 @@ build_cmake_fixture() {
     # Outside a pool there is no budget to join, so ask for a bounded width
     # rather than the unlimited bare `-j`.
     if [ -n "${MAKEFLAGS:-}" ] && case "${MAKEFLAGS:-}" in *jobserver-auth*) true ;; *) false ;; esac; then
-        CMAKE_PREFIX_PATH="$prefix_path" cmake --build "$bld"
+        cmake --build "$bld"
     else
-        CMAKE_PREFIX_PATH="$prefix_path" cmake --build "$bld" -j "$(nproc 2>/dev/null || echo 4)"
+        cmake --build "$bld" -j "$(nproc 2>/dev/null || echo 4)"
     fi
     echo "   built $bld"
 }

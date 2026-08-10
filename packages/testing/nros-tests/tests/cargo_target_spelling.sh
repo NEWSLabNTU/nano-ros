@@ -102,6 +102,9 @@ configure() {
     local log="$WORK/out.log"
     rm -rf "$WORK/b"
     local rc=0
+    # nros-cmake-prefix-exempt: a synthetic NONE-language project this gate
+    # writes itself; one of its scopes asserts NO Corrosion is present, which a
+    # prefix-path export would defeat.
     if [ "$pathov" = "-" ]; then
         cmake -S "$WORK" -B "$WORK/b" -DNROS_REPO="$REPO" "$@" >"$log" 2>&1 || rc=$?
     else

@@ -17,6 +17,10 @@ build_cmake_pkg() {
     local src="${SCRIPT_DIR}/src/${pkg}"
     local bld="${src}/build"
     echo "=== build ${pkg} (cmake) ==="
+    # nros-cmake-prefix-exempt: user-facing copy-out template — it must not
+    # source anything from the nano-ros checkout. Its configure imports the
+    # nano-ros root, whose `nros_resolve_corrosion()` does the same derivation
+    # in cmake and prints which Corrosion it resolved (issue 0493).
     cmake -S "${src}" -B "${bld}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DNANO_ROS_GEN_CACHE_DIR="${GEN_CACHE}" \

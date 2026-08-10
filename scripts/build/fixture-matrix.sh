@@ -3,6 +3,12 @@
 # Shared build-dir invalidation rules (toolchain file + compiler version).
 # shellcheck source=scripts/build/cmake-cache-guard.sh
 . "$(dirname "${BASH_SOURCE[0]}")/cmake-cache-guard.sh"
+# issue 0493 — the ONE CMAKE_PREFIX_PATH derivation (SDK Corrosion). This file
+# carries its own `cmake -S` (`nros_cmake_fixture_build`), so it needs the
+# helper directly rather than through `cmake-incremental.sh`.
+# shellcheck source=scripts/build/cmake-prefix.sh
+. "$(dirname "${BASH_SOURCE[0]}")/cmake-prefix.sh"
+nros_cmake_export_prefix_path
 # Shared fixture matrix primitives. Keep this file shell-only so every
 # platform just recipe can source it without pulling in Python or Rust.
 

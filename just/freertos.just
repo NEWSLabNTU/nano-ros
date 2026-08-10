@@ -274,6 +274,7 @@ build-c-port:
     #!/usr/bin/env bash
     set -e
     cd tests/freertos-c-smoke
+    # nros-cmake-prefix-exempt: pure-C FreeRTOS port smoke test, no Rust.
     cmake -B build >/dev/null
     cmake --build build
 

@@ -70,31 +70,19 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/bootstrap.cmake")
 # build dies four layers down in `corrosion-populate-download`, which is how
 # this was found.
 #
-# Look in the store first (the same `$NROS_HOME` the CLI writes), then let
-# `find_package` see a system install, and only then fall back to the network.
-if(DEFINED ENV{NROS_HOME})
-    set(_nros_store "$ENV{NROS_HOME}/sdk")
-else()
-    set(_nros_store "$ENV{HOME}/.nros/sdk")
-endif()
-file(GLOB _corrosion_prefixes "${_nros_store}/corrosion/*")
-if(_corrosion_prefixes)
-    list(APPEND CMAKE_PREFIX_PATH ${_corrosion_prefixes})
-endif()
-find_package(Corrosion QUIET)
-if(Corrosion_FOUND)
-    message(STATUS "nano-ros: using provisioned Corrosion (${Corrosion_DIR})")
-else()
-    message(STATUS
-        "nano-ros: Corrosion not provisioned — fetching from git. "
-        "Install it offline-safe with:  nros setup --tool corrosion")
-    include(FetchContent)
-    FetchContent_Declare(Corrosion
-        GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
-        GIT_TAG        v0.6.1
-    )
-    FetchContent_MakeAvailable(Corrosion)
-endif()
+# issue 0493 — the store lookup, the fallback and the REPORT all moved into
+# `cmake/NanoRosCorrosion.cmake`, because this block was one of three
+# disagreeing answers to "which Corrosion?" (the other two were
+# `nano_ros_workspace_metadata.cmake`'s bare `find_package` and
+# `compile-check-fixtures.sh`'s inline `CMAKE_PREFIX_PATH`). Its glob assumed
+# the versioned `corrosion/<ver>/` layout that `nros setup` writes and could not
+# see the FLAT one `just workspace install-corrosion` writes, so on a host with
+# an install present it still fell through to the network — which is how the two
+# 0493 investigations measured two different target-dir topologies and both were
+# right. `nros_resolve_corrosion()` handles both layouts and prints what it
+# resolved.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCorrosion.cmake")
+nros_resolve_corrosion()
 
 # ---------------------------------------------------------------------------
 # Core libraries — always built EXCEPT on tier-3 cross targets (NuttX).

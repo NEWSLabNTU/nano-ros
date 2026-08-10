@@ -191,6 +191,7 @@ build-c-port:
     #!/usr/bin/env bash
     set -e
     cd tests/threadx-c-smoke
+    # nros-cmake-prefix-exempt: pure-C ThreadX port smoke test, no Rust.
     cmake -B build >/dev/null
     cmake --build build
 

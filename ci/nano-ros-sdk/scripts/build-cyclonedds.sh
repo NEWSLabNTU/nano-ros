@@ -24,6 +24,7 @@ mkdir -p "$prefix" "$root/dist"
 git clone https://github.com/NEWSLabNTU/cyclonedds "$src"
 git -C "$src" checkout --detach "$upstream"
 
+# nros-cmake-prefix-exempt: upstream CycloneDDS, no Rust and no Corrosion.
 cmake -S "$src" -B "$build" \
     -DCMAKE_INSTALL_PREFIX="$prefix" \
     -DCMAKE_BUILD_TYPE=Release \

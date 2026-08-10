@@ -25,6 +25,7 @@ mkdir -p "$prefix" "$root/dist"
 git clone --depth 1 --branch "$upstream" \
     https://github.com/eProsima/Micro-XRCE-DDS-Agent "$src"
 
+# nros-cmake-prefix-exempt: upstream Micro-XRCE-DDS-Agent, no Rust and no Corrosion.
 cmake -S "$src" -B "$build" \
     -DCMAKE_BUILD_TYPE=Release \
     -DUAGENT_BUILD_EXECUTABLE=ON \

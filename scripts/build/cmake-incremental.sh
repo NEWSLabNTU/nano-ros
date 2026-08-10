@@ -3,6 +3,18 @@
 # Shared build-dir invalidation rules (toolchain file + compiler version).
 # shellcheck source=scripts/build/cmake-cache-guard.sh
 . "$(dirname "${BASH_SOURCE[0]}")/cmake-cache-guard.sh"
+# issue 0493 — the ONE CMAKE_PREFIX_PATH derivation (SDK Corrosion). Sourced
+# here so every caller of `nros_cmake_configure_if_needed` gets it without
+# repeating the wiring: workspace-fixtures-build.sh, fixtures-build.sh,
+# phase226-cxx-eff.sh and just/native.just all route through this function.
+# shellcheck source=scripts/build/cmake-prefix.sh
+. "$(dirname "${BASH_SOURCE[0]}")/cmake-prefix.sh"
+# Export at SOURCE time, not inside the configure function: `fixtures-build.sh`
+# runs its rows in `make` workers via `export -f`, and a function called from an
+# exported function has to be exported too or the worker dies "command not
+# found" (0400's cache guard is exactly that bug). An exported ENV VAR is
+# inherited by every descendant with nothing to re-export.
+nros_cmake_export_prefix_path
 
 # Configure a CMake build dir only when needed, then leave incrementality to
 # CMake + the generator (Phase 181.7b). `cmake --build` (run by the caller)
