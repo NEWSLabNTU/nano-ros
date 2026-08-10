@@ -250,6 +250,88 @@ Precedent, again from boards: `nros-board.toml` already carries
 `capability_features = ["safety-e2e"]`, forwarding a declared capability to its
 backend. This is the same mechanism on the RMW axis.
 
+### D7 — finding the package is easy; the build call is a 2×2, and all four cells already exist
+
+"Find the package by name, then call the right build command" splits into two
+questions, and only the first is about names.
+
+**Finding it.** Convention plus a search path (D5): `rmw = "foo"` looks for a
+package providing rmw `foo` — in-tree under `packages/rmw/*/`, out-of-tree on a
+declared path. This is the easy half.
+
+**Calling it.** The build command is not a property of the backend alone. It is a
+property of the **(consumer, provider)** pair, because nano-ros has two build
+roots — a cargo-rooted build for pure-Rust binaries and a cmake-rooted build for
+C/C++ — and a backend may be provided as either. That is a 2×2, and **every cell
+is already implemented in-tree**:
+
+| consumer ↓ / provider → | **cargo crate** | **cmake target** |
+| --- | --- | --- |
+| **cargo build** | path dep in the generated selection facade — *zenoh* | a `-sys` crate whose `build.rs` drives `cmake::Config` — *`cyclonedds-sys/build.rs:55`* |
+| **cmake build** | `corrosion_import_crate` — *zenoh from C/C++* | `add_subdirectory` + `target_link_libraries` — *xrce, uorb, cyclonedds* |
+
+So the descriptor does not have to invent an invocation. It declares **what the
+backend provides**, and the toolchain picks the adapter for the consumer it is
+building:
+
+```toml
+# a Rust backend
+[rmw.provides.cargo]
+crate = "nros-rmw-zenoh"
+
+# a C/C++ backend
+[rmw.provides.cmake]
+dir    = "."                  # add_subdirectory target
+target = "nros_rmw_uorb"      # the linkable target it defines
+needs_cxx_linker = true
+
+# a backend that offers both routes (cyclonedds today)
+[rmw.provides.cargo]
+sys_crate = "cyclonedds-sys"  # bridges cargo -> cmake via the cmake crate
+```
+
+**This reframes `driver` from D1.** A backend does not have "a driver"; it has
+one or two *provisions*, and the consumer selects. A cargo-rooted binary asking
+for a cmake-only backend is then a precise, answerable error — "backend `uorb`
+provides only a cmake target; a Rust-rooted build needs a `sys_crate` bridge" —
+instead of today's silent routing rule buried in RFC-0031.
+
+**And it explains the cyclonedds exception properly.** Cyclone is not special for
+being C++ — xrce is C and uorb is C++. It is special because it is the only
+backend that today fills the **cargo-consumer × cmake-provider** cell, which
+RFC-0031 handles with a blanket rule ("Cyclone selection always routes through
+the CMake/Corrosion build path, even for an otherwise-Rust binary"). Once that
+cell is a declared `sys_crate` like any other, the blanket rule is unnecessary.
+
+### D8 — one descriptor family: rmw, platform, board
+
+The same question arises for a user's own **platform** and **board** packages,
+in their own languages, and two thirds of the answer already ships:
+
+| axis | descriptor | status |
+| --- | --- | --- |
+| board | `nros-board.toml` | exists (RFC-0042), has `capability_features` |
+| platform | `nros-platform.toml` | exists (RFC-0049), scaffolded by `nros new platform`, has `[capabilities]` with an explicitly **open vocabulary** |
+| **rmw** | — | **missing; this RFC** |
+
+RMW being the only axis without a descriptor is exactly why it is the only axis
+needing a closed list in CMake. The fix is to finish the family, not to invent a
+mechanism.
+
+`nros-platform.toml`'s `[capabilities]` already says "software-stack FACTS (open
+vocabulary)", which is precisely the extensibility asked for: a third-party
+platform declares whatever facts it has, and policy is checked against them. D6
+should adopt the same open-vocabulary rule rather than a fixed capability enum,
+so a custom backend can offer a capability nano-ros has never heard of.
+
+**One leak to fix while doing this.** The platform descriptor currently carries
+`[knobs.zenoh.tx]` and `[build.zenoh]` — backend-named sections in a
+*platform* file. That is the same violation as core naming a backend, one axis
+over: a custom RMW cannot receive platform knobs, and a custom platform must
+know zenoh's name to supply them. Those sections should key on the resolved
+backend (`[knobs.<rmw>.tx]`, `[build.<rmw>]`) so the platform declares
+"here are my settings for whichever backend is selected" without naming one.
+
 ## What this does NOT change
 
 * **The vtable ABI.** RFC-0035 is not the gap. A backend still populates
