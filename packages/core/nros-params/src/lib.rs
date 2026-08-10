@@ -35,7 +35,7 @@
 #[cfg(feature = "std")]
 extern crate std;
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 extern crate alloc;
 
 pub(crate) mod config;

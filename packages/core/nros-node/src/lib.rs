@@ -68,7 +68,7 @@
 #[cfg(feature = "std")]
 extern crate std;
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 extern crate alloc;
 
 pub mod c_waker;
@@ -220,3 +220,22 @@ pub use executor::SessionSpec;
 
 #[cfg(all(feature = "std", any(has_rmw, test)))]
 pub use executor::SpinPeriodResult;
+
+// ---------------------------------------------------------------------------
+// phase-341 W8.e / issue 0471 — capabilities REQUIRE the heap / the standard
+// library, they do not enable it. Turning `alloc` or `std` on for the user
+// silently changes what their firmware image is; naming the feature they must
+// add does not.
+// ---------------------------------------------------------------------------
+#[cfg(all(
+    feature = "param-services",
+    not(any(feature = "alloc", feature = "std"))
+))]
+compile_error!("`param-services` allocates: add \"alloc\" to this crate's features");
+#[cfg(all(
+    feature = "lifecycle-services",
+    not(any(feature = "alloc", feature = "std"))
+))]
+compile_error!("`lifecycle-services` allocates: add \"alloc\" to this crate's features");
+#[cfg(all(feature = "signal-fd-wake", not(feature = "std")))]
+compile_error!("`signal-fd-wake` needs OS services: add \"std\" to this crate's features");

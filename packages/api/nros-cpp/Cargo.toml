@@ -17,9 +17,9 @@ readme = "README.md"
 crate-type = ["staticlib", "lib"]
 
 [features]
-default = ["std"]
+# phase-341 W3 / issue 0468 — EMPTY; `std` is opt-in per dep-site.
+default = []
 std = [
-    "alloc",
     "nros/std",
     "nros-node/std",
     "nros-rmw/std",
@@ -50,7 +50,7 @@ rmw-cffi = ["nros/rmw-cffi", "nros-c/rmw-cffi"]
 #
 # Off by default: it pulls `alloc` (every bridge entity handle is boxed), which a
 # bare-metal image must opt into deliberately.
-bridge = ["alloc", "dep:nros-bridge"]
+bridge = ["dep:nros-bridge"]
 
 # phase-308 — record declared entities instead of transporting them, for the
 # host metadata probe. Turns on the three executor-side hooks (node / timer /
@@ -99,7 +99,11 @@ xrce-serial = ["nros-c/xrce-serial"]
 # unified heap and that don't bring an external allocator (zephyr-lang-rust
 # etc.); the concrete allocator lives behind the vtable. Mirrors
 # nros-platform's `global-allocator`.
-global-allocator = ["alloc"]
+# phase-341 W8.a / issue 0471 — does NOT enable `alloc`. The allocator module
+# uses only `core::alloc::GlobalAlloc`; `extern crate alloc` is gated separately
+# on the `alloc` feature. Installing a `#[global_allocator]` says "this platform
+# owns a heap", not "this image may allocate" — the second is the user's call.
+global-allocator = []
 
 # Functional capability — register the `critical_section::Impl` backed by
 # the platform vtable (`nros_platform_critical_section_{acquire,release}`).
@@ -112,8 +116,14 @@ critical-section = ["dep:critical-section"]
 # `#[global_allocator]` / `#[panic_handler]` / `critical_section::set_impl!`. nros-cpp's
 # `platform-*` therefore forward to `nros-c/platform-*` (which enable nros-c's
 # `global-allocator` / `critical-section`) and must NOT enable nros-cpp's OWN copies —
-# two of any would conflict in the one crate graph. Embedded platforms imply `alloc` so
-# the C++ FFI layer's `extern crate alloc` compiles.
+# two of any would conflict in the one crate graph.
+# phase-341 W8.d / issue 0471 — a `platform-*` feature selects the PROVIDER of
+# malloc + panic for this platform (that is the "unified per platform" half of
+# the contract) and NOTHING else. It no longer lists `alloc`: whether the image
+# may allocate is the end user's call, spelled `alloc` at their own dep-site.
+# The CMake path already worked this way — `nros_feature_set()` emits
+# `std`/`alloc` + `panic-halt` explicitly per platform — so this only brings the
+# Rust manifests into line with that table.
 # Phase 248 C5c — platform flows through `nros-c/platform-X` (which routes to a
 # direct `nros-platform` dep); the agnostic `nros` umbrella no longer carries
 # `platform-*`, so the old `nros/platform-X` forward is dropped.
@@ -121,19 +131,15 @@ platform-posix = [
     "nros-c/platform-posix",
 ]
 platform-zephyr = [
-    "alloc",
     "nros-c/platform-zephyr",
 ]
 platform-freertos = [
-    "alloc",
     "nros-c/platform-freertos",
 ]
 platform-nuttx = [
-    "alloc",
     "nros-c/platform-nuttx",
 ]
 platform-threadx = [
-    "alloc",
     "nros-c/platform-threadx",
 ]
 
@@ -159,6 +165,10 @@ ros-jazzy = [
 # (one instance), so this provides exactly one handler — no duplicate.
 panic-halt = ["dep:panic-halt", "nros-c/panic-halt"]
 
+# phase-341 W8.b / issue 0471 — forwards nros-c's built-in spin-loop panic
+# handler. nros-c owns the lang item for the bundled single-runtime staticlib.
+panic-spin = ["nros-c/panic-spin"]
+
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
 # pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
 # bytes routed through the Rust `#[global_allocator]` and exposes them via
@@ -180,7 +190,9 @@ host-only = true
 host-only-reason = "C++ ABI surface, built per-platform by cmake not by the workspace lane"
 
 [dependencies]
-nros = { version = "0.5.0", path = "../nros", default-features = false }
+# phase-341 W3 — `ffi-size-markers` REQUESTED, not inherited from `nros`'s
+# (now empty) `default`; see the same note on nros-c.
+nros = { version = "0.5.0", path = "../nros", default-features = false, features = ["ffi-size-markers"] }
 nros-node.workspace = true
 # Phase 241.D3-rev — bundle the C umbrella as an rlib so `libnros_cpp.a` carries the
 # full C ABI + the cffi shim + the force-linked RMW backend (one archive, one std).
@@ -190,7 +202,7 @@ nros-c = { version = "0.5.0", path = "../nros-c", default-features = false }
 # Issue 0436 — the C/C++ multi-RMW bridge ABI behind the `bridge` feature. `cffi`
 # is what emits the `nros_init_multi` / `nros_pubsub_bridge_*` exports that
 # `<nros/bridge.h>` declares and `<nros/bridge.hpp>` wraps.
-nros-bridge = { version = "0.5.0", path = "../../rmw/bridge", default-features = false, features = ["cffi"], optional = true }
+nros-bridge = { version = "0.5.0", path = "../../rmw/bridge", default-features = false, features = ["cffi", "alloc"], optional = true }
 # Phase 88.12 — `nros_cpp_node_get_logger` returns `&'static nros_log::Logger`.
 nros-log = { workspace = true }
 nros-platform = { workspace = true, default-features = false }
@@ -245,7 +257,9 @@ nros-build-helpers = { workspace = true }
 # The cost it was paying: nros -> nros-node -> nros-core -> heapless,
 # portable-atomic, log ... pulled into the BUILD-dependency graph and recompiled
 # at opt-level=0/panic=unwind. `nros` stays a REGULAR dependency, which is what
-# the nested probe's `cargo build -p nros` resolves through.
+# the nested probe's `cargo build -p nros` resolves through — with
+# `ffi-size-markers` requested at that dep-site (issue 0470), so the probe's
+# `--features=<resolved>` carries it.
 
 [package.metadata.docs.rs]
 all-features = true

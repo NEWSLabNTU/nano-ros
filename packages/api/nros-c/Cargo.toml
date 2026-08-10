@@ -17,8 +17,9 @@ readme = "README.md"
 crate-type = ["staticlib", "cdylib", "lib"]
 
 [features]
-default = ["std"]
-std = ["alloc", "nros/std", "nros-node/std", "nros-rmw/std"]
+# phase-341 W3 / issue 0468 — EMPTY; `std` is opt-in per dep-site.
+default = []
+std = ["nros/std", "nros-node/std", "nros-rmw/std"]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 
 # RMW backend (cffi vtable dispatch) — every backend ships as a cffi
@@ -103,7 +104,11 @@ xrce-serial = ["nros-node/posix-serial"]
 # unified heap and that don't bring an external allocator (zephyr-lang-rust
 # etc.); the concrete allocator lives behind the vtable. Mirrors
 # nros-platform's `global-allocator`.
-global-allocator = ["alloc"]
+# phase-341 W8.a / issue 0471 — does NOT enable `alloc`. The allocator module
+# uses only `core::alloc::GlobalAlloc`; `extern crate alloc` is gated separately
+# on the `alloc` feature. Installing a `#[global_allocator]` says "this platform
+# owns a heap", not "this image may allocate" — the second is the user's call.
+global-allocator = []
 
 # Functional capability — register the `critical_section::Impl` backed by
 # the platform vtable (`nros_platform_critical_section_{acquire,release}`).
@@ -111,8 +116,15 @@ global-allocator = ["alloc"]
 # block. Mirrors nros-platform's `critical-section`.
 critical-section = ["dep:critical-section"]
 
+# phase-341 W8.d / issue 0471 — a `platform-*` feature selects the PROVIDER of
+# malloc + panic for this platform (that is the "unified per platform" half of
+# the contract) and NOTHING else. It no longer lists `alloc`: whether the image
+# may allocate is the end user's call, spelled `alloc` at their own dep-site.
+# The CMake path already worked this way — `nros_feature_set()` emits
+# `std`/`alloc` + `panic-halt` explicitly per platform — so this only brings the
+# Rust manifests into line with that table.
 # Platform backends (select one — orthogonal to RMW and ROS version).
-# Embedded platforms imply `alloc`; ports that own the unified kernel heap
+# Ports that own the unified kernel heap enable `global-allocator` + `panic-spin`; ports that own the unified kernel heap
 # also enable `global-allocator` (and, where DDS/portable-atomic need it,
 # `critical-section`) so the agnostic blocks in lib.rs compile without the
 # build script passing them explicitly.
@@ -125,26 +137,25 @@ platform-posix = [
     "nros-rmw-zenoh?/platform-posix",
 ]
 platform-zephyr = [
-    "alloc",
     "global-allocator",
+    "panic-spin",
     "critical-section",
     "nros-platform/platform-zephyr",
     "nros-rmw-zenoh?/platform-zephyr",
 ]
 platform-freertos = [
-    "alloc",
     "global-allocator",
+    "panic-spin",
     "nros-platform/platform-freertos",
     "nros-rmw-zenoh?/platform-freertos",
 ]
 platform-nuttx = [
-    "alloc",
     "nros-platform/platform-nuttx",
     "nros-rmw-zenoh?/platform-nuttx",
 ]
 platform-threadx = [
-    "alloc",
     "global-allocator",
+    "panic-spin",
     "nros-platform/platform-threadx",
     "nros-rmw-zenoh?/platform-threadx",
 ]
@@ -156,6 +167,20 @@ ros-jazzy = ["nros/ros-jazzy"]
 
 # Bare-metal panic handler (enables building staticlib without std)
 panic-halt = ["dep:panic-halt"]
+
+# phase-341 W8.b / issue 0471 — the BUILT-IN no_std panic handler (a spin loop),
+# split out of `global-allocator`.
+#
+# It used to be gated `all(global-allocator, not(std), not(panic-halt))`, so
+# "this image needs a panic handler" was only sayable as "this image wants a
+# global allocator". Those are different facts and a target can need one without
+# the other: with phase-341 W3's `default = []`, a plain host build of this
+# crate had neither and died on `#[panic_handler] function required`.
+#
+# Like `global-allocator`, this is a PLATFORM statement — the `platform-*`
+# features below select it, so malloc and panic stay unified per platform (W1).
+# `panic-halt` still wins if both are on; `std` supersedes both.
+panic-spin = []
 
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
 # pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
@@ -169,12 +194,12 @@ alloc-stats = ["dep:zpico-alloc", "zpico-alloc/stats"]
 # Expose ROS 2 parameter services (~/get_parameters, ~/set_parameters, etc.)
 # via `nros_executor_register_parameter_services`. Requires alloc for boxed
 # service responses.
-param-services = ["alloc", "nros/param-services", "nros-node/param-services"]
+param-services = ["nros/param-services", "nros-node/param-services"]
 
 # Expose ROS 2 lifecycle services (~/change_state, ~/get_state, etc. — REP-2002)
 # via `nros_executor_register_lifecycle_services`. Requires alloc for boxed
 # service responses.
-lifecycle-services = ["alloc", "nros/lifecycle-services", "nros-node/lifecycle-services"]
+lifecycle-services = ["nros/lifecycle-services", "nros-node/lifecycle-services"]
 
 # issue 0287 — HOST-ONLY. `just check-workspace-embedded` builds the whole
 # workspace for a thumb target, and cargo unifies features across ALL members
@@ -188,7 +213,13 @@ host-only = true
 host-only-reason = "cdylib/staticlib C ABI surface, built per-platform by cmake not by the workspace lane"
 
 [dependencies]
-nros = { version = "0.5.0", path = "../nros", default-features = false }
+# phase-341 W3 — `ffi-size-markers` is REQUESTED here, not inherited. It used to
+# ride in on `nros`'s `default`, which this dep-site disables, so a `-p nros-c`
+# build (what cmake/corrosion actually runs) resolved `nros` to `alloc,std` and
+# got no markers; only a whole-workspace build did, by unification. The `#[used]`
+# attribute those markers carry is what keeps `--gc-sections` from dropping the
+# `__NROS_SIZE_*` arrays the build script probes (cf. issue 0464).
+nros = { version = "0.5.0", path = "../nros", default-features = false, features = ["ffi-size-markers"] }
 nros-node.workspace = true
 nros-rmw.workspace = true
 nros-core.workspace = true
@@ -245,7 +276,8 @@ nros-build-helpers = { workspace = true }
 # product/build-graph overlap 12 -> 8 on its removal.
 #
 # `nros` remains a REGULAR dependency below, which is what the nested probe's
-# `cargo build -p nros` resolves through.
+# `cargo build -p nros` resolves through — with `ffi-size-markers` requested at
+# that dep-site (issue 0470), so the probe's `--features=<resolved>` carries it.
 
 [package.metadata.docs.rs]
 all-features = true

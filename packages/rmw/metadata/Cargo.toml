@@ -21,7 +21,7 @@ host-only-reason = "host-only recording backend for the source-metadata probe (p
 [dependencies]
 # The ONE recorder + schema emitter (phase-308's layer constraint). This crate
 # is an adapter; it must never serialize anything itself.
-nros = { path = "../../api/nros", default-features = false, features = ["metadata-mode"] }
+nros = { path = "../../api/nros", default-features = false, features = ["metadata-mode", "std"] }
 nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = ["std"] }
 nros-rmw-cffi = { path = "../cffi", default-features = false, features = ["std", "alloc"] }
 

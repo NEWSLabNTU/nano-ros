@@ -11,10 +11,10 @@ description = "NuttX rv-virt kernel + nros C/C++ FFI bundle for CMake-built exam
 [dependencies]
 # Path deps go up 3 levels to the repo root.
 nros-board-nuttx-qemu = { path = ".." }
-nros-c = { path = "../../../api/nros-c", features = [
+nros-c = { path = "../../../api/nros-c", default-features = false, features = [
     "std", "cffi-zenoh-cffi", "platform-nuttx", "ros-humble"
 ] }
-nros-cpp = { path = "../../../api/nros-cpp", features = [
+nros-cpp = { path = "../../../api/nros-cpp", default-features = false, features = [
     "std", "rmw-zenoh-cffi", "platform-nuttx", "ros-humble"
 ] }
 # Link the cffi shim directly so register() is callable from main.rs before

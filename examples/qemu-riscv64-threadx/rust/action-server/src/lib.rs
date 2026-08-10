@@ -160,3 +160,8 @@ nros::node!(FibonacciServer);
 // executor open, RMW registration, and the spin loop; the `nros::node!()`-emitted
 // `register` declares the FibonacciServer. No manual `Executor::open` /
 // `register_rmw` / spin loop / hardcoded locator in the example.
+
+// phase-341 W8.e / issue 0471 — the backend requires the heap; it does not
+// silently enable it. Build as `--features rmw-cyclonedds,alloc`.
+#[cfg(all(feature = "rmw-cyclonedds", not(any(feature = "alloc", feature = "std"))))]
+compile_error!("`rmw-cyclonedds` allocates: add \"alloc\" (--features rmw-cyclonedds,alloc)");

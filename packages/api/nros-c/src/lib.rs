@@ -43,7 +43,7 @@ use panic_halt as _;
 #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
 mod rmw_backend;
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 extern crate alloc;
 
 // Opt-in RTOS heap-usage tracking (issue #6). A single shared `HeapStats`
@@ -150,8 +150,12 @@ mod platform_alloc {
 // standalone C/C++ staticlib needs its own. A halt+reboot would be ideal
 // but needs port-specific config (e.g. Zephyr's k_panic + CONFIG_ASSERT_
 // VERBOSE); looping is the safest no_std-compatible default.
+// phase-341 W8.b / issue 0471 — gated on `panic-spin`, NOT on
+// `global-allocator`. Asking for a panic handler no longer means asking for a
+// heap; the `platform-*` features select both, so they stay unified per
+// platform without being the same switch.
 #[cfg(all(
-    feature = "global-allocator",
+    feature = "panic-spin",
     not(feature = "std"),
     not(feature = "panic-halt")
 ))]
@@ -312,3 +316,20 @@ rmw_modules! {
     mod support;
     mod timer;
 }
+
+// ---------------------------------------------------------------------------
+// phase-341 W8.e / issue 0471 — capabilities REQUIRE the heap / the standard
+// library, they do not enable it. Turning `alloc` or `std` on for the user
+// silently changes what their firmware image is; naming the feature they must
+// add does not.
+// ---------------------------------------------------------------------------
+#[cfg(all(
+    feature = "param-services",
+    not(any(feature = "alloc", feature = "std"))
+))]
+compile_error!("`param-services` allocates: add \"alloc\" to this crate's features");
+#[cfg(all(
+    feature = "lifecycle-services",
+    not(any(feature = "alloc", feature = "std"))
+))]
+compile_error!("`lifecycle-services` allocates: add \"alloc\" to this crate's features");

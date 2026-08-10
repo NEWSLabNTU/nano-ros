@@ -30,7 +30,7 @@ mkdir -p "$out_dir"
 # zenoh backend (rlib dep) into ONE archive, so a host C binary links a single Rust
 # staticlib with one `std` + one `REGISTRY` — no `--allow-multiple-definition`.
 ( cd "$repo_root" \
-    && cargo build -p nros-c --features platform-posix,rmw-zenoh )
+    && cargo build -p nros-c --features std,platform-posix,rmw-zenoh )
 
 # Copy from the target dir cargo ACTUALLY wrote to. Hardcoding
 # `$repo_root/target` silently copies a foreign archive whenever

@@ -242,7 +242,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 
     /// `true` if the active backend can fire the named event for this
     /// publisher.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
         use nros_rmw::Publisher as _;
         self.handle.supports_event(kind)
@@ -250,7 +250,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 
     /// Register a callback for `LivelinessLost`. Fires when this
     /// publisher misses its own liveliness assertion deadline.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn on_liveliness_lost<F>(&mut self, cb: F) -> Result<(), NodeError>
     where
         F: FnMut(nros_rmw::CountStatus) + Send + 'static,
@@ -271,7 +271,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 
     /// Register a callback for `OfferedDeadlineMissed`. Fires when
     /// this publisher promised `deadline` and falls behind.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn on_offered_deadline_missed<F>(
         &mut self,
         deadline: core::time::Duration,
@@ -299,12 +299,12 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 /// up to 3 (LivelinessChanged + RequestedDeadlineMissed + MessageLost);
 /// publishers up to 2 (LivelinessLost + OfferedDeadlineMissed). One vec
 /// type fits both — extra slots are unused on publishers.
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub(crate) const MAX_EVENTS_PER_ENTITY: usize = 3;
 
 /// One row of the per-entity event-callback registry. Stores enough to
 /// type-erase the boxed closure for `Drop`-time deallocation.
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 #[derive(Clone, Copy)]
 pub(crate) struct EventReg {
     /// `Box::into_raw`-derived pointer; valid for the entity's lifetime.
@@ -314,12 +314,12 @@ pub(crate) struct EventReg {
     pub(crate) drop_fn: unsafe fn(*mut core::ffi::c_void),
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub(crate) type EventRegs = heapless::Vec<EventReg, MAX_EVENTS_PER_ENTITY>;
 
 /// Empty placeholder for no-alloc builds — keeps struct layout stable
 /// across feature combinations without paying any space.
-#[cfg(not(feature = "alloc"))]
+#[cfg(not(any(feature = "alloc", feature = "std")))]
 #[derive(Default, Clone, Copy)]
 pub(crate) struct EventRegs;
 
@@ -328,18 +328,18 @@ pub(crate) struct EventRegs;
 /// (`heapless::Vec::new()` for `alloc`; unit-struct constructor
 /// otherwise — clippy's `default_constructed_unit_structs` lint
 /// rejects the `EventRegs::default()` form on the unit-struct branch).
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 #[inline]
 pub(crate) fn empty_event_regs() -> EventRegs {
     heapless::Vec::new()
 }
-#[cfg(not(feature = "alloc"))]
+#[cfg(not(any(feature = "alloc", feature = "std")))]
 #[inline]
 pub(crate) fn empty_event_regs() -> EventRegs {
     EventRegs
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub(crate) fn drop_event_regs(regs: &mut EventRegs) {
     while let Some(reg) = regs.pop() {
         // SAFETY: `reg.ctx` was obtained from `Box::into_raw` of the
@@ -349,11 +349,11 @@ pub(crate) fn drop_event_regs(regs: &mut EventRegs) {
     }
 }
 
-#[cfg(not(feature = "alloc"))]
+#[cfg(not(any(feature = "alloc", feature = "std")))]
 #[inline]
 pub(crate) fn drop_event_regs(_regs: &mut EventRegs) {}
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 fn register_pub_event<F, D>(
     handle: &mut session::RmwPublisher,
     regs: &mut EventRegs,
@@ -400,13 +400,13 @@ where
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 struct EventClosureState<F, D> {
     user_cb: F,
     dispatch: D,
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 unsafe extern "C" fn event_trampoline<F, D>(
     kind: nros_rmw::EventKind,
     payload_ptr: *const core::ffi::c_void,
@@ -420,7 +420,7 @@ unsafe extern "C" fn event_trampoline<F, D>(
     (state.dispatch)(payload, &mut state.user_cb);
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 unsafe fn drop_event_state<F, D>(ctx: *mut core::ffi::c_void)
 where
     F: FnMut(nros_rmw::CountStatus) + Send + 'static,
@@ -435,7 +435,7 @@ where
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 fn register_sub_event_count<F, D>(
     handle: &mut session::RmwSubscriber,
     regs: &mut EventRegs,
@@ -476,7 +476,7 @@ where
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 fn register_sub_event_liveliness<F>(
     handle: &mut session::RmwSubscriber,
     regs: &mut EventRegs,
@@ -518,7 +518,7 @@ where
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 unsafe fn drop_liveliness_state<F>(ctx: *mut core::ffi::c_void)
 where
     F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
@@ -530,12 +530,12 @@ where
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 struct LivelinessClosureState<F> {
     user_cb: F,
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 unsafe extern "C" fn liveliness_trampoline<F>(
     kind: nros_rmw::EventKind,
     payload_ptr: *const core::ffi::c_void,
@@ -682,7 +682,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
 
     /// Phase 108.A — `true` if the active backend can fire the named
     /// event for this raw publisher.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
         use nros_rmw::Publisher as _;
         self.handle.supports_event(kind)
@@ -1132,7 +1132,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
 
     /// `true` if the active backend can fire the named event for this
     /// subscriber.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
         use nros_rmw::Subscription as _;
         self.handle.supports_event(kind)
@@ -1140,7 +1140,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
 
     /// Register a callback for `LivelinessChanged`. Fires when a
     /// tracked publisher's liveliness state changes.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn on_liveliness_changed<F>(&mut self, cb: F) -> Result<(), NodeError>
     where
         F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
@@ -1150,7 +1150,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
 
     /// Register a callback for `RequestedDeadlineMissed`. Fires when
     /// an expected sample doesn't arrive within `deadline`.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn on_requested_deadline_missed<F>(
         &mut self,
         deadline: core::time::Duration,
@@ -1175,7 +1175,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
 
     /// Register a callback for `MessageLost`. Fires when the backend
     /// drops a sample (overflow, etc.).
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn on_message_lost<F>(&mut self, cb: F) -> Result<(), NodeError>
     where
         F: FnMut(nros_rmw::CountStatus) + Send + 'static,
@@ -1409,14 +1409,14 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
 
     /// Phase 108.A — `true` if the active backend can fire the named
     /// event for this raw subscription.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
         use nros_rmw::Subscription as _;
         self.handle.supports_event(kind)
     }
 
     /// Phase 108.A — register a callback for `LivelinessChanged`.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn on_liveliness_changed<F>(&mut self, cb: F) -> Result<(), NodeError>
     where
         F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
@@ -1425,7 +1425,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     }
 
     /// Phase 108.A — register a callback for `RequestedDeadlineMissed`.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn on_requested_deadline_missed<F>(
         &mut self,
         deadline: core::time::Duration,
@@ -1449,7 +1449,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     }
 
     /// Phase 108.A — register a callback for `MessageLost`.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     pub fn on_message_lost<F>(&mut self, cb: F) -> Result<(), NodeError>
     where
         F: FnMut(nros_rmw::CountStatus) + Send + 'static,

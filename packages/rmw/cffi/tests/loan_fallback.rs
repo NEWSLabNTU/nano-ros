@@ -5,7 +5,7 @@
 //! buffer, hands the caller a writable slot, and on `commit_slot`
 //! emits a single `publish_raw` of the cursor-truncated contents.
 
-#![cfg(all(feature = "lending", feature = "alloc"))]
+#![cfg(all(feature = "lending", any(feature = "alloc", feature = "std")))]
 
 use core::{
     ffi::c_void,

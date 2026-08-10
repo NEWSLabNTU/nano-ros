@@ -2374,7 +2374,7 @@ pub fn register_node<C: Node>(runtime: &mut dyn NodeRuntime) -> NodeResult<()> {
 ///
 /// The returned pointer is a leaked `Box`; the BSP runtime keeps it
 /// alive for the firmware lifetime (embedded slots never deallocate).
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 #[doc(hidden)]
 pub fn __private_node_state_into_raw<C: ExecutableNode>(state: C::State) -> *mut () {
     extern crate alloc;
@@ -3322,7 +3322,7 @@ mod tests {
     // alloc-gated `__private_node_state_into_raw`. Gate the test on
     // both features so the macro invocation only attempts to expand
     // when every referenced symbol is present.
-    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    #[cfg(all(any(feature = "alloc", feature = "std"), feature = "rmw-cffi"))]
     mod dispatch_probe_macro_test {
         // `extern crate self as nros;` at the crate root (in `lib.rs`,
         // `cfg(test)`-gated) lets the `::nros::*` paths the macro emits
@@ -3355,7 +3355,7 @@ mod tests {
         nros_macros::node!(DispatchProbe);
     }
 
-    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    #[cfg(all(any(feature = "alloc", feature = "std"), feature = "rmw-cffi"))]
     #[test]
     fn node_macro_emits_dispatch_strategy_symbol() {
         // Re-declare the ABI export the macro just emitted. If the macro
@@ -3388,7 +3388,7 @@ mod tests {
     // (documented in the macro emit). A link-only probe is enough to
     // catch the macro silently eliding the export — the exact
     // regression class this test is for.
-    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    #[cfg(all(any(feature = "alloc", feature = "std"), feature = "rmw-cffi"))]
     #[test]
     fn node_macro_emits_on_callback_symbol() {
         unsafe extern "C" {

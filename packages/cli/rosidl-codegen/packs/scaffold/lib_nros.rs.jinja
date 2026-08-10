@@ -9,7 +9,9 @@
 #[cfg(feature = "std")]
 extern crate std;
 
-#[cfg(feature = "alloc")]
+// phase-341 W2 (final) — `any(alloc, std)` is THE heap predicate; a `std` build
+// links an allocator by definition, so a hosted consumer never names `alloc`.
+#[cfg(any(feature = "alloc", feature = "std"))]
 extern crate alloc;
 {%- if has_messages %}
 

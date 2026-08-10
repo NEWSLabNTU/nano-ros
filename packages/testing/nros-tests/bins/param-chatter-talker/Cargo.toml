@@ -15,6 +15,8 @@ path = "src/main.rs"
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
     "std",
+    # phase-341 W8.e — `param-services` requires the heap; it no longer enables it.
+    "alloc",
     "rmw-cffi",
     "ros-humble",
     "param-services",

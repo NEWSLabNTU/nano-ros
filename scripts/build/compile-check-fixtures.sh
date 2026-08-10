@@ -530,7 +530,13 @@ if command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # them leave no stamp (consuming test reports the gap per tier). The sizes
     # need not be exact — this is a `-fsyntax-only` check, not a link.
     echo "== generating nros-cpp / nros-c config headers for cxx-syntax =="
-    ( cd "$repo_root" && cargo build -q -p nros-cpp -p nros-c --features nros-cpp/ros-humble ) \
+    # phase-341 W3 — `std` is EXPLICIT. `nros-c`/`nros-cpp` used to default to
+    # it; now `default = []`, and this is a HOST build, so without asking the
+    # build is `no_std` and dies on `#[panic_handler]` / "unwinding panics are
+    # not supported without std". It failed into the `|| echo` below, which
+    # loses the headers silently — the exact shape issue 0464 is about.
+    ( cd "$repo_root" && cargo build -q -p nros-cpp -p nros-c \
+        --features nros-cpp/std,nros-c/std,nros-cpp/ros-humble ) \
         || echo "cxx-syntax: config-header generation build failed (snippets needing them will skip)" >&2
     while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
         [ -n "$id" ] || continue

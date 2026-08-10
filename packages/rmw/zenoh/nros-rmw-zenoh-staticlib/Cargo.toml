@@ -26,7 +26,7 @@ crate-type = ["staticlib"]
 [features]
 default = []
 std = ["nros-rmw-zenoh/std"]
-platform-posix = ["nros-rmw-zenoh/platform-posix", "nros-rmw-zenoh/std"]
+platform-posix = ["nros-rmw-zenoh/platform-posix"]
 platform-zephyr = ["nros-rmw-zenoh/platform-zephyr"]
 # phase-337 W2.b — bare-metal Zephyr (i.e. any real board) needs exactly what
 # `platform-freertos` / `platform-nuttx` / `platform-threadx` below already
@@ -42,10 +42,13 @@ platform-zephyr = ["nros-rmw-zenoh/platform-zephyr"]
 #
 # A SEPARATE feature rather than folding the deps into `platform-zephyr`:
 # `panic-halt` on the std path would collide with std's own panic handler, so
+# phase-341 W8.d / issue 0471 — these rows select the malloc/panic PROVIDER
+# (`nros-platform/global-allocator`, `panic-halt`) for the platform and nothing
+# else. They no longer list `alloc`/`std`: the heap and the standard library are
+# the end user's call, named at their own dep-site.
 # the two Zephyr flavours cannot share one spelling — the same reason
 # `platform-threadx` and `platform-threadx-std` are two features.
 platform-zephyr-baremetal = [
-    "alloc",
     "nros-rmw-zenoh/platform-zephyr",
     "dep:nros-platform",
     "nros-platform/platform-zephyr",
@@ -54,7 +57,6 @@ platform-zephyr-baremetal = [
 ]
 alloc = ["nros-rmw-zenoh/alloc"]
 platform-freertos = [
-    "alloc",
     "nros-rmw-zenoh/platform-freertos",
     "dep:nros-platform",
     "nros-platform/platform-freertos",
@@ -62,7 +64,6 @@ platform-freertos = [
     "dep:panic-halt",
 ]
 platform-nuttx = [
-    "alloc",
     "nros-rmw-zenoh/platform-nuttx",
     "dep:nros-platform",
     "nros-platform/platform-nuttx",
@@ -70,7 +71,6 @@ platform-nuttx = [
     "dep:panic-halt",
 ]
 platform-threadx = [
-    "alloc",
     "nros-rmw-zenoh/platform-threadx",
     "dep:nros-platform",
     "nros-platform/platform-threadx",
@@ -78,7 +78,6 @@ platform-threadx = [
     "dep:panic-halt",
 ]
 platform-threadx-std = [
-    "std",
     "nros-rmw-zenoh/platform-threadx",
     "dep:nros-platform",
     "nros-platform/platform-threadx",

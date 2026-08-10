@@ -14,7 +14,16 @@ documentation.workspace = true
 readme = "README.md"
 
 [features]
-default = ["std", "ffi-size-markers"]
+# phase-341 W3 / issue 0468 — EMPTY; `std` is opt-in per dep-site.
+#
+# `ffi-size-markers` used to ride in here, and that was the ONLY thing enabling
+# it: both consumers (`nros-c`, `nros-cpp`) dep this crate `default-features =
+# false`, so `cargo tree -p nros-c` resolved `nros` to `alloc,std` — no markers.
+# They arrived only in a WHOLE-WORKSPACE build, by feature unification from some
+# other member. The C/C++ path is built per-crate by cmake/corrosion, not
+# whole-workspace. Both consumers now request the feature explicitly on their
+# `nros` dep, which is what the size probe needed all along (cf. issue 0464).
+default = []
 # Phase 11.3.C — `#[used]` markers on the `__NROS_SIZE_*` opaque-storage
 # statics. nros-c / nros-cpp build scripts probe these out of the rlib
 # to derive C/C++ FFI macros (Phase 87). Pure-Rust applications (e.g.
@@ -29,9 +38,8 @@ ffi-size-markers = []
 # `src/metadata_mode.rs`). Host probe only: it never ships in firmware, and a
 # build that enables it also replaces the RMW with a backend that transports
 # nothing. Implies `std` (the probe writes a file and exits).
-metadata-mode = ["std"]
+metadata-mode = []
 std = [
-    "alloc",  # std implies alloc
     "nros-core/std",
     "nros-node/std",
     "nros-rmw/std",

@@ -275,7 +275,7 @@ impl<T: Deserialize, const N: usize> Deserialize for heapless::Vec<T, N> {
 
 // === alloc types (behind feature flag) ===
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 mod alloc_impl {
     use super::*;
     use alloc::{string::String, vec::Vec};

@@ -13,9 +13,22 @@
 #[cfg(feature = "std")]
 extern crate std;
 
-// `std` implies the `alloc` crate; pull it in for either so the `heap`
-// re-export (used by generated `mode = "heap"` message fields, RFC-0033) is
-// available whenever an allocator is.
+// phase-341 W2 (final) / issue 0467 — `any(alloc, std)` is THE heap predicate,
+// used in this exact spelling everywhere in the workspace.
+//
+// `alloc` and `std` are standard-library CRATES, not Cargo features; the
+// features are only our convention for "compile the heap paths". A `std` build
+// links an allocator by definition, so it has a heap — hence `any(...)`, and
+// hence a hosted consumer never has to name `alloc`. Verified: a `no_std` rlib
+// using `alloc` builds for thumbv7em with no allocator anywhere; the
+// requirement appears only when a final artifact is linked
+// ("no global memory allocator found but one is required"), which is exactly
+// where malloc is unified per platform.
+//
+// Issue 0467 was never this predicate — it was that THIS crate used
+// `any(alloc, std)` while `nros-serdes` used `alloc` alone, so a `std`-only
+// build got a `heap::Vec<T>` it could name and could not serialize. The fix is
+// that both now spell it the same way.
 #[cfg(any(feature = "alloc", feature = "std"))]
 extern crate alloc;
 
@@ -54,9 +67,12 @@ pub use nros_serdes::{
 pub use heapless;
 
 /// Heap-backed containers for generated `mode = "heap"` message fields
-/// (RFC-0033). Available whenever an allocator is (the `alloc` or `std`
-/// feature). Generated code refers to `nros_core::heap::{Vec, String}` so the
-/// same path works in both crate and inline (`build.rs`) codegen modes.
+/// (RFC-0033). Available whenever a heap is — the `alloc` feature, or `std`,
+/// which links an allocator by definition. `nros-serdes` gates its matching
+/// `Serialize`/`Deserialize` impls on the SAME predicate, which is what issue
+/// 0467 was about. Generated code
+/// refers to `nros_core::heap::{Vec, String}` so the same path works in both
+/// crate and inline (`build.rs`) codegen modes.
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub mod heap {
     pub use alloc::{string::String, vec::Vec};

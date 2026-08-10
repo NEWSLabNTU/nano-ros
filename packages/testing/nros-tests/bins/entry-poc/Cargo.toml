@@ -26,9 +26,10 @@ domain_id = 0
 locator = "tcp/127.0.0.1:7447"
 [dependencies]
 # Phase 212.N.9 — `nros::main!()` proc-macro lives here.
-nros = { version = "*" }
+# phase-341 W3 — `nros` defaults to `no_std`; this is a hosted Linux entry.
+nros = { version = "*", default-features = false, features = ["std"] }
 # Phase 212.N.3 tier-1 per-board shim. `LinuxBoard::run` provides the
 # `BoardEntry` lifecycle the Entry pkg's `main.rs` invokes.
 nros-board-linux = { version = "*" }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, `RuntimeError`.
-nros-platform = { version = "*", features = ["std"] }
+nros-platform = { version = "*", default-features = false, features = ["std"] }

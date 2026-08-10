@@ -15,16 +15,19 @@ categories = ["embedded", "no-std", "network-programming"]
 
 [features]
 default = []
+# phase-341 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
+# opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
+# must make the user say `alloc`, never turn it on behind their back.
 std = ["nros-node/std"]
 alloc = ["nros-node/alloc"]
 # Phase 128.G — TOML-driven entrypoint. Reads `nros.toml` and builds
 # an Executor + Nodes + bridges from the manifest. Pulls `toml` +
 # `serde`; requires `std` because both crates do.
-config = ["std", "dep:toml", "dep:serde", "dep:nros-rmw", "dep:nros-serdes"]
+config = ["dep:toml", "dep:serde", "dep:nros-rmw", "dep:nros-serdes"]
 # Phase 128.F.5 — C/C++ bridge ABI. Emits `nros_init_multi`,
 # `nros_pubsub_bridge_*` symbols matching `<nros/bridge.h>`. Requires
 # `alloc` (every entity handle is boxed).
-cffi = ["alloc", "dep:nros-rmw-cffi"]
+cffi = ["dep:nros-rmw-cffi"]
 
 [dependencies]
 nros-node = { workspace = true, default-features = false, features = ["rmw-cffi"] }

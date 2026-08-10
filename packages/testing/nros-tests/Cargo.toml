@@ -69,11 +69,12 @@ libc = "0.2"
 # `unix-mock` backend implements the IVC channel API on top of an
 # `AF_UNIX SOCK_DGRAM` pair, so the framing protocol can be exercised
 # on any POSIX host without an SDK Manager install.
-nvidia-ivc = { path = "../../drivers/ipc/nvidia-ivc", features = ["unix-mock"] }
+nvidia-ivc = { path = "../../drivers/ipc/nvidia-ivc", features = ["unix-mock", "std"] }
 
-# Workspace dependencies for type access (optional)
-nros-core = { path = "../../core/nros-core", optional = true }
-nros-serdes = { path = "../../core/nros-serdes", optional = true }
+# Workspace dependencies for type access (optional). phase-341 W3 — both now
+# default to `no_std`; the test harness always runs hosted, so ask for `std`.
+nros-core = { path = "../../core/nros-core", default-features = false, features = ["std"], optional = true }
+nros-serdes = { path = "../../core/nros-serdes", default-features = false, features = ["std"], optional = true }
 
 # RMW abstraction layer (optional, for in-process integration tests)
 # `nros-rmw` defaults to no-std; tests always run with std, so opt in
@@ -84,7 +85,7 @@ nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = 
 # Phase 141.C — `wake-latency-probe` feature pulls in
 # `wake_probe::{parse_csv, percentile_ns}` for the
 # `wake_latency_cortex_m3` host runner.
-nros-node = { path = "../../core/nros-node", features = ["std", "rmw-cffi", "ros-humble", "wake-latency-probe"], optional = true }
+nros-node = { path = "../../core/nros-node", default-features = false, features = ["std", "rmw-cffi", "ros-humble", "wake-latency-probe"], optional = true }
 
 # Phase 124.A.8.b — zenoh-pico backend (lending feature on) for the
 # loan E2E test. Optional so the default test build doesn't pull

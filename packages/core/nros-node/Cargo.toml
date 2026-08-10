@@ -15,8 +15,13 @@ keywords = ["ros2", "node", "executor", "embedded", "no-std"]
 categories = ["embedded", "no-std"]
 
 [features]
-default = ["std"]
-std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log"]
+# phase-341 W3 / issue 0468 — EMPTY; `std` is opt-in per dep-site.
+default = []
+# phase-341 W2 (final) — `portable-atomic-util` is an IMPLEMENTATION dep (the
+# no_std stand-in for `std::sync::Arc`), not the heap axis. The heap predicate
+# is `any(alloc, std)`, so the dep has to be present on both sides of it or
+# declaration and use sites drift apart.
+std = ["nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log", "dep:portable-atomic-util"]
 alloc = ["nros-core/alloc", "nros-rmw/alloc", "dep:portable-atomic-util"]
 
 # Phase 110 — compile-time scheduler selection. Default ships only
@@ -64,7 +69,7 @@ needs-type-descriptors = []
 # Executor's wake condvar. Linux-only (eventfd). Off by default;
 # enable when the binary installs POSIX signal handlers that need
 # to wake the executor.
-signal-fd-wake = ["dep:libc", "std"]
+signal-fd-wake = ["dep:libc"]
 # Phase 141.B.2 — wake-latency probe. Instruments two points so
 # 141.C's host-side histogram + assertion can measure P99 wake
 # latency on Cortex-M3: (a) entry of `nros_rmw_runtime_wake_cb`
@@ -140,10 +145,10 @@ stream = ["dep:futures-core"]
 ffi-sync = []
 
 # Parameter services (ros2 param CLI support).
-param-services = ["dep:nros-rcl-interfaces", "alloc"]
+param-services = ["dep:nros-rcl-interfaces"]
 
 # Lifecycle services (ros2 lifecycle CLI support — REP-2002).
-lifecycle-services = ["dep:nros-lifecycle-msgs", "alloc"]
+lifecycle-services = ["dep:nros-lifecycle-msgs"]
 
 [dependencies]
 nros-core = { workspace = true, default-features = false }

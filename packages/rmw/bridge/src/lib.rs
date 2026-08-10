@@ -392,3 +392,14 @@ mod tests {
         assert!(!g.contains(1));
     }
 }
+
+// ---------------------------------------------------------------------------
+// phase-341 W8.e / issue 0471 — capabilities REQUIRE the heap / the standard
+// library, they do not enable it. Turning `alloc` or `std` on for the user
+// silently changes what their firmware image is; naming the feature they must
+// add does not.
+// ---------------------------------------------------------------------------
+#[cfg(all(feature = "config", not(feature = "std")))]
+compile_error!("`config` parses TOML via serde: add \"std\" to this crate's features");
+#[cfg(all(feature = "cffi", not(any(feature = "alloc", feature = "std"))))]
+compile_error!("`cffi` boxes every entity handle: add \"alloc\" to this crate's features");

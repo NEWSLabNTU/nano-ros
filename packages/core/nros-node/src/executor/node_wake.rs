@@ -30,7 +30,7 @@
 // compile-time per-RTOS cfg. Compiled for any `alloc + rmw-cffi` build;
 // platforms without a wake primitive simply report size 0 and the
 // caller falls back to driving the transport for the full timeout.
-#![cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+#![cfg(all(any(feature = "alloc", feature = "std"), feature = "rmw-cffi"))]
 // Phase 141.A.2 — `NodeWake` is callable from the std-gated
 // `install_wake_signal_on_*` path today; the matching no_std
 // caller for the FreeRTOS-embedded wake-cb path is the

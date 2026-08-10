@@ -18,7 +18,7 @@ categories = ["embedded", "no-std", "hardware-support"]
 [features]
 default = []
 fsp = []
-unix-mock = ["std"]
+unix-mock = []
 std = []
 
 [dependencies]

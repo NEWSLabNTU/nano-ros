@@ -13,7 +13,12 @@ path = "lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-nros-serdes = { path = "../../packages/core/nros-serdes" }
+# phase-341 W3 — `std` is NAMED. This crate is `#![no_std]` (it mirrors a
+# generated message crate) but the staticlib is linked into a HOSTED C++
+# binary, and libstd is what supplies `#[panic_handler]` + `rust_eh_personality`
+# for it. That used to arrive silently via `nros-serdes`'s `default = ["std"]`;
+# with `default = []` the dependence is stated instead of inherited.
+nros-serdes = { path = "../../packages/core/nros-serdes", features = ["std"] }
 
 [profile.release]
 lto = false

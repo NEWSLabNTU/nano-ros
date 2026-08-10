@@ -112,7 +112,7 @@ compile_error!("`ros-{humble,iron,jazzy}` are mutually exclusive — select one 
 #[cfg(feature = "std")]
 extern crate std;
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 extern crate alloc;
 
 // Phase 216.A.5 — the `nros::node!()` proc-macro emits absolute paths
@@ -219,7 +219,7 @@ pub use node::{
 // Phase 212.M.5.a.4 — internal helper consumed by `nros::node!()`
 // for the BSP dispatch path. Public-but-doc-hidden so the macro expand
 // resolves it as `::nros::__private_node_state_into_raw`.
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 #[doc(hidden)]
 pub use node::__private_node_state_into_raw;
 // phase-359 W8 — follows `node_metadata`'s re-gate: the type needs `alloc`,
@@ -951,3 +951,12 @@ mod tests {
         let _: crate::NodeResult<()> = Ok(());
     }
 }
+
+// ---------------------------------------------------------------------------
+// phase-341 W8.e / issue 0471 — capabilities REQUIRE the heap / the standard
+// library, they do not enable it. Turning `alloc` or `std` on for the user
+// silently changes what their firmware image is; naming the feature they must
+// add does not.
+// ---------------------------------------------------------------------------
+#[cfg(all(feature = "metadata-mode", not(feature = "std")))]
+compile_error!("`metadata-mode` writes a file and exits: add \"std\" to this crate's features");

@@ -46,8 +46,19 @@ license = "Apache-2.0"
 ament_version = "{{ package_version }}"
 
 [features]
-default = ["std"]
-std = ["nros-core/std", "nros-serdes/std"]
+# phase-341 W3.b — `default = []`, matching `rosidl_bindgen::generator::
+# generate_cargo_toml` (generator.rs:540), which is what `nros generate-rust`
+# ACTUALLY writes. NOTE: the Cargo.toml this template renders is discarded on
+# that path — `rosidl-bindgen` uses only `generated.message_rs` and builds the
+# manifest itself — so this block had drifted to `default = ["std"]` with no
+# consumer to notice. Keep the two in step anyway: phase-335 is wiring the IR
+# path, and a dormant template that disagrees with the live emitter is how the
+# next `default` regression gets in.
+#
+# `std` implies `alloc` (issue 0467): no supported configuration has the
+# standard library present and no allocator.
+default = []
+std = ["alloc", "nros-core/std", "nros-serdes/std"]
 alloc = ["nros-core/alloc", "nros-serdes/alloc"]
 
 [dependencies]

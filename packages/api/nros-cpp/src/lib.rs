@@ -27,7 +27,7 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 extern crate alloc;
 
 #[cfg(feature = "std")]
@@ -2842,3 +2842,12 @@ mod qos_override_tests {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// phase-341 W8.e / issue 0471 — capabilities REQUIRE the heap / the standard
+// library, they do not enable it. Turning `alloc` or `std` on for the user
+// silently changes what their firmware image is; naming the feature they must
+// add does not.
+// ---------------------------------------------------------------------------
+#[cfg(all(feature = "bridge", not(any(feature = "alloc", feature = "std"))))]
+compile_error!("`bridge` boxes every entity handle: add \"alloc\" to this crate's features");

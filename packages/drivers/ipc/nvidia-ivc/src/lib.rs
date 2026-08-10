@@ -55,9 +55,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)]
 
-#[cfg(all(feature = "fsp", feature = "unix-mock"))]
-compile_error!("nvidia-ivc: features `fsp` and `unix-mock` are mutually exclusive — pick one");
-
 mod error;
 pub use error::IvcError;
 
@@ -364,3 +361,14 @@ pub unsafe extern "C" fn nvidia_ivc_channel_notify(ch: *mut c_void) {
         unsafe { backend::notify(ch) }
     }
 }
+
+// ---------------------------------------------------------------------------
+// phase-341 W8.e / issue 0471 — capabilities REQUIRE the heap / the standard
+// library, they do not enable it. Turning `alloc` or `std` on for the user
+// silently changes what their firmware image is; naming the feature they must
+// add does not.
+// ---------------------------------------------------------------------------
+#[cfg(all(feature = "unix-mock", not(feature = "std")))]
+compile_error!("`unix-mock` uses OS sockets: add \"std\" to this crate's features");
+#[cfg(all(feature = "fsp", feature = "unix-mock"))]
+compile_error!("nvidia-ivc: features `fsp` and `unix-mock` are mutually exclusive — pick one");

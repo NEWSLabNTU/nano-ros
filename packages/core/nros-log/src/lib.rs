@@ -36,7 +36,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
-#[cfg(feature = "alloc")]
+#[cfg(any(feature = "alloc", feature = "std"))]
 extern crate alloc;
 
 // Phase 88.16.E — portable-atomic polyfill for CAS-less targets
@@ -367,14 +367,14 @@ pub fn init(sinks: &'static [&'static dyn LogSink]) {
     // Indirect through a small `'static` cell so the read path
     // dereferences a fat-pointer-sized slot rather than reading
     // a wide pointer atomically.
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "alloc", feature = "std"))]
     {
         let boxed: alloc::boxed::Box<&'static [&'static dyn LogSink]> =
             alloc::boxed::Box::new(sinks);
         let ptr = alloc::boxed::Box::into_raw(boxed);
         SINKS_PTR.store(ptr, Ordering::Release);
     }
-    #[cfg(not(feature = "alloc"))]
+    #[cfg(not(any(feature = "alloc", feature = "std")))]
     {
         static CELL: SinkSlot = SinkSlot::new();
         CELL.store(sinks);
@@ -382,17 +382,17 @@ pub fn init(sinks: &'static [&'static dyn LogSink]) {
     }
 }
 
-#[cfg(not(feature = "alloc"))]
+#[cfg(not(any(feature = "alloc", feature = "std")))]
 struct SinkSlot {
     inner: core::cell::UnsafeCell<Option<&'static [&'static dyn LogSink]>>,
 }
 
-#[cfg(not(feature = "alloc"))]
+#[cfg(not(any(feature = "alloc", feature = "std")))]
 // SAFETY: only written from `init`, which the user contracts to call
 // once at startup before any concurrent reader exists.
 unsafe impl Sync for SinkSlot {}
 
-#[cfg(not(feature = "alloc"))]
+#[cfg(not(any(feature = "alloc", feature = "std")))]
 impl SinkSlot {
     const fn new() -> Self {
         Self {

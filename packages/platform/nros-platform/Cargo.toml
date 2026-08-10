@@ -14,7 +14,10 @@ keywords = ["embedded", "no-std", "rtos", "platform-abstraction"]
 categories = ["embedded", "no-std", "os"]
 
 [features]
-default = ["std"]
+# phase-341 W3 / issue 0468 — EMPTY. This was the only crate in the platform
+# layer still defaulting to `std`; every sibling (`nros-platform-cffi`,
+# `-esp32-qemu`, `-stm32f4`, `nros-baremetal-common`) already had `default = []`.
+default = []
 std = []
 
 # Platform backends (select one).
@@ -110,7 +113,11 @@ threading = []
 # this feature to wire DDS + heapless futures through the
 # board's heap (`pvPortMalloc` on FreeRTOS, `tx_byte_allocate` on
 # ThreadX, `kmm_malloc` on NuttX, etc.).
-global-allocator = ["alloc"]
+# phase-341 W8.a / issue 0471 — does NOT enable `alloc`. The allocator module
+# uses only `core::alloc::GlobalAlloc`; `extern crate alloc` is gated separately
+# on the `alloc` feature. Installing a `#[global_allocator]` says "this platform
+# owns a heap", not "this image may allocate" — the second is the user's call.
+global-allocator = []
 
 # Phase 97.1.cs — opt-in `critical_section::Impl` registered against
 # the active platform's interrupt-disable primitive. DDS's

@@ -81,7 +81,7 @@ link-tls = ["zpico-sys/link-tls"]
 # vtable via `nros_rmw::set_custom_transport(...)` BEFORE opening
 # the session.
 link-custom = ["zpico-sys/link-custom"]
-std = ["alloc", "zpico-sys/std", "nros-rmw/std", "log"]
+std = ["zpico-sys/std", "nros-rmw/std", "log"]
 alloc = ["nros-rmw/alloc"]
 rtic = []
 polling = []
@@ -144,7 +144,7 @@ nros-ghost-types = { version = "0.5.0", path = "../../../verification/nros-ghost
 # Force `ConcretePlatform` resolution for tests under `platform-posix`.
 # Workspace-context builds get this via feature unification from a board
 # crate; standalone `cargo test` here doesn't.
-nros-platform = { version = "0.5.0", path = "../../../platform/nros-platform", features = ["platform-posix"] }
+nros-platform = { version = "0.5.0", path = "../../../platform/nros-platform", default-features = false, features = ["platform-posix", "std"] }
 # Phase 227.3(B) — the Rust shim is now platform-agnostic and the
 # `--lib` unit-test binary references the zpico C-port symbols
 # unconditionally. Pin the posix C port (threading / mutex / task

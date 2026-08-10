@@ -14,11 +14,13 @@ keywords = ["ros2", "parameters", "embedded", "no-std"]
 categories = ["embedded", "no-std"]
 
 [features]
-default = ["std"]
+# phase-361 W3 — EMPTY; `std` is opt-in per dep-site.
+default = []
 # phase-359 W8 — `std` implies `alloc`, matching nros / nros-node / nros-core.
 # The `ParameterVariant` impls below are gated on `alloc` (they are `alloc`
 # types); without this implication a consumer enabling only `std` would lose
-# them.
+# them. Upstream reached this independently; phase-361 W2.a reached it too,
+# after trying the opposite and measuring what it cost.
 std = ["alloc"]
 alloc = []
 
