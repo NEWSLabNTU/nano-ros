@@ -152,12 +152,35 @@ as "not equal"; same-stripe now takes that path, which is a tolerated false
 negative rather than a hang (trylock of a self-held mutex returns EBUSY on both
 glibc and Zephyr). `addrset_forone` never took a lock and is untouched.
 
-### What remains, and the honest limit of the result
+### The per-entity term, and the root fix — `cyclonedds@a09babf3`
 
-The pool still scales with the graph, just with a much smaller constant: the
-**per-proxy-entity** locks are untouched, and 2048 slots still exhausts on this
-graph. So this removes one term, not the dependence. It bought roughly an 8×
-reduction in the required pool (131072 → 16384) on a ~40-participant graph.
+Striping removed the addrset term but not the dependence: cyclone also puts a
+mutex in every entity (three in a writer — `e.lock`, `qos_lock`, `rdary_lock`),
+so 2048 slots still exhausted. Striping those is NOT available: cyclone
+documents a cross-entity lock order (`ddsi_entity.h`: "qos_lock lock order
+across entities is in increasing order of entity addresses"), so two entity
+locks are held simultaneously by design at hundreds of sites, and collapsing
+distinct entities onto shared mutexes would turn that discipline into a deadlock
+generator.
+
+The framing was wrong anyway. The constraint was never "cyclone uses too many
+mutexes" — it was "on Zephyr a ddsrt mutex is a handle into a fixed pool". So
+ddsrt now has a **Zephyr-native sync backend**: `ddsrt_mutex_t` is an embedded
+`struct k_mutex` and `ddsrt_cond_t` an embedded `struct k_condvar`, which are
+ordinary structs that live inside the entity. There is no pool to size and none
+to exhaust, for entities, addrsets, WHCs or anything else — the whole class, not
+one term of it. Zephyr's `pthread_mutex` is itself a `k_mutex` behind a handle
+table, so this makes the same kernel calls with one less indirection.
+
+`CONFIG_MAX_PTHREAD_MUTEX_COUNT` in the safety island is consequently back to
+the example default of **256**, after having been walked 256 → 16384 → 131072
+chasing the size of the graph. It is not zero only because Zephyr's POSIX layer
+is still used for threads (`pthread_create`) and the single `log.c` rwlock,
+neither of which scales with the graph.
+
+Left on pthreads on purpose: `ddsrt_rwlock_t` (exactly one exists in production
+cyclone, so it is not part of the term, and Zephyr has no native rwlock to map
+onto) and `ddsrt_once_t` (caller-owned, not pooled).
 
 ### Regression cover (added after the fact)
 
@@ -190,5 +213,30 @@ Two things about it worth keeping:
   aimed at them. A concurrency test that has never been seen to fail is not
   evidence of anything.
 
+### Verification gap on the native backend — read before trusting it
+
+The Zephyr sync backend is verified by construction and by boot, not by traffic:
+the island builds with it, and cyclone initialises fully at a 256-slot pool
+(`dds_create_participant` succeeds, which exercises the new mutexes and condvars
+across ddsi init, thread states, dqueues and the timed waits in xevents). Native
+POSIX is unaffected (`just cyclonedds ci` 17/17, dispatch falls through).
+
+What is NOT verified is two-party data flow on it. The only zephyr+cyclone
+integration harness in reach is the safety-island demo, and no cyclone
+participant can be created on **domain 1** of the build host at present: another
+project's Autoware is squatting that domain's index space (92 bound ports in
+7650..8200, none of them ours). That is measured rather than assumed — cyclone on
+domain 1 fails for any config *including no config*, while fastrtps on domain 1
+and cyclone on domain 7 both create nodes fine, and the sim half-starts before
+the island binary is even launched. Re-run `just demo-all` when the box is quiet,
+or on an unused `ROS_DOMAIN_ID` (the island's domain is compile-time, so that
+needs a rebuild).
+
+One correction this exposed: an earlier claim here that the graph had outgrown
+`MaxAutoParticipantIndex=120` (~158 participants) was **confounded** — that count
+included the other project's participants. Both index-range bumps made on the
+strength of it have been reverted.
+
 **Still not fixed upstream.** CycloneDDS master as of `5e82de60` (2026-05-19)
-does `ddsrt_mutex_init (&as->lock)` in `ddsi_new_addrset`. Worth offering.
+does `ddsrt_mutex_init (&as->lock)` in `ddsi_new_addrset`, and has no Zephyr
+sync backend. Both are worth offering.

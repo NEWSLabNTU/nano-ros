@@ -94,6 +94,13 @@ file(GLOB _cdds_ddsrt_posix ${CYCLONEDDS_DIR}/src/ddsrt/src/*/posix/*.c)
 #   - filesystem/posix/filesystem.c → DDSRT_HAVE_FILESYSTEM=0 in config.h
 #     but the body references DDSRT_FILESEPCHAR / ddsrt_dir_handle_t
 #     unconditionally; drop to avoid build errors.
+#   - sync/posix/sync.c → replaced by the Zephyr-native backend, which is the
+#     whole point of issue 0496: Zephyr's pthread mutexes and condvars come from
+#     fixed static pools, so cyclone's per-entity locks turned graph size into a
+#     compile-time RAM constant. The replacement embeds k_mutex / k_condvar in
+#     the entity instead. DDSRT_WITH_ZEPHYR in cyclonedds-config/dds/config.h
+#     picks the matching TYPES from ddsrt/sync/zephyr.h; both halves must move
+#     together or the struct layouts disagree.
 list(REMOVE_ITEM _cdds_ddsrt_posix
     ${CYCLONEDDS_DIR}/src/ddsrt/src/ifaddrs/posix/ifaddrs.c
     ${CYCLONEDDS_DIR}/src/ddsrt/src/dynlib/posix/dynlib.c
@@ -101,10 +108,16 @@ list(REMOVE_ITEM _cdds_ddsrt_posix
     ${CYCLONEDDS_DIR}/src/ddsrt/src/random/posix/random.c
     ${CYCLONEDDS_DIR}/src/ddsrt/src/sockets/posix/gethostname.c
     ${CYCLONEDDS_DIR}/src/ddsrt/src/filesystem/posix/filesystem.c
+    ${CYCLONEDDS_DIR}/src/ddsrt/src/sync/posix/sync.c
 )
 
 # Zephyr replacement TUs for the dropped POSIX bodies above.
 set(_cdds_zephyr_overrides
+    # issue 0496 — k_mutex / k_condvar in place of the pooled pthread objects.
+    # Lives in the cyclonedds fork rather than here, alongside its sibling ports
+    # (posix / freertos / threadx / windows), because it implements a ddsrt
+    # backend rather than patching around one.
+    ${CYCLONEDDS_DIR}/src/ddsrt/src/sync/zephyr/sync.c
     ${NROS_ZEPHYR_DIR}/cyclonedds-zephyr/random_zephyr.c
     ${NROS_ZEPHYR_DIR}/cyclonedds-zephyr/process_zephyr.c
     # SHM stub fns — original ddsi_shm_transport.c dropped under

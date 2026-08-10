@@ -18,6 +18,18 @@
 /* #undef DDSRT_WITH_LWIP */
 /* #undef DDSRT_WITH_FREERTOS */
 
+/* Sync primitives: Zephyr-native k_mutex / k_condvar instead of the POSIX
+ * backend (issue 0496). Zephyr's pthread_mutex_t and pthread_cond_t are handles
+ * into fixed static pools (CONFIG_MAX_PTHREAD_{MUTEX,COND}_COUNT), and cyclone
+ * puts a mutex in every entity — three in a writer — so the pool had to be
+ * sized for the number of local AND proxy entities. That made the size of the
+ * graph an image can join a compile-time RAM constant, and exhausting it was
+ * issue 0371. k_mutex / k_condvar are plain structs that live inside the entity,
+ * so there is no pool to size and none to exhaust. Selects
+ * ddsrt/sync/zephyr.h + src/sync/zephyr/sync.c (swapped in for
+ * src/sync/posix/sync.c by zephyr/cmake/nros_rmw_cyclonedds.cmake). */
+#define DDSRT_WITH_ZEPHYR 1
+
 /* Platform capabilities */
 /* #undef DDSRT_HAVE_DYNLIB */     /* no dlopen on Zephyr */
 /* #undef DDSRT_HAVE_FILESYSTEM */ /* no POSIX filesystem assumed */
