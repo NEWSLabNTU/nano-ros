@@ -69,8 +69,21 @@ Kconfig pool to point at, or a safe `printk` — so the useful message is smalle
 mostly deciding how to emit it without dragging logging into ddsrt's lowest layer. One shared
 helper per port, not inlined per site. See `0508-*`. (2026-08-10)
 
-Recently resolved (2026-08-10): **#0501** — `native_main_macro_misuse` fails a DIFFERENT subset of its five cases
-every run on an unchanged tree; four of the five have failed at least once, and . See `archived/0501-*`.
+Recently resolved (2026-08-10): **#0501** — `native_main_macro_misuse` failed a DIFFERENT subset of its five cases
+every run on an unchanged tree; four of the five have failed at least once, and any one alone always passes.
+The message is misleading — `expected cargo check to fail …` with stderr reading `Finished` — so nothing
+compiled, rather than the error text being wrong. Cause: `shared_check_target_dir()` (phase-342 W2) points
+every case at ONE `CARGO_TARGET_DIR`, and all five staged copies build the same package name `demo_entry`,
+so a sibling's SUCCESSFUL artifact satisfies the next case's fingerprint and cargo short-circuits without
+expanding the macro — in a suite whose whole point is "this misuse must FAIL to compile". The phase-342
+comment reasoned about the LOCK ("fine here and only here") and that reasoning holds; artifact ALIASING is
+the hazard it does not mention, and the same dir that bought 108.5 s → 10.3 s is what shares the state.
+**Likely explains #495**, whose "cargo short-circuits in 0.04 s" is exactly what an already-satisfied
+fingerprint looks like and whose own trigger is marked UNPROVEN — test it against a per-case dir before
+pursuing its candidates. Fix: key the dir by CASE, or rename the package per case (the deps are where the
+10x came from, not `demo_entry`); properly, this is CLAUDE.md's **"No compilation inside tests"** (archived
+0041) and wants to be a build-stage compile-check whose expected result is failure. See `archived/0501-*`.
+(2026-08-10)
 
 Recently resolved (2026-08-10): **#501** (testing) — `native_main_macro_misuse` failed a DIFFERENT subset
 of its five cases every run; four of five failed at least once, any one alone passed. Not lock contention,

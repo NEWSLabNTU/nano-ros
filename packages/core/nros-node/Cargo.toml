@@ -123,7 +123,9 @@ log = ["dep:log"]
 safety-e2e = ["nros-rmw/safety-e2e"]
 
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API).
-unstable-zenoh-api = []
+# phase-347 W1 — `unstable-zenoh-api` DELETED. An empty feature no `cfg` read,
+# in a CORE package, naming a backend. Its only mention in core source was a
+# doc comment whose actual seam is `rmw-lending`.
 
 # Async feedback stream (futures_core::Stream impl on FeedbackStream).
 stream = ["dep:futures-core"]

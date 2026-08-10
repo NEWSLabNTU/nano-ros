@@ -121,7 +121,11 @@ safety-e2e = [
 ]
 
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API).
-unstable-zenoh-api = ["nros-node/unstable-zenoh-api"]
+# phase-347 W1 — `unstable-zenoh-api` DELETED here. It forwarded to
+# `nros-node`'s empty feature and reached nothing; the live chain is
+# `nros-rmw-zenoh` -> `zpico-sys` -> `Z_FEATURE_UNSTABLE_API`, which a consumer
+# reaches through its own optional backend dep. `nros` is agnostic (RFC-0071)
+# and must not name a backend, so it cannot legitimately forward this at all.
 
 # Async feedback stream (futures_core::Stream impl on FeedbackStream).
 stream = ["nros-node/stream"]

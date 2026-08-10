@@ -61,7 +61,13 @@ ros-jazzy = ["nros/ros-jazzy", "nros-rmw-zenoh?/ros-jazzy"]
 # Zenoh-specific feature carry-overs (link/feature plumbing only — no source
 # gates). The E2E-safety listener variant lives in
 # `packages/testing/nros-tests/bins/safety-chatter-listener`.
-unstable-zenoh-api = ["nros/unstable-zenoh-api"]
+# phase-347 W1 — forwards to the BACKEND, not to `nros`. The old
+# `["nros/unstable-zenoh-api"]` reached `nros-node`'s empty feature and stopped
+# there: the zero-copy receive path lives in `nros-rmw-zenoh` -> `zpico-sys` ->
+# `Z_FEATURE_UNSTABLE_API`, so the switch was a NO-OP end to end (issue 0441
+# read the same chain as "propagates to nros ... changes which receive path the
+# runtime takes"; it does not). Same `?/` optional-dep shape as `ros-*` above.
+unstable-zenoh-api = ["nros-rmw-zenoh?/unstable-zenoh-api"]
 link-tls           = ["nros-rmw-zenoh?/link-tls"]
 
 [dependencies]

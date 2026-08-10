@@ -21,13 +21,27 @@ fn main() {
     // this presence cfg.
     println!("cargo:rustc-check-cfg=cfg(rmw_needs_type_descriptors)");
 
-    // Emit `has_rmw` cfg when any RMW backend feature is active, or
-    // when compiling for tests (unit tests use MockSession).
-    let has_rmw = env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()
-        || env::var("CARGO_FEATURE_RMW_XRCE").is_ok()
-        || env::var("CARGO_FEATURE_RMW_CFFI").is_ok()
-        || env::var("CARGO_FEATURE_RMW_UORB").is_ok();
-    if has_rmw {
+    // Emit `has_rmw` when an RMW seam is compiled in.
+    //
+    // phase-347 W1 — this used to test four features:
+    // `CARGO_FEATURE_RMW_{ZENOH,XRCE,CFFI,UORB}`. **Three of them do not
+    // exist.** This crate declares exactly one `rmw-*` selection feature,
+    // `rmw-cffi`; there is no `rmw-zenoh`, `rmw-xrce` or `rmw-uorb` on
+    // `nros-node`, so cargo could never set those env vars and the three
+    // disjuncts were dead — vestiges of the pre-phase-248 shape, before the
+    // umbrella converged on the cffi vtable.
+    //
+    // Deleting them is not a behaviour change; it is the removal of three
+    // backend NAMES from a core package (RFC-0071: core receives capabilities,
+    // it does not detect backends). `rmw-cffi` is already the capability —
+    // "an RMW vtable seam is present" — wearing a four-backend disguise.
+    //
+    // The comment here also claimed `has_rmw` was set "when compiling for
+    // tests (unit tests use MockSession)". No such branch existed, in this
+    // revision or any other reachable from it; the claim was removed rather
+    // than implemented, because unit tests that need a session already select
+    // `rmw-cffi` through dev-dependencies.
+    if env::var("CARGO_FEATURE_RMW_CFFI").is_ok() {
         println!("cargo:rustc-cfg=has_rmw");
     }
 

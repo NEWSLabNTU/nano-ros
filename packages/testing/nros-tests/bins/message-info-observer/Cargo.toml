@@ -18,7 +18,9 @@ rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
 # issue 0441 — the zero-copy receive path. This is the ONLY axis this bin
 # varies: the same `seq=`/`gid=` line must appear with and without it, which is
 # what makes the pair a trampoline check rather than two unrelated runs.
-unstable-zenoh-api = ["nros/unstable-zenoh-api"]
+# phase-347 W1 — forwards to the BACKEND; the `nros` route was a no-op. See the
+# matching comment in examples/native/rust/listener/Cargo.toml.
+unstable-zenoh-api = ["nros-rmw-zenoh?/unstable-zenoh-api"]
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
