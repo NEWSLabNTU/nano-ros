@@ -461,6 +461,13 @@ corrosion roots' members differ only in cargo's `path` field
 target with target: 5 -> 3. Predicted here so the next reader can falsify it the
 same way.
 
+**It was falsified the same way, 2026-08-10 — and that is SEVEN.** The
+observation survives; the work item built on it does not. `path` is not a
+spelling any caller chooses, so there is no edit that "collapses the two roots'
+path spelling". See "R2 re-measured — `path` is a RELATION, not a spelling"
+below. 5 -> 3 is still the right target and still R2's, but it costs a root,
+not a string.
+
 **P2 — close the second build path. DONE 2026-08-10.** See "P2 — what the second
 path actually was" below. The `examples/**/target/` population is empty and
 gated; the residue (per-leaf dirs under `packages/testing/**`, and authored
@@ -542,6 +549,107 @@ lands"), did not survive reading the four fingerprint JSONs it summarised — se
 "P1 corrected" above. A budget lowered on a decomposition is only as good as the
 decomposition; check it against `.fingerprint/*/lib-*.json`, which names every
 field cargo actually keyed on, before predicting which work item moves it.
+
+#### R2 re-measured — `path` is a RELATION, not a spelling (2026-08-10)
+
+The premise above was checked before anything was changed, on the fresh mixed
+tree the gate reads. **Its observation is confirmed and its conclusion is
+wrong**, which is the seventh premise this phase has lost to a measurement.
+
+**Confirmed: the two roots' units differ in exactly one field.** All four
+`nros-serdes` fingerprints
+(`<root>/[<triple>/]<profile>/.fingerprint/nros-serdes-*/lib-*.json`) agree on
+`rustc`, `features`, `declared_features`, `target`, `profile`, `deps`,
+`rustflags`, `config` and `compile_kind`; `path` alone splits them, the same
+way in the host pair and in the target pair:
+
+| unit | `path` |
+| --- | --- |
+| `cargo/nano-ros_0b88c/…` (host and target) | `4098220467150443427` |
+| `cargo/nros_ws_runtime_14eac/…` (host and target) | `2387503793444693694` |
+
+**What that field contains, read rather than inferred** — the dep-info files
+beside those rlibs spell the same source two ways:
+
+```
+nano-ros_0b88c/…/deps/nros_serdes-a41154198c4836e2.d:
+    packages/core/nros-serdes/src/lib.rs
+nros_ws_runtime_14eac/…/deps/nros_serdes-4e5cd29b6c626931.d:
+    /mnt/evo/aeon/nano-ros/packages/core/nros-serdes/src/lib.rs
+```
+
+**And that is cargo choosing, not nano-ros.** `path_args` spells a unit's source
+RELATIVE to the workspace root when the package sits inside it and ABSOLUTE
+otherwise. Root A builds `nros-serdes` as a **member** of the repo-root
+workspace; root B reaches it as an **out-of-workspace path dep**. So `path`
+records the RELATION between the invoking workspace and the crate. Nothing in
+the generated manifest, the `MANIFEST_PATH` argument or the `path =` dep line
+selects it.
+
+**Measured, not reasoned — a 30-line reproduction of the whole phenomenon.**
+One dependency crate `b`, three invocations, default profile, no features:
+
+| arm | artifact |
+| --- | --- |
+| `b` is a MEMBER of the workspace above it | `libb-6531a4de8c413d0d.rlib` |
+| `b` is a path dep of a build-dir crate, dep line **absolute** | `libb-a3d9a90756a4909e.rlib` |
+| `b` is a path dep of a build-dir crate, dep line **relative** | `libb-a3d9a90756a4909e.rlib` |
+
+Arms 2 and 3 are byte-for-byte the same identity, and arms 1 and 2's
+fingerprints differ in exactly one field — `path` — i.e. the mixed tree's split,
+in miniature. **So re-emitting `nros_write_runtime_umbrella_crate`'s
+`nros-cpp = { path = "…" }` line relative changes nothing**, which was the
+obvious edit and is a trap: it would have produced a green gate reading the same
+5, and a commit message claiming a mechanism that does not exist.
+
+**The same tree carries the control case.** `stable_deref_trait` — a REGISTRY
+dependency, so its source id is not a path and there is no workspace root to
+strip — appears under BOTH corrosion roots with the SAME two hashes
+(`ef7a4cf9ec5986e9` host, `926c47a90bb1b2ec` target). The roots are not split by
+a profile, a flag or an environment difference: they split exactly where cargo
+records a path relation, i.e. on nano-ros' own crates. (Registry crates can
+still split for a different reason — `thiserror` shows four, because the two
+roots resolve through different LOCKS and pick different versions.)
+
+**Two cargo rules close the remaining space, both observed here:**
+
+```
+$ cargo metadata            # build-dir workspace, members = [<in-repo crate>]
+error: package `…/packages/core/nros-serdes/Cargo.toml` is a member of the wrong workspace
+$ cargo metadata            # same, with the repo root EXCLUDING that crate
+error: workspace member `…/crates/b/Cargo.toml` is not hierarchically below the
+       workspace root `…/synth2/Cargo.toml`
+```
+
+A synthesised workspace in `CMAKE_BINARY_DIR` therefore can never take the
+in-repo crates as MEMBERS — not even if the root workspace excludes them — so
+the only relation it can have to them is the path dep it already has. The
+mirror-image move fails on the same rule: the umbrella cannot join the repo-root
+workspace, because a user's `CMAKE_BINARY_DIR` is not below the repo root, and
+because it path-deps the USER's node packages against a per-configure generated
+lock that the tracked root lock cannot promise.
+
+**What actually reaches 3.** The two roots share an identity only if they relate
+to `packages/**` the same way. Three ways exist and none is a path spelling:
+
+1. **Delete root A from the configure** — issue 0493's single-provider design
+   (one synthesised provider owning the archive AND the generated headers).
+   Attempted and reverted there; note root A also provides `nros_c-static`,
+   which a mixed workspace's C nodes need, so the provider must subsume the C
+   half too. This is the direction 0493 already recommends.
+2. **Move `nros-c` / `nros-cpp` out of the repo-root workspace** (own
+   `[workspace]` table), so the cmake import reaches the stack as path deps as
+   well. Costed here rather than guessed: both manifests inherit
+   `version/authors/repository/homepage/documentation.workspace` and ~20
+   `workspace = true` dependency rows, ~12 `justfile` / `scripts/` sites build
+   them with `-p` from the root workspace, and each would need its own tracked
+   lock. It is a repo-structure decision, not a build-wiring edit.
+3. **Give the umbrella the repo root as its workspace root** — refuted above by
+   the hierarchy rule plus the tracked lock.
+
+So `CEILING_IDENTITIES` stays **5**: the truth did not move, and the gate must
+not either. The R2 axis is still worth ×2 on every crate the two roots share —
+the prize is real; the cheap lever was not.
 
 #### P2 — what the second path actually was (2026-08-10, LANDED)
 
@@ -1163,7 +1271,7 @@ is why 334 W2.b comes before the grouping work here.
 | 5 | **340 W2** | **mechanism DECIDED 2026-08-08 — one shared `--target-dir` per group, NOT the umbrella** (measured: same bytes, no wall-clock regression, no generated state). Blocker 1 of 2 cleared (`3ebc32110`, artifact-name collisions). Blocker 2 (the Rust resolver's group key) **settled 2026-08-08: the platform-grained shortcut is refuted (17 artifact collisions), so the variant slug gets built**. Prize measured at 46.1 → ~7.0 GiB on `linux`. Still absorbs the manifest `target_dir` / `build_subdir` column |
 | ~~6~~ | ~~**340 W3**~~ | **DONE for the cmake lane 2026-08-08** (`c1cec0ef4`) — direction decided by measurement: EXPLICIT-ALWAYS, because corrosion hardcodes `--target` and is not ours to fork, and because the explicit spelling costs zero extra units (165 = 165). Three generators that could still emit the implicit spelling now share one resolver that cannot return empty; gated by `check-cargo-target-spelling`. The cargo-LEAF half is deliberately left to item 5 — a 58-site / 104-literal path move (re-derived 2026-08-10). **Its pre-registered criterion — the identity gate 6 -> 3 — was measured unreachable 2026-08-10: the gate's tree contains no cargo leaf build, and 4 of the 6 are the proc-macro host graph, not a `--target` spelling. See "The leaf half, re-measured".** The cmake half is now REBUILD-verified on the native lane |
 | 7 | **334 W2.c** | collapse `.gitignore`, once (4) has moved the paths — **BLOCKED: no path has moved.** Re-confirmed 2026-08-08: `build/fixtures-cargo/` holds one entry, against 116 live per-leaf target dirs (64 `target/`, 52 `target-*/`). Every ignore line still names live output |
-| 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c). Budgets: `nros_core` 8 -> 4 and the ceiling 12 -> 6 landed 2026-08-10 (P1), then 6 -> **5** the same day on a REBUILT tree — the 6th was pre-W3 residue, not a compilation. Gate now reads `nros_core 4/4; worst crate 5/5; worst identity 5/5`. The remaining 5 -> 3 is item 5's (R2), not W3's |
+| 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c). Budgets: `nros_core` 8 -> 4 and the ceiling 12 -> 6 landed 2026-08-10 (P1), then 6 -> **5** the same day on a REBUILT tree — the 6th was pre-W3 residue, not a compilation. Gate now reads `nros_core 4/4; worst crate 5/5; worst identity 5/5`. The remaining 5 -> 3 is item 5's (R2), not W3's — but **not as a path-spelling edit**: measured 2026-08-10, cargo's `path` field records member-vs-foreign-path-dep, so 5 -> 3 costs a corrosion ROOT (see "R2 re-measured — `path` is a RELATION, not a spelling"). Budget stays 5 |
 
 (1) and (2) are small and unblock reading the gate honestly. (3) is the biggest
 win needing no restructuring. (4) unblocks every path move. (5) and (6) are the
@@ -2205,7 +2313,7 @@ each axis is a different cause:
 
 | axis | copies | cause |
 | --- | --- | --- |
-| two corrosion roots — `nano-ros_0b88c` (the C++ side) vs `nros_ws_runtime_14eac` (the Rust umbrella) | ×2 | **R2** — separate cargo invocations resolving through DIFFERENT workspace manifests. Corrosion keys its dir on `sha1(workspace_manifest_path)`, so they cannot even land in the same tree. |
+| two corrosion roots — `nano-ros_0b88c` (the C++ side) vs `nros_ws_runtime_14eac` (the Rust umbrella) | ×2 | **R2** — separate cargo invocations resolving through DIFFERENT workspace manifests. Corrosion keys its dir on `sha1(workspace_manifest_path)`, so they cannot even land in the same tree. **The identity split is upstream of the dir split**: root A builds the shared crates as workspace MEMBERS, root B as out-of-workspace PATH DEPS, and cargo spells (and hashes) the source differently for each — see "R2 re-measured — `path` is a RELATION, not a spelling". |
 | host vs `x86_64-unknown-linux-gnu` | ×2 | **R3** — the explicit `--target` split, here appearing WITHIN one invocation (build scripts/proc macros vs the library). |
 | two identities per root+arch cell | ×2 | **unattributed.** Both fingerprints report identical `features = ["alloc","std"]`, so it is not feature-driven; `-C metadata` folds in dependency metadata, so the likeliest cause is the two staticlibs (`nros-c`, `nros-cpp`) resolving an intermediate crate differently. Not yet proven — do not quote a cause. |
 

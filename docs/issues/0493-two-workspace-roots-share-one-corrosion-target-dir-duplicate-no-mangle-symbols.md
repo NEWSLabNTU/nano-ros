@@ -599,3 +599,26 @@ have been visible without configuring a real workspace:
 * Only two fixture rows were rebuilt, not `lane=native`. Tier 2 (`just
   ci-matrix`, earned by a `cmake/` diff) was not run — it needs
   `build-test-fixtures lane=tier2` and the disk here is at 96 %.
+
+## Why the cheap fix does not exist (phase-340 item 5, measured 2026-08-10)
+
+phase-340 hoped to defuse this class without the provider redesign, by making
+the two roots' cargo `path` field agree ("repo-root-relative vs absolute"). It
+does not exist. `path` is not a spelling a caller chooses: cargo spells a unit's
+source relative to the workspace root when the package is INSIDE it and absolute
+otherwise, so the field records the RELATION this issue already names — root A
+builds the shared crates as workspace MEMBERS, the umbrella reaches them as
+out-of-workspace PATH DEPS. Measured: an absolute and a relative `path =` dep
+line produce the SAME `-C metadata`; only member-vs-path-dep moves it. And cargo
+forbids both ways out — a build-dir workspace cannot adopt an in-repo crate
+("member of the wrong workspace", and with the root excluding it, "not
+hierarchically below the workspace root"), while the umbrella cannot join the
+repo-root workspace (an out-of-tree `CMAKE_BINARY_DIR` is not below it, and its
+lock names the user's node packages).
+
+**So the two roots cannot share an identity while both exist as they are**, and
+this issue's single-provider design — or moving `nros-c`/`nros-cpp` out of the
+repo-root workspace — is the whole remaining space. Evidence, including the
+three-arm reproduction, is in phase-340 "R2 re-measured — `path` is a RELATION,
+not a spelling". Nothing here changes this issue's diagnosis; it removes an
+option someone would otherwise try first.

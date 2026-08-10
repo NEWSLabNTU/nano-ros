@@ -147,6 +147,27 @@ BUDGET_IDENTITIES=4
 # item 5 / W2). They differ only in cargo's `path` field, repo-root-relative vs
 # absolute, so merging the roots merges host with host and target with target:
 # 5 -> 3. The number in the old prediction was right; the work item was not.
+#
+# **R2 RE-MEASURED 2026-08-10, and the sentence above is right about the field
+# and wrong about the remedy.** `path` is not a spelling any caller picks: cargo
+# spells a unit's source RELATIVE to the workspace root when the package is
+# inside it and ABSOLUTE otherwise, so the field records a RELATION —
+# `nano-ros_<h>` builds the shared crates as workspace MEMBERS
+# (`packages/core/nros-serdes/src/lib.rs` in the dep-info), `nros_ws_runtime_<h>`
+# reaches them as out-of-workspace PATH DEPS (the absolute spelling). Measured
+# in a three-arm reproduction: an absolute and a relative `path =` dep line
+# produce the SAME identity, and only member-vs-path-dep moves it. Cargo then
+# closes the space from both sides — a build-dir workspace cannot adopt an
+# in-repo crate ("member of the wrong workspace"; and with the root excluding
+# it, "not hierarchically below the workspace root"), and the umbrella cannot
+# join the repo-root workspace (an out-of-tree CMAKE_BINARY_DIR is not below it,
+# and its lock names the user's node packages).
+#
+# So 5 -> 3 costs a corrosion ROOT, not a string: either issue 0493's
+# single-provider design (delete root A), or moving nros-c/nros-cpp out of the
+# repo-root workspace. Both are decisions with their own acceptance; until one
+# lands this number is 5 and lowering it would be lying. Full evidence:
+# phase-340, "R2 re-measured — `path` is a RELATION, not a spelling".
 CEILING_IDENTITIES=5
 CEILING_COPIES=5
 # ----------------------------------------------------------------------------
