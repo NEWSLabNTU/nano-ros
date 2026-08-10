@@ -1,6 +1,18 @@
 # Phase 347 — RMW as a declared provider: capabilities, search, and no special cases
 
-**Status (2026-08-10). PROPOSED — no code landed.** Implements
+**Status (2026-08-11). W1–W4 LANDED. W5 and W6 NOT STARTED, each blocked on a
+condition recorded before the work began, not on time.**
+
+| wave | state |
+| --- | --- |
+| W1 subtractions | landed — and found a user-facing feature wired to nothing |
+| W2 descriptor + gate | landed — 4 descriptors (not 8: only 4 of the 8 `packages/rmw` dirs are backends) |
+| W3 resolution by name | landed — retired **FOUR** closed lists, not the three the plan named |
+| W4 capabilities | landed, acceptance PARTIAL — `packages/core/**` clean, `packages/api/**` not (21 features) |
+| W5 codegen hook | **not started** — its own pre-registered condition is unmet, see below |
+| W6 platform leak | **not started** — see below |
+
+**Original status (2026-08-10). PROPOSED — no code landed.** Implements
 [RFC-0071](../design/0071-rmw-backend-descriptor.md). The design is settled and
 its open questions are answered; this phase is the ordering.
 
@@ -140,12 +152,36 @@ NOT go green in W4; it is scoped to `packages/core/**` for now.
 
 *Acceptance:* cyclonedds appears in `cmake/` only inside its own package.
 
+**NOT STARTED — the condition this wave set for itself is unmet.** W5 says, in
+its own second bullet, that the cargo-rooted twin "is unresolved — settle that
+before starting, or split W5 into its own phase". It is still unresolved:
+`[rmw.codegen].per_message` names a CMake function, and a cargo-rooted consumer
+reaches the same work through the `codegen_cyclonedds_descriptors` CLI verb
+instead. Whether one contract covers both is the question, and starting the
+implementation would answer it by accident rather than by design.
+
+Recommend splitting W5 into its own phase, since it is also the only wave that
+adds new machinery rather than moving or deleting existing facts.
+
 ## W6 — The platform descriptor leak (small, independent)
 
 - [ ] `nros-platform.toml` carries `[knobs.zenoh.tx]` and `[build.zenoh]` —
       backend-named sections in a *platform* file. Key them on the resolved
       backend so a platform declares settings without naming one. Same
       violation as core naming a backend, one axis over.
+
+**NOT STARTED, and the premise needs one check first.** Measured: the schema is
+`BuildSection { zenoh: Option<PlatformEntry> }` with `deny_unknown_fields`, so
+`[build.cyclonedds]` is not merely absent — it is REJECTED. Four non-test
+consumers (`platform_config.rs` ×2, `cmd/config.rs`, `nros-zpico-build/runner.rs`)
+plus a dozen test fixtures.
+
+The generalisation is justified in principle — `xrce-sys` is also a vendored C
+library and would want the same block — but **there is no second tenant to
+validate the map shape against today**. Converting the schema now would be
+designing a generic container from one example, which is how the RMW dispatch
+got its shape in the first place. Do it WITH the second tenant, so the shape is
+answerable rather than guessed.
 
 ---
 
