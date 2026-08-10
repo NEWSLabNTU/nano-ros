@@ -78,6 +78,42 @@ BOTH derivations (cmake `COMPARE NATURAL ORDER DESCENDING`, shell `sort -Vr`), a
 visible; without it the retry would have been logged as "rebuilt on v0.6.1, still broken". Verified with
 both versions present: resolves 0.6.1, exit 0, 0 duplicate symbols. See `archived/0500-*`. (2026-08-10)
 
+**#506** (embedded, open 2026-08-10) — transport tasks ABOVE application tiers is the right FreeRTOS
+default (the inverse starves the RX drain into multi-second lwIP RTO freezes, d708d8c5b), but the band has
+NO BUDGET: sustained inbound above the ~750 msg/s drain capacity (mps2-an385/QEMU lane) triggers periodic
+recovery cycles in which the transport band runs solid for ~100-340 ms and every application tier's timers
+gap at the same instant — a single too-fast remote publisher can blow every deadline on the device, and no
+tier priority can prevent it. Fix: budget the drain (sporadic-server-style), or cap per-subscription
+inbound at the rmw ring (tail-drop beats protocol-recovery preemption), plus a shed counter. See `0506-*`.
+
+**#505** (embedded, open 2026-08-10) — periodic timers REPLAY the whole backlog after a stall: a ~200 ms
+preemption of a 10 ms control callback produced 6 activations ~88 us apart (guest-clock stamps), i.e. a
+command burst at 100x the declared rate computed from stale inputs — and the application cannot detect it
+(no overrun counter, no lateness on the callback; a rate monitor is SATISFIED by the burst). Needs a
+per-timer overrun policy (`CatchUp` vs `Skip`/coalesce, declarable; `Skip` arguably the real-time default)
+and a missed-activation counter the scheduling monitors can read. See `0505-*`.
+
+**#504** (api, open 2026-08-10) — node code has NO portable clock: pkgs are platform-agnostic, so they can
+reach neither the per-platform timing types nor `nros_platform_clock_us`, and control loops are forced to
+assume the nominal period for `dt` (silently misintegrating whenever a callback runs late). Users
+re-invent the platform ABI one layer up (a hand-rolled `extern "C"` clock crate with per-entry-binary
+exports). Fix is minimal: `nros::time::now()` over the already-universal `nros_platform_clock_us` export,
+monotonic-since-boot, explicitly not ROS time. See `0504-*`.
+
+**#503** (api, open 2026-08-10) — `nros-log` `Record.timestamp_ns` exists but is a hardcoded `0` at every
+emission site (macros + `log` bridge) and no sink prints it, so embedded log analysis rides on HOST-side
+stamps that measure the transport, not the target: on a QEMU icount lane host stamps inflated a healthy
+10 ms loop's late-period rate ~35x (5.7% vs 0.3% on-target). Wiring is one extern call —
+`nros_platform_clock_us` is universally exported — plus sink formatting; resolution usefulness on
+FreeRTOS/ThreadX gated on #502. See `0503-*`.
+
+**#502** (embedded, open 2026-08-10) — `nros_platform_clock_us` is MILLISECOND-quantized under a
+microsecond signature on FreeRTOS (`xTaskGetTickCount() * US_PER_TICK`) and ThreadX (same shape); Zephyr
+and POSIX are genuinely sub-us. The executor's spin/timer accounting runs on this clock, so every measured
+duration on those ports carries a 1 ms error floor — 10% of a 10 ms period before scheduling starts, and
+sub-ms periods are inexpressible. Fix: sub-tick interpolation behind the same export (SysTick down-counter
+on Cortex-M with a tick-boundary guard, as the mps2 Tonbandgeraet trace port already does). See `0502-*`.
+
 **#499** (build, open 2026-08-10) — `check-artifact-identity-budget` failed tier 1 at its FIRST step on a
 build tree three days old and untouched by the diff, so the whole build tier / clippy / `test-all` never
 ran. Not the gate being wrong — the gate being **unfalsifiable where it runs**. Its own comment accepts
