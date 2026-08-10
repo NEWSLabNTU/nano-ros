@@ -21,7 +21,7 @@ use super::{
         ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry, SrvRawEntry,
         SubBufferedBorrowedEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
         SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubInfoEntry, SubInplaceEntry,
-        TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry, guard_has_data,
+        TimerEntry, TimerHeader, TimerOverrunPolicy, always_ready, buffered_region_size, drop_entry, guard_has_data,
         guard_try_process, no_pre_sample, service_client_callback_try_process,
         service_client_raw_try_process, srv_has_data, srv_raw_has_data, srv_raw_try_process,
         srv_try_process, sub_buffered_borrowed_has_data, sub_buffered_borrowed_try_process,
@@ -3927,9 +3927,11 @@ impl<'s> Executor<'s> {
                 TimerEntry {
                     period_ms: period.as_millis(),
                     elapsed_ms: 0,
+                    overruns: 0,
                     oneshot: false,
                     fired: false,
                     cancelled: false,
+                    overrun_policy: TimerOverrunPolicy::default(),
                     callback,
                 },
             );
@@ -3969,9 +3971,11 @@ impl<'s> Executor<'s> {
                 TimerEntry {
                     period_ms: delay.as_millis(),
                     elapsed_ms: 0,
+                    overruns: 0,
                     oneshot: true,
                     fired: false,
                     cancelled: false,
+                    overrun_policy: TimerOverrunPolicy::default(),
                     callback,
                 },
             );
@@ -4018,9 +4022,11 @@ impl<'s> Executor<'s> {
                 TimerEntry {
                     period_ms: period.as_millis(),
                     elapsed_ms: 0,
+                    overruns: 0,
                     oneshot: false,
                     fired: false,
                     cancelled: false,
+                    overrun_policy: TimerOverrunPolicy::default(),
                     callback,
                 },
             );
@@ -4775,6 +4781,49 @@ impl<'s> Executor<'s> {
         let arena_ptr = self.arena.as_ptr() as *const u8;
         let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
         Some(header.period_ms)
+    }
+
+    /// Set a timer's overrun policy (issue #505). Timers default to
+    /// [`TimerOverrunPolicy::Skip`]; switch to
+    /// [`TimerOverrunPolicy::CatchUp`] for timers whose every activation
+    /// is a unit of work that must not be lost.
+    pub fn set_timer_overrun_policy(
+        &mut self,
+        id: HandleId,
+        policy: TimerOverrunPolicy,
+    ) -> Result<(), NodeError> {
+        let meta = self
+            .entries
+            .get(id.0)
+            .and_then(|e| e.as_ref())
+            .ok_or(NodeError::BufferTooSmall)?;
+        if !matches!(meta.kind, EntryKind::Timer) {
+            return Err(NodeError::BufferTooSmall);
+        }
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        // SAFETY: same layout invariant as `cancel_timer`.
+        let header = unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
+        header.overrun_policy = policy;
+        Ok(())
+    }
+
+    /// Periods this timer missed and dropped under
+    /// [`TimerOverrunPolicy::Skip`] (issue #505), or `None` if the handle
+    /// is not a valid timer.
+    ///
+    /// Monotonic and saturating. A growing count is the on-target signal
+    /// that a tier is not keeping up with its declared cadence — the
+    /// symptom an external observer would otherwise have to infer by
+    /// differencing timestamps.
+    pub fn timer_overruns(&self, id: HandleId) -> Option<u32> {
+        let meta = self
+            .entries
+            .get(id.0)
+            .and_then(|e| e.as_ref())
+            .filter(|m| matches!(m.kind, EntryKind::Timer))?;
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
+        Some(header.overruns)
     }
 
     // ========================================================================

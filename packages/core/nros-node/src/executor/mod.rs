@@ -83,6 +83,8 @@ pub use node::{CallbackGroup, NodeHandle};
 #[cfg(any(has_rmw, test))]
 pub use node_record::{NodeBuilder, NodeId, NodeRecord};
 #[cfg(any(has_rmw, test))]
+pub use arena::TimerOverrunPolicy;
+#[cfg(any(has_rmw, test))]
 pub use spin::Executor;
 #[cfg(any(has_rmw, test))]
 pub use spin::SessionHandle;

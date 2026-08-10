@@ -99,6 +99,32 @@ pub(crate) struct SrvEntry<Svc: RosService, F, const REQ_BUF: usize, const REPLY
     pub(crate) _phantom: PhantomData<Svc>,
 }
 
+/// What a periodic timer does with periods it missed while its executor
+/// was blocked (issue #505).
+///
+/// A tier that loses the CPU for several periods — a long-running
+/// callback, or preemption by a higher-priority band — resumes with
+/// accumulated elapsed time worth more than one period.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TimerOverrunPolicy {
+    /// Coalesce the backlog: fire ONCE and drop the missed periods,
+    /// counting them in `overruns`. Phase is preserved (the sub-period
+    /// remainder carries over), so activations stay aligned to the
+    /// original cadence grid instead of drifting by each stall.
+    ///
+    /// The default, matching rclcpp (which advances the next call time
+    /// past "now") and Zephyr's `k_timer` (which coalesces expiries and
+    /// reports a count).
+    #[default]
+    Skip,
+    /// Replay every missed period, one activation per `try_process`
+    /// pass, until the backlog drains. Correct for timers that count or
+    /// accumulate, where each activation is a unit of work that must
+    /// not be lost. A replay burst runs back-to-back at dispatch speed,
+    /// NOT at the declared cadence — control loops usually want `Skip`.
+    CatchUp,
+}
+
 /// Concrete timer entry stored in the arena.
 ///
 /// The first fields (up to `callback`) share layout with [`TimerHeader`],
@@ -107,9 +133,13 @@ pub(crate) struct SrvEntry<Svc: RosService, F, const REQ_BUF: usize, const REPLY
 pub(crate) struct TimerEntry<F> {
     pub(crate) period_ms: u64,
     pub(crate) elapsed_ms: u64,
+    /// Periods dropped by [`TimerOverrunPolicy::Skip`] (issue #505).
+    /// Saturating; never cleared by the dispatcher.
+    pub(crate) overruns: u32,
     pub(crate) oneshot: bool,
     pub(crate) fired: bool,
     pub(crate) cancelled: bool,
+    pub(crate) overrun_policy: TimerOverrunPolicy,
     pub(crate) callback: F,
 }
 
@@ -122,9 +152,11 @@ pub(crate) struct TimerEntry<F> {
 pub(crate) struct TimerHeader {
     pub(crate) period_ms: u64,
     pub(crate) elapsed_ms: u64,
+    pub(crate) overruns: u32,
     pub(crate) oneshot: bool,
     pub(crate) fired: bool,
     pub(crate) cancelled: bool,
+    pub(crate) overrun_policy: TimerOverrunPolicy,
 }
 
 /// Concrete action server entry stored in the arena.
@@ -1091,8 +1123,28 @@ where
         (entry.callback)();
         if entry.oneshot {
             entry.fired = true;
+        } else if entry.period_ms == 0 {
+            entry.elapsed_ms = 0;
         } else {
-            entry.elapsed_ms = entry.elapsed_ms.saturating_sub(entry.period_ms);
+            // Issue #505 — a stall leaves `elapsed_ms` worth several
+            // periods. `CatchUp` subtracts one period per pass, so the
+            // backlog replays back-to-back; `Skip` drops the whole
+            // backlog in one step and counts it, keeping the remainder
+            // so activations stay on the original phase grid.
+            match entry.overrun_policy {
+                TimerOverrunPolicy::CatchUp => {
+                    entry.elapsed_ms = entry.elapsed_ms.saturating_sub(entry.period_ms);
+                }
+                TimerOverrunPolicy::Skip => {
+                    let missed = entry.elapsed_ms / entry.period_ms - 1;
+                    if missed > 0 {
+                        entry.overruns = entry
+                            .overruns
+                            .saturating_add(u32::try_from(missed).unwrap_or(u32::MAX));
+                    }
+                    entry.elapsed_ms %= entry.period_ms;
+                }
+            }
         }
         Ok(true)
     } else {
@@ -2357,5 +2409,130 @@ mod action_envelope_tests {
             "a pre-0418 payload must NOT silently appear to decode — the wire \
              format changed and the skew is expected to fail"
         );
+    }
+}
+
+/// Issue #505 — timer overrun policy. `timer_try_process` takes the
+/// elapsed delta directly, so a stall is expressible as a single large
+/// delta and every case here is a pure unit test.
+#[cfg(test)]
+mod timer_overrun_tests {
+    use super::*;
+
+    /// Drive `entry` through one `try_process` pass with `delta_ms`.
+    fn step<F: FnMut()>(entry: &mut TimerEntry<F>, delta_ms: u64) -> bool {
+        // SAFETY: `entry` is a live, aligned `TimerEntry<F>`.
+        unsafe {
+            timer_try_process::<F>((entry as *mut TimerEntry<F>).cast::<u8>(), delta_ms).unwrap()
+        }
+    }
+
+    fn periodic(period_ms: u64, policy: TimerOverrunPolicy) -> TimerEntry<impl FnMut()> {
+        TimerEntry {
+            period_ms,
+            elapsed_ms: 0,
+            overruns: 0,
+            oneshot: false,
+            fired: false,
+            cancelled: false,
+            overrun_policy: policy,
+            callback: || {},
+        }
+    }
+
+    #[test]
+    fn skip_is_the_default_policy() {
+        assert_eq!(TimerOverrunPolicy::default(), TimerOverrunPolicy::Skip);
+    }
+
+    #[test]
+    fn skip_coalesces_a_stall_into_one_activation() {
+        // The observed failure: a ~200 ms preemption of a 10 ms timer
+        // replayed as a burst of activations. Under Skip the backlog
+        // costs exactly one activation plus a counter bump.
+        let mut t = periodic(10, TimerOverrunPolicy::Skip);
+        assert!(step(&mut t, 205));
+        assert_eq!(t.overruns, 19, "205 ms of a 10 ms period = 20 due, 1 fired");
+        // Nothing is owed: the next pass waits out the remaining period.
+        assert!(!step(&mut t, 4));
+        assert!(step(&mut t, 1));
+    }
+
+    #[test]
+    fn skip_preserves_the_phase_grid() {
+        // 205 ms leaves a 5 ms remainder; keeping it means the next fire
+        // lands 5 ms later, back on the original 10 ms grid, instead of
+        // re-anchoring to the moment the stall ended.
+        let mut t = periodic(10, TimerOverrunPolicy::Skip);
+        assert!(step(&mut t, 205));
+        assert_eq!(t.elapsed_ms, 5);
+    }
+
+    #[test]
+    fn catchup_replays_every_missed_period() {
+        let mut t = periodic(10, TimerOverrunPolicy::CatchUp);
+        assert!(step(&mut t, 205));
+        // One activation per pass until the backlog drains, with no
+        // further time credited.
+        let mut replays = 0;
+        while step(&mut t, 0) {
+            replays += 1;
+            assert!(replays < 64, "backlog must drain");
+        }
+        assert_eq!(replays, 19);
+        assert_eq!(t.overruns, 0, "CatchUp loses nothing, so counts nothing");
+    }
+
+    #[test]
+    fn on_time_ticks_never_count_as_overruns() {
+        let mut t = periodic(10, TimerOverrunPolicy::Skip);
+        for _ in 0..100 {
+            assert!(step(&mut t, 10));
+        }
+        assert_eq!(t.overruns, 0);
+        assert_eq!(t.elapsed_ms, 0);
+    }
+
+    #[test]
+    fn a_single_late_period_is_one_overrun() {
+        // Exactly two periods due = one fired, one dropped.
+        let mut t = periodic(10, TimerOverrunPolicy::Skip);
+        assert!(step(&mut t, 20));
+        assert_eq!(t.overruns, 1);
+    }
+
+    #[test]
+    fn oneshot_ignores_the_policy() {
+        let mut t = TimerEntry {
+            period_ms: 10,
+            elapsed_ms: 0,
+            overruns: 0,
+            oneshot: true,
+            fired: false,
+            cancelled: false,
+            overrun_policy: TimerOverrunPolicy::Skip,
+            callback: || {},
+        };
+        assert!(step(&mut t, 205));
+        assert_eq!(t.overruns, 0);
+        assert!(!step(&mut t, 205), "a fired one-shot stays fired");
+    }
+
+    #[test]
+    fn zero_period_does_not_divide_by_zero() {
+        // Degenerate but reachable: `TimerDuration::from_millis(0)` or a
+        // sub-millisecond period truncated to 0 by `as_millis`.
+        let mut t = periodic(0, TimerOverrunPolicy::Skip);
+        assert!(step(&mut t, 5));
+        assert_eq!(t.overruns, 0);
+        assert_eq!(t.elapsed_ms, 0);
+    }
+
+    #[test]
+    fn overrun_count_saturates_instead_of_wrapping() {
+        let mut t = periodic(1, TimerOverrunPolicy::Skip);
+        t.overruns = u32::MAX - 1;
+        assert!(step(&mut t, 1_000));
+        assert_eq!(t.overruns, u32::MAX);
     }
 }
