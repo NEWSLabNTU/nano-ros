@@ -127,26 +127,18 @@ command burst at 100x the declared rate computed from stale inputs — and the a
 per-timer overrun policy (`CatchUp` vs `Skip`/coalesce, declarable; `Skip` arguably the real-time default)
 and a missed-activation counter the scheduling monitors can read. See `0505-*`.
 
-**#504** (api, open 2026-08-10) — node code has NO portable clock: pkgs are platform-agnostic, so they can
-reach neither the per-platform timing types nor `nros_platform_clock_us`, and control loops are forced to
-assume the nominal period for `dt` (silently misintegrating whenever a callback runs late). Users
-re-invent the platform ABI one layer up (a hand-rolled `extern "C"` clock crate with per-entry-binary
-exports). Fix is minimal: `nros::time::now()` over the already-universal `nros_platform_clock_us` export,
-monotonic-since-boot, explicitly not ROS time. See `0504-*`.
-
-**#503** (api, open 2026-08-10) — `nros-log` `Record.timestamp_ns` exists but is a hardcoded `0` at every
-emission site (macros + `log` bridge) and no sink prints it, so embedded log analysis rides on HOST-side
-stamps that measure the transport, not the target: on a QEMU icount lane host stamps inflated a healthy
-10 ms loop's late-period rate ~35x (5.7% vs 0.3% on-target). Wiring is one extern call —
-`nros_platform_clock_us` is universally exported — plus sink formatting; resolution usefulness on
-FreeRTOS/ThreadX gated on #502. See `0503-*`.
-
-**#502** (embedded, open 2026-08-10) — `nros_platform_clock_us` is MILLISECOND-quantized under a
-microsecond signature on FreeRTOS (`xTaskGetTickCount() * US_PER_TICK`) and ThreadX (same shape); Zephyr
-and POSIX are genuinely sub-us. The executor's spin/timer accounting runs on this clock, so every measured
-duration on those ports carries a 1 ms error floor — 10% of a 10 ms period before scheduling starts, and
-sub-ms periods are inexpressible. Fix: sub-tick interpolation behind the same export (SysTick down-counter
-on Cortex-M with a tick-boundary guard, as the mps2 Tonbandgeraet trace port already does). See `0502-*`.
+Recently resolved (2026-08-11): the on-target-time trio (embedded/api), filed from external RT-cadence
+measurement and fixed as one series. #502: `nros_platform_clock_us` was MILLISECOND-quantized under a us
+signature on FreeRTOS/ThreadX (a 1 ms error floor on every executor timer measurement); the FreeRTOS
+Cortex-M port now interpolates the SysTick down-counter (tick-boundary + PENDSTSET races handled, runtime
+LOAD read so tickless/non-SysTick ticks fall back; opt-out `NROS_PLATFORM_FREERTOS_NO_SUBTICK`), while
+ThreadX stays coarse and now says so at the implementation. #503: `Record.timestamp_ns` was hardcoded `0`
+everywhere; new opt-in `nros-log/platform-clock` populates it from the platform clock and `PlatformSink`
+prefixes lines with `[sssss.uuuuuu]` (message rewrite — the `log_write` ABI has no timestamp param;
+opt-in because the extern is a link requirement host tools without a platform port cannot meet). #504:
+portable node code had NO clock at all; new `nros::time::now()/now_us()` mirrors the executor's source
+selection (std `Instant`; no_std+rmw-cffi platform clock; compiled out elsewhere),
+monotonic-since-unspecified-epoch, explicitly not ROS time. See `archived/0502-*..0504-*`.
 
 **#499** (build, open 2026-08-10) — `check-artifact-identity-budget` failed tier 1 at its FIRST step on a
 build tree three days old and untouched by the diff, so the whole build tier / clippy / `test-all` never

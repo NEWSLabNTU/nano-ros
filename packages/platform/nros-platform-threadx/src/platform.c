@@ -49,6 +49,12 @@ uint64_t nros_platform_clock_ms(void) {
     return (uint64_t) tx_time_get() * MS_PER_TICK;
 }
 
+/* Issue #502 — tick-quantized: with the default 100 Hz ThreadX tick this
+ * advances in 10 ms steps despite the microsecond signature. ThreadX has
+ * no portable sub-tick counter (the tick source is port-defined), so
+ * unlike the FreeRTOS Cortex-M port this stays coarse until a per-port
+ * hardware-timer hook exists. Callers doing sub-tick timing on ThreadX
+ * are measuring the tick rate, not the event. */
 uint64_t nros_platform_clock_us(void) {
     return (uint64_t) tx_time_get() * MS_PER_TICK * 1000ULL;
 }

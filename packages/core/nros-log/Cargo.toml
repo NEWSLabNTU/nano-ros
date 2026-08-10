@@ -35,6 +35,17 @@ default = ["max-level-trace", "buffer-size-256"]
 std = ["alloc"]
 alloc = []
 
+# Issue #503 — populate `Record::timestamp_ns` from the platform's
+# monotonic clock (`nros_platform_clock_us`, the same universal export
+# the executor's timer accounting links), and have `PlatformSink`
+# prefix rendered lines with `[sssss.uuuuuu]`. Opt-in: the extern is a
+# link-time requirement on the final binary — every real image
+# satisfies it via its `nros-platform-<rtos>` port, but host tools
+# composing custom sinks without a platform port would not, hence not
+# a default. Resolution is whatever the platform delivers (issue #502
+# covers the FreeRTOS/ThreadX coarseness).
+platform-clock = []
+
 max-level-trace = []
 max-level-debug = []
 max-level-info  = []

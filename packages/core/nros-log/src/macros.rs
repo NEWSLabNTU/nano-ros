@@ -34,7 +34,7 @@ macro_rules! __nros_log_emit {
                 message:      __buf.as_str(),
                 file:         ::core::file!(),
                 line:         ::core::line!(),
-                timestamp_ns: 0,
+                timestamp_ns: $crate::__timestamp_ns(),
             };
             __logger.dispatch(&__record);
         }

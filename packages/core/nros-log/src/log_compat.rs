@@ -138,7 +138,7 @@ impl log::Log for LogCrateBridge {
             message: buf.as_str(),
             file: "<log-compat-bridge>",
             line: 0,
-            timestamp_ns: 0,
+            timestamp_ns: crate::__timestamp_ns(),
         };
         logger.dispatch(&nros_record);
     }

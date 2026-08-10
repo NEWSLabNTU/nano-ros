@@ -180,6 +180,10 @@ pub use init::{
 /// to `nros-c` / `nros-cpp` at build time.
 pub mod sizes;
 
+/// Monotonic time for portable node code (issue #504).
+#[cfg(any(feature = "std", feature = "rmw-cffi"))]
+pub mod time;
+
 /// CDR encapsulation constants and helpers for FFI layers that handle raw
 /// CDR bytes (e.g. nros-c, nros-cpp action and service paths).
 pub mod cdr {

@@ -86,7 +86,59 @@ uint64_t nros_platform_clock_ms(void) {
     return (uint64_t) xTaskGetTickCount() * MS_PER_TICK;
 }
 
+/* Issue #502 — `clock_us` used to return `tick * US_PER_TICK`, i.e. a
+ * millisecond counter under a microsecond signature (10% of a 10 ms
+ * period was quantization). On Cortex-M the standard FreeRTOS port
+ * drives the tick from SysTick, so the down-counter gives the sub-tick
+ * fraction for free. Hazards handled below:
+ *
+ *   - tick-boundary race: tick and VAL are two reads; take a snapshot
+ *     and retry until the tick count is stable around it.
+ *   - counted-to-zero-but-ISR-pending (e.g. caller holds a critical
+ *     section): VAL has reloaded but the tick has not incremented yet.
+ *     ICSR.PENDSTSET identifies that window; credit one extra tick.
+ *     PENDSTSET is sampled on both sides of the VAL read so a wrap
+ *     landing mid-snapshot forces a retry instead of a mis-credit.
+ *   - tickless idle / non-SysTick tick sources: the reload register is
+ *     read at runtime (not computed from configCPU_CLOCK_HZ); if
+ *     SysTick is unprogrammed (LOAD == 0) fall back to tick-only.
+ *
+ * Non-Cortex-M ports (and builds defining
+ * NROS_PLATFORM_FREERTOS_NO_SUBTICK) keep the tick-quantized value —
+ * honest, just coarse. */
+#if (defined(__ARM_ARCH_6M__) || defined(__ARM_ARCH_7M__) ||       \
+     defined(__ARM_ARCH_7EM__) || defined(__ARM_ARCH_8M_BASE__) || \
+     defined(__ARM_ARCH_8M_MAIN__)) &&                             \
+    !defined(NROS_PLATFORM_FREERTOS_NO_SUBTICK)
+#define NROS_SYSTICK_SUBTICK 1
+#endif
+
 uint64_t nros_platform_clock_us(void) {
+#ifdef NROS_SYSTICK_SUBTICK
+    volatile uint32_t *const syst_load = (volatile uint32_t *) 0xE000E014UL;
+    volatile uint32_t *const syst_val = (volatile uint32_t *) 0xE000E018UL;
+    volatile uint32_t *const scb_icsr = (volatile uint32_t *) 0xE000ED04UL;
+    const uint32_t pendstset = 1UL << 26;
+
+    const uint32_t load = *syst_load & 0x00FFFFFFUL;
+    if (load != 0U) {
+        for (;;) {
+            const TickType_t t1 = xTaskGetTickCount();
+            const uint32_t pend1 = *scb_icsr & pendstset;
+            const uint32_t val = *syst_val & 0x00FFFFFFUL;
+            const uint32_t pend2 = *scb_icsr & pendstset;
+            const TickType_t t2 = xTaskGetTickCount();
+            if (t1 != t2 || pend1 != pend2) {
+                continue;
+            }
+            const uint64_t ticks = (uint64_t) t1 + (pend1 ? 1U : 0U);
+            const uint64_t subtick_cycles = (uint64_t) (load - val);
+            return ticks * US_PER_TICK
+                   + subtick_cycles * US_PER_TICK / ((uint64_t) load + 1U);
+        }
+    }
+    /* SysTick unprogrammed — some other timer drives the tick. */
+#endif
     return (uint64_t) xTaskGetTickCount() * US_PER_TICK;
 }
 

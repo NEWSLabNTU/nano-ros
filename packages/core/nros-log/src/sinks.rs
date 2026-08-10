@@ -37,24 +37,39 @@ pub struct PlatformSink;
 
 impl LogSink for PlatformSink {
     fn log(&self, record: &Record<'_>) {
-        let name = record.logger_name.as_bytes();
-        let msg = record.message.as_bytes();
-        // SAFETY: pointers come from `&str` / `&'a [u8]` references
-        // that outlive the call; lengths match.
-        unsafe {
-            nros_platform_log_write(
-                record.severity.as_u8(),
-                name.as_ptr(),
-                name.len(),
-                msg.as_ptr(),
-                msg.len(),
-            );
+        // Issue #503 — with `platform-clock`, prefix the rendered line
+        // with the record's monotonic stamp as `[sssss.uuuuuu]`. Done
+        // by message rewrite because the `nros_platform_log_write` ABI
+        // has no timestamp parameter and widening it would touch every
+        // platform port; the prefix is additive, not a re-format of
+        // the caller's text. A record without a stamp (`0`) passes
+        // through untouched.
+        #[cfg(feature = "platform-clock")]
+        if record.timestamp_ns != 0 {
+            use core::fmt::Write as _;
+            let secs = record.timestamp_ns / 1_000_000_000;
+            let micros = (record.timestamp_ns % 1_000_000_000) / 1_000;
+            let mut buf = crate::FormatBuffer::new();
+            let _ = core::write!(buf, "[{secs:5}.{micros:06}] {}", record.message);
+            emit(record.severity.as_u8(), record.logger_name, buf.as_str());
+            return;
         }
+        emit(record.severity.as_u8(), record.logger_name, record.message);
     }
 
     fn flush(&self) {
         // SAFETY: no args, no preconditions.
         unsafe { nros_platform_log_flush() };
+    }
+}
+
+fn emit(severity: u8, name: &str, msg: &str) {
+    let name = name.as_bytes();
+    let msg = msg.as_bytes();
+    // SAFETY: pointers come from `&str` references that outlive the
+    // call; lengths match.
+    unsafe {
+        nros_platform_log_write(severity, name.as_ptr(), name.len(), msg.as_ptr(), msg.len());
     }
 }
 
