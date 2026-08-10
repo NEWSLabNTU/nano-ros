@@ -51,6 +51,26 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-10, phase-340): **#489** — every ESP32 test skipped `"qemu-system-riscv32 not
+available"` on a host where `nros setup --tool esp32-qemu` had JUST succeeded — the skip message named the command
+that had already been run. `esp32.rs` spelled the binary by bare name at three sites, so it resolved through PATH
+to the SYSTEM qemu, which has no `esp32c3` machine, which is exactly what the probe rejects. `activate.sh`
+deliberately keeps qemu OFF the global PATH (the `build/<tool>` convention), so PATH was never going to bridge it;
+the arm family has had the resolver all along (`qemu_system_arm_path`) and ESP32 was written without it. Added the
+twin — `QEMU_SYSTEM_RISCV32` → `nros_store_bin("esp32-qemu", …)` → PATH fallback. **A guard that names a remedy
+should be tested against a host that has applied it.** Verified: `SUCCESS: ESP32-C3 QEMU boots and shows platform
+banner`. See `archived/0489-*`. (2026-08-10)
+
+Recently resolved (2026-08-10, phase-340): **#487** — `[system.*].check` allowed EXACTLY ONE probe, and libgcrypt
+ships its two probes to two different distros: Arch's 1.12 has `libgcrypt.pc` and no `libgcrypt-config`, Ubuntu
+22.04's 1.9 has the script and no `.pc`. So `cmd = "libgcrypt-config"` read a fully-installed libgcrypt as MISSING
+and `nros setup --tool esp32-qemu` hard-failed telling the user to `sudo pacman -S libgcrypt` — a package
+`pacman -Qo /usr/include/gcrypt.h` already reported as installed. There is no `--skip-system-check`, so a correct
+host was simply blocked. Probes are now OR-ed (`at least one`, PRESENT if any finds it, MISSING only if a probe
+ran and said no, UNKNOWN preserved for a probe that cannot answer — `sharedlib` off Linux, `pkg_config` with no
+pkg-config). libgcrypt declares both. Negative direction verified: three genuinely-absent packages still report
+MISSING, so OR-ing did not turn the gate green. See `archived/0487-*`. (2026-08-10)
+
 Recently resolved (2026-08-10, phase-340): **#486** — `espflash` was documented in prose only, so a host that
 completed `just esp32 setup` built every ELF and then produced NO flash images: the pack step warned and the lane
 exited 0. Issue 0399's shape one dependency over (0399 declared `riscv-none-elf-gcc` because a

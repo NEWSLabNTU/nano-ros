@@ -484,10 +484,19 @@ impl SdkIndex {
             {
                 bail!("[system.{key}] maps to no package manager at all");
             }
+            // issue 0487 — AT LEAST one, not exactly one. The single-probe rule
+            // assumed every dependency has one right existence test, and
+            // libgcrypt refuted it: Arch's libgcrypt 1.12 ships `libgcrypt.pc`
+            // and NO `libgcrypt-config`, Ubuntu 22.04's 1.9 ships the script and
+            // no `.pc`. Either probe alone is a false negative on one of the two
+            // hosts, and a false negative here HARD-BLOCKS `nros setup` while
+            // telling the user to sudo-install a package they already have.
+            // Probes are OR-ed (see `run_probe`), so declaring both answers
+            // "is the dev package installed" on both distros.
             if let Some(check) = &dep.check
-                && check.field_count() != 1
+                && check.field_count() == 0
             {
-                bail!("[system.{key}].check must set exactly one of cmd/sharedlib/pkg_config");
+                bail!("[system.{key}].check must set at least one of cmd/sharedlib/pkg_config");
             }
         }
         for (alias, target) in &self.rust.target {

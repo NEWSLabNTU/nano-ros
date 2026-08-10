@@ -22,8 +22,43 @@ use std::{
 /// sufficient — it doesn't know about the `esp32c3` machine model and
 /// fails at launch with "unsupported machine type". Probe for the
 /// model specifically instead of the binary's mere existence.
+/// Pick the `qemu-system-riscv32` binary to use — the ESP32 twin of
+/// [`crate::qemu::qemu_system_arm_path`], and added for the same reason
+/// (issue 0488).
+///
+/// Selection order:
+///   1. `QEMU_SYSTEM_RISCV32` env var (developer override / CI pin).
+///   2. `nros setup` store: `~/.nros/sdk/esp32-qemu/<version>/bin/`.
+///   3. System `qemu-system-riscv32` on `$PATH`, so a host that never ran the
+///      setup still produces the documented `[SKIPPED]` rather than an exec
+///      error.
+///
+/// Step 2 is the one that was missing. Every call site was
+/// `Command::new("qemu-system-riscv32")`, which finds only the SYSTEM binary —
+/// and the system one has no `esp32c3` machine, which is exactly what the probe
+/// below rejects. So `nros setup --tool esp32-qemu` could complete successfully
+/// and every ESP32 test would still skip, citing a tool the host had just
+/// installed. `activate.sh` deliberately keeps qemu OFF the global PATH (the
+/// `build/<tool>` convention), so PATH was never going to bridge it; the
+/// resolver has to.
+pub fn qemu_system_riscv32_path() -> std::ffi::OsString {
+    if let Some(env) = std::env::var_os("QEMU_SYSTEM_RISCV32") {
+        return env;
+    }
+    if let Some(store) = crate::nros_store_bin("esp32-qemu", "qemu-system-riscv32") {
+        return store.into_os_string();
+    }
+    std::ffi::OsString::from("qemu-system-riscv32")
+}
+
+/// Convenience wrapper around [`qemu_system_riscv32_path`]. Prefer this over
+/// `Command::new("qemu-system-riscv32")` so the store build stays reachable.
+pub fn qemu_system_riscv32_cmd() -> Command {
+    Command::new(qemu_system_riscv32_path())
+}
+
 pub fn is_qemu_riscv32_available() -> bool {
-    let output = Command::new("qemu-system-riscv32")
+    let output = qemu_system_riscv32_cmd()
         .args(["-machine", "help"])
         .output();
     match output {
@@ -329,7 +364,7 @@ pub fn start_esp32_qemu(flash_image: &Path, networking: bool) -> TestResult<Mana
     // (documented in `esp32_qemu_machine_for_image`).
     let machine = esp32_qemu_machine_for_image(flash_image);
 
-    let mut cmd = Command::new("qemu-system-riscv32");
+    let mut cmd = qemu_system_riscv32_cmd();
     cmd.args([
         "-M",
         &machine,
@@ -380,7 +415,7 @@ pub fn start_esp32_qemu_mcast(
     // phase-295 W5.b — see `esp32_qemu_machine_for_image`.
     let machine = esp32_qemu_machine_for_image(flash_image);
 
-    let mut cmd = Command::new("qemu-system-riscv32");
+    let mut cmd = qemu_system_riscv32_cmd();
     cmd.args([
         "-M",
         &machine,

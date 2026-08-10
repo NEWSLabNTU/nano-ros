@@ -1257,52 +1257,62 @@ enum ProbeResult {
     Unknown,
 }
 
+/// issue 0487 — probes are OR-ed: PRESENT if any declared probe finds the
+/// dependency, MISSING only if at least one could answer and none did, UNKNOWN
+/// if none was answerable on this host.
+///
+/// The schema used to allow exactly one probe, on the assumption that every
+/// dependency has one right existence test. libgcrypt refuted it — Arch's 1.12
+/// ships `libgcrypt.pc` and no `libgcrypt-config`, Ubuntu 22.04's 1.9 ships the
+/// script and no `.pc` — so either probe alone is a false negative on one of
+/// the two hosts. A false negative here does not degrade gracefully: it hard-
+/// blocks `nros setup --tool esp32-qemu` and prints a sudo command for a
+/// package that is already installed.
 fn run_probe(check: Option<&crate::orchestration::sdk_index::CheckProbe>) -> ProbeResult {
     let Some(check) = check else {
         return ProbeResult::Unknown;
     };
+    let mut answered_missing = false;
     if let Some(cmd) = &check.cmd {
-        return if command_exists(cmd) {
-            ProbeResult::Present
-        } else {
-            ProbeResult::Missing
-        };
-    }
-    if let Some(lib) = &check.sharedlib {
-        if std::env::consts::OS != "linux" {
-            return ProbeResult::Unknown;
+        if command_exists(cmd) {
+            return ProbeResult::Present;
         }
-        let Ok(out) = std::process::Command::new("ldconfig").arg("-p").output() else {
-            return ProbeResult::Unknown;
-        };
+        answered_missing = true;
+    }
+    if let Some(lib) = &check.sharedlib
+        && std::env::consts::OS == "linux"
+        && let Ok(out) = std::process::Command::new("ldconfig").arg("-p").output()
+    {
         let listing = String::from_utf8_lossy(&out.stdout);
         // PREFIX match: distros version the soname differently
         // (libclang-14.so.1 vs libclang.so.16), so `sharedlib = "libclang"`
         // matches any of them; an exact soname still works as a probe.
-        return if listing
+        if listing
             .lines()
             .any(|l| l.trim_start().starts_with(lib.as_str()))
         {
-            ProbeResult::Present
-        } else {
-            ProbeResult::Missing
-        };
+            return ProbeResult::Present;
+        }
+        answered_missing = true;
     }
     if let Some(pc) = &check.pkg_config {
-        let Ok(status) = std::process::Command::new("pkg-config")
+        // No pkg-config on the host: this probe cannot answer, which is NOT the
+        // same as the dependency being absent — leave `answered_missing` alone.
+        if let Ok(status) = std::process::Command::new("pkg-config")
             .args(["--exists", pc])
             .status()
-        else {
-            // No pkg-config on the host — cannot answer.
-            return ProbeResult::Unknown;
-        };
-        return if status.success() {
-            ProbeResult::Present
-        } else {
-            ProbeResult::Missing
-        };
+        {
+            if status.success() {
+                return ProbeResult::Present;
+            }
+            answered_missing = true;
+        }
     }
-    ProbeResult::Unknown
+    if answered_missing {
+        ProbeResult::Missing
+    } else {
+        ProbeResult::Unknown
+    }
 }
 
 /// `nros setup --system [--check|--sudo]`.
