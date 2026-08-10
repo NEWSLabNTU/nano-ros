@@ -198,6 +198,21 @@ def is_cargo_row(entry):
     must never appear in the group export — a cmake artifact redirected to
     `fixtures-cargo/<slug>` is a resolver looking somewhere nothing was written.
     """
+    # phase-344 W2 — BUILDER-keyed, not language-keyed. `lang` was a proxy that
+    # held only while every rust row built with cargo. It does not: the six
+    # `qemu-riscv64-threadx/rust/*` cyclonedds rows are driven through
+    # `build_threadx_cmake_rmw` into `build-cyclonedds/`, so a lang-keyed
+    # predicate reported a `target/` dir nothing writes and left their real
+    # output unattributable — the same shape P2 found in freertos, where a build
+    # had no row at all.
+    #
+    # An explicit `builder = "cmake"` on the row is the SSoT (P2's precedent:
+    # prefer a manifest fact over a rule at the call site). Absent it, the
+    # language default stands, so every existing row is unaffected.
+    if entry.get("builder") == "cmake":
+        return False
+    if entry.get("builder") == "cargo":
+        return True
     return entry.get("lang") not in ("c", "cpp")
 
 
@@ -381,6 +396,10 @@ def matches_filters(entry, args, *, for_probe=False):
         return False
     if args.platform and entry.get("platform") != args.platform:
         return False
+    if getattr(args, "builder", None):
+        want_cargo = args.builder == "cargo"
+        if is_cargo_row(entry) != want_cargo:
+            return False
     if args.lang and entry.get("lang") != args.lang:
         return False
     # Issue 0482 — the `rmw` filter reads the row's COORDINATE, not its raw key,
@@ -730,6 +749,10 @@ def main():
     p.add_argument("--core-only", action="store_true")
     # phase-319 W2 — narrow `list-compile-checks` to one builder, so the shell
     # lane can keep its per-builder loops.
+    #
+    # phase-344 W2 — `list` reuses this SAME flag for cargo|cmake rather than
+    # declaring a second one (argparse rejects the duplicate, which is how the
+    # collision was found). One flag, two consumers, values disjoint.
     p.add_argument("--builder")
     a = p.parse_args()
 

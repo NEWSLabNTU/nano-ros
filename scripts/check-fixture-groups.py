@@ -177,6 +177,13 @@ def rows():
             "list",
             "--lang",
             "rust",
+            # phase-344 W2 — `--lang rust` alone was a PROXY for "cargo builds
+            # it", and A2a exists to catch the two derivations drifting apart.
+            # A rust-through-cmake row makes the proxy wrong, so say what is
+            # meant. Still an independent selection from the export's
+            # `is_cargo_row` call path — that independence is A2a's whole value.
+            "--builder",
+            "cargo",
             "--with-platform",
         ],
         cwd=ROOT,

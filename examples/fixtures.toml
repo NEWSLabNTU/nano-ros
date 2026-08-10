@@ -3524,3 +3524,75 @@ bringup = "src/demo_bringup"
 entry = "native_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures-xrce"
+
+[[fixture]]
+# phase-344 W2 — the cyclonedds build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` (just/threadx-riscv64.just) into `build-cyclonedds/`,
+# NOT through cargo. Without a row its output was unattributable and
+# `row_artifact_root()` named a `target/` dir nothing writes.
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "cyclonedds"
+builder = "cmake"
+build_subdir = "build-cyclonedds"
+dir = "examples/qemu-riscv64-threadx/rust/talker"
+
+[[fixture]]
+# phase-344 W2 — the cyclonedds build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` (just/threadx-riscv64.just) into `build-cyclonedds/`,
+# NOT through cargo. Without a row its output was unattributable and
+# `row_artifact_root()` named a `target/` dir nothing writes.
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "cyclonedds"
+builder = "cmake"
+build_subdir = "build-cyclonedds"
+dir = "examples/qemu-riscv64-threadx/rust/listener"
+
+[[fixture]]
+# phase-344 W2 — the cyclonedds build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` (just/threadx-riscv64.just) into `build-cyclonedds/`,
+# NOT through cargo. Without a row its output was unattributable and
+# `row_artifact_root()` named a `target/` dir nothing writes.
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "cyclonedds"
+builder = "cmake"
+build_subdir = "build-cyclonedds"
+dir = "examples/qemu-riscv64-threadx/rust/service-server"
+
+[[fixture]]
+# phase-344 W2 — the cyclonedds build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` (just/threadx-riscv64.just) into `build-cyclonedds/`,
+# NOT through cargo. Without a row its output was unattributable and
+# `row_artifact_root()` named a `target/` dir nothing writes.
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "cyclonedds"
+builder = "cmake"
+build_subdir = "build-cyclonedds"
+dir = "examples/qemu-riscv64-threadx/rust/service-client"
+
+[[fixture]]
+# phase-344 W2 — the cyclonedds build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` (just/threadx-riscv64.just) into `build-cyclonedds/`,
+# NOT through cargo. Without a row its output was unattributable and
+# `row_artifact_root()` named a `target/` dir nothing writes.
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "cyclonedds"
+builder = "cmake"
+build_subdir = "build-cyclonedds"
+dir = "examples/qemu-riscv64-threadx/rust/action-server"
+
+[[fixture]]
+# phase-344 W2 — the cyclonedds build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` (just/threadx-riscv64.just) into `build-cyclonedds/`,
+# NOT through cargo. Without a row its output was unattributable and
+# `row_artifact_root()` named a `target/` dir nothing writes.
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "cyclonedds"
+builder = "cmake"
+build_subdir = "build-cyclonedds"
+dir = "examples/qemu-riscv64-threadx/rust/action-client"
