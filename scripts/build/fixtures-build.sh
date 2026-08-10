@@ -107,9 +107,26 @@ if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
     coords_args=(--coords-from "$NROS_FIXTURE_COORDS")
 fi
 
+# phase-344 W2 follow-up — this driver builds the CARGO lanes, so it must select
+# by BUILDER, not by `lang`. `--lang rust` was a proxy that held only while every
+# rust row built with cargo; the six qemu-riscv64-threadx cyclonedds rows are
+# rust leaves driven through cmake (just/threadx-riscv64.just), and routing them
+# here made the driver export their cmake-only `build_subdir` as a shell
+# variable name: `export: 'build-cyclonedds': not a valid identifier`.
+#
+# W2 made the MANIFEST predicate builder-aware and this caller kept the proxy —
+# the same mistake one level down, which is why it only surfaced in a lane build
+# and not in any gate.
+_builder_args=()
+case "$lang" in
+    c | cpp) ;;                       # cmake lanes; leave selection to --lang
+    *) _builder_args=(--builder cargo) ;;
+esac
+
 manifest() {
     python3 scripts/build/fixtures-manifest.py list \
         --platform "$platform" --lang "$lang" ${rmw:+--rmw "$rmw"} \
+        "${_builder_args[@]}" \
         ${fixture_id:+--id "$fixture_id"} ${core_only:+--core-only} \
         "${coords_args[@]}"
 }
@@ -123,6 +140,7 @@ manifest() {
 manifest_unnarrowed() {
     python3 scripts/build/fixtures-manifest.py list \
         --platform "$platform" --lang "$lang" ${rmw:+--rmw "$rmw"} \
+        "${_builder_args[@]}" \
         ${fixture_id:+--id "$fixture_id"} ${core_only:+--core-only}
 }
 
