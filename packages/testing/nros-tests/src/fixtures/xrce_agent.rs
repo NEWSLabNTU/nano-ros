@@ -25,6 +25,10 @@ use std::{
 pub struct XrceAgent {
     handle: Child,
     port: u16,
+    /// Issue 0470 — held for the agent's lifetime so no other fixture can be
+    /// handed this port. `None` when the caller named the port itself
+    /// (`start(port)`), which is a deliberate choice the caller owns.
+    _lease: Option<crate::port_lease::PortLease>,
 }
 
 impl XrceAgent {
@@ -71,14 +75,28 @@ impl XrceAgent {
         // The Agent starts quickly — give it a short delay to bind the port
         std::thread::sleep(Duration::from_millis(500));
 
-        Ok(Self { handle, port })
+        Ok(Self {
+            handle,
+            port,
+            _lease: None,
+        })
     }
 
     /// Start an agent on an OS-assigned ephemeral port (parallel-safe).
+    ///
+    /// Issue 0470 — the port is LEASED, not merely suggested. The previous
+    /// implementation bound port 0, read the number and closed the socket, so
+    /// the port was free again before the agent bound it and the kernel handed
+    /// the same number to a concurrent caller (measured: 87 collisions in 2400
+    /// allocations across 12 processes). Two agents on one port put a
+    /// neighbour's samples into this test's subscription, which surfaced as a
+    /// payload-integrity failure rather than as a port conflict.
     pub fn start_unique() -> TestResult<Self> {
-        let port = allocate_ephemeral_udp_port()
-            .map_err(|e| TestError::ProcessFailed(format!("Failed to allocate UDP port: {}", e)))?;
-        Self::start(port)
+        let lease = crate::port_lease::lease_port(crate::port_lease::Transport::Udp)
+            .map_err(|e| TestError::ProcessFailed(format!("Failed to lease UDP port: {}", e)))?;
+        let mut agent = Self::start(lease.port())?;
+        agent._lease = Some(lease);
+        Ok(agent)
     }
 
     /// Get the address string for connecting to this agent (e.g., "127.0.0.1:2019").
@@ -101,14 +119,6 @@ impl Drop for XrceAgent {
     fn drop(&mut self) {
         kill_process_group(&mut self.handle);
     }
-}
-
-/// Allocate an ephemeral UDP port from the OS.
-fn allocate_ephemeral_udp_port() -> std::io::Result<u16> {
-    let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
-    let port = socket.local_addr()?.port();
-    drop(socket);
-    Ok(port)
 }
 
 /// Get the path to the XRCE Agent binary.
@@ -372,20 +382,32 @@ pub fn xrce_serial_agent() -> XrceSerialAgent {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_xrce_agent_addr() {
         let port = 2019;
         assert_eq!(format!("127.0.0.1:{}", port), "127.0.0.1:2019");
     }
 
+    /// Issue 0470 — leases are distinct while HELD, which is the property the
+    /// agent needs. The test this replaces allocated two ports SEQUENTIALLY and
+    /// asserted they differed; that holds even for the racy allocator it was
+    /// guarding, because the kernel only re-hands a port once the first one is
+    /// released. It could not have failed on the defect it existed to catch.
     #[test]
-    fn test_ephemeral_udp_port_allocation() {
-        let p1 = allocate_ephemeral_udp_port().unwrap();
-        let p2 = allocate_ephemeral_udp_port().unwrap();
-        assert_ne!(p1, p2);
-        assert!(p1 > 1024);
-        assert!(p2 > 1024);
+    fn leased_udp_ports_are_distinct_while_held() {
+        use crate::port_lease::{Transport, lease_port};
+        let held: Vec<_> = (0..16)
+            .map(|_| lease_port(Transport::Udp).unwrap())
+            .collect();
+        let mut ports: Vec<u16> = held.iter().map(|l| l.port()).collect();
+        assert!(ports.iter().all(|p| *p > 1024));
+        let total = ports.len();
+        ports.sort_unstable();
+        ports.dedup();
+        assert_eq!(
+            ports.len(),
+            total,
+            "two concurrently-held leases shared a port"
+        );
     }
 }

@@ -57,6 +57,18 @@ fn validate_payload(data: &[u8], expected_size: usize) -> (u32, bool) {
     (seq, true)
 }
 
+/// Issue 0470 — the topic this run publishes/subscribes on.
+///
+/// Was the hardcoded `/stress_test` for every mode of every test. Each XRCE
+/// test starts its OWN agent, but an agent bridges its clients onto DDS, so on
+/// one host at one domain a shared topic name is a shared bus: a 64-byte
+/// talker's samples arrived in the 512-byte listener's subscription and were
+/// reported `valid=false`. The distinct agent ports isolated the transport and
+/// nothing above it.
+fn topic() -> String {
+    std::env::var("STRESS_TOPIC").unwrap_or_else(|_| "/stress_test".to_string())
+}
+
 fn run_talker() {
     let agent_addr =
         std::env::var("XRCE_AGENT_ADDR").unwrap_or_else(|_| "127.0.0.1:2019".to_string());
@@ -90,8 +102,9 @@ fn run_talker() {
     let mut node = executor
         .create_node("xrce_stress_talker")
         .expect("Failed to create node");
+    let topic = topic();
     let publisher = node
-        .create_publisher::<std_msgs::msg::Int32>("/stress_test")
+        .create_publisher::<std_msgs::msg::Int32>(&topic)
         .expect("Failed to create publisher");
 
     // Stabilize connection
@@ -175,7 +188,7 @@ fn run_listener() {
         .create_node("xrce_stress_listener")
         .expect("Failed to create node");
     let mut subscription = node
-        .create_subscription_sized::<std_msgs::msg::Int32, 16384>("/stress_test")
+        .create_subscription_sized::<std_msgs::msg::Int32, 16384>(&topic())
         .expect("Failed to create subscriber");
 
     println!("Ready: listening");

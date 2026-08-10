@@ -10,17 +10,16 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Allocate an ephemeral port from the OS.
+/// Issue 0470 — lease a TCP port, exclusive until the lease drops.
 ///
-/// Binds a TCP listener on port 0 (OS-assigned), retrieves the port,
-/// then closes the socket. This is safe for nextest where each test
-/// runs in a separate process — a static counter would reset per process
-/// and cause port collisions.
-fn allocate_ephemeral_port() -> std::io::Result<u16> {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-    let port = listener.local_addr()?.port();
-    drop(listener);
-    Ok(port)
+/// This used to bind port 0, read the number and CLOSE the socket. The comment
+/// justifying it ("safe for nextest where each test runs in a separate
+/// process") drew the wrong conclusion from a true premise: separate processes
+/// are exactly why an in-process scheme cannot work, and the closed socket left
+/// the port free for the kernel to hand to a concurrent caller. See
+/// `crate::port_lease` for the measurement and the XRCE failure it produced.
+fn lease_ephemeral_port() -> std::io::Result<crate::port_lease::PortLease> {
+    crate::port_lease::lease_port(crate::port_lease::Transport::Tcp)
 }
 
 /// Kill any process listening on the given TCP port.
@@ -107,6 +106,9 @@ pub struct ZenohRouter {
     handle: Child,
     port: u16,
     tls: bool,
+    /// Issue 0470 — held for the router's lifetime so no other fixture is
+    /// handed this port. `None` when the caller named the port itself.
+    _lease: Option<crate::port_lease::PortLease>,
 }
 
 impl ZenohRouter {
@@ -181,6 +183,7 @@ impl ZenohRouter {
             handle,
             port,
             tls: false,
+            _lease: None,
         })
     }
 
@@ -239,6 +242,7 @@ impl ZenohRouter {
             handle,
             port: 0,
             tls: false,
+            _lease: None,
         })
     }
 
@@ -311,6 +315,7 @@ impl ZenohRouter {
             handle,
             port,
             tls: true,
+            _lease: None,
         })
     }
 
@@ -319,16 +324,20 @@ impl ZenohRouter {
         cert_path: &std::path::Path,
         key_path: &std::path::Path,
     ) -> TestResult<Self> {
-        let port = allocate_ephemeral_port()
-            .map_err(|e| TestError::ProcessFailed(format!("Failed to allocate port: {}", e)))?;
-        Self::start_tls(port, cert_path, key_path)
+        let lease = lease_ephemeral_port()
+            .map_err(|e| TestError::ProcessFailed(format!("Failed to lease port: {}", e)))?;
+        let mut router = Self::start_tls(lease.port(), cert_path, key_path)?;
+        router._lease = Some(lease);
+        Ok(router)
     }
 
     /// Start a router on an OS-assigned ephemeral port (parallel-safe)
     pub fn start_unique() -> TestResult<Self> {
-        let port = allocate_ephemeral_port()
-            .map_err(|e| TestError::ProcessFailed(format!("Failed to allocate port: {}", e)))?;
-        Self::start(port)
+        let lease = lease_ephemeral_port()
+            .map_err(|e| TestError::ProcessFailed(format!("Failed to lease port: {}", e)))?;
+        let mut router = Self::start(lease.port())?;
+        router._lease = Some(lease);
+        Ok(router)
     }
 
     /// Get the locator string for connecting to this router
@@ -400,14 +409,25 @@ mod tests {
         assert_eq!(format!("tcp/127.0.0.1:{}", port), expected);
     }
 
+    /// Issue 0470 — distinct while HELD. The previous version dropped each port
+    /// before asking for the next and asserted they differed, which the racy
+    /// allocator also satisfied: the kernel only re-hands a port once it has
+    /// been released. A guard that cannot fail on its own defect is not a guard.
     #[test]
-    fn test_ephemeral_port_allocation() {
-        let p1 = allocate_ephemeral_port().unwrap();
-        let p2 = allocate_ephemeral_port().unwrap();
-        // OS should assign different ports
-        assert_ne!(p1, p2);
-        // Should be in the ephemeral range
-        assert!(p1 > 1024);
-        assert!(p2 > 1024);
+    fn leased_ports_are_distinct_while_held() {
+        let held: Vec<_> = (0..16).map(|_| lease_ephemeral_port().unwrap()).collect();
+        let mut ports: Vec<u16> = held.iter().map(|l| l.port()).collect();
+        assert!(
+            ports.iter().all(|p| *p > 1024),
+            "port outside ephemeral range"
+        );
+        let total = ports.len();
+        ports.sort_unstable();
+        ports.dedup();
+        assert_eq!(
+            ports.len(),
+            total,
+            "two concurrently-held leases shared a port"
+        );
     }
 }

@@ -922,14 +922,24 @@ result. Fixed by using the headerless `CdrWriter::new`, matching the RFC-0069/#0
 `publish_feedback`/`complete_goal` already carried; `nros-c`/`nros-cpp` already stripped it, so the
 Rust API was the lone live offender. See `archived/0448-*`. (2026-08-06)
 
-**#470** — `large_msg::test_xrce_e2e_integrity` fails ONLY inside the full sweep, and fails as
-`valid=false` on every received sample — a payload-INTEGRITY verdict, not a timeout or a missing
-message. Passes solo every time (2/2, ~5 s), so by the retest-solo rule it reads "load-sensitive". But
-load normally shows up as ABSENCE, not as delivered-but-corrupt, so either the CHECK is racy (shared
-XRCE agent / expected-pattern source crossed with a concurrent test) or the data really is corrupt
-under concurrency and solo runs never apply the pressure. Nothing so far separates those. First step:
-re-run the sweep with this test's agent isolated via the `nros_tests::alloc` allocator. #0422 had
-recorded it as "now PASSES". See `0470-*`. (2026-08-07)
+Recently resolved (2026-08-11): **#470** — `large_msg::test_xrce_e2e_integrity` reported
+`valid=false` on received samples — a payload-INTEGRITY verdict, so it read as corruption. It was
+CROSS-TALK, and the failure output said so all along: **every 512-byte sample (this test's own) was
+valid**; only foreign `size=64` ones were not. A second publisher's samples were landing in this
+listener's subscription. TWO isolation leaks, both fixed. (1) The "unique" agent port was not unique —
+`allocate_ephemeral_udp_port` bound port 0, read the number and CLOSED the socket, so the port belonged
+to nobody until the agent bound it; measured 87 colliding ports in 2400 allocations across 12 processes.
+Replaced by `nros_tests::port_lease`, a cross-process lock file held for the fixture's lifetime and
+reclaimed when its pid is gone; the zenoh router's identical allocator was converted in the same change.
+(2) All four XRCE stress tests shared the hardcoded topic `/stress_test` — distinct agents do NOT isolate
+that, because an agent bridges its clients onto DDS and one host at one domain makes a shared topic a
+shared bus. Added `STRESS_TOPIC`; each test names its own. **Ports alone did not fix it** — that is what
+pointed past the transport. Both allocators' old unit tests asserted two SEQUENTIAL allocations differ,
+which the racy allocator also satisfied (the kernel only re-hands a released port): guards that could not
+fail on their own defect, now "distinct while HELD". Same wrong inference in `XRCE_LARGE_MSG_LOCK`, a
+process-local `static Mutex` that serialises nothing across nextest's per-test processes. Verified 11/11
+XRCE-clean ×3; tripwired. Never truly sweep-only — it reproduces in the `large_msg` binary alone, since
+the colliding siblings live there. See `archived/0470-*`. (2026-08-11)
 
 Recently resolved (2026-08-07): **#467** — `test_xrce_action_ros2_client` (the REVERSE of #448: nano is
 the action SERVER, ROS 2 the client) rejected ~half the goals. The typed goal callback handed

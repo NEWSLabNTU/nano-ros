@@ -425,6 +425,7 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
     let mut listener_cmd = Command::new(&xrce_stress_test_binary);
     listener_cmd
         .env("XRCE_AGENT_ADDR", &addr)
+        .env("STRESS_TOPIC", "/stress_xrce_integrity")
         .env("MODE", "listener")
         .env("PAYLOAD_SIZE", "512")
         .env("EXPECTED_COUNT", "20")
@@ -440,6 +441,7 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
     let mut talker_cmd = Command::new(&xrce_stress_test_binary);
     talker_cmd
         .env("XRCE_AGENT_ADDR", &addr)
+        .env("STRESS_TOPIC", "/stress_xrce_integrity")
         .env("MODE", "talker")
         .env("PAYLOAD_SIZE", "512")
         .env("PUBLISH_COUNT", "20")
@@ -492,6 +494,7 @@ fn test_xrce_large_publish_sizes(xrce_stress_test_binary: PathBuf) {
     for &size in &[64, 256, 1024, 4096, 12288] {
         let mut cmd = Command::new(&xrce_stress_test_binary);
         cmd.env("XRCE_AGENT_ADDR", &addr)
+            .env("STRESS_TOPIC", "/stress_xrce_sizes")
             .env("MODE", "talker")
             .env("PAYLOAD_SIZE", size.to_string())
             .env("PUBLISH_COUNT", "3")
@@ -532,6 +535,7 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
     let mut listener_cmd = Command::new(&xrce_stress_test_binary);
     listener_cmd
         .env("XRCE_AGENT_ADDR", &addr)
+        .env("STRESS_TOPIC", "/stress_xrce_100hz")
         .env("MODE", "listener")
         .env("PAYLOAD_SIZE", "64")
         .env("EXPECTED_COUNT", "100")
@@ -546,6 +550,7 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
     let mut talker_cmd = Command::new(&xrce_stress_test_binary);
     talker_cmd
         .env("XRCE_AGENT_ADDR", &addr)
+        .env("STRESS_TOPIC", "/stress_xrce_100hz")
         .env("MODE", "talker")
         .env("PAYLOAD_SIZE", "64")
         .env("PUBLISH_COUNT", "100")
@@ -590,6 +595,7 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
     let mut listener_cmd = Command::new(&xrce_stress_test_binary);
     listener_cmd
         .env("XRCE_AGENT_ADDR", &addr)
+        .env("STRESS_TOPIC", "/stress_xrce_burst")
         .env("MODE", "listener")
         .env("PAYLOAD_SIZE", "64")
         .env("EXPECTED_COUNT", "100")
@@ -604,6 +610,7 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
     let mut talker_cmd = Command::new(&xrce_stress_test_binary);
     talker_cmd
         .env("XRCE_AGENT_ADDR", &addr)
+        .env("STRESS_TOPIC", "/stress_xrce_burst")
         .env("MODE", "talker")
         .env("PAYLOAD_SIZE", "64")
         .env("PUBLISH_COUNT", "100")

@@ -28,6 +28,11 @@ pub mod interop;
 pub mod matrix;
 pub mod output;
 pub mod platform;
+// Issue 0470 — cross-process port reservation. The bind-then-close allocators
+// handed the same ephemeral port to concurrent tests, so two "unique" XRCE
+// agents shared one port and a neighbour's samples arrived in this test's
+// subscription as `valid=false`.
+pub mod port_lease;
 pub mod process;
 pub mod qemu;
 pub mod ros2;
