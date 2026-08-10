@@ -109,7 +109,22 @@ TREE="${NROS_IDENTITY_BUDGET_TREE:-examples/workspaces/mixed/build-workspace-fix
 # Recorded 2026-08-07. See "THE NUMBERS" above before changing any of these.
 BUDGET_CRATE="nros_core"
 BUDGET_IDENTITIES=4
-CEILING_IDENTITIES=12
+# phase-340 item 8, 2026-08-10 — lowered 12 -> 6, the DECOMPOSED truth.
+#
+# The worst crate is `nros_serdes` at 6, and the 6 is structural rather than
+# accidental: THREE distinct identity-pairs x TWO `--target` spellings.
+#
+#   cargo/nano-ros_0b88c                      c315d21b… (implicit)  a4115419… (explicit)
+#   cargo/nros_ws_runtime_14eac               56ee26b4…             4e5cd29b…
+#   src/*/nano_ros_cpp_ffi_*/target (x5)      a9980154…             7f6cec47…
+#
+# The five cpp_ffi glue trees share ONE pair, which is why 7 roots yield 3 pairs
+# and not 7. The x2 is exactly the R3 axis this gate already reports
+# (host vs explicit --target, 141/52) — phase-340 W3 normalised the CMAKE lane
+# and deliberately left the cargo-leaf half, because it "buys nothing until R2
+# moves". So this ceiling should fall to 3 when that lands; if it does not, the
+# leaf half did not do what it claimed.
+CEILING_IDENTITIES=6
 CEILING_COPIES=5
 # ----------------------------------------------------------------------------
 

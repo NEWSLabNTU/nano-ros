@@ -399,6 +399,51 @@ rather than silently answering for the default group.
   number is how a gate starts lying. Current reading: `nros_core 4/8; worst
   crate 6/9; worst identity 5/5`.
 
+#### The remaining roadmap (2026-08-10) — P1..P5
+
+Wave 2 migrated six platforms. Re-measuring the source tree reframes what is
+left: of the **266 source dirs still holding build output**, roughly **240 are
+CMAKE-style** (`build` 85, `build-zenoh` 76, `build-cyclonedds` 36, `build-xrce`
+12, `build-workspace-*`) against **~20 cargo-style** (`target*`). **The cargo
+half is essentially done; the remaining mass is cmake**, which the shared-group
+mechanism never touched.
+
+**P1 — item 8. DONE 2026-08-10.** `nros_serdes` at 6 is decomposed (3 identity
+pairs x 2 `--target` spellings — see the gate's own comment), and
+`CEILING_IDENTITIES` is lowered 12 -> 6. Note issue 0485 had already fixed a
+counting bug in the gate, so part of the "5 -> 6 drift" was the gate, not the
+tree. The ceiling should reach 3 when W3's cargo-leaf half lands.
+
+**P2 — close the second build path.** `build-examples` writes per-leaf dirs
+without transiting the group resolver (proven on migrated `freertos`: shared
+group 01:53, per-leaf `target/` 01:55). Until it closes, ANY R1 relocation is
+silently re-created by the other path and item 7's ignore block can never be
+deleted. Small work, large leverage, and #393's shape — verify build, probe and
+resolver together.
+
+**P3 — relocate the cmake artifacts (the mass; its own phase).** ~240 dirs under
+`build-<rmw>/` and `build-workspace-<kind>[-<platform>]/` move to RFC-0070's
+sketched `$NROS_BUILD_ROOT/cmake/<kind>/<coordinate>/`. Different mechanism from
+the cargo groups — `CMAKE_BINARY_DIR`, not `--target-dir` — so it needs a phase
+doc and the same discipline: measure first, migrate in SMALL waves (transit is
+additive; four platforms at once exhausted a 916 GB volume), acceptance is a
+real rebuild plus fixture-consuming tests.
+
+**P4 — item 7 final.** Delete the `.gitignore` block once P2 and P3 land. It is
+already written to say it should be deleted rather than extended.
+
+**P5 — debt, parallelisable throughout.** Issue 0481 owns the readiness-marker
+class (do not duplicate); issue 0472's 13 unguarded opaque macros; the ~13 real
+`ci-matrix` failures, several confirmed flakes.
+
+Order: P1 and P2 in parallel -> P3 -> P4, with P5 filling gaps.
+
+**Carry this rule into P3:** re-measure before building. This phase refuted FOUR
+documented premises that way — F3's "net loss", the umbrella workspace, the
+platform-grained key, and the "feature-invariant host graph" framing. The
+240-dir cmake figure above is itself one `find`; re-derive it before designing
+against it.
+
 #### Item 7 — attempted again after wave 2 (2026-08-10). Blocked by a MIGRATION GAP, not housekeeping
 
 The sprawl item 7 targets is **391 per-leaf `.gitignore` files**, each holding
