@@ -259,15 +259,49 @@ provisioned here. Its own remedy section says so ("provisioning alone is not
 enough… the stale build dirs carry the old topology"), which is precisely the
 knowledge a precondition check should carry instead of a prose paragraph.
 
-**(c) NEW DEFECT — the fixture freshness gate is stamp-based where the tests are
-existence-based.** In the run that produced the 101 failures,
+**(c) NEW DEFECT, FIXED — the staleness probe reported an unbuildable fixture as
+fresh.** In the run that produced the 101 failures,
 `check-fixtures-stale: scope=native` **PASSED** while
 `build/fixtures-cargo/linux/nros-relwithdebinfo/talker` did not exist; the tests
 then failed one-by-one with `Test fixture binary not prebuilt: … Run
-just build-test-fixtures first`. A gate that clears on a coverage stamp while the
-artifacts it vouches for are absent is CLAUDE.md's issue-0196 rule inverted:
-build-side probes and test-side gates must watch the same inputs. This one should
-assert the artifacts exist, not merely that the lane was once stamped.
+just build-test-fixtures first`.
+
+The cause was in `scripts/test/rust-fixture-stale.sh`, which decided freshness
+like this:
+
+```sh
+if ( cd "$dir"; … cargo build … --message-format=json --quiet 2>/dev/null ) \
+        | grep -q '"fresh":false'; then
+```
+
+Only grep's status survives: cargo's exit code was discarded and its errors went
+to `/dev/null`. A fixture that **could not compile** therefore printed no
+`"fresh":false` line and was reported FRESH — the gate cleared having verified
+nothing, no artifact was produced, and the consequence arrived ~100 tests later.
+A gate that passes because its own probe broke launders the lane green, which is
+the same failure the SCOPE handling in `check-fixtures-stale.sh` guards against
+one layer up.
+
+Fixed by capturing the status and reporting three outcomes instead of two: fresh
+(silence), stale-and-rebuilt (WARNING — cargo self-healed it, the artifact now
+exists), and could-not-build (`FAILED` record, escalated to an ERROR that exits 1
+carrying cargo's own first error line and the remedy). Verified by mutation: with
+a deliberate compile error in `examples/native/rust/talker`, the probe emits
+`FAILED … error: could not compile` and the gate exits 1 naming 4 rows, where
+before it printed nothing and exited 0; on a clean tree it still exits 0 with the
+self-heal warnings unchanged.
+
+Two claims in the first version of this entry were WRONG and are corrected here,
+since both would have sent the next reader the wrong way:
+
+- It said the gate was "stamp-based where the tests are existence-based". It is
+  not — the probe genuinely builds, so it heals absence as well as staleness. The
+  hole was the swallowed build failure, nothing to do with the lane stamp.
+- It said the `native/rust/talker` row was outside the probe set. That came from
+  querying the manifest with an invented `--scope native` flag; the gate uses
+  `--platform linux` (SCOPE names the lane, `--platform` takes the fixture token —
+  different vocabularies, as `check-fixtures-stale.sh` documents). With the
+  correct call the native rust probe set is 65 rows and includes 5 talker rows.
 
 ### Two others, already-known classes rather than new ones
 
