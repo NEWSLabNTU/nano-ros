@@ -208,6 +208,30 @@ Three facts follow, and all three are load-bearing:
    environment variable and `build.target-dir` in `.cargo/config.toml` — so
    neither of the two obvious escapes works.
 
+### 2.2b Not every cargo invocation in the tree is corrosion's (issue 0493)
+
+§2.2's "there is no override" is true **of corrosion**, and it is worth stating
+that it does not generalise to the tree. Corrosion's directory always carries a
+hash — `<folder>_<sha1[0:5]>`, e.g. `nano-ros_0b88c`, `nros_ws_runtime_14eac`.
+
+Issue 0493 measured `examples/workspaces/mixed/build-workspace-fixtures` and
+found the cargo artifacts under a **hashless** `cargo/build`, with two
+`-C metadata` identities of ten crates in ONE `deps/`. Hashless means it is not
+corrosion's naming: nano-ros has its own cargo invocations that pass
+`--target-dir` directly (`_nros_ffi_cargo_args`,
+`cmake/NanoRosCodegenCore.cmake:348`), and those are not bound by §2.2 at all.
+
+Two consequences for this phase:
+
+1. **The 151-dir census counts corrosion trees.** Invocations on the nano-ros
+   path are separated by whatever `TARGET_DIR` their caller chose, which may be
+   shared. Relocation work keyed on §2.2 alone will not reach them.
+2. **The isolation §2.2 describes is what prevents the 0493 link failure**, and
+   it is absent on that path — same `deps/`, two workspace roots, provider
+   bundles both. Whether the two topologies (hashed per-workspace vs a shared
+   hashless dir) coexist by design or one is drift is **unestablished**; a bisect
+   over the same-day changes is the cheap way to find out and has not been done.
+
 ### 2.3 A cmake binary dir cannot be shared across source dirs
 
 Verified, not assumed — `CMakeCache.txt` pins its source tree:
