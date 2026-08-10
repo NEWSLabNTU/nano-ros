@@ -491,3 +491,111 @@ issue.
 `workspace-fixtures-build.sh` runs groups under `make -j`, so group banners and
 compiler output interleave — "the last `== workspace group: … ==` before the
 error" is NOT the failing group. Attribute by the failing target path.
+
+## UNIFICATION LANDED 2026-08-10 — one resolution, and it now says which
+
+The second half of Q2's fix (route all three builders through one prefix
+derivation) is done, and rebuilding BOTH arms passes. What follows is measured
+on this host unless flagged.
+
+### The reason `find_package` missed an install that was present
+
+Q2 left this as "why does `find_package` miss an installed SDK corrosion". It
+is not the host and not a forgotten provisioning step — **the two provisioning
+paths write two different LAYOUTS, and the root CMakeLists searched only one:**
+
+```
+just workspace install-corrosion   ->  $NROS_HOME/sdk/corrosion/            (FLAT)
+nros setup --tool corrosion        ->  $NROS_HOME/sdk/corrosion/<version>/  (VERSIONED)
+```
+
+The issue-0390 block globbed `${store}/corrosion/*`, which is the VERSIONED
+layout. Under the FLAT one that glob yields `lib/` and `share/` — two prefixes
+`find_package` cannot resolve from. Measured directly (host `.installed-version`
+= v0.6.1):
+
+| CMAKE_PREFIX_PATH | find_package(Corrosion) |
+| --- | --- |
+| `$HOME/.nros/sdk/corrosion` | **FOUND** (`lib/cmake/Corrosion`) |
+| `$HOME/.nros/sdk/corrosion/lib` | NOT FOUND |
+| `$HOME/.nros/sdk/corrosion/share` | NOT FOUND |
+| `$HOME/.nros/sdk` | FOUND |
+
+`compile-check-fixtures.sh` passed the FLAT parent explicitly, which is why that
+one builder resolved the SDK while the same host's other builders did not. So
+the "non-deterministic per host" reading in Q2 is sharper than that: it was
+deterministic per BUILDER, and the discriminator inside cmake was an unsupported
+directory layout.
+
+### What landed
+
+* `cmake/NanoRosCorrosion.cmake` — `nros_resolve_corrosion()`. Store lookup
+  (both layouts; each candidate kept only if a `CorrosionConfig.cmake` actually
+  sits under it), then `find_package`, then FetchContent at the tag read from
+  `nros-sdk-index.toml` rather than a third copy of the pin. The root
+  `CMakeLists.txt` and `nano_ros_workspace_metadata.cmake` — the two cmake sites
+  that used to answer this separately — both call it. A user's own `cmake -S`
+  reaches it too, which no shell helper can.
+* It REPORTS, which is the point of the whole exercise:
+  `-- nano-ros: Corrosion 0.6.1 via SDK store [hashed per-workspace cargo dirs] — …`
+  and `< 0.6.0` prints `[hashless shared cargo/build — issue 0493 link risk]`.
+  Both investigations spent days disagreeing about a fact either could have read
+  off a configure line, because no such line existed.
+* `scripts/build/cmake-prefix.sh` — the shell sibling, exported at file scope,
+  sourced by `cmake-incremental.sh` (covering workspace-fixtures-build.sh,
+  fixtures-build.sh, phase226-cxx-eff.sh, just/native.just), `fixture-matrix.sh`
+  (it carries its own `cmake -S`) and `compile-check-fixtures.sh`, whose inline
+  copy is deleted.
+* `check-cmake-corrosion-prefix` (check-fast) — a cmake CONFIGURE must sit in a
+  file/recipe that sources the helper, or carry
+  `# nros-cmake-prefix-exempt: <reason>`. Nine exemptions, each a no-Rust tree, a
+  third-party build, corrosion's own build, a copy-out template, or the gate's
+  own synthetic project.
+
+### Acceptance — both arms rebuilt
+
+| arm | command | corrosion | cargo dirs | duplicate symbols |
+| --- | --- | --- | --- | --- |
+| compile-check | `NROS_FIXTURE_ID=cmake_add_subdir compile-check-fixtures.sh` | 0.6.1 SDK | `cargo/<ws>_8058c` | 0 |
+| workspace | `workspace-fixtures-build.sh linux mixed --id workspace-mixed-native` | 0.6.1 SDK | `cargo/<ws>_8058c` + `cargo/nros_ws_runtime_e7af4` | 0 |
+
+Both exit 0. The workspace arm is `examples/workspaces/mixed` — the exact tree
+this issue dies on — and it now links. Its build dir has **no `_deps/` at all**:
+the configure stopped fetching Corrosion over the network. Two hashed dirs, one
+per cargo workspace ROOT, is the isolation that makes the duplicate
+`#[no_mangle]` impossible, and it is now reached through the SUPPORTED path
+rather than through a `find_package` miss.
+
+### Two bugs the rebuild caught that gates did not
+
+Both were mine, both in `nano_ros_workspace_metadata.cmake`, and neither would
+have been visible without configuring a real workspace:
+
+1. `CMAKE_CURRENT_LIST_DIR` inside a FUNCTION body names the CALLER's list dir
+   — the include resolved to `examples/workspaces/mixed/NanoRosCorrosion.cmake`
+   and the configure died. `CMAKE_CURRENT_FUNCTION_LIST_DIR` exists for exactly
+   this. Sibling of the CLAUDE.md function-scope pitfall.
+2. `Corrosion_VERSION` is a normal variable, so a workspace leaf (a SIBLING
+   scope reaching nano-ros via `add_subdirectory`) reported
+   `Corrosion unknown … [topology unknown]`. The resolution is now remembered in
+   CACHE INTERNAL vars where any scope can read it.
+
+"Acceptance is a rebuild of both arms, not a gate" was right.
+
+### What this does NOT settle
+
+* **The v0.5.1 arm is still never observed.** The pin is now v0.6.1 on both the
+  SDK and the FetchContent side, so unifying could not surface the hashless
+  topology here — which is the intended outcome, but it means the
+  "v0.5.1 -> hashless -> cannot link" half of the table above remains inference,
+  exactly as the earlier PROBE ATTEMPTED note said. What IS measured is that the
+  supported path and the fallback now resolve the SAME version, so the two
+  builders can no longer disagree.
+* **Q1 is untouched.** "Why does one staticlib bundle both identities when its
+  graph has one package?" — under v0.6.1 the two roots have separate `deps/`, so
+  the question does not arise here; it would return on any tree pinned below
+  0.6.0. The single-provider design in "The framing that settles it" is
+  independent of this change and still unbuilt.
+* Only two fixture rows were rebuilt, not `lane=native`. Tier 2 (`just
+  ci-matrix`, earned by a `cmake/` diff) was not run — it needs
+  `build-test-fixtures lane=tier2` and the disk here is at 96 %.
