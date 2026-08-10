@@ -26,6 +26,8 @@ cc = "1.0"
 nros-cc-flags = { path = "../../../tooling/nros-cc-flags" }
 nros-board-common = { path = "../../../boards/nros-board-common", features = ["build-helpers"] }
 nros-build-paths = { path = "../../../tooling/nros-build-paths" }
+# issue 0460 — the ONE spelling of the Kconfig-via-$DOTCONFIG knob fallback.
+nros-zephyr-build = { path = "../../../tooling/nros-zephyr-build" }
 pkg-config = "0.3"
 
 [lints]

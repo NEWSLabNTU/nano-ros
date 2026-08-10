@@ -86,9 +86,29 @@ fn main() {
     .unwrap();
 }
 
+/// The Kconfig option each knob is resolved from on Zephyr. Only the two the
+/// cmake side forwards (`_nros_resolve_knob` in `nros_cargo_build.cmake`) have
+/// a row; the rest are env-or-default as before. See issue 0460 and the twin
+/// table in `nros-zpico-build`'s runner — a Zephyr RUST image never inherits
+/// the cmake `set(ENV{...})` exports, so without this a Kconfig'd buffer size
+/// reached the C lane and silently did not reach this crate.
+const KCONFIG_KNOBS: &[(&str, &str)] = &[
+    (
+        "ZPICO_SUBSCRIBER_BUFFER_SIZE",
+        "CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE",
+    ),
+    (
+        "ZPICO_SERVICE_BUFFER_SIZE",
+        "CONFIG_NROS_SERVICE_BUFFER_SIZE",
+    ),
+];
+
 fn env_usize(name: &str, default: usize) -> usize {
-    std::env::var(name)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+    match KCONFIG_KNOBS.iter().find(|(env, _)| *env == name) {
+        Some((_, kconfig)) => nros_zephyr_build::knob_usize(name, kconfig, default),
+        None => std::env::var(name)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(default),
+    }
 }

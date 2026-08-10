@@ -76,13 +76,75 @@ fn zenoh_buffer_config_from_env(posix: bool) -> ZenohBufferConfig {
     }
 }
 
-/// Read a usize from an environment variable, falling back to a default.
+/// The Kconfig option each shim knob is resolved from on Zephyr.
+///
+/// issue 0460 — a Zephyr RUST image never sees the `set(ENV{...})` exports that
+/// `nros_cargo_build.cmake` writes (zephyr-lang-rust's `rust_cargo_application`
+/// builds its own cargo command and inherits nothing), so a knob set in
+/// Kconfig reached the C lane and not this one. `ZPICO_MAX_QUERYABLES` is where
+/// that stopped being invisible: Kconfig said 16, the cmake-compiled shim TU
+/// got 16, this build script compiled the crate default of 8, and the Rust-side
+/// slot guard — whose explanatory log is `cfg(feature = "std")`, i.e. silent on
+/// every embedded image — refused the ninth queryable. The three
+/// `workspaces/features` zephyr entries register eleven capability services
+/// (six param + five lifecycle) and died there with a bare
+/// `Transport(ServiceServerCreationFailed)` and no other output.
+///
+/// The pairs are NOT derivable (`ZPICO_TX_BATCH_FLUSH_MS` comes from
+/// `CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS`, not `CONFIG_NROS_TX_BATCH_FLUSH_MS`),
+/// so they are declared. `check-kconfig-knob-forwarding` holds this table and
+/// `_nros_resolve_knob()` in `nros_cargo_build.cmake` to the same set: a knob
+/// in the cmake list and not here is one more silently-defaulted image.
+const KCONFIG_KNOBS: &[(&str, &str)] = &[
+    ("ZPICO_MAX_PUBLISHERS", "CONFIG_NROS_MAX_PUBLISHERS"),
+    ("ZPICO_MAX_SUBSCRIBERS", "CONFIG_NROS_MAX_SUBSCRIBERS"),
+    ("ZPICO_MAX_QUERYABLES", "CONFIG_NROS_MAX_QUERYABLES"),
+    ("ZPICO_MAX_LIVELINESS", "CONFIG_NROS_MAX_LIVELINESS"),
+    ("ZPICO_MAX_PENDING_GETS", "CONFIG_NROS_MAX_PENDING_GETS"),
+    ("ZPICO_GET_REPLY_BUF_SIZE", "CONFIG_NROS_GET_REPLY_BUF_SIZE"),
+    (
+        "ZPICO_GET_POLL_INTERVAL_MS",
+        "CONFIG_NROS_GET_POLL_INTERVAL_MS",
+    ),
+    ("ZPICO_FRAG_MAX_SIZE", "CONFIG_NROS_FRAG_MAX_SIZE"),
+    ("ZPICO_BATCH_UNICAST_SIZE", "CONFIG_NROS_BATCH_UNICAST_SIZE"),
+    ("ZPICO_TX_BATCH", "CONFIG_NROS_ZENOH_TX_BATCH"),
+    ("ZPICO_TX_SPLIT_LOCK", "CONFIG_NROS_ZENOH_TX_SPLIT_LOCK"),
+    (
+        "ZPICO_TX_BATCH_FLUSH_MS",
+        "CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS",
+    ),
+];
+
+/// A knob's value as a STRING: explicit env, else Kconfig, else `None`.
+///
+/// The tx trio is resolved through a board-toml ladder that takes an
+/// `Option<String>` per knob rather than a default, so it needs this shape
+/// instead of [`env_usize`]. Same table, same precedence.
+fn kconfig_fallback_str(name: &str) -> Option<String> {
+    if let Some(v) = env::var(name).ok().filter(|v| !v.is_empty()) {
+        return Some(v);
+    }
+    let (_, kconfig) = KCONFIG_KNOBS.iter().find(|(env, _)| *env == name)?;
+    nros_zephyr_build::dotconfig_usize(kconfig).map(|v| v.to_string())
+}
+
+/// Read a usize knob: explicit env var, else Zephyr Kconfig, else `default`.
+///
+/// A knob with no [`KCONFIG_KNOBS`] row (`ZPICO_MAX_SESSIONS`,
+/// `ZPICO_BATCH_MULTICAST_SIZE` — neither is exposed as Kconfig) keeps the
+/// plain env-or-default behaviour.
 fn env_usize(name: &str, default: usize) -> usize {
-    println!("cargo:rerun-if-env-changed={name}");
-    env::var(name)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+    match KCONFIG_KNOBS.iter().find(|(env, _)| *env == name) {
+        Some((_, kconfig)) => nros_zephyr_build::knob_usize(name, kconfig, default),
+        None => {
+            println!("cargo:rerun-if-env-changed={name}");
+            env::var(name)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
+        }
+    }
 }
 
 /// Generate a zenoh-pico config header in OUT_DIR based on Cargo link-* features.
@@ -351,7 +413,9 @@ pub fn run() {
     println!("cargo:rerun-if-env-changed=ZPICO_TX_BATCH");
     println!("cargo:rerun-if-env-changed=ZPICO_TX_SPLIT_LOCK");
     println!("cargo:rerun-if-env-changed=ZPICO_TX_BATCH_FLUSH_MS");
-    let env_get = |name: &str| env::var(name).ok().filter(|v| !v.is_empty());
+    // issue 0460 — the same env-or-Kconfig ladder the sized knobs use, so the
+    // tx trio is not one more thing a Zephyr RUST image reads as "unset".
+    let env_get = |name: &str| kconfig_fallback_str(name);
     let tx_knobs = match (&platforms_tree, platform_name) {
         (Some(tree), Some(name)) => {
             let board_knobs = env_get("NROS_BOARD_TOML").map(|path| {

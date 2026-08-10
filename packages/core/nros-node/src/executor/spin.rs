@@ -3770,7 +3770,7 @@ impl<'s> Executor<'s> {
         let handle = self
             .session
             .create_service(&info, QosSettings::services_default())
-            .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
+            .map_err(NodeError::Transport)?;
 
         let offset = self.arena_alloc::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>()?;
 
@@ -3846,7 +3846,7 @@ impl<'s> Executor<'s> {
                 .map_err(NodeError::Transport)?;
             session
                 .create_service(&info, qos)
-                .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         let offset = self.arena_alloc::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>()?;
@@ -4394,7 +4394,7 @@ impl<'s> Executor<'s> {
                 .map_err(NodeError::Transport)?;
             session
                 .create_service(&info, qos)
-                .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         let offset = self.arena_alloc::<SrvRawEntry<REQ_BUF, REPLY_BUF>>()?;
@@ -5816,7 +5816,7 @@ impl<'s> Executor<'s> {
             }
             session
                 .create_service(&info, QosSettings::services_default())
-                .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))
+                .map_err(NodeError::Transport)
         }
 
         let get_handle = create_param_srv::<GetParameters>(
@@ -6020,7 +6020,7 @@ impl<'s> Executor<'s> {
             }
             session
                 .create_service(&info, QosSettings::services_default())
-                .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))
+                .map_err(NodeError::Transport)
         }
 
         let cs_handle =

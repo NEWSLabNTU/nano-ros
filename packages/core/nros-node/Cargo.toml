@@ -183,6 +183,13 @@ nros-serdes = { version = "0.5.0", path = "../nros-serdes", default-features = f
 [target.'cfg(all(target_os = "linux"))'.dependencies]
 libc = { version = "0.2", optional = true }
 
+[build-dependencies]
+# issue 0460 — the shared Kconfig-via-$DOTCONFIG knob fallback. A Zephyr RUST
+# image inherits none of the cmake `set(ENV{...})` knob exports, so without it
+# `NROS_EXECUTOR_MAX_CBS` and friends compiled their crate defaults whatever
+# Kconfig said. Build-only, dependency-free, host-compiled like every build dep.
+nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
+
 # Phase 214.F.2 — target-gate every dev-dep that pulls a `std` /
 # `platform-posix` feature path. The `--edges=features` audit at
 # F.1-landing time showed `nros-node` was the dominant residual

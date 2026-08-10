@@ -297,6 +297,18 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **Zephyr Rust allocator is picolibc `malloc`** — size `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`
   (default 16 KB; executor backing alone needs ~75 KB), NOT `CONFIG_HEAP_MEM_POOL_SIZE`.
   → issue 0163 (archived).
+- **A Kconfig knob reaches the Zephyr C lane and NOT the RUST one** — `nros_cargo_build.cmake`
+  publishes knobs with `set(ENV{…})`, which only touches the configure-time process; the C lane
+  re-bakes them into its command (`cmake -E env`), zephyr-lang-rust's `rust_cargo_application`
+  builds its own and inherits nothing. So every Zephyr Rust image compiled crate DEFAULTS
+  whatever Kconfig said — and when the two halves disagree it is also an 0135 ABI split
+  (`MAX_QUERYABLES` 16 in the cmake TU, 8 in the cargo one). Build scripts resolve knobs with
+  `nros_zephyr_build::knob_usize(env, CONFIG_key, default)` (reads `$DOTCONFIG`); gate:
+  `check-kconfig-knob-forwarding`. → issue 0460.
+- **A service server IS a zenoh queryable** — `[param_services]` (6) + `[lifecycle]` (5) claim
+  eleven slots before the app declares anything, against `ZPICO_MAX_QUERYABLES` = 8 embedded.
+  Raise `CONFIG_NROS_MAX_QUERYABLES`; the table is a static array, so the default stays small.
+  → issue 0460.
 - **Manual native_sim pair repros need distinct `--seed`** — unseeded processes share the test
   entropy source → identical GUIDs/ports → discovery sees the peer as itself → false-negative
   "no delivery". The test harness seeds automatically; hand-run repros must too. → issue 0157

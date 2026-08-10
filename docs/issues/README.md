@@ -453,16 +453,20 @@ mapping is the board-crate dep, 54 leaves, 0 ambiguous), and three tracked confi
 DID patch generated msg crates — `tests/` was outside the gate's walk. `check-cargo-config-tracked` now
 walks it and rejects a tracked config patching an uncommitted `generated/` tree. See `archived/0457-*`.
 
-**#460** — RE-MEASURED 2026-08-07 on fully fresh fixtures: **half fixed, and the shape changed.**
-`nuttx-arm/rust/entry_pubsub` now PASSES (not attributed). `zephyr/rust/params` still fails — and so do
-`zephyr/rust/lifecycle` and `zephyr/rust/qos`: `12 ran, 0 skipped, 3 failed (of 15)`. Three cells, one
-platform+language, three different FEATURE entries — a family, so the suspect is the zephyr-rust
-entry's feature wiring rather than three unrelated runtime paths. The measurement itself was the
-obstacle: the first re-run reported "1 of 15 FAILED" listing neither cell, which reads as "both fixed",
-because the harness reported skips ONLY when every cell skipped — ten passes and four skips printed
-identically to fourteen passes. Now always prints `N ran, M skipped, K failed` with the list (fixed in
-`463748763`). Rebuilding zephyr also needed `nros sync` in the seven zephyr rust leaves first, per
-#0463. See `0460-*`. (2026-08-07)
+RESOLVED 2026-08-10 — **#460** three `zephyr/rust` entry cells died after "Network ready" with a bare
+`NodeRegister("lifecycle")`. Root cause: **a service server IS a zenoh queryable, and the table holds 8.**
+The macro registers `[param_services]` (6) before `[lifecycle]` (5), so the ninth declaration is refused —
+eleven capability services against an 8-slot table. Three things hid it: the overflow's only diagnostic was
+`cfg(feature = "std")` (off on every embedded image, the only place the 8-slot budget applies); seven
+`map_err(|_| ServiceServerCreationFailed)` sites flattened the reason away; and
+`CONFIG_NROS_MAX_QUERYABLES` never reached the RUST lane — the `MAX_CBS` finding generalized, since cmake's
+`set(ENV{…})` knob exports reach the C lane's re-baked command and zephyr-lang-rust's
+`rust_cargo_application` builds its own and inherits nothing (measured: `.config` 16, cmake TU 16, crate
+const 8 — also an 0135 ABI split). Fixed with ONE `nros_zephyr_build::knob_usize` ladder used by all four
+knob readers, gated by `check-kconfig-knob-forwarding` (21 knobs); the overflow now returns a `&'static str`
+`Backend` reason that crosses `no_std`. The third cell was a stale ASSERTION, not a fault: a `params_files`
+overlay phase-331 W3 put on that component makes the resolved value 120, not the launch inline's 250.
+`entry_matrix: 14 ran, 1 skipped, 0 failed`. See `archived/0460-*`. (2026-08-10)
 
 **#451** — the embedded SDK env vars live only in `just/sdk-env.just`, so a direct `cargo build` of an
 embedded example fails one variable at a time (5 freertos, 4 threadx, 1+ nuttx) even though every SDK sits

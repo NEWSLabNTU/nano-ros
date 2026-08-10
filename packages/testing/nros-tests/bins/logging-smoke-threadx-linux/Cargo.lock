@@ -242,6 +242,7 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-serdes",
+ "nros-zephyr-build",
  "portable-atomic",
  "portable-atomic-util",
 ]
@@ -322,6 +323,10 @@ version = "0.5.0"
 dependencies = [
  "heapless",
 ]
+
+[[package]]
+name = "nros-zephyr-build"
+version = "0.5.0"
 
 [[package]]
 name = "once_cell"

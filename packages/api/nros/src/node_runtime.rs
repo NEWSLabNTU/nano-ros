@@ -1686,18 +1686,87 @@ mod tests {
 /// carry across the `nros-platform` trait boundary (which cannot name
 /// `NodeError`). Static strings, so this works on `no_std` targets with no
 /// allocator and no `log` dependency in this crate.
+///
+/// Both matches are EXHAUSTIVE on purpose. A wildcard arm is how this issue got
+/// its diagnostic — `NodeRegister("lifecycle")` named the capability and
+/// nothing about the cause — and a `_ =>` here would reintroduce exactly that
+/// for whichever variant is added next. The compile error is the point.
 #[cfg(any(feature = "lifecycle-services", feature = "param-services"))]
 fn capability_reason(e: &nros_node::NodeError) -> &'static str {
     use nros_node::NodeError;
     match e {
+        NodeError::Transport(t) => capability_transport_reason(t),
         NodeError::NameTooLong => {
-            "NameTooLong (the node FQN or a service name \
-                                   overflowed its fixed buffer)"
+            "NameTooLong (the node FQN or a service name overflowed its fixed buffer)"
         }
-        NodeError::Transport(_) => {
-            "Transport (the RMW refused to create a service \
-                                    server — declaration failed)"
+        NodeError::ExecutorFull => {
+            "ExecutorFull (no callback slot left — raise CONFIG_NROS_EXECUTOR_MAX_CBS; \
+             a capability's services are not counted by the model)"
         }
-        _ => "see NodeError; no specific mapping yet",
+        NodeError::NodeTableFull => "NodeTableFull (NROS_EXECUTOR_MAX_NODES reached)",
+        NodeError::NotInitialized => "NotInitialized (a required subsystem was never registered)",
+        NodeError::BackendMismatch => "BackendMismatch (the RMW is not the executor's session)",
+        NodeError::BufferTooSmall => "BufferTooSmall",
+        NodeError::Serialization => "Serialization",
+        NodeError::Deserialization => "Deserialization",
+        NodeError::ActionCreationFailed => "ActionCreationFailed",
+        NodeError::ServiceRequestFailed => "ServiceRequestFailed",
+        NodeError::ServiceReplyFailed => "ServiceReplyFailed",
+        NodeError::Timeout => "Timeout",
+        NodeError::RequestInFlight => "RequestInFlight",
+        NodeError::NoSchedContextSlot => "NoSchedContextSlot",
+        NodeError::InvalidSchedContextBinding => "InvalidSchedContextBinding",
+    }
+}
+
+/// The `NodeError::Transport` payload, which is the half that actually names
+/// what the RMW refused. `Backend(&'static str)` passes its own diagnostic
+/// straight through — it is already the string the backend wanted to say.
+///
+/// Unlike `capability_reason` above this one keeps a wildcard, and only because
+/// it must: `TransportError::BackendDynamic` is gated on `nros-rmw/alloc`,
+/// which feature unification can switch on from another crate in the graph
+/// without `nros/alloc` — so no spelling of the arm is correct in both builds
+/// (`nros-c`'s `nros_ret_t` mapping carries the same wildcard for the same
+/// reason). Every other variant is named, so the wildcard's text is what an
+/// unmapped one looks like.
+#[cfg(any(feature = "lifecycle-services", feature = "param-services"))]
+fn capability_transport_reason(t: &nros_rmw::TransportError) -> &'static str {
+    use nros_rmw::TransportError as T;
+    match t {
+        T::Backend(s) => s,
+        T::ServiceServerCreationFailed => {
+            "Transport::ServiceServerCreationFailed (the RMW refused to declare the queryable)"
+        }
+        T::ServiceClientCreationFailed => "Transport::ServiceClientCreationFailed",
+        T::PublisherCreationFailed => "Transport::PublisherCreationFailed",
+        T::SubscriberCreationFailed => "Transport::SubscriberCreationFailed",
+        T::ConnectionFailed => "Transport::ConnectionFailed (no session to the router)",
+        T::Disconnected => "Transport::Disconnected",
+        T::TopicNameInvalid => "Transport::TopicNameInvalid",
+        T::NodeNameNonExistent => "Transport::NodeNameNonExistent",
+        T::IncompatibleQos => "Transport::IncompatibleQos",
+        T::IncompatibleAbi => "Transport::IncompatibleAbi",
+        T::InvalidConfig => "Transport::InvalidConfig",
+        T::InvalidArgument => "Transport::InvalidArgument",
+        T::Unsupported => "Transport::Unsupported (the backend does not implement this)",
+        T::BadAlloc => "Transport::BadAlloc",
+        T::PublishFailed => "Transport::PublishFailed",
+        T::ServiceRequestFailed => "Transport::ServiceRequestFailed",
+        T::ServiceReplyFailed => "Transport::ServiceReplyFailed",
+        T::SerializationError => "Transport::SerializationError",
+        T::DeserializationError => "Transport::DeserializationError",
+        T::BufferTooSmall => "Transport::BufferTooSmall",
+        T::MessageTooLarge => "Transport::MessageTooLarge",
+        T::Timeout => "Transport::Timeout",
+        T::WouldBlock => "Transport::WouldBlock",
+        T::TooLarge => "Transport::TooLarge",
+        T::TaskStartFailed => "Transport::TaskStartFailed",
+        T::PollFailed => "Transport::PollFailed",
+        T::KeepaliveFailed => "Transport::KeepaliveFailed",
+        T::JoinFailed => "Transport::JoinFailed",
+        T::LoanNotSupported => "Transport::LoanNotSupported",
+        T::NoData => "Transport::NoData",
+        _ => "Transport::<variant with no reason mapping — add it here>",
     }
 }

@@ -132,6 +132,12 @@ atomic-waker = { version = "1.1", default-features = false, features = ["portabl
 log = { workspace = true, optional = true }
 critical-section = { version = "1.2", optional = true }
 
+[build-dependencies]
+# issue 0460 — `ZPICO_{SUBSCRIBER,SERVICE}_BUFFER_SIZE` are Kconfig knobs on
+# Zephyr, and the Rust lane never sees the cmake `set(ENV{...})` exports. One
+# spelling of the `$DOTCONFIG` fallback, shared with `nros-zpico-build`.
+nros-zephyr-build = { path = "../../../tooling/nros-zephyr-build" }
+
 [dev-dependencies]
 nros-tests = { path = "../../../testing/nros-tests" }
 nros-ghost-types = { version = "0.5.0", path = "../../../verification/nros-ghost-types" }

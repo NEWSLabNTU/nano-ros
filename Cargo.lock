@@ -1828,6 +1828,7 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-serdes",
+ "nros-zephyr-build",
  "portable-atomic",
  "portable-atomic-util",
 ]
@@ -2010,6 +2011,7 @@ dependencies = [
  "cc",
  "nros-cc-flags",
  "nros-rmw-cffi",
+ "nros-zephyr-build",
 ]
 
 [[package]]
@@ -2034,6 +2036,7 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-tests",
+ "nros-zephyr-build",
  "portable-atomic",
  "zpico-sys",
 ]
@@ -2129,6 +2132,7 @@ dependencies = [
  "nros-board-common",
  "nros-build-paths",
  "nros-cc-flags",
+ "nros-zephyr-build",
  "pkg-config",
 ]
 

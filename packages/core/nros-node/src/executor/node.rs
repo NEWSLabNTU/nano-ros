@@ -499,7 +499,7 @@ impl<'a> NodeHandle<'a> {
         let handle = self
             .session
             .create_service(&info, qos)
-            .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
+            .map_err(NodeError::Transport)?;
         Ok(EmbeddedServiceServer {
             handle,
             req_buffer: [0u8; REQ_BUF],
@@ -605,7 +605,7 @@ impl<'a> NodeHandle<'a> {
         let handle = self
             .session
             .create_service(&info, QosSettings::services_default())
-            .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
+            .map_err(NodeError::Transport)?;
         Ok(crate::executor::handles::RawServiceServer::new(handle))
     }
 

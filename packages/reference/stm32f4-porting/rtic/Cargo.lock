@@ -670,6 +670,7 @@ dependencies = [
  "nros-platform-api",
  "nros-rmw",
  "nros-serdes",
+ "nros-zephyr-build",
  "portable-atomic",
 ]
 
@@ -745,6 +746,7 @@ dependencies = [
  "nros-platform",
  "nros-rmw",
  "nros-rmw-cffi",
+ "nros-zephyr-build",
  "portable-atomic",
  "zpico-sys",
 ]
@@ -766,6 +768,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-zephyr-build"
+version = "0.5.0"
+
+[[package]]
 name = "nros-zpico-build"
 version = "0.5.0"
 dependencies = [
@@ -774,6 +780,7 @@ dependencies = [
  "nros-board-common",
  "nros-build-paths",
  "nros-cc-flags",
+ "nros-zephyr-build",
  "pkg-config",
 ]
 

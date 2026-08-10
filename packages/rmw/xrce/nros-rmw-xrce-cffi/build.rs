@@ -256,7 +256,7 @@ fn main() {
     // targets that don't run server-side action callbacks can drop
     // from the default 16 (= 64 KiB per-session output buffer) to 8
     // or 4. `internal.h` enforces `>= 4`.
-    if let Ok(v) = env::var("NROS_XRCE_STREAM_HISTORY") {
+    if let Some(v) = knob("NROS_XRCE_STREAM_HISTORY") {
         let n: u32 = v
             .parse()
             .unwrap_or_else(|_| panic!("NROS_XRCE_STREAM_HISTORY='{}' is not a number", v));
@@ -294,7 +294,7 @@ fn main() {
         ),
         ("NROS_XRCE_BUFFER_SIZE", "XRCE_BUFFER_SIZE", 64),
     ] {
-        if let Ok(v) = env::var(env_name) {
+        if let Some(v) = knob(env_name) {
             let n: u32 = v
                 .parse()
                 .unwrap_or_else(|_| panic!("{env_name}='{v}' is not a number"));
@@ -483,4 +483,22 @@ fn generate_uxr_config(
     let dir = out_dir.join("include/uxr/client");
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("config.h"), h).unwrap();
+}
+
+/// A pool knob's value: explicit env var, else the Zephyr Kconfig it is
+/// resolved from, else `None` (the vendored header's own default stands).
+///
+/// issue 0460 — every one of these is forwarded by `_nros_resolve_knob()` in
+/// `zephyr/cmake/nros_cargo_build.cmake` with `set(ENV{...})`, which reaches
+/// the C lane's re-baked command and NOT the Rust lane's: zephyr-lang-rust's
+/// `rust_cargo_application` builds its own cargo invocation and inherits
+/// nothing. So a Zephyr Rust image read every one of these as unset whatever
+/// Kconfig said. The env name here is the Kconfig name minus `CONFIG_`, so the
+/// pair is derived; `check-kconfig-knob-forwarding` proves the cmake list and
+/// the readers agree.
+fn knob(env_name: &str) -> Option<String> {
+    if let Ok(v) = env::var(env_name) {
+        return Some(v);
+    }
+    nros_zephyr_build::dotconfig_usize(&format!("CONFIG_{env_name}")).map(|v| v.to_string())
 }

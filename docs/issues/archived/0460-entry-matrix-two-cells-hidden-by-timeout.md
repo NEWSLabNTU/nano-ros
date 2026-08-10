@@ -1,11 +1,12 @@
 ---
 id: 460
 title: "entry_matrix: two RTOS cells fail — invisible until the nextest timeout stopped killing the run"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: testing, nuttx, zephyr
-related: [issue-0422, issue-0445, phase-295, phase-276, phase-280]
+related: [issue-0422, issue-0445, issue-0406, issue-0307, issue-0135, phase-295, phase-276, phase-280, phase-331]
+resolved_in: "issue-0460 (queryable table + Kconfig knob forwarding)"
 ---
 
 ## How these surfaced
@@ -245,3 +246,95 @@ report it from (attempted; it does not compile). The clean fix is to widen those
 trait methods to return `NodeError` so the macro — whose emitted code DOES have
 `log` — can print it. That is the next step, and it is the same
 make-the-failure-name-itself move that got this far.
+
+## Root cause: the queryable table, and why nobody could see it (2026-08-10)
+
+The reason survived to a log line, and it named itself on the first boot:
+
+```
+<err> rust: rustapp: nros: zephyr entry FAILED: Capability {
+    name: "lifecycle",
+    reason: "Transport::ServiceServerCreationFailed (the RMW refused to declare the queryable)" }
+```
+
+**A service server IS a zenoh queryable, and the table holds 8.** The macro
+emits `apply_param_services` before `apply_lifecycle`, so the six parameter
+services take slots 0–5, lifecycle takes 6 and 7, and the third lifecycle
+service is refused. Eleven capability services against an 8-slot table: the
+arithmetic is the whole bug. Proven both ways — with the table at 16 the entry
+prints `zephyr workspace entry up (1 nodes)` and spins.
+
+Three things had to line up for this to be invisible for as long as it was:
+
+1. **The overflow's only diagnostic was `cfg(feature = "std")`.** Issue 0406
+   added a `log::error!` that names the knob — and gated it on `std`, i.e. off
+   on every embedded image, which is the only place the 8-slot budget applies.
+   The caller got a bare `ServiceServerCreationFailed`.
+2. **`create_lc_srv` threw the reason away** — `.map_err(|_| Transport(
+   ServiceServerCreationFailed))` at five sites in `spin.rs` and two in
+   `node.rs`, so even a specific backend error arrived as the generic one.
+3. **`CONFIG_NROS_MAX_QUERYABLES` never reached the Rust lane.** This is the
+   `MAX_CBS` finding above, generalized: `nros_cargo_build.cmake` publishes
+   every knob with `set(ENV{...})`, the C lane re-bakes them into its build
+   command, and zephyr-lang-rust's `rust_cargo_application` builds its own
+   cargo invocation that inherits nothing. Measured on this leaf: `.config`
+   said 16, the cmake-compiled TU got `-DZPICO_MAX_QUERYABLES=16`, and the
+   cargo-compiled crate const stayed 8. **Every Zephyr Rust image has been
+   compiling crate defaults for every knob**, not just this one — and when the
+   two halves disagree it is also an issue-0135 ABI split.
+
+## The fix
+
+* `nros_zephyr_build::knob_usize(env, kconfig_key, default)` / `dotconfig_usize`
+  — ONE spelling of the env → `$DOTCONFIG` → default ladder, in the crate that
+  already owns "read Kconfig from a build script". `nros-node`'s private copy
+  (added earlier in this issue) now calls it, and the three other knob readers
+  join: `nros-zpico-build` (11 knobs + the tx trio's string ladder),
+  `nros-rmw-zenoh` (the two buffer sizes), `nros-rmw-xrce-cffi` (the six pool
+  knobs, which had the identical silent-default bug on this lane).
+* `check-kconfig-knob-forwarding` — every `_nros_resolve_knob()` in the cmake
+  module must be read by a Rust build script. 21 knobs today. A knob added to
+  one side and not the other is one more silently-defaulted image, and nothing
+  else in the build would say so.
+* The overflow now returns `TransportError::Backend("zenoh queryable table
+  exhausted — raise CONFIG_NROS_MAX_QUERYABLES …")`. A `&'static str` crosses
+  `no_std` with no logger and no allocator, and the capability seam prints it
+  verbatim.
+* The seven `map_err(|_| …ServiceServerCreationFailed)` sites became
+  `map_err(NodeError::Transport)`, so a backend reason reaches the caller.
+* `capability_reason` in `nros` maps every `NodeError` variant and every
+  `TransportError` variant by name (exhaustive on `NodeError` — a wildcard
+  there is what this issue is about).
+* `CONFIG_NROS_MAX_QUERYABLES=16` in the three entries' `prj.conf`. The shim
+  default stays 8: these tables are static arrays and every slot costs RAM on
+  targets that are not native_sim.
+
+## The third cell was a stale assertion, not a runtime fault
+
+With the queryable table fixed, `lifecycle` and `qos` passed and `params` still
+failed — but on a different thing entirely. The entry publishes **120**, and the
+cell asserted 250.
+
+250 is the launch file's inline `<param>`. 120 comes from a `params_files`
+overlay `system.toml` declares on `rust_param_talker_pkg` (ported here by
+phase-331 W3 from the retired `ws-params-rust`), and the model's ordered
+`param_sources` fold puts a file AFTER an inline value — rlm's deliberate rule
+(phase-54, issue 0307), so the file wins. Only the RUST params model carries an
+overlay; the C and C++ params models have none and still resolve 250, which is
+why this one cell moved and its siblings did not.
+
+The overlay's YAML has two blocks — `param_talker: 120` and `/**: 999` — which
+exists precisely so something observes 120 rather than 999. The cell is the only
+observer, so 120 is the intended value and the 250 predates the port. Updated,
+and the note now records what the value proves: file projection, within-file
+specificity ranking, on-target seeding, and the live re-read, in one assertion.
+
+## Verified (2026-08-10)
+
+```
+entry_matrix: 14 ran, 1 skipped, 0 failed (of 15 cells)
+```
+
+The one skip is `nuttx-arm/rust/entry_pubsub`, whose fixture the native lane
+does not build — not a cell failure. Both cells this issue was filed for, plus
+the two the measurement added, now pass.

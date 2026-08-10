@@ -399,7 +399,7 @@ check-fast: \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
-    check-capability-slot-counts \
+    check-capability-slot-counts check-kconfig-knob-forwarding \
     check-cargo-profile-mirror check-build-profile-literals \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
@@ -941,6 +941,15 @@ check-staleness-probe-exemptions:
 [private]
 check-capability-slot-counts:
     @bash scripts/check-capability-slot-counts.sh
+
+# issue 0460 — a knob Kconfig forwards must be read by the Rust lane too. The
+# cmake `set(ENV{...})` exports reach the C lane's re-baked command and NOT
+# zephyr-lang-rust's `rust_cargo_application`, so every Zephyr Rust image
+# compiled its crates' defaults whatever Kconfig said — silently, for every
+# knob at once.
+[private]
+check-kconfig-knob-forwarding:
+    @bash scripts/check-kconfig-knob-forwarding.sh
 
 # issue 0445 — which coordinates have produced no runtime result, and for how
 # long. The probes write one line per non-running fixture under

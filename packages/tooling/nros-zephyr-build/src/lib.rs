@@ -83,6 +83,69 @@ fn bake_directives(dotconfig: &str) -> Vec<String> {
     out
 }
 
+/// Resolve a build-script tuning knob: explicit env var, else the Zephyr
+/// `.config` named by `$DOTCONFIG`, else `default`.
+///
+/// # Why a build script has to read `.config` at all (issue 0460)
+///
+/// `zephyr/cmake/nros_cargo_build.cmake` exports every resolved knob with
+/// `set(ENV{...})`, which only touches the CONFIGURE-time cmake process. The C
+/// lane survives that because `nros_cargo_build()` re-bakes the vars into its
+/// build command (`cmake -E env …`). The RUST lane's command is built by
+/// zephyr-lang-rust's `rust_cargo_application`, which passes its own fixed
+/// variable list and inherits nothing — so **every Zephyr Rust image compiled
+/// its crates' DEFAULTS whatever Kconfig said**. Measured on an image whose
+/// `.config` said `CONFIG_NROS_EXECUTOR_MAX_CBS=16`: zero occurrences in
+/// `build.ninja`, and the crate compiled 4.
+///
+/// `DOTCONFIG` *is* in that command's environment, so the value is read from
+/// the file rather than by teaching the vendored module a new variable.
+///
+/// # Why `kconfig_key` is a separate argument
+///
+/// The env name and the Kconfig name are NOT the same string for every knob:
+/// `nros-node` reads `NROS_EXECUTOR_MAX_CBS` ↔ `CONFIG_NROS_EXECUTOR_MAX_CBS`
+/// (mechanical), but the zenoh shim reads `ZPICO_MAX_QUERYABLES` ↔
+/// `CONFIG_NROS_MAX_QUERYABLES` (not). The pairing is declared by
+/// `_nros_resolve_knob()` in `nros_cargo_build.cmake`, so a caller here passes
+/// the same pair; `check-kconfig-knob-forwarding` holds the two lists together.
+///
+/// Explicit env still wins, so the C lane and any manual override are
+/// unchanged.
+pub fn knob_usize(env_name: &str, kconfig_key: &str, default: usize) -> usize {
+    println!("cargo:rerun-if-env-changed={env_name}");
+    if let Some(v) = env::var(env_name).ok().and_then(|v| v.parse().ok()) {
+        return v;
+    }
+    dotconfig_usize(kconfig_key).unwrap_or(default)
+}
+
+/// Read `<kconfig_key>=<int>` out of the `.config` named by `$DOTCONFIG`.
+///
+/// Kconfig ints are unquoted; anything else (missing file, missing key,
+/// non-numeric) yields `None` so the caller falls through to its default.
+pub fn dotconfig_usize(kconfig_key: &str) -> Option<usize> {
+    println!("cargo:rerun-if-env-changed=DOTCONFIG");
+    let path = env::var("DOTCONFIG").ok()?;
+    println!("cargo:rerun-if-changed={path}");
+    let body = fs::read_to_string(&path).ok()?;
+    kconfig_usize(&body, kconfig_key)
+}
+
+/// Pure core of [`dotconfig_usize`]: `.config` body → the key's integer value.
+///
+/// A bool option reads `y` (an unset bool is absent from the file, never `n`),
+/// and the cmake side resolves those to `1`/`0` for the same knob — the C shim
+/// takes `-DZPICO_TX_BATCH=1`. Map it the same way here so a tri-state knob
+/// does not silently fall through to the crate default on the Rust lane.
+fn kconfig_usize(body: &str, key: &str) -> Option<usize> {
+    match kconfig_raw(body, key)?.as_str() {
+        "y" => Some(1),
+        "n" => Some(0),
+        v => v.parse().ok(),
+    }
+}
+
 /// `CONFIG_X="value"` → `Some("value")`; unset/empty → `None`.
 fn kconfig_str(body: &str, key: &str) -> Option<String> {
     let raw = kconfig_raw(body, key)?;

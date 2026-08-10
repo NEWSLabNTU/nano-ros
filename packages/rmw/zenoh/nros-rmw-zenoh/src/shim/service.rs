@@ -327,7 +327,20 @@ impl ZenohServiceServer {
                 ZPICO_MAX_QUERYABLES,
                 session_index,
             );
-            return Err(TransportError::ServiceServerCreationFailed);
+            // issue 0460 — the `log::error!` above is the ONLY place that named
+            // the knob, and it is `cfg(feature = "std")`: on every embedded
+            // image the caller got a bare `ServiceServerCreationFailed` and no
+            // explanation. `Backend` carries a `&'static str` through `no_std`
+            // with no logger and no allocator, and the capability seam in
+            // `nros` prints it verbatim — which is how the three zephyr
+            // `workspaces/features` entries finally named their own failure
+            // instead of dying quietly after "Network ready".
+            return Err(TransportError::Backend(
+                "zenoh queryable table exhausted — raise CONFIG_NROS_MAX_QUERYABLES \
+                 (env ZPICO_MAX_QUERYABLES). A service server IS a queryable: the ROS \
+                 parameter services use 6 and the REP-2002 lifecycle services 5, so an \
+                 entry declaring both needs 11 before its own callbacks.",
+            ));
         }
         let buffer_index = session_index * ZPICO_MAX_QUERYABLES + local;
 

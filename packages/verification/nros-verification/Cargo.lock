@@ -103,6 +103,7 @@ dependencies = [
  "nros-platform-api",
  "nros-rmw",
  "nros-serdes",
+ "nros-zephyr-build",
  "portable-atomic",
  "portable-atomic-util",
 ]
@@ -145,6 +146,10 @@ dependencies = [
  "nros-serdes",
  "vstd",
 ]
+
+[[package]]
+name = "nros-zephyr-build"
+version = "0.5.0"
 
 [[package]]
 name = "portable-atomic"

@@ -279,11 +279,18 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             resolver: build_zephyr_workspace_rust_params_entry,
             port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Params),
             boot: Boot::ZephyrNativeSim,
-            proof: Proof::SinkValueLine { value: 250 },
+            proof: Proof::SinkValueLine { value: 120 },
             note: "phase-276 W1 / #128: the Framework::Zephyr emit arm gained apply_param_services \
                    (launch-baked initials) — before it, [param_services] was silently ignored. \
                    #147/#278: the observer must be the TYPED int32-sink (the old String listener \
-                   only matched while its fixture was a stale pre-W4 Int32 build)",
+                   only matched while its fixture was a stale pre-W4 Int32 build). \
+                   120, not the launch file's 250 (issue 0460): this component ALSO declares a \
+                   `params_files` overlay in system.toml, and the model's ordered `param_sources` \
+                   fold puts the file after the inline `<param>`, so the file wins (rlm phase-54, \
+                   issue 0307). 120 is the node-specific block beating the same file's `/**: 999`, \
+                   so this value proves the whole chain at once — file projection, specificity \
+                   ranking, on-target seeding and the live re-read. The launch-inline path is what \
+                   the C and C++ params cells assert (they carry no overlay, and still see 250)",
         },
         (MP::ZephyrNativeSim, ML::Rust, MW::Qos) => Exec {
             resolver: build_zephyr_workspace_rust_qos_entry,
