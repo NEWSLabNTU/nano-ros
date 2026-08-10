@@ -1,16 +1,31 @@
-# Phase 341 — The `std`/`alloc` contract, and what a firmware build actually compiles
+# Phase 345 — The `std`/`alloc` contract, and what a firmware build actually compiles
+
+**Status (2026-08-10).** IN PROGRESS — W1, W2.a, W3, W3.b and all of W8 landed;
+the feature contract holds as a STATE (0 implicit `alloc`/`std` enables, no
+`no_std` crate defaults to `std`, one `#[global_allocator]`). **W4, the gate
+that would make it an invariant, is not written** — until it is, every number
+here is a measurement. W2.b (two dead declarations) needs a decision; W5–W7
+(dependency weight, issue 0494) are not started.
+
+**Numbering.** Drafted offline as "phase-341" against a stale `main`; upstream
+had already spent 341–344, and issues 0467–0471 besides. Renumbered on rebase
+(2026-08-10) — 341 → 345, issues 0467–0471 → 0492–0496. Same class as the seven
+collisions `just issue-new` exists to stop; the phase series has no equivalent
+reservation, which is why this one had to be fixed by hand.
 
 **Touches:** RFC-0005 (RMW layer), RFC-0006 (portable RMW/platform interface),
 RFC-0033 (message field capacity — the `mode = "heap"` types this contract
-governs), RFC-0062 (unified dependency SSOT).
-**Opens:** issue 0467 (`std` implies `alloc` in half the stack), issue 0468
-(`default = ["std"]` splits compile identities), issue 0469 (47 of 57 crates in
-a firmware build are proc-macro host tooling).
+governs), RFC-0034 (the `nros_platform_alloc` funnel W8.c enforces), RFC-0062
+(unified dependency SSOT).
+**Opens:** issue 0492 (`std` implies `alloc` in half the stack), issue 0493
+(`default = ["std"]` splits compile identities), issue 0494 (47 of 57 crates in
+a firmware build are proc-macro host tooling), issue 0496 (34 implicit
+`alloc`/`std` enables; the allocator-ownership half is closed by W8.c).
 
 **Not phase-334 / phase-340 territory.** Those two change *where* an artifact
 lives and *when* it can be reused. This phase changes *what gets compiled at
 all* and *what a feature flag means*. They touch disjoint files and compose:
-issue 0468 names one of the five `-C metadata` identities issue 0446 counts, and
+issue 0493 names one of the five `-C metadata` identities issue 0446 counts, and
 it is the one that survives any cache-layout fix, because to cargo the two units
 are genuinely different feature sets.
 
@@ -47,7 +62,7 @@ nros-core). Previously `default = ["std"]`"* — but `nros-core` still declares
 `nros-params`, `nros-rmw` do not. `nros-core/src/lib.rs:19` gates `extern crate
 alloc` — and the `heap::{Vec, String}` re-export RFC-0033 codegen emits — on
 `any(alloc, std)`, i.e. the source assumes the implication its own manifest does
-not make. Issue 0467 has the reproducer: at `nros-core`'s **default** feature
+not make. Issue 0492 has the reproducer: at `nros-core`'s **default** feature
 set, `nros_core::heap::Vec<u32>` exists and has no `Serialize` impl.
 
 ### RMW
@@ -140,7 +155,7 @@ Acceptance: the rule exists in exactly one place.
 
 *(The earlier version of W1 said the opposite — "a crate that declares both must
 declare `std = ["alloc", …]`". That is wrong for an embedded target: it makes
-`std` a way to acquire a heap without asking for one. Superseded; issue 0467's
+`std` a way to acquire a heap without asking for one. Superseded; issue 0492's
 defect is fixed on the source side instead, see W2.)*
 
 **W2 — make the manifests obey it.** Two halves, because only one of them is
@@ -164,7 +179,7 @@ nros-node / nros / nros-c / nros-log
 nros-node / nros     --features std,alloc              ok
 ```
 
-Issue 0467 is fixed on the SOURCE side instead: `nros-core/src/lib.rs` gated
+Issue 0492 is fixed on the SOURCE side instead: `nros-core/src/lib.rs` gated
 `extern crate alloc` and the RFC-0033 `heap::{Vec, String}` re-export on
 `any(alloc, std)`; both are now `alloc` alone. A `std`-only build therefore no
 longer gets heap types whose `Serialize` impls `nros-serdes` — which received
@@ -189,7 +204,7 @@ the workspace — 199 of 200 `nros` dep-sites — already spelled
 consumers: `nros-core = "0.5"` is now a `no_std` build. Needs a release note.
 
 *The acceptance criterion this phase originally stated was wrong, and the
-measurement is recorded in issue 0468.* `default = []` did **not** merge any
+measurement is recorded in issue 0493.* `default = []` did **not** merge any
 compile unit: 497 units and 19 split crates before and after. An empty `default`
 is still a feature NAME (only omitting the key removes it), and `--workspace`
 builds every member as a root with its own defaults anyway. The two units are
@@ -204,7 +219,7 @@ What W3 actually bought, and why it stays:
 - **Nothing can acquire `std` without saying so**, which is the user-facing
   property this phase exists for. A consumer picks per package: `std` here,
   `alloc` there, neither in the entry.
-- **It surfaced issue 0470** — `nros/ffi-size-markers` was reachable only
+- **It surfaced issue 0495** — `nros/ffi-size-markers` was reachable only
   through the `default` set that both C/C++ consumers disable, so a `-p nros-c`
   build (what cmake/corrosion runs) never had the markers. Now requested
   explicitly at all four dep-sites.
@@ -258,7 +273,7 @@ Landed anyway: the template's `[features]` now matches the live emitter's
 own output is dead on the current path. Rationale — phase-335 is wiring the
 language-neutral IR path, and a dormant template that disagrees with the live
 emitter is exactly how the next `default` regression arrives. The `#[used]`
-lesson from issue 0470 is the same shape: a value that is only correct by
+lesson from issue 0495 is the same shape: a value that is only correct by
 accident stays correct until the accident stops.
 
 No regeneration of the six committed in-tree crates is needed — they already
@@ -274,14 +289,14 @@ workspace member:
   `alloc` — the user spells the heap at their own dep-site, per package.
   *An earlier draft of this clause said the opposite* ("a crate declaring both
   `std` and `alloc` lists `alloc` in `std`"), written before W1/W2 decided to
-  DELETE the `std ⇒ alloc` edge. Enforcing it would re-break issue 0467.
+  DELETE the `std ⇒ alloc` edge. Enforcing it would re-break issue 0492.
 - **(b)** no `no_std`-capable crate declares a non-empty `default` containing
   `std` or `alloc`.
 - **(c)** every declared `std`/`alloc` feature has a `cfg` site or forwards to a
   dependency — catches `nros-platform/alloc`, `nros-rmw-cyclonedds/std` and
   `nros-cpp/global-allocator`, all dead declarations found by hand.
 - **(d)** no feature listed in a `default` set is UNREACHABLE from every
-  non-`default-features` dep-site in the workspace — catches issue 0470.
+  non-`default-features` dep-site in the workspace — catches issue 0495.
 - **(e)** exactly ONE `#[global_allocator]` definition exists in the tree, and
   it is `nros-platform`'s — the W8.c invariant. A grep-level check: the audit
   that found four of them was a grep, and the fifth will be too.
@@ -309,7 +324,7 @@ Acceptance: `cargo tree -e normal -p nros --no-default-features --features std
 --target thumbv7em-none-eabihf` is the 11 runtime crates plus `paste`.
 
 **W8 — no feature may enable `alloc` or `std` but `alloc`/`std` (LANDED).**
-Issue 0471 enumerated 34 sites. **0 remain**, and the `#[global_allocator]`
+Issue 0496 enumerated 34 sites. **0 remain**, and the `#[global_allocator]`
 count is 4 → 1.
 
 - **W8.a (done)** — `global-allocator = []` on `nros-c`, `nros-cpp`,

@@ -1698,7 +1698,7 @@ test-doc:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    # phase-341 W3 — `std` explicit: `nros` no longer defaults to it, and the
+    # phase-345 W3 — `std` explicit: `nros` no longer defaults to it, and the
     # doc examples are hosted.
     cargo test $cargo_profile_args --doc -p nros --features std
 
@@ -2134,7 +2134,7 @@ build-zenoh-posix-fixture:
     # under the one build root now (RFC-0070 R1) and both sides name the KIND.
     source scripts/build/build-root.sh
     # profile-literal-ok: symbol fixture: path asserted by zenoh_archive_symbols + the parity script
-    # phase-341 W8.d — `platform-posix` selects the platform, not the standard
+    # phase-345 W8.d — `platform-posix` selects the platform, not the standard
     # library. This archive is a HOSTED artifact, so it names `std` itself.
     cargo build --release \
         -p nros-rmw-zenoh-staticlib \
@@ -4557,7 +4557,7 @@ doc-c:
     header="packages/api/nros-c/include/nros/nros_generated.h"
     if [ ! -f "$header" ]; then
         echo "Generated header not found, building nros-c first..."
-        # phase-341 W3 — `std` explicit (host build; nros-c `default = []` now).
+        # phase-345 W3 — `std` explicit (host build; nros-c `default = []` now).
         cargo build -p nros-c --features "std,rmw-zenoh,platform-posix,ros-humble"
     fi
     mkdir -p target/doxygen/c

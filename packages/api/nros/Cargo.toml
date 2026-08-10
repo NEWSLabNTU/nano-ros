@@ -14,7 +14,7 @@ documentation.workspace = true
 readme = "README.md"
 
 [features]
-# phase-341 W3 / issue 0468 — EMPTY; `std` is opt-in per dep-site.
+# phase-345 W3 / issue 0493 — EMPTY; `std` is opt-in per dep-site.
 #
 # `ffi-size-markers` used to ride in here, and that was the ONLY thing enabling
 # it: both consumers (`nros-c`, `nros-cpp`) dep this crate `default-features =

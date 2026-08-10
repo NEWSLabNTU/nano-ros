@@ -14,16 +14,16 @@ keywords = ["ros2", "embedded", "no-std", "robotics", "middleware"]
 categories = ["embedded", "no-std", "network-programming"]
 
 [features]
-# phase-341 W3 / issue 0468 — EMPTY. `no_std` is the baseline; `std` is a thing
+# phase-345 W3 / issue 0493 — EMPTY. `no_std` is the baseline; `std` is a thing
 # you ask for, in one spelling, at your own dep-site. A non-empty `default` also
 # made `default` itself a feature-set member, so a consumer reaching this crate
 # via `default-features = false` + explicit `std` and one reaching it through
 # the default were TWO compile units for identical code.
 default = []
-# phase-341 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
+# phase-345 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
 # opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
 # must make the user say `alloc`, never turn it on behind their back.
-# Issue 0467 is fixed on the SOURCE side instead: `heap::{Vec, String}` and
+# Issue 0492 is fixed on the SOURCE side instead: `heap::{Vec, String}` and
 # `extern crate alloc` are gated on `alloc` ALONE (they were `any(alloc, std)`),
 # so a `std`-only build no longer gets heap types whose `Serialize` impls
 # `nros-serdes` was never asked to compile.

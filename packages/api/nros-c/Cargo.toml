@@ -17,7 +17,7 @@ readme = "README.md"
 crate-type = ["staticlib", "cdylib", "lib"]
 
 [features]
-# phase-341 W3 / issue 0468 — EMPTY; `std` is opt-in per dep-site.
+# phase-345 W3 / issue 0493 — EMPTY; `std` is opt-in per dep-site.
 default = []
 std = ["nros/std", "nros-node/std", "nros-rmw/std"]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
@@ -103,11 +103,11 @@ xrce-serial = ["nros-node/posix-serial"]
 # stays platform-agnostic. Enabled by RTOS ports whose kernel owns the
 # unified heap and that don't bring an external allocator (zephyr-lang-rust
 # etc.); the concrete allocator lives behind the vtable.
-# phase-341 W8.a / issue 0471 — does NOT enable `alloc`. The allocator module
+# phase-345 W8.a / issue 0496 — does NOT enable `alloc`. The allocator module
 # uses only `core::alloc::GlobalAlloc`; `extern crate alloc` is gated separately
 # on the `alloc` feature. Installing a `#[global_allocator]` says "this platform
 # owns a heap", not "this image may allocate" — the second is the user's call.
-# phase-341 W8.c / issue 0471 — it no longer MIRRORS nros-platform's feature, it
+# phase-345 W8.c / issue 0496 — it no longer MIRRORS nros-platform's feature, it
 # FORWARDS to it. This crate's own `#[global_allocator]` is deleted: it sat under
 # a gate identical to nros-platform's and reached the same heap by a different
 # route, and since `nros-platform` is a non-optional dep below, an image turning
@@ -121,7 +121,7 @@ global-allocator = ["nros-platform/global-allocator"]
 # block. Mirrors nros-platform's `critical-section`.
 critical-section = ["dep:critical-section"]
 
-# phase-341 W8.d / issue 0471 — a `platform-*` feature selects the PROVIDER of
+# phase-345 W8.d / issue 0496 — a `platform-*` feature selects the PROVIDER of
 # malloc + panic for this platform (that is the "unified per platform" half of
 # the contract) and NOTHING else. It no longer lists `alloc`: whether the image
 # may allocate is the end user's call, spelled `alloc` at their own dep-site.
@@ -173,13 +173,13 @@ ros-jazzy = ["nros/ros-jazzy"]
 # Bare-metal panic handler (enables building staticlib without std)
 panic-halt = ["dep:panic-halt"]
 
-# phase-341 W8.b / issue 0471 — the BUILT-IN no_std panic handler (a spin loop),
+# phase-345 W8.b / issue 0496 — the BUILT-IN no_std panic handler (a spin loop),
 # split out of `global-allocator`.
 #
 # It used to be gated `all(global-allocator, not(std), not(panic-halt))`, so
 # "this image needs a panic handler" was only sayable as "this image wants a
 # global allocator". Those are different facts and a target can need one without
-# the other: with phase-341 W3's `default = []`, a plain host build of this
+# the other: with phase-345 W3's `default = []`, a plain host build of this
 # crate had neither and died on `#[panic_handler] function required`.
 #
 # Like `global-allocator`, this is a PLATFORM statement — the `platform-*`
@@ -193,7 +193,7 @@ panic-spin = []
 # `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`. NOTE: counts only the
 # Rust allocator's footprint — zenoh-pico's direct C-side z_malloc/pvPortMalloc
 # traffic is not included (see issue #6).
-# phase-341 W8.c — the counter moved to `nros-platform` with the allocator it
+# phase-345 W8.c — the counter moved to `nros-platform` with the allocator it
 # instruments; what stays here is the C surface that reads it. The old body
 # pulled `zpico-alloc` (an RMW-layer crate) in for a pair of `AtomicUsize`.
 alloc-stats = ["nros-platform/alloc-stats"]
@@ -220,7 +220,7 @@ host-only = true
 host-only-reason = "cdylib/staticlib C ABI surface, built per-platform by cmake not by the workspace lane"
 
 [dependencies]
-# phase-341 W3 — `ffi-size-markers` is REQUESTED here, not inherited. It used to
+# phase-345 W3 — `ffi-size-markers` is REQUESTED here, not inherited. It used to
 # ride in on `nros`'s `default`, which this dep-site disables, so a `-p nros-c`
 # build (what cmake/corrosion actually runs) resolved `nros` to `alloc,std` and
 # got no markers; only a whole-workspace build did, by unification. The `#[used]`
@@ -238,7 +238,7 @@ nros-platform = { workspace = true, default-features = false }
 nros-log = { workspace = true }
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
-# phase-341 W8.c — the `zpico-alloc` dep is gone with the `HeapStats` static it
+# phase-345 W8.c — the `zpico-alloc` dep is gone with the `HeapStats` static it
 # provided; `alloc-stats` now forwards to `nros-platform/alloc-stats`, whose
 # counter lives beside the one global allocator.
 paste = "1"
@@ -285,7 +285,7 @@ nros-build-helpers = { workspace = true }
 #
 # `nros` remains a REGULAR dependency below, which is what the nested probe's
 # `cargo build -p nros` resolves through — with `ffi-size-markers` requested at
-# that dep-site (issue 0470), so the probe's `--features=<resolved>` carries it.
+# that dep-site (issue 0495), so the probe's `--features=<resolved>` carries it.
 
 [package.metadata.docs.rs]
 all-features = true

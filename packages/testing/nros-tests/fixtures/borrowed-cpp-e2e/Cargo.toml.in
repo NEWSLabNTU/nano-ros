@@ -13,7 +13,7 @@ path = "lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-# phase-341 W3 — `std` is NAMED. This crate is `#![no_std]` (it mirrors a
+# phase-345 W3 — `std` is NAMED. This crate is `#![no_std]` (it mirrors a
 # generated message crate) but the staticlib is linked into a HOSTED C++
 # binary, and libstd is what supplies `#[panic_handler]` + `rust_eh_personality`
 # for it. That used to arrive silently via `nros-serdes`'s `default = ["std"]`;

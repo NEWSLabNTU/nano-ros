@@ -363,7 +363,7 @@ pub unsafe extern "C" fn nvidia_ivc_channel_notify(ch: *mut c_void) {
 }
 
 // ---------------------------------------------------------------------------
-// phase-341 W8.e / issue 0471 — capabilities REQUIRE the heap / the standard
+// phase-345 W8.e / issue 0496 — capabilities REQUIRE the heap / the standard
 // library, they do not enable it. Turning `alloc` or `std` on for the user
 // silently changes what their firmware image is; naming the feature they must
 // add does not.

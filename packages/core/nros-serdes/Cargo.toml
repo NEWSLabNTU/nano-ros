@@ -14,9 +14,9 @@ keywords = ["ros2", "cdr", "serialization", "no-std", "embedded"]
 categories = ["embedded", "no-std", "encoding"]
 
 [features]
-# phase-341 W3 / issue 0468 — EMPTY; `std` is opt-in per dep-site.
+# phase-345 W3 / issue 0493 — EMPTY; `std` is opt-in per dep-site.
 default = []
-# phase-341 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
+# phase-345 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
 # opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
 # must make the user say `alloc`, never turn it on behind their back.
 std = []
