@@ -82,18 +82,18 @@ appearing anywhere, which is exactly how the first helper failed to spread. **Sa
 (`f6290fbdb`) — that one was caught because the output was wrong, this one because the read failed loudly.
 See `archived/0498-*`. (2026-08-10)
 
-**#496** (rmw, open 2026-08-10) — cyclone calls `ddsrt_mutex_init` per **addrset**
-(`q_addrset.c:174`), and on Zephyr that is a slot from the static
-`CONFIG_MAX_PTHREAD_MUTEX_COUNT` pool — so **how big a graph an image can join is a
-compile-time RAM constant**, scaling with the REMOTE endpoint count, not with what the image
-declares. Measured joining Autoware (33 nodes / 68 composable): 16384 exhausts (that crash was
-#0371), 131072 works and costs ~4.1 MiB static; mutex:cond ratio ~65:1 confirms the bulk are
-addrsets/entity locks, not paired primitives. Steady-state peak NOT measured, only bracketed
-`16384 < peak ≤ 131072` — the issue records two gdb dead ends (duplicate-objfile symbol
-aliasing reads a fake `0/131072`; attach-then-continue hangs native_sim). Upstream master
-`5e82de60` still has the per-addrset mutex, so the fix (strided/shared lock, or exploit that
-addrsets are read-only after construction) is a fork change. Not urgent — only a native_sim
-image joined to a full stack has hit it. See `0496-*`. (2026-08-10)
+**#496** (rmw, RESOLVED 2026-08-10, archived) — cyclone called `ddsrt_mutex_init` per
+**addrset**, and on Zephyr that is a slot from the static `CONFIG_MAX_PTHREAD_MUTEX_COUNT` pool,
+so **joinable graph size was a compile-time RAM constant** scaling with the REMOTE endpoint count.
+Fixed by striped locks in the fork (`cyclonedds@942dda3c`): 64 stripes for the whole domain. The
+safety island went from 131072 slots (~4.1 MiB) back to **16384 — the value that used to
+exhaust** — with the full 33/33 demo at `VERDICT: PASS`. The striping was the easy half; the work
+was removing the two places that held two addrset locks or held one across a callback, since a
+same-thread re-acquire on a shared non-recursive mutex is a deadlock (`copy_addrset_into_addrset_*`
+and `addrset_forall*`, the latter reachable re-entrantly via `purge_helper` →
+builtin-topic serialization). PARTIAL: the per-proxy-entity locks still scale, and 2048 slots still
+exhausts — this removed one term, ~8x off the required pool, not the dependence. Upstream
+`5e82de60` still has the per-addrset mutex. See `archived/0496-*`. (2026-08-10)
 
 **#495** (testing, open 2026-08-10) — `rebuilds_on_model_touch` fails: cargo short-circuits in 0.04 s
 after the resolved model is touched. The rebuild edge EXISTS

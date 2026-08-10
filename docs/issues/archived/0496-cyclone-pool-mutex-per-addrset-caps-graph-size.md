@@ -1,7 +1,7 @@
 ---
 id: 496
 title: Cyclone takes a pthread pool mutex per addrset, so joinable graph size is bounded by static RAM
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: rmw
@@ -10,7 +10,7 @@ related: [issue-0371]
 
 # 0496 — a pool mutex per addrset bounds the graph a Zephyr image can join
 
-**Status:** Open
+**Status:** Resolved 2026-08-10 — striped locks landed as cyclonedds@942dda3c
 **Filed:** 2026-08-10
 **Affects:** `nros-rmw-cyclonedds` on any Zephyr target (POSIX pthread pools)
 **Split from:** issue 0371, which was the crash this causes. 0371 is resolved —
@@ -123,10 +123,48 @@ does `ddsrt_mutex_init (&as->lock)` in `ddsi_new_addrset` — the type became
 opaque but the per-object mutex is unchanged. So (1) or (2) is a change to carry
 in the fork and offer upstream, not a version bump to wait for.
 
-## Not urgent, and why
+## Fix (landed): option 1, striped locks — `cyclonedds@942dda3c`
 
-Every embedded target in the matrix today talks to a small graph, where the
-default pools are ample; the only thing that has ever hit this is a native_sim
-image deliberately joined to a full Autoware stack, where 4 MiB is free. This
-becomes blocking the moment a real board has to join a graph of that size —
-which is exactly the safety-island demo's own end state, so it will come back.
+64 stripes keyed on the addrset address, so the whole domain uses 64 mutexes
+regardless of graph size. Pinned by nano-ros; the safety island's
+`CONFIG_MAX_PTHREAD_MUTEX_COUNT` went from 131072 back to **16384 — the value
+that used to exhaust** — and the full demo passes.
+
+Sharing a mutex between addrsets is only safe if nothing holds two addrset
+locks, or one across a callback, since a same-thread re-acquire on a
+non-recursive mutex is a deadlock rather than a wait. Two places did, and both
+had to be restructured; this, not the striping, was the actual work:
+
+- `copy_addrset_into_addrset_{uc,mc,no_ssm_mc}` locked the source and let the
+  per-locator add lock the destination. Now takes both stripes for the whole
+  walk, ordered by stripe address and collapsed to one acquire when they
+  collide, calling a new `add_xlocator_to_addrset_locked`. Side benefit: the
+  copy is now atomic, which it was not.
+- `addrset_forall*` ran the caller's callback under the lock. At least one
+  callback re-enters this layer on the same thread — `purge_helper` deletes a
+  proxy participant, and writing that participant's builtin-topic sample calls
+  `addrset_forall` again. They now snapshot the locators under the lock and run
+  the callback after releasing it (stack buffer for the usual handful, heap only
+  for an outsized addrset).
+
+`addrset_eq_onesidederr` already used `TRYLOCK` and documents a failed acquire
+as "not equal"; same-stripe now takes that path, which is a tolerated false
+negative rather than a hang (trylock of a self-held mutex returns EBUSY on both
+glibc and Zephyr). `addrset_forone` never took a lock and is untouched.
+
+### What remains, and the honest limit of the result
+
+The pool still scales with the graph, just with a much smaller constant: the
+**per-proxy-entity** locks are untouched, and 2048 slots still exhausts on this
+graph. So this removes one term, not the dependence. It bought roughly an 8×
+reduction in the required pool (131072 → 16384) on a ~40-participant graph.
+
+Also worth stating plainly: the striping was verified by a clean native suite
+(16/16) and one full end-to-end run of a 33-node graph, not by a targeted
+concurrency test of the two restructured paths. A stripe-collision deadlock
+would be rare and load-dependent, which is the failure profile this project has
+been bitten by before. If cyclone-on-Zephyr starts hanging in discovery, this
+commit is the first thing to look at.
+
+**Still not fixed upstream.** CycloneDDS master as of `5e82de60` (2026-05-19)
+does `ddsrt_mutex_init (&as->lock)` in `ddsi_new_addrset`. Worth offering.
