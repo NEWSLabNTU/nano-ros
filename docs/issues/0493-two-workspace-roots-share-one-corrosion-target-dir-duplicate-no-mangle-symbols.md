@@ -352,6 +352,44 @@ SDK corrosion (`CMAKE_PREFIX_PATH` / `Corrosion_DIR` not carrying
 provisioning step someone forgot — is what decides whether a host gets the
 linkable topology or the broken one.
 
+**Q2 RESOLVED 2026-08-10 — the discriminator is WHICH BUILDER configures the
+tree, not the host and not the install.**
+
+`CMAKE_PREFIX_PATH` wiring for the SDK corrosion exists in exactly ONE of three
+builders:
+
+```
+scripts/build/compile-check-fixtures.sh    3 references to $HOME/.nros/sdk/corrosion
+scripts/build/workspace-fixtures-build.sh  0
+scripts/build/fixtures-build.sh            0
+```
+
+`compile-check-fixtures.sh:200` prepends the SDK prefix so
+`find_package(Corrosion)` resolves it; the other two never do, so their
+configures fall through to FetchContent. On ONE host with ONE install:
+
+| builder | corrosion | dirs | consequence |
+| --- | --- | --- | --- |
+| compile-check | **v0.5.1** (SDK) | hashless shared `cargo/build` | duplicate `#[no_mangle]` -> **cannot link** |
+| workspace / fixtures | **v0.6.1** (FetchContent) | hashed per-workspace | **wasted disk only** |
+
+That is why this issue and phase-340/344 reached contradictory measurements
+while both were right, and why the forced `-D` probe above failed: the flags
+went to a builder that discards them.
+
+**This is the session's recurring class again — one caller wires a rule and its
+siblings do not** (the sizes-header mirror chain, #282's guard, #328's resolver,
+`fixtures-build.sh`'s `--lang` proxy). Two builders configure cmake for the same
+repo and disagree about which corrosion to use.
+
+**The fix is one change, not two.** Route all three builders through a single
+prefix helper rather than adding a third copy — and test the 0.5.1 -> 0.6.1 pin
+bump in the SAME change, because unifying on v0.5.1 will SURFACE this issue's
+link failure on workspace trees that pass today. That is the correct outcome (the
+defect is real and currently hidden by an accident of wiring), but it means the
+unification must not land without the pin decision beside it. Acceptance is a
+rebuild of both a compile-check tree and a workspace tree, not a gate.
+
 **PROBE ATTEMPTED 2026-08-10, INCONCLUSIVE — the v0.5.1 half of the table above
 is still INFERENCE, not measurement.** Verified directly: this tree resolves
 FetchContent **v0.6.1** and gets hashed dirs with zero duplicate symbols. NOT
