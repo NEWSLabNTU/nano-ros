@@ -109,22 +109,45 @@ TREE="${NROS_IDENTITY_BUDGET_TREE:-examples/workspaces/mixed/build-workspace-fix
 # Recorded 2026-08-07. See "THE NUMBERS" above before changing any of these.
 BUDGET_CRATE="nros_core"
 BUDGET_IDENTITIES=4
-# phase-340 item 8, 2026-08-10 — lowered 12 -> 6, the DECOMPOSED truth.
+# phase-340 item 8, 2026-08-10 — lowered 12 -> 6, then 6 -> 5 on a REBUILT tree.
 #
-# The worst crate is `nros_serdes` at 6, and the 6 is structural rather than
-# accidental: THREE distinct identity-pairs x TWO `--target` spellings.
+# The worst crate is `nros_serdes`. The 6 was read on a tree first built before
+# W3's cmake half landed (2026-08-08); a fresh `workspace-fixtures-build.sh
+# linux mixed` reads **5**, and the missing one was dead output, not a
+# compilation the current build can produce.
 #
-#   cargo/nano-ros_0b88c                      c315d21b… (implicit)  a4115419… (explicit)
-#   cargo/nros_ws_runtime_14eac               56ee26b4…             4e5cd29b…
-#   src/*/nano_ros_cpp_ffi_*/target (x5)      a9980154…             7f6cec47…
+# The 6 was decomposed here as "THREE identity-pairs x TWO `--target`
+# spellings", with the prediction that it would fall to 3 when W3's cargo-LEAF
+# half landed. **Both halves of that are wrong, and the fingerprints say so**
+# (measured 2026-08-10, `<root>/<profile>/.fingerprint/nros-serdes-*/lib-*.json`):
 #
-# The five cpp_ffi glue trees share ONE pair, which is why 7 roots yield 3 pairs
-# and not 7. The x2 is exactly the R3 axis this gate already reports
-# (host vs explicit --target, 141/52) — phase-340 W3 normalised the CMAKE lane
-# and deliberately left the cargo-leaf half, because it "buys nothing until R2
-# moves". So this ceiling should fall to 3 when that lands; if it does not, the
-# leaf half did not do what it claimed.
-CEILING_IDENTITIES=6
+#   pair                       what actually differs between its two members
+#   -------------------------  --------------------------------------------
+#   cargo/<cpp-root>           features [] vs ["alloc","std"]; profile
+#   cargo/<ws-runtime-root>      (build-override vs product); rustflags [] vs
+#                                ["-C","symbol-mangling-version=v0"];
+#                                compile_kind host vs triple  -> FOUR fields
+#   src/*/nano_ros_cpp_ffi_*   compile_kind ONLY  -> a true spelling pair
+#
+# The first two are not `--target` pairs at all. They are the PROC-MACRO graph:
+# `nros-macros` -> `nros-orchestration-ir` -> `nros-rmw` -> `nros-core` ->
+# `nros-serdes`, which cargo compiles for the host at the build-override profile
+# with no features and no rustflags, by construction, inside the SAME explicit
+# invocation. No `--target` spelling merges a unit that also differs in features
+# and profile. (This is the floor the R3 report below already warns about: "the
+# host column can never reach zero".)
+#
+# The third IS a spelling pair, and W3's CMAKE half already retired it — the
+# implicit member is residue from before that landed. So the axis the leaf half
+# would move was already at zero here, and the tree it would move holds NO cargo
+# leaf builds: every writer under it is corrosion (`cargo/<root>_<h>`, which
+# hardcodes `--target`) or `nros_generate_interfaces()` glue.
+#
+# What DOES take this to 3 is R2 — collapsing the two corrosion roots (work-order
+# item 5 / W2). They differ only in cargo's `path` field, repo-root-relative vs
+# absolute, so merging the roots merges host with host and target with target:
+# 5 -> 3. The number in the old prediction was right; the work item was not.
+CEILING_IDENTITIES=5
 CEILING_COPIES=5
 # ----------------------------------------------------------------------------
 
@@ -323,6 +346,12 @@ if [ -n "$over_ceiling" ]; then
         echo "  $crate: $n" >&2
         report_crate "$crate" >&2
     done <<< "$over_ceiling"
+    echo "  Read the PATHS above before reading this as a regression. An" >&2
+    echo "  identity under a \`nano_ros_cpp_ffi_*/target/<profile>/deps\` with NO" >&2
+    echo "  <triple> component is pre-2026-08-08 residue: the cmake lane cannot" >&2
+    echo "  emit that spelling any more (phase-340 W3), so a long-lived tree can" >&2
+    echo "  carry a compilation nothing rebuilds. Delete $TREE and rebuild" >&2
+    echo "  before believing the count." >&2
     fail=1
 fi
 

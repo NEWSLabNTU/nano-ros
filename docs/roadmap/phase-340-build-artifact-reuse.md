@@ -412,7 +412,43 @@ mechanism never touched.
 pairs x 2 `--target` spellings — see the gate's own comment), and
 `CEILING_IDENTITIES` is lowered 12 -> 6. Note issue 0485 had already fixed a
 counting bug in the gate, so part of the "5 -> 6 drift" was the gate, not the
-tree. The ceiling should reach 3 when W3's cargo-leaf half lands.
+tree. ~~The ceiling should reach 3 when W3's cargo-leaf half lands.~~
+
+**P1 corrected, 2026-08-10 (same day, second reading) — the decomposition above
+is wrong and the prediction with it. This is the SIXTH documented premise in
+this phase to fail under measurement, and the first one the phase wrote itself.**
+`CEILING_IDENTITIES` is now **5**, measured on a REBUILT tree. Two errors, both
+readable in the fingerprints (`<root>/<profile>/.fingerprint/nros-serdes-*/lib-*.json`):
+
+* **Two of the three "pairs" are not `--target` pairs.** Their members differ in
+  FOUR fields — features `[]` vs `["alloc","std"]`, build-override vs product
+  profile, rustflags `[]` vs `["-C","symbol-mangling-version=v0"]`, and
+  `compile_kind` — because the host member is the PROC-MACRO graph
+  (`nros-macros` -> `nros-orchestration-ir` -> `nros-rmw` -> `nros-core` ->
+  `nros-serdes`), which cargo builds for the host inside the SAME explicit
+  invocation. No spelling merges a unit that also differs in features and
+  profile. The gate's own R3 note already said this ("the host column can never
+  reach zero"); the decomposition read the report's two columns as two
+  invocations.
+* **The one real spelling pair was already dead.** Its implicit member is
+  residue from before W3's cmake half landed on 2026-08-08: the post-fix
+  invocation wrote only `…/target/<triple>/<profile>/deps`, and the host dir's
+  newest file predates it by 13 hours. A fresh
+  `workspace-fixtures-build.sh linux mixed` writes no host copy at all under
+  `nano_ros_cpp_ffi_*/target/` — which is also the first REBUILD confirmation of
+  W3's cmake half on the native lane (it landed verified only by the buildless
+  gate).
+
+So the number the gate reads is 5, and **the cargo-leaf half cannot move it in
+either direction**: every writer under the measured tree is corrosion
+(`cargo/<root>_<h>`, which hardcodes `--target`) or `nros_generate_interfaces()`
+glue. There is no cargo LEAF build in it.
+
+**3 is still the right target — it belongs to item 5 (W2), not to W3.** The two
+corrosion roots' members differ only in cargo's `path` field
+(repo-root-relative vs absolute), so collapsing R2 merges host with host and
+target with target: 5 -> 3. Predicted here so the next reader can falsify it the
+same way.
 
 **P2 — close the second build path. DONE 2026-08-10.** See "P2 — what the second
 path actually was" below. The `examples/**/target/` population is empty and
@@ -467,6 +503,14 @@ against it.
 **It was re-derived, and it was wrong — that is now FIVE.** See P3 above and
 [phase-344](phase-344-cmake-cache-relocation.md) §1. The instruction worked; the
 figure it warned about did not survive one `CMakeCache.txt` test.
+
+**SIX, and this one the phase wrote about itself.** P1's decomposition of
+`nros_serdes` = 6 into "3 identity-pairs x 2 `--target` spellings", and the
+success criterion built on it ("should fall to 3 when the cargo-leaf half
+lands"), did not survive reading the four fingerprint JSONs it summarised — see
+"P1 corrected" above. A budget lowered on a decomposition is only as good as the
+decomposition; check it against `.fingerprint/*/lib-*.json`, which names every
+field cargo actually keyed on, before predicting which work item moves it.
 
 #### P2 — what the second path actually was (2026-08-10, LANDED)
 
@@ -1086,9 +1130,9 @@ is why 334 W2.b comes before the grouping work here.
 | ~~3~~ | ~~**340 W6 step 1**~~ | **DONE** 2026-08-07 — not the remap: `incremental = false` on `dev`. 115/143 rlibs byte-identical, incremental state 185 MB → 1 MB per fixture |
 | ~~4~~ | ~~**334 W2.b steps 2–4**~~ | **DONE 2026-08-08** — step 2 complete: four more families + a four-site tail, `git grep` for rooted literals now returns nothing. Steps 3-4 merged into item 5 (below), since the path changes there anyway. Original note: **DECIDED 2026-08-07** — the source-relative class is NOT a separate pass: 128 of 137 authored manifest paths are reproducible from (kind, platform, rmw) and the other 9 from the feature signature, so the column is DELETED, not derived. That merges into item 5. What remains here is the ROOTED side only (R3, one spelling) |
 | 5 | **340 W2** | **mechanism DECIDED 2026-08-08 — one shared `--target-dir` per group, NOT the umbrella** (measured: same bytes, no wall-clock regression, no generated state). Blocker 1 of 2 cleared (`3ebc32110`, artifact-name collisions). Blocker 2 (the Rust resolver's group key) **settled 2026-08-08: the platform-grained shortcut is refuted (17 artifact collisions), so the variant slug gets built**. Prize measured at 46.1 → ~7.0 GiB on `linux`. Still absorbs the manifest `target_dir` / `build_subdir` column |
-| ~~6~~ | ~~**340 W3**~~ | **DONE for the cmake lane 2026-08-08** (`c1cec0ef4`) — direction decided by measurement: EXPLICIT-ALWAYS, because corrosion hardcodes `--target` and is not ours to fork, and because the explicit spelling costs zero extra units (165 = 165). Three generators that could still emit the implicit spelling now share one resolver that cannot return empty; gated by `check-cargo-target-spelling`. The cargo-LEAF half is deliberately left to item 5 — it is a 115-site path move that buys nothing until R2 moves |
+| ~~6~~ | ~~**340 W3**~~ | **DONE for the cmake lane 2026-08-08** (`c1cec0ef4`) — direction decided by measurement: EXPLICIT-ALWAYS, because corrosion hardcodes `--target` and is not ours to fork, and because the explicit spelling costs zero extra units (165 = 165). Three generators that could still emit the implicit spelling now share one resolver that cannot return empty; gated by `check-cargo-target-spelling`. The cargo-LEAF half is deliberately left to item 5 — a 58-site / 104-literal path move (re-derived 2026-08-10). **Its pre-registered criterion — the identity gate 6 -> 3 — was measured unreachable 2026-08-10: the gate's tree contains no cargo leaf build, and 4 of the 6 are the proc-macro host graph, not a `--target` spelling. See "The leaf half, re-measured".** The cmake half is now REBUILD-verified on the native lane |
 | 7 | **334 W2.c** | collapse `.gitignore`, once (4) has moved the paths — **BLOCKED: no path has moved.** Re-confirmed 2026-08-08: `build/fixtures-cargo/` holds one entry, against 116 live per-leaf target dirs (64 `target/`, 52 `target-*/`). Every ignore line still names live output |
-| 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c) — **BLOCKED on the same thing.** Re-confirmed 2026-08-08: the gate reads `nros_core 4/8; worst crate 6/9; worst identity 5/5`, so `worst crate` has drifted UP one since W4 and a lowered budget would fail on the truth |
+| 8 | **340 W7** | re-measure both axes against phase-331's pair (was 334 W3.c). Budgets: `nros_core` 8 -> 4 and the ceiling 12 -> 6 landed 2026-08-10 (P1), then 6 -> **5** the same day on a REBUILT tree — the 6th was pre-W3 residue, not a compilation. Gate now reads `nros_core 4/4; worst crate 5/5; worst identity 5/5`. The remaining 5 -> 3 is item 5's (R2), not W3's |
 
 (1) and (2) are small and unblock reading the gate honestly. (3) is the biggest
 win needing no restructuring. (4) unblocks every path move. (5) and (6) are the
@@ -1942,6 +1986,13 @@ from). The zephyr edits are symmetric — artifact path and flag key on the same
 variable — and every KNOWN board already resolved a non-empty triple, so only
 the already-warned unknown-arch fallback changes behaviour.
 
+**Native lane verified by REBUILD 2026-08-10**, which the buildless gate could
+not do: a fresh `scripts/build/workspace-fixtures-build.sh linux mixed` writes
+its five `nano_ros_cpp_ffi_*/target/` glue trees with a `<triple>/` component
+and NOTHING under `target/<profile>/deps` — where the pre-fix build had put the
+whole five-crate lib graph. That is the generator change observed in its output,
+not in its source.
+
 #### What is still OPEN, and why it is not a "finish the job" away
 
 The cargo-LEAF half. Every native example leaf and fixture row still builds
@@ -1967,6 +2018,58 @@ still miss each other. Two reasons it is not next:
 The honest sequencing is therefore: leave the leaf half to the same pass that
 derives the paths (work-order item 5), rather than opening a second path
 convention beside it (#393's shape).
+
+#### The leaf half, re-measured 2026-08-10 — its success criterion was unreachable
+
+The deferral above was re-opened on the ground that its stated precondition had
+been met: wave 2 put 18+ leaves into shared `--target-dir` groups, so "it buys
+nothing until R2 moves" no longer held. The pre-registered criterion was the
+identity gate falling 6 -> 3. **Both numbers were re-derived first, and the
+criterion turned out to be unreachable by this work item — for a reason that
+had nothing to do with whether it lands.** Full decomposition in "P1 corrected"
+above; the three facts, in the order they were established:
+
+1. **The gate's tree holds no cargo leaf builds at all.** Every writer under
+   `examples/workspaces/mixed/build-workspace-fixtures` is corrosion
+   (`cargo/<root>_<h>`; `nros_ws_runtime` is a crate cmake SYNTHESISES into
+   `CMAKE_BINARY_DIR` and imports with `corrosion_import_crate`) or
+   `nros_generate_interfaces()` glue. Corrosion hardcodes `--target`. There is
+   nothing in that tree for a leaf-side spelling change to normalise.
+2. **Four of the six identities are the proc-macro graph, not a spelling.**
+   Host and target members differ in features, profile, rustflags AND
+   `compile_kind`; `--target` is one field of four, so no spelling merges them.
+3. **The fifth and sixth were a real spelling pair that W3's cmake half had
+   already killed** — the implicit member is pre-2026-08-08 residue. A fresh
+   build writes 5, not 6.
+
+The re-derived sweep sizes, for whoever does land the leaf half: **58** call
+sites of `cargo_target_profile_dir` / `target_profile_dir` across `just`,
+`scripts` and `packages` (the earlier figure was 45), and **104** hits for a
+hardcoded `target/<profile>/` segment across `just`, `scripts`, `packages`,
+`cmake`, `zephyr` and `examples` (the earlier figure was 115). Both are one
+grep; both moved because the greps differ, not because the tree did.
+
+**What the leaf half is still worth, and how to measure it before spending the
+sweep.** The remaining payoff is not identity COUNT — it is sccache. `RUSTC_WRAPPER`
+is wired globally in the justfile and sccache is installed here, and W3's
+measurement 2 showed the two spellings share zero cache entries (0 hits / 62
+misses on a cold private cache). So the leaf half's real claim is "leaf builds
+start hitting corrosion's cache entries". That claim is testable in one leaf
+build against a primed cache, and it should be tested BEFORE the 104-literal
+move — because a leaf's units must also match on features, profile, rustflags,
+`config` and cargo's `path` field to hit, and this phase has now refuted six
+premises that were reasoned rather than measured. Two of those fields can be
+read today, from the same fingerprints, and they point opposite ways: `path`
+ALREADY agrees (the glue trees and the `nros_ws_runtime` root both hash
+`2387…3694`, because a package outside the workspace root is spelled
+absolutely — so every out-of-root leaf in a checkout agrees with them), while
+`config` ALREADY disagrees between the two cmake-side roots in one tree
+(`9396…2401` vs `1190…4724`), since each dir resolves its own
+`nros sync`-managed `.cargo/config.toml`. A leaf brings its own config too.
+`--target` is one of five fields, and it is not the one currently failing. Note also that adding `--target` to a
+leaf whose graph contains `nros-macros` SPLITS one compilation into two (host
+proc-macro graph + target lib), so the leaf-side identity count goes UP; the
+win, if any, is cross-tree cache reuse, not fewer compilations.
 
 #### Reading the axis, from now on
 
