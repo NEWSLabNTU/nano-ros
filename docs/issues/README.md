@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#492** — the CMake self-provisioned CycloneDDS builds **slim GCC-LTO objects** and `ld.lld` cannot read GCC LTO
+IR, so `build-test-fixtures lane=native` dies with 36 `undefined symbol: dds_*` while every obvious check says the
+link is fine: `libddsc.a` IS in the whole-archive group, `nm` reports `T dds_get_guid`, and `-Wl,-t` shows all 148
+members loaded including the definer. `readelf` finds no such symbol — it lives in GCC IR, which `nm` and `ld.bfd`
+read via `liblto_plugin.so` and lld cannot. Minimal case: one object, `-fuse-ld=bfd` links, `-fuse-ld=lld` does
+not. `nros setup --tool cyclonedds` is inert because phase 186 sets `CMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON`.
+**The Rust self-provision has always set `ENABLE_LTO=OFF`** for exactly this reason, naming "same hazard on
+native" — the CMake path, which every C/C++ example takes, never got it. One of two sibling paths fixed; the
+third instance of that class this session. See `0492-*`. (2026-08-10)
+
 Recently resolved (2026-08-10, phase-340): **#489** — every ESP32 test skipped `"qemu-system-riscv32 not
 available"` on a host where `nros setup --tool esp32-qemu` had JUST succeeded — the skip message named the command
 that had already been run. `esp32.rs` spelled the binary by bare name at three sites, so it resolved through PATH

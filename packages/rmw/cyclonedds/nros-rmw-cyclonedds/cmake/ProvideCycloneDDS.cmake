@@ -78,6 +78,39 @@ macro(nros_provide_cyclonedds)
                     message(STATUS "nano-ros: routing CycloneDDS build through sccache (${NROS_SCCACHE})")
                 endif()
             endif()
+            # ENABLE_LTO=OFF — issue 0492. Cyclone's own `option(ENABLE_LTO
+            # "Enable link time optimization." ON)` makes GCC emit SLIM LTO
+            # objects: `.gnu.lto_*` sections and a one-entry ELF symtab, with
+            # the real symbols living in GCC IR. `nm` shows them (it loads
+            # GCC's plugin) and `ld.bfd` links them (same plugin), but
+            # **`ld.lld` cannot read GCC LTO IR at all** — and
+            # `cmake/platform/nano-ros-posix.cmake` links with `-fuse-ld=lld`.
+            #
+            # The failure reads as a missing library and is not one:
+            #
+            #   ld.lld: error: undefined symbol: dds_get_guid
+            #
+            # while `libddsc.a` sits on the link line inside the whole-archive
+            # group, `nm` reports `T dds_get_guid`, and `-Wl,-t` shows all 148
+            # members loaded — including the one that defines it. Provisioning
+            # a CycloneDDS (`nros setup --tool cyclonedds`) does not help
+            # either, because this build sets
+            # `CMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON` and self-provisions.
+            #
+            # The RUST self-provision has always set this
+            # (`cyclonedds-sys/build.rs`, "rust-lld cannot link slim-LTO
+            # objects … same hazard on native"). The CMake self-provision —
+            # the path every C/C++ example takes — did not. One of two sibling
+            # paths fixed, which is the class this repo keeps re-paying for.
+            #
+            # Set BOTH spellings deliberately: the normal variable is what
+            # `option()` honours under CMP0077 NEW, and the FORCEd cache entry
+            # overwrites the `ENABLE_LTO:BOOL=ON` that existing build trees
+            # already carry from an earlier configure — without it a stale tree
+            # keeps building LTO objects and keeps failing.
+            set(ENABLE_LTO OFF CACHE BOOL
+                "nano-ros: ld.lld cannot link slim GCC-LTO objects (issue 0492)" FORCE)
+            set(ENABLE_LTO OFF)
             message(STATUS "nano-ros: self-provisioning CycloneDDS from source: ${CYCLONEDDS_SOURCE_DIR}")
             # EXCLUDE_FROM_ALL: built only because nros_rmw_cyclonedds links
             # CycloneDDS::ddsc, not as part of `all`.
