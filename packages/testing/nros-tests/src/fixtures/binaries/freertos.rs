@@ -61,6 +61,24 @@ static FREERTOS_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Resolve the prebuilt firmware image for one `examples/qemu-arm-freertos/rust/<name>`
+/// Entry pkg.
+///
+/// THE one spelling of that path. phase-340 P2 folded a second one in:
+/// `tests/freertos_run_plan_runtime.rs` had its own `locate_entry_binary`, and
+/// it had drifted to a hardcoded `release/` while the builder wrote the
+/// `freertos-qemu` carve-out dir — so the six run-plan gates could only ever
+/// report `[SKIPPED] … not prebuilt`, no matter what the build did. A private
+/// locator is how a test stops noticing that a fixture moved, which is #393's
+/// shape and the reason build, probe and resolver have to move together.
+///
+/// Goes through [`super::require_prebuilt_binary_fresh`], so the leaf path is
+/// rewritten onto the row's shared cargo group when the platform is migrated
+/// (phase-340 B2/B3) — callers never spell the group dir.
+pub fn require_entry_binary(name: &str) -> TestResult<PathBuf> {
+    build_rust_example(name, name)
+}
+
 fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     // Issue #181 — the role crates are lib-only Component pkgs since 212.L
     // (same as NuttX, see nuttx.rs `require_entry_binary`): the runnable

@@ -25,7 +25,20 @@ IFS=$'\x1f' read -r platform dir envstr cargo_args <<< "$line"
 
 # shellcheck source=/dev/null
 source scripts/build/cargo.sh 2>/dev/null || exit 0
-prof_args="$(nros_cargo_profile_arg_string)"
+# phase-340 P2 — the PLATFORM's profile, not the ambient one. A platform with a
+# carve-out (`freertos` -> freertos-qemu, `nuttx` -> nuttx-rust) builds its whole
+# rust fixture lane at that profile, and cargo writes each profile into its own
+# `<root>/[<triple>/]<profile>/` subtree. Probing the ambient profile would
+# therefore compile a SECOND copy from scratch on every run and report
+# `"fresh":false` for all of it — a permanent false-STALE against a tree the
+# builder never wrote. Same class as the `--target-dir` mismatch this file's
+# header describes; one spelling, `nros_cargo_platform_profile`, shared with the
+# recipes.
+#
+# One flag per LINE from this accessor; `$prof_args` is word-split below and
+# the default IFS splits on newline too, so it reaches cargo the same way the
+# single-string form did.
+prof_args="$(nros_cargo_profile_args_for "$(nros_cargo_platform_profile "$platform")")"
 
 # Phase 226.D — append the shared fixture-only --target-dir for eligible
 # rows so the probe stats the same artifact tree fixtures-build.sh wrote.

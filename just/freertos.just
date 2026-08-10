@@ -90,27 +90,24 @@ build-examples:
         NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
-    bash scripts/build/fixtures-build.sh freertos rust zenoh
-    # 275-W1/#136 debt: prebuild the 6 standalone Entry demos so
-    # `freertos_run_plan_runtime.rs` LOCATES them instead of compiling in-test
-    # (CLAUDE.md "no compilation inside tests"). Each Entry's `.cargo/config.toml`
-    # now carries the `NROS_PLATFORM_*` env the board build.rs needs, so they
-    # build standalone.
+    # phase-336 / phase-340 P2 — the profile is the `freertos-qemu` carve-out,
+    # not a literal: a lightly-optimized zenoh-pico misses its handshake window
+    # on the emulated Cortex-M3, and every FreeRTOS test-side locator reads the
+    # SAME constant (`nros_cargo_profile::FREERTOS_QEMU_PROFILE`). It reaches
+    # the manifest builder the way `just nuttx build-fixtures` passes
+    # `nuttx-rust` — through `NROS_CARGO_PROFILE`, which `scripts/build/cargo.sh`
+    # already treats as the ambient profile for everything downstream.
     #
-    # phase-336: the profile is the `freertos-qemu` carve-out, not a literal —
-    # a lightly-optimized zenoh-pico misses its handshake window on the emulated
-    # Cortex-M3, and the test-side locator reads the SAME constant.
-    fr_profile="$(nros_cargo_freertos_qemu_profile)"
-    fr_args="$(nros_cargo_profile_args_for "$fr_profile")"
-    # phase-338 W2 — same six packages, now that the `-entry` siblings are
-    # collapsed in. This build is still SEPARATE from the fixture rows above:
-    # the rows build `--features rmw-zenoh` into `target-zenoh/` (the firmware
-    # staticlib path), while `freertos_run_plan_runtime.rs` locates the default
-    # `target/` binary this loop produces.
-    for entry in talker listener service-server \
-        service-client action-server action-client; do
-        ( cd "examples/qemu-arm-freertos/rust/$entry" && cargo build $fr_args --quiet )
-    done
+    # This ONE call is now the whole freertos rust fixture lane. Until phase-340
+    # P2 a bare `cd <leaf> && cargo build` loop ran here as well, prebuilding the
+    # same six Entry pkgs into their own `target/`: a build with no manifest row,
+    # therefore no coordinate, therefore no shared cargo group — so it re-created
+    # `examples/qemu-arm-freertos/rust/*/target/` two minutes after the group dir
+    # was written, on a platform B3 had already migrated. The rows now name that
+    # build (see the comment on them in examples/fixtures.toml for why the old
+    # `target-zenoh` half was the dead one), and the loop is gone.
+    NROS_CARGO_PROFILE="$(nros_cargo_platform_profile freertos)" \
+        bash scripts/build/fixtures-build.sh freertos rust zenoh
     bash scripts/build/workspace-fixtures-build.sh freertos rust
     # phase-263 C2b — the embedded C workspace LAUNCH entry (issue 0097), consumed by
     # tests/entry_e2e.rs (freertos_c cell). Own build-subdir (one board per CMake configure).
@@ -154,7 +151,14 @@ build-fixture-extras:
     # The normal Rust role examples are produced by `build-examples`.
     # Phase 88.15.b — nros-log severity-coverage smoke fixture, selected by
     # stable manifest id so `build-examples` stays limited to role examples.
-    bash scripts/build/fixtures-build.sh freertos rust --id freertos-logging-smoke-mps2
+    #
+    # phase-340 P2 — the SAME `NROS_CARGO_PROFILE` carve-out `build-examples`
+    # passes. This row's `rmw` defaults to zenoh (`row_coord()`), so it also
+    # matches `build-examples`'s `freertos rust zenoh` query; without the same
+    # profile on both sides the two calls would build it twice, at two profiles,
+    # and the resolver could only read one of them.
+    NROS_CARGO_PROFILE="$(nros_cargo_platform_profile freertos)" \
+        bash scripts/build/fixtures-build.sh freertos rust --id freertos-logging-smoke-mps2
 
     # Issue #0317 — the wake-latency-cortex-m3 microbench (Phase 141.D), a
     # TWO-IMAGE bench (subscriber `wake-latency-cortex-m3` + publisher

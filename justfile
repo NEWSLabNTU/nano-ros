@@ -409,7 +409,7 @@ check-fast: \
     check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-artifact-identity-budget \
-    check-cargo-target-spelling
+    check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths
     @echo "Fast checks passed!"
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
@@ -3288,6 +3288,25 @@ check-build-root:
 check-fixture-groups:
     @python3 scripts/check-fixture-groups.py
     @bash packages/testing/nros-tests/tests/fixture_group_collision_gate.sh
+
+# phase-340 P2 — nothing may write an `examples/**/target/` dir. That is the
+# invariant item 7 / P4 stands on (`examples/**/target-*/` is globally ignored;
+# a plain `target/` survives only through 391 per-leaf .gitignore files), and it
+# was being broken by a SECOND build path with no manifest row — hence no
+# coordinate, hence no shared cargo group. See the script's header for the
+# measurement. Self-tests its own classifier on every run.
+[private]
+check-example-leaf-target-dirs:
+    @python3 scripts/check-example-leaf-target-dirs.py
+
+# issue 0490 — a `cargo:rerun-if-changed` naming a path that does not exist makes
+# cargo treat the unit as permanently dirty, so the build script and everything
+# above it recompile on every invocation, silently and forever. Found in
+# `packages/rmw/cffi/build.rs`, which sits under every image. Self-tests its own
+# checker on every run.
+[private]
+check-build-rs-rerun-paths:
+    @python3 scripts/check-build-rs-rerun-paths.py
 
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single

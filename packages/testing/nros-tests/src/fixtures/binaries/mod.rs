@@ -2463,6 +2463,36 @@ pub fn build_test_fixture(
     binary_name: &str,
     target: Option<&str>,
 ) -> TestResult<PathBuf> {
+    // #156 — NuttX Rust fixtures are ALWAYS built at the carve-out profile (see
+    // `nros_cargo_profile::NUTTX_RUST_PROFILE` for the miscompile it dodges), so
+    // this resolver must look where the BUILDER wrote rather than where the
+    // ambient profile would put it. Before the constant existed, the two
+    // disagreed and a fresh, working image read as stale/absent.
+    let profile = match target {
+        Some("armv7a-nuttx-eabihf") => nros_cargo_profile::NUTTX_RUST_PROFILE,
+        _ => return build_test_fixture_at_profile(crate_subpath, binary_name, target, None),
+    };
+    build_test_fixture_at_profile(crate_subpath, binary_name, target, Some(profile))
+}
+
+/// [`build_test_fixture`] with the builder's profile named EXPLICITLY.
+///
+/// phase-340 P2 — the FreeRTOS QEMU carve-out
+/// (`nros_cargo_profile::FREERTOS_QEMU_PROFILE`) cannot be inferred from the
+/// target triple the way the NuttX one can: `thumbv7m-none-eabi` is shared with
+/// the bare-metal MPS2 bins, which build at the ambient profile. Rather than
+/// guess from the crate path, the caller that knows the carve-out says so —
+/// there is exactly one such caller today
+/// ([`build_logging_smoke_freertos_mps2`]), and `just freertos build-fixtures`
+/// passes the same constant to the builder via `NROS_CARGO_PROFILE`.
+///
+/// `profile = None` means the ambient profile.
+pub fn build_test_fixture_at_profile(
+    crate_subpath: &str,
+    binary_name: &str,
+    target: Option<&str>,
+    profile: Option<&str>,
+) -> TestResult<PathBuf> {
     let root = project_root();
     let crate_dir = root.join(format!("packages/testing/{}", crate_subpath));
 
@@ -2473,16 +2503,9 @@ pub fn build_test_fixture(
         )));
     }
 
-    // #156 — NuttX Rust fixtures are ALWAYS built at the carve-out profile (see
-    // `nros_cargo_profile::NUTTX_RUST_PROFILE` for the miscompile it dodges), so
-    // this resolver must look where the BUILDER wrote rather than where the
-    // ambient profile would put it. Before the constant existed, the two
-    // disagreed and a fresh, working image read as stale/absent.
-    let profile_dir = match target {
-        Some("armv7a-nuttx-eabihf") => {
-            nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE)
-        }
-        _ => cargo_target_profile_dir(),
+    let profile_dir = match profile {
+        Some(p) => nros_cargo_profile::target_dir(p),
+        None => cargo_target_profile_dir(),
     };
     let binary_path = if let Some(target) = target {
         crate_dir.join(format!("target/{}/{}/{}", target, profile_dir, binary_name))
@@ -3231,9 +3254,6 @@ pub fn build_freertos_cmake_example_rmw(
 
 /// Phase 118.D — collapsed-shape FreeRTOS Rust example resolver.
 ///
-/// FreeRTOS zenoh/xrce Rust examples are cross-compiled to
-/// `target-<rmw>/thumbv7m-none-eabi/<profile>/<binary>`.
-///
 /// Phase 220.C path B — the CycloneDDS Rust fixture is retired from the
 /// cmake/corrosion bridge (`build-cyclonedds/`); a pure-cargo FreeRTOS
 /// cyclonedds path is deferred behind Phase 214.S.5.b's BSP gate
@@ -3241,6 +3261,15 @@ pub fn build_freertos_cmake_example_rmw(
 /// FreeRTOS POSIX shim). Until that lands the cyclonedds branch returns
 /// a `BuildFailed` error so callers (`freertos_qemu.rs`) emit the
 /// proper `nros_tests::skip!` rather than silently passing.
+///
+/// phase-340 P2 — the ZENOH arm used to spell
+/// `target-zenoh/thumbv7m-none-eabi/<ambient profile>/<binary>`, an output the
+/// manifest stopped producing when the six FreeRTOS rust rows were repointed at
+/// the build the tests actually consume (the `target-zenoh` half had no live
+/// reader: this function's only two callers are the `#[ignore]`d cyclonedds
+/// tests, which never reach here). Leaving a resolver pointing at a directory
+/// nothing writes is how issue 0475 and phase-340 item 7 both started, so the
+/// arm now delegates to the one FreeRTOS entry resolver.
 pub fn build_freertos_rust_example_rmw(
     case: &str,
     binary_name: &str,
@@ -3254,21 +3283,15 @@ pub fn build_freertos_rust_example_rmw(
             example_dir.display()
         )));
     }
-    if rmw == Rmw::Cyclonedds {
+    if rmw != Rmw::Zenoh {
         return Err(TestError::BuildFailed(format!(
-            "Phase 220.C path B: FreeRTOS rust cyclonedds fixture retired \
+            "Phase 220.C path B: FreeRTOS rust {:?} fixture retired \
              (cmake-bridge removed; pure-cargo path blocked on Phase \
              214.S.5.b BSP gate). Requested: {}/{}",
-            case, binary_name
+            rmw, case, binary_name
         )));
     }
-    let binary_path = example_dir.join(format!(
-        "{}/thumbv7m-none-eabi/{}/{}",
-        rmw.target_dir(),
-        cargo_target_profile_dir(),
-        binary_name
-    ));
-    require_prebuilt_binary_fresh(&binary_path)
+    freertos::require_entry_binary(case)
 }
 
 /// Build native-rs-listener (cached)
@@ -3463,10 +3486,14 @@ static LOGGING_SMOKE_FREERTOS_MPS2_BINARY: OnceCell<PathBuf> = OnceCell::new();
 pub fn build_logging_smoke_freertos_mps2() -> TestResult<&'static Path> {
     LOGGING_SMOKE_FREERTOS_MPS2_BINARY
         .get_or_try_init(|| {
-            build_test_fixture(
+            // phase-340 P2 — the whole `freertos rust` fixture lane is built at
+            // the `freertos-qemu` carve-out (`just freertos build-fixtures`
+            // exports it as `NROS_CARGO_PROFILE`), so this row lands there too.
+            build_test_fixture_at_profile(
                 "nros-tests/bins/logging-smoke-freertos-mps2",
                 "logging-smoke-freertos-mps2",
                 Some("thumbv7m-none-eabi"),
+                Some(nros_cargo_profile::FREERTOS_QEMU_PROFILE),
             )
         })
         .map(|p| p.as_path())

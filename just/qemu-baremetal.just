@@ -110,6 +110,19 @@ build:
     # emit `[PREREQ]` + exit 0 if missing.
     nros_require_sync "$nros_cli"
     echo "Building QEMU ARM examples..."
+    # phase-340 P2 — `qemu-arm-baremetal` is a migrated platform (phase-226.D,
+    # the first one), so its default-config manifest rows build into
+    # `build/fixtures-cargo/qemu-arm-baremetal`. Both loops below used to run a
+    # bare in-leaf `cargo build`, writing a SECOND per-leaf copy of the same
+    # artifacts — the same second build path phase-340 P2 closed on freertos,
+    # here re-creating `examples/qemu-arm-baremetal/**/target/`. The dir comes
+    # from the resolver the manifest build and the staleness probe share, so
+    # rows land where their row lands and the rowless crates join the same
+    # group (bin names checked collision-free across both sets). Empty for an
+    # unmigrated platform, where the leaf `target/` is still right.
+    # shellcheck source=scripts/build/fixtures-target-dir.sh
+    source scripts/build/fixtures-target-dir.sh
+    qemu_tdir_flag="$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
     # phase-300 W1.1 — enumerate tracked crates via the git index (the
     # F1 `-not -path` find still DESCENDED every target*/build* tree).
     _qemu_tomls="$(git ls-files 'examples/qemu-arm-baremetal/**/Cargo.toml' | awk -F/ 'NF>=4' | sort)"
@@ -130,7 +143,7 @@ build:
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
         echo "  build $dir"
-        (cd "$dir" && cargo build $cargo_profile_args)
+        (cd "$dir" && cargo build $cargo_profile_args $qemu_tdir_flag)
     done
     # Phase 131.B — bench/test-fixture binaries that used to live under
     # examples/qemu-arm-baremetal/rust/{core,standalone,zenoh/large-msg-test}
@@ -150,7 +163,7 @@ build:
             NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
-        (cd "$dir" && cargo build $cargo_profile_args)
+        (cd "$dir" && cargo build $cargo_profile_args $qemu_tdir_flag)
     done
     # Also build qemu-smoltcp-bridge (test support, packages/testing/)
     (cd packages/testing/qemu-smoltcp-bridge && cargo build $cargo_profile_args)

@@ -9,7 +9,6 @@ Utility scripts for nros development and debugging.
 ```
 scripts/
 ├── qemu/           # QEMU testing utilities
-│   ├── run-multi-node-test.sh
 │   ├── setup-qemu-network.sh
 │   └── teardown-qemu-network.sh
 └── debug/          # Debugging utilities
@@ -32,8 +31,11 @@ Sets up network bridge for QEMU VM communication.
 ### teardown-qemu-network.sh
 Cleans up network bridge after testing.
 
-### run-multi-node-test.sh
-Runs multi-node test with QEMU Cortex-M3 and native x86 nodes.
+(`run-multi-node-test.sh` was deleted by phase-340 P2. It was dead: it built
+`examples/qemu-test`, a directory that does not exist, and `-p native-talker
+-p native-listener`, packages the standalone-example migration renamed years
+ago. It surfaced as a `cargo build` inside an `examples/` leaf with no
+`--target-dir` — see `scripts/check-example-leaf-target-dirs.py`.)
 
 ## Debug Scripts
 
@@ -65,7 +67,6 @@ Python script to analyze zenoh key expressions.
 ```bash
 # QEMU testing
 ./scripts/qemu/setup-qemu-network.sh
-./scripts/qemu/run-multi-node-test.sh
 ./scripts/qemu/teardown-qemu-network.sh
 
 # Debugging

@@ -83,6 +83,36 @@ lane-narrowing skip is untouched — it keys on `NROS_FIXTURE_COORDS`, not on th
 three 4.2 MB images produced, and exit 1 with a remedy when the dir is stripped from PATH. No `system = [...]`:
 `serialport v4.9.0` builds with no libudev present, probed rather than assumed. See `archived/0486-*`. (2026-08-10)
 
+Recently resolved (2026-08-10, phase-340 P2): **#490** — `packages/rmw/cffi/build.rs` declared
+`cargo:rerun-if-changed=../nros-rmw-abi/include/nros`, a path that **does not exist** (the headers are
+`packages/core/nros-rmw-abi/…`; phase-321 W2.e `12c365774` moved the crate out of `core/` and the relative
+path came along). Cargo treats a missing rerun-if-changed input as PERMANENTLY dirty, and `nros-rmw-cffi`
+sits under every image — so **every Rust fixture in the repo recompiled its whole chain on every build**,
+silently, and every `check-fixtures-stale` run reported those rows as "STALE and have now been rebuilt".
+Found by reading `CARGO_LOG=cargo::core::compiler::fingerprint=info` when a freshly built fixture probed
+stale. Fixed + gated (`check-build-rs-rerun-paths`, self-testing, swept all 57 build scripts — one hit).
+See `archived/0490-*`. (2026-08-10)
+
+**#491** (build, open 2026-08-10, phase-340) — two rows in the SAME shared cargo group cannot both be
+fresh. A leaf's `.cargo/config.toml` `[env] … relative = true` produces a per-leaf STRING
+(`…/talker/../../../../packages/platform/…` vs `…/listener/../../../../…`) for one directory, and cargo
+compares `rerun-if-env-changed` values textually — so each sibling re-runs the board + zpico build scripts
+and everything above them. Per-leaf `target/` dirs hid it; sharing the dir is what surfaced it. Present
+since B3 wave 2, not from P2 (a row IS stable in isolation). Costs the group's CPU win, not its disk win.
+Fix: watch the FILES (`rerun-if-changed` on the canonicalized dir), not the env string. See `0491-*`.
+(2026-08-10)
+
+**#488** (build, open 2026-08-10, phase-340 P2) — the second-build-path sweep's RESIDUE. P2 closed the
+population that blocks item 7 / P4 (a `cargo build` whose cwd is an `examples/` leaf and which writes the
+leaf's own `target/`) and gated it with `check-example-leaf-target-dirs`. The same sweep found more of the
+class the gate deliberately does not cover: four per-leaf `target/` sites under `packages/testing/**` (the
+`wake-latency-cortex-m3` pair runs inside `build-test-fixtures` on a MIGRATED platform, so it re-creates a
+tree on every full sweep), and six authored `target-<variant>/` sites on migrated platforms — the R1
+duplicates an authored dir was supposed to stop being since phase-340 W2 made it name a GROUP. None blocks
+P4 (`examples/**/target-*/` is globally ignored; the `packages/testing` leaves are not among item 7's 391
+leaf ignores), and each needs its consumer moved in the same commit, which is why they are not in P2's
+rebuild. See `0488-*`. (2026-08-10)
+
 Recently resolved (2026-08-10, phase-340): **#485** — `check-artifact-identity-budget` counted one crate
 as TWO. `uniq -c` collapses only ADJACENT duplicates and glibc `en_US.UTF-8` collation ignores the space and
 underscore, so `nros 079…` and `nros ecf7…` sorted on either side of `nros_board_common` / `nros_core` /

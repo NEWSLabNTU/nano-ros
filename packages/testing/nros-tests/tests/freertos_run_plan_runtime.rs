@@ -21,10 +21,12 @@
 //!   parse it — the macro emits `<this_pkg>::register(runtime)?` instead,
 //!   and `src/lib.rs` re-exports the sibling Component pkg's `register`).
 //!
-//! Build path: `cargo build` under the pkg dir; `.cargo/config.toml`
-//! pins `target = "thumbv7m-none-eabi"`, so the artifact lands at
-//! `target/thumbv7m-none-eabi/debug/talker` (phase-338 W2 collapsed the
-//! `-entry` package in and shortened the `[[bin]]` name).
+//! Build path: the pkg's `[[fixture]]` row in `examples/fixtures.toml`, built
+//! by `just freertos build-examples` at the `freertos-qemu` carve-out profile
+//! (phase-338 W2 collapsed the `-entry` package in and shortened the `[[bin]]`
+//! name; phase-340 P2 made the row the only builder). The artifact is located
+//! through `fixtures::freertos::require_entry_binary`, never a path spelled
+//! here — see that function for what a private copy cost.
 //!
 //! ## What the lifecycle proof looks like
 //!
@@ -70,15 +72,11 @@
 //!
 //! Run with: `cargo test -p nros-tests --test phase212_n_freertos_run_plan_runtime`
 
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-    time::Duration,
-};
+use std::{path::PathBuf, process::Command, time::Duration};
 
 use nros_tests::{
     fixtures::{
-        QemuProcess, ZenohRouter,
+        QemuProcess, ZenohRouter, freertos,
         freertos::{is_arm_gcc_available, is_freertos_available, is_lwip_available},
         is_qemu_available, require_zenohd,
     },
@@ -151,25 +149,6 @@ fn require_freertos_qemu_prereqs() -> Option<String> {
     None
 }
 
-/// Resolve the prebuilt-or-build-on-demand entry-pkg binary. Mirrors
-/// the posix sibling's `cargo build` + path resolution.
-///
-/// The build is gated to debug-profile + the pinned `thumbv7m-none-eabi`
-/// triple from `.cargo/config.toml`. If the binary already exists at
-/// the expected path we trust it; otherwise we drive a `cargo build`.
-/// Locate the prebuilt `--release` Entry binary. It is compiled in the build
-/// stage by `just freertos build-examples` (each Entry now carries the
-/// `NROS_PLATFORM_{FREERTOS_SRC,CFFI_INCLUDE}` env in its `.cargo/config.toml`,
-/// so it builds standalone) — this test only LOCATES it, never compiles
-/// (CLAUDE.md "no compilation inside tests"; the former in-test cargo build is
-/// gone). Release, not debug: a debug-profile zenoh-pico is far too slow to
-/// complete the session handshake on the emulated Cortex-M3 within the wait
-/// budget — the release fixture connects in a few seconds (#48).
-fn locate_entry_binary(dir: &Path, bin_name: &str) -> Option<PathBuf> {
-    let bin = dir.join(format!("target/thumbv7m-none-eabi/release/{bin_name}"));
-    bin.is_file().then_some(bin)
-}
-
 /// Shared boot+connected-run gate for any qemu-arm-freertos Entry pkg. All six
 /// share the `Mps2An385` board, `nros::main!()` self-bringup, the
 /// per-variant allocator deploy locator + `10.0.2.15` deploy ip/gateway, and the
@@ -200,11 +179,17 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
         );
     }
 
-    let bin = match locate_entry_binary(&dir, bin_name) {
-        Some(b) => b,
-        None => nros_tests::skip!(
-            "FreeRTOS Entry `{bin_name}` not prebuilt (target/thumbv7m-none-eabi/release) \
-             — run `just freertos build-examples` first"
+    // phase-340 P2 — ONE spelling of the fixture path, shared with
+    // `rtos_e2e`'s freertos rust lanes. This file used to carry its own
+    // `locate_entry_binary` reading a hardcoded `target/…/release/`, which the
+    // phase-336 `freertos-qemu` carve-out had already moved; the private copy
+    // had no way to notice. `require_entry_binary` also applies the shared
+    // cargo-group rewrite, so it follows the build across a platform migration.
+    let bin = match freertos::require_entry_binary(bin_name) {
+        Ok(b) => b,
+        Err(e) => nros_tests::skip!(
+            "FreeRTOS Entry `{bin_name}` not prebuilt \
+             — run `just freertos build-examples` first: {e:?}"
         ),
     };
 

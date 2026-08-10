@@ -1647,8 +1647,35 @@ lang = "rust"
 dir = "packages/testing/nros-bench/large-msg-baremetal"
 
 # ===========================================================================
-# freertos (qemu MPS2-AN385) — Rust. Role examples, zenoh RMW into
-# target-zenoh/ (cyclonedds is cmake — see 181.5). Codegen runs in the recipe.
+# freertos (qemu MPS2-AN385) — Rust. The six role Entry pkgs. Codegen runs in
+# the recipe.
+#
+# phase-340 P2 — these rows used to carry `no_default_features = true` +
+# `target_dir = "target-zenoh"`, and `just freertos build-examples` ALSO built
+# the same six dirs with a bare in-leaf `cargo build`. Two builds of one thing,
+# and only the bare one had a live consumer:
+#
+#   * `--no-default-features` was a NO-OP — none of the six packages declares a
+#     `[features]` table, so there are no default features to turn off. The two
+#     builds compiled byte-identical inputs; they differed only in WHERE they
+#     wrote and at which profile.
+#   * the `target-zenoh/` output had no live reader: its only resolver is
+#     `build_freertos_rust_example_rmw`, whose two callers are the `#[ignore]`d
+#     cyclonedds tests in `tests/freertos_qemu.rs` (they take the Cyclonedds
+#     arm and error before the path is built).
+#   * the bare build's `target/` output has TWO live readers —
+#     `fixtures::binaries::freertos` (rtos_e2e's freertos rust lanes) and
+#     `tests/freertos_run_plan_runtime.rs`.
+#
+# So the row is repointed at the build the tests actually consume, and the bare
+# loop is deleted. The row is now the only builder, which gives it a coordinate
+# and therefore the shared cargo group (phase-340 B3 migrated `freertos`); the
+# bare loop had no row, hence no coordinate, hence no group — which is exactly
+# why it fell outside B2/B3 and kept re-creating `examples/**/target/`.
+#
+# The recipe runs this lane at the `freertos-qemu` carve-out profile
+# (`NROS_CARGO_PROFILE`, the same shape `just nuttx build-fixtures` uses for
+# `nuttx-rust`), because that is the profile every FreeRTOS resolver looks for.
 # ===========================================================================
 
 [[fixture]]
@@ -1656,72 +1683,46 @@ platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/talker"
-# issue #181 — without an explicit target the role build ran for the HOST
-# (the example .cargo/config.toml carries only the [patch] block) and the
-# sweep exited 0 with no thumbv7m ELF for the harness to consume.
+# issue #181 — an explicit target, even though the leaf `.cargo/config.toml`
+# now also sets `[build] target`: the row is the SSoT the staleness probe and
+# the group resolver read, and a triple only cargo can see is a triple they
+# cannot check.
 target = "thumbv7m-none-eabi"
-no_default_features = true
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/listener"
-# issue #181 — without an explicit target the role build ran for the HOST
-# (the example .cargo/config.toml carries only the [patch] block) and the
-# sweep exited 0 with no thumbv7m ELF for the harness to consume.
 target = "thumbv7m-none-eabi"
-no_default_features = true
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/service-server"
-# issue #181 — without an explicit target the role build ran for the HOST
-# (the example .cargo/config.toml carries only the [patch] block) and the
-# sweep exited 0 with no thumbv7m ELF for the harness to consume.
 target = "thumbv7m-none-eabi"
-no_default_features = true
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/service-client"
-# issue #181 — without an explicit target the role build ran for the HOST
-# (the example .cargo/config.toml carries only the [patch] block) and the
-# sweep exited 0 with no thumbv7m ELF for the harness to consume.
 target = "thumbv7m-none-eabi"
-no_default_features = true
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/action-server"
-# issue #181 — without an explicit target the role build ran for the HOST
-# (the example .cargo/config.toml carries only the [patch] block) and the
-# sweep exited 0 with no thumbv7m ELF for the harness to consume.
 target = "thumbv7m-none-eabi"
-no_default_features = true
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/action-client"
-# issue #181 — without an explicit target the role build ran for the HOST
-# (the example .cargo/config.toml carries only the [patch] block) and the
-# sweep exited 0 with no thumbv7m ELF for the harness to consume.
 target = "thumbv7m-none-eabi"
-no_default_features = true
-target_dir = "target-zenoh"
 
 [[fixture]]
 id = "freertos-logging-smoke-mps2"

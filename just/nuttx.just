@@ -80,7 +80,7 @@ build-examples:
     # ~NULL → reboot loop before `main` (silent). Fat LTO merges the codegen
     # units, eliminating the cross-CGU miscompile, while keeping optimization
     # (opt-level="s"). Verified: talker boots reliably under `release`.
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/fixtures-build.sh nuttx rust
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/fixtures-build.sh nuttx rust
     # Phase 225.O follow-up (known-issue #18) — workspace Entry fixture
     # (`examples/workspaces/rust/src/qemu_nuttx_entry`). Same workspace
     # workflow as native/freertos/threadx/esp32: `nros sync`,
@@ -89,15 +89,15 @@ build-examples:
     # crate's build.rs and the entry's build.rs.
     export NUTTX_DIR="$nuttx_dir"
     export NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$(dirname "$nuttx_dir")/nuttx-apps}"
-    NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx rust
+    NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/workspace-fixtures-build.sh nuttx rust
     # phase-263 C2b — the multi-node C workspace Entry (talker + listener linked into the NuttX
     # kernel). Same release profile (lto=true) as the Rust entry. Consumed by
     # tests/entry_e2e.rs (nuttx_arm_c cell) (cross-process /chatter delivery, baked slirp locator 8330).
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx c
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/workspace-fixtures-build.sh nuttx c
     # phase-281 W3-nuttx — the C++ realtime tiers workspace (realtime-cpp nuttx entry),
     # consumed by realtime_tiers_e2e (nuttx_arm_cpp cell). Was previously built by no verb (only its
     # e2e builder triggered it); build it here alongside the rust + c workspace lanes.
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx cpp
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/workspace-fixtures-build.sh nuttx cpp
     echo "NuttX QEMU examples built!"
 
 # Issue #405 / phase-337 W3.f. `PlatformId::just_module()` maps both `NuttxArm`
@@ -170,7 +170,7 @@ build-fixtures-arm:
     # logging-smoke fixture and any per-cell env. Keep the NuttX-only release
     # profile override here so `fixtures-build.sh` computes the same profile args
     # as the former manual loop.
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/fixtures-build.sh nuttx rust
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/fixtures-build.sh nuttx rust
     # Phase 160.D — NuttX C/C++ examples now build via cmake. The
     # tier-3 nros-c cross-Corrosion problem (no `-Z build-std`) is
     # sidestepped by:
@@ -218,9 +218,9 @@ build-fixtures-arm:
     # matching build is a fast no-op). Own NUTTX_APPS_DIR + release profile (the cross-CGU LTO note).
     export NUTTX_DIR="$nuttx_dir"
     export NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$(dirname "$nuttx_dir")/nuttx-apps}"
-    NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx rust
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx c
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx cpp
+    NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/workspace-fixtures-build.sh nuttx rust
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/workspace-fixtures-build.sh nuttx c
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/workspace-fixtures-build.sh nuttx cpp
 
 # The riscv (QEMU rv-virt) half of this module's fixture stage — issue #405.
 #
@@ -317,10 +317,10 @@ build-riscv-c-workspaces:
     # issue 0456 — see build-riscv-c.
     source scripts/nuttx/riscv-env.sh
     CC_riscv32imac_unknown_nuttx_elf=riscv-none-elf-gcc \
-        NROS_CARGO_PROFILE=nros-minsizerel \
+        NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx-riscv)" \
         bash scripts/build/workspace-fixtures-build.sh nuttx-riscv c
     CC_riscv32imac_unknown_nuttx_elf=riscv-none-elf-gcc \
-        NROS_CARGO_PROFILE=nros-minsizerel \
+        NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx-riscv)" \
         bash scripts/build/workspace-fixtures-build.sh nuttx-riscv cpp
 
 # phase-285 W5 — build the rv-virt RUST workspace Entry (realtime-rust/
@@ -352,7 +352,7 @@ build-riscv-rust:
     # this recipe used to hold the only copy and the two C lanes silently built
     # arm.
     source scripts/nuttx/riscv-env.sh
-    NROS_CARGO_PROFILE=nros-minsizerel bash scripts/build/workspace-fixtures-build.sh nuttx-riscv rust
+    NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx-riscv)" bash scripts/build/workspace-fixtures-build.sh nuttx-riscv rust
 
 # Build every NuttX tier. `build-all-full` removed.
 #
@@ -539,15 +539,28 @@ _run-qemu example binary:
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
     NX_PROFILE="$(nros_cargo_nuttx_profile)"
     NX_DIR="$(nros_cargo_target_profile_dir_for "$NX_PROFILE")"
-    cd "examples/qemu-arm-nuttx/rust/{{example}}"
+    # phase-340 P2 — `nuttx` is a migrated platform (B3 wave 2), so this recipe
+    # must not write the leaf's own `target/`: that is the second build path P2
+    # closed, and here it also hand-spelled the `-kernel` path, which is the
+    # shape phase-340 item 7 hit on esp32 (build redirected, post-processing
+    # step left reading a directory nothing writes). Both sides now come from
+    # ONE `nros_fixture_group` call — `nros_fixture_target_dir_flag` for the
+    # build and its inverse `nros_fixture_row_artifact_dir` for the lookup — so
+    # they cannot disagree, on either side of a migration.
+    # shellcheck source=scripts/build/fixtures-target-dir.sh
+    source "{{justfile_directory()}}/scripts/build/fixtures-target-dir.sh"
+    NX_LEAF="examples/qemu-arm-nuttx/rust/{{example}}"
+    nx_tdir_flag="$(nros_fixture_target_dir_flag nuttx "" "")"
+    NX_ARTIFACTS="$(nros_fixture_row_artifact_dir "$PWD/$NX_LEAF" nuttx "" "")"
+    cd "$NX_LEAF"
     # Nightly version pinned by examples/qemu-arm-nuttx/rust-toolchain.toml.
-    CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo build $(nros_cargo_profile_args_for "$NX_PROFILE")
+    CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo build $(nros_cargo_profile_args_for "$NX_PROFILE") $nx_tdir_flag
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     # -icount shift=auto: sync virtual clock with wall-clock for proper sleep/timeout
     # -device virtio-net-device: MMIO transport (NuttX virtio-net driver)
     {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -M virt -cpu cortex-a7 -nographic \
         -icount shift=auto \
-        -kernel "target/armv7a-nuttx-eabihf/$NX_DIR/{{binary}}" \
+        -kernel "$NX_ARTIFACTS/armv7a-nuttx-eabihf/$NX_DIR/{{binary}}" \
         -netdev user,id=net0 -device virtio-net-device,netdev=net0 &
     PID=$!
     wait $PID

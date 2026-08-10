@@ -414,12 +414,11 @@ pairs x 2 `--target` spellings — see the gate's own comment), and
 counting bug in the gate, so part of the "5 -> 6 drift" was the gate, not the
 tree. The ceiling should reach 3 when W3's cargo-leaf half lands.
 
-**P2 — close the second build path.** `build-examples` writes per-leaf dirs
-without transiting the group resolver (proven on migrated `freertos`: shared
-group 01:53, per-leaf `target/` 01:55). Until it closes, ANY R1 relocation is
-silently re-created by the other path and item 7's ignore block can never be
-deleted. Small work, large leverage, and #393's shape — verify build, probe and
-resolver together.
+**P2 — close the second build path. DONE 2026-08-10.** See "P2 — what the second
+path actually was" below. The `examples/**/target/` population is empty and
+gated; the residue (per-leaf dirs under `packages/testing/**`, and authored
+`target-<variant>/` dirs on migrated platforms) is issue 0488. P4 is unblocked
+by P2; it still waits on P3.
 
 **P3 — relocate the cmake artifacts (the mass; its own phase).** ~240 dirs under
 `build-<rmw>/` and `build-workspace-<kind>[-<platform>]/` move to RFC-0070's
@@ -443,6 +442,136 @@ documented premises that way — F3's "net loss", the umbrella workspace, the
 platform-grained key, and the "feature-invariant host graph" framing. The
 240-dir cmake figure above is itself one `find`; re-derive it before designing
 against it.
+
+#### P2 — what the second path actually was (2026-08-10, LANDED)
+
+**The sweep first, because the reported site was not the only one.** Every
+`cargo build` / `cargo rustc` in `just/*.just` and `scripts/**` whose working
+directory is a leaf, classified by what it writes:
+
+| writes | site | in `build-test-fixtures`? |
+| --- | --- | --- |
+| `examples/**/target/` | `just/freertos.just` `build-examples` — six Entry pkgs | **yes** |
+| `examples/**/target/` | `just/native.just` `build-examples` — 27 dirs | no |
+| `examples/**/target/` | `just/qemu-baremetal.just` `build` — 15 + 5 dirs | no |
+| `examples/**/target/` | `just/nuttx.just` `_run-qemu` — and it hand-spelled its own `-kernel` path | no |
+| `examples/**/target/` | `scripts/qemu/run-multi-node-test.sh` | no |
+| `packages/testing/**/target/` | 4 sites (wake-latency pair, smoltcp bridge, rtic e2e, ros-edition pose-pub) | 1 of 4 |
+| authored `target-<variant>/` | 6 sites on migrated platforms (threadx ×2, freertos dev ×2, ros-editions, fixture-make-driver) | 1 of 6 |
+
+Only the first block blocks item 7 / P4, and the reason is exact: the repo-root
+ignore is `examples/**/target-*/`, **with a dash**. A plain `target/` is covered
+only by the 391 per-leaf `.gitignore` files item 7 deletes. So P2's scope is the
+first block; the rest is issue 0488, with the measurement recorded rather than
+deferred to another sweep.
+
+**The mechanism, per the work order's preference (a row, not a second rule):**
+
+*freertos* got a `[[fixture]]` row, and it turned out the row already existed
+and was pointing at the wrong build. The six rows carried
+`no_default_features = true` + `target_dir = "target-zenoh"`; the recipe ALSO
+built the same six dirs bare. Both facts that made this a duplicate rather than
+two builds were measured, not assumed:
+
+- `--no-default-features` was a **no-op** — none of the six packages declares a
+  `[features]` table, so the two builds compiled identical inputs;
+- the `target-zenoh` output had **no live reader**. Its only resolver is
+  `build_freertos_rust_example_rmw`, whose two callers are the `#[ignore]`d
+  cyclonedds tests, which take the Cyclonedds arm and error before the path is
+  built. The bare build's `target/` output had **two** readers.
+
+So the row was repointed at the build the tests consume and the loop deleted:
+one build where there were two, with a coordinate and therefore a group.
+
+*native / qemu-arm-baremetal / nuttx* are `git ls-files` sweeps over every
+tracked example crate, including crates with no fixture row. A row is WRONG for
+them — it would put non-fixture crates into the fixture coordinate space,
+changing lane coverage and the A1 collision surface — so they were placed via
+the existing derivation (`nros_fixture_target_dir_flag`, and its inverse
+`nros_fixture_row_artifact_dir` for nuttx's `-kernel` lookup), never a literal.
+Bin-name collisions were checked before merging each sweep into its group:
+`linux` 43 dirs / 0, `qemu-arm-baremetal` 20 / 0, `freertos` 7 / 0. For the ~22
+dirs that DO have a row, the sweep now lands on the row's own artifacts and
+becomes an incremental no-op instead of a second copy.
+
+`scripts/qemu/run-multi-node-test.sh` was deleted: it built `examples/qemu-test`
+(a directory that does not exist) and `-p native-talker -p native-listener`
+(packages the standalone-example migration renamed). It could only ever fail.
+
+**The bug the profile carve-out then exposed, which is the real #393 content
+here.** The six FreeRTOS resolvers read `FREERTOS_QEMU_PROFILE`; the manifest
+builder uses the ambient profile; so the lane had to move onto the carve-out
+(`NROS_CARGO_PROFILE`, the shape `just nuttx build-fixtures` already used).
+That surfaced a mapping living in three shapes — a helper call in
+`freertos.just`, the bare literal `nros-minsizerel` in eight `nuttx.just` lines,
+and **nothing at all in the staleness probe**. `rust-fixture-stale.sh` rebuilds
+a row with its exact flags to ask cargo whether it is fresh; at a profile the
+builder never wrote that is a full compile into a second profile dir and a
+permanent false-STALE. It had gone unnoticed only because every nuttx row is
+`skip_probe = true`, so `freertos` was the first carve-out lane the probe
+watched. All three collapsed onto `nros_cargo_platform_profile <platform>`.
+
+And two test-side locators moved in the same commit, which is the point:
+`freertos_run_plan_runtime.rs` carried a private `locate_entry_binary` reading a
+hardcoded `target/…/release/` — a directory phase-336 had already moved away
+from — so its six gates could only ever report `[SKIPPED] … not prebuilt`, no
+matter what the build did. It now calls
+`fixtures::freertos::require_entry_binary`, the one spelling, which also applies
+the shared-group rewrite.
+
+**Gate:** `check-example-leaf-target-dirs` (in `check-fast`). Rule: a cargo
+build whose cwd is an `examples/` leaf must pass a `--target-dir` — literal or
+resolver-derived, but never the default. It joins lines across `\`
+continuations and carries a bare `cd` forward, because the sites use all three
+idioms; it self-tests its classifier on every run, and it was tripwired in both
+directions against the REAL tree (T1 re-introduce the exact defect → fails and
+names the file; T2 same line with a derived flag → passes; T3 a `*tdir_flag`
+variable in a file that never derives one → still fails), with each perturbation
+confirmed present before the verdict was read.
+
+**Acceptance was a rebuild, not the gate** — gate-level checks were green for
+all six platforms while the build was broken, which is why.
+
+Verified in a pristine worktree (no `build/`, no per-leaf dirs, so "not
+recreated" is provable rather than inferred): `just setup-cli` →
+`just freertos build-examples` →
+
+- all six Entry ELFs in `build/fixtures-cargo/freertos/thumbv7m-none-eabi/nros-minsizerel/`
+  (2.84 MB each);
+- `find examples/qemu-arm-freertos -maxdepth 3 -type d -name 'target*'` → **empty**;
+- `fixtures-manifest.py fixture-groups` attributes all seven freertos rows to
+  group `freertos`, eligible;
+- **all six `freertos_run_plan_runtime` gates PASS** — they had only ever been
+  able to skip, because of the hardcoded `release/` above — plus
+  `logging_smoke_freertos_mps2` (the row that moved onto the carve-out) and
+  `freertos_qemu`. The other `logging_smoke` cells fail on fixtures this
+  worktree never built; unrelated.
+
+**Two defects the verification found, neither of them P2's:**
+
+- **issue 0490 (fixed + gated here).** The probe reported all seven rows STALE
+  immediately after building them. Cause, from cargo's own fingerprint log:
+  `packages/rmw/cffi/build.rs` declared `rerun-if-changed=../nros-rmw-abi/…`, a
+  path that does not exist since phase-321 W2.e moved the crate out of `core/`.
+  A missing rerun-if-changed input is permanently dirty, and `nros-rmw-cffi` is
+  under every image — so **every Rust fixture in the repo had been recompiling
+  its whole chain on every build**, silently. Gated by
+  `check-build-rs-rerun-paths` over all 57 tracked build scripts.
+- **issue 0491 (filed, not fixed).** With 0490 fixed, a row is stable ALONE but
+  siblings in one group still rebuild each other: leaf `[env] relative = true`
+  values are per-leaf STRINGS for one directory, and cargo compares
+  `rerun-if-env-changed` textually. Per-leaf `target/` dirs hid it; sharing the
+  dir is what surfaced it. It costs the group's CPU win, not its disk win —
+  which means any "the group made it faster" number measured over more than one
+  row in a group is measuring this too.
+
+**Not verified:** the freertos WORKSPACE lanes (`workspace-fixtures-build.sh
+freertos {rust,c,cpp,mixed}`) — this worktree lacks the `nuttx-libc` vendored
+source they need, so `build-examples` exits non-zero after the rust lane. P2
+changes nothing in those lanes. `native` / `qemu-arm-baremetal` / `nuttx`
+rebuilds were not run either (their toolchains and fixtures are not provisioned
+here); their change is the same one-line derivation and their collision
+preconditions were checked, but the REBUILD proof stands only for freertos.
 
 #### Item 7 — attempted again after wave 2 (2026-08-10). Blocked by a MIGRATION GAP, not housekeeping
 

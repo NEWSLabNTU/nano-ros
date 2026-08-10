@@ -92,6 +92,34 @@ nros_cargo_freertos_qemu_profile() {
     _nros_profile_query carve-out freertos-qemu
 }
 
+# nros_cargo_platform_profile <platform>
+# The profile a PLATFORM's fixture lane builds at: its carve-out when it has
+# one, else the ambient profile. Echoes a profile NAME, for
+# `NROS_CARGO_PROFILE=` on a `fixtures-build.sh` / `workspace-fixtures-build.sh`
+# call.
+#
+# phase-340 P2 — this mapping existed three times and in three shapes: a helper
+# call in `just/freertos.just`, the bare literal `nros-minsizerel` in eight
+# `just/nuttx.just` lines, and NOTHING in the staleness probe, which always used
+# the ambient profile. The third one is the dangerous one: the probe rebuilds a
+# row with its exact flags to ask cargo whether it is fresh, so probing a
+# profile the builder never wrote means a full rebuild into a second profile dir
+# and a permanent false-STALE — the failure mode of issue 0196 and of phase-226.D's
+# original target-dir split. It went unnoticed only because every nuttx row is
+# `skip_probe = true` (nightly + build-std), so `freertos` was the first lane to
+# move onto a carve-out with the probe watching.
+#
+# The PLATFORM key is what the probe has (`fixtures-manifest.py list
+# --with-platform` prefixes it) — the carve-out NAME is an internal spelling of
+# the profile table.
+nros_cargo_platform_profile() {
+    case "$1" in
+        freertos) nros_cargo_freertos_qemu_profile ;;
+        nuttx | nuttx-riscv) nros_cargo_nuttx_profile ;;
+        *) nros_cargo_profile_name ;;
+    esac
+}
+
 # Flags for a NAMED profile (a carve-out), rather than the ambient one.
 #
 # Emits ONE FLAG PER LINE, like `nros_cargo_profile_args` — so a caller can

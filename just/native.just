@@ -83,12 +83,30 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
 
     # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
     # are excluded from this find and built from the manifest below, so this
-    # loop only sees host examples — a plain `cargo build` suffices.
+    # loop only sees host examples.
+    #
+    # phase-340 P2 — but NOT a bare `cargo build`. `linux` is a migrated
+    # platform (phase-340 B3), so every default-config `linux` fixture row
+    # already builds into `build/fixtures-cargo/linux`; a bare in-leaf build
+    # here wrote a SECOND, per-leaf copy of the same artifacts and re-created
+    # the `examples/**/target/` dirs R1 exists to remove. The dir comes from the
+    # same resolver the manifest build and the staleness probe call — no literal
+    # here — so the 22 dirs that DO have a row land exactly where their row
+    # lands (this sweep becomes an incremental no-op for them) and the five
+    # `examples/templates/**` crates that have no row join the same group. Bin
+    # names across this sweep were checked collision-free before it moved.
+    #
+    # Empty for an unmigrated platform, in which case the leaf `target/` is
+    # still correct — the resolver, not this recipe, decides.
+    # shellcheck source=scripts/build/fixtures-target-dir.sh
+    source scripts/build/fixtures-target-dir.sh
+    nros_example_tdir_flag="$(nros_fixture_target_dir_flag linux "" "")"
+    export nros_example_tdir_flag
     build_one() {
         local toml="$1"
         local dir="$(dirname "$toml")"
         echo "  build $dir"
-        ( cd "$dir" && cargo build $cargo_profile_args )
+        ( cd "$dir" && cargo build $cargo_profile_args $nros_example_tdir_flag )
     }
     export -f build_one
 
