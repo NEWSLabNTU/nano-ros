@@ -99,6 +99,16 @@ function(_nros_corrosion_pin out_var)
     set(${out_var} "${_pin}" PARENT_SCOPE)
 endfunction()
 
+# Record the resolution where any directory scope can read it. CACHE INTERNAL
+# rather than a normal variable, because the consumers are SIBLING scopes: a
+# workspace leaf calls `add_subdirectory(<nano-ros>)`, and nothing the root sets
+# normally travels back out to it.
+function(_nros_corrosion_remember origin version location)
+    set(NROS_CORROSION_ORIGIN_CACHED "${origin}" CACHE INTERNAL "")
+    set(NROS_CORROSION_VERSION_CACHED "${version}" CACHE INTERNAL "")
+    set(NROS_CORROSION_LOCATION_CACHED "${location}" CACHE INTERNAL "")
+endfunction()
+
 # Report the resolution — origin, version, location, and what that version means
 # for the cargo target-dir topology. Called once per configure by
 # `nros_resolve_corrosion()`.
@@ -137,8 +147,20 @@ endfunction()
 macro(nros_resolve_corrosion)
     if(COMMAND corrosion_import_crate)
         if(NOT NROS_CORROSION_REPORTED)
-            nros_report_corrosion("already-loaded" "${Corrosion_VERSION}"
-                                  "${Corrosion_DIR}")
+            # `Corrosion_VERSION` is a NORMAL variable, so it does not reach a
+            # sibling directory scope — a workspace leaf that imports nano-ros
+            # via `add_subdirectory` sees the command and not the version. The
+            # cache copies below are what make the already-loaded line say
+            # something; without them it printed "unknown / topology unknown",
+            # which is the non-answer this module exists to stop giving.
+            if(DEFINED NROS_CORROSION_VERSION_CACHED)
+                nros_report_corrosion("already-loaded (${NROS_CORROSION_ORIGIN_CACHED})"
+                                      "${NROS_CORROSION_VERSION_CACHED}"
+                                      "${NROS_CORROSION_LOCATION_CACHED}")
+            else()
+                nros_report_corrosion("already-loaded" "${Corrosion_VERSION}"
+                                      "${Corrosion_DIR}")
+            endif()
             set(NROS_CORROSION_REPORTED ON)
         endif()
     else()
@@ -148,6 +170,7 @@ macro(nros_resolve_corrosion)
         endif()
         find_package(Corrosion QUIET)
         if(Corrosion_FOUND)
+            _nros_corrosion_remember("SDK store" "${Corrosion_VERSION}" "${Corrosion_DIR}")
             nros_report_corrosion("SDK store" "${Corrosion_VERSION}" "${Corrosion_DIR}")
         else()
             _nros_corrosion_pin(_nros_corrosion_tag)
@@ -160,6 +183,8 @@ macro(nros_resolve_corrosion)
                 GIT_TAG        ${_nros_corrosion_tag}
             )
             FetchContent_MakeAvailable(Corrosion)
+            _nros_corrosion_remember("FetchContent" "${_nros_corrosion_tag}"
+                                     "${corrosion_SOURCE_DIR}")
             nros_report_corrosion("FetchContent" "${_nros_corrosion_tag}"
                                   "${corrosion_SOURCE_DIR}")
             unset(_nros_corrosion_tag)

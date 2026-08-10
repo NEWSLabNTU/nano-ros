@@ -119,7 +119,13 @@ function(nano_ros_workspace_metadata)
         # `find_package`: this site used to answer "not found" on a host whose
         # SDK Corrosion was installed but under a layout the search did not
         # cover, and it never said which copy it did resolve.
-        include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosion.cmake")
+        #
+        # `CMAKE_CURRENT_FUNCTION_LIST_DIR`, not `CMAKE_CURRENT_LIST_DIR`: this
+        # is a FUNCTION body, where the latter names the CALLER's list dir — the
+        # workspace leaf — and the include resolved to
+        # `examples/workspaces/mixed/NanoRosCorrosion.cmake`, which does not
+        # exist. That variable is why cmake 3.17 added the FUNCTION spelling.
+        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosCorrosion.cmake")
         nros_resolve_corrosion()
         if(NOT COMMAND corrosion_import_crate)
             message(STATUS
