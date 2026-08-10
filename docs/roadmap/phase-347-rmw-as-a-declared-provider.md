@@ -110,9 +110,21 @@ until someone tried.
 - [ ] Selecting a capability the active backend does not declare is an error
       naming what it does offer.
 
-*Acceptance:* `packages/core/**` and `packages/api/nros{,-c,-cpp}/**` contain no
-backend name outside prose — the `check-rmw-agnostic` gate goes green here, not
-in W1.
+*Acceptance:* PARTIALLY MET — landed 2026-08-11, and the shortfall is recorded
+rather than rounded up.
+
+* **`packages/core/**` is CLEAN**: zero backend-named features. That was the
+  wave's core goal and it is done.
+* **`packages/api/**` is NOT**: 21 backend-named features remain, all in the
+  C/C++ umbrella crates (`nros-c` 14, `nros-cpp` 6, `nros` 1) — the
+  `rmw-{zenoh,xrce,cyclonedds}[-cffi]` tables that bundle a backend into the one
+  Rust staticlib, plus `platform-*` and `xrce-{udp,serial}`.
+
+Those are not a naming slip; they are how the umbrella selects what it bundles,
+and unwinding them changes which archive owns the nros symbol set — the same
+question issue 0493 opened. **It needs its own wave, sequenced after the
+provider design settles**, not a rename here. `check-rmw-agnostic` therefore does
+NOT go green in W4; it is scoped to `packages/core/**` for now.
 
 ## W5 — The per-message codegen hook (highest risk, may split)
 

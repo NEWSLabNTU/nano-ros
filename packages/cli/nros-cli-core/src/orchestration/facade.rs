@@ -140,7 +140,10 @@ pub fn write_facade(
         // `safety` is zenoh-only — the CRC path lives in that backend. Mirrors
         // the same guard in `nros_feature_set` (cmake), which warns rather than
         // silently dropping it.
-        if !cap.backends_supporting.is_empty() && !cap.backend_supports(rmw.declared) {
+        // phase-347 W4 — "does this axis have a backend half at all" is now
+        // `backend_feature.is_some()`; which backends carry it comes from their
+        // descriptors, not a list in the registry.
+        if cap.backend_feature.is_some() && !cap.backend_supports(rmw.declared) {
             eprintln!(
                 "sync: facade `{entry_name}`: capability `{}` declared but the \
                  `{}` RMW does not carry it — omitted.",

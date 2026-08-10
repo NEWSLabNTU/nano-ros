@@ -259,7 +259,9 @@ fn collect_plan_warnings(plan: &NrosPlan) -> Vec<String> {
                      integrity (CRC) path; the axis no-ops on this backend (only {} \
                      carries CRC). The validation surface compiles but is dead — \
                      switch the RMW or drop [safety].",
-                    cap.backends_supporting.join("/"),
+                    // phase-347 W4 — derived from the descriptors, so this
+                    // message cannot name a stale set.
+                    cargo_nano_ros::rmw_resolver::backends_declaring(cap.declared).join("/"),
                 ));
             }
         }

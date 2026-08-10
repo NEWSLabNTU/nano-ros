@@ -230,7 +230,13 @@ endif()
 # (`create_subscription_with_safety`) behind `#if defined(NANO_ROS_SAFETY_E2E)`, so a
 # component TU that links `NanoRos::NanoRosCpp` needs the define to see it. Without
 # this, the cargo symbol exists but the C++ method is hidden at compile time.
-if(NANO_ROS_SAFETY_E2E AND NANO_ROS_RMW STREQUAL "zenoh")
+# phase-347 W4 — the backend condition is DECLARED, not named. This read
+# `AND NANO_ROS_RMW STREQUAL "zenoh"`, which is a capability coupled to one
+# backend by name in a user-facing library. The backend now declares `safety` in
+# its `nros-rmw.toml` `[rmw.capabilities]`, and `nros_rmw_dispatch` reports the
+# set as `NROS_RMW_CAPABILITIES` — so a third-party backend offering `safety`
+# gets the define with no edit here.
+if(NANO_ROS_SAFETY_E2E AND "safety" IN_LIST NROS_RMW_CAPABILITIES)
     target_compile_definitions(nros-cpp-headers INTERFACE NANO_ROS_SAFETY_E2E)
 endif()
 

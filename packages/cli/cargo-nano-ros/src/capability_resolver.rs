@@ -35,10 +35,12 @@ pub struct Capability {
     /// BOARD crate carries (target 3). `None` ⇒ the axis is entry-umbrella-only
     /// (no backend wire behaviour), e.g. `param_services`.
     pub backend_feature: Option<&'static str>,
-    /// The RMW backends that declare `backend_feature`. The backend feature is
-    /// emitted only for these; others (no such feature) no-op. Empty when
-    /// `backend_feature` is `None`.
-    pub backends_supporting: &'static [&'static str],
+    // phase-347 W4 — `backends_supporting: &["zenoh"]` USED TO LIVE HERE. A
+    // central registry listing which backends support a capability is core
+    // naming backends (RFC-0071), and it made offering `safety` from a
+    // third-party backend impossible without editing this file. The relation is
+    // now declared by the BACKEND, in its `nros-rmw.toml` `[rmw.capabilities]`,
+    // and read through `crate::rmw_resolver::backend_declares_capability`.
     /// Phase 261 — the C/C++ preprocessor macro the bake emits into
     /// `system_config.h` when the axis is enabled, e.g.
     /// `"NROS_SYSTEM_SAFETY_E2E"` (the analog of `NROS_SYSTEM_RMW_<TOKEN>`).
@@ -56,7 +58,11 @@ impl Capability {
     /// `true` if this capability's backend feature applies to `backend` (a
     /// canonical RMW name, e.g. `"zenoh"`).
     pub fn backend_supports(&self, backend: &str) -> bool {
-        self.backend_feature.is_some() && self.backends_supporting.contains(&backend)
+        // Asks the backend's descriptor, not a list kept here. A capability the
+        // backend does not declare no-ops exactly as before — the difference is
+        // only WHERE the relation is recorded.
+        self.backend_feature.is_some()
+            && crate::rmw_resolver::backend_declares_capability(backend, self.declared)
     }
 }
 
@@ -69,7 +75,6 @@ pub const CAPABILITIES: &[Capability] = &[
         declared: "safety",
         nros_feature: "safety-e2e",
         backend_feature: Some("safety-e2e"),
-        backends_supporting: &["zenoh"],
         c_define: Some("NROS_SYSTEM_SAFETY_E2E"),
         cmake_token: Some("NANO_ROS_SAFETY_E2E"),
     },
@@ -79,7 +84,6 @@ pub const CAPABILITIES: &[Capability] = &[
         declared: "param_services",
         nros_feature: "param-services",
         backend_feature: None,
-        backends_supporting: &[],
         c_define: Some("NROS_SYSTEM_PARAM_SERVICES"),
         cmake_token: None,
     },
@@ -92,7 +96,6 @@ pub const CAPABILITIES: &[Capability] = &[
         declared: "lifecycle",
         nros_feature: "lifecycle-services",
         backend_feature: None,
-        backends_supporting: &[],
         c_define: Some("NROS_SYSTEM_LIFECYCLE"),
         cmake_token: None,
     },

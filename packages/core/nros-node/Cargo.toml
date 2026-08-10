@@ -52,7 +52,13 @@ rmw-cffi = ["dep:nros-rmw-cffi"]
 # (`nros-rmw-cyclonedds::install_descriptor_registrar`). This feature only
 # flips on the schema-passing body + the `M: Message` bound for builds
 # where a descriptor-needing backend is present.
-__cyclonedds-link = []
+# phase-347 W4 — was `__cyclonedds-link`, a CORE feature named after one
+# backend. The seam it flips has always been generic
+# (`cfg(rmw_needs_type_descriptors)`, `MessageForRmw`); only the trigger named
+# Cyclone. A backend declares `type-descriptors` in its `nros-rmw.toml` and the
+# lowering enables this — so a third-party backend needing per-type descriptors
+# works with no edit to core.
+needs-type-descriptors = []
 # Phase 124.B.7.c — POSIX signal-handler-safe wake via eventfd + a
 # runtime-owned worker thread that forwards eventfd writes to the
 # Executor's wake condvar. Linux-only (eventfd). Off by default;

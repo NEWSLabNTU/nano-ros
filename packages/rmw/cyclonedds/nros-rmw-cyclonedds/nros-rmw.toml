@@ -40,4 +40,4 @@ needs_cxx_linker = true
 per_message = "nros_rmw_cyclonedds_generate_from_msg"
 
 [rmw.capabilities]
-type-descriptors = "__cyclonedds-link"   # W4 replaces the RHS with a capability feature
+type-descriptors = "needs-type-descriptors"   # -> nros-node cfg(rmw_needs_type_descriptors)

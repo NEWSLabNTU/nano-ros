@@ -76,7 +76,7 @@ rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 # dependency, so it does NOT reintroduce the phase-248-C5c concrete-backend
 # coupling (the backend dep stays app-owned). C/C++ use the static
 # `descriptors.cpp` table and never need this.
-rmw-cyclonedds = ["nros-node/__cyclonedds-link"]
+rmw-cyclonedds = ["nros-node/needs-type-descriptors"]
 
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
 # feature for backend support matrix.

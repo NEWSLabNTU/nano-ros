@@ -60,7 +60,7 @@
 // Tier 1). Per-type descriptor registration is now the generic
 // `nros_rmw::register_type_descriptor` seam (see `rmw_type_registry`);
 // the Cyclone backend installs its registrar from its own crate. The
-// `__cyclonedds-link` marker feature (no dep edge) still emits
+// `needs-type-descriptors` capability feature (no dep edge) still emits
 // `cfg(rmw_needs_type_descriptors)` to compile the schema-passing body +
 // `M: Message` bound for builds where a descriptor-needing backend is
 // linked by the umbrella.

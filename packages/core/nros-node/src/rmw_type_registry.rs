@@ -28,7 +28,7 @@
 //!
 //! This module's schema-passing body compiles to a no-op unless
 //! `cfg(rmw_needs_type_descriptors)` is on. The cfg is emitted by
-//! `nros-node/build.rs` from the private internal `__cyclonedds-link`
+//! `nros-node/build.rs` from the `needs-type-descriptors` capability
 //! marker feature (no dep edge), which the umbrella `nros/rmw-cyclonedds`
 //! activates alongside its own `dep:nros-rmw-cyclonedds-sys`. Callers
 //! depend on `nros = { features = ["rmw-cyclonedds"] }`; the hook lights

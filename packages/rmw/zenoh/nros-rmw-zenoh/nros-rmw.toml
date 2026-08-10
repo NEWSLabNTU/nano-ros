@@ -33,3 +33,8 @@ needs_cxx_linker = false
 # right-hand side.
 [rmw.capabilities]
 zero-copy-receive = "unstable-zenoh-api"   # -> zpico-sys -> Z_FEATURE_UNSTABLE_API
+# phase-347 W4 — the `safety` axis (E2E CRC attach/validate). This used to be
+# recorded CENTRALLY as `backends_supporting: &["zenoh"]` in the capability
+# registry; the backend declares it here instead, so a third-party backend can
+# offer `safety` without an edit to core.
+safety = "safety-e2e"

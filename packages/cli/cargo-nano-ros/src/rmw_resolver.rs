@@ -101,6 +101,41 @@ impl std::error::Error for UnknownRmw {}
 ///
 /// This is the single alias table; the orchestration layer's `normalize_rmw`
 /// delegates here so there is one source of truth for RMW name recognition.
+/// Does `backend`'s descriptor declare `capability`?
+///
+/// phase-347 W4 — the inverse of the old `Capability::backends_supporting`
+/// list. The backend declares what it offers in `[rmw.capabilities]`; nothing
+/// central enumerates the pairing, so a third-party backend can offer a
+/// capability nano-ros has never heard of.
+pub fn backend_declares_capability(backend: &str, capability: &str) -> bool {
+    RMW_ROWS
+        .iter()
+        .find(|r| r.names.contains(&backend))
+        .is_some_and(|r| r.capabilities.iter().any(|(k, _)| *k == capability))
+}
+
+/// Every backend whose descriptor declares `capability`, canonical names.
+///
+/// phase-347 W4 — replaces `Capability::backends_supporting`, whose only
+/// consumer was a diagnostic listing "which backends carry this". Derived, so
+/// the message cannot go stale the way the list did.
+pub fn backends_declaring(capability: &str) -> Vec<&'static str> {
+    RMW_ROWS
+        .iter()
+        .filter(|r| r.capabilities.iter().any(|(k, _)| *k == capability))
+        .map(|r| r.declared)
+        .collect()
+}
+
+/// The backend's own feature implementing `capability`, if it declares one.
+pub fn backend_capability_feature(backend: &str, capability: &str) -> Option<&'static str> {
+    RMW_ROWS
+        .iter()
+        .find(|r| r.names.contains(&backend))
+        .and_then(|r| r.capabilities.iter().find(|(k, _)| *k == capability))
+        .map(|(_, v)| *v)
+}
+
 pub fn canonical_rmw(input: &str) -> Option<&'static str> {
     RMW_ROWS
         .iter()
@@ -155,6 +190,7 @@ pub fn render_cmake_dispatch() -> String {
          #   NROS_RMW_NEEDS_CXX_LINKER       ON/OFF — force the C++ linker driver (libstdc++)\n\
          #   NROS_RMW_CPP_DEFINE             the define nros-cpp puts on its INTERFACE\n\
          #   NROS_RMW_CMAKE_TARGET           a cmake target to link when present, or \"\"\n\
+         #   NROS_RMW_CAPABILITIES           ;-list of capabilities this backend declares\n\
          function(nros_rmw_dispatch rmw)\n",
     );
     let mut first = true;
@@ -177,11 +213,18 @@ pub fn render_cmake_dispatch() -> String {
              \x20       set(NROS_RMW_EXTRA_LINK_LIBS \"{extra}\" PARENT_SCOPE)\n\
              \x20       set(NROS_RMW_NEEDS_CXX_LINKER {needs_cxx} PARENT_SCOPE)\n\
              \x20       set(NROS_RMW_CPP_DEFINE \"{cpp_define}\" PARENT_SCOPE)\n\
-             \x20       set(NROS_RMW_CMAKE_TARGET \"{cmake_target}\" PARENT_SCOPE)\n",
+             \x20       set(NROS_RMW_CMAKE_TARGET \"{cmake_target}\" PARENT_SCOPE)\n\
+             \x20       set(NROS_RMW_CAPABILITIES \"{caps}\" PARENT_SCOPE)\n",
             decl = r.declared,
             feat = d.umbrella_cffi_feature,
             cpp_define = row.cpp_define,
             cmake_target = row.cmake_target,
+            caps = row
+                .capabilities
+                .iter()
+                .map(|(k, _)| *k)
+                .collect::<Vec<_>>()
+                .join(";"),
         ));
     }
     out.push_str(

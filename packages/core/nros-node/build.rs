@@ -12,8 +12,8 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
     println!("cargo:rustc-check-cfg=cfg(has_rmw)");
-    // Phase 248 (C2) — emitted from the private `__cyclonedds-link`
-    // marker feature (no dep edge). Gates the descriptor-registration
+    // Emitted from the `needs-type-descriptors` capability feature (no dep
+    // edge). Gates the descriptor-registration
     // schema-passing body + the `M: Message` super-bound for builds
     // where a descriptor-needing backend (Cyclone DDS) is linked. The
     // backend itself is brought into the link graph by the umbrella's
@@ -45,16 +45,17 @@ fn main() {
         println!("cargo:rustc-cfg=has_rmw");
     }
 
-    // Phase 248 (C2) — descriptor-needing-backend presence is signalled
-    // purely by the `__cyclonedds-link` marker feature (which the
-    // umbrella `nros/rmw-cyclonedds` activates alongside its own
-    // `dep:nros-rmw-cyclonedds-sys`). No `DEP_CYCLONEDDS_*` `links=`
+    // phase-347 W4 — signalled by the CAPABILITY feature
+    // `needs-type-descriptors`, which the lowering enables when the selected
+    // backend declares `type-descriptors` in its `nros-rmw.toml`. It was
+    // `__cyclonedds-link`: a core feature named after one backend, flipping a
+    // seam that was already capability-shaped. No `DEP_CYCLONEDDS_*` `links=`
     // probe anymore: the agnostic core has no Cargo dep on the Cyclone
     // crates, so there is no direct edge for cargo's `DEP_*` env-var
     // hand-off. The descriptor registration is a generic vtable seam
     // (`nros_rmw::register_type_descriptor`); the Cyclone backend
     // installs its registrar at init from its own crate.
-    if env::var("CARGO_FEATURE___CYCLONEDDS_LINK").is_ok() {
+    if env::var("CARGO_FEATURE_NEEDS_TYPE_DESCRIPTORS").is_ok() {
         println!("cargo:rustc-cfg=rmw_needs_type_descriptors");
     }
 
