@@ -335,8 +335,11 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       path changes anyway and the manifest column stops being authored. Doing a
       path move here would put two path conventions in flight at once — the #393
       hazard.
-- [ ] **W2.c** Gitignore collapses to `build/` (plus the transition set);
-      delete the per-dir ignore sprawl as dirs migrate.
+- [x] **W2.c** LANDED 2026-08-10 by `53681ecbc` — 391 per-leaf `.gitignore`
+      files become ONE rule-shaped block at the root, in RFC-0070 R2 vocabulary.
+      Consolidated rather than deleted, which is correct while a build path
+      still writes those dirs; the block says so and says the lines get DELETED,
+      not extended, once artifacts move under `$NROS_BUILD_ROOT`.
 - [x] **W2.d** LANDED 2026-08-06 — AGENTS.md "Build-Cache Root (RFC-0070)".
       `.env`/`NROS_BUILD_ROOT` documented as the ONE relocation
       knob (book + AGENTS.md); the jobs-audit NVMe note updates to it.

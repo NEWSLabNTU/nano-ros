@@ -434,21 +434,76 @@ mechanism rather than pending migration.
 
 #### Items 7 and 8 — attempted 2026-08-10, BOTH still blocked (evidence, not deferral)
 
-**Item 7 is NOT unblocked by B3, contrary to what B3's own note implied.** The
-ignore pattern is GLOBAL — `examples/**/target-*/` (`.gitignore:90`) — not
-per-platform, and 26 per-leaf target dirs are still LIVE across the four
-unmigrated platforms:
+**Item 7 — the esp32 half of its rationale was wrong, and is now fixed. The
+item itself stays blocked, on the gap `d05ecf1fa` found.**
+
+Two sessions reached item 7 from opposite ends on 2026-08-10 and each got half
+of it. `d05ecf1fa` has the blocker right and it is NOT the ignore pattern:
+
+> `examples/qemu-arm-freertos/rust/talker` is a shared-eligible cargo row, and
+> its `target/nros-minsizerel` was written at 01:55, two minutes AFTER
+> `build/fixtures-cargo/freertos` at 01:53. A second build path
+> (`build-examples`, not `build-test-fixtures`) writes per-leaf dirs without
+> transiting the group resolver.
+
+That stands, and `53681ecbc` consolidated the 391 leaf ignores into one
+rule-shaped block rather than deleting them, which is the right call while
+anything still writes those dirs.
+
+**What does not stand is its closing line**, "esp32 / nuttx-riscv have workspace
+fixture rows but no standalone cargo rows, so they sit outside the shared-group
+mechanism by construction". That is the third time this platform has been asked
+about under a spelling the manifest does not use. `esp32` has zero `[[fixture]]`
+rows; **`qemu-esp32-baremetal` has three**, all rust, all standalone cargo rows:
 
 ```
-qemu-arm-nuttx        6      qemu-riscv64-threadx    6
-qemu-arm-freertos    12      qemu-esp32-baremetal    2
+examples/qemu-esp32-baremetal/rust/talker
+examples/qemu-esp32-baremetal/rust/listener
+packages/testing/nros-tests/bins/logging-smoke-esp32-qemu
 ```
 
-Deleting that line now un-ignores real build output for those platforms.
-Scoping it per-platform instead would ADD spellings to a sprawl this item exists
-to remove. So item 7 unblocks when the REMAINING PLATFORMS migrate (a repeat of
-B3's recipe, not new design) — not when the first one did. `/build/` is already
-collapsed at `.gitignore:23`, so the target end-state is partly in place.
+It is now migrated — A1/A2/A3 clear (7 platforms, 19 groups, 122 rows, 0
+collisions, 122 roots invertible), rebuilt, and its artifacts land in
+`build/fixtures-cargo/qemu-esp32-baremetal/`. `nuttx-riscv` IS correctly
+excluded: its single `[[fixture]]` row is C. The workspace-fixture half of the
+claim is right for both and irrelevant to eligibility — `fixture-groups` reads
+only the `[[fixture]]` table, and a workspace row keeps its authored
+`target_dir`, so gate scope and mechanism scope already agree.
+
+**Migrating it exposed the SAME class as `d05ecf1fa`'s gap, one path over.**
+Gates were green while the build failed:
+
+```
+ERROR: examples/qemu-esp32-baremetal/rust/talker/target/riscv32imc-unknown-none-elf/
+       nros-relwithdebinfo/esp32_qemu_talker is missing, and nothing narrowed this build.
+```
+
+`just esp32 build-qemu` packs its ELF into a flash image and hand-wrote the leaf
+path to find it. The migration redirected the BUILD and left the pack step
+reading a directory nothing writes any more. Two independent sites now — a
+post-processing step here, `build-examples` there — both spelling the artifact
+path by hand instead of asking the group.
+
+So the fix is the shared one: **`nros_fixture_row_artifact_dir`** in
+`fixtures-target-dir.sh`, the inverse of `nros_fixture_target_dir_flag` from the
+same `nros_fixture_group` call, returning the leaf's own `target/` for an
+unmigrated platform so a call site is correct on both sides of a migration.
+`d05ecf1fa`'s `build-examples` gap should close onto this helper rather than
+gaining a third spelling — that is what makes it "real work in the B-chain"
+rather than cleanup.
+
+Verified by rebuild: all three ELFs in the group dir, the leaf dir not recreated
+(mtime still 2026-08-03), and the pack step reaching its `espflash` check, which
+sits AFTER the existence check — so reaching it is the proof the ELF was found.
+**Not verified: the flash image itself**, because `espflash` is not installed
+here; the step skips with a warning rather than passing silently.
+
+**Housekeeping done alongside, and it removed two of the four "live platforms"
+the old blocker rested on.** Re-measured: 84 per-leaf target dirs, 81 dead
+(84.0 GB), 3 live (3.0 GB) — deleted, along with `examples/stm32f4`, which was
+**entirely untracked**: 1.8 GB orphaned from a removed example tree, the same
+shape as the `ws-*` leftovers, counted as a live platform because nobody asked
+git about it.
 
 **Item 8 — the precondition is now specific rather than vague.** Post-B3 reading
 on a current mixed tree (rebuilt during the 2026-08-10 `lane=all` run):

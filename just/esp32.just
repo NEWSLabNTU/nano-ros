@@ -101,6 +101,7 @@ build-qemu:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    source scripts/build/fixtures-target-dir.sh
     target_profile_dir="$(nros_cargo_target_profile_dir)"
     echo "Building ESP32 QEMU fixtures (from examples/fixtures.toml)..."
     for id in qemu-esp32-baremetal-talker qemu-esp32-baremetal-listener; do
@@ -116,7 +117,14 @@ build-qemu:
         # runner/test references (issue #181 — the hyphen/underscore drift
         # left espflash opening a nonexistent ELF while the lane exited 0).
         elf_name="esp32_qemu_${ex}"
-        elf="examples/qemu-esp32-baremetal/rust/$ex/target/riscv32imc-unknown-none-elf/$target_profile_dir/$elf_name"
+        # phase-340 item 7 — ask where the build WROTE, never assume the leaf.
+        # `qemu-esp32-baremetal` shares a target dir, so this row's artifacts
+        # live under `build/fixtures-cargo/<group>/`; the helper returns the
+        # leaf's own `target/` for any platform that has not migrated, so this
+        # line is correct on both sides of a migration.
+        artifact_dir="$(nros_fixture_row_artifact_dir \
+            "examples/qemu-esp32-baremetal/rust/$ex" qemu-esp32-baremetal "" "")"
+        elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/$elf_name"
         out="build/esp32-qemu/esp32-qemu-$ex.bin"
         # Issue 0439 — the build loop above is lane-narrowable, so under a lane
         # that excludes `qemu-esp32-baremetal,rust` it correctly builds nothing
@@ -152,13 +160,17 @@ build-logging-smoke:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    source scripts/build/fixtures-target-dir.sh
     target_profile_dir="$(nros_cargo_target_profile_dir)"
     echo "Building logging-smoke-esp32-qemu..."
     RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
         bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust --id qemu-esp32-baremetal-logging-smoke
     echo "Creating logging-smoke-esp32-qemu flash image..."
     fixture=packages/testing/nros-tests/bins/logging-smoke-esp32-qemu
-    elf="$fixture/target/riscv32imc-unknown-none-elf/$target_profile_dir/logging-smoke-esp32-qemu"
+    # Same migration-aware derivation as `build-qemu` — this row is
+    # `qemu-esp32-baremetal` too, so it moved with the platform.
+    artifact_dir="$(nros_fixture_row_artifact_dir "$fixture" qemu-esp32-baremetal "" "")"
+    elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/logging-smoke-esp32-qemu"
     bin="$elf.bin"
     # Issue 0439 — same shape as `build-qemu` above: a lane-narrowable `--id`
     # build followed by a pack that assumed it happened. Fixed here WITH the

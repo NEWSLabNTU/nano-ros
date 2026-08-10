@@ -76,11 +76,28 @@
 # resolves through the manifest row) BEFORE being added; the check is one
 # command per platform and is recorded in the commit.
 #
-# `esp32` and `nuttx-riscv` are deliberately absent: the gate reports they have
-# no rust rows in the manifest under those names, so adding them would name a
-# platform the gate cannot check — an eligibility entry nothing verifies is
-# worse than an unmigrated platform.
-export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal linux nuttx freertos threadx-linux threadx-riscv64}"
+# phase-340 item 7 — `qemu-esp32-baremetal` joins 2026-08-10. Wave 2 recorded
+# that "esp32 has no rust rows in the manifest under that name", which is TRUE
+# and was the wrong question: the platform string on ESP32's rust rows is
+# `qemu-esp32-baremetal`, and it has THREE of them
+# (`examples/qemu-esp32-baremetal/rust/{talker,listener}` and
+# `packages/testing/nros-tests/bins/logging-smoke-esp32-qemu`). Asking the gate
+# about a spelling the manifest does not use returns "no rows" for a platform
+# that has them — the answer looked like a verdict and was a typo's shadow.
+# Cleared A1/A2/A3 before being added: 7 platforms, 19 groups, 122 rows, 0
+# collisions, 122 artifact roots all invertible.
+#
+# `nuttx-riscv` IS correctly absent, and for the reason wave 2 gave: it has one
+# `[[fixture]]` row and that row is C (`examples/qemu-riscv-nuttx/c/talker`).
+# There is no alternate spelling — `threadx-riscv64` is a different OS.
+#
+# Neither absence is about `[[workspace_fixture]]` rows, which DO exist for
+# `esp32` and `nuttx-riscv`. Those never enter this mechanism: `fixtures-manifest.py
+# fixture-groups` reads only the `[[fixture]]` table, and a workspace row keeps
+# its authored `target_dir`. Gate scope and mechanism scope agree — checked,
+# not assumed, because a rule enforced over a narrower set than it covers is
+# issue 0196's shape.
+export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal linux nuttx freertos threadx-linux threadx-riscv64 qemu-esp32-baremetal}"
 
 # _nros_fixture_variant_sig <cargo-args> <envstr>
 # Signature of everything in the grouping key BEYOND platform+triple.
@@ -249,4 +266,34 @@ nros_fixture_target_dir_flag() {
     group="$(nros_fixture_group "$platform" "$cargo_args" "$envstr")" || return 0
     [ -n "$group" ] || return 0
     printf ' --target-dir %s' "$(nros_build_dir fixtures-cargo "$group")"
+}
+
+# nros_fixture_row_artifact_dir <leaf-dir> <platform> [cargo-args] [envstr]
+#
+# WHERE a row's cargo artifacts actually land — the group dir when the platform
+# shares, the leaf's own `target/` when it does not. The inverse of
+# `nros_fixture_target_dir_flag`, from the same `nros_fixture_group` call, so a
+# consumer cannot disagree with the build about where the build wrote.
+#
+# phase-340 item 7 — this exists because `just esp32 build-qemu` hand-wrote
+# `examples/qemu-esp32-baremetal/rust/$ex/target/...` to find the ELF it packs
+# into a flash image. Migrating the platform redirected the BUILD and left that
+# path pointing at nothing:
+#
+#   ERROR: examples/qemu-esp32-baremetal/rust/talker/target/riscv32imc-unknown-none-elf/
+#          nros-relwithdebinfo/esp32_qemu_talker is missing, and nothing narrowed this build.
+#
+# Every gate passed while that happened, which is #393's failure mode and the
+# reason a migration's acceptance is a BUILD and never a gate. A post-processing
+# step that spells the artifact path by hand is a second derivation of the group
+# key; this makes it one.
+nros_fixture_row_artifact_dir() {
+    local leaf="$1" platform="$2" cargo_args="${3:-}" envstr="${4:-}"
+    local group
+    group="$(nros_fixture_group "$platform" "$cargo_args" "$envstr")" || group=""
+    if [ -n "$group" ]; then
+        nros_build_dir fixtures-cargo "$group"
+    else
+        printf '%s/target' "$leaf"
+    fi
 }
