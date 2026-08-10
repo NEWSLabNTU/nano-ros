@@ -157,8 +157,35 @@ are prefixed with the enum name (`prefix_with_name = true`) to avoid C++ name co
 Defaults `CONFIG_MAX_PTHREAD_MUTEX_COUNT=5` / `CONFIG_MAX_PTHREAD_COND_COUNT=5` are too low;
 zenoh-pico needs ~8+ mutexes (transport TX/RX/peer + a write-filter mutex per publisher under
 `Z_FEATURE_INTEREST=1`). Exhaustion makes `pthread_mutex_init` fail → zenoh-pico returns -80.
-Set `CONFIG_MAX_PTHREAD_MUTEX_COUNT=32` and `CONFIG_MAX_PTHREAD_COND_COUNT=16` in `prj.conf`
-(cyclonedds action overlays use 2048, archived Phase 184.8).
+Set `CONFIG_MAX_PTHREAD_MUTEX_COUNT=32` and `CONFIG_MAX_PTHREAD_COND_COUNT=16` in `prj.conf`.
+
+**These pools are per-OBJECT, so anything that allocates a mutex per entity turns them into a
+cap on workload size, not just a startup constant.** Zephyr's `pthread_mutex_t` and
+`pthread_cond_t` are handles into `static` arrays sized by those knobs; a library that puts a
+mutex in every object scales its demand with the number of objects. CycloneDDS does exactly
+that (three per writer: `e.lock`, `qos_lock`, `rdary_lock`, plus one per addrset), so a
+native_sim image joining a ~40-participant Autoware graph exhausted 16384 slots ~19 s in and
+needed 131072 (~4.1 MiB static) — issue 0371 was that crash, 0496 the sizing rule.
+
+## Cyclone on Zephyr uses a NATIVE ddsrt sync backend, not the POSIX one (issue 0496)
+
+Since `cyclonedds@a09babf3`, `ddsrt_mutex_t` is an embedded `struct k_mutex` and `ddsrt_cond_t`
+an embedded `struct k_condvar`, so cyclone takes NO pthread pool slots for either. The knob is
+back to the 256 example default and no longer scales with graph size. Wiring: `DDSRT_WITH_ZEPHYR`
+in `zephyr/cyclonedds-config/dds/config.h` picks the types
+(`ddsrt/sync/zephyr.h`), and `zephyr/cmake/nros_rmw_cyclonedds.cmake` swaps
+`sync/posix/sync.c` for `sync/zephyr/sync.c`. **Both halves must move together** — the types and
+the implementation — or the struct layouts disagree.
+
+Two consequences worth knowing:
+
+- **`k_mutex` is RECURSIVE for its owner; a pthread NORMAL mutex deadlocks.** Correct code cannot
+  tell the difference, but code that re-acquires its own lock hangs on POSIX and silently
+  succeeds on Zephyr. So a locking bug can reproduce natively and NOT on Zephyr — which is what
+  happened with the striped addrset locks, whose nesting hazard only ever hung the native build.
+  When a lock-shaped bug is platform-asymmetric in that direction, suspect this.
+- `ddsrt_rwlock_t` and `ddsrt_once_t` are still pthreads (one rwlock exists in all of cyclone —
+  the `log.c` sink — and `pthread_once_t` is caller-owned), so the pools are used but not scaled.
 
 ## Zephyr zsock per-fd serialization vs zenoh-pico (issues 0129/0139)
 

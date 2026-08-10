@@ -280,6 +280,14 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `try_handle_get_result()`. → platform-implementation-notes.md.
 - **Zephyr POSIX:** raise `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (zenoh-pico needs ~8+; default 5 fails
   with -80). → platform-implementation-notes.md.
+- **Zephyr's pthread mutex/cond pools are per-OBJECT, so a mutex-per-entity library makes them a
+  cap on WORKLOAD size** — cyclone (3 per writer + 1 per addrset) exhausted 16384 slots joining a
+  40-participant Autoware graph and died as an anonymous `abort()` 20 s later (issues 0371/0496).
+  Cyclone on Zephyr now uses a NATIVE ddsrt sync backend (embedded `k_mutex`/`k_condvar`, zero
+  pool slots): `DDSRT_WITH_ZEPHYR` picks the types, `nros_rmw_cyclonedds.cmake` swaps the TU —
+  **both halves move together or the layouts disagree.** NOTE `k_mutex` is recursive where a
+  pthread NORMAL mutex deadlocks, so a self-relock bug hangs natively and passes on Zephyr.
+  → platform-implementation-notes.md.
 - **Zephyr zsock serializes send/recv per-fd:** `Z_CONFIG_SOCKET_TIMEOUT` must stay 100 ms (5 s
   starves tx → lease death, silent session drop); intra-image pub→sub needs
   `Z_FEATURE_LOCAL_SUBSCRIBER=1`. → platform-implementation-notes.md (issues 0129/0139).
