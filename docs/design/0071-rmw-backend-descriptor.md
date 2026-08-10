@@ -173,14 +173,82 @@ genuine design risk: it makes the codegen pipeline call backend-supplied code.
 The mitigation is that the call site is one, the contract is one function
 signature, and a backend that declares nothing pays nothing.
 
-### D5 — the resolver reads descriptors
+### D5 — resolution is BY NAME, not by list (revised 2026-08-10)
 
-`resolve_rmw` keeps its shape and loses its `match`: it discovers descriptors
-(in-tree backends, plus any declared by the workspace) and resolves the declared
-name through their `names` tables. `UnknownRmw` then means "no descriptor claims
-this name" and can list what was found, which is a better error than a frozen
-constant. `NanoRosRmwDispatch.cmake` stops being generated code and becomes a
-loop over descriptors.
+The first draft replaced the closed `match` with a central registry. That is
+still a list, and a list is the thing that drifts. **The stronger model is
+`RMW_IMPLEMENTATION` moved to build time:** the declared value IS the package
+name, and the build system goes and finds it.
+
+```
+rmw = "cyclonedds"   ->   find the package providing rmw `cyclonedds`
+                          (in-tree: packages/rmw/*/nros-rmw-cyclonedds/nros-rmw.toml
+                           out-of-tree: NROS_RMW_PATH / a workspace-declared path)
+                     ->   read its nros-rmw.toml
+                     ->   lower [rmw.build] and [rmw.capabilities]
+```
+
+ROS 2 does exactly this at runtime — `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
+resolves through the ament resource index — and nano-ros needs the same
+indirection one stage earlier, because our selection has build consequences
+(which driver, which link libs, which codegen) that ROS 2's does not.
+
+Consequences:
+
+* `KNOWN_RMW`, `canonical_rmw`'s `match`, and the generated `if/elseif` chain in
+  `NanoRosRmwDispatch.cmake` all **disappear** rather than move. The alias table
+  moves into each descriptor's `names`.
+* "Unknown rmw" becomes "no package provides rmw `x`; searched: …" — an error
+  about the search, which is actionable, instead of an error about a constant.
+* **A registry is no longer the discovery mechanism.** `board-support.toml` is
+  still the right precedent for *support-tier bookkeeping* (which backends are
+  maintained, at what tier), and a drift gate over that is still worth having —
+  but discovery itself is convention plus a search path, so adding a backend
+  cannot require editing a central file.
+
+D5 must retire **all three** closed lists (see Q3), not just the dispatch.
+
+### D6 — user-selectable backend capabilities (revised 2026-08-10)
+
+A backend may offer an optional capability the user should be able to turn on —
+zenoh-pico's true zero-copy receive being the live case. Today that is
+`nros-rmw-zenoh[unstable-zenoh-api]` → `zpico-sys[unstable-zenoh-api]` →
+`#define Z_FEATURE_UNSTABLE_API`. The backend owning that feature is correct;
+what must not happen is core or the user's manifest learning its name.
+
+**The user selects a capability; the descriptor maps it to the backend's own
+feature.**
+
+```toml
+# nros-rmw.toml, shipped by the zenoh backend
+[rmw.capabilities]
+zero-copy-receive = "unstable-zenoh-api"      # capability -> this backend's feature
+```
+
+```toml
+# system.toml, written by the user
+[system]
+rmw = "zenoh"
+capabilities = ["zero-copy-receive"]
+```
+
+`nros sync` resolves the backend, looks the capability up in its descriptor, and
+enables the mapped feature in the generated selection facade. Three properties
+fall out:
+
+1. **Core never learns the name.** The dead `unstable-zenoh-api` feature on
+   `nros-node` is simply deleted (Q2b) — nothing forwards to it and no `cfg`
+   reads it.
+2. **A capability the backend does not declare is a clear error**, naming what
+   the active backend does offer, instead of a feature that silently does
+   nothing.
+3. **A custom backend offers whatever it likes.** `zero-copy-receive` on a
+   third-party RMW maps to that backend's own feature with no core change —
+   which is the general form of the question this RFC exists to answer.
+
+Precedent, again from boards: `nros-board.toml` already carries
+`capability_features = ["safety-e2e"]`, forwarding a declared capability to its
+backend. This is the same mechanism on the RMW axis.
 
 ## What this does NOT change
 
@@ -211,21 +279,14 @@ The point of the RFC is falsifiable by grep, which is how it should be gated:
 
 ## Open questions — answered 2026-08-10
 
-### Q1 — Descriptor discovery: copy the board pattern exactly
+### Q1 — Discovery: by NAME, not by registry (superseded, see D5)
 
-**Resolved.** Boards already solved this with TWO artifacts, not one:
-
-* `packages/boards/board-support.toml` — a central registry of known boards;
-* per-board `nros-board.toml` — the descriptor with the details;
-* `scripts/check-board-tiers.py` — a gate cross-checking the registry against
-  what is on disk ("20 entries, 17 directories").
-
-Adopt the same triple: `packages/rmw/rmw-support.toml` + per-backend
-`nros-rmw.toml` + a drift gate. The gate is not optional garnish — the board
-tooling has it precisely because a registry and a directory tree drift, and this
-RFC's whole thesis is that a list which cannot drift beats a list that can.
-Out-of-tree backends register by adding a path to the registry (workspace-level),
-which is the same escape hatch `nros-sdk-index.toml` gives tools.
+First answered as "copy the board triple" — central registry + per-item
+descriptor + drift gate. **Superseded.** A registry is still a list that can
+drift from the tree, and the RFC's thesis is that the list should not exist.
+Discovery is name → package on a search path (D5); the board registry remains
+the right precedent for *support-tier bookkeeping*, which is a different job
+from resolution.
 
 ### Q2 — `has_rmw`: three quarters of it is already dead code
 
@@ -257,16 +318,22 @@ tests (unit tests use MockSession)". **There is no such branch in the code.**
 Fix the comment or restore the behaviour, but do not carry the claim forward
 unexamined.
 
-### Q2b — a backend name in core the RFC missed
+### Q2b — `unstable-zenoh-api` in core is DEAD, so this is a deletion
 
-`nros-node` declares **`unstable-zenoh-api`** (an empty feature, read at
-`src/executor/handles.rs`). That is a backend-named feature on a core package —
-the same class this RFC exists to remove, and not covered by D2, which only
-addresses the two `build.rs` triggers. Decide before the grep gate lands:
-rename to a capability (`unstable-backend-api`), or move the surface it gates
-out of core. The gate in "Verification" would otherwise fail on day one.
+`nros-node` declares `unstable-zenoh-api`, but tree-wide it is referenced by no
+other manifest and by no `cfg` — its only mention in core source is a doc
+comment in `executor/handles.rs`, and the seam actually described there is
+`rmw-lending`, which is already capability-named.
 
-### Q3 — uorb: a real gap, and the tree has THREE disagreeing lists
+The live chain lives entirely in the backend, where it belongs:
+`nros-rmw-zenoh[unstable-zenoh-api]` → `zpico-sys[unstable-zenoh-api]` →
+`#define Z_FEATURE_UNSTABLE_API`.
+
+So core's copy is a dead declaration: **delete it**, no mechanism required. The
+user-facing question it raises — how a user turns that capability on without
+core naming it — is answered by D6.
+
+### Q3 — uorb is NOT special; the three disagreeing lists are the bug
 
 **Resolved: a gap, not a deliberate bypass.** `uorb` is a first-class
 `NANO_ROS_RMW` value in two places and fatal in a third:
@@ -282,10 +349,16 @@ uorb never reaches the dispatch because the PX4 shell (`integrations/px4/`)
 That is how the inconsistency has survived: the path that would fail is the one
 uorb does not take.
 
-Two consequences. The descriptor set **must** cover uorb. And the descriptor
-should absorb **all three** lists — this RFC's D5 as written only replaces the
-first, which would leave two closed lists still disagreeing and the strongest
-piece of evidence for the RFC unfixed.
+**uorb is not a special backend and should not be modelled as one.** It behaves
+exactly as the others do — it populates the vtable and self-registers. What is
+unusual is its *consumer*: PX4 links it through the `integrations/px4/` shell for
+direct app interop, rather than through a nano-ros entry. That is a property of
+the deployment, not of the backend, and a descriptor describes the backend.
+
+Two consequences. The descriptor set **must** cover uorb, on equal terms. And
+D5 must absorb **all three** lists — the first draft replaced only the dispatch,
+which would leave two still disagreeing and the RFC's own strongest evidence
+unfixed.
 
 ### Q4 — sequencing against issue 0493
 
