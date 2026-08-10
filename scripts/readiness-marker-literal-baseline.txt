@@ -3,14 +3,10 @@
 # the moment a doc comment shifted four sites that had not changed.
 # SHRINKING backlog — fix sites, lower the count.
 # New code should use ManagedProcess::expect_ready(DemoRole::…, lang, timeout).
-packages/testing/nros-tests/tests/actions.rs	Sending goal	1
-packages/testing/nros-tests/tests/interop_e2e.rs	Waiting for	1
-packages/testing/nros-tests/tests/nano2nano.rs	Publishing	2
-packages/testing/nros-tests/tests/native_api.rs	Waiting for	12
-packages/testing/nros-tests/tests/native_async_roundtrip_e2e.rs	Waiting for	2
-packages/testing/nros-tests/tests/params.rs	Publishing	1
-packages/testing/nros-tests/tests/qos_overrides_runtime_delivery.rs	Waiting for	1
-packages/testing/nros-tests/tests/safety_e2e.rs	Waiting for	4
-packages/testing/nros-tests/tests/xrce.rs	Waiting for	2
-packages/testing/nros-tests/tests/zephyr.rs	Waiting for	3
-packages/testing/nros-tests/tests/zero_copy.rs	Waiting for	3
+#
+# EMPTY since issue 0480 (2026-08-10). All 32 remaining sites were mapped to the
+# binary they spawn and pointed at that binary's `output::*` constant, so the
+# gate now enforces the rule outright with nothing exempted. Three were real
+# defects, not ambiguity: zephyr.rs twice and interop_e2e.rs once waited on a
+# marker their binary does not print (see the issue). Re-adding a row here means
+# admitting a NEW ambiguous literal — fix the site instead.

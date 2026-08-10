@@ -362,7 +362,7 @@ fn run_cell(pcell: &MCell) {
     match cell.ready {
         Robot2Ready::Marker => {
             r2.wait_for_output_pattern(
-                nros_tests::output::WS_C_LISTENER_READY_MARKER,
+                nros_tests::output::LISTENER_WAITING_BANNER,
                 Duration::from_secs(10),
             )
             .unwrap_or_else(|_| {

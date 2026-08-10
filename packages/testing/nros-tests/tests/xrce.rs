@@ -209,7 +209,10 @@ fn test_xrce_serial_listener_starts(xrce_serial_listener_binary: PathBuf) {
     let mut listener = ManagedProcess::spawn_command(cmd, "xrce-serial-listener")
         .expect("Failed to start serial listener");
 
-    match listener.wait_for_output_pattern("Waiting for", Duration::from_secs(15)) {
+    match listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(15),
+    ) {
         Ok(_) => eprintln!("xrce-serial-listener started successfully"),
         Err(_) => {
             if listener.is_running() {
@@ -253,7 +256,10 @@ fn test_xrce_serial_communication(
         .expect("Failed to start serial listener");
 
     // Wait for listener to be ready
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(15));
+    let _ = listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(15),
+    );
 
     // Stabilization delay — let XRCE Agent propagate the subscription
     std::thread::sleep(Duration::from_secs(3));

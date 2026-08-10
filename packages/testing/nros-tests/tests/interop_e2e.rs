@@ -380,8 +380,11 @@ fn interop(#[case] cell: Cell) {
                 .env("NROS_SESSION_MODE", "client");
             let mut sub = ManagedProcess::spawn_command(sub_cmd, "nros-string-sub")
                 .expect("spawn nano-ros sub");
-            sub.wait_for_output_pattern("Waiting for", Duration::from_secs(8))
-                .expect("nano-ros subscriber did not become ready");
+            sub.wait_for_output_pattern(
+                nros_tests::output::LISTENER_READY_MARKER,
+                Duration::from_secs(8),
+            )
+            .expect("nano-ros subscriber did not become ready");
 
             let mut talker = Ros2Process::demo_nodes_cpp_talker(&locator, DEFAULT_ROS_DISTRO)
                 .expect("spawn demo_nodes_cpp talker");

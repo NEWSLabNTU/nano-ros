@@ -63,7 +63,10 @@ fn main() {
             nros_info!(&LOGGER, "I heard: [{}]", msg.data);
         })
         .expect("Failed to add subscription");
-    nros_info!(&LOGGER, "Subscriber created on /chatter");
+    // Issue 0480 — the shared readiness spelling (`output::LISTENER_READY_MARKER`).
+    // This bin and `serial-listener` were the only two saying "created on", a
+    // second spelling of the same fact that no shared constant could cover.
+    nros_info!(&LOGGER, "Subscriber created for topic: /chatter");
 
     let max_secs: u64 = std::env::var("NROS_LISTENER_SECS")
         .ok()

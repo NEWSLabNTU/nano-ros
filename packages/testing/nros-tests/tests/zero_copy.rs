@@ -42,7 +42,10 @@ fn test_zero_copy_listener_starts(zenohd_unique: ZenohRouter) {
     let mut listener = ManagedProcess::spawn_command(cmd, "zero-copy-listener")
         .expect("Failed to start zero-copy listener");
 
-    match listener.wait_for_output_pattern("Waiting for", Duration::from_secs(10)) {
+    match listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(10),
+    ) {
         Ok(_) => eprintln!("zero-copy listener started successfully"),
         Err(_) => {
             if listener.is_running() {
@@ -84,7 +87,10 @@ fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
         .expect("Failed to start zero-copy listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(10),
+        )
         .expect("Zero-copy listener did not start");
 
     // Start standard talker
@@ -144,7 +150,10 @@ fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
         .expect("Failed to start zero-copy listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(10),
+        )
         .expect("Zero-copy listener did not start");
 
     // Start talker

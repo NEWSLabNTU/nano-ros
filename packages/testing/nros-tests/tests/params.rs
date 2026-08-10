@@ -141,7 +141,10 @@ fn start_talker_with_params(locator: &str) -> ManagedProcess {
     let mut talker = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
     // Wait for talker to start publishing (ensures parameter services are registered)
-    let _ = talker.wait_for_output_pattern("Publishing", Duration::from_secs(5));
+    let _ = talker.wait_for_output_pattern(
+        nros_tests::output::PARAM_TALKER_READY_MARKER,
+        Duration::from_secs(5),
+    );
 
     // Extra delay for parameter service discovery propagation through zenohd
     std::thread::sleep(Duration::from_secs(1));
@@ -434,7 +437,10 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
         .env("NROS_SESSION_MODE", "client");
     let mut listener = ManagedProcess::spawn_command(lis_cmd, "listener").expect("spawn listener");
     listener
-        .wait_for_output_pattern("Listener", Duration::from_secs(8))
+        .wait_for_output_pattern(
+            nros_tests::output::INT32_SINK_READY_MARKER,
+            Duration::from_secs(8),
+        )
         .expect("listener ready");
 
     // The parameterised workspace entry (`ctx.parameter` live-read node).

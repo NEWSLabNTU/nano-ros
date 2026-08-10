@@ -93,7 +93,10 @@ fn qos_override_best_effort_honored_and_delivers(zenohd_unique: ZenohRouter) {
     // out. That coalescing is deterministic on the CI runner (passed locally only
     // because the reads happened to split), which is why it read as a "hang".
     let ready = listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(12))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_WAITING_BANNER,
+            Duration::from_secs(12),
+        )
         .expect("subscriber did not become ready");
     assert!(
         ready.contains("qos effective: role=Subscription reliability=BestEffort"),

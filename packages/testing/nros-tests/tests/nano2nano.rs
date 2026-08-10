@@ -63,7 +63,10 @@ fn test_native_talker_starts(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
         ManagedProcess::spawn_command(cmd, "native-rs-talker").expect("Failed to start talker");
 
     // Wait for readiness (talker prints "Publishing" after setup)
-    match talker.wait_for_output_pattern("Publishing", Duration::from_secs(5)) {
+    match talker.wait_for_output_pattern(
+        nros_tests::output::TALKER_READY_MARKER,
+        Duration::from_secs(5),
+    ) {
         Ok(_) => eprintln!("native-rs-talker started successfully"),
         Err(_) => {
             if talker.is_running() {
@@ -152,7 +155,10 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
 
     // Wait for talker readiness
     if talker
-        .wait_for_output_pattern("Publishing", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .is_err()
         && !talker.is_running()
     {

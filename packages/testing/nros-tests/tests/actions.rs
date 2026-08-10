@@ -37,7 +37,10 @@ fn test_action_server_starts(zenohd_unique: ZenohRouter, action_server_binary: P
     // success. Phase 214.A.3 — dropped the `eprintln!("[PASS]") + return`
     // verbosity; the harness reports PASS on clean fn return.
     if server
-        .wait_for_output_pattern("Waiting for action", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_SERVER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .is_ok()
     {
         return;
@@ -73,7 +76,10 @@ fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: P
         .expect("Failed to start action client");
 
     // Wait briefly — client will timeout without server
-    let _ = client.wait_for_output_pattern("Sending goal", Duration::from_secs(5));
+    let _ = client.wait_for_output_pattern(
+        nros_tests::output::ACTION_SENDING_GOAL_MARKER,
+        Duration::from_secs(5),
+    );
 
     // Check process is still running (may timeout without server)
     if client.is_running() {

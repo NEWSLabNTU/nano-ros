@@ -562,7 +562,7 @@ fn test_qemu_rtic_pubsub_e2e() {
     // from the shared table (issue 0481 — never a literal).
     listener
         .wait_for_output_pattern(
-            nros_tests::output::WS_C_LISTENER_READY_MARKER,
+            nros_tests::output::LISTENER_WAITING_BANNER,
             Duration::from_secs(40),
         )
         .unwrap_or_else(|e| panic!("RTIC listener never subscribed: {e}"));
@@ -832,7 +832,7 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     // from the shared table (issue 0481 — never a literal).
     listener
         .wait_for_output_pattern(
-            nros_tests::output::WS_C_LISTENER_READY_MARKER,
+            nros_tests::output::LISTENER_WAITING_BANNER,
             Duration::from_secs(40),
         )
         .unwrap_or_else(|e| panic!("RTIC listener never subscribed: {e}"));

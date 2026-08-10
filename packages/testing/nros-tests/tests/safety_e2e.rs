@@ -124,7 +124,10 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
         .expect("Failed to start standard listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::INT32_SINK_READY_MARKER,
+            Duration::from_secs(10),
+        )
         .expect("Standard listener did not start");
 
     // Start safety-e2e talker
@@ -192,7 +195,10 @@ fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRoute
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "decl-safety-listener")
         .expect("Failed to start declarative safety listener");
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::SAFETY_LISTENER_READY_MARKER,
+            Duration::from_secs(10),
+        )
         .expect("declarative listener did not start");
 
     // Imperative safety talker (publisher; attaches CRC + sequence).
@@ -272,7 +278,10 @@ fn test_c_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "c-safety-listener")
         .expect("Failed to start C safety listener");
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::INT32_SINK_READY_MARKER,
+            Duration::from_secs(10),
+        )
         .expect("C safety listener did not start");
 
     let mut talker_cmd = Command::new(talker);
@@ -321,7 +330,10 @@ fn test_cpp_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "cpp-safety-listener")
         .expect("Failed to start C++ safety listener");
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::INT32_SINK_READY_MARKER,
+            Duration::from_secs(10),
+        )
         .expect("C++ safety listener did not start");
 
     let mut talker_cmd = Command::new(talker);

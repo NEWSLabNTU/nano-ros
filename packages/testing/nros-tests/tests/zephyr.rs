@@ -81,7 +81,7 @@ const ZEPHYR_BOOT_BANNER: &str = "Booting Zephyr";
 /// byte-identical to what was here, so this changes nothing at runtime; what it
 /// changes is ownership. A file-local copy of a marker string is how a test and
 /// the example it watches drift apart, which is issue 0481 in one sentence.
-const NODE_READY_MARKER: &str = nros_tests::output::WS_C_LISTENER_READY_MARKER;
+const NODE_READY_MARKER: &str = nros_tests::output::LISTENER_WAITING_BANNER;
 
 /// Lax server-readiness prefix: matches BOTH the component-main
 /// `"Waiting for messages"` marker (rust servers) and the canonical
@@ -857,7 +857,10 @@ fn test_zephyr_to_native_e2e() {
         .expect("Failed to start listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("native listener did not become ready");
 
     // Start Zephyr talker
@@ -1218,7 +1221,10 @@ fn test_native_server_zephyr_client() {
         .expect("Failed to start native service server");
 
     server
-        .wait_for_output_pattern("Waiting for service", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("native service server did not become ready");
 
     if !server.is_running() {
@@ -1440,7 +1446,10 @@ fn test_zephyr_cpp_talker_to_native_listener() {
             .expect("Failed to start native listener");
 
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("native listener did not become ready");
 
     // Start Zephyr C++ talker
@@ -1644,7 +1653,10 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::INT32_SINK_READY_MARKER,
+            Duration::from_secs(5),
+        )
         .expect("native listener did not become ready");
 
     // Boot the single-process Entry (talker + listener). `ZephyrProcess::Drop`

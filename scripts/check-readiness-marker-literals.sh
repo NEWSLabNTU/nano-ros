@@ -8,7 +8,7 @@
 # a prefix of FOUR different markers in `nros_tests::output`:
 #
 #     INT32_SINK_READY_MARKER       "Waiting for Int32"
-#     WS_C_LISTENER_READY_MARKER    "Waiting for messages"
+#     LISTENER_WAITING_BANNER    "Waiting for messages"
 #     SERVICE_SERVER_READY_MARKER   "Waiting for service requests"
 #     ACTION_SERVER_READY_MARKER    "Waiting for action goals"
 #

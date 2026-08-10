@@ -46,11 +46,14 @@ fn native_async_service_client_awaits_reply(zenohd_unique: ZenohRouter) {
 
     // Server first, so its queryable is discoverable before the client calls.
     let mut srv = spawn(&server, &locator, "service-server");
-    srv.wait_for_output_pattern("Waiting for", Duration::from_secs(10))
-        .unwrap_or_else(|_| {
-            srv.kill();
-            panic!("service server never became ready")
-        });
+    srv.wait_for_output_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(10),
+    )
+    .unwrap_or_else(|_| {
+        srv.kill();
+        panic!("service server never became ready")
+    });
 
     // Async client runs once, awaits the reply, logs it, exits.
     let mut cli = spawn(&client, &locator, "async-service-client");
@@ -82,11 +85,14 @@ fn native_async_action_client_awaits_goal_and_result(zenohd_unique: ZenohRouter)
     let locator = zenohd_unique.locator();
 
     let mut srv = spawn(&server, &locator, "action-server");
-    srv.wait_for_output_pattern("Waiting for", Duration::from_secs(10))
-        .unwrap_or_else(|_| {
-            srv.kill();
-            panic!("action server never became ready")
-        });
+    srv.wait_for_output_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(10),
+    )
+    .unwrap_or_else(|_| {
+        srv.kill();
+        panic!("action server never became ready")
+    });
 
     let mut cli = spawn(&client, &locator, "async-action-client");
     let out = cli

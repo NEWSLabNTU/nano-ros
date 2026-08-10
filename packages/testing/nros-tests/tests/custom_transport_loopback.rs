@@ -66,11 +66,15 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("spawn listener");
 
     // Wait for the subscription declaration to complete instead of a fixed
-    // sleep — "Subscriber created on /chatter" is the listener's readiness
-    // marker (Phase 179.G; the custom-link declaration path was unblocked
-    // once the full-duplex TcpStream deadlock was fixed).
+    // sleep — the listener's readiness marker (Phase 179.G; the custom-link
+    // declaration path was unblocked once the full-duplex TcpStream deadlock
+    // was fixed). Issue 0480 converged its spelling on the shared
+    // `LISTENER_READY_MARKER`; it used to print "Subscriber created on".
     listener
-        .wait_for_output_pattern("Subscriber created", Duration::from_secs(15))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(15),
+        )
         .expect("listener did not declare its subscription");
 
     let mut talker_cmd = Command::new(talker_bin);

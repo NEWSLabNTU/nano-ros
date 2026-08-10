@@ -199,6 +199,16 @@ pub fn int32_talker_line(n: impl std::fmt::Display) -> String {
 /// post-subscribe signal every observer spawn should key on).
 pub const INT32_SINK_READY_MARKER: &str = "Waiting for Int32";
 
+/// Readiness marker of the `param-chatter-talker` fixture bin: it prints
+/// `"Publishing Int32 messages every 1s..."` once its publisher AND its
+/// parameter services are registered.
+///
+/// NOT [`TALKER_READY_MARKER`] (`"Publishing:"`, with the colon): this bin
+/// publishes Int32 under the pre-W4 wording, so the chatter talker's marker
+/// never matches it. Waiting on this line is what tells a parameter test the
+/// services it is about to call actually exist.
+pub const PARAM_TALKER_READY_MARKER: &str = "Publishing Int32 messages";
+
 /// FreeRTOS realtime-tier workspace nodes (`ws-realtime-{c,cpp}-mps2`)
 /// print `"[<tier>] tick=N"` on the QEMU serial console **only when the
 /// tier's publish succeeds** — the marker doubles as a delivery proof for
@@ -230,10 +240,21 @@ pub const HOSTED_SPIN_COMPLETE_MARKER: &str = "hosted spin complete";
 /// N is how many subscription callbacks fired during the spin.
 pub const HOSTED_SPIN_MESSAGE_CALLBACKS_KEY: &str = "message_callbacks=";
 
-/// Readiness marker of the C workspace listener component
-/// (`"Waiting for messages"`); the C++ workspace listener prints NO ready
-/// marker (its observers settle on a fixed delay instead).
-pub const WS_C_LISTENER_READY_MARKER: &str = "Waiting for messages";
+/// The trailing "now blocking on input" banner — `"Waiting for messages"` —
+/// printed by a subscriber AFTER its subscription exists.
+///
+/// Shared, not workspace-specific: the C workspace listener component, the
+/// native C/C++ listeners, `qos-override-pubsub`'s listener role and
+/// `serial-listener` all print it, so it has exactly one spelling here. (It
+/// was `LISTENER_WAITING_BANNER` until issue 0480 converted the non-workspace
+/// sites and the workspace-only name stopped being true.) The C++ workspace
+/// listener prints NO ready marker — its observers settle on a fixed delay.
+///
+/// Prefer the role's own marker where one exists ([`LISTENER_READY_MARKER`],
+/// [`INT32_SINK_READY_MARKER`], …): this banner is printed LAST, so keying on
+/// it waits longer than the readiness it stands for. Use it when it is the only
+/// line the binary prints, or when a test deliberately wants the last marker.
+pub const LISTENER_WAITING_BANNER: &str = "Waiting for messages";
 
 /// Readiness marker of the C/C++ workspace service + action SERVER
 /// components (`"server ready"`).

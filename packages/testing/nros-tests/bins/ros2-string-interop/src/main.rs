@@ -44,6 +44,12 @@ fn main() {
                 std::process::exit(3);
             })
     };
+    // Issue 0480 — the shared readiness line every nano-ros subscriber prints
+    // (`output::LISTENER_READY_MARKER`), so the interop test can key on the ROLE
+    // instead of on this bin's own prose. The prose line below stayed matchable
+    // only because it happens to start "Waiting for", the literal that is a
+    // prefix of four different markers and of no readiness contract.
+    info!("Subscriber created for topic: {TOPIC}");
     info!("Waiting for std_msgs/String on {TOPIC} (run `ros2 run demo_nodes_cpp talker`)...");
 
     loop {

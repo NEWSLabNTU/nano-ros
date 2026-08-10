@@ -313,7 +313,10 @@ fn test_native_service_communication_callback(
 
     let mut server = spawn_native(&server_bin, lang, "service-server", &locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("service server did not become ready");
 
     let mut client = spawn_native(&client_bin, lang, "service-client-callback", &locator);
@@ -362,7 +365,10 @@ fn service_callback_interop_body(
 ) {
     let mut server = spawn_native(server_bin, client_lang, "service-server", locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("service server did not become ready");
 
     let mut client = spawn_native(client_bin, client_lang, "service-client-callback", locator);
@@ -438,7 +444,10 @@ fn rust_callback_interop_body(locator: &str, server_bin: &Path, server_lang: Lan
 
     let mut server = spawn_native(server_bin, server_lang, "service-server", locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("service server did not become ready");
 
     let mut client = spawn_rust_callback_client(&client_bin, locator);
@@ -495,7 +504,10 @@ fn native_action_communication_body(lang: Language, locator: &str) {
 
     let mut server = spawn_native(&server_bin, lang, "action-server", locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("action server did not become ready");
 
     let mut client = spawn_native(&client_bin, lang, "action-client", locator);
@@ -580,7 +592,10 @@ fn test_cpp_action_communication_callback(zenohd_unique: ZenohRouter) {
 
     let mut server = spawn_native(&server_bin, Language::Cpp, "action-server", &locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("action server did not become ready");
 
     let mut client = spawn_native(
@@ -647,7 +662,10 @@ fn test_action_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter) 
 
     let mut server = spawn_native(&server_bin, Language::C, "action-server", &locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("C action server did not become ready");
     let mut client = spawn_native(
         &client_bin,
@@ -700,7 +718,10 @@ fn test_action_callback_interop_c_client_cpp_server(zenohd_unique: ZenohRouter) 
 
     let mut server = spawn_native(&server_bin, Language::Cpp, "action-server", &locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("C++ action server did not become ready");
     let mut client = spawn_native(&client_bin, Language::C, "action-client", &locator);
 
@@ -742,7 +763,10 @@ fn test_cpp_action_goal_rejection(zenohd_unique: ZenohRouter) {
 
     let mut server = spawn_native(&server_bin, Language::Cpp, "action-server", &locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("cpp-action-server did not become ready");
 
     let mut client_cmd = stdbuf_command(&client_bin);
@@ -797,7 +821,10 @@ fn native_rust_pubsub_interop(lang: Language, locator: &str) {
     // Rust listener logs "Subscriber created" once
     // `create_subscription` succeeds.
     listener
-        .wait_for_output_pattern("Subscriber created", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("rust-listener did not become ready");
 
     let talker_bin = lang.talker_binary();
@@ -928,7 +955,10 @@ fn test_native_cyclonedds_talker_to_rust_listener(
 
     let mut listener = spawn_cyclone_binary(&listener_bin, "rust-cyclonedds-listener", &domain_id);
     listener
-        .wait_for_output_pattern("Subscriber created", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("rust cyclonedds listener did not become ready");
 
     let mut talker = spawn_cyclone_binary(
@@ -983,7 +1013,10 @@ fn test_native_cyclonedds_rust_talker_to_listener(
         &domain_id,
     );
     let listener_boot_output = listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("cyclonedds listener did not become ready");
 
     let mut talker = spawn_cyclone_binary(&talker_bin, "rust-cyclonedds-talker", &domain_id);
@@ -1061,7 +1094,10 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
     // (host exception), so set it to 107 to pair with the talker.
     let mut listener = spawn_cyclone_binary(&listener_bin, "native-c-cyclonedds-listener", "107");
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("native cyclonedds listener did not become ready");
 
     // The threadx-linux talker is embedded: it uses its baked domain (107)
@@ -1111,7 +1147,10 @@ fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
 
     let mut listener = spawn_cyclone_binary(&listener_bin, "native-cpp-cyclonedds-listener", "107");
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("native C++ cyclonedds listener did not become ready");
 
     let mut talker = spawn_cyclone_binary(&talker_bin, "threadx-cpp-cyclonedds-talker", "107");
@@ -1230,7 +1269,10 @@ fn native_rust_service_interop(lang: Language, locator: &str) {
     let server_bin = lang.service_server_binary();
     let mut server = spawn_native(&server_bin, lang, "service-server", locator);
     server
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
         .expect("native service server did not become ready");
     assert!(
         server.is_running(),

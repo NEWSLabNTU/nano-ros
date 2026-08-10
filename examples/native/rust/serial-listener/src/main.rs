@@ -85,7 +85,10 @@ fn main() {
             nros_info!(&LOGGER, "[{}] I heard: [{}]", n, msg.data);
         })
         .expect("Failed to add subscription");
-    nros_warn!(&LOGGER, "Subscriber created on /chatter");
+    // Issue 0480 — the shared readiness spelling (`output::LISTENER_READY_MARKER`).
+    // Was "Subscriber created on /chatter", the second of two spellings for one
+    // fact; the XRCE suites waited on the ambiguous "Waiting for" instead.
+    nros_warn!(&LOGGER, "Subscriber created for topic: /chatter");
 
     // Spin loop with timeout
     nros_info!(&LOGGER, "Waiting for messages...");

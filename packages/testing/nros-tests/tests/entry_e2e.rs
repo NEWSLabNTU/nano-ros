@@ -447,7 +447,7 @@ fn spawn_c_listener_observer(locator: &str, spin_ms: u32) -> ManagedProcess {
     let mut obs = ManagedProcess::spawn_command(cmd, "native-observer")
         .unwrap_or_else(|e| panic!("spawn observer: {e}"));
     obs.wait_for_output_pattern(
-        nros_tests::output::WS_C_LISTENER_READY_MARKER,
+        nros_tests::output::LISTENER_WAITING_BANNER,
         Duration::from_secs(10),
     )
     .unwrap_or_else(|_| {
