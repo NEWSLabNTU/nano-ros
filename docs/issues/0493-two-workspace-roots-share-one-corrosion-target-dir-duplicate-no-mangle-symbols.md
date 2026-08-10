@@ -215,3 +215,48 @@ Whether this reproduces in the distrobox lane and in CI. It reproduces here on
 every `lane=native` attempt, and it is a property of the CMake graph rather than
 of the host toolchain, so a host-specific cause is unlikely — but that is
 reasoning, not a measurement.
+
+## Attempted fix 2026-08-10 — REVERTED, and what it taught
+
+I implemented "make the umbrella the sole provider": bound the header mirror to
+the active provider with a `$<TARGET_EXISTS:nros_ws_runtime-static>` genex
+(evaluated at GENERATE time, so it can see a target created after this file is
+configured), had the umbrella copy its own generated headers into the mirror's
+source dir, dropped the mirror's hard `cargo-build_nros_cpp` edge, and set
+`EXCLUDE_FROM_ALL` on the plain build.
+
+**It did not work, and the reason invalidates part of the diagnosis above.**
+Rebuilding from scratch, `examples/workspaces/safety` failed identically, and
+`nano_ros/packages/api/nros-cpp/libnros_cpp.a` was still produced.
+
+The second identity is not (only) `nros-cpp`. Two facts I had not connected:
+
+* **`nros-c` is legitimately built from the ROOT workspace in a mixed
+  workspace.** `NanoRosRuntimeCrate.cmake`'s own issue-#57 note says mixed
+  workspaces "ALSO link the C umbrella (`NanoRos::NanoRos` == `nros_c-static`),
+  because the C Node pkgs link it". That is a second Rust staticlib, from the
+  root workspace, into the same corrosion target dir — so retiring `nros-cpp`
+  removes neither the root-workspace identity nor the duplication.
+* The newest failure shows the pair as **relative vs ABSOLUTE** paths —
+  `packages/rmw/cffi/src/rust_adapter.rs` against
+  `/mnt/wd/…/packages/rmw/cffi/src/rust_adapter.rs` — i.e. workspace member vs
+  out-of-workspace path dep, which is the same axis but names the producer more
+  precisely than the earlier pair did.
+
+So the shape is worse than "one stray import":
+
+> A mixed workspace NEEDS a root-workspace Rust staticlib (`nros_c-static`, for
+> its C nodes) AND a leaf-workspace one (the umbrella, for its Rust nodes).
+> Two Rust staticlibs is exactly what the single-runtime model forbids, and
+> they share one target dir by construction.
+
+That is a design conflict between phase-241 D3-rev (one staticlib per binary)
+and phase-241 W11 Option D (a per-workspace umbrella), which only bites when
+BOTH a C node and a Rust node exist in one configure. It is not resolvable by
+tidying an import; either the umbrella must subsume the C provider too, or the
+two must be built from ONE workspace root.
+
+**Still unexplained and worth measuring before the next attempt:** why the
+umbrella's own staticlib bundles BOTH identities when `cargo metadata` reports a
+single `nros-rmw-cffi` package in its graph. Until that is answered, any fix is
+a guess — mine was.
