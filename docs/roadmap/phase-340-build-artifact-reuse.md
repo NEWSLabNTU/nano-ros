@@ -2833,6 +2833,14 @@ all, since the overall rate (97 %) and the Rust rate (68 %) differ so widely.
 
 ## Relationship to issue 0493 (2026-08-10)
 
+**Handed over 2026-08-10.** The 0493 investigation is not being continued by the
+session that opened it; its issue carries a HANDOFF section with what is settled,
+the three open questions in cost order, the proposed provider design, and the
+environment fixes needed to reproduce `lane=native` on a non-Ubuntu host. The
+highest-value one for this phase is question 2 — **which corrosion topology is
+current** — because it decides whether this class is wasted disk or a build that
+cannot link.
+
 Two sessions reached one class from opposite sides. This phase measures it as
 **disk** — "D is built EIGHT times, with eight distinct identities". Issue 0493
 measures it as a **hard link failure**: `libnros_ws_runtime.a` bundling two

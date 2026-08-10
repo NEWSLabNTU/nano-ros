@@ -7,6 +7,7 @@ status: open
 type: bug
 area: build
 related: [phase-340, phase-344, issue-0492, rfc-0070]
+owner: phase-340 / phase-344
 ---
 
 ## Symptom
@@ -316,3 +317,66 @@ intermediate crate differently. Not yet proven — **do not quote a cause**."
 This issue's attempted fix is evidence on exactly that hypothesis, and it is
 negative: retiring `nros-cpp` entirely changed nothing, so `nros-cpp` is not the
 second producer by itself. That narrows their candidate without settling it.
+
+## HANDOFF (2026-08-10) — to whoever owns phase-340 / phase-344
+
+This issue is being handed over rather than continued. Everything below is
+either measured or explicitly flagged as not.
+
+### Settled, do not re-derive
+
+* `libnros_ws_runtime.a` bundles two `-C metadata` identities of ten crates
+  (`ar t` + `nm`); every `#[no_mangle]` export collides at link.
+* The two identities differ by cargo WORKSPACE ROOT, visible in the debuginfo
+  paths (repo-root-relative vs crate-relative/absolute).
+* `cargo metadata` on the umbrella reports **one** `nros-rmw-cffi` package. The
+  dependency graph is fine; the identity is not.
+* Reproduces on a pristine checkout: 7 duplicate-symbol errors, 2 cffi rlibs in
+  one `deps/`.
+* `nros-cpp` is **not** the second producer on its own — retiring it entirely
+  (mirror rebound to the active provider, `EXCLUDE_FROM_ALL` on the displaced
+  build) left the duplication unchanged. That attempt is reverted; the tree is
+  clean.
+
+### The three open questions, cheapest first
+
+1. **Why does one staticlib bundle both identities** when its own graph has one
+   package? Until this is answered any fix is a guess — mine was. Suggested
+   probe: `cargo build -v` on the umbrella and read the `--extern` / `-L
+   dependency=` set actually passed to the staticlib's rustc.
+2. **Which tree state is current** — hashed per-workspace corrosion dirs
+   (phase-340 / phase-344 §2.2) or a hashless shared `cargo/build` (measured
+   here)? Both reproduce, on different worktrees. A bisect over the same-day
+   changes (B3 + wave 2 shared target dirs, phase-344 W2's builder-keyed driver)
+   settles it. **This is the one that decides whether the class is "wasted disk"
+   or "cannot link".**
+3. **Does the provider design below survive contact** with Zephyr / NuttX /
+   board trees, which have their own providers (`nros-nuttx-ffi` et al.)?
+
+### The proposed design, in one paragraph
+
+One implementation provider per configure, owning BOTH the archive and the
+generated headers, from ONE workspace root: a synthesised runtime crate
+bundling the C ABI, the C++ FFI, the selected backend and every workspace Rust
+node, with `NanoRos::NanoRos` / `NanoRos::NanoRosCpp` reduced to pure INTERFACE
+targets. Rationale, the C-model framing it came from, and why separate target
+dirs is a TRAP rather than a fix, are in "The framing that settles it" above.
+Enforcement should be a CMake gate — exactly one Rust staticlib per configure
+exporting the nros symbol set. `links = "nros_c"` is worth adding for the header
+publication (`cargo:include` → `DEP_NROS_C_INCLUDE`) but would NOT have caught
+this: its check is per-graph.
+
+### Environment notes for reproducing on a non-Ubuntu host
+
+Getting `lane=native` this far needed four fixes/provisions, all landed except
+where noted: issue 0492 (`ENABLE_LTO=OFF` for the CMake-self-provisioned
+CycloneDDS — lld cannot read GCC LTO IR), `nros setup --source rosidl` (the
+no-ROS IDL fallback), `nros setup --tool cyclonedds`, and issues 0486/0487/0489
+for the ESP32 lane. `lane=native` still does not complete: it now fails at this
+issue.
+
+### Pitfall that cost three wrong attributions
+
+`workspace-fixtures-build.sh` runs groups under `make -j`, so group banners and
+compiler output interleave — "the last `== workspace group: … ==` before the
+error" is NOT the failing group. Attribute by the failing target path.

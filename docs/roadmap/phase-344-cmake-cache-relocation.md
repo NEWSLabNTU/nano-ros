@@ -210,6 +210,12 @@ Three facts follow, and all three are load-bearing:
 
 ### 2.2b Not every cargo invocation in the tree is corrosion's (issue 0493)
 
+> **Handed over 2026-08-10** — issue 0493 has a HANDOFF section. For this phase
+> the open item is whether the hashed per-workspace dirs and the hashless
+> `cargo/build` coexist by design or one is drift; it is unbisected, and the
+> 151-dir census depends on the answer.
+
+
 §2.2's "there is no override" is true **of corrosion**, and it is worth stating
 that it does not generalise to the tree. Corrosion's directory always carries a
 hash — `<folder>_<sha1[0:5]>`, e.g. `nano-ros_0b88c`, `nros_ws_runtime_14eac`.
