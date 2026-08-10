@@ -5,6 +5,11 @@
 //! that library is renamed or split.
 
 pub mod abi_guard;
+// Issue 0498 — temp + `rename(2)` for any file a concurrent `nros sync` may
+// read. Was a private helper in `cmd/ws.rs` whose doc claimed it was the
+// discipline "every other sync-owned file uses"; the metadata sidecar was not
+// using it and died mid-sweep on a half-written read.
+pub mod atomic_file;
 pub mod build_output;
 pub mod cmd;
 // Issue 0363 — the freshness predicate, shared verbatim with `build.rs` via

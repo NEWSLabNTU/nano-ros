@@ -51,6 +51,37 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#499** (build, open 2026-08-10) — `check-artifact-identity-budget` failed tier 1 at its FIRST step on a
+build tree three days old and untouched by the diff, so the whole build tier / clippy / `test-all` never
+ran. Not the gate being wrong — the gate being **unfalsifiable where it runs**. Its own comment accepts
+that a long-lived tree accumulates rlibs and prescribes "delete the tree and rebuild", but (a) it SKIPS on
+a pristine CI checkout, so it reports only on the tree that accumulates and is silent where it would be
+exact, (b) that remedy is a full native fixture rebuild — tens of minutes, and it re-stales everything
+keyed on the CLI stamp — demanded from the lane CLAUDE.md says to run after every task, which is how a gate
+gets bypassed rather than obeyed, and (c) wiping is also how a REAL regression gets erased, since the
+prescribed response to a red is to destroy the evidence and re-measure. Direction: count only artifacts
+newer than the `.fixtures-built` stamp, or run it off a known-clean tree as a report. Sibling of #485,
+which found this same gate reporting a wrong number for a different reason. See `0499-*`. (2026-08-10)
+
+Recently resolved (2026-08-10): **#498** (build) — `just build-test-fixtures lane=native` died `metadata
+harness emitted invalid JSON … EOF while parsing a value at line 1 column 0` — an EMPTY file, which was
+1345 bytes and valid when inspected seconds later, and a straight re-run passed. `fs::write` truncates to
+zero and then fills; `service-client` has three fixture rows (zenoh/xrce/cyclonedds) that run concurrently
+and each run `nros sync` over the same leaf, so phase-340's per-RMW `--target-dir` isolation does NOT reach
+a file keyed by COMPONENT. **The helper already existed, which is the actual lesson:** `cmd/ws.rs` had a
+private `atomic_write` whose own doc called it "the write discipline every other sync-owned file here
+uses", and the sidecar one directory over had three plain `fs::write` writers — a discipline inside one
+file's private helper is a habit, and the sibling site is what a habit does not reach. Fixed as ONE public
+`nros_cli_core::atomic_file` (private duplicate deleted), six writers converted — including
+`mark_unprobeable`, which was NOT in the report and fails SILENTLY (a truncated marker reads "not
+unprobeable" and pays the full failing probe it exists to skip). The generated harness inlines temp+rename
+since it cannot depend on the CLI; that code is a string template nothing type-checks until a fixture
+build, so it was verified by rendering it and compiling the emitted text. Gated by
+`check-atomic-sync-writes`, three arms each verified to fail first — including a second `fn atomic_write`
+appearing anywhere, which is exactly how the first helper failed to spread. **Same class as #494**
+(`f6290fbdb`) — that one was caught because the output was wrong, this one because the read failed loudly.
+See `archived/0498-*`. (2026-08-10)
+
 **#496** (rmw, open 2026-08-10) — cyclone calls `ddsrt_mutex_init` per **addrset**
 (`q_addrset.c:174`), and on Zephyr that is a slot from the static
 `CONFIG_MAX_PTHREAD_MUTEX_COUNT` pool — so **how big a graph an image can join is a

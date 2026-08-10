@@ -409,7 +409,8 @@ check-fast: \
     check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-artifact-identity-budget \
-    check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths
+    check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
+    check-atomic-sync-writes
     @echo "Fast checks passed!"
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
@@ -1176,6 +1177,16 @@ check-doc-refs:
 [private]
 check-issue-index:
     @bash scripts/check-issue-index.sh
+
+# Issue 0498 — a sync-owned file a CONCURRENT process reads must be written
+# temp + `rename(2)`, never `fs::write` (which truncates to zero, then fills).
+# `cmd/ws.rs` already had a private `atomic_write` whose doc called it "the
+# discipline every other sync-owned file here uses"; the metadata sidecar one
+# directory over had three plain `fs::write` writers and died mid-sweep on an
+# empty read. Buildless — greps the guarded function bodies.
+[private]
+check-atomic-sync-writes:
+    @bash scripts/check-atomic-sync-writes.sh
 
 # Issue 0466 — report EVERY unmet tier precondition at once (CLI stamp, leaf
 # includes, build sources, fixtures for the lane) instead of one per ~40-minute

@@ -292,7 +292,18 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
          \x20   let json = recorder\n\
          \x20       .to_source_metadata_json(&export)\n\
          \x20       .expect(\"serialize source metadata\");\n\
-         \x20   std::fs::write({out:?}, json).expect(\"write source metadata\");\n\
+         \x20   // Issue 0498 — temp + rename, NOT `fs::write`, which truncates\n\
+         \x20   // to zero and then fills. Concurrent fixture rows of one leaf\n\
+         \x20   // read this path; an empty read surfaces as \"EOF at line 1\n\
+         \x20   // column 0\" and reads like a bug in this harness. Inlined\n\
+         \x20   // rather than calling `nros_cli_core::atomic_file` because this\n\
+         \x20   // is a standalone generated crate that does not depend on the\n\
+         \x20   // CLI. The temp is a sibling: rename(2) is atomic only within\n\
+         \x20   // one filesystem.\n\
+         \x20   let out = std::path::Path::new({out:?});\n\
+         \x20   let tmp = out.with_extension(format!(\"tmp.{{}}\", std::process::id()));\n\
+         \x20   std::fs::write(&tmp, json).expect(\"write source metadata\");\n\
+         \x20   std::fs::rename(&tmp, out).expect(\"rename source metadata\");\n\
          }}\n",
         pkg = o.package,
         comp = o.component,
@@ -466,7 +477,8 @@ fn relativise_source_artifacts(output_path: &Path, component_dir: &Path) -> Resu
         out = out.replace(&format!("\"{prefix}"), "\"");
     }
     if out != text {
-        std::fs::write(output_path, &out)
+        // Issue 0498 — atomic, like every other writer of this path.
+        crate::atomic_file::atomic_write(output_path, &out)
             .wrap_err_with(|| format!("write source metadata {}", output_path.display()))?;
     }
     Ok(())
@@ -739,6 +751,36 @@ mod tests {
         assert!(main.contains(".exported_symbol(\"nros_component_talker\")"));
         assert!(main.contains("to_source_metadata_json"));
         assert!(main.contains("/out/talker.metadata.json"));
+    }
+
+    /// Issue 0498 — the harness must write a temp sibling and RENAME, never
+    /// `fs::write` the destination.
+    ///
+    /// Several fixture rows of one leaf sync concurrently and read this path,
+    /// and `fs::write` truncates to zero before it fills — a reader in that
+    /// window gets "EOF while parsing a value at line 1 column 0", which reads
+    /// like a bug in this harness rather than a race.
+    ///
+    /// Asserted on the RENDERED text because that text is a string template:
+    /// nothing type-checks it until a fixture build compiles the generated
+    /// crate, which is minutes away and on someone else's machine.
+    #[test]
+    fn harness_main_writes_its_output_atomically() {
+        let main = render_harness_main(&opts()).unwrap();
+        assert!(
+            main.contains("std::fs::rename(&tmp, out)"),
+            "harness must rename into place:\n{main}"
+        );
+        assert!(
+            !main.contains("std::fs::write(out,"),
+            "harness must not truncate its destination:\n{main}"
+        );
+        // The temp is a SIBLING — rename(2) is atomic only within one
+        // filesystem, so a temp in /tmp would silently degrade to a copy.
+        assert!(
+            main.contains("out.with_extension("),
+            "temp must sit beside the destination:\n{main}"
+        );
     }
 
     /// issue 0288 — the harness must build with `panic = "abort"`.

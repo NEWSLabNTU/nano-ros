@@ -26,6 +26,7 @@
 //! full design (patch authority detection, colcon-shape build dir,
 //! the chicken-egg motivation for a pre-cargo sync step).
 
+use crate::atomic_file::atomic_write;
 use clap::{Args as ClapArgs, Subcommand, ValueEnum};
 use eyre::{Result, WrapErr, bail, eyre};
 use rosidl_bindgen::ament::Package;
@@ -1510,7 +1511,8 @@ fn generate_bridge_configs(
 
         match crate::orchestration::bridge_gen::render_bridge_runtime_config(&plan, ws_root) {
             Some(cfg) => {
-                std::fs::write(&dest, cfg)
+                // Issue 0498 — sync-owned and read by the runtime, so atomic.
+                atomic_write(&dest, &cfg)
                     .wrap_err_with(|| format!("sync: write {}", dest.display()))?;
                 if verbose {
                     println!("sync: wrote {}", dest.display());
@@ -3754,19 +3756,6 @@ fn check_board_projection(
     }
 }
 
-/// Temp + rename, the write discipline every other sync-owned file here uses
-/// (a parallel fixture build runs many syncs at once).
-fn atomic_write(dst: &Path, body: &str) -> Result<()> {
-    let name = dst
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("nros-sync-out");
-    let tmp = dst.with_file_name(format!(".{name}.nros-sync-tmp.{}", std::process::id()));
-    std::fs::write(&tmp, body).wrap_err_with(|| format!("sync: write {}", tmp.display()))?;
-    std::fs::rename(&tmp, dst)
-        .wrap_err_with(|| format!("sync: rename {} -> {}", tmp.display(), dst.display()))
-}
-
 /// phase-341 W2 — project every Entry leaf's board `cargo_config` into
 /// `<leaf>/.cargo/nros-board.toml`.
 ///
@@ -4391,7 +4380,9 @@ fn run_clean(args: CleanArgs) -> Result<()> {
         // emptied table/array; preserves user content.
         let cleaned = render_patch_config(&body, &[], None)
             .wrap_err_with(|| format!("ws clean: edit {}", cfg.display()))?;
-        std::fs::write(&cfg, cleaned)
+        // Issue 0498 — cargo may be reading this config; a truncated
+        // `.cargo/config.toml` is a manifest-parse error four frames deep.
+        atomic_write(&cfg, &cleaned)
             .wrap_err_with(|| format!("ws clean: write {}", cfg.display()))?;
         println!("ws clean: stripped managed patches from {}", cfg.display());
     }

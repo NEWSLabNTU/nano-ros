@@ -331,7 +331,10 @@ fn stamp_provenance(sidecar: &Path, digest: &str) -> Result<()> {
         generator: format!("nros {}", env!("CARGO_PKG_VERSION")),
     });
     let out = serde_json::to_string_pretty(&parsed)?;
-    std::fs::write(sidecar, out).wrap_err_with(|| format!("write {}", sidecar.display()))
+    // Issue 0498 — atomic. Several fixture rows of ONE leaf (its zenoh / xrce /
+    // cyclonedds coordinates) sync concurrently and contend for this path, which
+    // is keyed by COMPONENT and so is not separated by the per-RMW target dirs.
+    crate::atomic_file::atomic_write(sidecar, &out)
 }
 
 /// #0288 — the NEGATIVE cache, sibling to the sidecar. A package that DEGRADES
@@ -358,7 +361,11 @@ fn is_known_unprobeable(sidecar: &Path, digest: &str) -> bool {
 /// until its sources change. Best-effort — a marker we cannot write just means
 /// a wasted retry next sync, never a hard error.
 fn mark_unprobeable(sidecar: &Path, digest: &str) {
-    let _ = std::fs::write(unprobeable_marker(sidecar), digest);
+    // Issue 0498 — atomic, like the sidecar beside it: `is_known_unprobeable`
+    // compares the WHOLE file against a digest, so a concurrent reader catching
+    // a truncated one reads "not unprobeable" and pays the full failing probe
+    // this marker exists to skip.
+    let _ = crate::atomic_file::atomic_write(&unprobeable_marker(sidecar), digest);
 }
 
 /// Drop the negative marker — the package probed successfully (or its sidecar
