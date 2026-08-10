@@ -144,10 +144,15 @@ fn main() {
         .expect("Failed to write bindings");
 
     println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
-    println!("cargo:rerun-if-env-changed=LWIP_DIR");
+    // issue 0491 — `FREERTOS_DIR` / `LWIP_DIR` / `FREERTOS_CONFIG_DIR` name
+    // DIRECTORIES, and cargo compares an env value as TEXT, so fingerprinting
+    // one makes every consumer that spells it differently (a leaf's
+    // `relative = true` block, `just`'s absolute export, unset) invalidate the
+    // others inside a shared `--target-dir`. The config dir is watched by
+    // CONTENT instead; the kernel + lwIP roots are read-only vendored sources
+    // reached through `wrapper.h`. `FREERTOS_PORT` is a NAME, so it stays.
+    println!("cargo:rerun-if-changed={freertos_config_dir}");
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
-    println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
 }
 
 /// Emit minimal placeholder bindings when FreeRTOS env vars aren't set.
@@ -229,9 +234,11 @@ unsafe extern "C" {
     )
     .unwrap();
 
-    println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
-    println!("cargo:rerun-if-env-changed=LWIP_DIR");
-    println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
+    // issue 0491 — no env-STRING fingerprint on these three paths (see the
+    // real branch). Known cost, and it is small: a tree that emitted these
+    // placeholders was built WITHOUT the FreeRTOS SDK, i.e. a host `cargo
+    // check` in the root target dir, which never shares a `--target-dir` with
+    // the firmware build that has the variables set.
 }
 
 /// Find the ARM GCC built-in include directory (for stdint.h, stddef.h, etc.)

@@ -371,7 +371,12 @@ pub fn run_nuttx() {
     // ---- NuttX kernel link args ----
     // The binary IS the NuttX kernel. Link against all NuttX staging libraries,
     // linker script, and startup objects.
-    println!("cargo:rerun-if-env-changed=NUTTX_DIR");
+    // issue 0491 — `NUTTX_DIR` names a DIRECTORY, and cargo compares an env
+    // value as TEXT, so fingerprinting the spelling lets two consumers that
+    // spell one directory differently invalidate each other inside a shared
+    // `--target-dir`. Not replaced by a content watch: NuttX is BUILT IN
+    // PLACE, so watching its tree would leave this permanently dirty after
+    // every kernel build. The specific inputs are declared per file.
     let nuttx_dir = match env::var("NUTTX_DIR") {
         Ok(dir) => PathBuf::from(dir),
         Err(_) => return,

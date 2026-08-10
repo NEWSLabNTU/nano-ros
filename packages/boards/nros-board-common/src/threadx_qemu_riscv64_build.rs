@@ -325,12 +325,20 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     println!("cargo:rerun-if-changed=config/nx_user.h");
     println!("cargo:rerun-if-changed=config/link.lds");
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed=THREADX_DIR");
-    println!("cargo:rerun-if-env-changed=NETX_DIR");
+    // issue 0491 — `THREADX_DIR` / `NETX_DIR` name DIRECTORIES, and cargo
+    // compares an env value as TEXT. Fingerprinting the spelling made the
+    // ThreadX rows sharing one `--target-dir` invalidate each other forever
+    // (one spelling per leaf from `relative = true`, another from `just`).
+    // The overlay's own config files are watched above; the two vendored
+    // kernels are read-only sources whose compiled files `threadx_sources`
+    // declares.
 }
 
+/// A path variable with an in-repo default, canonicalised so every consumer
+/// spells it the same way (issue 0491). Never fingerprinted as a string.
 fn env_path_or(name: &str, default: PathBuf) -> PathBuf {
-    env::var(name).map(PathBuf::from).unwrap_or(default)
+    let raw = env::var(name).map(PathBuf::from).unwrap_or(default);
+    nros_build_paths::canonical(&raw)
 }
 
 fn configure_riscv64(build: &mut cc::Build) {

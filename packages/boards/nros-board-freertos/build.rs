@@ -43,6 +43,9 @@ use std::{env, path::PathBuf};
 use nros_board_common::freertos_build::{
     add_freertos_includes, add_lwip_includes, configure_cflags,
 };
+// issue 0491 — the ONE path-input helper, reached through the build-helper
+// crate this script already deps (no new edge in any leaf lockfile).
+use nros_board_common::nros_build_paths;
 
 fn main() {
     // issue 0288 — the FREERTOS_DIR guard below does NOT cover host tooling:
@@ -73,6 +76,8 @@ fn main() {
         return;
     }
 
+    // Canonical, so the `rerun-if-changed` lines these feed at the bottom read
+    // the same from every consumer (issue 0491).
     let freertos_dir = env_path("FREERTOS_DIR");
     let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| "GCC/ARM_CM3".to_string());
     let lwip_dir = env_path("LWIP_DIR");
@@ -182,10 +187,16 @@ fn main() {
     lwip.compile("lwip");
 
     // --- Build nros-platform-freertos C port ---
-    // First-party sibling C source/headers, located via env vars (defaults in
-    // just/sdk-env.just / .envrc) — not a build.rs repo-layout walk-up (192.3).
-    let nros_platform_freertos_dir = env_path("NROS_PLATFORM_FREERTOS_SRC");
-    let nros_platform_cffi_include = env_path("NROS_PLATFORM_CFFI_INCLUDE");
+    // First-party sibling C source/headers. Resolved through the shared
+    // path helper (issue 0491): env override first, otherwise the in-repo
+    // default — the same answer `just/sdk-env.just` exports, so an unset
+    // variable is no longer a panic. It WAS one, and that made
+    // `logging-smoke-freertos-mps2` (the one FreeRTOS row with no `[env]`
+    // block) unbuildable outside `just` — which `rust-fixture-stale.sh`, whose
+    // stderr goes to /dev/null, read as "not stale" for a fixture whose build
+    // could not even start.
+    let nros_platform_freertos_dir = nros_build_paths::nros_platform_freertos_src();
+    let nros_platform_cffi_include = nros_build_paths::nros_platform_cffi_include();
     let mut platform = cc::Build::new();
     configure_cflags(&mut platform);
     add_freertos_includes(
@@ -204,10 +215,11 @@ fn main() {
     // through neither shared helper, so the policy has to be named here.
     nros_cc_flags::gcc_safe_frame_pointer(&mut platform);
     platform.compile("nros_platform_freertos");
-    println!(
-        "cargo:rerun-if-changed={}",
-        nros_platform_freertos_dir.display()
-    );
+    // issue 0491 — the CONTENT of the two first-party trees is what this build
+    // depends on, and `watch_path` states it with the canonical spelling, so
+    // every leaf that reaches this script agrees on the trigger.
+    nros_build_paths::watch_path(&nros_platform_freertos_dir);
+    nros_build_paths::watch_path(&nros_platform_cffi_include);
 
     // --- Generic glue (freertos_hooks + network_glue + freertos_run_tiers) ---
     // `c/freertos_hooks.c` provides the FreeRTOS task hooks +
@@ -256,20 +268,26 @@ fn main() {
     );
     println!("cargo:rerun-if-changed={}", freertos_dir.display());
     println!("cargo:rerun-if-changed={}", lwip_dir.display());
-    println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
+    // issue 0491 — `FREERTOS_DIR` / `LWIP_DIR` / `FREERTOS_CONFIG_DIR` /
+    // `NROS_PLATFORM_*` are PATHS and are deliberately NOT fingerprinted as
+    // strings: cargo compares an env value textually, and one directory has a
+    // different spelling per example leaf (`relative = true`), from `just`
+    // (absolute) and from a bare build (unset). Their CONTENT is watched above
+    // instead. `FREERTOS_PORT` (a port NAME) and `FREERTOS_CFLAGS` (a value)
+    // stay — a change in either really is a different compile.
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
-    println!("cargo:rerun-if-env-changed=LWIP_DIR");
-    println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
-    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_FREERTOS_SRC");
-    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_CFFI_INCLUDE");
 }
 
+/// A REQUIRED path variable, canonicalised (issue 0491) — never fingerprinted
+/// as a string. The three callers below sit behind the `FREERTOS_DIR` guard,
+/// so "unset" is already handled as "not a FreeRTOS build".
 fn env_path(name: &str) -> PathBuf {
-    PathBuf::from(env::var(name).unwrap_or_else(|_| {
+    let raw = PathBuf::from(env::var(name).unwrap_or_else(|_| {
         panic!(
             "{name} not set — overlays should set it via \
              `.cargo/config.toml [env]` or the user must export it"
         )
-    }))
+    }));
+    nros_build_paths::canonical(&raw)
 }

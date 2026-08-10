@@ -7,7 +7,10 @@ use std::{env, path::PathBuf};
 
 fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rerun-if-env-changed=NUTTX_DIR");
+    // issue 0491 — `NUTTX_DIR` names a DIRECTORY and is not fingerprinted as a
+    // string (cargo compares the value textually; one dir has one spelling per
+    // leaf, one from `just`, and none from a bare build). The header tree it
+    // selects is watched by content below.
 
     let nuttx_dir = match env::var("NUTTX_DIR") {
         Ok(d) => d,
@@ -23,6 +26,9 @@ fn main() {
         emit_placeholder_bindings();
         return;
     }
+    // Watched only once it EXISTS — a `rerun-if-changed` on a missing path is
+    // permanently dirty (issue 0490).
+    println!("cargo:rerun-if-changed={}", nuttx_include.display());
 
     let target = env::var("TARGET").unwrap_or_default();
 

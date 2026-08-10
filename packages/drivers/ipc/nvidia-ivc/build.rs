@@ -5,7 +5,10 @@
 // shipped under SDK Manager EULA. Path is supplied via `NV_SPE_FSP_DIR`.
 
 fn main() {
-    println!("cargo:rerun-if-env-changed=NV_SPE_FSP_DIR");
+    // issue 0491 — `NV_SPE_FSP_DIR` names a DIRECTORY, so its SPELLING is not
+    // fingerprinted (cargo compares env values as text, and one directory has
+    // several spellings across the entry points that build a leaf). The
+    // library it selects is watched by content below.
 
     let fsp = std::env::var("CARGO_FEATURE_FSP").is_ok();
     let unix_mock = std::env::var("CARGO_FEATURE_UNIX_MOCK").is_ok();
@@ -28,6 +31,12 @@ fn main() {
         )
     });
 
+    let lib = format!("{dir}/lib/libtegra_aon_fsp.a");
+    if std::path::Path::new(&lib).exists() {
+        // Only when it exists: a `rerun-if-changed` on a missing path is
+        // permanently dirty (issue 0490).
+        println!("cargo:rerun-if-changed={lib}");
+    }
     println!("cargo:rustc-link-search=native={}/lib", dir);
     println!("cargo:rustc-link-lib=static=tegra_aon_fsp");
 }

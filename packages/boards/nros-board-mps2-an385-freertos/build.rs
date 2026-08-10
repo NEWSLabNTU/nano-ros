@@ -211,13 +211,16 @@ fn main() {
     println!("cargo:rerun-if-changed=config/arch/cc.h");
     println!("cargo:rerun-if-changed=c/board_mps2.c");
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
+    // issue 0491 — the PATH variables above (`FREERTOS_DIR`, `LWIP_DIR`,
+    // `NROS_LAN9118_LWIP_DIR`, `TBAND_DIR`, `FREERTOS_CONFIG_DIR`) are not
+    // fingerprinted as strings: cargo compares an env value textually and one
+    // directory has a different spelling per leaf, per `just`, and unset. The
+    // first-party trees are watched by content below; the vendored SDK roots
+    // are read-only source and their per-file inputs are already declared.
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
-    println!("cargo:rerun-if-env-changed=NROS_LAN9118_LWIP_DIR");
-    println!("cargo:rerun-if-env-changed=TBAND_DIR");
-    println!("cargo:rerun-if-env-changed=LWIP_DIR");
-    println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
+    nros_build_paths::watch_path(&lan9118_dir);
+    nros_build_paths::watch_path(&freertos_config_dir);
 }
 
 fn gcc_print_file(name: &str) -> String {

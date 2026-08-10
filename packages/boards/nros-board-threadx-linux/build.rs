@@ -35,6 +35,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+// issue 0491 — the ONE path-input helper, reached through the build-helper
+// crate this script already deps.
+use nros_board_common::nros_build_paths;
+
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let config_dir = manifest_dir.join("config");
@@ -126,13 +130,19 @@ fn main() {
     println!("cargo:rerun-if-changed=c/board_threadx_linux.c");
     println!("cargo:rerun-if-changed=config/tx_user.h");
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed=THREADX_DIR");
-    println!("cargo:rerun-if-env-changed=NETX_DIR");
-    println!("cargo:rerun-if-env-changed=NSOS_NETX_DIR");
+    // issue 0491 — `THREADX_DIR` / `NETX_DIR` / `NSOS_NETX_DIR` are PATHS and
+    // are not fingerprinted as strings (cargo compares an env value textually,
+    // and one directory has one spelling per leaf / per `just` / unset). The
+    // first-party shim is watched by content; the two vendored kernels are
+    // read-only sources whose compiled files are declared above.
+    nros_build_paths::watch_path(&nsos_netx_dir);
 }
 
+/// A path variable with an in-repo default, canonicalised so every consumer
+/// spells it the same way (issue 0491). Never fingerprinted as a string.
 fn env_path_or(name: &str, default: PathBuf) -> PathBuf {
-    env::var(name).map(PathBuf::from).unwrap_or(default)
+    let raw = env::var(name).map(PathBuf::from).unwrap_or(default);
+    nros_build_paths::canonical(&raw)
 }
 
 /// Phase 212.M-F.10.3 — Path C: emit the `NROS_APP_CONFIG` definition

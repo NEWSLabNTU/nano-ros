@@ -39,7 +39,10 @@ include_paths = [
   # bare-metal/freertos-lwip blocks above.
   "{nros}/../../platform/nros-platform-api/include",
 ]
-rerun_if_env_changed = ["NUTTX_DIR"]
+# issue 0491 — VALUE knobs only; `NUTTX_DIR` is a PATH and was dropped. Cargo
+# compares an env value as TEXT, so a directory with one spelling per leaf and
+# another from `just` makes rows sharing a `--target-dir` rebuild each other.
+rerun_if_env_changed = []
 
 
 [arch.cortex-a7]

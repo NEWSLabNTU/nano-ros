@@ -411,7 +411,8 @@ check-fast: \
     check-activate-shells check-build-root check-fixture-groups check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-atomic-sync-writes \
-    check-cmake-corrosion-prefix
+    check-cmake-corrosion-prefix \
+    check-path-env-fingerprints
     @echo "Fast checks passed!"
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
@@ -3352,7 +3353,16 @@ check-build-rs-rerun-paths:
 # directions on every run.
 [private]
 check-cmake-corrosion-prefix:
-    @python3 scripts/check-cmake-corrosion-prefix.py
+    @python3 scripts/check-cmake-corrosion-prefix.py \
+# issue 0491 — the sibling rule to the gate above: a `cargo:rerun-if-env-changed`
+# on a PATH-valued variable fingerprints the SPELLING of a directory, and one
+# directory has a different spelling per example leaf (`relative = true`), from
+# `just` (absolute) and unset. Rows sharing one `--target-dir` (phase-340 groups)
+# then invalidate each other forever — six FreeRTOS rows rebuilt 6 units on every
+# probe, permanently. Self-tests its own classifier on every run.
+[private]
+check-path-env-fingerprints:
+    @python3 scripts/check-path-env-fingerprints.py
 
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single

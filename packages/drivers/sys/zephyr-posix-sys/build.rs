@@ -12,7 +12,9 @@ use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rerun-if-env-changed=ZEPHYR_BUILD_DIR");
+    // issue 0491 — `ZEPHYR_BUILD_DIR` names a DIRECTORY; its spelling is not
+    // fingerprinted (cargo compares env values as text). The generated headers
+    // it selects are watched by content below.
 
     // Auto-detect Zephyr build dir following the Zephyr workspace convention:
     // ZEPHYR_BUILD_DIR env var, or ZEPHYR_WORKSPACE/build-talker (same logic as justfile).
@@ -43,6 +45,9 @@ fn main() {
         emit_placeholder_bindings();
         return;
     }
+    // Watched only once it EXISTS — a `rerun-if-changed` on a missing path is
+    // permanently dirty (issue 0490).
+    println!("cargo:rerun-if-changed={}", compile_commands.display());
 
     // Extract -I paths and -D defines from compile_commands.json
     let (includes, defines) = match extract_flags(&compile_commands) {

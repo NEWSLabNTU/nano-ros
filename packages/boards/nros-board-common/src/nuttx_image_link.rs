@@ -61,7 +61,12 @@ use std::{
 /// `builtins_stub` is the calling board crate's empty-builtins C stub (kept
 /// in the board crate's `c/`, next to the board that owns the entry link).
 pub fn run_image_link(builtins_stub: &Path) {
-    println!("cargo:rerun-if-env-changed=NUTTX_DIR");
+    // issue 0491 — `NUTTX_DIR` names a DIRECTORY, and cargo compares an env
+    // value as TEXT, so fingerprinting the spelling lets two consumers that
+    // spell one directory differently invalidate each other inside a shared
+    // `--target-dir`. Not replaced by a content watch: NuttX is BUILT IN
+    // PLACE, so watching its tree would leave this permanently dirty after
+    // every kernel build. The specific inputs are declared per file.
     println!("cargo:rerun-if-env-changed=NUTTX_CROSS");
     println!("cargo:rerun-if-env-changed=NUTTX_PLATFORM_CFLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_INCLUDES");

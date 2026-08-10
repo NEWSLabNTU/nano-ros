@@ -183,7 +183,12 @@ pub fn run() {
     let target = env::var("TARGET").unwrap_or_default();
     // 192.3: first-party include located via env (default in sdk-env.just),
     // not a build.rs walk-up — used in the platform-gated C-build paths below.
-    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_CFFI_INCLUDE");
+    //
+    // issue 0491 — watched by CONTENT, never fingerprinted as an env STRING:
+    // cargo compares that value textually, and an example leaf spells it
+    // `relative = true` (one spelling per leaf) while `just` exports it
+    // absolute, so rows sharing one `--target-dir` re-ran this script forever.
+    nros_build_paths::watch_path(&nros_build_paths::nros_platform_cffi_include());
 
     // Phase 136.1 — parse the canonical platform manifest. Resolve
     // every declared platform so a typo or broken `inherits` chain
@@ -196,14 +201,15 @@ pub fn run() {
     // manifests; also a documented out-of-tree override hook for
     // downstream boards. Empty value falls through to the canonical
     // in-tree manifest.
-    println!("cargo:rerun-if-env-changed=ZPICO_PLATFORMS_TOML");
-    println!("cargo:rerun-if-env-changed=NROS_PLATFORMS_DIR");
     // phase-290 (RFC-0049) — the central `zenoh_platforms.toml` is retired.
     // Each platform package directory carries `nros-platform.toml` with the
     // `[build.zenoh]` block (keys verbatim) + `[capabilities]` + `[knobs]`.
     // Precedence: `ZPICO_PLATFORMS_TOML` (legacy single-file override — the
     // drift-gate test + out-of-tree hook) > `NROS_PLATFORMS_DIR` (tree
     // override) > the in-tree `config/` default.
+    // Both selectors are PATHS, so neither is fingerprinted as a string
+    // (issue 0491) — the manifest FILES they select are watched by
+    // `rerun-if-changed` in both arms of the match below.
     let legacy_file = env::var_os("ZPICO_PLATFORMS_TOML")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from);
@@ -409,7 +415,8 @@ pub fn run() {
     // exported by the build orchestration when a board is in play). In
     // legacy single-file mode (`ZPICO_PLATFORMS_TOML`) there is no knob
     // layer — env-only, byte-identical to pre-290.
-    println!("cargo:rerun-if-env-changed=NROS_BOARD_TOML");
+    // `NROS_BOARD_TOML` is a PATH (issue 0491): the file it names is watched
+    // with `rerun-if-changed` where it is loaded, a few lines below.
     println!("cargo:rerun-if-env-changed=ZPICO_TX_BATCH");
     println!("cargo:rerun-if-env-changed=ZPICO_TX_SPLIT_LOCK");
     println!("cargo:rerun-if-env-changed=ZPICO_TX_BATCH_FLUSH_MS");
@@ -835,11 +842,11 @@ pub fn run() {
     println!("cargo:rerun-if-changed=src/ffi.rs");
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=cbindgen.toml");
-    println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
+    // issue 0491 — `FREERTOS_DIR` / `LWIP_DIR` / `FREERTOS_CONFIG_DIR` /
+    // `NUTTX_DIR` name DIRECTORIES and are not fingerprinted as strings; the
+    // headers this shim compiles against are declared per file above. The PORT
+    // is a name, so it stays.
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
-    println!("cargo:rerun-if-env-changed=LWIP_DIR");
-    println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
-    println!("cargo:rerun-if-env-changed=NUTTX_DIR");
     println!("cargo:rerun-if-changed=c/size_probe.c");
 
     // Phase 160 — probe moved to before alias-TU compile (see
@@ -1185,11 +1192,14 @@ fn use_system_zenoh_pico() -> PathBuf {
              ZENOH_PICO_DIR=/path/to/zenoh-pico-install cargo build --features system-zenohpico"
         );
     });
-    println!("cargo:rerun-if-env-changed=ZENOH_PICO_DIR");
-
+    // `ZENOH_PICO_DIR` is a PATH, so its SPELLING is not fingerprinted
+    // (issue 0491); the two files the prefix is actually consumed as are
+    // watched instead.
     let dir = PathBuf::from(&zenoh_pico_dir);
     let lib_path = dir.join("lib").join("libzenohpico.a");
     let header_path = dir.join("include").join("zenoh-pico.h");
+    println!("cargo:rerun-if-changed={}", lib_path.display());
+    println!("cargo:rerun-if-changed={}", header_path.display());
     if !lib_path.exists() {
         panic!(
             "ZENOH_PICO_DIR={}: expected static library at {}\n\
@@ -1465,6 +1475,12 @@ fn build_zenoh_pico_unified(
                 plat.name
             )
         });
+        // issue 0491 — these paths interpolate `{env:…}` PATH variables, whose
+        // CONTENT is the real build input. Watched here; the variables'
+        // spellings are not fingerprinted (a leaf spells one directory once
+        // per leaf, `just` spells it absolute, and the two flipped every
+        // ThreadX row's zpico-sys build script on every probe).
+        nros_build_paths::watch_path(std::path::Path::new(&path));
         build.include(&path);
     }
     for cond in &plat.include_paths_conditional {
@@ -1477,6 +1493,8 @@ fn build_zenoh_pico_unified(
                 plat.name, cond.path
             )
         });
+        // issue 0491 — see the unconditional loop above.
+        nros_build_paths::watch_path(std::path::Path::new(&path));
         build.include(&path);
     }
 

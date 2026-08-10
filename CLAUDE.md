@@ -356,6 +356,17 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   a plain `target/` is not, so it is gated: `check-example-leaf-target-dirs`. A PLATFORM's fixture
   profile is `nros_cargo_platform_profile` — the staleness probe must use it too, or it rebuilds
   into a second profile dir and reports permanent false-STALE. Residue → issue 0488.
+- **Never `cargo:rerun-if-env-changed` on a PATH variable — watch the CONTENT (issue 0491)** —
+  cargo compares an env value as TEXT, and one directory has three spellings here: a leaf
+  `.cargo/config.toml`'s `relative = true` (one per leaf), `just/sdk-env.just`'s absolute
+  export, and unset. Per-leaf `target/` dirs hid it; a shared phase-340 group put them in one
+  fingerprint namespace, so every sibling — and every build-vs-probe pair — rebuilt the board +
+  zpico chain forever (6 units per probe on freertos AND threadx). Resolve through
+  `nros_build_paths::{env_or_repo_path,env_path,watch_path}`; a `rerun-if-changed` path is
+  safe per-leaf (cargo reads it back from the STORED output, never re-resolved). The rule has
+  TWO producers — Rust literals AND the `rerun_if_env_changed` lists in
+  `config/*/nros-platform.toml` — and fixing one leaves the other running. Gate:
+  `check-path-env-fingerprints` (both producers, self-testing).
 - **cmake `include()` inside a FUNCTION drops the file's normal vars when the frame pops** —
   capture module dirs `CACHE INTERNAL` (the `_NROS_ENTRY_DIR` pattern); a plain
   `set(_X_DIR ${CMAKE_CURRENT_LIST_DIR})` broke every freertos ws member's `configure_file`

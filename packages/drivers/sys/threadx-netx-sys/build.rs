@@ -11,10 +11,14 @@ use std::{env, path::PathBuf};
 
 fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rerun-if-env-changed=THREADX_DIR");
-    println!("cargo:rerun-if-env-changed=THREADX_CONFIG_DIR");
-    println!("cargo:rerun-if-env-changed=NETX_DIR");
-    println!("cargo:rerun-if-env-changed=NETX_CONFIG_DIR");
+    // issue 0491 — the four variables below name DIRECTORIES, and cargo
+    // compares an env value as TEXT: an example leaf spells them
+    // `relative = true` (once per leaf), `just` exports them absolute, a bare
+    // build leaves them unset. Fingerprinting the spelling made every ThreadX
+    // row sharing one `--target-dir` re-run this bindgen and cascade upward.
+    // The config dirs are watched by CONTENT below (they hold the `tx_user.h`
+    // / `nx_user.h` this generates from); the two vendored kernels are
+    // read-only sources reached through `wrapper.h`.
 
     let threadx_dir = match env::var("THREADX_DIR") {
         Ok(d) => d,
@@ -39,6 +43,13 @@ fn main() {
     };
     let netx_config_dir =
         env::var("NETX_CONFIG_DIR").unwrap_or_else(|_| threadx_config_dir.clone());
+    // The CONTENT watch that replaces the four env-string fingerprints
+    // (issue 0491). Printed with the spelling this build resolved: cargo reads
+    // the path list back from the STORED build-script output, never from a
+    // second resolution, so a per-leaf spelling here costs nothing — measured,
+    // unlike the env value, which cargo re-reads and compares on every check.
+    println!("cargo:rerun-if-changed={threadx_config_dir}");
+    println!("cargo:rerun-if-changed={netx_config_dir}");
 
     let threadx = PathBuf::from(&threadx_dir);
     let netx = PathBuf::from(&netx_dir);

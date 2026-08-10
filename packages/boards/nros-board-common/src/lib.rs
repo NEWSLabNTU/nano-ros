@@ -54,6 +54,11 @@ pub use freertos_config::FreertosScheduling;
 
 #[cfg(feature = "build-helpers")]
 pub mod arch_flags;
+/// issue 0491 — re-export, so a board build script that already build-deps this
+/// crate reaches the ONE path-input helper (`env_or_repo_path` / `watch_path`)
+/// without a new dependency edge in every leaf's `Cargo.lock`.
+#[cfg(feature = "build-helpers")]
+pub use nros_build_paths;
 /// phase-337 W5.d — shared `build.rs` helpers for the FreeRTOS + lwIP family.
 #[cfg(feature = "build-helpers")]
 pub mod freertos_build;

@@ -35,14 +35,17 @@
 
 use std::{env, path::PathBuf};
 
+// issue 0491 — the ONE path-input helper, reached through the build-helper
+// crate this script already deps.
+use nros_board_common::nros_build_paths;
+
 fn main() {
-    let Some(threadx_dir) = env::var_os("THREADX_DIR").map(PathBuf::from) else {
+    let Some(threadx_dir) = nros_build_paths::env_path("THREADX_DIR") else {
         println!(
             "cargo:warning=nros-board-threadx: THREADX_DIR not set; \
              skipping kernel + platform-threadx compile. Set it in \
              your overlay/example's `.cargo/config.toml [env]` or via direnv."
         );
-        println!("cargo:rerun-if-env-changed=THREADX_DIR");
         return;
     };
 
@@ -88,15 +91,14 @@ fn main() {
             return;
         }
     }
-    let config_dir = env::var_os("THREADX_CONFIG_DIR")
-        .map(PathBuf::from)
+    let config_dir = nros_build_paths::env_path("THREADX_CONFIG_DIR")
         .expect("nros-board-threadx: THREADX_CONFIG_DIR must be set when THREADX_DIR is");
     let extra_kernel_includes: Vec<PathBuf> = env::var("THREADX_EXTRA_INCLUDES")
         .ok()
         .map(|v| {
             v.split(':')
                 .filter(|s| !s.is_empty())
-                .map(PathBuf::from)
+                .map(|s| nros_build_paths::canonical(std::path::Path::new(s)))
                 .collect()
         })
         .unwrap_or_default();
@@ -146,15 +148,14 @@ fn main() {
     // Needs threadx + netx includes. NETX_DIR is required because
     // `net.c` includes `nxd_bsd.h`. Bare-metal overlays without
     // NetX-Duo per-port dir simply leave `NETX_EXTRA_INCLUDES` empty.
-    let netx_dir = env::var_os("NETX_DIR")
-        .map(PathBuf::from)
+    let netx_dir = nros_build_paths::env_path("NETX_DIR")
         .expect("nros-board-threadx: NETX_DIR must be set (platform-threadx uses nx_bsd_*)");
     let extra_netx_includes: Vec<PathBuf> = env::var("NETX_EXTRA_INCLUDES")
         .ok()
         .map(|v| {
             v.split(':')
                 .filter(|s| !s.is_empty())
-                .map(PathBuf::from)
+                .map(|s| nros_build_paths::canonical(std::path::Path::new(s)))
                 .collect()
         })
         .unwrap_or_default();
@@ -193,12 +194,25 @@ fn main() {
 
     // Rerun triggers
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed=THREADX_DIR");
+    // The PORT is a NAME (`risc-v64/gnu`) — a different value really is a
+    // different compile, so it stays fingerprinted.
     println!("cargo:rerun-if-env-changed=THREADX_PORT");
-    println!("cargo:rerun-if-env-changed=THREADX_CONFIG_DIR");
-    println!("cargo:rerun-if-env-changed=THREADX_EXTRA_INCLUDES");
-    println!("cargo:rerun-if-env-changed=NETX_DIR");
-    println!("cargo:rerun-if-env-changed=NETX_EXTRA_INCLUDES");
+    // issue 0491 — every other variable here names a DIRECTORY, and a
+    // directory has one spelling per example leaf (`relative = true` in the
+    // leaf's `.cargo/config.toml`, resolved against THAT leaf), another from
+    // `just`, and none at all from a bare build. Cargo compares the value as
+    // text, so fingerprinting it made the six ThreadX rows sharing one
+    // `--target-dir` invalidate each other forever. The overlay `config/` dirs
+    // (`tx_user.h`, `nx_user.h`) are watched by CONTENT instead; the two
+    // vendored kernels are read-only sources whose compiled files are declared
+    // by `threadx_sources`.
+    nros_build_paths::watch_path(&config_dir);
+    for p in extra_kernel_includes
+        .iter()
+        .chain(extra_netx_includes.iter())
+    {
+        nros_build_paths::watch_path(p);
+    }
 }
 
 /// phase-337 W4.a — the in-tree arch-port override for a `THREADX_PORT`

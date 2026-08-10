@@ -64,7 +64,11 @@ include_paths = [
   # `zpico.c` includes it unconditionally.
   "{nros}/../../platform/nros-platform-api/include",
 ]
-rerun_if_env_changed = ["FREERTOS_DIR", "FREERTOS_PORT", "LWIP_DIR", "FREERTOS_CONFIG_DIR"]
+# issue 0491 — VALUE knobs only. `FREERTOS_PORT` is a port NAME and stays; the
+# three PATH variables were dropped, because cargo compares an env value as
+# TEXT and each leaf spells the same directory differently (`relative = true`).
+# The include paths they feed are watched by CONTENT in `runner.rs`.
+rerun_if_env_changed = ["FREERTOS_PORT"]
 
 
 [arch.cortex-m3]

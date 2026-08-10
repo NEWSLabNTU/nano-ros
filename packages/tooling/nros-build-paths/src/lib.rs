@@ -51,15 +51,106 @@ pub fn try_repo_root() -> Option<PathBuf> {
     }
 }
 
-/// Resolve an env-overridable path: if `env_name` is set, use it
-/// verbatim; otherwise return `repo_root().join(rel)`. Also emits a
-/// `cargo:rerun-if-env-changed=<env_name>` directive.
+/// Resolve an env-overridable path: if `env_name` is set, use it,
+/// otherwise return `repo_root().join(rel)`. The returned path is
+/// CANONICAL (see [`canonical`]).
+///
+/// Emits NO rerun directive. `rerun-if-env-changed` on a path variable is
+/// forbidden (issue 0491 — read [`canonical`] for why); what the build script
+/// depends on is the CONTENT it reads, so the caller declares that with
+/// [`watch_path`] (a whole first-party dir) or a per-file
+/// `cargo:rerun-if-changed`. Watching is the caller's call because the paths
+/// behind these variables differ in kind: `packages/platform/…/src` is a small
+/// first-party tree that should be watched wholesale, while `NUTTX_DIR` names
+/// a vendored SDK that its own build writes INTO — watching that would leave
+/// every dependent build script permanently dirty.
 pub fn env_or_repo_path(env_name: &str, rel: &str) -> PathBuf {
-    println!("cargo:rerun-if-env-changed={env_name}");
-    match std::env::var(env_name) {
+    let raw = match std::env::var(env_name) {
         Ok(v) if !v.is_empty() => PathBuf::from(v),
         _ => repo_root().join(rel),
+    };
+    canonical(&raw)
+}
+
+/// Canonicalise a path-valued build input. Emits no directive.
+///
+/// **Path-valued build inputs are fingerprinted by their CONTENT, never by
+/// their env spelling — `cargo:rerun-if-env-changed` on one is a bug**
+/// (issue 0491). Gate: `scripts/check-path-env-fingerprints.py`.
+///
+/// Cargo compares an env var's value as TEXT. One directory has many
+/// spellings, and this repo produces at least three for the same first-party
+/// source dir:
+///
+/// * `just` exports it absolute (`just/sdk-env.just`, rooted at
+///   `justfile_directory()`);
+/// * a leaf `.cargo/config.toml` writes `{ value = "../../../../packages/…",
+///   relative = true }`, which cargo resolves against THAT LEAF —
+///   `…/rust/talker/../../../../packages/…` vs `…/rust/listener/../…`;
+/// * a bare `cargo build` with neither leaves it unset.
+///
+/// While every leaf had its own `target/` those spellings never met. Sharing
+/// one `--target-dir` per identity group (phase-340) put them in one
+/// fingerprint namespace, and each sibling then re-ran the board / zpico build
+/// scripts and cascaded `UnitDependencyInfoChanged` up to the leaf bin — six
+/// FreeRTOS rows that could never all be fresh. Canonicalising cannot fix it
+/// from this side: the string cargo compares is the one the CONFIG produced,
+/// not the one the build script resolved.
+///
+/// Watching the directory says what the build script actually depends on — its
+/// CONTENTS — and says it identically from every leaf.
+///
+/// The cost, stated plainly: cargo no longer notices that the variable now
+/// names a DIFFERENT directory. Nothing re-runs the script, so it keeps
+/// watching the old path (contents of the old dir still trigger correctly).
+/// In-tree that cannot happen — the paths are fixed by the checkout. An
+/// out-of-tree consumer who repoints one of these vars at another tree must
+/// `cargo clean` (or touch a source) for that build dir, the same as changing
+/// any other build input cargo cannot see.
+pub fn canonical(path: &std::path::Path) -> PathBuf {
+    // A path that does not exist yet (an SDK not provisioned, an optional
+    // overlay dir) keeps its spelling — the caller's own diagnostic is the one
+    // that should fire, not a canonicalisation error.
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// [`canonical`] plus `cargo:rerun-if-changed=<canonical path>` — the rerun
+/// trigger a path-valued build input is allowed to have.
+///
+/// Use it for a first-party tree the build script READS
+/// (`packages/platform/…/src`, an `include/` dir, a board `config/`). Do NOT
+/// point it at a vendored SDK that its own build writes into, or at a build
+/// output dir: cargo takes the newest mtime under the path, so watching such a
+/// tree leaves every dependent script dirty after each unrelated build of it.
+pub fn watch_path(path: &std::path::Path) -> PathBuf {
+    let canonical = canonical(path);
+    // A trigger on a path that does NOT exist makes the unit permanently dirty
+    // (issue 0490 + `scripts/check-build-rs-rerun-paths.py`), which is the same
+    // never-fresh outcome this function exists to remove. An absent path is
+    // therefore skipped, not declared.
+    if canonical.exists() {
+        println!("cargo:rerun-if-changed={}", canonical.display());
     }
+    canonical
+}
+
+/// An env var that names a path, [`canonical`]ised — for the vars with no
+/// in-repo default (`THREADX_DIR`, a board's `*_CONFIG_DIR`, …). Emits no
+/// directive; `None` when unset or empty, so the caller keeps its own
+/// diagnostic.
+pub fn env_path(env_name: &str) -> Option<PathBuf> {
+    match std::env::var(env_name) {
+        Ok(v) if !v.is_empty() => Some(canonical(std::path::Path::new(&v))),
+        _ => None,
+    }
+}
+
+/// [`env_path`] plus the content watch — use it when the variable names a
+/// FIRST-PARTY tree (see [`watch_path`] for which paths must not be watched).
+pub fn env_path_watched(env_name: &str) -> Option<PathBuf> {
+    let p = env_path(env_name)?;
+    println!("cargo:rerun-if-changed={}", p.display());
+    Some(p)
 }
 
 // Named resolvers for every var in `just/sdk-env.just`. Use these

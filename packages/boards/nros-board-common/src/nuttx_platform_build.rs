@@ -86,7 +86,12 @@ pub fn run_platform() {
     println!("cargo:rustc-link-search=native={out_dir}");
     println!("cargo:rustc-link-lib=static:-bundle,+whole-archive=nros_platform_nuttx");
     println!("cargo:rerun-if-changed={}", platform_src.display());
-    println!("cargo:rerun-if-env-changed=NUTTX_DIR");
+    // issue 0491 — `NUTTX_DIR` names a DIRECTORY, and cargo compares an env
+    // value as TEXT, so fingerprinting the spelling lets two consumers that
+    // spell one directory differently invalidate each other inside a shared
+    // `--target-dir`. Not replaced by a content watch: NuttX is BUILT IN
+    // PLACE, so watching its tree would leave this permanently dirty after
+    // every kernel build. The specific inputs are declared per file.
     println!("cargo:rerun-if-env-changed=NUTTX_CROSS");
     println!("cargo:rerun-if-env-changed=NUTTX_PLATFORM_CFLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_INCLUDES");
@@ -160,7 +165,12 @@ pub fn compile_run_tiers_seam(seam_src: &std::path::Path) {
     println!("cargo:rustc-link-search=native={out_dir}");
     println!("cargo:rustc-link-lib=static:-bundle,+whole-archive=nros_nuttx_run_tiers");
     println!("cargo:rerun-if-changed={}", seam_src.display());
-    println!("cargo:rerun-if-env-changed=NUTTX_DIR");
+    // issue 0491 — `NUTTX_DIR` names a DIRECTORY, and cargo compares an env
+    // value as TEXT, so fingerprinting the spelling lets two consumers that
+    // spell one directory differently invalidate each other inside a shared
+    // `--target-dir`. Not replaced by a content watch: NuttX is BUILT IN
+    // PLACE, so watching its tree would leave this permanently dirty after
+    // every kernel build. The specific inputs are declared per file.
     println!("cargo:rerun-if-env-changed=NUTTX_CROSS");
     println!("cargo:rerun-if-env-changed=NUTTX_PLATFORM_CFLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_INCLUDES");

@@ -44,14 +44,20 @@ fn snapshot_arch(target_arch: &str) -> Option<&'static str> {
 /// 1. `$NUTTX_EXPORT_DIR` — explicit override (a caller that already knows).
 /// 2. `$NUTTX_DIR/nros-nuttx-export-<arch>` for this target's arch.
 ///
-/// Emits the `rerun-if-env-changed` lines its own inputs need. Callers add
-/// `rerun-if-changed` for the specific paths they consume.
+/// Emits the `rerun-if-changed` its own inputs need. Callers add more for the
+/// specific paths they consume.
+///
+/// issue 0491 — `NUTTX_EXPORT_DIR` is a PATH, so it is watched by CONTENT and
+/// never fingerprinted as a string: cargo compares an env value textually, and
+/// the same directory has one spelling per example leaf, another from `just`,
+/// and none from a bare build, so rows sharing one `--target-dir` re-ran this
+/// forever.
 pub fn snapshot_root(nuttx_dir: &Path) -> Option<PathBuf> {
-    println!("cargo:rerun-if-env-changed=NUTTX_EXPORT_DIR");
-    if let Ok(explicit) = std::env::var("NUTTX_EXPORT_DIR") {
-        let p = PathBuf::from(explicit);
-        if p.join("libs").is_dir() {
-            return Some(p);
+    if let Some(explicit) = nros_build_paths::env_path("NUTTX_EXPORT_DIR") {
+        let libs = explicit.join("libs");
+        if libs.is_dir() {
+            println!("cargo:rerun-if-changed={}", libs.display());
+            return Some(explicit);
         }
     }
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").ok()?;

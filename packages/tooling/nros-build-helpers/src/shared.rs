@@ -99,8 +99,14 @@ pub fn apply_baremetal_libc(build: &mut cc::Build) {
     if arch != "riscv64" || os != "none" {
         return;
     }
-    println!("cargo:rerun-if-env-changed=NROS_PICOLIBC_SYSROOT");
+    // issue 0491 — `NROS_PICOLIBC_SYSROOT` names a DIRECTORY, so it is watched
+    // by CONTENT rather than fingerprinted as a string: cargo compares an env
+    // value textually, and one directory reaches this script with a different
+    // spelling from `just`, from a leaf `.cargo/config.toml [env]`, and unset.
     if let Some(include) = picolibc_include() {
+        if std::path::Path::new(&include).is_dir() {
+            println!("cargo:rerun-if-changed={include}");
+        }
         build.flag("-isystem").flag(&include);
     }
 }

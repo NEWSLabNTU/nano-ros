@@ -65,9 +65,14 @@ include_paths = [
   "{env:NETX_DIR}/addons/BSD",
   "{env:NETX_CONFIG_DIR}",
 ]
+# issue 0491 — VALUE knobs only. The four PATH variables this platform
+# interpolates above (`THREADX_DIR`, `THREADX_CONFIG_DIR`, `NETX_DIR`,
+# `NETX_CONFIG_DIR`) must NOT be listed: cargo compares an env value as TEXT,
+# and each example leaf spells the same directory differently
+# (`relative = true`, resolved against that leaf) from what `just` exports, so
+# every ThreadX row sharing one `--target-dir` re-ran zpico-sys's build script
+# forever. The include paths are watched by CONTENT in `runner.rs` instead.
 rerun_if_env_changed = [
-  "THREADX_DIR", "THREADX_CONFIG_DIR",
-  "NETX_DIR", "NETX_CONFIG_DIR",
   "NROS_ZPICO_LOG_TO_UART", "NROS_ZENOH_DEBUG",
 ]
 [[build.zenoh.include_paths_conditional]]

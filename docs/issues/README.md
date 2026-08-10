@@ -189,14 +189,18 @@ Found by reading `CARGO_LOG=cargo::core::compiler::fingerprint=info` when a fres
 stale. Fixed + gated (`check-build-rs-rerun-paths`, self-testing, swept all 57 build scripts — one hit).
 See `archived/0490-*`. (2026-08-10)
 
-**#491** (build, open 2026-08-10, phase-340) — two rows in the SAME shared cargo group cannot both be
-fresh. A leaf's `.cargo/config.toml` `[env] … relative = true` produces a per-leaf STRING
-(`…/talker/../../../../packages/platform/…` vs `…/listener/../../../../…`) for one directory, and cargo
-compares `rerun-if-env-changed` values textually — so each sibling re-runs the board + zpico build scripts
-and everything above them. Per-leaf `target/` dirs hid it; sharing the dir is what surfaced it. Present
-since B3 wave 2, not from P2 (a row IS stable in isolation). Costs the group's CPU win, not its disk win.
-Fix: watch the FILES (`rerun-if-changed` on the canonicalized dir), not the env string. See `0491-*`.
-(2026-08-10)
+**#491** (build, resolved 2026-08-10, phase-340) — two rows in the SAME shared cargo group could not both
+be fresh. Cargo compares `rerun-if-env-changed` values TEXTUALLY, and one directory has three spellings
+here: a leaf's `[env] … relative = true` (per leaf: `…/talker/../../../…` vs `…/listener/../../../…`),
+`just/sdk-env.just`'s absolute export, and unset — so each sibling AND each build-vs-probe pair re-ran the
+board + zpico build scripts and everything above them. Per-leaf `target/` dirs hid it; sharing the dir
+surfaced it. Fixed by watching the CONTENT (`rerun-if-changed` on the canonicalised dir) and never the env
+string, in BOTH producers — the Rust literals and the `rerun_if_env_changed` lists in
+`config/*/nros-platform.toml` (fixing only the first left every ThreadX row still rebuilding 6 units).
+Gated: `check-path-env-fingerprints`. Measured 6 → 0 units per no-op probe on freertos and
+threadx-riscv64; 3.95 s → 0.12 s per probe in a controlled A/B. Also removed a false-FRESH: the one
+FreeRTOS row with no `[env]` block made the board build script PANIC outside `just`, which
+`rust-fixture-stale.sh` (stderr to `/dev/null`) read as "not stale". See `0491-*`. (2026-08-10)
 
 **#488** (build, open 2026-08-10, phase-340 P2) — the second-build-path sweep's RESIDUE. P2 closed the
 population that blocks item 7 / P4 (a `cargo build` whose cwd is an `examples/` leaf and which writes the
