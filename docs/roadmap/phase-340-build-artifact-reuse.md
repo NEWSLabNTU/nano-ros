@@ -420,13 +420,34 @@ gated; the residue (per-leaf dirs under `packages/testing/**`, and authored
 `target-<variant>/` dirs on migrated platforms) is issue 0488. P4 is unblocked
 by P2; it still waits on P3.
 
-**P3 — relocate the cmake artifacts (the mass; its own phase).** ~240 dirs under
-`build-<rmw>/` and `build-workspace-<kind>[-<platform>]/` move to RFC-0070's
-sketched `$NROS_BUILD_ROOT/cmake/<kind>/<coordinate>/`. Different mechanism from
-the cargo groups — `CMAKE_BINARY_DIR`, not `--target-dir` — so it needs a phase
-doc and the same discipline: measure first, migrate in SMALL waves (transit is
-additive; four platforms at once exhausted a 916 GB volume), acceptance is a
-real rebuild plus fixture-consuming tests.
+**P3 — relocate the cmake artifacts. SPLIT OUT to
+[phase-344](phase-344-cmake-cache-relocation.md); MEASURED 2026-08-10, and this
+paragraph is the FIFTH documented premise in this phase to fail under
+measurement.** It read "~240 dirs … the mass … different mechanism from the
+cargo groups — `CMAKE_BINARY_DIR`, not `--target-dir`". Re-derived:
+
+* **151 dirs, not ~240.** The `build` column (107) is not cmake — 93 of it is
+  `nros sync`'s `<leaf>/build/{nros,nros-metadata}/` model+metadata output
+  (phase-330's subject, `model_location`'s to move), 12 is codegen output, and
+  **one is `scripts/build`, a source directory the name glob matched**. The
+  suffixed families (`build-zenoh` 76, `build-cyclonedds` 36, `build-xrce` 12,
+  `build-workspace-fixtures*` 26) reproduce exactly.
+* **It is not a different mechanism; it is 83.2 % the SAME one.** Of the
+  182.3 GiB in those dirs, **151.7 GiB is `<CMAKE_BINARY_DIR>/cargo/` —
+  corrosion's cargo target dir**. Only 30.6 GiB is cmake/ninja output.
+* **And relocation cannot cash it.** `CMakeCache.txt` pins
+  `CMAKE_HOME_DIRECTORY`, so cmake binary dirs cannot merge across leaves;
+  corrosion v0.6.1 derives its target dir from `CMAKE_BINARY_DIR` with **no
+  override** (and passes `--target-dir` on the command line, beating both
+  `CARGO_TARGET_DIR` and `build.target-dir`). So moving these dirs frees
+  **zero bytes**. The 50.1:1 duplication inside them — the largest measured
+  anywhere in this tree — is a separate item with its own hazard (132 copies of
+  `libnros_c.a` in **15 distinct sizes**, i.e. W1's silent-overwrite refutation).
+
+P3 therefore proceeds as an R1/R2/R3 **compliance** move that unblocks P4, and
+must not be budgeted as a disk phase. Waves, disk budgets (69 G free vs 88.1 GiB
+for `build-zenoh` alone) and the 7-dir attribution gap that must close first are
+in phase-344.
 
 **P4 — item 7 final.** Delete the `.gitignore` block once P2 and P3 land. It is
 already written to say it should be deleted rather than extended.
@@ -442,6 +463,10 @@ documented premises that way — F3's "net loss", the umbrella workspace, the
 platform-grained key, and the "feature-invariant host graph" framing. The
 240-dir cmake figure above is itself one `find`; re-derive it before designing
 against it.
+
+**It was re-derived, and it was wrong — that is now FIVE.** See P3 above and
+[phase-344](phase-344-cmake-cache-relocation.md) §1. The instruction worked; the
+figure it warned about did not survive one `CMakeCache.txt` test.
 
 #### P2 — what the second path actually was (2026-08-10, LANDED)
 
