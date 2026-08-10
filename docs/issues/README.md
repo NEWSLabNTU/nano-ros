@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#495** (testing, open 2026-08-10) — `rebuilds_on_model_touch` fails: cargo short-circuits in 0.04 s
+after the resolved model is touched. The rebuild edge EXISTS
+(`nros-build/src/lib.rs:242` emits `rerun-if-changed=<model_path>`) — a first pass grepping only
+`**/build.rs` missed it because the emitter is in a library those scripts call. Probable but UNPROVEN
+trigger: issue 0490 removed a permanently-dirty `rerun-if-changed` that had been rebuilding every chain, so
+this test may have been passing for the wrong reason and 0490 unmasked it. Narrowed to two candidates
+needing different fixes: the test touches a different path than the script registered (test is wrong), or
+an mtime-only rewrite does not fire the edge (something upstream is wrong, and it would matter well beyond
+this test).
+
 **#493** — TWO cargo workspace ROOTS share one corrosion target dir, so a mixed workspace's umbrella staticlib
 bundles the nros stack TWICE and the link dies on duplicate `#[no_mangle]` symbols. `libnros_ws_runtime.a` holds
 two `-C metadata` identities of TEN crates; the two debuginfo paths name the cause —
