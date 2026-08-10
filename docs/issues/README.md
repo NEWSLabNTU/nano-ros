@@ -51,6 +51,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#511** — `rust-rtos-link-check` overflows NuttX ROM by 538800 bytes on `examples/qemu-arm-nuttx/rust/talker`
+(`nros-relwithdebinfo`, armv7a), so `ci-matrix` cannot go green. NOT phase-346 W1 (reverting the proc-macro
+change reproduces the bit-identical figure) and NOT stale state (0477's remedy plus a full `rm -rf` of the
+leaf `target/` both reproduce it). A figure identical across a from-scratch rebuild is deterministic, so the
+cause is upstream of the build cache. See `0511-*`. (2026-08-11)
+
 **#512** — `check-readiness-marker-literals` is blind to the WORST case. It flags a `wait_for_output_pattern`
 literal that MATCHES a known `output::` constant, or that ambiguously prefixes two — but a literal matching
 **nothing** is skipped, and that is the only case guaranteed to fail (it can never match, so the wait burns its

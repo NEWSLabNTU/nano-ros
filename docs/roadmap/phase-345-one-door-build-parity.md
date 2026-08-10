@@ -1,8 +1,10 @@
 # Phase 345 — One door: the build behaves the same however you enter it
 
-**Status (2026-08-10). COMPLETE: W1, W3 and W4 LANDED; W2 RETRACTED (its cause
-was fixed elsewhere — see W1's section). Archive once a tier-2 sweep confirms
-the activation change across the matrix. The measurements below are done
+**Status (2026-08-11). COMPLETE: W1, W3 and W4 LANDED; W2 RETRACTED (its cause
+was fixed elsewhere — see W1's section). The tier-2 sweep was RUN and is
+reported under "Tier-2 sweep" below: it does not go green, for a reason that is
+not this phase's — issue 0511, a NuttX ROM overflow reproduced with this phase's
+changes reverted. The measurements below are done
 and reproduce on this tree.** This phase is not a build-cache phase and moves no
 path, so it never collided with [phase-340](phase-340-build-artifact-reuse.md)
 item 5 / P4. The one item that would have — W2, which proposed editing leaf
@@ -558,6 +560,33 @@ phase-340 item 5's shared-`--target-dir` grouping reads. Land W2 **before** item
 5 starts or **after** it lands, never during — two conventions in flight over one
 file is the #393 failure mode. W1, W3 and W4 touch nothing item 5 touches and
 may run in parallel with it.
+
+## 4a. Tier-2 sweep (2026-08-11)
+
+Run in full, in the documented order, after the phase's own changes landed:
+`just setup-cli` → `just setup-launch-resolve` → `just build-test-fixtures
+lane=tier2` → `just ci-matrix`. What it took to get there is itself the result.
+
+**Four blockers, none of them this phase's code, each fixed or filed:**
+
+| blocker | what it was | disposition |
+| --- | --- | --- |
+| stale in-tree CLI | any rebase re-arms the source stamp (issue 0466) | `just setup-cli` — and the preconditions recipe named it before the lane wasted time |
+| `nros-launch-resolve` older than the CLI, `play_launch` submodule uninitialised | fixtures died on issue 0409's guard: an old resolver writes a well-formed model with every declared `params` silently absent | init the submodule non-recursively + `just setup-launch-resolve`. I had chosen to skip this on the "it's only a warning" reading; the gate was right and I was wrong |
+| 12 stale cmake caches | `NROS_NUTTX_DEFCONFIG` / `NUTTX_BOARD_TOOLCHAIN_FILE` cached a `packages/boards/nros-board-nuttx-qemu-arm/` path from before that board was renamed. A cmake `CACHE FILEPATH` is never re-derived, so every one of those build dirs was permanently broken | deleted the 12 `build-zenoh` dirs |
+| `check-cargo-target-spelling` arm 4 | hands cmake a PATH of only `$(dirname cmake)` to hide `rustc`; a pip-installed cmake lives in a directory with no `make`, so configure died at `CMAKE_MAKE_PROGRAM is not set` — the gate itself reported "failed for the wrong reason" | fixed here: the arm now also puts a build program on that PATH, still rustc-free |
+| cyclonedds submodule 5 commits behind the superproject pin | the new `addrset_striped_lock_concurrency` test (issue 0496) deadlocked — against MY checkout, which lacked the fix | `git submodule update --init third-party/dds/cyclonedds`; the lane is green at the pinned commit |
+
+**Where it stands:** everything through `check-rmw-cyclonedds` passes. The sweep
+stops at `rust-rtos-link-check` with a NuttX ROM overflow of 538800 bytes, filed
+as **issue 0511**. That is not this phase: reverting phase-346 W1's proc-macro
+change and rebuilding from a cleaned leaf reproduces the **bit-identical**
+figure, and 0477's stale-artifact remedy does not move it.
+
+So the archival condition ("a tier-2 sweep confirms the activation change across
+the matrix") is **partially met**: the activation, cbindgen and toolchain work
+all pass their lanes, and the one red is an unrelated, filed blocker. Archive
+when 0511 clears and the sweep can run end to end.
 
 ## 5. Tier
 

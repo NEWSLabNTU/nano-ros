@@ -166,12 +166,32 @@ configure "corrosion cache copy is read when the normal var is gone" expect-pass
 #     Reached by handing cmake a PATH that holds cmake and not rustc. Skipped
 #     rather than faked when the two live in the same directory.
 cmake_dir="$(dirname "$(command -v cmake)")"
+# The PATH handed to cmake must hide `rustc` and still let cmake pick a
+# generator: with no `make`/`ninja` on it, configure dies at
+# "CMAKE_MAKE_PROGRAM is not set" BEFORE reaching the resolver, and the arm
+# fails for the wrong reason. That is not hypothetical — a pip-installed cmake
+# lives in its own `.../site-packages/cmake/data/bin`, which carries cmake and
+# nothing else, so this arm broke `ci-matrix` on such a host while the rule it
+# checks was perfectly fine.
+make_dir=""
+for prog in make gmake ninja; do
+    if p="$(command -v "$prog" 2>/dev/null)"; then
+        d="$(dirname "$p")"
+        # Only usable if it does not smuggle rustc back in.
+        if [ ! -x "$d/rustc" ]; then
+            make_dir="$d"
+            break
+        fi
+    fi
+done
 if [ -x "$cmake_dir/rustc" ]; then
     note "skip — cmake and rustc share $cmake_dir, cannot hide rustc"
+elif [ -z "$make_dir" ]; then
+    note "skip — no build program on a rustc-free PATH, cannot reach the resolver"
 else
     configure "no triple available is fatal, not implicit" expect-fail \
         "cannot determine the cargo target triple" \
-        "$cmake_dir"
+        "$cmake_dir:$make_dir"
 fi
 
 # 5 — the retired shape is rejected at the shared helper.
