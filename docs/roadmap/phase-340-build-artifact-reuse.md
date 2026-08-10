@@ -575,7 +575,7 @@ beside those rlibs spell the same source two ways:
 nano-ros_0b88c/…/deps/nros_serdes-a41154198c4836e2.d:
     packages/core/nros-serdes/src/lib.rs
 nros_ws_runtime_14eac/…/deps/nros_serdes-4e5cd29b6c626931.d:
-    /mnt/evo/aeon/nano-ros/packages/core/nros-serdes/src/lib.rs
+    <abs-repo-root>/packages/core/nros-serdes/src/lib.rs
 ```
 
 **And that is cargo choosing, not nano-ros.** `path_args` spells a unit's source
