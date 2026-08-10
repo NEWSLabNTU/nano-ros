@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#496** (rmw, open 2026-08-10) — cyclone calls `ddsrt_mutex_init` per **addrset**
+(`q_addrset.c:174`), and on Zephyr that is a slot from the static
+`CONFIG_MAX_PTHREAD_MUTEX_COUNT` pool — so **how big a graph an image can join is a
+compile-time RAM constant**, scaling with the REMOTE endpoint count, not with what the image
+declares. Measured joining Autoware (33 nodes / 68 composable): 16384 exhausts (that crash was
+#0371), 131072 works and costs ~4.1 MiB static; mutex:cond ratio ~65:1 confirms the bulk are
+addrsets/entity locks, not paired primitives. Steady-state peak NOT measured, only bracketed
+`16384 < peak ≤ 131072` — the issue records two gdb dead ends (duplicate-objfile symbol
+aliasing reads a fake `0/131072`; attach-then-continue hangs native_sim). Upstream master
+`5e82de60` still has the per-addrset mutex, so the fix (strided/shared lock, or exploit that
+addrsets are read-only after construction) is a fork change. Not urgent — only a native_sim
+image joined to a full stack has hit it. See `0496-*`. (2026-08-10)
+
 **#495** (testing, open 2026-08-10) — `rebuilds_on_model_touch` fails: cargo short-circuits in 0.04 s
 after the resolved model is touched. The rebuild edge EXISTS
 (`nros-build/src/lib.rs:242` emits `rerun-if-changed=<model_path>`) — a first pass grepping only

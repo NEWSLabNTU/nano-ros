@@ -5,7 +5,7 @@ status: resolved
 type: bug
 severity: high
 area: rmw
-related: [issue-0377, issue-0267]
+related: [issue-0267, issue-0496]
 ---
 
 # 0371 — native_sim cyclone app abort()s ~19–21 s into an Autoware-graph session
@@ -147,9 +147,12 @@ fails") had been on the fork branch since 2026-07-17, but the superproject pin
 predated it, so the image that hit this issue still had the fully-silent path.
 Three fork commits were unpinned; `fa4c8bd15` advances the pin over all four.
 
-## Residual (not this issue)
+## Residual → filed as issue 0496
 
-131072 slots is ~5 MiB of static RAM, which native_sim can afford and a real
+131072 slots is ~4.1 MiB of static RAM, which native_sim can afford and a real
 board cannot. Cyclone putting a pool mutex on every addrset is the underlying
-scalability limit for cyclone-on-Zephyr-POSIX against large graphs — worth its
-own issue if an embedded target ever needs to join a graph this size.
+scalability limit for cyclone-on-Zephyr-POSIX against large graphs: it makes the
+joinable graph size a compile-time constant scaling with the REMOTE endpoint
+count. Filed as **issue 0496** with the measurements. (The ~5 MiB figure quoted
+in the commits that closed this issue was an estimate; measured is 4 MiB of pool
++ 128 KiB type array + 16 KiB bitarray.)
