@@ -1,0 +1,165 @@
+# Phase 347 — RMW as a declared provider: capabilities, search, and no special cases
+
+**Status (2026-08-10). PROPOSED — no code landed.** Implements
+[RFC-0071](../design/0071-rmw-backend-descriptor.md). The design is settled and
+its open questions are answered; this phase is the ordering.
+
+**Scope.** Three things, in the order they unblock each other: remove the
+backend names core should not have, give a backend a descriptor, and let
+selection resolve through it. **The colcon convention is explicitly NOT in this
+phase** — see "Deliberately out of scope".
+
+**Blocked on:** [issue 0493](../issues/0493-two-workspace-roots-share-one-corrosion-target-dir-duplicate-no-mangle-symbols.md).
+Both rewrite the `nros-c` / `nros-cpp` feature tables, and 0493's central
+question — why one staticlib bundles two identities — is unanswered. Building a
+declaration format on an unexplained linking model risks encoding the bug into
+the format. W1 is independent and may start immediately; W2 onward waits.
+
+**Sibling, not overlap:** [phase-346](phase-346-out-of-tree-board-seam.md) is
+this problem on the BOARD axis (RFC-0064, a board arrives through an integration
+shell nano-ros never sees). RFC-0071 D8 is where the two converge — one
+descriptor family across rmw / platform / board. Do not duplicate 346's work
+here; when both land, reconcile the two descriptor schemas in one commit.
+
+---
+
+## W1 — Subtractions (no new mechanism, no dependency)
+
+Pure deletions of backend names that are already dead. Independent of everything
+else in this phase and of 0493, so it can start now.
+
+- [ ] **`has_rmw` is 3/4 dead.** `nros-node/build.rs` tests
+      `CARGO_FEATURE_RMW_{ZENOH,XRCE,UORB}`, and **`nros-node` declares none of
+      those features** — only `rmw-cffi`. Delete the three dead disjuncts.
+- [ ] **The comment above it is false.** It claims `has_rmw` is also set "when
+      compiling for tests (unit tests use MockSession)". There is no such branch.
+      Fix the comment or restore the behaviour — decide which, do not carry it.
+- [ ] **`unstable-zenoh-api` on `nros-node` is dead.** No other manifest forwards
+      it, no `cfg` reads it; its only core mention is a doc comment whose real
+      seam is `rmw-lending`. The live chain is entirely in the backend
+      (`nros-rmw-zenoh` → `zpico-sys` → `Z_FEATURE_UNSTABLE_API`). Delete it.
+
+*Acceptance:* `packages/core/**` contains no `zenoh|xrce|uorb` outside prose.
+`__cyclonedds-link` survives W1 by design — it has a live consumer and is W4's
+job.
+
+## W2 — The descriptor exists, and is proven before anything reads it
+
+- [ ] `nros-rmw.toml` for the 8 in-tree backend families, carrying exactly what
+      `nros_rmw_dispatch` already computes (cffi feature, rlib dep, extra link
+      libs, `needs_cxx_linker`), plus `names` (from `canonical_rmw`'s alias
+      table) and `[rmw.provides.*]` per RFC-0071 D7.
+- [ ] A gate asserting **descriptor ≡ dispatch**, row for row, while both exist.
+
+The gate is the point of the wave. This repo's recurring defect is two
+derivations of one fact drifting (`row_coord`, fixture groups, the sizes-header
+mirror); a descriptor is a second derivation until the gate makes it one. W2
+changes no behaviour and is fully reversible.
+
+*Acceptance:* the gate passes; deleting a descriptor row fails it.
+
+## W3 — Resolution by name; retire all three lists
+
+- [ ] `resolve_rmw` resolves a declared name through the descriptors' `names`
+      tables. `KNOWN_RMW` and `canonical_rmw`'s `match` are deleted.
+- [ ] `NanoRosRmwDispatch.cmake` stops being generated and becomes a descriptor
+      read (via the CLI — CMake already shells out to `nros` in three modules;
+      a second parser of the descriptor is the defect W2's gate exists to
+      prevent).
+- [ ] **All three** closed lists retire together:
+      `resolve_rmw`/dispatch, `NanoRosFeatureSet.cmake`'s validator, and
+      `nros-cpp/CMakeLists.txt`'s own chain. Retiring one leaves two
+      disagreeing, which is the bug.
+- [ ] `uorb` is covered on equal terms — it behaves like every other backend and
+      only its PX4 consumer is unusual.
+
+*Acceptance:* **a fifth backend, out of tree, with zero core edits.** Until that
+is demonstrated the wave is unproven; every closed list in this area looked open
+until someone tried.
+
+## W4 — Capabilities, lowered to both languages
+
+- [ ] `[rmw.capabilities]` maps a capability name to the backend's own feature
+      (`zero-copy-receive = "unstable-zenoh-api"`); the user declares
+      `[system] capabilities = [...]`.
+- [ ] Lower to **both** consumers: the generated selection facade (Rust) and a
+      compile define (C/C++). A capability that works in Rust and silently does
+      nothing in C++ is worse than not having it.
+- [ ] Replace `__cyclonedds-link` with the capability `needs-type-descriptors`.
+      The seam it feeds (`MessageForRmw`, `register_type_descriptor`) is already
+      generic — only the trigger moves.
+- [ ] Reserved vocabulary with written semantics, plus an open `x-<vendor>-*`
+      namespace nano-ros never interprets. Open-only means a user switching
+      backends silently loses a capability; reserved-only means a third party
+      cannot offer one.
+- [ ] Selecting a capability the active backend does not declare is an error
+      naming what it does offer.
+
+*Acceptance:* `packages/core/**` and `packages/api/nros{,-c,-cpp}/**` contain no
+backend name outside prose — the `check-rmw-agnostic` gate goes green here, not
+in W1.
+
+## W5 — The per-message codegen hook (highest risk, may split)
+
+- [ ] `[rmw.codegen].per_message` replaces the hardcoded cyclone branch in
+      `NanoRosGenerateInterfaces.cmake` (27 mentions, the most of any file).
+- [ ] **It needs a cargo-rooted twin.** D7's 2×2 has a cargo consumer too, for
+      which descriptors come from the `codegen_cyclonedds_descriptors` CLI verb
+      rather than a CMake function. Whether both can share one contract is
+      unresolved — settle that before starting, or split W5 into its own phase.
+- [ ] Retires RFC-0031's blanket rule that "Cyclone selection always routes
+      through the CMake/Corrosion build path, even for an otherwise-Rust
+      binary" — that rule exists only because this cell was undeclared.
+
+*Acceptance:* cyclonedds appears in `cmake/` only inside its own package.
+
+## W6 — The platform descriptor leak (small, independent)
+
+- [ ] `nros-platform.toml` carries `[knobs.zenoh.tx]` and `[build.zenoh]` —
+      backend-named sections in a *platform* file. Key them on the resolved
+      backend so a platform declares settings without naming one. Same
+      violation as core naming a backend, one axis over.
+
+---
+
+## Deliberately out of scope: the colcon convention
+
+RFC-0071 D5 settles that discovery is a **search path of workspace roots scanned
+at source time**, and why: colcon's index is reached by sourcing `setup.sh`, so
+it exists only after an *install* step, and per-target static RTOS artifacts have
+no such stage.
+
+Adopting that convention is a **separate program**, not a wave here, because its
+cost is a migration rather than a mechanism:
+
+| axis | dirs needing `package.xml` | with a descriptor today |
+| --- | ---: | ---: |
+| `packages/rmw` | 8 families | 0 |
+| `packages/boards` | 17 | 8 |
+| `packages/platform` | 14 | — |
+
+None of nano-ros's providers carry a `package.xml`; the 99 in the tree are
+interface packages and test fixtures. And the hard part is not the scan — it is
+that **a provider in `src/` may need building before its consumer links it**,
+while `nano_ros_workspace(SUBDIRS …)` takes an explicit list today. Discovery
+becomes scheduling.
+
+**It is blocked on W2 regardless**: you cannot discover providers that do not
+describe themselves. Propose it as its own phase once W2 lands, with these
+starting points already established — the two accepted roots (nano-ros tree,
+user workspace; no `~/.nros`, no env var), first-match-wins shadowing with a
+warning, and `package.xml`'s existing `<depend>` as the ordering source rather
+than a second declaration.
+
+## Order
+
+```
+W1  ──────────────────────────────────────►  (independent, start now)
+        0493 ──► W2 ──► W3 ──► W4
+                   │      └────► W5 (or its own phase)
+                   └────────────► colcon convention (separate phase)
+W6  ──────────────────────────────────────►  (independent)
+```
+
+W1 and W6 need nothing. W2 is the fence: everything after it reads a descriptor,
+and everything before it is deletion.
