@@ -9,11 +9,26 @@ backend names core should not have, give a backend a descriptor, and let
 selection resolve through it. **The colcon convention is explicitly NOT in this
 phase** — see "Deliberately out of scope".
 
-**Blocked on:** [issue 0493](../issues/0493-two-workspace-roots-share-one-corrosion-target-dir-duplicate-no-mangle-symbols.md).
-Both rewrite the `nros-c` / `nros-cpp` feature tables, and 0493's central
-question — why one staticlib bundles two identities — is unanswered. Building a
-declaration format on an unexplained linking model risks encoding the bug into
-the format. W1 is independent and may start immediately; W2 onward waits.
+**UNBLOCKED 2026-08-10.** This phase was blocked on
+[issue 0493](../issues/0493-two-workspace-roots-share-one-corrosion-target-dir-duplicate-no-mangle-symbols.md)
+while its cause was unknown. It is known and fixed: corrosion **v0.5.1** sets the
+cargo target dir to a CONSTANT `${CMAKE_BINARY_DIR}/${build_dir}/cargo/build`, so
+two workspace roots configured into one binary dir shared one `deps/` and their
+`#[no_mangle]` exports collided; **v0.6.1** hashes the workspace manifest path.
+The index pin is bumped, and the fix is verified end-to-end on the tree that had
+been failing — `workspace-fixtures-build.sh linux` returns RC=0 with **zero**
+duplicate-symbol errors, and the mixed workspace now shows two hashed dirs
+(`nano-ros_23c15`, `nros_ws_runtime_16b35`) with ONE cffi identity each instead
+of one hashless dir holding two.
+
+Two consequences for this phase. **W2 onward is unblocked** — the linking model
+is no longer unexplained, so a declaration format cannot encode a bug it does
+not have. And the `nros-c` / `nros-cpp` feature tables are no longer contended,
+so W3/W4 may edit them without racing another investigation.
+
+Note for anyone rebuilding: provisioning alone is not enough on a tree that has
+already configured — the stale build dirs carry the old topology in their
+`CMakeCache.txt` and must be removed.
 
 **Sibling, not overlap:** [phase-346](phase-346-out-of-tree-board-seam.md) is
 this problem on the BOARD axis (RFC-0064, a board arrives through an integration
@@ -145,8 +160,9 @@ while `nano_ros_workspace(SUBDIRS …)` takes an explicit list today. Discovery
 becomes scheduling.
 
 **It is blocked on W2 regardless**: you cannot discover providers that do not
-describe themselves. Propose it as its own phase once W2 lands, with these
-starting points already established — the two accepted roots (nano-ros tree,
+describe themselves. Filed as
+[phase-348](phase-348-source-time-provider-discovery.md), with these starting
+points already established — the two accepted roots (nano-ros tree,
 user workspace; no `~/.nros`, no env var), first-match-wins shadowing with a
 warning, and `package.xml`'s existing `<depend>` as the ordering source rather
 than a second declaration.
@@ -154,12 +170,13 @@ than a second declaration.
 ## Order
 
 ```
-W1  ──────────────────────────────────────►  (independent, start now)
-        0493 ──► W2 ──► W3 ──► W4
-                   │      └────► W5 (or its own phase)
-                   └────────────► colcon convention (separate phase)
-W6  ──────────────────────────────────────►  (independent)
+W1  ─────────────────────────────────────────►  (independent, start now)
+W2 ──► W3 ──► W4                                (0493 cleared 2026-08-10)
+  │       └────► W5   (splittable — settle the cargo-rooted twin first)
+  └────────────► phase-348  (source-time provider discovery)
+W6  ─────────────────────────────────────────►  (independent)
 ```
 
-W1 and W6 need nothing. W2 is the fence: everything after it reads a descriptor,
-and everything before it is deletion.
+W1 and W6 need nothing and can run now. **W2 is the fence**: everything after it
+reads a descriptor, everything before it is deletion. W5 and phase-348 both hang
+off W2 and are independent of each other.

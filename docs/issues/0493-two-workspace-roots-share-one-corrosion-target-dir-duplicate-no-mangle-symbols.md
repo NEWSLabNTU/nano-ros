@@ -622,3 +622,35 @@ repo-root workspace — is the whole remaining space. Evidence, including the
 three-arm reproduction, is in phase-340 "R2 re-measured — `path` is a RELATION,
 not a spelling". Nothing here changes this issue's diagnosis; it removes an
 option someone would otherwise try first.
+
+## VERIFIED END-TO-END 2026-08-10 — the bump fixes it on the tree that failed
+
+Provisioned the bumped pin and cleared the stale trees, per the fix this issue
+landed:
+
+```
+nros setup --tool corrosion          # -> ~/.nros/sdk/corrosion/0.6.1-nros1
+rm -rf examples/workspaces/*/build-workspace-fixtures*   # 16 dirs
+bash scripts/build/workspace-fixtures-build.sh linux
+```
+
+Result: **RC=0, and `grep -c "duplicate symbol"` = 0** — the build that had
+failed on every attempt since this issue was opened now passes.
+
+The mechanism is confirmed directly, not inferred from the exit code. The mixed
+workspace's corrosion tree is now:
+
+```
+cargo/nano-ros_23c15/          1 libnros_rmw_cffi-*.rlib
+cargo/nros_ws_runtime_16b35/   1 libnros_rmw_cffi-*.rlib
+```
+
+Two hashed per-workspace dirs — the same names phase-340's census reported —
+with **one** identity in each, where before there was one hashless `cargo/build`
+holding **two**. That is exactly the v0.5.1 → v0.6.1 difference this issue
+identified, observed on the failing tree rather than reasoned about.
+
+Note for anyone reproducing: provisioning alone is not enough on a tree that has
+already configured. The stale build dirs carry the old topology in their
+`CMakeCache.txt`, so they must be removed — which is also why the two
+investigations disagreed for as long as they did.

@@ -4,7 +4,7 @@ title: "RMW backend descriptor: a backend declares itself, core names none"
 status: Draft
 since: 2026-08
 last-reviewed: 2026-08
-implements-tracked-by: [phase-347]
+implements-tracked-by: [phase-347, phase-348]
 supersedes: []
 superseded-by: null
 ---
