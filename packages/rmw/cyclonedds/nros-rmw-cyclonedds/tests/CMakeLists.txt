@@ -457,3 +457,46 @@ if(_addtwoints_sources)
             PROPERTIES ENVIRONMENT "${_nros_rmw_test_env}")
     endif()
 endif()
+
+# Concurrency test for the striped addrset locks (nano-ros issue 0496).
+#
+# C, not C++ like its siblings: ddsi_domaingv.h has `typedef struct
+# os_sockWaitset *os_sockWaitset`, legal C and a conflicting declaration in C++.
+#
+# Calls cyclone's INTERNAL addrset API (q_addrset.h is not installed), so it can
+# only be built when cyclone was self-provisioned from source and the `ddsc`
+# target is in this build. Inheriting ddsc's INCLUDE_DIRECTORIES is what makes
+# the internal + generated headers reachable without restating any of them here.
+# When cyclone came from an installed package there is nothing to include
+# against, and the test is skipped LOUDLY rather than silently dropped.
+if(TARGET ddsc)
+    add_executable(nros_rmw_cyclonedds_addrset_striped_lock_concurrency
+        addrset_striped_lock_concurrency.c
+    )
+    target_link_libraries(nros_rmw_cyclonedds_addrset_striped_lock_concurrency
+        PRIVATE
+            ddsc
+            pthread
+    )
+    target_include_directories(nros_rmw_cyclonedds_addrset_striped_lock_concurrency
+        PRIVATE
+            $<TARGET_PROPERTY:ddsc,INCLUDE_DIRECTORIES>
+    )
+    add_test(
+        NAME nros_rmw_cyclonedds_addrset_striped_lock_concurrency
+        COMMAND nros_rmw_cyclonedds_addrset_striped_lock_concurrency
+    )
+    # The failure mode under test is a deadlock, so cap it: the test's own
+    # watchdog should fire first and explain itself, and this is the backstop if
+    # the hang happens somewhere the watchdog cannot see.
+    set_tests_properties(nros_rmw_cyclonedds_addrset_striped_lock_concurrency
+        PROPERTIES
+            TIMEOUT 300
+            ENVIRONMENT "${_nros_rmw_test_env}"
+    )
+else()
+    message(STATUS
+        "nano-ros: SKIPPING nros_rmw_cyclonedds_addrset_striped_lock_concurrency — "
+        "no in-build `ddsc` target, so cyclone's internal addrset headers are not "
+        "reachable (issue 0496 regression cover is NOT running in this configuration)")
+endif()

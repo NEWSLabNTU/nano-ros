@@ -159,12 +159,36 @@ The pool still scales with the graph, just with a much smaller constant: the
 graph. So this removes one term, not the dependence. It bought roughly an 8×
 reduction in the required pool (131072 → 16384) on a ~40-participant graph.
 
-Also worth stating plainly: the striping was verified by a clean native suite
-(16/16) and one full end-to-end run of a 33-node graph, not by a targeted
-concurrency test of the two restructured paths. A stripe-collision deadlock
-would be rare and load-dependent, which is the failure profile this project has
-been bitten by before. If cyclone-on-Zephyr starts hanging in discovery, this
-commit is the first thing to look at.
+### Regression cover (added after the fact)
+
+The first version of this fix shipped with only a clean native suite and one
+end-to-end run behind it — no targeted test of either restructured path, which
+for a deadlock hazard is thin. `nros_rmw_cyclonedds_addrset_striped_lock_concurrency`
+(`packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/`) now covers both.
+
+It drives 128 addrsets — comfortably more than the 64 stripes, so collisions are
+certain by pigeonhole without the test needing to know the hash — across 8
+threads: bidirectional copies at every offset, self-copy (the degenerate
+same-stripe case), a `purge_helper`-shaped callback that locks a second addrset,
+and a callback that runs a nested `forall`. Plus semantic checks that the
+snapshot rewrite did not change what `forall_count` reports or break the copy
+union.
+
+Two things about it worth keeping:
+
+- **The watchdog distinguishes stuck from slow.** A hang is the failure mode, so
+  a phase that misses its deadline is not enough information; the workers bump a
+  progress counter and the watchdog reports whether it advanced. That mattered
+  immediately: the first run "hung", and it was the test's own fault — the copy
+  phases union every addrset into every other, so leaving that state in place
+  made the nested-forall phase quadratic in the union (~10^8 inner callbacks).
+  Each phase now builds a fresh pool.
+- **It was validated by mutation, not by passing.** Reverting
+  `copy_addrset_into_addrset_uc` to lock only the source hangs the self-copy
+  phase; making `addrset_forall_count` run the callback under the lock hangs the
+  re-entrant-callback phase. Both reported STUCK and exited 1, on the phase
+  aimed at them. A concurrency test that has never been seen to fail is not
+  evidence of anything.
 
 **Still not fixed upstream.** CycloneDDS master as of `5e82de60` (2026-05-19)
 does `ddsrt_mutex_init (&as->lock)` in `ddsi_new_addrset`. Worth offering.
