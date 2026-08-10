@@ -51,6 +51,22 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#501** (testing, open 2026-08-10) — `native_main_macro_misuse` fails a DIFFERENT subset of its five cases
+every run on an unchanged tree; four of the five have failed at least once, and any one alone always passes.
+The message is misleading — `expected cargo check to fail …` with stderr reading `Finished` — so nothing
+compiled, rather than the error text being wrong. Cause: `shared_check_target_dir()` (phase-342 W2) points
+every case at ONE `CARGO_TARGET_DIR`, and all five staged copies build the same package name `demo_entry`,
+so a sibling's SUCCESSFUL artifact satisfies the next case's fingerprint and cargo short-circuits without
+expanding the macro — in a suite whose whole point is "this misuse must FAIL to compile". The phase-342
+comment reasoned about the LOCK ("fine here and only here") and that reasoning holds; artifact ALIASING is
+the hazard it does not mention, and the same dir that bought 108.5 s → 10.3 s is what shares the state.
+**Likely explains #495**, whose "cargo short-circuits in 0.04 s" is exactly what an already-satisfied
+fingerprint looks like and whose own trigger is marked UNPROVEN — test it against a per-case dir before
+pursuing its candidates. Fix: key the dir by CASE, or rename the package per case (the deps are where the
+10x came from, not `demo_entry`); properly, this is CLAUDE.md's **"No compilation inside tests"** (archived
+0041) and wants to be a build-stage compile-check whose expected result is failure. See `0501-*`.
+(2026-08-10)
+
 RESOLVED 2026-08-10 — **#500** `examples/workspaces/mixed` could not LINK: seven duplicate symbols
 (`nros_rmw_zenoh_register`, `REGISTRY`, `nros_rmw_cffi_*`) from two `nros-rmw-zenoh` identities in one
 `libnros_ws_runtime.a`. The cause was NOT the workspace — the build was using **Corrosion 0.5.1 on a host
