@@ -238,7 +238,8 @@ nros_lane_wants_platform() {
 # Format (line-oriented, greppable):
 #
 #   # nano-ros fixture build stamp
-#   built_at=2026-08-01T09:12:33Z
+#   built_at=2026-08-01T09:12:33Z      (upper bound — stamped on success)
+#   started_at=2026-08-01T08:41:07Z    (lower bound — issue 0499)
 #   lane=tier1
 #   coord=native,rust,zenoh
 #   coord=native,c,zenoh
@@ -250,6 +251,18 @@ nros_lane_wants_platform() {
 
 nros_fixtures_stamp_clear() {
     rm -f "$NROS_FIXTURE_STAMP"
+    # issue 0499 — record when the build STARTED, beside the (now absent) stamp.
+    #
+    # `built_at` is stamped on SUCCESS, so it is an UPPER bound on the build's
+    # own output: every artifact the run produced is older than it. A consumer
+    # asking "which artifacts belong to this build?" needs a LOWER bound, and
+    # filtering on `built_at` marks the whole current build as history —
+    # measured, and it made check-artifact-identity-budget skip permanently.
+    #
+    # Written HERE because this function already owns "a build is starting",
+    # and it survives the shell boundary between the clearing recipe and the
+    # writing one, which a variable would not.
+    printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${NROS_FIXTURE_STAMP}.started" 2>/dev/null || true
 }
 
 # nros_fixtures_stamp_write <lane>
@@ -267,9 +280,16 @@ nros_fixtures_stamp_write() {
     {
         echo "# nano-ros fixture build stamp (issue 0393) — lane + coordinates built"
         echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        # issue 0499 — the LOWER bound. Absent on a stamp written without a
+        # preceding `stamp_clear` (a legacy or hand-made stamp), and a consumer
+        # must treat its absence as "cannot filter", never as "nothing is new".
+        if [ -r "${NROS_FIXTURE_STAMP}.started" ]; then
+            echo "started_at=$(cat "${NROS_FIXTURE_STAMP}.started")"
+        fi
         echo "lane=$lane"
         if [ -n "$coords" ]; then sed 's/^/coord=/' "$coords"; fi
     } > "$NROS_FIXTURE_STAMP"
+    rm -f "${NROS_FIXTURE_STAMP}.started"
     echo "fixture stamp: $NROS_FIXTURE_STAMP (lane=$lane)"
 }
 
