@@ -203,9 +203,58 @@ fi
 # than with what its source says, and it fails in the fast tier that every task
 # runs first — where a red nobody's diff explains is the expensive kind
 # (issue 0437).
-rlibs="$(find "$TREE" \
+# issue 0499 — count only THIS build's artifacts.
+#
+# Cargo never collects the rlibs a previous build left, so on a long-lived tree
+# the count grows with how many times it was built rather than with what the
+# source says: a real regression and three days of history print the same
+# message. Measured here twice — a tree reading 6 where a fresh rebuild read 5,
+# and 10/11 where a clean tree read 4/6.
+#
+# The reference is `started_at`, the stamp's LOWER bound. NOT `built_at` and not
+# the stamp file's mtime: both are written when the build SUCCEEDS, so every
+# artifact the run produced is older than them, and filtering on either marks
+# the whole current build as history — that version made this gate skip
+# permanently, which is worse than over-counting because it reports green
+# forever.
+#
+# Absence is "cannot filter", never "nothing is new": a stamp with no
+# `started_at` (legacy, or hand-made) falls back to counting everything and the
+# verdict says so, so an unfilterable reading is visible rather than silent.
+STAMP="${NROS_FIXTURE_STAMP:-target/nextest/.fixtures-built}"
+_all="$(find "$TREE" \
     -type d -path '*/out/sizes-probe-target-*' -prune -o \
     -path '*/deps/*' -name 'lib*-*.rlib' -print 2>/dev/null | sort)"
+
+_started=""
+[ -r "$STAMP" ] && _started="$(sed -n 's/^started_at=//p' "$STAMP" | head -1)"
+_ref=""
+if [ -n "$_started" ]; then
+    _ref="$(mktemp)"
+    touch -d "$_started" "$_ref" 2>/dev/null || { rm -f "$_ref"; _ref=""; }
+fi
+
+if [ -n "$_ref" ] && [ -n "$_all" ]; then
+    rlibs="$(printf '%s\n' "$_all" | while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        [ "$f" -nt "$_ref" ] && printf '%s\n' "$f"
+    done)"
+    rm -f "$_ref"
+    _n_all=$(printf '%s\n' "$_all" | grep -c . || true)
+    _n_cur=$(printf '%s\n' "$rlibs" | grep -c . || true)
+    if [ "$_n_cur" -eq 0 ]; then
+        # Nothing newer than the build's own start: the tree predates the stamp
+        # entirely. Say so instead of reporting a count about the past.
+        echo "[SKIP] artifact-identity budget: all $_n_all rlib(s) in $TREE predate"
+        echo "       started_at=$_started — this tree is history, not that build."
+        echo "       Rebuild to measure:  $BUILD_HINT"
+        exit 0
+    fi
+    IDENTITY_ERA_NOTE="  counted $_n_cur of $_n_all rlib(s) — those written since started_at=$_started (issue 0499)."
+else
+    rlibs="$_all"
+    IDENTITY_ERA_NOTE="  NO started_at in $STAMP — counting all rlib(s); an accumulated tree inflates this (issue 0499)."
+fi
 
 if [ -z "$rlibs" ]; then
     echo "[SKIP] artifact-identity budget: $TREE holds no compiled rlibs"
@@ -220,6 +269,7 @@ triples="$(printf '%s\n' "$rlibs" \
 
 if [ -z "$triples" ]; then
     echo "artifact-identity budget: FAIL" >&2
+    echo "$IDENTITY_ERA_NOTE" >&2
     echo "  $TREE has rlibs under deps/, but none matched lib<crate>-<hash>.rlib." >&2
     echo "  The naming convention this gate reads has changed; fix the gate." >&2
     exit 1
@@ -311,6 +361,7 @@ _selftest="$(printf 'nros 0aaaaaaaa\nnros_board 1bbbbbbbb\nnros fccccccccc\n' \
     | count_identities | awk '$2 == "nros" {print $1}')"
 if [ "$_selftest" != "2" ]; then
     echo "artifact-identity budget: FAIL" >&2
+    echo "$IDENTITY_ERA_NOTE" >&2
     echo "  the identity counter is not collation-independent: it reported" >&2
     echo "  '$_selftest' identities for a crate that has exactly 2." >&2
     echo "  A counter that splits one crate into two runs under-reports the" >&2
@@ -334,6 +385,7 @@ report_crate() {
 budgeted_n="$(crate_identities "$BUDGET_CRATE")"
 if [ -z "$budgeted_n" ]; then
     echo "artifact-identity budget: FAIL" >&2
+    echo "$IDENTITY_ERA_NOTE" >&2
     echo "  $TREE holds compiled rlibs, but NONE for $BUDGET_CRATE." >&2
     echo "  The gate cannot answer the question it exists to ask, so it fails" >&2
     echo "  rather than passing on a tree it did not understand. Either the" >&2
@@ -344,6 +396,7 @@ fi
 
 if [ "$budgeted_n" -gt "$BUDGET_IDENTITIES" ]; then
     echo "artifact-identity budget: FAIL" >&2
+    echo "$IDENTITY_ERA_NOTE" >&2
     echo "  $BUDGET_CRATE has $budgeted_n distinct -C metadata identities in $TREE" >&2
     echo "  (budget $BUDGET_IDENTITIES, recorded 2026-08-07 by phase-340 W4)." >&2
     echo "  Each identity is a separate compilation of the same crate:" >&2
@@ -362,6 +415,7 @@ over_ceiling="$(printf '%s\n' "$identity_counts" \
     | awk -v k="$CEILING_IDENTITIES" '$1 > k {print $2, $1}')"
 if [ -n "$over_ceiling" ]; then
     echo "artifact-identity budget: FAIL" >&2
+    echo "$IDENTITY_ERA_NOTE" >&2
     echo "  crates over the tree-wide ceiling of $CEILING_IDENTITIES identities in $TREE:" >&2
     while read -r crate n; do
         echo "  $crate: $n" >&2
@@ -386,6 +440,7 @@ over_copies="$(printf '%s\n' "$triples" | awk '{print $1, $2}' | sort | uniq -c 
     | awk -v k="$CEILING_COPIES" '$1 > k {print $2, $3, $1}')"
 if [ -n "$over_copies" ]; then
     echo "artifact-identity budget: FAIL" >&2
+    echo "$IDENTITY_ERA_NOTE" >&2
     echo "  identities written into more than $CEILING_COPIES target dirs in $TREE:" >&2
     while read -r crate hash n; do
         echo "  $crate $hash: $n copies" >&2
@@ -405,4 +460,5 @@ max_copies="$(printf '%s\n' "$triples" | awk '{print $1, $2}' | sort | uniq -c \
     | awk '{print $1}' | sort -rn | head -1)"
 echo "artifact-identity budget OK ($TREE): $BUDGET_CRATE $budgeted_n/$BUDGET_IDENTITIES identities;" \
      "worst crate $max_ids/$CEILING_IDENTITIES; worst identity $max_copies/$CEILING_COPIES copies."
+echo "$IDENTITY_ERA_NOTE"
 axis_report
