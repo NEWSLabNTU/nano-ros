@@ -399,6 +399,39 @@ rather than silently answering for the default group.
   number is how a gate starts lying. Current reading: `nros_core 4/8; worst
   crate 6/9; worst identity 5/5`.
 
+#### Item 7 — attempted again after wave 2 (2026-08-10). Blocked by a MIGRATION GAP, not housekeeping
+
+The sprawl item 7 targets is **391 per-leaf `.gitignore` files**, each holding
+`/target/`. They are load-bearing today: the global pattern is
+`examples/**/target-*/` (with a dash) and does NOT cover a plain `target/`, so
+deleting a leaf's ignore while anything still writes its `target/` un-ignores
+build output.
+
+**And something still does — including on a MIGRATED platform.** After wave 2,
+`examples/qemu-arm-freertos/rust/talker` is a shared-eligible cargo row (the
+manifest names that dir) and yet:
+
+```
+build/fixtures-cargo/freertos                       01:53   <- the shared group
+examples/qemu-arm-freertos/rust/talker/target       01:55   <- written AFTER
+  target/nros-minsizerel/{deps,incremental}
+```
+
+So a SECOND build path writes per-leaf dirs and does not transit the group
+resolver — the `build-examples` lane rather than `build-test-fixtures`. That is
+#393's shape (two build paths disagreeing about where artifacts live), and it
+means B3's migration covers the fixture lane only.
+
+**Consequence for the roadmap:** item 7 is not "delete ignores once platforms
+migrate". It is blocked on closing that second path, which is real work in the
+B-chain, not cleanup. Surviving per-leaf dirs after wave 2, for the record:
+`qemu-arm-freertos` 6, `native` 2 (`target-cyclonedds`), `qemu-esp32-baremetal`
+2, `workspaces` 9.
+
+`esp32` / `nuttx-riscv` are settled separately: they have workspace fixture rows
+but NO standalone cargo rows, so they are correctly outside the shared-group
+mechanism rather than pending migration.
+
 #### Items 7 and 8 — attempted 2026-08-10, BOTH still blocked (evidence, not deferral)
 
 **Item 7 is NOT unblocked by B3, contrary to what B3's own note implied.** The
