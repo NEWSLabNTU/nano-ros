@@ -1120,9 +1120,14 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `nros/lifecycle-services`, so this is inert without the feature.
     let lifecycle_call: proc_macro2::TokenStream = match lifecycle_code {
         Some(code) => quote! {
-            runtime.apply_lifecycle(#code).map_err(
-                |_| ::nros::__macro_support::nros_platform::RuntimeError::NodeRegister("lifecycle"),
-            )?;
+            // issue 0460 — carry the reason. Not a `log::` call: an entry crate
+            // need not depend on `log` (`native_rust_qos_entry` does not).
+            runtime.apply_lifecycle(#code).map_err(|reason| {
+                ::nros::__macro_support::nros_platform::RuntimeError::Capability {
+                    name: "lifecycle",
+                    reason,
+                }
+            })?;
         },
         None => quote! {},
     };
@@ -1161,9 +1166,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                  carry the `param-services` feature — the parameter services would be \
                  silently dropped. Add it to this pkg's nros dependency features."
             );
-            runtime.apply_param_services(&[ #( #seed_lits ),* ]).map_err(
-                |_| ::nros::__macro_support::nros_platform::RuntimeError::NodeRegister("param_services"),
-            )?;
+            // issue 0460 — see the lifecycle twin above.
+            runtime.apply_param_services(&[ #( #seed_lits ),* ]).map_err(|reason| {
+                ::nros::__macro_support::nros_platform::RuntimeError::Capability {
+                    name: "param_services",
+                    reason,
+                }
+            })?;
         }
     } else {
         quote! {}

@@ -571,10 +571,13 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     // enabling `nros/lifecycle-services`). `nros::main!` calls this when
     // `system.toml` declares `[lifecycle]`.
     #[cfg(feature = "lifecycle-services")]
-    fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), ()> {
+    fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), &'static str> {
+        // issue 0460 — carry WHY. The caller can only say which capability
+        // failed; without this the whole diagnostic was
+        // `NodeRegister("lifecycle")`.
         self.executor
             .register_lifecycle_services()
-            .map_err(|_| ())?;
+            .map_err(|e| capability_reason(&e))?;
         if autostart >= 1
             && let Some(sm) = self.executor.lifecycle_state_machine_mut()
         {
@@ -605,10 +608,10 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     // executor's tick registry, not `self.components`, so a post-pass here wouldn't reach
     // them — capture-at-registration does.)
     #[cfg(feature = "param-services")]
-    fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), ()> {
+    fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), &'static str> {
         self.executor
             .register_parameter_services()
-            .map_err(|_| ())?;
+            .map_err(|e| capability_reason(&e))?;
         for (name, raw) in params {
             self.executor
                 .declare_parameter(name, infer_param_value(raw));
@@ -1676,5 +1679,25 @@ mod tests {
         type State = ();
         fn init() -> Self::State {}
         fn on_callback(_s: &mut (), _cb: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {}
+    }
+}
+
+/// issue 0460 — map a `NodeError` to a static reason a capability failure can
+/// carry across the `nros-platform` trait boundary (which cannot name
+/// `NodeError`). Static strings, so this works on `no_std` targets with no
+/// allocator and no `log` dependency in this crate.
+#[cfg(any(feature = "lifecycle-services", feature = "param-services"))]
+fn capability_reason(e: &nros_node::NodeError) -> &'static str {
+    use nros_node::NodeError;
+    match e {
+        NodeError::NameTooLong => {
+            "NameTooLong (the node FQN or a service name \
+                                   overflowed its fixed buffer)"
+        }
+        NodeError::Transport(_) => {
+            "Transport (the RMW refused to create a service \
+                                    server — declaration failed)"
+        }
+        _ => "see NodeError; no specific mapping yet",
     }
 }

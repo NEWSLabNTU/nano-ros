@@ -100,8 +100,16 @@ pub trait NodeDispatchRuntime {
     /// `nros` does the real work behind that feature. `nros::main!` calls this
     /// (via [`RuntimeCtx::apply_lifecycle`]) when `system.toml` declares
     /// `[lifecycle]`, mirroring the bake's `generate.rs::render_lifecycle_fn`.
-    #[allow(clippy::result_unit_err)]
-    fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), ()> {
+    /// issue 0460 — the `Err` carries a STATIC REASON, not `()`.
+    ///
+    /// A capability that fails to register is reported by the caller as
+    /// `RuntimeError::NodeRegister("lifecycle")`, which names WHICH capability
+    /// and nothing about WHY. On Zephyr that opaque string was the entire
+    /// diagnostic for three dead entries: the image printed nothing after
+    /// "Network ready" and the cause could only be guessed at. `&'static str`
+    /// rather than a typed error because this trait lives below `nros-node` and
+    /// cannot name `NodeError`.
+    fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), &'static str> {
         let _ = autostart;
         Ok(())
     }
@@ -117,8 +125,16 @@ pub trait NodeDispatchRuntime {
     /// behind that feature. `nros::main!` calls this (via
     /// [`RuntimeCtx::apply_param_services`]) when `system.toml` declares
     /// `[param_services]`, mirroring the bake's `generate.rs::render_param_persistence_fn`.
-    #[allow(clippy::result_unit_err)]
-    fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), ()> {
+    /// issue 0460 — the `Err` carries a STATIC REASON, not `()`.
+    ///
+    /// A capability that fails to register is reported by the caller as
+    /// `RuntimeError::NodeRegister("lifecycle")`, which names WHICH capability
+    /// and nothing about WHY. On Zephyr that opaque string was the entire
+    /// diagnostic for three dead entries: the image printed nothing after
+    /// "Network ready" and the cause could only be guessed at. `&'static str`
+    /// rather than a typed error because this trait lives below `nros-node` and
+    /// cannot name `NodeError`.
+    fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), &'static str> {
         let _ = params;
         Ok(())
     }
@@ -292,8 +308,7 @@ impl<'a> RuntimeCtx<'a> {
     /// sink (forwards to [`NodeDispatchRuntime::apply_lifecycle`]). `nros::main!`
     /// emits this after the per-node `register` calls when `system.toml` declares
     /// `[lifecycle]`. No-op unless `nros` is built with `lifecycle-services`.
-    #[allow(clippy::result_unit_err)]
-    pub fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), ()> {
+    pub fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), &'static str> {
         self.runtime.apply_lifecycle(autostart)
     }
 
@@ -302,8 +317,7 @@ impl<'a> RuntimeCtx<'a> {
     /// [`NodeDispatchRuntime::apply_param_services`]). `nros::main!` emits this after
     /// the per-node `register` calls when `system.toml` declares `[param_services]`.
     /// No-op unless `nros` is built with `param-services`.
-    #[allow(clippy::result_unit_err)]
-    pub fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), ()> {
+    pub fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), &'static str> {
         self.runtime.apply_param_services(params)
     }
 
@@ -353,6 +367,23 @@ pub enum RuntimeError {
     /// `<node pkg=…>` convention.
     NodeRegister(&'static str),
 
+    /// issue 0460 — a CAPABILITY (`[lifecycle]`, `[param_services]`) failed to
+    /// register, with the reason.
+    ///
+    /// Distinct from [`NodeRegister`](Self::NodeRegister) because reusing it
+    /// forced the capability name to be the whole message: three Zephyr entries
+    /// died reporting `NodeRegister("lifecycle")`, which says WHICH capability
+    /// and nothing about WHY, and the image printed nothing else. Two static
+    /// strings rather than a log call, because not every entry crate depends on
+    /// `log` — the first attempt emitted `::log::error!` from the macro and
+    /// broke `native_rust_qos_entry` with `cannot find 'log' in the crate root`.
+    Capability {
+        /// `"lifecycle"` / `"param_services"`.
+        name: &'static str,
+        /// Why registration failed, from the runtime that attempted it.
+        reason: &'static str,
+    },
+
     /// Issue 0095 — a node's `register` failed specifically because the
     /// executor's fixed callback-entry table (`NROS_EXECUTOR_MAX_CBS`) is full.
     /// Distinct from the opaque [`NodeRegister`](Self::NodeRegister) so the user
@@ -372,6 +403,11 @@ impl core::fmt::Display for RuntimeError {
                 f,
                 "node '{msg}' register failed: executor callback table full — \
                  raise NROS_EXECUTOR_MAX_CBS (build-time env, default 4)"
+            ),
+            Self::Capability { name, reason } => write!(
+                f,
+                "capability '[{name}]' failed to register: {reason} — the system \
+                 declares it, so the entry cannot run without it"
             ),
             Self::Spin => write!(f, "entry spin failed"),
         }
