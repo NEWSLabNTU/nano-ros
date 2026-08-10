@@ -394,6 +394,21 @@ pub fn ensure_model(
     // would duplicate that work — and could disagree with it.
     let found = resolve_model_path(bringup_dir, model_rel);
     if found.is_file() {
+        // Issue 0495 — a BUILD-PRODUCED model is itself a rebuild dependency.
+        //
+        // This branch does not own the file: some other producer wrote it and
+        // may rewrite it with different content without touching `system.toml`
+        // or the launch XML (a `nros sync` on a newer CLI, a different
+        // resolver, an expert `MODEL` override). A consumer that tracked only
+        // the inputs then compiles against a model it cannot notice changing —
+        // the museum-binary shape, and what made `rebuilds_on_model_touch`
+        // fail: the macro READ this path and never registered it, while the
+        // module's own contract is "every file the macro read".
+        //
+        // Deliberately NOT symmetric with the self-resolved branch below, which
+        // must keep excluding its artifact — see the comment there.
+        let mut inputs = inputs;
+        inputs.push(found.clone());
         return Ok((found, inputs));
     }
 
@@ -449,10 +464,15 @@ pub fn ensure_model(
             String::from_utf8_lossy(&output.stderr).trim(),
         ));
     }
-    // The generated model is deliberately NOT added to `inputs`: the caller
+    // The SELF-RESOLVED model is deliberately NOT added to `inputs`: the caller
     // registers those as build dependencies, and an artifact this function may
-    // rewrite is exactly the wrong thing to depend on. The INPUTS are what
+    // rewrite is exactly the wrong thing to depend on — that is the perpetual
+    // rebuild the `is_fresh` check above exists to prevent. The INPUTS are what
     // decide whether the consumer is stale.
+    //
+    // Issue 0495 — the BUILD-PRODUCED branch above IS tracked, and the asymmetry
+    // is the point: there this function is a reader of someone else's artifact,
+    // here it is the writer. Only a writer can loop on its own output.
     Ok((out, inputs))
 }
 

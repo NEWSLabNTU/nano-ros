@@ -37,8 +37,56 @@ fn stage_fixture() -> (tempfile::TempDir, PathBuf) {
         .expect("workspace root utf-8")
         .to_string();
     rewrite_placeholders(dst.path(), &root_str).expect("rewrite placeholders");
+    stamp_unique_entry_version(dst.path());
     let root = dst.path().to_path_buf();
     (dst, root)
+}
+
+/// Issue 0501 — give each staged copy its own `demo_entry` package VERSION.
+///
+/// Every case stages its own tree but they all share one `CARGO_TARGET_DIR`
+/// (see [`shared_check_target_dir`]), and a package is identified by
+/// name + version, NOT by the path it was staged to. So the first case to
+/// compile `demo_entry` SUCCESSFULLY made every later case's check "fresh":
+/// cargo printed `Finished` with no `Checking demo_entry` line and exited 0 —
+/// in a suite whose every assertion is "this misuse must FAIL to compile".
+///
+/// That is why the failing set moved run to run (whichever case won the dir
+/// first passed, the rest inherited its artifact) and why any case passed
+/// alone. Reproduced deterministically outside nextest: stage two copies, check
+/// a VALID one, then check a misuse one against the same target dir — the
+/// misuse exits 0.
+///
+/// A unique version makes them distinct cargo units while leaving the whole
+/// dependency graph shared, which is where phase-342 W2's 108.5 s -> 10.3 s
+/// came from — the deps, not `demo_entry` itself. Per-case target dirs would
+/// also fix it and would give back the cold-build cost that change bought.
+fn stamp_unique_entry_version(root: &Path) {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    // Unique per (process, call): nextest runs each case in its own process, so
+    // the pid alone would not separate two cases, and the counter alone would
+    // not separate two runs sharing the dir.
+    let nonce = format!(
+        "{}c{}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    let manifest = root.join("src/demo_entry/Cargo.toml");
+    let body = fs::read_to_string(&manifest).expect("read demo_entry manifest");
+    // Build metadata (`+…`) — semver-legal, ignored for resolution, and it
+    // still makes the package id distinct.
+    let stamped = body.replacen(
+        "version = \"0.1.0\"",
+        &format!("version = \"0.1.0+{nonce}\""),
+        1,
+    );
+    assert_ne!(
+        stamped, body,
+        "demo_entry manifest no longer declares `version = \"0.1.0\"` — the 0501 \
+         uniqueness stamp silently did nothing, and the cases would share one \
+         cargo unit again"
+    );
+    fs::write(&manifest, stamped).expect("write demo_entry manifest");
 }
 
 fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {

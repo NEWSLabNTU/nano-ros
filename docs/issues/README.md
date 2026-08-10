@@ -51,21 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#501** (testing, open 2026-08-10) — `native_main_macro_misuse` fails a DIFFERENT subset of its five cases
-every run on an unchanged tree; four of the five have failed at least once, and any one alone always passes.
-The message is misleading — `expected cargo check to fail …` with stderr reading `Finished` — so nothing
-compiled, rather than the error text being wrong. Cause: `shared_check_target_dir()` (phase-342 W2) points
-every case at ONE `CARGO_TARGET_DIR`, and all five staged copies build the same package name `demo_entry`,
-so a sibling's SUCCESSFUL artifact satisfies the next case's fingerprint and cargo short-circuits without
-expanding the macro — in a suite whose whole point is "this misuse must FAIL to compile". The phase-342
-comment reasoned about the LOCK ("fine here and only here") and that reasoning holds; artifact ALIASING is
-the hazard it does not mention, and the same dir that bought 108.5 s → 10.3 s is what shares the state.
-**Likely explains #495**, whose "cargo short-circuits in 0.04 s" is exactly what an already-satisfied
-fingerprint looks like and whose own trigger is marked UNPROVEN — test it against a per-case dir before
-pursuing its candidates. Fix: key the dir by CASE, or rename the package per case (the deps are where the
-10x came from, not `demo_entry`); properly, this is CLAUDE.md's **"No compilation inside tests"** (archived
-0041) and wants to be a build-stage compile-check whose expected result is failure. See `0501-*`.
-(2026-08-10)
+Recently resolved (2026-08-10): **#501** (testing) — `native_main_macro_misuse` failed a DIFFERENT subset
+of its five cases every run; four of five failed at least once, any one alone passed. Not lock contention,
+which was the first read — it fails SERIALLY too. All five staged copies build the same package name
+`demo_entry` into one shared `CARGO_TARGET_DIR` (phase-342 W2), and a package is identified by
+name + version, NOT by the path it was staged to, so the first case to compile it SUCCESSFULLY made every
+later case's check fresh: `Finished` with no `Checking demo_entry` and exit 0, in a suite whose every
+assertion is "this misuse must FAIL to compile". Confirmed deterministically OUTSIDE nextest (stage two
+copies, check a valid one, then a misuse one against the same dir — the misuse exits 0). Fixed by stamping
+a unique build-metadata version per staged copy, keeping the shared dependency graph that phase-342's
+108.5 s -> 10.3 s actually came from. **The issue's claim that this explained #495 is RETRACTED** — 0495
+reproduces cold and alone, and disabling either fix leaves the other's tests passing. Two independent
+defects in one file with a similar-looking symptom; "same symptom, same file, must be the same bug" is what
+made the first write-up assert an untested link. See `archived/0501-*`. (2026-08-10)
 
 RESOLVED 2026-08-10 — **#500** `examples/workspaces/mixed` could not LINK: seven duplicate symbols
 (`nros_rmw_zenoh_register`, `REGISTRY`, `nros_rmw_cffi_*`) from two `nros-rmw-zenoh` identities in one
@@ -115,15 +113,20 @@ Recently resolved (2026-08-10): **#0496** — cyclone called `ddsrt_mutex_init` 
 **addrset**, and on Zephyr that is a slot from the static `CONFIG_MAX_PTHREAD_MUTEX_COUNT` pool,
 so **joinable g. See `archived/0496-*`.
 
-**#495** (testing, open 2026-08-10) — `rebuilds_on_model_touch` fails: cargo short-circuits in 0.04 s
-after the resolved model is touched. The rebuild edge EXISTS
-(`nros-build/src/lib.rs:242` emits `rerun-if-changed=<model_path>`) — a first pass grepping only
-`**/build.rs` missed it because the emitter is in a library those scripts call. Probable but UNPROVEN
-trigger: issue 0490 removed a permanently-dirty `rerun-if-changed` that had been rebuilding every chain, so
-this test may have been passing for the wrong reason and 0490 unmasked it. Narrowed to two candidates
-needing different fixes: the test touches a different path than the script registered (test is wrong), or
-an mtime-only rewrite does not fire the edge (something upstream is wrong, and it would matter well beyond
-this test).
+Recently resolved (2026-08-10): **#495** (testing) — `rebuilds_on_model_touch` failed: cargo
+short-circuited in 0.04 s after the resolved model was touched. **Neither candidate the issue narrowed to,
+and not 0490 unmasking it** — it reproduces cold, alone, with the shared target dir wiped. The macro READS
+the model (`main_macro.rs:589`) and never registers it: `ensure_model` returned only
+`[system.toml, launch file]` as rebuild deps, so `tracked.extend(inputs)` never saw the artifact — against
+the module header's own stated invariant, "we emit `include_bytes!` for every file the macro read". The
+confirmed `nros-build` edge was real and irrelevant: entry crates carry no `build.rs`, so it never runs for
+this fixture. Fix is ASYMMETRIC and that is the point — the BUILD-PRODUCED branch now tracks the artifact,
+the SELF-RESOLVED branch still must not, because that branch WRITES the file and depending on your own
+output is the perpetual-dirty loop its `is_fresh` check exists to prevent. Only a writer can loop on its
+own output. Matters past the test: a build-produced model changes without its inputs changing (`nros sync`
+on a newer CLI, an expert `MODEL` override), and a consumer tracking only inputs is then a museum binary.
+**Not the same bug as #501**, though they shared a file and a `Finished in 0.0Ns` symptom — each fix was
+reverted independently to prove the other did not mask it. See `archived/0495-*`. (2026-08-10)
 
 **#493** — TWO cargo workspace ROOTS share one corrosion target dir, so a mixed workspace's umbrella staticlib
 bundles the nros stack TWICE and the link dies on duplicate `#[no_mangle]` symbols. `libnros_ws_runtime.a` holds

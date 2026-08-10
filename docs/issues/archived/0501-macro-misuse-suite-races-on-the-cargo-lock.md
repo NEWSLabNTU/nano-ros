@@ -1,12 +1,61 @@
 ---
 id: 501
 title: "`native_main_macro_misuse` shares ONE cargo target dir across five cases that all build `demo_entry`, so a sibling's successful artifact satisfies the check a misuse case expects to FAIL"
-status: open
+status: resolved
+resolved_in: phase-342
 type: bug
 severity: high
 area: testing
 related: [issue-0495, issue-0041, phase-342, phase-346]
 ---
+
+## Resolution (2026-08-10)
+
+`stage_fixture` now stamps a unique build-metadata version onto each staged
+copy's `demo_entry` (`0.1.0+<pid>c<n>`), so the copies are distinct cargo units
+while the whole dependency graph stays shared — which is where phase-342 W2's
+108.5 s → 10.3 s came from, the deps rather than `demo_entry` itself. Per-case
+target dirs would also fix it and would give back the cold-build cost that
+change bought.
+
+Confirmed the mechanism outside nextest first, because the in-suite evidence was
+only circumstantial. Stage two copies, check a VALID one, then check a MISUSE
+one against the same target dir:
+
+```
+--- B (valid) first ---
+  Checking demo_entry v0.1.0 (/tmp/tmp.4sVV.../src/demo_entry)
+  Finished in 0.83s
+--- A (misuse) second, same target dir ---
+  Finished in 0.74s          <- no `Checking demo_entry` at all
+A real exit: 0               <- the misuse compiled "successfully"
+```
+
+Deterministic, no concurrency involved. A package is identified by name +
+version, NOT by the path it was staged to, so the first case to compile
+`demo_entry` successfully made every later case's check fresh. Same repro with
+the version stamp applied: `A exit: 101`, correctly failing.
+
+Verified: 5/5 warm ×3, cold, and `--test-threads=1`. Tripwired by disabling the
+stamp — `unknown_board_emits_compile_error` and
+`custom_tasks_on_owned_spin_emits_error` fail again.
+
+## CORRECTION — this does NOT explain #495
+
+The section below hypothesised that #501 explained issue 0495. **Refuted.**
+`rebuilds_on_model_touch` fails cold, alone, with the shared dir wiped — no
+sibling exists to alias against. And with the 0495 fix in place but the 0501
+stamp disabled, `rebuilds_on_model_touch` PASSES while the misuse cases fail;
+with 0501 fixed and 0495 reverted, the reverse. Two independent defects that
+happened to live in one file and produce a similar-looking `Finished in 0.0Ns`.
+
+0495's real cause was `ensure_model` never returning the build-produced model
+among the paths a consumer registers as rebuild deps — the macro read the file
+and never tracked it. Fixed there.
+
+The lesson worth keeping: "same symptom, same file, must be the same bug" is
+what made the first write-up assert a link it had not tested. The tripwire that
+disproved it took one run each way.
 
 ## Symptom
 
