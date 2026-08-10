@@ -1,0 +1,8 @@
+# nros sync regenerates these — do not commit.
+nros-bridge.toml
+Cargo.lock
+.cargo/
+generated/
+build/
+target/
+target-fixtures/

@@ -86,45 +86,8 @@ tools/*
 # Phase 193 — separate target-dir for concurrent embedded clippy (just check-workspace-all)
 /target-embedded/
 
-# ---------------------------------------------------------------------------
-# Example / fixture build output — ONE block, following RFC-0070's vocabulary.
-#
-# This replaced 391 per-leaf `.gitignore` files (2026-08-10). They held only 35
-# DISTINCT contents between them, drawn from the ~10 patterns below, and every
-# new example or RMW added another copy to maintain — which is how the suffix
-# zoo below grew unnoticed in the first place.
-#
-# The patterns are the R2 coordinate vocabulary, not an ad-hoc list: `build`,
-# `build-<rmw>`, `build-workspace-<kind>[-<platform>]`, `target`,
-# `target-<rmw>`, `cargo-target`, `target-fixtures`. Measured across the tree:
-# 181 source dirs currently hold build output under 14+ spellings.
-#
-# NOTE THIS IS A SYMPTOM, NOT THE FIX. RFC-0070 R1 says "Nothing writes build
-# output inside a source directory. Not `examples/**/target-*`, not
-# `examples/**/build-*`, not a workspace dir." Every pattern here exists because
-# that rule is not yet satisfied; when the artifacts move under
-# $NROS_BUILD_ROOT, this block collapses to the `/build/` line above and these
-# lines get DELETED rather than extended. Adding a new spelling here is a bug
-# under R2 — extend the coordinate instead.
-#
-# Safe to blanket-ignore: `git ls-files` reports ZERO tracked files under
-# examples/**/{build,build-*,target,cargo-target,target-fixtures}/ and ZERO
-# tracked `examples/**/Cargo.lock` or `examples/**/generated/`, which matches
-# CLAUDE.md's rule that an example's generated/ is user-side and its lock
-# therefore is not committed either.
-examples/**/build/
-examples/**/build-*/
-examples/**/target/
+# Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed
 examples/**/target-*/
-examples/**/cargo-target/
-examples/**/target-fixtures/
-examples/**/generated/
-examples/**/Cargo.lock
-
-# Generated bridge config (`nros sync` writes it beside the bringup). NOT part
-# of the artifact-dir vocabulary above — it survived the 2026-08-10
-# consolidation because deleting the per-leaf ignores made it visible, which is
-# the check that caught it. Zero are tracked.
 
 # Leaf `.cargo/config.toml` (RFC-0048 W9). `nros sync` writes these: one
 # `include = ["…/nros-patch.toml"]` pointing at a gitignored, host-specific
@@ -232,4 +195,3 @@ packages/core/*/include/nros/.*.tmp.*
 skills-lock.json
 third-party/ros/
 .nros-box-tree
-examples/**/nros-bridge.toml

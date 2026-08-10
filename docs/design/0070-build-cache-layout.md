@@ -34,7 +34,42 @@ directory names.
 
 ## Rule
 
-### R1 — One root
+### R1 — One root — **AMENDED 2026-08-10: scoped by context**
+
+**R1 as originally written was too broad.** It said "Nothing writes build output
+inside a source directory" globally. That is wrong for the copy-out examples, and
+the amendment matters because acting on the unscoped rule already broke the
+copy-out contract once (391 per-leaf `.gitignore` files were consolidated to the
+root, after which a copied-out leaf had no ignore at all; restored same day).
+
+The tree holds TWO kinds of project and they take different conventions:
+
+| context | convention | why |
+| --- | --- | --- |
+| `examples/**` copy-out leaves | **Cargo/CMake native** — `target/` and `build/` beside the source, per-leaf `.gitignore` | a user copies the leaf out; it must behave like a normal Cargo/CMake project in their repo (CLAUDE.md: "Examples are standalone copy-out projects") |
+| the nano-ros workspace (`workspaces/`, fixtures, tooling) | **colcon-style shared `build/`** (+ `install/`, `log/`) | ROS familiarity is a project goal, and this is where sharing is legitimate |
+
+R1 below applies to the SECOND row only. R2, R3 and R4 are unchanged and apply
+to both.
+
+**The measurement that forced this.** phase-344 §1.5 established that relocation
+is not a disk win at all: of 182.3 GiB in cmake binary dirs, **151.7 GiB (83.2 %)
+is corrosion's own cargo tree**, and moving those dirs frees ZERO bytes. What
+actually saved 80.6 GB was SHARING — one `--target-dir` per identity group
+(phase-340 B3/wave 2) — which is a Cargo-native mechanism that does not require
+relocating anything.
+
+So relocation and sharing are different levers and had been conflated.
+Duplication comes from one Cargo/Corrosion invocation being ignorant of another:
+corrosion derives its target dir from `CMAKE_BINARY_DIR` with no override, so N
+cmake leaves give N cargo trees wherever those trees live. **R4 already names the
+fix** — sharing must come from ONE invocation over many packages. In the
+workspace that is available (one cmake configure over many packages gives
+corrosion one cargo tree, the direct analogue of a Cargo workspace unifying
+features and target dir). In a copy-out example it is unavailable by
+construction, and that is correct rather than a gap.
+
+### R1 (workspace scope) — One root
 
 Every build cache lives under `$NROS_BUILD_ROOT` (default `<repo>/build/`,
 overridable so the whole tree can move to a faster or larger volume — the

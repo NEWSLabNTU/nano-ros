@@ -22,6 +22,34 @@ approached from the cargo side).
 
 ---
 
+## RE-SCOPED 2026-08-10 — W3..W6 are withdrawn
+
+RFC-0070 R1 was amended to apply to the **nano-ros workspace only**, not to the
+copy-out examples (see the RFC's R1 table). That removes this phase's premise:
+W3..W6 relocate `build-<rmw>` dirs that live in `examples/**` copy-out leaves,
+where `build/` beside the source IS the convention a copied-out project should
+follow.
+
+**They were also never a disk win.** This phase's own §1.5 measured it: 83.2 % of
+those bytes is corrosion's cargo tree, and relocation frees ZERO. Moving 182 GiB
+to gain nothing, against the convention, is not worth doing.
+
+**Withdrawn:** W3 (`build-xrce`), W4, W5, W6 — the per-family moves.
+**Kept:**
+* **W2** — LANDED. Builder-keyed attribution was worth having on its own: it
+  found six rust-through-cmake rows whose cyclonedds build had no manifest row.
+* **W7** — RE-SCOPED to the workspace only. The gate must fail on build output
+  inside a *workspace* source dir, and must NOT flag `examples/**`.
+
+**What replaces them.** The real remaining prize is the one §1.5 measured and
+this phase explicitly deferred: **50.1:1 identity duplication inside the
+corrosion trees** (96,663 rlib/rmeta over 1,931 distinct names). That is a
+SHARING problem, not a placement problem — R4's "one invocation over many
+packages", applied to cmake via a single workspace configure. It wants its own
+phase, and it carries W1's hazard: 132 `libnros_c.a` in 15 distinct sizes, which
+corrosion copies OUT into the consuming tree.
+
+
 ## 1. The census, re-derived
 
 phase-340 P3 says its own figure "is itself one `find`; re-derive it before
