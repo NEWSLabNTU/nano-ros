@@ -94,3 +94,38 @@ distrobox and vice versa. The resolver honours `NROS_HOME` through
 `nros_store_bin`, so both work — but each tree needs its own
 `nros setup --tool esp32-qemu`. These tests need QEMU and espflash, not ROS 2,
 so the host is the cheaper place to run them.
+
+## Second defect, found once the tests could finally run
+
+With QEMU resolved, two networked tests still failed — and the ESP32 image was
+fine. It booted, connected, and printed its conformant readiness line:
+
+```
+INFO - Subscriber created for topic: /chatter
+Application setup complete — entering spin loop.
+```
+
+The tests were waiting on the LITERAL `"Waiting for messages..."` at
+`esp32_emulator.rs:211` and `:402`. No listener prints that any more —
+phase-342 W7 converged every example onto `LISTENER_READY_MARKER`
+(`"Subscriber created for topic:"`) and `example_output_conformance` gates it.
+So each test burned its full 60 s and reported "ESP32 listener failed to start".
+
+That is issue 0481's class verbatim. Fixed by using the shared constant.
+**8/8 pass, and the suite dropped 137.9 s → 29.9 s** — the 108 s difference was
+two timeouts being waited out.
+
+### The 0481 gate does not catch this, and that is a real gap
+
+`scripts/check-readiness-marker-literals.sh` reports `OK (32 baselined, 0 new)`
+on the un-fixed tree. Its engine flags a `wait_for_output_pattern` literal that
+**matches a known `output::` constant** or **ambiguously prefixes two or more**.
+A literal matching NOTHING is invisible to it — and that is the worst case, not
+a benign one: a marker no process prints is a guaranteed timeout, whereas an
+ambiguous one at least sometimes matches.
+
+Closing it properly needs a way to separate "stale readiness marker" from
+"legitimate ad-hoc pattern", of which the suite has many — i.e. a baseline of
+allowed ad-hoc literals, not a rule. Recorded here rather than bolted on,
+because a gate extension that fires on every legitimate pattern would be turned
+off within a week. **Named follow-up, not done.**

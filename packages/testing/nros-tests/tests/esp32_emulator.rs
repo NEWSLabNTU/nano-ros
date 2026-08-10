@@ -36,6 +36,7 @@ use nros_tests::{
         build_int32_sink, build_native_listener, build_native_talker,
         get_prebuilt_esp32_qemu_workspace_entry, require_zenohd,
     },
+    output::LISTENER_READY_MARKER,
     platform, wait_for_port,
 };
 use std::{process::Command, time::Duration};
@@ -204,11 +205,18 @@ fn test_esp32_talker_listener_e2e() {
     let mut listener =
         start_esp32_qemu(&listener_bin, true).expect("Failed to start ESP32 listener");
 
-    // Wait for listener to connect and subscribe. Reaching "Waiting for
-    // messages..." implies `Executor::open` + subscription declaration
-    // succeeded (the examples abort on transport failure before this line).
+    // Wait for the listener to connect and subscribe: the readiness marker
+    // implies `Executor::open` + subscription declaration succeeded (the
+    // examples abort on transport failure before this line).
+    //
+    // Issue 0489 — this greped the LITERAL "Waiting for messages...", which the
+    // ESP32 listener does not print and, since phase-342 W7 converged the
+    // examples, no listener prints. The image was booting fine and announcing
+    // `Subscriber created for topic: /chatter`; the test burned its whole 60 s
+    // and reported "failed to start". Use the shared constant, which
+    // `example_output_conformance` gates every example against.
     let listener_startup = listener
-        .wait_for_output_pattern("Waiting for messages...", Duration::from_secs(60))
+        .wait_for_output_pattern(LISTENER_READY_MARKER, Duration::from_secs(60))
         .expect("ESP32 listener failed to start (check zenoh connection)");
     eprintln!("Listener connected and subscribed");
 
@@ -395,11 +403,11 @@ fn test_native_to_esp32() {
     let mut esp32_listener =
         start_esp32_qemu(&listener_bin, true).expect("Failed to start ESP32 listener");
 
-    // Wait for ESP32 listener to connect and subscribe. "Waiting for
-    // messages..." implies the session opened and the subscription was
-    // declared.
+    // Wait for the ESP32 listener to connect and subscribe — the readiness
+    // marker implies the session opened and the subscription was declared.
+    // Issue 0489: was the stale literal "Waiting for messages...". See above.
     let listener_startup = esp32_listener
-        .wait_for_output_pattern("Waiting for messages...", Duration::from_secs(60))
+        .wait_for_output_pattern(LISTENER_READY_MARKER, Duration::from_secs(60))
         .expect("ESP32 listener failed to start");
 
     // Stabilization delay
