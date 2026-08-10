@@ -61,6 +61,36 @@ response to a red is to destroy the evidence and re-measure. If the count was
 genuine, the rebuild silently fixes the symptom and the regression ships. The
 verdict cannot be acted on correctly because it cannot be interpreted.
 
+## Option 1 needs a field the stamp does not have (attempted 2026-08-10)
+
+Tried the preferred option — "read only artifacts from the current build",
+filtering rlib mtimes against the fixtures stamp. **It cannot work as written,
+and the failure is silent in the dangerous direction: the gate SKIPS every
+time**, which is worse than the over-counting it replaces.
+
+`built_at` is written when the build FINISHES, not when it starts. Measured on
+a tree from one `lane=all` run:
+
+```
+artifacts   2026-08-10T23:22:05 .. 23:23:17   (local)
+built_at    2026-08-10T15:31:21Z  =  23:31:21 (local)
+```
+
+So every artifact the build produced is OLDER than the stamp, and the filter
+classifies the whole current build as history. Filtering against the stamp
+FILE's mtime fails identically, for the same reason.
+
+`built_at` is an upper bound on the build's output; the filter needs a lower
+one. The smallest fix is a `started_at=` line written at the top of the run
+(the stamp writer already composes the file, so it is one more line), after
+which the filter is exactly the one-liner this issue proposed. Without it,
+option 1 has nothing correct to compare against.
+
+**Reverted, not shipped.** A gate that always skips reports green forever, which
+is the failure this issue is about, inverted — the count would stop being
+untrustworthy by ceasing to exist. Options 2 and 3 are unaffected by this and
+remain open.
+
 ## Direction
 
 The gate needs to tell accumulation from a regression instead of asking the
