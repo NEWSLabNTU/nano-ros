@@ -1,7 +1,7 @@
 ---
 id: 371
 title: native_sim cyclone app abort()s ~19-21 s into an Autoware-graph session during MRM/service churn
-status: open
+status: resolved
 type: bug
 severity: high
 area: rmw
@@ -10,8 +10,8 @@ related: [issue-0377, issue-0267]
 
 # 0371 — native_sim cyclone app abort()s ~19–21 s into an Autoware-graph session
 
-**Status:** Open — root cause identified 2026-08-10 (below); the remaining work is
-on the nano-ros side (diagnosability), the demo is unblocked.
+**Status:** Resolved 2026-08-10 — root cause below; the ddsrt half landed as
+cyclonedds@5b87ee52, pinned by nano-ros fa4c8bd15.
 **Filed:** 2026-08-01
 **Affects:** `nros-rmw-cyclonedds` on Zephyr native_sim joining a large
 (~40-participant / 68-composable) stock ROS 2 Humble graph
@@ -132,18 +132,24 @@ scenario's attempts; the next run engaged on attempt 1. That is scenario/ADAPI
 timing, unrelated to this issue — in both runs the island stayed up, operated
 MRM and recovered.
 
-**nano-ros side (open) — the diagnosability defect is the real bug here.**
+**nano-ros side (landed) — the diagnosability defect was the real bug here.**
 A resource ceiling is a legitimate thing to hit; dying anonymously 20 seconds
-later in an unrelated function is not. In the vendored cyclonedds fork
-(`third-party/dds/cyclonedds`, branch `nano-ros`):
+later in an unrelated function is not. `cyclonedds@5b87ee52` routes all three
+init entry points in `src/ddsrt/src/sync/posix/sync.c` through one
+`sync_init_failed()` helper that names the object and, under Zephyr, the
+Kconfig knob to raise. `ddsrt_cond_init` had the same discarded return as the
+mutex one; `ddsrt_rwlock_init` checked but aborted silently. Swept the sibling
+ports: freertos and threadx already check every init return, so the
+discarded-return class is closed.
 
-- `ddsrt_mutex_init` / `ddsrt_cond_init` / `ddsrt_rwlock_init`
-  (`src/ddsrt/src/sync/posix/sync.c`) must not discard the `pthread_*_init`
-  return. A `DDS_FATAL` naming the exhausted pool and the Kconfig knob turns
-  this class into a self-explaining first-failure message.
-- Fix the CLASS: all three init functions, not just the mutex one that bit us.
+Note the pin gap this exposed: `4c8ff8c2` ("fail loudly when pthread_mutex_init
+fails") had been on the fork branch since 2026-07-17, but the superproject pin
+predated it, so the image that hit this issue still had the fully-silent path.
+Three fork commits were unpinned; `fa4c8bd15` advances the pin over all four.
 
-Worth noting for real targets: 131072 slots is ~5 MiB of static RAM, which
-native_sim can afford and a real board cannot. Cyclone putting a pool mutex on
-every addrset is the underlying scalability problem for
-cyclone-on-Zephyr-POSIX against large graphs.
+## Residual (not this issue)
+
+131072 slots is ~5 MiB of static RAM, which native_sim can afford and a real
+board cannot. Cyclone putting a pool mutex on every addrset is the underlying
+scalability limit for cyclone-on-Zephyr-POSIX against large graphs — worth its
+own issue if an embedded target ever needs to join a graph this size.
