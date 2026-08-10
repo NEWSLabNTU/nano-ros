@@ -10,75 +10,140 @@ related: [issue-0377, issue-0267]
 
 # 0371 — native_sim cyclone app abort()s ~19–21 s into an Autoware-graph session
 
-**Status:** Open
+**Status:** Open — root cause identified 2026-08-10 (below); the remaining work is
+on the nano-ros side (diagnosability), the demo is unblocked.
 **Filed:** 2026-08-01
 **Affects:** `nros-rmw-cyclonedds` on Zephyr native_sim joining a large
 (~40-participant / 68-composable) stock ROS 2 Humble graph
 (simple-autoware-safety-island direct-connection demo)
 
-## Symptom
+## ROOT CAUSE (2026-08-10): the Zephyr POSIX pthread **mutex pool** is exhausted
 
-The safety-island image (4 ported nodes, cyclone RMW, domain 1 direct)
-dies with a bare `abort()` → `ZEPHYR FATAL ERROR 4` at a near-deterministic
-sim-time (18.7–21.0 s across 7 reproductions on 2026-08-01), always during
-the demo scenario's INit phase. Immediately before death the mrm_handler is
-FLAPPING `NORMAL -> MRM_OPERATING -> NORMAL` (operate/cancel requests to
-the operator services each cycle), so the cyclone service-call path is hot.
-The aborting thread is an unnamed cyclone pthread (CONFIG_THREAD_NAME shows
-`(unknown)`; two distinct stack addresses seen). No cyclone warning is
-traced before the abort (baked `<Tracing><Verbosity>warning</Verbosity>`).
+`CONFIG_MAX_PTHREAD_MUTEX_COUNT` runs out mid-SEDP-ingestion, and every layer
+above it swallows the failure, so the process dies ~20 s later in an unrelated
+function with no message.
 
-## What does NOT reproduce it (all ≥60–90 s clean)
+The chain, each link verified under gdb:
 
-- island alone;
-- island + one rclpy peer feeding availability + odometry @10 Hz (451 msgs);
-- island + the same peer with availability FLAPPING 0.5 Hz (service churn
-  driver, 701 msgs);
-- island + the FULL sim graph idle (no scenario);
-- island + sim + `/initialpose` + EKF odometry @40 Hz (`ros2 topic hz`
-  confirmed) — survives;
-- under `gdb -batch -ex run` the full failing scenario runs to completion
-  (timing-sensitive: the debugger masks it).
+1. Zephyr's `pthread_mutex_init` (`lib/posix/options/mutex.c:214`) allocates a
+   slot from a fixed `SYS_BITARRAY` pool. On exhaustion it leaves
+   `*mu = PTHREAD_MUTEX_INITIALIZER` (`-1`) and returns `ENOMEM`.
+2. CycloneDDS's POSIX `ddsrt_mutex_init` (`src/ddsrt/src/sync/posix/sync.c:23`)
+   **discards that return value**. The caller believes the mutex exists.
+3. The first `ddsrt_mutex_lock` on it reaches `acquire_mutex` → `to_posix_mutex`,
+   which retries the pool alloc for a `-1` handle, fails again, and returns
+   `EINVAL`.
+4. `ddsrt_mutex_lock` treats any non-zero return as `abort()` — one of **13 bare
+   `abort()` calls** in that file, none of which log anything.
 
-## What DOES reproduce it (7/7 on 2026-08-01)
+So the observable is a bare `abort()` → `ZEPHYR FATAL ERROR 4` in an unnamed
+cyclone pthread, arbitrarily far from the actual resource failure.
 
-`just demo-all` (or sim + island + `demo/scenario_driver.py` by hand) in
-simple-autoware-safety-island @ direct-connection HEAD, nano-ros at
-`929dee182` OR at `471a62529` — and the SAME tree passed this scenario
-twice on 2026-07-31 (sim then reported 32/33 nodes vs today's 33/33;
-`autoware_manual_lane_change_handler` had crashed at startup that evening,
-apport log 20:58). Suspected trigger: some participant/endpoint present
-only in the 33/33 graph interacting with the scenario driver's endpoint
-churn (its `latest()` helper creates and destroys a subscription per poll).
+### The measurement
 
-Reproduces under `strace -f -k` (stacks unwind only to zephyr's
-`posix_print_trace` shim — the abort caller is above the custom zephyr
-thread stack, invisible to the strace unwinder). No core: apport ignores
-non-package binaries.
+gdb on the abort site, decoding the handle and counting the pool bitarrays:
 
-## Trigger CONFIRMED (2026-08-01): `autoware_manual_lane_change_handler`
+```
+***** ddsrt_mutex_lock: pthread_mutex_lock FAILED *****
+raw=0xffffffff marked_initialized=True index=2147483647
+  -> PTHREAD_MUTEX_INITIALIZER (-1): the pool alloc failed
+posix_mutex_bitarray: 16384 / 16384 allocated      <-- FULL
+posix_cond_bitarray:    250 / 16384 allocated
+#1  ddsrt_mutex_lock (mutex=0x99a150)  sync.c:42
+#2  ddsi_new_proxy_reader (...)        ddsi_proxy_endpoint.c:584
+#3  handle_sedp_alive_endpoint (...)   q_ddsi_discovery.c:1727
+#4  handle_sedp (...)                  q_ddsi_discovery.c:1863
+#5  builtins_dqueue_handler (...)      q_ddsi_discovery.c:2109
+#6  dqueue_thread (...)                q_radmin.c:2552
+```
 
-A/B on the live stack: overlay-shadowing the node out of
-`tier4_planning_launch` (demo commit; same mechanism as the MRM shadow)
-turns 7/7 deterministic aborts into a clean `VERDICT: PASS` on the first
-try — with the island built from the pinned submodule. This also explains
-the 07-31/08-01 flip: on 07-31 the node happened to crash at startup
-(apport 20:58, sim 32/33), so the passing runs never saw its endpoints.
+A second capture aborted one frame over, on the addrset created inside
+`addrset_from_locatorlists` (`q_addrset.c:484` ← `q_ddsi_discovery.c:246`) —
+same mechanism, different first-lock.
 
-The node's surface (launch remaps): subscribes the lanelet `vector_map`
-(multi-MB transient_local) and `/localization/kinematic_state`; exposes the
-manual-lane-change services/state used by its RViz plugin. Which of its
-endpoints kills the island's cyclone session is the open question — the
-island subscribes neither of its inputs, so suspicion falls on its
-service/TL endpoint announcements interacting with the island's SEDP
-handling at scale.
+The **mutex pool is at 100 %, the cond pool at 1.5 %**. Only mutexes are
+scarce; the two are not consumed in pairs.
 
-## Next steps
+### Why removing one Autoware node "fixed" it
 
-- Get the abort site: wrap zephyr's `abort()` (link-order stub printing a
-  `backtrace()` from the aborting pthread before panicking), or run under
-  `rr` if available.
-- Suspect list, in order: cyclone service req/rep path under churn
-  (handler operate/cancel every state flap), SEDP proxy create/dispose
-  churn from the scenario's subscription-per-poll pattern, ddsrt alloc
-  failure that 256 MiB arena + 16384 mutex/cond pools did NOT absorb.
+It is a threshold on the **remote** endpoint count, not a property of that node.
+Cyclone takes one pool mutex per proxy entity *and* one per addrset, so demand
+scales with the graph the island joins, not with the island's own 4 nodes.
+Shadowing `autoware_manual_lane_change_handler` removes enough endpoints to keep
+peak demand just under 16384 — which is also why the 07-31/08-01 flip tracked
+whether that node had crashed at startup (sim 32/33 vs 33/33). Nothing about
+that node's service or transient-local endpoints is special.
+
+### Corrections to the original write-up
+
+- **"256 MiB arena + 16384 mutex/cond pools did NOT absorb"** — the arena was
+  never the problem, and the *cond* pool was never close. The mutex pool was
+  exactly the limit, hit exactly.
+- **"under `gdb -batch -ex run` the scenario runs to completion — the debugger
+  masks it"** — a plain `break abort` does *not* mask it; the abort reproduced
+  under gdb on the first try. What masks it is a breakpoint on a hot path
+  (a breakpoint on every `pthread_mutex_init` — ~7000 hits — slows SEDP
+  ingestion enough that the pool never fills).
+- The earlier suspect list (service req/rep churn, SEDP proxy churn from the
+  scenario's subscription-per-poll) is not implicated. The scenario only matters
+  because it keeps the island alive long enough to finish ingesting the graph.
+
+## Reproduction (2026-08-10, nano-ros `42c720958`)
+
+Still reproduces on current main — cyclone's RMW sources have not changed since
+the `eee004fce` pin (only build-side commits), and the vendored cyclonedds
+pointer is unmoved.
+
+```sh
+# simple-autoware-safety-island, autoware_manual_lane_change_handler un-shadowed
+just zephyr-build && just demo-all
+```
+
+→ `abort()` at 18.758 s, first attempt. `tmp_island.log`:
+
+```
+abort()
+@ WEST_TOPDIR/zephyr/lib/libc/common/source/stdlib/abort.c:13
+[00:00:18.758,006] <err> os: >>> ZEPHYR FATAL ERROR 4: Kernel panic on CPU 0
+[00:00:18.758,006] <err> os: Current thread: 0x6f3b78 (unknown)
+```
+
+The gdb probe used is in the demo repo at `tmp/abort-probe.gdb` (decodes the
+`pthread_mutex_t` handle and popcounts `posix_mutex_bitarray` /
+`posix_cond_bitarray`).
+
+## Fix
+
+**Demo side (done):** raise `CONFIG_MAX_PTHREAD_MUTEX_COUNT` to 131072 in
+`src/zephyr_entry/prj-cyclonedds.conf`. The cond pool stays at 16384.
+
+Verified in simple-autoware-safety-island with the workaround removed (the full
+33/33 graph, `autoware_manual_lane_change_handler` present):
+
+```
+VERDICT: PASS — island stopped the vehicle (4.25 -> 0.00 m/s),
+                MRM recovered, vehicle resumed (1.39 m/s)
+island aborts: 0
+```
+
+A preceding run survived 140 s with zero aborts but scored FAIL because the
+initial `ChangeOperationMode` call returned `success=False` for all 8 of the
+scenario's attempts; the next run engaged on attempt 1. That is scenario/ADAPI
+timing, unrelated to this issue — in both runs the island stayed up, operated
+MRM and recovered.
+
+**nano-ros side (open) — the diagnosability defect is the real bug here.**
+A resource ceiling is a legitimate thing to hit; dying anonymously 20 seconds
+later in an unrelated function is not. In the vendored cyclonedds fork
+(`third-party/dds/cyclonedds`, branch `nano-ros`):
+
+- `ddsrt_mutex_init` / `ddsrt_cond_init` / `ddsrt_rwlock_init`
+  (`src/ddsrt/src/sync/posix/sync.c`) must not discard the `pthread_*_init`
+  return. A `DDS_FATAL` naming the exhausted pool and the Kconfig knob turns
+  this class into a self-explaining first-failure message.
+- Fix the CLASS: all three init functions, not just the mutex one that bit us.
+
+Worth noting for real targets: 131072 slots is ~5 MiB of static RAM, which
+native_sim can afford and a real board cannot. Cyclone putting a pool mutex on
+every addrset is the underlying scalability problem for
+cyclone-on-Zephyr-POSIX against large graphs.
