@@ -90,7 +90,9 @@ fi
 
 # One spelling of the helper. A second private `fn atomic_write` is how the
 # first one failed to reach the sidecar.
-dupes="$(grep -rln 'fn atomic_write' "$CORE" | grep -v 'atomic_file.rs' || true)"
+# `git grep`, not `grep -r`: check-no-tracked-file-find rejects a filesystem
+# walk to locate TRACKED files (measured 7m36s -> 0.8s over the same 232 paths).
+dupes="$(git grep -ln 'fn atomic_write' -- "$CORE" | grep -v 'atomic_file.rs' || true)"
 if [ -n "$dupes" ]; then
     echo "ERROR: a second atomic_write implementation exists — use nros_cli_core::atomic_file:" >&2
     echo "$dupes" | sed 's/^/  /' >&2
