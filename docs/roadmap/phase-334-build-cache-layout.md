@@ -335,11 +335,28 @@ relocation from the jobs audit generalizes to everything, not just zephyr).
       path changes anyway and the manifest column stops being authored. Doing a
       path move here would put two path conventions in flight at once — the #393
       hazard.
-- [x] **W2.c** LANDED 2026-08-10 by `53681ecbc` — 391 per-leaf `.gitignore`
-      files become ONE rule-shaped block at the root, in RFC-0070 R2 vocabulary.
-      Consolidated rather than deleted, which is correct while a build path
-      still writes those dirs; the block says so and says the lines get DELETED,
-      not extended, once artifacts move under `$NROS_BUILD_ROOT`.
+- [x] **W2.c** **WITHDRAWN 2026-08-10** — landed as `53681ecbc`, then REVERTED
+      the same day, and the item is closed rather than re-attempted.
+
+      `53681ecbc` consolidated 391 per-leaf `examples/**/.gitignore` files into
+      one root block. That broke the copy-out contract: afterwards
+      `examples/native/rust/talker` had NO ignore at all, so a user copying the
+      leaf out — which CLAUDE.md states is the contract — gets `target/` showing
+      up untracked in their repo. The 391 files are not sprawl to collapse; they
+      ARE the contract.
+
+      **RFC-0070 R1 was amended the same day to scope by context**, which
+      removes this item's premise: `examples/**` copy-out leaves follow
+      CARGO/CMAKE convention (per-leaf ignore, `target/` and `build/` beside the
+      source), and only the nano-ros workspace takes the colcon-style shared
+      `build/`. For the workspace half this item is ALREADY SATISFIED —
+      `/build/` has covered it since `.gitignore:23`.
+
+      So: nothing to collapse in `examples/**` (by design), nothing left to
+      collapse in the workspace (already done). Anyone re-reading the original
+      wording should stop here — "delete the per-dir ignore sprawl" was written
+      against the unscoped R1 and is wrong under the amended one.
+
 - [x] **W2.d** LANDED 2026-08-06 — AGENTS.md "Build-Cache Root (RFC-0070)".
       `.env`/`NROS_BUILD_ROOT` documented as the ONE relocation
       knob (book + AGENTS.md); the jobs-audit NVMe note updates to it.
@@ -387,7 +404,7 @@ here so a reader of either doc sees the same sequence.
    manifest column this item absorbed from W2.b is therefore still authored**;
    its deletion is phase-340 W2.d.
 6. **340 W3** (was also 334 W3.b) — normalise the corrosion `--target` split.
-7. **334 W2.c** — collapse `.gitignore` once (4) has moved the paths.
+7. ~~**334 W2.c**~~ — WITHDRAWN 2026-08-10; the per-leaf ignores are the copy-out contract (RFC-0070 R1 as amended), and the workspace half was already satisfied by `/build/`.
 8. **340 W7** (was 334 W3.c) — re-measure both axes against phase-331's pair.
 
 Rationale for the order: (1) is a live red in the fast tier; (2) shrinks (1)'s

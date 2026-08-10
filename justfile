@@ -406,7 +406,7 @@ check-fast: \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
-    check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
+    check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths
@@ -747,6 +747,12 @@ check-abi-bindings:
 [private]
 check-board-abi-mirror:
     @bash scripts/check-board-abi-mirror.sh
+
+# phase-344 W7 — RFC-0070 R1 at WORKSPACE scope only. examples/** copy-out
+# leaves keep the Cargo/CMake convention and are deliberately exempt.
+[private]
+check-workspace-build-output:
+    @bash scripts/check-workspace-build-output.sh
 
 # issue 0478 — every cc::Build must name the nano-ros cc policy helper
 # (the strict diagnostics of 0383, and the clang-only frame-pointer flag gcc
