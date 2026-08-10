@@ -55,18 +55,44 @@ if [ -n "$offenders" ]; then
     status=1
 fi
 
-# 3. The lock resolves to exactly the pinned version.
+# 3. EVERY tracked lock that carries cbindgen resolves to exactly the pin.
+#
+# This arm originally read the root `Cargo.lock` alone, and that was too narrow
+# by 16 files. Introducing the exact requirement made 14 leaf locks stale
+# against it — they predate the pin — `check-leaf-lockfiles` went red and
+# ci-matrix was blocked until they were moved by hand. The sweep that missed
+# them looked for locks containing `nros-build-helpers` (3); the invariant is
+# about locks containing CBINDGEN (17). A gate whose coverage is narrower than
+# the rule it enforces is issue 0196's shape, and this is the fix for it here.
+locks_checked=0
 if [ -n "$pin" ]; then
-    locked="$(awk '/^name = "cbindgen"$/{getline; sub(/^version = "/,""); sub(/"$/,""); print; exit}' Cargo.lock)"
-    if [ "$locked" != "$pin" ]; then
-        echo "[FAIL] Cargo.lock resolves cbindgen $locked but the pin is $pin." >&2
-        echo "       Move it with \`just lock-update cbindgen $pin\`, and regenerate" >&2
-        echo "       the committed headers in the same commit if the output moved." >&2
+    off_pin=""
+    while IFS= read -r lock; do
+        [ -n "$lock" ] || continue
+        locks_checked=$((locks_checked + 1))
+        locked="$(awk '/^name = "cbindgen"$/{getline; sub(/^version = "/,""); sub(/"$/,""); print; exit}' "$lock")"
+        if [ "$locked" != "$pin" ]; then
+            off_pin="$off_pin\n         $lock (has $locked)"
+        fi
+    done <<EOF
+$(git grep -l 'name = "cbindgen"' -- '*Cargo.lock')
+EOF
+    if [ -n "$off_pin" ]; then
+        echo "[FAIL] these tracked locks disagree with the cbindgen pin ($pin):" >&2
+        # shellcheck disable=SC2059
+        printf "$off_pin\n" >&2
+        echo "       Move each with \`just lock-update cbindgen $pin <dir>\` — the" >&2
+        echo "       sanctioned path — and regenerate the committed headers in the" >&2
+        echo "       same commit if the output moved." >&2
         status=1
     fi
 fi
 
 if [ "$status" -eq 0 ]; then
-    echo "check-cbindgen-pin: OK (cbindgen pinned =$pin, inherited everywhere, lock agrees)"
+    if [ "$locks_checked" -eq 0 ]; then
+        echo "[FAIL] no tracked lock carries cbindgen — this gate just passed vacuously." >&2
+        exit 1
+    fi
+    echo "check-cbindgen-pin: OK (cbindgen pinned =$pin, inherited everywhere, $locks_checked tracked lock(s) agree)"
 fi
 exit "$status"

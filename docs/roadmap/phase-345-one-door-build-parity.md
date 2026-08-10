@@ -435,6 +435,26 @@ The first three attempts are kept above deliberately. Each produced a clean
 worktree while proving nothing, and the difference between those and this one is
 only that the lane actually compiled.
 
+**W3 FOLLOW-UP 2026-08-10 — the pin left 14 tracked locks stale, and my gate
+could not see them.** Introducing the exact requirement made every tracked lock
+that predates it stale: `check-leaf-lockfiles` went red and **ci-matrix was
+blocked** until another session moved them (`55db8934b`, 14 leaf locks, cbindgen
+only — 14 version lines and 14 checksums, nothing else re-resolved).
+
+The miss has a precise shape worth keeping. Before landing W3 I swept for locks
+that would be affected and found **3** — because I grepped for locks containing
+`nros-build-helpers`, reasoning about the dependency edge I had just added. The
+invariant is not about that edge: it is about locks containing **cbindgen**, of
+which there are **17**. Right question, wrong predicate, and the answer looked
+authoritative.
+
+`check-cbindgen-pin`'s third arm read the ROOT lock alone, so it could not have
+caught them either — a gate whose coverage is narrower than the rule it enforces,
+which is issue 0196's shape and which I had quoted at *another* gate earlier the
+same day. It now checks every tracked lock carrying cbindgen, reports how many it
+checked, and fails rather than reporting OK if that number is zero. Tripwired by
+knocking a single leaf off the pin.
+
 **Consequence worth noting:** the cross-process advisory lock in `shared.rs`
 exists because N parallel build trees regenerated one source-tree path
 (known-issues #15). Builds no longer write, so that race cannot occur; the lock
