@@ -1,11 +1,38 @@
 ---
 id: 451
 title: "Embedded SDK env vars are set only by the `just` recipes, so a bare cargo build fails in a way that reads like a code fault"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0407, issue-0420, issue-0431, issue-0491, phase-338, phase-345]
 ---
+
+> **RESOLVED 2026-08-10 by phase-345 W1 — with the CAUSE corrected.** This
+> issue says the defaults "are set only by the `just` recipes". They are not:
+> `activate.sh` sources `scripts/sdk-env.sh`, which evaluates the
+> `just/sdk-env.just` SSoT. The delivery mechanism existed; its COVERAGE did
+> not, because three separate lists decided which variables survived, and each
+> disagreed with the SSoT differently — measured in a clean environment:
+>
+> | shell | before | after | what dropped them |
+> |---|---|---|---|
+> | bash | 14 / 23 | 23 / 23 | a hand-written 14-name array beside a 23-name SSoT — the nine omitted were exactly the first-party paths |
+> | fish | 2 / 23 | 23 / 23 | `activate.fish` dumped `env` and imported only `NROS_*`, dropping every third-party SDK root |
+> | zsh | 0 / 23 | 23 / 23 | bash-only `${!name}` → `bad substitution`, and a bash-only sourced-vs-executed test that sent a sourced zsh down the "print" branch |
+>
+> Fixed by deriving the list from the SSoT in all three places (and taking the
+> values from ONE `just --evaluate` instead of one subprocess per variable).
+> `check-activate-shells.sh` — which passed throughout, because it asserted
+> COMPLETION rather than delivery — now also asserts that every SSoT variable is
+> set, reads that list from the SSoT, and runs each probe under `env -i`: on a
+> direnv host the probe otherwise inherited 22 of the 23 it was checking, and
+> the first version of the assertion passed for exactly that reason.
+>
+> Acceptance: in a clean environment with only `source ./activate.sh`, a bare
+> `cargo build` in `examples/qemu-arm-freertos/rust/talker` completes (exit 0).
+>
+> The related "loud panic" ask stands as written and was NOT needed: no panic
+> was reachable at the default paths once coverage was complete.
 
 ## Symptom
 

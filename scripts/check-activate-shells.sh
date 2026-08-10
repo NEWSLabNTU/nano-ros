@@ -21,6 +21,17 @@ REPO_ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 FAILURES=0
 RAN=0
 
+# Issue 0451 — running to completion is NOT the same as delivering the
+# variables, and the difference was hiding a live defect in every shell: the
+# SDK block completed everywhere while exporting 14 of 23 under bash, 2 under
+# fish and 0 under zsh. The list is READ from the SSoT, never restated here.
+SSOT_VARS="$(sed -n 's/^export \([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*:=.*/\1/p' \
+    "$REPO_ROOT/just/sdk-env.just" | tr '\n' ' ')"
+if [ -z "${SSOT_VARS// /}" ]; then
+    echo "FAIL: no exports parsed from just/sdk-env.just — the gate would pass vacuously" >&2
+    exit 1
+fi
+
 fail() {
     echo "FAIL: $*" >&2
     FAILURES=$((FAILURES + 1))
@@ -30,13 +41,35 @@ fail() {
 # to the checkout, and (c) reached the LAST statement of the file — proven by
 # `_nros_root` being unset again, which only happens on the final lines.
 # Sentinel output is a single line so any shell can emit it identically.
-readonly PROBE_SH='
+#
+# The SSoT-variable check emits its own `PROBEVARS` line rather than extending
+# the `PROBE` one, so the existing end-anchored `root_unset=$` match keeps
+# working.
+PROBE_SH='
 printf "PROBE repo=%s root_unset=%s\n" "${NROS_REPO_DIR:-}" "${_nros_root:+set}"
-'
-readonly PROBE_FISH='
-printf "PROBE repo=%s root_unset=%s\n" "$NROS_REPO_DIR" (set -q _nros_root; and echo set; or echo "")
+_nros_miss=""
+for _nros_v in '"$SSOT_VARS"'; do
+    eval "[ -n \"\${$_nros_v+x}\" ]" || _nros_miss="$_nros_miss $_nros_v"
+done
+printf "PROBEVARS missing=%s\n" "$_nros_miss"
 '
 
+PROBE_FISH='
+printf "PROBE repo=%s root_unset=%s\n" "$NROS_REPO_DIR" (set -q _nros_root; and echo set; or echo "")
+set -l _nros_miss ""
+for _nros_v in '"$SSOT_VARS"'
+    if not set -q $_nros_v
+        set _nros_miss "$_nros_miss $_nros_v"
+    end
+end
+printf "PROBEVARS missing=%s\n" "$_nros_miss"
+'
+
+# Issue 0451 — each probe runs in a CLEARED environment (`env -i`, keeping only
+# HOME and PATH). A maintainer host almost always has direnv active, so the
+# probe would otherwise INHERIT the very variables it is checking for and pass
+# no matter what activation did. Measured: 22 of 23 arrived that way.
+#
 # $1 shell name, $2 store dir, $3 label
 run_case() {
     local shell="$1" store="$2" label="$3" out rc
@@ -48,11 +81,13 @@ run_case() {
 
     case "$shell" in
         fish)
-            out="$(NROS_HOME="$store" NROS_QUIET_ACTIVATE=1 "$shell" -c \
+            out="$(env -i HOME="$HOME" PATH="$PATH" \
+                NROS_HOME="$store" NROS_QUIET_ACTIVATE=1 "$shell" -c \
                 "source '$REPO_ROOT/activate.fish'; $PROBE_FISH" 2>&1)"
             ;;
         *)
-            out="$(NROS_HOME="$store" NROS_QUIET_ACTIVATE=1 "$shell" -c \
+            out="$(env -i HOME="$HOME" PATH="$PATH" \
+                NROS_HOME="$store" NROS_QUIET_ACTIVATE=1 "$shell" -c \
                 ". '$REPO_ROOT/activate.sh'; $PROBE_SH" 2>&1)"
             ;;
     esac
@@ -85,6 +120,25 @@ run_case() {
         printf '%s\n' "$out" | sed 's/^/    /' >&2
         return 0
     fi
+    # Issue 0451 — did activation actually DELIVER the SSoT variables? A shell
+    # can reach the last line with the whole SDK block having silently done
+    # nothing: zsh reported `bad substitution` on bash-only indirect expansion
+    # and carried on, fish imported only names matching `NROS_*`.
+    local probevars missing
+    probevars="$(printf '%s\n' "$out" | grep '^PROBEVARS ' || true)"
+    if [ -z "$probevars" ]; then
+        fail "$shell/$label: activation never reported its SDK variables"
+        return 0
+    fi
+    missing="${probevars#PROBEVARS missing=}"
+    if [ -n "${missing// /}" ]; then
+        fail "$shell/$label: activation left these just/sdk-env.just variables unset:${missing}"
+        echo "    Every var exported there must survive activation in every supported" >&2
+        echo "    shell; otherwise an embedded build fails much later on an unset path" >&2
+        echo "    and reads like a code fault (issue 0451)." >&2
+        return 0
+    fi
+
     # An unmatched-glob abort in a shell that reports it non-fatally would still
     # show up here, so treat the message itself as a failure regardless of rc.
     if printf '%s\n' "$out" | grep -qi 'no matches\|bad pattern'; then

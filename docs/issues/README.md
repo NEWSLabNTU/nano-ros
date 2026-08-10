@@ -507,13 +507,17 @@ knob readers, gated by `check-kconfig-knob-forwarding` (21 knobs); the overflow 
 overlay phase-331 W3 put on that component makes the resolved value 120, not the launch inline's 250.
 `entry_matrix: 14 ran, 1 skipped, 0 failed`. See `archived/0460-*`. (2026-08-10)
 
-**#451** — the embedded SDK env vars live only in `just/sdk-env.just`, so a direct `cargo build` of an
-embedded example fails one variable at a time (5 freertos, 4 threadx, 1+ nuttx) even though every SDK sits
-at the default path. The failure does not look like a missing variable: `zpico-sys` panics inside a
-dependency build script, and a partially-configured NuttX build reaches the LINKER with `undefined
-reference to open / socket / malloc` — mistaken for a link regression during phase-338. CLAUDE.md names
-`activate.sh` the env SSoT; for these it is not. Same shape as 0407 and 0420's real finding.
-See `0451-*`. (2026-08-06)
+Recently resolved (2026-08-10): **#451** — a bare `cargo build` in an embedded example died on a missing
+env var, one at a time, in a way that reads like a code fault (on NuttX it reaches the LINKER as
+`undefined reference to open / socket / malloc`). RESOLVED by phase-345 W1, with the issue's own CAUSE
+corrected: `activate.sh` DID have a delivery mechanism (it sources `scripts/sdk-env.sh`, which evaluates
+the `just/sdk-env.just` SSoT) — what it lacked was coverage, because three separate lists decided which
+variables survived and each disagreed with the SSoT. Measured in a clean environment: bash 14/23,
+fish 2/23 (an `NROS_*` import filter dropped every third-party SDK root), zsh 0/23 (bash-only `${!name}`
+→ `bad substitution`, plus a bash-only sourced-vs-executed test). All three now 23/23, each deriving the
+list from the SSoT. `check-activate-shells.sh` passed throughout — it asserted COMPLETION, not delivery —
+and now asserts both, with probes under `env -i` because a direnv host was feeding the probe 22 of the 23
+it was checking. See `archived/0451-*`. (2026-08-10)
 
 Recently resolved (2026-08-10): **#452** — embedded builds regenerated `nros_generated.h` /
 `nros_cpp_ffi.h` with a DIFFERENT cbindgen, so any embedded lane silently dirtied tracked headers, and

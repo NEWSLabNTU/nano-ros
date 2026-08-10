@@ -9,25 +9,54 @@
 # Defaults are defined in just/sdk-env.just. This adapter only evaluates
 # those variables and exports them for shells that are not launched by just.
 
-_nros_sdk_env_script="${BASH_SOURCE[0]:-$0}"
+# Issue 0451 — resolve OUR OWN path in every shell that sources us, not just
+# bash. activate.sh already does this three-way dance for itself; this file is
+# sourced FROM it, so under zsh `BASH_SOURCE` is unset and `$0` is the
+# interactive shell, which resolved the repo root to something arbitrary.
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+    _nros_sdk_env_script="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION:-}" ]; then
+    _nros_sdk_env_script="${(%):-%N}"
+else
+    _nros_sdk_env_script="$0"
+fi
 _nros_sdk_env_root="$(cd "$(dirname "${_nros_sdk_env_script}")/.." && pwd)"
 
-_nros_sdk_env_vars=(
-    FREERTOS_DIR
-    FREERTOS_PORT
-    LWIP_DIR
-    FREERTOS_CONFIG_DIR
-    NUTTX_DIR
-    NUTTX_APPS_DIR
-    THREADX_DIR
-    THREADX_CONFIG_DIR
-    NETX_DIR
-    NETX_CONFIG_DIR
-    PX4_AUTOPILOT_DIR
-    NROS_ESP_IDF_WORKSPACE
-    NROS_ESP_IDF_ENV_SHIM
-    IDF_PATH
-)
+# Portable "is this variable set / what is its value", for bash AND zsh.
+# `${!name}` is bash-only indirect expansion; zsh spells it `${(P)name}` and
+# reports `bad substitution` for the bash form — which is how the whole SDK
+# block silently did nothing under zsh. `eval` with `${VAR+x}` is POSIX and
+# behaves identically in both.
+_nros_sdk_env_is_set() { eval "[ -n \"\${$1+x}\" ]"; }
+_nros_sdk_env_get() { eval "printf '%s' \"\${$1-}\""; }
+
+# Issue 0451 — the variable list is DERIVED from the SSoT, never mirrored.
+#
+# This used to be a hand-written array of 14 names while `just/sdk-env.just`
+# defined 23. The nine it omitted were exactly the first-party ones
+# (`NROS_PLATFORM_*_SRC`, `NROS_C_INCLUDE`, `NROS_CPP_INCLUDE`,
+# `NROS_LAN9118_LWIP_DIR`, `NROS_VIRTIO_NET_NETX_DIR`, `TBAND_DIR`), so an
+# activated shell got every third-party SDK root and none of the paths a
+# first-party build script reads — which is why 0451 reads as "activate.sh does
+# not set these" even though it sets most of them, and why 13 leaf
+# `.cargo/config.toml` files carry `[env]` blocks re-stating two of the nine.
+#
+# A list that must be kept in step by hand is the mirror-drift class CLAUDE.md
+# names; the fix is to stop having a second list.
+_nros_sdk_env_names() {
+    sed -n 's/^export \([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*:=.*/\1/p' \
+        "${_nros_sdk_env_root}/just/sdk-env.just"
+}
+
+# One `just --evaluate` for ALL variables instead of one per name. The old
+# per-variable form re-parsed the whole justfile 14 times on every activation;
+# `--evaluate` with no argument dumps every variable as `NAME := "value"`.
+_nros_sdk_env_dump() {
+    XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}" \
+        just --justfile "${_nros_sdk_env_root}/justfile" \
+             --working-directory "${_nros_sdk_env_root}" \
+             --evaluate 2>/dev/null
+}
 
 _nros_sdk_env_eval() {
     local var="$1"
@@ -37,15 +66,55 @@ _nros_sdk_env_eval() {
              --evaluate "$var"
 }
 
+# Emit `NAME<TAB>VALUE` for every SSoT variable, taking an already-set value
+# from the environment (an explicit override wins over the default, which is
+# what `env(NAME, default)` means on the just side too).
+_nros_sdk_env_pairs() {
+    local names dump line name value
+    names="|$(_nros_sdk_env_names | tr '\n' '|')"
+    dump="$(_nros_sdk_env_dump)" || return $?
+    while IFS= read -r line; do
+        case "$line" in
+            *':= "'*) ;;
+            *) continue ;;
+        esac
+        name="${line%%[[:space:]]*}"
+        case "$names" in
+            *"|${name}|"*) ;;
+            *) continue ;;
+        esac
+        if _nros_sdk_env_is_set "$name"; then
+            value="$(_nros_sdk_env_get "$name")"
+        else
+            value="${line#*:= \"}"
+            value="${value%\"}"
+        fi
+        printf '%s\t%s\n' "$name" "$value"
+    done <<EOF
+$dump
+EOF
+}
+
 _nros_sdk_env_export_one() {
     local var="$1"
     local value
-    if [ -n "${!var+x}" ]; then
+    if _nros_sdk_env_is_set "$var"; then
         return 0
     fi
     value="$(_nros_sdk_env_eval "$var")" || return $?
     export "$var=$value"
 }
+
+# Read `NAME<TAB>VALUE` pairs on stdin and apply them with $2 as the formatter.
+_nros_sdk_env_emit() {
+    local formatter="$1" name value
+    while IFS="$(printf '\t')" read -r name value; do
+        [ -n "$name" ] || continue
+        "$formatter" "$name" "$value"
+    done
+}
+
+_nros_sdk_env_do_export() { export "$1=$2"; }
 
 _nros_sdk_env_shell_quote() {
     printf "%q" "$1"
@@ -76,36 +145,45 @@ _nros_sdk_env_apply() {
         fi
         return 0
     fi
-    for var in "${_nros_sdk_env_vars[@]}"; do
-        _nros_sdk_env_export_one "$var" || return $?
-    done
+    # `<<<` would run the loop in a subshell in some shells; a here-doc into a
+    # while loop keeps the `export`s in THIS shell, which is the whole point of
+    # sourcing this file.
+    local pairs
+    pairs="$(_nros_sdk_env_pairs)" || return $?
+    _nros_sdk_env_emit _nros_sdk_env_do_export <<EOF
+$pairs
+EOF
+}
+
+_nros_sdk_env_print_shell_one() {
+    printf 'export %s=%s\n' "$1" "$(_nros_sdk_env_shell_quote "$2")"
+}
+
+_nros_sdk_env_print_fish_one() {
+    printf 'set -gx %s %s\n' "$1" "$(_nros_sdk_env_fish_quote "$2")"
 }
 
 _nros_sdk_env_print_shell() {
-    local var value
-    for var in "${_nros_sdk_env_vars[@]}"; do
-        if [ -n "${!var+x}" ]; then
-            value="${!var}"
-        else
-            value="$(_nros_sdk_env_eval "$var")" || return $?
-        fi
-        printf 'export %s=%s\n' "$var" "$(_nros_sdk_env_shell_quote "$value")"
-    done
+    _nros_sdk_env_pairs | _nros_sdk_env_emit _nros_sdk_env_print_shell_one
 }
 
 _nros_sdk_env_print_fish() {
-    local var value
-    for var in "${_nros_sdk_env_vars[@]}"; do
-        if [ -n "${!var+x}" ]; then
-            value="${!var}"
-        else
-            value="$(_nros_sdk_env_eval "$var")" || return $?
-        fi
-        printf 'set -gx %s %s\n' "$var" "$(_nros_sdk_env_fish_quote "$value")"
-    done
+    _nros_sdk_env_pairs | _nros_sdk_env_emit _nros_sdk_env_print_fish_one
 }
 
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+# Sourced or executed? The bash-only form below read TRUE under zsh (no
+# BASH_SOURCE, so `$0` = `$0`), which sent a sourced zsh down the "print to
+# stdout" branch — it emitted the exports as text and set nothing.
+_nros_sdk_env_executed=1
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+    [ "${BASH_SOURCE[0]}" = "$0" ] || _nros_sdk_env_executed=0
+elif [ -n "${ZSH_VERSION:-}" ]; then
+    case "${ZSH_EVAL_CONTEXT:-}" in
+        *:file*) _nros_sdk_env_executed=0 ;;
+    esac
+fi
+
+if [ "$_nros_sdk_env_executed" = "1" ]; then
     case "${1:---shell}" in
         --shell)
             _nros_sdk_env_print_shell
@@ -129,7 +207,10 @@ else
     _nros_sdk_env_apply
     unset -f _nros_sdk_env_eval _nros_sdk_env_export_one \
         _nros_sdk_env_shell_quote _nros_sdk_env_fish_quote \
-        _nros_sdk_env_apply _nros_sdk_env_print_shell \
+        _nros_sdk_env_apply _nros_sdk_env_print_shell _nros_sdk_env_names \
+        _nros_sdk_env_dump _nros_sdk_env_pairs _nros_sdk_env_emit \
+        _nros_sdk_env_do_export _nros_sdk_env_print_shell_one _nros_sdk_env_print_fish_one \
+        _nros_sdk_env_is_set _nros_sdk_env_get \
         _nros_sdk_env_print_fish
-    unset _nros_sdk_env_script _nros_sdk_env_root _nros_sdk_env_vars
+    unset _nros_sdk_env_script _nros_sdk_env_root _nros_sdk_env_executed
 fi

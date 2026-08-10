@@ -1,12 +1,16 @@
 # Phase 345 — One door: the build behaves the same however you enter it
 
-**Status (2026-08-10). W3 LANDED; W1, W2 and W4 open. The measurements below are done
-and reproduce on this tree.** This phase is not a build-cache phase. It does not
-move a path, so it does not collide with [phase-340](phase-340-build-artifact-reuse.md)
-item 5 / P4 — with one exception, W2, which edits leaf `.cargo/config.toml`
-files that item 5's grouping work reads. That fence is stated in "Sequencing".
+**Status (2026-08-10). W1 and W3 LANDED; W2 RETRACTED (its cause was fixed
+elsewhere — see W1's section); W4 open. The measurements below are done
+and reproduce on this tree.** This phase is not a build-cache phase and moves no
+path, so it never collided with [phase-340](phase-340-build-artifact-reuse.md)
+item 5 / P4. The one item that would have — W2, which proposed editing leaf
+`.cargo/config.toml` files that item 5's grouping work reads — is retracted, so
+the fence described under "Sequencing" is moot.
 
-**Closes:** issue 0451, issue 0491, issue 0452. **Advances (does not close):**
+**Closes:** issue 0451, issue 0452. **Does NOT close** issue 0491: another
+session fixed it first, by content-fingerprinting rather than by this phase's
+proposed edit (§2.2). **Advances (does not close):**
 issue 0374 — its remaining direction 1 is out-of-repo and stays open.
 **Touches:** RFC-0054 (the C headers are the ABI SSoT — this phase fixes the
 *other* direction), RFC-0048 W9 (`nros sync` owns the leaf `.cargo/config.toml`),
@@ -40,6 +44,15 @@ exists.
 
 ### 2.1 The env split — 0451
 
+> **CORRECTION 2026-08-10 — the table below is WRONG and is kept only because
+> the conclusion it drove was still right.** "`activate.sh` carries zero of
+> them" came from grepping `activate.sh` for literal `export FREERTOS_*` lines.
+> It does not carry them literally: it *sources* `scripts/sdk-env.sh`
+> (`activate.sh:253`), which evaluates the just SSoT. Measured properly — clean
+> environment, source, count — activation delivered **14 of 23 under bash**.
+> A grep answered a question about a file; the question was about a shell.
+> The real defect and the real numbers are in §2.1a.
+
 `just/sdk-env.just` carries **23** `export` lines. `activate.sh` carries **zero**
 of them:
 
@@ -68,7 +81,45 @@ comment). So the naive fix — paste 23 exports into `activate.sh` and 23 more i
 `activate.fish` — creates a 46-line hand-mirror of a 23-line SSoT. That is the
 mirror-drift class, not a fix for it. W1 is written to forbid that shape.
 
+### 2.1a What was actually broken (measured 2026-08-10, clean environment)
+
+`activate.sh` sources `scripts/sdk-env.sh`, which evaluates the SSoT — so the
+mechanism was right and the *coverage* was not. Three independent lists decided
+which variables survived activation, and each dropped a different set:
+
+| shell | delivered | why the rest were missing |
+| --- | --- | --- |
+| bash | **14 / 23** | `sdk-env.sh` carried a HAND-WRITTEN array of 14 names beside a 23-name SSoT. The nine omitted are exactly the first-party ones (`NROS_PLATFORM_*_SRC`, `NROS_C_INCLUDE`, `NROS_CPP_INCLUDE`, `NROS_LAN9118_LWIP_DIR`, `NROS_VIRTIO_NET_NETX_DIR`, `TBAND_DIR`) |
+| fish | **2 / 23** | `activate.fish` dumped the subshell's whole `env` and imported only names matching `NROS_*` — dropping every third-party SDK root (`FREERTOS_DIR`, `NUTTX_DIR`, `THREADX_DIR`, `IDF_PATH`, …) |
+| zsh | **0 / 23** | `sdk-env.sh` used bash-only indirect expansion (`${!name}`); zsh answers `bad substitution` and carries on. Its sourced-vs-executed test was bash-only too, so a sourced zsh took the "print the exports to stdout" branch and set nothing |
+
+So 0451's report — "these are set only by the `just` recipes" — is right about
+the *symptom* and wrong about the *cause*: activation had a delivery mechanism,
+and three separate copies of "which variables" quietly disagreed with the SSoT.
+Which is the mirror-drift class again, three times over, in one file each.
+
+**`check-activate-shells.sh` passed the whole time.** It asserted the files run
+to COMPLETION — and they did, in every shell. Completion is not delivery: the
+zsh arm printed a `bad substitution` diagnostic, reached the last line, and the
+gate said `ok: zsh`. This is issue 0196's rule (a gate whose coverage is
+narrower than the rule it enforces) applied to activation.
+
 ### 2.2 One variable, three spellings — 0491
+
+> **SUPERSEDED 2026-08-10 — 0491 was fixed by a different session, with a better
+> mechanism, while this phase was open.** Path-valued build inputs are now
+> fingerprinted by their CONTENT (`packages/tooling/nros-build-paths`); every
+> `cargo:rerun-if-env-changed` on a path-shaped name is gone (16 Rust files / 57
+> sites plus three platform manifests), gated by
+> `scripts/check-path-env-fingerprints.py`. Their write-up is worth reading: the
+> spelling mismatch was between the `just` (absolute) and leaf-relative forms,
+> so it fired even for a SINGLE row — build under `just`, probe without it — and
+> no generator-side normalisation could have fixed it.
+>
+> Two consequences for this phase, both load-bearing: the thrash W2 existed to
+> stop is gone, and **§2.3's precedence hazard is defused** — a differing
+> spelling no longer reaches any fingerprint, so it can no longer cause a
+> rebuild. W2 is retracted below on that evidence.
 
 Two of the 23 (`NROS_PLATFORM_FREERTOS_SRC`, `NROS_PLATFORM_CFFI_INCLUDE`) are
 ALSO written into **13 tracked leaf `.cargo/config.toml` files**:
@@ -155,7 +206,72 @@ binary produces spurious diffs across machines") is verbatim this problem.
 
 ## 3. Work items
 
-### W1 — the SDK env has one definition, reachable from both doors
+### W1 LANDED 2026-08-10 — and W2 is RETRACTED
+
+**W1 shipped as "stop having three lists", not "move the defaults".** The
+defaults never needed to move: `activate.sh` already sourced `scripts/sdk-env.sh`,
+which already read the `just/sdk-env.just` SSoT. What it did not do was cover
+the SSoT. Three fixes, one per list (§2.1a):
+
+* `sdk-env.sh` **derives** the variable names from `just/sdk-env.just` instead of
+  restating 14 of them, and takes their values from a single `just --evaluate`
+  (previously one `just` subprocess per variable — 14 justfile parses on every
+  activation, now one);
+* `activate.fish` consumes `sdk-env.sh --fish`, whose list comes from the same
+  SSoT, instead of dumping `env` and filtering on `NROS_*`;
+* `sdk-env.sh` works under zsh: portable `eval`-based "is this set" in place of
+  bash-only `${!name}`, its own path resolved via `${(%):-%N}` when
+  `BASH_SOURCE` is absent, and a sourced-vs-executed test that knows about
+  `ZSH_EVAL_CONTEXT`.
+
+| shell | before | after |
+| --- | --- | --- |
+| bash | 14 / 23 | **23 / 23** |
+| fish | 2 / 23 | **23 / 23** |
+| zsh | 0 / 23 | **23 / 23** |
+
+**Gate: `check-activate-shells.sh` extended, not duplicated.** It already owned
+the shell matrix, so it grew a second sentinel line (`PROBEVARS`) listing any
+SSoT variable left unset. Two things had to change for that assertion to mean
+anything:
+
+* the variable list is **read from the SSoT**, and the gate fails loudly if it
+  parses to empty — a gate that checks nothing must not report OK;
+* every probe now runs under **`env -i`** (keeping only `HOME` and `PATH`).
+  A maintainer host almost always has direnv active, so the probe inherited the
+  very variables it was checking — **22 of 23 arrived that way**, and the first
+  version of this assertion passed for that reason. Caught by tripwiring it.
+
+Tripwired live, both arms, after the isolation fix: restoring the fish `NROS_*`
+filter fails 2 fish cases; restoring the bash-only indirect expansion fails 2 zsh
+cases; green with both reverted.
+
+**Acceptance.** In a clean environment with only `source ./activate.sh`, a bare
+`cargo build` in `examples/qemu-arm-freertos/rust/talker` — a copied-out-shaped
+embedded leaf — now **completes** (exit 0), rather than merely getting past the
+env stage. Under zsh the same build also exits 0, though that run was cached, so
+the load-bearing zsh evidence is the 0→23 variable measurement, not the build.
+
+**W2 is RETRACTED, on two independent grounds.**
+
+1. **Its purpose is gone.** W2 existed to stop 0491's thrash and to defuse
+   §2.3's precedence hazard. Both were dissolved by 0491's content-fingerprinting
+   fix (§2.2), which explicitly leaves the leaf `[env]` blocks in place as the
+   authored half of RFC-0048 W9.
+2. **Deleting them would now cost something.** Twelve rows across six FreeRTOS
+   leaves carry `NROS_PLATFORM_CFFI_INCLUDE` and `NROS_PLATFORM_FREERTOS_SRC`.
+   Both are in the SSoT and both are now exported by activation — but the leaf
+   rows are what make those two resolve **without** activation, which is exactly
+   0451's scenario (an IDE, a forgotten `source`, an agent narrowing a failure).
+   Removing them would make two more variables depend on a sourced shell for no
+   gain beyond tidiness.
+
+So the "three spellings" framing was right about the *lists* and wrong about the
+*values*: the duplication worth removing was in `sdk-env.sh`, `activate.fish` and
+the zsh path, and W1 removed it. Issue 0491 is closed by its own fix; this phase
+should not reopen a decision that session made with better measurements.
+
+### W1 (original plan) — the SDK env has one definition, reachable from both doors
 
 - [ ] Move the 23 defaults to a **single machine-readable source** consumed by
       `activate.sh`, `activate.fish` and `just/sdk-env.just` alike. Any shape

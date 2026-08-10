@@ -128,17 +128,20 @@ if test -f $_nros_root/.env
     end <$_nros_root/.env
 end
 
-# sdk-env.sh is POSIX — fish can't `source` it directly. Spawn a bash
-# subshell to evaluate the exports + capture them. Same approach as
-# the `bass` plugin uses for setup.bash.
+# sdk-env.sh is POSIX — fish can't `source` it directly, so ask it to EMIT
+# fish. It has a `--fish` printer whose variable list is derived from the
+# `just/sdk-env.just` SSoT, so this stays in step with bash by construction.
+#
+# Issue 0451 — this used to dump the subshell's whole `env` and import only
+# names matching `NROS_*`. That filter dropped every third-party SDK root:
+# measured in a clean environment, a fish user got 2 of 15 probed variables —
+# no FREERTOS_DIR, NUTTX_DIR, THREADX_DIR, IDF_PATH, LWIP_DIR,
+# PX4_AUTOPILOT_DIR or TBAND_DIR. The filter existed only because an `env` dump
+# also carries PATH and everything else; emitting exactly the SSoT variables
+# removes the reason for a filter, and with it the third place this list was
+# spelled.
 if test -f $_nros_root/scripts/sdk-env.sh
-    set -l _nros_env_dump (bash -c "set -a; source $_nros_root/scripts/sdk-env.sh; env" 2>/dev/null)
-    for line in $_nros_env_dump
-        set -l kv (string split -m 1 = $line)
-        if test (count $kv) -eq 2; and string match -q 'NROS_*' -- $kv[1]
-            set -gx $kv[1] $kv[2]
-        end
-    end
+    bash $_nros_root/scripts/sdk-env.sh --fish 2>/dev/null | source
 end
 
 set -e _nros_root
