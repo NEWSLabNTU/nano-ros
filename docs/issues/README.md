@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#493** — TWO cargo workspace ROOTS share one corrosion target dir, so a mixed workspace's umbrella staticlib
+bundles the nros stack TWICE and the link dies on duplicate `#[no_mangle]` symbols. `libnros_ws_runtime.a` holds
+two `-C metadata` identities of TEN crates; the two debuginfo paths name the cause —
+`packages/rmw/cffi/src/lib.rs` (repo root as workspace root) vs `src/lib.rs` (path dep of another workspace).
+`packages/api/nros-cpp/CMakeLists.txt:54` imports nros-cpp UNCONDITIONALLY (root workspace) while a Rust-node
+workspace also gets the synthesised `nros_ws_runtime` umbrella (own workspace); corrosion derives its target dir
+from `CMAKE_BINARY_DIR` with no override (phase-344), so both land in one `deps/`. `cargo metadata` reports ONE
+package — the graph is fine, the IDENTITY is not. Only MIXED workspaces fail (needs umbrella + plain import).
+Likely the same mechanism behind the disputed identity-budget reading (nros at 12 = 2 roots × 2 R3 halves × 3
+feature sets) in this very tree. Fix options in the issue; recommendation is to skip the plain import when the
+umbrella exists, with target-dir-keyed-by-workspace-root as the class fix. See `0493-*`. (2026-08-10)
+
 **#492** — the CMake self-provisioned CycloneDDS builds **slim GCC-LTO objects** and `ld.lld` cannot read GCC LTO
 IR, so `build-test-fixtures lane=native` dies with 36 `undefined symbol: dds_*` while every obvious check says the
 link is fine: `libddsc.a` IS in the whole-archive group, `nm` reports `T dds_get_guid`, and `-Wl,-t` shows all 148
