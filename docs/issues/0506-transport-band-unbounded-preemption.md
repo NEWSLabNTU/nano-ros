@@ -127,3 +127,72 @@ observed ~100-340 ms preemption bursts are that lower layer recovering
    remote input that can consume unbounded CPU above every tier:
    ingress budgeting is a DoS-surface reduction, not only a
    scheduling nicety. Worth a sentence in the RFC's motivation.
+
+## Experiment results (2026-08-11)
+
+Ran the agenda's items (ii) and (iii) on the QEMU mps2-an385 lane
+(3-phase demo, guest-clock `t_us` cadence, 2 runs per cell unless
+noted). A 1 kHz flood turned out to sit at the edge — some sessions
+produce no stalls at all — so the discriminating cells are at 2 kHz.
+Full table: `results/issue506_experiments.md` in the evaluation
+workspace (`tools/analyze_506.py`).
+
+| cell (2 kHz flood) | stalls/run | worst gap | miss % | rx/s | chain % | chain p50 |
+|---|---|---|---|---|---|---|
+| default (WND 4xMSS, ring 4) | 12.0 | 403 ms | 1.71 | 320 | 12.1 | 45 ms |
+| subscriber ring depth 1 | 10.0 | 511 ms | 1.12 | 23 | 4.6 | 237 ms |
+| TCP_WND 1xMSS | **0.0** | **12 ms** | **0.00** | 10 | 14.8 | **446 ms** |
+| TCP_WND 8xMSS | 151.0 | 110 ms | 23.14 | 0 | 0.0 | no delivery |
+
+Three findings, one of which changes the design direction:
+
+1. **The subscriber ring is not the lever** (closes the "just tune the
+   ring" objection). Depth 1 vs 4 leaves the stalls intact (10 vs 12
+   per run, worst gap no better) while making delivery strictly worse
+   — the drain collapses to 23 msg/s and chain delivery falls from
+   12.1% to 4.6%. Message-level shedding happens after the transport
+   has already spent the CPU, exactly as the problem statement
+   predicted.
+
+2. **The receive window IS the lever — in both directions.** 8xMSS is
+   catastrophic (151 stalls/run, 23% of ctrl periods missed, inbound
+   drain and chain both to zero): a bigger window admits more flood
+   for the transport band to process, and the island does nothing else.
+   1xMSS eliminates the stalls entirely (0 per run, worst gap 12 ms,
+   0.00% missed). This is direct evidence that the tiers' timing is
+   governed by how much inbound work the transport is allowed to
+   accept — i.e. that an ingress budget is the right shape of fix.
+
+3. **But flow control alone does NOT solve it, and this is the
+   important one.** Under 1xMSS the cadence is perfect while chain
+   command latency goes to **446 ms p50** (vs 45 ms at default, 17 ms
+   unloaded). A shrunken window does not shed the flood; it queues it,
+   and because the flood and the safety-critical chain share ONE
+   reliable, ordered TCP stream, the chain is head-of-line blocked
+   behind flood bytes. Trading a 400 ms scheduling stall for a 450 ms
+   stale command is not a fix for a control path.
+
+Consequences for the RFC:
+
+- Agenda item (1a) "TCP window shaping" is demoted from cheapest
+  candidate to **not viable alone**. It is still the clearest
+  demonstration of the mechanism, and may be a useful safety valve for
+  a device whose subscriptions are all best-effort telemetry.
+- Agenda item (3) "session topology" is promoted from optional to
+  **necessary**: any ingress bound that acts on a shared reliable
+  stream converts CPU preemption into head-of-line delay on the
+  critical path. Separating criticality classes onto distinct
+  sessions/streams (or a lossy channel for flood-class topics) is a
+  precondition for a budget that helps rather than relocates the harm.
+- The budgeted-drain option (1b) inherits the same caveat: deferring
+  drain fills the window, which is the 1xMSS experiment by another
+  route. It is only safe once the critical path cannot be blocked by
+  flood-class traffic.
+- Practical interim guidance for integrators, worth documenting
+  independently of the RFC: do NOT raise `TCP_WND` on a device with
+  real-time tiers. The 8xMSS cell shows the failure is not gradual.
+
+Item (i) of the agenda (a Tonbandgeraet trace during a recovery burst,
+to attribute the ~200 ms between tcpip_thread / zpico_read / lease) is
+still open; the trace lane does not currently run with a load
+generator.
