@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#509** (build/testing, open 2026-08-10) — the Zephyr fixture lane is PER-LEAF-OVERHEAD bound, not compile
+bound. Measured mid-sweep: **40 min for 68 leaves**, and across all of them just **1254 ninja edges**
+(mean 18/leaf), only 8 reconfigures, sccache at 96.8 %, and 4 rustc + 2 C compilers live on a 32-core box.
+~140 s of work per leaf to emit 18 edges — the cost is `west`/cmake startup, `nros sync` prep, signature
+computation and a per-leaf cargo fingerprint pass that runs to completion to learn there is nothing to do,
+paid 68 times. It taxes the whole sweep because zephyr is an ORDER-ONLY prerequisite of every other
+platform (`zephyr (solo)`), so those 40 min are serial addition. The knob that would help is west-build
+CONCURRENCY, not `ninja-jobs` (8 threads cannot speed up 18 edges) — and that is capped by #0086's rustup
+staging collision, so raising it needs that guard re-checked. Empty `build/zephyr-ccache` is a red
+herring: the leaves pass `USE_CCACHE=0` and use sccache instead. See `0509-*`. (2026-08-10)
 **#507** (rmw, open 2026-08-10) — the cyclonedds fork carries TWO nano-ros-only lock changes
 upstream lacks: striped addrset locks (`942dda3c`) and the Zephyr-native ddsrt sync backend
 (`a09babf3`). Upstream `5e82de60` still has the per-addrset mutex and no Zephyr backend, so this
