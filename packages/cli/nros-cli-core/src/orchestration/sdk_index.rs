@@ -786,13 +786,30 @@ check = { cmd = "west" }
                 .contains("no package manager"),
         );
 
-        // An ambiguous probe (two fields) is rejected.
-        let ambiguous = SdkIndex::parse(
+        // issue 0487 — a MULTI-FIELD `[system.*]` probe is ACCEPTED, and this
+        // assertion inverted with it. The old rule was "exactly one"; 0487 made
+        // it "at least one" because probes are OR-ed (see `run_probe`), which is
+        // what let libgcrypt read as missing on Arch when only one of its
+        // spellings matched. Declaring both is now the answer to that, not an
+        // error.
+        let multi_probe = SdkIndex::parse(
             "[system.x]\napt=[\"x\"]\ncheck = { cmd = \"x\", sharedlib = \"libx.so\" }\n",
         )
         .unwrap();
         assert!(
-            ambiguous
+            multi_probe.validate().is_ok(),
+            "issue 0487: [system.*].check ORs its probes, so two fields is valid",
+        );
+
+        // ...but the OTHER kinds still take exactly one, and 0487 did not touch
+        // them. Kept as a rejection case so relaxing `[system.*]` cannot quietly
+        // relax these too — the coverage this test would otherwise have lost.
+        let ambiguous_tool = SdkIndex::parse(
+            "[rust.cargo-tool.t]\ncrate = \"cargo-x\"\ncheck = { cmd = \"x\", sharedlib = \"libx.so\" }\n",
+        )
+        .unwrap();
+        assert!(
+            ambiguous_tool
                 .validate()
                 .unwrap_err()
                 .to_string()
