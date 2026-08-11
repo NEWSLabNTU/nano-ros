@@ -145,6 +145,50 @@ formats.
 Phases A and B are independently landable and neither needs a fixture rebuild.
 Only C does.
 
+## Status (2026-08-11)
+
+**Phase A — DONE.** Both inversions fail closed on an ambiguous longest match:
+`lane::attribute_path` (extracted as `attribute_path_in` so synthetic rows can
+drive it) and `groups::attribute`. A tie at different coordinates / different
+slugs returns `None`; a tie at the SAME coordinate does not, and a longer match
+still wins outright. No behaviour change on today's tree — it is the tripwire
+that makes the rest of this issue red instead of wrong. Both tests verified to
+fail with the old tie-breaking restored.
+
+**Phase B — the mechanism is DONE, the call sites are partly converted.**
+
+`row_selector(entry)` exports `(dir, rmw, features, no_default_features, env)`;
+`fixture-groups` carries it; `groups::row_artifact_dir(dir, variant)` selects on
+it and fails closed on 0 or >1 matches. `FixtureVariant` is a closed set of four
+constructors because the manifest holds exactly four shapes (37 / 144 / 64 / 3
+rows). `leaf_has_rows()` distinguishes "manifest-managed leaf, variant not
+found" (an error) from "leaf the manifest never describes" (`px4/rust/companion`
+— its own lane, keeps the authored spelling).
+
+Converted: `build_example_rmw` (the `Rmw::target_dir()` literal, 37 rows) and
+the feature-variant resolvers (`target-tls` ×2, `target-zero-copy`,
+`target-large-buf`).
+
+Remaining: the WORKSPACE family — `target-fixtures`, `target-fixtures/nuttx`,
+`target-fixtures/nuttx-riscv`, `target-fixtures/threadx-linux`, the esp32 and
+riscv64 formats. These belong to `[[workspace_fixture]]` rows, which already
+resolve by `id` and are NOT in the `fixture-groups` export. So the work is to
+give that export an artifact root + slug per workspace row and key the resolvers
+on the id they already take — less invention than the plain-row half needed,
+since the id exists.
+
+**Phase C — not started, and correctly blocked.** Deleting the column while any
+resolver still spells a leaf path would reintroduce exactly the ambiguity phase A
+now catches — as a hard failure rather than a wrong binary, which is the
+improvement, but still a failure. It needs the workspace family converted first,
+then a `lane=all` rebuild as acceptance.
+
+Verification method worth keeping: each conversion is checked by showing the
+row's artifact root is byte-identical to the literal it replaces (measured, not
+assumed — 37/37 for the RMW family, 4/4 for the feature family), plus the
+per-row `selector_lookup_agrees_with_path_resolution_on_every_row` equivalence.
+That is why none of this needed a fixture rebuild.
+
 ## Note
 
 `row_artifact_root`'s docstring already anticipates the ambiguity — "a row that
