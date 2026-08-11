@@ -1,12 +1,11 @@
 ---
 id: 523
 title: "Tier 1 red on four tests from phase-348: the compile-at-test detector cannot tell `cmake -P` from a configure, two new gates are genuinely unregistered, and three `lane_build_covers_run` cases time out at 60 s"
-status: open
+status: resolved
+resolved_in: phase-348
 type: bug
 severity: high
 area: testing
-# Part A resolved 2026-08-12; kept OPEN for part B (the lane_build_covers_run
-# timeouts), which is a separate root cause.
 related: [issue-0196, issue-0501, issue-0041, phase-348, phase-340]
 ---
 
@@ -117,17 +116,46 @@ Something in that path now blocks for over 60 s — the nextest per-test timeout
 where it previously returned. Three of the binary's cases hit it; the others do
 not, so it is a specific arm rather than the whole file.
 
-Not yet root-caused. Worth checking first, because the file's own header
-describes exactly this hazard: phase-340 W3 made the guard also require a
-narrowed RUN, and the helper deliberately CLEARS `NROS_TEST_COORDS`,
-`NROS_FIXTURE_LANE`, `NROS_FIXTURE_STAMP` so the child cannot inherit them. A
-guard that waits on something (a lock, a stamp probe, a `just` recipe) instead
-of refusing will hang exactly when those are unset.
+### Cause — a `cargo run` on a 60-second clock
 
-This is also the compile-at-test class one layer out: a test whose subject is a
-shell function that can invoke the build system has no bounded runtime, which is
-why 60 s is both arbitrary and reachable. Issue 0501 was the same shape in
-`native_main_macro_misuse`, and archived 0041 was it suite-wide.
+Nothing hangs. `lane_coords_file()` called `nros_lane_coords_file <lane>`, whose
+body is:
+
+```sh
+cargo run -q -p nros-tests --bin lane-coords -- "$lane" > "$tmp"
+```
+
+`lane-coords` is a bin of `nros-tests`, so ANY edit to that crate invalidates it
+and the next call recompiles the whole package before writing a byte. The shell
+function's own comment says so — *"`cargo run` then COMPILES for
+seconds-to-minutes"* — it just says it about a different reader. Three cases
+call it; those three blew the 60 s per-test timeout.
+
+**Which corrects this issue's original provenance line.** This was not phase-340
+W3's env change. The trigger is "any `nros-tests` edit, then the first run" —
+and the edits were mine (issue 0470 added `port_lease.rs` and touched
+`large_msg.rs`). A test that compiles at runtime is a landmine for whoever edits
+the crate next, which is CLAUDE.md's rule and archived issue 0041's whole point.
+
+### Fix — DONE 2026-08-12
+
+The helper runs the PREBUILT `lane-coords` instead of `cargo run`. 60 s
+timeouts → **9/9 in 0.5 s**.
+
+The compile does not vanish, it MOVES: `cargo nextest run -p nros-tests` builds
+that bin in its build phase before any test starts. Verified rather than assumed
+— an artifact backdated to 2020 came back stamped today during the run. So the
+test consumes a build-stage artifact, which is exactly the shape the rule asks
+for.
+
+**Selecting it by preferred profile was wrong and the tests caught it.** The
+first version tried `nros-fast-release` first and picked an ELEVEN-DAY-OLD
+binary that answered `tier2` with 12 coordinates where the current sources say
+13; two cases then failed with a coordinate-drift report that read like a bug in
+the guard. Now: newest by mtime. A staleness check was written for this and then
+REMOVED — nextest rebuilds the bin, so it could not fire in any supported
+invocation, and unreachable code with a confident comment is the same defect
+this issue is about.
 
 ---
 

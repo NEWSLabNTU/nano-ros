@@ -81,17 +81,74 @@ fn lane_sh_env(snippet: &str, stamp: Option<&str>, env: &[(&str, &str)]) -> (i32
     (out.status.code().unwrap_or(-1), text)
 }
 
-/// The coordinate file `nros_lane_coords_file <lane>` produces, as an absolute
-/// path — i.e. exactly what `just ci-matrix` exports as `NROS_TEST_COORDS`.
+/// The `lane-coords` binary, PREBUILT — never `cargo run`.
 ///
-/// Read from the shell rather than recomputed, so a test cannot pass against a
-/// coordinate set the recipe would never produce.
+/// Issue 0523 part B. This helper used to call `nros_lane_coords_file <lane>`,
+/// whose body is `cargo run -q -p nros-tests --bin lane-coords`. That is correct
+/// inside a BUILD (`build-test-fixtures`, `ci-matrix`) and wrong inside a test:
+/// `lane-coords` lives in `nros-tests`, so ANY edit to this crate invalidates it
+/// and the next run recompiles the whole package before writing a byte — the
+/// function's own comment says "COMPILES for seconds-to-minutes". Three cases
+/// here then blew the 60 s per-test timeout, which is how they read as hangs.
+///
+/// CLAUDE.md: no compilation inside tests. The binary is a build-stage artifact;
+/// this consumes it and skips (loudly, with the remedy) when it is absent,
+/// rather than building it here.
+fn lane_coords_bin() -> PathBuf {
+    let target = project_root().join("target");
+    // NEWEST, not a preferred profile. Picking `nros-fast-release` first looked
+    // tidy and selected an ELEVEN-DAY-OLD artifact that answered `tier2` with 12
+    // coordinates where the current sources say 13 — a museum binary, and the
+    // comparison against it failed with a drift report that blamed the guard.
+    //
+    // Freshness needs no check of its own: `lane-coords` is a bin of THIS
+    // package, so `cargo nextest run -p nros-tests` rebuilds it in the build
+    // phase before any test runs (verified — an artifact backdated to 2020 came
+    // back stamped today during the run). That is the whole point of consuming
+    // it rather than shelling out to `cargo run`: the compile still happens, it
+    // just happens where it is not on a 60-second clock.
+    let newest = ["nros-fast-release", "debug", "release"]
+        .iter()
+        .map(|p| target.join(p).join("lane-coords"))
+        .filter(|p| p.is_file())
+        .filter_map(|p| p.metadata().and_then(|m| m.modified()).ok().map(|t| (t, p)))
+        .max_by_key(|(t, _)| *t);
+    match newest {
+        Some((_, bin)) => bin,
+        None => nros_tests::skip!(
+            "lane-coords not prebuilt under {}/{{nros-fast-release,debug,release}} — \
+             run `just build`. This test must NOT compile it (issue 0523).",
+            target.display()
+        ),
+    }
+}
+
+/// The lane's coordinate set, written where the caller can read it — the same
+/// content `just ci-matrix` exports as `NROS_TEST_COORDS`.
+///
+/// Produced by RUNNING the prebuilt selector, so a test still cannot pass
+/// against a coordinate set the recipe would never produce; only the compile
+/// moved out.
 fn lane_coords_file(lane: &str) -> String {
-    let (code, out) = lane_sh(&format!("nros_lane_coords_file {lane}"), None);
-    assert_eq!(code, 0, "nros_lane_coords_file {lane} failed:\n{out}");
-    let rel = out.trim();
-    assert!(!rel.is_empty(), "{lane} has no coordinate file");
-    project_root().join(rel).display().to_string()
+    let out = Command::new(lane_coords_bin())
+        .arg(lane)
+        .current_dir(project_root())
+        .output()
+        .expect("run prebuilt lane-coords");
+    assert!(
+        out.status.success(),
+        "lane-coords {lane} failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let body = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        !body.trim().is_empty(),
+        "lane '{lane}' selected zero coordinates — the same refusal \
+         `nros_lane_coords_file` makes"
+    );
+    let path = tmpdir().join(format!("lane-coords-{lane}.txt"));
+    std::fs::write(&path, body).expect("write lane coords");
+    path.display().to_string()
 }
 
 /// Write a stamp in the format `nros_fixtures_stamp_write` produces.

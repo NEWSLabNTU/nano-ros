@@ -51,22 +51,25 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#523** (testing, open 2026-08-12) — tier 1 red on FOUR tests from phase-348, two independent problems.
-**PART A FIXED 2026-08-12**, part B still open. (A) `enforce_registry` flagged three scripts; they were not
-the same case. `package_xml_comment_stripping.sh` runs `cmake -P` — CMake's INTERPRETER, compiling and
-configuring nothing, and its header says "Buildless". The detector matched the needle `"cmake -"`, so script
-mode read as a build; registering it would have laundered a non-violation into the registry and taught the
-next reader that `cmake -P` is a build. `cmake_line_builds()` now reads the MODE. The half that took two
-iterations was NOT the `-P` case: a "default true so unknown spellings fail closed" rule promptly flagged two
-more compliant files, because the word `cmake` appears in this tree in prose (`echo "cmake output was:"`) and
-as another command's argument (`nros_build_dir cmake workspace c`). All pinned in a standing self-test —
-which also caught the FIRST predicate reading only the segment up to the next `cmake `, so
-`cmake -E env … cmake -S . -B build` looked like script mode. The two genuine configures
-(`provider_index_gate.sh`, `workspace_order_gate.sh`) are registered `tool: "cmake (configure only)"` with
-reasons derived from their own headers. 3/3, tripwired both ways. (B) Three `lane_build_covers_run` cases
-still time out at 60 s: they `Command::new("bash")` and source `fixture-lane.sh`, and the helper clears
-`NROS_TEST_COORDS`/`NROS_FIXTURE_LANE`/`NROS_FIXTURE_STAMP` — a guard that waits instead of refusing hangs
-there. Same compile-at-test class as #501 / archived 0041. See `0523-*`. (2026-08-12)
+Recently resolved (2026-08-12): **#523** (testing) — tier 1 red on FOUR tests from phase-348, two
+independent causes. (A) `enforce_registry` flagged three scripts as compile-at-test; one COMPLIES —
+`package_xml_comment_stripping.sh` runs `cmake -P`, CMake's INTERPRETER, and its header says "Buildless".
+The detector matched the prefix `"cmake -"`; registering it would have laundered a non-violation into the
+registry. `cmake_line_builds()` now reads the MODE. The half that took two iterations was not `-P`: a
+"default true so unknown spellings fail closed" rule flagged two MORE compliant files, because `cmake`
+appears here in prose (`echo "cmake output was:"`) and as another command's argument
+(`nros_build_dir cmake workspace c`) — all pinned in a standing self-test, which also caught the first
+predicate reading only up to the next `cmake ` so `cmake -E env … cmake -S . -B build` looked like script
+mode. The two genuine configures are registered `tool: "cmake (configure only)"`. (B) Three
+`lane_build_covers_run` cases were not hanging — they called `nros_lane_coords_file`, i.e.
+`cargo run -q -p nros-tests --bin lane-coords`, and `lane-coords` is a bin of THAT crate, so any edit to it
+recompiles the package before a byte is written; the 60 s per-test timeout did the rest. **Corrects this
+issue's own provenance:** not phase-340 W3's env change — the trigger is "any nros-tests edit, then the
+first run", and those edits were mine (#470). Fixed by running the PREBUILT binary: 60 s timeouts → 9/9 in
+0.5 s, the compile moving to nextest's build phase (verified: a binary backdated to 2020 came back stamped
+today mid-run). Selecting it by preferred profile picked an 11-day-old artifact answering 12 coordinates
+where the sources say 13 — now newest-by-mtime; a staleness check written for that was REMOVED as
+unreachable rather than shipped with a confident comment. See `archived/0523-*`. (2026-08-12)
 
 Recently resolved (2026-08-11): **#513** (build) — `check-artifact-identity-budget` failed any
 INCREMENTAL fixture build. The 0499 era filter counts only rlibs written since `started_at`, which
