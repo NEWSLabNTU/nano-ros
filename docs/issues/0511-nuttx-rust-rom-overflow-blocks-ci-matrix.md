@@ -63,8 +63,55 @@ before a platform sweep, so it is doing its job — what is missing is the cause
   knob, so the lane's choice is worth re-reading);
 * whether the `dramboot.ld` region sizes changed with the export snapshot.
 
-## Not yet done
+## Bisect (2026-08-11) — the boundary is phase-338 W2, and #440 only restored HALF
 
-No bisect. The two ends were validated (the failure reproduces with and without
-the newest change, from a clean tree), which is what 0477's own write-up says to
-do before stepping — but the actual first-bad commit has not been found.
+Both ends validated first, per 0477: `87eac17d1` OVERFLOW 538800,
+`9748f7ae3` (7 days back) FIT. `git bisect run` over ~600 commits with a probe
+that rebuilds the leaf into a FRESH target dir OUTSIDE the repo, so no artifact
+staged against another revision's export can survive into a measurement.
+
+```
+b393b4737  2026-08-05T21:34  FIT           docs(phase-338): record the W2 decision …
+ab486a8db  2026-08-05T21:34  BUILDFAIL     refactor(phase-338 W2): collapse the 18 `-entry` packages
+67e823492  2026-08-06        BUILDFAIL     fix(phase-338 W2): the nuttx collapse buried the entry's .cargo…
+610ad5bd3  2026-08-06T02:47  OVERFLOW      fix(#440): restore the board's static link args the -entry collapse buried
+…all later revisions OVERFLOW, at a CONSTANT 534704 bytes
+```
+
+**Reading it.** The last state that both links and fits is the commit
+immediately before the `-entry` collapse. The collapse itself broke linking
+outright — `undefined reference to open / write / __errno`, which is issue 0440
+— so every revision between it and #440's restore is unmeasurable for SIZE, and
+the probe skipped them rather than blaming them (55 of 70 probes). #440 made the
+image link again, and it has overflowed from that commit onward.
+
+So **#440 restored linkability, not the link configuration**. The `-entry`
+packages' link args and the ones restored into the node packages are not
+equivalent: the difference costs ~534 KB of ROM. That is where to look — not at
+code growth, which is what a 500 KB figure suggests and what the constant
+overflow value argues against. A number identical across dozens of revisions is
+a switch, not accumulation.
+
+**Caveat on the boundary.** Because the intervening revisions cannot link, the
+bisect proves "not before `ab486a8db`, observable from `610ad5bd3`". If the size
+change actually arrived somewhere inside that unlinkable window, this bisect
+cannot tell — it can only say the first revision where the image both links and
+is too big is #440's restore.
+
+## Also found: the lane builds with the wrong profile (contributing ~119 KB)
+
+`rust-rtos-link-check` uses `nros_cargo_profile_arg_string` →
+`--profile nros-relwithdebinfo`, whose own comment in `Cargo.toml` reads
+`opt-level = 3   # Performance. Size lives in nros-minsizerel`. NuttX's fixture
+profile is `nros_cargo_platform_profile nuttx` → **`nros-minsizerel`**. So the
+lane sizes an embedded ROM image with the performance profile.
+
+Measured, same leaf, same revision:
+
+| profile | result |
+| --- | --- |
+| `nros-relwithdebinfo` (what the lane uses) | overflow **538800** |
+| `nros-minsizerel` (what the platform uses) | overflow **419992** |
+
+Worth fixing on its own — a link check should build what the platform ships —
+but it is NOT the cause: the size profile still overflows by ~420 KB.
