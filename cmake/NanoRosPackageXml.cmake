@@ -30,6 +30,38 @@ function(_nros_deploy_to_platform deploy out_var)
 endfunction()
 
 # ---------------------------------------------------------------------------
+# nros_read_package_xml_body(<path> <out_var>)
+#
+# Read a package.xml into <out_var> with XML COMMENTS STRIPPED.
+#
+# Every package.xml reader in this tree matches regexes against raw file text
+# (cmake has no XML parser), and a regex cannot tell an element from an element
+# quoted inside a comment. So a package.xml that DOCUMENTS a tag —
+#
+#   <!-- Provision, not consumption. `<nano_ros rmw="zenoh"/>` in a leaf … -->
+#
+# — silently declares that tag. Found in phase-348 W1: the first provider
+# package.xml written explained the difference between the provision and
+# consumption exports in a comment, and `nano_ros_read_package_export()` then
+# reported the file as consuming `rmw=zenoh`. The file was correct; the reader
+# was.
+#
+# This is ONE helper rather than a strip at each call site because the tree has
+# seven such readers, and a fix applied only where the symptom appeared is how
+# this repo's recurring classes got that way. Use it for any regex read of a
+# package.xml.
+#
+# The pattern relies on XML comments being unable to contain `--`, so
+# `([^-]|-[^-])*` is an exact match for their body. A naive `<!--.*-->` would be
+# greedy and eat every element BETWEEN two comments.
+# ---------------------------------------------------------------------------
+function(nros_read_package_xml_body path out_var)
+    file(READ "${path}" _raw)
+    string(REGEX REPLACE "<!--([^-]|-[^-])*-->" "" _raw "${_raw}")
+    set(${out_var} "${_raw}" PARENT_SCOPE)
+endfunction()
+
+# ---------------------------------------------------------------------------
 # nano_ros_read_package_export([PACKAGE_XML <path>])
 #
 # Parse the `<export><nano_ros deploy= board= rmw=/></export>` tuple from a
@@ -56,7 +88,7 @@ function(nano_ros_read_package_export)
     if(NOT EXISTS "${_NRP_PACKAGE_XML}")
         return()
     endif()
-    file(READ "${_NRP_PACKAGE_XML}" _body)
+    nros_read_package_xml_body("${_NRP_PACKAGE_XML}" _body)
 
     # Isolate the <nano_ros …/> element (self-closing or paired). Attribute order
     # is free, so pull each attribute independently rather than positionally.

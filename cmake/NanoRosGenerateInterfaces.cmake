@@ -64,6 +64,9 @@ set(_NANO_ROS_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
 # Phase 246 — shared codegen helpers (lib.rs assembly, rs-closure collect/export)
 # used by both this generator and the Zephyr-module sibling. include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+# `nros_read_package_xml_body()` — regex reads of a package.xml must not see
+# commented-out elements (phase-348 W1).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPackageXml.cmake")
 
 # =========================================================================
 # Locate the nros-codegen tool
@@ -951,7 +954,7 @@ function(nros_workspace_interfaces)
     file(GLOB _pxs RELATIVE "${_root}" "${_root}/*/package.xml")
     foreach(_pxrel ${_pxs})
       get_filename_component(_pxdir "${_root}/${_pxrel}" DIRECTORY)
-      file(READ "${_root}/${_pxrel}" _pxbody)
+      nros_read_package_xml_body("${_root}/${_pxrel}" _pxbody)
       if(NOT _pxbody MATCHES "<name>[ \t\r\n]*([A-Za-z0-9_-]+)[ \t\r\n]*</name>")
         continue()
       endif()
@@ -1052,7 +1055,7 @@ endfunction()
 function(_nros_parse_pkg_deps_inline pxml out_var)
   set(_deps "")
   if(EXISTS "${pxml}")
-    file(READ "${pxml}" _body)
+    nros_read_package_xml_body("${pxml}" _body)
     string(REGEX MATCHALL "<(depend|build_depend|exec_depend|run_depend|build_export_depend)[^>]*>[ \t\r\n]*([A-Za-z0-9_-]+)[ \t\r\n]*</(depend|build_depend|exec_depend|run_depend|build_export_depend)>" _matches "${_body}")
     foreach(_m ${_matches})
       string(REGEX REPLACE "<[^>]+>[ \t\r\n]*([A-Za-z0-9_-]+)[ \t\r\n]*</[^>]+>" "\\1" _name "${_m}")

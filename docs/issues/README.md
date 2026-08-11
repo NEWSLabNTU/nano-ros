@@ -86,6 +86,19 @@ correct code gets switched off. Three options costed in the issue: a baseline of
 the rule to readiness waits specifically, or asserting liveness at runtime (report what the process DID print).
 See `0512-*`. (2026-08-11)
 
+RESOLVED 2026-08-11 — **#516** every regex reader of `package.xml` treated a **commented-out** element as a real
+declaration. cmake has no XML parser, so all seven readers matched regexes against raw file text, and a regex
+cannot tell an element from the same element quoted inside a comment. The `<depend>`-presence readers were the
+likeliest to fire in the wild — commenting a dependency in and out is routine ROS practice, and
+`NanoRosVerbs.cmake` used mere presence of a `<depend>` tag to decide whether to run interface codegen. Surfaced by
+phase-348 W1: the first provider `package.xml` explains the provision-vs-consumption distinction in a comment that
+quotes the other tag, and `nano_ros_read_package_export()` then reported that file as consuming `rmw=zenoh` — the
+file was correct, the reader was not. Fixed with ONE shared helper (`nros_read_package_xml_body()`) across all
+seven sites, not a strip where the symptom appeared. The pattern is `<!--([^-]|-[^-])*-->`, never `<!--.*-->`:
+cmake regexes are greedy with no lazy quantifier, so the naive spelling silently deletes every element BETWEEN two
+comments. Gated by `check-package-xml-comments`, whose three cases were each verified to fail under the matching
+perturbation. See `0516-*`. (2026-08-11)
+
 RESOLVED 2026-08-10 — **#510** the px4 companion lane skipped `nros sync`, so all three leaves
 (`px4-stub`, `px4-probe`, `offboard-companion`) resolved their registry-named nros deps
 (`nros = { version = "*" }`, `nros-platform-cffi`, `nros-rmw-xrce-cffi`) against the PUBLIC crates.io:

@@ -411,6 +411,7 @@ check-fast: \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
+    check-package-xml-comments \
     check-atomic-sync-writes \
     check-cmake-corrosion-prefix \
     check-path-env-fingerprints
@@ -3453,6 +3454,15 @@ check-artifact-identity-budget:
 [private]
 check-cargo-target-spelling:
     @bash packages/testing/nros-tests/tests/cargo_target_spelling.sh
+
+# issue 0516 — a COMMENTED-OUT element in a package.xml must not read as a
+# declaration. cmake has no XML parser, so every reader here regexes raw text;
+# before the `nros_read_package_xml_body()` helper, a package.xml that merely
+# DOCUMENTED a tag declared it. Covers the greedy-strip failure mode too, where
+# `<!--.*-->` silently deletes everything between two comments. Buildless.
+[private]
+check-package-xml-comments:
+    @bash packages/testing/nros-tests/tests/package_xml_comment_stripping.sh
 
 # Verify Phase 118.E size-probe rigorization: cross-mode parity,
 # cross-target build under isolated mode, concurrency soak.

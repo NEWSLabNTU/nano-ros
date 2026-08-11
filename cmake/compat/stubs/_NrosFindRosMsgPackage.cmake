@@ -25,6 +25,15 @@ if(_NROS_FIND_ROS_MSG_PACKAGE_INCLUDED)
 endif()
 set(_NROS_FIND_ROS_MSG_PACKAGE_INCLUDED TRUE)
 
+# `nros_read_package_xml_body()` — this file matches regexes against package.xml
+# text, and a COMMENTED-OUT `<depend>` or `<name>` must not read as a real one
+# (phase-348 W1; ROS users comment deps in and out routinely). Resolved
+# relative to this file, which is included in place by the sibling Find-stubs
+# rather than copied. A `function()` is global in cmake, so this survives even
+# when the include happens inside a `find_package()` frame — unlike the normal
+# variable guard above it.
+include("${CMAKE_CURRENT_LIST_DIR}/../../NanoRosPackageXml.cmake")
+
 # --- workspace-pkg Find-stub emission ----------------------------------------
 #
 # nano-ros ships Find-stubs for the well-known ROS msg packages (std_msgs,
@@ -66,7 +75,7 @@ function(_nros_emit_workspace_find_stubs)
         file(GLOB _pxs RELATIVE "${_root}" "${_root}/*/package.xml")
         foreach(_pxrel ${_pxs})
             get_filename_component(_pxdir "${_root}/${_pxrel}" DIRECTORY)
-            file(READ "${_root}/${_pxrel}" _pxbody)
+            nros_read_package_xml_body("${_root}/${_pxrel}" _pxbody)
             # Extract the pkg's own <name>.
             if(NOT _pxbody MATCHES "<name>[ \t\r\n]*([A-Za-z0-9_-]+)[ \t\r\n]*</name>")
                 continue()
@@ -141,7 +150,7 @@ function(_nros_find_msg_package_root pkg out_var)
         file(GLOB _candidates RELATIVE "${_root}" "${_root}/*/package.xml")
         foreach(_pxrel ${_candidates})
             get_filename_component(_pxdir "${_root}/${_pxrel}" DIRECTORY)
-            file(READ "${_root}/${_pxrel}" _pxbody)
+            nros_read_package_xml_body("${_root}/${_pxrel}" _pxbody)
             if(_pxbody MATCHES "<name>[ \t\r\n]*${pkg}[ \t\r\n]*</name>")
                 set(${out_var} "${_pxdir}" PARENT_SCOPE)
                 return()
@@ -201,7 +210,7 @@ endfunction()
 function(_nros_parse_pkg_deps pxml out_var)
     set(_deps "")
     if(EXISTS "${pxml}")
-        file(READ "${pxml}" _body)
+        nros_read_package_xml_body("${pxml}" _body)
         # Scrape the common ROS 2 dep tags. Lazy regex — captures the inner
         # text trimmed of whitespace. Covers <depend>, <build_depend>,
         # <exec_depend>, <run_depend>, <build_export_depend>.

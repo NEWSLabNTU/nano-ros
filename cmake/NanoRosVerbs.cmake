@@ -25,6 +25,8 @@ include_guard(GLOBAL)
 
 # issue 0326 — `_nros_is_zephyr()` lives here.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+# `nros_read_package_xml_body()` — see phase-348 W1.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPackageXml.cmake")
 
 # `_nros_bootstrap` / `_nros_link` (root resolve + auto-link of the generated
 # interface libs + platform — config internals since W8 retired the public
@@ -60,7 +62,7 @@ function(_nros_generate_declared_interfaces lang)
     if(NOT EXISTS "${_pkgxml}")
         return()
     endif()
-    file(READ "${_pkgxml}" _body)
+    nros_read_package_xml_body("${_pkgxml}" _body)
     if(_body MATCHES "<(depend|build_depend|exec_depend|run_depend|build_export_depend)>")
         nros_find_interfaces(LANGUAGE ${lang} SKIP_INSTALL)
     endif()
