@@ -93,7 +93,21 @@ pub struct SourceTimer {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub declaration_slot: Option<u32>,
+    /// Truncating. Kept because every committed plan fixture and the planner's
+    /// JSON path read it, and #505 deliberately kept emitting it.
     pub period_ms: u64,
+    /// Issue #505 — the same period at the executor's own resolution.
+    ///
+    /// ADDITIVE: `write_timer_json` emits both, so this is `Option` and
+    /// defaulted rather than replacing `period_ms`. It is optional for one more
+    /// reason — the hand-written fixtures under `tests/fixtures/orchestration/`
+    /// predate #505 and legitimately carry only the millisecond field.
+    ///
+    /// This struct is `deny_unknown_fields`, which is why the addition was not
+    /// merely ignored: every source-metadata parse failed outright with
+    /// `unknown field 'period_us'` until this line existed (issue 0518).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period_us: Option<u64>,
     pub callback: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callback_slot: Option<u32>,

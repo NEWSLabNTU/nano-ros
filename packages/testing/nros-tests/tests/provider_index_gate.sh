@@ -110,6 +110,9 @@ foreach(_d IN LISTS _deps)
 endforeach()
 EOF
 
+# nros-cmake-prefix-exempt: project(... NONE) — no compiler, no Rust, no
+# Corrosion in this tree at all. It configures a module that only shells the
+# CLI and reads variables, so no cargo target-dir topology is decided here.
 OUT="$(cd "$WORK" && cmake -S . -B build 2>&1)" || {
     echo "FAIL: cmake configure errored" >&2
     echo "$OUT" >&2
