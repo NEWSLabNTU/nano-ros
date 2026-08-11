@@ -1,0 +1,102 @@
+---
+id: 522
+title: "The cmake metadata probe builds one full cargo tree per component — 82.4 GiB, 108 dirs, and 16 distinct compilations doing the work of 312"
+status: open
+type: tech-debt
+area: build
+related: [phase-340, issue-0488, rfc-0070]
+---
+
+## Symptom
+
+Nothing fails. This is disk and wall-clock, found while re-measuring phase-340
+W7 on the post-change tree.
+
+`nros metadata --build` renders a small harness crate per component and runs it
+to record what that component registers. The harness builds into the component's
+OWN directory:
+
+```rust
+// packages/cli/nros-cli-core/src/orchestration/metadata_build.rs:337
+let target_dir = o.harness_dir.join("target");
+```
+
+`harness_dir` is `<leaf>/build/nros-metadata/metadata-probe/<component>/`, so
+every component gets a private cargo target dir holding a full host build of
+itself and its dependency graph.
+
+Measured on this tree (2026-08-12):
+
+| class of per-leaf `target*` dir under `examples/` | dirs | size |
+| --- | --- | --- |
+| **metadata probe** | **108** | **82.4 GiB** |
+| example leaves (phase-340 residue) | 356 | 28.9 GiB |
+
+The probe is now the LARGEST per-leaf duplication class in the tree — roughly
+three times what phase-340 has left behind in the population it was created to
+fix. The eight biggest single `target*` dirs under `examples/` are all probe
+trees, 2.0–2.3 GiB each.
+
+## It is the phase-340 thesis, on a build path phase-340 never touched
+
+Counting `libnros_core-<hash>.rlib` inside the probe trees — that hash is
+cargo's `-C metadata`, i.e. cargo's own judgement that two builds are
+interchangeable:
+
+```
+162 probe trees hold nros_core
+    312 rlibs, 16 distinct identities
+     62  a0c38a7bcc90ab36
+     56  7bf3fe978cb14ee5
+     39  6203506aceacbcd6
+     …
+```
+
+**296 of 312 are literal repeats of a compilation that already exists.** Sixteen
+distinct compilations are doing the work of 312 — the same shape phase-340
+measured on the fixture lane (45 of 106 `nros_core` rlibs identical) and fixed
+there with one shared `--target-dir` per group.
+
+## Why the earlier census missed it
+
+Issue 0488 inventoried the second-build-path residue and lists two classes, both
+real. Neither is this one, because 0488 swept `just/` and `scripts/` for
+`cargo build` call sites — and this invocation is emitted by the CLI, in Rust,
+from cmake's configure step. A sweep keyed on the caller's LANGUAGE will keep
+missing it.
+
+That is the issue-0196 rule again: the gate (`check-example-leaf-target-dirs.py`)
+covers `examples/**/target/`, and these dirs are `examples/**/build/nros-metadata/
+metadata-probe/*/target/`, which the glob does not reach.
+
+## Direction, not a decided fix
+
+The probe's requirements are narrow and stated in `metadata_build.rs`: it needs
+the component's `.cargo/config.toml` in scope (hence `current_dir(&harness_dir)`,
+phase-307 W1), a host `--target`, and `panic = "abort"` (issue 0288). None of
+those requires a PRIVATE target dir.
+
+Candidates, cheapest first:
+
+1. **One probe target dir per (host-triple, workspace)** under
+   `$NROS_BUILD_ROOT` — `nros_build_dir` already derives such paths (RFC-0070
+   R1/R3). The 16 identities suggest the natural key is close to "the workspace's
+   patch set", not the component.
+2. **Reuse the fixture group dir** where the component belongs to a manifest row.
+   Tempting and probably wrong: the probe builds for the HOST while the row may
+   build for a board, and mixing them in one dir is what phase-340 W1 measured as
+   an artifact-name collision.
+3. Leave the location alone and let cargo dedupe via sccache — refuted for this
+   class by phase-340 W1: `--target <host>` and the group's flags are different
+   `-C metadata` identities and share nothing, measured 0 hits / 62 misses.
+
+Acceptance for whichever lands: the probe-tree count and total bytes above,
+re-measured, plus a `find`-based gate whose glob actually reaches
+`build/nros-metadata/**/target` (verified against a replica, per issue 0196).
+
+## Note on ownership
+
+Not phase-340's to fix — that phase owns the fixture lane and is closing. Filed
+so the number is recorded rather than re-swept: the disk story phase-340 wrote
+(`examples/` 402 GiB, one talker leaf holding 7.4 GiB across five target dirs)
+is no longer the dominant story on this tree, and this is what replaced it.

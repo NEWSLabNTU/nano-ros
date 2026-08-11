@@ -67,6 +67,18 @@ stamp had one, sending the reader after a missing file that was right there. Sel
 the collation counter beside it, because the bug is INVISIBLE in output — a confident, specific, wrong
 `NONE for nros_core`. See `archived/0513-*`. (2026-08-11)
 
+**#522** — the cmake metadata probe builds ONE FULL CARGO TREE PER COMPONENT: `metadata_build.rs`
+renders a harness into `<leaf>/build/nros-metadata/metadata-probe/<c>/` and passes `--target-dir
+<harness>/target`, so every component gets a private host build of itself and its whole dep graph.
+Measured 2026-08-12 while re-measuring phase-340 W7: **108 dirs, 82.4 GiB** — three times the 28.9 GiB
+of example-leaf residue phase-340 has left, and the eight largest `target*` dirs under `examples/` are
+all probe trees. It is phase-340's thesis on a build path phase-340 never touched: 162 probe trees hold
+312 `libnros_core` rlibs with **16 distinct `-C metadata` identities**, so 296 are literal repeats.
+Issue 0488's census missed it because that sweep looked for `cargo build` in `just/`/`scripts/` and this
+invocation is emitted by the CLI in Rust; `check-example-leaf-target-dirs.py`'s glob does not reach
+`examples/**/build/nros-metadata/**/target` either (the 0196 rule). Direction: one probe target dir per
+(host-triple, workspace) under `$NROS_BUILD_ROOT` via `nros_build_dir`. See `0522-*`. (2026-08-12)
+
 **#511** — `rust-rtos-link-check` overflows NuttX ROM on `examples/qemu-arm-nuttx/rust/talker`, so `ci-matrix`
 cannot go green. The bisect first recorded here is **RETRACTED**: the probe built one fixed path, and that path
 is a LIBRARY before phase-338 W2's `-entry` collapse and the BINARY after, so every pre-collapse "good" was
