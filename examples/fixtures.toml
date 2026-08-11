@@ -892,6 +892,12 @@ cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-free
 id = "workspace-mixed-native"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
@@ -905,6 +911,12 @@ build_subdir = "build-workspace-fixtures"
 id = "workspace-mixed-native-service-server"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
@@ -916,6 +928,12 @@ build_subdir = "build-workspace-fixtures"
 id = "workspace-mixed-native-service-client"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
@@ -929,6 +947,12 @@ build_subdir = "build-workspace-fixtures"
 id = "workspace-mixed-native-action-server"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
@@ -940,6 +964,12 @@ build_subdir = "build-workspace-fixtures"
 id = "workspace-mixed-native-action-client"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
@@ -954,6 +984,12 @@ build_subdir = "build-workspace-fixtures"
 id = "workspace-mixed-native-robot1"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
@@ -965,6 +1001,12 @@ build_subdir = "build-workspace-fixtures"
 id = "workspace-mixed-native-robot2"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
@@ -981,6 +1023,12 @@ build_subdir = "build-workspace-fixtures"
 id = "workspace-mixed-threadx-linux"
 platform = "threadx-linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
@@ -998,6 +1046,12 @@ cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", 
 id = "workspace-mixed-freertos"
 platform = "freertos"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
@@ -3370,6 +3424,12 @@ target_dir = "target-fixtures"
 id = "workspace-features-mixed-qos-talker"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
@@ -3381,6 +3441,12 @@ build_subdir = "build-workspace-fixtures"
 id = "workspace-features-mixed-qos-listener"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
@@ -3392,6 +3458,12 @@ build_subdir = "build-workspace-fixtures"
 id = "workspace-features-mixed-custom-msg-talker"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
@@ -3403,6 +3475,12 @@ build_subdir = "build-workspace-fixtures"
 id = "workspace-features-mixed-custom-msg-listener"
 platform = "linux"
 lang = "mixed"
+# issue 0517 — BUILDER-keyed, following phase-344 W2's precedent for the six
+# threadx cyclonedds rows. A `mixed` workspace is DRIVEN by cmake (corrosion
+# invokes cargo underneath), so its artifacts land in `build_subdir`, not in a
+# `target/` nothing writes. Without this `row_artifact_root` answered
+# `<dir>/target` and every mixed row shared that one wrong root.
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"

@@ -345,6 +345,33 @@ impl FixtureVariant {
 /// injective over the shipped manifest, so >1 match means a row was added whose
 /// configuration no caller can name; the fix is to make the rows distinguishable,
 /// not to relax this.
+/// Where a `[[workspace_fixture]]` row's artifacts land — issue 0517, the
+/// workspace half.
+///
+/// Workspace rows never reach `nros_fixture_target_dir_flag`:
+/// `workspace-fixtures-build.sh` passes the row's authored `target_dir` /
+/// `build_subdir` to cargo and cmake directly, so no group can redirect them and
+/// the answer is always the row's own artifact root. That is `row_artifact_root`
+/// — the same computation the lane narrowing and the build already use — reached
+/// through the `id` these rows are attributed by anyway
+/// ([`crate::fixtures::lane::attribute_workspace_id`]).
+///
+/// This exists so the ~8 workspace resolvers stop spelling `target-fixtures`,
+/// `target-fixtures/nuttx-riscv`, `build-workspace-fixtures` by hand. Those
+/// literals are the same defect as the plain-row `target-<rmw>` ones: a
+/// directory standing in for a row's identity, which phase-340 W2.d is about to
+/// stop authoring.
+pub fn workspace_artifact_dir(fixture_id: &str) -> TestResult<PathBuf> {
+    let row = crate::fixtures::lane::attribute_workspace_id(fixture_id).ok_or_else(|| {
+        TestError::BuildFailed(format!(
+            "no [[workspace_fixture]] row with id {fixture_id:?} in \
+             examples/fixtures.toml — the manifest is the SSoT for where this \
+             fixture's artifacts land, so an id it does not carry cannot be resolved."
+        ))
+    })?;
+    Ok(project_root().join(&row.artifact_root))
+}
+
 /// Does `examples/fixtures.toml` carry ANY row for this leaf?
 ///
 /// The distinction [`row_artifact_dir`] cannot make on its own, and the two

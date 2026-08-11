@@ -1115,13 +1115,14 @@ pub fn build_workspace_rust_entry(
     workspace: &str,
     binary_name: &str,
 ) -> TestResult<PathBuf> {
-    let example_dir = workspace_example_dir(workspace)?;
-    let target_dir = example_dir.join("target-fixtures");
-    let binary_path = example_dir.join(format!(
-        "target-fixtures/{}/{}",
-        cargo_target_profile_dir(),
-        binary_name
-    ));
+    // Kept for its existence check and its error message; the PATH now comes
+    // from the row (issue 0517).
+    workspace_example_dir(workspace)?;
+    // issue 0517 — the row says where its artifacts land (`row_artifact_root`),
+    // reached by the `id` this function already takes. `target-fixtures` was the
+    // row's identity spelt as a directory.
+    let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
+    let binary_path = target_dir.join(format!("{}/{}", cargo_target_profile_dir(), binary_name));
     require_prebuilt_workspace_binary(
         fixture_id,
         &binary_path,
@@ -1183,8 +1184,22 @@ pub fn build_workspace_cmake_entry_in(
             )));
         }
     }
-    let example_dir = workspace_example_dir(workspace)?;
-    let build_dir = example_dir.join(build_subdir);
+    // Kept for its existence check and its error message; the PATH now comes
+    // from the row (issue 0517).
+    workspace_example_dir(workspace)?;
+    // issue 0517 — derived from the row, with the caller's `build_subdir` kept as
+    // an ASSERTION rather than as the source of truth. Same reasoning as the
+    // entry-name check above: the argument exists in ~20 places and any of them
+    // can drift, and the failure mode is the expensive one — the binary is simply
+    // "not there", which reads as an absent toolchain and SKIPS.
+    let build_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
+    if !build_dir.ends_with(build_subdir) {
+        return Err(TestError::BuildFailed(format!(
+            "fixture {fixture_id:?} resolves build dir {build_dir:?} but the caller \
+             passed build_subdir {build_subdir:?} — examples/fixtures.toml is the SSoT \
+             for where a workspace fixture builds (issue 0517)"
+        )));
+    }
     let binary_path = build_dir.join(format!("src/{binary_name}/{binary_name}"));
     require_prebuilt_workspace_binary(
         fixture_id,
@@ -2041,8 +2056,8 @@ pub fn build_nuttx_riscv_workspace_rust_realtime_entry() -> TestResult<&'static 
     NUTTX_RISCV_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
             let fixture_id = "workspace-rust-nuttx-riscv-realtime";
-            let example_dir = workspace_example_dir("realtime-rust")?;
-            let target_dir = example_dir.join("target-fixtures/nuttx-riscv");
+            workspace_example_dir("realtime-rust")?;
+            let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
             // phase-336 — the NuttX carve-out profile (see NUTTX_RUST_PROFILE);
             // `workspace-fixtures-build.sh` builds these rows at it.
             let binary_path = target_dir.join(format!(
@@ -2077,8 +2092,8 @@ pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> 
     NUTTX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
             let fixture_id = "workspace-rust-nuttx-realtime";
-            let example_dir = workspace_example_dir("realtime-rust")?;
-            let target_dir = example_dir.join("target-fixtures/nuttx");
+            workspace_example_dir("realtime-rust")?;
+            let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
             let binary_path = target_dir.join(format!(
                 "armv7a-nuttx-eabihf/{}/nuttx_entry",
                 nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE)
@@ -2107,8 +2122,8 @@ pub fn build_threadx_workspace_rust_realtime_entry() -> TestResult<&'static Path
     THREADX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
             let fixture_id = "workspace-rust-threadx-linux-realtime";
-            let example_dir = workspace_example_dir("realtime-rust")?;
-            let target_dir = example_dir.join("target-fixtures/threadx-linux");
+            workspace_example_dir("realtime-rust")?;
+            let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
             let binary_path = target_dir.join(format!(
                 "x86_64-unknown-linux-gnu/{}/threadx_entry",
                 cargo_target_profile_dir()
@@ -4722,11 +4737,14 @@ pub fn build_esp32_qemu_listener() -> TestResult<&'static Path> {
 /// Fails fast with a `just esp32 build-fixtures` hint when the binary is
 /// absent.
 pub fn get_prebuilt_esp32_qemu_workspace_entry() -> TestResult<PathBuf> {
-    let root = project_root();
-    let elf = root.join(format!(
-        "examples/workspaces/rust/target-fixtures/esp32/riscv32imc-unknown-none-elf/{}/esp32_entry",
-        cargo_target_profile_dir()
-    ));
+    // issue 0517 — the row's artifact root, not a hand-spelled one. The rest of
+    // the path (triple / profile / bin) is what cargo writes BELOW the root and
+    // is carried verbatim.
+    let elf =
+        crate::fixtures::groups::workspace_artifact_dir("workspace-rust-esp32")?.join(format!(
+            "riscv32imc-unknown-none-elf/{}/esp32_entry",
+            cargo_target_profile_dir()
+        ));
     if !elf.exists() {
         return Err(TestError::BuildFailed(format!(
             "ESP32 workspace Entry binary not found: {}\n\
