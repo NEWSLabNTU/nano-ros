@@ -86,6 +86,16 @@ correct code gets switched off. Three options costed in the issue: a baseline of
 the rule to readiness waits specifically, or asserting liveness at runtime (report what the process DID print).
 See `0512-*`. (2026-08-11)
 
+**#518** — `SourceMetadata` cannot be parsed at all. `#505` ("microsecond timer resolution end to end") moved the
+producer to `period_us` (`nros-macros/src/main_macro.rs:2916`) but left the reader declaring `period_ms`
+(`orchestration/source_metadata.rs:96`), and `SourceTimer` is `deny_unknown_fields`, so the whole sidecar fails to
+parse: two reds on `main` in `plan_pipeline_e2e`, reproduced on a clean tree. **The one-line rename is not the
+fix** — a committed fixture (`tests/fixtures/orchestration/source_metadata_talker.json:45`) still says
+`"period_ms": 100`, so renaming just flips which spelling is rejected, and converting it needs 100 ms → 100000 us
+rather than a straight rename. Left for #505's author: whether `sched_contexts.period_ms` moves too is a design
+call. Survived review because `SourceTimer` has no field readers — only a test that parses a real sidecar sees it.
+See `0518-*`. (2026-08-11)
+
 RESOLVED 2026-08-11 — **#516** every regex reader of `package.xml` treated a **commented-out** element as a real
 declaration. cmake has no XML parser, so all seven readers matched regexes against raw file text, and a regex
 cannot tell an element from the same element quoted inside a comment. The `<depend>`-presence readers were the
