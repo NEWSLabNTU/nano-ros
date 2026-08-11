@@ -3745,3 +3745,52 @@ fn deadline_warn_reports_without_skipping() {
     });
     assert!(misses >= 1, "warn reported the miss");
 }
+
+/// Issue #505 — a stalled tier must SAY it dropped activations.
+///
+/// The rate rule cannot: `check_rate` samples publish counts over a ~5 s
+/// window, so an isolated stall is a fraction of a percent, and under
+/// `CatchUp` the replayed activations refill the window entirely. The
+/// overrun counter is exact and immediate, and `run_contract_monitors`
+/// turns its delta into a `timer-overrun-runtime` violation.
+#[cfg(feature = "std")]
+#[test]
+fn a_stalled_timer_reports_a_timer_overrun_violation() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    let fires = std::sync::Arc::new(std::sync::Mutex::new(0u32));
+    let f = fires.clone();
+    let id = executor
+        .register_timer(TimerDuration::from_millis(10), move || {
+            *f.lock().unwrap() += 1;
+        })
+        .unwrap();
+
+    // A stall worth ~12 periods: one activation, the rest dropped.
+    let _ = elapse_then_spin_once(&mut executor, 120);
+    assert_eq!(*fires.lock().unwrap(), 1, "Skip coalesces the backlog");
+    let overruns = executor.timer_overruns(id).unwrap();
+    assert!(overruns >= 10, "dropped periods counted: {overruns}");
+
+    let mut reported = std::vec::Vec::new();
+    executor.drain_violations(|v| reported.push((v.rule, v.measured)));
+    let overrun_rows: std::vec::Vec<_> = reported
+        .iter()
+        .filter(|(r, _)| *r == "timer-overrun-runtime")
+        .collect();
+    assert_eq!(overrun_rows.len(), 1, "one report: {reported:?}");
+    assert_eq!(
+        overrun_rows[0].1, overruns,
+        "the violation carries the dropped count"
+    );
+
+    // A second check with no new stall must stay silent — the rule
+    // reports newly dropped activations, not the running total.
+    let _ = elapse_then_spin_once(&mut executor, 10);
+    let mut again = std::vec::Vec::new();
+    executor.drain_violations(|v| again.push(v.rule));
+    assert!(
+        !again.contains(&"timer-overrun-runtime"),
+        "no repeat without a new drop: {again:?}"
+    );
+}

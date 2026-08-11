@@ -136,6 +136,11 @@ pub(crate) struct TimerEntry<F> {
     /// Periods dropped by [`TimerOverrunPolicy::Skip`] (issue #505).
     /// Saturating; never cleared by the dispatcher.
     pub(crate) overruns: u32,
+    /// `overruns` as of the last `timer-overrun-runtime` monitor check,
+    /// so the rule reports newly dropped activations rather than the
+    /// running total. Lives here rather than in a table parallel to
+    /// `entries`, whose capacity is a runtime slice length.
+    pub(crate) overruns_reported: u32,
     pub(crate) oneshot: bool,
     pub(crate) fired: bool,
     pub(crate) cancelled: bool,
@@ -153,6 +158,7 @@ pub(crate) struct TimerHeader {
     pub(crate) period_us: u64,
     pub(crate) elapsed_us: u64,
     pub(crate) overruns: u32,
+    pub(crate) overruns_reported: u32,
     pub(crate) oneshot: bool,
     pub(crate) fired: bool,
     pub(crate) cancelled: bool,
@@ -2445,6 +2451,7 @@ mod timer_overrun_tests {
             period_us,
             elapsed_us: 0,
             overruns: 0,
+            overruns_reported: 0,
             oneshot: false,
             fired: false,
             cancelled: false,
@@ -2520,6 +2527,7 @@ mod timer_overrun_tests {
             period_us: 10_000,
             elapsed_us: 0,
             overruns: 0,
+            overruns_reported: 0,
             oneshot: true,
             fired: false,
             cancelled: false,

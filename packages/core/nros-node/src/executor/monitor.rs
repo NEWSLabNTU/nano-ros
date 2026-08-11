@@ -138,13 +138,15 @@ pub const MAX_VIOLATIONS: usize = 8;
 #[derive(Debug, Clone)]
 pub struct Violation {
     /// `"rate-hierarchy-runtime"` | `"max-age-runtime"` |
-    /// `"max-latency-runtime"` | `"deadline-miss-runtime"`.
+    /// `"max-latency-runtime"` | `"deadline-miss-runtime"` |
+    /// `"timer-overrun-runtime"`.
     pub rule: &'static str,
     /// Violating endpoint ref (from the spec's `fqn`; the SC name for
     /// deadline misses).
     pub fqn: &'static str,
     /// Measured value. Unit is per-rule: milli-Hz for the rate rule, ms
-    /// for age/latency, µs for deadline misses.
+    /// for age/latency, µs for deadline misses, dropped activations for
+    /// the timer-overrun rule.
     pub measured: u32,
     /// Declared bound, same unit as `measured`.
     pub declared: u32,
@@ -418,5 +420,74 @@ mod tests {
         assert!(check_latency(&s, &mut st).is_none());
         C3.max_latency_us.store(30_000, Ordering::Relaxed);
         assert!(check_latency(&s, &mut st).is_some());
+    }
+}
+
+/// Issue #505 — periodic activations a timer dropped because its
+/// executor was blocked past the period boundary.
+///
+/// This rule exists because `check_rate` cannot see an isolated stall:
+/// it samples publish counts over a ~5 s window, so 20 missed
+/// activations of a 100 Hz loop are a 0.4% rate deficit — under any
+/// sane declared minimum, silence. (And under
+/// [`TimerOverrunPolicy::CatchUp`](super::arena::TimerOverrunPolicy)
+/// the replayed activations refill the window entirely, so the rate
+/// rule reports a HEALTHY loop while the tier is stalling.) The
+/// overrun counter is exact, needs no window, and does not depend on
+/// clock resolution.
+///
+/// `overruns` is the timer's monotonic saturating counter;
+/// `last_reported` is the value at the previous check, so the verdict
+/// is on the delta. Returns a violation when more than `tolerated`
+/// activations were dropped since the last check.
+pub(crate) fn check_timer_overrun(
+    overruns: u32,
+    last_reported: &mut u32,
+    tolerated: u32,
+) -> Option<Violation> {
+    let dropped = overruns.saturating_sub(*last_reported);
+    *last_reported = overruns;
+    if dropped <= tolerated {
+        return None;
+    }
+    Some(Violation {
+        rule: "timer-overrun-runtime",
+        // Timer entries carry no name at this altitude; same stand-in
+        // as `deadline-miss-runtime`.
+        fqn: "timer",
+        measured: dropped,
+        declared: tolerated,
+    })
+}
+
+#[cfg(test)]
+mod timer_overrun_rule_tests {
+    use super::*;
+
+    #[test]
+    fn reports_the_delta_not_the_total() {
+        let mut last = 0;
+        let v = check_timer_overrun(19, &mut last, 0).expect("first drop reports");
+        assert_eq!(v.rule, "timer-overrun-runtime");
+        assert_eq!(v.measured, 19);
+        // Same total on the next check is not a new fault.
+        assert!(check_timer_overrun(19, &mut last, 0).is_none());
+        // Only the newly dropped activations are reported.
+        assert_eq!(check_timer_overrun(25, &mut last, 0).unwrap().measured, 6);
+    }
+
+    #[test]
+    fn a_clean_timer_never_reports() {
+        let mut last = 0;
+        for _ in 0..10 {
+            assert!(check_timer_overrun(0, &mut last, 0).is_none());
+        }
+    }
+
+    #[test]
+    fn tolerance_suppresses_small_drops() {
+        let mut last = 0;
+        assert!(check_timer_overrun(2, &mut last, 2).is_none());
+        assert_eq!(check_timer_overrun(6, &mut last, 2).unwrap().measured, 4);
     }
 }

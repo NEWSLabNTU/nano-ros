@@ -1954,6 +1954,40 @@ impl<'s> Executor<'s> {
         }
     }
 
+    /// Issue #505 — report activations dropped by
+    /// [`TimerOverrunPolicy::Skip`](super::arena::TimerOverrunPolicy)
+    /// since the last check.
+    ///
+    /// Unlike the rate/age/latency rules this needs no baked spec table:
+    /// every periodic timer counts its own overruns, and a dropped
+    /// activation is a contract failure for any declared period. It runs
+    /// on the same tick so violations land in the same ring the entry
+    /// glue drains.
+    fn check_timer_overruns(&mut self) {
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        for i in 0..self.entries.len() {
+            let Some(meta) = self.entries[i].as_ref() else {
+                continue;
+            };
+            if !matches!(meta.kind, EntryKind::Timer) {
+                continue;
+            }
+            // SAFETY: a Timer entry's arena slot holds a `TimerEntry<F>`,
+            // which shares its leading layout with `TimerHeader`. The
+            // baseline lives in the header too, so this needs no state
+            // parallel to `entries` (whose capacity is a runtime slice
+            // length, not a const).
+            let header = unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
+            if let Some(v) = super::monitor::check_timer_overrun(
+                header.overruns,
+                &mut header.overruns_reported,
+                0,
+            ) {
+                let _ = self.monitor_violations.push(v);
+            }
+        }
+    }
+
     /// RFC-0052 / phase-296 W3a — replace the DEFAULT scheduling context
     /// (slot 0, the SC every unbound callback dispatches through).
     ///
@@ -3917,6 +3951,7 @@ impl<'s> Executor<'s> {
                     period_us: period.as_micros(),
                     elapsed_us: 0,
                     overruns: 0,
+                    overruns_reported: 0,
                     oneshot: false,
                     fired: false,
                     cancelled: false,
@@ -3961,6 +3996,7 @@ impl<'s> Executor<'s> {
                     period_us: delay.as_micros(),
                     elapsed_us: 0,
                     overruns: 0,
+                    overruns_reported: 0,
                     oneshot: true,
                     fired: false,
                     cancelled: false,
@@ -4012,6 +4048,7 @@ impl<'s> Executor<'s> {
                     period_us: period.as_micros(),
                     elapsed_us: 0,
                     overruns: 0,
+                    overruns_reported: 0,
                     oneshot: false,
                     fired: false,
                     cancelled: false,
@@ -5634,6 +5671,13 @@ impl<'s> Executor<'s> {
         for v in deadline_misses {
             let _ = self.monitor_violations.push(v);
         }
+
+        // Issue #505 — same ring, same cycle. This runs AFTER dispatch,
+        // unlike the windowed rate/age/latency rules at the top of the
+        // spin: the activations it reports were dropped by the dispatch
+        // that just happened, and a tier that is stalling should not have
+        // to wait for the next spin to say so.
+        self.check_timer_overruns();
 
         // Process parameter services (outside the arena)
         #[cfg(feature = "param-services")]
