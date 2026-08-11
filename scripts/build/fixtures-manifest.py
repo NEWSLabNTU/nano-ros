@@ -230,6 +230,48 @@ def cmake_build_subdir(entry):
     )
 
 
+def row_is_variant(entry):
+    """Is this row a non-default CONFIGURATION of its example — phase-340 W2.d.
+
+    THE single computation of "variant-ness", for the same reason `row_coord`
+    and `row_artifact_root` are single computations of their facts (RFC-0070 R3:
+    one derivation, consumed by every side).
+
+    Expressed in R2's coordinate vocabulary — the row's own feature signature —
+    NOT in an authored `target_dir`. R2 is explicit that "a new ad-hoc suffix is
+    a bug, not a naming choice", and `target_dir = "target-zenoh"` is one of
+    those spellings; reading it as a predicate made the manifest column load-
+    bearing for a question it only ever answered by coincidence.
+
+    The coincidence held because declaring an isolated target dir was, in
+    2026-05, exactly what made a row expensive (issue 0029: the host-integration
+    runner ran out of disk). phase-340 B3/wave 2 removed that: those rows now
+    build into a shared group dir and `nros_fixture_strip_authored_target_dir`
+    drops the authored flag before cargo sees it, so the column no longer
+    describes cost, or anything else a consumer needs.
+
+    Equivalence where it is consumed is GATED, not assumed — see
+    `tests/core_only_predicate.sh`. Measured at the time of the swap: over the
+    65 `linux`/`rust` rows both spellings select the same 12. The two diverge
+    only on `qemu-arm-nuttx` rust rows, which carry a variant signature and no
+    authored dir — a platform `--core-only` has never been invoked on.
+    """
+    if entry.get("target_dir"):
+        return True
+    # AUTHORED configuration fields, not the DERIVED `cargo_args()`. That
+    # function synthesises flags from the coordinate (rmw, platform), so every
+    # row with an `rmw` looks like a variant through it — measured: it selected
+    # 38 of 65 linux/rust rows for the right total by luck, and would misclassify
+    # rows on platforms where the coordinate carries more.
+    #
+    # `rmw` is deliberately NOT here: it is a COORDINATE, not a configuration.
+    # A default-rmw row is core.
+    return any(
+        entry.get(k)
+        for k in ("features", "no_default_features", "env", "cargo_args")
+    )
+
+
 def row_artifact_root(entry):
     """Where a row's built artifacts land, as a repo-relative path — phase-340 W3.
 
@@ -417,7 +459,7 @@ def matches_filters(entry, args, *, for_probe=False):
             return False
     # Issue #29 — `--core-only` excludes the isolated-`target_dir` variant cells
     # (the RMW/feature rebuilds that duplicate the dep graph + overrun disk).
-    if getattr(args, "core_only", False) and entry.get("target_dir"):
+    if getattr(args, "core_only", False) and row_is_variant(entry):
         return False
     if for_probe and entry.get("skip_probe"):
         return False

@@ -407,7 +407,7 @@ check-fast: \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
-    check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
+    check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
@@ -752,6 +752,13 @@ check-abi-bindings:
 [private]
 check-board-abi-mirror:
     @bash scripts/check-board-abi-mirror.sh
+
+# phase-340 W2.d — `--core-only` selects by the derived variant predicate; this
+# holds it equivalent to the authored-`target_dir` spelling it replaced, on
+# every platform a caller actually passes.
+[private]
+check-core-only-predicate:
+    @bash packages/testing/nros-tests/tests/core_only_predicate.sh
 
 # phase-344 W7 — RFC-0070 R1 at WORKSPACE scope only. examples/** copy-out
 # leaves keep the Cargo/CMake convention and are deliberately exempt.
