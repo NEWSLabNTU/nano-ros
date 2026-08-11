@@ -1,7 +1,8 @@
 ---
 id: 517
 title: "The fixture resolver spells a row's variant identity as a leaf path literal, so the manifest's `target_dir` column cannot be deleted without silently mis-resolving 17 roots"
-status: open
+status: resolved
+resolved_in: phase-340
 type: tech-debt
 area: testing
 related: [phase-340, issue-0482, rfc-0070]
@@ -145,7 +146,55 @@ formats.
 Phases A and B are independently landable and neither needs a fixture rebuild.
 Only C does.
 
-## Status (2026-08-11)
+## Resolution (2026-08-12)
+
+Phases A and B landed as designed. Phase C did not: the framing was wrong, and
+the user named the reason — the build artifacts were unified into a colcon-style
+`build/` root long ago, so the leaf `target-<x>` was not a location at all.
+
+**All 124 cargo rows are shared.** Every one builds into
+`build/fixtures-cargo/<slug>` (RFC-0070 R1's `$NROS_BUILD_ROOT`). Not one row's
+bytes land in its leaf `target*` dir. So `artifact_root` was a KEY encoded as a
+path, and `target_dir` existed only because `require_in_lane` re-derived the row
+FROM that path. My proposed `target-<hash>` would have kept the encoding and
+just derived it — perpetuating the shape instead of removing it.
+
+What actually landed:
+
+1. **The lane check takes the row.** `fixture-groups` carries `row_coord()`;
+   `lane::require_coord_in_lane` is the row-keyed twin of `require_in_lane`;
+   `groups::select_row` returns the row and `row_resolved_dir` redirects by
+   `shared`/`slug` rather than by matching a path prefix.
+   `require_prebuilt_row_binary{,_fresh}` is the chokepoint, sharing its tail
+   with the path-keyed one so they cannot drift.
+2. **The inline spellers name their row.** 10 via `select_sole_row(dir)` ("the
+   row at this leaf", checked — 83 leaves have exactly one), 5 via
+   `FixtureVariant::rmw`, plus `build_example` and `message-info-observer`.
+   `rmw.target_dir()` survives at ONE site: the px4 fallback, for a leaf the
+   manifest does not describe.
+3. **The column is deleted.** 41 keys, and the group slug is byte-identical for
+   all 124 rows before and after — nothing moved on disk, so no rebuild was
+   needed for any of this.
+
+Four invariants encoded the old property and were re-aimed, not deleted:
+sole-row leaves must still round-trip through path attribution; multi-row leaves
+must NOT (asserted positively, so re-introducing a per-variant directory makes a
+test start passing); nesting stays forbidden while sharing is allowed; and
+uniqueness moves from `artifact_root` to `(dir, selector)` in both the Rust test
+and `check-fixture-groups`'s A2b arm — whose advice had been, literally, "give
+one row its own `target_dir`".
+
+`[[workspace_fixture]]` rows keep the column: there it is a real build input.
+
+Defects found on the way, both recorded in the commits: `row_artifact_root` was
+wrong for all 13 `mixed` workspace rows (`lang` read as the builder — phase-344
+W2's class, fixed with `builder = "cmake"`), and my own first `row_artifact_dir`
+returned the group dir, which would have silently disabled lane narrowing on
+every migrated platform.
+
+phase-340 W2.d is closed by this.
+
+## Status during the work (2026-08-11)
 
 **Phase A — DONE.** Both inversions fail closed on an ambiguous longest match:
 `lane::attribute_path` (extracted as `attribute_path_in` so synthetic rows can

@@ -122,19 +122,16 @@ cmake regexes are greedy with no lazy quantifier, so the naive spelling silently
 comments. Gated by `check-package-xml-comments`, whose three cases were each verified to fail under the matching
 perturbation. See `0516-*`. (2026-08-11)
 
-**#517** — the fixture resolver spells a row's VARIANT identity as a leaf path literal
-(`target-tls`, `target-fixtures/nuttx-riscv`, `rmw.target_dir()`), and `fixtures::groups::attribute()`
-maps that path to a build group by longest match on `row_artifact_root`. So the manifest's `target_dir`
-column is not decoration — it is the only handle the resolver has on which variant a hardcoded path
-means, which blocks phase-340 W2.d's deletion of it. Measured over the 124 emitted rows: today 0 artifact
-roots map to more than one group slug; with the column deleted, 17 do, up to 5 slugs each. `attribute()`
-returns exactly one row, so the result is not a missing file — it is a real binary built with DIFFERENT
-features, resolved silently, and the test passes against it. Order is therefore the reverse of what W2.d
-assumed: give the resolver a coordinate-keyed lookup (issue 0482 named this handle as missing and was
-resolved on its symptom instead), convert the literals family by family, THEN delete the column with a
-`lane=all` rebuild as acceptance. Independently worth doing: `row_artifact_root`'s docstring already
-promises an ambiguous match is treated as "not attributable (fail closed)" and `attribute()` does not
-implement that half. See `0517-*`. (2026-08-11)
+RESOLVED 2026-08-12 — **#517** the fixture resolver spelled a row's VARIANT identity as a leaf path
+literal, so `target_dir` could not be deleted. The framing was wrong: all 124 cargo rows are SHARED, so every
+one builds into `build/fixtures-cargo/<slug>` and none writes to its leaf `target*` at all — the leaf root was a
+KEY encoded as a path, surviving only because `require_in_lane` re-derived the row FROM that path. Fixed by
+making the lane check take the ROW (`require_coord_in_lane` + `select_row`), converting the ~17 inline spellers
+(`select_sole_row` for the 83 one-row leaves, `FixtureVariant::rmw` for the rest), then deleting all 41 keys —
+with the group slug byte-identical for all 124 rows before and after, so nothing moved on disk and no rebuild
+was needed. Four invariants that encoded the old property were re-aimed rather than deleted, including
+`check-fixture-groups`'s A2b arm, whose advice had been "give one row its own `target_dir`". Closes phase-340
+W2.d. See `archived/0517-*`. (2026-08-12)
 
 RESOLVED 2026-08-10 — **#510** the px4 companion lane skipped `nros sync`, so all three leaves
 (`px4-stub`, `px4-probe`, `offboard-companion`) resolved their registry-named nros deps

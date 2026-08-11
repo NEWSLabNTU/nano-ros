@@ -1941,8 +1941,18 @@ W2/W3 implementation.**
         must resolve even when the feature is off. That is a second spelling of
         `nros sync`'s output, and RFC-0070 R3 exists to forbid exactly that. It
         is the largest of C's costs and it was recorded as a non-cost.
-- [ ] **W2.d — the PREDICATE half is DONE (2026-08-11, `cf8d2d18e`); the COLUMN
-      cannot be deleted yet, and the measurement that says so is below.**
+- [x] **W2.d — DONE 2026-08-12.** Predicate half `cf8d2d18e`; column deleted in
+      `eac40ab0d` via issue 0517. The blocker recorded below was real but the
+      framing was wrong, and the correction is worth carrying: **all 124 cargo
+      rows are shared**, so every one builds into `build/fixtures-cargo/<slug>`
+      and none writes to its leaf `target*` at all. The column was not a
+      location — it was a KEY encoded as a path, alive only because
+      `require_in_lane` re-derived the row FROM that path. Making the lane check
+      take the ROW removed the need for it entirely; the group slug is
+      byte-identical for all 124 rows before and after, so nothing moved on disk
+      and no rebuild was needed. The `target-<slug>` derived suffix proposed
+      below was never built, and should not be: it would have kept the encoding
+      and merely derived it. Original text follows.
 
       *Done.* `--core-only` no longer reads `target_dir` as a proxy for "is this
       a variant row?". `row_is_variant()` derives it from AUTHORED configuration
