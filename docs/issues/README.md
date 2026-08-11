@@ -51,6 +51,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#513** (build, open 2026-08-11) — `check-artifact-identity-budget` now fails any INCREMENTAL fixture
+build. The issue-0499 fix counts only rlibs written since the build's `started_at`, which correctly
+excludes accumulated history — and also excludes everything cargo did not have to rebuild. A tier-1 run
+whose diff does not reach `nros_core` leaves its rlibs untouched, so ZERO fall in the window and the
+"no rlibs for the budgeted crate" arm (written for a partial build or a renamed crate) fires on a tree
+that is complete and correct: `counted 16 of 244 rlib(s) … holds compiled rlibs, but NONE for nros_core`,
+with four `nros_core` rlibs sitting there from the build 50 minutes earlier. It is the FIRST member of
+`check-fast` and `ci` stops at the first failure, so the whole build tier / clippy / `test-all` never run —
+0499 replaced "fails on an accumulated tree" with "fails on an incremental one", which is the commoner
+case. Direction: the era filter answers "what did THIS build produce", not "how many identities does this
+crate have" — an rlib cargo chose not to rewrite is still live; read `.fingerprint/` rather than mtimes, or
+fall back to the whole tree with a loud note instead of a hard failure. 0499's own closing line applies to
+its fix: a gate whose red requires a rebuild before it can be believed is a gate whose red will be ignored.
+Reproduce: run `build-test-fixtures lane=native` twice. See `0513-*`. (2026-08-11)
+
 **#511** — `rust-rtos-link-check` overflows NuttX ROM on `examples/qemu-arm-nuttx/rust/talker`, so `ci-matrix`
 cannot go green. BISECTED (2026-08-11, both ends validated first): the last state that links AND fits is the
 commit before phase-338 W2's `-entry` collapse (`ab486a8db`); the collapse broke linking outright (issue
