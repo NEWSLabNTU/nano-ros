@@ -68,14 +68,16 @@ the collation counter beside it, because the bug is INVISIBLE in output — a co
 `NONE for nros_core`. See `archived/0513-*`. (2026-08-11)
 
 **#511** — `rust-rtos-link-check` overflows NuttX ROM on `examples/qemu-arm-nuttx/rust/talker`, so `ci-matrix`
-cannot go green. BISECTED (2026-08-11, both ends validated first): the last state that links AND fits is the
-commit before phase-338 W2's `-entry` collapse (`ab486a8db`); the collapse broke linking outright (issue
-0440's undefined-libc), and `610ad5bd3` "restore the board's static link args" made it link again — overflowing
-from that commit onward, at a CONSTANT 534704 bytes. So #440 restored LINKABILITY, not the link
-CONFIGURATION, and a figure identical across dozens of revisions is a switch, not code growth. Separately the
-lane BUILT with `nros-relwithdebinfo` (`opt-level = 3`) where NuttX ships `nros-minsizerel` — worth ~119 KB
-(538800 vs 419992), now FIXED (the lane resolves each leaf through `nros_cargo_platform_profile`), which makes
-the reported figure the shipped one but does not close the issue. See `0511-*`. (2026-08-11)
+cannot go green. The bisect first recorded here is **RETRACTED**: the probe built one fixed path, and that path
+is a LIBRARY before phase-338 W2's `-entry` collapse and the BINARY after, so every pre-collapse "good" was
+vacuous — an image that is never linked cannot overflow. The apparent boundary was just the commit where the
+directory gained a `[[bin]]`. What stands: from the collapse onward the image does link and overflows at a
+constant 534704 bytes (a switch, not accumulation), and **no known-good revision has been established at all**
+— this may never have been a regression, since 0477's 687112-byte reference is the C image, not the Rust one.
+A valid probe must build the ENTRY package per revision and control the NuttX export layout, which phase-339
+changed from `staging/` to per-arch snapshots mid-window. Separately the lane BUILT with `nros-relwithdebinfo`
+where NuttX ships `nros-minsizerel` (538800 vs 419992) — now FIXED, which makes the reported figure the shipped
+one but does not close the issue. See `0511-*`. (2026-08-11)
 
 **#512** — `check-readiness-marker-literals` is blind to the WORST case. It flags a `wait_for_output_pattern`
 literal that MATCHES a known `output::` constant, or that ambiguously prefixes two — but a literal matching

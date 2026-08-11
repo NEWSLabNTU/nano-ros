@@ -63,40 +63,49 @@ before a platform sweep, so it is doing its job — what is missing is the cause
   knob, so the lane's choice is worth re-reading);
 * whether the `dramboot.ld` region sizes changed with the export snapshot.
 
-## Bisect (2026-08-11) — the boundary is phase-338 W2, and #440 only restored HALF
+## Bisect (2026-08-11) — RETRACTED, it measured the wrong thing
 
-Both ends validated first, per 0477: `87eac17d1` OVERFLOW 538800,
-`9748f7ae3` (7 days back) FIT. `git bisect run` over ~600 commits with a probe
-that rebuilds the leaf into a FRESH target dir OUTSIDE the repo, so no artifact
-staged against another revision's export can survive into a measurement.
+> **The result previously recorded here — "the boundary is phase-338 W2's
+> `-entry` collapse; #440 restored linkability but not the link configuration" —
+> is WITHDRAWN. It was an artifact of the probe, not a property of the code.**
 
-```
-b393b4737  2026-08-05T21:34  FIT           docs(phase-338): record the W2 decision …
-ab486a8db  2026-08-05T21:34  BUILDFAIL     refactor(phase-338 W2): collapse the 18 `-entry` packages
-67e823492  2026-08-06        BUILDFAIL     fix(phase-338 W2): the nuttx collapse buried the entry's .cargo…
-610ad5bd3  2026-08-06T02:47  OVERFLOW      fix(#440): restore the board's static link args the -entry collapse buried
-…all later revisions OVERFLOW, at a CONSTANT 534704 bytes
-```
+The probe built `examples/qemu-arm-nuttx/rust/talker` at every revision. That
+path is not the same THING on both sides of the collapse:
 
-**Reading it.** The last state that both links and fits is the commit
-immediately before the `-entry` collapse. The collapse itself broke linking
-outright — `undefined reference to open / write / __errno`, which is issue 0440
-— so every revision between it and #440's restore is unmeasurable for SIZE, and
-the probe skipped them rather than blaming them (55 of 70 probes). #440 made the
-image link again, and it has overflowed from that commit onward.
+| revision | what that directory is | what `cargo build` there produces |
+| --- | --- | --- |
+| before `ab486a8db` | the NODE package — `[lib] crate-type = ["rlib", "staticlib"]`, **no `[[bin]]`** | rlib + staticlib. **Nothing is linked into an executable** |
+| from `ab486a8db` | the collapsed package — `[lib]` **and** `[[bin]]` | the image, which is linked, and overflows |
 
-So **#440 restored linkability, not the link configuration**. The `-entry`
-packages' link args and the ones restored into the node packages are not
-equivalent: the difference costs ~534 KB of ROM. That is where to look — not at
-code growth, which is what a 500 KB figure suggests and what the constant
-overflow value argues against. A number identical across dozens of revisions is
-a switch, not accumulation.
+So every `FIT` before the collapse is **vacuous**: an image that is never linked
+cannot overflow a ROM region. The "boundary" the bisect found is exactly the
+commit where that directory GAINED a `[[bin]]` — the probe was measuring when
+the path started producing a binary, which is the confounder CLAUDE.md warns
+about and which this very issue cited when describing 0477.
 
-**Caveat on the boundary.** Because the intervening revisions cannot link, the
-bisect proves "not before `ab486a8db`, observable from `610ad5bd3`". If the size
-change actually arrived somewhere inside that unlinkable window, this bisect
-cannot tell — it can only say the first revision where the image both links and
-is too big is #440's restore.
+**What survives the retraction:**
+
+* the OVERFLOW verdicts, from `ab486a8db` onward. There the path does build an
+  image, and it overflows at a constant 534704 bytes (ambient profile) — the
+  constancy is still evidence of a switch rather than accumulation;
+* **no known-good revision has been established for this image at all.** That is
+  the important correction: this may not be a regression. The NuttX *Rust* image
+  may never have fit. 0477's good reference (687112 bytes) is the **C** talker,
+  a different image.
+
+**What a valid probe must do**, for whoever picks this up:
+
+1. build the ENTRY package at each revision — `talker-entry/` before the
+   collapse, `talker/` after — not one fixed path;
+2. control the NuttX export layout, which moved under this window: phase-339
+   replaced the `staging/` tree with per-arch snapshots
+   (`nros-nuttx-export-<arch>/`). Building a pre-339 revision against a post-339
+   export fails with `cannot open linker script file dramboot.ld` — measured, and
+   the reason the first attempt at a pre-collapse ENTRY build produced no image;
+3. treat "does not link" as SKIP, never as good — the trap above in another form.
+
+Until (1) and (2) are done there is no evidence that any revision of this image
+ever fit, and therefore none that a commit broke it.
 
 ## Also found — FIXED 2026-08-11: the lane built with the wrong profile (~119 KB)
 
