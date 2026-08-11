@@ -2430,11 +2430,8 @@ mod timer_overrun_tests {
     fn step<F: FnMut()>(entry: &mut TimerEntry<F>, delta_ms: u64) -> bool {
         // SAFETY: `entry` is a live, aligned `TimerEntry<F>`.
         unsafe {
-            timer_try_process::<F>(
-                (entry as *mut TimerEntry<F>).cast::<u8>(),
-                delta_ms * 1000,
-            )
-            .unwrap()
+            timer_try_process::<F>((entry as *mut TimerEntry<F>).cast::<u8>(), delta_ms * 1000)
+                .unwrap()
         }
     }
 

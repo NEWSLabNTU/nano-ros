@@ -3794,3 +3794,66 @@ fn a_stalled_timer_reports_a_timer_overrun_violation() {
         "no repeat without a new drop: {again:?}"
     );
 }
+
+/// Issue #514 — a detected violation must reach a SINK, not just a ring.
+///
+/// The ring itself was never the problem: `drain_violations` worked, it
+/// simply had no caller outside tests, so every rule ran each spin and
+/// discarded its verdict. Logging happens at detection, which is why
+/// this test can still drain the ring afterwards — the two paths are
+/// independent, and an application that reports violations its own way
+/// is unaffected by the default.
+#[cfg(feature = "std")]
+#[test]
+fn a_violation_is_logged_and_still_drainable() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+
+    // Stall past several periods so the overrun rule fires.
+    let _ = elapse_then_spin_once(&mut executor, 120);
+
+    // Reporting is on by default...
+    let mut drained = std::vec::Vec::new();
+    executor.drain_violations(|v| drained.push(v.rule));
+    assert!(
+        drained.contains(&"timer-overrun-runtime"),
+        "the ring still carries the violation: {drained:?}"
+    );
+    assert_eq!(executor.violations_dropped(), 0);
+
+    // ...and can be turned off by an application that reports its own way.
+    executor.set_report_violations(false);
+    let _ = elapse_then_spin_once(&mut executor, 120);
+    let mut again = std::vec::Vec::new();
+    executor.drain_violations(|v| again.push(v.rule));
+    assert!(
+        again.contains(&"timer-overrun-runtime"),
+        "silencing the log must not silence the ring: {again:?}"
+    );
+}
+
+/// Issue #514 — faults produced faster than they are reported must be
+/// COUNTED, not silently lost. The ring holds `MAX_VIOLATIONS`; an
+/// application that never drains would otherwise report a stale prefix
+/// of its faults and no indication that a prefix is all it is.
+#[cfg(feature = "std")]
+#[test]
+fn violations_beyond_the_ring_are_counted() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    // More timers than the ring can hold verdicts for.
+    for _ in 0..(super::monitor::MAX_VIOLATIONS + 4) {
+        executor
+            .register_timer(TimerDuration::from_millis(10), || {})
+            .unwrap();
+    }
+    let _ = elapse_then_spin_once(&mut executor, 120);
+    assert!(
+        executor.violations_dropped() >= 1,
+        "overflow counted: dropped={}",
+        executor.violations_dropped()
+    );
+}

@@ -1264,6 +1264,18 @@ pub struct Executor<'s> {
     pub(crate) age_states: [super::monitor::AgeState; super::monitor::MAX_MONITORS],
     /// W3b.5 — hook invoked on `DeadlineAction::Fault` (panic when unset).
     pub(crate) fault_fn: Option<fn(&super::monitor::Violation)>,
+    /// Issue #514 — violations discarded because the ring was full.
+    /// Saturating. Without this a never-drained (or slowly-drained)
+    /// image silently reports a stale prefix of its faults.
+    pub(crate) monitor_violations_dropped: u32,
+    /// Issue #514 — log every violation as it is detected. On by
+    /// default: each rule pushed verdicts into a ring that nothing
+    /// consumed in a real image, so a violated contract and a met one
+    /// produced identical target-side output (none). Logging at
+    /// DETECTION rather than draining the ring keeps
+    /// [`Executor::drain_violations`] working unchanged for
+    /// applications that report violations themselves.
+    pub(crate) report_violations: bool,
     pub(crate) monitor_violations:
         heapless::Vec<super::monitor::Violation, { super::monitor::MAX_VIOLATIONS }>,
     /// Monotonic base for the std monitor clock (µs derived per check).
@@ -1385,6 +1397,8 @@ impl<'s> Executor<'s> {
             age_table: &[],
             age_states: [super::monitor::AgeState::default(); super::monitor::MAX_MONITORS],
             fault_fn: None,
+            monitor_violations_dropped: 0,
+            report_violations: true,
             monitor_violations: heapless::Vec::new(),
             #[cfg(feature = "std")]
             monitor_clock_base: None,
@@ -1887,6 +1901,24 @@ impl<'s> Executor<'s> {
         self.fault_fn = Some(f);
     }
 
+    /// Issue #514 — whether the executor logs each violation as it is
+    /// detected (the default).
+    ///
+    /// Turn this off in an application that reports violations its own
+    /// way via [`Self::drain_violations`]; the ring is unaffected
+    /// either way.
+    pub fn set_report_violations(&mut self, enabled: bool) {
+        self.report_violations = enabled;
+    }
+
+    /// Issue #514 — violations discarded because the ring was full.
+    ///
+    /// Non-zero means the image produced faults faster than they were
+    /// reported, so the reported set is a prefix, not the whole story.
+    pub fn violations_dropped(&self) -> u32 {
+        self.monitor_violations_dropped
+    }
+
     /// RFC-0052 W3b.4 — drain pending contract violations (rate rule for
     /// now; age/latency land with W3b.5). The entry glue calls this after
     /// `spin_once` and feeds each entry to the `nros-diagnostics`
@@ -1930,12 +1962,24 @@ impl<'s> Executor<'s> {
                     if let Some(v) =
                         super::monitor::check_rate(spec, &mut self.monitor_states[i], now_us)
                     {
-                        let _ = self.monitor_violations.push(v);
+                        if self.report_violations {
+                            super::monitor::log_violation(&v);
+                        }
+                        if self.monitor_violations.push(v).is_err() {
+                            self.monitor_violations_dropped =
+                                self.monitor_violations_dropped.saturating_add(1);
+                        }
                     }
                     if let Some(v) =
                         super::monitor::check_latency(spec, &mut self.monitor_states[i])
                     {
-                        let _ = self.monitor_violations.push(v);
+                        if self.report_violations {
+                            super::monitor::log_violation(&v);
+                        }
+                        if self.monitor_violations.push(v).is_err() {
+                            self.monitor_violations_dropped =
+                                self.monitor_violations_dropped.saturating_add(1);
+                        }
                     }
                 }
             }
@@ -1948,7 +1992,13 @@ impl<'s> Executor<'s> {
                 .enumerate()
             {
                 if let Some(v) = super::monitor::check_age(spec, &mut self.age_states[i]) {
-                    let _ = self.monitor_violations.push(v);
+                    if self.report_violations {
+                        super::monitor::log_violation(&v);
+                    }
+                    if self.monitor_violations.push(v).is_err() {
+                        self.monitor_violations_dropped =
+                            self.monitor_violations_dropped.saturating_add(1);
+                    }
                 }
             }
         }
@@ -1983,7 +2033,13 @@ impl<'s> Executor<'s> {
                 &mut header.overruns_reported,
                 0,
             ) {
-                let _ = self.monitor_violations.push(v);
+                if self.report_violations {
+                    super::monitor::log_violation(&v);
+                }
+                if self.monitor_violations.push(v).is_err() {
+                    self.monitor_violations_dropped =
+                        self.monitor_violations_dropped.saturating_add(1);
+                }
             }
         }
     }
@@ -5669,7 +5725,12 @@ impl<'s> Executor<'s> {
 
         // W3b.5 — feed deferred deadline misses into the violation ring.
         for v in deadline_misses {
-            let _ = self.monitor_violations.push(v);
+            if self.report_violations {
+                super::monitor::log_violation(&v);
+            }
+            if self.monitor_violations.push(v).is_err() {
+                self.monitor_violations_dropped = self.monitor_violations_dropped.saturating_add(1);
+            }
         }
 
         // Issue #505 — same ring, same cycle. This runs AFTER dispatch,

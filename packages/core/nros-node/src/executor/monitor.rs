@@ -423,6 +423,28 @@ mod tests {
     }
 }
 
+/// Issue #514 — emit one violation to the log.
+///
+/// A log line is deliberately the floor rather than a `/diagnostics`
+/// publication: it needs no publisher, no topic wiring, and no contract
+/// on the reporting path itself, so it works on a bare RTOS image and
+/// during boot. Publishing the same verdicts as `DiagnosticArray`
+/// belongs on top of this, not instead of it.
+///
+/// Free function rather than an `Executor` method because every call
+/// site sits inside a loop that already borrows the executor's spec
+/// tables.
+pub(crate) fn log_violation(v: &Violation) {
+    nros_log::nros_warn!(
+        nros_log::get_logger("nros"),
+        "contract violation: {} {} measured={} declared={}",
+        v.rule,
+        v.fqn,
+        v.measured,
+        v.declared
+    );
+}
+
 /// Issue #505 — periodic activations a timer dropped because its
 /// executor was blocked past the period boundary.
 ///
