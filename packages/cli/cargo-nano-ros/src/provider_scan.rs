@@ -854,8 +854,9 @@ mod tests {
         let a = tmp.path().join("a");
         let b = tmp.path().join("b");
         fs::create_dir_all(&a).unwrap();
-        let idx = ProviderIndex::from_scan(&[a.clone()], &scan_roots(&[a.clone()]).unwrap());
-        assert!(idx.is_valid_for(&[a.clone()]));
+        let one = std::slice::from_ref(&a);
+        let idx = ProviderIndex::from_scan(one, &scan_roots(one).unwrap());
+        assert!(idx.is_valid_for(one));
         assert!(!idx.is_valid_for(&[a, b]));
     }
 
@@ -878,16 +879,14 @@ mod tests {
         let root = tmp.path().join("ws");
         write(
             &root.join("src/multi/package.xml"),
-            &format!(
-                r#"<?xml version="1.0"?>
+            r#"<?xml version="1.0"?>
 <package format="3">
   <name>multi</name>
   <export>
     <nano_ros_provides kind="rmw" name="one"/>
     <nano_ros_provides kind="board" name="two"/>
   </export>
-</package>"#
-            ),
+</package>"#,
         );
         let roots = vec![root];
         let idx = ProviderIndex::from_scan(&roots, &scan_roots(&roots).unwrap());
