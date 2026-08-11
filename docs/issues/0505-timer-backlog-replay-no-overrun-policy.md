@@ -185,3 +185,40 @@ the bound SC/tier name, `measured` = overruns accrued in the window,
 `declared` = tolerated count (0 by default). That needs a
 window-delta baseline next to `MonitorState.count_at_window_start`,
 mirroring the rate rule.
+
+## Status (2026-08-11): all three pieces landed
+
+1. **Overrun policy** — `TimerOverrunPolicy::{Skip,CatchUp}`, Skip the
+   default, saturating `overruns` counter, phase-preserving remainder.
+2. **Microsecond resolution** — the truncation was at THREE boundaries,
+   not one: `TimerDuration` stored ms (so `from_micros(500)` produced a
+   zero period that free-runs, `from_micros(1_500)` a 50% rate error);
+   the declarative path round-tripped through `EntityMetadata.period_ms`;
+   and `nros-c` took ns on the ABI then truncated to ms, rejecting
+   sub-ms periods the Rust API silently accepted. All three now carry
+   microseconds; `spin_residual_us` is deleted (it existed only to
+   truncate an already-microsecond delta). Measured on the FreeRTOS
+   lane, a mid tier declared at 33.333 ms: rate error -0.99% before,
+   +0.01% after.
+3. **`timer-overrun-runtime`** — dropped activations now reach the same
+   violation ring as the rate/age/latency/deadline rules, reporting the
+   delta since the last check. Runs after dispatch (the windowed rules
+   tick before it) so a stalling tier reports in the same cycle.
+
+Remaining, deliberately out of scope here:
+
+- **No board entry glue drains violations** into `nros-diagnostics` on
+  the FreeRTOS lane, so overruns are reportable but not yet reported on
+  target. That is the same gap every other runtime rule has on this
+  lane; worth its own issue rather than being smuggled in here.
+- **Policy is not declarable** in launch-level scheduling metadata —
+  it is an executor-level call today. Whether a tier dim should carry
+  it (`real_time` class implying Skip, say) belongs with the contract
+  schema discussion, not the executor.
+- **Period/spin quantization is still silent.** A declared period that
+  is not a multiple of its tier's spin period quantizes to the spin
+  grid: 33 ms on a 5 ms spin alternates 35/30 ms, mean 33.07. The
+  long-run rate is right and no activation is dropped, so no rule
+  fires — correctly, but the jitter is entirely predictable at resolve
+  time and would be better as a resolver warning than a surprise on
+  target. Filed as a separate concern.
