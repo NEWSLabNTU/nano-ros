@@ -250,3 +250,103 @@ in the evaluation workspace; raw numbers in
    user can state, drain-us per period is what the mechanism enforces,
    and the mapping needs a per-platform capacity input (the ~750 msg/s
    figure is lane-specific).
+
+## Design exploration (2026-08-11)
+
+With the consumer identified (`zpico_read`, 72-81% of CPU under flood),
+the question is which layer can bound it. Five mechanisms exist or could
+be built; they are NOT alternatives, they act at different points and
+only one of them actually reduces the island's work.
+
+### What each mechanism can and cannot do
+
+**1. Router-side rate limiting (`downsampling`, `low_pass_filter`).**
+zenohd's config carries both (visible in its startup dump). These drop
+messages AT THE ROUTER, so the flood never reaches the MCU's link and
+never costs it a decode. This is the only mechanism in the list that
+reduces the island's per-message work without the island doing the
+work first. Cost: it lives in the router's config, i.e. OUTSIDE the
+device's own contract, so a device cannot state its own ingress limit
+and have it enforced — it depends on whoever deploys the router. Good
+mitigation today, wrong home for a contract dimension.
+
+**2. Message priority classes (`z_priority_t`, 1 real-time .. 7
+background).** zenoh carries a priority per message on the wire, the
+router keeps PER-CLASS tx queues (`transport.unicast.qos.enabled` is
+true by default), and zenoh-pico decodes the class — but only exposes
+it to the application (`z_sample_priority`); its rx path has one FIFO
+per session and never branches on it. nano-ros sets no priority at
+all, so a safety-critical topic and a flood topic share the router's
+`data` queue.
+
+Tested with an env-gated knob (chain publisher at `real_time`, flood at
+`background`, ~2 kHz, 3 runs each): chain delivery moved from 13-17% to
+17-19% of sends, stalls and CPU were unchanged, and the harness was
+noisy enough (rx rate varied 10-238 msg/s between runs) that the
+delivery difference is suggestive, not evidence. The MECHANISM
+conclusion is the solid part and follows from the trace, not the runs:
+priority REORDERS the link, it cannot reduce the decode cost that
+consumes 72-81% of the CPU, because the island still receives every
+flood message. Priority is the right fix for head-of-line blocking on
+the chain; it is not a fix for tier starvation.
+
+**3. Subscriber ring depth / QoS history.** Measured above: does not
+bound the stalls at all, and costs delivery. The drop happens after the
+transport has already spent the CPU. Closed.
+
+**4. Receive-window shaping (`TCP_WND`).** Measured above: bounds the
+stalls perfectly (0 vs 12 per run) by starving `zpico_read` of work,
+but queues the flood rather than shedding it and drives chain latency
+to 446 ms. Confirms the mechanism, unusable as the fix.
+
+**5. A budget on the drain loop itself.** `_zp_unicast_read`
+(zenoh-pico, `transport/unicast/read.c`) reads a batch and then runs an
+UNBOUNDED inner loop: "drain every complete frame already buffered",
+added because one `recv` can pull several stream frames and the next
+poll's `_z_zbuf_reset` would discard them. Under flood that loop is the
+burst — it processes frames back-to-back at task priority above every
+tier. A budget belongs exactly here: bound the loop by frames or by
+elapsed microseconds per pass and yield, so the tiers get the CPU back
+at a known granularity. Note the loop cannot simply STOP mid-buffer
+(that is the bug the comment documents), so the budget has to be
+"finish the frames you have, then yield before pulling more" rather
+than "return with bytes unread".
+
+### The shape this suggests
+
+A single knob cannot do it, because two different harms are in play:
+
+- **Tier starvation** is a CPU-volume problem. Only (1) router-side
+  shedding and (5) a drain budget address it; everything else moves
+  the work around.
+- **Chain head-of-line blocking** is an ordering problem. (2) priority
+  addresses it directly, and (5) alone would make it WORSE (deferring
+  the drain leaves flood bytes queued ahead of chain bytes — the same
+  effect measured with a small TCP_WND).
+
+So the ingress dimension, if the contract grows one, wants to compile
+to at least two things per subscription: a **class** (which maps to a
+zenoh priority, protecting order) and a **budget** (which maps to a
+drain bound, protecting cadence). That is the same split the existing
+contract already makes between criticality and rate — which is a point
+in its favour: the vocabulary exists, the realizer just does not emit
+transport-side parameters yet.
+
+### Open questions, in the order they block work
+
+1. **Does the drain budget need a per-priority rx queue to be safe?**
+   If the island defers draining, whatever is queued stays queued in
+   arrival order. Without rx-side priority (zenoh-pico has none), a
+   budget protects cadence and hurts chain latency. Either zenoh-pico
+   grows per-class rx handling, or the flood must be shed before it
+   arrives (1), or the two must be on separate sessions.
+2. **Is per-subscription enforcement possible at all on one session?**
+   The budget is naturally per-session (one read task, one socket).
+   Per-subscription msg/s is what a user can state. Mapping one to the
+   other needs either rx-side classification (cheap: the keyexpr is
+   already decoded before dispatch) or an admission decision at
+   declare time.
+3. **What is the per-platform capacity input?** The ~750 msg/s drain
+   envelope is specific to this lane. A budget expressed in msg/s
+   cannot be validated at resolve time without a per-board capacity
+   figure, which nothing currently records.
