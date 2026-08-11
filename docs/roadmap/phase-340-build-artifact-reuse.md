@@ -1287,14 +1287,43 @@ measurement.
 
 ### W7 — re-measure both axes (was phase-334 W3.c)
 
-- [ ] Re-run the phase-331 W1/W5 measurement pair after (5) and (6), so the
-      consolidation numbers stay comparable across the layout change.
-- [ ] Record the identity-gate budget's new value in the same commit — a budget
-      left above the truth is a gate that has stopped gating.
+- [x] **DONE 2026-08-12** — `docs/roadmap/data/phase-340-w7-remeasure.md`.
+      Against W5, at the same 72 fixtures and 0 errors: wall **6794 s -> 581 s**
+      (11.7×), native stage **5222 s -> 342 s** (15.3×), seconds-per-fixture
+      **72.5 -> 4.8**. Two runs are recorded because the first was not steady
+      state; the second is 37 % faster again and is the figure.
+      **Read the caveat with the number:** the method is identical (wipe the
+      manifest-declared workspace trees, leave cargo alone) but "leave cargo
+      alone" changed meaning — W1/W5's warm state was ~116 per-leaf `target*`
+      dirs, this one's is 18 group dirs that actually get reused. That IS the
+      change being measured, and it also means a cache-cold tree would show a far
+      smaller ratio, which this does not bound.
+- [x] **DONE 2026-08-12 — and the answer is "no change", which is a result.**
+      On a freshly rebuilt tree with the `started_at` filter live (245 of 245
+      rlibs counted): `nros_core 4/4; worst crate 5/5; worst identity 5/5`. Every
+      budget already equals the truth, so lowering any would make the gate fail
+      on the tree it is supposed to describe. The remaining `5 -> 3` is R2's and
+      was already measured as costing a corrosion ROOT, not a path edit.
 
-**Acceptance:** the numbers in "The measurement" and "The disk story" above are
-restated for the post-change tree, and `check-artifact-identity-budget`'s
-budgets are lowered to match.
+**Acceptance:** MET. Both sections are restated in
+`docs/roadmap/data/phase-340-w7-remeasure.md`; the budgets are verified at the
+truth rather than lowered, because they already are it.
+
+**Two findings the re-measure produced that the phase did not go looking for:**
+
+* **The dominant disk class is no longer this phase's.** `examples/` is 402 ->
+  306 GiB and the five-target-dirs-per-leaf pattern is gone, but classifying
+  what remains: the cmake **metadata probe** holds **108 dirs / 82.4 GiB**
+  against 28.9 GiB of example-leaf residue. `nros metadata --build` gives every
+  component a private cargo target dir; 162 such trees hold 312 `libnros_core`
+  rlibs with **16 distinct identities**. That is this phase's thesis on a build
+  path this phase never touched — filed as issue 0522, not fixed here.
+* **A cold build is the only routine check on the workspace-runtime graph.** The
+  first attempt failed outright: `eyre::Context` is `#[cfg(feature = "anyhow")]`
+  from eyre 0.6.13, and that graph resolves fresh while `packages/cli/Cargo.lock`
+  pins 0.6.12 — so every warm build and every `just check` was green while the
+  path was broken. Fixed (66 call sites to `WrapErr`) and gated
+  (`check-eyre-context-alias`) before the timed run was repeated.
 
 ## Work items
 
