@@ -262,7 +262,12 @@ def export_rows():
     for line in out.splitlines():
         if not line.strip():
             continue
-        root, platform, slug, shared = line.split(SEP)
+        # issue 0517 widened the record with the row's variant SELECTOR
+        # (dir, rmw, features, no_default_features, env). This gate is about the
+        # first four fields, so it names them and ignores the rest — but by
+        # UNPACKING the full arity rather than slicing, so a future field lands
+        # here as a loud shape error instead of being silently dropped.
+        root, platform, slug, shared, _dir, _rmw, _feat, _ndf, _env = line.split(SEP)
         yield ExportRow(root, platform, slug, shared == "1")
 
 

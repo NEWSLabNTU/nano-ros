@@ -83,7 +83,7 @@ use crate::{TestError, TestResult, build_dir, fixtures::lane::path_under, projec
 
 /// One buildable cargo `[[fixture]]` row, as `fixtures-manifest.py
 /// fixture-groups` emits it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GroupRow {
     /// Repo-relative dir the row's artifacts land in ABSENT any sharing —
     /// `row_artifact_root()`, the same value `coords` exports.
@@ -97,6 +97,24 @@ pub struct GroupRow {
     /// (`nros_fixture_group` non-empty, i.e. the platform is in
     /// `NROS_FIXTURE_SHARED_PLATFORMS`).
     pub shared: bool,
+    /// The row's leaf dir, repo-relative and without a trailing slash.
+    pub dir: String,
+    /// The row's AUTHORED variant identity — `row_selector` in
+    /// `fixtures-manifest.py`. RAW: `rmw` is empty when the row authored none,
+    /// NOT `row_coord`'s defaulted value. issue 0517.
+    pub selector: Selector,
+}
+
+/// A row's authored configuration, as [`FixtureVariant`] must name it to select
+/// that row. Ordered/normalised by the exporter, never here.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Selector {
+    pub rmw: String,
+    /// Sorted, comma-joined.
+    pub features: String,
+    pub no_default_features: bool,
+    /// `k=v`, sorted by key, comma-joined.
+    pub env: String,
 }
 
 static ROWS: OnceLock<Vec<GroupRow>> = OnceLock::new();
@@ -141,15 +159,23 @@ pub fn parse_rows(text: &str) -> Vec<GroupRow> {
         let f: Vec<&str> = line.split('\x1f').collect();
         assert_eq!(
             f.len(),
-            4,
-            "unexpected `fixture-groups` record shape (expected 4 \\x1f-separated \
-             fields: artifact_root, platform, slug, shared): {line:?}"
+            9,
+            "unexpected `fixture-groups` record shape (expected 9 \\x1f-separated \
+             fields: artifact_root, platform, slug, shared, dir, rmw, features, \
+             no_default_features, env): {line:?}"
         );
         rows.push(GroupRow {
             artifact_root: f[0].to_string(),
             platform: f[1].to_string(),
             slug: f[2].to_string(),
             shared: matches!(f[3], "1"),
+            dir: f[4].to_string(),
+            selector: Selector {
+                rmw: f[5].to_string(),
+                features: f[6].to_string(),
+                no_default_features: matches!(f[7], "1"),
+                env: f[8].to_string(),
+            },
         });
     }
     rows
@@ -232,6 +258,133 @@ pub fn resolved(leaf_path: &Path) -> PathBuf {
     redirect(leaf_path).unwrap_or_else(|| leaf_path.to_path_buf())
 }
 
+/// WHICH of a leaf's `[[fixture]]` rows a caller means — issue 0517.
+///
+/// A leaf dir can carry several rows (`examples/native/rust/talker` has five),
+/// and today the only thing separating them anywhere is the authored
+/// `target_dir` string. That string is a directory somebody had to invent, it is
+/// what a shared group strips before cargo sees it, and phase-340 W2.d wants it
+/// deleted — so a resolver keyed on it is keyed on the wrong thing.
+///
+/// This names the row's CONFIGURATION instead, which the caller genuinely knows:
+/// a test resolving "the ThreadX talker with zenoh selected by feature" is
+/// naming something real, where `target-zenoh` was naming a side effect.
+///
+/// The four constructors are the four shapes the manifest actually contains —
+/// see `row_selector` in `fixtures-manifest.py`, which counts them. They are
+/// constructors rather than free-form fields so a caller cannot invent a fifth
+/// shape that matches no row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FixtureVariant(Selector);
+
+impl FixtureVariant {
+    /// A plain row: no authored `rmw`, no features, default features on (64
+    /// rows). Note this is NOT "the default RMW" — a row whose RMW is baked by
+    /// the platform authors the `rmw` key and needs [`Self::platform_rmw`].
+    pub fn plain() -> Self {
+        Self(Selector::default())
+    }
+
+    /// RMW chosen by cargo FEATURE: `rmw = "<x>"`, `features = ["rmw-<x>"]`,
+    /// `no_default_features = true` (37 rows). The shape every
+    /// `build_example_rmw` call site means.
+    pub fn rmw(rmw: super::Rmw) -> Self {
+        Self(Selector {
+            rmw: rmw.cmake_value().to_string(),
+            features: rmw.cargo_feature().to_string(),
+            no_default_features: true,
+            env: String::new(),
+        })
+    }
+
+    /// RMW baked by the platform / board / Kconfig rather than by a feature:
+    /// `rmw = "<x>"` and no features (144 rows).
+    pub fn platform_rmw(rmw: super::Rmw) -> Self {
+        Self(Selector {
+            rmw: rmw.cmake_value().to_string(),
+            ..Selector::default()
+        })
+    }
+
+    /// A feature variant with no authored RMW — `link-tls`, `zero-copy`,
+    /// `large-buf` (3 rows). Features are sorted here to match the exporter.
+    pub fn features(features: &[&str]) -> Self {
+        let mut f: Vec<&str> = features.to_vec();
+        f.sort_unstable();
+        Self(Selector {
+            features: f.join(","),
+            ..Selector::default()
+        })
+    }
+
+    /// Add the row's authored `env`, as `("KEY", "value")` pairs. The one row
+    /// that needs it is `stress-zenoh`'s large-buffer variant, which is
+    /// otherwise identical to its plain sibling — the single collision in the
+    /// selector before `env` was included.
+    pub fn with_env(mut self, env: &[(&str, &str)]) -> Self {
+        let mut e: Vec<String> = env.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        e.sort();
+        self.0.env = e.join(",");
+        self
+    }
+}
+
+/// Where a row's artifacts land, selected by leaf dir and variant rather than by
+/// a hand-spelled path — issue 0517.
+///
+/// Returns the shared group dir when the build redirects the row, and the row's
+/// own artifact root when it does not, from the SAME table the build populated.
+/// The caller appends whatever cargo puts below the root (`[<triple>/]<profile>/
+/// <bin>`); the redirect is a root rewrite and never touches those components.
+///
+/// # Fails closed, twice
+///
+/// No matching row, or more than one, is an error rather than a guess. A wrong
+/// answer here is not a missing file — it is a real binary built with different
+/// features, and the test would run against it and pass. `(dir, selector)` is
+/// injective over the shipped manifest, so >1 match means a row was added whose
+/// configuration no caller can name; the fix is to make the rows distinguishable,
+/// not to relax this.
+pub fn row_artifact_dir(dir: &str, variant: &FixtureVariant) -> TestResult<PathBuf> {
+    let dir = dir.trim_end_matches('/');
+    let hits: Vec<&GroupRow> = manifest_rows()
+        .iter()
+        .filter(|r| r.dir == dir && r.selector == variant.0)
+        .collect();
+    match hits.as_slice() {
+        [row] => Ok(if row.shared {
+            group_dir(&row.slug)
+        } else {
+            project_root().join(&row.artifact_root)
+        }),
+        [] => {
+            let near: Vec<String> = manifest_rows()
+                .iter()
+                .filter(|r| r.dir == dir)
+                .map(|r| format!("{:?}", r.selector))
+                .collect();
+            Err(TestError::BuildFailed(format!(
+                "no [[fixture]] row for {dir} with {:?}.\n  rows at that dir: {}\n\
+                 Either the variant is spelt differently in examples/fixtures.toml \
+                 or the row does not exist.",
+                variant.0,
+                if near.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    near.join("; ")
+                }
+            )))
+        }
+        many => Err(TestError::BuildFailed(format!(
+            "{} [[fixture]] rows at {dir} share the variant {:?} — no caller can \
+             name one of them. Give them distinguishable configuration in \
+             examples/fixtures.toml (issue 0517).",
+            many.len(),
+            variant.0
+        ))),
+    }
+}
+
 /// `build/fixtures-cargo/<slug>` — the shell's `nros_fixture_target_dir_flag`
 /// spelt through [`build_dir`], so `NROS_BUILD_ROOT` moves both halves
 /// (RFC-0070 R3). `tests/build_root_derivation.sh` asserts the two agree.
@@ -295,18 +448,21 @@ mod tests {
                 platform: "linux".into(),
                 slug: "linux".into(),
                 shared: true,
+                ..Default::default()
             },
             GroupRow {
                 artifact_root: "examples/native/rust/talker/target-xrce".into(),
                 platform: "linux".into(),
                 slug: "linux-3000917972".into(),
                 shared: true,
+                ..Default::default()
             },
             GroupRow {
                 artifact_root: "examples/freertos/rust/talker/target".into(),
                 platform: "freertos".into(),
                 slug: "freertos".into(),
                 shared: false,
+                ..Default::default()
             },
         ]
     }
@@ -369,6 +525,7 @@ mod tests {
             platform: "qemu-arm-baremetal".into(),
             slug: "qemu-arm-baremetal".into(),
             shared: true,
+            ..Default::default()
         }];
         let (_, suffix) = attribute(
             &t,
@@ -470,12 +627,14 @@ mod tests {
                 platform: "linux".into(),
                 slug: "linux".into(),
                 shared: true,
+                ..Default::default()
             },
             GroupRow {
                 artifact_root: "examples/native/rust/talker/target".into(),
                 platform: "linux".into(),
                 slug: "linux-553222167".into(),
                 shared: true,
+                ..Default::default()
             },
         ];
         assert!(
@@ -509,6 +668,7 @@ mod tests {
             platform: "linux".into(),
             slug: "linux-deeper".into(),
             shared: true,
+            ..Default::default()
         });
         let (row, _) = attribute(
             &deeper,
@@ -516,6 +676,76 @@ mod tests {
         )
         .expect("the deeper root is unambiguous");
         assert_eq!(row.slug, "linux-deeper");
+    }
+
+    #[test]
+    fn selector_lookup_agrees_with_path_resolution_on_every_row() {
+        // The equivalence that makes issue 0517's phase B safe to land before
+        // the call sites move: for EVERY row, selecting it by (dir, selector)
+        // must give the same directory that resolving its authored artifact root
+        // through the path redirect gives. Same table, two routes, one answer.
+        //
+        // This is what lets each call-site conversion be verified without a
+        // rebuild — the new route is already known to agree everywhere.
+        let mut bad = Vec::new();
+        for row in manifest_rows() {
+            let via_path = resolved(&project_root().join(&row.artifact_root));
+            match row_artifact_dir(&row.dir, &FixtureVariant(row.selector.clone())) {
+                Ok(via_selector) if via_selector == via_path => {}
+                Ok(via_selector) => bad.push(format!(
+                    "{} {:?}: selector -> {}, path -> {}",
+                    row.dir,
+                    row.selector,
+                    via_selector.display(),
+                    via_path.display()
+                )),
+                Err(e) => bad.push(format!("{} {:?}: {e}", row.dir, row.selector)),
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "{} row(s) resolve differently by selector than by path:\n  {}",
+            bad.len(),
+            bad.join("\n  ")
+        );
+    }
+
+    #[test]
+    fn the_four_constructors_each_select_real_rows() {
+        // A constructor that matches NOTHING is worse than no constructor: the
+        // call site would fail closed at run time, in a lane, on a machine that
+        // has the fixture. Assert each shape the exporter counts is reachable.
+        let rows = manifest_rows();
+        let n = |v: &FixtureVariant| rows.iter().filter(|r| r.selector == v.0).count();
+        assert!(n(&FixtureVariant::plain()) > 0, "plain rows exist");
+        assert!(
+            n(&FixtureVariant::rmw(crate::fixtures::Rmw::Zenoh)) > 0,
+            "feature-selected RMW rows exist"
+        );
+        assert!(
+            n(&FixtureVariant::platform_rmw(crate::fixtures::Rmw::Zenoh)) > 0,
+            "platform-baked RMW rows exist"
+        );
+        assert!(
+            n(&FixtureVariant::features(&["link-tls"])) > 0,
+            "feature-variant rows exist"
+        );
+    }
+
+    #[test]
+    fn an_unnameable_variant_is_an_error_not_a_guess() {
+        assert!(
+            row_artifact_dir(
+                "examples/native/rust/talker",
+                &FixtureVariant::features(&["nope"])
+            )
+            .is_err(),
+            "a variant no row authors must fail closed"
+        );
+        assert!(
+            row_artifact_dir("examples/no/such/leaf", &FixtureVariant::plain()).is_err(),
+            "an unknown leaf must fail closed"
+        );
     }
 
     #[test]

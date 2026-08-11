@@ -272,6 +272,42 @@ def row_is_variant(entry):
     )
 
 
+def row_selector(entry):
+    """The row's AUTHORED variant identity, as a 5-tuple of strings — issue 0517.
+
+    `(dir, rmw, features, no_default_features, env)`. Measured over the 248
+    manifest rows this is INJECTIVE, which `(dir, target_dir)` also is today —
+    the point is that this one survives the column's deletion, because it names
+    the configuration instead of a directory somebody had to invent for it.
+
+    The test resolver needs it because the funnels it goes through
+    (`build_example`, `build_example_rmw`) distinguish variants ONLY by the
+    authored dir string, and that string is exactly what a shared group strips.
+    A caller that knows WHICH fixture it wants can name this; it cannot name a
+    `--target-dir` the build no longer passes.
+
+    Emitted RAW rather than resolved: `rmw` here is what the row authored, NOT
+    `row_coord`'s `DEFAULT_RMW`-filled value. The two answer different
+    questions — the coordinate says which lane builds the row, this says which
+    of a leaf's rows a caller means — and 64 rows author no `rmw` at all while
+    every one of them has a coordinate. Conflating them would make those 64
+    indistinguishable from their leaf's zenoh sibling.
+
+    Four shapes exist and they separate cleanly, which is what makes a small
+    constructor set on the Rust side possible:
+
+        rmw + [rmw-<x>] + no_default_features   37 rows  RMW chosen by feature
+        rmw + []                               144 rows  RMW baked by platform
+        [] + []                                 64 rows  plain default row
+        [] + features                            3 rows  tls / large-buf / zero-copy
+    """
+    rmw = str(entry.get("rmw") or "")
+    features = ",".join(sorted(entry.get("features") or []))
+    ndf = "1" if entry.get("no_default_features") else "0"
+    env = ",".join(f"{k}={v}" for k, v in sorted((entry.get("env") or {}).items()))
+    return (str(entry.get("dir") or "").rstrip("/"), rmw, features, ndf, env)
+
+
 def row_artifact_root(entry):
     """Where a row's built artifacts land, as a repo-relative path — phase-340 W3.
 
@@ -891,6 +927,7 @@ def main():
                         slug,
                         "1" if eligible else "0",
                     )
+                    + row_selector(e)
                 )
                 + "\n"
             )
