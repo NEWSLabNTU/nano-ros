@@ -364,3 +364,60 @@ about caching that closure, which is more than a session's tail end deserves. Th
 false-positive cost meanwhile is one `compile-check-fixtures.sh` after a pull —
 and per issue 0445 the verdict now says so itself ("5th consecutive stale verdict
 … suspect the probe before trusting the verdict"), which is how this was found.
+
+## The zephyr lane is `skip_probe = true`, and it produced a false red (2026-08-12)
+
+A worked example of the museum-binary hole, because this one cost real
+investigation time and looked exactly like a live bug.
+
+`entry_matrix`'s `zephyr/rust/qos` and `zephyr/rust/lifecycle` cells failed in
+the tier-1 sweep with messages that read as genuine product faults:
+
+```
+zephyr/rust/lifecycle: `ros2 lifecycle nodes` listed no managed node —
+    the entry's REP-2002 services are not on the wire (phase-276 W3 / #128)
+zephyr/rust/qos: observer never saw 3 `/qos_ok` republishes from the entry
+```
+
+Both were artifacts, not code. The images were built 2026-08-07; issue 0460's
+queryable-table fix landed and was verified 2026-08-10 with
+`entry_matrix: 14 ran, 1 skipped, 0 failed`. The proof is in the built config
+rather than in the dates:
+
+| | 08-07 image | after `just zephyr build-fixtures` |
+| --- | --- | --- |
+| `CONFIG_NROS_MAX_QUERYABLES` | **8** (pre-fix) | **16** (the tree's value) |
+| `entry_matrix` | FAIL, 2 cells | **PASS**, 39.8 s |
+
+So the cells were reproducing a RESOLVED bug out of a stale binary, and the
+failure text pointed at the product the whole time.
+
+### Why the gate could not help
+
+The zephyr rows are `skip_probe = true` — deliberately, and for a defensible
+reason (west/nuttx machinery, each with its own signature, per the comment in
+`check-fixtures-stale.sh`). The consequence is that `check-fixtures-stale` has
+NOTHING to say about them: it self-heals rust fixtures, hard-errors on workspace
+and compile-check ones, and is structurally blind to this lane. A three-day-old
+zephyr image is therefore indistinguishable, to every gate in the tree, from a
+current one.
+
+That is the same shape as the compile-check finding above (gate narrower than the
+tests) taken to its limit: here the gate does not look at all.
+
+### What would fix it, in the spirit of this issue
+
+The lane already knows how to sign itself — the exemption comment says these are
+"own-lane artifacts (west / nuttx machinery, each with its own sig)". So the
+missing piece is not a signature, it is REPORTING: something at the head of a
+tier run should compare each zephyr fixture's own sig against the sources and say
+"N zephyr fixtures predate their inputs — run `just zephyr build-fixtures`",
+exactly as the workspace lane already does. That is fix 1 of this issue applied
+to the one lane it does not cover.
+
+Until then the operational rule is worth stating plainly, because inferring it
+from a failing assertion is expensive: **a zephyr cell failing with a plausible
+product-level message is a stale-image suspect first.** Check the built
+`.config` against the tree before believing the assertion — one `grep` settled
+this after the failure text had already sent two earlier sessions (0460, and this
+one) looking at the product.
