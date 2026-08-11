@@ -1,7 +1,7 @@
 # Phase 348 — Source-time provider discovery: buy the colcon convention, not colcon
 
 **Status (2026-08-11). W1, W2 (rmw + boards), W3 and W4 LANDED. W5 open; the
-platform half of W2 is blocked on a missing descriptor family.** Unblocked by
+platform half of W2 is blocked — on unnamed descriptors, not missing ones.** Unblocked by
 [phase-347](phase-347-rmw-as-a-declared-provider.md) W2 — descriptors exist, so
 providers can describe themselves.
 
@@ -101,7 +101,7 @@ Two decisions worth carrying forward:
   returned with their `root_index`; deciding between them is W5. A scan that
   silently dropped the loser could not warn with both paths.
 
-## W2 — The migration — **rmw + boards LANDED; platform BLOCKED**
+## W2 — The migration — **rmw + boards LANDED; platform BLOCKED (see the correction below)**
 
 The original table counted *directories*; most of those are support crates, not
 providers. What is actually migrable is "has a descriptor", since the descriptor
@@ -111,7 +111,7 @@ is what a provision must agree with:
 | --- | ---: | ---: | ---: |
 | `packages/rmw` | 4 | **4** | 11 |
 | `packages/boards` | 8 | **8** | 25 |
-| `packages/platform` | 0 | — | — |
+| `packages/platform` | 7 (in `config/`, see below) | 0 | — |
 
 - [x] `packages/rmw/*` — all four backends.
 - [x] `packages/boards/*` — all eight descriptor-carrying board packages.
@@ -119,7 +119,8 @@ is what a provision must agree with:
       package.xml beside a descriptor announces provisions of that kind, and
       its names equal the descriptor's exactly, canonical first. Each case
       verified to FAIL under the matching perturbation.
-- [ ] `packages/platform/*` — **blocked, see below.**
+- [ ] platform — **blocked on the descriptors being UNNAMED, not missing.**
+      They live at `config/*/nros-platform.toml`, not `packages/platform/`.
 
 Total: `nros ws providers` reports 36 provisions from 12 packages over 478
 packages scanned.
@@ -130,20 +131,56 @@ packages scanned.
 copied next to the board descriptors. Adding `platform` later is one row.
 Copying a rule per family is the antipattern that turned #282 into #326.
 
-### Platform is blocked, and not on effort
+### Platform is blocked — corrected 2026-08-11
 
-**There is no platform descriptor family.** `nros-platform.toml` does not exist
-anywhere in the tree. Platform *names* do exist — `posix`, `freertos`, `zephyr`,
-`esp32`, `bare-metal`, `threadx-linux`, `threadx-riscv64` — but they live in the
-`platform =` field of the *board* descriptors, which is a different package
-declaring what a platform is called.
+> **This section originally claimed "there is no platform descriptor family;
+> `nros-platform.toml` does not exist anywhere in the tree." That is wrong.**
+> It exists — seven files, `config/<name>/nros-platform.toml` (RFC-0049). The
+> search that produced the claim looked only under `packages/platform/`, by
+> analogy with `packages/rmw/` and `packages/boards/`, and stopped there.
+> Platform migration is still blocked, but for the two reasons below rather
+> than for a missing family, and the difference matters: adding `names` to an
+> existing descriptor is a much smaller job than designing one.
 
-So announcing `<nano_ros_provides kind="platform" name="freertos"/>` on
-`nros-platform-freertos` would be a hand-authored mapping with nothing to check
-it against: exactly the second-source-of-one-fact that A2 exists to prevent, and
-un-gateable by construction. Platform migration needs its descriptor family
-first — the unfinished sibling of RFC-0042 — and that is a design decision, not
-a wave of file-writing.
+The family:
+
+```
+config/{bare-metal,freertos-lwip,generic,nuttx,posix,threadx,zephyr}/nros-platform.toml
+```
+
+**1. A platform descriptor declares no name.** Every rmw and board descriptor
+carries an explicit `names = [...]`, and that list is exactly what
+`check-provider-announcements.py` (A2) compares a provision against. A
+platform's identity is instead its **directory name** — there is no `names` key
+in any of the seven. So `<nano_ros_provides kind="platform" name="posix"/>`
+would have nothing to agree with, and the rule that caught the `zenoh-pico`
+mistake within an hour of being written would be vacuous for this family.
+
+**2. Two vocabularies disagree, and neither is obviously authoritative.**
+
+| board descriptor says `platform =` | config dir |
+| --- | --- |
+| `posix`, `bare-metal`, `nuttx`, `zephyr` | same name |
+| `freertos` | `freertos-lwip` |
+| `threadx-linux`, `threadx-riscv64` | `threadx` |
+| `esp32` | **none** |
+| — | `generic` (no board names it) |
+
+`inherits` — the field that could bridge the two — is unset in all seven files.
+So "which name does a platform provide?" has two candidate answers per platform,
+and choosing between them is a design decision, not file-writing.
+
+**What platform migration actually needs**, then: a `names` key in
+`nros-platform.toml`, a decision on which vocabulary is canonical, and one row
+in the gate's `FAMILIES` table. Not a new descriptor family.
+
+Also worth recording, since both numbers appear above: the **8** board
+descriptors are the authoritative set under `packages/boards/`, but the tree
+holds **57** `nros-board.toml` files — the other 49 are the per-leaf
+`.cargo/nros-board.toml` projections phase-341 W4 renders, which are outputs
+rather than declarations. And only `zephyr` carries `[capabilities]`; the other
+six are essentially `[build.zenoh]` blocks, so the family is thinner than
+"seven descriptors" suggests.
 
 ### Two findings that change later waves
 
