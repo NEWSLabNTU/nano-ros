@@ -2673,11 +2673,12 @@ pub fn build_native_param_talker() -> TestResult<&'static Path> {
     static NATIVE_PARAM_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NATIVE_PARAM_TALKER_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/param-chatter-talker");
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/param-chatter-talker",
+            )?;
             let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/param-chatter-talker"));
-            require_prebuilt_binary_fresh(&binary)
+            let rel = PathBuf::from(format!("{profile}/param-chatter-talker"));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -2710,11 +2711,13 @@ pub fn build_int32_sink_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Cyclonedds => &CYCLONE_BIN,
     };
     cell.get_or_try_init(|| {
-        let root = project_root();
-        let dir = root.join("packages/testing/nros-tests/bins/int32-sink");
+        let row = crate::fixtures::groups::select_row(
+            "packages/testing/nros-tests/bins/int32-sink",
+            &crate::fixtures::groups::FixtureVariant::rmw(rmw),
+        )?;
         let profile = cargo_target_profile_dir();
-        let binary = dir.join(format!("{}/{profile}/int32-sink", rmw.target_dir()));
-        require_prebuilt_binary_fresh(&binary)
+        let rel = PathBuf::from(format!("{profile}/int32-sink"));
+        require_prebuilt_row_binary_fresh(row, &rel)
     })
     .map(|p| p.as_path())
 }
@@ -2747,14 +2750,13 @@ pub fn build_action_server_concurrent(rmw: Rmw) -> TestResult<&'static Path> {
         }
     };
     cell.get_or_try_init(|| {
-        let root = project_root();
-        let dir = root.join("packages/testing/nros-tests/bins/action-server-concurrent");
+        let row = crate::fixtures::groups::select_row(
+            "packages/testing/nros-tests/bins/action-server-concurrent",
+            &crate::fixtures::groups::FixtureVariant::rmw(rmw),
+        )?;
         let profile = cargo_target_profile_dir();
-        let binary = dir.join(format!(
-            "{}/{profile}/action-server-concurrent",
-            rmw.target_dir()
-        ));
-        require_prebuilt_binary_fresh(&binary)
+        let rel = PathBuf::from(format!("{profile}/action-server-concurrent"));
+        require_prebuilt_row_binary_fresh(row, &rel)
     })
     .map(|p| p.as_path())
 }
@@ -2775,14 +2777,13 @@ pub fn build_action_client_multigoal(rmw: Rmw) -> TestResult<&'static Path> {
         }
     };
     cell.get_or_try_init(|| {
-        let root = project_root();
-        let dir = root.join("packages/testing/nros-tests/bins/action-client-multigoal");
+        let row = crate::fixtures::groups::select_row(
+            "packages/testing/nros-tests/bins/action-client-multigoal",
+            &crate::fixtures::groups::FixtureVariant::rmw(rmw),
+        )?;
         let profile = cargo_target_profile_dir();
-        let binary = dir.join(format!(
-            "{}/{profile}/action-client-multigoal",
-            rmw.target_dir()
-        ));
-        require_prebuilt_binary_fresh(&binary)
+        let rel = PathBuf::from(format!("{profile}/action-client-multigoal"));
+        require_prebuilt_row_binary_fresh(row, &rel)
     })
     .map(|p| p.as_path())
 }
@@ -2935,11 +2936,12 @@ pub fn build_entry_poc() -> TestResult<&'static Path> {
     static ENTRY_POC_BINARY: OnceCell<PathBuf> = OnceCell::new();
     ENTRY_POC_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/entry-poc");
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/entry-poc",
+            )?;
             let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/entry-poc"));
-            require_prebuilt_binary_fresh(&binary)
+            let rel = PathBuf::from(format!("{profile}/entry-poc"));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -3025,17 +3027,24 @@ pub fn build_threadx_rv64_rust_example_rmw(
             example_dir.display()
         )));
     }
-    let binary_path = if rmw == Rmw::Cyclonedds {
-        example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name))
-    } else {
-        example_dir.join(format!(
-            "{}/riscv64gc-unknown-none-elf/{}/{}",
-            rmw.target_dir(),
-            cargo_target_profile_dir(),
-            binary_name
-        ))
-    };
-    require_prebuilt_binary_fresh(&binary_path)
+    if rmw == Rmw::Cyclonedds {
+        // The cyclonedds row is `builder = "cmake"` (phase-344 W2), and the
+        // cargo group export carries cargo rows only — so this branch keeps the
+        // path route. `rmw.build_dir()` and `cmake_build_subdir`'s default are
+        // the same expression, `build-<rmw>`.
+        let binary_path = example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name));
+        return require_prebuilt_binary_fresh(&binary_path);
+    }
+    let row = crate::fixtures::groups::select_row(
+        &format!("examples/qemu-riscv64-threadx/rust/{case}"),
+        &crate::fixtures::groups::FixtureVariant::rmw(rmw),
+    )?;
+    let rel = PathBuf::from(format!(
+        "riscv64gc-unknown-none-elf/{}/{}",
+        cargo_target_profile_dir(),
+        binary_name
+    ));
+    require_prebuilt_row_binary_fresh(row, &rel)
 }
 
 /// Phase 118.B.7 — collapsed-shape threadx-linux Rust example resolver.
@@ -3435,11 +3444,12 @@ pub fn build_native_custom_transport_talker() -> TestResult<&'static Path> {
 pub fn build_bridge_zenoh_to_xrce_fwd() -> TestResult<&'static Path> {
     NATIVE_BRIDGE_TT_ZENOH_XRCE_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd");
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd",
+            )?;
             let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/bridge-zenoh-to-xrce-fwd"));
-            require_prebuilt_binary_fresh(&binary)
+            let rel = PathBuf::from(format!("{profile}/bridge-zenoh-to-xrce-fwd"));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -3454,11 +3464,12 @@ pub fn build_bridge_zenoh_to_xrce_fwd() -> TestResult<&'static Path> {
 pub fn build_bridge_zenoh_to_cyclonedds_fwd() -> TestResult<&'static Path> {
     NATIVE_BRIDGE_ZENOH_CYCLONEDDS_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd");
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd",
+            )?;
             let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/bridge-zenoh-to-cyclonedds-fwd"));
-            require_prebuilt_binary_fresh(&binary)
+            let rel = PathBuf::from(format!("{profile}/bridge-zenoh-to-cyclonedds-fwd"));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -3471,11 +3482,12 @@ pub fn build_bridge_zenoh_to_cyclonedds_fwd() -> TestResult<&'static Path> {
 pub fn build_qos_override_pubsub() -> TestResult<&'static Path> {
     NATIVE_QOS_OVERRIDE_PUBSUB_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/qos-override-pubsub");
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/qos-override-pubsub",
+            )?;
             let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/qos-override-pubsub"));
-            require_prebuilt_binary_fresh(&binary)
+            let rel = PathBuf::from(format!("{profile}/qos-override-pubsub"));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -3488,11 +3500,12 @@ pub fn build_qos_override_pubsub() -> TestResult<&'static Path> {
 pub fn build_native_declarative_safety_listener() -> TestResult<&'static Path> {
     NATIVE_DECLARATIVE_SAFETY_LISTENER_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/declarative-safety-listener");
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/declarative-safety-listener",
+            )?;
             let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/declarative-safety-listener"));
-            require_prebuilt_binary_fresh(&binary)
+            let rel = PathBuf::from(format!("{profile}/declarative-safety-listener"));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -3505,11 +3518,12 @@ pub fn build_native_declarative_safety_listener() -> TestResult<&'static Path> {
 pub fn build_ros2_string_interop() -> TestResult<&'static Path> {
     NATIVE_ROS2_STRING_INTEROP_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/ros2-string-interop");
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/ros2-string-interop",
+            )?;
             let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/ros2-string-interop"));
-            require_prebuilt_binary_fresh(&binary)
+            let rel = PathBuf::from(format!("{profile}/ros2-string-interop"));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -3800,11 +3814,12 @@ pub fn build_native_action_client() -> TestResult<&'static Path> {
 pub fn build_native_talker_safety() -> TestResult<&'static Path> {
     NATIVE_TALKER_SAFETY_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/safety-chatter-talker");
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/safety-chatter-talker",
+            )?;
             let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/safety-chatter-talker"));
-            require_prebuilt_binary_fresh(&binary)
+            let rel = PathBuf::from(format!("{profile}/safety-chatter-talker"));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -3817,11 +3832,12 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
 pub fn build_native_talker_header() -> TestResult<&'static Path> {
     NATIVE_TALKER_HEADER_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/header-chatter-talker");
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/header-chatter-talker",
+            )?;
             let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/header-chatter-talker"));
-            require_prebuilt_binary_fresh(&binary)
+            let rel = PathBuf::from(format!("{profile}/header-chatter-talker"));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -3873,11 +3889,12 @@ pub fn build_contract_monitor_diagsink() -> TestResult<&'static Path> {
 pub fn build_native_listener_safety() -> TestResult<&'static Path> {
     NATIVE_LISTENER_SAFETY_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let dir = root.join("packages/testing/nros-tests/bins/safety-chatter-listener");
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/safety-chatter-listener",
+            )?;
             let profile = cargo_target_profile_dir();
-            let binary = dir.join(format!("target/{profile}/safety-chatter-listener"));
-            require_prebuilt_binary_fresh(&binary)
+            let rel = PathBuf::from(format!("{profile}/safety-chatter-listener"));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }

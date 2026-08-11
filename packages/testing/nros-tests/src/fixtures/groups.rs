@@ -388,6 +388,34 @@ pub fn row_resolved_dir(row: &GroupRow) -> PathBuf {
     }
 }
 
+/// The ONE row at this leaf — issue 0517 step 2.
+///
+/// Most fixture leaves build exactly once (83 of them), and their resolvers had
+/// no variant to name: they spelt `<dir>/target/<profile>/<bin>` inline. This is
+/// what they mean, without a path — "the row at this leaf", checked rather than
+/// assumed. A leaf that grows a second row fails here instead of silently
+/// resolving to whichever the old longest-match rule preferred, and the fix is
+/// to name the variant with [`select_row`].
+pub fn select_sole_row(dir: &str) -> TestResult<&'static GroupRow> {
+    let dir = dir.trim_end_matches('/');
+    let hits: Vec<&GroupRow> = manifest_rows().iter().filter(|r| r.dir == dir).collect();
+    match hits.as_slice() {
+        [row] => Ok(row),
+        [] => Err(TestError::BuildFailed(format!(
+            "no [[fixture]] row for {dir} in examples/fixtures.toml"
+        ))),
+        many => Err(TestError::BuildFailed(format!(
+            "{dir} has {} rows, so \"the row at this leaf\" is not a question with \
+             one answer — name the variant with select_row (issue 0517). Rows: {}",
+            many.len(),
+            many.iter()
+                .map(|r| format!("{:?}", r.selector))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ))),
+    }
+}
+
 /// Does `examples/fixtures.toml` carry ANY row for this leaf?
 ///
 /// The distinction [`row_artifact_dir`] cannot make on its own, and the two
