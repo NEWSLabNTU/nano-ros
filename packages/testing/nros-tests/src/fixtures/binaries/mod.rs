@@ -3657,9 +3657,12 @@ pub fn lifecycle_node_binary() -> PathBuf {
 pub fn build_native_talker_tls() -> TestResult<&'static Path> {
     NATIVE_TALKER_TLS_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let example_dir = root.join("examples/native/rust/talker");
-            let target_dir = example_dir.join("target-tls");
+            // issue 0517 — "the talker row built with `link-tls`", not
+            // "the talker's target-tls dir".
+            let target_dir = crate::fixtures::groups::row_artifact_dir(
+                "examples/native/rust/talker",
+                &crate::fixtures::groups::FixtureVariant::features(&["link-tls"]),
+            )?;
             let binary_path = target_dir.join(format!("{}/talker", cargo_target_profile_dir()));
             require_prebuilt_binary_fresh(&binary_path)
         })
@@ -3673,9 +3676,10 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
 pub fn build_native_listener_tls() -> TestResult<&'static Path> {
     NATIVE_LISTENER_TLS_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let example_dir = root.join("examples/native/rust/listener");
-            let target_dir = example_dir.join("target-tls");
+            let target_dir = crate::fixtures::groups::row_artifact_dir(
+                "examples/native/rust/listener",
+                &crate::fixtures::groups::FixtureVariant::features(&["link-tls"]),
+            )?;
             let binary_path = target_dir.join(format!("{}/listener", cargo_target_profile_dir()));
             require_prebuilt_binary_fresh(&binary_path)
         })
@@ -3855,9 +3859,12 @@ pub fn build_message_info_observer() -> TestResult<&'static Path> {
 pub fn build_message_info_observer_zero_copy() -> TestResult<&'static Path> {
     MESSAGE_INFO_OBSERVER_ZERO_COPY_BINARY
         .get_or_try_init(|| {
-            let dir = project_root().join("packages/testing/nros-tests/bins/message-info-observer");
+            let dir = crate::fixtures::groups::row_artifact_dir(
+                "packages/testing/nros-tests/bins/message-info-observer",
+                &crate::fixtures::groups::FixtureVariant::features(&["unstable-zenoh-api"]),
+            )?;
             let binary_path = dir.join(format!(
-                "target-zero-copy/{}/message-info-observer",
+                "{}/message-info-observer",
                 cargo_target_profile_dir()
             ));
             require_prebuilt_binary_fresh(&binary_path)
@@ -4433,9 +4440,13 @@ pub fn zenoh_stress_test_binary() -> PathBuf {
 pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
     ZENOH_STRESS_TEST_LARGE_BUF_BINARY
         .get_or_try_init(|| {
-            let root = project_root();
-            let example_dir = root.join("packages/testing/nros-bench/stress-zenoh");
-            let target_dir = example_dir.join("target-large-buf");
+            // The one row the selector needs `env` for: it is otherwise
+            // identical to its plain sibling (issue 0517).
+            let target_dir = crate::fixtures::groups::row_artifact_dir(
+                "packages/testing/nros-bench/stress-zenoh",
+                &crate::fixtures::groups::FixtureVariant::plain()
+                    .with_env(&[("ZPICO_SUBSCRIBER_BUFFER_SIZE", "8192")]),
+            )?;
             let binary_path =
                 target_dir.join(format!("{}/zenoh-stress-test", cargo_target_profile_dir()));
             require_prebuilt_binary_fresh(&binary_path)
