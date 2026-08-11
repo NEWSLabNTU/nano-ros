@@ -99,17 +99,17 @@ invocation is emitted by the CLI in Rust; `check-example-leaf-target-dirs.py`'s 
 `examples/**/build/nros-metadata/**/target` either (the 0196 rule). Direction: one probe target dir per
 (host-triple, workspace) under `$NROS_BUILD_ROOT` via `nros_build_dir`. See `0522-*`. (2026-08-12)
 
-**#511** — `rust-rtos-link-check` overflows NuttX ROM on `examples/qemu-arm-nuttx/rust/talker`, so `ci-matrix`
-cannot go green. The bisect first recorded here is **RETRACTED**: the probe built one fixed path, and that path
-is a LIBRARY before phase-338 W2's `-entry` collapse and the BINARY after, so every pre-collapse "good" was
-vacuous — an image that is never linked cannot overflow. The apparent boundary was just the commit where the
-directory gained a `[[bin]]`. What stands: from the collapse onward the image does link and overflows at a
-constant 534704 bytes (a switch, not accumulation), and **no known-good revision has been established at all**
-— this may never have been a regression, since 0477's 687112-byte reference is the C image, not the Rust one.
-A valid probe must build the ENTRY package per revision and control the NuttX export layout, which phase-339
-changed from `staging/` to per-arch snapshots mid-window. Separately the lane BUILT with `nros-relwithdebinfo`
-where NuttX ships `nros-minsizerel` (538800 vs 419992) — now FIXED, which makes the reported figure the shipped
-one but does not close the issue. See `0511-*`. (2026-08-11)
+RESOLVED 2026-08-12: **#511** — `rust-rtos-link-check` "overflowed NuttX ROM by N bytes" because the ARM image
+was linked with the RISC-V memory map, where ROM has LENGTH 0. N was never an excess — it was the image's whole
+ROM-placed size against a zero-length region, which is why it stayed constant across revisions, survived clean
+rebuilds (the stale `.config` lives in the submodule, not any target dir), and why no revision ever "fit".
+phase-339 W2 moved the linker SCRIPT onto the per-arch export snapshot but left the cpp `-isystem` on the SHARED
+tree, so `CONFIG_FLASH_SIZE`/`CONFIG_RAM_*` came from whichever arch was configured last — and `lane=tier2`
+builds riscv after arm. Fixed by taking the headers from the same snapshot as the script, plus a
+`rerun-if-changed` on both spellings of `nuttx/config.h` (0477's rule: the config IS the memory map). Verified:
+the leaf that reported 424088 bytes of overflow now links at `.text = 421880` and the whole lane passes — the
+tier-2 sweep's last red. My earlier bisect of this was retracted first; there was no regression to find.
+See `archived/0511-*`. (2026-08-12)
 
 **#512** — `check-readiness-marker-literals` is blind to the WORST case. It flags a `wait_for_output_pattern`
 literal that MATCHES a known `output::` constant, or that ambiguously prefixes two — but a literal matching

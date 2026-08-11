@@ -185,6 +185,15 @@ pub fn run_image_link(builtins_stub: &Path) {
     }
     println!("cargo:rerun-if-changed={}", linker_script.display());
     println!("cargo:rerun-if-changed={}", builtins_stub.display());
+    // Issue 0511 — the config header IS the memory map (it supplies
+    // CONFIG_FLASH_*/CONFIG_RAM_* to the cpp pass below), so a reconfigure must
+    // invalidate this artifact. Watch BOTH spellings whether or not they exist,
+    // for 0477's reason: an edge emitted only on the path that won leaves the
+    // artifact valid forever when the other one later appears.
+    println!(
+        "cargo:rerun-if-changed={}",
+        nuttx_dir.join("include/nuttx/config.h").display()
+    );
     if !staging.join("libc.a").exists() {
         return;
     }
@@ -193,8 +202,40 @@ pub fn run_image_link(builtins_stub: &Path) {
 
     // Shared -isystem/-I set for the preprocess + stub compile (both need
     // <nuttx/config.h> and the arch headers, like the NuttX build itself).
+    //
+    // Issue 0511 — the HEADERS must come from the same per-arch snapshot the
+    // linker script above does. `$NUTTX_DIR/include/nuttx/config.h` belongs to
+    // whichever arch the SHARED tree was configured for LAST, and this script is
+    // `cpp`-preprocessed, so those macros ARE the memory map:
+    //
+    //     MEMORY { ROM (rx) : ORIGIN = CONFIG_FLASH_START, LENGTH = CONFIG_FLASH_SIZE
+    //              RAM (rwx): ORIGIN = CONFIG_RAM_START,   LENGTH = CONFIG_RAM_SIZE }
+    //
+    // Build riscv after arm — which `lane=tier2` does — and the ARM image is
+    // linked with the RISC-V map: `CONFIG_FLASH_SIZE` is 0 there, so ROM has
+    // LENGTH = 0 and every byte placed in it "overflows". That is the whole of
+    // 0511's `region ROM overflowed by N bytes`: N was never an excess, it was
+    // the image's ROM-placed size against a zero-length region, which is why it
+    // stayed constant across revisions and survived clean rebuilds (the stale
+    // `.config` lives in the submodule, not in any target dir).
+    //
+    // phase-339 W2 made the export per-arch and moved the linker script onto
+    // it; the include path was left on the shared tree, so half the inputs came
+    // from the snapshot and half from whatever was configured last.
+    let snapshot_include = crate::nuttx_export::snapshot_root(&nuttx_dir)
+        .map(|root| root.join("include"))
+        .filter(|p| p.join("nuttx/config.h").is_file());
+    let include_root = snapshot_include
+        .clone()
+        .unwrap_or_else(|| nuttx_dir.join("include"));
+    if let Some(inc) = &snapshot_include {
+        println!(
+            "cargo:rerun-if-changed={}",
+            inc.join("nuttx/config.h").display()
+        );
+    }
     let include_args = |cmd: &mut Command| {
-        cmd.arg(format!("-isystem{}", nuttx_dir.join("include").display()));
+        cmd.arg(format!("-isystem{}", include_root.display()));
         for inc in &arch_includes {
             cmd.arg(format!("-I{}", nuttx_dir.join(inc).display()));
         }

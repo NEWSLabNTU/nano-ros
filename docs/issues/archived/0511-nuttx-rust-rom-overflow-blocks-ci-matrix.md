@@ -1,11 +1,52 @@
 ---
 id: 511
 title: "`rust-rtos-link-check` overflows NuttX ROM by 538800 bytes, blocking `ci-matrix`"
-status: open
+status: resolved
 type: bug
 area: nuttx
 related: [issue-0477, phase-345, phase-346, phase-336]
 ---
+
+> **RESOLVED 2026-08-12. The ARM image was linked with the RISC-V memory map,
+> where ROM has LENGTH 0 — so "overflowed by N bytes" was never an excess, it
+> was the image's whole ROM-placed size against a zero-length region.**
+>
+> `nuttx_image_link` cpp-preprocesses the board linker script, and that script
+> IS the memory map:
+>
+> ```
+> MEMORY { ROM (rx) : ORIGIN = CONFIG_FLASH_START, LENGTH = CONFIG_FLASH_SIZE
+>          RAM (rwx): ORIGIN = CONFIG_RAM_START,   LENGTH = CONFIG_RAM_SIZE }
+> ```
+>
+> phase-339 W2 moved the linker SCRIPT onto the per-arch export snapshot but
+> left the preprocessor's `-isystem` on the SHARED tree, so the macros came from
+> `$NUTTX_DIR/include/nuttx/config.h` — whichever arch was configured LAST.
+> Measured on this tree, both files present at once:
+>
+> | `nuttx/config.h` | `CONFIG_RAM_START` | `CONFIG_FLASH_SIZE` |
+> |---|---|---|
+> | shared `$NUTTX_DIR/include` (what it used) | `0x80000000` | **0** — RISC-V |
+> | `nros-nuttx-export-arm/include` (correct, unused) | `0x40200000` | `127926272` |
+>
+> `lane=tier2` builds nuttx and nuttx-riscv; riscv ran last. Half the link
+> inputs came from the arm snapshot and half from a risc-v `.config`.
+>
+> **Fix**: the headers now come from the same snapshot the linker script does,
+> falling back to the shared tree when there is no snapshot. Both spellings of
+> `nuttx/config.h` get a `rerun-if-changed` — 0477's rule, since the config IS
+> the memory map and a reconfigure must invalidate the image.
+>
+> **Verified**: the same leaf that reported `overflowed by 424088 bytes` now
+> links, `.text = 421880`, with `ROM 0x00600000 / 127926272` and
+> `RAM 0x40200000 / 132120576` in the processed script; `just
+> rust-rtos-link-check` passes all three leaves.
+>
+> **This closes the sweep's last red.** It also explains every earlier
+> observation: the constant figure (an image size, not a delta), its survival
+> across clean rebuilds (the stale `.config` lives in the submodule, not any
+> target dir), and why no revision ever "fit" — nothing fits in zero bytes.
+> There was no regression to bisect.
 
 ## Symptom
 
