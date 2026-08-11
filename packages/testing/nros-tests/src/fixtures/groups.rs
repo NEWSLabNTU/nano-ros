@@ -167,8 +167,16 @@ pub fn parse_rows(text: &str) -> Vec<GroupRow> {
 ///
 /// Rows with `shared = false` are skipped rather than matched-and-ignored: an
 /// unmigrated platform must resolve to its leaf path unchanged.
+///
+/// An ambiguous longest match is `None` — issue 0517. Two shared rows at one
+/// artifact root belong to DIFFERENT groups, and picking either would redirect
+/// the caller onto a real binary built with different features. `None` here
+/// means "no redirect", so the caller resolves the leaf path, finds nothing, and
+/// fails loudly. That is the outcome to prefer; the same rule and the same
+/// reasoning live in [`crate::fixtures::lane::attribute_path_in`].
 pub fn attribute<'a>(rows: &'a [GroupRow], rel: &Path) -> Option<(&'a GroupRow, PathBuf)> {
     let mut best: Option<&'a GroupRow> = None;
+    let mut ambiguous = false;
     for row in rows {
         if !row.shared || row.artifact_root.is_empty() {
             continue;
@@ -176,9 +184,20 @@ pub fn attribute<'a>(rows: &'a [GroupRow], rel: &Path) -> Option<(&'a GroupRow, 
         if !path_under(rel, Path::new(&row.artifact_root)) {
             continue;
         }
-        if best.is_none_or(|b| row.artifact_root.len() > b.artifact_root.len()) {
-            best = Some(row);
+        match best {
+            Some(b) if row.artifact_root.len() > b.artifact_root.len() => {
+                best = Some(row);
+                ambiguous = false;
+            }
+            Some(b) if row.artifact_root.len() == b.artifact_root.len() => {
+                ambiguous |= row.slug != b.slug;
+            }
+            Some(_) => {}
+            None => best = Some(row),
         }
+    }
+    if ambiguous {
+        return None;
     }
     let row = best?;
     let suffix = rel.strip_prefix(&row.artifact_root).ok()?.to_path_buf();
@@ -434,6 +453,69 @@ mod tests {
             sole_group_dir("no-such-platform").is_err(),
             "an unmigrated platform must be an error, not a guessed dir"
         );
+    }
+
+    #[test]
+    fn two_groups_at_one_artifact_root_do_not_redirect() {
+        // issue 0517 — the shape phase-340 W2.d's column deletion creates. Two
+        // shared rows land on ONE artifact root and belong to DIFFERENT groups;
+        // the longest-match rule cannot separate them, and picking either
+        // redirects onto a real binary built with different features. Measured
+        // over the shipped manifest this cannot happen (0 plain-row roots are
+        // shared by more than one row), which is exactly why the input is
+        // synthetic: the real table would pass under the tie-breaking rule too.
+        let rows = vec![
+            GroupRow {
+                artifact_root: "examples/native/rust/talker/target".into(),
+                platform: "linux".into(),
+                slug: "linux".into(),
+                shared: true,
+            },
+            GroupRow {
+                artifact_root: "examples/native/rust/talker/target".into(),
+                platform: "linux".into(),
+                slug: "linux-553222167".into(),
+                shared: true,
+            },
+        ];
+        assert!(
+            attribute(
+                &rows,
+                Path::new("examples/native/rust/talker/target/x/talker")
+            )
+            .is_none(),
+            "an ambiguous root must not redirect: no redirect resolves the leaf \
+             path, finds nothing and fails loudly, which is the outcome to prefer \
+             over a silently wrong binary"
+        );
+
+        // Same root, SAME group: not ambiguous — the question this function
+        // answers is which group, and both rows answer it identically.
+        let mut same = rows.clone();
+        same[1].slug = "linux".into();
+        let (row, suffix) = attribute(
+            &same,
+            Path::new("examples/native/rust/talker/target/x/talker"),
+        )
+        .expect("one group, so the answer is unambiguous");
+        assert_eq!(row.slug, "linux");
+        assert_eq!(suffix, Path::new("x/talker"));
+
+        // A LONGER match still wins outright — the tie rule must not make
+        // longest-match give up whenever two shorter roots collide.
+        let mut deeper = rows.clone();
+        deeper.push(GroupRow {
+            artifact_root: "examples/native/rust/talker/target/x".into(),
+            platform: "linux".into(),
+            slug: "linux-deeper".into(),
+            shared: true,
+        });
+        let (row, _) = attribute(
+            &deeper,
+            Path::new("examples/native/rust/talker/target/x/talker"),
+        )
+        .expect("the deeper root is unambiguous");
+        assert_eq!(row.slug, "linux-deeper");
     }
 
     #[test]

@@ -98,7 +98,7 @@ pub const RUN_COORDS_ENV: &str = "NROS_TEST_COORDS";
 pub type Coord = (String, String, String);
 
 /// One buildable row of a coordinate-bearing manifest table.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
     /// `fixture` or `workspace_fixture`.
     pub kind: String,
@@ -253,25 +253,61 @@ pub fn run_coords() -> Option<&'static BTreeSet<Coord>> {
 /// `None` for anything outside the manifest's artifact roots — the shared
 /// `build/fixtures-cargo/<platform>` dirs (phase-226.D), the Zephyr west build
 /// roots, the compile-check lane. Callers must treat `None` as "do not skip".
+///
+/// Also `None` when the longest match is AMBIGUOUS — see [`attribute_path_in`].
 pub fn attribute_path(path: &Path) -> Option<&'static Row> {
     let root = project_root();
     let rel = path.strip_prefix(&root).unwrap_or(path);
-    let mut best: Option<&'static Row> = None;
-    for row in manifest_rows() {
+    attribute_path_in(manifest_rows(), rel)
+}
+
+/// [`attribute_path`] over an explicit row set, so the rule can be tested on
+/// inputs the shipped manifest does not contain.
+///
+/// # Ambiguity is `None`, not "the first one"
+///
+/// issue 0517 — the longest-match rule assumed at most one row per artifact
+/// root, which holds today: measured over the manifest, 0 `kind = "fixture"`
+/// roots are shared by more than one row and 0 map to more than one coordinate.
+/// It holds because the authored `target_dir` column separates the variants, so
+/// `(dir, target_dir)` is effectively the row id — and phase-340 W2.d wants that
+/// column gone, which would collapse 52 roots onto shared prefixes.
+///
+/// Picking the first of several equally-long matches would then attribute an
+/// artifact to a row that did not produce it, and the consequence is not a
+/// missing file: the run would skip or run the wrong cell against a real binary
+/// built with different features. So a tie between rows at DIFFERENT
+/// coordinates fails closed, and the caller's existing contract for `None` —
+/// never skip — makes that loud rather than silent.
+///
+/// A tie between rows at the SAME coordinate is not ambiguous for this
+/// question: the answer this function exists to give is the coordinate.
+/// (`[[workspace_fixture]]` rows are excluded before the tie can arise; several
+/// of them legitimately share one build dir and are resolved by `id` instead —
+/// see [`attribute_workspace_id`].)
+pub fn attribute_path_in<'a>(rows: &'a [Row], rel: &Path) -> Option<&'a Row> {
+    let mut best: Option<&'a Row> = None;
+    let mut ambiguous = false;
+    for row in rows {
         if row.kind != "fixture" || row.artifact_root.is_empty() {
             continue;
         }
         if !path_under(rel, Path::new(&row.artifact_root)) {
             continue;
         }
-        let longer = best
-            .map(|b| row.artifact_root.len() > b.artifact_root.len())
-            .unwrap_or(true);
-        if longer {
-            best = Some(row);
+        match best {
+            Some(b) if row.artifact_root.len() > b.artifact_root.len() => {
+                best = Some(row);
+                ambiguous = false;
+            }
+            Some(b) if row.artifact_root.len() == b.artifact_root.len() => {
+                ambiguous |= row.coord != b.coord;
+            }
+            Some(_) => {}
+            None => best = Some(row),
         }
     }
-    best
+    if ambiguous { None } else { best }
 }
 
 /// Is `path` inside `dir`, comparing whole path COMPONENTS?
@@ -483,6 +519,72 @@ mod tests {
             "{} nested artifact root(s):\n  {}",
             bad.len(),
             bad.join("\n  ")
+        );
+    }
+
+    #[test]
+    fn two_coordinates_at_one_artifact_root_are_not_attributable() {
+        // issue 0517 — the twin of `groups::two_groups_at_one_artifact_root_do_
+        // not_redirect`, and the same synthetic-input argument: today 0
+        // `kind = "fixture"` roots are shared by more than one row (the
+        // `artifact_roots_are_pairwise_unnested` gate above holds it), so the
+        // real manifest cannot exercise the tie.
+        //
+        // What a wrong answer costs here is not a missing file. `attribute_path`
+        // decides whether a cell is IN LANE, so the wrong row's coordinate either
+        // skips a test that should have run — a false green, issue 0445's shape —
+        // or hard-fails one the lane deliberately never built.
+        let row = |root: &str, rmw: &str| Row {
+            kind: "fixture".into(),
+            coord: ("linux".into(), "rust".into(), rmw.into()),
+            dir: "examples/native/rust/talker".into(),
+            id: String::new(),
+            artifact_root: root.into(),
+        };
+        let bin = Path::new("examples/native/rust/talker/target/x/talker");
+
+        let tie = vec![
+            row("examples/native/rust/talker/target", "zenoh"),
+            row("examples/native/rust/talker/target", "xrce"),
+        ];
+        assert!(
+            attribute_path_in(&tie, bin).is_none(),
+            "two coordinates at one root must be unattributable; the caller's \
+             contract for None is `do not skip`, so this fails loudly"
+        );
+
+        // Same root, SAME coordinate: not ambiguous. The coordinate IS the
+        // answer, and both rows give it.
+        let same = vec![
+            row("examples/native/rust/talker/target", "zenoh"),
+            row("examples/native/rust/talker/target", "zenoh"),
+        ];
+        assert_eq!(
+            attribute_path_in(&same, bin).map(|r| r.coord_str()),
+            Some("linux,rust,zenoh".to_string())
+        );
+
+        // A longer match still wins outright, and clears an earlier tie.
+        let mut deeper = tie.clone();
+        deeper.push(row("examples/native/rust/talker/target/x", "cyclonedds"));
+        assert_eq!(
+            attribute_path_in(&deeper, bin).map(|r| r.coord_str()),
+            Some("linux,rust,cyclonedds".to_string()),
+            "the deeper root is unambiguous — a tie among SHORTER roots must not \
+             make longest-match give up"
+        );
+
+        // A workspace row sharing the root is not a tie: those are attributed by
+        // `id` and skipped here. Three real rows do share a root today
+        // (examples/workspaces/{mixed,features,safety}) and must stay harmless.
+        let mut ws = vec![row("examples/native/rust/talker/target", "zenoh")];
+        ws.push(Row {
+            kind: "workspace_fixture".into(),
+            ..row("examples/native/rust/talker/target", "xrce")
+        });
+        assert_eq!(
+            attribute_path_in(&ws, bin).map(|r| r.coord_str()),
+            Some("linux,rust,zenoh".to_string())
         );
     }
 
