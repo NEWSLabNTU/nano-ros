@@ -26,7 +26,7 @@ use std::{collections::HashSet, path::Path};
 /// kinds that exist are a property of what descriptors exist
 /// (`nros-{rmw,board,platform}.toml`), not of this parser — a new provider
 /// family must not require editing the XML reader.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Provision {
     /// What family this package provides: `rmw`, `board`, `platform`, …
     pub kind: String,

@@ -124,6 +124,32 @@ pub struct ProvidersArgs {
     /// Emit JSON rather than a table.
     #[arg(long)]
     pub json: bool,
+
+    /// Emit one TAB-separated row per provision:
+    /// `kind<TAB>name<TAB>package<TAB>root_index<TAB>dir`.
+    ///
+    /// The cmake seam — cmake has no JSON parser, so it ASKS for a shape it can
+    /// read with `string(REPLACE)`. Same role as `ws model-dims`: there is never
+    /// a second parser of the index to drift from this one.
+    #[arg(long, conflicts_with = "json")]
+    pub lines: bool,
+
+    /// Scan, then write the result to this path as a reusable index (W3).
+    #[arg(long, value_name = "PATH")]
+    pub write_index: Option<PathBuf>,
+
+    /// Read this index instead of scanning. Errors if it is missing, of an
+    /// unknown version, or was built for a different search path — an index for
+    /// other roots is WRONG rather than stale, and serving it would answer a
+    /// question nobody asked.
+    #[arg(long, value_name = "PATH", conflicts_with = "write_index")]
+    pub index: Option<PathBuf>,
+
+    /// Rescan and compare against this index; exit non-zero listing every
+    /// difference. The safety net a file watch cannot provide: a package.xml
+    /// that did not exist when the index was written is in nobody's watch list.
+    #[arg(long, value_name = "PATH", conflicts_with_all = ["index", "write_index"])]
+    pub check_index: Option<PathBuf>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -257,8 +283,66 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 // =============================================================================
-// `nros ws providers` — phase-348 W1
+// `nros ws providers` — phase-348 W1 (listing) / W3 (the index)
 // =============================================================================
+
+/// The provider index a workspace's build tree caches, `<ws>/build/nros/`.
+///
+/// Same root as the SystemModels (`build/nros/models/`), for the same reason:
+/// it is a build artifact, never committed, and regenerable from source at any
+/// time.
+pub fn provider_index_path(ws_root: &Path) -> PathBuf {
+    ws_root.join("build").join("nros").join("providers.json")
+}
+
+/// Resolve the search path the way `nros ws providers` does, so the index sync
+/// writes is the index that command would read. One implementation, or the two
+/// disagree about roots and every read is rejected as "built for other roots".
+pub fn provider_search_path(workspace: &Path) -> Vec<PathBuf> {
+    let nano_ros_root = crate::abi_guard::find_monorepo_root(workspace).or_else(|| {
+        let exe = std::env::current_exe().ok()?;
+        let exe = exe.canonicalize().unwrap_or(exe);
+        crate::abi_guard::find_monorepo_root(&exe)
+    });
+    cargo_nano_ros::provider_scan::default_search_path(nano_ros_root.as_deref(), workspace)
+}
+
+/// Refresh `<ws>/build/nros/providers.json`. Warns rather than failing — see
+/// the call site in `run_sync`.
+fn write_provider_index(ws_root: &Path, verbose: bool) {
+    use cargo_nano_ros::provider_scan;
+
+    let roots = provider_search_path(ws_root);
+    let path = provider_index_path(ws_root);
+    let scan = match provider_scan::scan_roots(&roots) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("sync: warning: provider scan failed, index not written: {e:#}");
+            return;
+        }
+    };
+    for err in &scan.errors {
+        eprintln!(
+            "sync: warning: {}: {} (not indexed)",
+            err.path.display(),
+            err.message
+        );
+    }
+    let index = provider_scan::ProviderIndex::from_scan(&roots, &scan);
+    match index.write(&path) {
+        Ok(()) => {
+            if verbose {
+                println!(
+                    "sync: provider index {} ({} provider(s), {} package(s) scanned)",
+                    path.display(),
+                    index.providers.len(),
+                    index.inputs.len()
+                );
+            }
+        }
+        Err(e) => eprintln!("sync: warning: could not write {}: {e:#}", path.display()),
+    }
+}
 
 fn run_providers(args: ProvidersArgs) -> Result<()> {
     use cargo_nano_ros::provider_scan;
@@ -273,25 +357,79 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
     // Root 0 is the nano-ros tree, and an OUT-OF-TREE workspace is not inside
     // it — walking up from the workspace alone finds nothing, which would drop
     // every in-tree backend from the search path and make the scan useless for
-    // exactly the user this feature is for. So fall back to the monorepo
-    // containing this binary.
-    //
-    // The binary's own location is a defensible source in a way an env var is
-    // not: it is a property of which `nros` you invoked, so the result is
-    // reproducible from the checkout. An installed `nros` outside any monorepo
-    // finds nothing here and the user passes `--nano-ros-root`.
-    let nano_ros_root = args
-        .nano_ros_root
-        .map(|r| r.canonicalize().unwrap_or(r))
-        .or_else(|| crate::abi_guard::find_monorepo_root(&workspace))
-        .or_else(|| {
-            let exe = std::env::current_exe().ok()?;
-            let exe = exe.canonicalize().unwrap_or(exe);
-            crate::abi_guard::find_monorepo_root(&exe)
-        });
-    let roots = provider_scan::default_search_path(nano_ros_root.as_deref(), &workspace);
+    // exactly the user this feature is for. `provider_search_path` owns that
+    // fallback, and `nros sync` calls the SAME function: an index written
+    // against a different root list is rejected on read, so two spellings of
+    // "which roots" would make every cached read fail.
+    let roots = match args.nano_ros_root {
+        Some(r) => {
+            let r = r.canonicalize().unwrap_or(r);
+            provider_scan::default_search_path(Some(&r), &workspace)
+        }
+        None => provider_search_path(&workspace),
+    };
 
-    let result = provider_scan::scan_roots(&roots)?;
+    // --check-index rescans and compares; it never prints a listing, because
+    // its answer is "current" or "here is exactly what moved".
+    if let Some(path) = &args.check_index {
+        let index = provider_scan::ProviderIndex::read(path)?;
+        if !index.is_valid_for(&roots) {
+            bail!(
+                "provider index {} was built for roots {:?}, but this invocation \
+                 searches {:?} — regenerate it rather than comparing against it",
+                path.display(),
+                index.roots,
+                roots
+            );
+        }
+        let fresh = provider_scan::scan_roots(&roots)?;
+        let diff = provider_scan::diff_index(&index, &fresh);
+        if diff.is_empty() {
+            println!(
+                "provider index {} is current ({} provider(s), {} package(s) scanned)",
+                path.display(),
+                fresh.providers.len(),
+                fresh.packages_seen()
+            );
+            return Ok(());
+        }
+        eprintln!("provider index {} is STALE:", path.display());
+        for p in &diff.added_inputs {
+            eprintln!("  new package.xml:     {}", p.display());
+        }
+        for p in &diff.removed_inputs {
+            eprintln!("  removed package.xml: {}", p.display());
+        }
+        for c in &diff.changed_provisions {
+            eprintln!("  provision {c}");
+        }
+        bail!("re-run `nros sync` (or reconfigure) to refresh the provider index");
+    }
+
+    // An index read replaces the scan entirely — that is the point of having
+    // one. Reconstructed into a ScanResult so every output path below has a
+    // single shape to render, rather than a scanned branch and an indexed
+    // branch that can disagree about formatting.
+    let result = match &args.index {
+        Some(path) => {
+            let index = provider_scan::ProviderIndex::read(path)?;
+            if !index.is_valid_for(&roots) {
+                bail!(
+                    "provider index {} was built for roots {:?}, not {:?} — \
+                     an index for other roots is wrong, not merely stale",
+                    path.display(),
+                    index.roots,
+                    roots
+                );
+            }
+            provider_scan::ScanResult {
+                providers: index.providers,
+                errors: Vec::new(),
+                inputs: index.inputs,
+            }
+        }
+        None => provider_scan::scan_roots(&roots)?,
+    };
 
     // Report failures on stderr whatever the format: a package.xml that could
     // not be parsed is the reason a provider the user expected is missing, and
@@ -299,6 +437,31 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
     // becomes an hour of debugging.
     for e in &result.errors {
         eprintln!("warning: {}: {}", e.path.display(), e.message);
+    }
+
+    if let Some(path) = &args.write_index {
+        let index = provider_scan::ProviderIndex::from_scan(&roots, &result);
+        index.write(path)?;
+        if !args.lines && !args.json {
+            println!(
+                "wrote provider index {} ({} provider(s), {} input(s))",
+                path.display(),
+                index.providers.len(),
+                index.inputs.len()
+            );
+            return Ok(());
+        }
+    }
+
+    if args.lines {
+        // Unfiltered by --kind on purpose: cmake filters the rows it wants, and
+        // a `--lines --kind rmw` that silently dropped board rows would make a
+        // caller's "no board providers" indistinguishable from "I asked wrong".
+        print!(
+            "{}",
+            provider_scan::ProviderIndex::from_scan(&roots, &result).to_lines()
+        );
+        return Ok(());
     }
 
     let kind = args.kind.as_deref();
@@ -328,7 +491,7 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
                 "roots": roots,
-                "packages_seen": result.packages_seen,
+                "packages_seen": result.packages_seen(),
                 "providers": rows,
             }))?
         );
@@ -362,7 +525,7 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
     println!(
         "{listed} provision(s) from {} package(s) with an export, {} package(s) scanned",
         result.providers.iter().filter(matching).count(),
-        result.packages_seen,
+        result.packages_seen(),
     );
     Ok(())
 }
@@ -1850,6 +2013,17 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     resolve_system_models(&scan, args.verbose, model_dir.as_deref())?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
     generate_facade_crates(&ws_root, &scan, &build_root, args.verbose)?;
+
+    // phase-348 W3 — the provider index, beside the models under
+    // `<ws>/build/nros/`. Written HERE rather than after the Rust-consumer
+    // work below, because that block returns early for a C/C++-only workspace:
+    // placing it later would silently skip the index for exactly the
+    // workspaces that have no cargo path to fall back on.
+    //
+    // A failure to write is a WARNING, not fatal. The index is a cache —
+    // everything in it is rederivable by rescanning — so an unwritable build
+    // dir must not take down a sync that otherwise succeeded.
+    write_provider_index(&ws_root, args.verbose);
 
     if rust_consumers.is_empty() {
         println!("sync: no Rust consumer pkgs — patch tables not written.");

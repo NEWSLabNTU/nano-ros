@@ -1,16 +1,17 @@
 # Phase 348 — Source-time provider discovery: buy the colcon convention, not colcon
 
-**Status (2026-08-11). W1 + W2 (rmw, boards) LANDED. Platform migration blocked
-on a missing descriptor family; W3–W5 open.** Unblocked by
-[phase-347](phase-347-rmw-as-a-declared-provider.md) W2 (descriptors exist, so
-providers can describe themselves). W2–W5 open.**
+**Status (2026-08-11). W1, W2 (rmw + boards) and W3 LANDED. W4 and W5 open; the
+platform half of W2 is blocked on a missing descriptor family.** Unblocked by
+[phase-347](phase-347-rmw-as-a-declared-provider.md) W2 — descriptors exist, so
+providers can describe themselves.
 
 W1 shipped the announce mechanism, the scan, and `nros ws providers`. W2
 migrated every provider that has a descriptor to agree with: **12 packages, 36
-provisions** across rmw and boards.
+provisions** across rmw and boards. W3 added the index, the cmake seam that
+reads it through the CLI, and the three-part cache invalidation.
 
-Measured: 268 ms to walk this repo, 478 packages seen. That is per-invocation
-cost with no caching — W3's index is where it stops being paid per configure.
+Measured: **273 ms** to walk this repo (478 packages), **2 ms** to read the
+index instead.
 
 **W1 turned up a defect older than this phase** ([issue
 0516](../issues/0516-package-xml-regex-readers-blind-to-comments.md)): all
@@ -162,16 +163,55 @@ descriptor, because that is where `descriptor_path()` looks — so discovery now
 finds two shapes of provider, and **W4's topological build order must tolerate a
 provider with no build step at all.**
 
-## W3 — The index
+## W3 — The index — **LANDED**
 
-- [ ] `nros sync` writes a provider index into `build/nros/`, beside the
-      existing `nros-metadata.json` (`components`, `applications`).
-- [ ] CMake reads it **via the CLI**, which is already the pattern —
-      `NanoRosCodegenCore.cmake` shells out to `nros` 11 times. A second parser
-      of the same file is the two-derivations defect this repo keeps paying for.
-- [ ] Cache invalidation is the fiddly part: two source trees walked per
-      configure, and the key is the `CONFIGURE_DEPENDS` class that has bitten
-      before (issue 0196 — a probe that misses `generated/**`).
+- [x] `nros sync` writes `<ws>/build/nros/providers.json` — the same build root
+      as the SystemModels, gitignored, never committed. Written *before* the
+      Rust-consumer block, which returns early for a C/C++-only workspace:
+      placing it later would have skipped the index for exactly the workspaces
+      with no cargo path to fall back on. A write failure warns rather than
+      failing the sync, because the index is a cache.
+- [x] CMake reads it **via the CLI**: `nano_ros_load_providers()` in
+      `cmake/NanoRosProviders.cmake` runs `nros ws providers --lines` and gets
+      TAB-separated rows. cmake never parses the index.
+- [x] `--write-index` / `--index` / `--check-index`, and `--lines` for cmake.
+- [x] Gated by `check-provider-index` (T1–T5), each case verified to fail under
+      the matching perturbation.
+
+Measured: **273 ms** for a fresh scan of this repo, **2 ms** to read the index —
+136×, which is what makes the cache worth its correctness burden.
+
+### Cache invalidation, which was indeed the fiddly part
+
+Three mechanisms, because no one of them is sufficient:
+
+1. **Watch the inputs.** The index records every package.xml read — providers
+   *and* non-providers — and all of them go into `CMAKE_CONFIGURE_DEPENDS`
+   (479 entries in this tree). A non-provider matters because *adding* a
+   provision to one is precisely the edit that must re-configure.
+2. **Rescan by default.** A watch list cannot contain a file that does not
+   exist yet, so a newly-added provider is invisible to mechanism 1 — issue
+   0196's exact shape. `nano_ros_load_providers()` therefore rescans every
+   configure and refreshes the index as it goes; `REUSE_INDEX` opts into the
+   2 ms read, so choosing staleness is deliberate rather than the default.
+3. **Rescan and diff on demand.** `--check-index` compares a fresh scan to the
+   index and exits non-zero naming each difference — new file, removed file, or
+   a provision that appeared/vanished/moved.
+
+**The roots are part of an index's identity.** An index built for a different
+search path is *wrong*, not stale, so reading one is rejected with both root
+lists rather than silently answering a question nobody asked. This is why
+`nros sync` and `nros ws providers` resolve the search path through one shared
+`provider_search_path()` — two spellings of "which roots" would make every
+cached read fail.
+
+### Not yet wired into a production configure
+
+`nano_ros_load_providers()` has no caller in the build today; its first
+consumer is W4, which needs exactly this to derive an order. It is exercised by
+its gate rather than sitting untested. Calling it from the root `CMakeLists.txt`
+now would add ~270 ms to every configure for a result nothing reads, so it
+waits for the consumer.
 
 ## W4 — Ordering, and this is the wave with teeth
 
@@ -206,11 +246,14 @@ builds from a clean tree with no authored ordering.
 ## Order
 
 ```
-347 W2 ──► W1 ──► W2 ──► W3 ──► W4
+347 W2 ──► W1 ──► W2 ──► W3 ──► W4      (W1/W2/W3 done)
                             └──► W5
 ```
 
-W1–W3 are mechanical once the descriptors exist. **W4 is the phase's real
+W1–W3 turned out to be mechanical only in outline: W1 uncovered issue 0516, W2
+found the board-name collision and the descriptor-only provider shape, and W3's
+cache invalidation needed three mechanisms rather than a watch list. **W4 is
+still the phase's real
 content** and should be scheduled as though it were the whole thing.
 
 ## Deliberately not here

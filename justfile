@@ -411,7 +411,7 @@ check-fast: \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
-    check-package-xml-comments check-provider-announcements \
+    check-package-xml-comments check-provider-announcements check-provider-index \
     check-atomic-sync-writes \
     check-cmake-corrosion-prefix \
     check-path-env-fingerprints
@@ -3474,6 +3474,15 @@ check-cargo-target-spelling:
 [private]
 check-provider-announcements:
     @python3 scripts/check-provider-announcements.py
+
+# phase-348 W3 — the provider index and the cmake seam that reads it. cmake asks
+# the CLI for TAB rows rather than parsing the index (no second parser to
+# drift), every recorded package.xml is watched for reconfigure, and a
+# provider added AFTER the index was written is caught by rescan-and-compare —
+# the case no file watch can cover (issue 0196's shape). Needs `just setup-cli`.
+[private]
+check-provider-index:
+    @bash packages/testing/nros-tests/tests/provider_index_gate.sh
 
 [private]
 check-package-xml-comments:
