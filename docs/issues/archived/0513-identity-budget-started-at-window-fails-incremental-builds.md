@@ -1,12 +1,56 @@
 ---
 id: 513
 title: "`check-artifact-identity-budget`'s `started_at` window fails any INCREMENTAL fixture build — cargo does not rewrite an rlib it did not have to rebuild"
-status: open
+status: resolved
+resolved_in: phase-340
 type: bug
 severity: high
 area: build
 related: [issue-0499, issue-0485, phase-340]
 ---
+
+## Resolution (2026-08-11) — option 2, because it cannot produce a false green
+
+When the era window is non-empty but holds NO artifact of the budgeted crate,
+the gate now measures the WHOLE tree and labels the reading as
+possibly-historic, instead of hard-failing.
+
+That direction was chosen over reading `.fingerprint/` (option 1) for a reason
+worth recording: the fallback can only count **more** artifacts, never fewer, so
+it cannot turn a real over-budget into a pass. Verified rather than assumed — with
+the budget and ceiling forced to 1, the fallback path still FAILS and prints the
+full identity list. A `.fingerprint/`-based liveness test would be more precise
+and is still the better long-term answer, but it can under-count if the mapping
+is wrong, and under-counting here is silent.
+
+0499's two existing behaviours are untouched and were re-verified:
+
+* every rlib predating `started_at` → still `[SKIP] … this tree is history`
+* filter active and the crate present → still the strict, filtered count
+
+### The advice was wrong too
+
+The `else` arm of `era_verdict` said *"This stamp has no started_at"* — but in
+this case the stamp HAS one; the filter simply could not speak for this crate.
+It sent the reader looking for a missing stamp sitting right in front of them.
+Now a third arm says what actually happened: *this build did not rebuild
+`nros_core`, so the count above is UNFILTERED*.
+
+### Self-tested, standing
+
+The fallback predicate is checked on every run, like the collation counter
+beside it, and for the same reason: **the bug is invisible in output.** The gate
+printed a confident, specific, wrong `NONE for nros_core` and exited 1 on a
+correct tree. A predicate that silently stopped firing would restore exactly
+that without looking any different. Tripwired: breaking the predicate makes the
+gate fail with the self-test message.
+
+### Verified
+
+* the reproducer (window holding one non-`nros_core` rlib) — FAILS before, PASSES after
+* over-budget under the fallback still FAILS, with the history caveat
+* all-history tree still SKIPs
+* `bash -n` clean
 
 ## Symptom
 

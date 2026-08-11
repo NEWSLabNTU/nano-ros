@@ -227,10 +227,21 @@ fi
 # real regression and re-measures to green. Only say it when the reading really
 # could be history.
 era_verdict() {
-    if [ -n "${_started:-}" ]; then
+    # issue 0513 — `_era_filtered`, not `_started`: the filter can be ACTIVE and
+    # still have been stepped around for this crate, and then "do not delete the
+    # tree" is the wrong advice.
+    if [ -n "${_started:-}" ] && [ "${_era_filtered:-1}" -eq 1 ]; then
         echo "  These are artifacts of THIS build (filtered on started_at=$_started)," >&2
         echo "  so accumulation is ruled out — the count is a real change, not history." >&2
         echo "  Do NOT delete the tree: that would erase the evidence and re-measure green." >&2
+    elif [ -n "${_started:-}" ]; then
+        # issue 0513 — the stamp HAS a started_at; this build simply did not
+        # rebuild the budgeted crate, so the window could not speak for it and
+        # the count above is unfiltered. Saying "no started_at" here sent the
+        # reader looking for a missing stamp that is sitting right there.
+        echo "  This build did not rebuild $BUDGET_CRATE, so the count above is" >&2
+        echo "  UNFILTERED and MAY include earlier builds. Rebuild ($BUILD_HINT)" >&2
+        echo "  and re-read before treating it as a regression." >&2
     else
         echo "  This stamp has no started_at, so the count MAY be accumulation from" >&2
         echo "  earlier builds. Rebuild ($BUILD_HINT) and re-read before believing it." >&2
@@ -386,7 +397,60 @@ if [ "$_selftest" != "2" ]; then
     exit 1
 fi
 
+# issue 0513 — SELF-TEST the fallback predicate, standing like the counter's.
+#
+# The bug it guards is invisible in output: with the budgeted crate absent from
+# the window the gate printed a confident, wrong "NONE for nros_core" and exited
+# 1 on a correct tree. A predicate that silently stops firing would restore that
+# without looking different.
+_fb_present="$(printf '3 nros_core\n1 winnow\n' \
+    | awk -v c="nros_core" '$2 == c {found=1} END {exit !found}' && echo yes || echo no)"
+_fb_absent="$(printf '1 winnow\n' \
+    | awk -v c="nros_core" '$2 == c {found=1} END {exit !found}' && echo yes || echo no)"
+if [ "$_fb_present" != "yes" ] || [ "$_fb_absent" != "no" ]; then
+    echo "artifact-identity budget: FAIL" >&2
+    echo "  the issue-0513 fallback predicate is broken: present='$_fb_present'" >&2
+    echo "  (want yes), absent='$_fb_absent' (want no). With it wrong, an" >&2
+    echo "  incremental build that did not rebuild $BUDGET_CRATE either hard-fails" >&2
+    echo "  a correct tree or silently skips the whole measurement." >&2
+    exit 1
+fi
+
 identity_counts="$(printf '%s\n' "$triples" | count_identities)"
+
+# issue 0513 — an INCREMENTAL build does not rewrite what it did not rebuild.
+#
+# The era filter (0499) answers "what did THIS build produce". That is the right
+# question for accumulation and the wrong one for "how many identities does this
+# crate have": cargo leaves an untouched rlib exactly where it was, so a run
+# whose diff never reaches $BUDGET_CRATE leaves ZERO of its artifacts in the
+# window while the tree holds a complete, correct set of them.
+#
+# 0499 already handles the all-history case (every rlib predates the stamp ->
+# SKIP). This is the PARTIAL one: some crates rebuilt, the budgeted crate did
+# not. It reached the "NONE for $BUDGET_CRATE" arm — written for a partial build
+# or a renamed crate — and hard-failed the first member of `check-fast`, which
+# stops `ci` before the build tier, clippy and `test-all`. Observed: 16 of 244
+# rlibs in the window, four `nros_core` rlibs in the tree from the build 50
+# minutes earlier.
+#
+# So: when the window is non-empty but says nothing about the budgeted crate,
+# measure the WHOLE tree and label the reading as possibly-historic. That can
+# only count MORE, never fewer, so it introduces no false green — an over-budget
+# crate is still reported, with the caveat and the rebuild remedy that a
+# stampless tree already gets.
+_era_filtered=1
+if [ -n "${_started:-}" ] && [ -n "$_all" ] \
+    && ! printf '%s\n' "$identity_counts" | awk -v c="$BUDGET_CRATE" '$2 == c {found=1} END {exit !found}'; then
+    _all_triples="$(printf '%s\n' "$_all" \
+        | sed -nE 's|^(.*/lib([A-Za-z0-9_]+)-([0-9a-f]{8,})\.rlib)$|\2 \3 \1|p')"
+    if printf '%s\n' "$_all_triples" | awk -v c="$BUDGET_CRATE" '$1 == c {found=1} END {exit !found}'; then
+        triples="$_all_triples"
+        identity_counts="$(printf '%s\n' "$triples" | count_identities)"
+        _era_filtered=0
+        IDENTITY_ERA_NOTE="  counted ALL $_n_all rlib(s): this build rebuilt $_n_cur of them and none for $BUDGET_CRATE, so the started_at window says nothing about it (issue 0513). The count MAY include earlier builds."
+    fi
+fi
 
 crate_identities() {
     printf '%s\n' "$identity_counts" | awk -v c="$1" '$2 == c {print $1}'

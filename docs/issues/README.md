@@ -51,20 +51,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#513** (build, open 2026-08-11) — `check-artifact-identity-budget` now fails any INCREMENTAL fixture
-build. The issue-0499 fix counts only rlibs written since the build's `started_at`, which correctly
-excludes accumulated history — and also excludes everything cargo did not have to rebuild. A tier-1 run
-whose diff does not reach `nros_core` leaves its rlibs untouched, so ZERO fall in the window and the
-"no rlibs for the budgeted crate" arm (written for a partial build or a renamed crate) fires on a tree
-that is complete and correct: `counted 16 of 244 rlib(s) … holds compiled rlibs, but NONE for nros_core`,
-with four `nros_core` rlibs sitting there from the build 50 minutes earlier. It is the FIRST member of
-`check-fast` and `ci` stops at the first failure, so the whole build tier / clippy / `test-all` never run —
-0499 replaced "fails on an accumulated tree" with "fails on an incremental one", which is the commoner
-case. Direction: the era filter answers "what did THIS build produce", not "how many identities does this
-crate have" — an rlib cargo chose not to rewrite is still live; read `.fingerprint/` rather than mtimes, or
-fall back to the whole tree with a loud note instead of a hard failure. 0499's own closing line applies to
-its fix: a gate whose red requires a rebuild before it can be believed is a gate whose red will be ignored.
-Reproduce: run `build-test-fixtures lane=native` twice. See `0513-*`. (2026-08-11)
+Recently resolved (2026-08-11): **#513** (build) — `check-artifact-identity-budget` failed any
+INCREMENTAL fixture build. The 0499 era filter counts only rlibs written since `started_at`, which
+correctly excludes accumulation and also excludes everything cargo did not have to rebuild; a run whose
+diff never reaches `nros_core` left ZERO of its artifacts in the window, so the "NONE for the budgeted
+crate" arm — written for a partial build or a renamed crate — hard-failed a complete tree (`counted 16 of
+244`, with four `nros_core` rlibs sitting there from 50 minutes earlier). Being FIRST in `check-fast`, it
+stopped `ci` before the build tier, clippy and `test-all` — the exact harm 0499 was filed about. Fixed by
+falling back to the whole tree when the window says nothing about the budgeted crate, labelled
+possibly-historic. Chosen over a `.fingerprint/` liveness test because the fallback can only count MORE,
+never fewer, so it cannot produce a false green — verified by forcing budget and ceiling to 1 and watching
+it still FAIL. 0499's other two behaviours re-verified intact (all-history → SKIP; crate present → strict
+filtered count). The advice was wrong too: the `else` arm claimed "this stamp has no started_at" when the
+stamp had one, sending the reader after a missing file that was right there. Self-tested on every run like
+the collation counter beside it, because the bug is INVISIBLE in output — a confident, specific, wrong
+`NONE for nros_core`. See `archived/0513-*`. (2026-08-11)
 
 **#511** — `rust-rtos-link-check` overflows NuttX ROM on `examples/qemu-arm-nuttx/rust/talker`, so `ci-matrix`
 cannot go green. BISECTED (2026-08-11, both ends validated first): the last state that links AND fits is the
