@@ -3884,7 +3884,10 @@ fn spin_quantization_audit_runs_once_on_the_first_timed_spin() {
     );
 
     let _ = executor.spin_once(core::time::Duration::from_millis(5));
-    assert!(executor.spin_quantization_checked, "audited on first timed spin");
+    assert!(
+        executor.spin_quantization_checked,
+        "audited on first timed spin"
+    );
 
     // Idempotent: later spins do not re-audit (and so cannot re-warn
     // every cycle for the lifetime of the image).
