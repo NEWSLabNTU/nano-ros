@@ -196,3 +196,57 @@ Item (i) of the agenda (a Tonbandgeraet trace during a recovery burst,
 to attribute the ~200 ms between tcpip_thread / zpico_read / lease) is
 still open; the trace lane does not currently run with a load
 generator.
+
+## Attribution (2026-08-11) — agenda item (i), closed
+
+The trace lane previously ran idle only, which is why "which task burns
+the ~200 ms" stayed open. It now takes a load level, so a Tonbandgeraet
+capture can run under the flood that produces the stalls. Per-task
+occupancy over the captured window (FreeRTOS mps2-an385, ~2 kHz flood,
+two captures that landed on a burst; idle capture for contrast):
+
+| task | idle | under ~2 kHz flood |
+|---|---|---|
+| `zpico_read` (zenoh-pico session read loop) | 0-1.2% | **72-81%** |
+| `net_poll` | 0.1-0.2% | 3.2% |
+| `tcpip_thread` (lwIP) | 0.4-0.5% | 1.8% |
+| application tiers (all three) | 4.1-4.4% | **2.3-3.0%** |
+| IDLE | 94-95% | 11-20% |
+
+**The band that preempts the tiers is the zenoh-pico read loop, not the
+TCP/IP stack.** lwIP's own thread stays under 2% even while the island
+is being starved. So a budget belongs on the rmw drain — the loop that
+takes messages off the session and dispatches them — and NOT on
+`tcpip_thread`, which was the other obvious suspect.
+
+That also re-reads the TCP_WND experiment above: shrinking the receive
+window worked not by making lwIP cheaper but by starving `zpico_read`
+of work, which is why it fixed cadence and wrecked chain latency at the
+same time. Bounding the drain directly is the version of that lever
+which can distinguish flood traffic from the safety chain.
+
+Reading note for anyone repeating this: the trace buffer holds a fixed
+number of EVENTS, so a busy window fills it in ~35 ms while a quiet one
+spans ~180 ms. A short span is itself the signal that the capture landed
+on a recovery burst; two loaded captures that happened to land in a
+quiet moment show the same profile as idle.
+
+Tooling: `just freertos-trace <load>` and `tools/analyze_trace_cpu.py`
+in the evaluation workspace; raw numbers in
+`results/issue506_trace_cpu.md`.
+
+### What remains before the RFC
+
+1. **Unchecked fact:** what zenoh-pico does with BEST_EFFORT on a client
+   session — whether the existing QoS surface can already express
+   "shed this topic at the transport" for cooperative publishers.
+2. **The budget's shape:** with the consumer identified, the sporadic
+   -server-style drain budget (agenda 1b) now has a concrete home. It
+   still inherits the head-of-line caveat: bounding the drain on a
+   shared reliable stream converts CPU preemption into queueing delay
+   on the critical path, so it needs the session/stream separation
+   (agenda 3) to help rather than relocate the harm.
+3. **Where the budget is declared:** per-subscription msg/s is what a
+   user can state, drain-us per period is what the mechanism enforces,
+   and the mapping needs a per-platform capacity input (the ~750 msg/s
+   figure is lane-specific).
