@@ -345,6 +345,23 @@ impl FixtureVariant {
 /// injective over the shipped manifest, so >1 match means a row was added whose
 /// configuration no caller can name; the fix is to make the rows distinguishable,
 /// not to relax this.
+/// Does `examples/fixtures.toml` carry ANY row for this leaf?
+///
+/// The distinction [`row_artifact_dir`] cannot make on its own, and the two
+/// cases deserve opposite answers:
+///
+/// * leaf HAS rows, none matching the variant → fail closed. The leaf is
+///   manifest-managed and the caller named a configuration it does not build.
+/// * leaf has NO rows → not this manifest's business. `px4/rust/companion/*` is
+///   the live case: those fixtures are built by `just px4 build-fixtures`, which
+///   is its own lane with its own SDK prerequisites, and nothing in
+///   `fixtures.toml` mentions px4. Refusing there would turn a working resolver
+///   into an error on every host that has the px4 SDK.
+pub fn leaf_has_rows(dir: &str) -> bool {
+    let dir = dir.trim_end_matches('/');
+    manifest_rows().iter().any(|r| r.dir == dir)
+}
+
 pub fn row_artifact_dir(dir: &str, variant: &FixtureVariant) -> TestResult<PathBuf> {
     let dir = dir.trim_end_matches('/');
     let hits: Vec<&GroupRow> = manifest_rows()

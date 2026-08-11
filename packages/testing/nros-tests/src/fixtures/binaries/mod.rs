@@ -757,12 +757,31 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
         )));
     }
 
-    let binary_path = example_dir.join(format!(
-        "{}/{}/{}",
-        rmw.target_dir(),
-        cargo_target_profile_dir(),
-        binary_name
-    ));
+    // issue 0517 phase B — the artifact root comes from the manifest ROW,
+    // selected by the configuration this call already names, instead of from
+    // `rmw.target_dir()`. The literal was the row's identity spelt as a
+    // directory: correct only while every RMW variant authors `target-<rmw>`,
+    // which is the column phase-340 W2.d deletes.
+    //
+    // `FixtureVariant::rmw` is the feature-selected shape (`--no-default-features
+    // --features rmw-<x>`), which is exactly what this function's own doc
+    // comment says the build runs.
+    let leaf = format!("examples/{name}");
+    let artifact_root = if crate::fixtures::groups::leaf_has_rows(&leaf) {
+        crate::fixtures::groups::row_artifact_dir(
+            &leaf,
+            &crate::fixtures::groups::FixtureVariant::rmw(rmw),
+        )?
+    } else {
+        // A leaf with no manifest row is not this manifest's to place. The live
+        // case is `px4/rust/companion/*`, built by `just px4 build-fixtures` —
+        // its own lane, its own SDK prerequisites, and no `[[fixture]]` row
+        // anywhere. Refusing here would turn a working resolver into an error on
+        // every host that has the px4 SDK; keeping the authored spelling is only
+        // a fallback for builders the manifest does not describe.
+        example_dir.join(rmw.target_dir())
+    };
+    let binary_path = artifact_root.join(format!("{}/{}", cargo_target_profile_dir(), binary_name));
     // phase-278 W1 — see build_example.
     require_prebuilt_binary_fresh(&binary_path)
 }
