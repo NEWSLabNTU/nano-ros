@@ -1256,7 +1256,6 @@ rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/int32-sink"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 # phase-338 W3 — the XRCE build of the same sink. The zenoh->xrce declarative
 # bridge e2e needs an Int32 listener that speaks XRCE; before this it drove the
@@ -1270,7 +1269,6 @@ rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/int32-sink"
 no_default_features = true
 features = ["rmw-xrce"]
-target_dir = "target-xrce"
 
 # issue 0449 — the cyclone build of the same sink. The zenoh->cyclonedds
 # declarative bridge e2e needed an Int32 listener speaking cyclone; before this
@@ -1285,7 +1283,6 @@ rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/int32-sink"
 no_default_features = true
 features = ["rmw-cyclonedds"]
-target_dir = "target-cyclonedds"
 
 # Concurrent Fibonacci action server (phase-277 W5 — was the example
 # action-server's `NROS_ACTION_CONCURRENT` escape hatch; the example slimmed
@@ -1299,7 +1296,6 @@ rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/action-server-concurrent"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "linux"
@@ -1308,7 +1304,6 @@ rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/action-server-concurrent"
 no_default_features = true
 features = ["rmw-xrce"]
-target_dir = "target-xrce"
 
 # issue 0322 — the client half of the MAX_GOALS stress pair. Sends more
 # concurrent goals than the server's `active_goals` table holds so a full table
@@ -1322,7 +1317,6 @@ rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/action-client-multigoal"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 # TLS variant (isolated target dir).
 [[fixture]]
@@ -1330,14 +1324,12 @@ platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/talker"
 features = ["link-tls"]
-target_dir = "target-tls"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 dir = "examples/native/rust/listener"
 features = ["link-tls"]
-target_dir = "target-tls"
 
 # E2E-safety talker (phase-277 W3.a — was the talker `safety-e2e` feature
 # build in target-safety/; now a dedicated fixture bin with the safety
@@ -1389,7 +1381,6 @@ platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/message-info-observer"
 features = ["unstable-zenoh-api"]
-target_dir = "target-zero-copy"
 
 # Per-RMW collapsed talker/listener/service/action, isolated target-<rmw>/ dirs.
 [[fixture]]
@@ -1399,7 +1390,6 @@ rmw = "zenoh"
 dir = "examples/native/rust/talker"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "linux"
@@ -1408,7 +1398,6 @@ rmw = "zenoh"
 dir = "examples/native/rust/listener"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "linux"
@@ -1417,7 +1406,6 @@ rmw = "zenoh"
 dir = "examples/native/rust/service-server"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "linux"
@@ -1426,7 +1414,6 @@ rmw = "zenoh"
 dir = "examples/native/rust/service-client"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 # #196 — this row was missing: `build_native_service_client_callback` resolves
 # `target-zenoh/<profile>/service-client-callback`, but only the plain
@@ -1440,7 +1427,6 @@ rmw = "zenoh"
 dir = "examples/native/rust/service-client-callback"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "linux"
@@ -1449,7 +1435,6 @@ rmw = "zenoh"
 dir = "examples/native/rust/action-server"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "linux"
@@ -1458,7 +1443,6 @@ rmw = "zenoh"
 dir = "examples/native/rust/action-client"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "linux"
@@ -1467,7 +1451,6 @@ rmw = "xrce"
 dir = "examples/native/rust/talker"
 no_default_features = true
 features = ["rmw-xrce"]
-target_dir = "target-xrce"
 
 [[fixture]]
 platform = "linux"
@@ -1476,7 +1459,6 @@ rmw = "xrce"
 dir = "examples/native/rust/listener"
 no_default_features = true
 features = ["rmw-xrce"]
-target_dir = "target-xrce"
 
 [[fixture]]
 platform = "linux"
@@ -1485,7 +1467,6 @@ rmw = "xrce"
 dir = "examples/native/rust/service-server"
 no_default_features = true
 features = ["rmw-xrce"]
-target_dir = "target-xrce"
 
 [[fixture]]
 platform = "linux"
@@ -1494,7 +1475,6 @@ rmw = "xrce"
 dir = "examples/native/rust/service-client"
 no_default_features = true
 features = ["rmw-xrce"]
-target_dir = "target-xrce"
 
 # issue 0466 — native rust CycloneDDS talker/listener. These two are consumed by
 # `test_native_cyclonedds_rust_talker_to_listener` /
@@ -1512,7 +1492,6 @@ rmw = "cyclonedds"
 dir = "examples/native/rust/talker"
 no_default_features = true
 features = ["rmw-cyclonedds"]
-target_dir = "target-cyclonedds"
 
 [[fixture]]
 platform = "linux"
@@ -1521,7 +1500,6 @@ rmw = "cyclonedds"
 dir = "examples/native/rust/listener"
 no_default_features = true
 features = ["rmw-cyclonedds"]
-target_dir = "target-cyclonedds"
 
 # issue #233 cell 1 — native rust CycloneDDS service pair (proven to deliver:
 # server sees the request, client prints `Result of add_two_ints: 5`).
@@ -1532,7 +1510,6 @@ rmw = "cyclonedds"
 dir = "examples/native/rust/service-server"
 no_default_features = true
 features = ["rmw-cyclonedds"]
-target_dir = "target-cyclonedds"
 
 [[fixture]]
 platform = "linux"
@@ -1541,7 +1518,6 @@ rmw = "cyclonedds"
 dir = "examples/native/rust/service-client"
 no_default_features = true
 features = ["rmw-cyclonedds"]
-target_dir = "target-cyclonedds"
 
 # issue #234 — native rust CycloneDDS action pair (now delivers: server sees
 # `Received goal request with order`, client prints the order-10 Fibonacci
@@ -1557,7 +1533,6 @@ rmw = "cyclonedds"
 dir = "examples/native/rust/action-server"
 no_default_features = true
 features = ["rmw-cyclonedds"]
-target_dir = "target-cyclonedds"
 
 [[fixture]]
 platform = "linux"
@@ -1566,7 +1541,6 @@ rmw = "cyclonedds"
 dir = "examples/native/rust/action-client"
 no_default_features = true
 features = ["rmw-cyclonedds"]
-target_dir = "target-cyclonedds"
 
 [[fixture]]
 platform = "linux"
@@ -1575,7 +1549,6 @@ rmw = "xrce"
 dir = "examples/native/rust/action-server"
 no_default_features = true
 features = ["rmw-xrce"]
-target_dir = "target-xrce"
 
 [[fixture]]
 platform = "linux"
@@ -1584,7 +1557,6 @@ rmw = "xrce"
 dir = "examples/native/rust/action-client"
 no_default_features = true
 features = ["rmw-xrce"]
-target_dir = "target-xrce"
 
 # Bench / stress fixtures (default features).
 [[fixture]]
@@ -1612,7 +1584,6 @@ dir = "packages/testing/nros-bench/large-msg-xrce"
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-bench/stress-zenoh"
-target_dir = "target-large-buf"
 env = { ZPICO_SUBSCRIBER_BUFFER_SIZE = "8192" }
 
 # ===========================================================================
@@ -1915,7 +1886,6 @@ rmw = "zenoh"
 dir = "examples/threadx-linux/rust/talker"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "threadx-linux"
@@ -1924,7 +1894,6 @@ rmw = "zenoh"
 dir = "examples/threadx-linux/rust/listener"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "threadx-linux"
@@ -1933,7 +1902,6 @@ rmw = "zenoh"
 dir = "examples/threadx-linux/rust/service-server"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "threadx-linux"
@@ -1942,7 +1910,6 @@ rmw = "zenoh"
 dir = "examples/threadx-linux/rust/service-client"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "threadx-linux"
@@ -1951,7 +1918,6 @@ rmw = "zenoh"
 dir = "examples/threadx-linux/rust/action-server"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "threadx-linux"
@@ -1960,7 +1926,6 @@ rmw = "zenoh"
 dir = "examples/threadx-linux/rust/action-client"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 # Phase 275 W1 (#102 H2) — the per-role Entry-pkg demos. Unlike the role
 # examples above (which select the RMW via cargo features), each Entry pkg
@@ -2025,7 +1990,6 @@ rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/rust/talker"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -2034,7 +1998,6 @@ rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/rust/listener"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -2043,7 +2006,6 @@ rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/rust/service-server"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -2052,7 +2014,6 @@ rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/rust/service-client"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -2061,7 +2022,6 @@ rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/rust/action-server"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -2070,7 +2030,6 @@ rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/rust/action-client"
 no_default_features = true
 features = ["rmw-zenoh"]
-target_dir = "target-zenoh"
 
 [[fixture]]
 id = "threadx-riscv64-logging-smoke"

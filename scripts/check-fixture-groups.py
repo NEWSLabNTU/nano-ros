@@ -244,6 +244,11 @@ class ExportRow(NamedTuple):
     platform: str
     slug: str
     shared: bool
+    dir: str
+    # The row's authored variant identity (`row_selector`), as one string. What
+    # `groups::select_row` matches on since issue 0517 — and therefore what has
+    # to be unique per dir, now that artifact roots deliberately are not.
+    selector: str
 
 
 def export_rows():
@@ -267,9 +272,16 @@ def export_rows():
         # first four fields, so it names them and ignores the rest — but by
         # UNPACKING the full arity rather than slicing, so a future field lands
         # here as a loud shape error instead of being silently dropped.
-        (root, platform, slug, shared, _dir, _rmw, _feat, _ndf, _env,
+        (root, platform, slug, shared, row_dir, rmw, feat, ndf, env,
          _cplat, _clang, _crmw) = line.split(SEP)
-        yield ExportRow(root, platform, slug, shared == "1")
+        yield ExportRow(
+            root,
+            platform,
+            slug,
+            shared == "1",
+            row_dir,
+            f"rmw={rmw} features={feat} no_default_features={ndf} env={env}",
+        )
 
 
 def path_under(path, directory):
@@ -445,11 +457,21 @@ def main():
             "side is."
         )
 
-    # --- A2b: the export is invertible for every SHARED platform -----------
+    # --- A2b: the export is selectable, and still nest-free ----------------
     #
-    # `nros_tests::fixtures::groups` resolves a leaf artifact path to a group by
-    # matching `artifact_root`. That is only well-defined when the root
-    # DETERMINES the slug and no root sits inside another.
+    # This arm used to require `artifact_root -> slug` to be a FUNCTION, because
+    # `nros_tests::fixtures::groups` resolved a leaf artifact path to a group by
+    # matching the root. That premise ended with issue 0517: resolvers select a
+    # row by its CONFIGURATION and ask the lane about its coordinate, and
+    # `attribute_path` fails closed on a root several rows share rather than
+    # picking one. The `target_dir` column that made every root distinct is
+    # deleted — telling a row to "give itself its own target_dir", as this arm
+    # used to advise, would re-create the very thing that was removed.
+    #
+    # What is load-bearing now is that every row can be NAMED: `(dir, selector)`
+    # must be unique, or `select_row` has a row it can never return. Nesting
+    # stays forbidden — a nested root still mis-attributes for the ~24 resolvers
+    # that legitimately go by path (sole-row leaves, cmake rows, workspaces).
     shared_export = [r for r in exported if r.shared]
     by_root = collections.defaultdict(set)
     for r in shared_export:
@@ -460,14 +482,14 @@ def main():
             )
             continue
         by_root[r.artifact_root].add(r.slug)
-    for root, group_slugs in sorted(by_root.items()):
-        if len(group_slugs) > 1:
+    by_identity = collections.Counter((r.dir, r.selector) for r in exported)
+    for (row_dir, selector), n in sorted(by_identity.items()):
+        if n > 1:
             failures.append(
-                f"A2b: artifact root {root!r} is claimed by {len(group_slugs)} "
-                f"groups ({', '.join(sorted(group_slugs))}). The resolver inverts "
-                f"the root, so it would pick one of them arbitrarily and the test "
-                f"would run the other group's binary. Give one row its own "
-                f"`target_dir`."
+                f"A2b: {n} rows at {row_dir!r} share the configuration "
+                f"{selector!r}, so `groups::select_row` can never return either "
+                f"of them. Give them distinguishable configuration (features / "
+                f"no_default_features / env) — NOT a `target_dir` (issue 0517)."
             )
     for a in sorted(by_root):
         for b in sorted(by_root):

@@ -111,7 +111,7 @@ pub struct GroupRow {
 
 /// A row's authored configuration, as [`FixtureVariant`] must name it to select
 /// that row. Ordered/normalised by the exporter, never here.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Selector {
     pub rmw: String,
     /// Sorted, comma-joined.
@@ -664,23 +664,25 @@ mod tests {
     }
 
     #[test]
-    fn every_shared_row_has_a_unique_artifact_root() {
-        // The precondition that makes the inversion a FUNCTION. Two shared rows
-        // sharing an artifact root cannot be told apart from a binary path, and
-        // the resolver would pick one of their groups arbitrarily — a green
-        // test on the wrong artifact. Fix by giving one its own `target_dir`,
-        // never by loosening the rule. (`check-fixture-groups`'s A2 arm
-        // enforces the same thing from the gate side, before a platform is
-        // migrated; this catches it after.)
-        let mut seen: std::collections::BTreeMap<&str, &str> = Default::default();
-        for r in manifest_rows().iter().filter(|r| r.shared) {
-            if let Some(prev) = seen.insert(&r.artifact_root, &r.slug) {
-                assert_eq!(
-                    prev, r.slug,
-                    "artifact root {:?} is claimed by two different groups",
-                    r.artifact_root
-                );
-            }
+    fn every_row_has_a_unique_identity() {
+        // The precondition that makes selection a FUNCTION. It used to be stated
+        // over artifact ROOTS, because `target_dir` gave every row its own — and
+        // that column is gone (issue 0517 step 3), so several rows of one leaf
+        // now share `<dir>/target`. What must stay unique is the thing callers
+        // actually name: `(dir, selector)`.
+        //
+        // A duplicate here means a row no caller can ask for. `select_row` fails
+        // closed on it, so the symptom is a resolver error rather than a wrong
+        // artifact — but the fix is still to make the rows distinguishable, never
+        // to loosen the rule.
+        let mut seen: std::collections::BTreeMap<(&str, &Selector), ()> = Default::default();
+        for r in manifest_rows() {
+            assert!(
+                seen.insert((&r.dir, &r.selector), ()).is_none(),
+                "two rows at {:?} share the configuration {:?}, so neither can be selected",
+                r.dir,
+                r.selector
+            );
         }
     }
 
@@ -772,8 +774,25 @@ mod tests {
         // its leaf artifact root through the path redirect lands. Same table,
         // two routes, one answer — which is what makes each call-site conversion
         // verifiable without a fixture rebuild.
+        let sole: std::collections::BTreeSet<&str> = {
+            let mut n: std::collections::BTreeMap<&str, usize> = Default::default();
+            for r in manifest_rows() {
+                *n.entry(r.dir.as_str()).or_default() += 1;
+            }
+            n.into_iter()
+                .filter(|(_, c)| *c == 1)
+                .map(|(d, _)| d)
+                .collect()
+        };
         let mut bad = Vec::new();
         for row in manifest_rows() {
+            // Only where the path route can still answer. A multi-row leaf now
+            // has one root for several rows, so the path route fails closed
+            // there BY DESIGN (issue 0517 step 3) and there is nothing to
+            // compare against — that is what deleting the column means.
+            if !sole.contains(row.dir.as_str()) {
+                continue;
+            }
             let via_path = resolved(&project_root().join(&row.artifact_root));
             match select_row(&row.dir, &FixtureVariant(row.selector.clone())) {
                 Ok(got) if row_resolved_dir(got) == via_path => {}

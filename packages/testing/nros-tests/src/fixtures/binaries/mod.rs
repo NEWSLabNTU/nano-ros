@@ -717,11 +717,27 @@ pub fn build_example(
     }
 
     let profile_dir = cargo_target_profile_dir();
-    let binary_path = if let Some(target) = target {
-        example_dir.join(format!("target/{}/{}/{}", target, profile_dir, binary_name))
-    } else {
-        example_dir.join(format!("target/{}/{}", profile_dir, binary_name))
-    };
+    let rel = PathBuf::from(match target {
+        Some(target) => format!("{target}/{profile_dir}/{binary_name}"),
+        None => format!("{profile_dir}/{binary_name}"),
+    });
+
+    // issue 0517 step 3 — the PLAIN row of this leaf. `_features` has been an
+    // ignored parameter since it was added, and this is what every caller of
+    // this funnel actually means: the default-configuration build. Naming it
+    // matters here more than anywhere else, because these are the multi-row
+    // leaves — `examples/native/rust/talker` has five — so this is the funnel
+    // that would otherwise still need `<dir>/target` to be distinct from
+    // `<dir>/target-zenoh`.
+    let leaf = format!("examples/{name}");
+    if crate::fixtures::groups::leaf_has_rows(&leaf) {
+        let row = crate::fixtures::groups::select_row(
+            &leaf,
+            &crate::fixtures::groups::FixtureVariant::plain(),
+        )?;
+        return require_prebuilt_row_binary_fresh(row, &rel);
+    }
+    let binary_path = example_dir.join("target").join(&rel);
 
     // phase-278 W1 — native rust single-node fixtures carry a cargo `.d`
     // dep-info file; guard against a source-newer-than-binary stale build.
@@ -3931,12 +3947,15 @@ pub fn listener_safety_binary() -> PathBuf {
 pub fn build_message_info_observer() -> TestResult<&'static Path> {
     MESSAGE_INFO_OBSERVER_BINARY
         .get_or_try_init(|| {
-            let dir = project_root().join("packages/testing/nros-tests/bins/message-info-observer");
-            let binary_path = dir.join(format!(
-                "target/{}/message-info-observer",
+            let row = crate::fixtures::groups::select_row(
+                "packages/testing/nros-tests/bins/message-info-observer",
+                &crate::fixtures::groups::FixtureVariant::plain(),
+            )?;
+            let rel = PathBuf::from(format!(
+                "{}/message-info-observer",
                 cargo_target_profile_dir()
             ));
-            require_prebuilt_binary_fresh(&binary_path)
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }

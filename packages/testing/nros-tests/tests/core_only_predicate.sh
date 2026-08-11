@@ -1,67 +1,80 @@
 #!/usr/bin/env bash
-# phase-340 W2.d — `--core-only` selects by the DERIVED variant predicate, and
-# that must stay equivalent to the authored-`target_dir` spelling it replaced
-# WHERE IT IS CONSUMED.
+# phase-340 W2.d / issue 0517 step 3 — `--core-only` selects by the DERIVED
+# variant predicate, and the authored spelling it replaced stays deleted.
 #
-# The equivalence is a fact about today's manifest, not a law: the two spellings
-# diverge on `qemu-arm-nuttx` rust rows, which carry configuration and no
-# authored dir. `--core-only` has exactly one caller
-# (`just/native.just` -> `fixtures-build.sh linux rust --core-only`), and that
-# caller never selects nuttx, so the divergence is invisible — TODAY.
+# This gate used to assert an EQUIVALENCE: that `row_is_variant()` selected the
+# same rows as "authors a `target_dir`", on every platform a caller passes. That
+# was the right check while both spellings existed, and it did its job — it is
+# what made the predicate swap safe to land ahead of the column's removal.
 #
-# This gate makes it visible tomorrow. It fails when either
-#   * a caller starts using `--core-only` on a platform where the spellings
-#     differ, or
-#   * a row is added that the two spellings classify differently on a platform
-#     that IS consumed.
-# Without it, deleting the `target_dir` column silently changes host-integration
-# lane membership at some later date, which is the risk that kept W2.d open.
+# The column is now gone (issue 0517 step 3 deleted all 41 keys), so the
+# equivalence has nothing to compare against and the check would pass vacuously
+# in one direction and fail in the other. What is left to defend is the reason
+# the column went: a row's identity is its CONFIGURATION, never a directory
+# somebody invented for it (RFC-0070 R2). So this gate now asserts:
+#
+#   1. no `[[fixture]]` row authors a `target_dir` — the column stays deleted;
+#   2. `--core-only` still selects a strict, non-empty SUBSET on every platform
+#      a caller actually passes, so the flag keeps meaning something.
+#
+# (1) matters more than it looks. Re-adding the key is the natural thing to do
+# the next time two rows of one leaf need telling apart, and it would work — the
+# build reads it — while quietly restoring the state where a resolver can
+# identify a row by path again. The answer is `FixtureVariant` / `select_row`.
+#
+# `[[workspace_fixture]]` rows are NOT covered: they still author `target_dir` /
+# `build_subdir`, and there it is a genuine build input —
+# `workspace-fixtures-build.sh` hands it to cargo and cmake, and the artifacts
+# really do land there.
 set -uo pipefail
 cd "$(dirname "$0")/../../../.."
 
 M=scripts/build/fixtures-manifest.py
 fail=0
 
+# --- 1. the column stays deleted ------------------------------------------
+# Read the `[[fixture]]` blocks only. `awk` rather than a TOML parse so the gate
+# has no dependency the build does not already have.
+authored="$(awk '
+    /^\[\[fixture\]\]/            { in_fixture = 1; next }
+    /^\[\[workspace_fixture\]\]/  { in_fixture = 0; next }
+    /^\[\[/                       { in_fixture = 0 }
+    in_fixture && /^target_dir *=/ { print NR ": " $0 }
+' examples/fixtures.toml)"
+
+if [ -n "$authored" ]; then
+    echo "FAIL: a [[fixture]] row authors target_dir — the column was deleted in" >&2
+    echo "      issue 0517 step 3 and a row's identity is its configuration now:" >&2
+    printf '  examples/fixtures.toml:%s\n' "$authored" >&2
+    cat >&2 <<'EOF'
+
+  To tell two rows of one leaf apart, give them distinguishable CONFIGURATION
+  (features / no_default_features / env) and select with
+  `groups::select_row(dir, FixtureVariant::…)`. A directory cannot carry that
+  any more: several rows of a leaf share `<dir>/target`, and `attribute_path`
+  fails closed on them deliberately.
+EOF
+    fail=1
+fi
+
+# --- 2. --core-only still narrows -----------------------------------------
 # Every platform any caller passes with --core-only. Derived from the tree, not
 # a literal, so a new caller joins the check automatically.
 consumed="$(grep -rhoE '[a-z0-9-]+ +[a-z]+ +--core-only' just/ scripts/ 2>/dev/null \
     | awk '{print $1}' | sort -u)"
 [ -n "$consumed" ] || { echo "FAIL: no --core-only caller found — has the flag been removed?" >&2; exit 1; }
 
-for plat in $consumed; do
-    derived="$(python3 "$M" list --platform "$plat" --lang rust --core-only 2>/dev/null | wc -l)"
-    authored="$(python3 - "$plat" <<'PY'
-import sys
-try: import tomllib
-except ModuleNotFoundError: import tomli as tomllib
-plat = sys.argv[1]
-d = tomllib.load(open("examples/fixtures.toml", "rb"))
-rows = [e for e in d.get("fixture", [])
-        if e.get("lang") == "rust" and e.get("platform") == plat]
-print(sum(1 for e in rows if not e.get("target_dir")))
-PY
-)"
-    # A platform with no rows makes both counts 0, which "agrees" and proves
-    # nothing — found by a tripwire that used `qemu-arm-nuttx` where the
-    # manifest's token is `nuttx`, and passed. An empty selection is a bug in
-    # the caller or a stale token, either way not a pass.
-    if [ "$derived" -eq 0 ] && [ "$authored" -eq 0 ]; then
-        echo "FAIL: --core-only names platform '$plat', which has no rust rows." >&2
-        echo "      Both spellings select 0, so this check would prove nothing." >&2
-        echo "      Fix the caller's platform token, or drop the caller." >&2
-        fail=1
-        continue
-    fi
-    if [ "$derived" != "$authored" ]; then
-        echo "FAIL: --core-only on '$plat' selects $derived rows by the derived predicate" >&2
-        echo "      but $authored by the authored-target_dir spelling it replaced." >&2
-        echo "      Deleting the column would change this lane's membership." >&2
-        echo "      Decide which is correct — do not silently take the new number." >&2
+for platform in $consumed; do
+    all="$(python3 "$M" list --platform "$platform" --lang rust | wc -l)"
+    core="$(python3 "$M" list --platform "$platform" --lang rust --core-only | wc -l)"
+    if [ "$core" -eq 0 ] || [ "$core" -ge "$all" ]; then
+        echo "FAIL: --core-only on '$platform' selects $core of $all rust rows —" >&2
+        echo "      it must be a strict, non-empty subset or the flag means nothing." >&2
         fail=1
     else
-        echo "  ok   $plat: $derived row(s), both spellings agree"
+        echo "  ok  --core-only on '$platform': $core of $all rust rows"
     fi
 done
 
 [ "$fail" -eq 0 ] || exit 1
-echo "core-only predicate: derived and authored spellings agree on every consumed platform"
+echo "core-only predicate: the target_dir column stays deleted; --core-only still narrows"

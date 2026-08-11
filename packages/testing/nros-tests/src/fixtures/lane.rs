@@ -454,34 +454,81 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_fixture_row_attributes_to_itself() {
-        // The round trip that makes the inversion trustworthy: feed each row's
-        // OWN artifact root back through the path attribution and it must come
-        // back. If two rows ever share an artifact root the longest-match rule
-        // cannot separate them, and this fails — which is the moment to give
-        // one of them its own `target_dir`, not the moment to weaken the rule.
+    fn a_sole_row_leaf_attributes_to_itself() {
+        // The round trip, narrowed to what path attribution is still FOR
+        // (issue 0517 step 3). Until the column was deleted every row had a
+        // distinct artifact root, so any row's own root round-tripped. That
+        // property came from `target_dir`, which was a directory invented to
+        // carry a row's identity — and identity now travels as a selector or an
+        // id, not as a path.
+        //
+        // A leaf with ONE row still round-trips, and must: the ~24 resolvers
+        // that still spell a leaf `target/` inline all name such leaves, and
+        // this is what keeps their lane narrowing working.
         let root = project_root();
+        let mut per_dir: std::collections::HashMap<&str, usize> = Default::default();
+        for row in manifest_rows().iter().filter(|r| r.kind == "fixture") {
+            *per_dir.entry(row.dir.as_str()).or_default() += 1;
+        }
         let mut wrong = Vec::new();
         for row in manifest_rows().iter().filter(|r| r.kind == "fixture") {
+            if per_dir[row.dir.as_str()] > 1 {
+                continue;
+            }
             let probe = root.join(&row.artifact_root).join("some/binary");
             match attribute_path(&probe) {
                 Some(got) if got.artifact_root == row.artifact_root => {}
-                Some(got) => wrong.push(format!(
-                    "{} -> {} (artifact roots {} vs {})",
-                    row.label(),
-                    got.label(),
-                    row.artifact_root,
-                    got.artifact_root
-                )),
+                Some(got) => wrong.push(format!("{} -> {}", row.label(), got.label())),
                 None => wrong.push(format!("{} -> <unattributable>", row.label())),
             }
         }
         assert!(
             wrong.is_empty(),
-            "{} row(s) do not attribute back to themselves:\n  {}",
+            "{} sole-row leaf/leaves do not attribute back to themselves:\n  {}",
             wrong.len(),
             wrong.join("\n  ")
         );
+    }
+
+    #[test]
+    fn a_multi_row_leaf_is_not_attributable_by_path_and_that_is_the_point() {
+        // The other half. Several rows of one leaf now share `<dir>/target`, so
+        // a path cannot say which — and `attribute_path` fails closed rather
+        // than guessing (phase A). Callers for these leaves go through
+        // `groups::select_row` and ask the lane about the row's COORDINATE, so
+        // no path is presented in the first place.
+        //
+        // If this ever starts passing, someone has re-introduced a per-variant
+        // directory, and the question to ask is what it is carrying that the
+        // selector does not.
+        let root = project_root();
+        let mut per_dir: std::collections::HashMap<&str, Vec<&Row>> = Default::default();
+        for row in manifest_rows().iter().filter(|r| r.kind == "fixture") {
+            per_dir.entry(row.dir.as_str()).or_default().push(row);
+        }
+        let multi: Vec<_> = per_dir.values().filter(|v| v.len() > 1).collect();
+        assert!(
+            !multi.is_empty(),
+            "expected leaves with several rows (examples/native/rust/talker has five)"
+        );
+        for rows in multi {
+            let roots: std::collections::BTreeSet<_> =
+                rows.iter().map(|r| r.artifact_root.as_str()).collect();
+            if roots.len() > 1 {
+                continue; // a leaf whose rows still differ by dir (cmake rows)
+            }
+            let probe = root.join(rows[0].artifact_root.clone()).join("some/binary");
+            let coords: std::collections::BTreeSet<_> = rows.iter().map(|r| &r.coord).collect();
+            if coords.len() == 1 {
+                continue; // same coordinate: not ambiguous for this question
+            }
+            assert!(
+                attribute_path(&probe).is_none(),
+                "{} has {} rows at one root and still attributed to one of them",
+                rows[0].dir,
+                rows.len()
+            );
+        }
     }
 
     #[test]
@@ -522,12 +569,16 @@ mod tests {
 
     #[test]
     fn artifact_roots_are_pairwise_unnested() {
-        // The precondition that makes longest-match UNAMBIGUOUS: no row's
-        // artifact root may sit inside another's. Two rows sharing (or nesting)
-        // a root cannot be told apart from a binary path, and the run would then
-        // decide a cell's fate from the wrong row's coordinate. Fix by giving
-        // one of them its own `target_dir` / `build_subdir` — not by loosening
-        // the rule.
+        // No row's artifact root may sit INSIDE another's. Nesting is still
+        // forbidden after issue 0517 step 3, and for the original reason: a
+        // nested root makes longest-match pick a row that did not produce the
+        // artifact, silently.
+        //
+        // SHARING a root is now allowed and expected — several rows of one leaf
+        // all answer `<dir>/target` since the `target_dir` column was deleted.
+        // Those are told apart by selector, and `attribute_path` fails closed on
+        // them (see `a_multi_row_leaf_is_not_attributable_by_path_and_that_is_
+        // the_point`). Equality is therefore skipped here; containment is not.
         let roots: Vec<&Row> = manifest_rows()
             .iter()
             .filter(|r| r.kind == "fixture")
@@ -536,6 +587,9 @@ mod tests {
         for a in &roots {
             for b in &roots {
                 if std::ptr::eq(*a, *b) {
+                    continue;
+                }
+                if a.artifact_root == b.artifact_root {
                     continue;
                 }
                 if path_under(Path::new(&a.artifact_root), Path::new(&b.artifact_root)) {
