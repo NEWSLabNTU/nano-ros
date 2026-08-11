@@ -1442,6 +1442,33 @@ no_default_features = true
 features = ["rmw-xrce"]
 target_dir = "target-xrce"
 
+# issue 0466 — native rust CycloneDDS talker/listener. These two are consumed by
+# `test_native_cyclonedds_rust_talker_to_listener` /
+# `..._talker_to_rust_listener` (tests/native_api.rs, via
+# `build_native_{talker,listener}_rmw(Rmw::Cyclonedds)`) and had NO row, so the
+# staleness probe never examined them: the tests ran off whatever the leaf
+# `target-cyclonedds/` happened to hold. That is the museum-binary class
+# (0148/0164/0196) and it held until a pull refreshed the sources and the
+# artifacts read STALE. A consumed fixture needs a row — that is what puts it in
+# the build fan-out AND in the probe.
+[[fixture]]
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/native/rust/talker"
+no_default_features = true
+features = ["rmw-cyclonedds"]
+target_dir = "target-cyclonedds"
+
+[[fixture]]
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/native/rust/listener"
+no_default_features = true
+features = ["rmw-cyclonedds"]
+target_dir = "target-cyclonedds"
+
 # issue #233 cell 1 — native rust CycloneDDS service pair (proven to deliver:
 # server sees the request, client prints `Result of add_two_ints: 5`).
 [[fixture]]
