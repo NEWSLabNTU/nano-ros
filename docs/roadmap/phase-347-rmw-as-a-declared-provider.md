@@ -10,7 +10,7 @@ condition recorded before the work began, not on time.**
 | W3 resolution by name | landed — retired **FOUR** closed lists, not the three the plan named |
 | W4 capabilities | landed, acceptance PARTIAL — `packages/core/**` clean, `packages/api/**` not (21 features) |
 | W5 codegen hook | **landed** — condition settled by measurement; cyclonedds in the shared codegen file 27 -> 1 |
-| W6 platform leak | **not started** — see below |
+| W6 platform leak | **landed** for `[build.*]`; `[knobs.*]` deliberately left, with the reason |
 
 **Original status (2026-08-10). PROPOSED — no code landed.** Implements
 [RFC-0071](../design/0071-rmw-backend-descriptor.md). The design is settled and
@@ -203,7 +203,46 @@ adds new machinery rather than moving or deleting existing facts.
       backend so a platform declares settings without naming one. Same
       violation as core naming a backend, one axis over.
 
-**NOT STARTED, and the premise needs one check first.** Measured: the schema is
+**LANDED 2026-08-11 for `[build.*]`. My deferral reasoning was WRONG and the
+correction is the useful part.**
+
+I deferred this as "no second tenant to validate the map shape against". That
+conflated two things. The payload — `PlatformEntry` — carries `defines`,
+`defines_kv`, `include`, `exclude`, `system_libs`, `extra_sources`, `arch`,
+`compile`, `pic`, … and **not one zenoh-shaped field**. It is generic
+vendored-C-library build config, already proven across the seven
+`config/*/nros-platform.toml` files. There was nothing to design.
+
+Only the KEY was backend-specific: a struct field where a map key belonged. A
+map key needs no second tenant to validate, because it is not a design.
+
+So `BuildSection` is now `BTreeMap<String, PlatformEntry>`, and **none of the
+seven platform files changed** — `[build.zenoh]` simply parses as the key
+`"zenoh"`. `[build.cyclonedds]` used to be a hard parse ERROR under
+`deny_unknown_fields`; it is now merely absent.
+
+The second tenant exists anyway, which is evidence the shape is right rather
+than speculation: `nros-rmw-xrce-cffi/build.rs` is ~500 lines hardcoding this
+same config (`_DEFAULT_SOURCE`, `_POSIX_C_SOURCE`, posix/embedded branching, a
+generated config header) because there was nowhere to declare it. Moving it is
+its own task; the schema no longer blocks it.
+
+Two tests, both new: a second `[build.*]` key parses and both keys survive
+independently, and the real `config/` tree still loads ≥7 zenoh blocks
+(behaviour-preserving is the claim, so it is checked).
+
+**Found while testing:** `platform_config` sits behind
+`#[cfg(feature = "build-helpers")]`, so a default `cargo test -p
+nros-board-common` runs **11** tests and NONE of this module's. With the feature
+it runs **25**. Anyone validating this file must pass `--features build-helpers`
+or they are testing nothing.
+
+**`[knobs.zenoh.tx]` is deliberately NOT generalised.** Its fields are typed
+policy for zenoh's TX path (`batch`, `split_lock`, `flush_ms`), not generic
+vendored-library config, and a second tenant there IS speculative — which is the
+argument I wrongly applied to `[build.*]`.
+
+**Superseded note — Measured: the schema is
 `BuildSection { zenoh: Option<PlatformEntry> }` with `deny_unknown_fields`, so
 `[build.cyclonedds]` is not merely absent — it is REJECTED. Four non-test
 consumers (`platform_config.rs` ×2, `cmd/config.rs`, `nros-zpico-build/runner.rs`)

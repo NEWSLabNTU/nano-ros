@@ -86,16 +86,25 @@ pub struct PlatformConfigFile {
     pub arch: BTreeMap<String, ArchEntry>,
 }
 
-/// `[build.*]` — per-vendored-component build blocks.
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BuildSection {
-    /// The former `zenoh_platforms.toml` `[platform.<name>]` block,
-    /// keys verbatim (`defines`, `defines_kv`, `include`,
-    /// `extra_sources`, `arch`, `compile`, …).
-    #[serde(default)]
-    pub zenoh: Option<PlatformEntry>,
-}
+/// `[build.*]` — per-vendored-component build blocks, keyed by COMPONENT NAME.
+///
+/// phase-347 W6 — this was `struct BuildSection { zenoh: Option<PlatformEntry> }`
+/// with `deny_unknown_fields`, so `[build.cyclonedds]` was not merely absent, it
+/// was REJECTED: a platform could describe exactly one backend's vendored C
+/// build, and the one it could describe was named in core.
+///
+/// Only the KEY was ever backend-specific. `PlatformEntry` carries `defines`,
+/// `include`, `extra_sources`, `arch`, `compile` … — generic vendored-library
+/// build config with no zenoh-shaped field, already proven across the seven
+/// `config/*/nros-platform.toml` files. So this is a keying change, not a schema
+/// design: `[build.zenoh]` parses as the key `"zenoh"` and **none of those seven
+/// files change**.
+///
+/// The second tenant is not hypothetical: `nros-rmw-xrce-cffi/build.rs` is ~500
+/// lines hardcoding this same shape (`_DEFAULT_SOURCE`, `_POSIX_C_SOURCE`,
+/// posix/embedded branching, a generated config header) because there was
+/// nowhere to declare it.
+pub type BuildSection = BTreeMap<String, PlatformEntry>;
 
 /// `[knobs]` — typed policy. `zenoh.tx` is the first tenant
 /// (phase-282); future tenants (`executor`, `log`, ring depths, …) are
@@ -317,7 +326,10 @@ impl PlatformsTree {
     pub fn as_platform_manifest(&self) -> PlatformManifest {
         let mut platform = BTreeMap::new();
         for (name, file) in &self.files {
-            let mut entry = file.build.zenoh.clone().unwrap_or_default();
+            // phase-347 W6 — `[build.<component>]` by key. Still "zenoh" here: this
+            // assembles the zenoh-pico system-layer view. A second component
+            // reads its own key without a schema change.
+            let mut entry = file.build.get("zenoh").cloned().unwrap_or_default();
             // `inherits` lives at file top level in the new format; the
             // legacy resolver reads it from the entry.
             if entry.inherits.is_none() {
@@ -525,6 +537,60 @@ mod tests {
 
     fn no_env(_: &str) -> Option<String> {
         None
+    }
+
+    /// phase-347 W6 — a SECOND `[build.<component>]` key parses.
+    ///
+    /// This is the whole point of the keying change and the only thing that
+    /// could regress it: before, `BuildSection` was a struct with one `zenoh`
+    /// field and `deny_unknown_fields`, so this input was a hard parse ERROR —
+    /// a platform could describe exactly one backend's vendored C build.
+    ///
+    /// Asserts both keys survive independently, so a future component's block
+    /// cannot silently overwrite or shadow zenoh's.
+    /// phase-347 W6 — the seven REAL platform files still load, and each still
+    /// exposes its zenoh block under the new keying. Behaviour-preserving is
+    /// the claim; this is the check.
+    #[test]
+    fn real_config_tree_still_loads_zenoh_blocks() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap()
+            .join("config");
+        if !root.is_dir() {
+            return; // out-of-tree consumer; nothing to check
+        }
+        let tree = PlatformsTree::load(&root).expect("the real config/ tree loads");
+        assert!(!tree.files.is_empty(), "config/ yielded no platform files");
+        let with_zenoh = tree
+            .files
+            .values()
+            .filter(|f| f.build.contains_key("zenoh"))
+            .count();
+        assert!(
+            with_zenoh >= 7,
+            "expected >=7 platform files carrying a [build.zenoh] block, saw {with_zenoh}"
+        );
+    }
+
+    #[test]
+    fn build_section_accepts_a_second_component() {
+        let tmp = write_tree(&[(
+            "zephyr",
+            "[build.zenoh]\ndefines = [\"Z_ONE\"]\n\
+             [build.xrce]\ndefines = [\"X_ONE\", \"X_TWO\"]\n",
+        )]);
+        let tree = PlatformsTree::load(tmp.path()).expect("a second [build.*] key must parse");
+        let file = tree.files.get("zephyr").expect("zephyr file loaded");
+        assert_eq!(
+            file.build.get("zenoh").expect("zenoh block").defines,
+            vec!["Z_ONE".to_string()],
+        );
+        assert_eq!(
+            file.build.get("xrce").expect("xrce block").defines,
+            vec!["X_ONE".to_string(), "X_TWO".to_string()],
+        );
     }
 
     #[test]
