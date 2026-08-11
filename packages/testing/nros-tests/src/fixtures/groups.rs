@@ -396,11 +396,14 @@ pub fn row_artifact_dir(dir: &str, variant: &FixtureVariant) -> TestResult<PathB
         .filter(|r| r.dir == dir && r.selector == variant.0)
         .collect();
     match hits.as_slice() {
-        [row] => Ok(if row.shared {
-            group_dir(&row.slug)
-        } else {
-            project_root().join(&row.artifact_root)
-        }),
+        // The LEAF root, never the group dir — even for a shared row. The
+        // redirect belongs to the chokepoint in `require_prebuilt_binary`, which
+        // runs lane attribution FIRST and attributes on the leaf artifact root.
+        // Returning a pre-redirected path here would leave `attribute_path` with
+        // a `build/fixtures-cargo/<slug>/...` path that matches no row, so every
+        // out-of-lane fixture on a migrated platform would hard-fail as missing
+        // instead of skipping — silently, and only in a narrowed tier-2 run.
+        [row] => Ok(project_root().join(&row.artifact_root)),
         [] => {
             let near: Vec<String> = manifest_rows()
                 .iter()
@@ -726,14 +729,18 @@ mod tests {
     fn selector_lookup_agrees_with_path_resolution_on_every_row() {
         // The equivalence that makes issue 0517's phase B safe to land before
         // the call sites move: for EVERY row, selecting it by (dir, selector)
-        // must give the same directory that resolving its authored artifact root
-        // through the path redirect gives. Same table, two routes, one answer.
+        // must give the same LEAF artifact root the hand-spelled literals named.
+        // Not the redirected path — the redirect belongs downstream, at the
+        // `require_prebuilt_binary` chokepoint, and it runs AFTER lane
+        // attribution. A resolver that pre-redirects hands `attribute_path` a
+        // group path that matches no row, and every out-of-lane fixture on a
+        // migrated platform then hard-fails as missing instead of skipping.
         //
         // This is what lets each call-site conversion be verified without a
         // rebuild — the new route is already known to agree everywhere.
         let mut bad = Vec::new();
         for row in manifest_rows() {
-            let via_path = resolved(&project_root().join(&row.artifact_root));
+            let via_path = project_root().join(&row.artifact_root);
             match row_artifact_dir(&row.dir, &FixtureVariant(row.selector.clone())) {
                 Ok(via_selector) if via_selector == via_path => {}
                 Ok(via_selector) => bad.push(format!(
@@ -752,6 +759,31 @@ mod tests {
             bad.len(),
             bad.join("\n  ")
         );
+    }
+
+    #[test]
+    fn a_selected_root_stays_lane_attributable() {
+        // The property the first version of `row_artifact_dir` broke: whatever a
+        // resolver hands to `require_prebuilt_binary` must still attribute to its
+        // manifest row, because lane narrowing runs on that path BEFORE the
+        // redirect. Group paths do not attribute — that is the whole reason the
+        // redirect sits at the chokepoint and not in the funnels.
+        for row in manifest_rows().iter().take(40) {
+            let dir = row_artifact_dir(&row.dir, &FixtureVariant(row.selector.clone()));
+            let Ok(dir) = dir else { continue };
+            let rel = dir.strip_prefix(project_root()).unwrap();
+            assert!(
+                crate::fixtures::lane::attribute_path_in(
+                    crate::fixtures::lane::manifest_rows(),
+                    &rel.join("some/binary"),
+                )
+                .is_some()
+                    || row.artifact_root.starts_with("packages/"),
+                "{} resolves to {} which attributes to no manifest row",
+                row.dir,
+                rel.display()
+            );
+        }
     }
 
     #[test]
