@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_rmw_zenoh</name>
+  <version>0.0.0</version>
+  <description>
+    The zenoh RMW backend for nano-ros (zenoh-pico on embedded targets).
+
+    phase-348 W1: this file exists so the backend is DISCOVERABLE — the
+    `nano_ros_provides` export below is what a source-time scan reads. What the
+    backend actually lowers to (features, cmake target, link libraries,
+    capabilities) is declared in the sibling `nros-rmw.toml` descriptor
+    (RFC-0071), which is read only when this backend is the one selected.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <!--
+      Provision, NOT consumption. `<nano_ros rmw="zenoh"/>` in a leaf package
+      means "build me against zenoh"; this means "I am zenoh". Both names are
+      resolved by `nros_rmw_dispatch()`, from opposite ends.
+
+      These must be exactly `[rmw].names` from `nros-rmw.toml`, canonical
+      first — two spellings of one fact drift, so `check-rmw-descriptors.py`
+      (S5) compares them. It caught this file claiming a `zenoh-pico` alias the
+      descriptor does not have, before it was ever committed.
+    -->
+    <nano_ros_provides kind="rmw" name="zenoh"/>
+    <nano_ros_provides kind="rmw" name="rmw-zenoh"/>
+    <nano_ros_provides kind="rmw" name="rmw-zenoh-cffi"/>
+  </export>
+</package>

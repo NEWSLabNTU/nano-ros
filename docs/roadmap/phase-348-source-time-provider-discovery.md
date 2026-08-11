@@ -1,8 +1,28 @@
 # Phase 348 — Source-time provider discovery: buy the colcon convention, not colcon
 
-**Status (2026-08-10). PROPOSED — no code landed. BLOCKED on
-[phase-347](phase-347-rmw-as-a-declared-provider.md) W2.** You cannot discover
-providers that do not describe themselves.
+**Status (2026-08-11). W1 LANDED — unblocked by
+[phase-347](phase-347-rmw-as-a-declared-provider.md) W2 (descriptors exist, so
+providers can describe themselves). W2–W5 open.**
+
+W1 shipped the announce mechanism, the scan, and `nros ws providers`. One
+provider (`nros_rmw_zenoh`) carries the export as the acceptance proof; the
+rest of the migration is W2 and can proceed one package at a time, because a
+provider without a `package.xml` is simply not discoverable and its existing
+build path is untouched.
+
+Measured: 268 ms to walk this repo, 472 packages seen, 1 provider. That is
+per-invocation cost with no caching — W3's index is where it stops being paid
+per configure.
+
+**W1 turned up a defect older than this phase** ([issue
+0516](../issues/0516-package-xml-regex-readers-blind-to-comments.md)): all
+seven cmake readers of `package.xml` matched regexes against raw text, so a
+COMMENTED-OUT element read as a declaration. The first provider `package.xml`
+documents the provision-vs-consumption distinction in a comment, quoting the
+other tag — and the reader then reported that file as consuming `rmw=zenoh`.
+Fixed with one shared helper across all seven sites, gated by
+`check-package-xml-comments`. Relevant to the rest of this phase: W2 writes
+~40 more of these files, most of which will want exactly such a comment.
 
 **Implements:** [RFC-0071](../design/0071-rmw-backend-descriptor.md) D5/D8, the
 discovery half. phase-347 makes a provider *describable*; this phase makes it
@@ -47,20 +67,39 @@ from a developer's box. Declining the installed case costs nothing today:
 
 ---
 
-## W1 — Providers announce themselves
+## W1 — Providers announce themselves — **LANDED**
 
-- [ ] `package.xml` gains a provision export, distinct in spelling from the
-      existing consumption one. `<export><nano_ros rmw="zenoh"/>` already means
-      "this is what I *consume*"; provision needs its own tag
-      (`<nano_ros_provides kind="rmw" name="zenoh"/>`) or the two will be
-      confused on sight.
-- [ ] The scan reads only `package.xml`; the descriptor (`nros-rmw.toml`,
-      `nros-board.toml`, `nros-platform.toml`) is read **only for the provider
-      actually selected**. One cheap parse per package, one detailed parse per
-      build.
+- [x] `package.xml` gains a provision export, distinct in spelling from the
+      existing consumption one: `<nano_ros_provides kind="rmw" name="zenoh"/>`,
+      parsed by `PackageXml::parse` (`cargo-nano-ros/src/package_xml.rs`).
+      Misplaced (outside `<export>`), empty, or unknown-attribute forms are
+      hard errors — a provision that silently fails to register presents as
+      "my backend isn't found", with nothing to grep for.
+- [x] The scan (`cargo-nano-ros/src/provider_scan.rs`) reads only
+      `package.xml`; `descriptor_path()` hands selection a path and never opens
+      it. It prunes build/vendored trees, honours `COLCON_IGNORE` /
+      `AMENT_IGNORE` / `NROS_IGNORE`, does not descend into a package (as
+      colcon does not), and does not follow symlinks.
+- [x] `nros ws providers [--workspace] [--nano-ros-root] [--kind] [--json]`.
+- [x] `check-rmw-descriptors.py` S5: where a backend carries both, its
+      provisions equal `[rmw].names` exactly, canonical first. It earned itself
+      immediately — the first `package.xml` written claimed a `zenoh-pico`
+      alias the descriptor does not have.
 
-*Acceptance:* a package with the export is listed by the scan; one without is
-not, and its existing build path still works.
+*Acceptance, met:* `scan_lists_providers_and_only_providers` covers both halves
+(a package with the export is listed, one without is not) and the existing
+build path is untouched — nothing reads the new tag but the new scan.
+
+Two decisions worth carrying forward:
+
+* **Root 0 falls back to the monorepo containing the `nros` binary.** Walking
+  up from the workspace alone finds nothing for an out-of-tree consumer, which
+  would drop every in-tree backend from the search path — useless for exactly
+  the user this phase is for. The binary's location is reproducible from the
+  checkout in a way an env var is not.
+* **The scan reports facts, not policy.** Both sides of a shadowed name are
+  returned with their `root_index`; deciding between them is W5. A scan that
+  silently dropped the loser could not warn with both paths.
 
 ## W2 — The migration, which is the bulk of the phase
 

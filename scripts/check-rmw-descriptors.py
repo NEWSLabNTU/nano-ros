@@ -18,7 +18,18 @@ It now checks what can still go wrong once there is a single source:
       `declared` becomes and what error messages list;
   S4  a descriptor exists for every backend directory that looks like one, so
       adding a backend and forgetting the descriptor fails here rather than at
-      a consumer's link.
+      a consumer's link;
+  S5  where a backend also carries a `package.xml` (phase-348 W1, discovery),
+      its `<nano_ros_provides kind="rmw"/>` names match `[rmw].names` exactly,
+      canonical first.
+
+S5 exists because the migration creates a SECOND spelling of the name set: the
+descriptor says what the backend lowers to, the package.xml says what it is
+discoverable as, and nothing structural keeps them equal. It has already earned
+itself — the first package.xml written claimed a `zenoh-pico` alias the
+descriptor does not have, which would have made discovery and resolution
+disagree about which names exist. Packages without a package.xml are simply not
+checked, so the W2 migration can proceed one provider at a time.
 
 `build.rs` also panics on S1/S2, deliberately — that is the belt to this gate's
 braces, and it fires for anyone who builds rather than only for `check-fast`.
@@ -27,6 +38,7 @@ failure.
 """
 
 import glob
+import re
 import os
 import sys
 
@@ -84,6 +96,37 @@ def main():
                 f"{rel}: cmake_value {rmw['cmake_value']!r} != names[0] {canonical!r} — "
                 f"the canonical name must be the first entry"
             )
+
+        # S5 — discovery (package.xml) and resolution (descriptor) must claim
+        # the same names. Parsed with a regex rather than an XML library
+        # because this gate must run buildless with no third-party import, and
+        # the element is fixed-shape; the CLI's `quick_xml` reader is the real
+        # parser and this only has to detect DISAGREEMENT.
+        pkg_xml = os.path.join(os.path.dirname(path), "package.xml")
+        if os.path.exists(pkg_xml):
+            with open(pkg_xml, encoding="utf-8") as fh:
+                body = fh.read()
+            # Strip XML comments first, for the same reason
+            # `nros_read_package_xml_body()` does in cmake: a provider's
+            # package.xml documents the provision tag in a comment, and a
+            # regex cannot tell that from a declaration. Without this, a
+            # commented-out example counts as a claimed name.
+            body = re.sub(r"<!--([^-]|-[^-])*-->", "", body)
+            declared = re.findall(
+                r'<nano_ros_provides\s+kind="rmw"\s+name="([^"]+)"\s*/?>', body
+            )
+            if not declared:
+                problems.append(
+                    f"{os.path.relpath(pkg_xml, ROOT)}: sits beside an rmw descriptor "
+                    f"but announces no <nano_ros_provides kind=\"rmw\"/> — it would "
+                    f"be invisible to the phase-348 scan"
+                )
+            elif declared != names:
+                problems.append(
+                    f"{os.path.relpath(pkg_xml, ROOT)}: provides {declared} but "
+                    f"{rel} declares names {names} — discovery and resolution must "
+                    f"claim the same names, canonical first"
+                )
 
         # S2
         for n in names:

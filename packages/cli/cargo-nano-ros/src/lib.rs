@@ -46,6 +46,7 @@ pub mod config_patcher;
 pub mod dependency_parser;
 pub mod package_discovery;
 pub mod package_xml;
+pub mod provider_scan;
 pub mod rmw_resolver;
 pub mod scaffold;
 pub mod workflow;

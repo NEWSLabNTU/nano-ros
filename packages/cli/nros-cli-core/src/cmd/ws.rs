@@ -88,6 +88,42 @@ pub enum Sub {
     /// this compares exactly, because the file is now generated.
     #[command(name = "check-board-projections", hide = true)]
     CheckBoardProjections(CheckBoardProjectionsArgs),
+
+    /// phase-348 W1 — list packages that announce a provision
+    /// (`<export><nano_ros_provides kind="rmw" name="zenoh"/></export>`),
+    /// across the search path: the nano-ros tree, then this workspace.
+    ///
+    /// Source-time discovery: nano-ros builds per-target static objects for
+    /// RTOS targets with no dynamic linking, so there is no install step for
+    /// an ament index to live in. The scan reads only `package.xml`; a
+    /// provider's descriptor is read only when it is the one selected.
+    ///
+    /// Visible rather than hidden, unlike the gate seams above: "which
+    /// backends can I pick, and where did they come from" is a question a user
+    /// asks, and it is the answer to a shadowed-provider surprise.
+    #[command(name = "providers")]
+    Providers(ProvidersArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct ProvidersArgs {
+    /// Workspace to scan as the second search root. Defaults to the cwd.
+    #[arg(long)]
+    pub workspace: Option<PathBuf>,
+
+    /// nano-ros source tree to scan as the FIRST search root. Defaults to the
+    /// monorepo containing the workspace, else the one containing this `nros`
+    /// binary.
+    #[arg(long)]
+    pub nano_ros_root: Option<PathBuf>,
+
+    /// Only list provisions of this kind (`rmw`, `board`, `platform`, …).
+    #[arg(long)]
+    pub kind: Option<String>,
+
+    /// Emit JSON rather than a table.
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -216,7 +252,119 @@ pub fn run(args: Args) -> Result<()> {
         Sub::Doctor(a) => run_doctor(a),
         Sub::ModelDims(a) => run_model_dims(a),
         Sub::CheckBoardProjections(a) => run_check_board_projections(a),
+        Sub::Providers(a) => run_providers(a),
     }
+}
+
+// =============================================================================
+// `nros ws providers` — phase-348 W1
+// =============================================================================
+
+fn run_providers(args: ProvidersArgs) -> Result<()> {
+    use cargo_nano_ros::provider_scan;
+
+    let workspace = match args.workspace {
+        Some(w) => w,
+        None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
+    };
+    let workspace = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.clone());
+    // Root 0 is the nano-ros tree, and an OUT-OF-TREE workspace is not inside
+    // it — walking up from the workspace alone finds nothing, which would drop
+    // every in-tree backend from the search path and make the scan useless for
+    // exactly the user this feature is for. So fall back to the monorepo
+    // containing this binary.
+    //
+    // The binary's own location is a defensible source in a way an env var is
+    // not: it is a property of which `nros` you invoked, so the result is
+    // reproducible from the checkout. An installed `nros` outside any monorepo
+    // finds nothing here and the user passes `--nano-ros-root`.
+    let nano_ros_root = args
+        .nano_ros_root
+        .map(|r| r.canonicalize().unwrap_or(r))
+        .or_else(|| crate::abi_guard::find_monorepo_root(&workspace))
+        .or_else(|| {
+            let exe = std::env::current_exe().ok()?;
+            let exe = exe.canonicalize().unwrap_or(exe);
+            crate::abi_guard::find_monorepo_root(&exe)
+        });
+    let roots = provider_scan::default_search_path(nano_ros_root.as_deref(), &workspace);
+
+    let result = provider_scan::scan_roots(&roots)?;
+
+    // Report failures on stderr whatever the format: a package.xml that could
+    // not be parsed is the reason a provider the user expected is missing, and
+    // burying that in a JSON field nobody prints is how "it just isn't found"
+    // becomes an hour of debugging.
+    for e in &result.errors {
+        eprintln!("warning: {}: {}", e.path.display(), e.message);
+    }
+
+    let kind = args.kind.as_deref();
+    let matching = |p: &&provider_scan::ProviderPackage| match kind {
+        Some(k) => p.provides.iter().any(|pr| pr.kind == k),
+        None => true,
+    };
+
+    if args.json {
+        let rows: Vec<serde_json::Value> = result
+            .providers
+            .iter()
+            .filter(matching)
+            .map(|p| {
+                serde_json::json!({
+                    "package": p.package,
+                    "dir": p.dir,
+                    "root": roots[p.root_index],
+                    "provides": p.provides.iter()
+                        .filter(|pr| kind.is_none_or(|k| pr.kind == k))
+                        .map(|pr| serde_json::json!({"kind": pr.kind, "name": pr.name}))
+                        .collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "roots": roots,
+                "packages_seen": result.packages_seen,
+                "providers": rows,
+            }))?
+        );
+        return Ok(());
+    }
+
+    for (i, root) in roots.iter().enumerate() {
+        println!("root[{i}] {}", root.display());
+    }
+    let mut listed = 0usize;
+    for p in result.providers.iter().filter(matching) {
+        for pr in p
+            .provides
+            .iter()
+            .filter(|pr| kind.is_none_or(|k| pr.kind == k))
+        {
+            println!(
+                "  {kind:<9} {name:<18} {pkg:<22} root[{root}] {dir}",
+                kind = pr.kind,
+                name = pr.name,
+                pkg = p.package,
+                root = p.root_index,
+                dir = p.dir.display(),
+            );
+            listed += 1;
+        }
+    }
+    // The denominator matters: "0 providers" from a scan that saw 200 packages
+    // is a migration in progress, while "0 providers" from one that saw 0 is a
+    // search path pointing somewhere wrong. Without this they look identical.
+    println!(
+        "{listed} provision(s) from {} package(s) with an export, {} package(s) scanned",
+        result.providers.iter().filter(matching).count(),
+        result.packages_seen,
+    );
+    Ok(())
 }
 
 // =============================================================================
