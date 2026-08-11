@@ -72,8 +72,9 @@ commit before phase-338 W2's `-entry` collapse (`ab486a8db`); the collapse broke
 0440's undefined-libc), and `610ad5bd3` "restore the board's static link args" made it link again — overflowing
 from that commit onward, at a CONSTANT 534704 bytes. So #440 restored LINKABILITY, not the link
 CONFIGURATION, and a figure identical across dozens of revisions is a switch, not code growth. Separately the
-lane builds with `nros-relwithdebinfo` (`opt-level = 3`) where NuttX ships `nros-minsizerel`: worth ~119 KB
-(538800 vs 419992) and worth fixing, but not the cause. See `0511-*`. (2026-08-11)
+lane BUILT with `nros-relwithdebinfo` (`opt-level = 3`) where NuttX ships `nros-minsizerel` — worth ~119 KB
+(538800 vs 419992), now FIXED (the lane resolves each leaf through `nros_cargo_platform_profile`), which makes
+the reported figure the shipped one but does not close the issue. See `0511-*`. (2026-08-11)
 
 **#512** — `check-readiness-marker-literals` is blind to the WORST case. It flags a `wait_for_output_pattern`
 literal that MATCHES a known `output::` constant, or that ambiguously prefixes two — but a literal matching

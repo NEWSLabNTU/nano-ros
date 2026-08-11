@@ -2228,22 +2228,41 @@ rust-rtos-link-check: _require-leaf-includes
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    # Issue 0511 — build each leaf at ITS PLATFORM's profile, not the ambient
+    # one. This lane used `nros_cargo_profile_arg_string` for all three, which
+    # resolves to `nros-relwithdebinfo` — whose own comment in Cargo.toml reads
+    # `opt-level = 3   # Performance. Size lives in nros-minsizerel`. Both ARM
+    # leaves carve out to `nros-minsizerel` for exactly the reason this lane
+    # exists: they link into a fixed ROM. Measured on the nuttx talker, same
+    # revision: 538800 bytes of ROM overflow at the ambient profile vs 419992 at
+    # the platform's — so the mismatch was ~119 KB of the figure that made the
+    # lane unreadable (the remaining ~420 KB is the real defect 0511 bisects).
+    #
+    # Building what the platform ships also stops this lane writing a SECOND
+    # profile directory beside the fixtures — the shape phase-340 P2 names as a
+    # permanent false-STALE source when a probe and a builder disagree.
     echo "== Phase 146.3 — embedded-RTOS Rust link check =="
     if command -v arm-none-eabi-gcc >/dev/null; then
-        echo "  freertos talker:"
+        echo "  freertos talker ($(nros_cargo_platform_profile freertos)):"
         # #60 T5: the freertos talker Node pkg is platform/RMW-agnostic now —
         # the `rmw-zenoh` parity feature was removed (RMW flows from the board
         # crate). Build with default features, mirroring the nuttx talker below.
-        ( cd examples/qemu-arm-freertos/rust/talker && cargo build $cargo_profile_args ) >/dev/null
-        echo "  nuttx talker:"
-        ( cd examples/qemu-arm-nuttx/rust/talker && cargo build $cargo_profile_args ) >/dev/null
+        mapfile -t freertos_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile freertos)")
+        ( cd examples/qemu-arm-freertos/rust/talker && cargo build "${freertos_profile[@]}" ) >/dev/null
+        echo "  nuttx talker ($(nros_cargo_platform_profile nuttx)):"
+        mapfile -t nuttx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile nuttx)")
+        ( cd examples/qemu-arm-nuttx/rust/talker && cargo build "${nuttx_profile[@]}" ) >/dev/null
     else
         echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
     fi
-    echo "  threadx-linux talker:"
+    # threadx-linux is HOSTED — no ROM region, so the ambient profile is right
+    # for it and `nros_cargo_platform_profile` returns exactly that. Routed
+    # through the same accessor anyway, so the three leaves read alike and a
+    # future carve-out reaches this one without an edit here.
+    echo "  threadx-linux talker ($(nros_cargo_platform_profile threadx-linux)):"
+    mapfile -t threadx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile threadx-linux)")
     ( cd examples/threadx-linux/rust/talker && \
-        cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
+        cargo build "${threadx_profile[@]}" --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
     echo "Rust-RTOS link check OK."
 
 # Run CI: format check + clippy + every test tier (never modifies code).

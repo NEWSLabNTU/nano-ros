@@ -98,7 +98,7 @@ change actually arrived somewhere inside that unlinkable window, this bisect
 cannot tell — it can only say the first revision where the image both links and
 is too big is #440's restore.
 
-## Also found: the lane builds with the wrong profile (contributing ~119 KB)
+## Also found — FIXED 2026-08-11: the lane built with the wrong profile (~119 KB)
 
 `rust-rtos-link-check` uses `nros_cargo_profile_arg_string` →
 `--profile nros-relwithdebinfo`, whose own comment in `Cargo.toml` reads
@@ -113,5 +113,21 @@ Measured, same leaf, same revision:
 | `nros-relwithdebinfo` (what the lane uses) | overflow **538800** |
 | `nros-minsizerel` (what the platform uses) | overflow **419992** |
 
-Worth fixing on its own — a link check should build what the platform ships —
-but it is NOT the cause: the size profile still overflows by ~420 KB.
+**Fixed**: `rust-rtos-link-check` now resolves each leaf through
+`nros_cargo_platform_profile <platform>` and `nros_cargo_profile_args_for`, the
+accessors the fixture lanes already use, and prints the profile it chose. Both
+ARM leaves build at `nros-minsizerel`; `threadx-linux` is hosted, has no ROM
+region, and keeps the ambient profile — routed through the same accessor so the
+three read alike and a future carve-out reaches it without an edit.
+
+Verified: freertos links clean at the size profile, and the NuttX figure this
+issue reports is now the platform-true **419992** rather than 538800.
+
+Building what the platform ships also stops this lane writing a SECOND profile
+directory beside the fixtures — the builder/probe disagreement phase-340 P2
+names as a permanent false-STALE source.
+
+**This does NOT fix the issue.** The size profile still overflows by ~420 KB;
+that remainder is the defect the bisect above localises. What the fix buys is a
+readable number: the lane now reports the overflow the shipped configuration
+actually has.
