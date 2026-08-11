@@ -1941,10 +1941,46 @@ W2/W3 implementation.**
         must resolve even when the feature is off. That is a second spelling of
         `nros sync`'s output, and RFC-0070 R3 exists to forbid exactly that. It
         is the largest of C's costs and it was recorded as a non-cost.
-- [ ] **W2.d — STILL OPEN, and the reason is now sharper.** The column is read
-      as a PREDICATE, not only as a path, and phase-344 W2 showed the predicate
-      itself was language-shaped when it needed to be builder-shaped. Deleting
-      the column means first giving every consumer a coordinate-derived answer.
+- [ ] **W2.d — the PREDICATE half is DONE (2026-08-11, `cf8d2d18e`); the COLUMN
+      cannot be deleted yet, and the measurement that says so is below.**
+
+      *Done.* `--core-only` no longer reads `target_dir` as a proxy for "is this
+      a variant row?". `row_is_variant()` derives it from AUTHORED configuration
+      (`features` / `no_default_features` / `env` / `cargo_args`) and joins
+      `row_coord` / `row_artifact_root` as one more single derivation over the
+      row (R3). `rmw` is deliberately excluded: it is a coordinate, so a
+      default-rmw row is core. Held by `core_only_predicate.sh`, which derives
+      the CONSUMED platforms from the tree (a new caller joins the check on its
+      own) and fails if the two spellings disagree on any of them. The 2026-08-08
+      note above expected them to diverge on the whole `qemu-arm-nuttx` rust set;
+      they do — which is why the gate is scoped to platforms a caller actually
+      passes rather than to the whole manifest, and why the nuttx divergence is
+      the gate's own tripwire.
+
+      *NOT done, and no longer believed mechanical.* I wrote in `cf8d2d18e` that
+      removal "is mechanical, but it moves 39 rows". That is wrong. The column is
+      the resolver's only handle on WHICH VARIANT a hardcoded leaf path means.
+      `fixtures::groups::attribute()` maps a leaf path to a group slug by longest
+      match on `row_artifact_root`, and today that is injective — measured over
+      the 124 emitted rows, **0 artifact roots map to more than one slug**. Strip
+      the authored dir and **17 roots become ambiguous, up to 5 slugs each**:
+
+          examples/native/rust/talker/target
+            -> linux, linux-1147932602, linux-3000917972,
+               linux-3263301353, linux-553222167
+
+      `attribute()` returns exactly one row, so this does not fail loudly — it
+      resolves to a binary built with DIFFERENT features and the test runs
+      against it. A false green, which is the one failure mode this phase's
+      acceptance rule (a build, never a gate) exists to catch.
+
+      So the order is fixed, and it is the reverse of what this item assumed: the
+      resolver must name a COORDINATE before the column can go. That is issue
+      0482's "the resolver has no link back to the manifest row" — the same
+      handle `binaries/mod.rs` hand-spells as `target-tls` / `target-fixtures` /
+      `target-large-buf`. W2.d's remaining half is therefore blocked on that,
+      not on a rebuild lane.
+
       Original text: Delete the manifest `target_dir` / `build_subdir` column (absorbed
       from phase-334 W2.b, work-order item 5). Not done here: the column is still
       read as a **predicate**, not only as a path. `fixtures-manifest.py`'s
