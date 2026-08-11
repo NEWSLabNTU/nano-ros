@@ -152,6 +152,25 @@ BOTH derivations (cmake `COMPARE NATURAL ORDER DESCENDING`, shell `sort -Vr`), a
 visible; without it the retry would have been logged as "rebuilt on v0.6.1, still broken". Verified with
 both versions present: resolves 0.6.1, exit 0, 0 duplicate symbols. See `archived/0500-*`. (2026-08-10)
 
+**#514** (embedded, open 2026-08-11) — the runtime contract monitors DETECT and QUEUE violations that nothing
+ever drains: `Executor::drain_violations` and `nros_diagnostics::Reporter::report` each have exactly one
+caller in the tree, and it is a test binary — no board entry (freertos/zephyr/linux) or generated entry
+drains the ring. So on every real image `check_rate`/`check_age`/`check_latency`/`check_deadline_miss`/
+`check_timer_overrun` run each spin and discard their verdicts, and a continuously-violated contract
+produces the same target-side output as a met one: nothing. Compounded by the ring being
+`heapless::Vec<_, 8>` with `let _ = push(v)` at every site, so a never-drained image fills up and drops
+the rest uncounted. Needs the entry glue to drain into a reporter (a log line is a valid minimum), a
+dropped-violation counter, and an explicit answer to whether draining is the application's job or the
+runtime's — today it is neither. See `0514-*`.
+
+**#515** (orchestration, open 2026-08-11) — a timer period that is not an integer multiple of its tier's
+`spin_period_us` quantizes to the spin grid: measured on the FreeRTOS lane, a 33 ms timer in a 5 ms-spin
+tier alternates 35 ms x475 / 30 ms x303, mean 33.001. The rate is preserved and nothing is dropped, so
+every runtime rule is correctly silent — deadline, overrun and rate all pass — and the ±(spin/2) jitter is
+invisible until someone measures cadence on target and has to explain a bimodal distribution. Both numbers
+are known at resolve time, so this wants a resolver WARNING (naming the entity, declared period, tier
+spin, and the two periods it will actually alternate between), not a runtime rule. See `0515-*`.
+
 **#506** (embedded, open 2026-08-10) — transport tasks ABOVE application tiers is the right FreeRTOS
 default (the inverse starves the RX drain into multi-second lwIP RTO freezes, d708d8c5b), but the band has
 NO BUDGET: sustained inbound above the ~750 msg/s drain capacity (mps2-an385/QEMU lane) triggers periodic
