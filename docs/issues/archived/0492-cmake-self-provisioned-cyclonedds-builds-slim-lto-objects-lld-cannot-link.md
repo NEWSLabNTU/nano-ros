@@ -3,7 +3,8 @@ id: 492
 title: "The CMake self-provisioned CycloneDDS builds slim GCC-LTO objects that
   `ld.lld` cannot link, so `build-test-fixtures lane=native` fails on any host
   whose C/C++ examples link with lld"
-status: open
+status: resolved
+resolved_in: phase-347
 type: bug
 area: build
 related: [issue-0475, phase-340, phase-186]
@@ -123,3 +124,22 @@ differs; this reproduces on Arch with gcc 16.1.1 / LLD 22.1.8. It blocks
 `lane=native` on a host configuration the project documents as supported
 (`docs/development/ros2-on-non-ubuntu.md`), which is how it was found — trying to
 produce a clean tree to settle the phase-340 identity-budget reading.
+
+## RESOLVED 2026-08-11 — and re-proved twice since
+
+The fix (`ENABLE_LTO OFF` on the CMake self-provision, both spellings) landed in
+`78d6c79e6` and was verified then: `c_talker`, the exact binary that produced the
+36 undefined `dds_*` symbols, linked.
+
+It has since been exercised twice more without special handling, which is the
+better evidence:
+
+* phase-347 W5 rebuilt `examples/native/c/talker/build-cyclonedds` from scratch
+  to validate the moved codegen hook — it produced both `__cyclonedds_ts`
+  libraries and linked a 13 MB binary carrying 28 descriptor symbols;
+* the workspace-fixtures rebuild after the corrosion bump completed RC=0 across
+  all linux workspaces, cyclonedds rows included.
+
+This issue was left `open` after its fix landed — a bookkeeping miss on my part,
+not an unresolved defect. Recorded rather than quietly flipped, because "fixed
+but still open" is how a closed list of known bugs stops matching the tree.

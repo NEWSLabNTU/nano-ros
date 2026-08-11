@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#512** — `check-readiness-marker-literals` is blind to the WORST case. It flags a `wait_for_output_pattern`
+literal that MATCHES a known `output::` constant, or that ambiguously prefixes two — but a literal matching
+**nothing** is skipped, and that is the only case guaranteed to fail (it can never match, so the wait burns its
+whole timeout). Already cost real time: issue 0489's esp32 tests waited on `"Waiting for messages..."`, which no
+listener prints since phase-342 W7 converged them, and burned **108 s of a 137.9 s suite** while the gate reported
+`OK (32 baselined, 0 new)`. Not a one-line fix — flagging every unmatched literal would fire on every legitimate
+ad-hoc pattern (delivery greps, QEMU boot strings, `data:` from a ROS 2 subscriber), and a gate that fires on
+correct code gets switched off. Three options costed in the issue: a baseline of allowed ad-hoc literals, narrowing
+the rule to readiness waits specifically, or asserting liveness at runtime (report what the process DID print).
+See `0512-*`. (2026-08-11)
+
 RESOLVED 2026-08-10 — **#510** the px4 companion lane skipped `nros sync`, so all three leaves
 (`px4-stub`, `px4-probe`, `offboard-companion`) resolved their registry-named nros deps
 (`nros = { version = "*" }`, `nros-platform-cffi`, `nros-rmw-xrce-cffi`) against the PUBLIC crates.io:
@@ -206,7 +217,7 @@ and this tree does not use. `links` would NOT have caught this (per-graph; here 
 graph); the enforceable invariant is a CMake gate: one Rust staticlib exporting the nros symbols per configure.
 See `0493-*`. (2026-08-10)
 
-**#492** — the CMake self-provisioned CycloneDDS builds **slim GCC-LTO objects** and `ld.lld` cannot read GCC LTO
+Recently resolved (2026-08-11, phase-347): **#492** — the CMake self-provisioned CycloneDDS built **slim GCC-LTO objects** and `ld.lld` cannot read GCC LTO
 IR, so `build-test-fixtures lane=native` dies with 36 `undefined symbol: dds_*` while every obvious check says the
 link is fine: `libddsc.a` IS in the whole-archive group, `nm` reports `T dds_get_guid`, and `-Wl,-t` shows all 148
 members loaded including the definer. `readelf` finds no such symbol — it lives in GCC IR, which `nm` and `ld.bfd`
@@ -214,7 +225,7 @@ read via `liblto_plugin.so` and lld cannot. Minimal case: one object, `-fuse-ld=
 not. `nros setup --tool cyclonedds` is inert because phase 186 sets `CMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON`.
 **The Rust self-provision has always set `ENABLE_LTO=OFF`** for exactly this reason, naming "same hazard on
 native" — the CMake path, which every C/C++ example takes, never got it. One of two sibling paths fixed; the
-third instance of that class this session. See `0492-*`. (2026-08-10)
+third instance of that class this session. Fixed with `ENABLE_LTO OFF` on the self-provision, and re-proved twice since — phase-347 W5 rebuilt the cyclone fixture from scratch (13 MB binary, 28 descriptor symbols) and the post-corrosion-bump workspace rebuild completed RC=0. See `archived/0492-*`. (2026-08-10)
 
 **#494** (testing, RESOLVED 2026-08-10) — `just ci-matrix` was NON-DETERMINISTIC: same tree, same commit,
 **223 real failures then 20** on an immediate re-run, 203 of the first run's being

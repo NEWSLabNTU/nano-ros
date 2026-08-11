@@ -150,3 +150,32 @@ seq=2 gid=e0ff33caf0ff0300e0fe1360d8ff0700 ts=1786012910623000000
 
 Monotonic sequence, stable GID, through the zero-copy receive path. That is the
 property the test claimed to check and previously could not.
+
+## CORRECTION 2026-08-11 (phase-347 W1) — the diagnosis above is wrong
+
+This write-up says of `unstable-zenoh-api`:
+
+> The feature only propagates to `nros` — it changes which receive path the
+> runtime takes, but the example has no `cfg` branch and prints the same lines
+> either way.
+
+**The second clause is false.** It propagated to `nros`, which forwarded to
+`nros-node`'s `unstable-zenoh-api = []` — an empty feature no `cfg` ever read.
+It changed no receive path, because the zero-copy path lives in
+`nros-rmw-zenoh` → `zpico-sys` → `#define Z_FEATURE_UNSTABLE_API`, and that
+chain was never reached from the example.
+
+So the "no observable difference" this issue found had a deeper cause than the
+missing `cfg` branch it identified: **the switch was a no-op end to end**, and
+the `examples/fixtures.toml` pair "differing in exactly `unstable-zenoh-api`"
+was differing in nothing.
+
+Fixed in phase-347 W1: both consumers now forward to the backend
+(`nros-rmw-zenoh?/unstable-zenoh-api`, the same `?/` shape their `ros-*` lines
+already used) and the two dead links were deleted. Verified by resolution —
+`cargo tree -f "{p} :: {f}"` shows `zpico-sys` gaining the feature only when it
+is selected. The fixture pair is now a real A/B.
+
+Recorded here rather than only in the phase, because this file is what the next
+person debugging zero-copy will read, and a plausible-but-wrong causal claim in
+an archived issue is worse than no claim.

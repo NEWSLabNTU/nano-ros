@@ -584,7 +584,18 @@ have been visible without configuring a real workspace:
 
 ### What this does NOT settle
 
-* **The v0.5.1 arm is still never observed.** The pin is now v0.6.1 on both the
+* **The v0.5.1 arm WAS observed — 2026-08-11, correcting this bullet.** Before
+  the bump, this host had ONLY `~/.nros/sdk/corrosion/0.5.1-nros1` installed,
+  and `examples/workspaces/mixed/build-workspace-fixtures` showed one HASHLESS
+  `cargo/build` holding TWO `libnros_rmw_cffi-*.rlib`, with 7 duplicate-symbol
+  errors on a from-scratch build. After `nros setup --tool corrosion` (0.6.1) and
+  removing the 16 stale workspace build dirs, the same tree showed two HASHED
+  dirs (`nano-ros_23c15`, `nros_ws_runtime_16b35`) with ONE identity each and
+  RC=0, zero duplicate symbols. That is a controlled before/after across the
+  version change on one tree, so the "v0.5.1 → hashless → cannot link" half is
+  measured rather than inferred. See "VERIFIED END-TO-END" below.
+
+* **The original bullet, kept because its caution was right at the time:** The pin is now v0.6.1 on both the
   SDK and the FetchContent side, so unifying could not surface the hashless
   topology here — which is the intended outcome, but it means the
   "v0.5.1 -> hashless -> cannot link" half of the table above remains inference,
