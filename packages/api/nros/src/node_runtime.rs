@@ -850,12 +850,9 @@ impl NodeRuntime for ExecutorSink<'_> {
                 };
                 let cell = self.cell.clone();
                 self.executor
-                    .register_timer(
-                        period,
-                        move || {
-                            dispatch_into_cell(&cell, &cb_id_owned, &[]);
-                        },
-                    )
+                    .register_timer(period, move || {
+                        dispatch_into_cell(&cell, &cb_id_owned, &[]);
+                    })
                     .map_err(decl_err_from_node)?;
                 Ok(())
             }
