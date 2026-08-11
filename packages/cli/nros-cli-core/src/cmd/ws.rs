@@ -103,6 +103,39 @@ pub enum Sub {
     /// asks, and it is the answer to a shadowed-provider surprise.
     #[command(name = "providers")]
     Providers(ProvidersArgs),
+
+    /// phase-348 W4 — print the workspace's packages in dependency order, one
+    /// per line, so a build configures each after everything it depends on.
+    ///
+    /// Derived from `package.xml`'s existing `<depend>` tags, not a second
+    /// dependency declaration: the file is already parsed by the discovery
+    /// scan, and a second source of the same fact is the defect the provider
+    /// index guards against, one level up.
+    ///
+    /// Ties break by name, so the order is reproducible across machines. A
+    /// dependency cycle is an error naming every package on it.
+    #[command(name = "order")]
+    Order(OrderArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct OrderArgs {
+    /// Workspace to scan. Defaults to the cwd. Scanned as a single root — this
+    /// is about build order WITHIN one workspace, so the nano-ros tree is not
+    /// part of it.
+    #[arg(long)]
+    pub workspace: Option<PathBuf>,
+
+    /// Print `name<TAB>dir` instead of a path per line.
+    #[arg(long)]
+    pub lines: bool,
+
+    /// Restrict the output to these package dirs (relative to the workspace),
+    /// preserving dependency order. The cmake seam: a workspace still chooses
+    /// its SUBDIRS *set* — platform filtering is a selection, not a dependency
+    /// — and asks only for that set to be ORDERED.
+    #[arg(long = "subdir", value_name = "DIR")]
+    pub subdirs: Vec<PathBuf>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -279,7 +312,129 @@ pub fn run(args: Args) -> Result<()> {
         Sub::ModelDims(a) => run_model_dims(a),
         Sub::CheckBoardProjections(a) => run_check_board_projections(a),
         Sub::Providers(a) => run_providers(a),
+        Sub::Order(a) => run_order(a),
     }
+}
+
+// =============================================================================
+// `nros ws order` — phase-348 W4
+// =============================================================================
+
+fn run_order(args: OrderArgs) -> Result<()> {
+    use cargo_nano_ros::provider_scan;
+
+    let workspace = match args.workspace {
+        Some(w) => w,
+        None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
+    };
+    let workspace = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.clone());
+
+    let (pkgs, scan) = provider_scan::scan_workspace_packages(&workspace)?;
+    for e in &scan.errors {
+        eprintln!("warning: {}: {}", e.path.display(), e.message);
+    }
+    if pkgs.is_empty() {
+        bail!(
+            "no package.xml under {} — `ws order` orders the packages of ONE \
+             workspace, so an empty result means the path is wrong rather than \
+             that the workspace has no order",
+            workspace.display()
+        );
+    }
+
+    // The requested subdirs, resolved, ARE the caller's preferred order — a
+    // workspace's authored SUBDIRS list, which already works. Preferring it on
+    // ties means the sort only ever moves what a declared dependency requires
+    // moving, so a workspace whose entries declare no `<exec_depend>` keeps
+    // building exactly as before rather than being reshuffled by name.
+    let preference: Vec<PathBuf> = args
+        .subdirs
+        .iter()
+        .map(|s| {
+            let p = if s.is_absolute() {
+                s.clone()
+            } else {
+                workspace.join(s)
+            };
+            p.canonicalize().unwrap_or(p)
+        })
+        .collect();
+
+    let ordered =
+        provider_scan::topological_order_with_priority(&pkgs, &preference).map_err(|cycle| {
+            eyre::eyre!(
+                "dependency cycle among workspace packages: {cycle}\n  \
+             every package listed is on the cycle or behind it; \
+             `<depend>` in these package.xml files describes a loop, and no \
+             build order satisfies it"
+            )
+        })?;
+
+    // A requested subdir set is FILTERED from the full order, never ordered on
+    // its own: package B may sit between two requested packages without being
+    // requested itself, and dropping it before the sort would lose the edge
+    // that orders them.
+    // (as the caller spelled it, resolved for matching). The ORIGINAL spelling
+    // is echoed back, never the resolved one: `canonicalize()` follows
+    // symlinks, and this repo's own worktree is commonly reached through one
+    // (the home-directory alias the top-level CLAUDE.md warns about). Handing
+    // cmake a re-spelled absolute path makes `add_subdirectory()` stop
+    // recognising it as part of the source tree — the caller gets its own list
+    // back, permuted.
+    let wanted: Option<Vec<(PathBuf, PathBuf)>> = if args.subdirs.is_empty() {
+        None
+    } else {
+        Some(
+            args.subdirs
+                .iter()
+                .map(|s| {
+                    let p = if s.is_absolute() {
+                        s.clone()
+                    } else {
+                        workspace.join(s)
+                    };
+                    (s.clone(), p.canonicalize().unwrap_or(p))
+                })
+                .collect(),
+        )
+    };
+
+    let mut emitted = 0usize;
+    for p in &ordered {
+        let shown = match &wanted {
+            Some(w) => match w.iter().find(|(_, resolved)| *resolved == p.dir) {
+                Some((original, _)) => original.clone(),
+                None => continue,
+            },
+            None => p.dir.clone(),
+        };
+        emitted += 1;
+        if args.lines {
+            println!("{}\t{}", p.name, shown.display());
+        } else {
+            println!("{}", shown.display());
+        }
+    }
+
+    // A requested subdir that matched nothing is a typo or a moved package, and
+    // silently emitting a shorter list would drop it from the build.
+    if let Some(w) = &wanted
+        && emitted != w.len()
+    {
+        let missing: Vec<String> = w
+            .iter()
+            .filter(|(_, resolved)| !ordered.iter().any(|p| p.dir == *resolved))
+            .map(|(original, _)| original.display().to_string())
+            .collect();
+        bail!(
+            "requested subdir(s) with no package.xml under {}: {}",
+            workspace.display(),
+            missing.join(", ")
+        );
+    }
+    Ok(())
 }
 
 // =============================================================================

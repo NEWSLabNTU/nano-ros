@@ -33,6 +33,15 @@
 
 include_guard(GLOBAL)
 
+# CACHE INTERNAL, not a normal var: this file is included from other
+# functions, and a normal `set(_X ${CMAKE_CURRENT_LIST_DIR})` is dropped when
+# that frame pops (the `_NROS_ENTRY_DIR` pattern; 287-W6 broke every freertos
+# workspace member this way). Inside a function body
+# `CMAKE_CURRENT_LIST_DIR` names the CALLER's file, so it must be captured
+# here at file scope.
+set(_NROS_PROVIDERS_DIR "${CMAKE_CURRENT_LIST_DIR}"
+    CACHE INTERNAL "dir of NanoRosProviders.cmake")
+
 # ---------------------------------------------------------------------------
 # nano_ros_load_providers([INDEX <path>] [WORKSPACE <dir>]
 #                         [NANO_ROS_ROOT <dir>] [REUSE_INDEX])
@@ -67,11 +76,19 @@ function(nano_ros_load_providers)
         set(_NP_INDEX "${CMAKE_BINARY_DIR}/nros-providers.json")
     endif()
 
-    if(NOT NANO_ROS_CODEGEN_TOOL)
+    # `_NANO_ROS_CODEGEN_TOOL` (cache, underscore-prefixed) is the tree's real
+    # spelling — `nros_bootstrap_codegen()` resolves it. Resolve rather than
+    # demand: this runs before a workspace's subdirectories, so requiring a
+    # caller to have located `nros` first would just move the failure.
+    if(NOT _NANO_ROS_CODEGEN_TOOL)
+        include("${_NROS_PROVIDERS_DIR}/NanoRosBootstrapCodegen.cmake")
+        nros_bootstrap_codegen()
+    endif()
+    if(NOT _NANO_ROS_CODEGEN_TOOL)
         message(FATAL_ERROR
-            "nano_ros_load_providers: NANO_ROS_CODEGEN_TOOL is not set — the "
-            "provider index is read THROUGH the CLI, never parsed here. "
-            "Call this after nano-ros has located `nros`.")
+            "nano_ros_load_providers: no `nros` binary — the provider index is "
+            "read THROUGH the CLI, never parsed here. Run `just setup-cli` and "
+            "`source ./activate.sh`.")
     endif()
 
     set(_root_args "")
@@ -89,7 +106,7 @@ function(nano_ros_load_providers)
     endif()
 
     execute_process(
-        COMMAND "${NANO_ROS_CODEGEN_TOOL}" ws providers
+        COMMAND "${_NANO_ROS_CODEGEN_TOOL}" ws providers
                 --workspace "${_NP_WORKSPACE}" ${_root_args}
                 ${_read_args} --lines
         OUTPUT_VARIABLE _rows

@@ -1,6 +1,6 @@
 # Phase 348 — Source-time provider discovery: buy the colcon convention, not colcon
 
-**Status (2026-08-11). W1, W2 (rmw + boards) and W3 LANDED. W4 and W5 open; the
+**Status (2026-08-11). W1, W2 (rmw + boards), W3 and W4 LANDED. W5 open; the
 platform half of W2 is blocked on a missing descriptor family.** Unblocked by
 [phase-347](phase-347-rmw-as-a-declared-provider.md) W2 — descriptors exist, so
 providers can describe themselves.
@@ -8,7 +8,8 @@ providers can describe themselves.
 W1 shipped the announce mechanism, the scan, and `nros ws providers`. W2
 migrated every provider that has a descriptor to agree with: **12 packages, 36
 provisions** across rmw and boards. W3 added the index, the cmake seam that
-reads it through the CLI, and the three-part cache invalidation.
+reads it through the CLI, and the three-part cache invalidation. W4 derives
+build ORDER from `<depend>`, adopted by all nine example workspaces.
 
 Measured: **273 ms** to walk this repo (478 packages), **2 ms** to read the
 index instead.
@@ -213,22 +214,70 @@ its gate rather than sitting untested. Calling it from the root `CMakeLists.txt`
 now would add ~270 ms to every configure for a result nothing reads, so it
 waits for the consumer.
 
-## W4 — Ordering, and this is the wave with teeth
+## W4 — Ordering — **LANDED**
 
-A provider in `src/` may need **building before its consumer links it**, while
-`nano_ros_workspace(SUBDIRS …)` takes an explicit list today. Discovery becomes
-scheduling.
+- [x] `nros ws order` derives a topological order from `package.xml`'s existing
+      `<depend>` / `<exec_depend>` tags. No second dependency declaration was
+      invented: entries already say
+      `<exec_depend>talker_pkg</exec_depend>`.
+- [x] `nano_ros_workspace(ORDER_FROM_DEPENDS)` reorders `SUBDIRS` through the
+      CLI. Adopted by all nine `examples/workspaces/*`; all nine configure, and
+      `c` builds clean.
+- [x] Cycles and subdirs naming no package are hard errors, never a fallback to
+      the authored order — silently building in the order someone typed is how
+      a constraint stops being checked.
+- [x] Gated by `check-workspace-order` (T1–T7), each case verified to fail under
+      the matching perturbation.
 
-- [ ] Derive a topological order rather than an authored list.
-- [ ] **Use `package.xml`'s existing `<depend>`** rather than inventing a second
-      dependency declaration — the file is already being parsed, and a second
-      source of the same fact is the defect W3 guards against, one level up.
-- [ ] Decide whether the scan replaces `SUBDIRS` or supplements it. colcon has
-      no equivalent of an explicit list, but the copy-out examples depend on
-      being ordinary CMake projects, so an opt-out likely survives.
+*Acceptance, met:* `a_workspace_provider_is_ordered_before_its_consumer` plus
+gate T2 — a `src/` holding a provider and its consumer orders the provider
+first with nothing authored.
 
-*Acceptance:* a workspace whose `src/` contains a provider AND a consumer of it
-builds from a clean tree with no authored ordering.
+### The set stays authored; only the order is derived
+
+That answers the wave's open question. A workspace's `SUBDIRS` list is filtered
+by platform (`if(NANO_ROS_BOARD STREQUAL …) list(APPEND …)`), and which board is
+active is a **selection** — no `<depend>` can express it. So discovery replaces
+the half it can prove and leaves the half it cannot.
+
+Proven load-bearing rather than assumed: with the C workspace's list reversed,
+`ORDER_FROM_DEPENDS` configures clean while without it `nros codegen entry`
+fails — exactly the constraint every workspace states as the comment "Node pkgs
+BEFORE entries so the entry codegen sees their `nano_ros_node_register`
+metadata".
+
+### Ties break by the AUTHORED order, and this is what made adoption safe
+
+The first implementation broke into ties by package NAME. It passed every
+synthetic test and broke **four real workspaces** — `mixed`, `realtime-c`,
+`realtime-cpp`, `realtime-cpp-subnode-portable`. Their entry packages declare no
+`<exec_depend>` at all, so a name-sorted order was free to place `native_entry`
+between `ctrl_pkg` and `telem_pkg` while violating nothing declared, and the
+entry's codegen then ran before the node metadata it reads existed.
+
+The premise "use package.xml's existing `<depend>`" is only as good as what the
+packages actually declare, and half of them declare nothing.
+
+So ties now prefer the caller's authored list, falling back to name. The sort
+can only ever **move a package that a declared dependency requires moving** — it
+fixes what is stated and preserves what is not. That turns this from a
+replacement into a safety net, which is why it could be switched on for every
+workspace at once instead of after a migration to declare all the missing deps.
+Adding those `<exec_depend>` tags is still worth doing (the bringups'
+`system.toml` names the packages, so the data exists) — it just is not a
+prerequisite any more.
+
+### Two bugs this wave found in W1/W3 code
+
+* **`NANO_ROS_CODEGEN_TOOL` does not exist.** The tree's variable is the cache
+  entry `_NANO_ROS_CODEGEN_TOOL`, resolved by `nros_bootstrap_codegen()`. W3's
+  provider module used the un-prefixed name and its gate only passed because the
+  harness set that name itself — a gate validating a fiction. Both modules now
+  bootstrap the real one, and both gates pre-seed the cache variable real builds
+  use.
+* **A module dir captured as a normal variable is lost when the including frame
+  pops** — the `_NROS_ENTRY_DIR` pattern (287-W6). Both modules now capture
+  theirs `CACHE INTERNAL`.
 
 ## W5 — Shadowing
 
@@ -246,14 +295,15 @@ builds from a clean tree with no authored ordering.
 ## Order
 
 ```
-347 W2 ──► W1 ──► W2 ──► W3 ──► W4      (W1/W2/W3 done)
+347 W2 ──► W1 ──► W2 ──► W3 ──► W4      (W1–W4 done)
                             └──► W5
 ```
 
 W1–W3 turned out to be mechanical only in outline: W1 uncovered issue 0516, W2
 found the board-name collision and the descriptor-only provider shape, and W3's
-cache invalidation needed three mechanisms rather than a watch list. **W4 is
-still the phase's real
+cache invalidation needed three mechanisms rather than a watch list, and W4's
+premise held only where packages actually declare their deps. **W4 was the
+phase's real
 content** and should be scheduled as though it were the whole thing.
 
 ## Deliberately not here

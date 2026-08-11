@@ -50,6 +50,14 @@ if(DEFINED _NROS_WORKSPACE_INCLUDED)
 endif()
 set(_NROS_WORKSPACE_INCLUDED TRUE)
 
+# CACHE INTERNAL, not a normal var: this file's functions `include()` sibling
+# modules, and inside a function body `CMAKE_CURRENT_LIST_DIR` names the
+# CALLER's file. A plain `set(_X ${CMAKE_CURRENT_LIST_DIR})` at file scope is
+# also dropped when an including frame pops — the `_NROS_ENTRY_DIR` pattern,
+# which broke every freertos workspace member in 287-W6.
+set(_NROS_WORKSPACE_DIR "${CMAKE_CURRENT_LIST_DIR}"
+    CACHE INTERNAL "dir of NanoRosWorkspace.cmake")
+
 # ---------------------------------------------------------------------------
 # Helper — walk up from <start> looking for the `nros-sdk-index.toml`
 # sentinel that marks every nano-ros checkout root. Writes the
@@ -128,11 +136,79 @@ function(_nros_import_once nano_ros_root)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# Public — `nano_ros_workspace(SYSTEM … BACKEND … PLATFORM … SUBDIRS …)`
+# _nano_ros_order_subdirs(<ws_root> <subdirs> <out_var>) — phase-348 W4
+#
+# Reorder `subdirs` so each package follows the workspace packages it depends
+# on, via `nros ws order --subdir …`. Asks the CLI rather than parsing
+# package.xml here: the dependency scan already exists in one place, and cmake
+# growing a second `<depend>` reader is the two-derivations defect.
+#
+# The CLI filters the requested set out of the FULL workspace order, so a
+# package that sits between two requested ones still orders them correctly even
+# though it is not itself in the list (a bringup package, typically — it is
+# passed as SYSTEM rather than as a subdir).
+# ---------------------------------------------------------------------------
+function(_nano_ros_order_subdirs ws_root subdirs out_var)
+    if(NOT _NANO_ROS_CODEGEN_TOOL)
+        include("${_NROS_WORKSPACE_DIR}/NanoRosBootstrapCodegen.cmake")
+        nros_bootstrap_codegen()
+    endif()
+    if(NOT _NANO_ROS_CODEGEN_TOOL)
+        message(FATAL_ERROR
+            "nano_ros_workspace(ORDER_FROM_DEPENDS): no `nros` binary — the "
+            "order is derived by the CLI, not parsed here. Run "
+            "`just setup-cli` and `source ./activate.sh`.")
+    endif()
+
+    set(_args "")
+    foreach(_s IN LISTS subdirs)
+        list(APPEND _args --subdir "${_s}")
+    endforeach()
+
+    execute_process(
+        COMMAND "${_NANO_ROS_CODEGEN_TOOL}" ws order
+                --workspace "${ws_root}" ${_args}
+        OUTPUT_VARIABLE _ordered
+        ERROR_VARIABLE _err
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+    # A cycle, or a subdir naming no package, is FATAL rather than a fallback
+    # to the authored order: silently building in the order someone happened to
+    # type is how the constraint stops being checked at all.
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR
+            "nano_ros_workspace(ORDER_FROM_DEPENDS): `nros ws order` failed "
+            "(${_rc}).\n${_err}")
+    endif()
+
+    string(REPLACE "\n" ";" _lines "${_ordered}")
+    set(_out "")
+    foreach(_l IN LISTS _lines)
+        if(NOT _l STREQUAL "")
+            list(APPEND _out "${_l}")
+        endif()
+    endforeach()
+
+    list(LENGTH subdirs _want)
+    list(LENGTH _out _got)
+    if(NOT _want EQUAL _got)
+        message(FATAL_ERROR
+            "nano_ros_workspace(ORDER_FROM_DEPENDS): asked to order ${_want} "
+            "subdir(s), got ${_got} back. Refusing to build a set that is not "
+            "the one requested.")
+    endif()
+
+    set(${out_var} "${_out}" PARENT_SCOPE)
+endfunction()
+
+# ---------------------------------------------------------------------------
+# Public — `nano_ros_workspace(SYSTEM … BACKEND … PLATFORM … SUBDIRS …
+#                              [ORDER_FROM_DEPENDS])`
 # ---------------------------------------------------------------------------
 function(nano_ros_workspace)
     cmake_parse_arguments(_NRW
-        ""
+        "ORDER_FROM_DEPENDS"
         "SYSTEM;BACKEND;PLATFORM;EDITION;NANO_ROS_ROOT"
         "SUBDIRS"
         ${ARGN})
@@ -228,6 +304,25 @@ function(nano_ros_workspace)
         include("${_nros_root}/cmake/nano_ros_workspace_metadata.cmake")
         nano_ros_workspace_metadata(SYSTEM "${_NRW_SYSTEM}"
                                     WORKSPACE_ROOT "${CMAKE_SOURCE_DIR}")
+    endif()
+
+    # phase-348 W4 — ORDER_FROM_DEPENDS derives the add_subdirectory() order
+    # from each package's `<depend>` tags instead of trusting the order the
+    # SUBDIRS list happens to be written in.
+    #
+    # The SET stays authored and the ORDER becomes derived, deliberately. A
+    # workspace's SUBDIRS list is filtered by PLATFORM (`if(NANO_ROS_BOARD
+    # STREQUAL …) list(APPEND …)`), and which board is active is a SELECTION,
+    # not a dependency — no `<depend>` can express it. So discovery replaces
+    # the half it can prove and leaves the half it cannot.
+    #
+    # What this removes is the standing comment in every workspace CMakeLists,
+    # "Node pkgs BEFORE entries so the entry codegen sees their
+    # nano_ros_node_register metadata" — a real constraint that the entry
+    # packages ALREADY state as `<exec_depend>talker_pkg</exec_depend>`, and
+    # that a hand-maintained list can silently get wrong.
+    if(_NRW_ORDER_FROM_DEPENDS AND _NRW_SUBDIRS)
+        _nano_ros_order_subdirs("${CMAKE_SOURCE_DIR}" "${_NRW_SUBDIRS}" _NRW_SUBDIRS)
     endif()
 
     foreach(_sub IN LISTS _NRW_SUBDIRS)

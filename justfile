@@ -412,6 +412,7 @@ check-fast: \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-package-xml-comments check-provider-announcements check-provider-index \
+    check-workspace-order \
     check-atomic-sync-writes \
     check-cmake-corrosion-prefix \
     check-path-env-fingerprints
@@ -3480,6 +3481,15 @@ check-provider-announcements:
 # drift), every recorded package.xml is watched for reconfigure, and a
 # provider added AFTER the index was written is caught by rescan-and-compare —
 # the case no file watch can cover (issue 0196's shape). Needs `just setup-cli`.
+# phase-348 W4 — build order derived from package.xml `<depend>`, not from the
+# order a SUBDIRS list happens to be written in. Every workspace CMakeLists
+# carries "Node pkgs BEFORE entries so the entry codegen sees their metadata";
+# the entry packages already state that as <exec_depend>. Covers the cycle and
+# bad-subdir rejections and the cmake seam. Needs `just setup-cli`.
+[private]
+check-workspace-order:
+    @bash packages/testing/nros-tests/tests/workspace_order_gate.sh
+
 [private]
 check-provider-index:
     @bash packages/testing/nros-tests/tests/provider_index_gate.sh

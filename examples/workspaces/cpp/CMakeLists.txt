@@ -58,7 +58,12 @@ elseif(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
     list(APPEND _ws_subdirs src/freertos_entry)
 endif()
 
+# phase-348 W4 — the add_subdirectory() order comes from each package's
+# `<depend>` tags. The list still chooses the SET (platform filtering is a
+# selection no dependency can express); it no longer has to be written in a
+# valid order.
 nano_ros_workspace(
+    ORDER_FROM_DEPENDS
     BACKEND  zenoh
     PLATFORM "${NANO_ROS_PLATFORM}"
     SUBDIRS  ${_ws_subdirs})

@@ -94,7 +94,11 @@ IDX="$WORK/providers.json"
 cat >"$WORK/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.20)
 project(provider_index_gate NONE)
-set(NANO_ROS_CODEGEN_TOOL "$NROS")
+# The real spelling is the CACHE var _NANO_ROS_CODEGEN_TOOL, which
+# nros_bootstrap_codegen() honours as its first resolution source. Setting
+# it here is what keeps the gate from depending on activate.sh having been
+# sourced -- and makes it exercise the variable real builds use.
+set(_NANO_ROS_CODEGEN_TOOL "$NROS" CACHE FILEPATH "in-tree nros")
 include("$MODULE")
 nano_ros_load_providers(WORKSPACE "$WS" NANO_ROS_ROOT "$WS" INDEX "$IDX" REUSE_INDEX)
 list(LENGTH NANO_ROS_PROVIDER_ROWS _n)

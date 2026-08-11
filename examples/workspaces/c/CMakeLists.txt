@@ -69,8 +69,16 @@ elseif(NANO_ROS_BOARD STREQUAL "nuttx-qemu-arm")
     endif()
 endif()
 
+# phase-348 W4 — ORDER_FROM_DEPENDS derives the add_subdirectory() order from
+# each package's `<depend>` tags. The list above still chooses the SET (that is
+# platform filtering, a selection no dependency can express) but no longer has
+# to be written in a valid order: the entries already declare
+# `<exec_depend>talker_pkg</exec_depend>` and friends, which is the same
+# constraint the old "Node pkgs BEFORE entries" comments asked authors to keep
+# by hand.
 nano_ros_workspace(
     BACKEND  zenoh
     PLATFORM "${NANO_ROS_PLATFORM}"
     SYSTEM   demo_bringup
+    ORDER_FROM_DEPENDS
     SUBDIRS  ${_ws_subdirs})

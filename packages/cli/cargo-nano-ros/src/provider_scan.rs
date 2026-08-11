@@ -165,8 +165,43 @@ pub fn scan_roots(roots: &[PathBuf]) -> Result<ScanResult> {
 /// absent when someone builds nano-ros on its own.
 pub fn scan_root(root: &Path, root_index: usize) -> Result<ScanResult> {
     let mut out = ScanResult::default();
+    walk_packages(root, &mut out, |dir, pkg, out| {
+        if !pkg.provides.is_empty() {
+            out.providers.push(ProviderPackage {
+                package: pkg.name.clone(),
+                dir: dir.to_path_buf(),
+                root_index,
+                provides: pkg.provides.clone(),
+                depends: pkg.dependencies.clone(),
+            });
+        }
+    })?;
+
+    // `stack.pop()` makes the walk order depend on read_dir order, which is
+    // filesystem-dependent. Sort so the result is reproducible across machines
+    // — W5 reports ambiguity by listing paths, and an unstable order would make
+    // that message differ between hosts for the same tree.
+    out.providers.sort_by(|a, b| a.dir.cmp(&b.dir));
+    out.errors.sort_by(|a, b| a.path.cmp(&b.path));
+    out.inputs.sort();
+    Ok(out)
+}
+
+/// The shared tree walk: find every `package.xml` under `root`, parse it once,
+/// and hand it to `visit`.
+///
+/// Factored out because phase-348 has two consumers with different questions —
+/// W1/W3 want "who provides what", W4 wants "every package and its depends" —
+/// and walking twice would double the I/O while letting the two disagree about
+/// which directories are pruned. Parse failures and unreadable directories
+/// accumulate in `out.errors` either way.
+fn walk_packages(
+    root: &Path,
+    out: &mut ScanResult,
+    mut visit: impl FnMut(&Path, &PackageXml, &mut ScanResult),
+) -> Result<()> {
     if !root.is_dir() {
-        return Ok(out);
+        return Ok(());
     }
 
     let mut stack = vec![root.to_path_buf()];
@@ -179,17 +214,7 @@ pub fn scan_root(root: &Path, root_index: usize) -> Result<ScanResult> {
         if manifest.is_file() {
             out.inputs.push(manifest.clone());
             match PackageXml::parse(&manifest) {
-                Ok(pkg) => {
-                    if !pkg.provides.is_empty() {
-                        out.providers.push(ProviderPackage {
-                            package: pkg.name,
-                            dir: dir.clone(),
-                            root_index,
-                            provides: pkg.provides,
-                            depends: pkg.dependencies,
-                        });
-                    }
-                }
+                Ok(pkg) => visit(&dir, &pkg, out),
                 Err(e) => out.errors.push(ScanError {
                     path: manifest,
                     message: format!("{e:#}"),
@@ -229,15 +254,156 @@ pub fn scan_root(root: &Path, root_index: usize) -> Result<ScanResult> {
             stack.push(path);
         }
     }
+    Ok(())
+}
 
-    // `stack.pop()` makes the walk order depend on read_dir order, which is
-    // filesystem-dependent. Sort so the result is reproducible across machines
-    // — W5 reports ambiguity by listing paths, and an unstable order would make
-    // that message differ between hosts for the same tree.
-    out.providers.sort_by(|a, b| a.dir.cmp(&b.dir));
+// ===========================================================================
+// The package graph — phase-348 W4
+// ===========================================================================
+
+/// A package in a workspace, whether or not it provides anything.
+///
+/// Distinct from [`ProviderPackage`], which is only the ones announcing a
+/// provision: build ORDER is a property of every package, and an entry that
+/// composes two node packages provides nothing at all while still having to be
+/// configured after them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspacePackage {
+    pub name: String,
+    pub dir: PathBuf,
+    /// Every `<depend>` / `<*_depend>` entry, verbatim. Includes names that are
+    /// not workspace packages (`std_msgs`); ordering ignores those rather than
+    /// failing, since an external dependency imposes no local build order.
+    pub depends: HashSet<String>,
+}
+
+/// Every package under `root`, in path order.
+pub fn scan_workspace_packages(root: &Path) -> Result<(Vec<WorkspacePackage>, ScanResult)> {
+    let mut out = ScanResult::default();
+    let mut pkgs = Vec::new();
+    walk_packages(root, &mut out, |dir, pkg, _out| {
+        pkgs.push(WorkspacePackage {
+            name: pkg.name.clone(),
+            dir: dir.to_path_buf(),
+            depends: pkg.dependencies.clone(),
+        });
+    })?;
+    pkgs.sort_by(|a, b| a.dir.cmp(&b.dir));
     out.errors.sort_by(|a, b| a.path.cmp(&b.path));
     out.inputs.sort();
-    Ok(out)
+    Ok((pkgs, out))
+}
+
+/// A dependency cycle, reported as the names on it.
+#[derive(Debug, Clone)]
+pub struct DependencyCycle(pub Vec<String>);
+
+impl std::fmt::Display for DependencyCycle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.join(" -> "))
+    }
+}
+
+/// Order `pkgs` so every package follows the workspace packages it depends on.
+///
+/// **Deterministic.** Among packages whose dependencies are all satisfied, the
+/// one sorting first by NAME goes next. A topological sort has many valid
+/// answers, and an order that varied by filesystem or hash iteration would make
+/// a build reproducible only by luck — and would make a diff of the emitted
+/// order unreadable.
+///
+/// **Dependencies outside the workspace are ignored, not errors.** `<depend>`
+/// lists message packages (`std_msgs`) and system packages that impose no local
+/// build order; treating an unknown name as a missing package would reject
+/// every real workspace.
+///
+/// A cycle is an error naming the packages on it. Emitting a partial order
+/// instead would produce a build that fails somewhere downstream with no clue
+/// as to why.
+pub fn topological_order(
+    pkgs: &[WorkspacePackage],
+) -> std::result::Result<Vec<WorkspacePackage>, DependencyCycle> {
+    topological_order_with_priority(pkgs, &[])
+}
+
+/// [`topological_order`], but ties break by a caller-supplied preference first.
+///
+/// `priority` is a list of package directories in the order the caller already
+/// wants — a workspace's authored `SUBDIRS` list. Among packages whose
+/// dependencies are all satisfied, the one appearing earliest in `priority`
+/// goes next; anything absent from it falls back to name order.
+///
+/// **This is what makes adopting derived ordering safe.** Every workspace's
+/// authored list is already a working order, and most packages have no
+/// dependency relation to each other at all — in a workspace where the entry
+/// packages declare no `<exec_depend>`, a pure name-sorted topological order is
+/// free to interleave an entry between two node packages and break the build,
+/// even though it violates no declared constraint. Preferring the authored
+/// order means the sort can only ever MOVE a package that a declared dependency
+/// requires moving. It fixes what is stated and preserves what is not, so
+/// turning it on cannot regress a workspace that has not declared its deps yet.
+pub fn topological_order_with_priority(
+    pkgs: &[WorkspacePackage],
+    priority: &[PathBuf],
+) -> std::result::Result<Vec<WorkspacePackage>, DependencyCycle> {
+    let rank = |p: &WorkspacePackage| -> (usize, String) {
+        match priority.iter().position(|d| *d == p.dir) {
+            Some(i) => (i, String::new()),
+            None => (usize::MAX, p.name.clone()),
+        }
+    };
+    topo_inner(pkgs, &rank)
+}
+
+fn topo_inner(
+    pkgs: &[WorkspacePackage],
+    rank: &dyn Fn(&WorkspacePackage) -> (usize, String),
+) -> std::result::Result<Vec<WorkspacePackage>, DependencyCycle> {
+    let local: HashSet<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+
+    // name -> the workspace packages it must follow.
+    let mut pending: Vec<(&WorkspacePackage, HashSet<&str>)> = pkgs
+        .iter()
+        .map(|p| {
+            let deps: HashSet<&str> = p
+                .depends
+                .iter()
+                .map(String::as_str)
+                .filter(|d| local.contains(d) && *d != p.name)
+                .collect();
+            (p, deps)
+        })
+        .collect();
+
+    let mut done: HashSet<&str> = HashSet::new();
+    let mut order: Vec<WorkspacePackage> = Vec::with_capacity(pkgs.len());
+
+    while !pending.is_empty() {
+        let mut ready: Vec<usize> = pending
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, deps))| deps.iter().all(|d| done.contains(d)))
+            .map(|(i, _)| i)
+            .collect();
+
+        if ready.is_empty() {
+            // Everything left is on, or behind, a cycle. Report the remaining
+            // names sorted — naming all of them beats naming one arbitrary
+            // edge, because the author has to look at the whole knot anyway.
+            let mut names: Vec<String> = pending.iter().map(|(p, _)| p.name.clone()).collect();
+            names.sort();
+            return Err(DependencyCycle(names));
+        }
+
+        // Deterministic tie-break: caller preference, then name.
+        ready.sort_by_key(|&i| rank(pending[i].0));
+        let next = ready[0];
+        let (pkg, _) = pending.remove(next);
+        done.insert(pkg.name.as_str());
+        order.push(pkg.clone());
+    }
+
+    Ok(order)
 }
 
 // ===========================================================================
@@ -730,6 +896,225 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert!(lines[0].starts_with("rmw\tone\tmulti\t0\t"));
         assert!(lines[1].starts_with("board\ttwo\tmulti\t0\t"));
+    }
+
+    // --- the package graph (W4) --------------------------------------------
+
+    fn pkg_xml(name: &str, deps: &[&str]) -> String {
+        let d: String = deps
+            .iter()
+            .map(|x| format!("  <exec_depend>{x}</exec_depend>\n"))
+            .collect();
+        format!(
+            "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>{name}</name>\n{d}</package>"
+        )
+    }
+
+    fn ordered_names(root: &Path) -> Vec<String> {
+        let (pkgs, _) = scan_workspace_packages(root).unwrap();
+        topological_order(&pkgs)
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect()
+    }
+
+    /// The real shape this replaces: an entry composes node packages and must
+    /// be configured AFTER them, which every workspace states by hand today as
+    /// "node pkgs BEFORE entries" in a `SUBDIRS` list.
+    #[test]
+    fn an_entry_is_ordered_after_the_nodes_it_composes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // Written in an order that would be WRONG if the walk order were kept:
+        // `entry` sorts before both node packages by path and by name.
+        write(
+            &root.join("src/entry/package.xml"),
+            &pkg_xml("entry", &["talker_pkg", "listener_pkg"]),
+        );
+        write(
+            &root.join("src/talker_pkg/package.xml"),
+            &pkg_xml("talker_pkg", &["std_msgs"]),
+        );
+        write(
+            &root.join("src/listener_pkg/package.xml"),
+            &pkg_xml("listener_pkg", &["std_msgs"]),
+        );
+
+        let names = ordered_names(root);
+        let pos = |n: &str| names.iter().position(|x| x == n).unwrap();
+        assert!(pos("talker_pkg") < pos("entry"));
+        assert!(pos("listener_pkg") < pos("entry"));
+        assert_eq!(
+            names,
+            vec!["listener_pkg", "talker_pkg", "entry"],
+            "ties break by name, so the order is reproducible"
+        );
+    }
+
+    /// `std_msgs` is not in the workspace. Treating an unknown dependency as a
+    /// missing package would reject every real workspace.
+    #[test]
+    fn dependencies_outside_the_workspace_are_ignored() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            &root.join("src/only/package.xml"),
+            &pkg_xml("only", &["std_msgs", "rclcpp", "some_system_dep"]),
+        );
+        assert_eq!(ordered_names(root), vec!["only"]);
+    }
+
+    #[test]
+    fn a_cycle_is_an_error_naming_every_package_on_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(&root.join("src/a/package.xml"), &pkg_xml("a", &["b"]));
+        write(&root.join("src/b/package.xml"), &pkg_xml("b", &["c"]));
+        write(&root.join("src/c/package.xml"), &pkg_xml("c", &["a"]));
+        write(&root.join("src/fine/package.xml"), &pkg_xml("fine", &[]));
+
+        let (pkgs, _) = scan_workspace_packages(root).unwrap();
+        let err = topological_order(&pkgs).unwrap_err();
+        assert_eq!(err.0, vec!["a", "b", "c"], "names the whole knot");
+        assert!(!err.0.contains(&"fine".to_string()));
+    }
+
+    /// A package depending on itself is a no-op, not a one-node cycle. Real
+    /// package.xml files do this by listing their own name in a group.
+    #[test]
+    fn a_self_dependency_does_not_deadlock() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            &root.join("src/solo/package.xml"),
+            &pkg_xml("solo", &["solo"]),
+        );
+        assert_eq!(ordered_names(root), vec!["solo"]);
+    }
+
+    /// Independent packages come out in a stable, name-sorted order rather than
+    /// whatever `read_dir` returned — otherwise the emitted order would differ
+    /// between machines for one tree.
+    #[test]
+    fn independent_packages_are_ordered_deterministically() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        for n in ["zulu", "alpha", "mike"] {
+            write(&root.join(format!("src/{n}/package.xml")), &pkg_xml(n, &[]));
+        }
+        assert_eq!(ordered_names(root), vec!["alpha", "mike", "zulu"]);
+    }
+
+    /// The safety-net property, and the reason ordering can be turned on
+    /// everywhere: where nothing is DECLARED, the caller's authored order
+    /// survives untouched.
+    ///
+    /// Found the hard way — four real workspaces broke when this sorted purely
+    /// by name. Their entry packages declare no `<exec_depend>` at all, so a
+    /// name-sorted order was free to interleave `native_entry` between
+    /// `ctrl_pkg` and `telem_pkg` without violating any stated constraint, and
+    /// the entry's codegen then ran before the node metadata it reads existed.
+    #[test]
+    fn caller_order_wins_ties_so_undeclared_workspaces_are_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // Exactly the realtime-c shape: an entry that declares nothing, whose
+        // name sorts between the two node packages.
+        write(
+            &root.join("src/ctrl_pkg/package.xml"),
+            &pkg_xml("ctrl_pkg", &[]),
+        );
+        write(
+            &root.join("src/native_entry/package.xml"),
+            &pkg_xml("native_entry", &[]),
+        );
+        write(
+            &root.join("src/telem_pkg/package.xml"),
+            &pkg_xml("telem_pkg", &[]),
+        );
+
+        let (pkgs, _) = scan_workspace_packages(root).unwrap();
+
+        // Name order interleaves the entry — valid topologically, broken in
+        // practice.
+        let by_name: Vec<String> = topological_order(&pkgs)
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(by_name, vec!["ctrl_pkg", "native_entry", "telem_pkg"]);
+
+        // The authored order is preserved instead.
+        let authored: Vec<PathBuf> = ["ctrl_pkg", "telem_pkg", "native_entry"]
+            .iter()
+            .map(|n| root.join("src").join(n))
+            .collect();
+        let got: Vec<String> = topological_order_with_priority(&pkgs, &authored)
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(got, vec!["ctrl_pkg", "telem_pkg", "native_entry"]);
+    }
+
+    /// Preference must not override a DECLARED dependency — otherwise the
+    /// safety net would silently do nothing whenever the authored order is
+    /// wrong, which is the only case it exists for.
+    #[test]
+    fn a_declared_dependency_beats_the_caller_order() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            &root.join("src/entry/package.xml"),
+            &pkg_xml("entry", &["node_pkg"]),
+        );
+        write(
+            &root.join("src/node_pkg/package.xml"),
+            &pkg_xml("node_pkg", &[]),
+        );
+
+        let (pkgs, _) = scan_workspace_packages(root).unwrap();
+        // Author asks for the WRONG order.
+        let authored: Vec<PathBuf> = ["entry", "node_pkg"]
+            .iter()
+            .map(|n| root.join("src").join(n))
+            .collect();
+        let got: Vec<String> = topological_order_with_priority(&pkgs, &authored)
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(got, vec!["node_pkg", "entry"], "the declared edge wins");
+    }
+
+    /// The acceptance criterion: a workspace whose `src/` holds a PROVIDER and
+    /// a CONSUMER of it orders the provider first, with nothing authored.
+    #[test]
+    fn a_workspace_provider_is_ordered_before_its_consumer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            &root.join("src/my_backend/package.xml"),
+            r#"<?xml version="1.0"?>
+<package format="3">
+  <name>my_backend</name>
+  <export><nano_ros_provides kind="rmw" name="acme"/></export>
+</package>"#,
+        );
+        write(
+            &root.join("src/app/package.xml"),
+            &pkg_xml("app", &["my_backend"]),
+        );
+
+        let names = ordered_names(root);
+        assert_eq!(names, vec!["my_backend", "app"]);
+
+        // And the provider is still discoverable as one — ordering did not
+        // consume the provision.
+        let scan = scan_roots(&[root.to_path_buf()]).unwrap();
+        assert_eq!(scan.providers.len(), 1);
+        assert_eq!(scan.providers[0].provides[0].name, "acme");
     }
 
     #[test]
