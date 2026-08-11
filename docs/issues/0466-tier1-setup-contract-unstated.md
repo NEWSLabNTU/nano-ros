@@ -318,3 +318,49 @@ Endpoint, for calibration: after all five, `just ci` runs to completion. The onl
 failures are five of ~1359 tests, and the four retested solo all pass — the
 documented sweep-under-load flake, with `large_msg::test_xrce_e2e_integrity`
 being #0470 exactly as filed.
+
+## The compile-check lane: the gate is NARROWER than the tests (2026-08-11)
+
+The other four failures in that run — `multi_tier_*` / `single_tier_*`, on
+`build/compile-check/orch_tiers_multi/target/debug/demo_entry` — are a second
+gate/test disagreement, and it points the OPPOSITE way from the one above.
+
+They cleared by rebuilding (`bash scripts/build/compile-check-fixtures.sh`, after
+`just setup-cli` — the stale CLI made every row fail first), and 6/6 pass. But the
+interesting part is why `check-fixtures-stale` stayed silent while they were stale:
+
+* the **gate** (`scripts/test/compile-check-stale.sh`) compares a CONTENT
+  signature — `.inputsig` against a freshly computed
+  `compile-check-signature.sh` — which is the better question in principle
+  ("built from the sources on disk right now", immune to mtime churn);
+* the **tests** (`require_compile_check_bin` -> `require_prebuilt_binary_fresh`)
+  compare cargo dep-info MTIMES.
+
+A `git pull` bumps mtimes without changing content, so the gate passes and the
+tests fail. That looks like the tests being wrong, and the tempting fix is to
+align them onto the signature. **That fix would be wrong**, and the reason is
+worth writing down before someone tries it:
+
+`compile-check-signature.sh` hashes the manifest record, the nros CLI's codegen
+fingerprint, and the row's own `$dir` — and nothing else. It does NOT hash the
+workspace crates the row compiles against. The input the failing test named was
+`packages/boards/nros-board-common/src/platform_config.rs`: a repo crate outside
+every `sig_paths` entry. So a REAL edit to a dependency crate leaves the
+signature unchanged and the gate silent, while the mtime check catches it.
+
+So the mtime check is currently the only thing covering dependency-crate
+staleness for this lane, and the gate is blind to it — CLAUDE.md's issue-0196
+rule ("build-side stale probes must watch the same inputs as test-side gates")
+violated in the direction that produces museum binaries rather than noise.
+
+The fix belongs in the SIGNATURE, not the test: widen it to the row's in-repo
+path-dependency closure (cargo metadata per row, restricted to path deps under
+the repo) so that the gate sees what the compile actually consumes. Then the
+tests could be aligned onto it, and the pull-induced false STALE goes away as a
+side effect rather than as the goal.
+
+Not attempted here: widening it needs a per-row dependency closure and a decision
+about caching that closure, which is more than a session's tail end deserves. The
+false-positive cost meanwhile is one `compile-check-fixtures.sh` after a pull —
+and per issue 0445 the verdict now says so itself ("5th consecutive stale verdict
+… suspect the probe before trusting the verdict"), which is how this was found.
