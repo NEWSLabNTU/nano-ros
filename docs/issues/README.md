@@ -152,16 +152,15 @@ BOTH derivations (cmake `COMPARE NATURAL ORDER DESCENDING`, shell `sort -Vr`), a
 visible; without it the retry would have been logged as "rebuilt on v0.6.1, still broken". Verified with
 both versions present: resolves 0.6.1, exit 0, 0 duplicate symbols. See `archived/0500-*`. (2026-08-10)
 
-**#514** (embedded, open 2026-08-11) — the runtime contract monitors DETECT and QUEUE violations that nothing
-ever drains: `Executor::drain_violations` and `nros_diagnostics::Reporter::report` each have exactly one
-caller in the tree, and it is a test binary — no board entry (freertos/zephyr/linux) or generated entry
-drains the ring. So on every real image `check_rate`/`check_age`/`check_latency`/`check_deadline_miss`/
-`check_timer_overrun` run each spin and discard their verdicts, and a continuously-violated contract
-produces the same target-side output as a met one: nothing. Compounded by the ring being
-`heapless::Vec<_, 8>` with `let _ = push(v)` at every site, so a never-drained image fills up and drops
-the rest uncounted. Needs the entry glue to drain into a reporter (a log line is a valid minimum), a
-dropped-violation counter, and an explicit answer to whether draining is the application's job or the
-runtime's — today it is neither. See `0514-*`.
+Recently resolved (2026-08-11): **#514** (embedded) — every runtime contract rule pushed verdicts into a
+ring nothing read: `drain_violations` and `nros_diagnostics::Reporter::report` each had ONE caller in the
+tree and it was a test binary, so on a real image a continuously-violated contract and a met one produced
+identical output (none). Fixed by logging each violation AT DETECTION plus a `violations_dropped` counter
+for what the bounded ring could not hold; `set_report_violations(false)` opts out. Logging at detection
+rather than draining at end-of-spin is the load-bearing choice — the first attempt drained-and-cleared and
+broke four spin-then-drain tests, the same regression a user with a custom reporting path would have hit.
+Verified on the FreeRTOS lane: 67 violation lines under a 2 kHz flood, none idle. `/diagnostics`
+publication and non-placeholder `fqn`s remain open. See `archived/0514-*`. (2026-08-11)
 
 **#515** (orchestration, open 2026-08-11) — a timer period that is not an integer multiple of its tier's
 `spin_period_us` quantizes to the spin grid: measured on the FreeRTOS lane, a 33 ms timer in a 5 ms-spin

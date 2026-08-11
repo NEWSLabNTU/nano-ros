@@ -1,11 +1,41 @@
 ---
 id: 514
 title: "Runtime contract violations are detected, queued, and never drained — the only caller of drain_violations is a test binary, so every rule is unobservable in a real image"
-status: open
+status: resolved
+resolved_in: "same-day fix; Executor logs violations at detection"
 type: bug
 area: embedded
 related: [issue-0505]
 ---
+
+## Resolution (2026-08-11)
+
+The executor logs each violation AT DETECTION (rule, fqn, measured,
+declared) and counts what the bounded ring could not hold
+(`Executor::violations_dropped`). `set_report_violations(false)` opts
+out for an application that reports its own way.
+
+Logging at detection rather than draining the ring at end-of-spin is
+load-bearing: the first attempt drained-and-cleared after dispatch and
+broke four existing tests that spin-then-drain — exactly the regression
+a library user with a custom reporting path would have hit. The two
+paths are now independent, so the default helps images that had no
+reporting at all and changes nothing for images that had their own.
+
+A log line is the floor, not the ceiling: it needs no publisher, no
+topic wiring and no contract on the reporting path itself, so it works
+on a bare RTOS image and during boot. Publishing the same verdicts as
+`DiagnosticArray` on `/diagnostics` belongs on top of this and is still
+unimplemented outside the `contract-monitor` test binary.
+
+Verified on the FreeRTOS mps2-an385 QEMU lane: under a 2 kHz inbound
+flood the island console carries 67 `contract violation:
+timer-overrun-runtime` lines; the same image idle emits none.
+
+**Left open deliberately:** violations still report a placeholder `fqn`
+("timer", "sched-context") because entries carry no name at that
+altitude, so a fault is visible but not attributable to a specific
+timer or callback. Worth its own issue.
 
 ## Problem
 
