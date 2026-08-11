@@ -12,7 +12,7 @@
 //! this is the JSON-`--args-file` contract the build system already speaks.
 
 use clap::{Args as ClapArgs, Subcommand};
-use eyre::{Context, Result, bail, eyre};
+use eyre::{Result, WrapErr, bail, eyre};
 use std::path::PathBuf;
 
 use crate::{
@@ -314,10 +314,10 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     if existing.as_deref() != Some(src.as_str()) {
         if let Some(parent) = args.out.parent() {
             fs::create_dir_all(parent)
-                .with_context(|| format!("create parent `{}`", parent.display()))?;
+                .wrap_err_with(|| format!("create parent `{}`", parent.display()))?;
         }
         fs::write(&args.out, &src)
-            .with_context(|| format!("write generated TU `{}`", args.out.display()))?;
+            .wrap_err_with(|| format!("write generated TU `{}`", args.out.display()))?;
     }
 
     if let Some(depfile) = args.depfile.as_ref() {
@@ -363,9 +363,9 @@ fn write_link_libs_sidecar(
     out.push_str(")\n");
     if let Some(parent) = sidecar.parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("create sidecar parent `{}`", parent.display()))?;
+            .wrap_err_with(|| format!("create sidecar parent `{}`", parent.display()))?;
     }
     std::fs::write(sidecar, out)
-        .with_context(|| format!("write link-libs sidecar `{}`", sidecar.display()))?;
+        .wrap_err_with(|| format!("write link-libs sidecar `{}`", sidecar.display()))?;
     Ok(())
 }

@@ -8,7 +8,7 @@ use super::{
     schema::InterfaceRef,
     workspace::{Workspace, unique_paths},
 };
-use eyre::{Context, Result, eyre};
+use eyre::{Result, WrapErr, eyre};
 use serde_json::{Map, Value, json};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},

@@ -1,6 +1,6 @@
 //! ROS launch manifest adapter.
 
-use eyre::{Context, Result};
+use eyre::{Result, WrapErr};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 

@@ -31,7 +31,7 @@ use std::{
 };
 
 use clap::{Args as ClapArgs, ValueEnum};
-use eyre::{Context, Result, bail};
+use eyre::{Result, WrapErr, bail};
 use serde::Serialize;
 
 use std::collections::BTreeMap;
@@ -111,11 +111,11 @@ pub struct Args {
 pub fn run(args: Args) -> Result<()> {
     let workspace = match args.workspace {
         Some(p) => p,
-        None => std::env::current_dir().context("resolve cwd")?,
+        None => std::env::current_dir().wrap_err("resolve cwd")?,
     };
 
     let cfg = NrosConfig::from_workspace(&workspace)
-        .with_context(|| format!("load workspace at {}", workspace.display()))?;
+        .wrap_err_with(|| format!("load workspace at {}", workspace.display()))?;
 
     let bringup = resolve_bringup(&cfg, args.bringup.as_deref())?;
 
@@ -549,7 +549,7 @@ fn emit_bake_tree(
     transports: Vec<crate::orchestration::plan::PlanTransport>,
 ) -> Result<()> {
     fs::create_dir_all(bake_dir)
-        .with_context(|| format!("create bake dir {}", bake_dir.display()))?;
+        .wrap_err_with(|| format!("create bake dir {}", bake_dir.display()))?;
 
     write_if_changed(
         &bake_dir.join("system_config.h"),
@@ -626,11 +626,11 @@ fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
-            .with_context(|| format!("create parent {}", parent.display()))?;
+            .wrap_err_with(|| format!("create parent {}", parent.display()))?;
     }
-    let mut f = fs::File::create(path).with_context(|| format!("create {}", path.display()))?;
+    let mut f = fs::File::create(path).wrap_err_with(|| format!("create {}", path.display()))?;
     f.write_all(contents.as_bytes())
-        .with_context(|| format!("write {}", path.display()))?;
+        .wrap_err_with(|| format!("write {}", path.display()))?;
     Ok(())
 }
 
@@ -942,7 +942,7 @@ fn render_plan_json(
         transports,
         tiers,
     };
-    let mut s = serde_json::to_string_pretty(&doc).context("serialize plan json")?;
+    let mut s = serde_json::to_string_pretty(&doc).wrap_err("serialize plan json")?;
     s.push('\n');
     Ok(s)
 }
@@ -1021,7 +1021,7 @@ fn render_vendor_hint(bringup: &BringupPackageEntry, mode: AheadOfVendor) -> Str
 }
 
 fn emit_pio(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
-    fs::create_dir_all(out_dir).with_context(|| format!("create {}", out_dir.display()))?;
+    fs::create_dir_all(out_dir).wrap_err_with(|| format!("create {}", out_dir.display()))?;
     // Minimal `library.json` snippet pointing at the staticlib build tree.
     // Full PIO integration (extra_script.py, transport selection) is
     // deferred to Phase 212.H.6; this emits the manifest skeleton only.
@@ -1049,13 +1049,13 @@ fn emit_px4(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
     // Modules emit disabled-by-default (Kconfig `default n`). Operators
     // opt-in via a board overlay (`CONFIG_MODULES_NROS_<NAME>=y` in the
     // `.px4board` file) — same gate as every other PX4 module.
-    fs::create_dir_all(out_dir).with_context(|| format!("create {}", out_dir.display()))?;
+    fs::create_dir_all(out_dir).wrap_err_with(|| format!("create {}", out_dir.display()))?;
 
     for c in &bringup.system.components {
         let name = c_ident(&c.name);
         let mod_name = format!("nros_{name}");
         let mod_dir = out_dir.join(&mod_name);
-        fs::create_dir_all(&mod_dir).with_context(|| format!("create {}", mod_dir.display()))?;
+        fs::create_dir_all(&mod_dir).wrap_err_with(|| format!("create {}", mod_dir.display()))?;
 
         write_if_changed(
             &mod_dir.join("CMakeLists.txt"),

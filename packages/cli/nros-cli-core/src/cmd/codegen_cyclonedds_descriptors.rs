@@ -32,7 +32,7 @@
 use std::{collections::BTreeSet, fs, path::PathBuf, process::Command};
 
 use clap::Args as ClapArgs;
-use eyre::{Context, Result, bail};
+use eyre::{Result, WrapErr, bail};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, ClapArgs)]
@@ -108,7 +108,7 @@ pub struct Manifest {
 
 pub fn run(args: Args) -> Result<()> {
     let resolved = resolve_args(args)?;
-    emit(&resolved).context("emit cyclonedds descriptors")?;
+    emit(&resolved).wrap_err("emit cyclonedds descriptors")?;
     Ok(())
 }
 
@@ -128,9 +128,9 @@ struct ResolvedArgs {
 fn resolve_args(args: Args) -> Result<ResolvedArgs> {
     if let Some(path) = args.args_file {
         let body = fs::read_to_string(&path)
-            .with_context(|| format!("read --args-file {}", path.display()))?;
+            .wrap_err_with(|| format!("read --args-file {}", path.display()))?;
         let doc: ArgsFile = serde_json::from_str(&body)
-            .with_context(|| format!("parse --args-file {} as JSON", path.display()))?;
+            .wrap_err_with(|| format!("parse --args-file {} as JSON", path.display()))?;
         let crate_name = doc
             .crate_name
             .unwrap_or_else(|| default_crate_name().to_string());
@@ -209,7 +209,7 @@ fn emit(args: &ResolvedArgs) -> Result<()> {
         );
     }
     fs::create_dir_all(&args.out)
-        .with_context(|| format!("create --out dir {}", args.out.display()))?;
+        .wrap_err_with(|| format!("create --out dir {}", args.out.display()))?;
 
     let mut entries: Vec<ManifestEntry> = Vec::with_capacity(args.messages.len());
     // Track stems to detect collisions.
@@ -221,13 +221,15 @@ fn emit(args: &ResolvedArgs) -> Result<()> {
             bail!("duplicate --msg stem `{stem}` (pkg=`{pkg}` msg=`{msg}`)");
         }
 
-        let msg_source = fs::read_to_string(source)
-            .with_context(|| format!("read .msg source for {pkg}/{msg} at {}", source.display()))?;
+        let msg_source = fs::read_to_string(source).wrap_err_with(|| {
+            format!("read .msg source for {pkg}/{msg} at {}", source.display())
+        })?;
         let idl_text = nros_msg_to_idl::msg_to_idl(&msg_source, pkg, msg)
             .map_err(|e| eyre::eyre!("nros-msg-to-idl({pkg}/{msg}): {e}"))?;
 
         let idl_path = args.out.join(format!("{stem}.idl"));
-        fs::write(&idl_path, &idl_text).with_context(|| format!("write {}", idl_path.display()))?;
+        fs::write(&idl_path, &idl_text)
+            .wrap_err_with(|| format!("write {}", idl_path.display()))?;
 
         // Shell idlc -t -l c -o <out> <idl-file>. Matches the helper
         // in nros-rmw-cyclonedds-sys/build.rs (Phase 212.K.2).
@@ -236,7 +238,7 @@ fn emit(args: &ResolvedArgs) -> Result<()> {
             .arg(&args.out)
             .arg(&idl_path)
             .status()
-            .with_context(|| format!("spawn idlc at {}", args.idlc.display()))?;
+            .wrap_err_with(|| format!("spawn idlc at {}", args.idlc.display()))?;
         if !status.success() {
             bail!("idlc failed on {} (status: {status})", idl_path.display());
         }
@@ -270,9 +272,9 @@ fn emit(args: &ResolvedArgs) -> Result<()> {
     let register_h = args.out.join("register.h");
     let register_c = args.out.join("register.c");
     fs::write(&register_h, render_register_h(&register_entry))
-        .with_context(|| format!("write {}", register_h.display()))?;
+        .wrap_err_with(|| format!("write {}", register_h.display()))?;
     fs::write(&register_c, render_register_c(&register_entry, &entries))
-        .with_context(|| format!("write {}", register_c.display()))?;
+        .wrap_err_with(|| format!("write {}", register_c.display()))?;
 
     let manifest = Manifest {
         crate_name: args.crate_name.clone(),
@@ -282,10 +284,10 @@ fn emit(args: &ResolvedArgs) -> Result<()> {
         descriptors: entries,
     };
     let manifest_path = args.out.join("cyclonedds-descriptors.json");
-    let body =
-        serde_json::to_string_pretty(&manifest).context("serialize cyclonedds-descriptors.json")?;
+    let body = serde_json::to_string_pretty(&manifest)
+        .wrap_err("serialize cyclonedds-descriptors.json")?;
     fs::write(&manifest_path, body)
-        .with_context(|| format!("write {}", manifest_path.display()))?;
+        .wrap_err_with(|| format!("write {}", manifest_path.display()))?;
 
     Ok(())
 }

@@ -39,7 +39,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use eyre::{Context, Result, bail};
+use eyre::{Result, WrapErr, bail};
 use serde::Deserialize;
 
 use crate::orchestration::{
@@ -129,9 +129,9 @@ struct CargoPackageMetadata {
 
 fn render_component(cargo_toml: &Path) -> Result<String> {
     let raw = std::fs::read_to_string(cargo_toml)
-        .with_context(|| format!("read {}", cargo_toml.display()))?;
+        .wrap_err_with(|| format!("read {}", cargo_toml.display()))?;
     let manifest: CargoManifest =
-        toml::from_str(&raw).with_context(|| format!("parse {}", cargo_toml.display()))?;
+        toml::from_str(&raw).wrap_err_with(|| format!("parse {}", cargo_toml.display()))?;
 
     // Validate the nros table early — surfaces the
     // "both component and components" diagnostic from the schema layer.
@@ -215,9 +215,9 @@ pub fn parse_pkg_ament_metadata(pkg_dir: &Path) -> Result<PackageMetadataAment> 
 // tree for the policy + rationale.
 fn render_bringup(system_toml: &Path) -> Result<String> {
     let raw = std::fs::read_to_string(system_toml)
-        .with_context(|| format!("read {}", system_toml.display()))?;
+        .wrap_err_with(|| format!("read {}", system_toml.display()))?;
     let system: SystemToml =
-        toml::from_str(&raw).with_context(|| format!("parse {}", system_toml.display()))?;
+        toml::from_str(&raw).wrap_err_with(|| format!("parse {}", system_toml.display()))?;
 
     // Bringup pkg name convention is `<system>_bringup`. Per the design doc
     // we name the emitted `<package><name>` by suffixing if missing — but the
@@ -389,7 +389,7 @@ pub fn check_drift(pkg_dir: &Path) -> Result<DriftStatus> {
         return Ok(DriftStatus::Absent);
     }
     let on_disk = std::fs::read_to_string(&on_disk_path)
-        .with_context(|| format!("read {}", on_disk_path.display()))?;
+        .wrap_err_with(|| format!("read {}", on_disk_path.display()))?;
     if !on_disk.contains(GENERATED_HEADER_COMMENT) {
         return Ok(DriftStatus::HandWritten);
     }

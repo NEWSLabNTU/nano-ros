@@ -28,7 +28,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use eyre::{Context, Result, bail, eyre};
+use eyre::{Result, WrapErr, bail, eyre};
 use quick_xml::{
     events::{BytesStart, Event},
     name::QName,
@@ -189,7 +189,7 @@ fn parse_file(
     }
     let canonical = path
         .canonicalize()
-        .with_context(|| format!("canonicalize launch file `{}`", path.display()))?;
+        .wrap_err_with(|| format!("canonicalize launch file `{}`", path.display()))?;
     if include_stack.iter().any(|p| p == &canonical) {
         bail!(
             "<include> cycle detected at `{}` (stack: {:?})",
@@ -203,7 +203,7 @@ fn parse_file(
     include_stack.push(canonical.clone());
 
     let raw = fs::read_to_string(&canonical)
-        .with_context(|| format!("read launch file `{}`", canonical.display()))?;
+        .wrap_err_with(|| format!("read launch file `{}`", canonical.display()))?;
     let mut reader = Reader::from_str(&raw);
     reader.config_mut().trim_text(true);
 
@@ -216,7 +216,7 @@ fn parse_file(
     loop {
         let event = reader
             .read_event_into(&mut buf)
-            .with_context(|| format!("XML parse `{}`", canonical.display()))?;
+            .wrap_err_with(|| format!("XML parse `{}`", canonical.display()))?;
         match event {
             Event::Start(e) => {
                 handle_start(
@@ -253,7 +253,7 @@ fn parse_file(
         let included_path = PathBuf::from(&include.file);
         let mut child_scope = scope.child_for_include(&include.args);
         let sub = parse_file(&included_path, pkg_index, &mut child_scope, include_stack)
-            .with_context(|| {
+            .wrap_err_with(|| {
                 format!(
                     "while processing <include file=\"{}\"> from `{}`",
                     include.file,
@@ -553,7 +553,7 @@ fn collect_attrs(
 ) -> Result<BTreeMap<String, String>> {
     let mut out = BTreeMap::new();
     for attr_res in e.attributes() {
-        let attr = attr_res.with_context(|| {
+        let attr = attr_res.wrap_err_with(|| {
             format!(
                 "read XML attribute on `<{}>` in `{}`",
                 to_string(e.name()),
@@ -565,7 +565,7 @@ fn collect_attrs(
             .to_string();
         let raw = attr
             .unescape_value()
-            .with_context(|| format!("unescape attr `{key}` in `{}`", here.display()))?;
+            .wrap_err_with(|| format!("unescape attr `{key}` in `{}`", here.display()))?;
         let resolved = substitute(raw.as_ref(), scope, pkg_index, here)?;
         out.insert(key, resolved);
     }
@@ -649,7 +649,7 @@ fn resolve_substitution(
             // any trailing path is glued back by the surrounding template.
             let resolved = pkg_index
                 .resolve_pkg(arg)
-                .with_context(|| format!("$(find {arg}) at `{}`", here.display()))?;
+                .wrap_err_with(|| format!("$(find {arg}) at `{}`", here.display()))?;
             Ok(resolved.to_string_lossy().into_owned())
         }
         "var" => {

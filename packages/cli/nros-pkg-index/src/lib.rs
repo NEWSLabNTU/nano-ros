@@ -28,7 +28,7 @@ use std::{
     time::SystemTime,
 };
 
-use eyre::{Context, Result, bail, eyre};
+use eyre::{Result, WrapErr, bail, eyre};
 use quick_xml::{events::Event, reader::Reader};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
@@ -155,7 +155,7 @@ struct CachedEntry {
 pub fn build_pkg_index(workspace_root: &Path) -> Result<PkgIndex> {
     let workspace_root = workspace_root
         .canonicalize()
-        .with_context(|| format!("canonicalize workspace root `{}`", workspace_root.display()))?;
+        .wrap_err_with(|| format!("canonicalize workspace root `{}`", workspace_root.display()))?;
 
     let mut package_xml_paths: Vec<PathBuf> = Vec::new();
     let walker = WalkDir::new(&workspace_root)
@@ -185,8 +185,8 @@ pub fn build_pkg_index(workspace_root: &Path) -> Result<PkgIndex> {
     };
 
     for entry in walker.filter_entry(filter) {
-        let entry =
-            entry.with_context(|| format!("walk workspace root `{}`", workspace_root.display()))?;
+        let entry = entry
+            .wrap_err_with(|| format!("walk workspace root `{}`", workspace_root.display()))?;
         if !entry.file_type().is_file() {
             continue;
         }
@@ -212,7 +212,7 @@ pub fn build_pkg_index(workspace_root: &Path) -> Result<PkgIndex> {
     let mut seen_dirs: BTreeSet<PathBuf> = BTreeSet::new();
     for pkg_xml in &package_xml_paths {
         let name = read_package_xml_name(pkg_xml)
-            .with_context(|| format!("parse `{}`", pkg_xml.display()))?;
+            .wrap_err_with(|| format!("parse `{}`", pkg_xml.display()))?;
         let dir = pkg_xml
             .parent()
             .map(Path::to_path_buf)
@@ -261,7 +261,7 @@ pub fn build_pkg_index(workspace_root: &Path) -> Result<PkgIndex> {
         if let Some(parent) = cache_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
-        let json = serde_json::to_string_pretty(&cached).context("serialise pkg-index cache")?;
+        let json = serde_json::to_string_pretty(&cached).wrap_err("serialise pkg-index cache")?;
         let _ = fs::write(&cache_path, json);
     }
 
@@ -288,14 +288,14 @@ pub fn detect_workspace_root(start: &Path) -> Result<PathBuf> {
         }
         return p
             .canonicalize()
-            .with_context(|| format!("canonicalize NROS_WORKSPACE_ROOT=`{}`", p.display()));
+            .wrap_err_with(|| format!("canonicalize NROS_WORKSPACE_ROOT=`{}`", p.display()));
     }
 
     let start = if start.is_absolute() {
         start.to_path_buf()
     } else {
         std::env::current_dir()
-            .with_context(|| "read current dir for workspace-root detection")?
+            .wrap_err_with(|| "read current dir for workspace-root detection")?
             .join(start)
     };
     let start = start.canonicalize().unwrap_or(start);
@@ -352,7 +352,7 @@ fn is_cargo_workspace_root(dir: &Path) -> bool {
 /// nest inside `<package>` (ament convention); we accept any depth so
 /// long as a top-level `<name>` text node exists.
 fn read_package_xml_name(path: &Path) -> Result<String> {
-    let file = fs::File::open(path).with_context(|| format!("open `{}`", path.display()))?;
+    let file = fs::File::open(path).wrap_err_with(|| format!("open `{}`", path.display()))?;
     let mut reader = Reader::from_reader(BufReader::new(file));
     reader.config_mut().trim_text(true);
 
@@ -378,7 +378,7 @@ fn read_package_xml_name(path: &Path) -> Result<String> {
             }
             Ok(Event::Text(e)) => {
                 if in_name && name.is_none() {
-                    let raw = e.unescape().context("unescape <name> text")?;
+                    let raw = e.unescape().wrap_err("unescape <name> text")?;
                     let trimmed = raw.trim().to_string();
                     if !trimmed.is_empty() {
                         name = Some(trimmed);

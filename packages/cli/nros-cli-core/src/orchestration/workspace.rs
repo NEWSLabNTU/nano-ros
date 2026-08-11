@@ -1,7 +1,7 @@
 //! Workspace and package discovery for host planning.
 
 use cargo_nano_ros::package_xml::PackageXml;
-use eyre::{Context, Result};
+use eyre::{Result, WrapErr};
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 use std::{
@@ -36,16 +36,16 @@ struct ComponentEnvelope {
 ///   `nros/components/*.toml`), which is deprecated and warns once per file.
 pub fn load_component_config(path: &Path) -> Result<Option<ComponentConfig>> {
     let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read component manifest {}", path.display()))?;
+        .wrap_err_with(|| format!("failed to read component manifest {}", path.display()))?;
     let is_nros_toml = path.file_name().and_then(|name| name.to_str()) == Some("nros.toml");
     if is_nros_toml {
         let envelope: ComponentEnvelope =
-            toml::from_str(&raw).with_context(|| format!("failed to parse {}", path.display()))?;
+            toml::from_str(&raw).wrap_err_with(|| format!("failed to parse {}", path.display()))?;
         Ok(envelope.component)
     } else {
         warn_legacy_component_manifest(path);
         let config: ComponentConfig = toml::from_str(&raw)
-            .with_context(|| format!("failed to parse component manifest {}", path.display()))?;
+            .wrap_err_with(|| format!("failed to parse component manifest {}", path.display()))?;
         Ok(Some(config))
     }
 }
@@ -1047,9 +1047,9 @@ fn discover_cargo_component_metadata(
         return Ok(Vec::new());
     }
     let raw = fs::read_to_string(&cargo_toml)
-        .with_context(|| format!("failed to read {}", cargo_toml.display()))?;
+        .wrap_err_with(|| format!("failed to read {}", cargo_toml.display()))?;
     let envelope: CargoManifestEnvelope = toml::from_str(&raw)
-        .with_context(|| format!("failed to parse {} for nros metadata", cargo_toml.display()))?;
+        .wrap_err_with(|| format!("failed to parse {} for nros metadata", cargo_toml.display()))?;
     let Some(package) = envelope.package else {
         return Ok(Vec::new());
     };

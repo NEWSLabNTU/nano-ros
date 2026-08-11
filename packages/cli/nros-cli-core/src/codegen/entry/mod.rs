@@ -33,7 +33,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use eyre::{Context, Result, bail};
+use eyre::{Result, WrapErr, bail};
 use nros_orchestration_ir::{
     CallbackGroupDecl, DEFAULT_TIER, ResolvedTierTable, TierResolveError, resolve_tiers,
 };
@@ -402,7 +402,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             .map(|(k, v)| (k.clone(), v.to_bake_string()))
             .collect();
         let qos_overrides =
-            qos_overrides_from_params(&resolved).with_context(|| format!("node `{fqn}`"))?;
+            qos_overrides_from_params(&resolved).wrap_err_with(|| format!("node `{fqn}`"))?;
         let params = non_qos_params(&resolved);
         // Group→tier from the model's resolved bindings (`<fqn>/<group>`).
         let mut group_tiers: BTreeMap<String, String> = BTreeMap::new();
@@ -615,10 +615,10 @@ pub fn write_depfile(target: &Path, deps: &[PathBuf], depfile: &Path) -> Result<
     out.push('\n');
     if let Some(parent) = depfile.parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("create depfile parent `{}`", parent.display()))?;
+            .wrap_err_with(|| format!("create depfile parent `{}`", parent.display()))?;
     }
     std::fs::write(depfile, out)
-        .with_context(|| format!("write depfile `{}`", depfile.display()))?;
+        .wrap_err_with(|| format!("write depfile `{}`", depfile.display()))?;
     Ok(())
 }
 

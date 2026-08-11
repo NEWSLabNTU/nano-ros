@@ -15,7 +15,7 @@
 
 use std::{collections::HashMap, path::Path};
 
-use eyre::{Context, Result, bail};
+use eyre::{Result, WrapErr, bail};
 use serde::Deserialize;
 
 use super::Plan;
@@ -72,13 +72,13 @@ impl ComponentIndex {
     /// Parse `nros-metadata.json` at `path`.
     pub fn load(path: &Path) -> Result<Self> {
         let raw = std::fs::read_to_string(path)
-            .with_context(|| format!("read metadata `{}`", path.display()))?;
-        Self::parse(&raw).with_context(|| format!("parse metadata `{}`", path.display()))
+            .wrap_err_with(|| format!("read metadata `{}`", path.display()))?;
+        Self::parse(&raw).wrap_err_with(|| format!("parse metadata `{}`", path.display()))
     }
 
     /// Parse metadata JSON from a string (test seam).
     pub fn parse(raw: &str) -> Result<Self> {
-        let doc: MetadataDoc = serde_json::from_str(raw).context("parse metadata JSON")?;
+        let doc: MetadataDoc = serde_json::from_str(raw).wrap_err("parse metadata JSON")?;
         let mut by_key = HashMap::new();
         for c in doc.components {
             // RFC-0057: explicit pkg preferred; pre-0057 metadata falls back

@@ -16,7 +16,7 @@
 
 use std::{collections::BTreeMap, path::Path};
 
-use eyre::{Context, Result, bail};
+use eyre::{Result, WrapErr, bail};
 // RFC-0052 — `tier_from_model` moved to nros-orchestration-ir (the shared home
 // for the CLI codegen + the nros::main! proc-macro); re-exported here so the
 // existing `model_ingest::tier_from_model` call sites and tests keep working.
@@ -70,7 +70,7 @@ pub fn load_model(path: &Path) -> Result<SystemModel> {
         std::borrow::Cow::Owned(produced)
     };
     let yaml = std::fs::read_to_string(resolved.as_ref())
-        .with_context(|| format!("read SystemModel {}", resolved.display()))?;
+        .wrap_err_with(|| format!("read SystemModel {}", resolved.display()))?;
     SystemModel::from_yaml_str(&yaml)
         .map_err(|e| eyre::eyre!("load SystemModel {}: {e}", resolved.display()))
 }

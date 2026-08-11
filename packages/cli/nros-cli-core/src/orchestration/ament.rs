@@ -27,7 +27,7 @@
 
 use std::path::Path;
 
-use eyre::{Context, Result, eyre};
+use eyre::{Result, WrapErr, eyre};
 use serde::Deserialize;
 
 use super::cargo_metadata_schema::PackageMetadataAment;
@@ -48,9 +48,9 @@ pub fn parse_ament_metadata(pkg_dir: &Path) -> Result<AmentMetadata> {
         return Ok(AmentMetadata::default());
     }
     let raw = std::fs::read_to_string(&cargo_toml)
-        .with_context(|| format!("read {}", cargo_toml.display()))?;
+        .wrap_err_with(|| format!("read {}", cargo_toml.display()))?;
     let manifest: AmentBearingManifest =
-        toml::from_str(&raw).with_context(|| format!("parse {}", cargo_toml.display()))?;
+        toml::from_str(&raw).wrap_err_with(|| format!("parse {}", cargo_toml.display()))?;
     let ament = manifest
         .package
         .and_then(|p| p.metadata)

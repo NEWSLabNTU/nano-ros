@@ -52,7 +52,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use eyre::{Context, Result};
+use eyre::{Result, WrapErr};
 
 pub mod emit;
 // Phase 219.A — `pkg_index` and `launch_parser` moved into
@@ -160,7 +160,7 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
     use nros_cli_core::orchestration::planner::{PlanOptions, plan_system};
 
     let plan_out_root = opts.out_dir.join("nros-system");
-    fs::create_dir_all(&plan_out_root).with_context(|| {
+    fs::create_dir_all(&plan_out_root).wrap_err_with(|| {
         format!(
             "nros-build: create plan out dir {}",
             plan_out_root.display()
@@ -221,11 +221,11 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         );
     }
     let model = nros_cli_core::orchestration::model_ingest::load_model(&model_path)
-        .context("nros-build: load SystemModel")?;
+        .wrap_err("nros-build: load SystemModel")?;
     let record = nros_cli_core::orchestration::model_ingest::plan_record_from_model(&model);
     let record_tmp = opts.out_dir.join("nros-model-record.json");
     fs::write(&record_tmp, serde_json::to_string_pretty(&record)?)
-        .context("nros-build: write model record")?;
+        .wrap_err("nros-build: write model record")?;
 
     let plan_options = PlanOptions {
         system_pkg: opts.system_pkg.clone(),
@@ -241,18 +241,18 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         rmw: None,
         target: None,
     };
-    let planning = plan_system(plan_options).context("nros-build: planner failed")?;
+    let planning = plan_system(plan_options).wrap_err("nros-build: planner failed")?;
     println!("cargo:rerun-if-changed={}", model_path.display());
     println!("cargo:rerun-if-changed={}", planning.plan_path.display());
 
-    let plan_json = fs::read_to_string(&planning.plan_path).with_context(|| {
+    let plan_json = fs::read_to_string(&planning.plan_path).wrap_err_with(|| {
         format!(
             "nros-build: read plan output {}",
             planning.plan_path.display()
         )
     })?;
     let plan: nros_cli_core::orchestration::plan::NrosPlan = serde_json::from_str(&plan_json)
-        .with_context(|| {
+        .wrap_err_with(|| {
             format!(
                 "nros-build: deserialize plan output {}",
                 planning.plan_path.display()
@@ -271,7 +271,7 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
     let mut body = emit::emit_run_plan(&plan);
     body.push('\n');
     body.push_str(&emit::emit_run_plan_register_dispatch(&plan));
-    fs::write(&run_plan_path, &body).with_context(|| {
+    fs::write(&run_plan_path, &body).wrap_err_with(|| {
         format!(
             "nros-build: write {} ({} bytes)",
             run_plan_path.display(),

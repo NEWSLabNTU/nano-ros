@@ -43,7 +43,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use eyre::{Context, Result, bail};
+use eyre::{Result, WrapErr, bail};
 
 /// The CLI binary's embedded version — baked at compile time from the
 /// `nros-cli-core` crate's `CARGO_PKG_VERSION`.
