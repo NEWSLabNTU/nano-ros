@@ -3639,7 +3639,6 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-build_subdir = "build-cyclonedds"
 dir = "examples/qemu-riscv64-threadx/rust/talker"
 
 [[fixture]]
@@ -3651,7 +3650,6 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-build_subdir = "build-cyclonedds"
 dir = "examples/qemu-riscv64-threadx/rust/listener"
 
 [[fixture]]
@@ -3663,7 +3661,6 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-build_subdir = "build-cyclonedds"
 dir = "examples/qemu-riscv64-threadx/rust/service-server"
 
 [[fixture]]
@@ -3675,7 +3672,6 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-build_subdir = "build-cyclonedds"
 dir = "examples/qemu-riscv64-threadx/rust/service-client"
 
 [[fixture]]
@@ -3687,7 +3683,6 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-build_subdir = "build-cyclonedds"
 dir = "examples/qemu-riscv64-threadx/rust/action-server"
 
 [[fixture]]
@@ -3699,5 +3694,4 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-build_subdir = "build-cyclonedds"
 dir = "examples/qemu-riscv64-threadx/rust/action-client"
