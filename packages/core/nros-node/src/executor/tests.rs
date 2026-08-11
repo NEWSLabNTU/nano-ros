@@ -3857,3 +3857,54 @@ fn violations_beyond_the_ring_are_counted() {
         executor.violations_dropped()
     );
 }
+
+/// Issue #515 — a period the spin cadence cannot express is announced
+/// once, at the point the executor first learns its spin period.
+///
+/// The audit is a log-side effect, so what is asserted here is the
+/// mechanism around it: it runs exactly once, only on a non-zero
+/// timeout, and it never touches timer behaviour (the alternation it
+/// warns about is legal — the mean cadence is preserved).
+#[cfg(feature = "std")]
+#[test]
+fn spin_quantization_audit_runs_once_on_the_first_timed_spin() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    // 33 ms on a 5 ms spin: alternates 35/30.
+    executor
+        .register_timer(TimerDuration::from_millis(33), || {})
+        .unwrap();
+
+    // A zero-timeout spin carries no cadence information, so the audit
+    // must not consume its one shot on it.
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        !executor.spin_quantization_checked,
+        "a zero timeout says nothing about the tier's spin period"
+    );
+
+    let _ = executor.spin_once(core::time::Duration::from_millis(5));
+    assert!(executor.spin_quantization_checked, "audited on first timed spin");
+
+    // Idempotent: later spins do not re-audit (and so cannot re-warn
+    // every cycle for the lifetime of the image).
+    let _ = executor.spin_once(core::time::Duration::from_millis(5));
+    assert!(executor.spin_quantization_checked);
+}
+
+/// Issue #515 — a period that divides the spin period evenly is not a
+/// finding, and neither is a timer with no period.
+#[cfg(feature = "std")]
+#[test]
+fn spin_quantization_audit_accepts_exact_multiples() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    let id = executor
+        .register_timer(TimerDuration::from_millis(50), || {})
+        .unwrap();
+    let _ = executor.spin_once(core::time::Duration::from_millis(10));
+    // 50 ms on a 10 ms spin is expressible; the timer is untouched by
+    // the audit either way.
+    assert_eq!(executor.timer_period_us(id), Some(50_000));
+    assert_eq!(executor.timer_overruns(id), Some(0));
+}

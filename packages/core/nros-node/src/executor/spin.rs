@@ -1264,6 +1264,10 @@ pub struct Executor<'s> {
     pub(crate) age_states: [super::monitor::AgeState; super::monitor::MAX_MONITORS],
     /// W3b.5 — hook invoked on `DeadlineAction::Fault` (panic when unset).
     pub(crate) fault_fn: Option<fn(&super::monitor::Violation)>,
+    /// Issue #515 — the spin cadence audit runs once, on the first spin
+    /// that carries a non-zero timeout (which is where the tier's
+    /// declared spin period becomes visible to the executor).
+    pub(crate) spin_quantization_checked: bool,
     /// Issue #514 — violations discarded because the ring was full.
     /// Saturating. Without this a never-drained (or slowly-drained)
     /// image silently reports a stale prefix of its faults.
@@ -1397,6 +1401,7 @@ impl<'s> Executor<'s> {
             age_table: &[],
             age_states: [super::monitor::AgeState::default(); super::monitor::MAX_MONITORS],
             fault_fn: None,
+            spin_quantization_checked: false,
             monitor_violations_dropped: 0,
             report_violations: true,
             monitor_violations: heapless::Vec::new(),
@@ -1899,6 +1904,55 @@ impl<'s> Executor<'s> {
     /// embedded targets).
     pub fn set_fault_handler(&mut self, f: fn(&super::monitor::Violation)) {
         self.fault_fn = Some(f);
+    }
+
+    /// Issue #515 — warn about periods the spin cadence cannot express.
+    ///
+    /// A timer fires on the first spin at or after its period elapses, so
+    /// a period that is not an integer multiple of the executor's spin
+    /// period lands on the spin grid instead of the declared cadence: a
+    /// 33 ms timer on a 5 ms spin alternates 35 ms / 30 ms, mean 33.0.
+    /// The rate is preserved and no activation is dropped, so every
+    /// runtime rule is (correctly) silent — the jitter stays invisible
+    /// until someone measures cadence on target.
+    ///
+    /// Runs ONCE, on the first spin carrying a non-zero timeout, because
+    /// that timeout is where the tier's declared spin period becomes
+    /// visible down here. A resolve-time diagnostic would be better
+    /// still — the toolchain holds both numbers before the image is
+    /// built — but this backstop needs no board or codegen change and
+    /// catches hand-written spin loops too.
+    fn audit_spin_quantization(&mut self, spin_us: u64) {
+        if spin_us == 0 {
+            return;
+        }
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        for i in 0..self.entries.len() {
+            let Some(meta) = self.entries[i].as_ref() else {
+                continue;
+            };
+            if !matches!(meta.kind, EntryKind::Timer) {
+                continue;
+            }
+            // SAFETY: a Timer entry's arena slot holds a `TimerEntry<F>`,
+            // whose leading layout is `TimerHeader`.
+            let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
+            let period_us = header.period_us;
+            if period_us == 0 || period_us % spin_us == 0 {
+                continue;
+            }
+            // The two periods the timer will actually alternate between.
+            let early_us = (period_us / spin_us) * spin_us;
+            let late_us = early_us.saturating_add(spin_us);
+            nros_log::nros_warn!(
+                nros_log::get_logger("nros"),
+                "timer period {} us is not a multiple of the {} us spin period: activations will alternate between {} us and {} us (mean cadence preserved)",
+                period_us,
+                spin_us,
+                early_us,
+                late_us
+            );
+        }
     }
 
     /// Issue #514 — whether the executor logs each violation as it is
@@ -5185,6 +5239,11 @@ impl<'s> Executor<'s> {
         } else {
             (timeout_ms as u64).saturating_mul(1000)
         };
+        if !self.spin_quantization_checked && timeout_ms > 0 {
+            self.spin_quantization_checked = true;
+            self.audit_spin_quantization((timeout_ms as u64).saturating_mul(1000));
+        }
+
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
 
         // Phase 1: Readiness scan (Phase 110.A.b — backed by FifoReadySet).
