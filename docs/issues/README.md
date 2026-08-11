@@ -162,13 +162,14 @@ broke four spin-then-drain tests, the same regression a user with a custom repor
 Verified on the FreeRTOS lane: 67 violation lines under a 2 kHz flood, none idle. `/diagnostics`
 publication and non-placeholder `fqn`s remain open. See `archived/0514-*`. (2026-08-11)
 
-**#515** (orchestration, open 2026-08-11) — a timer period that is not an integer multiple of its tier's
-`spin_period_us` quantizes to the spin grid: measured on the FreeRTOS lane, a 33 ms timer in a 5 ms-spin
-tier alternates 35 ms x475 / 30 ms x303, mean 33.001. The rate is preserved and nothing is dropped, so
-every runtime rule is correctly silent — deadline, overrun and rate all pass — and the ±(spin/2) jitter is
-invisible until someone measures cadence on target and has to explain a bimodal distribution. Both numbers
-are known at resolve time, so this wants a resolver WARNING (naming the entity, declared period, tier
-spin, and the two periods it will actually alternate between), not a runtime rule. See `0515-*`.
+Recently resolved (2026-08-11): **#515** (orchestration) — a timer period that is not an integer multiple
+of its tier's `spin_period_us` quantizes to the spin grid (measured: 33 ms on a 5 ms spin alternates
+35 ms x475 / 30 ms x303, mean 33.001), and because the rate is preserved and nothing is dropped, every
+runtime rule is correctly silent. The executor now audits its timers once, on the first spin carrying a
+non-zero timeout, and logs the declared period, the spin period, and the two values activations will
+alternate between — verified on the FreeRTOS lane, which emits exactly two warnings naming 30000/35000 us.
+A RESOLVE-time diagnostic remains the better version and is not what landed; the runtime backstop is
+complementary (it also catches hand-written spin loops). See `archived/0515-*`. (2026-08-11)
 
 **#506** (embedded, open 2026-08-10) — transport tasks ABOVE application tiers is the right FreeRTOS
 default (the inverse starves the RX drain into multi-second lwIP RTO freezes, d708d8c5b), but the band has

@@ -1,11 +1,35 @@
 ---
 id: 515
 title: "A timer period that is not a multiple of its tier's spin period quantizes to the spin grid — deterministic jitter, predictable at resolve time, reported nowhere"
-status: open
+status: resolved
+resolved_in: "same-day fix; executor spin-cadence audit"
 type: enhancement
 area: orchestration
 related: [issue-0505]
 ---
+
+## Resolution (2026-08-11)
+
+The executor audits its timers ONCE, on the first spin carrying a
+non-zero timeout — that timeout is where the tier's declared spin
+period becomes visible at this layer — and logs the declared period,
+the spin period, and the two values activations will actually alternate
+between.
+
+Verified on the FreeRTOS mps2-an385 lane: the island emits exactly two
+warnings (its `steer` and `mrm` timers, 33 ms on the 5 ms mid tier),
+naming 30000/35000 us — the same alternation the guest-clock
+measurements show.
+
+**A resolve-time diagnostic is still the better version** and is NOT
+what landed. The toolchain holds both numbers before the image is
+built, so it could refuse or warn without running anything; the plumbing
+(entity periods live in the sidecar metadata, spin periods in
+`ResolvedTierTable`, the two joined through callback-group → tier
+binding) is a bigger change than the runtime backstop. Reopen or file a
+follow-up if the resolver path is wanted — the runtime warning is
+complementary rather than a replacement, since it also catches
+hand-written spin loops that never go through the resolver.
 
 ## Problem
 
