@@ -86,15 +86,24 @@ correct code gets switched off. Three options costed in the issue: a baseline of
 the rule to readiness waits specifically, or asserting liveness at runtime (report what the process DID print).
 See `0512-*`. (2026-08-11)
 
-**#518** — `SourceMetadata` cannot be parsed at all. `#505` ("microsecond timer resolution end to end") moved the
-producer to `period_us` (`nros-macros/src/main_macro.rs:2916`) but left the reader declaring `period_ms`
-(`orchestration/source_metadata.rs:96`), and `SourceTimer` is `deny_unknown_fields`, so the whole sidecar fails to
-parse: two reds on `main` in `plan_pipeline_e2e`, reproduced on a clean tree. **The one-line rename is not the
-fix** — a committed fixture (`tests/fixtures/orchestration/source_metadata_talker.json:45`) still says
-`"period_ms": 100`, so renaming just flips which spelling is rejected, and converting it needs 100 ms → 100000 us
-rather than a straight rename. Left for #505's author: whether `sched_contexts.period_ms` moves too is a design
-call. Survived review because `SourceTimer` has no field readers — only a test that parses a real sidecar sees it.
-See `0518-*`. (2026-08-11)
+**#519** — the plan's timer period is still milliseconds, so `nros explain` renders a sub-millisecond timer as
+`0ms`. `#505` added `period_us` to the metadata JSON; `planner.rs:1463` still reads only `period_ms`
+(`.unwrap_or(0)`), so a 500 us timer plans as `0` with `period_us: 500` unread beside it. Display and artifact
+fidelity only — `PlanEntity::Timer.period_ms` has exactly one consumer (`explain.rs:250`) and reaches no emitter,
+so the timer still RUNS at the right rate. Deferred from #518 because it changes the plan schema (nine committed
+`plan_*.json` fixtures) and needs a call on whether `SchedContext`'s sibling `_ms` fields move too — #505's to
+make. See `0519-*`. (2026-08-11)
+
+RESOLVED 2026-08-11 — **#518** `SourceMetadata` could not be parsed AT ALL: `SourceTimer` is
+`deny_unknown_fields`, and #505 *added* `period_us` beside the kept `period_ms`, so every sidecar parse died on
+`unknown field 'period_us'` — two reds on `main` in `plan_pipeline_e2e`, reproduced on a clean tree. **This
+issue's first draft misdiagnosed it** as a half-done rename and proposed renaming the reader's field; #505's
+commit message says the change was deliberately additive ("`period_ms` kept for existing consumers"), and the
+rename made the tests fail the other way (`unknown field 'period_ms'`, from a fixture that correctly still carries
+it). Fix is additive: `period_us: Option<u64>` with `default`. Survived review because `SourceTimer` has no field
+readers anywhere — only a test parsing a real sidecar can catch it. The general shape:
+`deny_unknown_fields` turns a backward-compatible producer change into a hard failure in a consumer nobody thought
+to look at. See `0518-*`. (2026-08-11)
 
 RESOLVED 2026-08-11 — **#516** every regex reader of `package.xml` treated a **commented-out** element as a real
 declaration. cmake has no XML parser, so all seven readers matched regexes against raw file text, and a regex
