@@ -58,69 +58,82 @@ use core::marker::PhantomData;
 /// It can be converted to/from the ROS Duration type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TimerDuration {
-    /// Duration in milliseconds
-    millis: u64,
+    /// Duration in microseconds.
+    ///
+    /// Issue #505: this was milliseconds, so `from_micros` silently
+    /// truncated — `from_micros(500)` produced a ZERO period (which the
+    /// dispatcher treats as "every spin") and `from_micros(1_500)` a
+    /// 1 ms one, a 50% rate error with no diagnostic. The executor's
+    /// timer accounting is microsecond-based, so store microseconds and
+    /// keep the millisecond constructors/accessors as exact wrappers.
+    micros: u64,
 }
 
 impl TimerDuration {
     /// Create a new duration from milliseconds
     pub const fn from_millis(millis: u64) -> Self {
-        Self { millis }
+        Self {
+            micros: millis.saturating_mul(1000),
+        }
     }
 
     /// Create a new duration from seconds
     pub const fn from_secs(secs: u64) -> Self {
         Self {
-            millis: secs * 1000,
+            micros: secs.saturating_mul(1_000_000),
         }
     }
 
     /// Create a new duration from microseconds
     pub const fn from_micros(micros: u64) -> Self {
-        Self {
-            millis: micros / 1000,
-        }
+        Self { micros }
     }
 
     /// Create a zero duration
     pub const fn zero() -> Self {
-        Self { millis: 0 }
+        Self { micros: 0 }
     }
 
-    /// Get duration as milliseconds
+    /// Get duration as milliseconds (truncated; prefer
+    /// [`Self::as_micros`] for sub-millisecond periods)
     pub const fn as_millis(&self) -> u64 {
-        self.millis
+        self.micros / 1000
+    }
+
+    /// Get duration as microseconds
+    pub const fn as_micros(&self) -> u64 {
+        self.micros
     }
 
     /// Get duration as seconds (truncated)
     pub const fn as_secs(&self) -> u64 {
-        self.millis / 1000
+        self.micros / 1_000_000
     }
 
     /// Check if duration is zero
     pub const fn is_zero(&self) -> bool {
-        self.millis == 0
+        self.micros == 0
     }
 
     /// Saturating subtraction
     pub const fn saturating_sub(self, rhs: Self) -> Self {
         Self {
-            millis: self.millis.saturating_sub(rhs.millis),
+            micros: self.micros.saturating_sub(rhs.micros),
         }
     }
 }
 
 impl From<nros_core::Duration> for TimerDuration {
     fn from(d: nros_core::Duration) -> Self {
-        let millis = (d.sec as i64 * 1000 + d.nanosec as i64 / 1_000_000) as u64;
-        Self { millis }
+        let micros = (d.sec as i64 * 1_000_000 + d.nanosec as i64 / 1_000) as u64;
+        Self { micros }
     }
 }
 
 impl From<TimerDuration> for nros_core::Duration {
     fn from(d: TimerDuration) -> Self {
-        let sec = (d.millis / 1000) as i32;
-        let nanosec = ((d.millis % 1000) * 1_000_000) as u32;
+        let sec = (d.micros / 1_000_000) as i32;
+        let nanosec = ((d.micros % 1_000_000) * 1_000) as u32;
         nros_core::Duration { sec, nanosec }
     }
 }

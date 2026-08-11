@@ -840,11 +840,18 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .as_ref()
                     .ok_or(NodeDeclError::Runtime)?;
                 let cb_id_owned = String::from(cb_id.as_str());
-                let period_ms = metadata.period_ms.ok_or(NodeDeclError::Runtime)?;
+                // Issue #505 — prefer the microsecond field; fall back to
+                // the millisecond one only for metadata that predates it.
+                let period = match metadata.period_us {
+                    Some(us) => nros_node::TimerDuration::from_micros(us),
+                    None => nros_node::TimerDuration::from_millis(
+                        metadata.period_ms.ok_or(NodeDeclError::Runtime)?,
+                    ),
+                };
                 let cell = self.cell.clone();
                 self.executor
                     .register_timer(
-                        nros_node::TimerDuration::from_millis(period_ms),
+                        period,
                         move || {
                             dispatch_into_cell(&cell, &cb_id_owned, &[]);
                         },

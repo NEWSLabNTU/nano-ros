@@ -298,6 +298,12 @@ pub struct EntityMetadata {
     pub action_accepted_callback_id: Option<MetadataString>,
     pub action_accepted_source: SourceLocationMetadata,
     pub period_ms: Option<u64>,
+    /// Issue #505 — the timer period at the executor's own resolution.
+    /// `period_ms` is kept (and still emitted) for consumers of the
+    /// metadata JSON, but it truncates: a declared 33.333 ms timer used
+    /// to reach the runtime as 33 ms, a 1% permanent rate error, and a
+    /// sub-millisecond period reached it as zero.
+    pub period_us: Option<u64>,
     pub parameter_type: Option<ParameterType>,
     pub parameter_default: Option<ParameterDefault>,
     pub parameter_read_only: bool,
@@ -990,6 +996,7 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
         action_accepted_callback_id: None,
         action_accepted_source: SourceLocationMetadata::empty(),
         period_ms: None,
+        period_us: None,
         parameter_type: None,
         parameter_default: None,
         parameter_read_only: false,
@@ -1060,6 +1067,7 @@ fn write_timer_json(out: &mut impl core::fmt::Write, entity: &EntityMetadata) ->
         write!(out, "\"declaration_slot\":{},", slot.index())?;
     }
     write!(out, "\"period_ms\":{},", entity.period_ms.unwrap_or(0))?;
+    write!(out, "\"period_us\":{},", entity.period_us.unwrap_or(0))?;
     write_json_field(
         out,
         "callback",

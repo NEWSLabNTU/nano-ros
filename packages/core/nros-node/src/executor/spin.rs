@@ -1222,14 +1222,6 @@ pub struct Executor<'s> {
     #[cfg(feature = "lifecycle-services")]
     pub(crate) lifecycle:
         Option<alloc::boxed::Box<crate::lifecycle_services::LifecycleRuntimeState>>,
-    /// Sub-millisecond wall-clock residual carried across `spin_once` calls
-    /// so timers tick at true wall-clock rate even when `drive_io` returns
-    /// in well under 1 ms (e.g. zenoh-pico condvar wakeups under load).
-    #[cfg(feature = "std")]
-    pub(crate) spin_residual_us: u64,
-    /// Sub-millisecond residual for no_std wall-clock timer accounting.
-    #[cfg(not(feature = "std"))]
-    pub(crate) spin_residual_us: u64,
     /// Wall-clock instant at which the previous `spin_once` exited. The
     /// timer delta on the next call is measured from this point so any
     /// time the caller spent between `spin_once` invocations (e.g. an
@@ -1369,10 +1361,6 @@ impl<'s> Executor<'s> {
             params: None,
             #[cfg(feature = "lifecycle-services")]
             lifecycle: None,
-            #[cfg(feature = "std")]
-            spin_residual_us: 0,
-            #[cfg(not(feature = "std"))]
-            spin_residual_us: 0,
             // Initialise the spin endpoint to construction time so the
             // very first `spin_once` credits time the caller spent
             // *before* it (e.g. setup, an explicit pre-spin sleep) just
@@ -3926,8 +3914,8 @@ impl<'s> Executor<'s> {
             core::ptr::write(
                 entry_ptr,
                 TimerEntry {
-                    period_ms: period.as_millis(),
-                    elapsed_ms: 0,
+                    period_us: period.as_micros(),
+                    elapsed_us: 0,
                     overruns: 0,
                     oneshot: false,
                     fired: false,
@@ -3970,8 +3958,8 @@ impl<'s> Executor<'s> {
             core::ptr::write(
                 entry_ptr,
                 TimerEntry {
-                    period_ms: delay.as_millis(),
-                    elapsed_ms: 0,
+                    period_us: delay.as_micros(),
+                    elapsed_us: 0,
                     overruns: 0,
                     oneshot: true,
                     fired: false,
@@ -4021,8 +4009,8 @@ impl<'s> Executor<'s> {
             core::ptr::write(
                 entry_ptr,
                 TimerEntry {
-                    period_ms: period.as_millis(),
-                    elapsed_ms: 0,
+                    period_us: period.as_micros(),
+                    elapsed_us: 0,
                     overruns: 0,
                     oneshot: false,
                     fired: false,
@@ -4756,7 +4744,7 @@ impl<'s> Executor<'s> {
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
         let header = unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
         header.cancelled = false;
-        header.elapsed_ms = 0;
+        header.elapsed_us = 0;
         Ok(())
     }
 
@@ -4771,8 +4759,9 @@ impl<'s> Executor<'s> {
         header.cancelled
     }
 
-    /// Get the period of a timer in milliseconds, or `None` if the handle
-    /// is not a valid timer.
+    /// Get the period of a timer in milliseconds (truncated — see
+    /// [`Self::timer_period_us`]), or `None` if the handle is not a
+    /// valid timer.
     pub fn timer_period_ms(&self, id: HandleId) -> Option<u64> {
         let meta = self
             .entries
@@ -4781,7 +4770,21 @@ impl<'s> Executor<'s> {
             .filter(|m| matches!(m.kind, EntryKind::Timer))?;
         let arena_ptr = self.arena.as_ptr() as *const u8;
         let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
-        Some(header.period_ms)
+        Some(header.period_us / 1000)
+    }
+
+    /// Get the period of a timer in microseconds, or `None` if the
+    /// handle is not a valid timer.
+    pub fn timer_period_us(&self, id: HandleId) -> Option<u64> {
+        let meta = self
+            .entries
+            .get(id.0)
+            .and_then(|e| e.as_ref())
+            .filter(|m| matches!(m.kind, EntryKind::Timer))?;
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        // SAFETY: same layout invariant as `timer_period_ms`.
+        let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
+        Some(header.period_us)
     }
 
     /// Set a timer's overrun policy (issue #505). Timers default to
@@ -5069,34 +5072,25 @@ impl<'s> Executor<'s> {
         }
 
         #[cfg(feature = "std")]
-        let delta_ms = {
+        let delta_us = {
             let now = std::time::Instant::now();
             // `last_spin_end` is seeded at construction time, so this
             // path always has a Some(_) on every call.
             let prev = self.last_spin_end.unwrap_or(spin_start);
             let elapsed = now.saturating_duration_since(prev);
             self.last_spin_end = Some(now);
-            let total_us = self
-                .spin_residual_us
-                .saturating_add(elapsed.as_micros() as u64);
-            let ms = total_us / 1000;
-            self.spin_residual_us = total_us % 1000;
-            ms
+            elapsed.as_micros() as u64
         };
         #[cfg(not(feature = "std"))]
-        let delta_ms = if let Some(clock) = self.clock_us_fn {
+        let delta_us = if let Some(clock) = self.clock_us_fn {
             let now = clock();
             let prev = self
                 .last_spin_end_us
                 .unwrap_or_else(|| spin_start_us.unwrap_or(now));
             self.last_spin_end_us = Some(now);
-            let elapsed_us = now.saturating_sub(prev);
-            let total_us = self.spin_residual_us.saturating_add(elapsed_us);
-            let ms = total_us / 1000;
-            self.spin_residual_us = total_us % 1000;
-            ms
+            now.saturating_sub(prev)
         } else {
-            timeout_ms as u64
+            (timeout_ms as u64).saturating_mul(1000)
         };
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
 
@@ -5163,7 +5157,7 @@ impl<'s> Executor<'s> {
             for meta in self.entries.iter().flatten() {
                 if matches!(meta.kind, EntryKind::Timer) {
                     let data_ptr = unsafe { arena_ptr.add(meta.offset) };
-                    let _ = unsafe { (meta.try_process)(data_ptr, delta_ms) };
+                    let _ = unsafe { (meta.try_process)(data_ptr, delta_us) };
                 }
             }
 
@@ -5244,12 +5238,12 @@ impl<'s> Executor<'s> {
             let now_ms = std::time::Instant::now()
                 .saturating_duration_since(*EPOCH.get_or_init(std::time::Instant::now))
                 .as_millis() as u64;
-            // Use the cycle's `delta_ms` as the per-SC consumption
+            // Use the cycle's `delta_us` as the per-SC consumption
             // estimate — worst-case attribution. Per-callback
             // measurement lands with a higher-precision clock hook.
-            let delta_us = (delta_ms as u32).saturating_mul(1000);
+            let delta_us_u32 = u32::try_from(delta_us).unwrap_or(u32::MAX);
             for slot in self.sporadic_states.iter_mut().flatten() {
-                let _ = slot.tick(now_ms, delta_us);
+                let _ = slot.tick(now_ms, delta_us_u32);
             }
         }
 
@@ -5342,7 +5336,7 @@ impl<'s> Executor<'s> {
                             arena_base: arena_ptr as usize,
                             arena_offset: meta.offset,
                             try_process: meta.try_process,
-                            delta_ms,
+                            delta_us,
                         });
                     }
                     continue;
@@ -5364,8 +5358,8 @@ impl<'s> Executor<'s> {
                         .unwrap_or(0);
                     if dur > 0 {
                         // Compute current phase within the major
-                        // frame using the accumulated `delta_ms` clock
-                        // (std-only precise; no_std uses `delta_ms`
+                        // frame using the accumulated `delta_us` clock
+                        // (std-only precise; no_std uses `delta_us`
                         // approximation from spin cadence).
                         #[cfg(feature = "std")]
                         let now_us = {
@@ -5378,7 +5372,7 @@ impl<'s> Executor<'s> {
                                 .as_micros() as u64
                         };
                         #[cfg(not(feature = "std"))]
-                        let now_us = delta_ms.saturating_mul(1000);
+                        let now_us = delta_us;
                         let phase = (now_us % self.major_frame_us as u64) as u32;
                         let in_window = if off + dur <= self.major_frame_us {
                             phase >= off && phase < off + dur
@@ -5410,7 +5404,7 @@ impl<'s> Executor<'s> {
         // mutation happens between that scan and this dispatch.
         let dispatch_one = |meta: &CallbackMeta,
                             arena_ptr: *mut u8,
-                            delta_ms: u64,
+                            delta_us: u64,
                             result: &mut SpinOnceResult| {
             // Phase 141.B.2 — capture T1 at subscription dispatch
             // entry. Probe pairs it with the most recent T0 from
@@ -5426,7 +5420,7 @@ impl<'s> Executor<'s> {
                 super::wake_probe::on_dispatch();
             }
             let data_ptr = unsafe { arena_ptr.add(meta.offset) };
-            match unsafe { (meta.try_process)(data_ptr, delta_ms) } {
+            match unsafe { (meta.try_process)(data_ptr, delta_us) } {
                 Ok(true) => match meta.kind {
                     EntryKind::Subscription => result.subscriptions_processed += 1,
                     EntryKind::Service
@@ -5554,7 +5548,7 @@ impl<'s> Executor<'s> {
                     } else {
                         None
                     };
-                    dispatch_one(meta, arena_ptr, delta_ms, &mut result);
+                    dispatch_one(meta, arena_ptr, delta_us, &mut result);
                     #[cfg(feature = "std")]
                     let elapsed_us: Option<u32> =
                         Some(start.elapsed().as_micros().min(u32::MAX as u128) as u32);
@@ -5602,7 +5596,7 @@ impl<'s> Executor<'s> {
                     } else {
                         None
                     };
-                    dispatch_one(meta, arena_ptr, delta_ms, &mut result);
+                    dispatch_one(meta, arena_ptr, delta_us, &mut result);
                     #[cfg(feature = "std")]
                     let elapsed_us: Option<u32> =
                         Some(start.elapsed().as_micros().min(u32::MAX as u128) as u32);
@@ -6643,7 +6637,7 @@ struct WorkItem {
     arena_base: usize,
     arena_offset: usize,
     try_process: unsafe fn(*mut u8, u64) -> Result<bool, nros_rmw::TransportError>,
-    delta_ms: u64,
+    delta_us: u64,
 }
 
 // SAFETY: Phase 110.F per-DescIdx exclusive-access invariant — the
@@ -6683,7 +6677,7 @@ impl OsPriorityWorker {
                             // (Executor::Drop halts + joins workers
                             // before the arena is freed).
                             let data = (item.arena_base as *mut u8).wrapping_add(item.arena_offset);
-                            let _ = unsafe { (item.try_process)(data, item.delta_ms) };
+                            let _ = unsafe { (item.try_process)(data, item.delta_us) };
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
@@ -7080,7 +7074,7 @@ fn check_deadline_miss(
 }
 
 // Timer-accounting clock default (issue: no_std tiers with no `clock_us`
-// credited each spin the REQUESTED timeout — spin.rs `delta_ms` fallback —
+// credited each spin the REQUESTED timeout — spin.rs `delta_us` fallback —
 // so shared-session wakes made low-rate timers fire early (a 100 ms timer
 // at ~67 ms on Zephyr native_sim) and tick rounding made fast tiers fire
 // late. Measured on-target; mechanism documented at the fallback site.)

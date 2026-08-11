@@ -972,14 +972,20 @@ pub unsafe extern "C" fn nros_executor_add_timer(
             c_callback(timer_ptr, c_context);
         };
 
-        // Convert period from nanoseconds to milliseconds
-        let period_ms = timer_ref.period_ns / 1_000_000;
-        if period_ms == 0 {
+        // Issue #505 — this used to truncate ns to MILLISECONDS, so the
+        // ABI promised nanoseconds and rejected every sub-millisecond
+        // period with INVALID_ARGUMENT (while the Rust API silently
+        // turned the same request into a fire-every-spin timer). The
+        // executor's timer accounting is microsecond-based, so convert
+        // to microseconds and reject only a genuinely sub-microsecond
+        // request.
+        let period_us = timer_ref.period_ns / 1_000;
+        if period_us == 0 {
             return NROS_RET_INVALID_ARGUMENT;
         }
 
         // Register with the nros-node executor
-        let period = nros_node::TimerDuration::from_millis(period_ms);
+        let period = nros_node::TimerDuration::from_micros(period_us);
         match rust_exec.register_timer(period, wrapper) {
             Ok(handle_id) => {
                 // Store handle ID and executor pointer for cancel/reset operations
@@ -1149,8 +1155,9 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
             c_callback(timer_ptr, c_context);
         };
 
-        let period_ms = timer_ref.period_ns / 1_000_000;
-        if period_ms == 0 {
+        // Issue #505 — microseconds, as in `nros_executor_add_timer`.
+        let period_us = timer_ref.period_ns / 1_000;
+        if period_us == 0 {
             return NROS_RET_INVALID_ARGUMENT;
         }
 
@@ -1167,7 +1174,7 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
         // Node identity: the C timer struct doesn't carry a node_id today.
         // Group lookup falls back to the executor's primary node when no
         // node_id is threaded — sufficient for the single-node C use case.
-        let period = nros_node::TimerDuration::from_millis(period_ms);
+        let period = nros_node::TimerDuration::from_micros(period_us);
         match rust_exec.register_timer_on(None, period, wrapper, group_str) {
             Ok(handle_id) => {
                 let timer_mut = &mut *timer;

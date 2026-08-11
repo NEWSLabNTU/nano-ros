@@ -49,7 +49,7 @@ pub(crate) struct CallbackMeta {
     pub(crate) kind: EntryKind,
     /// Monomorphized dispatch: tries to receive and process one message/request.
     /// Returns `Ok(true)` if work was done, `Ok(false)` if nothing available.
-    /// The `u64` parameter is `delta_ms` (used by timer entries, ignored by others).
+    /// The `u64` parameter is `delta_us` (used by timer entries, ignored by others).
     pub(crate) try_process: unsafe fn(*mut u8, u64) -> Result<bool, TransportError>,
     /// Monomorphized readiness check: returns true if the entry has data.
     pub(crate) has_data: unsafe fn(*const u8) -> bool,
@@ -131,8 +131,8 @@ pub enum TimerOverrunPolicy {
 /// enabling type-erased access to timer state (cancel, reset, period query).
 #[repr(C)]
 pub(crate) struct TimerEntry<F> {
-    pub(crate) period_ms: u64,
-    pub(crate) elapsed_ms: u64,
+    pub(crate) period_us: u64,
+    pub(crate) elapsed_us: u64,
     /// Periods dropped by [`TimerOverrunPolicy::Skip`] (issue #505).
     /// Saturating; never cleared by the dispatcher.
     pub(crate) overruns: u32,
@@ -150,8 +150,8 @@ pub(crate) struct TimerEntry<F> {
 /// regardless of the concrete closure type `F`.
 #[repr(C)]
 pub(crate) struct TimerHeader {
-    pub(crate) period_ms: u64,
-    pub(crate) elapsed_ms: u64,
+    pub(crate) period_us: u64,
+    pub(crate) elapsed_us: u64,
     pub(crate) overruns: u32,
     pub(crate) oneshot: bool,
     pub(crate) fired: bool,
@@ -374,7 +374,7 @@ unsafe fn drain_into_buffer<M, F>(entry: &mut SubBufferedEntry<M, F>) {
 /// `ptr` must point to a valid, aligned `SubBufferedEntry<M, F>`.
 pub(crate) unsafe fn sub_buffered_try_process<M, F>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
@@ -459,7 +459,7 @@ pub(crate) struct SubInplaceEntry<M, F> {
 /// `ptr` must point to a valid, aligned `SubInplaceEntry<M, F>`.
 pub(crate) unsafe fn sub_inplace_try_process<M, F>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
@@ -554,7 +554,7 @@ unsafe fn drain_into_buffer_raw<F>(entry: &mut SubBufferedRawEntry<F>) {
 /// `ptr` must point to a valid, aligned `SubBufferedRawEntry<F>`.
 pub(crate) unsafe fn sub_buffered_raw_try_process<F>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     F: FnMut(&[u8]),
@@ -628,7 +628,7 @@ pub(crate) struct SubBufferedBorrowedEntry<B, F> {
 /// `ptr` must point to a valid, aligned `SubBufferedBorrowedEntry<B, F>`.
 pub(crate) unsafe fn sub_buffered_borrowed_try_process<B, F>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     B: BorrowedMessage,
@@ -706,7 +706,7 @@ pub(crate) struct SubBufferedRawInfoEntry<F, const RX_BUF: usize> {
 /// `ptr` must point to a valid, aligned `SubBufferedRawInfoEntry<F, RX_BUF>`.
 pub(crate) unsafe fn sub_buffered_raw_info_try_process<F, const RX_BUF: usize>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     F: FnMut(&[u8], &RawMessageInfo),
@@ -755,7 +755,7 @@ pub(crate) struct SubBufferedRawInfoCEntry<const RX_BUF: usize> {
 /// `ptr` must point to a valid, aligned `SubBufferedRawInfoCEntry<RX_BUF>`.
 pub(crate) unsafe fn sub_buffered_raw_info_c_try_process<const RX_BUF: usize>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError> {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawInfoCEntry<RX_BUF>) };
     match entry
@@ -812,7 +812,7 @@ pub(crate) struct SubBufferedRawSafetyEntry<F, const RX_BUF: usize> {
 #[cfg(feature = "safety-e2e")]
 pub(crate) unsafe fn sub_buffered_raw_safety_try_process<F, const RX_BUF: usize>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     F: FnMut(&[u8], &nros_rmw::IntegrityStatus),
@@ -862,7 +862,7 @@ pub(crate) struct SubBufferedRawSafetyCEntry<const RX_BUF: usize> {
 #[cfg(feature = "safety-e2e")]
 pub(crate) unsafe fn sub_buffered_raw_safety_c_try_process<const RX_BUF: usize>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError> {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyCEntry<RX_BUF>) };
     match entry.handle.try_recv_validated(&mut entry.buffer) {
@@ -940,7 +940,7 @@ unsafe fn drain_into_buffer_raw_c(entry: &mut SubBufferedRawCEntry) {
 /// `ptr` must point to a valid, aligned `SubBufferedRawCEntry`.
 pub(crate) unsafe fn sub_buffered_raw_c_try_process(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError> {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawCEntry) };
 
@@ -985,7 +985,7 @@ pub(crate) unsafe fn sub_buffered_raw_c_has_data(ptr: *const u8) -> bool {
 /// `ptr` must point to a valid, aligned `SubInfoEntry<M, F, RX_BUF>`.
 pub(crate) unsafe fn sub_info_try_process<M, F, const RX_BUF: usize>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
@@ -1025,7 +1025,7 @@ where
 #[cfg(feature = "safety-e2e")]
 pub(crate) unsafe fn sub_safety_try_process<M, F, const RX_BUF: usize>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
@@ -1071,7 +1071,7 @@ where
 /// `ptr` must point to a valid, aligned `SrvEntry<Svc, F, REQ_BUF, REPLY_BUF>`.
 pub(crate) unsafe fn srv_try_process<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     Svc: RosService,
@@ -1105,7 +1105,7 @@ pub(crate) unsafe fn drop_entry<T>(ptr: *mut u8) {
 /// `ptr` must point to a valid, aligned `TimerEntry<F>`.
 pub(crate) unsafe fn timer_try_process<F>(
     ptr: *mut u8,
-    delta_ms: u64,
+    delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     F: FnMut(),
@@ -1117,32 +1117,32 @@ where
         return Ok(false);
     }
 
-    entry.elapsed_ms = entry.elapsed_ms.saturating_add(delta_ms);
+    entry.elapsed_us = entry.elapsed_us.saturating_add(delta_us);
 
-    if entry.elapsed_ms >= entry.period_ms {
+    if entry.elapsed_us >= entry.period_us {
         (entry.callback)();
         if entry.oneshot {
             entry.fired = true;
-        } else if entry.period_ms == 0 {
-            entry.elapsed_ms = 0;
+        } else if entry.period_us == 0 {
+            entry.elapsed_us = 0;
         } else {
-            // Issue #505 — a stall leaves `elapsed_ms` worth several
+            // Issue #505 — a stall leaves `elapsed_us` worth several
             // periods. `CatchUp` subtracts one period per pass, so the
             // backlog replays back-to-back; `Skip` drops the whole
             // backlog in one step and counts it, keeping the remainder
             // so activations stay on the original phase grid.
             match entry.overrun_policy {
                 TimerOverrunPolicy::CatchUp => {
-                    entry.elapsed_ms = entry.elapsed_ms.saturating_sub(entry.period_ms);
+                    entry.elapsed_us = entry.elapsed_us.saturating_sub(entry.period_us);
                 }
                 TimerOverrunPolicy::Skip => {
-                    let missed = entry.elapsed_ms / entry.period_ms - 1;
+                    let missed = entry.elapsed_us / entry.period_us - 1;
                     if missed > 0 {
                         entry.overruns = entry
                             .overruns
                             .saturating_add(u32::try_from(missed).unwrap_or(u32::MAX));
                     }
-                    entry.elapsed_ms %= entry.period_ms;
+                    entry.elapsed_us %= entry.period_us;
                 }
             }
         }
@@ -1168,7 +1168,7 @@ pub(crate) unsafe fn action_server_try_process<
     const MAX_GOALS: usize,
 >(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     A: RosAction,
@@ -1233,7 +1233,7 @@ pub(crate) unsafe fn action_server_raw_try_process<
     const MAX_GOALS: usize,
 >(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError> {
     let entry = unsafe {
         &mut *(ptr as *mut ActionServerRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>)
@@ -1356,7 +1356,7 @@ pub(crate) unsafe fn action_client_raw_try_process<
     const FEEDBACK_BUF: usize,
 >(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError> {
     let entry = unsafe {
         &mut *(ptr as *mut ActionClientRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>)
@@ -1511,7 +1511,7 @@ pub(crate) unsafe fn action_client_raw_try_process<
 /// `ptr` must point to a valid, aligned `ServiceClientRawArenaEntry<REPLY_BUF>`.
 pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError> {
     use core::sync::atomic::Ordering;
     use nros_rmw::ClientTrait;
@@ -1576,7 +1576,7 @@ pub(crate) struct ServiceClientCallbackEntry<Svc: RosService, F, const REPLY_BUF
 /// `ptr` must point to a valid, aligned `ServiceClientCallbackEntry<Svc, F, REPLY_BUF>`.
 pub(crate) unsafe fn service_client_callback_try_process<Svc, F, const REPLY_BUF: usize>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     Svc: RosService,
@@ -1698,7 +1698,7 @@ pub(crate) unsafe fn action_client_callback_try_process<
     const FEEDBACK_BUF: usize,
 >(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     A: RosAction,
@@ -1811,7 +1811,7 @@ where
 /// `ptr` must point to a valid, aligned `SrvRawEntry<REQ_BUF, REPLY_BUF>`.
 pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: usize>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError> {
     let entry = unsafe { &mut *(ptr as *mut SrvRawEntry<REQ_BUF, REPLY_BUF>) };
     let SrvRawEntry {
@@ -1858,7 +1858,7 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
 /// `ptr` must point to a valid, aligned `GuardConditionEntry<F>`.
 pub(crate) unsafe fn guard_try_process<F>(
     ptr: *mut u8,
-    _delta_ms: u64,
+    _delta_us: u64,
 ) -> Result<bool, TransportError>
 where
     F: FnMut(),
@@ -2419,18 +2419,31 @@ mod action_envelope_tests {
 mod timer_overrun_tests {
     use super::*;
 
-    /// Drive `entry` through one `try_process` pass with `delta_ms`.
+    /// Drive `entry` through one `try_process` pass, crediting `delta_ms`
+    /// worth of elapsed time (the dispatcher's unit is microseconds).
     fn step<F: FnMut()>(entry: &mut TimerEntry<F>, delta_ms: u64) -> bool {
         // SAFETY: `entry` is a live, aligned `TimerEntry<F>`.
         unsafe {
-            timer_try_process::<F>((entry as *mut TimerEntry<F>).cast::<u8>(), delta_ms).unwrap()
+            timer_try_process::<F>(
+                (entry as *mut TimerEntry<F>).cast::<u8>(),
+                delta_ms * 1000,
+            )
+            .unwrap()
         }
     }
 
-    fn periodic(period_ms: u64, policy: TimerOverrunPolicy) -> TimerEntry<impl FnMut()> {
+    /// Same, in microseconds — the dispatcher's native unit.
+    fn step_us<F: FnMut()>(entry: &mut TimerEntry<F>, delta_us: u64) -> bool {
+        // SAFETY: `entry` is a live, aligned `TimerEntry<F>`.
+        unsafe {
+            timer_try_process::<F>((entry as *mut TimerEntry<F>).cast::<u8>(), delta_us).unwrap()
+        }
+    }
+
+    fn periodic(period_us: u64, policy: TimerOverrunPolicy) -> TimerEntry<impl FnMut()> {
         TimerEntry {
-            period_ms,
-            elapsed_ms: 0,
+            period_us,
+            elapsed_us: 0,
             overruns: 0,
             oneshot: false,
             fired: false,
@@ -2450,7 +2463,7 @@ mod timer_overrun_tests {
         // The observed failure: a ~200 ms preemption of a 10 ms timer
         // replayed as a burst of activations. Under Skip the backlog
         // costs exactly one activation plus a counter bump.
-        let mut t = periodic(10, TimerOverrunPolicy::Skip);
+        let mut t = periodic(10_000, TimerOverrunPolicy::Skip);
         assert!(step(&mut t, 205));
         assert_eq!(t.overruns, 19, "205 ms of a 10 ms period = 20 due, 1 fired");
         // Nothing is owed: the next pass waits out the remaining period.
@@ -2463,14 +2476,14 @@ mod timer_overrun_tests {
         // 205 ms leaves a 5 ms remainder; keeping it means the next fire
         // lands 5 ms later, back on the original 10 ms grid, instead of
         // re-anchoring to the moment the stall ended.
-        let mut t = periodic(10, TimerOverrunPolicy::Skip);
+        let mut t = periodic(10_000, TimerOverrunPolicy::Skip);
         assert!(step(&mut t, 205));
-        assert_eq!(t.elapsed_ms, 5);
+        assert_eq!(t.elapsed_us, 5_000);
     }
 
     #[test]
     fn catchup_replays_every_missed_period() {
-        let mut t = periodic(10, TimerOverrunPolicy::CatchUp);
+        let mut t = periodic(10_000, TimerOverrunPolicy::CatchUp);
         assert!(step(&mut t, 205));
         // One activation per pass until the backlog drains, with no
         // further time credited.
@@ -2485,18 +2498,18 @@ mod timer_overrun_tests {
 
     #[test]
     fn on_time_ticks_never_count_as_overruns() {
-        let mut t = periodic(10, TimerOverrunPolicy::Skip);
+        let mut t = periodic(10_000, TimerOverrunPolicy::Skip);
         for _ in 0..100 {
             assert!(step(&mut t, 10));
         }
         assert_eq!(t.overruns, 0);
-        assert_eq!(t.elapsed_ms, 0);
+        assert_eq!(t.elapsed_us, 0);
     }
 
     #[test]
     fn a_single_late_period_is_one_overrun() {
         // Exactly two periods due = one fired, one dropped.
-        let mut t = periodic(10, TimerOverrunPolicy::Skip);
+        let mut t = periodic(10_000, TimerOverrunPolicy::Skip);
         assert!(step(&mut t, 20));
         assert_eq!(t.overruns, 1);
     }
@@ -2504,8 +2517,8 @@ mod timer_overrun_tests {
     #[test]
     fn oneshot_ignores_the_policy() {
         let mut t = TimerEntry {
-            period_ms: 10,
-            elapsed_ms: 0,
+            period_us: 10_000,
+            elapsed_us: 0,
             overruns: 0,
             oneshot: true,
             fired: false,
@@ -2519,18 +2532,39 @@ mod timer_overrun_tests {
     }
 
     #[test]
+    fn sub_millisecond_periods_are_expressible() {
+        // Issue #505 — the dispatcher's unit is microseconds, so a
+        // 500 us period is a real period rather than the "fires every
+        // spin" degenerate case a millisecond field forced it into.
+        let mut t = periodic(500, TimerOverrunPolicy::Skip);
+        // 200 us of credit is not enough...
+        assert!(!step_us(&mut t, 200));
+        // ...600 us total is.
+        assert!(step_us(&mut t, 400));
+        assert_eq!(t.overruns, 0);
+        assert_eq!(t.elapsed_us, 100, "phase remainder survives");
+    }
+
+    #[test]
+    fn a_stalled_sub_millisecond_timer_counts_whole_periods() {
+        let mut t = periodic(500, TimerOverrunPolicy::Skip);
+        assert!(step_us(&mut t, 5_000)); // 10 periods due
+        assert_eq!(t.overruns, 9);
+    }
+
+    #[test]
     fn zero_period_does_not_divide_by_zero() {
         // Degenerate but reachable: `TimerDuration::from_millis(0)` or a
         // sub-millisecond period truncated to 0 by `as_millis`.
         let mut t = periodic(0, TimerOverrunPolicy::Skip);
         assert!(step(&mut t, 5));
         assert_eq!(t.overruns, 0);
-        assert_eq!(t.elapsed_ms, 0);
+        assert_eq!(t.elapsed_us, 0);
     }
 
     #[test]
     fn overrun_count_saturates_instead_of_wrapping() {
-        let mut t = periodic(1, TimerOverrunPolicy::Skip);
+        let mut t = periodic(1_000, TimerOverrunPolicy::Skip);
         t.overruns = u32::MAX - 1;
         assert!(step(&mut t, 1_000));
         assert_eq!(t.overruns, u32::MAX);

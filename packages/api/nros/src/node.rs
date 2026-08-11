@@ -992,6 +992,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
         metadata.period_ms = Some(period.as_millis());
+        metadata.period_us = Some(period.as_micros());
         self.declare_entity(metadata)?;
         Ok(NodeTimer::new(id))
     }
