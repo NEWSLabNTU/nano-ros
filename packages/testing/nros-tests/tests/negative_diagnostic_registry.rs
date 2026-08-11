@@ -43,6 +43,34 @@ struct Entry {
 /// The registry. Adding a runtime compile/build to a test means adding a row here
 /// (or, preferably, moving the build to the fixture stage so no row is needed).
 const REGISTRY: &[Entry] = &[
+    // Issue 0523 / phase-348 W3+W4 — added 2026-08-12. Both configure a
+    // throwaway project to assert a cmake-module SEAM, the same shape (and the
+    // same `tool` wording) as `cargo_target_spelling.sh` below. Reasons are
+    // derived from each script's own header rather than guessed; the phase-348
+    // author should correct them if the intent differs.
+    Entry {
+        file: "provider_index_gate.sh",
+        kind: Kind::RuntimeException,
+        tool: "cmake (configure only)",
+        reason: "asserts `nano_ros_load_providers()` reads the provider index THROUGH the \
+                 CLI — cmake never parses the index, because a second parser of one file is \
+                 the two-derivations defect this repo keeps paying for. What it checks is \
+                 what a CONFIGURE produces (returned rows, per-(kind,name) variables, \
+                 case-distinct aliases staying distinct, and every recorded package.xml \
+                 landing in CMAKE_CONFIGURE_DEPENDS), so a prebuilt artifact could only \
+                 show that the seam ran once, not that it resolves correctly. Compiles \
+                 nothing",
+    },
+    Entry {
+        file: "workspace_order_gate.sh",
+        kind: Kind::RuntimeException,
+        tool: "cmake (configure only)",
+        reason: "asserts build order is DERIVED from `<depend>` rather than from the order \
+                 a SUBDIRS list happens to be written in — the hand-maintained ordering \
+                 being a second spelling of a fact package.xml already holds. The ordering \
+                 only exists once cmake has configured and called ORDER_FROM_DEPENDS, so \
+                 the assertion IS the configure's output. Compiles nothing",
+    },
     // phase-340 W3 / issue 0482 sweep — added 2026-08-08. The post-merge sweep
     // caught this; `check-fast` does not run `enforce_registry`, so the gate's
     // own author could not have seen it from a buildless run.
@@ -177,6 +205,58 @@ fn rs_invokes_build(text: &str) -> bool {
     false
 }
 
+/// Is this `cmake` invocation a CONFIGURE/BUILD, or one of its non-building modes?
+///
+/// Issue 0523 — the needle used to be the prefix `"cmake -"`, which matches
+/// `cmake -P`: CMake's SCRIPT interpreter. It compiles nothing, configures
+/// nothing and needs no fixture, so `package_xml_comment_stripping.sh` — whose
+/// own header reads "Buildless: `cmake -P`, no compiler, no cargo, no fixtures"
+/// — was reported as an unsanctioned compile-at-test and failed tier 1.
+///
+/// Registering it would have been the obvious fix and the wrong one: it launders
+/// a non-violation into the registry and teaches the next reader that `cmake -P`
+/// is a build. A gate whose coverage is wider than its rule is issue 0196's
+/// shape, and the red it produces is plausible enough that nobody re-derives it.
+///
+/// Non-building modes, both of which take over the whole invocation:
+///   `-P <script>`   run a .cmake script
+///   `-E <command>`  command mode (`cmake -E env`, `copy`, `make_directory`, …)
+/// Everything else that reaches a project — `-S`/`-B`/`--build`, or a bare
+/// directory — configures or builds, and DEFAULTS to true so an unfamiliar
+/// spelling fails closed.
+fn cmake_line_builds(line: &str) -> bool {
+    // Everything after the FIRST `cmake ` — not just the segment up to the next
+    // one, or `cmake -E env FOO=1 cmake -S . -B build` reads as script mode.
+    let Some((_, rest)) = line.split_once("cmake ") else {
+        return false;
+    };
+    // An explicit configure/build wins wherever it appears.
+    if rest.contains("-S ") || rest.contains("-B ") || rest.contains("--build") {
+        return true;
+    }
+    let arg = rest
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .trim_matches(['"', '\'']);
+    // Non-building modes take over the whole invocation.
+    if matches!(arg, "-P" | "-E" | "--version" | "--help") {
+        return false;
+    }
+    // Otherwise it is only a cmake INVOCATION if the next token looks like one:
+    // a `-D` define, or the source directory. Anything else is the word "cmake"
+    // in prose or in another command's arguments — `echo "cmake output was:"`
+    // and `nros_build_dir cmake workspace c` both live in this tree, and a
+    // default-true rule reported both as runtime builds (issue 0523).
+    arg.starts_with("-D")
+        || arg == "."
+        || arg == ".."
+        || arg.starts_with('/')
+        || arg.starts_with("./")
+        || arg.starts_with("$")
+        || arg.contains('/')
+}
+
 /// Does this `.sh` file invoke a compiler/build tool at runtime?
 fn sh_invokes_build(text: &str) -> bool {
     for line in code_lines(text, "#") {
@@ -186,15 +266,56 @@ fn sh_invokes_build(text: &str) -> bool {
             "cargo test",
             "g++ -",
             "gcc -",
-            "cmake -",
             "make -C",
         ] {
             if line.contains(needle) {
                 return true;
             }
         }
+        // `cmake` needs the mode read, not a prefix match — see above.
+        if line.contains("cmake ") && cmake_line_builds(&line) {
+            return true;
+        }
     }
     false
+}
+
+/// Issue 0523 — SELF-TEST the cmake mode reader, standing.
+///
+/// The bug it guards is invisible in output: the gate printed a confident,
+/// specific, WRONG "unsanctioned compile-at-test" naming a file that complies.
+/// A predicate that drifts back to matching script mode would look identical.
+#[test]
+fn cmake_script_mode_is_not_a_build() {
+    // Non-building modes.
+    assert!(!cmake_line_builds(
+        r#"OUT="$(cmake -P "$WORK/run.cmake" 2>&1)""#
+    ));
+    assert!(!cmake_line_builds("cmake -E make_directory build"));
+    assert!(!cmake_line_builds("cmake --version"));
+    // Real configures and builds.
+    assert!(cmake_line_builds(
+        r#"CM="$(cd "$WORK" && cmake -S . -B build 2>&1)""#
+    ));
+    assert!(cmake_line_builds("cmake -B build"));
+    assert!(cmake_line_builds("cmake --build build"));
+    assert!(cmake_line_builds("cmake -DFOO=bar .."));
+    // An explicit configure inside a longer line still counts.
+    assert!(cmake_line_builds("cmake -E env FOO=1 cmake -S . -B build"));
+    assert!(cmake_line_builds("cmake ."));
+    assert!(cmake_line_builds(r#"cmake "$WORK/proj""#));
+    // NOT invocations — the word `cmake` in prose or in another command's args.
+    // Both are real lines in this tree and a default-true rule flagged them.
+    assert!(!cmake_line_builds(r#"    echo "cmake output was:" >&2"#));
+    assert!(!cmake_line_builds(
+        r#"check "multi-part coord" "/r/cmake/workspace/c" "$(nros_build_dir cmake workspace c)""#
+    ));
+    assert!(!cmake_line_builds(
+        r#"    echo "FAIL: cmake -P errored" >&2"#
+    ));
+    // Not a cmake invocation at all: the heredocs in these scripts are full of
+    // `cmake_minimum_required(...)`, which must not read as a command.
+    assert!(!sh_invokes_build("cmake_minimum_required(VERSION 3.20)\n"));
 }
 
 #[test]

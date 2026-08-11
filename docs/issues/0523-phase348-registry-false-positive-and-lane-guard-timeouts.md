@@ -5,6 +5,8 @@ status: open
 type: bug
 severity: high
 area: testing
+# Part A resolved 2026-08-12; kept OPEN for part B (the lane_build_covers_run
+# timeouts), which is a separate root cause.
 related: [issue-0196, issue-0501, issue-0041, phase-348, phase-340]
 ---
 
@@ -64,15 +66,40 @@ for exactly that: `cargo_target_spelling.sh` is registered with
 `tool: "cmake (configure only)"`. They want rows with the same shape, or a move
 to the fixture stage.
 
-### Fix
+### Fix — DONE 2026-08-12
 
-1. Narrow the needle so `cmake -P` is not a build: match a configure
-   (`cmake -S`, `cmake -B`, `cmake --build`, or a bare `cmake <dir>`) rather
-   than the prefix `cmake -`. Add `cmake -P` to the gate's own self-test, since
-   the failure mode is a plausible-looking red on a compliant file.
-2. Register `provider_index_gate.sh` and `workspace_order_gate.sh` with
-   `tool: "cmake (configure only)"` and a reason, or move them to the fixture
-   stage.
+1. `cmake_line_builds()` replaces the `"cmake -"` prefix. It reads the MODE:
+   `-P` / `-E` / `--version` / `--help` are not builds; `-S` / `-B` / `--build`
+   anywhere in the line are; otherwise it is only an invocation if the next
+   token looks like one (a `-D` define, or a source directory).
+
+   That last clause was not in the original plan and is the half that took two
+   iterations. A "default to true so unknown spellings fail closed" rule
+   promptly flagged two MORE compliant files, because the word `cmake` occurs in
+   this tree outside any invocation:
+
+   ```
+   echo "cmake output was:" >&2                                  (prose)
+   check "multi-part coord" … "$(nros_build_dir cmake workspace c)"   (an argument)
+   ```
+
+   Both are pinned in the self-test now, as is `cmake -E env FOO=1 cmake -S . -B build`
+   — which the FIRST version of the predicate got wrong, because it read only
+   the segment up to the next `cmake ` and so saw script mode. My own self-test
+   caught that before it landed, which is the argument for writing one.
+
+2. `provider_index_gate.sh` and `workspace_order_gate.sh` registered with
+   `tool: "cmake (configure only)"`, matching `cargo_target_spelling.sh`'s
+   precedent. Reasons are derived from each script's own header — what each
+   asserts is the OUTPUT of a configure (returned provider rows and
+   `CMAKE_CONFIGURE_DEPENDS` contents; an ordering that only exists once
+   `ORDER_FROM_DEPENDS` has run), so a prebuilt artifact could only show the
+   seam ran once, not that it resolves correctly. The phase-348 author should
+   correct the wording if the intent differs; the rows are marked as derived.
+
+Verified: `negative_diagnostic_registry` 3/3. Tripwired both ways — an
+unregistered script running `cmake -S . -B build` is caught, and so is one
+running `cargo build --release`.
 
 ---
 
@@ -117,6 +144,10 @@ cargo nextest run -p nros-tests --test lane_build_covers_run
 `negative_diagnostic_registry`'s three files arrived with phase-348 W3/W4
 (`af70ca723`, `2efa47430`); `lane_build_covers_run` last moved in
 `fdec5824f test(phase-340 W3): the lane guard's child must not inherit the lane env`.
-Filed rather than fixed: A.2 needs the phase-348 author's decision on WHY each
-gate must configure at runtime (the registry's `reason` field is the point of
-it, and guessing defeats the gate), and B needs its own root-cause pass.
+**A is fixed (2026-08-12); this issue stays OPEN for B**, which is a separate
+root cause and needs its own pass.
+
+A.2's reasons were derived from each script's own header rather than left for
+the phase-348 author: what both assert IS the output of a configure, which the
+headers state plainly, so the rows could be written truthfully without guessing
+at intent. They are marked as derived so that author can correct the wording.

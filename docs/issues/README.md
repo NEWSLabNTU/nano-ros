@@ -52,20 +52,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 ## Open issues
 
 **#523** (testing, open 2026-08-12) — tier 1 red on FOUR tests from phase-348, two independent problems.
-(1) `enforce_registry` flags three scripts as unsanctioned compile-at-test, but they are not the same case:
-`package_xml_comment_stripping.sh` runs `cmake -P` — CMake's INTERPRETER, compiling and configuring
-nothing, and its own header says "Buildless: `cmake -P`, no compiler, no cargo, no fixtures". The detector
-matches the needle `"cmake -"`, so script mode reads as a build. Registering it would launder a
-non-violation into the registry and teach the next reader that `cmake -P` is a build; narrow the needle to
-a real configure (`-S`/`-B`/`--build`/bare dir) and self-test `cmake -P`, since a plausible red on a
-compliant file is the failure mode. The other two (`provider_index_gate.sh`, `workspace_order_gate.sh`) DO
-run `cmake -S . -B build` and want rows — the registry already has the precedent, `cargo_target_spelling.sh`
-with `tool: "cmake (configure only)"`. (2) Three `lane_build_covers_run` cases time out at 60 s; they
-`Command::new("bash")` and source `fixture-lane.sh` to exercise `nros_fixtures_stamp_require`, and the
-helper deliberately CLEARS `NROS_TEST_COORDS`/`NROS_FIXTURE_LANE`/`NROS_FIXTURE_STAMP` — a guard that waits
-instead of refusing hangs exactly there. Same compile-at-test class as #501 and archived 0041, one layer
-out: a test whose subject can invoke the build system has no bounded runtime. Filed not fixed — the
-registry's `reason` field is the point of it and guessing defeats the gate. See `0523-*`. (2026-08-12)
+**PART A FIXED 2026-08-12**, part B still open. (A) `enforce_registry` flagged three scripts; they were not
+the same case. `package_xml_comment_stripping.sh` runs `cmake -P` — CMake's INTERPRETER, compiling and
+configuring nothing, and its header says "Buildless". The detector matched the needle `"cmake -"`, so script
+mode read as a build; registering it would have laundered a non-violation into the registry and taught the
+next reader that `cmake -P` is a build. `cmake_line_builds()` now reads the MODE. The half that took two
+iterations was NOT the `-P` case: a "default true so unknown spellings fail closed" rule promptly flagged two
+more compliant files, because the word `cmake` appears in this tree in prose (`echo "cmake output was:"`) and
+as another command's argument (`nros_build_dir cmake workspace c`). All pinned in a standing self-test —
+which also caught the FIRST predicate reading only the segment up to the next `cmake `, so
+`cmake -E env … cmake -S . -B build` looked like script mode. The two genuine configures
+(`provider_index_gate.sh`, `workspace_order_gate.sh`) are registered `tool: "cmake (configure only)"` with
+reasons derived from their own headers. 3/3, tripwired both ways. (B) Three `lane_build_covers_run` cases
+still time out at 60 s: they `Command::new("bash")` and source `fixture-lane.sh`, and the helper clears
+`NROS_TEST_COORDS`/`NROS_FIXTURE_LANE`/`NROS_FIXTURE_STAMP` — a guard that waits instead of refusing hangs
+there. Same compile-at-test class as #501 / archived 0041. See `0523-*`. (2026-08-12)
 
 Recently resolved (2026-08-11): **#513** (build) — `check-artifact-identity-budget` failed any
 INCREMENTAL fixture build. The 0499 era filter counts only rlibs written since `started_at`, which
