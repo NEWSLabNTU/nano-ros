@@ -98,3 +98,90 @@ whole periods); everything worth discussing is semantics and surface.
    directly, so backlog scenarios are pure unit tests (inject 200,
    assert one fire + N overruns + phase kept). No target runs needed
    except a confirmation pass on the QEMU lane.
+
+## Exploration findings (2026-08-11)
+
+The Skip/CatchUp mechanism landed (default Skip, saturating `overruns`,
+`Executor::set_timer_overrun_policy` / `timer_overruns`). Four things
+found while working through the agenda; two change what the remaining
+work should be.
+
+### 1. CatchUp does not merely burst — it launders the failure
+
+Measured A/B on the QEMU mps2-an385 lane, same tree, only the default
+policy flipped, 2 kHz inbound flood, 2 runs each (the flood level that
+reliably produces transport-band stalls, issue #506):
+
+| default policy | achieved ctrl rate | replay activations | stalls/run |
+|---|---|---|---|
+| CatchUp | **100.03 Hz** (declared 100) | 275/run | 13.0 |
+| Skip | 90.8-93.0 Hz | 8/run | 12.0 |
+
+Under CatchUp the island stalls for up to 611 ms at a time and the
+achieved publish rate is still exactly 100.03 Hz, because every missed
+activation is replayed later in the same window. `check_rate` in
+`executor/monitor.rs` counts publishes over a ~5 s window, so
+`rate-hierarchy-runtime` is STRUCTURALLY blind to a stall under
+CatchUp: the failure is invisible to the one runtime rule that ought to
+see it. Under Skip the same stalls show up as a 7-9% rate deficit.
+
+This is a stronger argument for the Skip default than "bursts are
+surprising": CatchUp makes the existing contract monitor report health
+during a fault. Recommend keeping Skip as the default and treating
+CatchUp as an explicitly-requested behavior for counters/accumulators.
+
+Caveat for the monitor discussion below: a 7-9% deficit only trips
+`rate-hierarchy-runtime` if the declared minimum sits within ~10% of
+nominal. A single isolated stall (20 missed activations of a 100 Hz
+loop in a 5 s window = 0.4%) will not trip it at any sane threshold.
+The rate rule catches sustained degradation; it is not a substitute for
+an explicit overrun signal.
+
+### 2. Nothing in-tree depends on CatchUp semantics
+
+Audited every `register_timer` / `create_timer` site in `packages/` and
+`examples/`: the users are demo talkers and test binaries publishing at
+200-1000 ms, plus the C and C++ shims. None counts activations or
+accumulates per-tick state, so none is behaviorally affected by the
+default flip except in the direction it wants (no burst). The
+`register_timer` callback signature stays `FnMut()`, so nothing
+recompiles differently either.
+
+### 3. The ms granularity is worse than "coarse" — it is silent
+
+- `TimerDuration` stores milliseconds, and `from_micros` divides by
+  1000. `from_micros(500)` yields a ZERO period, which the dispatcher
+  treats as "fire every spin"; `from_micros(1_500)` silently becomes
+  1 ms, a 50% rate error. No error, no warning.
+- The C ABI is already nanoseconds (`nros_timer_t.period_ns`), and
+  `nros-c/src/executor.rs` truncates `period_ns / 1_000_000` at the
+  boundary, rejecting sub-ms with `NROS_RET_INVALID_ARGUMENT`. So the C
+  surface promises ns, delivers ms, and the two language paths disagree
+  on what a 500 us timer does (C rejects, Rust silently free-runs).
+- A period that is not a multiple of the tier's spin period quantizes
+  deterministically. Measured on a 33 ms timer in a 5 ms-spin tier: the
+  period alternates 35 ms (444 samples) / 30 ms (288), mean 33.07 ms.
+  The long-run rate is right, the individual periods are never right,
+  and the pattern is fully predictable at resolve time.
+
+Widening cost is small and mostly mechanical. `CallbackMeta.try_process`
+is `unsafe fn(*mut u8, u64)` — the unit is a convention, not a type, so
+changing it is a rename plus one arithmetic site: 22 `delta_ms: u64`
+signatures in `arena.rs` (all but `timer_try_process` ignore the
+argument), 18 references elsewhere. It also SIMPLIFIES `spin.rs`, which
+currently keeps a `spin_residual_us` accumulator solely to convert its
+already-microsecond delta into milliseconds. Suggest doing the widening
+as its own change, then having `from_micros` stop lying.
+
+### 4. Where the overrun counter should surface
+
+`executor/monitor.rs` already has the shape: a `Violation { rule, fqn,
+measured, declared }` in play_launch's rule-id vocabulary, drained into
+a ring that the entry glue hands to `nros-diagnostics`. Timers are not
+endpoints, so a per-endpoint `MonitorSpec` row does not fit, but
+`deadline-miss-runtime` already precedents reporting with the
+SchedContext name as `fqn`. Proposal: `timer-overrun-runtime`, `fqn` =
+the bound SC/tier name, `measured` = overruns accrued in the window,
+`declared` = tolerated count (0 by default). That needs a
+window-delta baseline next to `MonitorState.count_at_window_start`,
+mirroring the rate rule.
