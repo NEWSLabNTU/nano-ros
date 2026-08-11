@@ -411,7 +411,7 @@ check-fast: \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
-    check-package-xml-comments \
+    check-package-xml-comments check-provider-announcements \
     check-atomic-sync-writes \
     check-cmake-corrosion-prefix \
     check-path-env-fingerprints
@@ -3467,6 +3467,14 @@ check-cargo-target-spelling:
 # before the `nros_read_package_xml_body()` helper, a package.xml that merely
 # DOCUMENTED a tag declared it. Covers the greedy-strip failure mode too, where
 # `<!--.*-->` silently deletes everything between two comments. Buildless.
+# phase-348 W2 — a provider announces itself (package.xml) and declares what it
+# lowers to (its descriptor). Nothing structural keeps the two name lists equal,
+# so compare them. ONE gate for every provider family: a copy of the rule beside
+# each family's descriptors is the second-spelling antipattern (#282 -> #326).
+[private]
+check-provider-announcements:
+    @python3 scripts/check-provider-announcements.py
+
 [private]
 check-package-xml-comments:
     @bash packages/testing/nros-tests/tests/package_xml_comment_stripping.sh

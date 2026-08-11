@@ -1,18 +1,16 @@
 # Phase 348 — Source-time provider discovery: buy the colcon convention, not colcon
 
-**Status (2026-08-11). W1 LANDED — unblocked by
+**Status (2026-08-11). W1 + W2 (rmw, boards) LANDED. Platform migration blocked
+on a missing descriptor family; W3–W5 open.** Unblocked by
 [phase-347](phase-347-rmw-as-a-declared-provider.md) W2 (descriptors exist, so
 providers can describe themselves). W2–W5 open.**
 
-W1 shipped the announce mechanism, the scan, and `nros ws providers`. One
-provider (`nros_rmw_zenoh`) carries the export as the acceptance proof; the
-rest of the migration is W2 and can proceed one package at a time, because a
-provider without a `package.xml` is simply not discoverable and its existing
-build path is untouched.
+W1 shipped the announce mechanism, the scan, and `nros ws providers`. W2
+migrated every provider that has a descriptor to agree with: **12 packages, 36
+provisions** across rmw and boards.
 
-Measured: 268 ms to walk this repo, 472 packages seen, 1 provider. That is
-per-invocation cost with no caching — W3's index is where it stops being paid
-per configure.
+Measured: 268 ms to walk this repo, 478 packages seen. That is per-invocation
+cost with no caching — W3's index is where it stops being paid per configure.
 
 **W1 turned up a defect older than this phase** ([issue
 0516](../issues/0516-package-xml-regex-readers-blind-to-comments.md)): all
@@ -101,25 +99,68 @@ Two decisions worth carrying forward:
   returned with their `root_index`; deciding between them is W5. A scan that
   silently dropped the loser could not warn with both paths.
 
-## W2 — The migration, which is the bulk of the phase
+## W2 — The migration — **rmw + boards LANDED; platform BLOCKED**
 
-No nano-ros provider carries a `package.xml` today. The 99 in the tree are
-interface packages and test fixtures.
+The original table counted *directories*; most of those are support crates, not
+providers. What is actually migrable is "has a descriptor", since the descriptor
+is what a provision must agree with:
 
-| axis | dirs needing `package.xml` | carry a descriptor today |
-| --- | ---: | ---: |
-| `packages/rmw` | 8 families | 0 (phase-347 W2 adds them) |
-| `packages/boards` | 17 | **8** |
-| `packages/platform` | 14 | — |
+| axis | providers with a descriptor | migrated | provisions |
+| --- | ---: | ---: | ---: |
+| `packages/rmw` | 4 | **4** | 11 |
+| `packages/boards` | 8 | **8** | 25 |
+| `packages/platform` | 0 | — | — |
 
-- [ ] Add the export per provider, incrementally.
-- [ ] **Nothing is deleted before its replacement covers the same set.** A
-      provider without a `package.xml` is simply not discoverable by the scan,
-      and its existing path keeps working — so the migration can stop half-done
-      without breaking anything.
+- [x] `packages/rmw/*` — all four backends.
+- [x] `packages/boards/*` — all eight descriptor-carrying board packages.
+- [x] `check-provider-announcements.py` (A1/A2) covers every family: a
+      package.xml beside a descriptor announces provisions of that kind, and
+      its names equal the descriptor's exactly, canonical first. Each case
+      verified to FAIL under the matching perturbation.
+- [ ] `packages/platform/*` — **blocked, see below.**
 
-Note the descriptor family is itself roughly half-populated (8 of 17 boards), so
-this wave also finishes what RFC-0042 started.
+Total: `nros ws providers` reports 36 provisions from 12 packages over 478
+packages scanned.
+
+**The gate is one script, not one per family.** This began as S5 inside
+`check-rmw-descriptors.py`; when boards needed the identical rule it moved to
+`check-provider-announcements.py` with a `FAMILIES` table rather than being
+copied next to the board descriptors. Adding `platform` later is one row.
+Copying a rule per family is the antipattern that turned #282 into #326.
+
+### Platform is blocked, and not on effort
+
+**There is no platform descriptor family.** `nros-platform.toml` does not exist
+anywhere in the tree. Platform *names* do exist — `posix`, `freertos`, `zephyr`,
+`esp32`, `bare-metal`, `threadx-linux`, `threadx-riscv64` — but they live in the
+`platform =` field of the *board* descriptors, which is a different package
+declaring what a platform is called.
+
+So announcing `<nano_ros_provides kind="platform" name="freertos"/>` on
+`nros-platform-freertos` would be a hand-authored mapping with nothing to check
+it against: exactly the second-source-of-one-fact that A2 exists to prevent, and
+un-gateable by construction. Platform migration needs its descriptor family
+first — the unfinished sibling of RFC-0042 — and that is a design decision, not
+a wave of file-writing.
+
+### Two findings that change later waves
+
+**A board name may legitimately be claimed by two packages.** `threadx` is
+declared by both `nros-board-threadx-linux` and `nros-board-threadx-qemu-riscv64`,
+disambiguated by `target_contains = "riscv64"`. W5 below says "ambiguity within
+one root is an error listing both" — that rule as written rejects a legitimate,
+already-shipping arrangement. Amended: the *scan* reports both (it does), and
+ambiguity is an error only when the candidates cannot be told apart by their
+descriptors. This is the same facts-not-policy split W1 settled, arriving from
+the other direction.
+
+**A provider may have nothing to build.** `packages/boards/{linux,zephyr}/`
+contain *only* `nros-board.toml`; the implementing crates are the siblings
+`nros-board-linux` / `nros-board-zephyr`. Other boards (`nros-board-nuttx-qemu`)
+keep the descriptor inside the crate. The package.xml has to sit beside the
+descriptor, because that is where `descriptor_path()` looks — so discovery now
+finds two shapes of provider, and **W4's topological build order must tolerate a
+provider with no build step at all.**
 
 ## W3 — The index
 
@@ -154,8 +195,11 @@ builds from a clean tree with no authored ordering.
 - [ ] A workspace provider overlaying a nano-ros one is a legitimate workflow
       (testing a patched backend). Allow it and **warn with both paths** —
       silently ignoring the user's copy is the worse failure.
-- [ ] Ambiguity within one root (two packages claiming one name) is an error
-      listing both.
+- [ ] Ambiguity within one root is an error listing both — **but only when the
+      candidates cannot be disambiguated by their descriptors.** W2 found
+      `threadx` legitimately claimed by two board packages, separated by
+      `target_contains = "riscv64"`. The flat "two packages, one name ⇒ error"
+      rule would reject a shipping arrangement.
 
 ---
 

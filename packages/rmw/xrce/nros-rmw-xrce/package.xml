@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_rmw_xrce</name>
+  <version>0.0.0</version>
+  <description>
+    The Micro XRCE-DDS RMW backend for nano-ros — client/agent transport for
+    constrained targets that cannot host a full DDS stack.
+
+    phase-348 W2: this file exists so the provider is DISCOVERABLE — the
+    `nano_ros_provides` export below is what a source-time scan reads. What it
+    lowers to is declared in the sibling `nros-rmw.toml` descriptor, which is
+    read only when this provider is the one selected.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <!--
+      Provision, NOT consumption: this package IS an RMW backend, rather than
+      selecting one. Must equal the descriptor's declared names, canonical
+      first — `check-provider-announcements.py` compares them, because two
+      spellings of one fact drift.
+    -->
+    <nano_ros_provides kind="rmw" name="xrce"/>
+    <nano_ros_provides kind="rmw" name="rmw-xrce"/>
+    <nano_ros_provides kind="rmw" name="rmw-xrce-cffi"/>
+  </export>
+</package>

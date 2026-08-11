@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_rmw_cyclonedds</name>
+  <version>0.0.0</version>
+  <description>
+    The Cyclone DDS RMW backend for nano-ros — full DDS/RTPS, used where a
+    nano-ros node must speak natively to stock ROS 2 peers.
+
+    phase-348 W2: this file exists so the provider is DISCOVERABLE — the
+    `nano_ros_provides` export below is what a source-time scan reads. What it
+    lowers to is declared in the sibling `nros-rmw.toml` descriptor, which is
+    read only when this provider is the one selected.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <!--
+      Provision, NOT consumption: this package IS an RMW backend, rather than
+      selecting one. Must equal the descriptor's declared names, canonical
+      first — `check-provider-announcements.py` compares them, because two
+      spellings of one fact drift.
+    -->
+    <nano_ros_provides kind="rmw" name="cyclonedds"/>
+    <nano_ros_provides kind="rmw" name="rmw-cyclonedds"/>
+    <nano_ros_provides kind="rmw" name="rmw-cyclonedds-cffi"/>
+  </export>
+</package>

@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_board_threadx_linux</name>
+  <version>0.0.0</version>
+  <description>
+    ThreadX board support for nano-ros on the Linux simulator port.
+
+    phase-348 W2: this file exists so the provider is DISCOVERABLE — the
+    `nano_ros_provides` export below is what a source-time scan reads. What it
+    lowers to is declared in the sibling `nros-board.toml` descriptor, which is
+    read only when this provider is the one selected.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <!--
+      Provision, NOT consumption: this package IS a board, rather than
+      selecting one. Must equal the descriptor's declared names, canonical
+      first — `check-provider-announcements.py` compares them, because two
+      spellings of one fact drift.
+    -->
+    <nano_ros_provides kind="board" name="threadx"/>
+    <nano_ros_provides kind="board" name="threadx-linux"/>
+  </export>
+</package>

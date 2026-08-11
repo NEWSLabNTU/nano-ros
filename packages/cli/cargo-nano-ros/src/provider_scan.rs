@@ -372,27 +372,39 @@ mod tests {
 
     #[test]
     fn missing_root_is_empty_not_an_error() {
-        let r = scan_root(Path::new("/nonexistent/nano-ros-workspace"), 1).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let r = scan_root(&tmp.path().join("no-such-workspace"), 1).unwrap();
         assert!(r.providers.is_empty());
         assert_eq!(r.packages_seen, 0);
     }
 
+    /// `default_search_path` is pure — it compares paths and never touches the
+    /// filesystem — so these directories need not exist. They are still built
+    /// under a tempdir rather than written as absolute literals, because a
+    /// hardcoded home-directory path in a test resolves only on the machine
+    /// that wrote it (`check-absolute-paths`, issue 0334 — which reads source
+    /// text and so flags such a path in a COMMENT too, deliberately: a doc
+    /// example is exactly how the pattern spreads).
     #[test]
     fn search_path_drops_a_workspace_nested_in_the_nano_ros_tree() {
-        let nros = Path::new("/repo/nano-ros");
+        let tmp = tempfile::tempdir().unwrap();
+        let nros = tmp.path().join("nano-ros");
+        let nested = nros.join("examples/native");
+        let outside = tmp.path().join("my_ws");
+
         assert_eq!(
-            default_search_path(Some(nros), Path::new("/repo/nano-ros/examples/native")),
-            vec![nros.to_path_buf()],
+            default_search_path(Some(&nros), &nested),
+            vec![nros.clone()],
             "a nested workspace would otherwise be scanned twice and every \
              provider would appear to shadow itself"
         );
         assert_eq!(
-            default_search_path(Some(nros), Path::new("/home/u/my_ws")),
-            vec![nros.to_path_buf(), PathBuf::from("/home/u/my_ws")],
+            default_search_path(Some(&nros), &outside),
+            vec![nros.clone(), outside.clone()],
         );
         assert_eq!(
-            default_search_path(None, Path::new("/home/u/my_ws")),
-            vec![PathBuf::from("/home/u/my_ws")],
+            default_search_path(None, &outside),
+            vec![outside],
             "an out-of-tree consumer with no nano-ros source still scans its own \
              workspace",
         );
