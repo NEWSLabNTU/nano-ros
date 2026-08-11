@@ -103,6 +103,10 @@ pub struct GroupRow {
     /// `fixtures-manifest.py`. RAW: `rmw` is empty when the row authored none,
     /// NOT `row_coord`'s defaulted value. issue 0517.
     pub selector: Selector,
+    /// The row's RESOLVED coordinate (`row_coord`), carried so a resolver that
+    /// already selected the row can ask the lane about it directly rather than
+    /// handing back a path for `attribute_path` to re-derive the row from.
+    pub coord: crate::fixtures::lane::Coord,
 }
 
 /// A row's authored configuration, as [`FixtureVariant`] must name it to select
@@ -159,10 +163,10 @@ pub fn parse_rows(text: &str) -> Vec<GroupRow> {
         let f: Vec<&str> = line.split('\x1f').collect();
         assert_eq!(
             f.len(),
-            9,
-            "unexpected `fixture-groups` record shape (expected 9 \\x1f-separated \
+            12,
+            "unexpected `fixture-groups` record shape (expected 12 \\x1f-separated \
              fields: artifact_root, platform, slug, shared, dir, rmw, features, \
-             no_default_features, env): {line:?}"
+             no_default_features, env, coord_platform, coord_lang, coord_rmw): {line:?}"
         );
         rows.push(GroupRow {
             artifact_root: f[0].to_string(),
@@ -176,6 +180,7 @@ pub fn parse_rows(text: &str) -> Vec<GroupRow> {
                 no_default_features: matches!(f[7], "1"),
                 env: f[8].to_string(),
             },
+            coord: (f[9].to_string(), f[10].to_string(), f[11].to_string()),
         });
     }
     rows
@@ -329,13 +334,8 @@ impl FixtureVariant {
     }
 }
 
-/// Where a row's artifacts land, selected by leaf dir and variant rather than by
-/// a hand-spelled path — issue 0517.
-///
-/// Returns the shared group dir when the build redirects the row, and the row's
-/// own artifact root when it does not, from the SAME table the build populated.
-/// The caller appends whatever cargo puts below the root (`[<triple>/]<profile>/
-/// <bin>`); the redirect is a root rewrite and never touches those components.
+/// Selects by leaf dir and configuration rather than by a hand-spelled path —
+/// issue 0517.
 ///
 /// # Fails closed, twice
 ///
@@ -372,6 +372,22 @@ pub fn workspace_artifact_dir(fixture_id: &str) -> TestResult<PathBuf> {
     Ok(project_root().join(&row.artifact_root))
 }
 
+/// Where the row's artifacts actually are, redirected BY ROW.
+///
+/// The leaf root when the platform does not share, the group dir when it does —
+/// decided from the row's own `shared`/`slug` rather than by pattern-matching a
+/// path. The path route (`resolved`) stays for the resolvers that still spell a
+/// leaf `target/` inline; a caller that went through [`select_row`] has no
+/// reason to round-trip through a path it would only have to be parsed back out
+/// of.
+pub fn row_resolved_dir(row: &GroupRow) -> PathBuf {
+    if row.shared {
+        group_dir(&row.slug)
+    } else {
+        project_root().join(&row.artifact_root)
+    }
+}
+
 /// Does `examples/fixtures.toml` carry ANY row for this leaf?
 ///
 /// The distinction [`row_artifact_dir`] cannot make on its own, and the two
@@ -389,21 +405,17 @@ pub fn leaf_has_rows(dir: &str) -> bool {
     manifest_rows().iter().any(|r| r.dir == dir)
 }
 
-pub fn row_artifact_dir(dir: &str, variant: &FixtureVariant) -> TestResult<PathBuf> {
+/// The row a caller means, by leaf dir and configuration — the selection half of
+/// [`row_artifact_dir`], exposed so a resolver can also ask the lane about the
+/// row it just selected (issue 0517 step 1).
+pub fn select_row(dir: &str, variant: &FixtureVariant) -> TestResult<&'static GroupRow> {
     let dir = dir.trim_end_matches('/');
     let hits: Vec<&GroupRow> = manifest_rows()
         .iter()
         .filter(|r| r.dir == dir && r.selector == variant.0)
         .collect();
     match hits.as_slice() {
-        // The LEAF root, never the group dir — even for a shared row. The
-        // redirect belongs to the chokepoint in `require_prebuilt_binary`, which
-        // runs lane attribution FIRST and attributes on the leaf artifact root.
-        // Returning a pre-redirected path here would leave `attribute_path` with
-        // a `build/fixtures-cargo/<slug>/...` path that matches no row, so every
-        // out-of-lane fixture on a migrated platform would hard-fail as missing
-        // instead of skipping — silently, and only in a narrowed tier-2 run.
-        [row] => Ok(project_root().join(&row.artifact_root)),
+        [row] => Ok(row),
         [] => {
             let near: Vec<String> = manifest_rows()
                 .iter()
@@ -726,28 +738,22 @@ mod tests {
     }
 
     #[test]
-    fn selector_lookup_agrees_with_path_resolution_on_every_row() {
-        // The equivalence that makes issue 0517's phase B safe to land before
-        // the call sites move: for EVERY row, selecting it by (dir, selector)
-        // must give the same LEAF artifact root the hand-spelled literals named.
-        // Not the redirected path — the redirect belongs downstream, at the
-        // `require_prebuilt_binary` chokepoint, and it runs AFTER lane
-        // attribution. A resolver that pre-redirects hands `attribute_path` a
-        // group path that matches no row, and every out-of-lane fixture on a
-        // migrated platform then hard-fails as missing instead of skipping.
-        //
-        // This is what lets each call-site conversion be verified without a
-        // rebuild — the new route is already known to agree everywhere.
+    fn the_row_route_and_the_path_route_reach_the_same_directory() {
+        // The equivalence the whole of #517 rests on: for EVERY row, selecting
+        // it by (dir, selector) and resolving BY ROW must land where resolving
+        // its leaf artifact root through the path redirect lands. Same table,
+        // two routes, one answer — which is what makes each call-site conversion
+        // verifiable without a fixture rebuild.
         let mut bad = Vec::new();
         for row in manifest_rows() {
-            let via_path = project_root().join(&row.artifact_root);
-            match row_artifact_dir(&row.dir, &FixtureVariant(row.selector.clone())) {
-                Ok(via_selector) if via_selector == via_path => {}
-                Ok(via_selector) => bad.push(format!(
-                    "{} {:?}: selector -> {}, path -> {}",
+            let via_path = resolved(&project_root().join(&row.artifact_root));
+            match select_row(&row.dir, &FixtureVariant(row.selector.clone())) {
+                Ok(got) if row_resolved_dir(got) == via_path => {}
+                Ok(got) => bad.push(format!(
+                    "{} {:?}: row -> {}, path -> {}",
                     row.dir,
                     row.selector,
-                    via_selector.display(),
+                    row_resolved_dir(got).display(),
                     via_path.display()
                 )),
                 Err(e) => bad.push(format!("{} {:?}: {e}", row.dir, row.selector)),
@@ -755,35 +761,42 @@ mod tests {
         }
         assert!(
             bad.is_empty(),
-            "{} row(s) resolve differently by selector than by path:\n  {}",
+            "{} row(s) resolve differently by row than by path:\n  {}",
             bad.len(),
             bad.join("\n  ")
         );
     }
 
     #[test]
-    fn a_selected_root_stays_lane_attributable() {
-        // The property the first version of `row_artifact_dir` broke: whatever a
-        // resolver hands to `require_prebuilt_binary` must still attribute to its
-        // manifest row, because lane narrowing runs on that path BEFORE the
-        // redirect. Group paths do not attribute — that is the whole reason the
-        // redirect sits at the chokepoint and not in the funnels.
-        for row in manifest_rows().iter().take(40) {
-            let dir = row_artifact_dir(&row.dir, &FixtureVariant(row.selector.clone()));
-            let Ok(dir) = dir else { continue };
-            let rel = dir.strip_prefix(project_root()).unwrap();
-            assert!(
-                crate::fixtures::lane::attribute_path_in(
-                    crate::fixtures::lane::manifest_rows(),
-                    &rel.join("some/binary"),
-                )
-                .is_some()
-                    || row.artifact_root.starts_with("packages/"),
-                "{} resolves to {} which attributes to no manifest row",
-                row.dir,
-                rel.display()
-            );
+    fn the_carried_coordinate_matches_what_the_path_route_derived() {
+        // The lane check moved from "attribute the path, read its coordinate" to
+        // "read the coordinate off the row we already selected" (issue 0517 step
+        // 1). Those must be the same verdict, or a narrowed run changes what it
+        // skips. Checked against `lane`'s own table, which is a DIFFERENT export
+        // (`coords`) of the same `row_coord` — so this also catches the two
+        // exports disagreeing.
+        let mut bad = Vec::new();
+        for row in manifest_rows() {
+            let probe = Path::new(&row.artifact_root).join("some/binary");
+            let Some(lane_row) = crate::fixtures::lane::attribute_path_in(
+                crate::fixtures::lane::manifest_rows(),
+                &probe,
+            ) else {
+                continue;
+            };
+            if lane_row.coord != row.coord {
+                bad.push(format!(
+                    "{}: fixture-groups says {:?}, coords says {:?}",
+                    row.dir, row.coord, lane_row.coord
+                ));
+            }
         }
+        assert!(
+            bad.is_empty(),
+            "{} row(s) carry a coordinate the path route disagrees with:\n  {}",
+            bad.len(),
+            bad.join("\n  ")
+        );
     }
 
     #[test]
@@ -811,7 +824,7 @@ mod tests {
     #[test]
     fn an_unnameable_variant_is_an_error_not_a_guess() {
         assert!(
-            row_artifact_dir(
+            select_row(
                 "examples/native/rust/talker",
                 &FixtureVariant::features(&["nope"])
             )
@@ -819,7 +832,7 @@ mod tests {
             "a variant no row authors must fail closed"
         );
         assert!(
-            row_artifact_dir("examples/no/such/leaf", &FixtureVariant::plain()).is_err(),
+            select_row("examples/no/such/leaf", &FixtureVariant::plain()).is_err(),
             "an unknown leaf must fail closed"
         );
     }

@@ -267,7 +267,8 @@ def export_rows():
         # first four fields, so it names them and ignores the rest — but by
         # UNPACKING the full arity rather than slicing, so a future field lands
         # here as a loud shape error instead of being silently dropped.
-        root, platform, slug, shared, _dir, _rmw, _feat, _ndf, _env = line.split(SEP)
+        (root, platform, slug, shared, _dir, _rmw, _feat, _ndf, _env,
+         _cplat, _clang, _crmw) = line.split(SEP)
         yield ExportRow(root, platform, slug, shared == "1")
 
 

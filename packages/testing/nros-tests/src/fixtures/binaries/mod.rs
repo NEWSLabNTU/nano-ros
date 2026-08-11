@@ -443,6 +443,27 @@ fn build_failure_marker(binary_path: &Path) -> Option<String> {
     }
 }
 
+/// [`require_prebuilt_binary`] for a caller that already selected its manifest
+/// row — issue 0517 step 1.
+///
+/// Takes the row instead of re-deriving it from a path. The lane check is by
+/// COORDINATE and the redirect is by `shared`/`slug`, both read off the row, so
+/// nothing here needs a per-variant leaf directory to exist. That is the whole
+/// reason `target_dir` survived phase B: `attribute_path` needed the leaf path
+/// to tell two rows of one leaf apart, and this is the same answer without the
+/// path.
+///
+/// `rel` is what cargo writes BELOW the artifact root (`[<triple>/]<profile>/
+/// <bin>`) — the redirect is a root rewrite and never touches those components.
+pub(crate) fn require_prebuilt_row_binary(
+    row: &crate::fixtures::groups::GroupRow,
+    rel: &Path,
+) -> TestResult<PathBuf> {
+    crate::fixtures::lane::require_coord_in_lane(&row.coord, &row.dir)?;
+    let binary_path = crate::fixtures::groups::row_resolved_dir(row).join(rel);
+    require_prebuilt_binary_checks(&binary_path)
+}
+
 pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf> {
     // phase-340 W3 (issue 0482) — a coordinate-scoped RUN skips exactly the
     // manifest rows its lane's BUILD was told to omit. BEFORE the existence
@@ -463,6 +484,13 @@ pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf>
     // will redirect the moment its platform is migrated. Fixing only the
     // funnels is the #328 shape (4 resolvers fixed, ~30 left).
     let binary_path = &crate::fixtures::groups::resolved(binary_path);
+    require_prebuilt_binary_checks(binary_path)
+}
+
+/// Everything both chokepoints do once the path is final: existence, the
+/// build-failure marker, and the tier-aware skip. Split out so the row-keyed
+/// entry point cannot drift from the path-keyed one.
+fn require_prebuilt_binary_checks(binary_path: &Path) -> TestResult<PathBuf> {
     if binary_path.exists() {
         return Ok(binary_path.to_path_buf());
     }
@@ -598,6 +626,30 @@ fn dep_file_newer_than(dep_file: &Path, reference: std::time::SystemTime) -> Opt
 /// under ANY launcher (incl. a bare `cargo nextest run`), unlike the
 /// `just test-all` preflight. Bypassable with `NROS_SKIP_FIXTURE_CHECK=1`
 /// (same knob the preflight honours) for the "built them another way" case.
+/// [`require_prebuilt_binary_fresh`] for a caller that already selected its row
+/// (issue 0517 step 1). Same staleness probe, on the resolved path.
+pub(crate) fn require_prebuilt_row_binary_fresh(
+    row: &crate::fixtures::groups::GroupRow,
+    rel: &Path,
+) -> TestResult<PathBuf> {
+    let resolved = require_prebuilt_row_binary(row, rel)?;
+    if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_some() {
+        return Ok(resolved);
+    }
+    staleness::begin_probe();
+    if let Some(newer) = dep_info_newer_source(&resolved) {
+        return Err(staleness::stale_error(
+            "Test fixture",
+            &resolved,
+            &newer,
+            "Run `just build-test-fixtures` first \
+             (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
+        ));
+    }
+    staleness::record_fresh(&resolved);
+    Ok(resolved)
+}
+
 pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<PathBuf> {
     let resolved = require_prebuilt_binary(binary_path)?;
     if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_some() {
@@ -767,12 +819,15 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
     // --features rmw-<x>`), which is exactly what this function's own doc
     // comment says the build runs.
     let leaf = format!("examples/{name}");
-    let artifact_root = if crate::fixtures::groups::leaf_has_rows(&leaf) {
-        crate::fixtures::groups::row_artifact_dir(
+    if crate::fixtures::groups::leaf_has_rows(&leaf) {
+        let row = crate::fixtures::groups::select_row(
             &leaf,
             &crate::fixtures::groups::FixtureVariant::rmw(rmw),
-        )?
-    } else {
+        )?;
+        let rel = PathBuf::from(format!("{}/{}", cargo_target_profile_dir(), binary_name));
+        return require_prebuilt_row_binary_fresh(row, &rel);
+    }
+    let artifact_root = {
         // A leaf with no manifest row is not this manifest's to place. The live
         // case is `px4/rust/companion/*`, built by `just px4 build-fixtures` —
         // its own lane, its own SDK prerequisites, and no `[[fixture]]` row
@@ -3674,12 +3729,12 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
         .get_or_try_init(|| {
             // issue 0517 — "the talker row built with `link-tls`", not
             // "the talker's target-tls dir".
-            let target_dir = crate::fixtures::groups::row_artifact_dir(
+            let row = crate::fixtures::groups::select_row(
                 "examples/native/rust/talker",
                 &crate::fixtures::groups::FixtureVariant::features(&["link-tls"]),
             )?;
-            let binary_path = target_dir.join(format!("{}/talker", cargo_target_profile_dir()));
-            require_prebuilt_binary_fresh(&binary_path)
+            let rel = PathBuf::from(format!("{}/talker", cargo_target_profile_dir()));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -3691,12 +3746,12 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
 pub fn build_native_listener_tls() -> TestResult<&'static Path> {
     NATIVE_LISTENER_TLS_BINARY
         .get_or_try_init(|| {
-            let target_dir = crate::fixtures::groups::row_artifact_dir(
+            let row = crate::fixtures::groups::select_row(
                 "examples/native/rust/listener",
                 &crate::fixtures::groups::FixtureVariant::features(&["link-tls"]),
             )?;
-            let binary_path = target_dir.join(format!("{}/listener", cargo_target_profile_dir()));
-            require_prebuilt_binary_fresh(&binary_path)
+            let rel = PathBuf::from(format!("{}/listener", cargo_target_profile_dir()));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -3874,15 +3929,15 @@ pub fn build_message_info_observer() -> TestResult<&'static Path> {
 pub fn build_message_info_observer_zero_copy() -> TestResult<&'static Path> {
     MESSAGE_INFO_OBSERVER_ZERO_COPY_BINARY
         .get_or_try_init(|| {
-            let dir = crate::fixtures::groups::row_artifact_dir(
+            let row = crate::fixtures::groups::select_row(
                 "packages/testing/nros-tests/bins/message-info-observer",
                 &crate::fixtures::groups::FixtureVariant::features(&["unstable-zenoh-api"]),
             )?;
-            let binary_path = dir.join(format!(
+            let rel = PathBuf::from(format!(
                 "{}/message-info-observer",
                 cargo_target_profile_dir()
             ));
-            require_prebuilt_binary_fresh(&binary_path)
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }
@@ -4457,14 +4512,13 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
         .get_or_try_init(|| {
             // The one row the selector needs `env` for: it is otherwise
             // identical to its plain sibling (issue 0517).
-            let target_dir = crate::fixtures::groups::row_artifact_dir(
+            let row = crate::fixtures::groups::select_row(
                 "packages/testing/nros-bench/stress-zenoh",
                 &crate::fixtures::groups::FixtureVariant::plain()
                     .with_env(&[("ZPICO_SUBSCRIBER_BUFFER_SIZE", "8192")]),
             )?;
-            let binary_path =
-                target_dir.join(format!("{}/zenoh-stress-test", cargo_target_profile_dir()));
-            require_prebuilt_binary_fresh(&binary_path)
+            let rel = PathBuf::from(format!("{}/zenoh-stress-test", cargo_target_profile_dir()));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }

@@ -928,6 +928,12 @@ def main():
                         "1" if eligible else "0",
                     )
                     + row_selector(e)
+                    # issue 0517 step 1 — the row's COORDINATE, so a resolver
+                    # that already selected the row can ask the lane about it
+                    # directly instead of handing back a path for
+                    # `attribute_path` to re-derive the row from. `row_coord` is
+                    # still the single computation; this only carries it.
+                    + row_coord(e)
                 )
                 + "\n"
             )

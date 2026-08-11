@@ -350,6 +350,41 @@ pub fn is_in_lane(row: &Row, coords: &BTreeSet<Coord>) -> bool {
     coords.contains(&row.coord)
 }
 
+/// Skip when a coordinate the caller ALREADY resolved is outside this run's
+/// lane — issue 0517 step 1.
+///
+/// The row-keyed twin of [`require_in_lane`]. A resolver that selected its row
+/// by configuration knows the coordinate outright, and making it hand back a
+/// path so `attribute_path` can re-derive that same row is what forces a
+/// per-variant LEAF directory to exist at all. The bytes have not lived in one
+/// since phase-340 B3 — all 124 cargo rows build into
+/// `build/fixtures-cargo/<slug>` — so the leaf path was serving purely as a key,
+/// and this is that key without the path.
+///
+/// `label` is for the message only; pass the row's dir.
+pub fn require_coord_in_lane(coord: &Coord, label: &str) -> TestResult<()> {
+    let Some(coords) = run_coords() else {
+        return Ok(());
+    };
+    if !coords.contains(coord) {
+        crate::skip!("{}", out_of_lane_coord(label, coord));
+    }
+    Ok(())
+}
+
+fn out_of_lane_coord(label: &str, coord: &Coord) -> String {
+    format!(
+        "out of lane: {} is at coordinate {},{},{}, which this run's lane does not \
+         select, so `just build-test-fixtures lane=<this lane>` deliberately did \
+         not build it.\n  \
+         This is NOT a staleness or missing-fixture verdict: an in-lane fixture \
+         that is absent or stale still fails hard.\n  \
+         Run the full ladder (`just ci-full`) or unset {RUN_COORDS_ENV} to \
+         execute this coordinate.",
+        label, coord.0, coord.1, coord.2,
+    )
+}
+
 fn out_of_lane(row: &Row) -> String {
     // Deliberately NOT phrased as (or routed through) a staleness verdict.
     // Issue 0445's lesson is that an absorbing message must account for itself:
