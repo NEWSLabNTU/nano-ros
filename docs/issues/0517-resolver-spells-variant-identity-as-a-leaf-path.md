@@ -155,47 +155,68 @@ still wins outright. No behaviour change on today's tree — it is the tripwire
 that makes the rest of this issue red instead of wrong. Both tests verified to
 fail with the old tie-breaking restored.
 
-**Phase B — the mechanism is DONE, the call sites are partly converted.**
+**Phase B — DONE. Every resolver names a configuration or an id; none spells a
+variant as a path.**
 
-`row_selector(entry)` exports `(dir, rmw, features, no_default_features, env)`;
-`fixture-groups` carries it; `groups::row_artifact_dir(dir, variant)` selects on
-it and fails closed on 0 or >1 matches. `FixtureVariant` is a closed set of four
-constructors because the manifest holds exactly four shapes (37 / 144 / 64 / 3
-rows). `leaf_has_rows()` distinguishes "manifest-managed leaf, variant not
-found" (an error) from "leaf the manifest never describes" (`px4/rust/companion`
-— its own lane, keeps the authored spelling).
+`row_selector(entry)` exports `(dir, rmw, features, no_default_features, env)`,
+injective over all 248 rows; `groups::row_artifact_dir(dir, variant)` selects on
+it and fails closed on 0 or >1 matches; `FixtureVariant` is a closed set of four
+constructors because the manifest holds exactly four shapes (37/144/64/3 rows).
+Converted: `build_example_rmw`, the feature-variant resolvers (`target-tls` ×2,
+`target-zero-copy`, `target-large-buf`), and the ~8 workspace resolvers via
+`workspace_artifact_dir(id)`. `leaf_has_rows()` carves out leaves the manifest
+never describes (`px4/rust/companion`, its own lane).
 
-Converted: `build_example_rmw` (the `Rmw::target_dir()` literal, 37 rows) and
-the feature-variant resolvers (`target-tls` ×2, `target-zero-copy`,
-`target-large-buf`).
+Two defects surfaced during the conversion, both worth keeping:
 
-Remaining: the WORKSPACE family — `target-fixtures`, `target-fixtures/nuttx`,
-`target-fixtures/nuttx-riscv`, `target-fixtures/threadx-linux`, the esp32 and
-riscv64 formats. These belong to `[[workspace_fixture]]` rows, which already
-resolve by `id` and are NOT in the `fixture-groups` export. So the work is to
-give that export an artifact root + slug per workspace row and key the resolvers
-on the id they already take — less invention than the plain-row half needed,
-since the id exists.
+* **`row_artifact_root` was wrong for every `mixed` workspace row.** 13 rows
+  whose builds write to `build_subdir` were told `<dir>/target`, because
+  `is_cargo_row` read `lang = "mixed"` as cargo. A mixed workspace is DRIVEN by
+  cmake (corrosion invokes cargo underneath). Fixed with `builder = "cmake"`,
+  phase-344 W2's precedent. Invisible until now because nothing consumed the
+  value: `attribute_path` skips workspace rows and `fixture-groups` carries only
+  plain rows. It is also why `examples/workspaces/mixed/target` appeared in this
+  issue's original "3 ambiguous roots today" — it was ambiguous because the
+  value was wrong, not because rows shared a dir. Two remain (`features`,
+  `safety`), and those are the legitimate many-entries-one-build-dir case.
+* **My own first `row_artifact_dir` returned the GROUP dir.** That breaks lane
+  narrowing: `require_prebuilt_binary` attributes on the leaf root FIRST and
+  redirects SECOND, so a pre-redirected path matches no row and every out-of-lane
+  fixture on a migrated platform hard-fails as missing instead of skipping —
+  narrowed runs only, invisible to `check-fast`. Now it always returns the leaf
+  root; `a_selected_root_stays_lane_attributable` asserts it.
 
-**Phase C — not started, and correctly blocked.** Deleting the column while any
-resolver still spells a leaf path would reintroduce exactly the ambiguity phase A
-now catches — as a hard failure rather than a wrong binary, which is the
-improvement, but still a failure. It needs the workspace family converted first,
-then a `lane=all` rebuild as acceptance.
+**Phase C — C1 done; C2 is smaller than this issue first assumed.**
 
-Verification method worth keeping: each conversion is checked by showing the
-row's artifact root is byte-identical to the literal it replaces (measured, not
-assumed — 37/37 for the RMW family, 4/4 for the feature family), plus the
-per-row `selector_lookup_agrees_with_path_resolution_on_every_row` equivalence.
-That is why none of this needed a fixture rebuild.
+C1: six `build_subdir = "build-cyclonedds"` keys restated the default and are
+gone. `coords`, `fixture-groups` and `list` are byte-identical before and after.
 
-## Note
+C2 is no longer "delete the column". After phase B the column is not an identity
+handle for anything — it is the leaf-side artifact ROOT, and what R2 objects to
+is how that root is SPELLED (authored, ad hoc) rather than that it exists. So
+the work is to DERIVE the spelling from the selector:
 
-`row_artifact_root`'s docstring already anticipates the ambiguity — "a row that
-authors no `target_dir` shares `<dir>/target` with every sibling row of the same
-dir … the consumer resolves that by preferring the LONGEST match and by treating
-an ambiguous match as *not attributable* (fail closed — never skip)". The
-fail-closed half is NOT implemented in `attribute()`, which silently prefers the
-longest and ties-break by order. Implementing it would convert this issue's
-false green into a loud failure, which is worth doing independently of the
-deletion.
+    rmw + [rmw-<x>] + ndf   ->  target-<rmw>          37 rows, IDENTICAL today
+    [] + features           ->  target-<features>      3 rows, moves
+    [] + [] + env           ->  target-<env-token>     1 row,  moves
+
+Measured: 37 of 41 rows keep their exact current path, and **4 move** —
+`target-tls` ×2 (would become `target-link-tls`), `target-zero-copy`
+(`target-unstable-zenoh-api`), `target-large-buf`. So the acceptance is not
+`lane=all`: it is a rebuild of those four leaves plus the native lane, which is
+affordable. Nothing else in the tree names those four paths any more — phase B
+removed the last resolver literals — so the change is the derivation plus a
+`fixtures.toml` edit.
+
+Worth weighing before doing it: the benefit is that a row can no longer author a
+suffix nobody derives, which is R2's rule. The cost is that four paths stop being
+readable (`target-link-tls` is fine; an env-hashed one is not). A middle option
+is to derive only where the derivation is readable and keep a gate that rejects
+an AUTHORED `target_dir` that disagrees with what the selector would derive —
+which gets R2's invariant without the unreadable spelling.
+
+Verification method used throughout, and worth keeping: each conversion showed
+the row's artifact root byte-identical to the literal it replaced (37/37 RMW,
+4/4 feature, 5/5 workspace ids, 59/59 workspace callers agreeing), plus a
+per-row equivalence test. That is why phases A and B needed no fixture rebuild
+at all.
