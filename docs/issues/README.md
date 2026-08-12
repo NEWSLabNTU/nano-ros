@@ -164,7 +164,12 @@ routed all four nano-ros build inputs onto the per-arch snapshot; the TREE is st
 nothing stops the next reader. Directions: make the provisioning script arch-idempotent, gate that no build
 input names `$NUTTX_DIR/include`, or give each arch its own checkout. Not an argument against phase-337's board
 consolidation — the arch IS discriminated via `CARGO_CFG_TARGET_ARCH`; phase-339 just migrated two of three
-input classes. See `0525-*`. (2026-08-12)
+input classes. ALSO 2026-08-13 — a SECOND shared mutable tree with the same property: `nuttx-apps`. One symlinked
+`apps/external/nano-ros` serves both arches, `Application.mk`'s `SUFFIX` is `$(CWD)` (identical for
+both), `PREFIX` is empty so objects land beside their sources — including first-party
+`packages/platform/**` — and the kernel `distclean` does not touch the apps tree. 0511's class, where
+0511's fix and `check-nuttx-shared-tree-headers` do not reach (both key on `$NUTTX_DIR/include`).
+Unreproduced; fix belongs to 0488 residue 4 with the ARCH in the coordinate. See `0525-*`. (2026-08-12)
 
 **#522** — the metadata probe built ONE FULL CARGO TREE PER COMPONENT (108 dirs, 82.4 GiB; 162 trees
 holding 312 `libnros_core` rlibs with 16 distinct identities). **Cargo-harness half FIXED 2026-08-12:**

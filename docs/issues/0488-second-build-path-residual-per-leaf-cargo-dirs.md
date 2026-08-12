@@ -340,6 +340,49 @@ the cargo residues:
   create it, and `make clean`'s `DELFILE .built` / `Make.dep` calls need to
   resolve to the new location too.
 
+### Two things the earlier write-up missed (2026-08-13)
+
+Found by reading residue 4 together with issues 0511 / 0525 rather than on its
+own. Neither changes the fix's shape; both change its COORDINATE.
+
+**1. It is wider than the 12 example leaves.** `integrations/nuttx/Makefile`
+compiles an ABSOLUTE source path:
+
+```make
+CSRCS = $(NANO_ROS_ROOT)/packages/platform/nros-platform-posix/src/platform.c
+```
+
+`COBJS = $(CSRCS:%=$(PREFIX)%$(SUFFIX)$(OBJEXT))` with an empty `PREFIX` writes
+that object next to its source — i.e. into `packages/platform/`, first-party
+code outside every pattern the interim `.gitignore` ledger added. The symptom
+census counted `examples/qemu-arm-nuttx/**` because that is where someone looked.
+
+**2. Both arches produce the SAME object name at the same path — issue 0511's
+class, where 0511's fix does not reach.** `SUFFIX` is `$(CWD)` with separators
+dotted, and `$(CWD)` here is `apps/external/nano-ros`: ONE symlink into ONE apps
+tree, identical for `qemu-armv7a` and `rv-virt`. Meanwhile `build-nuttx.sh` says
+in its own comment that the kernel `distclean` "does NOT touch the apps tree",
+and nothing else cleans it on an arch switch. So one arch's objects can be
+archived into the other's `libapps.a`.
+
+0511 was headers and linker scripts taking the wrong arch from a shared mutable
+tree; `check-nuttx-shared-tree-headers` gates exactly that, keyed on
+`$NUTTX_DIR/include`. The apps OBJECT tree is a second shared mutable state with
+the same property and no gate.
+
+**Stated as a hypothesis, not an observation.** The code is unambiguous, but
+nothing is on disk in this tree right now and confirming it needs a real
+arm→riscv apps build. Reproduce by building the arm C lane, touching nothing,
+building the riscv lane, and checking whether the arm objects are still present
+and still referenced.
+
+**What this changes about the fix:** the `PREFIX` coordinate must include the
+ARCH, not just the leaf. Keying it on the leaf path alone — which is what the
+plan above implied — would move the objects out of the source tree while leaving
+the cross-arch collision exactly as it is, and it would look like a fix. That is
+the trap issue 0517 documented in another form: a directory that cannot express
+a coordinate the build actually varies on.
+
 Interim disposition unchanged until that lands: the files are deleted, four
 scoped patterns sit in the repo-root `.gitignore` tagged as a symptom ledger, and
 the ledger is deleted when the build moves out of tree.

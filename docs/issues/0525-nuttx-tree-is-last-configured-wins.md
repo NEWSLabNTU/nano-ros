@@ -129,6 +129,35 @@ Silent when the two agree. The contract was always "this guarantees the
 SNAPSHOT, never the tree"; it was just never written down where the side effect
 happens, so every reader had to rediscover it — which is what 0511 cost.
 
+## A SECOND shared mutable tree, found 2026-08-13 — the apps object tree
+
+This issue is written about `third-party/nuttx/nuttx`. The same property holds
+for `third-party/nuttx/nuttx-apps`, and nothing here or in the gate covers it.
+
+`stage-external-apps.sh` symlinks `integrations/nuttx` in as
+`apps/external/nano-ros`, one apps tree serving both arches. NuttX's
+`Application.mk` names objects
+`$(PREFIX)<src>$(SUFFIX)$(OBJEXT)` with `SUFFIX ?= $(subst $(DELIM),.,$(CWD))`,
+and `$(CWD)` is that one symlinked dir — **identical for `qemu-armv7a` and
+`rv-virt`**. `PREFIX` is empty, so objects land beside their sources, including
+`packages/platform/nros-platform-posix/src/platform.c`'s, which
+`integrations/nuttx/Makefile` names by absolute path.
+
+`build-nuttx.sh` states the rest itself: the kernel `distclean` "does NOT touch
+the apps tree", and nothing else cleans it across an arch switch. So one arch's
+objects can survive into the other's `libapps.a` — 0511's failure class, in a
+tree 0511's fix does not reach, because that fix and
+`check-nuttx-shared-tree-headers` are both keyed on `$NUTTX_DIR/include`.
+
+Not reproduced: the code is unambiguous but this tree currently holds no such
+objects, and confirming it needs a real arm→riscv apps build (build the arm C
+lane, touch nothing, build riscv, look for surviving arm objects).
+
+The fix belongs to issue 0488 residue 4 — set `PREFIX` from `nros_build_dir`,
+with the ARCH in the coordinate — and is recorded there. It is noted here because
+this issue is where someone will look for "what else is last-configured-wins",
+and the answer was never only the kernel checkout.
+
 ## Directions
 2. ~~**Stop deriving anything from the shared tree.**~~ **DONE** — see above.
 3. **Or give each arch its own checkout** (worktree per arch). Removes the
