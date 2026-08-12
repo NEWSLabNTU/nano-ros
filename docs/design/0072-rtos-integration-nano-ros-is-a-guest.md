@@ -396,10 +396,22 @@ shells, the backend port tables, and its own code.
 
 ## 11. Prerequisites
 
-Two live defects would otherwise be inherited:
+Both are RESOLVED (2026-08-13), so this work inherits neither.
 
-* `FREERTOS_PORT`'s two vocabularies (§7.5).
-* Zephyr can never be selected by the zpico platform resolver — `use_zephyr` is
-  absent from the `platform_name` chain in `nros-zpico-build/src/runner.rs`, so
-  `config/zephyr/nros-platform.toml`'s `[knobs.zenoh.tx] batch = true` — a
-  phase-290 promotion measured at 15–20× streaming — never applies.
+* **`FREERTOS_PORT`'s two vocabularies** (§7.5) —
+  [issue 0530](../issues/archived/0530-freertos-port-two-vocabularies.md). The
+  builder now accepts upstream's enum as well as our path fragment, so §7.5's
+  migration to upstream's `CMakeLists.txt` changes nothing for anyone already
+  writing `GCC_ARM_CM3`.
+* **Zephyr unselectable by the zpico resolver** —
+  [issue 0529](../issues/0529-zephyr-platform-knobs-never-resolve.md). The
+  resolver gap was real and is fixed.
+
+  **The severity asserted in this section's first draft was wrong.** It claimed
+  `config/zephyr/nros-platform.toml`'s `[knobs.zenoh.tx] batch = true` — the
+  phase-290 promotion measured at 15–20× streaming — never applies. It does
+  apply: the C lane gets it from `zephyr/Kconfig` defaults forwarded by
+  `nros_rmw_zenoh.cmake`, and there is no ABI split either, because
+  `build_c_shim` is skipped on Zephyr and `rust_consts()` never emits
+  `tx_batch`. The real defect was two sources for one fact agreeing only by
+  coincidence, now compared by `check-zephyr-knob-agreement`.

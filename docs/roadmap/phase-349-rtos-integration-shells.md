@@ -116,20 +116,24 @@ W1 ──► W2 ──► W3 ──► W4 ──► W5
 
 W1 stands alone and should land first regardless of the rest.
 
-## Prerequisites
+## Prerequisites — both RESOLVED 2026-08-13
 
-Two live defects would be inherited:
+* **`FREERTOS_PORT`'s two vocabularies** —
+  [#530](../issues/archived/0530-freertos-port-two-vocabularies.md). The builder
+  now accepts upstream's enum as well as our path fragment, so W3's move to
+  upstream's `CMakeLists.txt` changes nothing for anyone already writing
+  `GCC_ARM_CM3`.
+* **Zephyr unselectable by the zpico resolver** —
+  [#529](../issues/0529-zephyr-platform-knobs-never-resolve.md). Resolver fixed;
+  the two knob sources are now compared by `check-zephyr-knob-agreement`.
 
-* **`FREERTOS_PORT`'s two vocabularies** — W3 fixes it, but anyone touching the
-  FreeRTOS path before then should know.
-* **Zephyr can never be selected by the zpico platform resolver.** `use_zephyr`
-  is absent from the `platform_name` chain in `nros-zpico-build/src/runner.rs`
-  and zephyr targets match `is_embedded_target()`, so the resolver returns
-  `None` and falls to the env-only branch. `config/zephyr/nros-platform.toml`
-  is the **only** platform file carrying `[knobs.zenoh.tx]` — `batch = true`, a
-  phase-290 W5 promotion measured at 15–20× streaming — and it never applies.
-  Neither knob has a `KCONFIG_KNOBS` row, so there is no fallback either.
-  **Not yet filed as an issue.**
+  **The severity stated in this section's first draft was wrong.** It claimed
+  the phase-290 15–20× streaming promotion never applies on Zephyr. It does —
+  the C lane gets it from `zephyr/Kconfig` defaults forwarded by
+  `nros_rmw_zenoh.cmake` — and there is no ABI split either, because
+  `build_c_shim` is skipped on Zephyr and `rust_consts()` never emits
+  `tx_batch`. The real defect was two sources for one fact, agreeing only by
+  coincidence.
 
 ## Deliberately not here
 
