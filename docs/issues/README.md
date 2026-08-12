@@ -87,6 +87,14 @@ stamp had one, sending the reader after a missing file that was right there. Sel
 the collation counter beside it, because the bug is INVISIBLE in output — a confident, specific, wrong
 `NONE for nros_core`. See `archived/0513-*`. (2026-08-11)
 
+**#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
+manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared
+`anyhow = "1"` with zero uses, and `packages/cli`'s `[workspace.dependencies]` entry was inherited by
+no member — so both were deleted rather than ported (root lock diff: one line, the dependency edge).
+What remains is transitive, in two chains: `play_launch_parser -> anyhow`, which is a FORK WE PIN and
+therefore actionable via the vendored-fork workflow, and `wasip2`/`wasip3` -> `wit-bindgen` -> … ->
+`anyhow`, which is upstream wasi tooling nothing here chooses. See `0524-*`. (2026-08-12)
+
 **#522** — the cmake metadata probe builds ONE FULL CARGO TREE PER COMPONENT: `metadata_build.rs`
 renders a harness into `<leaf>/build/nros-metadata/metadata-probe/<c>/` and passes `--target-dir
 <harness>/target`, so every component gets a private host build of itself and its whole dep graph.

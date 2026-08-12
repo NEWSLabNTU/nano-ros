@@ -1661,7 +1661,6 @@ version = "0.5.0"
 name = "nros-build-profile"
 version = "0.5.0"
 dependencies = [
- "anyhow",
  "serde",
  "serde_json",
 ]
