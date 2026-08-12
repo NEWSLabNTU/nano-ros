@@ -184,6 +184,73 @@ fn cargo_config_facts(dir: &Path) -> Option<CargoConfigFacts> {
     None
 }
 
+/// A component id as a cargo package-name segment.
+///
+/// issue 0522 — the harness package and its `[[bin]]` used to be named
+/// `nros-metadata-probe` / `probe` for EVERY component. That is fine while each
+/// probe owns a private target dir and fatal once they share one: cargo does not
+/// hash the final artifact name, so two components would write the same
+/// `<target>/<host>/<profile>/probe` and the second `cargo run` could execute
+/// the first one's binary. Phase-340 W1 measured exactly that failure on the
+/// fixture lane (four different talker binaries, one artifact path, silently
+/// last-writer-wins).
+fn probe_slug(component_id: &str) -> String {
+    component_id
+        .replace("::", "__")
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+/// Where the probe harness compiles — issue 0522.
+///
+/// The harness SOURCE stays per component (it is generated, and each one deps a
+/// different component crate). What moves is the cargo target dir, which used to
+/// be `<harness>/target` — a private, full host build of the component and its
+/// whole dependency graph, once per component. Measured 2026-08-12: **108 dirs,
+/// 82.4 GiB**, and 162 of those trees held 312 `libnros_core` rlibs with only
+/// **16 distinct `-C metadata` identities**, i.e. 296 literal repeats.
+///
+/// Resolution, widest sharing first:
+///
+/// 1. `$NROS_BUILD_ROOT/metadata-probe` — RFC-0070 R2's `<root>/<kind>` shape.
+/// 2. `<nano-ros workspace>/build/metadata-probe` — the same default the shell's
+///    `nros_build_root` uses (`<repo>/build`), reached through the checkout the
+///    harness ALREADY points its `nros` path dep at, so this needs no new input.
+///    Every probe in a checkout shares one dir.
+/// 3. `<probe-root>/metadata-probe/.shared-target` — when (2) cannot be created,
+///    which is the out-of-tree case where the nano-ros workspace is a read-only
+///    installed SDK. Still shares within a workspace, and is writable by
+///    construction because the per-component harness dirs already live there.
+///
+/// (2) rather than "(1) or per-component" on purpose: `NROS_BUILD_ROOT` is a
+/// function-local default in `build-root.sh`, not an exported variable, so a
+/// plain `nros metadata --build` — and every cmake configure that shells the
+/// CLI — sees it UNSET. A fix that only worked when it was set would have left
+/// the measured 108 dirs exactly as they were.
+///
+/// Cargo already separates by triple below the root (`--target <host>` gives
+/// `<dir>/<host>/<profile>/`), so the coordinate is not repeated here.
+fn probe_target_dir(o: &MetadataBuildOptions) -> PathBuf {
+    if let Some(root) = std::env::var_os("NROS_BUILD_ROOT").filter(|v| !v.is_empty()) {
+        return PathBuf::from(root).join("metadata-probe");
+    }
+    let shared = o.nano_ros_workspace.join("build").join("metadata-probe");
+    if std::fs::create_dir_all(&shared).is_ok() {
+        return shared;
+    }
+    match o.harness_dir.parent() {
+        Some(parent) => parent.join(".shared-target"),
+        None => o.harness_dir.join("target"),
+    }
+}
+
 pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
     let krate = crate_name(o)
         .ok_or_else(|| eyre!("component id '{}' has no crate segment", o.component_id))?;
@@ -194,7 +261,7 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
     // metadata --build` anywhere under a cargo workspace (issue #202 triage).
     Ok(format!(
         "[package]\n\
-         name = \"nros-metadata-probe\"\n\
+         name = \"nros-metadata-probe-{slug}\"\n\
          version = \"0.0.0\"\n\
          edition = \"2024\"\n\
          publish = false\n\n\
@@ -211,7 +278,7 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          [profile.release]\n\
          panic = \"abort\"\n\n\
          [[bin]]\n\
-         name = \"probe\"\n\
+         name = \"probe-{slug}\"\n\
          path = \"src/main.rs\"\n\n\
          [dependencies]\n\
          nros = {{ path = {nros:?}, features = [\"std\"] }}\n\
@@ -226,6 +293,7 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          # exact executor sizing instead of degrading to the timer-blind bound.\n\
          nros-platform-cffi = {{ path = {platform_cffi:?}, features = [\"posix-c-port\"] }}\n\
          {krate} = {{ path = {comp:?}, package = {pkg:?} }}\n",
+        slug = probe_slug(&o.component_id),
         nros = o
             .nano_ros_workspace
             .join("packages/api/nros")
@@ -334,7 +402,9 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
     // std`. An explicit flag beats config, so name the host triple.
     let host = host_triple();
     let manifest = o.harness_dir.join("Cargo.toml");
-    let target_dir = o.harness_dir.join("target");
+    let target_dir = probe_target_dir(o);
+    std::fs::create_dir_all(&target_dir)
+        .wrap_err_with(|| format!("create probe target dir {}", target_dir.display()))?;
     // #0390 — capture stderr (still echoed live below) so a harness that dies
     // because a vendored `[source.*]` tree is absent can be translated from cargo's
     // raw four-`Caused by:` path error into `nros setup --source <name>`, the
