@@ -421,3 +421,48 @@ product-level message is a stale-image suspect first.** Check the built
 `.config` against the tree before believing the assertion — one `grep` settled
 this after the failure text had already sent two earlier sessions (0460, and this
 one) looking at the product.
+
+### Measured 2026-08-12: the premise above is half right, and the real gap is TWO SPELLINGS
+
+"The lane already knows how to sign itself" is true, and "the missing piece is
+REPORTING" is not — I checked, having first concluded (wrongly, from grepping
+only for `inputsig`) that zephyr had no signature at all. What exists is **two
+different zephyr freshness checks with different coverage**, and the entry
+fixtures use the weaker one:
+
+| check | watches | used by |
+| --- | --- | --- |
+| `zephyr.rs::is_binary_stale` | leaf `prj.conf`, its `conf_files`, `boards/`, `src/`, `CMakeLists.txt`, `Cargo.{toml,lock}`, `zephyr/`, language-filtered `packages/core/*`, the rmw package — content-aware (`candidates_changed_content`, #147 / phase-286 W2) | the per-example zephyr resolver, and the ONE base workspace entry (`build-ws-rs-entry-zenoh`) |
+| `binaries/mod.rs::require_prebuilt_binary_fresh_zephyr` | ONLY `<build_root>/rust/target/*/<profile>/librustapp.d` vs the `zephyr.exe` mtime | every other zephyr entry — the C, C++, mixed, params, lifecycle, qos, safety entries |
+
+Two consequences, both of which this session paid for:
+
+1. **A source Kconfig edit is invisible to the second check.** Measured on
+   `build-ws-rs-qos-entry-zenoh`: `librustapp.d` lists 529 deps, and the only
+   `.conf` among them is the GENERATED `<build_root>/zephyr/.conf` — a build
+   OUTPUT. `examples/workspaces/features/src/zephyr_rust_qos_entry/prj.conf`, the
+   file an author edits, appears **zero** times. So raising
+   `CONFIG_NROS_MAX_QUERYABLES` there leaves every image "fresh" while each one
+   still has the old value compiled in — which is precisely how the qos/lifecycle
+   entry cells failed with product-level assertions instead of a STALE verdict.
+   The doc comment's claim is accurate about what it covers ("the dominant drift
+   for these entries") and the drift it names is real; the conf axis simply is not
+   in it.
+
+2. **C and C++ entries have no freshness check at all.** `zephyr_staticlib_dep_
+   file` looks for `librustapp.d`, a C-only image has none, and the helper then
+   returns `Ok` — documented as "Missing `.d` → existence-only fallback". For the
+   mixed entry it works by accident (that image does carry a Rust staticlib).
+
+So the fix is not a new signature and not a report: it is to route
+`require_prebuilt_binary_fresh_zephyr` through the SAME candidate machinery
+`is_binary_stale` already implements, one spelling, which fixes both rows at
+once. The blocker to doing it mechanically is that `is_binary_stale` keys on an
+example NAME (`examples/<example_path_for_name(name)>`) while an entry's sources
+live under `examples/workspaces/...`; the shape for bridging that already exists
+as `ZEPHYR_WORKSPACE_ENTRY_SRC_KEY`, so the change is to take a source DIR and
+let the ~10 entry resolvers name their leaf.
+
+This is the issue-0196 rule again ("build-side stale probes must watch the same
+inputs as test-side gates"), and it is the fourth gate found this year whose
+coverage was narrower than the rule it enforced.
