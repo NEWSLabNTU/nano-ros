@@ -55,6 +55,15 @@ FAMILIES = {
         "packages/boards/*/nros-board.toml",
         lambda d: [n for b in d.get("board", []) for n in b.get("names", [])],
     ),
+    # phase-349 W1. Platform descriptors live under `config/`, not
+    # `packages/platform/` — a fact that cost a wrong "the family does not
+    # exist" claim in phase-348 W2 (corrected there). `names` is top-level,
+    # not in a table, and defaults to the directory name for a file that
+    # declares none.
+    "platform": (
+        "config/*/nros-platform.toml",
+        lambda d: list(d.get("names", [])),
+    ),
 }
 
 PROVIDES_RE = r'<nano_ros_provides\s+kind="{kind}"\s+name="([^"]+)"\s*/?>'

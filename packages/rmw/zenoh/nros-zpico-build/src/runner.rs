@@ -410,7 +410,7 @@ pub fn run() {
     } else if use_nuttx {
         Some("nuttx")
     } else if use_freertos {
-        Some("freertos-lwip")
+        Some("freertos")
     } else if use_zephyr {
         Some("zephyr")
     } else if use_bare_metal {

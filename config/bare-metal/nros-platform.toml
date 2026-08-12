@@ -7,6 +7,9 @@
 # profiles; may be duplicated across platform files only byte-identically).
 # Resolution ladder: builtin < platform (inherits chain) < board < env.
 # Schema + loader: nros-board-common/src/platform_config.rs.
+# phase-349 W1 / RFC-0072 — the names this platform answers to; the
+# directory is just where the file lives. names[0] is canonical.
+names = ["bare-metal"]
 
 [build.zenoh]
 # `ZPICO_SMOLTCP` activates the smoltcp branches inside `zpico.c`

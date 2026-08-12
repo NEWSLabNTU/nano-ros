@@ -64,6 +64,22 @@ pub const PLATFORM_CONFIG_FILENAME: &str = "nros-platform.toml";
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformConfigFile {
+    /// phase-349 W1 / RFC-0072 — the names this platform answers to.
+    ///
+    /// Empty (the default) means "just my directory name", which is what every
+    /// file meant before this existed. The first entry is canonical; the rest
+    /// are aliases, which is how `freertos-lwip` keeps resolving after the
+    /// directory became `freertos`.
+    ///
+    /// The stack does not belong in a platform's identity — zenoh-pico itself
+    /// splits `system/freertos/{system.c, lwip/network.c,
+    /// freertos_plus_tcp/network.c}` — so `freertos-lwip` is an alias to retire,
+    /// not a name to keep. Matching the rmw and board descriptors also lets
+    /// `check-provider-announcements.py` compare provisions against it with one
+    /// more `FAMILIES` row rather than a new rule.
+    #[serde(default)]
+    pub names: Vec<String>,
+
     /// Optional parent platform (sibling directory name). The parent's
     /// `[build.zenoh]`, `[capabilities]` and `[knobs]` merge underneath
     /// this file's values.
@@ -343,11 +359,49 @@ impl PlatformsTree {
         }
     }
 
+    /// The directory a platform NAME resolves to, following `[names]` aliases.
+    ///
+    /// phase-349 W1. A file's directory name always resolves to itself, so a
+    /// tree whose files declare no `names` behaves exactly as before. Aliases
+    /// are additive on top.
+    ///
+    /// Returns the input unchanged when nothing claims it, so the caller's
+    /// existing "unknown platform" error still names what the user asked for
+    /// rather than something this function invented.
+    pub fn resolve_alias<'a>(&'a self, name: &'a str) -> &'a str {
+        if self.files.contains_key(name) {
+            return name;
+        }
+        self.files
+            .iter()
+            .find(|(_, f)| f.names.iter().any(|n| n == name))
+            .map(|(dir, _)| dir.as_str())
+            .unwrap_or(name)
+    }
+
+    /// Every name the tree answers to, directory names and aliases alike.
+    /// Used to make an unknown-platform error list the real options.
+    pub fn all_names(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .files
+            .iter()
+            .flat_map(|(dir, f)| std::iter::once(dir.clone()).chain(f.names.iter().cloned()))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
     /// Walk the `inherits` chain (child-first list: `[name, parent, …]`).
+    ///
+    /// Alias resolution happens HERE, at the one point every public lookup
+    /// (`capabilities`, `resolve_tx`, `capability_check`) funnels through —
+    /// rather than at each caller, which is how half of them would end up
+    /// alias-blind.
     fn chain(&self, name: &str) -> Result<Vec<&PlatformConfigFile>, ConfigError> {
         let mut out = Vec::new();
         let mut seen = std::collections::BTreeSet::new();
-        let mut cur = Some(name.to_string());
+        let mut cur = Some(self.resolve_alias(name).to_string());
         while let Some(n) = cur {
             if !seen.insert(n.clone()) {
                 return Err(ConfigError::InheritsCycle { name: n });
@@ -359,7 +413,10 @@ impl PlatformsTree {
                     name: n.clone(),
                     root: self.root.display().to_string(),
                 })?;
-            cur = file.inherits.clone();
+            cur = file
+                .inherits
+                .as_deref()
+                .map(|p| self.resolve_alias(p).to_string());
             out.push(file);
         }
         Ok(out)
@@ -572,6 +629,63 @@ mod tests {
             with_zenoh >= 7,
             "expected >=7 platform files carrying a [build.zenoh] block, saw {with_zenoh}"
         );
+    }
+
+    /// phase-349 W1 — a platform answers to its aliases, and the directory
+    /// name always works whether or not `names` is declared.
+    #[test]
+    fn an_alias_resolves_to_its_directory() {
+        let tmp = write_tree(&[
+            ("freertos", "names = [\"freertos\", \"freertos-lwip\"]\n"),
+            ("posix", ""),
+        ]);
+        let tree = PlatformsTree::load(tmp.path()).expect("loads");
+
+        assert_eq!(tree.resolve_alias("freertos-lwip"), "freertos");
+        assert_eq!(tree.resolve_alias("freertos"), "freertos");
+        // A file declaring no names still answers to its directory — that is
+        // what every file meant before `names` existed.
+        assert_eq!(tree.resolve_alias("posix"), "posix");
+        // An unclaimed name comes back unchanged, so the caller's own
+        // "unknown platform" error names what the USER asked for.
+        assert_eq!(tree.resolve_alias("nope"), "nope");
+    }
+
+    /// The alias must work through the public lookups, not merely in
+    /// `resolve_alias` — the point is that callers need no alias awareness.
+    #[test]
+    fn public_lookups_accept_an_alias() {
+        let tmp = write_tree(&[(
+            "freertos",
+            "names = [\"freertos\", \"freertos-lwip\"]\n\
+             [capabilities]\nthreads = true\n",
+        )]);
+        let tree = PlatformsTree::load(tmp.path()).expect("loads");
+
+        let by_alias = tree.capabilities("freertos-lwip").expect("alias resolves");
+        let by_dir = tree.capabilities("freertos").expect("dir resolves");
+        assert_eq!(by_alias, by_dir);
+        assert_eq!(by_alias.get("threads"), Some(&true));
+
+        let no_env = |_: &str| None;
+        assert!(tree.resolve_tx("freertos-lwip", None, &no_env).is_ok());
+    }
+
+    /// `inherits` names a sibling, and an alias there must resolve too —
+    /// otherwise renaming a directory silently breaks its children.
+    #[test]
+    fn inherits_accepts_an_alias() {
+        let tmp = write_tree(&[
+            (
+                "freertos",
+                "names = [\"freertos\", \"freertos-lwip\"]\n\
+                 [capabilities]\nthreads = true\n",
+            ),
+            ("child", "inherits = \"freertos-lwip\"\n"),
+        ]);
+        let tree = PlatformsTree::load(tmp.path()).expect("loads");
+        let caps = tree.capabilities("child").expect("inherits via alias");
+        assert_eq!(caps.get("threads"), Some(&true));
     }
 
     #[test]

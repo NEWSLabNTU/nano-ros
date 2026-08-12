@@ -1,9 +1,8 @@
 # Phase 348 — Source-time provider discovery: buy the colcon convention, not colcon
 
-**Status (2026-08-13). W1, W2 (rmw + boards), W3, W4 and W5 LANDED — the phase
-is complete except the platform half of W2, which moves to
-[phase-349](phase-349-rtos-integration-shells.md) W1 along with the naming
-decision RFC-0072 settled.** Unblocked by
+**Status (2026-08-13). COMPLETE — W1–W5 landed. The platform half of W2 landed
+as [phase-349](phase-349-rtos-integration-shells.md) W1, once RFC-0072 settled
+what a platform's name is.** Unblocked by
 [phase-347](phase-347-rmw-as-a-declared-provider.md) W2 — descriptors exist, so
 providers can describe themselves.
 
@@ -129,8 +128,11 @@ is what a provision must agree with:
       package.xml beside a descriptor announces provisions of that kind, and
       its names equal the descriptor's exactly, canonical first. Each case
       verified to FAIL under the matching perturbation.
-- [ ] platform — **blocked on the descriptors being UNNAMED, not missing.**
-      They live at `config/*/nros-platform.toml`, not `packages/platform/`.
+- [x] platform — **DONE in [phase-349](phase-349-rtos-integration-shells.md) W1.**
+      The descriptors live at `config/*/nros-platform.toml` (not
+      `packages/platform/`) and were unnamed; W1 added `names`, the alias
+      resolution that makes the old spellings keep working, the seven
+      `package.xml` provisions, and the `FAMILIES` row.
 
 Total: `nros ws providers` reports 36 provisions from 12 packages over 478
 packages scanned.

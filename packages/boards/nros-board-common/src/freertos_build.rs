@@ -29,8 +29,10 @@ use crate::{
 };
 
 /// The platform whose `[arch.*]` profiles supply this family's cflags —
-/// `config/freertos-lwip/nros-platform.toml`.
-const PLATFORM: &str = "freertos-lwip";
+/// `config/freertos/nros-platform.toml`.
+// phase-349 W1 — the platform is `freertos`; the stack is a fact declared
+// elsewhere. `freertos-lwip` survives as an alias in the descriptor's `names`.
+const PLATFORM: &str = "freertos";
 
 /// Shared cflag setup for every FreeRTOS + lwIP translation unit.
 ///

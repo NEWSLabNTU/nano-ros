@@ -1,8 +1,7 @@
 # Phase 349 — RTOS integration: make FreeRTOS an imported library like the rest
 
-**Status (2026-08-12). PROPOSED — no code landed.** W1 is independently
-valuable and unblocks the platform half of
-[phase-348](phase-348-source-time-provider-discovery.md) W2.
+**Status (2026-08-13). W1 LANDED — with it, [phase-348](phase-348-source-time-provider-discovery.md)
+is complete. W2–W6 open.**
 
 **Implements:** [RFC-0072](../design/0072-rtos-integration-nano-ros-is-a-guest.md).
 
@@ -15,24 +14,40 @@ anomaly: no shell, and `nros_freertos_build_kernel()` compiling the kernel from
 
 ---
 
-## W1 — The platform stops naming a stack
+## W1 — The platform stops naming a stack — **LANDED**
 
-- [ ] `config/freertos-lwip/` → `config/freertos/`, with
+- [x] `config/freertos-lwip/` → `config/freertos/`, with
       `names = ["freertos", "freertos-lwip"]` so every existing spelling
       resolves. No behaviour change.
-- [ ] `names` on all seven platform descriptors; `requires_capabilities` where
-      known.
-- [ ] `platform` joins `check-provider-announcements.py`'s `FAMILIES` — one row,
-      not a new gate.
-- [ ] `package.xml` provisions for the platform packages (phase-348 W2's
-      remaining half).
+- [x] `names` on all seven platform descriptors.
+- [x] `platform` joins `check-provider-announcements.py`'s `FAMILIES` — one row,
+      not a new gate. 19 providers across 3 families, 44 names.
+- [x] `package.xml` provisions for all seven platform packages — **phase-348 W2's
+      remaining half is now done.**
 
-*Acceptance:* `nros ws providers --kind platform` lists seven; the gate compares
-provisions against `names`; every board resolving `freertos-lwip` today still
-resolves.
+*Acceptance, met:* `nros ws providers --kind platform` lists 8 provisions from 7
+packages, `--resolve platform:freertos-lwip` resolves to `config/freertos`, and
+the zpico drift gate + `nros-board-common` (28 tests) pass unchanged.
 
-**Independent of the rest of this phase.** It is the naming fix alone, and it
-is what unblocks phase-348.
+**`requires_capabilities` deferred to W2**, deliberately. `PlatformConfigFile`
+is `deny_unknown_fields`, so the field must exist before a file may name it —
+but nothing consumes a *requirement* until the integration declares what it
+provides, and adding an unread field invites the dead-config problem
+[#529](../issues/0529-zephyr-platform-knobs-never-resolve.md) is about.
+
+### Alias resolution is the mechanism, and one lookup was blind to it
+
+`names` alone would have broken every `freertos-lwip` lookup, because
+`PlatformsTree` keys by DIRECTORY. `resolve_alias()` sits in
+`PlatformsTree::chain()`, the one point `capabilities()`, `resolve_tx()` and
+`capability_check()` all funnel through, so callers need no alias awareness.
+
+**Except `declared_arch_names()`, which does not use `chain()`** — the arch
+table is merged across all files and addressed separately, so it stayed
+alias-blind. `freertos_lwip_resolves_both_declared_arches` caught it by
+continuing to address the platform by its alias, which is why that test still
+does so on purpose. The claim that `chain()` was the single funnel was written
+in a comment before it was checked; it is true of three lookups out of four.
 
 ## W2 — The stack becomes a declared fact
 

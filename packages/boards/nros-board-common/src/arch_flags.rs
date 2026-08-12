@@ -90,9 +90,17 @@ pub fn cflags_for_target(
 /// (`thumbv7m`) must be offered before a profile that could also admit the
 /// triple. First match wins, as in the zpico include-path resolver.
 pub fn declared_arch_names(tree: &PlatformsTree, platform: &str) -> Vec<String> {
+    // phase-349 W1 — the manifest is keyed by DIRECTORY, so an alias
+    // (`freertos-lwip` after the directory became `freertos`) has to be
+    // resolved first. This path does NOT go through `PlatformsTree::chain()`,
+    // which is where the other lookups get alias handling for free — the
+    // arch table is merged across all files and addressed separately. Caught by
+    // `freertos_lwip_resolves_both_declared_arches`, which kept using the alias
+    // for exactly this reason.
+    let dir = tree.resolve_alias(platform);
     tree.as_platform_manifest()
         .platform
-        .get(platform)
+        .get(dir)
         .map(|entry| entry.arch.clone())
         .unwrap_or_default()
 }
@@ -126,10 +134,15 @@ pub fn describe_profiles(config_root: &Path, platform: &str) -> String {
 mod tests {
     use super::*;
 
-    /// The shipped `config/freertos-lwip` profiles must resolve for both arches
-    /// the platform declares. phase-338 W4: `[arch.cortex-m7]` was added and
-    /// then ignored by the consumer, so FreeRTOS+lwIP stayed unbuildable on
+    /// The shipped `config/freertos` profiles must resolve for both arches the
+    /// platform declares. phase-338 W4: `[arch.cortex-m7]` was added and then
+    /// ignored by the consumer, so FreeRTOS+lwIP stayed unbuildable on
     /// Cortex-M4F/M7 — this asserts the declaration is actually reachable.
+    ///
+    /// phase-349 W1 — deliberately still addressed as `freertos-lwip`, the
+    /// ALIAS, after the directory became `freertos`. That keeps the alias path
+    /// covered, and it immediately earned it: `declared_arch_names` does not go
+    /// through `chain()` and was alias-blind until this test failed.
     #[test]
     fn freertos_lwip_resolves_both_declared_arches() {
         let root = config_root().expect("in-tree checkout");

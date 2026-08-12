@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_platform_zephyr</name>
+  <version>0.0.0</version>
+  <description>
+    Zephyr platform support for nano-ros.
+
+    phase-349 W1: this file exists so the platform is DISCOVERABLE — the
+    `nano_ros_provides` export below is what a source-time scan reads. What the
+    platform declares (capabilities, arch profiles, build blocks) lives in the
+    sibling `nros-platform.toml` (RFC-0049), read only when this platform is
+    the one selected.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <!--
+      Provision, NOT consumption: this package IS a platform, rather than
+      selecting one. Must equal the descriptor's `names`, canonical first —
+      `check-provider-announcements.py` compares them.
+    -->
+    <nano_ros_provides kind="platform" name="zephyr"/>
+  </export>
+</package>
