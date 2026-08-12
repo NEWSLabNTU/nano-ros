@@ -6,7 +6,7 @@ type: tech-debt
 severity: medium
 area: build
 related: [issue-0485, phase-340, issue-0446]
-resolved_in: phase-340
+resolved_in: "phase-340, then issue-0499 follow-up (incremental builds)"
 ---
 
 ## Resolution (2026-08-11) — all three options landed
@@ -160,3 +160,42 @@ bash scripts/check-artifact-identity-budget.sh
 
 It reports over-budget for crates whose extra identities are all older than the
 current build.
+
+## Follow-up (2026-08-12) — the filter had one case left, and it blocked tier 2 twice
+
+phase-340's `started_at` filter fixed accumulation, and the gate handles a tree
+that predates the build entirely (SKIP). It did NOT handle the ordinary middle
+case: an **incremental** build that rewrites some crates and legitimately has
+nothing to do for the budget crate. The filtered set then holds artifacts for
+other crates and none for `nros_core`, and the gate said:
+
+```
+examples/workspaces/mixed/build-workspace-fixtures holds compiled rlibs, but NONE for nros_core.
+The gate cannot answer the question it exists to ask, so it fails
+```
+
+on a correct build. It blocked `ci-matrix` twice in one session, each time
+cleared by deleting the workspace and rebuilding — the wipe-to-green this
+issue's own resolution argued against, and a 1.6 GB rebuild per occurrence.
+Since an incremental build is the NORMAL case, the gate failed more often than
+it passed on a warm tree.
+
+**Fix.** When the filtered set has no artifact for the budget crate but the tree
+does, count the whole tree and label the reading unfiltered — the same fallback
+and the same accumulation caveat the no-`started_at` path already carries. The
+question is still answerable; it just is not answerable from this build's
+writes.
+
+Four behaviours, each asserted against a synthetic tree before being believed
+(the perturbation-first rule this issue established):
+
+| case | verdict |
+| --- | --- |
+| incremental, budget crate not rebuilt, within budget | **OK** + unfiltered note (was FAIL) |
+| incremental, budget crate not rebuilt, OVER budget | FAIL — the gate still bites |
+| whole tree predates `started_at` | SKIP, unchanged |
+| budget crate genuinely absent (partial build / renamed) | FAIL, unchanged |
+
+The synthetic tree is driven by the two knobs the script already exposes,
+`NROS_IDENTITY_BUDGET_TREE` and `NROS_FIXTURE_STAMP`, so the check is
+reproducible without a real 1.6 GB workspace.

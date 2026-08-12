@@ -278,6 +278,26 @@ if [ -n "$_ref" ] && [ -n "$_all" ]; then
         exit 0
     fi
     IDENTITY_ERA_NOTE="  counted $_n_cur of $_n_all rlib(s) — those written since started_at=$_started (issue 0499)."
+    # issue 0521-adjacent, filed under 0499: an INCREMENTAL build legitimately
+    # rewrites nothing for a crate whose inputs did not change. The filter then
+    # leaves artifacts for OTHER crates but none for the budget crate, and the
+    # gate used to call that "a tree it did not understand" and fail — on a
+    # correct build. It blocked tier 2 twice, each time "fixed" by deleting the
+    # workspace and rebuilding, which is the wipe-to-green this issue's own
+    # resolution argued against.
+    #
+    # The question ("how many identities of the budget crate does this tree
+    # hold?") is still answerable — just not from THIS build's writes. Fall back
+    # to the whole tree and label the reading unfiltered, which is exactly the
+    # no-`started_at` case below and carries the same accumulation caveat.
+    if [ -n "$rlibs" ] \
+        && ! printf '%s\n' "$rlibs" | grep -q "/lib${BUDGET_CRATE}-" \
+        && printf '%s\n' "$_all" | grep -q "/lib${BUDGET_CRATE}-"; then
+        rlibs="$_all"
+        IDENTITY_ERA_NOTE="  $BUDGET_CRATE was NOT rebuilt since started_at=$_started (an incremental
+  build with nothing to do for it), so this counts ALL $_n_all rlib(s) in the
+  tree — an accumulated tree can inflate it (issue 0499)."
+    fi
 else
     rlibs="$_all"
     IDENTITY_ERA_NOTE="  NO started_at in $STAMP — counting all rlib(s); an accumulated tree inflates this (issue 0499)."

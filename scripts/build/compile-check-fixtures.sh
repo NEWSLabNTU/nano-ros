@@ -578,12 +578,44 @@ PX4_XRCE_EXAMPLES=(
 px4_autopilot_dir="$repo_root/third-party/px4/PX4-Autopilot"
 px4_n=0
 if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
+    # issue 0520 — this script is invoked ONCE PER COMPILE-CHECK UNIT (87 of them
+    # under `build-test-fixtures lane=all`, in parallel), and every invocation
+    # regenerates px4_msgs into the SAME three `<leaf>/generated` dirs. The
+    # generator stages the `.msg` tree through `<output>/.px4_msg_stage` and
+    # `remove_dir_all`s it on the way out, so concurrent runs delete each other's
+    # staging mid-copy. It surfaces as a SOURCE file that plainly exists:
+    #
+    #     Error: stage .../PX4-Autopilot/msg/GpsDump.msg
+    #     Caused by: No such file or directory (os error 2)
+    #
+    # 15 different `.msg` names across one run, all 201 present on disk. A
+    # repo-level advisory lock makes the second invocation queue instead of
+    # clobbering the first — the same idiom, and the same reasoning, as the
+    # zephyr fixture build lock. flock-absent hosts skip it (best-effort).
+    # The lock wraps the CODEGEN CALL ONLY. The `cargo check` below is per-leaf,
+    # touches no shared staging, and is the long pole — holding the lock across
+    # it would serialize 87 units on nothing.
+    # RFC-0070 R1 — the ONE derivation, never a hand-spelled cache path
+    # (`check-build-root` gates it). Same shape as the zephyr build lock.
+    px4_lockfile="$(nros_build_dir px4-msgs-codegen).lock"
+    mkdir -p "$(dirname "$px4_lockfile")"
+    px4_gen() {
+        # `flock <file> <command>` — the FILE form. NOT `flock 8 <command>`:
+        # with a command argument flock treats its first operand as a PATH, not
+        # a file descriptor, so that spelling silently created and locked a file
+        # named `8` in the cwd. It excluded correctly (same relative path, same
+        # cwd) and left an empty `./8` in the repo root as the only evidence.
+        if command -v flock >/dev/null 2>&1; then
+            flock "$px4_lockfile" nros generate-px4-msgs --px4 "$1" --output "$2"
+        else
+            nros generate-px4-msgs --px4 "$1" --output "$2"
+        fi
+    }
     for entry in "${PX4_XRCE_EXAMPLES[@]}"; do
         id="${entry%%:*}"; dir="${entry#*:}"
         [ -d "$repo_root/$dir" ] || { echo "px4: example missing: $dir" >&2; continue; }
         echo "== px4-compile-check: $id =="
-        if ! nros generate-px4-msgs --px4 "$px4_autopilot_dir" \
-                --output "$repo_root/$dir/generated"; then
+        if ! px4_gen "$px4_autopilot_dir" "$repo_root/$dir/generated"; then
             echo "   px4_msgs codegen FAILED for $id (no stamp)" >&2
             continue
         fi

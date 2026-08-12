@@ -51,7 +51,38 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-Recently resolved (2026-08-12): **#523** (testing) — tier 1 red on FOUR tests from phase-348, two
+**#527** (testing, open 2026-08-12) — the doctest phase overwrites the junit.xml the skip-rewrite just
+produced, so a failed sweep reports a trustworthy COUNT of real failures and destroys the record of WHICH
+they were. `rewrite-skipped-junit` prints "Real failures: 19 / 19"; read the file afterwards and it holds
+ZERO `<failure>` elements, because doctests run last, pass, and write the same path. The console log is no
+substitute — it interleaves TRY retries and carries no skip/fail classification, which is precisely what
+the rewrite computed and lost; classifying by duration over-counted 31 against the authoritative 19. It
+obstructed triage three times in one session and fails in the direction that looks fine (count right, file
+present, well-formed, describing a different run). Cheapest fix: have `_count-real-failures` emit the
+failing test ids as well as the count, so the names survive in the log. See `0527-*`. (2026-08-12)
+
+RESOLVED 2026-08-12 — **#521** `eyre::Context::with_context` on a `Result` is eyre's FEATURE-GATED
+anyhow-compat surface (`ContextCompat`); `WrapErr::wrap_err_with` is the native one. `nros-pkg-index` and
+`nros-launch-parser` both used the compat spelling while declaring only `eyre = "0.6"`, so they compiled
+purely because a `packages/cli` workspace sibling enabled the feature and cargo unified it. Both are also
+reached from OUTSIDE that workspace — the metadata harness deps them through `packages/api/nros` — where
+nothing enables it, so all 15 call sites failed at once and took `check-cli-tests`, and therefore tier 2,
+down before `test-all`. A build that works only because of who else is in it. Fixed by switching both to
+`wrap_err`/`wrap_err_with`. 13 more files still carry the compat import but are CLI-workspace-only today;
+sweep + the Option caveat are recorded in the issue. See `archived/0521-*`. (2026-08-12)
+
+RESOLVED 2026-08-11 — **#520** px4_msgs codegen raced ITSELF. `compile-check-fixtures.sh` runs once per
+compile-check unit — 87 in parallel under `lane=all` — and every invocation regenerated px4_msgs into the
+same three `<leaf>/generated` dirs. `stage_px4_msgs` stages through `<output>/.px4_msg_stage` and
+`remove_dir_all`s it on every exit path, so concurrent runs deleted each other's staging mid-copy. It
+surfaced as `Error: stage .../msg/GpsDump.msg / No such file or directory` naming a file that EXISTS —
+15 distinct `.msg` names in one run, all 201 present, submodule clean at its pin — because the copy's
+`wrap_err_with` prints the SOURCE while the ENOENT is the DESTINATION. Fixed with an advisory lock around
+the codegen call only (the per-leaf `cargo check` is the long pole; locking the loop would serialize 87
+units on nothing). Deeper fixes left open in the issue: a unique staging dir in `rosidl-bindgen`, and
+generating once rather than 87 times. Third lane blocker in a row after #0500 and #0510.
+See `archived/0520-*`. (2026-08-11)
+
 independent causes. (A) `enforce_registry` flagged three scripts as compile-at-test; one COMPLIES —
 `package_xml_comment_stripping.sh` runs `cmake -P`, CMake's INTERPRETER, and its header says "Buildless".
 The detector matched the prefix `"cmake -"`; registering it would have laundered a non-violation into the
