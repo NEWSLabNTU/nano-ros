@@ -165,8 +165,9 @@ build:
         fi
         (cd "$dir" && cargo build $cargo_profile_args $qemu_tdir_flag)
     done
-    # Also build qemu-smoltcp-bridge (test support, packages/testing/)
-    (cd packages/testing/qemu-smoltcp-bridge && cargo build $cargo_profile_args)
+    # issue 0488 residue 1 — qemu-smoltcp-bridge is a `[[fixture]]` row now, so
+    # the lane above already built it into the shared group. The bare in-leaf
+    # build that used to be here wrote a second copy nothing reads.
 
 # Build all example binaries used as test fixtures (bare-metal Rust).
 # Skips cleanly if the ARM cross-toolchain is missing.
@@ -196,9 +197,9 @@ build-fixtures:
     fi
     echo "Building QEMU bare-metal test fixtures..."
     scripts/build/fixtures-build.sh qemu-arm-baremetal rust
-    # packages/testing/qemu-smoltcp-bridge remains ad-hoc until reference
-    # package coverage moves into the fixture manifest.
-    (cd packages/testing/qemu-smoltcp-bridge && cargo build $cargo_profile_args --quiet)
+    # issue 0488 residue 1 — "remains ad-hoc until reference package coverage
+    # moves into the fixture manifest" is done: it has a row, so the
+    # `fixtures-build.sh` call above builds it with a coordinate and a group.
 
 # Run all QEMU tests (non-networked)
 [group("main")]
@@ -257,9 +258,18 @@ build-rtic-main-e2e:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    # issue 0488 residue 1 — this leaf IS a `[[fixture]]` row
+    # (qemu-arm-baremetal/rust), and that platform is migrated, so the fixture
+    # lane compiles it into `build/fixtures-cargo/<slug>`. The bare in-leaf build
+    # here wrote the leaf's own `target/` instead, and `test-rtic-main-e2e` then
+    # `-kernel`ed THAT — a second copy nothing else reads, and a path that
+    # disagrees with where the lane writes.
+    source scripts/build/fixtures-target-dir.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    rtic_tdir_flag="$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
     cd packages/testing/nros-tests/bins/rtic-run-plan-e2e
-    cargo build $cargo_profile_args --quiet
+    # shellcheck disable=SC2086
+    cargo build $cargo_profile_args $rtic_tdir_flag --quiet
 
 # Run the Phase 216.B generated-entry RTIC E2E fixture on QEMU MPS2-AN385.
 [group("debug")]
@@ -272,6 +282,10 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
         echo "QEMU RTIC E2E skip: zenohd not found"
         exit 0
     fi
+    # issue 0488 residue 1 — the kernel path comes from the same
+    # `nros_fixture_group` answer `build-rtic-main-e2e` builds with.
+    source scripts/build/fixtures-target-dir.sh
+    rtic_artifacts="$(nros_fixture_row_artifact_dir packages/testing/nros-tests/bins/rtic-run-plan-e2e qemu-arm-baremetal "" "")"
     zenoh_log={{LOG_DIR}}/latest/qemu-rtic-main-e2e-zenohd.log
     "$zenohd_bin" --listen tcp/127.0.0.1:10200 --no-multicast-scouting > "$zenoh_log" 2>&1 &
     zenoh_pid=$!
@@ -282,7 +296,7 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
             -icount shift=auto \
             -semihosting-config enable=on,target=native \
-            -kernel packages/testing/nros-tests/bins/rtic-run-plan-e2e/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rtic-main-e2e \
+            -kernel "$rtic_artifacts/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rtic-main-e2e" \
             -nic user,model=lan9118
 
 # Run all QEMU tests including networked E2E and RTIC

@@ -1657,6 +1657,17 @@ platform = "qemu-arm-baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/serial-listener"
 
+# issue 0488 residue 1 — the smoltcp/zenoh-pico bridge. It was built by a bare
+# `cargo build` in two `just qemu` recipes, so it had no coordinate, no group and
+# no staleness probe, and it wrote a per-leaf `target/` on a MIGRATED platform.
+# NOTHING consumes its artifact — the two builds and a `rm -rf` are its only
+# references — so the assertion is "it still builds", which is what a row states
+# without a second spelling of the command.
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "packages/testing/qemu-smoltcp-bridge"
+
 [[fixture]]
 platform = "qemu-arm-baremetal"
 lang = "rust"

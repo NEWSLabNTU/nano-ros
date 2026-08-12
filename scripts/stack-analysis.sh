@@ -200,20 +200,41 @@ else
         ' "$CONFIG_FILE" | tr -s ' ')"
     fi
 
+    # issue 0488 residue 3 — build into a dedicated root under
+    # `$NROS_BUILD_ROOT`, never the example's own `target/`.
+    #
+    # This tool takes a DIRECTORY argument, so it has no fixture coordinate and
+    # cannot join a lane group — and it should not want to: it builds with
+    # `-Z emit-stack-sizes` on nightly at `--release`, a different identity from
+    # anything a lane produces, and putting that in a shared group would churn
+    # the group's fingerprints for every other consumer. What it must stop doing
+    # is writing the example leaf, where the output has no owner and outlives
+    # any interest in it.
+    #
+    # `<root>/<kind>/<coordinate>` is RFC-0070 R2's shape; the coordinate here is
+    # the example dir with separators flattened, which is the only stable name a
+    # directory argument has.
+    # shellcheck source=scripts/build/build-root.sh
+    source "$(dirname "${BASH_SOURCE[0]}")/build/build-root.sh"
+    SA_SLUG="$(printf '%s' "${EXAMPLE_DIR#./}" | tr -c 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//')"
+    SA_TARGET_DIR="$(nros_build_dir stack-analysis "$SA_SLUG")"
+    mkdir -p "$SA_TARGET_DIR"
+
     (
         cd "$EXAMPLE_DIR"
-        RUSTFLAGS="-Z emit-stack-sizes ${EXISTING_FLAGS}" cargo "+$NIGHTLY" build --release 2>&1 \
+        RUSTFLAGS="-Z emit-stack-sizes ${EXISTING_FLAGS}" cargo "+$NIGHTLY" build --release \
+            --target-dir "$SA_TARGET_DIR" 2>&1 \
             | grep -v '^\s*Compiling\|^\s*Finished\|^\s*Downloaded\|^\s*Downloading' || true
     )
     echo ""
 
     # --- Find the ELF binary ---
-    # Cross-compiled: target/<triple>/release/<bin>
-    # Native (host):  target/release/<bin>
+    # Cross-compiled: <root>/<triple>/release/<bin>
+    # Native (host):  <root>/release/<bin>
     if [[ "$TARGET" == "$HOST_TRIPLE" ]]; then
-        ELF_PATH="$EXAMPLE_DIR/target/release/$BIN_NAME"
+        ELF_PATH="$SA_TARGET_DIR/release/$BIN_NAME"
     else
-        ELF_PATH="$EXAMPLE_DIR/target/$TARGET/release/$BIN_NAME"
+        ELF_PATH="$SA_TARGET_DIR/$TARGET/release/$BIN_NAME"
     fi
 
     if [[ ! -f "$ELF_PATH" ]]; then
