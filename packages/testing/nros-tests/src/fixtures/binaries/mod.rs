@@ -2612,11 +2612,33 @@ pub fn build_test_fixture_at_profile(
         Some(p) => nros_cargo_profile::target_dir(p),
         None => cargo_target_profile_dir(),
     };
-    let binary_path = if let Some(target) = target {
-        crate_dir.join(format!("target/{}/{}/{}", target, profile_dir, binary_name))
-    } else {
-        crate_dir.join(format!("target/{}/{}", profile_dir, binary_name))
-    };
+    let rel = PathBuf::from(match target {
+        Some(target) => format!("{target}/{profile_dir}/{binary_name}"),
+        None => format!("{profile_dir}/{binary_name}"),
+    });
+
+    // issue 0517 step 3, second funnel. `build_example` grew this guard; this —
+    // its `packages/testing/` sibling — did not, and step 3's "0 multi-row
+    // leaves left on the path route" was measured over the migrated funnel only.
+    // `nros-bench/stress-zenoh` was reached through here and IS a two-row leaf
+    // (plain + `ZPICO_SUBSCRIBER_BUFFER_SIZE=8192`), so with the `target_dir`
+    // column deleted both rows share `<dir>/target`, `groups::attribute` calls
+    // that ambiguous and declines to redirect, and this funnel resolved the
+    // un-redirected leaf path — where a pre-group build had left a binary. All
+    // five `large_msg` zenoh tests read that museum artifact and reported STALE
+    // while the freshly built one sat in `build/fixtures-cargo/<slug>`.
+    //
+    // MULTI-row, not `leaf_has_rows`: see `groups::leaf_is_multi_row` for why
+    // the wider predicate would break the sole-row leaves reached from here.
+    let leaf = format!("packages/testing/{crate_subpath}");
+    if crate::fixtures::groups::leaf_is_multi_row(&leaf) {
+        let row = crate::fixtures::groups::select_row(
+            &leaf,
+            &crate::fixtures::groups::FixtureVariant::plain(),
+        )?;
+        return require_prebuilt_row_binary_fresh(row, &rel);
+    }
+    let binary_path = crate_dir.join("target").join(&rel);
 
     // phase-278 W2 — `bins/` fixtures are cargo binaries and carry a `.d`
     // dep-info file, so the same rust staleness probe applies.
@@ -4517,6 +4539,9 @@ fn nros_tests_skip(msg: String) -> ! {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Build the zenoh-stress-test binary (cached).
+///
+/// The PLAIN row of a two-row leaf; `build_test_fixture` selects it by row
+/// rather than by path (issue 0517 step 3 — see the guard there).
 pub fn build_zenoh_stress_test() -> TestResult<&'static Path> {
     ZENOH_STRESS_TEST_BINARY
         .get_or_try_init(|| {
@@ -4541,8 +4566,9 @@ pub fn zenoh_stress_test_binary() -> PathBuf {
 
 /// Build the zenoh-stress-test binary with large subscriber buffer (8192B, cached).
 ///
-/// Uses `ZPICO_SUBSCRIBER_BUFFER_SIZE=8192` and a separate `target-large-buf`
-/// directory to avoid overwriting the default stress-test binary.
+/// Uses `ZPICO_SUBSCRIBER_BUFFER_SIZE=8192`. The separation from its plain
+/// sibling is the row's own cargo group, not the `target-large-buf` directory
+/// this comment used to name — issue 0517 step 3 deleted that column.
 pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
     ZENOH_STRESS_TEST_LARGE_BUF_BINARY
         .get_or_try_init(|| {

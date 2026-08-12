@@ -24,7 +24,10 @@
 
 use std::{collections::BTreeSet, path::PathBuf, process::Command};
 
-use nros_tests::fixtures::lane::{self, Coord, Row};
+use nros_tests::fixtures::{
+    groups,
+    lane::{self, Coord, Row},
+};
 
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -192,8 +195,30 @@ fn every_omittable_row_is_attributable_from_its_artifacts() {
     let mut blind = Vec::new();
     for row in lane::manifest_rows() {
         match row.kind.as_str() {
-            // Attributed by path.
+            // Attributed by path — but only a SOLE-row leaf can be. Issue 0517
+            // step 3 gave every row of a multi-row leaf the same
+            // `<dir>/target`, so `attribute_path` reports those ambiguous and
+            // declines (fail closed, never a guess). Those rows reach the lane
+            // by COORDINATE instead: the resolver selects the row by
+            // configuration and calls `require_coord_in_lane` directly, so what
+            // this gate must check for them is that the groups table carries the
+            // row with a coordinate to ask about. Checking only the path arm
+            // would quietly stop covering them.
             "fixture" => {
+                if groups::leaf_is_multi_row(&row.dir) {
+                    let known = groups::manifest_rows()
+                        .iter()
+                        .any(|g| g.dir == row.dir && g.coord == row.coord);
+                    if !known {
+                        blind.push(format!(
+                            "{} (multi-row leaf, coordinate {} absent from the groups \
+                             export, so the coord route cannot place it)",
+                            row.label(),
+                            row.coord_str()
+                        ));
+                    }
+                    continue;
+                }
                 let probe = root.join(&row.artifact_root).join("bin");
                 match lane::attribute_path(&probe) {
                     Some(got) if got.artifact_root == row.artifact_root => {}
@@ -301,8 +326,17 @@ fn the_skip_decision_fires_only_outside_the_lane() {
         let inside = lane::is_in_lane(row, &coords);
         match row.kind.as_str() {
             "fixture" => {
-                let probe = root.join(&row.artifact_root).join("bin");
-                let got = lane::skip_reason_for_path(&probe, &coords);
+                // Multi-row leaves take the COORDINATE route (issue 0517 step 3
+                // — see `every_omittable_row_is_attributable_from_its_artifacts`);
+                // the path route cannot answer for them, so asking it here would
+                // read a by-design `None` as "the run would fail on a fixture the
+                // build omitted".
+                let got = if groups::leaf_is_multi_row(&row.dir) {
+                    lane::skip_reason_for_coord(&row.coord, row.label(), &coords)
+                } else {
+                    let probe = root.join(&row.artifact_root).join("bin");
+                    lane::skip_reason_for_path(&probe, &coords)
+                };
                 if inside {
                     assert!(
                         got.is_none(),

@@ -433,19 +433,52 @@ pub fn leaf_has_rows(dir: &str) -> bool {
     manifest_rows().iter().any(|r| r.dir == dir)
 }
 
+/// Does this leaf carry MORE than one row — i.e. is its `<dir>/target` an
+/// ambiguous artifact root?
+///
+/// The precise question a path-route funnel has to ask, and a strictly narrower
+/// one than [`leaf_has_rows`]. Issue 0517 step 3 states the invariant as two
+/// halves: a SOLE-row leaf must still round-trip by path, a MULTI-row leaf must
+/// not be attributable by path at all. So a funnel keyed on `leaf_has_rows`
+/// would also divert every sole-row leaf onto [`select_row`] — which demands an
+/// exactly-`plain` row and therefore FAILS on the sole-row leaves whose one row
+/// carries an `env` or `features` (`bins/logging-smoke-nuttx-qemu-arm` is the
+/// live case: one row, `CC_armv7a_nuttx_eabi` in its env). Those resolvers work
+/// today precisely because the path route still answers for them.
+pub fn leaf_is_multi_row(dir: &str) -> bool {
+    let dir = dir.trim_end_matches('/');
+    manifest_rows().iter().filter(|r| r.dir == dir).count() > 1
+}
+
 /// The row a caller means, by leaf dir and configuration — the selection half of
 /// [`row_artifact_dir`], exposed so a resolver can also ask the lane about the
 /// row it just selected (issue 0517 step 1).
 pub fn select_row(dir: &str, variant: &FixtureVariant) -> TestResult<&'static GroupRow> {
+    select_row_in(manifest_rows(), dir, variant)
+}
+
+/// [`select_row`] against a GIVEN row table — the sibling of
+/// [`attribute_path_in`](crate::fixtures::lane::attribute_path_in), and for the
+/// same reason: `tests/fixture_group_resolution.rs` drives the exporter under an
+/// eligibility list other than the shipped one, so it needs to select from that
+/// export rather than from the live table. `FixtureVariant` holds its selector
+/// privately, so without this an out-of-crate caller would have to re-implement
+/// the comparison — a second spelling of the selection rule, which is the drift
+/// class this whole module is organised to avoid.
+pub fn select_row_in<'a>(
+    rows: &'a [GroupRow],
+    dir: &str,
+    variant: &FixtureVariant,
+) -> TestResult<&'a GroupRow> {
     let dir = dir.trim_end_matches('/');
-    let hits: Vec<&GroupRow> = manifest_rows()
+    let hits: Vec<&GroupRow> = rows
         .iter()
         .filter(|r| r.dir == dir && r.selector == variant.0)
         .collect();
     match hits.as_slice() {
         [row] => Ok(row),
         [] => {
-            let near: Vec<String> = manifest_rows()
+            let near: Vec<String> = rows
                 .iter()
                 .filter(|r| r.dir == dir)
                 .map(|r| format!("{:?}", r.selector))

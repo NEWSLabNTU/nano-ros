@@ -366,10 +366,28 @@ pub fn require_coord_in_lane(coord: &Coord, label: &str) -> TestResult<()> {
     let Some(coords) = run_coords() else {
         return Ok(());
     };
-    if !coords.contains(coord) {
-        crate::skip!("{}", out_of_lane_coord(label, coord));
+    if let Some(reason) = skip_reason_for_coord(coord, label, coords) {
+        crate::skip!("{reason}");
     }
     Ok(())
+}
+
+/// [`skip_reason_for_path`] for a coordinate the caller already resolved — the
+/// decision behind [`require_coord_in_lane`], minus the environment.
+///
+/// Split out for the reason the other two are: it is the ONLY way to exercise
+/// this arm in both directions without latching a process-wide `OnceLock`. The
+/// arm needs its own coverage because it is the route every MULTI-row leaf now
+/// takes — issue 0517 step 3 made those leaves unattributable by path, so
+/// `skip_reason_for_path` cannot answer for them and a lane gate written only
+/// against paths silently stops covering them (which is how the same step left
+/// `bins/int32-sink`'s three rows unskippable).
+pub fn skip_reason_for_coord(
+    coord: &Coord,
+    label: &str,
+    coords: &BTreeSet<Coord>,
+) -> Option<String> {
+    (!coords.contains(coord)).then(|| out_of_lane_coord(label, coord))
 }
 
 fn out_of_lane_coord(label: &str, coord: &Coord) -> String {
