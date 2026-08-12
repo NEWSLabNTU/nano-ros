@@ -218,6 +218,28 @@ STORED_KEY=$(cat "$MARKER" 2>/dev/null || echo "none")
 if [ -f "$NUTTX_SNAPSHOT_KEY" ] \
     && [ "$(cat "$NUTTX_SNAPSHOT_KEY" 2>/dev/null)" = "$CURRENT_KEY" ]; then
     echo "NuttX ${NUTTX_ARCH} export up-to-date ($NUTTX_SNAPSHOT) — skipping build/export."
+    # Issue 0525 — say so when the SHARED tree is left holding another arch.
+    #
+    # Skipping is right (issue 0433: reconfiguring twice per `build-fixtures`
+    # run is pointless once the snapshot exists), but it has a side effect the
+    # caller cannot see: `$NUTTX_DIR/.config` and the generated
+    # `include/nuttx/config.h` still describe whichever arch was configured
+    # LAST. Anything deriving a compile input from the tree then gets the wrong
+    # memory map and the wrong ABI — that is issue 0511, where the ARM image
+    # linked against RISC-V's `CONFIG_FLASH_SIZE=0` and every ROM byte
+    # "overflowed".
+    #
+    # The contract is: this path guarantees the SNAPSHOT, never the tree. Making
+    # it audible costs one grep and turns a silent trap into a stated fact.
+    _want_board=$(sed -n 's/^CONFIG_ARCH_BOARD=//p' "$DEFCONFIG" 2>/dev/null | head -1)
+    _have_board=$(sed -n 's/^CONFIG_ARCH_BOARD=//p' .config 2>/dev/null | head -1)
+    if [ -n "$_have_board" ] && [ -n "$_want_board" ] && [ "$_have_board" != "$_want_board" ]; then
+        echo "  NOTE: the shared tree stays configured for ${_have_board}, not ${_want_board}."
+        echo "        This path guarantees the snapshot, not \$NUTTX_DIR. Build inputs must"
+        echo "        resolve headers via nros_build_paths::nuttx_include_root, which reads"
+        echo "        ${NUTTX_SNAPSHOT}/include (issue 0525; gated by"
+        echo "        check-nuttx-shared-tree-headers)."
+    fi
     exit 0
 fi
 # Self-validate the in-tree config against this board (catches an external

@@ -103,17 +103,36 @@ Verified: gate green over 1359 tracked sources; tripwired live by reverting the
 `nuttx-sys` site (fails, naming the file) and restoring it (passes);
 `just rust-rtos-link-check` still passes all three leaves.
 
-## Directions
+## Direction 1 LANDED 2026-08-12 — as the SECOND half of its own wording
 
-1. **Make the provisioning script arch-idempotent.** `build-nuttx.sh` should
-   reconfigure when the requested arch differs from the tree's current
-   `CONFIG_ARCH`, even when the export snapshot is up to date — or state
-   explicitly that it is a snapshot-only path and that the tree's state is
-   undefined afterwards. Today it silently means the second.
+The first half of direction 1 — "reconfigure when the requested arch differs" —
+was rejected on reading the code it would change. That short-circuit is
+deliberate and load-bearing: issue **0433** removed exactly this reconfigure,
+because with the per-arch snapshot in place rebuilding the tree is not merely
+slow but pointless, and doing it per arch made `build-fixtures` reconfigure
+twice per run. Restoring it would trade one bug for the one before it.
+
+So the second half shipped instead: **the path states what it guarantees.** When
+the snapshot short-circuit fires and the shared tree holds a DIFFERENT board,
+`build-nuttx.sh` now says so:
+
+```
+NuttX arm export up-to-date (nros-nuttx-export-arm) — skipping build/export.
+  NOTE: the shared tree stays configured for "rv-virt", not "qemu-armv7a".
+        This path guarantees the snapshot, not $NUTTX_DIR. Build inputs must
+        resolve headers via nros_build_paths::nuttx_include_root, which reads
+        nros-nuttx-export-arm/include (issue 0525; gated by
+        check-nuttx-shared-tree-headers).
+```
+
+Silent when the two agree. The contract was always "this guarantees the
+SNAPSHOT, never the tree"; it was just never written down where the side effect
+happens, so every reader had to rediscover it — which is what 0511 cost.
+
+## Directions
 2. ~~**Stop deriving anything from the shared tree.**~~ **DONE** — see above.
 3. **Or give each arch its own checkout** (worktree per arch). Removes the
    shared mutable state entirely, at the cost of disk and a second submodule
-   dance.
-
-(1) is small and removes the surprise; (2) is the structural fix and makes the
-class uncommittable; (3) is the heaviest and probably not worth it.
+   dance. **Still open, and now the only one.** With (1) and (2) landed the
+   state can no longer reach a compile input and no longer surprises the reader,
+   so this buys tidiness rather than correctness — probably not worth the disk.
