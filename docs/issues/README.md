@@ -95,6 +95,18 @@ What remains is transitive, in two chains: `play_launch_parser -> anyhow`, which
 therefore actionable via the vendored-fork workflow, and `wasip2`/`wasip3` -> `wit-bindgen` -> … ->
 `anyhow`, which is upstream wasi tooling nothing here chooses. See `0524-*`. (2026-08-12)
 
+**#525** — one NuttX checkout serves both arches and NuttX builds IN PLACE, so `.config` /
+`include/nuttx/config.h` are last-configured-wins: which arch the tree holds is a property of BUILD ORDER, not
+of the build being run. `lane=tier2` builds riscv after arm, and the state is STICKY — once a per-arch export
+exists `build-nuttx.sh` skips reconfiguring ("export up-to-date"), so asking for ARM does not restore the ARM
+config. This is what issue 0511 cost: the ARM image linked with the RISC-V memory map (`CONFIG_FLASH_SIZE=0` →
+ROM LENGTH 0), read as a 400-500 KB size regression, survived clean rebuilds, and cost a retracted bisect. 0511
+routed all four nano-ros build inputs onto the per-arch snapshot; the TREE is still last-configured-wins, so
+nothing stops the next reader. Directions: make the provisioning script arch-idempotent, gate that no build
+input names `$NUTTX_DIR/include`, or give each arch its own checkout. Not an argument against phase-337's board
+consolidation — the arch IS discriminated via `CARGO_CFG_TARGET_ARCH`; phase-339 just migrated two of three
+input classes. See `0525-*`. (2026-08-12)
+
 **#522** — the cmake metadata probe builds ONE FULL CARGO TREE PER COMPONENT: `metadata_build.rs`
 renders a harness into `<leaf>/build/nros-metadata/metadata-probe/<c>/` and passes `--target-dir
 <harness>/target`, so every component gets a private host build of itself and its whole dep graph.
