@@ -181,6 +181,18 @@ this section distils the integration contract.
 
 ### FreeRTOS — vendor-IDE pluralism, no common BSP
 
+> **Refined by [RFC-0072](0072-rtos-integration-nano-ros-is-a-guest.md)
+> (2026-08-12).** A survey of six real distributions confirmed the pluralism
+> described below and quantified it — six conventions for `FreeRTOSConfig.h`,
+> five for port selection, only three of six exposing linkable targets. Two
+> points here are superseded: the "generic `nros-board-freertos` covers stock
+> kernel + lwIP combo" scoping bakes the network stack into the platform, which
+> RFC-0072 replaces with a user-declared fact plus capabilities; and the vendor
+> **overlay crate** is no longer the mechanism — vendor knowledge lives in the
+> user's own workspace as a board package, discovered by phase-348. The
+> consumption matrix's "vendor-IDE user" row is unchanged and is the model
+> RFC-0072 generalises to every host.
+
 - Stock FreeRTOS ships kernel + ports only. **No drivers.** Vendor
   SDKs (NXP MCUXpresso, STM32Cube, Espressif IDF, AWS LTS) each ship
   their own integration glue.

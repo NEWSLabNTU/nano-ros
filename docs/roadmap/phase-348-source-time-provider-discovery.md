@@ -174,6 +174,25 @@ and choosing between them is a design decision, not file-writing.
 `nros-platform.toml`, a decision on which vocabulary is canonical, and one row
 in the gate's `FAMILIES` table. Not a new descriptor family.
 
+**Both of those are now answered by
+[RFC-0072](../design/0072-rtos-integration-nano-ros-is-a-guest.md)** (2026-08-12),
+which was written to settle the `freertos` vs `freertos-lwip` question and
+ended up settling this one too:
+
+* the canonical vocabulary is the **board's** (`freertos`, not
+  `freertos-lwip`), because the network stack is a fact the user declares
+  rather than part of the platform's identity — `config/freertos-lwip/`
+  becomes `config/freertos/` with `names = ["freertos", "freertos-lwip"]` so
+  the old spelling still resolves;
+* `esp32`'s missing platform file and `generic`'s dead `inherits` root are
+  carried there as open questions rather than blocking here.
+
+So the platform half of W2 is unblocked by [phase-349](phase-349-rtos-integration-shells.md)
+W1, which adds the `names` key. It is deliberately NOT done in this phase: the
+rename is only correct alongside RFC-0072's decision about what a platform is,
+and doing it here would have meant renaming a directory on the strength of a
+naming complaint.
+
 Also worth recording, since both numbers appear above: the **8** board
 descriptors are the authoritative set under `packages/boards/`, but the tree
 holds **57** `nros-board.toml` files — the other 49 are the per-leaf
