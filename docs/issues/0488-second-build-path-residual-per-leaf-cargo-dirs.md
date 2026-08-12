@@ -290,13 +290,58 @@ Not everything joined a group, deliberately: the ros-editions builds regenerate
 `<root>/<kind>/<coordinate>` instead. Sharing a cargo dir would have been the
 wrong fix for a real reason, not a missing one.
 
-## Residue 4 is what remains, and it stays open on purpose
+## Residue 4 is what remains — and the "no fix applies" reading was WRONG
 
-NuttX's apps `make` compiles example sources IN PLACE and leaves objects beside
-them, with the absolute build path baked into the object NAME. No
-`--target-dir`-shaped fix applies: nothing in this repo chooses that location.
-The interim disposition (files deleted, four scoped patterns in the repo-root
-`.gitignore`, tagged as a symptom ledger) stands, and the ledger is deleted when
-the build moves out of tree.
+**Correction (2026-08-13).** This issue said, twice, that residue 4 has no
+`--target-dir`-shaped fix because "NuttX's apps `Makefile` decides this, not a
+nano-ros recipe". Reading `Application.mk` rather than reasoning about it shows
+the opposite: **upstream documents an out-of-tree hook, and the file that must
+set it is ours.**
 
-This issue therefore stays open for residue 4 alone.
+```make
+# third-party/nuttx/nuttx-apps/Application.mk
+# Apps compilation can achieve out-of-tree intermediate products
+# by specifying "PREFIX" to a directory in its own Makefile.
+# Make sure the out-of-tree directory exists and ends with $(DELIM) when setting it.
+PREFIX ?=
+SUFFIX ?= $(subst $(DELIM),.,$(CWD))
+
+COBJS  = $(CSRCS:%=$(PREFIX)%$(SUFFIX)$(OBJEXT))
+$(PREFIX).built: $(AROBJS)
+$(PREFIX).depend: …        # and $(PREFIX)Make.dep
+```
+
+That accounts for both observed properties exactly, and covers all four artifact
+kinds the symptom listed:
+
+* `PREFIX` is EMPTY, so objects, `.built`, `.depend` and `Make.dep` are written
+  relative to `$(CWD)` — and `$(CWD)` is our source leaf, because
+  `stage-external-apps.sh` symlinks the app dir into `apps/external/`.
+* `SUFFIX` is `$(CWD)` with separators turned into dots, which is why the
+  absolute build path ends up in the object NAME
+  (`main.c.home.aeon.repos.nano-ros.examples.qemu-arm-nuttx.c.talker.o`).
+
+`PREFIX` is `?=`, and the Makefiles that `include $(APPDIR)/Application.mk` are
+`integrations/nuttx/Makefile` and
+`integrations/nuttx/apps-external-template/Makefile` — both tracked here. So the
+fix is the same shape as every other residue: set
+`PREFIX := <build root>/nuttx-apps/<coordinate>/` (it must exist and end with the
+delimiter) from `nros_build_dir`, exactly as residues 2 and 3 now do.
+
+Two things to get right, which is why this is not being done in the same pass as
+the cargo residues:
+
+* **`PREFIX` moves WHERE, not the NAME.** The mangled `$(CWD)` suffix stays
+  unless `SUFFIX` is also overridden — and that mangling is load-bearing
+  upstream: it is what keeps objects from different app dirs unique when they are
+  archived into one `libapps.a`. Overriding it needs a coordinate that is unique
+  per app dir, not merely shorter.
+* The out-of-tree dir must exist before `make` runs, so the staging script has to
+  create it, and `make clean`'s `DELFILE .built` / `Make.dep` calls need to
+  resolve to the new location too.
+
+Interim disposition unchanged until that lands: the files are deleted, four
+scoped patterns sit in the repo-root `.gitignore` tagged as a symptom ledger, and
+the ledger is deleted when the build moves out of tree.
+
+This issue stays open for residue 4 alone.

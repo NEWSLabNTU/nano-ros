@@ -506,8 +506,11 @@ lane group. Moving the paths found two bugs they were hiding: `rtic-run-plan-e2e
 the test `-kernel`ed a second leaf copy the freshness gate never saw; and `ros-edition-pose-pub` is rebuilt
 per EDITION into one leaf dir with a consumer that never named the edition, so every edition overwrote the
 last. **Still open for residue 4 alone:** NuttX's apps `make` compiles example sources IN PLACE with the
-absolute build path baked into the object name — no `--target-dir`-shaped fix applies, and the interim
-`.gitignore` ledger stands until the build moves out of tree. See `0488-*`. (2026-08-12)
+absolute build path baked into the object name. CORRECTED 2026-08-13 — the earlier "no `--target-dir`-shaped
+fix applies" reading was wrong: `Application.mk` documents `PREFIX` as its out-of-tree hook and prefixes
+objects, `.built`, `.depend` and `Make.dep` with it, and the Makefiles that set it
+(`integrations/nuttx/Makefile`, `apps-external-template/Makefile`) are ours. The mangled `$(CWD)` SUFFIX
+is separate and load-bearing upstream (it keeps objects unique inside one `libapps.a`). See `0488-*`. (2026-08-13)
 
 Recently resolved (2026-08-10, phase-340): **#485** — `check-artifact-identity-budget` counted one crate
 as TWO. `uniq -c` collapses only ADJACENT duplicates and glibc `en_US.UTF-8` collation ignores the space and
