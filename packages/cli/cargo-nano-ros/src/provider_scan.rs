@@ -407,6 +407,175 @@ fn topo_inner(
 }
 
 // ===========================================================================
+// Resolution and shadowing — phase-348 W5
+// ===========================================================================
+
+/// Which provider won a `(kind, name)` lookup, and what it shadowed.
+///
+/// `shadowed` is retained rather than discarded — ESP-IDF keeps both a
+/// documented precedence order (`COMPONENT_SOURCE`) and the losing path
+/// (`COMPONENT_OVERRIDEN_DIR`) so the winner can reach back into the loser, and
+/// notes that last-write-wins with no recorded provenance would be unusable.
+/// The same applies here: "why is my patched backend not being used" is
+/// answerable only if the loser is still nameable.
+#[derive(Debug, Clone)]
+pub struct Resolution {
+    pub winner: ProviderPackage,
+    /// Lower-precedence claimants, nearest-loser first.
+    pub shadowed: Vec<ProviderPackage>,
+}
+
+impl Resolution {
+    pub fn is_shadowing(&self) -> bool {
+        !self.shadowed.is_empty()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ResolveError {
+    /// Two or more packages in the SAME root claim one name. Unlike shadowing,
+    /// there is no precedence to appeal to.
+    Ambiguous {
+        kind: String,
+        name: String,
+        root_index: usize,
+        candidates: Vec<PathBuf>,
+    },
+    NotFound {
+        kind: String,
+        name: String,
+        /// Every name of this kind that IS claimed, sorted — an unknown name is
+        /// usually a typo, and the list is the fix.
+        available: Vec<String>,
+    },
+}
+
+impl std::fmt::Display for ResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolveError::Ambiguous {
+                kind,
+                name,
+                root_index,
+                candidates,
+            } => {
+                write!(
+                    f,
+                    "{kind} `{name}` is claimed by {} packages in the SAME search \
+                     root (root[{root_index}]), so there is no precedence between \
+                     them:",
+                    candidates.len()
+                )?;
+                for c in candidates {
+                    write!(f, "\n  {}", c.display())?;
+                }
+                write!(
+                    f,
+                    "\n  Rename one, or — if they are genuinely different targets \
+                     that share a name — disambiguate them in their descriptors \
+                     and resolve with `candidates()` instead."
+                )
+            }
+            ResolveError::NotFound {
+                kind,
+                name,
+                available,
+            } => {
+                write!(f, "no {kind} provider named `{name}`.")?;
+                if available.is_empty() {
+                    write!(f, " No {kind} providers were discovered at all.")
+                } else {
+                    write!(f, " Available: {}", available.join(", "))
+                }
+            }
+        }
+    }
+}
+
+impl std::error::Error for ResolveError {}
+
+/// Every provider claiming `(kind, name)`, highest precedence first.
+///
+/// For callers that have their OWN discriminator and so must see all of them —
+/// board resolution is the live case: `threadx` is legitimately claimed by both
+/// `nros-board-threadx-linux` and `nros-board-threadx-qemu-riscv64`, separated
+/// by the descriptor's `target_contains`. A flat "two packages, one name is an
+/// error" rule would reject a shipping arrangement (phase-348 W2 finding).
+pub fn candidates<'a>(scan: &'a ScanResult, kind: &str, name: &str) -> Vec<&'a ProviderPackage> {
+    let mut hits: Vec<&ProviderPackage> = scan
+        .providers
+        .iter()
+        .filter(|p| {
+            p.provides
+                .iter()
+                .any(|pr| pr.kind == kind && pr.name == name)
+        })
+        .collect();
+    // LATER roots win — see `resolve_unique`.
+    hits.sort_by(|a, b| b.root_index.cmp(&a.root_index).then(a.dir.cmp(&b.dir)));
+    hits
+}
+
+/// Resolve `(kind, name)` to exactly one provider.
+///
+/// **A LATER search root overlays an earlier one.** The search path is ordered
+/// `[nano-ros tree, user workspace]`, so the user's package wins — colcon's
+/// overlay-beats-underlay rule, and the whole point of allowing a workspace
+/// provider at all (testing a patched backend against the rest of the tree).
+///
+/// Note this is the OPPOSITE of `AMENT_PREFIX_PATH`, where the overlay is
+/// listed first. Ours reads underlay → overlay because the nano-ros tree is
+/// root 0 by construction (it is not a special case, merely the first entry),
+/// and re-ordering the list to put the user first would make "root[0]" mean
+/// different trees in different invocations.
+///
+/// Ambiguity WITHIN one root is an error: precedence between roots is defined,
+/// precedence within a root is not.
+pub fn resolve_unique(
+    scan: &ScanResult,
+    kind: &str,
+    name: &str,
+) -> std::result::Result<Resolution, ResolveError> {
+    let hits = candidates(scan, kind, name);
+    let Some(first) = hits.first() else {
+        let mut available: Vec<String> = scan
+            .providers
+            .iter()
+            .flat_map(|p| p.provides.iter())
+            .filter(|pr| pr.kind == kind)
+            .map(|pr| pr.name.clone())
+            .collect();
+        available.sort();
+        available.dedup();
+        return Err(ResolveError::NotFound {
+            kind: kind.to_string(),
+            name: name.to_string(),
+            available,
+        });
+    };
+
+    let top_root = first.root_index;
+    let tied: Vec<&ProviderPackage> = hits
+        .iter()
+        .copied()
+        .filter(|p| p.root_index == top_root)
+        .collect();
+    if tied.len() > 1 {
+        return Err(ResolveError::Ambiguous {
+            kind: kind.to_string(),
+            name: name.to_string(),
+            root_index: top_root,
+            candidates: tied.iter().map(|p| p.dir.clone()).collect(),
+        });
+    }
+
+    Ok(Resolution {
+        winner: (*first).clone(),
+        shadowed: hits.iter().skip(1).map(|p| (*p).clone()).collect(),
+    })
+}
+
+// ===========================================================================
 // The index — phase-348 W3
 // ===========================================================================
 
@@ -761,6 +930,110 @@ mod tests {
             "an out-of-tree consumer with no nano-ros source still scans its own \
              workspace",
         );
+    }
+
+    // --- resolution and shadowing (W5) --------------------------------------
+
+    /// The workflow W5 exists for: a user's workspace copy overlays the
+    /// nano-ros one, and the loser stays nameable so "why is my patched
+    /// backend not used" is answerable.
+    #[test]
+    fn a_later_root_overlays_an_earlier_one_and_the_loser_is_kept() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        write(
+            &a.path().join("packages/rmw/zenoh/package.xml"),
+            &provider_xml("nros_rmw_zenoh", "rmw", "zenoh"),
+        );
+        write(
+            &b.path().join("src/patched_zenoh/package.xml"),
+            &provider_xml("patched_zenoh", "rmw", "zenoh"),
+        );
+
+        let scan = scan_roots(&[a.path().to_path_buf(), b.path().to_path_buf()]).unwrap();
+        let r = resolve_unique(&scan, "rmw", "zenoh").unwrap();
+
+        assert_eq!(r.winner.package, "patched_zenoh", "the OVERLAY wins");
+        assert!(r.is_shadowing());
+        assert_eq!(r.shadowed.len(), 1);
+        assert_eq!(r.shadowed[0].package, "nros_rmw_zenoh");
+    }
+
+    /// Two claimants in ONE root have no precedence to appeal to.
+    #[test]
+    fn same_root_ambiguity_is_an_error_listing_both() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            &root.join("src/one/package.xml"),
+            &provider_xml("one", "rmw", "dup"),
+        );
+        write(
+            &root.join("src/two/package.xml"),
+            &provider_xml("two", "rmw", "dup"),
+        );
+
+        let scan = scan_roots(&[root.to_path_buf()]).unwrap();
+        let err = resolve_unique(&scan, "rmw", "dup").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("SAME search root"), "got: {msg}");
+        assert!(
+            msg.contains("src/one") && msg.contains("src/two"),
+            "got: {msg}"
+        );
+    }
+
+    /// The W2 finding: a name claimed twice IN ONE ROOT is legitimate when the
+    /// caller has its own discriminator (`threadx`, split by
+    /// `target_contains`). `candidates()` serves that caller — it must return
+    /// both rather than erroring.
+    #[test]
+    fn candidates_returns_every_claimant_for_a_caller_with_a_discriminator() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            &root.join("src/threadx_linux/package.xml"),
+            &provider_xml("threadx_linux", "board", "threadx"),
+        );
+        write(
+            &root.join("src/threadx_riscv/package.xml"),
+            &provider_xml("threadx_riscv", "board", "threadx"),
+        );
+
+        let scan = scan_roots(&[root.to_path_buf()]).unwrap();
+        assert_eq!(candidates(&scan, "board", "threadx").len(), 2);
+        // …while the unique resolver correctly refuses to pick one.
+        assert!(resolve_unique(&scan, "board", "threadx").is_err());
+    }
+
+    /// An unknown name is usually a typo, so the error carries the list.
+    #[test]
+    fn not_found_lists_the_names_that_do_exist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            &root.join("src/a/package.xml"),
+            &provider_xml("a", "rmw", "zenoh"),
+        );
+        let scan = scan_roots(&[root.to_path_buf()]).unwrap();
+        let msg = resolve_unique(&scan, "rmw", "zenho")
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("zenho"), "names what was asked: {msg}");
+        assert!(msg.contains("Available: zenoh"), "got: {msg}");
+    }
+
+    #[test]
+    fn resolving_without_a_shadow_reports_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            &root.join("src/only/package.xml"),
+            &provider_xml("only", "rmw", "solo"),
+        );
+        let scan = scan_roots(&[root.to_path_buf()]).unwrap();
+        let r = resolve_unique(&scan, "rmw", "solo").unwrap();
+        assert!(!r.is_shadowing());
     }
 
     // --- index (W3) --------------------------------------------------------

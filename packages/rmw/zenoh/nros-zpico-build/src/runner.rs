@@ -396,12 +396,23 @@ pub fn run() {
     // phase-290 — pick the manifest platform up front so the RFC-0049 knob
     // ladder (builtin < platform toml < board toml < env) can resolve before
     // the ABI-gating config header is generated.
+    // issue 0529 — `zephyr` was missing here, and every Zephyr target matches
+    // `is_embedded_target()`, so the resolver returned None and the ladder fell
+    // to builtins for the ONE platform file that carries `[knobs.zenoh.tx]`.
+    //
+    // No behaviour change today: `build_c_shim` is skipped on Zephyr (below), so
+    // the config header these knobs feed has no consumer, and the C lane gets
+    // the same values from Kconfig via `nros_rmw_zenoh.cmake`. This makes the
+    // resolver TOTAL over the platforms that have a config file, so the next
+    // knob added to that table is not silently ignored.
     let platform_name = if use_threadx {
         Some("threadx")
     } else if use_nuttx {
         Some("nuttx")
     } else if use_freertos {
         Some("freertos-lwip")
+    } else if use_zephyr {
+        Some("zephyr")
     } else if use_bare_metal {
         Some("bare-metal")
     } else if !is_embedded_target(&target) && !use_system {

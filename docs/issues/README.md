@@ -208,6 +208,26 @@ so the timer still RUNS at the right rate. Deferred from #518 because it changes
 `plan_*.json` fixtures) and needs a call on whether `SchedContext`'s sibling `_ms` fields move too — #505's to
 make. See `0519-*`. (2026-08-11)
 
+RESOLVED 2026-08-13 — **#530** `FREERTOS_PORT` is UPSTREAM's variable name with incompatible values: upstream takes an
+ENUM keyed into a 1356-line generator-expression table (`GCC_ARM_CM4F`), `nros_freertos_build_kernel()` takes a PATH
+FRAGMENT under `portable/` (`GCC/ARM_CM3`). A user arriving from upstream docs, any tutorial, or a Plus-TCP demo got a
+missing-source error naming a `.c` file they never typed, with no mention of the variable. Now accepts EITHER spelling
+(upstream's enum is translated — the compiler is the first underscore-separated token in every upstream port name — and
+the translation is announced, not silent), and failing resolution errors AT the variable listing both forms plus the
+compiler dirs actually present. Forward-compatible on purpose: phase-349 W3 retires this builder for upstream's own
+CMakeLists, at which point the enum is the only vocabulary. See `0530-*`. (2026-08-13)
+
+**#529** — the zpico platform resolver can never select `zephyr` (`use_zephyr` is absent from the `platform_name` chain
+and every Zephyr target matches `is_embedded_target()`), so `config/zephyr/nros-platform.toml` — the only platform file
+carrying `[knobs.zenoh.tx]` — is unreachable. **Latent, not live, and my first two write-ups of it were wrong**: the
+optimisation IS applied on Zephyr, via `zephyr/Kconfig` defaults (`y`/`y`/50) forwarded by `nros_rmw_zenoh.cmake`, and
+there is no ABI split because `build_c_shim` is skipped on Zephyr and `rust_consts()` never emits `tx_batch`. What it
+actually is: two sources for one fact agreeing only by coincidence, a config file that silently does nothing when
+edited, and a trap that springs the moment a knob the Rust lane DOES read joins that table. The 0460 gate misses it
+because the trio is published from `nros_rmw_zenoh.cmake`, not `nros_cargo_build.cmake`'s `_nros_resolve_knob`
+(issue-0196 rule). Resolver fixed; drift between the two sources now gated by `check-zephyr-knob-agreement`. Left open
+for the real fix — one authority with the other as a ladder rung. See `0529-*`. (2026-08-13)
+
 RESOLVED 2026-08-11 — **#518** `SourceMetadata` could not be parsed AT ALL: `SourceTimer` is
 `deny_unknown_fields`, and #505 *added* `period_us` beside the kept `period_ms`, so every sidecar parse died on
 `unknown field 'period_us'` — two reds on `main` in `plan_pipeline_e2e`, reproduced on a clean tree. **This
@@ -1020,15 +1040,15 @@ The real defect was that `cmake_dep_info_newer_source`'s two arms disagreed — 
 loop skipped `REGENERATED_INPLACE_HEADERS`, its sibling walk did not — so the walk reported exactly
 what the loop was written to ignore. Fixed in `2e333c068`. See `archived/0435-*`, `archived/0442-*`.
 
-**#432** — the pinned `zephyr-lang-rust` (404fcef) cannot build the `zephyr` crate for ANY board
+RESOLVED 2026-08-12 (`44e7f2354`, phase-346 W2+W3) — **#432** the pinned `zephyr-lang-rust` (404fcef) could not build the `zephyr` crate for ANY board
 whose devicetree has gpio nodes: its DT generator emits a five-argument `GpioPin::new` against a
 six-argument signature (`pin` without `dt_flags`). `CONFIG_GPIO=n` makes it worse, not better — the
 generator reads the devicetree, and the `gpio-keys` augment carries no `cfg:` key, so the calls are
 still emitted while the `raw` bindings vanish (14 errors instead of 4). Invisible until phase-337
 W2.b added the first non-native_sim Zephyr board, native_sim having no gpio nodes. Since essentially
 every real board has gpio, Rust-on-Zephyr is native_sim-only until this is fixed upstream; C and C++
-are unaffected (no `zephyr` crate), which is why W2.b's cells build the C entry. See `0432-*`.
-(2026-08-05)
+are unaffected (no `zephyr` crate), which is why W2.b's cells build the C entry. See
+`archived/0432-*`. (2026-08-05, resolved 2026-08-12)
 
 **#259** — derived scheduling is quantitatively INERT: the model carries no per-callback WCET
 (`MapperPath.exec_ms` is `None` everywhere), so the budget dim short-circuits, blocking (`B_i`)

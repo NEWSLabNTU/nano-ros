@@ -1,7 +1,9 @@
 # Phase 348 — Source-time provider discovery: buy the colcon convention, not colcon
 
-**Status (2026-08-11). W1, W2 (rmw + boards), W3 and W4 LANDED. W5 open; the
-platform half of W2 is blocked — on unnamed descriptors, not missing ones.** Unblocked by
+**Status (2026-08-13). W1, W2 (rmw + boards), W3, W4 and W5 LANDED — the phase
+is complete except the platform half of W2, which moves to
+[phase-349](phase-349-rtos-integration-shells.md) W1 along with the naming
+decision RFC-0072 settled.** Unblocked by
 [phase-347](phase-347-rmw-as-a-declared-provider.md) W2 — descriptors exist, so
 providers can describe themselves.
 
@@ -55,8 +57,16 @@ search path = [ <nano-ros root>, <user workspace> ]      # the default
 
 The nano-ros tree is simply the **first entry** — `packages/rmw/*` are not
 builtins reached by a different code path, they are providers found the way a
-user's are. First match wins, so a workspace package shadows a nano-ros one
-(colcon's overlay-beats-underlay rule).
+user's are. A **later root overlays an earlier one**, so a workspace package
+shadows a nano-ros one (colcon's overlay-beats-underlay rule).
+
+> Corrected in W5. This paragraph originally said "**first match wins**, so a
+> workspace package shadows a nano-ros one", which is self-contradictory: the
+> nano-ros tree is root 0, so first-match-wins means nano-ros always wins and a
+> user's copy shadows nothing — the opposite of the stated workflow. The
+> implemented rule is later-overlays-earlier. Note this is the reverse of
+> `AMENT_PREFIX_PATH`, where the overlay is listed first; ours reads
+> underlay → overlay so that `root[0]` names the same tree in every invocation.
 
 Only these two roots are accepted, and both live in the user's repo. Rejected:
 an installed index under `~/.nros`, and any env var such as `NROS_RMW_PATH` —
@@ -335,16 +345,34 @@ prerequisite any more.
   pops** — the `_NROS_ENTRY_DIR` pattern (287-W6). Both modules now capture
   theirs `CACHE INTERNAL`.
 
-## W5 — Shadowing
+## W5 — Shadowing — **LANDED**
 
-- [ ] A workspace provider overlaying a nano-ros one is a legitimate workflow
-      (testing a patched backend). Allow it and **warn with both paths** —
-      silently ignoring the user's copy is the worse failure.
-- [ ] Ambiguity within one root is an error listing both — **but only when the
-      candidates cannot be disambiguated by their descriptors.** W2 found
-      `threadx` legitimately claimed by two board packages, separated by
-      `target_contains = "riscv64"`. The flat "two packages, one name ⇒ error"
-      rule would reject a shipping arrangement.
+- [x] `resolve_unique()` — a later root overlays an earlier one, and the losers
+      are **kept and named** in `Resolution::shadowed` rather than dropped.
+      `nros ws providers --resolve <kind>:<name>` prints the winner and every
+      provider it shadows.
+- [x] Ambiguity within one root is an error listing both candidates. Precedence
+      *between* roots is defined; precedence *within* a root is not.
+- [x] `candidates()` serves callers with their own discriminator — the W2
+      finding that `threadx` is legitimately claimed by two board packages,
+      separated by `target_contains = "riscv64"`. A flat "two packages, one
+      name ⇒ error" rule would reject a shipping arrangement, so the unique
+      resolver refuses while `candidates()` returns both.
+- [x] An unknown name reports the names that *do* exist — a typo is the common
+      case and the list is the fix.
+- [x] Gated by `check-provider-index` T6–T8.
+
+**Keeping the loser is ESP-IDF's lesson, not decoration.** It records both a
+documented precedence order (`COMPONENT_SOURCE`) and the shadowed path
+(`COMPONENT_OVERRIDEN_DIR`), noting that last-write-wins with no recorded
+provenance would be unusable. "Why is my patched backend not being used" is
+answerable only if the loser is still nameable.
+
+**T6 initially passed for the wrong reason.** Both provider names appear in the
+output whichever one wins, so `grep patched_backend` succeeded even with the
+precedence deliberately INVERTED. Found by perturbation, not by review; the
+check is now position-sensitive (winner line vs shadows line) and fails under
+that inversion.
 
 ---
 

@@ -183,6 +183,15 @@ pub struct ProvidersArgs {
     /// that did not exist when the index was written is in nobody's watch list.
     #[arg(long, value_name = "PATH", conflicts_with_all = ["index", "write_index"])]
     pub check_index: Option<PathBuf>,
+
+    /// phase-348 W5 — resolve one `<kind>:<name>` and report the winner plus
+    /// everything it shadows. Exits non-zero on ambiguity or an unknown name.
+    ///
+    /// This is the answer to "why is my patched backend not being used": a
+    /// later search root overlays an earlier one, and the loser is named rather
+    /// than silently dropped.
+    #[arg(long, value_name = "KIND:NAME")]
+    pub resolve: Option<String>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -606,6 +615,32 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
             );
             return Ok(());
         }
+    }
+
+    if let Some(spec) = &args.resolve {
+        let (kind, name) = spec.split_once(':').ok_or_else(|| {
+            eyre::eyre!("--resolve takes KIND:NAME (e.g. `rmw:zenoh`), got {spec:?}")
+        })?;
+        let r =
+            provider_scan::resolve_unique(&result, kind, name).map_err(|e| eyre::eyre!("{e}"))?;
+        println!(
+            "{kind}:{name} -> {}  [{}]  root[{}]",
+            r.winner.dir.display(),
+            r.winner.package,
+            r.winner.root_index
+        );
+        // Shadowing is a legitimate workflow, so it is reported rather than
+        // rejected — but never silently, because a user's overlay quietly
+        // losing is the failure that costs an afternoon.
+        for s in &r.shadowed {
+            println!(
+                "  shadows  {}  [{}]  root[{}]",
+                s.dir.display(),
+                s.package,
+                s.root_index
+            );
+        }
+        return Ok(());
     }
 
     if args.lines {

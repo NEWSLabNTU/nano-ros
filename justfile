@@ -412,6 +412,7 @@ check-fast: \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-package-xml-comments check-provider-announcements check-provider-index \
+    check-zephyr-knob-agreement \
     check-workspace-order \
     check-atomic-sync-writes \
     check-cmake-corrosion-prefix \
@@ -3514,6 +3515,15 @@ check-provider-announcements:
 # drift), every recorded package.xml is watched for reconfigure, and a
 # provider added AFTER the index was written is caught by rescan-and-compare —
 # the case no file watch can cover (issue 0196's shape). Needs `just setup-cli`.
+# issue 0529 — Zephyr's zenoh tx knobs have TWO sources: `zephyr/Kconfig`
+# defaults (forwarded to the C lane by nros_rmw_zenoh.cmake) and
+# `config/zephyr/nros-platform.toml`'s [knobs.zenoh.tx] (the RFC-0049 ladder,
+# Rust lane). They agree today only by coincidence; this compares them so a
+# divergence is loud. Buildless.
+[private]
+check-zephyr-knob-agreement:
+    @python3 scripts/check-zephyr-knob-agreement.py
+
 # phase-348 W4 — build order derived from package.xml `<depend>`, not from the
 # order a SUBDIRS list happens to be written in. Every workspace CMakeLists
 # carries "Node pkgs BEFORE entries so the entry codegen sees their metadata";

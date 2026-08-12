@@ -20,7 +20,12 @@
 #       rescan-and-compare rather than a cleverer watch.
 #   T5  an index built for DIFFERENT roots is rejected, not served. Such an
 #       index is wrong rather than stale — answering from it would answer a
-#       question nobody asked.
+#       question nobody asked;
+#   T6  a LATER search root overlays an earlier one, and the loser is still
+#       NAMED (phase-348 W5 — a silently-losing overlay is the expensive kind);
+#   T7  two claimants in ONE root are an error listing both — precedence
+#       between roots is defined, precedence within a root is not;
+#   T8  an unknown name reports the names that DO exist.
 #
 # Needs the in-tree CLI (`just setup-cli`); no fixtures, no compiler.
 
@@ -47,6 +52,20 @@ note() { echo "  $*"; }
 bad() {
     echo "FAIL[$1]: $2" >&2
     fail=1
+}
+
+mkprovider() { # <ws> <name> <kind> <provides>
+    mkdir -p "$1/src/$2"
+    cat >"$1/src/$2/package.xml" <<XML
+<?xml version="1.0"?>
+<package format="3">
+  <name>$2</name>
+  <version>0.0.0</version>
+  <export>
+    <nano_ros_provides kind="$3" name="$4"/>
+  </export>
+</package>
+XML
 }
 
 # --- a standalone workspace, so the test never depends on repo contents ------
@@ -178,6 +197,56 @@ if OUT5="$("$NROS" ws providers --workspace "$OTHER" --nano-ros-root "$OTHER" \
 else
     grep -qi "roots" <<<"$OUT5" ||
         bad T5 "rejected, but the message does not mention the roots: $OUT5"
+fi
+
+# --- T6/T7/T8: resolution and shadowing (W5) ---------------------------------
+# A later search root OVERLAYS an earlier one — the user's workspace copy wins
+# over the nano-ros one. That is the whole point of allowing a workspace
+# provider (testing a patched backend), and the loser must stay NAMED: a
+# silently-losing overlay is the failure that costs an afternoon.
+OVER="$WORK/overlay_ws"
+mkprovider "$OVER" patched_backend rmw acme        # same rmw name as $WS's acme_rmw
+R6="$("$NROS" ws providers --workspace "$OVER" --nano-ros-root "$WS" \
+        --resolve rmw:acme 2>&1)" || {
+    bad T6 "resolving a shadowed name failed: $R6"
+    R6=""
+}
+if [ -n "$R6" ]; then
+    # Position matters. Both names appear in the output whichever one wins, so
+    # a bare `grep patched_backend` passes even with the precedence INVERTED —
+    # verified by perturbation, which is how this weakness was found. Check the
+    # WINNER line (first) and the shadows line separately.
+    R6_WINNER="$(head -1 <<<"$R6")"
+    R6_SHADOW="$(grep 'shadows' <<<"$R6" || true)"
+    grep -q "patched_backend" <<<"$R6_WINNER" ||
+        bad T6 "the OVERLAY did not win; winner line was: $R6_WINNER"
+    grep -q "root\[1\]" <<<"$R6_WINNER" ||
+        bad T6 "the winner is not from the LATER root: $R6_WINNER"
+    [ -n "$R6_SHADOW" ] ||
+        bad T6 "the shadowed provider was not reported: $R6"
+    grep -q "acme_rmw" <<<"$R6_SHADOW" ||
+        bad T6 "the shadows line does not name the loser: $R6_SHADOW"
+fi
+
+# T7 — two claimants in ONE root have no precedence to appeal to.
+DUP="$WORK/dup_ws"
+mkprovider "$DUP" dup_one rmw twice
+mkprovider "$DUP" dup_two rmw twice
+if R7="$("$NROS" ws providers --workspace "$DUP" --nano-ros-root "$DUP" \
+        --resolve rmw:twice 2>&1)"; then
+    bad T7 "same-root ambiguity resolved instead of erroring: $R7"
+else
+    grep -q "dup_one" <<<"$R7" && grep -q "dup_two" <<<"$R7" ||
+        bad T7 "ambiguity error does not list both candidates: $R7"
+fi
+
+# T8 — an unknown name is usually a typo, so the error carries the list.
+if R8="$("$NROS" ws providers --workspace "$WS" --nano-ros-root "$WS" \
+        --resolve rmw:acmee 2>&1)"; then
+    bad T8 "an unknown provider name resolved"
+else
+    grep -q "acme" <<<"$R8" ||
+        bad T8 "not-found error does not list the available names: $R8"
 fi
 
 if [ "$fail" -ne 0 ]; then

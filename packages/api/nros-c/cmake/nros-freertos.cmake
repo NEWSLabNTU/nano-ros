@@ -103,7 +103,44 @@ function(nros_freertos_build_kernel)
         set(_NFBK_HEAP heap_4)
     endif()
 
+    # issue 0530 — `FREERTOS_PORT` is UPSTREAM's variable name, and upstream
+    # takes an ENUM keyed into a table (`GCC_ARM_CM4F`), while this function
+    # takes a PATH FRAGMENT under `portable/` (`GCC/ARM_CM3`). Same name,
+    # incompatible values, and the old failure was a missing-source error deep
+    # in the build naming a `.c` file the user never mentioned.
+    #
+    # Accept upstream's spelling by translating it — forward-compatible, since
+    # phase-349 W3 retires this builder for upstream's own CMakeLists and its
+    # vocabulary. `GCC_ARM_CM4F` -> `GCC/ARM_CM4F`: upstream's enum is
+    # `<COMPILER>_<CORE…>`, and the compiler is the first underscore-separated
+    # token in every one of them.
     set(_port_dir "${FREERTOS_DIR}/portable/${_NFBK_PORT}")
+    if(NOT EXISTS "${_port_dir}/port.c" AND NOT _NFBK_PORT MATCHES "/")
+        string(REGEX REPLACE "^([A-Za-z]+)_(.*)$" "\\1/\\2" _upstream_as_path
+               "${_NFBK_PORT}")
+        if(EXISTS "${FREERTOS_DIR}/portable/${_upstream_as_path}/port.c")
+            message(STATUS
+                "nano-ros: FREERTOS_PORT='${_NFBK_PORT}' read as upstream's "
+                "enum spelling -> portable/${_upstream_as_path}")
+            set(_port_dir "${FREERTOS_DIR}/portable/${_upstream_as_path}")
+        endif()
+    endif()
+
+    # Fail HERE, naming the variable and both spellings, rather than letting the
+    # build report a missing `port.c` nobody asked for.
+    if(NOT EXISTS "${_port_dir}/port.c")
+        file(GLOB _compilers RELATIVE "${FREERTOS_DIR}/portable"
+             "${FREERTOS_DIR}/portable/*")
+        message(FATAL_ERROR
+            "nros_freertos_build_kernel: no port.c under "
+            "${FREERTOS_DIR}/portable/${_NFBK_PORT}.\n"
+            "  FREERTOS_PORT accepts either spelling:\n"
+            "    nano-ros path fragment : GCC/ARM_CM3\n"
+            "    upstream enum          : GCC_ARM_CM3\n"
+            "  Compiler dirs present here: ${_compilers}\n"
+            "  (FREERTOS_DIR=${FREERTOS_DIR})")
+    endif()
+
     set(_includes
         "${FREERTOS_CONFIG_DIR}"
         "${FREERTOS_DIR}/include"
