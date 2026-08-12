@@ -243,11 +243,24 @@ fn entity_line(e: &PlanEntity) -> String {
             qos_str(qos),
             cb_suffix(callback)
         ),
+        // Issue #505 — render the period at the resolution it was DECLARED at.
+        // A whole-millisecond timer still prints `10ms` (the overwhelming case,
+        // and what every existing expectation reads); a 33.333 ms or
+        // sub-millisecond one prints microseconds instead of the truncated
+        // value that `period_ms` alone would show.
         PlanEntity::Timer {
             period_ms,
+            period_us,
             callback,
             ..
-        } => format!("timer  {period_ms}ms{}", cb_suffix(callback)),
+        } => {
+            let us = period_us.unwrap_or_else(|| period_ms.saturating_mul(1_000));
+            if us % 1_000 == 0 {
+                format!("timer  {}ms{}", us / 1_000, cb_suffix(callback))
+            } else {
+                format!("timer  {us}us{}", cb_suffix(callback))
+            }
+        }
         PlanEntity::ServiceServer {
             resolved_name,
             interface,

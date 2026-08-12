@@ -352,7 +352,14 @@ pub enum PlanEntity {
         source_entity: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         callback: Option<String>,
+        /// Legacy, truncating — kept because consumers read it. The
+        /// authoritative period is `period_us` (issue #505).
         period_ms: u64,
+        /// Issue #505 — the period at the executor's own resolution. Optional
+        /// so a plan written before #505 still deserializes; absent means
+        /// "`period_ms` widened", which is what the planner now emits anyway.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        period_us: Option<u64>,
         trace: EntityTrace,
     },
     ServiceServer {

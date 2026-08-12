@@ -113,6 +113,38 @@ pub struct SourceTimer {
     pub callback_slot: Option<u32>,
 }
 
+impl SourceTimer {
+    /// The declared period in MICROSECONDS — `period_us` when the harness
+    /// supplied it, else the truncated `period_ms` widened.
+    ///
+    /// Issue #505 exists because `period_ms` truncates: a declared 33.333 ms
+    /// timer reached the runtime as 33 ms (a permanent 1 % rate error) and a
+    /// sub-millisecond period reached it as ZERO. Read the period through this
+    /// method rather than the field, so the preference is stated once instead
+    /// of at each call site — a site that forgets is not a compile error, it is
+    /// a silent return of the bug #505 fixed.
+    pub fn period_us(&self) -> u64 {
+        self.period_us
+            .unwrap_or(self.period_ms.saturating_mul(1_000))
+    }
+}
+
+/// The same precedence for the JSON-map path, where the planner works with
+/// `serde_json::Value` rather than [`SourceTimer`]. Kept beside its twin so the
+/// two cannot drift.
+pub fn timer_period_us_from_json(entity: &serde_json::Value) -> u64 {
+    entity
+        .get("period_us")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_else(|| {
+            entity
+                .get("period_ms")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0)
+                .saturating_mul(1_000)
+        })
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceService {

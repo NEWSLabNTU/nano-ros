@@ -1455,12 +1455,17 @@ fn schema_entity(
             "qos": schema_qos(entity.get("qos")),
             "trace": trace,
         })),
+        // Issue #505 — carry the period at the executor's own resolution.
+        // `period_ms` stays for consumers that read it, but it TRUNCATES, so
+        // `period_us` is the authoritative one and is derived through the
+        // shared precedence helper rather than re-spelled here.
         "timer" => Some(json!({
             "role": "timer",
             "id": id,
             "source_entity": source_entity,
             "callback": callback,
             "period_ms": entity.get("period_ms").and_then(Value::as_u64).unwrap_or(0),
+            "period_us": super::source_metadata::timer_period_us_from_json(entity),
             "trace": trace,
         })),
         "service_server" | "action_server" => Some(json!({
@@ -2836,6 +2841,8 @@ fn collect_schema_timer_array(
             "declaration_slot": item.get("declaration_slot"),
             "role": "timer",
             "period_ms": item.get("period_ms"),
+            // Issue #505 — see the twin above; `period_ms` truncates.
+            "period_us": super::source_metadata::timer_period_us_from_json(item),
             "callback": item.get("callback"),
             "callback_slot": item.get("callback_slot"),
         }));
