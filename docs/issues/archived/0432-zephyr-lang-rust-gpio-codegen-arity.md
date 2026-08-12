@@ -1,11 +1,37 @@
 ---
 id: 432
 title: "zephyr-lang-rust's DT codegen emits a 5-arg `GpioPin::new` against a 6-arg signature, so Rust cannot build for any Zephyr board with gpio nodes"
-status: open
+status: resolved
 type: bug
 area: platform-zephyr
 related: [phase-337, phase-346, rfc-0064]
 ---
+
+> **RESOLVED 2026-08-12 by phase-346 W2/W3 — with one correction to the
+> diagnosis below.**
+>
+> The arity half is NOT "the generator emits only the pin cell". Read the
+> devicetree: `arm,mps2-fpgaio-gpio` declares **`#gpio-cells = <1>`**, so
+> `gpios = <&gpio_led0 0>` is complete and correct and there is no flags cell to
+> emit. The mismatch is that `GpioPin::new` assumes a TWO-cell gpio. Padding to
+> the CONTROLLER's declared count therefore changes nothing (measured — the
+> build failed identically); the fix pads to the CONSTRUCTOR's arity, which is
+> what the C side does via `DT_PHA_BY_IDX_OR(..., flags, 0)`. The `gpio-keys`
+> `cfg:` half is exactly as described here.
+>
+> Delivered by `scripts/zephyr/zephyr-lang-rust-gpio-patch.sh` (in-tree, called
+> beside `aarch64-rust-patch.sh`) and by a `zephyr/patches.yml` entry for
+> downstream BYO 4.x workspaces — the first non-`zephyr` module in that file.
+>
+> **The "in-tree script path needs to learn that module too" note below is
+> wrong** and was corrected during phase-346's measurement: the sed path ALREADY
+> patches `modules/lang/rust` (`aarch64-rust-patch.sh`, `cargo-features-patch.sh`).
+> Only `patches.yml` was `module: zephyr`-only.
+>
+> Verified: reproduced first (4 x E0061 on mps2_an385), then the witness leaf
+> built through the fixture path — a real ARM ELF, `.text = 449876`. The
+> Cortex-M witness block now builds `rust` beside `c`/`cpp` and `matrix::CELLS`
+> carries the Rust row that this issue's existence had kept out.
 
 ## Symptom
 

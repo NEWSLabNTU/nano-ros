@@ -1,0 +1,42 @@
+diff --git a/dt-rust.yaml b/dt-rust.yaml
+index 433ed5a..f857c3c 100644
+--- a/dt-rust.yaml
++++ b/dt-rust.yaml
+@@ -33,6 +33,10 @@
+ # having this compatible property.  The nodes themselves are built out of the properties associated
+ # with each gpio.
+ - name: gpio-keys
++  # nano-ros: gpio-keys needs the same cfg as its siblings (issue 0432).
++  # Without it the instances are emitted even when CONFIG_GPIO=n, while
++  # the `raw` bindings they reference disappear with the driver.
++  cfg: CONFIG_GPIO
+   rules:
+     - !Compatible
+       names: [gpio-keys]
+diff --git a/zephyr-build/src/devicetree/augment.rs b/zephyr-build/src/devicetree/augment.rs
+index 53d9609..1942bf9 100644
+--- a/zephyr-build/src/devicetree/augment.rs
++++ b/zephyr-build/src/devicetree/augment.rs
+@@ -257,7 +257,21 @@ impl RawInfo {
+                 // TODO: We would try to correlate with parent node's notion of number of cells, and
+                 // try to handle cases where there is more than one reference.  It is unclear when
+                 // this will be needed.
+-                let args: Vec<u32> = words[1..].iter().map(|n| n.as_number().unwrap()).collect();
++                // nano-ros: pad gpios to the constructor arity (issue 0432).
++                //
++                // `GpioPin::new` takes `(…, pin, dt_flags)` — a TWO-cell gpio —
++                // but a controller may declare `#gpio-cells = <1>` (Zephyr's own
++                // `arm,mps2-fpgaio-gpio` does), so the devicetree correctly holds
++                // one cell and the emitted call is an argument short:
++                //
++                //   error[E0061]: this function takes 6 arguments but 5 were supplied
++                //
++                // A missing flags cell means "no flags" = 0, which is what the C
++                // side does via `DT_PHA_BY_IDX_OR(..., flags, 0)`.
++                let mut args: Vec<u32> = words[1..].iter().map(|n| n.as_number().unwrap()).collect();
++                if pname == "gpios" && args.len() < 2 {
++                    args.resize(2, 0);
++                }
+ 
+                 let target_route = target.route_to_rust();
+ 

@@ -502,6 +502,11 @@ pub const CELLS: &[Cell] = &[
     // record of "nobody has attempted it" is no row, not a guess.
     cell(ZephyrQemuCortexM, C,   Zenoh, Pubsub,  Example, Runtime),
     cell(ZephyrQemuCortexM, Cpp, Zenoh, Pubsub,  Example, Runtime),
+    // phase-346 W3 — Rust on a REAL Zephyr board, unblocked by patching issue
+    // 0432's two upstream defects. Until then the `zephyr` crate could not
+    // compile for any board whose devicetree has gpio nodes, which is every
+    // real one; native_sim has none, which is the only reason it went unseen.
+    cell(ZephyrQemuCortexM, Rust, Zenoh, Pubsub,  Example, Runtime),
     cell(ZephyrQemuCortexM, C,   Zenoh, Service, Example,
          BuildOnly("phase-337 W2.f — the runner reproduces W2.b's manual setup \
                     (SLIRP + a host zenoh router on 7456) for pubsub only; \

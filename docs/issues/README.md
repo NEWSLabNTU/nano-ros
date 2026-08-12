@@ -134,6 +134,17 @@ What remains is transitive, in two chains: `play_launch_parser -> anyhow`, which
 therefore actionable via the vendored-fork workflow, and `wasip2`/`wasip3` -> `wit-bindgen` -> … ->
 `anyhow`, which is upstream wasi tooling nothing here chooses. See `0524-*`. (2026-08-12)
 
+RESOLVED 2026-08-12: **#432** — `zephyr-lang-rust`'s DT codegen could not compile for ANY board with gpio
+nodes, so Rust-on-Zephyr was native_sim-only. Fixed by phase-346 W2/W3, with the diagnosis CORRECTED: the
+generator does not "drop a cell" — `arm,mps2-fpgaio-gpio` declares `#gpio-cells = <1>`, so the devicetree is
+correct and `GpioPin::new` is what assumes two cells. Padding to the controller's count changes nothing
+(measured); padding to the CONSTRUCTOR's arity is the fix, matching the C side's `DT_PHA_BY_IDX_OR(...,
+flags, 0)`. The `gpio-keys` missing-`cfg:` half was as described. Delivered in-tree by
+`scripts/zephyr/zephyr-lang-rust-gpio-patch.sh` and downstream by a `patches.yml` entry — the first
+non-`zephyr` module there. Verified end to end: 4 x E0061 before, a real ARM ELF (`.text = 449876`) after,
+built through the fixture path; the Cortex-M witness now builds `rust` beside `c`/`cpp`.
+See `archived/0432-*`. (2026-08-12)
+
 **#525** — one NuttX checkout serves both arches and NuttX builds IN PLACE, so `.config` /
 `include/nuttx/config.h` are last-configured-wins: which arch the tree holds is a property of BUILD ORDER, not
 of the build being run. `lane=tier2` builds riscv after arm, and the state is STICKY — once a per-arch export

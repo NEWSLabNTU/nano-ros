@@ -76,6 +76,9 @@ build-fixtures:
     # zephyr-lang-rust so the FVP Base_RevC AEMv8-R SMP target
     # (Phase-117 Cyclone DDS reference) builds.
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
+    # issue 0432 — the gpio pair, without which the `zephyr` crate does not
+    # compile for any board with gpio nodes in its devicetree.
+    bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$workspace"
     # Phase 117.11/13 — add Cortex-R AArch32 (ARMv7-R / ARMv8-R)
     # support to zephyr-lang-rust for the NXP S32Z R52 target.
     bash ./scripts/zephyr/cortex-r-rust-patch.sh "$workspace"

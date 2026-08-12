@@ -375,15 +375,17 @@ done
 # that only two of them apply to, so the witness gets its own block — the same
 # shape the logging-smoke and workspace-entry leaves already use.
 #
-# No rust leaf: the pinned `zephyr-lang-rust` cannot compile for any board whose
-# devicetree has gpio nodes (issue 0432), which is every real board. That is why
-# `matrix::CELLS` has no rust row here either.
+# phase-346 W3 — the rust leaf JOINED once issue 0432's two upstream defects were
+# patched (`zephyr/patches.yml` + `scripts/zephyr/zephyr-lang-rust-*`): the DT
+# generator now pads a 1-cell `gpios` to the arity `GpioPin::new` takes, and the
+# `gpio-keys` augment carries the `cfg: CONFIG_GPIO` its two siblings always had.
+# Before that, no board with gpio nodes could compile the `zephyr` crate at all.
 #
 # The locator is the allocator's, not a literal: `alloc::port_of(
 # ZephyrQemuCortexM, {C,Cpp}, Pubsub)` = 10700 / 10800. The HOST half of it is
 # 10.0.2.2 rather than 127.0.0.1 — under NSOS the guest's loopback IS the host,
 # on a real guest it is the guest, and SLIRP always puts the host at 10.0.2.2.
-for cm_lang in c cpp; do
+for cm_lang in c cpp rust; do
     cm_lang_tag="$(nros_zephyr_lang_tag "$cm_lang")"
     cm_lang_idx="$(lang_idx_for_lang "$cm_lang")"
     cm_board="mps2_an385"

@@ -1,7 +1,8 @@
 # Phase 346 — The RFC-0064 seam, actually reachable from out of tree
 
-**Status (2026-08-10). W1 LANDED; W2 and W3 BLOCKED on a Zephyr workspace this
-checkout does not have (see their section). The measurements below are done
+**Status (2026-08-12). COMPLETE — W1, W2 and W3 all LANDED.** Rust now builds
+for a real Zephyr board (`mps2_an385`), which issue 0432 said was impossible for
+any board with gpio nodes. The measurements below are done
 and reproduce on this tree. W1's blocking design question is ANSWERED by a
 spike** (see "W1 SPIKE RESULT"): the framework IS resolvable for an out-of-tree
 board, but the resolution moves out of macro expansion and into the Entry's
@@ -14,8 +15,7 @@ loudly (issue 0432). Neither touches the build-cache program, so this phase runs
 in parallel with [phase-340](archived/phase-340-build-artifact-reuse.md) and
 [phase-345](phase-345-one-door-build-parity.md) with no fence.
 
-**Closes:** issue 0415 (W1, landed). **Does not close** issue 0432 — W2/W3 are
-blocked on a Zephyr workspace this checkout lacks.
+**Closes:** issue 0415 (W1) and issue 0432 (W2/W3), both landed and verified.
 **Implements:** [RFC-0064](../design/0064-board-support-organization.md) (a board
 is a config, not a crate) for the out-of-tree case.
 **Touches:** RFC-0032 (entry codegen pipeline — the macro's emit shape),
@@ -315,27 +315,51 @@ fixture that lives outside the workspace the same way the copy-out check does
 (`scripts/zephyr/check-copy-out.sh` is the existing shape), not by a unit test
 that constructs the input in memory.
 
-### W2 / W3 — BLOCKED on a Zephyr workspace, 2026-08-10
+### W2 + W3 LANDED 2026-08-12 — Rust runs on a real Zephyr board
 
-Not attempted, and deliberately not half-attempted. `zephyr-workspace/` is
-absent from this checkout (it is a gitignored symlink created by
-`scripts/zephyr/setup.sh`), so the `modules/lang/rust` sources the patch edits
-are not here. Two things follow:
+The blocker was never the patch, it was the workspace: one already existed at
+the legacy sibling path `../nano-ros-workspace` (which `just/zephyr.just` falls
+back to), so nothing needed downloading. The 2026-08-10 "BLOCKED" note looked
+only for the in-tree `zephyr-workspace/`.
 
-* the patch cannot be AUTHORED honestly — `patches.yml` entries carry a
-  `sha256sum` of the patch file, which requires the real pre-image;
-* it cannot be VERIFIED — W2's acceptance is W3, and W3's acceptance is a west
-  build of a Rust image for `mps2_an385`.
+**Reproduced first, exactly as issued** — `just zephyr build-one rust/talker
+zenoh mps2_an385`: 4 x `error[E0061]: this function takes 6 arguments but 5
+arguments were supplied`, matching 0432's count.
 
-Landing an unverified patch would be worse than leaving this open: the in-tree
-`scripts/zephyr/*.sh` chain runs during Zephyr setup for everyone, so a wrong
-script breaks a working path to fix one that is already known-broken.
+**One correction to the diagnosis, found by reading the devicetree.** 0432 (and
+the `mps2-an385.conf` comment) describe the arity bug as the generator dropping
+a cell. It is not: `arm,mps2-fpgaio-gpio` declares **`#gpio-cells = <1>`**, so
+`gpios = <&gpio_led0 0>` is complete and correct and there IS no flags cell to
+emit. The mismatch is that `GpioPin::new` assumes a two-cell gpio. My first
+patch — pad to the CONTROLLER's declared cell count — therefore did nothing,
+and the build failed identically; the fix is to pad to the CONSTRUCTOR's arity,
+which is what the C side does with `DT_PHA_BY_IDX_OR(..., flags, 0)`.
 
-What is ready for whoever has a workspace: §2.2 establishes that the in-tree sed
-path ALREADY patches `modules/lang/rust` (so only `patches.yml` needs the new
-module), and §2.3 points at the exact carve-out to delete — the `cm_lang` loop
-in `scripts/build/zephyr-fixture-leaves.sh`, whose comment already names this
-issue as the reason there is no Rust leaf.
+**Shipped**
+
+| piece | where |
+| --- | --- |
+| both upstream fixes | `scripts/zephyr/zephyr-lang-rust-gpio-patch.sh` — grep-guarded, idempotent, skips cleanly when the module is absent |
+| in-tree delivery | called beside `aarch64-rust-patch.sh` at all four existing sites (3 setup, 1 ci) |
+| downstream delivery | `zephyr/patches.yml` gains `zephyr-lang-rust-gpio.patch` with its sha256 — the FIRST non-`zephyr` module in that file, so its SCOPE comment was widened rather than left claiming a narrower scope |
+| the witness | `zephyr-fixture-leaves.sh`'s Cortex-M block builds `rust` beside `c`/`cpp`; `matrix::CELLS` gains `(ZephyrQemuCortexM, Rust, Zenoh, Pubsub, Example, Runtime)` |
+
+**Verified, not inferred.** The patch script was tested against a *pristine*
+module (`git checkout` first, since my hand-edits had moved its anchors): both
+hunks apply, a second run reports "already applied". The witness then built
+through the fixture path that carries `cmake/zephyr/mps2-an385.conf` —
+`zephyr/mps2_an385/rust/talker/zenoh`, exit 0, producing a real ARM ELF:
+
+```
+   text    data     bss     dec     hex
+ 449876    4075 1613231 2067182  1f8aee  build-cortex-m-rs-talker-zenoh/zephyr/zephyr.elf
+```
+
+**A note on the intermediate failure**, because it is the kind that reads as a
+regression: with the arity fixed, the link then failed on
+`undefined reference to z_impl_sys_rand_get`. That is not a defect — it is the
+board conf's `CONFIG_TEST_RANDOM_GENERATOR=y`, which `build-one` does not apply
+and the fixture path does. The board conf already documents exactly this.
 
 ### W2 (original plan) — the `zephyr-lang-rust` patches reach downstream consumers
 

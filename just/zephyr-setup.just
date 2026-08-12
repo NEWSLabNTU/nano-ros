@@ -165,6 +165,9 @@ build-fvp-aemv8r-cyclonedds:
     fi
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
+    # issue 0432 — the gpio pair, without which the `zephyr` crate does not
+    # compile for any board with gpio nodes in its devicetree.
+    bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$workspace"
     nros_root="$(pwd)"
     echo "  → host nros-codegen (cargo)"
     source scripts/build/cargo.sh
@@ -227,6 +230,9 @@ build-fvp-aemv8r-cyclonedds-rust:
     fi
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
+    # issue 0432 — the gpio pair, without which the `zephyr` crate does not
+    # compile for any board with gpio nodes in its devicetree.
+    bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$workspace"
     nros_root="$(pwd)"
     echo "  → host nros-codegen (cargo)"
     source scripts/build/cargo.sh
@@ -416,6 +422,9 @@ build-fvp-board-import:
     fi
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
+    # issue 0432 — the gpio pair, without which the `zephyr` crate does not
+    # compile for any board with gpio nodes in its devicetree.
+    bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$workspace"
     nros_root="$(pwd)"
     echo "  → host nros-codegen (cargo)"
     source scripts/build/cargo.sh

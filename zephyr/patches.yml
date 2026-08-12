@@ -19,7 +19,11 @@
 # 205.B) for the per-patch commit message, target, repro, and the post-merge
 # "drop from here" procedure. PRs are human follow-up (Zephyr CLA + fork).
 #
-# SCOPE: only the Zephyr-module (drivers/net/nsos_*) patches live here.
+# SCOPE: the Zephyr-module (drivers/net/nsos_*) patches, plus — since
+# phase-346 W2 — the `zephyr-lang-rust` gpio pair (issue 0432). That is the
+# FIRST non-`zephyr` module in this file; `module:` is per entry, so nothing
+# structural changed, but the old wording claimed a narrower scope than the
+# file now has and would have gone stale silently.
 # The five cyclonedds-on-Zephyr patches (threads, log-flush, sockwaitset,
 # udp-rcvbuf, mcjoin) are NOT listed: Cyclone DDS is consumed via the
 # nano-ros submodule third-party/dds/cyclonedds, pinned at a commit that
@@ -127,3 +131,39 @@ patches:
       the unlock succeeds.
       DOWNSTREAM-ONLY: changes Zephyr's deliberate k_mutex POSIX-strictness; an
       upstream fix would more likely add a per-mutex NORMAL/robust flag.
+
+  # 5. zephyr-lang-rust gpio pair (issue 0432) — without these the `zephyr`
+  #    crate does not compile for ANY board whose devicetree has gpio nodes,
+  #    which is every real board. native_sim has none, which is the only reason
+  #    it went unseen here for so long.
+  #
+  #    (a) `GpioPin::new` takes `(…, pin, dt_flags)` — a TWO-cell gpio — but a
+  #        controller may declare `#gpio-cells = <1>` (Zephyr's own
+  #        `arm,mps2-fpgaio-gpio` on mps2_an385 does), so the devicetree holds
+  #        one cell and the generated call is an argument short:
+  #        `error[E0061]: this function takes 6 arguments but 5 were supplied`,
+  #        four times on that board. A missing flags cell means "no flags" = 0,
+  #        which is what the C side does via `DT_PHA_BY_IDX_OR(..., flags, 0)`.
+  #    (b) the `gpio-keys` augment carries no `cfg:` while its two siblings
+  #        carry `cfg: CONFIG_GPIO`, so `CONFIG_GPIO=n` emits the instances
+  #        while the `raw` bindings they reference disappear — 14 errors
+  #        instead of 4, i.e. turning the driver off makes it worse.
+  #
+  #    In-tree builds get the same change from
+  #    `scripts/zephyr/zephyr-lang-rust-gpio-patch.sh` (that path also covers
+  #    3.7 LTS, which has no `west patch`); this entry is the ADDITIVE delivery
+  #    for downstream BYO 4.x workspaces whose manifest carries the module.
+  - path: zephyr-lang-rust-gpio.patch
+    sha256sum: 1148db8c05ad3bcfbe393924d4457fdacf78d245a8c4858a5b475959b4283e84
+    module: zephyr-lang-rust
+    author: nano-ros contributors
+    email: nano-ros@newslab.csie.ntu.edu.tw
+    date: 2026-08-12
+    upstreamable: true
+    comments: |
+      phase-346 W2 (issue 0432). Both halves are generic zephyr-lang-rust bugs,
+      not nano-ros-specific: a fixed-arity constructor fed a variable number of
+      devicetree cells, and an augment missing the `cfg:` its siblings have.
+      UPSTREAMABLE: yes — human follow-up per docs/development/zephyr-upstreaming.md.
+      VERIFIED by building `examples/zephyr/rust/talker` for `mps2_an385`
+      (Zephyr 3.7): 4 x E0061 before, a 449876-byte .text ELF after.
