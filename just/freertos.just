@@ -168,7 +168,11 @@ build-fixture-extras:
     # `wake_latency_cortex_m3` test takes its intended CYCCNT skip on QEMU
     # (Cortex-M3 doesn't emulate the DWT cycle counter); the real P99 validates on
     # hardware. This lane guards the BUILD of both images.
-    ( cd packages/testing/nros-bench/wake-latency-cortex-m3 && cargo build $(nros_cargo_profile_args_for "$(nros_cargo_freertos_qemu_profile)") )
+    # issue 0488 residue 1 — the bare in-leaf `cargo build` that used to be here
+    # is gone. The pair is a `[[fixture]]` row now, so `build-test-fixtures`
+    # builds it into the shared `freertos` group with a coordinate and a
+    # staleness probe, and `tests/wake_latency_cortex_m3.rs` resolves it through
+    # that row instead of a hand-spelled path.
 
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
     # Phase 140 removed the `build/install/bin/nros-codegen` install

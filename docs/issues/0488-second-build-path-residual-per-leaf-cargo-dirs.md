@@ -158,3 +158,53 @@ Same mechanism P2 used, in preference order:
    `nros_fixture_group` call so the two cannot disagree.
 
 Never a new literal, and never a third spelling of the group key.
+
+
+## Status (2026-08-12) — residue 1's in-lane site and residue 2's in-lane site are FIXED
+
+Both sites that ran INSIDE `build-test-fixtures` on a migrated platform, i.e.
+the two that re-created a per-leaf tree on every sweep, are done. The rest are
+still listed above and still true.
+
+**Residue 2 — `fixture-make-driver.sh`'s `linux-cyclonedds-rust` leaf.** It
+hand-rolled `cd examples/native/rust/$role && cargo build … --target-dir
+target-cyclonedds`, a second spelling of a build the manifest already describes
+(`linux`/`rust`/`cyclonedds` rows exist for both roles, and `linux` is a shared
+platform). The two spellings did not merely duplicate bytes, they DISAGREED: the
+test resolver reads the manifest row (issue 0517), i.e. the group dir, while this
+wrote a leaf dir nothing read. It now emits
+`fixtures-build.sh linux rust cyclonedds`, which is what the default leaf set and
+the sibling `linux-cmake-rmw` leaf already did — so it stops being a special case
+as well as a duplicate. Verified: `just native build-fixture-extras` completes
+and creates no `examples/native/rust/*/target-cyclonedds`.
+
+One consequence worth stating: the manifest route builds the 8 rows at that
+coordinate rather than the 2 the hand-rolled command named. They share the group,
+so the marginal cost is small, and they were being built by the fixture lane
+anyway.
+
+**Residue 1 — the wake-latency pair.** Now a `[[fixture]]` row
+(`packages/testing/nros-bench/wake-latency-cortex-m3`, freertos/rust/zenoh — one
+crate, two bins, one row), so it builds into the shared `freertos` group with a
+coordinate and a staleness probe. The bare in-leaf `cargo build` is gone from
+`just freertos build-fixture-extras`, and `tests/wake_latency_cortex_m3.rs`
+resolves through the row via `groups::select_sole_row`. Verified: the lane build
+puts both images in
+`build/fixtures-cargo/freertos/thumbv7m-none-eabi/nros-minsizerel/` and leaves no
+leaf `target/`.
+
+**Two defects were hiding behind that hand-spelled path**, which is the argument
+for deriving it:
+
+* `bench_image()` said `release/` while the build writes the FreeRTOS carve-out
+  profile `nros-minsizerel`. The image would never have been found.
+* The file is `#![cfg(feature = "trigger-test")]`, and that feature **does not
+  link** (six `undefined symbol: nros_platform_*`). So the test was not skipping,
+  it was absent — the issue-0317 gate has been reporting nothing. Filed as issue
+  0526; the path half is fixed here, the link half is not.
+
+Still open, unchanged: residue 1's other three sites (qemu-smoltcp-bridge,
+rtic-run-plan-e2e, ros-edition-pose-pub), residue 2's `just` `_run`/`_run-qemu`
+sites and the ros-editions / px4 ones, residue 3 (`stack-analysis.sh`), and
+residue 4 (NuttX in-source objects — a NuttX build-system change, not a
+coordinate).

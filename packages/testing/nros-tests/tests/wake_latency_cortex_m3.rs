@@ -61,14 +61,22 @@ const P99_BOUND_MS: u64 = 10;
 /// Caller pre-builds via `just freertos build-fixture-extras`; the test
 /// `[SKIPPED]`s when either image isn't on disk.
 fn bench_image(name: &str) -> std::path::PathBuf {
-    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest
-        .ancestors()
-        .nth(3)
-        .expect("workspace root above CARGO_MANIFEST_DIR");
-    root.join(format!(
-        "packages/testing/nros-bench/wake-latency-cortex-m3/target/thumbv7m-none-eabi/\
-         release/{name}"
+    // issue 0488 residue 1 — resolve through the manifest ROW, like every other
+    // fixture. The pair used to be built by a bare `cargo build` in its own leaf
+    // (no coordinate, no group, no staleness probe) and located by a hand-spelled
+    // path, and the two had drifted apart: the build writes the FreeRTOS carve-out
+    // profile (`nros-minsizerel`, `nros_cargo_platform_profile freertos`) while
+    // this said `release/`, so the image was never found and the test has been
+    // taking its `[SKIPPED]` branch — a CI gate (issue 0317) that reported green
+    // without running. That is the failure mode a hand-spelled path has and a
+    // derived one does not.
+    let row = nros_tests::fixtures::groups::select_sole_row(
+        "packages/testing/nros-bench/wake-latency-cortex-m3",
+    )
+    .expect("wake-latency bench has a [[fixture]] row");
+    nros_tests::fixtures::groups::row_resolved_dir(row).join(format!(
+        "thumbv7m-none-eabi/{}/{name}",
+        nros_cargo_profile::target_dir(nros_cargo_profile::FREERTOS_QEMU_PROFILE)
     ))
 }
 

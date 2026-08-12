@@ -87,6 +87,16 @@ stamp had one, sending the reader after a missing file that was right there. Sel
 the collation counter beside it, because the bug is INVISIBLE in output — a confident, specific, wrong
 `NONE for nros_core`. See `archived/0513-*`. (2026-08-11)
 
+**#526** — the `trigger-test` feature DOES NOT LINK (six `undefined symbol: nros_platform_*` refs from
+`nros-node`'s wake-latency-probe path), so every `#![cfg(feature = "trigger-test")]` test file is
+uncompilable and lists ZERO tests. One of them is `wake_latency_cortex_m3` — the CI gate issue 0317
+asked for — which has therefore been reporting nothing rather than failing. Found while fixing issue
+0488's residue 1, which uncovered a SECOND defect in the same file behind it: `bench_image()` spelled
+`target/.../release/` while the build writes the FreeRTOS carve-out `nros-minsizerel`, so even a linking
+build would have taken the `[SKIPPED]` branch. That half is fixed; this one needs whoever owns the
+feature's dependency set to provide the host platform symbols (the `posix-c-port` trick
+`metadata_build.rs` uses for the same ABI). See `0526-*`. (2026-08-12)
+
 **#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
 manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared
 `anyhow = "1"` with zero uses, and `packages/cli`'s `[workspace.dependencies]` entry was inherited by
@@ -421,7 +431,7 @@ Found by reading `CARGO_LOG=cargo::core::compiler::fingerprint=info` when a fres
 stale. Fixed + gated (`check-build-rs-rerun-paths`, self-testing, swept all 57 build scripts — one hit).
 See `archived/0490-*`. (2026-08-10)
 
-**#491** (build, resolved 2026-08-10, phase-340) — two rows in the SAME shared cargo group could not both
+RESOLVED 2026-08-10 — **#491** (build, resolved 2026-08-10, phase-340) — two rows in the SAME shared cargo group could not both
 be fresh. Cargo compares `rerun-if-env-changed` values TEXTUALLY, and one directory has three spellings
 here: a leaf's `[env] … relative = true` (per leaf: `…/talker/../../../…` vs `…/listener/../../../…`),
 `just/sdk-env.just`'s absolute export, and unset — so each sibling AND each build-vs-probe pair re-ran the
@@ -432,7 +442,7 @@ string, in BOTH producers — the Rust literals and the `rerun_if_env_changed` l
 Gated: `check-path-env-fingerprints`. Measured 6 → 0 units per no-op probe on freertos and
 threadx-riscv64; 3.95 s → 0.12 s per probe in a controlled A/B. Also removed a false-FRESH: the one
 FreeRTOS row with no `[env]` block made the board build script PANIC outside `just`, which
-`rust-fixture-stale.sh` (stderr to `/dev/null`) read as "not stale". See `0491-*`. (2026-08-10)
+`rust-fixture-stale.sh` (stderr to `/dev/null`) read as "not stale". See `archived/0491-*`. (2026-08-10)
 
 **#488** (build, open 2026-08-10, phase-340 P2) — the second-build-path sweep's RESIDUE. P2 closed the
 population that blocks item 7 / P4 (a `cargo build` whose cwd is an `examples/` leaf and which writes the

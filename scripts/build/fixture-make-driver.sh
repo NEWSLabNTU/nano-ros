@@ -128,14 +128,27 @@ for row in rows:
 PY
         ;;
     linux-cyclonedds-rust)
+        # issue 0488 residue 2 — this used to hand-roll
+        #   cd examples/native/rust/$role && cargo build … --target-dir target-cyclonedds
+        # which is a SECOND spelling of a build the manifest already describes:
+        # `examples/fixtures.toml` carries a `linux`/`rust`/`cyclonedds` row for
+        # each role, and `linux` is in `NROS_FIXTURE_SHARED_PLATFORMS`, so the
+        # fixture lane builds those rows into `build/fixtures-cargo/<slug>`.
+        #
+        # The two spellings did not merely duplicate bytes, they DISAGREED: the
+        # test resolver reads the manifest row (issue 0517), i.e. the group dir,
+        # while this wrote a leaf `target-cyclonedds/` nothing read. Recreated on
+        # every native sweep — the `native 2 (target-cyclonedds)` line phase-340
+        # recorded as surviving wave 2.
+        #
+        # Routing through `fixtures-build.sh` is what the default leaf set (and
+        # the `linux-cmake-rmw` leaf below) already does, so this stops being a
+        # special case as well as a duplicate.
         {
-            for role in talker listener; do
-                name="linux-rust-cyclonedds-$role"
-                target="fixture-$name"
-                label="linux rust cyclonedds $role"
-                command="cd examples/native/rust/$role && cargo build \$\${NROS_CARGO_PROFILE_ARGS:-} --no-default-features --features rmw-cyclonedds --target-dir target-cyclonedds"
-                printf '%s\tlinux\trust\tcyclonedds\t%s\t%s\t%s\n' "$target" "$label" "$name" "$command"
-            done
+            name="linux-rust-cyclonedds"
+            printf '%s\tlinux\trust\tcyclonedds\t%s\t%s\t%s\n' \
+                "fixture-$name" "linux rust cyclonedds" "$name" \
+                "NROS_JOBSERVER=1 scripts/build/fixtures-build.sh linux rust cyclonedds"
         } >"$leaf_file"
         ;;
     linux-cmake-rmw)

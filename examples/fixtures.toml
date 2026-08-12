@@ -1730,6 +1730,19 @@ dir = "packages/testing/nros-bench/large-msg-baremetal"
 # `nuttx-rust`), because that is the profile every FreeRTOS resolver looks for.
 # ===========================================================================
 
+# issue 0488 residue 1 — the wake-latency microbench pair (issue 0317). It was
+# built by a bare `cargo build` inside its own leaf from
+# `just freertos build-fixture-extras`, so it had no coordinate, no group and no
+# staleness probe, and it re-created a per-leaf `target/` on every sweep of a
+# MIGRATED platform. One crate, two bins (the measured subscriber
+# `wake-latency-cortex-m3` and its publisher `wake-latency-pub`), so one row
+# builds both — and it now lands in the `freertos` group the Entry rows share.
+[[fixture]]
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-bench/wake-latency-cortex-m3"
+
 [[fixture]]
 platform = "freertos"
 lang = "rust"
