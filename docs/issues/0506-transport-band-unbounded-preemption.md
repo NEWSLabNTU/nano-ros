@@ -350,3 +350,71 @@ transport-side parameters yet.
    envelope is specific to this lane. A budget expressed in msg/s
    cannot be validated at resolve time without a per-board capacity
    figure, which nothing currently records.
+
+## Probe: router-side pacing (2026-08-12) — the cause is burstiness
+
+A zenohd `downsampling` rule on the egress link to the island (raw
+numbers: `results/issue506_pacing.md` in the evaluation workspace):
+
+| cell | stalls >50 ms | worst gap | violations | rx/s | chain |
+|---|---|---|---|---|---|
+| uncapped (3 runs) | 9-11 | 335-511 ms | 46-62 | 157-265 | 12.8-18.5% |
+| cap 50 Hz | 0 | 11 ms | 0 | 58 | 24.8-27.9% |
+| cap 500 Hz | 0 | 11 ms | 0 | 442 | 29.5% |
+| cap 2000 Hz (3 runs) | 0-1 | 12-93 ms | 0-4 | 693-752 | 28.8-29.9% |
+| cap 5000 Hz | 7 | 395 ms | 40 | 299 | 21.1% |
+
+Chain ceiling is ~30% by construction, so 29.8% means no loss.
+
+Three things follow, and the second one changes the design.
+
+1. **This is the first mechanism that fixes BOTH harms.** Cadence is
+   perfect and the chain returns to its ceiling. Ring depth fixed
+   neither; TCP_WND fixed cadence and destroyed chain latency; priority
+   addressed ordering only.
+
+2. **The cause is BURSTINESS, not average rate.** The controlled cell
+   is the cap set AT the offered rate: 2000 Hz against ~2 kHz offered
+   still removes the stalls, and the island then carries 693-752 msg/s
+   versus 157-265 msg/s uncapped. It processes MORE when paced than
+   when flooded — congestion collapse, not saturation. The downsampler
+   enforces a minimum inter-message interval, so the island never sees
+   a burst long enough to hold `zpico_read` (and therefore the tiers)
+   for hundreds of milliseconds. A 5000 Hz cap (200 us interval) lets
+   bursts through and the collapse returns in full.
+
+3. **The "~750 msg/s envelope" from §8.1 is not a capacity.** Paced,
+   the same island sustains 740-752 msg/s with zero stalls. That figure
+   describes BURSTY traffic; the pacing interval is the variable that
+   matters, which also means a msg/s budget alone cannot be validated
+   against it.
+
+### Revised design conclusion
+
+An ingress declaration should compile to a **token bucket (rate +
+burst)** rather than a rate cap, with the burst term load-bearing. The
+same declaration drives two enforcement points:
+
+- **Router-side rule** (what this probe used): sheds before the device
+  spends anything, and is the only place that reduces the island's
+  per-message decode cost — rx-side dropping cannot, as the ring-depth
+  probe showed (dropping after decode left the stalls intact).
+- **Device-side drain budget** (`_zp_unicast_read`'s unbounded inner
+  loop): the same bound applied where the device can enforce it
+  without trusting the deployment. Necessary because a router rule
+  lives outside the device's own contract.
+
+The two are complementary rather than alternatives: the router rule is
+the only one that saves CPU, the device budget is the only one the
+device controls.
+
+### Caveat this probe makes concrete
+
+The rule keys on a keyexpr, and in this workload the flood and the
+safety chain publish to the SAME topic. The cap therefore applied to
+both, and it worked only because the chain needs 10 Hz out of the
+capped 50-2000. Two publishers of different criticality on one topic
+cannot be separated by a router rule — that needs publisher identity in
+the rule, or per-criticality topics, and it is the same limitation that
+makes message priority (which IS per-publisher) complementary rather
+than redundant.
