@@ -801,14 +801,14 @@ pub fn test_rmw() -> Rmw {
 /// `target-ros-edition-<edition>-<rmw>/debug/<name>` — produced by
 /// `just ros_editions build-e2e-fixtures <edition> <rmw>`.
 pub fn example_bin_rmw(name: &str, edition: &str, rmw: Rmw) -> std::path::PathBuf {
-    crate::project_root()
-        .join("examples/native/rust")
+    // issue 0488 residue 2 — one build root per (edition, rmw) under
+    // `$NROS_BUILD_ROOT`, derived by the same `<kind>/<coordinate>` rule
+    // `just ros_editions build-e2e-fixtures` builds with, rather than six
+    // per-leaf `target-ros-edition-*/` dirs named by hand on both sides.
+    crate::build_dir("ros-editions", &[&format!("{edition}-{}", rmw.as_str())])
+        // profile-literal-ok: unprofiled: ros-edition fixtures are built with a plain `cargo build`
+        .join("debug")
         .join(name)
-        .join(format!(
-            // profile-literal-ok: unprofiled: ros-edition fixtures are built with a plain `cargo build`
-            "target-ros-edition-{edition}-{}/debug/{name}",
-            rmw.as_str()
-        ))
 }
 
 /// A [`Command`] running nano-ros example `bin` over `rmw`, wrapped `bash -c

@@ -58,9 +58,17 @@ build-fixture distro="jazzy":
         echo "image nano-ros-ros:{{distro}} absent — generating against host ROS"
         ( cd "$FIX" && "$NROS" generate-rust --force )
     fi
-    ( cd "$FIX" && cargo build )
+    # issue 0488 residue 1 — into `$NROS_BUILD_ROOT`, not the fixture's own leaf.
+    # Same reasoning as the e2e loop below: `generated/` is rewritten per edition,
+    # so this cannot share a lane group, but it has no business writing
+    # `packages/testing/**/target/` either. Coordinate = the edition.
+    # shellcheck source=scripts/build/build-root.sh
+    source "{{justfile_directory()}}/scripts/build/build-root.sh"
+    FIX_TARGET_DIR="$(nros_build_dir ros-editions "pose-pub-{{distro}}")"
+    mkdir -p "$FIX_TARGET_DIR"
+    ( cd "$FIX" && cargo build --target-dir "$FIX_TARGET_DIR" )
     # profile-literal-ok: unprofiled: the docker edition fixtures build with a plain `cargo build`
-    echo "build-fixture {{distro}}: $FIX/target/debug/ros-edition-pose-pub"
+    echo "build-fixture {{distro}}: $FIX_TARGET_DIR/debug/ros-edition-pose-pub"
 
 # Build the six native example nodes (talker/listener/service-{server,client}/
 # action-{server,client}) with the selected RMW backend into per-(edition, rmw)
@@ -87,6 +95,19 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     ED="{{distro}}"
     NROS="$(command -v nros || echo "{{justfile_directory()}}/packages/cli/target/release/nros")"
     [ -x "$NROS" ] || { echo "error: nros CLI not found — run \`just setup-cli\`" >&2; exit 1; }
+    # issue 0488 residue 2 — ONE build root per (edition, rmw), under
+    # `$NROS_BUILD_ROOT`, instead of six per-leaf `target-ros-edition-*/` dirs.
+    #
+    # These builds deliberately do NOT join a fixture group: the loop regenerates
+    # each example's `generated/` messages for the edition first, so the same
+    # source dir means different code per edition. Sharing a cargo dir with the
+    # normal `linux` lane would thrash both. What they can stop doing is writing
+    # six example leaves — `<root>/<kind>/<coordinate>` is RFC-0070 R2's shape,
+    # and (edition, rmw) is the coordinate these actually vary on.
+    # shellcheck source=scripts/build/build-root.sh
+    source "{{justfile_directory()}}/scripts/build/build-root.sh"
+    ED_TARGET_DIR="$(nros_build_dir ros-editions "{{distro}}-{{rmw}}")"
+    mkdir -p "$ED_TARGET_DIR"
     for ex in talker listener service-server service-client action-server action-client; do
         DIR="{{justfile_directory()}}/examples/native/rust/$ex"
         # Regenerate this example's messages for the edition so the baked
@@ -96,12 +117,12 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
         # gitignored (regenerated on demand), so this rewrite is not tree churn.
         echo "== $ex ({{rmw}}, ros-$ED) regen msgs =="
         ( cd "$DIR" && "$NROS" generate-rust --ros-edition "$ED" --force >/dev/null )
-        echo "== $ex ({{rmw}}, ros-$ED) → target-ros-edition-{{distro}}-{{rmw}} =="
+        echo "== $ex ({{rmw}}, ros-$ED) → $ED_TARGET_DIR =="
         ( cd "$DIR" && cargo build --no-default-features --features "$FEATURE ros-$ED" \
-            --target-dir "target-ros-edition-{{distro}}-{{rmw}}" )
+            --target-dir "$ED_TARGET_DIR" )
     done
     # profile-literal-ok: unprofiled: same lane as above — plain `cargo build`, so debug/ IS the derived dir
-    echo "build-e2e-fixtures {{distro}} {{rmw}}: 6 binaries under examples/native/rust/*/target-ros-edition-{{distro}}-{{rmw}}/debug/ (ros-$ED)"
+    echo "build-e2e-fixtures {{distro}} {{rmw}}: 6 binaries under $ED_TARGET_DIR/debug/ (ros-$ED)"
 
 # Composite: build the edition image + run the gated harness lanes (peer smoke,
 # codegen axis, domain_bridge interop). OPT-IN — NOT part of `just ci` (docker +

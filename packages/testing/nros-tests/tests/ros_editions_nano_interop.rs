@@ -18,15 +18,22 @@ use std::{path::PathBuf, process::Command};
 
 use nros_tests::ros_env::{self, DockerRosEnv, Middleware, RosEnv};
 
-fn fixture_bin() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("bins/ros-edition-pose-pub/target/debug/ros-edition-pose-pub")
+/// issue 0488 residue 1 — derived from the same `<kind>/<coordinate>` rule
+/// `just ros_editions build-fixture <edition>` builds with, instead of a
+/// hand-spelled leaf `target/`. The fixture is rebuilt per edition (its
+/// `generated/` messages are regenerated against that edition's defs), so the
+/// EDITION is the coordinate; the old path had no room for it and every edition
+/// overwrote the last.
+fn fixture_bin(edition: &str) -> PathBuf {
+    nros_tests::build_dir("ros-editions", &[&format!("pose-pub-{edition}")])
+        .join("debug")
+        .join("ros-edition-pose-pub")
 }
 
 #[test]
 fn nano_ros_posestamped_survives_edition_domain_bridge() {
     let ed = ros_env::test_edition();
-    let bin = fixture_bin();
+    let bin = fixture_bin(&ed);
     if !bin.is_file() {
         nros_tests::skip!(
             "nano-ros pose publisher fixture not built — run `just ros_editions build-fixture {ed}`"
