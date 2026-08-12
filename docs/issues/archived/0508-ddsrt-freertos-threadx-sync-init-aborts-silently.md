@@ -1,11 +1,11 @@
 ---
 id: 508
 title: ddsrt freertos/threadx sync init failures still abort with no diagnostic
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: rmw
-related: [issue-0371]
+related: [issue-0371, issue-0507]
 ---
 
 # 0508 — the freertos/threadx ddsrt sync ports abort silently on init failure
@@ -59,13 +59,11 @@ inlining it at each `abort()`, for the reason CLAUDE.md gives — the POSIX port
 had three init sites and fixing them separately would have produced three
 spellings.
 
-## Fixed in the fork, awaiting the pin (2026-08-12)
+## Resolved (2026-08-12)
 
 `cyclonedds@8601ca66` on the `nano-ros` branch, one helper per port as prescribed
-above. **Still open** deliberately: the fork commit is not pushed, so the
-superproject pin cannot advance (push the fork branch FIRST, then bump the
-pointer), and until it does no nano-ros build consumes this. Flip to `resolved`
-with the pin bump.
+above, pushed and pinned (`a09babf3..8601ca66`; superproject pin bumped in the
+commit that follows the push, per the vendored-fork order).
 
 ### The open question answered itself
 

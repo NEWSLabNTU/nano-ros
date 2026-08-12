@@ -256,13 +256,15 @@ upstreaming — not Zephyr-specific, removes an allocation per addrset everywher
 nesting fixes are correctness wins. Needs a `WITH_ZEPHYR` option in cyclone's own ddsrt CMake,
 which nano-ros never needed. See `0507-*`. (2026-08-10)
 
-**#508** (rmw, open 2026-08-10, severity low) — the freertos/threadx ddsrt sync ports `abort()` on
-init failure with nothing logged. They DO check every return, so 0371's actual defect (a failure
-displaced from its cause) has two members and both are fixed; this is the leftover diagnostic
-polish. Filed low because neither port has what made the POSIX message worth writing — a named
-Kconfig pool to point at, or a safe `printk` — so the useful message is smaller and the work is
-mostly deciding how to emit it without dragging logging into ddsrt's lowest layer. One shared
-helper per port, not inlined per site. See `0508-*`. (2026-08-10)
+Recently resolved (2026-08-12): **#508** (rmw) — the freertos/threadx ddsrt sync ports `abort()`ed on
+init failure with nothing logged. Fixed in `cyclonedds@8601ca66` (pushed, pin bumped): one helper per
+port, naming the object and — on ThreadX, which has one — the `tx_*_create` status. The open question
+this was filed on ("how to emit it without dragging logging into ddsrt's lowest layer") needed no
+decision: both files already include `dds/ddsrt/log.h` and already use `DDS_FATAL` for the same class
+of failure a few lines below, and `dds_log` aborts on `DDS_LC_FATAL` outside any level filter, so the
+unconditional abort survives. Build coverage is asymmetric and recorded in the issue: nothing here
+configures `WITH_FREERTOS`, so that TU was checked with `-fsyntax-only -Wall -Wextra`. See
+`archived/0508-*`. (2026-08-12)
 
 Recently resolved (2026-08-10): **#501** (testing) — `native_main_macro_misuse` failed a DIFFERENT subset
 of its five cases every run; four of five failed at least once, any one alone passed. Not lock contention,
