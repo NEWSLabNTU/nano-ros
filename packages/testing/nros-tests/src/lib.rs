@@ -20,6 +20,27 @@
 pub mod alloc;
 pub mod checker;
 pub mod esp32;
+// issue 0526 — LINK the posix C port, do not merely depend on it.
+//
+// `trigger-test` / `loan-e2e` pull `nros-platform-cffi` with `posix-c-port`, and
+// its build script compiles `libnros_platform_posix.a` — the archive that
+// DEFINES the ~90 `nros_platform_*` symbols `nros-node`'s wake path calls. But a
+// dependency nothing references is a dependency rustc does not link: cargo
+// passed `--extern nros_platform_cffi=…rlib` and the `-L` for its OUT_DIR, and
+// then emitted no `-l static=nros_platform_posix`, because a build script's
+// native-lib directives only apply when the crate that emitted them is actually
+// linked. The archive sat in the searched directory, unnamed.
+//
+// Result: six `undefined symbol: nros_platform_*` and FOUR test binaries that
+// could not compile — including `wake_latency_cortex_m3`, the issue-0317 gate,
+// which therefore reported nothing rather than failing.
+//
+// `use … as _` is the reference that forces the link without importing a name.
+// Same class as the `force_link_backend!` anchors CLAUDE.md documents for
+// backends (issues 0155/0163): the symbol is in the rlib, absent from the link.
+#[cfg(any(feature = "trigger-test", feature = "loan-e2e"))]
+use nros_platform_cffi as _;
+
 pub mod fixtures;
 // RFC-0061 / phase-318 W3 — CI lane selection computed from `matrix`.
 pub mod buckets;

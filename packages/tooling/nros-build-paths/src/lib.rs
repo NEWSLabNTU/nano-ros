@@ -284,7 +284,9 @@ pub fn nuttx_include_root(nuttx_dir: &std::path::Path) -> PathBuf {
         _ => None,
     };
     if let Some(a) = snapshot_arch {
-        let inc = nuttx_dir.join(format!("nros-nuttx-export-{a}")).join("include");
+        let inc = nuttx_dir
+            .join(format!("nros-nuttx-export-{a}"))
+            .join("include");
         println!(
             "cargo:rerun-if-changed={}",
             inc.join("nuttx/config.h").display()

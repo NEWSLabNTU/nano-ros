@@ -63,6 +63,13 @@ ALLOWED = {
     # `nros-board-common`, and a second copy is the drift that caused 0511.
     "packages/tooling/nros-build-paths/src/lib.rs":
         "defines nuttx_include_root; the shared path is its documented fallback",
+    # This gate itself. Its matches are its own prose (the paragraph explaining
+    # what the pattern means) and the synthetic build.rs / shell fixtures its
+    # tripwires feed to `offenders()` — a gate that greps for a string cannot
+    # avoid containing that string, so it matched itself and was RED on main
+    # from the commit that added it.
+    "scripts/check-nuttx-shared-tree-headers.py":
+        "the gate's own documentation and tripwire fixtures contain the pattern",
 }
 
 SUFFIXES = (".rs", ".sh", ".py", ".cmake", ".just", ".txt")

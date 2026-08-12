@@ -1,7 +1,7 @@
 ---
 id: 526
 title: "The `trigger-test` feature does not link, so four test binaries — including the issue-0317 wake-latency gate — never run"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0317, issue-0488, issue-0350]
@@ -65,3 +65,36 @@ path bug could not be observed because the file never compiled.
   not for a missing image.
 * Whatever provides the platform symbols on the host is named in the manifest
   rather than inherited, so a feature-set change cannot silently unprovide it.
+
+## Resolution (2026-08-12)
+
+The dependency was there; the LINK was not. `trigger-test` pulls
+`nros-platform-cffi` with `posix-c-port`, whose build script compiles
+`libnros_platform_posix.a` — the archive that defines the `nros_platform_*`
+symbols. Cargo passed `--extern nros_platform_cffi=…rlib` and the `-L` for its
+OUT_DIR, and then emitted **no `-l static=nros_platform_posix`**, because a build
+script's native-lib directives only apply when the crate that emitted them is
+actually linked — and a dependency nothing references is one rustc does not link.
+The archive was sitting in the directory the linker searched, unnamed.
+
+Verified from the real command line rather than inferred: `cargo build -v`
+showed the `--extern` and the `-L`, and no `-l static=nros_platform_posix`, while
+`libnros_platform_posix.a` was present in exactly that OUT_DIR.
+
+Fix is one reference, in `nros-tests/src/lib.rs`:
+
+```rust
+#[cfg(any(feature = "trigger-test", feature = "loan-e2e"))]
+use nros_platform_cffi as _;
+```
+
+Same class as the `force_link_backend!` anchors CLAUDE.md documents for RMW
+backends (issues 0155/0163): the symbol is in the rlib, absent from the link, and
+the fix is a reference rather than a dependency.
+
+**Acceptance met.** `cargo nextest list --features trigger-test` now finds
+`wake_latency_cortex_m3_p99_within_bound`, and running it launches QEMU, finds
+both images through their manifest row (issue 0488), runs the probe and takes its
+DOCUMENTED environmental skip — "0 samples, likely QEMU CYCCNT not emulated" —
+which is the stated hardware limitation, not a missing image. The issue-0317 gate
+is live for the first time.

@@ -118,7 +118,7 @@ stamp had one, sending the reader after a missing file that was right there. Sel
 the collation counter beside it, because the bug is INVISIBLE in output — a confident, specific, wrong
 `NONE for nros_core`. See `archived/0513-*`. (2026-08-11)
 
-**#526** — the `trigger-test` feature DOES NOT LINK (six `undefined symbol: nros_platform_*` refs from
+RESOLVED 2026-08-12 — **#526** — the `trigger-test` feature DOES NOT LINK (six `undefined symbol: nros_platform_*` refs from
 `nros-node`'s wake-latency-probe path), so every `#![cfg(feature = "trigger-test")]` test file is
 uncompilable and lists ZERO tests. One of them is `wake_latency_cortex_m3` — the CI gate issue 0317
 asked for — which has therefore been reporting nothing rather than failing. Found while fixing issue
@@ -126,7 +126,7 @@ asked for — which has therefore been reporting nothing rather than failing. Fo
 `target/.../release/` while the build writes the FreeRTOS carve-out `nros-minsizerel`, so even a linking
 build would have taken the `[SKIPPED]` branch. That half is fixed; this one needs whoever owns the
 feature's dependency set to provide the host platform symbols (the `posix-c-port` trick
-`metadata_build.rs` uses for the same ABI). See `0526-*`. (2026-08-12)
+`metadata_build.rs` uses for the same ABI). See `archived/0526-*`. (2026-08-12)
 
 **#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
 manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared
