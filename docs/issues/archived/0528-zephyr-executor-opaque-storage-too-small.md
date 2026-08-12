@@ -1,11 +1,40 @@
 ---
 id: 528
 title: "Zephyr leaves fail `EXECUTOR_OPAQUE_U64S too small for Executor + backing`, blocking the tier-2 fixture build"
-status: open
+status: resolved  # not reproducible; cause never established
 type: bug
 area: zephyr
 related: [issue-0472, issue-0464, phase-343, phase-336]
 ---
+
+> **UPDATE 2026-08-13 — NO LONGER REPRODUCES, and nobody fixed it deliberately.**
+>
+> Retested at `f27aeec48` after a pull: the leaf that failed builds (exit 0), and
+> a full `zephyr` module build shows **zero** occurrences of the assert across
+> all 69 leaves. So the symptom is gone.
+>
+> **The cause was never established, which is why this is worth reading rather
+> than deleting.** No commit in the pulled range touches the sizing path
+> (`nros-c`, `nros-node`, `nros-sizes-build`, `zephyr/`, `config/zephyr`) in a
+> way that plausibly explains it — the two that touch adjacent files are
+> FreeRTOS knob vocabulary and a platform-descriptor rename.
+>
+> **What I got wrong on 2026-08-12, stated because it changes how much the
+> "ruled out" below is worth:** the attribution test ("checked out `f05d83cb0`,
+> identical failure") reused the SAME build dirs on both arms. That rules out a
+> code change of mine, but it does NOT rule out build STATE — which is exactly
+> the sizes-header mirror class this repo has hit six times (0088 → 0114 → 0122
+> → 0123 → 0245 → 0268), where "a bisect whose steps rebuilt clean converged on
+> a docs-only commit". A CLI rebuild happened between the failure and the
+> retest, and a CLI rebuild re-generates everything keyed on its source stamp.
+>
+> So the most likely reading is: stale generated state, cleared by the CLI
+> rebuild — not a code defect, and not the pull. Resolved as not-reproducible
+> rather than fixed. **If it returns, do not repeat my test:** rebuild the CLI
+> first, then compare arms with a pristine build dir on each.
+>
+> The zephyr module is still red, but on an unrelated and now-attributed
+> defect — issue **0534** (`version.h`), which DOES reproduce from pristine.
 
 ## Symptom
 

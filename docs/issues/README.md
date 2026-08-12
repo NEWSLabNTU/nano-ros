@@ -242,14 +242,22 @@ What remains is transitive, in two chains: `play_launch_parser -> anyhow`, which
 therefore actionable via the vendored-fork workflow, and `wasip2`/`wasip3` -> `wit-bindgen` -> … ->
 `anyhow`, which is upstream wasi tooling nothing here chooses. See `0524-*`. (2026-08-12)
 
-**#528** — every Zephyr fixture leaf fails `EXECUTOR_OPAQUE_U64S too small for Executor + backing` in
-`nros-c`'s compile-time assert, taking the whole zephyr module — and with it `build-test-fixtures lane=tier2`
-and `ci-matrix` — down. Both languages, both RMWs. RULED OUT by measurement, not reasoning: not a stale sizes
-probe (deleted `build/sizes-probe`, rebuilt one leaf from scratch, identical failure), and not phase-346
-W2/W3 (checked out the upstream commit before that work, identical failure). The loud report is issue 0464's
-fix working — it removed the fallbacks that used to hide a bad probe by emitting a short buffer. No bisect yet,
-and deliberately no attempt to raise `NROS_EXECUTOR_ARENA_SIZE` to silence it before anyone knows why the
-storage grew. See `0528-*`. (2026-08-12)
+**#534** — the Zephyr C zenoh leaves fail on `zenoh-pico/system/platform/zephyr.h:18: fatal error: version.h:
+No such file or directory`, taking the zephyr fixture module — and with it `ci-matrix` — down. ATTRIBUTED AT
+HUNK LEVEL, not by bisect: `292547dd5` (#529) added `zephyr` to `zpico-sys`'s platform selection, and its
+message argues this is inert because `build_c_shim` is skipped on Zephyr. Neutralising exactly that branch at
+HEAD makes the leaf build (exit 0); restoring it fails. The skip the argument relies on is what leaves the
+generated `version.h` absent for a TU that now includes `zephyr.h`. Reproduces SOLO and from a PRISTINE build
+dir, so neither a race nor stale state. #529's intent stands — the resolver should be total; what is missing is
+a satisfiable include set on a lane that does not build the shim. See `0534-*`. (2026-08-13)
+
+RESOLVED 2026-08-13: **#528** — Zephyr leaves failing `EXECUTOR_OPAQUE_U64S too small` NO LONGER REPRODUCES:
+the leaf builds and a full module build shows zero occurrences across 69 leaves. Nobody fixed it deliberately
+and the cause was never established — no pulled commit touches the sizing path. Recorded honestly: my
+2026-08-12 attribution reused the SAME build dirs on both arms, which rules out a code change of mine but NOT
+build STATE, i.e. the sizes-header mirror class (0088 → 0268). A CLI rebuild happened in between, which
+regenerates everything keyed on its stamp — the most likely reading is stale generated state. If it returns:
+rebuild the CLI first, then compare arms with a pristine build dir on each. See `archived/0528-*`. (2026-08-13)
 
 RESOLVED 2026-08-12: **#432** — `zephyr-lang-rust`'s DT codegen could not compile for ANY board with gpio
 nodes, so Rust-on-Zephyr was native_sim-only. Fixed by phase-346 W2/W3, with the diagnosis CORRECTED: the
