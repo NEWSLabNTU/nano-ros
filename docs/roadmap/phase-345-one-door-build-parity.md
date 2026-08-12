@@ -6,7 +6,7 @@ reported under "Tier-2 sweep" below: it does not go green, for a reason that is
 not this phase's — issue 0511, a NuttX ROM overflow reproduced with this phase's
 changes reverted. The measurements below are done
 and reproduce on this tree.** This phase is not a build-cache phase and moves no
-path, so it never collided with [phase-340](phase-340-build-artifact-reuse.md)
+path, so it never collided with [phase-340](archived/phase-340-build-artifact-reuse.md)
 item 5 / P4. The one item that would have — W2, which proposed editing leaf
 `.cargo/config.toml` files that item 5's grouping work reads — is retracted, so
 the fence described under "Sequencing" is moot.

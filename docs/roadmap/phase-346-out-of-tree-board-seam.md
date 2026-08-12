@@ -11,7 +11,7 @@ Two issues, one claim: RFC-0064 says a board
 arrives through an integration shell that nano-ros never sees, and today that
 path is blocked in two independent places — one silently (issue 0415), one
 loudly (issue 0432). Neither touches the build-cache program, so this phase runs
-in parallel with [phase-340](phase-340-build-artifact-reuse.md) and
+in parallel with [phase-340](archived/phase-340-build-artifact-reuse.md) and
 [phase-345](phase-345-one-door-build-parity.md) with no fence.
 
 **Closes:** issue 0415 (W1, landed). **Does not close** issue 0432 — W2/W3 are

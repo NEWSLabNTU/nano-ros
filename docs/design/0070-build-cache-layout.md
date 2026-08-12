@@ -6,7 +6,7 @@
 *owns* a user workspace's `build/`; this one decides what every build cache in
 this repository is *called* and *where it lives*.
 **Informed by:** phase-334 W1 (the sharing verdict) and
-[phase-340](../roadmap/phase-340-build-artifact-reuse.md) (the identity
+[phase-340](../roadmap/archived/phase-340-build-artifact-reuse.md) (the identity
 measurements).
 
 ## Problem

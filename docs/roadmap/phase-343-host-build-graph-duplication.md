@@ -30,7 +30,7 @@ target dirs belongs to phase-340 W2, not here.
 ---
 
 **Original status (2026-08-08). MEASUREMENT COMPLETE, NOTHING IMPLEMENTED — deliberately.**
-The 240.2 GiB / 91.1 % claim in [phase-340](phase-340-build-artifact-reuse.md)'s
+The 240.2 GiB / 91.1 % claim in [phase-340](archived/phase-340-build-artifact-reuse.md)'s
 "Wave 2" reproduces (241.3 GiB / 91.1 % on a tree three days newer). **The
 diagnosis attached to it does not.** Wave 2 named the population "the
 feature-INVARIANT host proc-macro / build-dependency graph — one identity each"

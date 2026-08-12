@@ -1,7 +1,7 @@
 # Phase 344 — Relocating the cmake caches: what it costs, what it buys, and what it does not
 
 **Status (2026-08-10). MEASUREMENT COMPLETE; DECISION MADE; NO PATH HAS MOVED,
-DELIBERATELY.** This phase is [phase-340](phase-340-build-artifact-reuse.md)'s
+DELIBERATELY.** This phase is [phase-340](archived/phase-340-build-artifact-reuse.md)'s
 **P3**, split out as that item asked. The census was re-derived rather than
 inherited, and it does not reproduce: the briefed "~240 cmake-style dirs" is
 **151**, and **83.2 % of their bytes are a cargo target dir**, not cmake output.

@@ -84,7 +84,7 @@ link 106". Nothing in the current arrangement expresses that.
 
 ## Fix
 
-**Phase 340** (`docs/roadmap/phase-340-build-artifact-reuse.md`) carries the
+**Phase 340** (`docs/roadmap/archived/phase-340-build-artifact-reuse.md`) carries the
 work items, with the four repetition reasons (directory-vs-identity partition,
 per-leaf workspaces, corrosion's explicit `--target`, and `incremental`) and the
 measurements behind each.
