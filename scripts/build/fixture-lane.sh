@@ -90,6 +90,32 @@ nros_lane_validate() {
 #
 # The coordinates come from `lane-coords`, the same binary `_lane-gate` uses, so
 # the build cannot compute a different selection from the gate.
+# issue 0523 — the newest prebuilt `lane-coords`, or empty when none is usable.
+#
+# Empty means "compile it": either nothing is built, or what is built predates a
+# source of `nros-tests` and would answer for a tree that no longer exists.
+# NEWEST rather than a preferred profile — preferring `nros-fast-release` picked
+# an eleven-day-old artifact on this host while `debug` was current.
+_nros_lane_coords_bin() {
+    local best="" best_t=0 p b t
+    for p in nros-fast-release debug release; do
+        b="target/$p/lane-coords"
+        [ -x "$b" ] || continue
+        t="$(stat -c %Y "$b" 2>/dev/null || echo 0)"
+        if [ "$t" -gt "$best_t" ]; then
+            best_t="$t"
+            best="$b"
+        fi
+    done
+    [ -n "$best" ] || return 0
+    # Any source newer than the binary ⇒ it is stale; say nothing and let the
+    # caller rebuild. `-quit` stops at the first hit, so this stays cheap.
+    if [ -n "$(find packages/testing/nros-tests/src -type f -newer "$best" -print -quit 2>/dev/null)" ]; then
+        return 0
+    fi
+    printf '%s' "$best"
+}
+
 nros_lane_coords_file() {
     local lane="$1"
     nros_lane_validate "$lane" || return 2
@@ -114,7 +140,30 @@ nros_lane_coords_file() {
     # rename(2) within one directory is atomic, so a concurrent reader now sees
     # either the previous content or the new content, never a truncated one.
     local tmp="${out}.tmp.$$"
-    if ! cargo run -q -p nros-tests --bin lane-coords -- "$lane" > "$tmp"; then
+    # issue 0523 part B — RUN the selector; compile it only if nobody already
+    # has. `cargo run` here is correct in a BUILD recipe and wrong on the
+    # preflight/test path: `lane-coords` is a bin of `nros-tests`, so any edit to
+    # that crate invalidates it and the next call recompiles the whole package
+    # before writing a byte (the comment above says "seconds-to-minutes"). Three
+    # `lane_build_covers_run` cases reach this through
+    # `nros_fixtures_stamp_require` and blew nextest's 60 s per-test timeout —
+    # and only inside a SWEEP, where concurrent cargos hold the package-cache
+    # and build-directory locks. Solo the same call is instant, which is exactly
+    # how it read as green after a partial fix.
+    #
+    # A prebuilt binary is used ONLY when no source of its crate is newer than
+    # it. A stale selector answers for a tree that no longer exists: one dated
+    # eleven days back reported 12 tier-2 coordinates where the sources said 13,
+    # and the mismatch surfaced as a coordinate-drift error blaming the guard.
+    local bin
+    bin="$(_nros_lane_coords_bin)"
+    if [ -n "$bin" ]; then
+        if ! "$bin" "$lane" > "$tmp"; then
+            echo "fixture-lane: $bin failed for '$lane'" >&2
+            rm -f "$tmp"
+            return 1
+        fi
+    elif ! cargo run -q -p nros-tests --bin lane-coords -- "$lane" > "$tmp"; then
         echo "fixture-lane: lane-coords failed for '$lane'" >&2
         rm -f "$tmp"
         return 1

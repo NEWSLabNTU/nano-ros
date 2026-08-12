@@ -137,10 +137,41 @@ and the edits were mine (issue 0470 added `port_lease.rs` and touched
 `large_msg.rs`). A test that compiles at runtime is a landmine for whoever edits
 the crate next, which is CLAUDE.md's rule and archived issue 0041's whole point.
 
-### Fix — DONE 2026-08-12
+### Fix — DONE 2026-08-12, in TWO passes. The first was half a fix.
 
-The helper runs the PREBUILT `lane-coords` instead of `cargo run`. 60 s
-timeouts → **9/9 in 0.5 s**.
+**Pass 1 (insufficient).** The test helper was changed to run the prebuilt
+`lane-coords` instead of `cargo run`. Solo: 60 s timeouts → 9/9 in 0.5 s, and I
+reported it fixed on that evidence.
+
+It was not. The next full sweep timed out on the same three cases, because the
+helper is not the only path to the compile: the GUARD UNDER TEST reaches it too.
+`lane_sh` → `nros_fixtures_stamp_require` → `nros_lane_coords_file` →
+`cargo run`. Solo that call is instant because nothing contends; inside a sweep,
+concurrent cargos hold the package-cache and build-directory locks and it blocks
+past 60 s. **A solo pass could not have distinguished a fixed path from an
+unfixed one** — which is exactly the trap this issue is about, walked into while
+fixing it.
+
+**Pass 2 (the fix).** `nros_lane_coords_file` itself now prefers a prebuilt
+selector, so every caller is covered — the three preflight call sites inside
+this file included, which is where the guard reaches it:
+
+```sh
+bin="$(_nros_lane_coords_bin)"
+if [ -n "$bin" ]; then "$bin" "$lane" > "$tmp"
+elif ! cargo run -q -p nros-tests --bin lane-coords -- "$lane" > "$tmp"; then …
+```
+
+`_nros_lane_coords_bin` returns the NEWEST prebuilt selector, or empty — forcing
+the `cargo run` rebuild — when any `nros-tests` source is newer than it. The
+build recipes keep working either way; they just stop paying for a compile
+somebody already did.
+
+Verified in a full sweep, which is the only thing that can settle it:
+**TIMEOUT count 3 → 0**, `lane_build_covers_run` absent from the failure list,
+real failures 14 → 10. Plus: selector resolves to `target/debug/lane-coords`,
+`tier2` still yields 13 coordinates, backdating every prebuilt binary makes it
+correctly fall back to `cargo run`, `bash -n` clean.
 
 The compile does not vanish, it MOVES: `cargo nextest run -p nros-tests` builds
 that bin in its build phase before any test starts. Verified rather than assumed
@@ -148,7 +179,8 @@ that bin in its build phase before any test starts. Verified rather than assumed
 test consumes a build-stage artifact, which is exactly the shape the rule asks
 for.
 
-**Selecting it by preferred profile was wrong and the tests caught it.** The
+**Selecting it by preferred profile was wrong and the tests caught it.** (This
+applies to both passes; the shell helper picks the newest for the same reason.) The
 first version tried `nros-fast-release` first and picked an ELEVEN-DAY-OLD
 binary that answered `tier2` with 12 coordinates where the current sources say
 13; two cases then failed with a coordinate-drift report that read like a bug in

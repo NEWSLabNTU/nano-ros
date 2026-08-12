@@ -96,9 +96,7 @@ mode. The two genuine configures are registered `tool: "cmake (configure only)"`
 `cargo run -q -p nros-tests --bin lane-coords`, and `lane-coords` is a bin of THAT crate, so any edit to it
 recompiles the package before a byte is written; the 60 s per-test timeout did the rest. **Corrects this
 issue's own provenance:** not phase-340 W3's env change — the trigger is "any nros-tests edit, then the
-first run", and those edits were mine (#470). Fixed by running the PREBUILT binary: 60 s timeouts → 9/9 in
-0.5 s, the compile moving to nextest's build phase (verified: a binary backdated to 2020 came back stamped
-today mid-run). Selecting it by preferred profile picked an 11-day-old artifact answering 12 coordinates
+first run", and those edits were mine (#470). Fixed in TWO passes, and the first was HALF a fix: changing only the test helper passed SOLO (9/9 in 0.5 s) and I reported it fixed on that evidence, but the next full sweep timed out on the same three cases — the GUARD UNDER TEST reaches the compile too, via `nros_fixtures_stamp_require` → `nros_lane_coords_file` → `cargo run`, which is instant solo and blocks past 60 s under a sweep's cargo-lock contention. **A solo pass cannot tell a fixed path from an unfixed one**, which is the trap this issue is about, walked into while fixing it. Pass 2 moved it into `nros_lane_coords_file` so every caller is covered; it prefers the NEWEST prebuilt selector and falls back to `cargo run` when any `nros-tests` source is newer. Settled by a full sweep: TIMEOUT 3 → 0, the suite absent from the failure list, real failures 14 → 10. Selecting it by preferred profile picked an 11-day-old artifact answering 12 coordinates
 where the sources say 13 — now newest-by-mtime; a staleness check written for that was REMOVED as
 unreachable rather than shipped with a confident comment. See `archived/0523-*`. (2026-08-12)
 
