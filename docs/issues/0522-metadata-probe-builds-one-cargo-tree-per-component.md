@@ -1,6 +1,6 @@
 ---
 id: 522
-title: "The cmake metadata probe builds one full cargo tree per component — 82.4 GiB, 108 dirs, and 16 distinct compilations doing the work of 312"
+title: "The metadata probe builds one full cargo tree per component — cargo harness FIXED, the cmake/corrosion probe (14 trees, 50.3 GiB) remains"
 status: open
 type: tech-debt
 area: build
@@ -100,3 +100,62 @@ Not phase-340's to fix — that phase owns the fixture lane and is closing. File
 so the number is recorded rather than re-swept: the disk story phase-340 wrote
 (`examples/` 402 GiB, one talker leaf holding 7.4 GiB across five target dirs)
 is no longer the dominant story on this tree, and this is what replaced it.
+
+## Status (2026-08-12) — the cargo harness half is FIXED
+
+`metadata_build.rs` now resolves a SHARED target dir:
+`$NROS_BUILD_ROOT/metadata-probe`, else `<nano-ros workspace>/build/metadata-probe`
+(the same `<repo>/build` rule the shell's `nros_build_root` uses, reached through
+the checkout the harness already points its path deps at), else a
+`.shared-target` beside the harness dirs when the nano-ros workspace is a
+read-only installed SDK.
+
+Measured on `examples/workspaces/rust` (6 components), wiped and re-probed:
+
+| | before | after |
+| --- | --- | --- |
+| probe target dirs | 6 | **1 shared** |
+| bytes | 3.2 GiB | **483 MiB** (6.8x) |
+| `nros_core` rlibs / identities | 12 / 2 | **2 / 2** |
+
+**It is also faster, which was not the goal.** Cold `build-test-fixtures
+lane=native`, same method as phase-340 W7:
+
+| | wall | native stage |
+| --- | --- | --- |
+| pre-fix steady state (W7) | 581 s | 342 s |
+| first build after the fix | 722 s | 392 s |
+| steady state after the fix | **461 s** | **295 s** |
+
+The middle row is the one-off cost of populating the shared dir; steady state is
+21 % faster on wall clock than before the change, because the probe work that
+used to be repeated per component now happens once.
+
+Two parts of the fix are worth keeping in mind before touching this code again:
+
+* **Unique artifact names are part of it, not tidy-up.** Every harness was
+  package `nros-metadata-probe` with bin `probe`. Fine with a private dir, fatal
+  when shared: cargo does not hash the final artifact name, so two components
+  write the same `<target>/<host>/<profile>/probe` and a `cargo run` can execute
+  the other component's binary. Phase-340 W1 measured that exact failure on the
+  fixture lane. Package and bin are slugged per component now.
+* **The DEFAULT mattered more than the override.** The first version keyed only
+  on `$NROS_BUILD_ROOT`, which is a function-local default in `build-root.sh`
+  and not an exported variable — so a plain `nros metadata --build`, and every
+  cmake configure that shells the CLI, sees it unset. That version would have
+  left all 108 dirs exactly as they were.
+
+## Remaining — a SECOND producer, and the residue
+
+**Still open, and the reason this issue stays open:** the corrosion-driven
+`metadata-probe-cmake` path is a different producer with its own trees —
+**14 trees, 50.26 GiB** measured after the cargo fix landed. Its target dir is
+chosen by cmake/corrosion rather than by `metadata_build.rs`, so nothing above
+touches it. That is issue 0493's territory (two workspace roots, one corrosion
+target dir) and wants to be solved with it rather than beside it.
+
+The original 82.4 GiB census counted BOTH producers, because it classified by
+path (`/nros-metadata/`). Split after the fix: the cargo harness class is gone,
+the cmake class is the 50.3 GiB above, and **75.7 GiB across 94 dirs is pre-fix
+residue** — output nothing writes any more. Deleting it belongs to issue 0488's
+cleanup, not to a bug fix.

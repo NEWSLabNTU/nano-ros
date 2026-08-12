@@ -107,17 +107,16 @@ input names `$NUTTX_DIR/include`, or give each arch its own checkout. Not an arg
 consolidation — the arch IS discriminated via `CARGO_CFG_TARGET_ARCH`; phase-339 just migrated two of three
 input classes. See `0525-*`. (2026-08-12)
 
-**#522** — the cmake metadata probe builds ONE FULL CARGO TREE PER COMPONENT: `metadata_build.rs`
-renders a harness into `<leaf>/build/nros-metadata/metadata-probe/<c>/` and passes `--target-dir
-<harness>/target`, so every component gets a private host build of itself and its whole dep graph.
-Measured 2026-08-12 while re-measuring phase-340 W7: **108 dirs, 82.4 GiB** — three times the 28.9 GiB
-of example-leaf residue phase-340 has left, and the eight largest `target*` dirs under `examples/` are
-all probe trees. It is phase-340's thesis on a build path phase-340 never touched: 162 probe trees hold
-312 `libnros_core` rlibs with **16 distinct `-C metadata` identities**, so 296 are literal repeats.
-Issue 0488's census missed it because that sweep looked for `cargo build` in `just/`/`scripts/` and this
-invocation is emitted by the CLI in Rust; `check-example-leaf-target-dirs.py`'s glob does not reach
-`examples/**/build/nros-metadata/**/target` either (the 0196 rule). Direction: one probe target dir per
-(host-triple, workspace) under `$NROS_BUILD_ROOT` via `nros_build_dir`. See `0522-*`. (2026-08-12)
+**#522** — the metadata probe built ONE FULL CARGO TREE PER COMPONENT (108 dirs, 82.4 GiB; 162 trees
+holding 312 `libnros_core` rlibs with 16 distinct identities). **Cargo-harness half FIXED 2026-08-12:**
+`metadata_build.rs` now resolves a shared target dir (`$NROS_BUILD_ROOT/metadata-probe`, else
+`<nano-ros workspace>/build/metadata-probe`, else a `.shared-target` beside the harness dirs for a
+read-only out-of-tree SDK). Measured on `examples/workspaces/rust`: 6 dirs / 3.2 GiB / 12 rlibs -> 1 dir
+/ 483 MiB / 2 rlibs, and cold `lane=native` got FASTER (581 s -> 461 s steady state). Unique per-component
+package + bin names were part of the fix, not tidy-up: cargo does not hash the final artifact name, so a
+shared dir with one `probe` binary is phase-340 W1's last-writer-wins collision. **STILL OPEN** for the
+second producer — the corrosion-driven `metadata-probe-cmake` path, 14 trees / 50.3 GiB, whose dir is
+chosen by cmake and belongs with issue 0493. See `0522-*`. (2026-08-12)
 
 RESOLVED 2026-08-12: **#511** — `rust-rtos-link-check` "overflowed NuttX ROM by N bytes" because the ARM image
 was linked with the RISC-V memory map, where ROM has LENGTH 0. N was never an excess — it was the image's whole
