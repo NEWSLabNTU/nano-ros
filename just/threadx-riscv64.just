@@ -342,14 +342,25 @@ _run-qemu example binary peer_index:
     rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
     # phase-336 — ambient profile, and the kernel path below derived from it.
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    # issue 0488 residue 2 — the SHARED group, not a per-leaf `target-zenoh/`.
+    # `threadx-riscv64` is migrated, so the fixture lane compiles this exact
+    # configuration once for the platform. Flag and `-kernel` path come from ONE
+    # `nros_fixture_group` call, so this recipe cannot look where it did not
+    # write (phase-340 item 7's failure, on esp32).
+    source "{{justfile_directory()}}/scripts/build/fixtures-target-dir.sh"
     TX_DIR="$(nros_cargo_target_profile_dir)"
-    cd "examples/qemu-riscv64-threadx/rust/{{example}}"
-    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build $(nros_cargo_profile_arg_string) --no-default-features --features rmw-zenoh --target-dir target-zenoh
+    TX_ARGS="--no-default-features --features rmw-zenoh"
+    TX_LEAF="examples/qemu-riscv64-threadx/rust/{{example}}"
+    tx_tdir_flag="$(nros_fixture_target_dir_flag threadx-riscv64 "$TX_ARGS" "")"
+    tx_artifacts="$(nros_fixture_row_artifact_dir "$TX_LEAF" threadx-riscv64 "$TX_ARGS" "")"
+    cd "{{justfile_directory()}}/$TX_LEAF"
+    # shellcheck disable=SC2086
+    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build $(nros_cargo_profile_arg_string) $TX_ARGS $tx_tdir_flag
     MAC="52:54:00:12:34:$(printf '%02x' $((0x56 + {{peer_index}})))"
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     qemu-system-riscv64 -M virt -m 256M -bios none -nographic \
         -global virtio-mmio.force-legacy=false \
-        -kernel "target-zenoh/riscv64gc-unknown-none-elf/$TX_DIR/{{binary}}" \
+        -kernel "$tx_artifacts/riscv64gc-unknown-none-elf/$TX_DIR/{{binary}}" \
         -netdev user,id=net0 \
         -device "virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac=$MAC" &
     PID=$!

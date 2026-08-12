@@ -347,11 +347,15 @@ trace example="talker":
     FR_PROFILE="$(nros_cargo_freertos_qemu_profile)"
     FR_ARGS="$(nros_cargo_profile_args_for "$FR_PROFILE")"
     FR_DIR="$(nros_cargo_target_profile_dir_for "$FR_PROFILE")"
-    (cd "$EXAMPLE_DIR" && NROS_TRACE=1 cargo build $FR_ARGS --target-dir target-zenoh)
+    # issue 0488 residue 2 — same shared group as `_run-qemu`, same reason.
+    source scripts/build/fixtures-target-dir.sh
+    fr_tdir_flag="$(nros_fixture_target_dir_flag freertos "" "")"
+    fr_artifacts="$(nros_fixture_row_artifact_dir "$EXAMPLE_DIR" freertos "" "")"
+    (cd "$EXAMPLE_DIR" && NROS_TRACE=1 cargo build $FR_ARGS $fr_tdir_flag)
 
     # Find the binary name from Cargo.toml
     BINARY=$(grep '^name = ' "$EXAMPLE_DIR/Cargo.toml" | head -1 | sed 's/name = "\(.*\)"/\1/')
-    BINARY_PATH="$EXAMPLE_DIR/target-zenoh/thumbv7m-none-eabi/$FR_DIR/$BINARY"
+    BINARY_PATH="$fr_artifacts/thumbv7m-none-eabi/$FR_DIR/$BINARY"
     if [ ! -f "$BINARY_PATH" ]; then
         echo "ERROR: Binary not found: $BINARY_PATH"
         exit 1
@@ -422,15 +426,24 @@ _run-qemu example binary:
     #!/usr/bin/env bash
     set -e
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    # issue 0488 residue 2 — the SHARED group, not a per-leaf `target-zenoh/`.
+    # `freertos` is a migrated platform, so the fixture lane already compiles
+    # this configuration once; the authored dir re-did the whole graph per leaf
+    # and per run. Flag and `-kernel` path come from ONE `nros_fixture_group`
+    # call so they cannot disagree (phase-340 item 7's failure).
+    source "{{justfile_directory()}}/scripts/build/fixtures-target-dir.sh"
     FR_PROFILE="$(nros_cargo_freertos_qemu_profile)"
     FR_DIR="$(nros_cargo_target_profile_dir_for "$FR_PROFILE")"
-    cd "examples/qemu-arm-freertos/rust/{{example}}" && \
-        cargo build $(nros_cargo_profile_args_for "$FR_PROFILE") --target-dir target-zenoh
+    FR_LEAF="examples/qemu-arm-freertos/rust/{{example}}"
+    fr_tdir_flag="$(nros_fixture_target_dir_flag freertos "" "")"
+    fr_artifacts="$(nros_fixture_row_artifact_dir "$FR_LEAF" freertos "" "")"
+    cd "{{justfile_directory()}}/$FR_LEAF" && \
+        cargo build $(nros_cargo_profile_args_for "$FR_PROFILE") $fr_tdir_flag
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
-        -kernel "target-zenoh/thumbv7m-none-eabi/$FR_DIR/{{binary}}" \
+        -kernel "$fr_artifacts/thumbv7m-none-eabi/$FR_DIR/{{binary}}" \
         -nic user,model=lan9118 &
     PID=$!
     wait $PID

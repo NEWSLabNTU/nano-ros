@@ -208,3 +208,46 @@ rtic-run-plan-e2e, ros-edition-pose-pub), residue 2's `just` `_run`/`_run-qemu`
 sites and the ros-editions / px4 ones, residue 3 (`stack-analysis.sh`), and
 residue 4 (NuttX in-source objects — a NuttX build-system change, not a
 coordinate).
+
+
+## Status (2026-08-12, second pass) — residue 2's `just` run-paths are FIXED
+
+The three `_run`/`_run-qemu`-shaped sites on MIGRATED platforms now build into
+the shared group and read back from it:
+
+| site | platform |
+| --- | --- |
+| `just/freertos.just` `_run-qemu` + `trace` | freertos |
+| `just/threadx-linux.just` `_run` | threadx-linux |
+| `just/threadx-riscv64.just` `_run-qemu` | threadx-riscv64 |
+
+Each takes its `--target-dir` from `nros_fixture_target_dir_flag` and its
+artifact path from `nros_fixture_row_artifact_dir`, i.e. from ONE
+`nros_fixture_group` call — which is the property that matters here, not the
+byte saving. phase-340 item 7's esp32 failure was exactly a recipe that kept
+building in one place and looking in another.
+
+Verified: `--target-dir` and lookup resolve to the same dir
+(`build/fixtures-cargo/freertos`, and the variant group
+`threadx-linux-3263301353` for the `--no-default-features --features rmw-zenoh`
+rows); a build through the derived flag lands the kernel where the recipe reads
+it; and **zero** `target-zenoh/` dirs remain under the three platforms' leaves.
+
+One naming note, because it cost a gate round-trip:
+`check-example-leaf-target-dirs` recognises a derived flag only through a
+LOWERCASE `*tdir_flag` variable, which is the in-tree convention
+(`nros_example_tdir_flag`, `qemu_tdir_flag`, `nx_tdir_flag`). Uppercase names are
+invisible to it, so it reported a converted site as unconverted. Renamed rather
+than widening the gate.
+
+### Still open after this pass
+
+* residue 1: `qemu-smoltcp-bridge`, `rtic-run-plan-e2e`, `ros-edition-pose-pub`
+  (each needs its resolver moved with it).
+* residue 2: `just/ros-editions.just` `build-e2e-fixtures`
+  (`target-ros-edition-<distro>-<rmw>/`), and `just/px4.just` — px4 is NOT a
+  migrated platform, so its authored dir is correct today.
+* residue 3: `scripts/stack-analysis.sh` (takes a directory argument, so it has
+  no coordinate; wants a `--target-dir` of its own).
+* residue 4: NuttX in-source objects — a NuttX build-system change, the one
+  residue with no `--target-dir`-shaped fix.

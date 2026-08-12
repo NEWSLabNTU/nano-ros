@@ -220,9 +220,21 @@ _run example:
     # phase-336 — the ambient profile (a hosted ThreadX process has no timing
     # floor or codegen carve-out), with the run path derived from it.
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
-    cd "examples/threadx-linux/rust/{{example}}"
-    cargo build $(nros_cargo_profile_arg_string) --no-default-features --features rmw-zenoh --target-dir target-zenoh
-    exec "target-zenoh/$(nros_cargo_target_profile_dir)/threadx-linux-{{example}}"
+    # issue 0488 residue 2 — build into the SHARED group, not a per-leaf
+    # `target-zenoh/`. `threadx-linux` is in `NROS_FIXTURE_SHARED_PLATFORMS`, so
+    # the fixture lane already compiles this exact configuration once for the
+    # whole platform; an authored dir here re-did all of it per leaf. The flag
+    # and the run path come from ONE `nros_fixture_group` call, so the recipe
+    # cannot look where it did not write (phase-340 item 7).
+    source "{{justfile_directory()}}/scripts/build/fixtures-target-dir.sh"
+    args="--no-default-features --features rmw-zenoh"
+    leaf="examples/threadx-linux/rust/{{example}}"
+    tdir_flag="$(nros_fixture_target_dir_flag threadx-linux "$args" "")"
+    artifact_dir="$(nros_fixture_row_artifact_dir "$leaf" threadx-linux "$args" "")"
+    cd "{{justfile_directory()}}/$leaf"
+    # shellcheck disable=SC2086
+    cargo build $(nros_cargo_profile_arg_string) $args $tdir_flag
+    exec "$artifact_dir/$(nros_cargo_target_profile_dir)/threadx-linux-{{example}}"
 
 # Run ThreadX Linux talker
 talker: (_run "talker")
