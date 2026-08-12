@@ -21,7 +21,13 @@ fn main() {
     };
 
     let nuttx = PathBuf::from(&nuttx_dir);
-    let nuttx_include = nuttx.join("include");
+    // Issue 0525 — THIS arch's headers, not the shared tree's. NuttX is built
+    // in place and one checkout serves both arches, so `<tree>/include` carries
+    // whichever arch was configured LAST; bindgen would then generate this
+    // crate's FFI against the wrong `nuttx/config.h` while the clang args below
+    // still say arm. Prefers the per-arch export snapshot, falls back to the
+    // tree.
+    let nuttx_include = nros_build_paths::nuttx_include_root(&nuttx);
     if !nuttx_include.exists() {
         emit_placeholder_bindings();
         return;

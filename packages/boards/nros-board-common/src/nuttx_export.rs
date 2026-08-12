@@ -156,20 +156,7 @@ pub fn snapshot_or_tree(
 /// rule): the config IS the memory map and the ABI, so a reconfigure must
 /// invalidate anything derived from it, including on the losing branch.
 pub fn include_root(nuttx_dir: &Path) -> PathBuf {
-    let shared = nuttx_dir.join("include");
-    println!(
-        "cargo:rerun-if-changed={}",
-        shared.join("nuttx/config.h").display()
-    );
-    if let Some(root) = snapshot_root(nuttx_dir) {
-        let inc = root.join("include");
-        println!(
-            "cargo:rerun-if-changed={}",
-            inc.join("nuttx/config.h").display()
-        );
-        if inc.join("nuttx/config.h").is_file() {
-            return inc;
-        }
-    }
-    shared
+    // Issue 0525 — ONE spelling of this resolution, shared with `nuttx-sys`'s
+    // bindgen script, which cannot reach these board helpers.
+    nros_build_paths::nuttx_include_root(nuttx_dir)
 }

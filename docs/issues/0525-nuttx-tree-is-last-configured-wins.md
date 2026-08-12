@@ -76,6 +76,33 @@ arch IS discriminated where it matters: `snapshot_root()` keys on
 `CARGO_CFG_TARGET_ARCH`. 0511 was not consolidation leaking; it was a migration
 that moved two of three input classes onto the per-arch mechanism.
 
+## Direction 2 LANDED 2026-08-12 — and it found a fifth site immediately
+
+`scripts/check-nuttx-shared-tree-headers.py` (in `check-fast`): no build input
+may take NuttX headers from the shared tree. Rust (`*.join("include")` on a
+nuttx-ish path) and shell/cmake (`$NUTTX_DIR/include`) spellings, existence
+PROBES exempted because both arches answer those identically, and an ALLOWED map
+carrying the one legitimate site — the accessor's own definition and its
+documented fallback.
+
+**It paid for itself on the first run.** The hand sweep behind the 0511 class
+fix found four readers, all in `nros-board-common`, because that is where the
+grep was pointed. The gate found a fifth: `packages/drivers/sys/nuttx-sys/
+build.rs`, which runs **bindgen** over the shared tree's headers — a standalone
+crate outside the board helpers, so outside the sweep. Its generated FFI took
+whichever arch was configured last, while its clang args said `arm-none-eabi`.
+
+Fixing it moved the resolution to `nros_build_paths::nuttx_include_root`:
+`nuttx-sys` is its own workspace and cannot depend on `nros-board-common`, and a
+second copy of the resolution is precisely the drift that produced 0511.
+`nros-build-paths` is dependency-free and already the shared path SSoT, so both
+consumers now share ONE spelling. Its standalone lock moved by exactly the new
+edge, via `just lock-update`.
+
+Verified: gate green over 1359 tracked sources; tripwired live by reverting the
+`nuttx-sys` site (fails, naming the file) and restoring it (passes);
+`just rust-rtos-link-check` still passes all three leaves.
+
 ## Directions
 
 1. **Make the provisioning script arch-idempotent.** `build-nuttx.sh` should
@@ -83,11 +110,7 @@ that moved two of three input classes onto the per-arch mechanism.
    `CONFIG_ARCH`, even when the export snapshot is up to date — or state
    explicitly that it is a snapshot-only path and that the tree's state is
    undefined afterwards. Today it silently means the second.
-2. **Stop deriving anything from the shared tree.** The snapshot already carries
-   `include/`, `libs/`, `scripts/`, `startup/`. If every consumer reads the
-   snapshot, the tree's `.config` becomes an implementation detail of
-   provisioning. A gate — no build input may name `$NUTTX_DIR/include` — would
-   hold that, in the shape of `check-path-env-fingerprints`.
+2. ~~**Stop deriving anything from the shared tree.**~~ **DONE** — see above.
 3. **Or give each arch its own checkout** (worktree per arch). Removes the
    shared mutable state entirely, at the cost of disk and a second submodule
    dance.

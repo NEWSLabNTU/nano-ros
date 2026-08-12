@@ -243,3 +243,55 @@ pub fn netx_dir() -> PathBuf {
 pub fn tband_dir() -> PathBuf {
     env_or_repo_path("TBAND_DIR", "third-party/tracing/Tonbandgeraet/tband")
 }
+
+/// The NuttX include root whose `nuttx/config.h` describes THIS build's arch.
+///
+/// Issue 0525 — NuttX is built IN PLACE, so `$NUTTX_DIR/include/nuttx/config.h`
+/// belongs to whichever arch the shared checkout was configured for LAST, and
+/// one checkout serves both in-tree arches. Anything deriving a compile input
+/// from it silently takes the other arch's values when two arches share a tree,
+/// which `lane=tier2` does (it builds nuttx-riscv after nuttx).
+///
+/// That is issue 0511: the ARM image was linked with the RISC-V memory map,
+/// whose `CONFIG_FLASH_SIZE` is 0, so ROM had LENGTH 0 and every byte placed in
+/// it "overflowed" — read as a 400-500 KB size regression that survived clean
+/// rebuilds, because the stale `.config` lives in the submodule rather than in
+/// any target dir.
+///
+/// Lives HERE rather than in `nros-board-common` so the board crates and the
+/// `nuttx-sys` bindgen build script share ONE spelling: `nuttx-sys` cannot
+/// depend on the board helpers, and a second copy of this resolution is exactly
+/// the drift that produced 0511 in the first place.
+///
+/// Prefers `nros-nuttx-export-<arch>/include` when it carries a
+/// `nuttx/config.h`, else the live tree's `include/` so a pre-phase-339 checkout
+/// keeps working. Emits `rerun-if-changed` on BOTH spellings whether or not they
+/// exist (issue 0477's rule): the config IS the memory map and the ABI, so a
+/// reconfigure must invalidate whatever was derived from it — including on the
+/// branch that lost.
+pub fn nuttx_include_root(nuttx_dir: &std::path::Path) -> PathBuf {
+    let shared = nuttx_dir.join("include");
+    println!(
+        "cargo:rerun-if-changed={}",
+        shared.join("nuttx/config.h").display()
+    );
+    // The snapshot is named for the ARCH being compiled for, which is the only
+    // thing that distinguishes the two trees.
+    let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let snapshot_arch = match arch.as_str() {
+        "arm" => Some("arm"),
+        "riscv32" | "riscv64" => Some("riscv"),
+        _ => None,
+    };
+    if let Some(a) = snapshot_arch {
+        let inc = nuttx_dir.join(format!("nros-nuttx-export-{a}")).join("include");
+        println!(
+            "cargo:rerun-if-changed={}",
+            inc.join("nuttx/config.h").display()
+        );
+        if inc.join("nuttx/config.h").is_file() {
+            return inc;
+        }
+    }
+    shared
+}

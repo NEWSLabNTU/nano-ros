@@ -397,7 +397,7 @@ check-fast: \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
-    check-cbindgen-pin check-cbindgen-headers \
+    check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
     check-capability-slot-counts check-kconfig-knob-forwarding \
@@ -1067,6 +1067,14 @@ check-cargo-locked:
 [private]
 check-cbindgen-pin:
     @bash scripts/check-cbindgen-pin.sh
+
+# Issue 0525 — NuttX is built IN PLACE and one checkout serves both arches, so
+# `$NUTTX_DIR/include/nuttx/config.h` belongs to whichever arch was configured
+# LAST. A compile input taken from there silently gets the other arch (issue
+# 0511: the ARM image linked with the RISC-V memory map). Buildless.
+[private]
+check-nuttx-shared-tree-headers:
+    @python3 scripts/check-nuttx-shared-tree-headers.py
 
 # Issue 0452 — the committed cbindgen headers must match a fresh generation.
 # The Rust->C mirror of `check-abi-bindings`, which has guarded the C->Rust
