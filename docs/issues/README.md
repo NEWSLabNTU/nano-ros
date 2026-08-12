@@ -134,6 +134,15 @@ What remains is transitive, in two chains: `play_launch_parser -> anyhow`, which
 therefore actionable via the vendored-fork workflow, and `wasip2`/`wasip3` -> `wit-bindgen` -> … ->
 `anyhow`, which is upstream wasi tooling nothing here chooses. See `0524-*`. (2026-08-12)
 
+**#528** — every Zephyr fixture leaf fails `EXECUTOR_OPAQUE_U64S too small for Executor + backing` in
+`nros-c`'s compile-time assert, taking the whole zephyr module — and with it `build-test-fixtures lane=tier2`
+and `ci-matrix` — down. Both languages, both RMWs. RULED OUT by measurement, not reasoning: not a stale sizes
+probe (deleted `build/sizes-probe`, rebuilt one leaf from scratch, identical failure), and not phase-346
+W2/W3 (checked out the upstream commit before that work, identical failure). The loud report is issue 0464's
+fix working — it removed the fallbacks that used to hide a bad probe by emitting a short buffer. No bisect yet,
+and deliberately no attempt to raise `NROS_EXECUTOR_ARENA_SIZE` to silence it before anyone knows why the
+storage grew. See `0528-*`. (2026-08-12)
+
 RESOLVED 2026-08-12: **#432** — `zephyr-lang-rust`'s DT codegen could not compile for ANY board with gpio
 nodes, so Rust-on-Zephyr was native_sim-only. Fixed by phase-346 W2/W3, with the diagnosis CORRECTED: the
 generator does not "drop a cell" — `arm,mps2-fpgaio-gpio` declares `#gpio-cells = <1>`, so the devicetree is
