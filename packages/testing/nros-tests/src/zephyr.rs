@@ -1071,6 +1071,41 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
         .join("examples")
         .join(example_path_for_name(example_name));
 
+    let lang_api_crate = match decode_alias(example_name).map(|(lang, _, _, _)| lang) {
+        Some("c") => Some("nros-c"),
+        Some("cpp") => Some("nros-cpp"),
+        Some("rust") => Some("nros"),
+        _ => None,
+    };
+    let rmw = decode_alias(example_name).map(|(_, _, rmw, _)| rmw);
+    let candidates = staleness_candidates(
+        &example_dir,
+        lang_api_crate,
+        rmw,
+        conf_files_for_example(example_name),
+    );
+    stale_against_candidates(binary_path, binary_mtime, &candidates).is_some()
+}
+
+/// The watched-input set for one Zephyr image — THE single computation of it.
+///
+/// Extracted so the entry images can use the same set (issue 0466). They used to
+/// reach staleness through `require_prebuilt_binary_fresh_zephyr`, which watches
+/// only the Rust staticlib's cargo `.d`; that file lists 529 deps for the qos
+/// entry and not one of them is the leaf's own `prj.conf`, so a Kconfig edit left
+/// every entry image "fresh" with the old value compiled in. A C or C++ entry has
+/// no `.d` at all and was existence-only.
+///
+/// `lang_api_crate` = the language API crate to KEEP (the other two are dropped);
+/// `None` keeps all three, which over-watches and never under-watches — the right
+/// default for a leaf whose language is not decodable from its name.
+fn staleness_candidates(
+    example_dir: &Path,
+    lang_api_crate: Option<&str>,
+    rmw: Option<&str>,
+    conf_files: Option<String>,
+) -> Vec<PathBuf> {
+    let root = project_root();
     // The example-local set catches app source, Kconfig overlays, and Rust
     // dependency changes. The package set catches shared nros backend/platform
     // edits; otherwise tests can report stale Zephyr runtime failures after a
@@ -1085,6 +1120,21 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
         root.join("zephyr"),
     ];
 
+    // EVERY `*.conf` beside the app, not just `prj.conf` — issue 0466. The RMW
+    // overlay (`prj-zenoh.conf`, `prj-cyclonedds.conf`, …) is a real Kconfig
+    // input, and `conf_files_for_example` names it only for decodable aliases, so
+    // an entry leaf's overlay was watched by nothing. Enumerated rather than
+    // spelt so a new overlay is covered the day it is added.
+    if let Ok(entries) = std::fs::read_dir(example_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.ends_with(".conf") && !candidates.iter().any(|c| *c == entry.path()) {
+                candidates.push(entry.path());
+            }
+        }
+    }
+
     // Watch `packages/core`, but skip the *other* languages' API crates so a
     // single-language core edit (e.g. an `nros-cpp` change) doesn't falsely
     // mark unrelated C/Rust fixtures stale — cmake correctly leaves them
@@ -1094,12 +1144,6 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
     // nros-platform-*, …) stays watched, and new crates are picked up
     // automatically; only the two non-matching language API crates are
     // dropped. `nros` = Rust API, `nros-c` = C API, `nros-cpp` = C++ API.
-    let lang_api_crate = match decode_alias(example_name).map(|(lang, _, _, _)| lang) {
-        Some("c") => Some("nros-c"),
-        Some("cpp") => Some("nros-cpp"),
-        Some("rust") => Some("nros"),
-        _ => None,
-    };
     let core_dir = root.join("packages/core");
     match std::fs::read_dir(&core_dir) {
         Ok(entries) => {
@@ -1114,7 +1158,7 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
         // under-watches, at worst keeps the old over-broad behaviour).
         Err(_) => candidates.push(core_dir),
     }
-    match decode_alias(example_name).map(|(_, _, rmw, _)| rmw) {
+    match rmw {
         Some("cyclonedds") => candidates.push(root.join("packages/rmw/cyclonedds")),
         Some("xrce") => candidates.push(root.join("packages/rmw/xrce")),
         Some("zenoh") => candidates.push(root.join("packages/rmw/zenoh")),
@@ -1124,24 +1168,47 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
             candidates.push(root.join("packages/rmw/zenoh"));
         }
     }
-    if let Some(conf_files) = conf_files_for_example(example_name) {
+    if let Some(conf_files) = conf_files {
         for conf_file in conf_files.split(';') {
-            candidates.push(example_dir.join(conf_file));
+            let p = example_dir.join(conf_file);
+            if !candidates.contains(&p) {
+                candidates.push(p);
+            }
         }
     }
-    // #147 / phase-286 W2 — content-aware staleness. A pure mtime compare
-    // (`path_newer_than`) cannot tell a real edit from an mtime bump that left
-    // the bytes identical (a rebase/checkout/pull "mtime treadmill", or an edit
-    // reverted to the same content), and false-reports EVERY fixture stale after
-    // such a bump even though the image is current. `candidates_changed_content`
-    // uses the LINKED binary's own content hash as the "was rebuilt" signal and
-    // only content-hashes sources whose (mtime,size) actually moved, so an
-    // identical-content bump is not stale while a genuine edit still is. Falls
-    // back to the mtime compare if the binary can't be hashed.
-    let _ = binary_mtime;
-    match candidates_changed_content(binary_path, &candidates) {
-        Some(stale) => stale,
-        None => candidates.iter().any(|p| path_newer_than(p, binary_mtime)),
+    candidates
+}
+
+/// The staleness VERDICT over a candidate set — `Some(offender)` means stale.
+///
+/// #147 / phase-286 W2 — content-aware staleness. A pure mtime compare
+/// (`path_newer_than`) cannot tell a real edit from an mtime bump that left the
+/// bytes identical (a rebase/checkout/pull "mtime treadmill", or an edit reverted
+/// to the same content), and false-reports EVERY fixture stale after such a bump
+/// even though the image is current. `candidates_changed_content` uses the LINKED
+/// binary's own content hash as the "was rebuilt" signal and only content-hashes
+/// sources whose (mtime,size) actually moved, so an identical-content bump is not
+/// stale while a genuine edit still is. Falls back to the mtime compare if the
+/// binary can't be hashed.
+///
+/// Returns a path so a caller can NAME what moved (issue 0445: an absorbing
+/// verdict must account for itself). The content arm knows only that something
+/// changed, so it reports the newest-mtime candidate as the best available hint.
+fn stale_against_candidates(
+    binary_path: &Path,
+    binary_mtime: std::time::SystemTime,
+    candidates: &[PathBuf],
+) -> Option<PathBuf> {
+    let newest = || {
+        candidates
+            .iter()
+            .find(|p| path_newer_than(p, binary_mtime))
+            .cloned()
+    };
+    match candidates_changed_content(binary_path, candidates) {
+        Some(true) => Some(newest().unwrap_or_else(|| binary_path.to_path_buf())),
+        Some(false) => None,
+        None => newest(),
     }
 }
 
