@@ -222,18 +222,7 @@ pub fn run_image_link(builtins_stub: &Path) {
     // phase-339 W2 made the export per-arch and moved the linker script onto
     // it; the include path was left on the shared tree, so half the inputs came
     // from the snapshot and half from whatever was configured last.
-    let snapshot_include = crate::nuttx_export::snapshot_root(&nuttx_dir)
-        .map(|root| root.join("include"))
-        .filter(|p| p.join("nuttx/config.h").is_file());
-    let include_root = snapshot_include
-        .clone()
-        .unwrap_or_else(|| nuttx_dir.join("include"));
-    if let Some(inc) = &snapshot_include {
-        println!(
-            "cargo:rerun-if-changed={}",
-            inc.join("nuttx/config.h").display()
-        );
-    }
+    let include_root = crate::nuttx_export::include_root(&nuttx_dir);
     let include_args = |cmd: &mut Command| {
         cmd.arg(format!("-isystem{}", include_root.display()));
         for inc in &arch_includes {

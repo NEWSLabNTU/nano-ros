@@ -132,3 +132,44 @@ pub fn snapshot_or_tree(
     }
     nuttx_dir.join(tree_rel)
 }
+
+/// The include root whose `nuttx/config.h` describes THIS build's arch.
+///
+/// Issue 0511 — NuttX is built IN PLACE, so `$NUTTX_DIR/include/nuttx/config.h`
+/// belongs to whichever arch the shared tree was configured for LAST. Every
+/// input derived from those macros therefore silently takes the other arch's
+/// values when two arches share one checkout, which `lane=tier2` does (it
+/// builds nuttx and nuttx-riscv, riscv last).
+///
+/// That is not hypothetical: the ARM Rust image was linked with the RISC-V
+/// memory map, whose `CONFIG_FLASH_SIZE` is 0, so `MEMORY { ROM ... LENGTH =
+/// CONFIG_FLASH_SIZE }` gave ROM zero bytes and every byte placed in it
+/// "overflowed".
+///
+/// phase-339 W2 already made the LIBS and the linker SCRIPT per-arch via the
+/// export snapshot; the headers were left on the shared tree, so the arch
+/// selection covered two of the three input classes. This is the third.
+///
+/// Returns the snapshot's `include/` when it carries a `nuttx/config.h`, else
+/// the live tree's — a pre-phase-339 checkout keeps working. Emits
+/// `rerun-if-changed` on BOTH spellings whether or not they exist (issue 0477's
+/// rule): the config IS the memory map and the ABI, so a reconfigure must
+/// invalidate anything derived from it, including on the losing branch.
+pub fn include_root(nuttx_dir: &Path) -> PathBuf {
+    let shared = nuttx_dir.join("include");
+    println!(
+        "cargo:rerun-if-changed={}",
+        shared.join("nuttx/config.h").display()
+    );
+    if let Some(root) = snapshot_root(nuttx_dir) {
+        let inc = root.join("include");
+        println!(
+            "cargo:rerun-if-changed={}",
+            inc.join("nuttx/config.h").display()
+        );
+        if inc.join("nuttx/config.h").is_file() {
+            return inc;
+        }
+    }
+    shared
+}

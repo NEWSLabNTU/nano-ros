@@ -403,7 +403,12 @@ pub fn run_nuttx() {
         "-P".into(),
         "-x".into(),
         "c".into(),
-        format!("-isystem{}", nuttx_dir.join("include").display()),
+        // Issue 0511 — the arch-correct headers, not the shared tree's (this is
+        // the same cpp pass over the same linker script as `nuttx_image_link`).
+        format!(
+            "-isystem{}",
+            crate::nuttx_export::include_root(&nuttx_dir).display()
+        ),
         "-D__NuttX__".into(),
         "-D__KERNEL__".into(),
     ];

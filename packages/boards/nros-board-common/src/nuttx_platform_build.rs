@@ -67,7 +67,10 @@ pub fn run_platform() {
     nros_cc_flags::strict_decls(&mut platform);
     platform.define("__NuttX__", None);
     platform.include(&cffi_include);
-    platform.include(nuttx_dir.join("include"));
+    // Issue 0511 — arch-correct `nuttx/config.h`: these C sources are compiled
+    // FOR the target, so the wrong arch's macros are an ABI mismatch, not a
+    // link error.
+    platform.include(crate::nuttx_export::include_root(&nuttx_dir));
     for inc in &arch_includes {
         platform.include(nuttx_dir.join(inc));
     }
@@ -153,7 +156,7 @@ pub fn compile_run_tiers_seam(seam_src: &std::path::Path) {
     // issue 0383 — implicit-function-declaration / int-conversion as errors.
     nros_cc_flags::strict_decls(&mut seam);
     seam.define("__NuttX__", None);
-    seam.include(nuttx_dir.join("include"));
+    seam.include(crate::nuttx_export::include_root(&nuttx_dir));
     for inc in &arch_includes {
         seam.include(nuttx_dir.join(inc));
     }
