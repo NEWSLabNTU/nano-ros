@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+RESOLVED 2026-08-13 — **#533** the west fixture lane never resolved its bringups' SystemModels. phase-330
+W4.a stopped committing models (correctly — #0380); every consumer had to resolve one instead, and this
+lane never learned to. The west build failed at CONFIGURE with "declares system semantics but no
+SystemModel was found", but `just/zephyr-ci.just` invokes the script `|| true` (so a missing FVP SDK
+cannot fail the lane), which swallowed it: the lane printed "built successfully", wrote no stamp, and
+`cli_bringup_zephyr_adapter_shim_boots_native_sim` failed hours later blaming a missing BINARY. Broken
+since that commit. `nros sync` at the workspace root cannot help — these fixtures keep packages at the
+ROOT, not under `src/`, which sync rejects. Fixed by syncing INSIDE each bringup dir, which is where the
+shim's self-pkg resolution looks anyway. Verified from a deleted model + build dir. The `|| true` masking
+is NOT fixed and is the second instance after #0510. See `archived/0533-*`. (2026-08-13)
+
 **#527** (testing, open 2026-08-12) — the doctest phase overwrites the junit.xml the skip-rewrite just
 produced, so a failed sweep reports a trustworthy COUNT of real failures and destroys the record of WHICH
 they were. `rewrite-skipped-junit` prints "Real failures: 19 / 19"; read the file afterwards and it holds

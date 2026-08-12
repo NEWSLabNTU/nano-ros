@@ -83,6 +83,27 @@ for entry in "${WEST_FIXTURES[@]}"; do
     bld="$out_root/$id"
     echo "== west-fixture: $id (board=${board:-board.cmake}) =="
     rm -rf "$bld"
+    # issue 0533 — resolve each bringup's SystemModel before the west build.
+    # The model is a BUILD ARTIFACT (phase-330 W4.a stopped committing them), so
+    # a fresh clone has none and `nros_system_generate` fails the configure with
+    # "declares system semantics but no SystemModel was found". This lane is
+    # invoked with `|| true`, so that failure was INVISIBLE: the build reported
+    # success, no stamp was written, and the test failed much later with
+    # "fixture binary not prebuilt". Same masking shape as #0510.
+    #
+    # Sync runs INSIDE the bringup dir, not the workspace root: these fixtures
+    # keep their packages at the root rather than under `src/`, which `nros sync`
+    # rejects outright — and the shim resolves such a bringup as its OWN
+    # workspace (`_nros_system_detect_self_pkg`), so `<bringup>/build/nros/models/`
+    # is exactly where the configure looks.
+    _wf_cli="${NROS_CLI_BIN:-$repo_root/packages/cli/target/release/nros}"
+    if [ -x "$_wf_cli" ]; then
+        for _bringup in "$repo_root/$src"/*/; do
+            [ -f "$_bringup/system.toml" ] || continue
+            ( cd "$_bringup" && "$_wf_cli" sync >/dev/null 2>&1 ) \
+                || echo "   nros sync failed in $(basename "$_bringup") (configure may fail)" >&2
+        done
+    fi
     args=(build -d "$bld")
     [ -n "$board" ] && args+=(-b "$board")
     args+=("$repo_root/$src/$subdir")
