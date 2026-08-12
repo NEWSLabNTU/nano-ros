@@ -58,3 +58,58 @@ If it is picked up: put the message behind one shared helper per port rather tha
 inlining it at each `abort()`, for the reason CLAUDE.md gives — the POSIX port
 had three init sites and fixing them separately would have produced three
 spellings.
+
+## Fixed in the fork, awaiting the pin (2026-08-12)
+
+`cyclonedds@8601ca66` on the `nano-ros` branch, one helper per port as prescribed
+above. **Still open** deliberately: the fork commit is not pushed, so the
+superproject pin cannot advance (push the fork branch FIRST, then bump the
+pointer), and until it does no nano-ros build consumes this. Flip to `resolved`
+with the pin bump.
+
+### The open question answered itself
+
+The issue said the work was "mostly deciding how to emit it without pulling a
+logging dependency into ddsrt's lowest layer". No decision was needed: **both
+files already `#include "dds/ddsrt/log.h"` and already use `DDS_FATAL`** for an
+unrecoverable sync failure a few lines below the init sites
+(`ddsrt_mutex_lock`/`unlock`, freertos 65/79, threadx 36/50). So the fix adds no
+facility either port did not already depend on — which also keeps fork
+divergence minimal, per issue 0507.
+
+Checked rather than assumed: `dds_log` aborts whenever the category includes
+`DDS_LC_FATAL` — in `vlog`, after the sink call and OUTSIDE any level filter — so
+`DDS_FATAL` alone preserves the unconditional abort these sites made explicitly.
+A level-filtered fatal would otherwise have turned an abort into a fall-through
+into code that assumes the object was created.
+
+Residual exposure, unchanged by this: `vlog` takes the sink lock, so a sync-init
+failure DURING log-subsystem bring-up would take a lock while reporting that a
+lock could not be made. The pre-existing `DDS_FATAL` calls in the same files
+share that exposure, so this adds no new class — noted because it is the reason a
+raw `printk` was used on the Zephyr POSIX path instead.
+
+### What each port can say, and the verification
+
+ThreadX carries the `tx_*_create` status. `ddsrt_cond_init`'s two creates were a
+single `||`, which could only report "one of these two failed"; split into two
+`if`s so the message names which, with short-circuit behaviour unchanged.
+FreeRTOS has no status to carry — neither `xSemaphoreCreateMutex` nor
+`ddsrt_tasklist_init` returns one and both fail only for want of memory — so the
+object name IS the diagnostic there: it says which heap to look at
+(`configTOTAL_HEAP_SIZE` vs ddsrt's).
+
+Sweep of the class, all four sync ports: every init site now names what failed.
+`zephyr` needs nothing (`k_mutex_init`/`k_condvar_init` cannot fail). The aborts
+that remain in `posix` and `freertos` are lock/wait-path aborts, not init.
+
+Build coverage is asymmetric and worth recording, because it decides what a
+future edit here can rely on: the ThreadX TU compiles in the riscv64 ThreadX
+cyclonedds build (`WITH_THREADX=ON`) and was cross-compiled clean to verify.
+**Nothing in nano-ros configures `WITH_FREERTOS`** — there is no
+freertos×cyclonedds fixture, and the threadx-**linux** cyclone builds use the
+POSIX port (pthreads are present there), so that TU has no in-tree build to
+join. It was checked with `gcc -fsyntax-only -Wall -Wextra
+-DDDSRT_WITH_FREERTOS=1` against the vendored kernel headers plus the generated
+ddsrt config from the riscv build tree — zero diagnostics — which is the strongest
+check available without wiring a configuration that does not otherwise exist.
