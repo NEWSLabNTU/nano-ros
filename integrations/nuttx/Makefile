@@ -9,6 +9,54 @@
 
 include $(APPDIR)/Make.defs
 
+############################################################################
+# issue 0488 residue 4 — build OUT OF the nano-ros source tree.
+#
+# `Application.mk` names objects `$(PREFIX)<src>$(SUFFIX)$(OBJEXT)` and stamps
+# `$(PREFIX).built` / `$(PREFIX)Make.dep` / `$(PREFIX).depend`. With the default
+# empty PREFIX those land relative to `$(CWD)` — and `$(CWD)` is `$(CURDIR)`,
+# which make resolves through the staging SYMLINK to the PHYSICAL directory,
+# i.e. `<nano-ros>/integrations/nuttx`. `CSRCS` below also names an absolute
+# path into `packages/platform/`. So a user running `make` in THEIR NuttX tree
+# wrote object files into the nano-ros checkout — a hard failure when nano-ros
+# is a read-only SDK install, and cross-user pollution when it is shared.
+#
+# `$(APPDIR)` is the user's own apps tree (NuttX exports it), so it is the only
+# root here that belongs to the person running the build. `$(CURDIR)` is not,
+# for the symlink reason above — which is also why the sibling
+# `apps-external-template/Makefile` needs no such line: the staging script
+# COPIES it into `apps/external/<bringup>/`, so its `$(CURDIR)` is already the
+# user's tree.
+#
+# The ARCH is in the coordinate deliberately. One apps tree serves both
+# `qemu-armv7a` and `rv-virt` (issue 0525), `SUFFIX` is `$(CWD)` dotted and so
+# identical for both, and the kernel `distclean` does not touch the apps tree —
+# so a shared object dir would let one arch's objects reach the other's
+# `libapps.a`. That is issue 0511's failure class, which is what this whole
+# cluster is about.
+#
+# Upstream requires the directory to exist and PREFIX to end with the delimiter
+# ("Apps compilation can achieve out-of-tree intermediate products by specifying
+# PREFIX to a directory in its own Makefile" — Application.mk).
+############################################################################
+
+NROS_APPS_ARCH  := $(patsubst "%",%,$(CONFIG_ARCH))
+NROS_APPS_BUILD := $(APPDIR)$(DELIM)external$(DELIM).nros-build$(DELIM)$(NROS_APPS_ARCH)
+PREFIX          := $(NROS_APPS_BUILD)$(DELIM)
+$(shell mkdir -p $(NROS_APPS_BUILD))
+# `CSRCS` names an ABSOLUTE path, so `$(PREFIX)<src>` mirrors that whole path
+# under the build root and upstream's compile rule does NOT create the parent
+# ("error: can't create …/.nros-build/arm//mnt/…/platform.c….o"). The two
+# upstream users of PREFIX (audioutils/lame, videoutils/x264) never hit this:
+# their sources are RELATIVE to the app dir, so the mirrored path is shallow and
+# already exists.
+
+# Upstream's `clean::` deletes BARE `.built` / `Make.dep` / `.depend`, so it
+# does not see the prefixed ones. `::` rules accumulate; this removes what we
+# actually wrote.
+clean::
+	$(call DELDIR, $(NROS_APPS_BUILD))
+
 # Cargo features assembled from Kconfig knobs. The Kconfig sibling
 # exposes RMW + ROS-edition as `choice` blocks so `make menuconfig`
 # drives Cargo via this var rather than free-form strings.
@@ -64,6 +112,22 @@ export NUTTX_INCLUDE_DIR := $(TOPDIR)/include:$(TOPDIR)/include/arch
 # need a different nightly.
 export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
 
+# issue 0488 follow-up — this definition sits ABOVE its first use on
+# purpose. It used to come 9 lines after the `CFLAGS +=` below, and NuttX's
+# CFLAGS is simply-expanded, so `+=` expanded `$(NANO_ROS_ROOT)` while it was
+# still EMPTY: the include became `-I/packages/platform/...` and every build
+# of this app failed with `nros/platform.h: No such file or directory`.
+# `CSRCS` is recursively expanded, which is why the SOURCE path resolved and
+# only the header went missing.
+# Phase 157.C — resolve the real nano-ros repo root via the
+# `apps/external/nano-ros` symlink (which points at
+# `integrations/nuttx/`; `../..` from there lands on the repo
+# root). `realpath` follows the symlink so the cargo manifest path
+# is absolute + correct. Plain `$(APPDIR)/external/nano-ros/...`
+# would resolve through the symlink target literally + miss the
+# packages/api/ dir.
+NANO_ROS_ROOT := $(realpath $(APPDIR)/external/nano-ros/../..)
+
 # Phase 157.C.17 + .C.18 — full `nros_platform_*` ABI from the
 # POSIX C-port. NuttX provides POSIX threading + clocks +
 # semaphores + sockets via its libc, so reuse the canonical C-port
@@ -81,18 +145,11 @@ export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
 #     `sem_timedwait` correctly.
 # Obviates a dedicated `nros-platform-nuttx` Rust crate.
 CSRCS = $(NANO_ROS_ROOT)/packages/platform/nros-platform-posix/src/platform.c
+$(shell mkdir -p $(dir $(addprefix $(NROS_APPS_BUILD),$(CSRCS))))
 # Include the platform.h header in CFLAGS so the POSIX port's
 # `#include <nros/platform.h>` resolves.
 CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/packages/platform/nros-platform-api/include
 
-# Phase 157.C — resolve the real nano-ros repo root via the
-# `apps/external/nano-ros` symlink (which points at
-# `integrations/nuttx/`; `../..` from there lands on the repo
-# root). `realpath` follows the symlink so the cargo manifest path
-# is absolute + correct. Plain `$(APPDIR)/external/nano-ros/...`
-# would resolve through the symlink target literally + miss the
-# packages/core/ dir.
-NANO_ROS_ROOT := $(realpath $(APPDIR)/external/nano-ros/../..)
 
 # Phase 157.C — Rust target triple resolution.
 #
@@ -172,25 +229,25 @@ ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 # through upstream's macro.
 context::
 ifeq ($(NROS_TARGET_TRIPLE),)
-	$(call RUST_CARGO_BUILD,nros-c,$(NANO_ROS_ROOT)/packages/core)
+	$(call RUST_CARGO_BUILD,nros-c,$(NANO_ROS_ROOT)/packages/api)
 else
-	$(call NROS_CARGO_BUILD,nros-c,$(NANO_ROS_ROOT)/packages/core,$(NROS_C_FEATURES))
+	$(call NROS_CARGO_BUILD,nros-c,$(NANO_ROS_ROOT)/packages/api,$(NROS_C_FEATURES))
 endif
 # Phase 157.C.11 — also build nros-cpp staticlib when CONFIG_NROS_CPP_API=y.
 # `libnros_cpp.a` rides on the same Cargo workspace target dir as
 # `libnros_c.a`; Make.defs adds it to EXTRA_LIBS conditionally.
 ifneq ($(CONFIG_NROS_CPP_API),)
 ifeq ($(NROS_TARGET_TRIPLE),)
-	$(call RUST_CARGO_BUILD,nros-cpp,$(NANO_ROS_ROOT)/packages/core)
+	$(call RUST_CARGO_BUILD,nros-cpp,$(NANO_ROS_ROOT)/packages/api)
 else
-	$(call NROS_CARGO_BUILD,nros-cpp,$(NANO_ROS_ROOT)/packages/core,$(NROS_CPP_FEATURES))
+	$(call NROS_CARGO_BUILD,nros-cpp,$(NANO_ROS_ROOT)/packages/api,$(NROS_CPP_FEATURES))
 endif
 endif
 
 clean::
-	$(call NROS_CARGO_CLEAN,nros-c,$(NANO_ROS_ROOT)/packages/core)
+	$(call NROS_CARGO_CLEAN,nros-c,$(NANO_ROS_ROOT)/packages/api)
 ifneq ($(CONFIG_NROS_CPP_API),)
-	$(call NROS_CARGO_CLEAN,nros-cpp,$(NANO_ROS_ROOT)/packages/core)
+	$(call NROS_CARGO_CLEAN,nros-cpp,$(NANO_ROS_ROOT)/packages/api)
 endif
 endif
 
