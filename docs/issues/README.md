@@ -254,6 +254,28 @@ takes `build-test-fixtures lane=all` down with rc=2, so no tier needing the full
 still exits 0. Fixed by syncing each leaf after codegen, before the cargo build. See `archived/0510-*`.
 (2026-08-10)
 
+**#531** (platform-zephyr, open 2026-08-13) — `nros_platform_clock_us()` returns 0 FOREVER on Zephyr
+Cortex-M boards at or below 60 MHz. The port computes us from `k_cycle_get_64()`, which returns 0 unless
+`CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER` is set (its `__ASSERT` compiles out in release), and the Cortex-M
+SysTick driver only selects that symbol `default y if (SYS_CLOCK_HW_CYCLES_PER_SEC > 60000000)`. Nothing
+in this repo enables it, and the tier-2 `ZephyrQemuCortexM` board runs at 12 MHz. The executor defaults
+its timer accounting to this clock, so the per-spin delta is 0 forever and PERIODIC CALLBACKS NEVER FIRE
+while subscriptions keep working — the image looks alive with every timer dead. native_sim, FVP, x86,
+ESP32 and Cortex-M above 60 MHz are unaffected (their drivers select the symbol). Static analysis only so
+far; a `qemu_cortex_m3` run is both the confirmation and the regression test. See `0531-*`.
+
+**#532** (embedded, open 2026-08-13) — the platform clock ABI fixes a UNIT (`clock_ms` + `clock_us`) but
+cannot express RESOLUTION, so every port either lies or truncates: microseconds are a lie on ThreadX
+(100 Hz tick = 10 ms steps) and the mps2 bare-metal port (`clock_ms() * 1000`), while nanoseconds are
+discarded on POSIX and on boards whose hardware resolves 40 ns (mps2 SysTick, measured) or 6 ns (STM32F4
+DWT). The same header already advertises ns for the WALL clock while monotonic stops at us. Issues 0502,
+0515 and 0531 are three symptoms of the one missing fact. Surveyed all six backends: a Linux-style
+clock-id interface is un-implementable with fidelity on four of them (no ids at all on
+FreeRTOS/ThreadX/ESP-IDF; NuttX's `clock_getres` returns the same tick number for every id), and
+resolution is a per-board, sometimes per-BOOT value (Zephyr runtime cycle rate, ESP-IDF APB rescale), so a
+compile-time constant cannot carry it. Proposes one `clock_ns` symbol plus `clock_resolution_ns`, with
+`clock_ms`/`clock_us` as header wrappers. See `0532-*`.
+
 **#509** (build/testing, open 2026-08-10) — the Zephyr fixture lane is PER-LEAF-OVERHEAD bound, not compile
 bound. Measured mid-sweep: **40 min for 68 leaves**, and across all of them just **1254 ninja edges**
 (mean 18/leaf), only 8 reconfigures, sccache at 96.8 %, and 4 rustc + 2 C compilers live on a 32-core box.
