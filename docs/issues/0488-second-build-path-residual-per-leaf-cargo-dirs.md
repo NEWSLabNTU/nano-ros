@@ -1,7 +1,6 @@
 ---
 id: 488
-title: "Second-build-path residue: per-leaf cargo dirs outside `examples/**/target/`
-  that phase-340 P2's gate does not cover"
+title: "Second-build-path residue: per-leaf cargo dirs — residues 1-3 FIXED; only residue 4 (NuttX objects written into the source leaf) remains"
 status: open
 type: tech-debt
 area: build
@@ -251,3 +250,53 @@ than widening the gate.
   no coordinate; wants a `--target-dir` of its own).
 * residue 4: NuttX in-source objects — a NuttX build-system change, the one
   residue with no `--target-dir`-shaped fix.
+
+
+## Status (2026-08-12, third pass) — residues 1, 2 and 3 are DONE
+
+Every cargo-shaped residue in this issue is fixed. What is left is residue 4,
+which is not cargo-shaped.
+
+| residue | site | disposition |
+| --- | --- | --- |
+| 1 | wake-latency pair | `[[fixture]]` row + resolver on the row (second pass) |
+| 1 | `rtic-run-plan-e2e` | already had a row; build + `-kernel` now use it |
+| 1 | `qemu-smoltcp-bridge` | `[[fixture]]` row; both ad-hoc builds deleted |
+| 1 | `ros-edition-pose-pub` | derived root, and it GAINED a coordinate (below) |
+| 2 | freertos / threadx-linux / threadx-riscv64 run-paths | shared group (second pass) |
+| 2 | `fixture-make-driver.sh` cyclonedds | routed through the manifest (first pass) |
+| 2 | `ros-editions` `build-e2e-fixtures` | derived root per (edition, rmw) |
+| 2 | `px4` | correct as-is — px4 is NOT a migrated platform |
+| 3 | `stack-analysis.sh` | own derived root under `$NROS_BUILD_ROOT` |
+
+`check-example-leaf-target-dirs` is OK, and a sweep for `cargo build` in `just/`
+and `scripts/` now finds only builds that are out of scope by construction (a
+vendored tool's own tree, workspace-root builds, the CLI bootstrap).
+
+**Two bugs the hand-spelled paths were hiding**, both found by moving them:
+
+* `rtic-run-plan-e2e` had a manifest row all along, so the lane compiled it into
+  the group while the recipe built a second copy in the leaf and the test
+  `-kernel`ed THAT — running an artifact the freshness gate never saw.
+* `ros-edition-pose-pub` is rebuilt PER EDITION (its `generated/` messages are
+  regenerated against that edition's defs) and was built into one leaf `target/`
+  by a consumer that never mentioned the edition. Every edition overwrote the
+  last; the test ran whichever ran most recently while believing otherwise. The
+  coordinate now exists on both sides — the old path had no room for it.
+
+Not everything joined a group, deliberately: the ros-editions builds regenerate
+`generated/` per edition and `stack-analysis.sh` builds with
+`-Z emit-stack-sizes` on nightly, so both take a dedicated
+`<root>/<kind>/<coordinate>` instead. Sharing a cargo dir would have been the
+wrong fix for a real reason, not a missing one.
+
+## Residue 4 is what remains, and it stays open on purpose
+
+NuttX's apps `make` compiles example sources IN PLACE and leaves objects beside
+them, with the absolute build path baked into the object NAME. No
+`--target-dir`-shaped fix applies: nothing in this repo chooses that location.
+The interim disposition (files deleted, four scoped patterns in the repo-root
+`.gitignore`, tagged as a symptom ledger) stands, and the ledger is deleted when
+the build moves out of tree.
+
+This issue therefore stays open for residue 4 alone.

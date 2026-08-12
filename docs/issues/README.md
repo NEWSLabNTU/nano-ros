@@ -475,16 +475,19 @@ threadx-riscv64; 3.95 s → 0.12 s per probe in a controlled A/B. Also removed a
 FreeRTOS row with no `[env]` block made the board build script PANIC outside `just`, which
 `rust-fixture-stale.sh` (stderr to `/dev/null`) read as "not stale". See `archived/0491-*`. (2026-08-10)
 
-**#488** (build, open 2026-08-10, phase-340 P2) — the second-build-path sweep's RESIDUE. P2 closed the
-population that blocks item 7 / P4 (a `cargo build` whose cwd is an `examples/` leaf and which writes the
-leaf's own `target/`) and gated it with `check-example-leaf-target-dirs`. The same sweep found more of the
-class the gate deliberately does not cover: four per-leaf `target/` sites under `packages/testing/**` (the
-`wake-latency-cortex-m3` pair runs inside `build-test-fixtures` on a MIGRATED platform, so it re-creates a
-tree on every full sweep), and six authored `target-<variant>/` sites on migrated platforms — the R1
-duplicates an authored dir was supposed to stop being since phase-340 W2 made it name a GROUP. None blocks
-P4 (`examples/**/target-*/` is globally ignored; the `packages/testing` leaves are not among item 7's 391
-leaf ignores), and each needs its consumer moved in the same commit, which is why they are not in P2's
-rebuild. See `0488-*`. (2026-08-10)
+**#488** (build, open 2026-08-10, phase-340 P2) — the second-build-path sweep's RESIDUE: sites writing a
+per-leaf cargo dir that `check-example-leaf-target-dirs` deliberately does not cover, each needing its
+consumer moved in the same commit. **Residues 1-3 are FIXED (2026-08-12):** the wake-latency pair,
+`rtic-run-plan-e2e` and `qemu-smoltcp-bridge` are `[[fixture]]` rows resolved through those rows; the
+freertos / threadx-linux / threadx-riscv64 run-paths and the cyclonedds make-driver leaf use the shared
+group; `ros-editions` and `stack-analysis.sh` take a derived `<root>/<kind>/<coordinate>` instead, because
+they regenerate `generated/` per edition / build with `-Z emit-stack-sizes` on nightly and must NOT share a
+lane group. Moving the paths found two bugs they were hiding: `rtic-run-plan-e2e` had a row all along, so
+the test `-kernel`ed a second leaf copy the freshness gate never saw; and `ros-edition-pose-pub` is rebuilt
+per EDITION into one leaf dir with a consumer that never named the edition, so every edition overwrote the
+last. **Still open for residue 4 alone:** NuttX's apps `make` compiles example sources IN PLACE with the
+absolute build path baked into the object name — no `--target-dir`-shaped fix applies, and the interim
+`.gitignore` ledger stands until the build moves out of tree. See `0488-*`. (2026-08-12)
 
 Recently resolved (2026-08-10, phase-340): **#485** — `check-artifact-identity-budget` counted one crate
 as TWO. `uniq -c` collapses only ADJACENT duplicates and glibc `en_US.UTF-8` collation ignores the space and
