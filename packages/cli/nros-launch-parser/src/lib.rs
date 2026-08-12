@@ -28,6 +28,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+// issue 0521 — `WrapErr`, not `Context`: `with_context` on a `Result` is
+// eyre's feature-gated anyhow-compat surface, so this crate compiled only
+// while a CLI-workspace sibling enabled it. It is also consumed from
+// OUTSIDE that workspace (the metadata harness deps it through `nros`),
+// where nothing does.
 use eyre::{Result, WrapErr, bail, eyre};
 use quick_xml::{
     events::{BytesStart, Event},

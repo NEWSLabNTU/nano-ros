@@ -28,6 +28,13 @@ use std::{
     time::SystemTime,
 };
 
+// issue 0521 — `WrapErr`, not `Context`. `Context::with_context` on a
+// `Result` is eyre's ANYHOW-COMPAT surface (`ContextCompat`), which is
+// feature-gated: this crate compiled only because a sibling in the CLI
+// workspace turned that feature on. In the metadata harness's smaller
+// graph nothing does, and every call site failed with `no method named
+// `with_context``. `wrap_err_with` is eyre's native spelling and needs no
+// feature, so it cannot depend on who else is in the build.
 use eyre::{Result, WrapErr, bail, eyre};
 use quick_xml::{events::Event, reader::Reader};
 use serde::{Deserialize, Serialize};
