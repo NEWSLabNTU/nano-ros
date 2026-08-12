@@ -49,7 +49,50 @@ continuing to address the platform by its alias, which is why that test still
 does so on purpose. The claim that `chain()` was the single funnel was written
 in a comment before it was checked; it is true of three lookups out of four.
 
-## W2 — The stack becomes a declared fact
+## W2 — The stack becomes a declared fact — **BLOCKED**
+
+> **Blocked on a prerequisite that does not exist: there is no channel carrying
+> a BOARD fact to a build script.** Investigated 2026-08-13, before writing any
+> W2 code.
+>
+> Every bullet below needs `netstack` to be readable by
+> `nros-zpico-build/src/runner.rs` at build time, so it can pick the
+> `(rtos, netstack)` port row. The reader hook exists — `runner.rs:428` does
+> `env_get("NROS_BOARD_TOML")` — but **nothing anywhere sets that variable**
+> (`git grep NROS_BOARD_TOML` outside docs finds only the reader). phase-290's
+> own roadmap says so: *"auto-export from orchestration deferred until a board
+> carries a `[knobs]` delta"*. That day has arrived.
+>
+> Two false leads, checked and discarded:
+> * `.cargo/nros-board.toml` (41 committed leaves, phase-341 W4) is **not** the
+>   board descriptor. Same filename, different artifact — it is a projection of
+>   the board's `cargo_config` (`[target.*]` runner + rustflags) and carries no
+>   `platform` or `netstack`.
+> * Deriving `netstack` from a cargo feature the way `use_freertos` works would
+>   reintroduce exactly the feature-based selection RFC-0072 removes, and it
+>   cannot express a fact the *board* knows.
+>
+> **The channel is tractable, and is W2.0.** Leaves already carry `[env]` blocks
+> in `.cargo/config.toml` (`ZPICO_NO_SMOLTCP`, `NROS_LINK_IP` …), written by
+> `nros sync` — so the missing piece is rendering `NROS_BOARD_TOML` there, plus
+> the cmake-side export for cmake-driven builds. One hazard is already
+> documented: **issue 0491 — never `rerun-if-env-changed` on a PATH variable;
+> watch the CONTENT** via `nros_build_paths::{env_or_repo_path, watch_path}`.
+> A path env var with three spellings is precisely what thrashed the shared
+> cargo group before.
+
+### W2.0 — carry the board descriptor to build scripts *(prerequisite)*
+
+- [ ] `nros sync` renders `NROS_BOARD_TOML` into each leaf's `.cargo/config.toml`
+      `[env]`, alongside the knobs already written there.
+- [ ] The cmake lane exports it too, so both halves of a Zephyr-style split see
+      the same value (issue 0460's rule).
+- [ ] Resolve through `nros_build_paths` and watch the file's CONTENT, not the
+      variable (issue 0491).
+- [ ] A gate that a board-carrying build has the variable set — otherwise the
+      RFC-0049 board rung stays silently dead, which is how it got here.
+
+### W2 proper — once W2.0 lands
 
 - [ ] `[board.integration]` carries `rtos` and `netstack` as facts, with
       `capabilities`.
