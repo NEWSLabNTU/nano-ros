@@ -51,6 +51,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#546** (build, open 2026-08-13) — the px4 compile-check codegens `generated/px4_msgs` and then runs
+`cargo check` WITHOUT `nros sync`, so all three companion leaves resolve `nros = { version = "*" }` against
+the public crates.io index and fail: `error: no matching package named nros found`. Registry-naming is
+normal for an example leaf — dozens do it — because sync writes the `.cargo/config.toml` whose
+`[patch.crates-io]` redirects those names at in-repo paths (RFC-0048 W9); the px4 leaves are the ones nobody
+syncs (`git ls-files examples/px4 | grep -c cargo` → 0, and no generated config either). The block's own
+comment says the generated CDR bindings "must at least type-check" — they never have, and the mechanism
+says they cannot have. Every build prints `px4=0`, which reads as "no px4 work" rather than "every px4 leaf
+failed": a zero that means the opposite of what it looks like, and the build still exits 0. Fix: sync the
+leaf before checking it, then make the count readable (`px4=0/3`) or fail on it. Verified all THREE leaves
+fail, including `px4_probe` which the log never names. NOT a host-provisioning gap — no config exists for
+these leaves in the repository, so any checkout hits it; that earlier reading is retracted. See `0546-*`.
+(2026-08-13)
+
 RESOLVED 2026-08-13 — **#541** `292547dd5 fix(#529, #530)` added a `zephyr` arm to `platform_name`,
 reasoning "no behaviour change today: `build_c_shim` is skipped on Zephyr". True, and beside the point:
 `platform_name` gates TWO call sites and the other is `build_zenoh_pico_unified`, the whole vendored
