@@ -4,7 +4,7 @@ title: "nros_platform_clock_us() returns 0 forever on Zephyr Cortex-M boards und
 status: open
 type: bug
 area: platform-zephyr
-related: [issue-0502, issue-0532]
+related: [issue-0502, issue-0529, issue-0532]
 ---
 
 ## Problem
@@ -74,18 +74,53 @@ nRF GRTC, cAVS, MTK ADSP. Cortex-M above 60 MHz picks up the default.
 
 ## Verification status
 
-Static: the four links above are each verified by reading the vendored
-Zephyr sources and the board defconfig. NOT yet confirmed by running a
-`qemu_cortex_m3` image — worth doing before the fix lands, since it is
-also the regression test.
+**Premise confirmed from the generated build config**, not just from
+reading Kconfig defaults. Configuring `examples/zephyr/rust/talker` for
+each board and reading `zephyr/include/generated/zephyr/autoconf.h`:
 
-## Fix direction
+| board | `SYS_CLOCK_HW_CYCLES_PER_SEC` | `TIMER_HAS_64BIT_CYCLE_COUNTER` |
+|---|---|---|
+| `native_sim` | 1000000 | **defined 1** (why this lane always worked) |
+| `qemu_cortex_m3` | 12000000 | **absent** (`CONFIG_CORTEX_M_SYSTICK 1`, no 64-bit variant) |
 
-- Make the port not depend on a Kconfig it does not control. Either
-  select `CORTEX_M_SYSTICK_64BIT_CYCLE_COUNTER` from nano-ros' Zephyr
-  Kconfig, or compute microseconds from `k_uptime_ticks()` (always
-  available, tick-resolution) and use cycles only when the 64-bit
-  counter is actually enabled.
+So on `qemu_cortex_m3` the port called `k_cycle_get_64()` in the exact
+configuration where it returns 0.
+
+**Not** confirmed by running an image: both Zephyr lanes currently fail
+to build before reaching this file, in `zpico-sys`'
+`zenoh-pico/system/platform/zephyr.h:18` with `fatal error: version.h:
+No such file or directory` — which is issue **0529** (the zpico platform
+resolver never selects `zephyr`, so the Zephyr include paths are never
+applied). A runtime confirmation, and a regression test asserting that
+timers actually fire on a sub-60 MHz Cortex-M board, both wait on 0529.
+
+## Fix (landed)
+
+The port no longer depends on a Kconfig it does not control:
+
+```c
+uint64_t nros_platform_clock_us(void) {
+    if (IS_ENABLED(CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER)) {
+        return (uint64_t) k_cyc_to_us_floor64(k_cycle_get_64());
+    }
+    return (uint64_t) k_ticks_to_us_floor64(k_uptime_ticks());
+}
+```
+
+The cycle counter is still preferred where the board provides one;
+everywhere else the tick clock (always available, resolution
+`CONFIG_SYS_CLOCK_TICKS_PER_SEC` = 1 kHz in this project's configs)
+gives a clock that advances instead of one that reads zero.
+`IS_ENABLED` rather than `#ifdef` so both arms keep compiling on every
+board.
+
+Deliberately NOT done: selecting `CORTEX_M_SYSTICK_64BIT_CYCLE_COUNTER`
+from nano-ros' Zephyr Kconfig. That would force a 64-bit software cycle
+count into every Cortex-M user's tick ISR to buy resolution most of
+them are not asking for; a board that wants it can still enable it and
+the first arm picks it up.
+
+Remaining options if better resolution is wanted by default:
 - Prefer a build-time assertion over a runtime zero: if the port keeps
   using `k_cycle_get_64`, a `BUILD_ASSERT(IS_ENABLED(
   CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER))` turns a silent dead-timer

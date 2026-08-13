@@ -8,7 +8,8 @@
  * port can call them directly.
  *
  *   - Clock    — k_uptime_get() returns int64_t milliseconds since
- *                boot; us derived by k_cyc_to_us_floor64(k_cycle_get_64()).
+ *                boot; us from the 64-bit cycle counter where the board
+ *                provides one, else from the tick clock (issue #531).
  *   - Alloc    — k_malloc / k_realloc / k_free against the kernel heap.
  *   - Sleep    — k_msleep / k_usleep / k_sleep.
  *   - Yield    — k_yield().
@@ -46,8 +47,26 @@ uint64_t nros_platform_clock_ms(void) {
     return ms < 0 ? 0 : (uint64_t) ms;
 }
 
+/* Issue #531 — `k_cycle_get_64()` is NOT unconditionally available: it
+ * returns 0 when `CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER` is off, and its
+ * guarding `__ASSERT` compiles out in a release build, so the failure is
+ * a silent permanent zero. On the Cortex-M SysTick driver that symbol is
+ * `default y if (SYS_CLOCK_HW_CYCLES_PER_SEC > 60000000)`, so every
+ * Cortex-M board at or below 60 MHz (including the tier-2 qemu_cortex_m3
+ * at 12 MHz) got a clock that never advanced — and since the executor
+ * derives its timer delta from this clock, periodic callbacks never
+ * fired while subscriptions kept working.
+ *
+ * Fall back to the tick clock, which every Zephyr board has. That is
+ * coarser (`CONFIG_SYS_CLOCK_TICKS_PER_SEC`, 1 kHz in this project's
+ * configs) but correct; the cycle counter is still preferred wherever
+ * the board actually provides it. `IS_ENABLED` rather than `#ifdef` so
+ * both arms keep compiling on every board. */
 uint64_t nros_platform_clock_us(void) {
-    return (uint64_t) k_cyc_to_us_floor64(k_cycle_get_64());
+    if (IS_ENABLED(CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER)) {
+        return (uint64_t) k_cyc_to_us_floor64(k_cycle_get_64());
+    }
+    return (uint64_t) k_ticks_to_us_floor64(k_uptime_ticks());
 }
 
 /* ---- Allocation ---- */
