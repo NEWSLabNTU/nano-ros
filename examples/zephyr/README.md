@@ -40,7 +40,6 @@ Test lanes: `just zephyr test`, `test-all`, `test-xrce`.
 | talker / listener | yes | yes | yes |
 | service-server / service-client | yes | yes | yes |
 | action-server / action-client | yes | yes | yes |
-| carve-out | – | `cyclonedds/talker-aemv8r` (FVP AEMv8-R) | `cyclonedds/talker-aemv8r` |
 
 Backends: zenoh + xrce across all six roles per language; cyclonedds partial
 (see the [coverage matrix](../README.md)).

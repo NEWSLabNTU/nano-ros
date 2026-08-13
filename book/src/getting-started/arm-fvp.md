@@ -8,10 +8,13 @@ that follow the same `hwv2` Zephyr shape; pair this chapter with
 the [Zephyr (west module)](./integration-zephyr.md) starter for
 the build half.
 
-> **Phase 217.** The build half (`just zephyr build-fvp-aemv8r-cyclonedds{,-rust}`)
-> shipped in Phase 117.14 / 217.D; the run half — invoking
-> `FVP_BaseR_AEMv8R` and piping UART 0–3 to stdout — landed as
-> Phase 217.A on 2026-06-03. See
+> **Phase 217.** The run half — invoking `FVP_BaseR_AEMv8R` and piping
+> UART 0–3 to stdout — landed as Phase 217.A on 2026-06-03.
+>
+> **The two standalone talker lanes were retired** (phase-350 W3, issue 0537):
+> their runners had been deleted, so they built images nothing booted. What
+> remains is the part with consumers — the board-crate import surface and the
+> workspace Entry. FVP support is intended to grow back from those. See
 > [`docs/roadmap/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-217-arm-fvp-local-runtime.md).
 
 ## When to use
@@ -81,31 +84,34 @@ policy.
 hard-fails — gated) when the FVP can't be resolved via
 `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`, `PATH`, or the canonical
 `~/.nros/sdks/arm-fvp/current/FVP_BaseR_AEMv8R` landing path. The
-`just zephyr run-fvp-aemv8r-cyclonedds{,-rust}` recipes do the
+`just zephyr run-fvp-ws-entry` / `run-fvp-board-import` recipes do the
 equivalent inline via `scripts/zephyr/resolve-fvp-bin.sh` and
 skip with a clear hint when the binary can't be found.
 
 ## Build
 
-Two build lanes cover both languages over Cyclone DDS (the wire-compat
-reference for the safety-island slice); `just zephyr build-fvp-all` runs
-both. (The historical Zephyr-only `build-fvp-aemv8r` talker lane was
-retired — issue #217.)
+`just zephyr build-fvp-all` runs the FVP build lanes.
 
 ```bash
-# Phase 117.14 — C++ pub/sub over Cyclone DDS.
-just zephyr build-fvp-aemv8r-cyclonedds
+# The workspace C++ RT-tiers Entry — the canonical ASI-consumption
+# reference (nano_ros_use_board + run_tiers).
+just zephyr build-fvp-ws-entry
 
-# Phase 217.D — Rust talker over Cyclone DDS.
-just zephyr build-fvp-aemv8r-cyclonedds-rust
+# The minimal board-crate IMPORT surface: nano_ros_use_board() and a
+# trivial printk app, so the import path can be checked on its own.
+just zephyr build-fvp-board-import
 ```
 
 Each recipe shells `west build -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`
-inside the `zephyr-workspace/` directory and produces
-`zephyr.elf` at one of:
+inside the `zephyr-workspace/` directory and produces `zephyr.elf` at:
 
-- `zephyr-workspace/build-aemv8r-cyclonedds-talker/zephyr/zephyr.elf`
-- `zephyr-workspace/build-fvp-aemv8r-cyclonedds-rust-talker/zephyr/zephyr.elf`
+- `zephyr-workspace/build-fvp-ws-entry/zephyr/zephyr.elf`
+- `zephyr-workspace/build-fvp-board-import/zephyr/zephyr.elf`
+
+> Two standalone talker lanes (`build-fvp-aemv8r-cyclonedds{,-rust}`, over
+> `examples/zephyr/{cpp,rust}/talker-aemv8r`) used to live here. phase-298 W4
+> deleted the tests that ran them and phase-350 W3 retired the rest, so the
+> chapter no longer documents a lane whose output nobody consumes.
 
 ## Run
 
@@ -113,11 +119,11 @@ Once the build artifacts and `ARM_FVP_DIR` / `ARMFVP_BIN_PATH` are in
 place:
 
 ```bash
-# Boot the Phase 117.14 cpp/cyclonedds talker.
-just zephyr run-fvp-aemv8r-cyclonedds
+# Boot the workspace RT-tiers Entry (prints `[ctrl] tick=` / `[telem] tick=`).
+just zephyr run-fvp-ws-entry
 
-# Boot the Phase 217.D rust/cyclonedds talker.
-just zephyr run-fvp-aemv8r-cyclonedds-rust
+# Boot the board-import smoke (prints `nros: smoke ok`).
+just zephyr run-fvp-board-import
 ```
 
 Under the hood the recipe:
@@ -179,5 +185,5 @@ stock-RMW interop contract.
   — the discovery contract.
 - [Zephyr (west module)](./integration-zephyr.md) — the parent
   Zephyr starter; the FVP is a board-target slice of it.
-- [`examples/zephyr/cpp/talker-aemv8r/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/cpp/talker-aemv8r/README.md)
-  — the example walk-through.
+- [`examples/workspaces/realtime-cpp/src/fvp_entry/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/realtime-cpp/src/fvp_entry)
+  — the workspace Entry this chapter builds and boots.

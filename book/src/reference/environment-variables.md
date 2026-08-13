@@ -60,7 +60,7 @@ for the end-to-end build+run walk-through.
 
 If neither is set, `scripts/zephyr/resolve-fvp-bin.sh` falls back
 to `dirname $(command -v FVP_BaseR_AEMv8R)`. Phase 217.A —
-`just zephyr run-fvp-aemv8r{,-cyclonedds}` skips gracefully when
+`just zephyr run-fvp-ws-entry` / `run-fvp-board-import` skip gracefully when
 the binary can't be resolved.
 
 After extracting the Arm-provided tarball, run

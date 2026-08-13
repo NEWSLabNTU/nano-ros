@@ -29,7 +29,9 @@ allowed_roots=(
   # each: `talker-aemv8r`. The `-aemv8r` suffix already says what varies — the
   # BOARD — so the `cyclonedds/` level said nothing the leaf did not, while
   # looking exactly like the retired per-RMW layout. Both flattened to
-  # `examples/zephyr/<lang>/talker-aemv8r`.
+  # `examples/zephyr/<lang>/talker-aemv8r` — which phase-350 W3 then deleted
+  # outright (issue 0537: their runners were gone, so they built for nobody).
+  # The rationale stands on its own; the paths are history now.
   #
   # An empty allowlist is the point: RFC-0026 states the rule unconditionally,
   # and a rule enforced with exceptions is a rule whose exceptions outlive their

@@ -40,7 +40,7 @@ but no one has reported booting nano-ros on them.
 | QEMU         | arm `virt`           | Cortex-A7          | Armv7-A    | NuttX         | Tested   | `examples/qemu-arm-nuttx/`                                         |
 | QEMU         | `rv-virt` RISC-V32   | rv32imac           | RISC-V     | NuttX         | Tested   | `just nuttx build-riscv-c` / `build-riscv-rust` (`nros setup qemu-riscv-nuttx`) |
 | NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS      | Ready (build-only, experimental) | `packages/boards/nros-board-orin-spe/`               |
-| Arm FVP      | `Base_RevC AEMv8R` (SMP) | AEMv8-R, AArch64 profile | Armv8-R | Zephyr 3.7 | Build-only | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-aemv8r-cyclonedds{,-rust}` + `run-fvp-aemv8r-cyclonedds{,-rust}`. Runtime is **maintainer-run** (`just zephyr verify-fvp-runtime`) — the model is license-gated, so no CI lane can boot it |
+| Arm FVP      | `Base_RevC AEMv8R` (SMP) | AEMv8-R, AArch64 profile | Armv8-R | Zephyr 3.7 | Build-only | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-ws-entry` / `build-fvp-board-import` + their `run-` siblings. Runtime is **maintainer-run** (`just zephyr verify-fvp-runtime`) — the model is license-gated, so no CI lane can boot it |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |
 | Linux host   | (native)             | x86-64 / aarch64    | x86 / Arm  | POSIX         | Tested   | `examples/native/`                                                  |
 

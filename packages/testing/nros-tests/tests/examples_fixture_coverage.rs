@@ -67,17 +67,16 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
     // `just freertos build-examples` still builds the default-`target/` binary
     // that `freertos_run_plan_runtime.rs` locates — a second build of a
     // covered dir, not a second dir.
-    // Cyclone-on-Zephyr aemv8r references — BUILT by the FVP recipes
-    // `just zephyr build-fvp-aemv8r-cyclonedds{,-rust}`. phase-321 W3.c: this
-    // used to say they were "run by `fvp_runtime.rs` / `fvp_runtime_rust.rs`",
-    // two files phase-298 W4 DELETED. Nothing runs these two examples today —
-    // the runtime-verified FVP artifact is the workspace Entry
-    // (`fvp_runtime_ws.rs`), not these. A comment claiming a runner that does
-    // not exist is how a build-only lane reads as covered.
-    // The cpp leaf gained its package.xml in 287-W6 (ament shape), so it is a
-    // gated leaf now too.
-    "zephyr/rust/talker-aemv8r",
-    "zephyr/cpp/talker-aemv8r",
+    // phase-350 W3 (issue 0537) — `zephyr/{rust,cpp}/talker-aemv8r` used to sit
+    // here, "built by `just zephyr build-fvp-aemv8r-cyclonedds{,-rust}`". Both
+    // examples and both recipes are GONE.
+    //
+    // The entry was honest about the problem and could not fix it: phase-321
+    // W3.c had already corrected the comment to say the named runners
+    // (`fvp_runtime.rs` / `fvp_runtime_rust.rs`) were DELETED by phase-298 W4,
+    // so for months this list recorded two examples nothing ran, and the
+    // justfile still read as a complete lane. An allowlist can only excuse a
+    // gap; retiring the code is what closes it.
 ];
 
 /// Tracked exceptions: (dir relative to `examples/`, reason). A dir here must

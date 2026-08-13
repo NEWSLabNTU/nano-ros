@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). W0, W1, W2, W4, W6 COMPLETE; W5 partial. All 74 west fixtures are manifest rows, the emitter reads them, the lane narrows by coordinate (tier2: 7 leaves, was 70), the coverage gates read rows, work-item ids are gated, and W4 answered #509 with a NO. W3 (FVP) open — it needs a retire-vs-restore decision.**
+**Status (2026-08-13). COMPLETE except W5's deferred renames. All 74 west fixtures are manifest rows, the emitter reads them, the lane narrows by coordinate (tier2: 7 leaves, was 70), the coverage gates read rows, work-item ids are gated, W4 answered #509 with a NO, and the runnerless FVP code is retired. W5's directory renames are deferred with the cost measured.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -411,21 +411,40 @@ script in place: identical result, 16 s vs 18 s).
 A comparison whose control is misconfigured is worse than none — it was redone
 in place via `git stash`.
 
-## W3 — FVP: close it or retire it (#537)
+## W3 — FVP: retired, not restored (#537) — **LANDED**
 
-`build-fvp-aemv8r-cyclonedds` and `-rust` build `examples/zephyr/{cpp,rust}/talker-aemv8r`;
-their runners were deleted by phase-298 W4 (`68a0a0b6f`). The `run-` recipes
-survive, so the justfile still reads complete.
+Maintainer decision (2026-08-13): *"We'll support FVP in the future, but we
+don't have effort to work on it for now. I don't want to keep non-used code
+there."*
 
-- [ ] Decide per artifact under [phase-217](phase-217-arm-fvp-local-runtime.md)
-      (**Status OPEN**, Track A only): restore a runner, or retire recipe and
-      example together.
-- [ ] All four FVP artifacts get rows with the gated-SDK condition as a row
-      property, so "gated SDK absent" and "nobody built it" stop sharing one
-      skip message.
+So the half with no consumer is gone and the half with consumers is kept — which
+is what a future revival needs anyway.
 
-*Acceptance:* no build recipe produces an artifact with no consumer; a
-license-gated skip is distinguishable from an unbuilt fixture in the test output.
+**Retired:** `build-fvp-aemv8r-cyclonedds` and `-rust`, their
+`run-fvp-aemv8r-cyclonedds{,-rust}` siblings, and
+`examples/zephyr/{rust,cpp}/talker-aemv8r` (~1 MB), plus the rust one's
+root-workspace membership and the two `TEST_DRIVEN_BUILDERS` entries that had
+been excusing them. An allowlist can only excuse a gap; deleting the code closes
+it.
+
+**Kept, each with a live consumer:** the `fvp-aemv8r-smp` board crate and
+`nano_ros_use_board()`; the `west_board_import` fixture, whose test runs in CI
+because it reads `CMakeCache.txt` and needs no FVP binary; `build-fvp-board-import`
++ `fvp_smoke.rs`; `build-fvp-ws-entry` + `fvp_runtime_ws.rs` +
+`verify-fvp-runtime`; the `[gated.arm-fvp]` installer and SDK-index entry.
+`build-fvp-all` now aggregates only `build-fvp-ws-entry`.
+
+**Docs corrected, not left dangling.** The ARM FVP book chapter documented the
+deleted recipes as its entire Build/Run path and linked a README that no longer
+exists. It now documents the ws-entry and board-import lanes; `supported-boards.md`,
+`environment-variables.md`, `examples/zephyr/README.md`, `check-example-matrix.sh`
+and the board crate's own README (which used the deleted example as its usage
+sample) follow.
+
+**#537's second half is NOT closed and the issue says so:** none of the surviving
+FVP artifacts is reachable from `build-test-fixtures`, so both gated tests still
+skip with a message that cannot distinguish "license-gated SDK absent" from
+"nobody built it". That is phase-217's when FVP work resumes.
 
 ## W4 — Leaf-count triage, on evidence
 

@@ -394,14 +394,18 @@ before the link began. Only `west_bringup_zephyr` boots an ELF. The manifest alr
 distinguishable from a linked fixture's or a build-only lane reads as covered (#537's failure mode).
 See `0536-*`.
 
-**#537** (testing/build, open 2026-08-13) — `build-fvp-aemv8r-cyclonedds` and `-rust` produce a
-`zephyr.elf` **nothing runs**: their runners `fvp_runtime{,_rust}.rs` were deleted by phase-298 W4
-(`68a0a0b6f`), the `run-` recipes survive, so the justfile still reads complete.
-`examples_fixture_coverage.rs:62` records this accurately and is the only place that does. Separately,
-NONE of the four `build-fvp-*` artifacts is reachable from `build-test-fixtures` (grep: hits only in
-`just/zephyr-setup.just`), so both consuming tests skip on a missing ELF with a message that cannot
-distinguish "license-gated SDK absent" from "nobody ever built this". phase-217 is OPEN with only Track A
-landed, and this is the slice it was opened to close. See `0537-*`.
+RESOLVED 2026-08-13 — **#537** the FVP artifacts nothing ran are GONE. Maintainer decision: FVP support is
+wanted later, but there is no effort for it now and unused code should not sit waiting. Retired
+`build-fvp-aemv8r-cyclonedds{,-rust}`, their `run-` siblings, and
+`examples/zephyr/{rust,cpp}/talker-aemv8r` — whose runners phase-298 W4 deleted, so they had built images
+nothing booted for months while the justfile still read as a complete lane. Kept everything with a
+consumer, which is also what a future revival needs: the `fvp-aemv8r-smp` board crate,
+`nano_ros_use_board()`, the `west_board_import` fixture (whose test runs in CI — it reads CMakeCache and
+needs no FVP binary), and the ws-entry runtime. The ARM FVP book chapter documented the deleted recipes as
+its Build/Run path and linked a dead README; it and four other docs now describe what exists. NOT closed
+by this: none of the surviving FVP artifacts is reachable from `build-test-fixtures`, so the gated tests
+still cannot distinguish "license-gated SDK absent" from "nobody built it" — phase-217's when FVP work
+resumes. See `archived/0537-*`. (2026-08-13)
 
 **#538** (build/testing, open 2026-08-13) — `scripts/build/fixture-inventory.py` advertises itself as the
 list of "recipe leaves not yet in the fixture manifest", has **no consumer** (grep over `justfile just

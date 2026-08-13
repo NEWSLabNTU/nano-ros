@@ -11,12 +11,12 @@ just zephyr setup       # one-time: workspace + SDK + zephyr-lang-rust
 west build \
     -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp \
     -d build-fvp \
-    examples/zephyr/cpp/talker-aemv8r
+    examples/workspaces/realtime-cpp/src/fvp_entry
 ```
 
 The crate's `boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf` and
 `.overlay` are picked up automatically by the Zephyr build when the
-example's `boards/` directory contains them, or they can be layered
+app's `boards/` directory contains them, or they can be layered
 via `-DEXTRA_CONF_FILE=...` / `-DEXTRA_DTC_OVERLAY_FILE=...`.
 
 ## Runtime
