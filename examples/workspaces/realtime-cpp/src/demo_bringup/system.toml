@@ -162,3 +162,40 @@ out    = "subnode_system_model.yaml"
 [[model]]
 launch = "freertos_system.launch.xml"
 out    = "freertos_system_model.yaml"
+
+# phase-351 W2 — SITE config for this deploy (RFC-0072 §5): where THIS
+# checkout's SDKs live and which stack it uses. Generated from
+# `just/sdk-env.just`; `scripts/check-site-config.py` keeps them in step.
+# `{env:…}` rather than a literal so the value survives a second checkout.
+[deploy.nuttx.nros]
+sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
+
+# phase-351 W2 — SITE config for this deploy (RFC-0072 §5): where THIS
+# checkout's SDKs live and which stack it uses. Generated from
+# `just/sdk-env.just`; `scripts/check-site-config.py` keeps them in step.
+# `{env:…}` rather than a literal so the value survives a second checkout.
+[deploy.nuttx-qemu-arm.nros]
+sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
+
+# phase-351 W2 — SITE config for this deploy (RFC-0072 §5): where THIS
+# checkout's SDKs live and which stack it uses. Generated from
+# `just/sdk-env.just`; `scripts/check-site-config.py` keeps them in step.
+# `{env:…}` rather than a literal so the value survives a second checkout.
+[deploy.nuttx-qemu-riscv.nros]
+sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
+
+# phase-351 W2 — SITE config for this deploy (RFC-0072 §5): where THIS
+# checkout's SDKs live and which stack it uses. Generated from
+# `just/sdk-env.just`; `scripts/check-site-config.py` keeps them in step.
+# `{env:…}` rather than a literal so the value survives a second checkout.
+[deploy.freertos.nros]
+netstack = "lwip"
+sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
+
+# phase-351 W2 — SITE config for this deploy (RFC-0072 §5): where THIS
+# checkout's SDKs live and which stack it uses. Generated from
+# `just/sdk-env.just`; `scripts/check-site-config.py` keeps them in step.
+# `{env:…}` rather than a literal so the value survives a second checkout.
+[deploy.mps2-an385-freertos.nros]
+netstack = "lwip"
+sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }

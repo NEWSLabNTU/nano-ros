@@ -82,10 +82,24 @@ fn main() {
     // `git submodule update --init` changes no input cargo watches, so build.rs
     // never re-runs and `setup-cli` reports success while rebuilding nothing —
     // the wrong pin is STICKY, and even `touch build.rs` does not clear it.
+    // The gitlink FILE alone is not enough: for a submodule `.git` holds
+    // `gitdir: …` and its content does not change when HEAD moves — the move
+    // is in `<gitdir>/HEAD`. Watching only the gitlink means this stamp never
+    // invalidates on a pin bump, so the 0409 guard compares a stale value
+    // against a fresh one. The resolver's build.rs had the same bug; both are
+    // fixed together (fix the class, not the reported site).
     println!(
         "cargo:rerun-if-changed={}",
         play_launch.join(".git").display()
     );
+    if let Ok(text) = std::fs::read_to_string(play_launch.join(".git"))
+        && let Some(rel) = text.strip_prefix("gitdir:").map(str::trim)
+    {
+        println!(
+            "cargo:rerun-if-changed={}",
+            play_launch.join(rel).join("HEAD").display()
+        );
+    }
     let pin = if play_launch.join(".git").exists() {
         std::process::Command::new("git")
             .args([

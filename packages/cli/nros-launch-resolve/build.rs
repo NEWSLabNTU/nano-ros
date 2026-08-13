@@ -34,7 +34,21 @@ fn main() {
     // as the CLI side; both must agree on "unknown" or the 0409 guard compares
     // two different things and reports an impossible mismatch.
     if let Some(p) = submodule.as_ref() {
-        println!("cargo:rerun-if-changed={}", p.join(".git").display());
+        // The gitlink FILE itself is not enough: for a submodule `.git` holds
+        // `gitdir: …` and its CONTENT never changes when the submodule's HEAD
+        // moves — the move happens in `<gitdir>/HEAD`. Watching only the
+        // gitlink means this build script never re-runs on a pin bump, so the
+        // binary keeps a stale sha and the 0409 guard it feeds compares a lie.
+        // Observed when the play_launch pointer moved for rlm v0.1.6: the
+        // resolver rebuilt and still reported the previous commit.
+        let gitlink = p.join(".git");
+        println!("cargo:rerun-if-changed={}", gitlink.display());
+        if let Ok(text) = std::fs::read_to_string(&gitlink)
+            && let Some(rel) = text.strip_prefix("gitdir:").map(str::trim)
+        {
+            let gitdir = p.join(rel);
+            println!("cargo:rerun-if-changed={}", gitdir.join("HEAD").display());
+        }
     }
     let sha = submodule
         .filter(|p| p.join(".git").exists())

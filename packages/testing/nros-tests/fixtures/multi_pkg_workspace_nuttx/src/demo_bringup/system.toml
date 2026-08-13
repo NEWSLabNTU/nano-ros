@@ -20,3 +20,10 @@ board = "qemu-armv7a-nsh"
 target = "armv7a-nuttx-eabihf"
 rmw = "zenoh"
 launch = "launch/system.launch.xml"
+
+# phase-351 W2 — SITE config for this deploy (RFC-0072 §5): where THIS
+# checkout's SDKs live and which stack it uses. Generated from
+# `just/sdk-env.just`; `scripts/check-site-config.py` keeps them in step.
+# `{env:…}` rather than a literal so the value survives a second checkout.
+[deploy.qemu-arm-nuttx.nros]
+sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }

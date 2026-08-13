@@ -412,7 +412,7 @@ check-fast: \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-package-xml-comments check-provider-announcements check-provider-index \
-    check-zephyr-knob-agreement \
+    check-zephyr-knob-agreement check-site-config \
     check-workspace-order \
     check-atomic-sync-writes \
     check-cmake-corrosion-prefix \
@@ -3571,6 +3571,14 @@ check-provider-announcements:
 # drift), every recorded package.xml is watched for reconfigure, and a
 # provider added AFTER the index was written is caught by rescan-and-compare —
 # the case no file watch can cover (issue 0196's shape). Needs `just setup-cli`.
+# phase-351 W2 — this repo's site config (`[deploy.<n>.nros]`) agrees with
+# `just/sdk-env.just`. Both spellings are live during the migration, so the gate
+# is what stops them drifting (the phase-347 pattern). `--write` renders missing
+# blocks; generator and gate are one file so they cannot disagree.
+[private]
+check-site-config:
+    @python3 scripts/check-site-config.py
+
 # issue 0529 — Zephyr's zenoh tx knobs have TWO sources: `zephyr/Kconfig`
 # defaults (forwarded to the C lane by nros_rmw_zenoh.cmake) and
 # `config/zephyr/nros-platform.toml`'s [knobs.zenoh.tx] (the RFC-0049 ladder,
