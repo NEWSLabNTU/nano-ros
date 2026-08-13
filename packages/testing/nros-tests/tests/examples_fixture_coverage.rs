@@ -46,17 +46,16 @@ use std::{
 /// Top-level `examples/` children skipped wholesale.
 const SKIP_TOP_LEVEL: &[&str] = &["templates", "bridges"];
 
-/// Zephyr role driver matrix — `zephyr/{c,cpp,rust}/{role}` built by
-/// `scripts/build/zephyr-fixture-leaves.sh` (not `fixtures.toml`).
-const ZEPHYR_LANGS: &[&str] = &["c", "cpp", "rust"];
-const ZEPHYR_ROLES: &[&str] = &[
-    "talker",
-    "listener",
-    "service-server",
-    "service-client",
-    "action-server",
-    "action-client",
-];
+// phase-350 W1.c — the `ZEPHYR_LANGS` x `ZEPHYR_ROLES` constants that lived
+// here are GONE. They were the THIRD spelling of the zephyr matrix: the bash
+// loops in `fixture-matrix.sh` were the second, `examples/fixtures.toml` is the
+// first and only one now. This gate reads the rows (`lane::west_leaves()`), so
+// a leaf added to or removed from the manifest changes what it considers
+// covered without anyone remembering to edit a constant here.
+//
+// That is the whole failure mode this file exists to prevent, applied to
+// itself: a coverage gate whose "covered" set is hand-maintained reports green
+// for a dir nothing builds the moment the two drift.
 
 /// Dirs built directly by a test harness (no `fixtures.toml` row). Keep the
 /// harness path in the comment so the pairing is auditable.
@@ -194,10 +193,15 @@ fn every_example_has_a_fixture_or_tracked_exception() {
         }
     }
 
-    // 2. Zephyr role driver matrix.
-    for lang in ZEPHYR_LANGS {
-        for role in ZEPHYR_ROLES {
-            covered.insert(format!("zephyr/{lang}/{role}"));
+    // 2. Zephyr west leaves — read from the manifest, not restated here.
+    //
+    // `west_leaves()` yields each row's repo-relative `dir`; this gate keys on
+    // paths relative to `examples/`, so only the `examples/**` leaves map (the
+    // logging-smoke leaf lives under `packages/testing/`, and is not an example
+    // dir this walk ever sees).
+    for leaf in nros_tests::fixtures::lane::west_leaves() {
+        if let Some(rel) = leaf.dir.strip_prefix("examples/") {
+            covered.insert(rel.trim_end_matches('/').to_string());
         }
     }
 

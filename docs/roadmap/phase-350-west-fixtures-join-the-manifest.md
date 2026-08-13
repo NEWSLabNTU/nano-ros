@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). W0, W1.a, W1.b LANDED — all 70 zephyr leaves are manifest rows, the emitter reads them (byte-identical), and the lane narrows by coordinate: tier2 builds 7 leaves instead of 70. W1.c, W1.d, W2–W6 open; the 4 `west-fixtures.sh` fixtures still to row.**
+**Status (2026-08-13). W0 and W1 COMPLETE — all 70 zephyr leaves are manifest rows, the emitter reads them (byte-identical), the lane narrows by coordinate (tier2: 7 leaves, was 70), the coverage gate reads rows, and W1.d is retracted with reasons. W2–W6 open; the 4 `west-fixtures.sh` fixtures still to row.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -187,11 +187,10 @@ concept.
       loop. 573 more lines of copy-paste deleted; still byte-identical.
 - [ ] **4 `west-fixtures.sh` fixtures** still bash arrays; that script still
       declares its own matrix.
-- [ ] `examples_fixture_coverage.rs` reads the rows instead of restating the
-      role matrix in `ZEPHYR_LANGS` × `ZEPHYR_ROLES` — **three spellings of one
-      matrix collapse to one**, or this is the sizes-header mirror again.
-- [ ] `row_artifact_root()` answers for a west leaf, so the staleness probe can
-      attribute it instead of exempting it wholesale.
+- [x] **W1.c** — `examples_fixture_coverage.rs` reads the rows instead of
+      restating the role matrix in `ZEPHYR_LANGS` × `ZEPHYR_ROLES`. **Three
+      spellings of one matrix are now one.**
+- [x] **W1.d — RETRACTED on inspection.** See below.
 
 *Acceptance (unchanged, NOT yet met):* `NROS_FIXTURE_COORDS` is read by the
 zephyr lane; `build-test-fixtures lane=tier1` builds strictly fewer than 70
@@ -319,6 +318,46 @@ junit rewrite shows it as a skip — CLAUDE.md's note.)
 attributability invariant, mirroring the multi-row arm: every west leaf must
 carry a complete coordinate in the export the resolver queries, and build-dir
 names must be unique because the lookup keys on them.
+
+## W1.c — one matrix, one spelling — **LANDED**
+
+`examples_fixture_coverage.rs` held `ZEPHYR_LANGS` × `ZEPHYR_ROLES`, the THIRD
+copy of the zephyr matrix. It reads `lane::west_leaves()` now, so a leaf added
+to or removed from the manifest changes what the gate considers covered without
+anyone remembering to edit a constant.
+
+That is this file's own failure mode applied to itself: a coverage gate whose
+"covered" set is hand-maintained reports green for a dir nothing builds, the
+moment the two drift.
+
+**Verified non-vacuous.** Re-pointing the three `examples/zephyr/cpp/action-client`
+rows at another dir makes the gate report `zephyr/cpp/action-client` as a silent
+coverage gap; restoring them makes it pass. (The first attempt at this proof
+failed for the WRONG reason — `west_role` rejected the renamed basename before
+the coverage arm ran — so the rename was redone keeping a valid role basename.
+A proof that fires on the wrong assertion proves nothing.)
+
+## W1.d — RETRACTED: a west leaf should NOT be attributable by path
+
+The item read: "`row_artifact_root()` answers for a west leaf, so the staleness
+probe can attribute it instead of exempting it wholesale." Both halves of that
+turned out to be wrong once W1.b landed.
+
+**The lane half is already solved, by a better route.** W1.b showed west leaves
+reach the lane by COORDINATE — the same route issue 0517's multi-row leaves
+take — keyed on the build-dir name. Path attribution is not needed for lane
+skipping and never was; it was the mechanism the other families happened to use.
+
+**The staleness half would ADD a second answer.** West leaves already have a
+purpose-built staleness pair: `.nros-zephyr-fixture.sig`, a content signature
+the build writes into each build dir, and `is_binary_stale` on the test side.
+Giving them a `row_artifact_root` so the GENERIC probe could also watch them
+would mean two mechanisms answering "is this leaf stale?" for one family — the
+exact duplication this phase exists to remove, and the shape of issue 0482.
+
+So `row_artifact_root()` keeps returning `""` for a west row. That is not a gap:
+it is the true statement "not attributable by path", which `fixtures::lane`
+fails closed on and the coordinate route answers instead.
 
 ## W2 — Configure-only fixtures stop paying for a link (#536)
 
