@@ -1,6 +1,6 @@
 ---
 id: 565
-title: "NuttX Rust, BOTH arches: the 100 ms low tier is never scheduled — `/telem` never reaches 5 deliveries"
+title: "The two NuttX Rust realtime rows fail for DIFFERENT reasons, and neither is a scheduling bug — arm loses its session, riscv crashes"
 status: open
 type: bug
 area: boards
@@ -71,3 +71,63 @@ wrong PRIORITY, this is no scheduling at all.
 * both NuttX Rust rows pass `realtime_tiers_e2e`, i.e. `16 of 16`;
 * whatever the cause, the fix names which of the two arches' `run_tiers` paths
   was wrong and why it affected only the Rust lane.
+
+
+## CORRECTION 2026-08-13 — the title above was wrong, and so was the shape
+
+The verdict this issue was filed from ("the low tier was not scheduled") is the
+test's INFERENCE from `/telem` never arriving, not an observation. It threw the
+guest console away, so the two rows looked like one bug. They are not.
+
+Made visible by teaching the verdict to print the guest's last 25 lines — the
+same rule as issue 0445, and the reason that change is worth more than the
+diagnosis it produced.
+
+### nuttx-arm/rust — the tier runs; the SESSION dies
+
+```
+nros entry ready
+nros: multi-tier run — 2 tier(s) over one session
+nros: tier priority set tier=`low` prio=100
+nros: core pin FAILED tier=`low` cpu=0 — kernel lacks CONFIG_SMP, tier runs unpinned
+nros: RMW session open failed — ConnectionFailed
+nros: Executor::open failed (Transport(ConnectionFailed)); multi-tier entry needs a live session — aborting
+```
+
+The low tier SPAWNED, got its priority, and reported its own core-pin fallback.
+So `run_tiers` is doing its job and the scheduling hypothesis in the section
+above is refuted for this row. What fails is transport: something opens an
+Executor and cannot reach the router (`ConnectionFailed`), and the entry aborts.
+The arm cell dials the slirp gateway `10.0.2.2` — that, the baked locator, and
+whether this is a SECOND open (the guest rebooting into a port already held) are
+where to look. The core-pin line is a red herring: it is a stated fallback, not
+an error.
+
+### nuttx-riscv/rust — a CRASH, not a missed deadline
+
+The console is a NuttX assertion dump — `stack_dump:` pages followed by
+`dump_tasks:`. The task table carries its own diagnosis:
+
+```
+dump_task: 3  3 100 RR Task    Running  … 0x800caea8  65208  58364  89.5%!  nsh_main
+```
+
+`nsh_main` at **89.5%** of a 65 208-byte stack, flagged `!`. Stack exhaustion on
+the main task, not tier scheduling. Note the other pthread stacks are at 1.3%
+and 0.5%, so the pressure is on the task that runs the entry, not on the spawned
+tiers.
+
+### What this means for the work
+
+Two issues, not one, and neither is the title this was filed under. The
+`run_tiers` / clock-unit leads in the sections above apply to NEITHER row and
+should not be chased:
+
+* arm — a transport/session failure; start from the locator and whether a prior
+  instance still holds the port.
+* riscv — a stack overflow; start from the entry task's stack budget
+  (`CONFIG_PTHREAD_STACK_DEFAULT` / the nsh main stack) against what the Rust
+  executor + zenoh-pico call depth needs.
+
+They share only the cell family and the symptom the test reported, which is
+exactly how one wrong verdict merged two unrelated defects.

@@ -362,6 +362,27 @@ impl Guest {
             Guest::Qemu(p) => p.kill(),
         }
     }
+
+    /// Whatever the guest has printed so far — issue 0565.
+    ///
+    /// The tier failures report "the low tier was not scheduled", and the guest
+    /// is the only thing that knows WHICH of the two that is: it prints
+    /// `nros: FAILED to spawn tier <name> after N attempts — tier will not run`
+    /// (and a per-attempt line carrying the OS error) when the spawn is what
+    /// failed, and nothing at all when it never reached the entry banner.
+    /// Killing it unread threw that away, so the two were indistinguishable
+    /// from the verdict. Same rule as issue 0445: a verdict states what it
+    /// examined.
+    ///
+    /// Best-effort by construction — a guest that is wedged returns what it has
+    /// buffered, and an empty string is itself the diagnosis.
+    fn drain(&mut self, timeout: Duration) -> String {
+        match self {
+            Guest::Managed(p) => p.wait_for_all_output(timeout).unwrap_or_default(),
+            Guest::Zephyr(p) => p.wait_for_output(timeout).unwrap_or_default(),
+            Guest::Qemu(p) => p.wait_for_output(timeout).unwrap_or_default(),
+        }
+    }
 }
 
 // =============================================================================
@@ -623,13 +644,35 @@ fn run_one(pcell: &MCell, cell: &Exec) {
     let telem_out = telem
         .wait_for_output_count(prefix, 5, anchor_timeout(cell.boot))
         .unwrap_or_else(|_| {
+            // issue 0565 — this verdict used to throw away the ONE artifact that
+            // says WHY. The guest prints its own diagnosis on this path
+            // (`nros: FAILED to spawn tier <name> after N attempts — tier will
+            // not run`, or the per-attempt `spawn tier … failed (… os error …)`),
+            // and killing the guest unread meant "the low tier was not
+            // scheduled" could not be told apart from "the tier never spawned".
+            // Same rule as issue 0445: a verdict states what it examined.
+            // Drain BEFORE killing: a live guest still has its console open.
+            let guest_tail = guest.drain(Duration::from_secs(3));
             guest.kill();
+            let tail: Vec<&str> = guest_tail.lines().rev().take(25).collect();
+            let tail: String = tail
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n           ");
             ctrl.kill();
             telem.kill();
             panic!(
                 "[{} {}] low-tier /telem never reached 5 deliveries — the low tier was \
-                 not scheduled ({})",
-                platform, lang, cell.note
+                 not scheduled ({})\n         guest console (last 25 lines):\n           {}",
+                platform,
+                lang,
+                cell.note,
+                if tail.is_empty() {
+                    "<the guest printed NOTHING — it did not reach the entry banner>".to_string()
+                } else {
+                    tail
+                }
             )
         });
 
