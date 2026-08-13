@@ -189,8 +189,13 @@ pub fn run_nuttx() {
             // `include/cxx/`) still fall through to libstdc++. Lighter than
             // `-nostdinc++` (which would also drop `<type_traits>`, needed by
             // nros-cpp's `node.hpp`).
+            // Issue 0551 — through the accessor, like every other NuttX header
+            // input. The snapshot carries `include/cxx`, so this keeps
+            // resolving; reaching the shared tree directly would silently
+            // depend on it still being configured, which after any
+            // `make olddefconfig` it is not.
             if let Ok(nuttx_dir) = env::var("NUTTX_DIR") {
-                let cxx = PathBuf::from(nuttx_dir).join("include").join("cxx");
+                let cxx = crate::nuttx_export::include_root(&PathBuf::from(nuttx_dir)).join("cxx");
                 if cxx.is_dir() {
                     build.include(&cxx);
                 }

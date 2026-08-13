@@ -13,10 +13,10 @@ related: [issue-0528, issue-0548, issue-0466, rfc-0061]
 `just build-test-fixtures` (lane=all), leaf 17, `build-rs-action-server-cyclonedds`:
 
 ```
-CMake Error at .../zephyr/cmake/modules/extensions.cmake:428 (add_library):
+CMake Error at <repo>/zephyr/cmake/modules/extensions.cmake:428 (add_library):
   Cannot find source file:
-    /mnt/evo/aeon/nano-ros/third-party/dds/cyclonedds/src/ddsrt/src/sync/zephyr/sync.c
-Call Stack: /mnt/evo/aeon/nano-ros/zephyr/CMakeLists.txt:65 (zephyr_library_named)
+    <repo>/third-party/dds/cyclonedds/src/ddsrt/src/sync/zephyr/sync.c
+Call Stack: <repo>/zephyr/CMakeLists.txt:65 (zephyr_library_named)
 ```
 
 The zephyr module is an order-only prerequisite of every other platform, so

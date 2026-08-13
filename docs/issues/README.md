@@ -66,6 +66,26 @@ obvious:** there are TWO west builders (`west-build` ×1, `west-configure` ×3),
 the COMMENT only, leaving the awk on the literal, which the gate run caught. Same mistake twice — verifying
 the change I meant to make rather than the one on disk. See `archived/0554-*`. (2026-08-13)
 
+**#551** — `just build-test-fixtures` took the whole NuttX lane down with `fatal error: nuttx/config.h: No
+such file or directory`, and the header was missing because `just nuttx build-integration-app`'s restore
+runs `make olddefconfig`, whose `clean_context` DELETES it (`tools/Unix.mk`). `.config` came back
+byte-perfect; the tree came back de-contextualized, and `build-nuttx.sh` keys its short-circuit on
+HEAD+defconfig+snapshot — all still matching — so it no-ops forever. Restore now runs `make context` too.
+But the header should not have mattered: issue 0525 already ruled the shared tree out as a compile input
+("this path guarantees the SNAPSHOT, never the tree"), and FIVE build inputs were still reaching it. Its
+gate greps for a receiver NAMED nuttx while the rule is about the VALUE, and it scanned neither `.toml`
+nor `config/` nor the root `CMakeLists.txt` — where the two sites that actually took the lane down lived
+(`"{env:NUTTX_DIR}/include"` in the zenoh-pico manifest, `${NUTTX_DIR}/include` in root cmake, the latter
+under a comment that already said "the NuttX EXPORT include tree"). Fixed with a `{nuttx_include}`
+manifest token and a cmake `nros_nuttx_include_root()` (arch from the CARGO TRIPLE first — the workspace
+lane configures with the HOST compiler while `Rust_CARGO_TARGET` is `armv7a-nuttx-eabihf`), plus a
+proximity-scoped taint + `.toml`/`config/`/root-cmake scope in the gate (1365 → 1653 files). Also fixed the
+Makefile's parse-time `$(shell mkdir -p …)`, which ran during `apps_preconfig` with `DELIM` and
+`CONFIG_ARCH` both empty and created `nuttx-appsexternal.nros-build/`. config.h failures now 0. **Still
+open:** a fifth site (`nros-nuttx-ffi`'s cmake-passed include lists) and, newly reachable behind it, a
+HOST `libnano_ros_cpp_ffi_std_msgs.a` on realtime-cpp's ARM link line — phase-155's wrong-arch class,
+needs its own id. A gate's SCOPE is part of the rule it enforces. See `0551-*`. (2026-08-13)
+
 RESOLVED 2026-08-13 — **#550** `just build-test-fixtures` died at leaf 17 on `Cannot find source file:
 third-party/dds/cyclonedds/src/ddsrt/src/sync/zephyr/sync.c`, and it was not a code bug: the submodule sat
 at `6eb9227` while HEAD records `8601ca6`, 7 commits ahead — including `a09babf`, the commit that ADDS

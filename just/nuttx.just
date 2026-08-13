@@ -63,7 +63,17 @@ build-integration-app:
     scripts/nuttx/stage-external-apps.sh "${NUTTX_APPS_DIR:-$(pwd)/third-party/nuttx/nuttx-apps}"
     backup="$(mktemp)"
     cp "$nuttx_dir/.config" "$backup"
-    restore() { cp "$backup" "$nuttx_dir/.config"; ( cd "$nuttx_dir" && make olddefconfig >/dev/null 2>&1 ); rm -f "$backup"; }
+    # Issue 0551 — `make olddefconfig` runs `clean_context`, which DELETES the
+    # generated `include/nuttx/config.h` (tools/Unix.mk: olddefconfig ->
+    # clean_context -> `DELFILE include/nuttx/config.h`). So restoring `.config`
+    # byte-for-byte still leaves the tree DE-CONTEXTUALIZED, and nothing puts
+    # the header back: `build-nuttx.sh`'s snapshot short-circuit keys on
+    # HEAD+defconfig+snapshot, all of which still match, so it no-ops forever.
+    # That took the whole NuttX fixture lane down with
+    # `fatal error: nuttx/config.h: No such file or directory`.
+    # `make context` regenerates the header and the dirlinks; it does not
+    # rebuild, so the restore stays cheap.
+    restore() { cp "$backup" "$nuttx_dir/.config"; ( cd "$nuttx_dir" && make olddefconfig >/dev/null 2>&1 && make context >/dev/null 2>&1 ); rm -f "$backup"; }
     trap restore EXIT
     ( cd "$nuttx_dir" && echo "CONFIG_NROS=y" >> .config && make olddefconfig >/dev/null && make -j"$(nproc)" )
     echo "integration app built; objects under \$APPDIR/external/.nros-build/<arch>/"

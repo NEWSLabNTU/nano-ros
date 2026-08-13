@@ -43,7 +43,19 @@ include $(APPDIR)/Make.defs
 NROS_APPS_ARCH  := $(patsubst "%",%,$(CONFIG_ARCH))
 NROS_APPS_BUILD := $(APPDIR)$(DELIM)external$(DELIM).nros-build$(DELIM)$(NROS_APPS_ARCH)
 PREFIX          := $(NROS_APPS_BUILD)$(DELIM)
+
+# Issue 0551 — `$(shell …)` at the top level runs on EVERY PARSE of this file,
+# and not every parse has a configured tree. `make olddefconfig` runs
+# `apps_preconfig`, which walks the apps tree before `DELIM` and `CONFIG_ARCH`
+# are defined; both then expand EMPTY, `NROS_APPS_BUILD` collapses to
+# `$(APPDIR)external.nros-build`, and the mkdir creates a junk directory
+# alongside the apps tree (observed as `third-party/nuttx/nuttx-appsexternal.nros-build/`).
+# An empty ARCH is also the shared-object-dir hazard this coordinate exists to
+# prevent, so building into it would be worse than not creating it.
+NROS_APPS_BUILD_OK := $(if $(and $(strip $(DELIM)),$(strip $(NROS_APPS_ARCH))),1,)
+ifeq ($(NROS_APPS_BUILD_OK),1)
 $(shell mkdir -p $(NROS_APPS_BUILD))
+endif
 # `CSRCS` names an ABSOLUTE path, so `$(PREFIX)<src>` mirrors that whole path
 # under the build root and upstream's compile rule does NOT create the parent
 # ("error: can't create …/.nros-build/arm//mnt/…/platform.c….o"). The two
@@ -145,7 +157,9 @@ NANO_ROS_ROOT := $(realpath $(APPDIR)/external/nano-ros/../..)
 #     `sem_timedwait` correctly.
 # Obviates a dedicated `nros-platform-nuttx` Rust crate.
 CSRCS = $(NANO_ROS_ROOT)/packages/platform/nros-platform-posix/src/platform.c
+ifeq ($(NROS_APPS_BUILD_OK),1)
 $(shell mkdir -p $(dir $(addprefix $(NROS_APPS_BUILD),$(CSRCS))))
+endif
 # Include the platform.h header in CFLAGS so the POSIX port's
 # `#include <nros/platform.h>` resolves.
 CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/packages/platform/nros-platform-api/include

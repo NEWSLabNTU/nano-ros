@@ -989,8 +989,18 @@ fn probe_net_type_sizes(
     } else if use_nuttx {
         build.define("ZENOH_NUTTX", None);
         build.define("ZENOH_LINUX", None);
+        // Issue 0551 — the SHARED tree's `include/` is not a guaranteed compile
+        // input. `build-nuttx.sh`'s snapshot short-circuit says so in as many
+        // words ("this path guarantees the SNAPSHOT, never the tree"): when the
+        // key matches it skips the build entirely and leaves `$NUTTX_DIR`
+        // holding whichever arch was configured LAST — or, after any
+        // `make olddefconfig`, holding no generated `nuttx/config.h` at all,
+        // since that target runs `clean_context` which deletes it.
+        //
+        // That is issue 0525's rule, and this was its sixth site: the gate
+        // greps for a receiver NAMED nuttx, and here the binding is `dir`.
         if let Ok(dir) = env::var("NUTTX_DIR") {
-            build.include(PathBuf::from(dir).join("include"));
+            build.include(nros_build_paths::nuttx_include_root(&PathBuf::from(dir)));
         }
     } else if use_threadx {
         build.define("ZENOH_GENERIC", None);

@@ -491,9 +491,24 @@ pub struct InterpContext<'a> {
     pub src: &'a Path,
 }
 
-/// Replace every `{nros}` / `{out}` / `{src}` / `{env:VAR}` token
-/// in `input`. Missing env vars produce `None` so the caller can
+/// Replace every `{nros}` / `{out}` / `{src}` / `{nuttx_include}` / `{env:VAR}`
+/// token in `input`. Missing env vars produce `None` so the caller can
 /// emit a helpful panic.
+///
+/// `{nuttx_include}` exists because `{env:NUTTX_DIR}/include` is WRONG and
+/// looked right (issue 0551). NuttX is built in place, one checkout serves both
+/// arches, and `build-nuttx.sh`'s snapshot short-circuit guarantees the export
+/// snapshot rather than the tree — so the tree's `include/` holds whichever arch
+/// was configured LAST, and after any `make olddefconfig` holds no generated
+/// `nuttx/config.h` at all (that target runs `clean_context`, which deletes it).
+/// The whole NuttX fixture lane died on `fatal error: nuttx/config.h: No such
+/// file or directory` from exactly that spelling.
+///
+/// Issue 0525 already made `nros_build_paths::nuttx_include_root` the one
+/// sanctioned resolution, and its gate greps Rust and shell. A TOML
+/// `{env:NUTTX_DIR}/include` is neither, which is why this site outlived six
+/// earlier sweeps. Give the manifest a token that cannot spell it wrongly
+/// rather than a second place to remember the rule.
 pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, InterpError> {
     let mut out = String::with_capacity(input.len());
     let mut rest = input;
@@ -515,6 +530,12 @@ pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, Inter
             ctx.out.display().to_string()
         } else if token == "src" {
             ctx.src.display().to_string()
+        } else if token == "nuttx_include" {
+            let dir = std::env::var("NUTTX_DIR")
+                .map_err(|_| InterpError::MissingEnv("NUTTX_DIR".to_string()))?;
+            crate::nuttx_export::include_root(Path::new(&dir))
+                .display()
+                .to_string()
         } else if let Some(var) = token.strip_prefix("env:") {
             std::env::var(var).map_err(|_| InterpError::MissingEnv(var.to_string()))?
         } else {

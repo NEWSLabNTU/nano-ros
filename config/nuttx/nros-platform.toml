@@ -37,7 +37,12 @@ required_env = [
 ]
 include_paths = [
   "{nros}/c/include",
-  "{env:NUTTX_DIR}/include",
+  # issue 0551 — NOT `{env:NUTTX_DIR}/include`. The shared tree holds whichever
+  # arch was configured last and, after any `make olddefconfig`, no generated
+  # `nuttx/config.h` at all. `{nuttx_include}` resolves through
+  # `nros_build_paths::nuttx_include_root`, which prefers this arch's export
+  # snapshot (issue 0525's one sanctioned spelling).
+  "{nuttx_include}",
   # Phase 154 — `<nros/platform_net.h>` source; same need as posix/
   # bare-metal/freertos-lwip blocks above.
   "{nros}/../../platform/nros-platform-api/include",

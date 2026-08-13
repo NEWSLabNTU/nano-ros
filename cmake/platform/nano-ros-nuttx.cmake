@@ -65,6 +65,70 @@ set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast udp_multicast
     CACHE STRING "Default link features for the NuttX platform")
 
 # ---------------------------------------------------------------------------
+# nros_nuttx_include_root(<out_var>) — the include root whose `nuttx/config.h`
+# describes THIS build's arch. The cmake sibling of
+# `nros_build_paths::nuttx_include_root`; issues 0525/0551.
+#
+# NuttX is built IN PLACE and one checkout serves both arches, so
+# `${NUTTX_DIR}/include` belongs to whichever arch was configured LAST — and
+# after any `make olddefconfig` it holds no generated `nuttx/config.h` at all,
+# because that target runs `clean_context`, which deletes it. Meanwhile
+# `build-nuttx.sh` short-circuits on the per-arch export SNAPSHOT and says in as
+# many words that it guarantees the snapshot, never the tree.
+#
+# The Rust readers were routed through the accessor when 0525 landed. The cmake
+# C/C++ lane was not, and the root `CMakeLists.txt` had been reaching the shared
+# tree ever since — its own comment says "Put the NuttX EXPORT include tree on
+# the message-lib compile", which is what this makes true. It surfaced as every
+# NuttX C/C++ fixture dying on `fatal error: nuttx/config.h: No such file or
+# directory` once the header actually went missing.
+#
+# Arch resolution takes the CARGO TRIPLE first and `CMAKE_SYSTEM_PROCESSOR`
+# second, because the two disagree on a real path: the workspace fixture lane
+# configures with the HOST compiler (`/usr/bin/cc`, `CMAKE_SYSTEM_PROCESSOR` =
+# x86_64) while `Rust_CARGO_TARGET` is `armv7a-nuttx-eabihf` — the message
+# libraries are host-compiled but still carry `-DNROS_PLATFORM_NUTTX` and the
+# NuttX system includes. Keying only on the processor silently fell back to the
+# shared tree there, which is the bug wearing a different hat.
+#
+# `_nros_resolve_rust_target` rather than `Rust_CARGO_TARGET` directly: the
+# latter is a normal variable that does not cross `add_subdirectory()`, which is
+# phase-155's wrong-arch link. Guarded by `if(COMMAND …)` so this module does not
+# depend on include order.
+function(nros_nuttx_include_root out_var)
+    set(_arch "")
+    set(_triple "")
+    if(COMMAND _nros_resolve_rust_target)
+        _nros_resolve_rust_target(_triple)
+    elseif(DEFINED Rust_CARGO_TARGET)
+        set(_triple "${Rust_CARGO_TARGET}")
+    endif()
+    if(_triple MATCHES "nuttx")
+        if(_triple MATCHES "^(arm|thumb)")
+            set(_arch "arm")
+        elseif(_triple MATCHES "^riscv")
+            set(_arch "riscv")
+        endif()
+    endif()
+    if(_arch STREQUAL "")
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]")
+            set(_arch "arm")
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "[Rr][Ii][Ss][Cc][Vv]")
+            set(_arch "riscv")
+        endif()
+    endif()
+    if(_arch)
+        set(_snapshot "${NUTTX_DIR}/nros-nuttx-export-${_arch}/include")
+        if(EXISTS "${_snapshot}/nuttx/config.h")
+            set(${out_var} "${_snapshot}" PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+    # Fallback to the live tree, so a pre-phase-339 checkout keeps working.
+    set(${out_var} "${NUTTX_DIR}/include" PARENT_SCOPE)
+endfunction()
+
+# ---------------------------------------------------------------------------
 # Layer-2 helpers (nros_nuttx_validate / nros_nuttx_set_cargo_target /
 # nros_nuttx_build_example). Implementation lives under
 # packages/api/nros-c/cmake/nros-nuttx.cmake.

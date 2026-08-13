@@ -232,10 +232,16 @@ if(NOT TARGET NanoRos)
             # extension-less cxx wrappers, so this is safe for the shared
             # C/C++ interface. Listed first so it precedes the toolchain's
             # built-in C++ include dir in the -isystem search.
-            if(EXISTS "${NUTTX_DIR}/include/cxx")
-                target_include_directories(NanoRos SYSTEM INTERFACE "${NUTTX_DIR}/include/cxx")
+            # issue 0551 — through `nros_nuttx_include_root`, not
+            # `${NUTTX_DIR}/include`. The shared tree holds whichever arch was
+            # configured last, and no `nuttx/config.h` at all after a
+            # `make olddefconfig`; the accessor prefers this arch's export
+            # snapshot, which is what the comment above always meant.
+            nros_nuttx_include_root(_nros_nuttx_inc)
+            if(EXISTS "${_nros_nuttx_inc}/cxx")
+                target_include_directories(NanoRos SYSTEM INTERFACE "${_nros_nuttx_inc}/cxx")
             endif()
-            target_include_directories(NanoRos SYSTEM INTERFACE "${NUTTX_DIR}/include")
+            target_include_directories(NanoRos SYSTEM INTERFACE "${_nros_nuttx_inc}")
         endif()
     elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_THREADX)
