@@ -401,6 +401,21 @@ own symptom is GONE (zero `EXECUTOR_OPAQUE_U64S` asserts from scratch, was six l
 reaches leaf 12. Probably migrate the callers to `clock_ns` — `uxr_nanos` currently scales microseconds
 back up by 1000, losing precision the ns clock has. See `0548-*`. (2026-08-13)
 
+**#561** — after `git submodule update` moves `packages/cli/third-party/play_launch`, every `nros sync`
+fails the 0409 pin guard AND no sanctioned command fixes it: `just setup-cli` reports success while
+rebuilding nothing (silent, binary mtime unchanged), and `cargo clean -p nros-cli-core` does not help
+because the skip happens before cargo runs. `setup-cli` skips on `nros source-stamp`, whose
+`is_cli_input()` excludes any path containing `/third-party/` — where play_launch lives — on the premise
+that vendored submodules are "not nano-ros build inputs". For ONE fact that premise is false:
+`nros-cli-core/build.rs` reads the submodule HEAD and bakes `NROS_PLAY_LAUNCH_SHA`, which is exactly what
+the 0409 guard compares. So the pin is a build input the stamp cannot see, and the two freshness notions
+disagree in the only case that matters. `build.rs` does emit `rerun-if-changed` for the gitdir HEAD, but
+that is the wrong layer — setup-cli never reaches cargo. The file names the rule it breaks two lines
+above the filter ("watches less than what the build consumes is the issue-0196 shape"), and this is the
+SECOND time this stamp has been found too narrow (phase-330 W1.a was local path deps). Fix: hash the
+submodule's HEAD sha — not its file list, so the "thousands of files" objection does not apply. Workaround:
+`cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`. See `0561-*`. (2026-08-13)
+
 **#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
 manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared
 `anyhow = "1"` with zero uses, and `packages/cli`'s `[workspace.dependencies]` entry was inherited by
