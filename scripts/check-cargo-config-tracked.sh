@@ -92,6 +92,35 @@ has_uncommitted_generated_patch() {
 # This gate catches that at authoring time, which the sync-time check in
 # `cmd/ws.rs` cannot: that one only validates the central entry it just wrote.
 orphan_includes=0
+untracked_projection=0
+
+# issue 0559 / phase-341 — a TRACKED config that `include`s `nros-board.toml`
+# must have that projection COMMITTED beside it.
+#
+# The comment above states the rule ("the third is COMMITTED precisely so a
+# clone can LINK without running sync") and nothing enforced it, which is how
+# `examples/threadx-linux/rust/talker` shipped with the include and without the
+# file: `nros sync` rewrote both on every fixture build, so the tree was dirty
+# after every run and `git pull --rebase` refused until you discarded them.
+#
+# This became load-bearing when `**/.cargo/nros-board.toml` was gitignored: the
+# ignore is what silences the ~39 projections whose leaf config is ITSELF
+# generated (nothing tracked references those), and gitignore cannot express
+# "…unless a tracked config includes you". This arm is that condition, the same
+# shape `check-cargo-config-tracked` already uses to stop the blanket
+# `config.toml` ignore swallowing a hand-authored one.
+projection_missing() {
+    local cfg="$1" dir
+    dir="$(dirname "$cfg")"
+    grep -q '^include' "$cfg" 2>/dev/null || return 1
+    sed -n '/^\[/q;p' "$cfg" | grep -oE '^include *= *\[[^]]*\]' |
+        grep -q 'nros-board\.toml' || return 1
+    git ls-files --error-unmatch "$dir/nros-board.toml" >/dev/null 2>&1 && return 1
+    echo "    $cfg" >&2
+    echo "      include -> 'nros-board.toml' — but $dir/nros-board.toml is NOT committed" >&2
+    return 0
+}
+
 has_orphan_include() {
     local cfg="$1" entry base
     # Only the top-level key: scanning past the first table header would let a
@@ -138,6 +167,15 @@ while IFS= read -r -d '' cfg; do
         if has_orphan_include "$cfg"; then
             orphan_includes=$((orphan_includes + 1))
         fi
+
+        if [ "$untracked_projection" -eq 0 ]; then
+            if projection_missing "$cfg" >/dev/null 2>&1; then
+                echo "check-cargo-config-tracked: tracked config includes an UNCOMMITTED board projection:" >&2
+            fi
+        fi
+        if projection_missing "$cfg"; then
+            untracked_projection=$((untracked_projection + 1))
+        fi
     fi
 
     if has_authored_content "$cfg"; then
@@ -179,6 +217,18 @@ if [ "$ament_rows_tracked" -ne 0 ]; then
     } >&2
     rc=1
 fi
+if [ "$untracked_projection" -ne 0 ]; then
+    echo "" >&2
+    echo "  A clone gets the include and not the file, so the leaf cannot LINK" >&2
+    echo "  until someone runs \`nros sync\` — and every sync that does run" >&2
+    echo "  rewrites a TRACKED file, leaving the tree dirty (issue 0559)." >&2
+    # `-f`: the blanket `**/.cargo/nros-board.toml` ignore covers the generated
+    # majority, so adding a committed one needs the override. Saying `git add`
+    # plainly here would hand the reader a command that refuses.
+    echo "  Commit the projection:  git add -f <leaf>/.cargo/nros-board.toml" >&2
+    exit 1
+fi
+
 if [ "$orphan_includes" -ne 0 ]; then
     {
         echo

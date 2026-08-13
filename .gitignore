@@ -127,6 +127,24 @@ examples/**/target-*/
 # `_require-leaf-includes` is the preflight that says so.
 **/.cargo/nros-managed-patch.toml
 
+# Issue 0559 / phase-341 W2 — the per-leaf board `cargo_config` projection
+# `nros sync` writes next to the config that `include`s it.
+#
+# Same blanket shape as `config.toml` above, and safe for the same reason:
+# gitignore has no effect on TRACKED files, so the ~41 leaves that commit their
+# projection keep it, diffs and all. What this silences is the ~39 leaves whose
+# `.cargo/config.toml` is ITSELF generated (and ignored above) — nothing tracked
+# references those, a clone never sees them, and sync recreates them on demand.
+# They were the entire untracked-file noise floor of `git status` after any
+# fixture build.
+#
+# The rule this cannot express — "…unless a TRACKED config includes you" — is
+# enforced instead by `check-cargo-config-tracked`, which fails when a tracked
+# config `include`s `nros-board.toml` that is not committed. Without that arm
+# this ignore would hide issue 0559 rather than tidy around it: a clone would
+# get the include and not the file, and every sync would dirty a tracked config.
+**/.cargo/nros-board.toml
+
 # cmake build dirs in the standalone examples. `examples/**/target-*/` above
 # covered the cargo side and many leaves carry their own `/build/` line, but
 # the west/cmake entry leaves (qemu-arm-freertos, qemu-arm-nuttx,
