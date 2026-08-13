@@ -63,6 +63,97 @@ control outright — the *application* `include()`s the SDK root, and everything
 Any design where nano-ros compiles the RTOS must reimplement all of that. Under
 §1's principle we implement none of it.
 
+## 2b. The LIVE design — what the tree does today (surveyed 2026-08-13)
+
+Documented before proposing changes, because two prior drafts of this RFC
+re-derived things the tree already had.
+
+### RFC-0003 already states this RFC's principle
+
+[RFC-0003](0003-rtos-integration-pattern.md) §1 (Draft, 2026-06):
+
+> *"Vendor SDK keep native build tool — west, make+Kconfig, cmake, idf.py, pio.
+> Always. nano-ros never replace. nano-ros instead plug into vendor's external
+> library / external module / component hook."*
+
+and its universal rule: **vendor owns build + link; nano-ros owns a per-vendor
+adapter shim plus host-time codegen.** §1 is this RFC's §1, three months
+earlier. What this RFC adds is not the principle but **where board information
+lives** — which RFC-0003 does not address.
+
+RFC-0003 also supplies a taxonomy this RFC must respect:
+
+| | vendors | codegen runs |
+| --- | --- | --- |
+| **hook-capable** | Zephyr, ESP-IDF, ThreadX, NuttX, FreeRTOS | at the vendor's configure phase |
+| **hookless** | PlatformIO, **PX4** | *ahead* of the vendor tool, emitting a vendor-native tree |
+
+A design that assumes a configure-time hook silently excludes PX4 and PIO.
+
+### Where board information lives today — five homes
+
+| home | count | holds | read by | when |
+| --- | ---: | --- | --- | --- |
+| `packages/boards/*/nros-board.toml` | 8 files, 9 boards | the descriptor | `BoardCatalog` (CLI) | `nros sync` / `setup` |
+| `<bringup>/system.toml` `[deploy.<name>]` | 59 blocks | `kind`, `board`, `target`, `launch`, `nodes`, `rmw`, `framework` | `nros codegen system` | codegen |
+| `<leaf>/.cargo/nros-board.toml` | 44 | projection of `cargo_config` | cargo | every build |
+| `cmake/board/nano-ros-board-*.cmake` | 7 | toolchain file, kernel/stack targets | cmake, **by filename** | configure |
+| `just/sdk-env.just` | — | `FREERTOS_DIR`, `LWIP_DIR`, … | build scripts, via shell env | build |
+
+### The nine boards, and what each descriptor actually asserts
+
+| board | platform | link_kind | entry_kind | net_stack | site content mixed in |
+| --- | --- | --- | --- | --- | --- |
+| linux | posix | none | hosted-main | nanoros-owned | — |
+| esp32-qemu | esp32 | none | board-run | nanoros-owned | linker script |
+| freertos | freertos | none | board-run | nanoros-owned | **runner**, linker script |
+| baremetal | bare-metal | none | board-run | nanoros-owned | **runner**, linker script |
+| nuttx | nuttx | nuttx-staging | board-run | rtos-owned | linker script, `${workspace}` |
+| nuttx-riscv | nuttx | nuttx-staging | board-run | rtos-owned | `${workspace}` |
+| threadx | threadx-linux | none | hosted-main | nanoros-owned | — |
+| threadx | threadx-riscv64 | none | board-run | nanoros-owned | linker script, `${workspace}` |
+| zephyr | zephyr | none | zephyr-staticlib | rtos-owned | — |
+
+Three observations that shape the redesign:
+
+1. **`entry_kind` already encodes RFC-0003's adapter shape** — `hosted-main`,
+   `board-run`, `zephyr-staticlib`. The integration axis is present and named.
+2. **`net_stack` is a real ownership axis** (`rtos-owned` for Zephyr/NuttX,
+   `nanoros-owned` elsewhere) — but it is parsed and never read, and it does not
+   say *which* stack.
+3. **Six of nine descriptors carry site content.** `${workspace}` is stripped by
+   a withholding filter that warns and discards — a filter with no destination,
+   which is the signature of a missing category.
+
+### The categories the tree is straining against
+
+**A — board facts** (reusable, shippable by us, a vendor, or the user): identity,
+platform, target triple, capabilities, entry shape, link kind.
+**B — site/instance config** (this checkout, this machine, this app): SDK roots,
+netstack choice, config-header dirs, runner, linker-script path.
+**C — derived** (never authored): the leaf projection, the provider index, baked
+headers.
+
+A and B are mixed in the descriptor; B additionally lives in `just/sdk-env.just`,
+which an out-of-tree user does not have. That is the whole problem.
+
+### The mechanical constraints any carrier must satisfy (measured)
+
+* **Cargo config discovery is CWD-based and merges ancestors, deepest wins.** A
+  per-member `.cargo/config.toml` is read only when CWD is at/under that member.
+* **Corrosion runs cargo from `workspace_toml_dir`** — the workspace root for a
+  member — so per-member config is invisible to it.
+* **`[target.<triple>]` is board-disambiguating; `[env]` is not.** The workspace
+  root of `examples/workspaces/rust` carries an mps2-an385 `runner` and linker
+  script for a workspace that also holds nuttx/esp32/threadx/zephyr entries; it
+  is safe *only* because cargo applies `[target.*]` per triple.
+* **The consumer is a dependency.** `zpico-sys`'s build script has
+  `CARGO_MANIFEST_DIR` four levels under the repo root, so no walk-up reaches a
+  leaf.
+* **Exactly one board is active per configure** — cmake selects entries with
+  `if/elseif` on `NANO_ROS_BOARD`, and the toolchain file must be fixed before
+  `project()`. So the *source* must describe N boards while *delivery* carries 1.
+
 ## 3. Overall design
 
 ### 3.1 Four things, each owning one fact
