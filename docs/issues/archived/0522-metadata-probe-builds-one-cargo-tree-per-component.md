@@ -1,7 +1,7 @@
 ---
 id: 522
 title: "The metadata probe builds one full cargo tree per component — cargo harness FIXED, the cmake/corrosion probe (14 trees, 50.3 GiB) remains"
-status: open
+status: resolved
 type: tech-debt
 area: build
 related: [phase-340, issue-0488, rfc-0070]
@@ -255,3 +255,41 @@ component's metadata.
 That makes the remaining question a policy one rather than an unknown: keep it
 warm locally, drop it in a lane. Which is a smaller decision than the
 shared-`CMAKE_BINARY_DIR` direction above, and independent of it.
+
+
+## Resolved 2026-08-13 — the cargo half moved, the cmake half is a knob
+
+Both halves are now answered, and they needed different answers.
+
+**Cargo harness (fixed 2026-08-12):** one shared target dir instead of one per
+component. 6 dirs / 3.2 GiB / 12 rlibs -> 1 dir / 483 MiB / 2 rlibs on
+`examples/workspaces/rust`, and cold `lane=native` got FASTER (581 s -> 461 s).
+
+**Cmake probe (this):** its location was already right — per workspace, in the
+workspace's own `build/` — so there was nothing to move. What it had was a cache
+nobody had priced. Priced (`examples/workspaces/c`, sidecars deleted each run):
+
+| | time |
+| --- | --- |
+| WARM — build tree kept | **6.0 s** |
+| COLD — build tree deleted | **23.2 s** |
+
+~17 s bought for 4.8 GiB, consulted only when a sidecar is MISSING — which no
+lane causes. Good deal for a developer iterating on component metadata, bad one
+for a build lane paying the disk on all 14 workspaces (50.26 GiB) to save time it
+never spends.
+
+So it is a knob rather than a decision imposed on everyone:
+`NROS_METADATA_PROBE_CACHE=0` discards the tree, defaulting to KEEP, and the two
+lane builders (`fixtures-build.sh`, `workspace-fixtures-build.sh`) set it.
+Verified on `examples/workspaces/c`: **921 MiB kept by default, 40 KiB with the
+knob**, 6 sidecars produced either way.
+
+**Discarded only on FULL SUCCESS.** A failed probe's tree is the evidence — this
+entire issue, plus 0542 and 0543, were diagnosed by reading exactly those
+`CMakeFiles` logs. Deleting it on failure would trade 4.8 GiB for the ability to
+explain what went wrong.
+
+The shared-`CMAKE_BINARY_DIR` direction recorded above stays with issue 0493,
+where the corrosion evidence lives. It is now a smaller prize than it looked: on
+a lane the tree does not survive the build at all.

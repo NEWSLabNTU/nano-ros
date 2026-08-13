@@ -277,7 +277,41 @@ pub fn run_probes(probe_dir: &Path, comps: &[CmakeProbeOptions]) -> Result<Vec<P
             result,
         });
     }
+    discard_cache_if_asked(&build_dir, &out);
     Ok(out)
+}
+
+/// Drop the probe's cmake build tree when the caller says it is not worth
+/// keeping — issue 0522.
+///
+/// Measured on `examples/workspaces/c` (sidecars deleted before each run):
+///
+/// ```text
+/// WARM — build tree kept (4.8 GiB)    6.0 s
+/// COLD — build tree deleted          23.2 s
+/// ```
+///
+/// So the cache buys ~17 s per re-probe for 4.8 GiB — roughly 3.5 GiB per second
+/// saved — and it is only consulted when a sidecar is MISSING, which no lane
+/// causes. That makes it a good deal for a developer iterating on a component's
+/// metadata and a bad one for a build lane, which pays the disk on every
+/// workspace (14 of them, 50.26 GiB measured) to save time it never spends.
+///
+/// So it is a knob, defaulting to KEEP: `NROS_METADATA_PROBE_CACHE=0` discards.
+/// The lanes set it; a developer never sees it.
+///
+/// **Only on full success.** A failed probe's tree is the evidence — its
+/// `CMakeFiles/*.log`, its half-linked targets — and this whole issue was
+/// diagnosed by reading exactly that. Deleting it on failure would trade 4.8 GiB
+/// for the ability to explain what went wrong.
+fn discard_cache_if_asked(build_dir: &Path, outcomes: &[ProbeOutcome]) {
+    let keep = std::env::var("NROS_METADATA_PROBE_CACHE")
+        .map(|v| v != "0")
+        .unwrap_or(true);
+    if keep || outcomes.iter().any(|o| o.result.is_err()) {
+        return;
+    }
+    let _ = std::fs::remove_dir_all(build_dir);
 }
 
 /// Build every probe target in ONE parallel `cmake --build`.

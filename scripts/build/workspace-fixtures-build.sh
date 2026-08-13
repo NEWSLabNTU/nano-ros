@@ -114,6 +114,18 @@ case "$platform" in
 esac
 
 nros_cli="$(nros_cli_bin)"
+
+# issue 0522 — a BUILD LANE does not want the metadata probe's cmake cache.
+# Measured on `examples/workspaces/c` (sidecars deleted before each run): the
+# cache buys ~17 s per re-probe (6.0 s warm vs 23.2 s cold) and costs 4.8 GiB
+# per workspace — 50.26 GiB across the 14 of them — and it is only consulted
+# when a sidecar is MISSING, which no lane causes. Good deal for a developer
+# iterating on a component's metadata, bad one here.
+#
+# The CLI keeps the tree by default and discards it only on FULL SUCCESS, so a
+# failing probe still leaves its evidence behind for whoever reads the log.
+export NROS_METADATA_PROBE_CACHE="${NROS_METADATA_PROBE_CACHE:-0}"
+
 nros_require_sync "$nros_cli"
 
 export NROS_REPO_DIR="${NROS_REPO_DIR:-$repo_root}"
