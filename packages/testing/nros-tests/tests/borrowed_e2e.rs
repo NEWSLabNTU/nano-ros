@@ -22,7 +22,7 @@ use std::{path::PathBuf, process::Command};
 
 fn proof_bin(name: &str) -> TestResult<PathBuf> {
     // Bespoke recipe (like link-determinism), so the fixture lives at a fixed path
-    // rather than under build/compile-check/<id>/. Gate on its stamp.
+    // rather than under build/compile-check-fixtures/<id>/. Gate on its stamp.
     let dir = nros_tests::project_root().join("build/borrowed-e2e");
     if !dir.join(".compile-ok").is_file() {
         nros_tests::skip!(

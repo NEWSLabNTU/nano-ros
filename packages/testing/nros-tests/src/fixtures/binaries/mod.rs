@@ -2866,7 +2866,7 @@ pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
 
 /// Resolve a build-stage build-fixture's binary (issue 0034). The build entries
 /// in `compile-check-fixtures.sh` run `cargo build -p demo_entry`, producing a
-/// runnable binary at `build/compile-check/<id>/<rel>` (e.g.
+/// runnable binary at `build/compile-check-fixtures/<id>/<rel>` (e.g.
 /// `target/debug/demo_entry`) that a test executes. Tier-aware like
 /// `require_compile_check`.
 pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {

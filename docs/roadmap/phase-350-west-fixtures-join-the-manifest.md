@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). COMPLETE. Every acceptance item met, including the wall-clock: the zephyr lane costs 592 s warm and tier 2 costs 76 s — **7.8×**, ~8.6 min saved per tier-2 sweep (NOT the 31× a naive read of #509 suggests; that baseline does not reproduce here). One rename is left as a scheduling call, no longer a blocked one: `compile-check` is two edits since the kind vocabulary was extracted to named constants and gated.**
+**Status (2026-08-13). COMPLETE — every acceptance item met and every W5 rename done. The zephyr lane costs 592 s warm and tier 2 costs 76 s (**7.8×**, ~8.6 min/sweep; NOT the 31× a naive read of #509 suggests — that baseline does not reproduce here). All 18 build-cache kinds conform to RFC-0070 R5, gated in both languages.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -567,8 +567,17 @@ behaviour, not feature duplication.
       — `rmw_zenoh_ws`, which the census regex had excluded because it uses
       underscores. A gate that finds something on its first run is the argument
       for writing it.
-- [ ] **`compile-check` → `compile-check-fixtures` — now a scheduling call, not
-      a blocked one.** Two edits; the only cost left is the 9.4 GB rebuild.
+- [x] **`compile-check` → `compile-check-fixtures` — DONE** (2026-08-13). Two
+      edits, as the extraction promised. 9.4 GB wiped, lane rebuilt in 105 s.
+
+      **It also exposed that the gate was not pinning what I said it pinned.**
+      `build_root_derivation.sh` compared `nros_build_dir compile-check` against
+      the literal `build/compile-check` — a bare word on both sides, so it
+      tested `nros_build_dir`'s joining and nothing about the vocabulary. It
+      passed the rename unchanged, which is how I noticed. The family checks put
+      the CONSTANT on the actual side now, so drifting a constant without moving
+      its expected literal fails; verified by drifting one. The Rust unit test
+      was a real pin already and caught the same change immediately.
 
 **What the renames actually cost, now measured rather than estimated.** A kind
 or tag rename FORFEITS the cache under it — `mv` does not work, because

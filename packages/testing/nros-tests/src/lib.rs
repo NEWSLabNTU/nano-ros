@@ -437,10 +437,10 @@ pub mod kind {
     pub const IDF_FIXTURES: &str = "idf-fixtures";
     pub const WEST_FIXTURES: &str = "west-fixtures";
 
-    /// R5 outlier, knowingly: should be `compile-check-fixtures`. Renaming it
-    /// is now ONE edit here plus the shell twin, which is the whole point of
-    /// this module — see RFC-0070 R5 for why it has not happened yet.
-    pub const COMPILE_CHECK: &str = "compile-check";
+    /// The compile-check lane's trees. Renamed from `compile-check` to carry
+    /// the `-fixtures` suffix R5 requires (2026-08-13) — two edits, this and
+    /// the shell twin, which is what the constant was extracted for.
+    pub const COMPILE_CHECK: &str = "compile-check-fixtures";
 
     // Everything else — bare `<family>`, named for what it holds.
     pub const CARGO: &str = "cargo";
@@ -486,7 +486,7 @@ pub fn build_root() -> std::path::PathBuf {
 /// and empty coordinate parts are skipped, matching `nros_build_dir`.
 ///
 /// ```ignore
-/// build_dir(kind::COMPILE_CHECK, &[id])   // <root>/compile-check/<id>
+/// build_dir(kind::COMPILE_CHECK, &[id])   // <root>/compile-check-fixtures/<id>
 /// build_dir(kind::CARGO_FIXTURES, &[])    // <root>/cargo-fixtures
 /// ```
 pub fn build_dir(kind: &str, coords: &[&str]) -> std::path::PathBuf {
@@ -661,11 +661,12 @@ mod tests {
         // scripts/build/compile-check-fixtures.sh + scripts/test/compile-check-stale.sh
         assert_eq!(
             build_dir(kind::COMPILE_CHECK, &[]),
-            root.join("build/compile-check")
+            root.join("build/compile-check-fixtures")
         );
         assert_eq!(
             build_dir(kind::COMPILE_CHECK, &["main_macro_form1"]),
-            root.join("build/compile-check").join("main_macro_form1")
+            root.join("build/compile-check-fixtures")
+                .join("main_macro_form1")
         );
         assert_eq!(
             build_dir(kind::CMAKE_FIXTURES, &[]),

@@ -255,31 +255,31 @@ scenario '
     # compile-check family: compile-check-fixtures.sh (build) +
     # compile-check-stale.sh (probe) + require_compile_check{,_bin} (resolver).
     check "compile-check out_root" \
-        "$repo_root/build/compile-check" "$(nros_build_dir compile-check)"
+        "$repo_root/build/compile-check-fixtures" "$(nros_build_dir "$NROS_KIND_COMPILE_CHECK")"
     check "compile-check stamp dir" \
-        "$repo_root/build/compile-check/main_macro_form1" "$(nros_build_dir compile-check main_macro_form1)"
+        "$repo_root/build/compile-check-fixtures/main_macro_form1" "$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" main_macro_form1)"
     check "cmake-fixtures out_root" \
-        "$repo_root/build/cmake-fixtures" "$(nros_build_dir cmake-fixtures)"
+        "$repo_root/build/cmake-fixtures" "$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES")"
     check "cmake-fixtures stamp dir" \
-        "$repo_root/build/cmake-fixtures/shadowing" "$(nros_build_dir cmake-fixtures shadowing)"
+        "$repo_root/build/cmake-fixtures/shadowing" "$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES" shadowing)"
     # idf/west fixture families: <script>.sh (build) + require_{idf,west}_fixture.
     check "idf-fixtures out_root" \
-        "$repo_root/build/idf-fixtures" "$(nros_build_dir idf-fixtures)"
+        "$repo_root/build/idf-fixtures" "$(nros_build_dir "$NROS_KIND_IDF_FIXTURES")"
     check "west-fixtures out_root" \
-        "$repo_root/build/west-fixtures" "$(nros_build_dir west-fixtures)"
+        "$repo_root/build/west-fixtures" "$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
     # cargo-fixtures: the shell half moved in step 1, the resolver half here.
     check "cargo-fixtures resolver dir" \
         "$repo_root/build/cargo-fixtures/qemu-arm-baremetal" \
-        "$(nros_build_dir cargo-fixtures qemu-arm-baremetal)"
+        "$(nros_build_dir "$NROS_KIND_CARGO_FIXTURES" qemu-arm-baremetal)"
 '
 
 # …and all of them relocate together, which is the whole point of one root.
 scenario '
     export NROS_REPO_ROOT="$repo_root" NROS_BUILD_ROOT=/scratch/nros
     check "compile-check follows NROS_BUILD_ROOT" \
-        "/scratch/nros/compile-check/main_macro_form1" "$(nros_build_dir compile-check main_macro_form1)"
+        "/scratch/nros/compile-check-fixtures/main_macro_form1" "$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" main_macro_form1)"
     check "west-fixtures follows NROS_BUILD_ROOT" \
-        "/scratch/nros/west-fixtures" "$(nros_build_dir west-fixtures)"
+        "/scratch/nros/west-fixtures" "$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
 '
 
 # The migrated writers pin NROS_REPO_ROOT to their OWN repo root, so the last
@@ -419,11 +419,11 @@ echo "phase-334 W2.b step 2 — the rooted writers emit their pre-migration path
 scenario '
     unset NROS_BUILD_ROOT
     export NROS_REPO_ROOT="$repo_root"
-    check "borrowed-e2e"                "$repo_root/build/borrowed-e2e"                "$(nros_build_dir borrowed-e2e)"
-    check "link-determinism"            "$repo_root/build/link-determinism"            "$(nros_build_dir link-determinism)"
-    check "fixture-make-driver"         "$repo_root/build/fixture-make-driver"         "$(nros_build_dir fixture-make-driver)"
-    check "zephyr-fixture-make-driver"  "$repo_root/build/zephyr-fixture-make-driver"  "$(nros_build_dir zephyr-fixture-make-driver)"
-    check "zephyr-fixture-build.lock"   "$repo_root/build/zephyr-fixture-build.lock"   "$(nros_build_dir zephyr-fixture-build).lock"
+    check "borrowed-e2e"                "$repo_root/build/borrowed-e2e"                "$(nros_build_dir "$NROS_KIND_BORROWED_E2E")"
+    check "link-determinism"            "$repo_root/build/link-determinism"            "$(nros_build_dir "$NROS_KIND_LINK_DETERMINISM")"
+    check "fixture-make-driver"         "$repo_root/build/fixture-make-driver"         "$(nros_build_dir "$NROS_KIND_FIXTURE_MAKE_DRIVER")"
+    check "zephyr-fixture-make-driver"  "$repo_root/build/zephyr-fixture-make-driver"  "$(nros_build_dir "$NROS_KIND_ZEPHYR_FIXTURE_MAKE_DRIVER")"
+    check "zephyr-fixture-build.lock"   "$repo_root/build/zephyr-fixture-build.lock"   "$(nros_build_dir "$NROS_KIND_ZEPHYR_FIXTURE_BUILD").lock"
 '
 
 # And that no literal survives alongside the call — a writer that derives the
@@ -467,7 +467,7 @@ scenario '
         rc=1
     fi
     check "FIXTURE_TARGET == the derived qemu-arm-baremetal group dir" \
-        "$(nros_build_dir cargo-fixtures qemu-arm-baremetal)" "$repo_root/$lit"
+        "$(nros_build_dir "$NROS_KIND_CARGO_FIXTURES" qemu-arm-baremetal)" "$repo_root/$lit"
 '
 
 echo "phase-340 B2 — the Rust resolver holds NO copy of the eligibility rule:"

@@ -117,28 +117,21 @@ Conforming today (16 of 18):
 | bare `<family>` | `cargo`, `tools`, `zenohd`, `xrce-agent`, `qemu-zenoh-pico`, `sizes-probe`, `stack-analysis`, `link-determinism`, `borrowed-e2e`, `fixture-make-driver`, `zephyr-fixture-make-driver` |
 | `<family>.lock` | `zephyr-fixture-build.lock`, `px4-msgs-codegen.lock` |
 
-**One did not, and was renamed 2026-08-13:** `fixtures-cargo` → `cargo-fixtures`.
+**All 18 kinds conform as of 2026-08-13.** Two were renamed to get there:
+`fixtures-cargo` -> `cargo-fixtures`, and `compile-check` ->
+`compile-check-fixtures`.
 
-**One still does not:** `compile-check` should be `compile-check-fixtures`. It is
-not renameable by search-and-replace — the token names FOUR things: this
-build-dir kind, the compile-check LANE, the `list-compile-checks` subcommand,
-and three scripts (`compile-check-fixtures.sh`, `-signature.sh`,
-`compile-check-stale.sh`). A global replace rewrote 43 files and produced
-`list-compile-check-fixturess`; it was reverted.
+The second had been called un-renameable, and was: the token also names the
+compile-check LANE, the `list-compile-checks` subcommand and three scripts
+(`compile-check-fixtures.sh`, `-signature.sh`, `compile-check-stale.sh`), so a
+global replace rewrote 43 files and produced `list-compile-check-fixturess`. It
+became a two-line change once each kind had a named constant — one edit per
+language, with the scripts and the subcommand untouched, which is exactly what
+the extraction was for.
 
-**The prerequisite is now in place (2026-08-13).** Each kind is a named constant
-— `nros_tests::kind::*` and `NROS_KIND_*` in `build-root.sh` — so the rename is
-TWO edits, one per language, and the scripts sharing the prefix are untouched.
-Demonstrated: changing both constants moved every consumer to
-`build/compile-check-fixtures/<id>` and left the script names alone. Whether to
-spend the 9.4 GB rebuild is now the only open question, and it is a scheduling
-one.
-
-`build_root_derivation.sh` gates the vocabulary in both directions: a shell call
-site passing a bare word, or a Rust one passing a literal, fails. Both arms were
-verified red before being trusted, and the Rust arm immediately found a kind the
-manual census had missed (`rmw_zenoh_ws` — the census regex excluded
-underscores).
+One kind keeps a non-conforming SPELLING deliberately: `rmw_zenoh_ws` uses
+underscores because it mirrors the upstream colcon workspace name rather than
+this repo's kebab vocabulary.
 
 **What a kind rename actually costs, measured.** Moving the directory does NOT
 preserve the cache: `build/fixtures-cargo` held `CMakeCache.txt` files with the
@@ -237,7 +230,7 @@ Non-negotiable ordering, because the 236 literals are what makes this risky:
 
    Step 2 splits in two, and the split was not visible when this was written
    (phase-334 W2.b, 2026-08-07). The **already-rooted** families
-   (`build/compile-check`, `build/cmake-fixtures`, `build/idf-fixtures`,
+   (`build/compile-check-fixtures`, `build/cmake-fixtures`, `build/idf-fixtures`,
    `build/west-fixtures`, `build/cargo-fixtures`) migrate cleanly: they are
    R1-shaped but not R3-derived, so `nros_build_dir` reproduces them byte for
    byte and only `NROS_BUILD_ROOT` behaviour changes. The **in-source** suffix

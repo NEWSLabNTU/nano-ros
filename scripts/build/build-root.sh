@@ -84,9 +84,11 @@ export NROS_KIND_CMAKE_FIXTURES="cmake-fixtures"
 export NROS_KIND_IDF_FIXTURES="idf-fixtures"
 export NROS_KIND_WEST_FIXTURES="west-fixtures"
 
-# R5 outlier, knowingly: should be `compile-check-fixtures`. Renaming it is now
-# ONE edit here plus the Rust twin — see RFC-0070 R5 for why it has not happened.
-export NROS_KIND_COMPILE_CHECK="compile-check"
+# The compile-check lane's trees. Renamed from `compile-check` to carry the
+# `-fixtures` suffix R5 requires (2026-08-13) — two edits, this and the Rust
+# twin. The three scripts sharing the `compile-check` prefix are NOT this kind
+# and keep their names.
+export NROS_KIND_COMPILE_CHECK="compile-check-fixtures"
 
 # Everything else — bare `<family>`, named for what it holds.
 export NROS_KIND_BORROWED_E2E="borrowed-e2e"
