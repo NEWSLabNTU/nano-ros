@@ -631,6 +631,53 @@ mod tests {
         );
     }
 
+    /// issue 0534 — exactly which platforms keep cargo out of the vendored C
+    /// build, asserted against the real tree.
+    ///
+    /// This is a TRIPWIRE, not a preference. `compiled_by = "platform"` is the
+    /// difference between "the zpico resolver names this platform" and "a build
+    /// script cc-compiles its `system/<platform>/*.c`", and on Zephyr the second
+    /// cannot work: those sources need Zephyr's generated `version.h`. The
+    /// property lived in a comment for one release and #529 walked straight
+    /// through it, so it is checked in BOTH directions — a platform gaining the
+    /// key and Zephyr losing it are equally a regression.
+    #[test]
+    fn only_zephyr_delegates_its_c_build_to_the_platform() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap()
+            .join("config");
+        if !root.is_dir() {
+            return; // out-of-tree consumer; nothing to check
+        }
+        let tree = PlatformsTree::load(&root).expect("the real config/ tree loads");
+        let manifest = tree.as_platform_manifest();
+        let mut delegating: Vec<String> = Vec::new();
+        let mut checked = 0usize;
+        for name in tree.files.keys() {
+            let Ok(resolved) = manifest.for_platform(name) else {
+                continue;
+            };
+            checked += 1;
+            if resolved.compiled_by == crate::manifest::CompiledBy::Platform {
+                delegating.push(name.clone());
+            }
+        }
+        assert!(
+            checked >= 7,
+            "resolved only {checked} platforms — this assertion would be vacuous"
+        );
+        delegating.sort();
+        assert_eq!(
+            delegating,
+            vec!["zephyr".to_string()],
+            "the set of platforms whose own build system compiles zenoh-pico changed. \
+             Adding one is fine — say so here. Losing zephyr is issue 0534 returning: \
+             cargo will cc-compile system/zephyr/*.c and fail on a missing version.h."
+        );
+    }
+
     /// phase-349 W1 — a platform answers to its aliases, and the directory
     /// name always works whether or not `names` is declared.
     #[test]

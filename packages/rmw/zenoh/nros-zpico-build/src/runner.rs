@@ -563,16 +563,24 @@ pub fn run() {
         let resolved = platform_manifest
             .for_platform(name)
             .unwrap_or_else(|e| panic!("nros-platform.toml: {e}"));
-        build_zenoh_pico_unified(
-            &resolved,
-            &platform_manifest.arch,
-            &interp_ctx,
-            &zenoh_pico_src,
-            &out_dir,
-            &target,
-            &link_features,
-            &shim_config,
-        );
+        // issue 0534 — a platform whose own build system compiles zenoh-pico
+        // declares `compiled_by = "platform"`, and cargo must not compile it:
+        // its vendored `system/<platform>/*.c` can need headers that only that
+        // build system generates (Zephyr's `version.h`). The block is still
+        // resolved above — the knobs, defines and includes it carries are read
+        // by the drift gate and document the external build.
+        if resolved.compiled_by == manifest::CompiledBy::Cargo {
+            build_zenoh_pico_unified(
+                &resolved,
+                &platform_manifest.arch,
+                &interp_ctx,
+                &zenoh_pico_src,
+                &out_dir,
+                &target,
+                &link_features,
+                &shim_config,
+            );
+        }
     }
 
     // POSIX still needs the separate C shim build below (shim is

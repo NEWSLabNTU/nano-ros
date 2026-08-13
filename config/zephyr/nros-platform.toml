@@ -35,9 +35,14 @@ split_lock = true
 flush_ms = 50
 
 [build.zenoh]
-# Zephyr's build system compiles zenoh-pico itself; this block
-# exists so the drift gate has a manifest entry but no cc-rs
-# consumer hits it.
+# Zephyr's build system compiles zenoh-pico itself; this block exists so the
+# drift gate has a manifest entry, and to document what that external build is
+# expected to use. `compiled_by` is what KEEPS cargo out of it — issue 0534.
+# That used to be a comment saying "no cc-rs consumer hits it", and #529 then
+# made one hit it: naming zephyr in the zpico resolver is also what selects
+# `build_zenoh_pico_unified`, which cc-compiled the vendored `system/zephyr/*.c`
+# and died on the `version.h` only Zephyr's own build generates.
+compiled_by = "platform"
 defines = ["ZENOH_GENERIC", "ZENOH_ZEPHYR"]
 include = ["system/common", "system/zephyr"]
 

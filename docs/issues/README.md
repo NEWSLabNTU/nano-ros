@@ -242,14 +242,18 @@ What remains is transitive, in two chains: `play_launch_parser -> anyhow`, which
 therefore actionable via the vendored-fork workflow, and `wasip2`/`wasip3` -> `wit-bindgen` -> … ->
 `anyhow`, which is upstream wasi tooling nothing here chooses. See `0524-*`. (2026-08-12)
 
-**#534** — the Zephyr C zenoh leaves fail on `zenoh-pico/system/platform/zephyr.h:18: fatal error: version.h:
-No such file or directory`, taking the zephyr fixture module — and with it `ci-matrix` — down. ATTRIBUTED AT
-HUNK LEVEL, not by bisect: `292547dd5` (#529) added `zephyr` to `zpico-sys`'s platform selection, and its
-message argues this is inert because `build_c_shim` is skipped on Zephyr. Neutralising exactly that branch at
-HEAD makes the leaf build (exit 0); restoring it fails. The skip the argument relies on is what leaves the
-generated `version.h` absent for a TU that now includes `zephyr.h`. Reproduces SOLO and from a PRISTINE build
-dir, so neither a race nor stale state. #529's intent stands — the resolver should be total; what is missing is
-a satisfiable include set on a lane that does not build the shim. See `0534-*`. (2026-08-13)
+RESOLVED 2026-08-13: **#534** — the Zephyr C zenoh leaves failed on `zenoh-pico/system/platform/zephyr.h:18:
+fatal error: version.h: No such file or directory`, taking the zephyr fixture module — and with it `ci-matrix`
+— down. ATTRIBUTED AT HUNK LEVEL, not by bisect: `292547dd5` (#529) added `zephyr` to `zpico-sys`'s platform
+selection, arguing it inert because `build_c_shim` is skipped on Zephyr. Neutralising exactly that branch made
+the leaf build; restoring it failed. The MECHANISM was one call above the shim, and my first reading of it was
+wrong: `platform_name` also gates `build_zenoh_pico_unified`, so naming the platform made a BUILD SCRIPT
+cc-compile the vendored `system/zephyr/*.c`, which need a `version.h` only Zephyr's own build generates. Fixed
+by making the manifest's own comment ("no cc-rs consumer hits it") into a checked field: `compiled_by =
+"platform"` in `[build.zenoh]`, an `Option<CompiledBy>` so an unset child cannot downgrade a parent. #529's
+totality is untouched — the block is still resolved for every platform, only the cc build is gated. Verified
+both directions by tripwire, and on the failing leaf (332 s, `zephyr.elf` linked, 0 errors). See
+`archived/0534-*`. (2026-08-13)
 
 RESOLVED 2026-08-13: **#528** — Zephyr leaves failing `EXECUTOR_OPAQUE_U64S too small` NO LONGER REPRODUCES:
 the leaf builds and a full module build shows zero occurrences across 69 leaves. Nobody fixed it deliberately

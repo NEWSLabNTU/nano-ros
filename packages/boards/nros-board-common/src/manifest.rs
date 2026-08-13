@@ -126,6 +126,37 @@ pub struct PlatformEntry {
     /// `required_env`. Set for env-gated debug knobs etc.
     #[serde(default)]
     pub rerun_if_env_changed: Vec<String>,
+    /// Who compiles this component's vendored C for this platform.
+    /// See [`CompiledBy`] — issue 0534. `None` inherits (and resolves to
+    /// [`CompiledBy::Cargo`]); an unset child must NOT downgrade a parent that
+    /// set it, which is why this is an `Option` like `pic` and `mbedtls`.
+    #[serde(default)]
+    pub compiled_by: Option<CompiledBy>,
+}
+
+/// Who compiles a `[build.<component>]` block's vendored C sources.
+///
+/// Issue **0534**. A platform whose own build system compiles the component
+/// still needs a `[build.*]` block — the drift gate wants a manifest entry, and
+/// the defines/includes document what that external build is expected to use.
+/// Zephyr's block said exactly that in a COMMENT ("no cc-rs consumer hits it"),
+/// and #529 then made a cc-rs consumer hit it: naming the platform in the
+/// resolver is what selects `build_zenoh_pico_unified`, so the vendored
+/// `system/zephyr/*.c` got compiled by a build script, where Zephyr's generated
+/// `version.h` does not exist. The build died on a missing header nobody had
+/// asked for.
+///
+/// The comment was true and unenforced. This field is the same claim, checked.
+#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CompiledBy {
+    /// This build script compiles the sources with cc-rs. The default, and
+    /// what every platform that has no external build system does.
+    #[default]
+    Cargo,
+    /// The platform's own build system compiles them; cargo must not, and the
+    /// block is descriptive only.
+    Platform,
 }
 
 /// `[arch.<name>]` block — reusable target-arch compiler-flag
@@ -273,6 +304,7 @@ pub struct ResolvedPlatform {
     pub compile: CompileSettings,
     pub pic: Option<bool>,
     pub rerun_if_env_changed: Vec<String>,
+    pub compiled_by: CompiledBy,
 }
 
 impl PlatformManifest {
@@ -316,6 +348,7 @@ impl PlatformManifest {
             compile: entry.compile,
             pic: entry.pic,
             rerun_if_env_changed: entry.rerun_if_env_changed,
+            compiled_by: entry.compiled_by.unwrap_or_default(),
         })
     }
 
@@ -392,6 +425,7 @@ fn merge(parent: Option<PlatformEntry>, mut child: PlatformEntry) -> PlatformEnt
         },
     };
     let pic = child.pic.or(parent.pic);
+    let compiled_by = child.compiled_by.or(parent.compiled_by);
     let mut rerun_if_env_changed = parent.rerun_if_env_changed;
     rerun_if_env_changed.append(&mut child.rerun_if_env_changed);
 
@@ -413,6 +447,7 @@ fn merge(parent: Option<PlatformEntry>, mut child: PlatformEntry) -> PlatformEnt
         compile,
         pic,
         rerun_if_env_changed,
+        compiled_by,
     }
 }
 
