@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). COMPLETE except W5's deferred renames. All 74 west fixtures are manifest rows, the emitter reads them, the lane narrows by coordinate (tier2: 7 leaves, was 70), the coverage gates read rows, work-item ids are gated, W4 answered #509 with a NO, and the runnerless FVP code is retired. W5's directory renames are deferred with the cost measured.**
+**Status (2026-08-13). COMPLETE except W5's deferred directory renames. All 74 west fixtures are manifest rows, the emitter reads them, the lane narrows by coordinate (tier2: 7 leaves, was 70), the coverage gates read rows, work-item ids are gated, the `build/<kind>` rule is RFC-0070 R5, W4 answered #509 with a NO, and the runnerless FVP code is retired. The remaining renames are deferred with the cache cost measured.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -537,10 +537,22 @@ renames are deferred with a reason**
       that renames every zephyr build dir — invalidating a **215 GB** workspace
       for a cosmetic gain. Not worth it as a standalone change; do it if a
       pristine rebuild is happening for another reason.
-- [ ] **`build/<kind>` outliers — DEFERRED**, same trade: renaming
-      `fixtures-cargo` / `compile-check` / `zephyr-fixture-build` invalidates
-      the caches under them. The RULE should still be written into RFC-0070 so
-      new kinds follow it; that is a doc change nobody has to pay for.
+- [x] **The `build/<kind>` RULE is written down** — RFC-0070 **R5**
+      (2026-08-13). R2 governed only the `<coordinate>` half of
+      `<kind>/<coordinate>`, so the kind names had grown by precedent. New kinds
+      now have a rule; that is the half that costs nothing.
+- [ ] **Renaming the two non-conforming kinds — DEFERRED**, same trade as the
+      lang axis: `compile-check` (→ `-fixtures`, 9.4 GB) and `fixtures-cargo`
+      (→ `cargo-fixtures`, 14 GB) invalidate the caches under them. Named in R5
+      as knowingly-deferred, not left as unexplained exceptions.
+
+      **Writing R5 corrected the audit.** #539 listed five-plus outliers; there
+      are TWO. `borrowed-e`/`px` were `borrowed-e2e`/`px4-msgs-codegen` — my own
+      `grep`'s character class stopped at the first digit — and the
+      `zephyr-fixture-*` pair is a lock file plus a driver dir, not two roots for
+      one family. 16 of 18 kinds already conform. The correction is recorded in
+      both #539 and R5, against the wrong version, rather than quietly replacing
+      it.
 - [ ] **Zephyr build-dir names from the row coordinate** — the row now carries
       `west_build_name`, so the name HAS a producer; making it derived rather
       than authored is the same rename as above.

@@ -47,6 +47,18 @@ Three separate inconsistencies:
   family, distinguished by which script writes them, not by what they hold.
 * `borrowed-e` and `px` are truncations of nothing legible.
 
+> **Both bullets above are WRONG — corrected 2026-08-13 (phase-350 W5).**
+> `borrowed-e` and `px` are `borrowed-e2e` and `px4-msgs-codegen`: the
+> truncation was in the `grep` this filing was written from, whose character
+> class `[a-z-]+` stopped at the first digit. And the `zephyr-fixture-*` pair is
+> a LOCK FILE (`zephyr-fixture-build.lock`) plus a driver scratch dir — two
+> different things sharing a prefix, not two roots for one family.
+>
+> The real outlier set is **two** kinds, not five: `compile-check` (missing the
+> `-fixtures` suffix) and `fixtures-cargo` (order reversed). 16 of 18 kinds
+> already conform. Left in place above so the correction is legible against what
+> it corrects.
+
 ### 3. Zephyr build dirs use three unrelated schemes at once
 
 From `ls -d zephyr-workspace/build-*` (75 dirs):
@@ -135,5 +147,10 @@ now a rename of a directory holding build output:
   trade against the caches under them.
 
 Worth doing when a pristine rebuild is happening anyway; not worth forcing one.
-The RULE should still be written into RFC-0070 so new kinds follow it — that is
-a doc change nobody pays for, and it is the part still open here.
+
+**The rule IS now written down: RFC-0070 R5 (2026-08-13).** A kind holding
+fixture trees is `<family>-fixtures`; anything else is the bare `<family>`; a
+lock is `<family>.lock`. New kinds follow it, which is the half that costs
+nothing and the half that actually stops the drift. The two non-conforming kinds
+(`compile-check` at 9.4 GB, `fixtures-cargo` at 14 GB) are named there as
+knowingly-deferred renames rather than left as unexplained exceptions.

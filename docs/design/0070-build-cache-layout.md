@@ -98,6 +98,46 @@ feature-sig — and nothing else. `target-<rmw>`, `build-<rmw>`,
 **A new ad-hoc suffix is a bug**, not a naming choice. The suffix zoo exists
 because each new need invented a spelling instead of extending the coordinate.
 
+### R5 — One rule for the KIND, not just the coordinate
+
+*Added 2026-08-13 (phase-350 W5, issue 0539). R2 governs the `<coordinate>` half
+of `<kind>/<coordinate>` and says nothing about `<kind>` itself, so the kind
+names grew by precedent — which is how a family ended up spelled two ways.*
+
+**A kind that holds fixture build trees is `<family>-fixtures`. A kind that
+holds anything else is the bare `<family>`, named for what it contains.** A lock
+guarding a kind is that kind's name plus `.lock`. No abbreviations: the name is
+read far more often than typed.
+
+Conforming today (16 of 18):
+
+| shape | kinds |
+| --- | --- |
+| `<family>-fixtures` | `cmake-fixtures`, `idf-fixtures`, `west-fixtures` |
+| bare `<family>` | `cargo`, `tools`, `zenohd`, `xrce-agent`, `qemu-zenoh-pico`, `sizes-probe`, `stack-analysis`, `link-determinism`, `borrowed-e2e`, `fixture-make-driver`, `zephyr-fixture-make-driver` |
+| `<family>.lock` | `zephyr-fixture-build.lock`, `px4-msgs-codegen.lock` |
+
+**Two do not, and are knowingly left alone:**
+
+| kind | should be | why not yet |
+| --- | --- | --- |
+| `compile-check` | `compile-check-fixtures` | holds 9.4 GB |
+| `fixtures-cargo` | `cargo-fixtures` (order reversed) | holds 14 GB |
+
+Renaming a kind invalidates the cache under it, and both of these are large. The
+rule is stated so NEW kinds follow it — which is the part that costs nothing and
+the part that actually stops the drift. Rename these two opportunistically, when
+a pristine rebuild is happening for another reason; do not force one for a name.
+
+> **A correction, recorded because the inaccurate version is in issue 0539's
+> filing.** That issue also lists `borrowed-e` and `px` as "truncations of
+> nothing legible", and `zephyr-fixture-build` / `zephyr-fixture-make-driver` as
+> "two roots for one family". Neither holds. The first two are `borrowed-e2e`
+> and `px4-msgs-codegen` — the truncation was in the audit's own `grep`, whose
+> character class stopped at a digit. The `zephyr-fixture-*` pair is a lock file
+> and a driver scratch dir: different things that share a prefix. The real
+> outlier set is the two rows above.
+
 ### R3 — One derivation, consumed by all three sides
 
 The path is computed by ONE function. The build, the staleness gate and the test
@@ -196,8 +236,11 @@ Do not overlap a family's move with an in-flight rename elsewhere in that tree.
 
 ## Open
 
-* Which kinds beyond cargo/cmake/west need a coordinate — `compile-check`,
-  `install`, and the `tools/` prefixes are currently ad-hoc but stable.
+* ~~Which kinds beyond cargo/cmake/west need a coordinate — `compile-check`,
+  `install`, and the `tools/` prefixes are currently ad-hoc but stable.~~
+  **Answered in part by R5 (2026-08-13):** the kind NAME now has a rule, and 16
+  of 18 kinds already follow it. Whether those kinds need a *coordinate* is
+  still open and is a separate question from what they are called.
 * Whether `$NROS_BUILD_ROOT` should be per-profile at the top level rather than
   under `cargo/`; the models and west trees are profile-independent today.
 * The gate in step 4 needs an allowlist for vendored trees that build in place
