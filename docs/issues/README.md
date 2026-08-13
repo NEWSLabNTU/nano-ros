@@ -211,6 +211,18 @@ breaks: a probe that compiles the user's source must build it with the user's co
 answering a question about a different program. Fix should reuse the ONE lowering rather than re-deriving
 it through the per-crate feature hooks (the phase-314 argument). See `archived/0543-*`. (2026-08-13)
 
+**#548** — the XRCE C shim (`nros-rmw-xrce/src/{session,platform_aliases}.c`) links against
+`nros_platform_clock_{ms,us}`, which RFC-0073 / phase-350 replaced with `clock_ns` plus STATIC INLINE
+wrappers — no port defines them any more. Every Zephyr XRCE leaf therefore fails at link with 5 undefined
+references, and since the zephyr module is an order-only prerequisite of every platform it takes the
+tier-2 fixture build down. The shim does `#include "nros/platform.h"`, so on the Zephyr path that include
+is resolving to a stale copy still declaring them `extern`. Same family as the stale committed
+`nros_generated.h` fixed in `5dc2fa869` the same day — the rename landed without every header CONSUMER
+following it, each failing differently. Found while running tier 2 for issue 0528's acceptance: 0528's
+own symptom is GONE (zero `EXECUTOR_OPAQUE_U64S` asserts from scratch, was six leaves) and the build now
+reaches leaf 12. Probably migrate the callers to `clock_ns` — `uxr_nanos` currently scales microseconds
+back up by 1000, losing precision the ns clock has. See `0548-*`. (2026-08-13)
+
 **#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
 manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared
 `anyhow = "1"` with zero uses, and `packages/cli`'s `[workspace.dependencies]` entry was inherited by

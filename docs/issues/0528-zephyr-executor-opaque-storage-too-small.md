@@ -117,3 +117,41 @@ keys (`9a7cf62d91362c22` vs `020c64f9f2153b49`).
 **Not yet verified end to end.** `just build-test-fixtures lane=tier2` has not
 been re-run, so this issue stays OPEN until the zephyr module builds. The cause
 and the mechanism are established; what is missing is the lane.
+
+
+## Lane run 2026-08-13 — the assert is GONE; tier 2 blocks on something else
+
+`just build-test-fixtures lane=tier2` from a wiped `build/sizes-probe`:
+
+```
+EXECUTOR_OPAQUE_U64S asserts   0     (was: six leaves, whole module down)
+reached                        leaf 12 (build-rs-action-client-xrce)
+```
+
+It then fails at LINK on `undefined reference to nros_platform_clock_{ms,us}` —
+RFC-0073's rename reaching a consumer it missed, filed as issue 0548. Different
+defect, same lane.
+
+**Both probe orders verified** (the bug was order-dependent):
+
+| order | probe dirs | assert |
+| --- | --- | --- |
+| knob=16 first, then default | 2 | none |
+| default first, then knob=16 (the poisoning order) | 2 | none |
+
+One correction to the earlier note here: my FIRST attempt at the second order
+showed a single probe dir and no failure, and that was not a pass — I had wiped
+`build/sizes-probe` but not the cargo target dir, so the second build was cached,
+`build.rs` never re-ran and nothing re-probed. Re-run from clean, both crates
+recompile and a second probe dir appears.
+
+Also retracted: the claim that existing checkouts hold "poisoned" dirs needing a
+manual `rm -rf build/sizes-probe`. A knob-LESS leaf mixes nothing extra, so its
+key is unchanged (`9a7cf62d91362c22` before and after) while the knob-bearing
+leaf moves to a new one — the harmful direction (big-knob leaf reading
+small-knob sizes) simply cannot recur. The only residue is a knob-less leaf
+possibly reading OVERSIZED sizes, which the assert accepts; that wastes opaque
+storage rather than breaking a build.
+
+This issue stays OPEN until tier 2 completes, since that is its stated
+acceptance — but its own mechanism is fixed and demonstrated at lane scale.
