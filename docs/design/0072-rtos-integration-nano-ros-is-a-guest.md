@@ -340,7 +340,8 @@ working: nano-ros asks for exactly what the host does not already provide.
 # packages/boards/linux/nros-board.toml                    (A — exists today)
 [[board]]
 names = ["linux", "native", "posix"]
-platform = "posix"; target = "x86_64-unknown-linux-gnu"
+platform = "posix"
+target = "x86_64-unknown-linux-gnu"
 entry_kind = "hosted-main"        # nano-ros owns main()
 link_kind  = "none"
 net_stack  = "host"               # the OS has sockets; nothing to choose
@@ -348,7 +349,9 @@ net_stack  = "host"               # the OS has sockets; nothing to choose
 ```toml
 # <bringup>/system.toml                                     (B)
 [deploy.native]
-kind = "self"; board = "native"; target = "x86_64-unknown-linux-gnu"
+kind = "self"
+board = "native"
+target = "x86_64-unknown-linux-gnu"
 ```
 
 No SDK root, no netstack, no flashing. Every other row is a delta from this.
@@ -359,7 +362,9 @@ No SDK root, no netstack, no flashing. Every other row is a delta from this.
 # packages/boards/nros-board-mps2-an385-freertos/nros-board.toml   (A)
 [[board]]
 names = ["freertos", "mps2-an385-freertos"]
-platform = "freertos"; target = "thumbv7m-none-eabi"; arch = "cortex-m3"
+platform = "freertos"
+target = "thumbv7m-none-eabi"
+arch = "cortex-m3"
 entry_kind = "board-run"          # the board crate owns main()
 net_stack  = "nanoros-owned"
 supported_netstacks = ["lwip", "freertos_plus_tcp"]     # the pairing domain
@@ -368,12 +373,13 @@ toolchain_file = "cmake/toolchain/arm-freertos-armcm3.cmake"   # must precede pr
 ```
 ```toml
 [deploy.freertos]                                          # (B)
-kind = "self"; board = "mps2-an385-freertos"; target = "thumbv7m-none-eabi"
+kind = "self"
+board = "mps2-an385-freertos"
+target = "thumbv7m-none-eabi"
 netstack     = "lwip"
 sdk.freertos = "{env:FREERTOS_DIR}"
 sdk.lwip     = "{env:LWIP_DIR}"
-config_files = { freertos = "boards/mps2/FreeRTOSConfig.h",
-                 lwip     = "boards/mps2/lwipopts.h" }
+config_files = { freertos = "boards/mps2/FreeRTOSConfig.h", lwip = "boards/mps2/lwipopts.h" }
 ```
 ```toml
 # test-harness config                                       (C)
@@ -393,7 +399,9 @@ The board package is **theirs**, in their workspace, and holds no paths:
 # my_ws/src/nucleo_h723zg/nros-board.toml                   (A — user-authored)
 [[board]]
 names = ["nucleo-h723zg"]
-platform = "freertos"; target = "thumbv7em-none-eabihf"; arch = "cortex-m7"
+platform = "freertos"
+target = "thumbv7em-none-eabihf"
+arch = "cortex-m7"
 entry_kind = "board-run"
 supported_netstacks = ["lwip"]
 [board.upload]
@@ -401,7 +409,9 @@ mechanism = "st-link"             # HOW this board is programmed — a board fac
 ```
 ```toml
 [deploy.nucleo]                                            # (B)
-kind = "self"; board = "nucleo-h723zg"; target = "thumbv7em-none-eabihf"
+kind = "self"
+board = "nucleo-h723zg"
+target = "thumbv7em-none-eabihf"
 netstack = "lwip"
 sdk.cube = "{env:CUBE_PROJECT}"
 include_dirs = [
@@ -424,13 +434,15 @@ resolved by accident of `-I` order.
 
 ```toml
 [[board]]                                                  # (A)
-names = ["zephyr"]; platform = "zephyr"
+names = ["zephyr"]
+platform = "zephyr"
 entry_kind = "zephyr-staticlib"   # a west module, not main()
 net_stack  = "rtos-owned"         # zsock; nothing for us to choose
 ```
 ```toml
 [deploy.zephyr]                                            # (B)
-kind = "self"; board = "zephyr"
+kind = "self"
+board = "zephyr"
 zephyr_board = "qemu_cortex_m3"   # west's namespace, not ours
 ```
 
@@ -441,13 +453,18 @@ Kconfig owns the knobs.
 
 ```toml
 [[board]]                                                  # (A)
-names = ["nuttx", "NuttX"]; platform = "nuttx"; target = "armv7a-nuttx-eabihf"
-entry_kind = "board-run"; link_kind = "nuttx-staging"      # we land on EXTRA_LIBS
+names = ["nuttx", "NuttX"]
+platform = "nuttx"
+target = "armv7a-nuttx-eabihf"
+entry_kind = "board-run"
+link_kind = "nuttx-staging"      # we land on EXTRA_LIBS
 net_stack  = "rtos-owned"
 ```
 ```toml
 [deploy.nuttx]                                             # (B)
-kind = "self"; board = "nuttx"; target = "armv7a-nuttx-eabihf"
+kind = "self"
+board = "nuttx"
+target = "armv7a-nuttx-eabihf"
 sdk.nuttx      = "{env:NUTTX_DIR}"
 sdk.nuttx_apps = "{env:NUTTX_APPS_DIR}"
 ```
@@ -459,13 +476,16 @@ a site fact, which is why the withholding filter had to strip it.
 
 ```toml
 [[board]]                                                  # (A)
-names = ["px4-fmu-v6x"]; platform = "nuttx"
-entry_kind = "px4-module"; link_kind = "px4-external"
+names = ["px4-fmu-v6x"]
+platform = "nuttx"
+entry_kind = "px4-module"
+link_kind = "px4-external"
 net_stack  = "rtos-owned"
 ```
 ```toml
 [deploy.px4]                                               # (B)
-kind = "self"; board = "px4-fmu-v6x"
+kind = "self"
+board = "px4-fmu-v6x"
 px4.dir    = "{env:PX4_DIR}"
 px4.target = "px4_fmu-v6x_default"        # <vendor>_<model>_<label>
 ```
@@ -484,21 +504,25 @@ Today `threadx` is **two** descriptor entries with different `platform` and
 
 ```toml
 [[board]]                                                  # (A) host simulator
-names = ["threadx-linux"]; platform = "threadx-linux"
-target = "x86_64-unknown-linux-gnu"; entry_kind = "hosted-main"
+names = ["threadx-linux"]
+platform = "threadx-linux"
+target = "x86_64-unknown-linux-gnu"
+entry_kind = "hosted-main"
 
 [[board]]                                                  # (A) RISC-V target
-names = ["threadx-riscv64"]; platform = "threadx-riscv64"
-target = "riscv64gc-unknown-none-elf"; entry_kind = "board-run"
+names = ["threadx-riscv64"]
+platform = "threadx-riscv64"
+target = "riscv64gc-unknown-none-elf"
+entry_kind = "board-run"
 supported_netstacks = ["netxduo"]
 ```
 ```toml
 [deploy.threadx_rv64]                                      # (B)
-kind = "self"; board = "threadx-riscv64"
+kind = "self"
+board = "threadx-riscv64"
 sdk.threadx = "{env:THREADX_DIR}"
 sdk.netxduo = "{env:NETXDUO_DIR}"
-config_files = { tx_user = "boards/rv64/tx_user.h",
-                 nx_user = "boards/rv64/nx_user.h" }
+config_files = { tx_user = "boards/rv64/tx_user.h", nx_user = "boards/rv64/nx_user.h" }
 ```
 
 `config_files` is a **named map** because of this row: ThreadX needs
@@ -508,13 +532,16 @@ config_files = { tx_user = "boards/rv64/tx_user.h",
 
 ```toml
 [[board]]                                                  # (A)
-names = ["esp32-qemu", "esp32", "esp32c3"]; platform = "esp32"
-target = "riscv32imc-unknown-none-elf"; entry_kind = "board-run"
+names = ["esp32-qemu", "esp32", "esp32c3"]
+platform = "esp32"
+target = "riscv32imc-unknown-none-elf"
+entry_kind = "board-run"
 net_stack = "rtos-owned"          # esp_netif over IDF's lwIP fork
 ```
 ```toml
 [deploy.esp32]                                             # (B)
-kind = "self"; board = "esp32-qemu"
+kind = "self"
+board = "esp32-qemu"
 idf.dir = "{env:IDF_PATH}"
 ```
 
@@ -737,12 +764,14 @@ backends their own descriptors. So:
 ```toml
 # packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml
 [[rmw.port]]
-rtos = "freertos"; netstack = "lwip"
+rtos = "freertos"
+netstack = "lwip"
 sources = ["{src}/system/freertos/system.c", "{src}/system/freertos/lwip/network.c"]
 defines = ["ZENOH_FREERTOS_LWIP"]
 
 [[rmw.port]]
-rtos = "freertos"; netstack = "freertos_plus_tcp"
+rtos = "freertos"
+netstack = "freertos_plus_tcp"
 sources = ["{src}/system/freertos/system.c",
            "{src}/system/freertos/freertos_plus_tcp/network.c"]
 ```

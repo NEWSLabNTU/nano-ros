@@ -620,6 +620,8 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         deploy.insert(
             target_name.clone(),
             DeployTarget {
+                // phase-351 W1 — the site block is authored, never synthesised here.
+                nros: None,
                 kind: Some("self".to_string()),
                 target: Some(target_name.clone()),
                 launch: None,

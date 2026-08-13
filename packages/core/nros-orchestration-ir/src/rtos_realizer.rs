@@ -394,6 +394,10 @@ pub fn rtos_plan_to_tier_table(plan: &RtosPlan, low_number_is_high: bool) -> Res
             ResolvedTier {
                 name: n.name.clone(),
                 priority: n.priority,
+                // rlm v0.1.5 added the typed POSIX placement. The RTOS realizer
+                // lowers to an RTOS tier table, so there is no host placement to
+                // carry — `None` is the accurate answer, not a placeholder.
+                posix: None,
                 sched_class: Some(n.sched_class.to_string()),
                 class: Some(class.to_string()),
                 period_us: n.period_us,

@@ -336,6 +336,8 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
     deploy.insert(
         "native".to_string(),
         DeployTarget {
+            // phase-351 W1 — the site block is authored, never synthesised here.
+            nros: None,
             kind: Some("self".to_string()),
             target: None,
             launch: None,
