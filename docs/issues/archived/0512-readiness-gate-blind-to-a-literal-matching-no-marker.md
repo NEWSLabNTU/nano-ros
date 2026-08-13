@@ -2,7 +2,8 @@
 id: 512
 title: "`check-readiness-marker-literals` is blind to the WORST case — a grep
   literal that matches no marker at all"
-status: open
+status: resolved
+resolved_in: phase-342
 type: bug
 area: testing
 related: [issue-0481, issue-0489, phase-342]
@@ -62,6 +63,39 @@ ad-hoc pattern". Options, none costed yet:
 * **Assert liveness instead**: a wait that times out reports which patterns the
   process DID print. Catches the class at runtime rather than statically, and
   complements rather than replaces the gate.
+
+## Resolution (2026-08-13) — the literal EXTENDS a constant
+
+The rule added is narrow on purpose: flag a literal that **opens with a marker
+this module defines and then adds text of its own**. `"Waiting for messages..."`
+extends `LISTENER_WAITING_BANNER` (`"Waiting for messages"`); that is someone
+hardcoding a readiness banner and pinning more of it than the constant
+guarantees, which is exactly how 0489's site went stale when phase-342 W7
+converged the examples.
+
+Deliberately NOT "any literal matching no constant" — this issue argued that
+would fire on every legitimate ad-hoc pattern and get switched off within a
+week. Verified rather than assumed: `"crc=ok"`, `"data:"` and
+`"Booting Zephyr OS build"` all pass untouched.
+
+The three options above are therefore not what landed. A baseline of allowed
+ad-hoc literals would have meant ~53 rows of one-time sweep for a class this
+catches with zero; restricting to `expect_ready`-adjacent calls needs call sites
+that are distinguishable, which they are not yet.
+
+### Proven against the case that motivated it
+
+On one identical tree, with 0489's literal reintroduced:
+
+```
+NEW gate: ERROR … 1 site(s) using "Waiting for messages..."
+              line 256 -> LISTENER_WAITING_BANNER
+OLD gate: readiness marker literals: OK (0 baselined, 0 new)
+```
+
+Zero hits on the current tree, so it lands green and fires only on the
+regression — which is the shape a gate wants, and the reason it could be added
+without a baseline.
 
 ## Note
 

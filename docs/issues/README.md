@@ -471,16 +471,19 @@ the leaf that reported 424088 bytes of overflow now links at `.text = 421880` an
 tier-2 sweep's last red. My earlier bisect of this was retracted first; there was no regression to find.
 See `archived/0511-*`. (2026-08-12)
 
-**#512** — `check-readiness-marker-literals` is blind to the WORST case. It flags a `wait_for_output_pattern`
-literal that MATCHES a known `output::` constant, or that ambiguously prefixes two — but a literal matching
-**nothing** is skipped, and that is the only case guaranteed to fail (it can never match, so the wait burns its
-whole timeout). Already cost real time: issue 0489's esp32 tests waited on `"Waiting for messages..."`, which no
-listener prints since phase-342 W7 converged them, and burned **108 s of a 137.9 s suite** while the gate reported
-`OK (32 baselined, 0 new)`. Not a one-line fix — flagging every unmatched literal would fire on every legitimate
-ad-hoc pattern (delivery greps, QEMU boot strings, `data:` from a ROS 2 subscriber), and a gate that fires on
-correct code gets switched off. Three options costed in the issue: a baseline of allowed ad-hoc literals, narrowing
-the rule to readiness waits specifically, or asserting liveness at runtime (report what the process DID print).
-See `0512-*`. (2026-08-11)
+Recently resolved (2026-08-13): **#512** (testing) — `check-readiness-marker-literals` was blind to the
+WORST case. It flagged a literal that matches a constant exactly, or ambiguously prefixes two — but a
+literal matching NOTHING was silent, and that is the only case GUARANTEED to fail: it never matches, so the
+wait burns its whole timeout and the test blames the fixture. It had already cost 108 s of a 137.9 s suite
+(issue 0489, `esp32_emulator.rs` waiting on `"Waiting for messages..."` after phase-342 W7 converged the
+examples), with the gate reporting `OK (32 baselined, 0 new)` throughout. Fixed with a NARROW rule — flag a
+literal that EXTENDS a known constant, i.e. opens with a marker this module defines and then pins more of it
+than the constant guarantees. Not "any literal matching no constant", which this issue argued would fire on
+every ad-hoc pattern and be switched off within a week: verified that `"crc=ok"`, `"data:"` and
+`"Booting Zephyr OS build"` all pass untouched. Proven on one identical tree with 0489's literal
+reintroduced — NEW gate errors naming `LISTENER_WAITING_BANNER`, OLD gate reports OK. Zero hits on the
+current tree, so it lands green and fires only on the regression, which is why it needed no baseline. See
+`archived/0512-*`. (2026-08-13)
 
 **#519** — the plan's timer period is still milliseconds, so `nros explain` renders a sub-millisecond timer as
 `0ms`. `#505` added `period_us` to the metadata JSON; `planner.rs:1463` still reads only `period_ms`

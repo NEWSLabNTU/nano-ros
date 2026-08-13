@@ -54,10 +54,37 @@ def scan(consts):
                         for n, v in consts.items()
                         if v != lit and v.startswith(lit) and len(lit) >= MIN_PREFIX_LEN
                     ]
-                    if not (exact or len(prefix) >= 2):
+                    # issue 0512 — the literal EXTENDS a constant: it opens with
+                    # a marker this module defines and then adds text of its own.
+                    #
+                    # This is the case the gate was blind to, and the only one
+                    # GUARANTEED to fail. `exact` and `prefix` both describe a
+                    # literal that still matches something; a literal matching
+                    # NOTHING never fires, so the wait burns its whole timeout
+                    # and the test blames the fixture. Issue 0489:
+                    # `esp32_emulator.rs` waited on `"Waiting for messages..."`
+                    # after phase-342 W7 converged the examples onto
+                    # `LISTENER_READY_MARKER` — 108 s of a 137.9 s suite, with
+                    # this gate reporting `OK (32 baselined, 0 new)` throughout.
+                    #
+                    # Deliberately NOT "any literal matching no constant": the
+                    # suite is full of legitimate ad-hoc patterns (`"crc=ok"`,
+                    # `"data:"`, QEMU boot strings) and a gate that fires on
+                    # correct code is switched off within a week (0512 says so
+                    # outright). Extending a KNOWN marker is the narrow signal —
+                    # it means someone hardcoded a readiness banner and pinned
+                    # more of it than the constant guarantees.
+                    extends = [
+                        n
+                        for n, v in consts.items()
+                        if v != lit and lit.startswith(v) and len(v) >= MIN_PREFIX_LEN
+                    ]
+                    if not (exact or len(prefix) >= 2 or extends):
                         continue
                     counts[(path, lit)] += 1
-                    where[(path, lit)].append((lineno, sorted(exact or prefix)))
+                    where[(path, lit)].append(
+                        (lineno, sorted(exact or extends or prefix))
+                    )
     return counts, where
 
 
