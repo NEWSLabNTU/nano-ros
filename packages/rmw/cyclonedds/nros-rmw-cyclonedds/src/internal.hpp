@@ -16,24 +16,41 @@
 #include <cstddef>
 #include <cstdint>
 
+// issue 0547 — the platform ABI comes from its OWN header, never re-declared.
+//
+// This block used to hand-declare `nros_platform_{clock_ms,sleep_ms,random_u64}`
+// in three per-platform `extern "C"` blocks. RFC-0073 (phase-350) then replaced
+// the `clock_ms`/`clock_us` pair with `clock_ns` and made `clock_ms` a
+// `static inline` shim in `nros/platform.h` — at which point a local
+// re-declaration saying `extern` still COMPILED, and the linker was left to
+// discover there was no such symbol:
+//
+//     internal.hpp:63: undefined reference to `nros_platform_clock_ms'
+//
+// All three symbols are declared in `nros/platform.h`, so none of the hand
+// copies were load-bearing; they only made the file able to disagree with the
+// header. RFC-0054's rule is that the C header IS the SSoT for this ABI, and
+// CLAUDE.md names hand-mirrored FFI declarations as a recurring defect class —
+// this is that class in FUNCTION form, which fails at link rather than at
+// compile and so reads as a missing implementation.
+//
+// The `#if` guards stay, and the include sits INSIDE them, because the hosted
+// build genuinely cannot see this header: `check-rmw-cyclonedds` compiles the
+// backend without `nros-platform-api/include` on its path (hosted uses
+// `<chrono>`/`<thread>` and never touches the platform ABI), so an unguarded
+// include fails with `nros/platform.h: No such file or directory`. Measured —
+// the first cut of this fix hoisted it and broke that lane.
+//
+// So the guards select the IMPLEMENTATION and gate the header that backs it.
+// What was never justified is DECLARING the ABI by hand inside them.
 #if defined(NROS_PLATFORM_FREERTOS)
 #include <FreeRTOS.h>
 #include <task.h>
-extern "C" {
-uint64_t nros_platform_random_u64(void);
-}
+#include "nros/platform.h"
 #elif defined(NROS_PLATFORM_ZEPHYR) || defined(__ZEPHYR__)
-extern "C" {
-uint64_t nros_platform_clock_ms(void);
-void nros_platform_sleep_ms(size_t ms);
-uint64_t nros_platform_random_u64(void);
-}
+#include "nros/platform.h"
 #elif defined(NROS_PLATFORM_THREADX)
-extern "C" {
-uint64_t nros_platform_clock_ms(void);
-void nros_platform_sleep_ms(size_t ms);
-uint64_t nros_platform_random_u64(void);
-}
+#include "nros/platform.h"
 #else
 #include <chrono>
 #include <thread>

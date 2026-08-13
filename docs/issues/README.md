@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+RESOLVED 2026-08-13 — **#547** the Cyclone backend hand-declared the platform ABI
+(`nros_platform_{clock_ms,sleep_ms,random_u64}`) in three per-platform `extern "C"` blocks, so RFC-0073's
+`clock_ms`->`clock_ns` rename (phase-350) compiled fine and failed at LINK: `internal.hpp:63: undefined
+reference to 'nros_platform_clock_ms'`. `platform.h` now carries `clock_ms` as a `static inline` shim and
+already declared all three, so no hand copy was load-bearing — they only let the file disagree with the
+header. Issue 0160's mirrored-FFI class in FUNCTION form: the struct version corrupts a field, this one
+fails a link. THIRD breakage from one rename (after #541 and upstream `5dc2fa869`), each visible only once
+the previous cleared, because the zephyr lane aborts first-failure. Fixed by including `nros/platform.h`
+in the branches that use the ABI — the include stays INSIDE the `#if` guards because the hosted lane
+compiles without `nros-platform-api/include` on its path (hoisting it broke `check-rmw-cyclonedds`, and
+the comment says so). Verified hosted 17/17 + zephyr leaf clean; swept, one file, now zero hand
+declarations. See `archived/0547-*`. (2026-08-13)
+
 Recently resolved (2026-08-13): **#546** (build) — the px4 compile-check codegen'd `generated/px4_msgs` and
 then ran `cargo check` WITHOUT `nros sync`, so all three companion leaves resolved
 `nros = { version = "*" }` against the public crates.io index and failed. Registry-naming is normal for an
