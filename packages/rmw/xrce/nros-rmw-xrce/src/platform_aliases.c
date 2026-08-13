@@ -8,14 +8,14 @@
  * Compiled by `nros-rmw-xrce-cffi/build.rs` always — every
  * supported target needs these. The platform-provider library
  * (POSIX, Zephyr, FreeRTOS, ThreadX, ESP-IDF) supplies
- * `nros_platform_clock_ms` / `nros_platform_clock_us`.
+ * `nros_platform_clock_ns` (the `_ms`/`_us` pair is retired).
  *
  * Both `uxr_millis` and `uxr_nanos` must be backed by the *monotonic*
  * clock service, not the wall-clock time service. micro-XRCE uses them
  * only for relative deadline deltas (`remaining = timeout - (now - start)`);
  * a wall clock that steps (NTP) or is unsupported (Zephyr without
  * CONFIG_RTC, where `nros_platform_time_now_ms` returns 0) breaks those
- * loops. `nros_platform_clock_ms` / `nros_platform_clock_us` share one
+ * loops. The millisecond and microsecond views share one
  * monotonic epoch (see nros/platform.h) and never decrease.
  */
 

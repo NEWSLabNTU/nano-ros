@@ -495,19 +495,21 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t* session, int32_t timeou
      * every XRCE target incl. bare-metal Cortex-M (thumbv7m/thumbv7em), where
      * `<time.h>` does not declare `CLOCK_MONOTONIC` and there is no `nanosleep`.
      *
-     * Issue 0035 — use the *monotonic* clock `nros_platform_clock_ms`, NOT the
+     * Issue 0035 — use the *monotonic* clock `nros_platform_clock_ns`, NOT the
      * *wall* clock `nros_platform_time_now_ms`. The latter is epoch time and
      * returns 0 on any platform without an RTC (Zephyr/native_sim, FreeRTOS,
      * ThreadX — see each provider's `platform.c`). With a 0 clock `elapsed_ms`
      * is always 0, `remaining` never reaches 0, and this loop spins forever
      * inside `uxr_run_session_time` — so `spin_once` never returns to run the
      * executor's readiness scan and buffered subscriber samples are never
-     * delivered to callbacks. `nros_platform_clock_ms` is monotonic ms since
-     * boot (k_uptime_get on Zephyr) and is the contract for relative deadline
-     * deltas (mirrors `uxr_millis` in platform_aliases.c). */
-    /* issue 0548 — `clock_ns` is the exported symbol; `clock_ms` became a
-     * `static inline` wrapper in RFC-0073 and links only where this file sees
-     * the current `<nros/platform.h>`, which on Zephyr it does not. */
+     * delivered to callbacks. `nros_platform_clock_ns` is monotonic since
+     * boot and is the contract for relative deadline deltas (mirrors
+     * `uxr_millis` in platform_aliases.c).
+     *
+     * Issue 0548 / phase-352 W6 — `clock_ns` is the only exported clock
+     * symbol. `clock_ms` was briefly a `static inline` wrapper and is now
+     * retired outright, so the millisecond domain is this caller's own
+     * division. */
     uint64_t start_ms = nros_platform_clock_ns() / 1000000u;
     for (;;) {
         uint64_t now_ms = nros_platform_clock_ns() / 1000000u;
