@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#557** (rmw/zephyr, open 2026-08-13) — the Zephyr Cyclone ACTION images (C and C++) fail SOLO on a green
+`lane=all`, so not sweep contention. The verdict reads "action-server didn't reach readiness within 60 s";
+the guest says it failed IMMEDIATELY — `<err> os: tid 0x581fa0 is in use!` x6 at consecutive tids (Zephyr
+`kernel/dynamic.c`, a dynamic thread stack reused while live), then `run_components failed rc=-100`. The
+60 s is just the harness waiting for a marker that will never come — issue 0445's shape at the harness
+level. Suspect is the cyclonedds pin `a09babf3 ddsrt: Zephyr-native sync backend — k_mutex/k_condvar
+instead of pooled pthreads`, landed the same day, which rewrites exactly the seam #0371 blamed for an
+earlier Zephyr Cyclone crash (the pthread mutex pool). NOT patched: it is a vendored fork commit in an
+active migration by its author. Open question for whoever takes it — `dds_create_participant` RETURNS a
+handle before rc=-100, so the failure may be downstream of it. See `0557-*`. (2026-08-13)
+
 RESOLVED 2026-08-13 — **#556** `threadx_riscv64.rs::build_rust_example` hand-spelt
 `target-zenoh/<triple>/<profile>/<bin>` onto the example dir. That leaf's row authors no `target_dir`, so
 its artifact root is `<dir>/target`: the hand-written path matched NO row, attribution failed, the
