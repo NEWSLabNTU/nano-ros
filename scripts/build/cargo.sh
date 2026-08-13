@@ -187,7 +187,7 @@ nros_sizes_probe_dir() {
     if [ -n "$repo_root" ]; then
         # phase-334 W2.b step 2 — derived, not a second spelling of the root.
         source "$repo_root/scripts/build/build-root.sh"
-        printf '%s' "$(nros_build_dir sizes-probe)"
+        printf '%s' "$(nros_build_dir "$NROS_KIND_SIZES_PROBE")"
     fi
 }
 

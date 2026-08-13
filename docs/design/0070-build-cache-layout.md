@@ -119,15 +119,26 @@ Conforming today (16 of 18):
 
 **One did not, and was renamed 2026-08-13:** `fixtures-cargo` → `cargo-fixtures`.
 
-**One still does not, and is left alone deliberately:** `compile-check` should be
-`compile-check-fixtures`, and is not renameable mechanically. The token names
-FOUR things — this build-dir kind, the compile-check LANE, the
-`list-compile-checks` subcommand, and three scripts (`compile-check-fixtures.sh`,
-`-signature.sh`, `compile-check-stale.sh`). A global replace rewrote 43 files and
-produced `list-compile-check-fixturess` and prose about "the
-compile-check-fixtures lane"; it was reverted. Renaming it safely needs the kind
-extracted to a NAMED CONSTANT first, so the rename is one edit rather than a
-search over an overloaded word.
+**One still does not:** `compile-check` should be `compile-check-fixtures`. It is
+not renameable by search-and-replace — the token names FOUR things: this
+build-dir kind, the compile-check LANE, the `list-compile-checks` subcommand,
+and three scripts (`compile-check-fixtures.sh`, `-signature.sh`,
+`compile-check-stale.sh`). A global replace rewrote 43 files and produced
+`list-compile-check-fixturess`; it was reverted.
+
+**The prerequisite is now in place (2026-08-13).** Each kind is a named constant
+— `nros_tests::kind::*` and `NROS_KIND_*` in `build-root.sh` — so the rename is
+TWO edits, one per language, and the scripts sharing the prefix are untouched.
+Demonstrated: changing both constants moved every consumer to
+`build/compile-check-fixtures/<id>` and left the script names alone. Whether to
+spend the 9.4 GB rebuild is now the only open question, and it is a scheduling
+one.
+
+`build_root_derivation.sh` gates the vocabulary in both directions: a shell call
+site passing a bare word, or a Rust one passing a literal, fails. Both arms were
+verified red before being trusted, and the Rust arm immediately found a kind the
+manual census had missed (`rmw_zenoh_ws` — the census regex excluded
+underscores).
 
 **What a kind rename actually costs, measured.** Moving the directory does NOT
 preserve the cache: `build/fixtures-cargo` held `CMakeCache.txt` files with the

@@ -61,6 +61,49 @@ nros_build_root() {
     printf '%s/build' "${NROS_REPO_ROOT:-${NROS_REPO_DIR:-$_NROS_BUILD_ROOT_REPO}}"
 }
 
+# RFC-0070 R5 — the build-cache KIND vocabulary, one definition each.
+#
+# A kind used to be a bare word at every call site, which is why renaming one
+# was a search over an overloaded token rather than an edit: phase-350 W5 tried
+# to rename `compile-check` and found the word also names the compile-check
+# LANE, the `list-compile-checks` subcommand and three scripts, so a global
+# replace rewrote 43 files and produced `list-compile-check-fixturess`. Reverted;
+# these constants are the prerequisite that was missing.
+#
+# EXPORTED for the same reason `_NROS_BUILD_ROOT_REPO` is: `fixtures-build.sh`
+# ships `nros_build_root` to its make leaves with `export -f`, and a leaf that
+# gets the function but not the vocabulary would be back to bare words.
+#
+# The Rust half is `nros_tests::kind`; `build_root_derivation.sh` pins the two
+# lists to each other and keeps LITERALS on its expected side deliberately — a
+# check that a constant equals itself checks nothing.
+
+# Fixture trees — `<family>-fixtures` per R5.
+export NROS_KIND_CARGO_FIXTURES="cargo-fixtures"
+export NROS_KIND_CMAKE_FIXTURES="cmake-fixtures"
+export NROS_KIND_IDF_FIXTURES="idf-fixtures"
+export NROS_KIND_WEST_FIXTURES="west-fixtures"
+
+# R5 outlier, knowingly: should be `compile-check-fixtures`. Renaming it is now
+# ONE edit here plus the Rust twin — see RFC-0070 R5 for why it has not happened.
+export NROS_KIND_COMPILE_CHECK="compile-check"
+
+# Everything else — bare `<family>`, named for what it holds.
+export NROS_KIND_BORROWED_E2E="borrowed-e2e"
+export NROS_KIND_CARGO="cargo"
+export NROS_KIND_FIXTURE_MAKE_DRIVER="fixture-make-driver"
+export NROS_KIND_LINK_DETERMINISM="link-determinism"
+export NROS_KIND_PX4_MSGS_CODEGEN="px4-msgs-codegen"
+export NROS_KIND_QEMU_ZENOH_PICO="qemu-zenoh-pico"
+export NROS_KIND_ROS_EDITIONS="ros-editions"
+export NROS_KIND_SIZES_PROBE="sizes-probe"
+export NROS_KIND_STACK_ANALYSIS="stack-analysis"
+export NROS_KIND_TOOLS="tools"
+export NROS_KIND_XRCE_AGENT="xrce-agent"
+export NROS_KIND_ZENOHD="zenohd"
+export NROS_KIND_ZEPHYR_FIXTURE_BUILD="zephyr-fixture-build"
+export NROS_KIND_ZEPHYR_FIXTURE_MAKE_DRIVER="zephyr-fixture-make-driver"
+
 # nros_build_dir <kind> [<coordinate>...]
 # RFC-0070 R2 — `<root>/<kind>/<coordinate>`, the ONE naming shape.
 #

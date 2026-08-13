@@ -424,8 +424,8 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
 fn build_failure_marker(binary_path: &Path) -> Option<String> {
     // RFC-0070 R3 — the same derivation the writer and the stale probe use.
     let roots = [
-        build_dir("compile-check", &[]),
-        build_dir("cmake-fixtures", &[]),
+        build_dir(crate::kind::COMPILE_CHECK, &[]),
+        build_dir(crate::kind::CMAKE_FIXTURES, &[]),
     ];
     let mut cur = binary_path.parent()?;
     loop {
@@ -2860,7 +2860,7 @@ pub fn xrce_action_server_concurrent_binary() -> PathBuf {
 /// `require_prebuilt_binary` (hard-fail in full tier → run `build-test-fixtures`;
 /// `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL=1`).
 pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
-    let stamp = build_dir("compile-check", &[id]).join(".compile-ok");
+    let stamp = build_dir(crate::kind::COMPILE_CHECK, &[id]).join(".compile-ok");
     require_prebuilt_binary_fresh(&stamp)
 }
 
@@ -2870,7 +2870,7 @@ pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
 /// `target/debug/demo_entry`) that a test executes. Tier-aware like
 /// `require_compile_check`.
 pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
-    let bin = build_dir("compile-check", &[id]).join(rel);
+    let bin = build_dir(crate::kind::COMPILE_CHECK, &[id]).join(rel);
     require_prebuilt_binary_fresh(&bin)
 }
 
@@ -2883,7 +2883,7 @@ pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
 /// fixture file is missing → `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL`, hard
 /// fail in the full tier).
 pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
-    let p = build_dir("cmake-fixtures", &[id]).join(rel);
+    let p = build_dir(crate::kind::CMAKE_FIXTURES, &[id]).join(rel);
     require_prebuilt_binary_fresh(&p)
 }
 
@@ -2896,7 +2896,7 @@ pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
 pub fn require_idf_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // Toolchain-gated via the test-all env_exclude (deselect when idf.py absent);
     // resolves the prebuilt ELF here. Built by `just esp32 build-fixtures`.
-    let p = build_dir("idf-fixtures", &[id]).join(rel);
+    let p = build_dir(crate::kind::IDF_FIXTURES, &[id]).join(rel);
     require_prebuilt_binary_fresh(&p)
 }
 
@@ -2910,7 +2910,7 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // Toolchain-gated via the test-all env_exclude (deselect when west / Zephyr
     // SDK absent); resolves the prebuilt artifact here. Built by `just zephyr
     // build-fixtures`.
-    let fixture_dir = build_dir("west-fixtures", &[id]);
+    let fixture_dir = build_dir(crate::kind::WEST_FIXTURES, &[id]);
 
     // #185 (the #182 guard, west edition) — the bake is a function of the
     // `nros` CLI (nros_system_generate / nros_generate_interfaces run it at

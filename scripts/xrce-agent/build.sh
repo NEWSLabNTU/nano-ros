@@ -22,7 +22,7 @@ AGENT_SRC="$REPO_ROOT/third-party/xrce/agent"
 # phase-334 W2.b step 2 — RFC-0070 R3: one derivation, not a literal.
 # shellcheck source=scripts/build/build-root.sh
 source "$REPO_ROOT/scripts/build/build-root.sh"
-BUILD_DIR="$(nros_build_dir xrce-agent)"
+BUILD_DIR="$(nros_build_dir "$NROS_KIND_XRCE_AGENT")"
 
 # Parse arguments
 if [ "$1" = "--clean" ]; then

@@ -25,9 +25,12 @@ use nros_tests::ros_env::{self, DockerRosEnv, Middleware, RosEnv};
 /// EDITION is the coordinate; the old path had no room for it and every edition
 /// overwrote the last.
 fn fixture_bin(edition: &str) -> PathBuf {
-    nros_tests::build_dir("ros-editions", &[&format!("pose-pub-{edition}")])
-        .join("debug")
-        .join("ros-edition-pose-pub")
+    nros_tests::build_dir(
+        nros_tests::kind::ROS_EDITIONS,
+        &[&format!("pose-pub-{edition}")],
+    )
+    .join("debug")
+    .join("ros-edition-pose-pub")
 }
 
 #[test]

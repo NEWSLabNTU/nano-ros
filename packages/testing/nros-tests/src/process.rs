@@ -736,7 +736,7 @@ pub fn zenohd_binary_path() -> std::path::PathBuf {
     // `scripts/zenohd/build.sh` — moved in the same commit, which is the point:
     // a build that moves without its resolver is how a family ends up looking
     // in two places. Step 2 emits today's path; step 3 moves it, once.
-    let local = crate::build_dir("zenohd", &[]).join("zenohd");
+    let local = crate::build_dir(crate::kind::ZENOHD, &[]).join("zenohd");
     if local.exists() {
         return local;
     }

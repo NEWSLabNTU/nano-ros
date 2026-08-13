@@ -22,7 +22,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # caller. Emits today's path unchanged; step 3 moves it.
 # shellcheck source=scripts/build/build-root.sh
 source "$REPO_ROOT/scripts/build/build-root.sh"
-BUILD_DIR="$(nros_build_dir zenohd)"
+BUILD_DIR="$(nros_build_dir "$NROS_KIND_ZENOHD")"
 ZENOH_DIR="$REPO_ROOT/third-party/zenoh/zenoh"
 
 # Parse arguments

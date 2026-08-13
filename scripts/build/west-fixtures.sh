@@ -20,7 +20,7 @@ NROS_REPO_ROOT="$repo_root"
 # shellcheck source=scripts/build/build-root.sh
 source "$repo_root/scripts/build/build-root.sh"
 
-out_root="$(nros_build_dir west-fixtures)"
+out_root="$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
 mkdir -p "$out_root"
 
 # ZEPHYR_BASE: discover the provisioned west workspace the same way the

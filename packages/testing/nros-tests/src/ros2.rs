@@ -22,7 +22,7 @@ pub const DEFAULT_ROS_DISTRO: &str = "humble";
 /// pinned `zenoh-pico` / `zenohd`. When absent, callers should fall back to
 /// the distro install (if any).
 pub fn rmw_zenoh_overlay() -> Option<PathBuf> {
-    let overlay = crate::build_dir("rmw_zenoh_ws", &["install"]).join("setup.bash");
+    let overlay = crate::build_dir(crate::kind::RMW_ZENOH_WS, &["install"]).join("setup.bash");
     overlay.exists().then_some(overlay)
 }
 

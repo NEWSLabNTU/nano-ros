@@ -360,6 +360,40 @@ scenario '
     fi
 '
 
+# RFC-0070 R5 (phase-350) — a KIND is a constant, never a bare word.
+#
+# The kind used to be a literal at every call site, which is what made renaming
+# one a search over an overloaded token instead of an edit. Both halves have a
+# vocabulary now (`NROS_KIND_*` here, `nros_tests::kind` in Rust); this keeps new
+# call sites from going back to bare words, which is the only way the extraction
+# stays true.
+#
+# This file is exempt from both arms ON PURPOSE: it is the test that pins each
+# constant to its expected path, so its expected side MUST spell the literal. A
+# check written with the constant on both sides checks nothing.
+scenario '
+    hits="$(git grep -nE "nros_build_dir [a-z0-9]" -- scripts just justfile \
+        | grep -v "build-root.sh" | grep -v "build_root_derivation.sh" || true)"
+    if [ -n "$hits" ]; then
+        echo "  FAIL a shell call site passes a bare-word kind (use \$NROS_KIND_*)"
+        echo "$hits" | sed "s/^/        /"
+        rc=1
+    else
+        echo "  ok   every shell kind comes from \$NROS_KIND_*"
+    fi
+'
+scenario '
+    hits="$(git grep -nE "build_dir\(\"" -- packages \
+        | grep -v "nros-tests/src/lib.rs" || true)"
+    if [ -n "$hits" ]; then
+        echo "  FAIL a Rust call site passes a literal kind (use nros_tests::kind::*)"
+        echo "$hits" | sed "s/^/        /"
+        rc=1
+    else
+        echo "  ok   every Rust kind comes from nros_tests::kind"
+    fi
+'
+
 # The Rust mirror cannot source this file, so the one thing that CAN silently
 # diverge is the relocation knob: a mirror that ignores NROS_BUILD_ROOT would
 # leave the resolver looking in a tree the build no longer writes.

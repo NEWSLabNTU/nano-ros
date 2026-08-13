@@ -21,7 +21,7 @@ setup:
     # derivation (RFC-0070 R3), not a literal in each recipe. Step 2 keeps
     # today's path; step 3 is what moves it.
     source scripts/build/build-root.sh
-    zdir="$(nros_build_dir zenohd)"
+    zdir="$(nros_build_dir "$NROS_KIND_ZENOHD")"
     # #189 — the presence check is VERSION-AWARE via the install's
     # .nros-provenance: a bare `-x` skip pinned the pre-serial 1.7.2-nros1
     # binary forever after the index moved on (the `--version` output is
@@ -69,7 +69,7 @@ doctor:
     #!/usr/bin/env bash
     set +e
     source scripts/build/build-root.sh
-    zdir="$(nros_build_dir zenohd)"
+    zdir="$(nros_build_dir "$NROS_KIND_ZENOHD")"
     if [ -x $zdir/zenohd ]; then
         # zenohd logs startup to stderr before printing the version line;
         # strip ANSI escapes and grab the last line that looks like a version.
@@ -96,7 +96,7 @@ run *args:
     #!/usr/bin/env bash
     set -e
     source scripts/build/build-root.sh
-    zdir="$(nros_build_dir zenohd)"
+    zdir="$(nros_build_dir "$NROS_KIND_ZENOHD")"
     if [ ! -x $zdir/zenohd ]; then
         echo "ERROR: $zdir/zenohd not found. Run: just zenohd setup" >&2
         exit 1

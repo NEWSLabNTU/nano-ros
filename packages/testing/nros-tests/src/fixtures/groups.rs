@@ -509,7 +509,7 @@ pub fn select_row_in<'a>(
 /// spelt through [`build_dir`], so `NROS_BUILD_ROOT` moves both halves
 /// (RFC-0070 R3). `tests/build_root_derivation.sh` asserts the two agree.
 pub fn group_dir(slug: &str) -> PathBuf {
-    build_dir("cargo-fixtures", &[slug])
+    build_dir(crate::kind::CARGO_FIXTURES, &[slug])
 }
 
 /// The one shared group dir a platform produces, for resolvers that know a

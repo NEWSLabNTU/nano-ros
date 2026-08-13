@@ -217,7 +217,7 @@ else
     # shellcheck source=scripts/build/build-root.sh
     source "$(dirname "${BASH_SOURCE[0]}")/build/build-root.sh"
     SA_SLUG="$(printf '%s' "${EXAMPLE_DIR#./}" | tr -c 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//')"
-    SA_TARGET_DIR="$(nros_build_dir stack-analysis "$SA_SLUG")"
+    SA_TARGET_DIR="$(nros_build_dir "$NROS_KIND_STACK_ANALYSIS" "$SA_SLUG")"
     mkdir -p "$SA_TARGET_DIR"
 
     (

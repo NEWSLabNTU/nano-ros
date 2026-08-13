@@ -20,7 +20,7 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 # `<repo>/build`, so the emitted path is unchanged.
 # shellcheck source=scripts/build/build-root.sh
 . "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
-out_dir="$(nros_build_dir link-determinism)"
+out_dir="$(nros_build_dir "$NROS_KIND_LINK_DETERMINISM")"
 
 echo "== link-determinism fixture: host staticlib pair =="
 rm -rf "$out_dir"

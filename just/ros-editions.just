@@ -64,7 +64,7 @@ build-fixture distro="jazzy":
     # `packages/testing/**/target/` either. Coordinate = the edition.
     # shellcheck source=scripts/build/build-root.sh
     source "{{justfile_directory()}}/scripts/build/build-root.sh"
-    FIX_TARGET_DIR="$(nros_build_dir ros-editions "pose-pub-{{distro}}")"
+    FIX_TARGET_DIR="$(nros_build_dir "$NROS_KIND_ROS_EDITIONS" "pose-pub-{{distro}}")"
     mkdir -p "$FIX_TARGET_DIR"
     ( cd "$FIX" && cargo build --target-dir "$FIX_TARGET_DIR" )
     # profile-literal-ok: unprofiled: the docker edition fixtures build with a plain `cargo build`
@@ -106,7 +106,7 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     # and (edition, rmw) is the coordinate these actually vary on.
     # shellcheck source=scripts/build/build-root.sh
     source "{{justfile_directory()}}/scripts/build/build-root.sh"
-    ED_TARGET_DIR="$(nros_build_dir ros-editions "{{distro}}-{{rmw}}")"
+    ED_TARGET_DIR="$(nros_build_dir "$NROS_KIND_ROS_EDITIONS" "{{distro}}-{{rmw}}")"
     mkdir -p "$ED_TARGET_DIR"
     for ex in talker listener service-server service-client action-server action-client; do
         DIR="{{justfile_directory()}}/examples/native/rust/$ex"

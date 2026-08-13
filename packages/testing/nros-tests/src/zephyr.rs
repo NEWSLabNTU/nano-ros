@@ -693,7 +693,7 @@ fn zephyr_build_root(workspace: &Path) -> PathBuf {
     if workspace_is_writable(workspace) {
         workspace.to_path_buf()
     } else {
-        crate::build_dir("zephyr-workspace-builds", &[])
+        crate::build_dir(crate::kind::ZEPHYR_WORKSPACE_BUILDS, &[])
     }
 }
 

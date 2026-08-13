@@ -416,6 +416,50 @@ pub fn project_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
+/// RFC-0070 R5 — the build-cache KIND vocabulary, one definition each.
+///
+/// A kind used to be a bare string literal at every call site. That is why
+/// renaming one was a search over an overloaded word rather than an edit:
+/// phase-350 W5 tried to rename `compile-check` and found the token also names
+/// the compile-check LANE, the `list-compile-checks` subcommand and three
+/// scripts, so a global replace rewrote 43 files and produced
+/// `list-compile-check-fixturess`. It was reverted, and this module is the
+/// prerequisite that was missing.
+///
+/// The shell half is `NROS_KIND_*` in `scripts/build/build-root.sh`; the two
+/// lists are pinned to each other by `build_root_derivation.sh`, which keeps
+/// the literals on its EXPECTED side deliberately — a test that asserts a
+/// constant equals itself asserts nothing.
+pub mod kind {
+    // Fixture trees — `<family>-fixtures` per R5.
+    pub const CARGO_FIXTURES: &str = "cargo-fixtures";
+    pub const CMAKE_FIXTURES: &str = "cmake-fixtures";
+    pub const IDF_FIXTURES: &str = "idf-fixtures";
+    pub const WEST_FIXTURES: &str = "west-fixtures";
+
+    /// R5 outlier, knowingly: should be `compile-check-fixtures`. Renaming it
+    /// is now ONE edit here plus the shell twin, which is the whole point of
+    /// this module — see RFC-0070 R5 for why it has not happened yet.
+    pub const COMPILE_CHECK: &str = "compile-check";
+
+    // Everything else — bare `<family>`, named for what it holds.
+    pub const CARGO: &str = "cargo";
+    pub const QEMU: &str = "qemu";
+    pub const QEMU_ZENOH_PICO: &str = "qemu-zenoh-pico";
+    pub const ROS_EDITIONS: &str = "ros-editions";
+    pub const TOOLS: &str = "tools";
+    pub const XRCE_AGENT: &str = "xrce-agent";
+    pub const ZENOHD: &str = "zenohd";
+    pub const ZEPHYR_WORKSPACE_BUILDS: &str = "zephyr-workspace-builds";
+
+    /// The `rmw_zenoh_cpp` colcon overlay. Spelled with UNDERSCORES, unlike
+    /// every other kind — it mirrors the upstream workspace name rather than
+    /// this repo's kebab vocabulary. Left as-is: renaming moves a real cache
+    /// dir, and the R5 gate now names the constant instead of the word, so the
+    /// inconsistency is visible in one place rather than at a call site.
+    pub const RMW_ZENOH_WS: &str = "rmw_zenoh_ws";
+}
+
 /// RFC-0070 R1 — the ONE build-cache root, Rust side.
 ///
 /// The MIRROR of `nros_build_root` in `scripts/build/build-root.sh`. A test
@@ -442,8 +486,8 @@ pub fn build_root() -> std::path::PathBuf {
 /// and empty coordinate parts are skipped, matching `nros_build_dir`.
 ///
 /// ```ignore
-/// build_dir("compile-check", &[id])   // <root>/compile-check/<id>
-/// build_dir("cargo-fixtures", &[])    // <root>/cargo-fixtures
+/// build_dir(kind::COMPILE_CHECK, &[id])   // <root>/compile-check/<id>
+/// build_dir(kind::CARGO_FIXTURES, &[])    // <root>/cargo-fixtures
 /// ```
 pub fn build_dir(kind: &str, coords: &[&str]) -> std::path::PathBuf {
     assert!(
@@ -616,39 +660,39 @@ mod tests {
 
         // scripts/build/compile-check-fixtures.sh + scripts/test/compile-check-stale.sh
         assert_eq!(
-            build_dir("compile-check", &[]),
+            build_dir(kind::COMPILE_CHECK, &[]),
             root.join("build/compile-check")
         );
         assert_eq!(
-            build_dir("compile-check", &["main_macro_form1"]),
+            build_dir(kind::COMPILE_CHECK, &["main_macro_form1"]),
             root.join("build/compile-check").join("main_macro_form1")
         );
         assert_eq!(
-            build_dir("cmake-fixtures", &[]),
+            build_dir(kind::CMAKE_FIXTURES, &[]),
             root.join("build/cmake-fixtures")
         );
         assert_eq!(
-            build_dir("cmake-fixtures", &["shadowing"]),
+            build_dir(kind::CMAKE_FIXTURES, &["shadowing"]),
             root.join("build/cmake-fixtures").join("shadowing")
         );
         // scripts/build/idf-fixtures.sh / west-fixtures.sh
         assert_eq!(
-            build_dir("idf-fixtures", &["esp_idf_bringup"]),
+            build_dir(kind::IDF_FIXTURES, &["esp_idf_bringup"]),
             root.join("build/idf-fixtures").join("esp_idf_bringup")
         );
         assert_eq!(
-            build_dir("west-fixtures", &["west_board_import"]),
+            build_dir(kind::WEST_FIXTURES, &["west_board_import"]),
             root.join("build/west-fixtures").join("west_board_import")
         );
         // scripts/build/fixtures-target-dir.sh (migrated in step 1)
         assert_eq!(
-            build_dir("cargo-fixtures", &["qemu-arm-baremetal"]),
+            build_dir(kind::CARGO_FIXTURES, &["qemu-arm-baremetal"]),
             root.join("build/cargo-fixtures").join("qemu-arm-baremetal")
         );
 
         // R2 — empty coordinate parts are skipped, as in the shell helper.
         assert_eq!(
-            build_dir("cargo", &["", "x"]),
+            build_dir(kind::CARGO, &["", "x"]),
             build_root().join("cargo").join("x")
         );
     }

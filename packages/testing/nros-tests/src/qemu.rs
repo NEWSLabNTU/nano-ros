@@ -62,7 +62,7 @@ pub fn qemu_system_arm_path() -> std::ffi::OsString {
     // just/qemu-baremetal.just is a parse-time `absolute_path()` and stays a
     // literal (a known, recorded exception), so the two spellings agree by the
     // derivation emitting today's path rather than by both being migrated.
-    let patched = crate::build_dir("qemu", &["bin"]).join("qemu-system-arm");
+    let patched = crate::build_dir(crate::kind::QEMU, &["bin"]).join("qemu-system-arm");
     if patched.exists() {
         return patched.into_os_string();
     }
@@ -1168,7 +1168,7 @@ pub fn is_arm_toolchain_available() -> bool {
 /// skipped in 116 s.
 pub fn is_zenoh_pico_arm_available() -> bool {
     // Check if the library exists at the expected location relative to project root
-    let lib_path = crate::build_dir("qemu-zenoh-pico", &[]).join("libzenohpico.a");
+    let lib_path = crate::build_dir(crate::kind::QEMU_ZENOH_PICO, &[]).join("libzenohpico.a");
     lib_path.exists()
 }
 

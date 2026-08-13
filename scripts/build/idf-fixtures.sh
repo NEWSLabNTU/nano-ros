@@ -23,7 +23,7 @@ NROS_REPO_ROOT="$repo_root"
 # shellcheck source=scripts/build/build-root.sh
 source "$repo_root/scripts/build/build-root.sh"
 
-out_root="$(nros_build_dir idf-fixtures)"
+out_root="$(nros_build_dir "$NROS_KIND_IDF_FIXTURES")"
 mkdir -p "$out_root"
 
 # Discover the esp-idf checkout the same way the zephyr fixture discovers its

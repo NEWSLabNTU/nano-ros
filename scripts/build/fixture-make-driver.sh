@@ -80,7 +80,7 @@ stamp="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
 # `<repo>/build`, so the emitted path is unchanged.
 # shellcheck source=scripts/build/build-root.sh
 . "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
-work_root="$(nros_build_dir fixture-make-driver)"
+work_root="$(nros_build_dir "$NROS_KIND_FIXTURE_MAKE_DRIVER")"
 log_dir="$work_root/logs/$stamp"
 status_dir="$work_root/status/$stamp"
 joblog="$work_root/joblog-$stamp.tsv"

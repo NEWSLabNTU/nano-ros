@@ -190,7 +190,7 @@ build-fixtures:
     # fixtures" is exactly when someone expects the suite to be runnable. The
     # script is idempotent and returns immediately when the archive is current.
     source scripts/build/build-root.sh
-    zpdir="$(nros_build_dir qemu-zenoh-pico)"
+    zpdir="$(nros_build_dir "$NROS_KIND_QEMU_ZENOH_PICO")"
     if [ ! -f "$zpdir/libzenohpico.a" ]; then
         echo "Building zenoh-pico for ARM (required by the emulator suite)..."
         ./scripts/qemu/build-zenoh-pico.sh
@@ -419,7 +419,7 @@ doctor:
     # would need a `shell()` on every justfile parse. Recorded as a known
     # exception in phase-334 W2.b, not an oversight.
     source scripts/build/build-root.sh
-    zpdir="$(nros_build_dir qemu-zenoh-pico)"
+    zpdir="$(nros_build_dir "$NROS_KIND_QEMU_ZENOH_PICO")"
     fail=0
     if [ -f "$zpdir/libzenohpico.a" ]; then
         echo "  [OK] qemu-zenoh-pico: $zpdir/libzenohpico.a"

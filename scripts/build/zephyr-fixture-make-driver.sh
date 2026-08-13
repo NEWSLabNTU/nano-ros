@@ -70,7 +70,7 @@ stamp="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
 # `<repo>/build`, so the emitted path is unchanged.
 # shellcheck source=scripts/build/build-root.sh
 . "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
-work_root="$(nros_build_dir zephyr-fixture-make-driver)"
+work_root="$(nros_build_dir "$NROS_KIND_ZEPHYR_FIXTURE_MAKE_DRIVER")"
 record_dir="$work_root/records/$stamp"
 log_dir="$work_root/logs/$stamp"
 status_dir="$work_root/status/$stamp"
@@ -242,7 +242,7 @@ fi
 # lock makes a second invocation queue instead of clobbering the first. The
 # lock is held only for the build phase and auto-releases when fd 9 closes on
 # exit. flock-absent hosts skip it (best-effort).
-lockfile="$(nros_build_dir zephyr-fixture-build).lock"
+lockfile="$(nros_build_dir "$NROS_KIND_ZEPHYR_FIXTURE_BUILD").lock"
 mkdir -p "$(dirname "$lockfile")"
 exec 9>"$lockfile"
 if command -v flock >/dev/null 2>&1; then

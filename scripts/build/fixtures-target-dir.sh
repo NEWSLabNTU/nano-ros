@@ -265,7 +265,7 @@ nros_fixture_target_dir_flag() {
     local group
     group="$(nros_fixture_group "$platform" "$cargo_args" "$envstr")" || return 0
     [ -n "$group" ] || return 0
-    printf ' --target-dir %s' "$(nros_build_dir cargo-fixtures "$group")"
+    printf ' --target-dir %s' "$(nros_build_dir "$NROS_KIND_CARGO_FIXTURES" "$group")"
 }
 
 # nros_fixture_row_artifact_dir <leaf-dir> <platform> [cargo-args] [envstr]
@@ -292,7 +292,7 @@ nros_fixture_row_artifact_dir() {
     local group
     group="$(nros_fixture_group "$platform" "$cargo_args" "$envstr")" || group=""
     if [ -n "$group" ]; then
-        nros_build_dir cargo-fixtures "$group"
+        nros_build_dir "$NROS_KIND_CARGO_FIXTURES" "$group"
     else
         printf '%s/target' "$leaf"
     fi

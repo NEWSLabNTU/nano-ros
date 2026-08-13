@@ -32,7 +32,7 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 # `<repo>/build`, so the emitted path is unchanged.
 # shellcheck source=scripts/build/build-root.sh
 . "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
-out_dir="$(nros_build_dir borrowed-e2e)"
+out_dir="$(nros_build_dir "$NROS_KIND_BORROWED_E2E")"
 
 echo "== borrowed-e2e fixture: C / C++ borrowed-view proof binaries =="
 rm -rf "$out_dir"

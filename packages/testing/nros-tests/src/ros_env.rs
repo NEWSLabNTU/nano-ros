@@ -805,10 +805,13 @@ pub fn example_bin_rmw(name: &str, edition: &str, rmw: Rmw) -> std::path::PathBu
     // `$NROS_BUILD_ROOT`, derived by the same `<kind>/<coordinate>` rule
     // `just ros_editions build-e2e-fixtures` builds with, rather than six
     // per-leaf `target-ros-edition-*/` dirs named by hand on both sides.
-    crate::build_dir("ros-editions", &[&format!("{edition}-{}", rmw.as_str())])
-        // profile-literal-ok: unprofiled: ros-edition fixtures are built with a plain `cargo build`
-        .join("debug")
-        .join(name)
+    crate::build_dir(
+        crate::kind::ROS_EDITIONS,
+        &[&format!("{edition}-{}", rmw.as_str())],
+    )
+    // profile-literal-ok: unprofiled: ros-edition fixtures are built with a plain `cargo build`
+    .join("debug")
+    .join(name)
 }
 
 /// A [`Command`] running nano-ros example `bin` over `rmw`, wrapped `bash -c

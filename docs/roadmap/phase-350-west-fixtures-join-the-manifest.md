@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). COMPLETE. Every acceptance item met, including the wall-clock: the zephyr lane costs 592 s warm and tier 2 costs 76 s — **7.8×**, ~8.6 min saved per tier-2 sweep (NOT the 31× a naive read of #509 suggests; that baseline does not reproduce here). One rename is left undone and named: `compile-check`, blocked on extracting the kind to a named constant, not on its cache.**
+**Status (2026-08-13). COMPLETE. Every acceptance item met, including the wall-clock: the zephyr lane costs 592 s warm and tier 2 costs 76 s — **7.8×**, ~8.6 min saved per tier-2 sweep (NOT the 31× a naive read of #509 suggests; that baseline does not reproduce here). One rename is left as a scheduling call, no longer a blocked one: `compile-check` is two edits since the kind vocabulary was extracted to named constants and gated.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -554,20 +554,22 @@ behaviour, not feature duplication.
       ... is different than the directory ... where CMakeCache.txt was created".
       Wiped and rebuilt; the linux/rust slice alone took 453 s, other platforms
       rebuild when their lanes run.
-- [ ] **`compile-check` → `compile-check-fixtures` — NOT MECHANIZABLE, left
-      alone.** The token names FOUR things: this build-dir kind, the
-      compile-check LANE, the `list-compile-checks` subcommand, and three
-      scripts (`compile-check-fixtures.sh`, `-signature.sh`,
-      `compile-check-stale.sh`). A global replace rewrote 43 files and produced
-      `list-compile-check-fixturess` and prose about "the compile-check-fixtures
-      lane" — reverted. **The prerequisite is extracting the kind to a named
-      constant**, so the rename is one edit instead of a search over an
-      overloaded word. That is the real blocker; the cache cost is secondary.
-- [x] **Zephyr build-dir names have a producer** — the row's
-      `west_build_name`, authored only where the derivation cannot produce the
-      name (the mps2 witness leaves). Making it *derived everywhere* would
-      rename the dirs a second time for no behavioural gain, so the item is
-      closed as satisfied in substance rather than pursued for uniformity.
+- [x] **The named-constant extraction is DONE** (2026-08-13), which was the
+      prerequisite `compile-check` was actually blocked on. Every kind is a
+      constant now — `nros_tests::kind::*` and `NROS_KIND_*` in
+      `build-root.sh` — so renaming one is TWO edits, and the three scripts that
+      share the `compile-check` prefix are untouched. Demonstrated by making the
+      change and reverting it.
+
+      `build_root_derivation.sh` gates it both ways: a shell call site passing a
+      bare word, or a Rust one passing a literal, fails. Both arms verified red
+      first, and the Rust arm immediately found a kind the manual census missed
+      — `rmw_zenoh_ws`, which the census regex had excluded because it uses
+      underscores. A gate that finds something on its first run is the argument
+      for writing it.
+- [ ] **`compile-check` → `compile-check-fixtures` — now a scheduling call, not
+      a blocked one.** Two edits; the only cost left is the 9.4 GB rebuild.
+
 **What the renames actually cost, now measured rather than estimated.** A kind
 or tag rename FORFEITS the cache under it — `mv` does not work, because
 `CMakeCache.txt` bakes its own absolute path and the moved copy fails with "The

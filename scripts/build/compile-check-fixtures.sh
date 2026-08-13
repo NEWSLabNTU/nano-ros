@@ -37,7 +37,7 @@ NROS_REPO_ROOT="$repo_root"
 # shellcheck source=scripts/build/build-root.sh
 source "$repo_root/scripts/build/build-root.sh"
 
-out_root="$(nros_build_dir compile-check)"
+out_root="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK")"
 mkdir -p "$out_root"
 
 # id : source template dir (carries @NANO_ROS_ROOT@ placeholders)
@@ -174,7 +174,7 @@ stage_and_build() {
 # executable — instead of running cmake at test time (issue 0034). The codegen
 # step shells the `nros` CLI; the build is skipped (no stamp → test skips/fails
 # per tier) when cmake or a `codegen entry`-capable `nros` is unavailable.
-cmake_out="$(nros_build_dir cmake-fixtures)"
+cmake_out="$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES")"
 
 cmake_fixture_prereqs_ok() {
     command -v cmake >/dev/null 2>&1 || { echo "cmake-fixtures: cmake absent — skipping" >&2; return 1; }
@@ -598,7 +598,7 @@ if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
     # it would serialize 87 units on nothing.
     # RFC-0070 R1 — the ONE derivation, never a hand-spelled cache path
     # (`check-build-root` gates it). Same shape as the zephyr build lock.
-    px4_lockfile="$(nros_build_dir px4-msgs-codegen).lock"
+    px4_lockfile="$(nros_build_dir "$NROS_KIND_PX4_MSGS_CODEGEN").lock"
     mkdir -p "$(dirname "$px4_lockfile")"
     px4_gen() {
         # `flock <file> <command>` — the FILE form. NOT `flock 8 <command>`:

@@ -10,7 +10,7 @@ setup:
     set -e
     # phase-334 W2.b step 2 — path from the ONE derivation (RFC-0070 R3).
     source scripts/build/build-root.sh
-    adir="$(nros_build_dir xrce-agent)"
+    adir="$(nros_build_dir "$NROS_KIND_XRCE_AGENT")"
     if [ -x "$adir/MicroXRCEAgent" ]; then
         echo "Micro-XRCE-DDS Agent already built: $adir/MicroXRCEAgent"
     else
@@ -23,7 +23,7 @@ doctor:
     #!/usr/bin/env bash
     set +e
     source scripts/build/build-root.sh
-    adir="$(nros_build_dir xrce-agent)"
+    adir="$(nros_build_dir "$NROS_KIND_XRCE_AGENT")"
     if [ -x "$adir/MicroXRCEAgent" ]; then
         echo "  [OK] Micro-XRCE-DDS Agent: $adir/MicroXRCEAgent"
         exit 0

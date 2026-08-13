@@ -129,7 +129,7 @@ impl Drop for XrceAgent {
 pub fn xrce_agent_binary_path() -> std::path::PathBuf {
     // phase-334 W2.b step 2 — the Rust mirror of `nros_build_dir`; the shell
     // half moved in the same commit.
-    let local = crate::build_dir("xrce-agent", &[]).join("MicroXRCEAgent");
+    let local = crate::build_dir(crate::kind::XRCE_AGENT, &[]).join("MicroXRCEAgent");
     if local.exists() {
         return local;
     }
