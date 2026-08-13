@@ -907,6 +907,15 @@ check-board-tiers:
 check-cli-fresh:
     @bash scripts/check-cli-fresh.sh
 
+# Issue 0550 — a submodule checked out BEHIND the commit the superproject
+# records. Not in `check-fast`: drift is a working-copy state, so the index and
+# the commit always agree in anything you can push and a source gate could never
+# observe it. It runs as the first item of `check-tier-preconditions`, ahead of
+# the CLI stamp, because `git submodule update` rewrites source mtimes and would
+# re-stale anything cleared before it. Exposed standalone for diagnosis.
+check-submodule-drift:
+    @bash scripts/check-submodule-drift.sh
+
 # Issue 0359 — leaf `Cargo.lock` files outside the root workspace must keep
 # satisfying their own manifests. Nothing ran `--locked` over them, so drift
 # grew silently with every manifest edit and a drifted lock pins NOTHING (the

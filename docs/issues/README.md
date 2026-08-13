@@ -66,6 +66,23 @@ obvious:** there are TWO west builders (`west-build` ×1, `west-configure` ×3),
 the COMMENT only, leaving the awk on the literal, which the gate run caught. Same mistake twice — verifying
 the change I meant to make rather than the one on disk. See `archived/0554-*`. (2026-08-13)
 
+RESOLVED 2026-08-13 — **#550** `just build-test-fixtures` died at leaf 17 on `Cannot find source file:
+third-party/dds/cyclonedds/src/ddsrt/src/sync/zephyr/sync.c`, and it was not a code bug: the submodule sat
+at `6eb9227` while HEAD records `8601ca6`, 7 commits ahead — including `a09babf`, the commit that ADDS
+that directory. The in-tree half of the pair (`nros_rmw_cyclonedds.cmake` swapping the TU under
+`DDSRT_WITH_ZEPHYR`) was current, so cmake named a file the stale vendored half does not carry. CLAUDE.md
+states the rule twice and neither statement helps at diagnosis time, because the symptom names a FILE, not
+the pull that moved the pointer. No gate looked at submodule pointers, and `check-fast` could not: drift is
+a WORKING-COPY state, so index and commit always agree in anything you can push. Fixed by
+`check-submodule-drift.sh` as the FIRST item of `check-tier-preconditions` — first because its remedy
+(`git submodule update`) rewrites source mtimes and re-arms both the CLI stamp and every fixture, so
+clearing it later would undo them. Detection is `git submodule status | grep '^+'`; the script adds
+DIRECTION, because direction picks the remedy — behind ⇒ fast-forward (and it prints the missing commits,
+so `a09babf` names itself), diverged ⇒ REBASE not update (update would strand the local commits detached),
+ahead ⇒ OK-with-a-note, since that is the normal middle of the vendored-fork workflow and failing it would
+flag every in-flight fork fix. Uninitialized (`-`) is not drift — px4, play_launch layer-3 and nuttx are
+deliberately absent. Self-tested both directions. See `archived/0550-*`. (2026-08-13)
+
 RESOLVED 2026-08-13 — **#547** the Cyclone backend hand-declared the platform ABI
 (`nros_platform_{clock_ms,sleep_ms,random_u64}`) in three per-platform `extern "C"` blocks, so RFC-0073's
 `clock_ms`->`clock_ns` rename (phase-350) compiled fine and failed at LINK: `internal.hpp:63: undefined

@@ -50,7 +50,17 @@ probe() {
     fi
 }
 
-# 1. The CLI's source stamp. FIRST because everything downstream keys on it, and
+# 1. Submodule pointers, BEFORE the CLI stamp — the remedy for this one
+#    (`git submodule update`) rewrites source mtimes, so it re-arms both the CLI
+#    stamp and every fixture. Clearing it after them would invalidate the work.
+#    Issue 0550: a stale cyclonedds checkout took the fixture sweep down 17
+#    leaves in, as a missing-file cmake error naming neither the submodule nor
+#    the pull that moved the pointer.
+probe "a submodule is not at the commit this superproject records" \
+    "git submodule update <path>   (bypass: NROS_SKIP_SUBMODULE_DRIFT_CHECK=1)" \
+    bash scripts/check-submodule-drift.sh
+
+# 2. The CLI's source stamp. Before fixtures because everything downstream keys on it, and
 #    because ANY tree refresh — pull, rebase, stash, rsync — re-arms it. That
 #    re-arming is what makes the contract once-per-refresh rather than
 #    once-per-clone, and it is the single most repeated stop.
@@ -59,13 +69,13 @@ probe "in-tree nros CLI is stale" \
     bash scripts/check-cli-fresh.sh
 cli_stale=$failed   # non-zero ⇒ everything that EXECS the CLI below would only echo this
 
-# 2. Leaves must be sync'd or cargo cannot even PARSE them (#463) — the error
+# 3. Leaves must be sync'd or cargo cannot even PARSE them (#463) — the error
 #    surfaces as "failed to parse manifest", four frames deep, never naming sync.
 probe "leaf .cargo/config.toml includes an unwritten sync target" \
     "nros sync   in the named leaf   (bypass: NROS_SKIP_LEAF_INCLUDE_CHECK=1)" \
     python3 scripts/build/leaf-config-includes.py
 
-# 3. The build stage needs the UNION of vendored sources, not the per-board
+# 4. The build stage needs the UNION of vendored sources, not the per-board
 #    slice `nros setup <board>` provisions (#390).
 # Skipped when the CLI is stale: this probe RUNS the CLI, so it would fail with
 # the stale-stamp text again and the listing would report one root cause twice.
@@ -83,7 +93,7 @@ if [ "${NROS_SKIP_BUILD_SOURCE_CHECK:-0}" = "0" ] && [ "$cli_stale" -eq 0 ]; the
     # double-report it.
 fi
 
-# 4. Fixtures, for the LANE this run will test. Coverage is per-lane (#393), so
+# 5. Fixtures, for the LANE this run will test. Coverage is per-lane (#393), so
 #    "some fixtures exist" is not the question.
 #
 #    The remedy names the BUILD lane, not the run's lane (#482). They differ
@@ -99,7 +109,7 @@ probe "test fixtures missing or stale for this lane" \
     "just build-test-fixtures lane=${_fixture_build_lane}   (bypass: NROS_SKIP_FIXTURE_CHECK=1)" \
     just _require-fixtures
 
-# 5. The pinned make. `nros_pool_run` needs make 4.4's FIFO jobserver: the
+# 6. The pinned make. `nros_pool_run` needs make 4.4's FIFO jobserver: the
 #    system make on Ubuntu 22.04 is 4.3, whose pipe-FD jobserver a grandchild
 #    (cargo, or cmake's sub-make) cannot join. Without it every jobserver
 #    fan-out in the tree — example checks, fixture builds, the compile-check
@@ -122,7 +132,7 @@ if [ ! -x "third-party/make/make" ] ||
     echo "  Remedy: just install-make" >&2
 fi
 
-# 5. A lane that silently DEGRADES is worse than one that fails: without GNU
+# 7. A lane that silently DEGRADES is worse than one that fails: without GNU
 #    parallel the example check walks ~99 leaves serially and reads as a hung
 #    tier, not a missing package. Warn — do not fail — since the lane is correct,
 #    only slow.
@@ -133,7 +143,7 @@ if ! command -v parallel >/dev/null 2>&1; then
 fi
 
 if [ "$failed" -eq 0 ]; then
-    echo "check-tier-preconditions: OK (CLI, leaf includes, build sources, fixtures)"
+    echo "check-tier-preconditions: OK (submodules, CLI, leaf includes, build sources, fixtures)"
     exit 0
 fi
 
@@ -155,8 +165,10 @@ fi
         fi
     done
     echo
-    echo "  Order matters: rebuild the CLI BEFORE fixtures — fixtures key on its"
-    echo "  source stamp, so doing it the other way round re-stales them all."
+    echo "  Order matters, and it is the order above: submodules first (updating"
+    echo "  one rewrites source mtimes, re-arming everything below it), then the"
+    echo "  CLI, then fixtures — fixtures key on the CLI's source stamp, so doing"
+    echo "  those two the other way round re-stales them all."
     echo
     echo "  Bypass everything: NROS_SKIP_TIER_PRECONDITIONS=1"
 } >&2
