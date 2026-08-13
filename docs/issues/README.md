@@ -373,6 +373,61 @@ resolution is a per-board, sometimes per-BOOT value (Zephyr runtime cycle rate, 
 compile-time constant cannot carry it. Proposes one `clock_ns` symbol plus `clock_resolution_ns`, with
 `clock_ms`/`clock_us` as header wrappers. See `0532-*`.
 
+**#535** (build/testing, open 2026-08-13) — **74 west-built fixtures have no manifest row, so they have no
+coordinate.** `examples/fixtures.toml` holds 379 rows and `row_coord()` is the ONE predicate phase-340 W3
+made both halves of a lane read — but 70 zephyr leaves (matrix in `fixture-matrix.sh` +
+`zephyr-fixture-leaves.sh`) and 4 `west-fixtures.sh` fixtures (bash arrays) sit outside it, ~16 % of the
+surface. `NROS_FIXTURE_COORDS` has ZERO hits in the zephyr lane, so a lane can only include or exclude the
+zephyr MODULE wholesale; the run half calls them unattributable and never skips them. Not issue 0482's
+shape (two disagreeing computations) but an ABSENCE, which nothing can report. It also blocks #509's
+cheapest lever — "can the coordinate cover retire some leaves?" cannot be asked of a fixture with no
+coordinate — and phase-329 W8.d from the other side. The role matrix is currently spelled THREE times
+(bash fns, bash arrays, `examples_fixture_coverage.rs` constants); the fix collapses them to rows.
+See `0535-*` and phase-350.
+
+**#536** (build/testing, open 2026-08-13) — three of the four `west-fixtures.sh` fixtures assert a
+CONFIGURE-time fact and pay for a full kernel build anyway: `west_board_import` reads four `CMakeCache.txt`
+variables, `zephyr_self_pkg_{rust,sibling}` read `system_config.h`. The self-pkg pair runs a link the
+script itself calls "doomed" at `west-fixtures.sh:112`, discards the failure, and stamps on a file written
+before the link began. Only `west_bringup_zephyr` boots an ELF. The manifest already has the concept —
+`builder = "cmake-configure"` backs 12 compile-check rows. Land with #535, and keep the stamp
+distinguishable from a linked fixture's or a build-only lane reads as covered (#537's failure mode).
+See `0536-*`.
+
+**#537** (testing/build, open 2026-08-13) — `build-fvp-aemv8r-cyclonedds` and `-rust` produce a
+`zephyr.elf` **nothing runs**: their runners `fvp_runtime{,_rust}.rs` were deleted by phase-298 W4
+(`68a0a0b6f`), the `run-` recipes survive, so the justfile still reads complete.
+`examples_fixture_coverage.rs:62` records this accurately and is the only place that does. Separately,
+NONE of the four `build-fvp-*` artifacts is reachable from `build-test-fixtures` (grep: hits only in
+`just/zephyr-setup.just`), so both consuming tests skip on a missing ELF with a message that cannot
+distinguish "license-gated SDK absent" from "nobody ever built this". phase-217 is OPEN with only Track A
+landed, and this is the slice it was opened to close. See `0537-*`.
+
+**#538** (build/testing, open 2026-08-13) — `scripts/build/fixture-inventory.py` advertises itself as the
+list of "recipe leaves not yet in the fixture manifest", has **no consumer** (grep over `justfile just
+scripts packages .github` returns only archived prose), and is wrong both ways: 3 of its 5 hand-authored
+rows have had manifest rows since phase-344 W2 — which added one *for this exact reason* — while the 70
+zephyr leaves, the 4 west fixtures, all 4 FVP artifacts, the esp32 `.bin` postprocess and the ros-editions
+tree are absent. An unmaintained list that answers the right question is read as authoritative exactly
+when someone is auditing coverage. Retire it (preferred, after #535) or gate its staleness. See `0538-*`.
+
+**#539** (build/testing, open 2026-08-13) — fixture naming has four independent drifts RFC-0070/phase-334
+never scoped (they settled the build-cache ROOT, not the leaf vocabulary): the lang axis has two spellings
+(`rust` in the manifest, `rs` on disk via `nros_zephyr_lang_tag`); the 14 `build/<kind>` roots follow no
+rule (`cmake-fixtures`/`idf-fixtures`/`west-fixtures` but `fixtures-cargo` reversed and `compile-check`
+bare, plus two roots for one zephyr family); zephyr build dirs use three unrelated schemes at once
+including issue-numbered `build-245-asan`; and manifest ids mix `_`/`-` with nine phase-coded names
+(`n9_form1`, `o4_pkg_index`, `l9_register_c`) — the rule CLAUDE.md already enforces for test names.
+Sequence INSIDE #535's cutover: that join is `(platform, lang, rmw)` against `<lang>-<role>-<rmw>` path
+segments with `rust`/`rs` disagreeing, so renaming after means touching every path twice. See `0539-*`.
+
+**#540** (testing, open 2026-08-13) — `packages/testing/nros-tests/bins/int32-observer` was retired by
+issue 0128 T0 ("qos/safety e2es ride `int32-sink`") and the crate directory survived: no fixture row, no
+builder, no consumer, only archived docs mention it. It hid because the one coverage gate walks
+`examples/**` for `package.xml` and never looks at `bins/` — which is also why two LIVE fixtures there
+(`logging-smoke-zephyr-native-sim`, `ros-edition-pose-pub`) have no row either. Delete the crate, then
+close the class. See `0540-*`.
+
 **#509** (build/testing, open 2026-08-10) — the Zephyr fixture lane is PER-LEAF-OVERHEAD bound, not compile
 bound. Measured mid-sweep: **40 min for 68 leaves**, and across all of them just **1254 ninja edges**
 (mean 18/leaf), only 8 reconfigures, sccache at 96.8 %, and 4 rustc + 2 C compilers live on a 32-core box.
