@@ -396,7 +396,7 @@ check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
-    check-leaf-lockfiles check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
+    check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
     check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
@@ -949,6 +949,19 @@ check-submodule-drift:
 [private]
 check-leaf-lockfiles:
     @bash scripts/check-leaf-lockfiles.sh
+
+# issue 0560 — a lock whose dependency versions are decided by a SUBMODULE's
+# manifest goes stale when the pointer moves, and the two halves are updated by
+# different commits. `nros-launch-resolve` sat unbuildable on main that way:
+# `--locked` refused the stale pin, and the only consumer is a dependency of the
+# ~40-minute fixture lane, so it waited for whoever ran that next.
+#
+# `cargo metadata --locked --offline` — resolution, not a build, because
+# resolution is what breaks. Sub-second, no network, and the leaf set is DERIVED
+# from `.gitmodules` rather than listed.
+[private]
+check-submodule-pinned-locks:
+    @python3 scripts/check-submodule-pinned-locks.py
 
 # RFC-0067 D1 / phase-333 W2 — a generated message crate must be referenced as a
 # PATH dep, never by registry name. Replaces the interim `check-msg-dep-redirect`,
