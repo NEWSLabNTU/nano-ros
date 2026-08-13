@@ -74,3 +74,46 @@ No bisect, and no attempt at the suggested remedies
 (`NROS_EXECUTOR_ARENA_SIZE` / `NROS_EXECUTOR_MAX_CBS`) — raising a bound to
 silence an assert is the wrong first move when nobody has established WHY the
 storage grew.
+
+
+## Cause FOUND 2026-08-13 — the shared sizes-probe key ignores the sizing knobs
+
+Not a stale probe (already ruled out above) but a MIS-KEYED one.
+
+`probe_key()` in `nros-sizes-build` hashes `(target, features)` under a
+`rustc_slug` directory. What it does not hash is anything that changes the SIZE
+being probed. Since issue 0460, `nros-node`'s `env_usize()` resolves
+`NROS_EXECUTOR_MAX_CBS` and friends from the env OR from Zephyr's `$DOTCONFIG`,
+and this tree has both kinds of leaf at the same coordinate:
+
+```
+examples/workspaces/features/src/zephyr_rust_{params,qos,lifecycle}_entry
+    prj.conf: CONFIG_NROS_EXECUTOR_MAX_CBS=16
+examples/zephyr/rust/{talker,listener,action-*,service-*}
+    no knob — the crate default, 4
+```
+
+Same target, same features, therefore the SAME probe dir. Whichever leaf probes
+first writes `EXECUTOR_SIZE` for its own `MAX_CBS`; the other reuses it. In one
+order that is merely oversized; in the other the 16-CBS leaf compiles against a
+constant sized for 4 and dies on `EXECUTOR_OPAQUE_U64S too small`.
+
+That explains the two things that made this look latent: it is ORDER-dependent,
+and rebuilding the failing leaf from scratch does not clear it, because the
+poisoned state is in the SHARED dir, not the leaf.
+
+The function's own header comment already said "sharing without this key is
+worse than not sharing" about the feature axis. The knobs are the other half of
+that key.
+
+## Fix landed
+
+`probe_key()` now also mixes `knob_identity()`: every `NROS_*` env var, plus
+every `CONFIG_NROS_*` line of `$DOTCONFIG` when Zephyr set one — the same two
+routes the consuming crate resolves through, so the key cannot disagree with the
+compile. Verified arithmetically that the two leaf classes now land on different
+keys (`9a7cf62d91362c22` vs `020c64f9f2153b49`).
+
+**Not yet verified end to end.** `just build-test-fixtures lane=tier2` has not
+been re-run, so this issue stays OPEN until the zephyr module builds. The cause
+and the mechanism are established; what is missing is the lane.

@@ -545,7 +545,63 @@ fn probe_key(target: &str, features: &[String]) -> String {
         mix(b"\x1f");
         mix(f.as_bytes());
     }
+    // issue 0528 — the SIZING KNOBS are part of the identity too.
+    //
+    // The probe measures `ExecutorInlineStorage`, whose size depends on
+    // `NROS_EXECUTOR_MAX_CBS` and friends. Since issue 0460 those knobs resolve
+    // from the env OR from Zephyr's `$DOTCONFIG`, so two leaves can share a
+    // (rustc, target, features) key and still compile different-sized
+    // executors: `examples/workspaces/features/src/zephyr_rust_*_entry` set
+    // `CONFIG_NROS_EXECUTOR_MAX_CBS=16` while `examples/zephyr/rust/*` take the
+    // default 4.
+    //
+    // Sharing a probe dir across that difference is order-dependent corruption:
+    // whichever leaf probes FIRST writes the sizes, and if it was the 4-CBS one
+    // the 16-CBS leaf then compiles against a constant too small for its own
+    // storage and dies on nros-c's `EXECUTOR_OPAQUE_U64S too small` assert. It
+    // survives a clean rebuild of the failing leaf because the poisoned dir is
+    // the SHARED one, which is why this looked like a latent condition.
+    //
+    // The comment above this function already says "sharing without this key is
+    // worse than not sharing" — this is the other half of the key it was
+    // talking about.
+    for (k, v) in knob_identity() {
+        mix(b"\x1e");
+        mix(k.as_bytes());
+        mix(b"=");
+        mix(v.as_bytes());
+    }
     format!("{h:016x}")
+}
+
+/// Every input that can change a probed SIZE, resolved the same two ways the
+/// consuming crate resolves them (issue 0460): explicit `NROS_*` env, else the
+/// matching `CONFIG_NROS_*` line in Zephyr's `$DOTCONFIG`.
+///
+/// Returned sorted so the key cannot split on iteration order. Deliberately
+/// broad — an unknown-but-set `NROS_*` knob keys the probe rather than silently
+/// sharing with a build that did not set it.
+fn knob_identity() -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = env::vars()
+        .filter(|(k, _)| k.starts_with("NROS_") && !k.starts_with("NROS_SIZES_"))
+        .collect();
+    // Zephyr's Kconfig reaches the crate through `$DOTCONFIG`, so it reaches the
+    // SIZE too — and a leaf that sets a knob there sets nothing in the env.
+    if let Some(dotconfig) = env::var_os("DOTCONFIG")
+        && let Ok(text) = std::fs::read_to_string(&dotconfig)
+    {
+        for line in text.lines() {
+            let line = line.trim();
+            if let Some(rest) = line.strip_prefix("CONFIG_NROS_")
+                && let Some((name, value)) = rest.split_once('=')
+            {
+                out.push((format!("CONFIG_NROS_{name}"), value.to_string()));
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 fn rustc_version_slug() -> String {
