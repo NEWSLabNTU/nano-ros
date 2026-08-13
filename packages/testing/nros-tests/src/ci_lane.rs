@@ -31,14 +31,14 @@
 //!
 //! Cost is [`coords`], not cell count: cells share fixtures, and it is FIXTURES
 //! that take hours to build. Measured 2026-07-30 against 182 runtime cells and
-//! 47 coordinates:
+//! 48 coordinates:
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
 //! | [`CiLane::Tier1`] | native, 1-wise w,k + pairwise l × r | 16 | 10 | 21 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 12 | 13 | 28 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 35 | 35 | 74 % |
-//! | tier 3 | everything | 191 | 47 | 100 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 12 | 13 | 27 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 36 | 36 | 75 % |
+//! | tier 3 | everything | 192 | 48 | 100 % |
 //!
 //! **These numbers are GATED, not transcribed** — `documented_lane_table_is_live`
 //! recomputes them and fails if this table drifts (phase-342 W3). They had:
@@ -284,7 +284,7 @@ fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
             vec![Axis::Lang, Axis::Rmw],
         ),
         // 1-wise(platform, lang, rmw, kind) — every declared value once, no
-        // pairing. 13 of 47 coordinates (gated by `documented_lane_table_is_live`).
+        // pairing. 13 of 48 coordinates (gated by `documented_lane_table_is_live`).
         CiLane::Tier2 => (
             vec![Axis::Platform, Axis::Lang, Axis::Rmw, Axis::Kind],
             vec![],
@@ -620,7 +620,7 @@ mod tests {
         let documented = [
             (CiLane::Tier1, 16, 10),
             (CiLane::Tier2, 12, 13),
-            (CiLane::Tier2Nightly, 35, 35),
+            (CiLane::Tier2Nightly, 36, 36),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -639,8 +639,8 @@ mod tests {
             );
         }
         assert_eq!(
-            total_coords, 47,
-            "the table's tier-3 denominator (47 coordinates) is stale; recomputed \
+            total_coords, 48,
+            "the table's tier-3 denominator (48 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }
