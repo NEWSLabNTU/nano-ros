@@ -61,22 +61,25 @@ static THREADX_RV64_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_RV64_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-riscv64-threadx/rust/{}", name));
-
-    if !example_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "ThreadX RISC-V example directory not found: {}",
-            example_dir.display()
-        )));
-    }
-
-    let binary_path = example_dir.join(format!(
-        "target-zenoh/riscv64gc-unknown-none-elf/{}/{}",
-        super::cargo_target_profile_dir(),
-        binary_name
-    ));
-    super::require_prebuilt_binary_fresh(&binary_path)
+    // issue 0556 — go through the manifest ROW, never a hand-spelled leaf path.
+    //
+    // This used to join `target-zenoh/<triple>/<profile>/<bin>` onto the example
+    // dir. The row authors no `target_dir`, so its artifact root is
+    // `<dir>/target`; `target-zenoh` matched no row, attribution failed, the
+    // shared-group redirect never fired, and the resolver read a leaf tree the
+    // fixture build had stopped writing MONTHS earlier:
+    //
+    //     Test fixture binary not prebuilt: examples/qemu-riscv64-threadx/rust/
+    //       talker/target-zenoh/riscv64gc-unknown-none-elf/nros-relwithdebinfo/…
+    //
+    // while the build wrote `build/cargo-fixtures/threadx-riscv64-<slug>/…`. The
+    // artifact on the authored path was from 06-13; both `rtos_e2e`
+    // ThreadxRiscv64 cases read as failures for it, and looked like flaky QEMU.
+    //
+    // `build_threadx_rv64_rust_example_rmw` is the sibling that already does
+    // this correctly for the same platform — one derivation, not two (#393:
+    // move the test-side locator in the SAME commit as the build-side path).
+    super::build_threadx_rv64_rust_example_rmw(name, binary_name, super::Rmw::Zenoh)
 }
 
 pub fn build_threadx_rv64_talker() -> TestResult<&'static Path> {

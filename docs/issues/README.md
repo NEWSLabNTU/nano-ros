@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+RESOLVED 2026-08-13 — **#556** `threadx_riscv64.rs::build_rust_example` hand-spelt
+`target-zenoh/<triple>/<profile>/<bin>` onto the example dir. That leaf's row authors no `target_dir`, so
+its artifact root is `<dir>/target`: the hand-written path matched NO row, attribution failed, the
+shared-group redirect never fired, and the resolver read a **06-13** artifact while the build wrote
+`build/cargo-fixtures/threadx-riscv64-<slug>/`. Both `rtos_e2e` ThreadxRiscv64 cases failed as "not
+prebuilt" on a lane that reported OK — and were carried as QEMU load-flakes (twice in this session's own
+triage) because a stale-path read is indistinguishable from a real failure unless you check where the
+binary came from. Fixed by delegating to `build_threadx_rv64_rust_example_rmw`, the sibling already doing
+it via `select_row`. Both now PASS (35.3s / 40.3s). Swept: last resolver bypassing the row. #0393 /
+#0482's class. See `archived/0556-*`. (2026-08-13)
 RESOLVED 2026-08-13 — **#528 / #548 / #555**, closed together on one full-sweep measurement.
 `just build-test-fixtures` (lane=all) reports `== zephyr == OK` with 69 fixtures built, zero
 `EXECUTOR_OPAQUE_U64S` asserts (was six leaves, whole module down) and zero clock undefined refs —
