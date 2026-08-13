@@ -90,9 +90,10 @@ fn crate_name(o: &MetadataBuildOptions) -> Option<&str> {
 /// `build-std = ["std", "panic_abort"]` makes cargo rebuild `std` FROM SOURCE
 /// for whatever it is building — including the harness under
 /// `--target <host>`. NuttX's workspace does exactly this and additionally
-/// points `libc` at a NuttX-patched copy (`scripts/build/nuttx-libc-patch.sh`,
-/// phase-214.M), so the host `std` rebuild fails on members that patched libc
-/// does not carry:
+/// points `libc` at a NuttX-patched copy (declared by
+/// `packages/boards/nros-board-nuttx-qemu/nros-board.toml`, delivered by sync
+/// as a `# nros-managed` row since phase-351 W3), so the host `std` rebuild
+/// fails on members that patched libc does not carry:
 ///
 /// ```text
 /// error[E0599]: no function or associated item named `default` found for

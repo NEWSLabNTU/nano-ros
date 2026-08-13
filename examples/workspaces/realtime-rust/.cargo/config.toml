@@ -97,7 +97,9 @@ rustflags = [
 # REQUIRED for a cold build-std of the nuttx row; cargo reports it "not used in
 # the crate graph" because it patches only build-std's `std` libc, NOT the
 # regular graph (the native rows keep crates.io `libc`, unaffected). Path is
-# relative to the workspace root. Mirrors `examples/workspaces/rust`.
+# relative to the workspace root. phase-351 W3 — SYNC-MANAGED: declared once by
+# `packages/boards/nros-board-nuttx-qemu/nros-board.toml`; edit the board, not
+# this row.
 [patch.crates-io]
-libc = { path = "../../../third-party/nuttx/libc" }
+libc = { path = "../../../third-party/nuttx/libc" }  # nros-managed
 nros-zephyr-build = { path = "../../../packages/tooling/nros-zephyr-build" }  # nros-managed

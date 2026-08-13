@@ -121,6 +121,40 @@ projection_missing() {
     return 0
 }
 
+# phase-351 W3 — the DUAL of `projection_missing`, and the reason a config can
+# be "pure sync output" and still have to stay tracked.
+#
+# W3 moved the last hand-authored rows out of twelve embedded leaves (the NuttX
+# `libc` patch, the ThreadX `[env]` block) into their board descriptor, which
+# `nros sync` now delivers. Those configs then held nothing but the `include`
+# line and the managed patch block — "pure artifact" by the test above, so the
+# gate demanded they be untracked.
+#
+# That would be wrong, and in exactly the direction issue 0559 was about. The
+# include names `nros-board.toml`, which IS committed, and which carries the
+# leaf's `[build] target` and link rustflags. Drop the config from git and a
+# fresh clone has the projection with nothing reaching it: the leaf builds for
+# the host, or not at all — the failure the header at the top of this file
+# describes. Sync could recreate the line, but "run sync first" is precisely
+# what committing the projection exists to avoid.
+#
+# So: including a COMMITTED projection is content, even though sync wrote it.
+#
+# Used in ONE direction only — it stops the gate demanding these be UNTRACKED.
+# It deliberately does not demand the converse (track every config that includes
+# a committed projection): a WORKSPACE MEMBER's `.cargo/config.toml` is never
+# read for the builds we run, because cargo discovers config from the invocation
+# CWD upward and corrosion invokes cargo from the workspace root
+# (`workspace_toml_dir`). Demanding those be committed would be policy about a
+# file that does not govern — phase-349 W2.0 measured exactly that.
+includes_committed_projection() {
+    local cfg="$1" dir
+    dir="$(dirname "$cfg")"
+    sed -n '/^\[/q;p' "$cfg" | grep -oE '^include *= *\[[^]]*\]' |
+        grep -q 'nros-board\.toml' || return 1
+    git ls-files --error-unmatch "$dir/nros-board.toml" >/dev/null 2>&1
+}
+
 has_orphan_include() {
     local cfg="$1" entry base
     # Only the top-level key: scanning past the first table header would let a
@@ -186,7 +220,7 @@ while IFS= read -r -d '' cfg; do
             echo "  $cfg" >&2
             untracked_authored=$((untracked_authored + 1))
         fi
-    elif [ "$tracked" -eq 1 ]; then
+    elif [ "$tracked" -eq 1 ] && ! includes_committed_projection "$cfg"; then
         if [ "$tracked_pure" -eq 0 ]; then
             echo "check-cargo-config-tracked: pure sync-output cargo config IS tracked:" >&2
         fi

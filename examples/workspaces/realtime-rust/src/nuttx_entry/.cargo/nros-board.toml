@@ -11,10 +11,11 @@
 #
 # RFC-0032 "third leg" / docs/roadmap/phase-341-*.
 #
-# WITHHELD from this projection: patch. Those keys carry a `${workspace}`
-# placeholder, which renders to one host's absolute checkout path and so
-# cannot be committed (issue 0457). They remain the leaf's own authored
-# `.cargo/config.toml` content.
+# phase-351 W3 — `${workspace}` paths are rendered RELATIVE to this leaf
+# (they point inside the repo, so they are the same in every checkout).
+# `[patch]` rows are NOT here: they ride sync's `# nros-managed` entries in
+# the sibling `config.toml`, because a `[patch.crates-io]` in this file
+# would collide with the one that already lives there.
 
 [build]
 target = "armv7a-nuttx-eabihf"

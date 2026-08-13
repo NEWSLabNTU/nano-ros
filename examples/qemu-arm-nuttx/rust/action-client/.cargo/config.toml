@@ -4,13 +4,6 @@ include = [ "../../../../../nros-patch.toml", "nros-board.toml"]
 
 
 [patch.crates-io]
-# #127 blocker-1: the patched libc for build-std lives UNDER this single
-# [patch.crates-io] table — never a second `[patch.crates-io]` header
-# (duplicate table -> invalid TOML). The pinned nightly's `std` references
-# `libc::_SC_HOST_NAME_MAX`, which crates.io libc does not define for NuttX;
-# the fork at third-party/nuttx/libc adds it. Path is relative to the
-# invocation cwd (this example dir), not the config file. Untagged (no
-# `# nros-managed` suffix), so `nros sync` preserves it as a user key.
-libc = { path = "../../../../third-party/nuttx/libc" }
+libc = { path = "../../../../third-party/nuttx/libc" }  # nros-managed
 nros-board-nuttx-qemu = { path = "../../../../packages/boards/nros-board-nuttx-qemu" }  # nros-managed
 nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed

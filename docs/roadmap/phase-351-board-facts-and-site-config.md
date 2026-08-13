@@ -1,6 +1,6 @@
 # Phase 351 — Board facts and site config: split them, then retire the old path
 
-**Status (2026-08-13). PROPOSED — no code landed.** Supersedes
+**Status (2026-08-14). W1 + W2 + W3 LANDED; W4–W6 open.** Supersedes
 [phase-349](phase-349-rtos-integration-shells.md) W2.0, whose leaf-`[env]`
 carrier is retired here (W6).
 
@@ -27,14 +27,20 @@ content today (`runner`, linker scripts, `${workspace}` paths), and `${workspace
 is stripped by a withholding filter that warns and *discards* — a filter with no
 destination.
 
+> **W3 corrected two thirds of that sentence** (2026-08-14). The `${workspace}`
+> paths are REPO paths, not site content — they now render leaf-relative, and the
+> filter is gone. The linker scripts are search-path NAMES, not paths. Only
+> `runner` really is site content, and it is the one thing W3 did not move; the
+> reason is under W3.
+
 ---
 
-## W1 — `[deploy.*]` gains the site keys
+## W1 — `[deploy.*]` gains the site keys ✅ (2026-08-13)
 
-- [ ] Schema + loader for `sdk.*`, `netstack`, `config_files` (a NAMED MAP —
+- [x] Schema + loader for `sdk.*`, `netstack`, `config_files` (a NAMED MAP —
       ThreadX needs `TX_USER_FILE` *and* `NX_USER_FILE`), `include_dirs`,
       `upload`, with `{env:…}` and `{sdk.*}` interpolation.
-- [ ] `nros config explain` reports **file, section and rung** for every
+- [x] `nros config explain` reports **file, section and rung** for every
       resolved value.
 
 *Acceptance:* a `[deploy.*]` block carrying every key round-trips, and `explain`
@@ -46,10 +52,10 @@ names where each value came from.
 say where a value came from just relocates the mystery — which is the whole
 reason the current arrangement is hard to debug.
 
-## W2 — this repo's own site values, generated and gated
+## W2 — this repo's own site values, generated and gated ✅ (2026-08-13)
 
-- [ ] Generate the in-tree `[deploy.*]` site values from `just/sdk-env.just`.
-- [ ] Both live; a gate asserts they agree (the phase-347 pattern — an
+- [x] Generate the in-tree `[deploy.*]` site values from `just/sdk-env.just`.
+- [x] Both live; a gate asserts they agree (the phase-347 pattern — an
       agreement gate while two spellings coexist).
 
 *Acceptance:* the gate fails when either side moves.
@@ -57,17 +63,71 @@ reason the current arrangement is hard to debug.
 `just/sdk-env.just` is currently the de-facto site config *and only in-tree
 users have it*. That is why an out-of-tree user had nowhere to put SDK roots.
 
-## W3 — move site content OUT of board descriptors
+## W3 — give the withheld content a home ✅ (2026-08-14)
 
-- [ ] `runner` → test-harness config (C), keyed by board. It is duplicated
-      across `baremetal` and `freertos` today because it describes the
-      **machine**, not the board package.
-- [ ] linker-script paths and `${workspace}` paths → `[deploy.*]`.
-- [ ] **Delete the `${workspace}` withholding filter.** Once site paths have a
-      home it has nothing to filter — that is the test that the split is real.
+**Landed, with two of its three items answered differently than planned.** The
+wave was written from the *shape* of the descriptors; doing it measured what
+each key actually is, and two classifications were wrong. Recorded here rather
+than quietly re-scoped.
 
-*Acceptance:* no board descriptor contains a path, a runner, or `${workspace}`;
-`check-board-projections` still green; the FreeRTOS and NuttX fixtures build.
+- [x] **`${workspace}` paths now RENDER, leaf-relative** — they were never site
+      config. Every one points INSIDE the repo (`third-party/nuttx/libc`, a
+      board's own `config/`), so relative to the leaf they are identical in
+      every checkout, which is exactly issue 0463's rule for what may be
+      committed. The plan's "move them to `[deploy.*]`" would have made repo
+      facts into per-project settings.
+- [x] **The withholding filter is deleted.** It withheld whole top-level TABLES
+      (one `${workspace}` row in `[env]` took `THREADX_PORT` with it) and named
+      them in a header — a filter with no destination. Now: `[env]` values are
+      rendered `{ value = "<rel>", relative = true }`, everything else plain.
+- [x] **`[patch]` rows are DELIVERED, not withheld** — as sync's `# nros-managed`
+      inline rows, resolved against the patch AUTHORITY (a workspace's root, a
+      standalone leaf's own dir). They cannot ride the projection: the leaf's
+      `config.toml` always owns `[patch.crates-io]`, and a second one collides in
+      `board_projection_conflicts`, which drops the `include` for the whole file.
+- [x] **Two shell workarounds retired.** `scripts/build/nuttx-libc-patch.sh`
+      re-appended the NuttX `libc` row after every sync, from BOTH fixture lanes,
+      because sync used to strip it. Its own header said it existed "until the
+      upstream CLI bug is fixed" — against `nros` 0.3.7, and the CLI has been
+      in-tree since phase 218. The board declares that row once now.
+- [x] `nros ws check-board-projections --write` — the gate regenerates, so a
+      descriptor edit does not mean 42 full syncs.
+- [ ] ~~`runner` → test-harness config~~ — **wrong destination; deferred to W5.**
+      See below.
+
+*Acceptance met:* `check-board-projections` green (42 leaves), and the FreeRTOS,
+ThreadX-riscv64 (the `[env]` case) and NuttX-arm (the `[patch]` case) fixtures
+build. Positive proof rather than absence-of-error for the last one: `cargo
+metadata` in `examples/qemu-arm-nuttx/rust/talker` resolves `libc 0.2.183` to
+`third-party/nuttx/libc/Cargo.toml` with no hand-authored row left in the leaf.
+
+**Why `runner` did not move.** The plan said it was test-harness config (C).
+Measured: `nros_tests::qemu` never reads cargo's `runner` — it builds its own
+QEMU command, with the networking the runner lacks. The runner's live consumer
+is the BOOK (`book/src/getting-started/freertos.md` runs the example with
+`cargo run --release`; the bare-metal page documents that the runner boots
+QEMU *without* networking and sends you to `just qemu talker` instead). So
+moving it to the harness would delete a documented user flow and give the
+harness something it does not want.
+
+What it actually is: **how a host runs this board's image** — a deploy
+convenience, category B, sibling of `upload`. It is duplicated across the
+`baremetal` and `freertos` descriptors because both boards run on the same
+MACHINE. Moving it needs the delivery question W5 owns, and one W3 could not
+answer: a site value has TWO homes — a workspace's `system.toml`
+`[deploy.<n>.nros]`, and a standalone leaf's `Cargo.toml`
+`[package.metadata.nros.deploy.<n>]` (which is where the 19 copy-out examples
+declare `locator`/`ip`/`gateway` today).
+
+**Not moved either, and deliberately:** the linker-script arguments. `-Tlink.x`,
+`-Tdramboot.ld`, `-Tmps2_an385.ld` are NAMES resolved through the linker's
+search path, which the board crate's build script propagates — not paths. There
+was nothing there to move.
+
+**Still a fourth copy:** `packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64/`
+hand-authors the same four `[env]` rows. It declares no
+`[package.metadata.nros.entry] deploy`, so no descriptor claims it and sync
+cannot reach it. Fixing that is a deploy-key question, not a rendering one.
 
 ## W4 — `supported_netstacks`, and a resolver that checks it
 
@@ -109,7 +169,7 @@ paired**. The pairing has a validity domain.
 ## Order
 
 ```
-W1 ──► W2 ──► W3 ──► W4 ──► W5 ──► W6
+W1 ✅ ──► W2 ✅ ──► W3 ✅ ──► W4 ──► W5 ──► W6
 ```
 
 Strictly sequential: each wave's acceptance is the next wave's precondition, and

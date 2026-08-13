@@ -69,8 +69,6 @@ source "$repo_root/scripts/build/build-root.sh"
 source "$repo_root/scripts/build/cargo.sh"
 # shellcheck source=scripts/build/cmake-incremental.sh
 source "$repo_root/scripts/build/cmake-incremental.sh"
-# shellcheck source=scripts/build/nuttx-libc-patch.sh
-source "$repo_root/scripts/build/nuttx-libc-patch.sh"
 
 cd "$repo_root"
 
@@ -238,12 +236,10 @@ build_workspace() {
         echo "     nros sync"
         "$nros_cli" sync >/dev/null
 
-        # Phase 225.O — `nros sync` strips the board-template
-        # `[patch.crates-io] libc` from the rendered `.cargo/config.toml`,
-        # so re-append the patched NuttX libc here, mirroring the
-        # single-node lane in scripts/build/fixtures-build.sh. Idempotent
-        # and a no-op for non-NuttX workspace rows.
-        NROS_REPO_DIR="$repo_root" nros_nuttx_libc_patch "$repo_root/$dir"
+        # phase-351 W3 — the Phase 225.O re-append of the board's
+        # `[patch.crates-io] libc` is GONE: sync no longer strips that row, it
+        # DELIVERS it (`# nros-managed`, leaf-relative). Two lanes carried the
+        # same workaround; both are retired together.
 
         # The manifest's `env = { … }` applies to the WHOLE row: codegen AND the
         # compile, in every language. It used to be exported only inside the

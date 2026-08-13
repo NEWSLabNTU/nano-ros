@@ -10,6 +10,12 @@
 # is drift, which phase-341 exists to make uncommittable (issue 0440).
 #
 # RFC-0032 "third leg" / docs/roadmap/phase-341-*.
+#
+# phase-351 W3 — `${workspace}` paths are rendered RELATIVE to this leaf
+# (they point inside the repo, so they are the same in every checkout).
+# `[patch]` rows are NOT here: they ride sync's `# nros-managed` entries in
+# the sibling `config.toml`, because a `[patch.crates-io]` in this file
+# would collide with the one that already lives there.
 
 [build]
 target = "riscv32imc-unknown-none-elf"

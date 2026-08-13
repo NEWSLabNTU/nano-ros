@@ -316,14 +316,12 @@ else
     source scripts/build/codegen-stamp.sh
     export -f nros_codegen_stamp_compute nros_codegen_stamp_check_or_wipe \
               nros_codegen_stamp_write _codegen_stamp_repo_root _codegen_stamp_sources
-    # Phase 214.M.2 — re-append the patched libc to NuttX fixtures'
-    # `.cargo/config.toml` after `nros sync` runs. Workaround until
-    # the CLI bug that drops `[patch.crates-io]` from the rendered
-    # `cargo_config` template is fixed upstream. No-op for non-NuttX
-    # fixtures. See `scripts/build/nuttx-libc-patch.sh`.
-    # shellcheck source=scripts/build/nuttx-libc-patch.sh
-    source scripts/build/nuttx-libc-patch.sh
-    export -f nros_nuttx_libc_patch
+    # phase-351 W3 — the NuttX `libc` re-append (Phase 214.M.2,
+    # `scripts/build/nuttx-libc-patch.sh`) is GONE. It existed because sync
+    # WITHHELD every `${workspace}`-bearing key from the board projection, so
+    # the row the board declares never reached a leaf. Sync now delivers it as
+    # a `# nros-managed` `[patch.crates-io]` row, leaf-relative — one spelling,
+    # in the file the leaf already had.
     nros_fixture_build_one() {
         local dir envstr args
         IFS=$'\x1f' read -r dir envstr args <<< "$1"
@@ -343,9 +341,6 @@ else
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$dir"
             NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync "$dir" >/dev/null
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$dir"
-            # Phase 214.M.2 — fix up the rendered `.cargo/config.toml`
-            # for NuttX fixtures (no-op for other platforms).
-            NROS_REPO_DIR="$NROS_REPO_ROOT" nros_nuttx_libc_patch "$dir"
         fi
         # Phase 226.D — append the shared fixture-only --target-dir for
         # eligible rows (no-op for rows whose platform isn't migrated yet).

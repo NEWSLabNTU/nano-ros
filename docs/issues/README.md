@@ -57,7 +57,7 @@ because tier 1's success banner spelt `` `just ci-matrix` `` inside DOUBLE quote
 lane gate and splice its output into the sentence. The gate fails fast on tier-1 fixtures, which is why
 this cost seconds rather than hours — and why nobody looked. Nine sibling echoes across `just/*.just`
 already escape their backticks; this was the tenth. Sweep: `grep -n 'echo "[^"]*`' justfile just/*.just`.
-See `0568-*`. (2026-08-14)
+See `archived/0568-*`. (2026-08-14)
 
 **#567** (rmw, open 2026-08-14) — `_zp_unicast_read` RESETS its receive buffer on every call
 (`_z_zbuf_reset`), so it cannot return with bytes unread; the inner loop below it therefore drains every

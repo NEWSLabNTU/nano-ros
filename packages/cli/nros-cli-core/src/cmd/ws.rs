@@ -199,6 +199,13 @@ pub struct CheckBoardProjectionsArgs {
     /// Workspace or single-package dir to scan. Defaults to the cwd.
     #[arg(default_value = ".")]
     pub path: PathBuf,
+    /// Rewrite the projections instead of reporting them (phase-351 W3).
+    ///
+    /// Same writer `nros sync` uses — this is sync's board-projection pass on
+    /// its own, for when a DESCRIPTOR changed and the 59 committed projections
+    /// have to follow without paying for message codegen in every leaf.
+    #[arg(long)]
+    pub write: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -2238,6 +2245,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // the writer can tell a legitimately-removed dep from one this run
     // failed to generate (the narrowing guard in `write_patch_block`).
     let mut authority_to_requested: HashMap<PathBuf, HashSet<String>> = HashMap::new();
+    let mut authority_to_leaves: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
     for c in &rust_consumers {
         let authority = find_patch_authority(&c.dir, &ws_root)?;
         // phase-333 W1 — only deps this consumer declares BY REGISTRY NAME can be
@@ -2268,9 +2276,17 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             all_emitted.clone()
         };
         authority_to_pkgs
-            .entry(authority)
+            .entry(authority.clone())
             .or_default()
             .extend(pkgs_for);
+        // phase-351 W3 — which leaves answer to this authority, so its
+        // `[patch.crates-io]` can carry the rows their BOARDS declare. A
+        // workspace's authority is its ROOT, and one workspace can hold entries
+        // for several boards, so this is a set union, not a single board.
+        authority_to_leaves
+            .entry(authority)
+            .or_default()
+            .push(c.dir.clone());
     }
     let nano_ros_path = args
         .nano_ros_path
@@ -2324,6 +2340,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         let requested = authority_to_requested
             .remove(&authority)
             .unwrap_or_default();
+        let leaf_dirs = authority_to_leaves.remove(&authority).unwrap_or_default();
         write_patch_block(
             &authority,
             &build_root,
@@ -2332,6 +2349,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             &extras,
             central_patch.as_deref(),
             &requested,
+            &leaf_dirs,
         )?;
     }
 
@@ -3148,6 +3166,15 @@ fn run_check_board_projections(args: CheckBoardProjectionsArgs) -> Result<()> {
         .map(PathBuf::from)
         .or_else(|| autodetect_nano_ros_path(&ws_root));
 
+    if args.write {
+        // phase-351 W3 — sync's board-projection pass, alone. Writing with the
+        // SAME function the check calls is the point: a separate "regenerate"
+        // path would be a second spelling of the render, which is the drift
+        // phase-341 removed.
+        project_board_configs(&leaves, nano_ros_path.as_deref(), false)?;
+        return Ok(());
+    }
+
     let complaints = project_board_configs_with(&leaves, nano_ros_path.as_deref(), false, true)?;
     if complaints.is_empty() {
         println!(
@@ -3178,15 +3205,72 @@ fn run_model_dims(args: ModelDimsArgs) -> Result<()> {
     Ok(())
 }
 
+/// The `[patch.crates-io]` rows this leaf's board descriptor declares, resolved
+/// against the leaf (phase-351 W3).
+///
+/// Conservative in exactly the way [`project_board_configs_with`] is: no
+/// checkout, no catalog, an unresolvable `deploy`, or an out-of-tree leaf all
+/// mean NO rows rather than a guess. A wrong row here would be written into ~700
+/// leaf configs (issues 0457 / 0463), so silence is the safe direction — the
+/// leaf then resolves exactly as it did before this wave.
+/// The rows are resolved against the AUTHORITY directory, not the leaf: that is
+/// the `.cargo/config.toml` they land in, and cargo resolves a config path
+/// against the parent of `.cargo/`. For a workspace that is the ROOT, which is
+/// also why this takes every leaf answering to one authority — one workspace can
+/// hold entries for several boards, and the root config carries their union.
+fn board_declared_patch_rows(
+    authority_dir: &Path,
+    leaf_dirs: &[PathBuf],
+    nano_ros_path: Option<&Path>,
+) -> Result<Vec<(String, String)>> {
+    use crate::orchestration::board_descriptor::{BoardCatalog, DeployResolution};
+
+    let Some(nrp) = nano_ros_path else {
+        return Ok(Vec::new());
+    };
+    let nrp_c = nrp.canonicalize().unwrap_or_else(|_| nrp.to_path_buf());
+    let Some(prefix) = leaf_to_root_prefix(authority_dir, &nrp_c) else {
+        return Ok(Vec::new()); // out-of-tree consumer (#272)
+    };
+    let Ok(catalog) = BoardCatalog::load(&nrp_c) else {
+        return Ok(Vec::new());
+    };
+    let mut out: Vec<(String, String)> = Vec::new();
+    for leaf in leaf_dirs {
+        let Ok(manifest) = std::fs::read_to_string(leaf.join("Cargo.toml")) else {
+            continue;
+        };
+        let Some(deploy) = entry_deploy_key(&manifest) else {
+            continue; // not an Entry pkg — no board to inherit from
+        };
+        let DeployResolution::Board(descriptor) = catalog.resolve_deploy(&deploy) else {
+            continue; // unknown or ambiguous — the projection pass says so
+        };
+        let Some(raw) = descriptor.cargo_config.as_deref() else {
+            continue;
+        };
+        for row in board_patch_rows(raw, &prefix)? {
+            if !out.contains(&row) {
+                out.push(row);
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn write_patch_block(
     authority: &Path,
     build_root: &Path,
     pkgs: &[String],
     nano_ros_path: Option<&Path>,
     extra_runtime_crates: &[String],
-    central_patch: Option<&Path>,
+    requested_central_patch: Option<&Path>,
     requested: &HashSet<String>,
+    leaf_dirs: &[PathBuf],
 ) -> Result<()> {
+    let central_patch = requested_central_patch;
     let authority_dir = authority.parent().unwrap();
     let mut entries = render_managed_entries(
         authority,
@@ -3196,6 +3280,15 @@ fn write_patch_block(
         extra_runtime_crates,
         requested,
     )?;
+    // phase-351 W3 — rows the leaf's BOARD declares (`nros-board-nuttx-qemu`'s
+    // NuttX-patched `libc` for `-Z build-std`). They are in-repo relative paths,
+    // so they stay INLINE in the tracked config like every other in-repo row
+    // (issue 0463's split by ORIGIN) — the sidecar is only for `generated/`.
+    entries.extend(board_declared_patch_rows(
+        authority_dir,
+        leaf_dirs,
+        nano_ros_path,
+    )?);
     // #272 — how this leaf reaches the central trio (`nros`/`nros-core`/
     // `nros-serdes`) depends on whether it lives INSIDE the nano-ros checkout:
     //
@@ -3943,67 +4036,154 @@ fn entry_deploy_key(cargo_toml_body: &str) -> Option<String> {
     (!deploy.is_empty()).then(|| deploy.to_string())
 }
 
-/// Does this item hold a `${workspace}` placeholder anywhere in its VALUES?
+/// The leaf-relative prefix that reaches the nano-ros root — `"../"` per path
+/// component, or `""` for a leaf that IS the root.
 ///
-/// Walks the DOM rather than the rendered text: `Item`'s `Display` yields
-/// nothing for a table, and matching on raw text would also fire on a comment
-/// that merely mentions the placeholder (the descriptors comment their paths).
-fn item_has_workspace_placeholder(item: &toml_edit::Item) -> bool {
-    fn in_value(v: &toml_edit::Value) -> bool {
-        match v {
-            toml_edit::Value::String(s) => s.value().contains("${workspace}"),
-            toml_edit::Value::Array(a) => a.iter().any(in_value),
-            toml_edit::Value::InlineTable(t) => t.iter().any(|(_, v)| in_value(v)),
-            _ => false,
-        }
-    }
-    match item {
-        toml_edit::Item::None => false,
-        toml_edit::Item::Value(v) => in_value(v),
-        toml_edit::Item::Table(t) => t.iter().any(|(_, i)| item_has_workspace_placeholder(i)),
-        toml_edit::Item::ArrayOfTables(a) => a
-            .iter()
-            .any(|t| t.iter().any(|(_, i)| item_has_workspace_placeholder(i))),
-    }
+/// This is what a `${workspace}` placeholder resolves to. Cargo resolves both a
+/// config `[patch]` path and an `[env]` `relative = true` value against the
+/// parent of the `.cargo/` directory — the leaf dir — so one prefix serves both,
+/// and the result is identical in every checkout (which is what makes it
+/// committable). `None` for a leaf outside the checkout, which #272 already
+/// declines to write into.
+fn leaf_to_root_prefix(leaf_dir: &Path, nano_ros_root: &Path) -> Option<String> {
+    let leaf = leaf_dir
+        .canonicalize()
+        .unwrap_or_else(|_| leaf_dir.to_path_buf());
+    let root = nano_ros_root
+        .canonicalize()
+        .unwrap_or_else(|_| nano_ros_root.to_path_buf());
+    let depth = leaf.strip_prefix(&root).ok()?.components().count();
+    Some("../".repeat(depth))
 }
 
-/// The part of a descriptor's `cargo_config` that may be COMMITTED, plus the
-/// top-level keys withheld from it.
+/// A descriptor's `cargo_config`, rendered for THIS leaf: `${workspace}`
+/// resolved leaf-relative, `[patch]` removed.
 ///
-/// A `${workspace}` placeholder renders to THIS host's checkout (that is what
-/// `BoardDescriptor::cargo_config_rendered` is for), and a committed file may
-/// not assert one machine's layout — the rule that sent sync's `generated/`
-/// patch rows to a gitignored sidecar (issue 0457). It is not hypothetical:
-/// `nros-board-nuttx-qemu` carries `[patch.crates-io] libc = { path =
-/// "${workspace}/third-party/nuttx/libc" }`, and cargo resolves a config
-/// `[patch]` path against the INVOCATION CWD, so the descriptor cannot express
-/// it relatively either — the leaf's own depth is the only thing that can.
+/// phase-351 W3. This replaces a filter that *withheld* every top-level key
+/// carrying `${workspace}` and named it in the header — a filter with no
+/// destination. What it withheld was not host-specific at all: every such path
+/// points INSIDE the repo (`third-party/nuttx/libc`, a board's own `config/`),
+/// so it is the same in every checkout the moment it is written relative to the
+/// leaf rather than absolute. That is issue 0463's rule, which the withholding
+/// predated: rows split by ORIGIN — in-repo relative rows are committable, only
+/// host-derived ones are not.
 ///
-/// So the placeholder-bearing top-level keys are withheld rather than the whole
-/// board being skipped: withholding one `[patch.crates-io]` row leaves the leaf
-/// exactly as it is today (that row is already authored per-leaf, relatively),
-/// while skipping the board would forfeit the projection for the very family
-/// issue 0440 broke. Withheld keys are named in the header and counted in
-/// sync's summary — never dropped silently.
-fn committable_board_config(raw: &str) -> Result<(String, Vec<String>)> {
+/// `[env]` values become `{ value = "<rel>", relative = true }`, because a bare
+/// `[env]` string is passed through verbatim and a relative path would then be
+/// read against the process CWD, which is not the leaf for a cmake/corrosion
+/// build. `force` is preserved where the descriptor set it.
+///
+/// **`[patch]` is removed, not rendered.** Not because it cannot be expressed —
+/// [`board_patch_rows`] expresses it — but because it cannot be *delivered
+/// here*: the leaf's own `config.toml` always carries `[patch.crates-io]` (sync
+/// writes the board-crate rows into it), and a projected `[patch.crates-io]`
+/// would collide with it in `board_projection_conflicts`, which drops the
+/// `include` for the WHOLE file. So patch rows ride sync's managed inline set
+/// instead — same file the leaf already has, same `# nros-managed` decor.
+fn project_board_config(raw: &str, leaf_prefix: &str) -> Result<String> {
+    use toml_edit::{Item, Value};
+
+    fn resolve(v: &mut Value, prefix: &str, in_env: bool) {
+        match v {
+            Value::String(s) => {
+                if !s.value().contains("${workspace}") {
+                    return;
+                }
+                let resolved = s.value().replace("${workspace}/", prefix);
+                if in_env {
+                    let mut t = toml_edit::InlineTable::new();
+                    t.insert("value", resolved.into());
+                    t.insert("relative", true.into());
+                    *v = Value::InlineTable(t);
+                } else {
+                    *v = resolved.into();
+                }
+            }
+            Value::Array(a) => a.iter_mut().for_each(|e| resolve(e, prefix, false)),
+            Value::InlineTable(t) => {
+                // An `[env]` row is already a table when it carries `force`; the
+                // placeholder lives in its `value`, and `relative` has to join it.
+                let is_env_row = in_env && t.contains_key("value");
+                let mut needs_relative = false;
+                for (k, inner) in t.iter_mut() {
+                    if let Value::String(s) = inner
+                        && s.value().contains("${workspace}")
+                    {
+                        *inner = s.value().replace("${workspace}/", prefix).into();
+                        needs_relative |= is_env_row && k == "value";
+                    } else {
+                        resolve(inner, prefix, false);
+                    }
+                }
+                if needs_relative {
+                    t.insert("relative", true.into());
+                    // Normalise the whole inline table: inserting after a value
+                    // that already carries trailing decor renders `force = true
+                    // , relative = true`, and this file is committed.
+                    t.fmt();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn walk(item: &mut Item, prefix: &str, in_env: bool) {
+        match item {
+            Item::Value(v) => resolve(v, prefix, in_env),
+            Item::Table(t) => t.iter_mut().for_each(|(_, i)| walk(i, prefix, in_env)),
+            Item::ArrayOfTables(a) => a
+                .iter_mut()
+                .for_each(|t| t.iter_mut().for_each(|(_, i)| walk(i, prefix, in_env))),
+            Item::None => {}
+        }
+    }
+
     let mut doc: toml_edit::DocumentMut = raw
         .parse()
         .wrap_err("parse a board descriptor's `cargo_config`")?;
-    let withheld: Vec<String> = doc
-        .as_table()
-        .iter()
-        .filter(|(_, item)| item_has_workspace_placeholder(item))
-        .map(|(k, _)| k.to_string())
-        .collect();
-    for k in &withheld {
-        doc.as_table_mut().remove(k);
+    doc.as_table_mut().remove("patch");
+    for (key, item) in doc.as_table_mut().iter_mut() {
+        walk(item, leaf_prefix, key == "env");
     }
-    Ok((doc.to_string(), withheld))
+    Ok(doc.to_string())
 }
 
-/// The DO-NOT-EDIT projection: header naming the descriptor it came from (and
-/// anything withheld from it), then the committable `cargo_config`.
-fn render_board_config(deploy: &str, descriptor: &str, body: &str, withheld: &[String]) -> String {
+/// The `[patch.crates-io]` rows a board descriptor declares, as
+/// `(crate, leaf-relative path)` — sync's managed-entry shape.
+///
+/// phase-351 W3. `nros-board-nuttx-qemu` declares the NuttX-patched `libc`
+/// fork that `-Z build-std` needs, and until now that declaration reached a
+/// leaf by THREE separate spellings: the descriptor row (withheld, so inert),
+/// a hand-authored row in each of the twelve NuttX leaf configs, and
+/// `scripts/build/nuttx-libc-patch.sh`, a shell re-append written against
+/// "nros 0.3.7" whose header says it exists "until the upstream CLI bug is
+/// fixed" — the CLI has been in-tree since phase 218. Delivering the row from
+/// the descriptor retires the other two.
+fn board_patch_rows(cargo_config: &str, leaf_prefix: &str) -> Result<Vec<(String, String)>> {
+    let doc: toml::Value = toml::from_str(cargo_config)
+        .wrap_err("parse a board descriptor's `cargo_config` for [patch] rows")?;
+    let Some(patch) = doc.get("patch").and_then(|p| p.as_table()) else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    for (_registry, rows) in patch {
+        let Some(rows) = rows.as_table() else {
+            continue;
+        };
+        for (name, spec) in rows {
+            let Some(path) = spec.get("path").and_then(|p| p.as_str()) else {
+                continue;
+            };
+            out.push((name.clone(), path.replace("${workspace}/", leaf_prefix)));
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// The DO-NOT-EDIT projection: header naming the descriptor it came from, then
+/// the rendered `cargo_config`.
+fn render_board_config(deploy: &str, descriptor: &str, body: &str) -> String {
     let mut out = format!(
         "# GENERATED by `nros sync` — DO NOT EDIT.\n\
          #\n\
@@ -4016,18 +4196,14 @@ fn render_board_config(deploy: &str, descriptor: &str, body: &str, withheld: &[S
          # sync has run. Edit the descriptor and re-run `nros sync`; editing here\n\
          # is drift, which phase-341 exists to make uncommittable (issue 0440).\n\
          #\n\
-         # RFC-0032 \"third leg\" / docs/roadmap/phase-341-*.\n"
+         # RFC-0032 \"third leg\" / docs/roadmap/phase-341-*.\n\
+         #\n\
+         # phase-351 W3 — `${{workspace}}` paths are rendered RELATIVE to this leaf\n\
+         # (they point inside the repo, so they are the same in every checkout).\n\
+         # `[patch]` rows are NOT here: they ride sync's `# nros-managed` entries in\n\
+         # the sibling `config.toml`, because a `[patch.crates-io]` in this file\n\
+         # would collide with the one that already lives there.\n"
     );
-    if !withheld.is_empty() {
-        out.push_str(&format!(
-            "#\n\
-             # WITHHELD from this projection: {}. Those keys carry a `${{workspace}}`\n\
-             # placeholder, which renders to one host's absolute checkout path and so\n\
-             # cannot be committed (issue 0457). They remain the leaf's own authored\n\
-             # `.cargo/config.toml` content.\n",
-            withheld.join(", ")
-        ));
-    }
     out.push('\n');
     out.push_str(body.trim_end_matches('\n'));
     out.push('\n');
@@ -4115,14 +4291,14 @@ fn render_board_include(existing: &str, present: bool) -> Result<String> {
 /// What the projection pass did to one leaf — for the summary sync prints.
 #[derive(Debug, PartialEq, Eq)]
 enum BoardProjection {
-    /// Written, and the leaf's `include` now reaches it. Carries the top-level
-    /// keys [`committable_board_config`] withheld, if any.
-    Included(Vec<String>),
+    /// Written, and the leaf's `include` now reaches it.
+    Included,
     /// Written, but the leaf still carries a conflicting hand-mirrored block,
     /// so no `include` was added (phase-341 W3 removes the mirror).
     ShadowedByMirror(Vec<String>),
-    /// Nothing to project — the board declares no `cargo_config`, or every key
-    /// of it was withheld. Any prior projection + include is removed.
+    /// Nothing to project — the board declares no `cargo_config` (or only a
+    /// `[patch]`, which sync delivers inline instead). Any prior projection +
+    /// include is removed.
     NoBoardConfig,
 }
 
@@ -4146,18 +4322,17 @@ fn write_board_projection(
     let dst = cfg_dir.join(BOARD_CONFIG_FILE);
     let existing_cfg = std::fs::read_to_string(&cfg).unwrap_or_default();
 
-    // What may be committed, and what `${workspace}` kept out of it. An error
-    // here means the descriptor's `cargo_config` is not valid TOML — a hard
-    // failure, because every other consumer of that string is about to hit the
-    // same thing and this is the only place that can name the board.
-    let (projected, withheld) = render_board_projection_body(leaf_dir, nano_ros_root, descriptor)
+    // An error here means the descriptor's `cargo_config` is not valid TOML — a
+    // hard failure, because every other consumer of that string is about to hit
+    // the same thing and this is the only place that can name the board.
+    let projected = render_board_projection_body(leaf_dir, nano_ros_root, descriptor)
         .wrap_err_with(|| {
-        format!(
-            "sync: board `{}` ({})",
-            descriptor.names.join("/"),
-            descriptor.source.as_deref().unwrap_or("nros-board.toml"),
-        )
-    })?;
+            format!(
+                "sync: board `{}` ({})",
+                descriptor.names.join("/"),
+                descriptor.source.as_deref().unwrap_or("nros-board.toml"),
+            )
+        })?;
 
     // "Nothing to project" is measured in KEYS, not bytes: a body left holding
     // only a stray comment is still nothing a leaf can inherit.
@@ -4182,7 +4357,6 @@ fn write_board_projection(
         deploy,
         descriptor.source.as_deref().unwrap_or("nros-board.toml"),
         &projected,
-        &withheld,
     );
     if std::fs::read_to_string(&dst).ok().as_deref() != Some(body.as_str()) {
         std::fs::create_dir_all(&cfg_dir)
@@ -4191,8 +4365,8 @@ fn write_board_projection(
     }
 
     // Conflicts are computed against what was PROJECTED, not the raw descriptor:
-    // a key we withheld is one the leaf must keep declaring itself, so it is not
-    // a duplicate.
+    // `[patch]` never reaches the projection (sync delivers those rows inline),
+    // so the leaf's own `[patch.crates-io]` is not a duplicate of anything here.
     let conflicts = board_projection_conflicts(&existing_cfg, &projected);
     let out = render_board_include(&existing_cfg, conflicts.is_empty())
         .wrap_err_with(|| format!("sync: edit {}", cfg.display()))?;
@@ -4202,7 +4376,7 @@ fn write_board_projection(
         atomic_write(&cfg, &out)?;
     }
     Ok(if conflicts.is_empty() {
-        BoardProjection::Included(withheld)
+        BoardProjection::Included
     } else {
         BoardProjection::ShadowedByMirror(conflicts)
     })
@@ -4265,7 +4439,7 @@ fn board_toml_env_row(
     ))
 }
 
-/// The projected body + the keys `${{workspace}}` kept out of it.
+/// The projected body for one leaf.
 ///
 /// ONE renderer, shared by the writer and the checker. They used to compute
 /// this separately, which is a second spelling of "what a fresh render is" —
@@ -4274,14 +4448,15 @@ fn render_board_projection_body(
     leaf_dir: &Path,
     nano_ros_root: &Path,
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
-) -> Result<(String, Vec<String>)> {
-    let (projected, withheld) = match descriptor.cargo_config.as_deref() {
-        Some(raw) => committable_board_config(raw)?,
-        None => (String::new(), Vec::new()),
+) -> Result<String> {
+    let prefix = leaf_to_root_prefix(leaf_dir, nano_ros_root).unwrap_or_default();
+    let projected = match descriptor.cargo_config.as_deref() {
+        Some(raw) => project_board_config(raw, &prefix)?,
+        None => String::new(),
     };
     match board_toml_env_row(leaf_dir, nano_ros_root, descriptor) {
-        Some(row) => Ok((merge_env_row(&projected, &row), withheld)),
-        None => Ok((projected, withheld)),
+        Some(row) => Ok(merge_env_row(&projected, &row)),
+        None => Ok(projected),
     }
 }
 
@@ -4382,7 +4557,7 @@ fn check_board_projection(
 ) -> Result<Option<String>> {
     let cfg_dir = leaf_dir.join(".cargo");
     let dst = cfg_dir.join(BOARD_CONFIG_FILE);
-    let (projected, withheld) = render_board_projection_body(leaf_dir, nano_ros_root, descriptor)?;
+    let projected = render_board_projection_body(leaf_dir, nano_ros_root, descriptor)?;
 
     let on_disk = std::fs::read_to_string(&dst).ok();
     if config_keys_depth2(&projected).is_empty() {
@@ -4399,7 +4574,6 @@ fn check_board_projection(
         deploy,
         descriptor.source.as_deref().unwrap_or("nros-board.toml"),
         &projected,
-        &withheld,
     );
     match on_disk {
         None => Ok(Some(format!(
@@ -4467,7 +4641,6 @@ fn project_board_configs_with(
     let mut included = 0usize;
     let mut shadowed = 0usize;
     let mut unresolved: BTreeSet<String> = BTreeSet::new();
-    let mut withheld_keys: BTreeSet<String> = BTreeSet::new();
     for leaf in leaves {
         // #272 — an out-of-tree consumer's leaf is not ours to write generated,
         // committed content into.
@@ -4499,11 +4672,8 @@ fn project_board_configs_with(
             continue;
         }
         match write_board_projection(&leaf.dir, &nrp_c, &deploy, descriptor)? {
-            BoardProjection::Included(withheld) => {
+            BoardProjection::Included => {
                 included += 1;
-                for k in withheld {
-                    withheld_keys.insert(format!("{deploy}: {k}"));
-                }
                 if verbose {
                     println!(
                         "sync: board config → {}",
@@ -4530,16 +4700,6 @@ fn project_board_configs_with(
             "sync: board configs — {included} leaf/leaves include \
              .cargo/{BOARD_CONFIG_FILE}, {shadowed} still governed by their own \
              [target.*] block (phase-341 W3)"
-        );
-    }
-    if !withheld_keys.is_empty() {
-        // Never silent: the leaf must keep declaring these itself, and a reader
-        // comparing the projection with the descriptor would otherwise think
-        // content had gone missing.
-        println!(
-            "sync: board configs — key(s) withheld from the committed projection \
-             (they carry `${{workspace}}`, an absolute host path): {}",
-            withheld_keys.iter().cloned().collect::<Vec<_>>().join("; ")
         );
     }
     if !unresolved.is_empty() {
@@ -5730,6 +5890,7 @@ std_msgs = { path = \"generated/std_msgs\" }  # nros-managed
             &[],
             Some(&central),
             &HashSet::new(),
+            &[],
         )
         .unwrap();
 
@@ -5774,6 +5935,7 @@ std_msgs = { path = \"generated/std_msgs\" }  # nros-managed
             &[],
             Some(&central),
             &HashSet::new(),
+            &[],
         )
         .unwrap();
 
@@ -6126,12 +6288,7 @@ rustflags = [
     /// reader to edit the wrong SSoT.
     #[test]
     fn projection_carries_a_do_not_edit_header_naming_its_descriptor() {
-        let out = render_board_config(
-            "nuttx",
-            "packages/boards/b/nros-board.toml",
-            NUTTX_BODY,
-            &[],
-        );
+        let out = render_board_config("nuttx", "packages/boards/b/nros-board.toml", NUTTX_BODY);
         assert!(
             out.starts_with("# GENERATED by `nros sync` — DO NOT EDIT."),
             "{out}"
@@ -6144,44 +6301,79 @@ rustflags = [
         assert!(doc.get("build").is_some());
     }
 
-    /// Issue-0457 rule, applied to a REAL descriptor shape: the in-tree NuttX
-    /// board patches `libc` at `${workspace}/third-party/nuttx/libc`, an
-    /// absolute host path once rendered — and cargo resolves a config `[patch]`
-    /// path against the invocation CWD, so the descriptor cannot express it
-    /// relatively either. That key is withheld from the committed projection
-    /// (named in the header), and everything else still projects.
+    /// phase-351 W3 — the destination the withholding filter never had.
+    ///
+    /// The real NuttX descriptor shape: `[patch.crates-io] libc = { path =
+    /// "${workspace}/third-party/nuttx/libc" }`. That path points INSIDE the
+    /// repo, so relative-to-the-leaf it is identical in every checkout — the
+    /// row is deliverable, it just cannot ride the PROJECTION (the leaf's own
+    /// `config.toml` already owns `[patch.crates-io]`). So the body drops it and
+    /// [`board_patch_rows`] hands it to sync's managed inline set.
     #[test]
-    fn workspace_placeholder_keys_are_withheld_not_committed() {
+    fn workspace_patch_row_is_delivered_relative_not_withheld() {
         let raw = format!(
             "{NUTTX_BODY}\n[patch.crates-io]\nlibc = {{ path = \"${{workspace}}/third-party/nuttx/libc\" }}\n"
         );
-        let (body, withheld) = committable_board_config(&raw).unwrap();
-        assert_eq!(withheld, vec!["patch".to_string()]);
+        let body = project_board_config(&raw, "../../../../").unwrap();
         assert!(
-            !body.contains("${workspace}"),
-            "host path projected:\n{body}"
+            !body.contains("${workspace}") && !body.contains("[patch"),
+            "patch must not ride the projection:\n{body}"
         );
         assert!(
             body.contains("link-arg=-Tdramboot.ld"),
             "the rest must survive:\n{body}"
         );
-        let out = render_board_config("nuttx", "b/nros-board.toml", &body, &withheld);
+
+        let rows = board_patch_rows(&raw, "../../../../").unwrap();
+        assert_eq!(
+            rows,
+            vec![(
+                "libc".to_string(),
+                "../../../../third-party/nuttx/libc".to_string()
+            )],
+            "the row is DELIVERED, leaf-relative — not dropped"
+        );
+
+        let out = render_board_config("nuttx", "b/nros-board.toml", &body);
         assert!(
-            out.contains("WITHHELD from this projection: patch"),
-            "a withheld key must be visible in the header:\n{out}"
+            !out.contains("WITHHELD"),
+            "nothing is withheld any more:\n{out}"
         );
     }
 
-    /// A board whose `cargo_config` is ENTIRELY placeholder-bearing still
-    /// projects the phase-349 W2.0 `[env]` row, because the DESCRIPTOR PATH is
-    /// a fact independent of whatever `${workspace}` kept out.
+    /// An `[env]` path must gain `relative = true`, or cargo passes the string
+    /// through verbatim and the build resolves it against the process CWD — not
+    /// the leaf, for anything cmake/corrosion launches.
+    #[test]
+    fn workspace_env_row_becomes_relative() {
+        let raw = "[env]\nTHREADX_CONFIG_DIR = { value = \"${workspace}/packages/boards/b/config\", force = true }\nTHREADX_PORT = { value = \"risc-v64/gnu\", force = true }\n";
+        let body = project_board_config(raw, "../../../../").unwrap();
+        assert!(
+            body.contains("value = \"../../../../packages/boards/b/config\""),
+            "path not made leaf-relative:\n{body}"
+        );
+        assert!(body.contains("relative = true"), "{body}");
+        assert!(body.contains("force = true"), "force must survive:\n{body}");
+        // The placeholder-free sibling used to be collateral damage: the filter
+        // withheld the WHOLE `[env]` table because one of its rows had a path.
+        assert!(
+            body.contains("THREADX_PORT")
+                && !body
+                    .contains("THREADX_PORT = { value = \"risc-v64/gnu\", force = true, relative"),
+            "a row with no path must be untouched:\n{body}"
+        );
+    }
+
+    /// A board whose `cargo_config` is ONLY a `[patch]` table still projects the
+    /// phase-349 W2.0 `[env]` row, because the DESCRIPTOR PATH is a fact
+    /// independent of what the body carries.
     ///
     /// This inverts the pre-W2.0 contract ("projects nothing, leave no file").
     /// Deliberate: build scripts need the board descriptor's location for the
     /// RFC-0049 board rung, and a leaf that resolves a board but carries no way
     /// to find it is the silently-absent case #529 is about.
     #[test]
-    fn fully_withheld_board_config_still_carries_the_descriptor_path() {
+    fn patch_only_board_config_still_carries_the_descriptor_path() {
         let dir = leaf(Some("[env]\nCC = \"gcc\"\n"));
         let outcome = write_board_projection(
             dir.path(),
@@ -6195,8 +6387,8 @@ rustflags = [
         assert_ne!(
             outcome,
             BoardProjection::NoBoardConfig,
-            "the descriptor path is projected even when every cargo_config key \
-             is withheld"
+            "the descriptor path is projected even when the body holds only \
+             rows that sync delivers inline"
         );
         let body = std::fs::read_to_string(dir.path().join(".cargo").join(BOARD_CONFIG_FILE))
             .expect("projection written");
@@ -6251,7 +6443,7 @@ rustflags = [
         let outcome =
             write_board_projection(dir.path(), dir.path(), "nuttx", &board(Some(NUTTX_BODY)))
                 .unwrap();
-        assert_eq!(outcome, BoardProjection::Included(vec![]));
+        assert_eq!(outcome, BoardProjection::Included);
         let cfg = read_cfg(dir.path());
         assert_eq!(includes(&cfg), vec![BOARD_CONFIG_FILE.to_string()], "{cfg}");
         assert!(
@@ -6372,14 +6564,14 @@ rustflags = [
         assert_eq!(std::fs::metadata(&cfg).unwrap().modified().unwrap(), m2);
     }
 
-    /// A placeholder inside a COMMENT is not a path — the descriptors comment
-    /// their `${workspace}` rows, and withholding a whole table because its
-    /// comment mentions one would silently drop link args.
+    /// A placeholder inside a COMMENT is prose, not a path. The rewrite walks
+    /// the DOM, so a comment keeps its text verbatim — including the literal
+    /// `${workspace}`, which is what the comment is explaining.
     #[test]
-    fn a_placeholder_in_a_comment_withholds_nothing() {
+    fn a_placeholder_in_a_comment_is_left_alone() {
         let raw = "# see ${workspace}/third-party for the script\n[build]\ntarget = \"x\"\n";
-        let (body, withheld) = committable_board_config(raw).unwrap();
-        assert!(withheld.is_empty(), "{withheld:?}");
+        let body = project_board_config(raw, "../../").unwrap();
+        assert!(body.contains("# see ${workspace}/third-party"), "{body}");
         assert!(body.contains("target = \"x\""), "{body}");
     }
 }

@@ -90,11 +90,12 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 # "not used in the crate graph" because it patches only build-std's
 # `std` libc, NOT the regular workspace graph (the native / freertos /
 # threadx / esp32 rows keep crates.io `libc` 0.2.186 — confirmed
-# unaffected). Hand-maintained (the single-node lane appends it via
-# `scripts/build/nuttx-libc-patch.sh`, which only fires on a per-example
-# `[build] target` line — this shared workspace config has none).
-# `nros sync` does not touch `.cargo/config.toml`, so it persists.
-# Path is relative to the workspace root (this dir).
+# unaffected). phase-351 W3 — SYNC-MANAGED now (`# nros-managed`): the row
+# is declared once by `packages/boards/nros-board-nuttx-qemu/nros-board.toml`
+# and `nros sync` renders it here, relative to this directory. It was
+# hand-maintained in three places before that (here, each leaf config, and
+# `scripts/build/nuttx-libc-patch.sh`, a shell re-append that existed only
+# because sync used to WITHHOLD the row). Do not edit it — edit the board.
 [patch.crates-io]
-libc = { path = "../../../third-party/nuttx/libc" }
+libc = { path = "../../../third-party/nuttx/libc" }  # nros-managed
 nros-zephyr-build = { path = "../../../packages/tooling/nros-zephyr-build" }  # nros-managed
