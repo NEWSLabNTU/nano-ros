@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+RESOLVED 2026-08-13 — **#541** `292547dd5 fix(#529, #530)` added a `zephyr` arm to `platform_name`,
+reasoning "no behaviour change today: `build_c_shim` is skipped on Zephyr". True, and beside the point:
+`platform_name` gates TWO call sites and the other is `build_zenoh_pico_unified`, the whole vendored
+zenoh-pico C build. Before #529 Zephyr resolved to `None` and the cargo lane compiled no zenoh-pico C;
+after it, cargo compiled the core with the Zephyr platform header and every Rust leaf died on
+`zephyr.h:18: fatal error: version.h: No such file or directory` — a GENERATED Zephyr header the cargo
+lane has no include path for, because on Zephyr those sources belong to the cmake module
+(`zephyr_include_directories`). Same seam as #0460 from the other side. Took the whole zephyr lane, and
+so `lane=all`, down. Fixed with `platform_name.filter(|_| !use_zephyr)`: the name stays TOTAL for the knob
+ladder, the C build stays off the cargo lane. Reproduced on one leaf and under
+`NROS_ZEPHYR_PRISTINE=always`, so not a stale tree. See `archived/0541-*`. (2026-08-13)
+
 RESOLVED 2026-08-13 — **#533** the west fixture lane never resolved its bringups' SystemModels. phase-330
 W4.a stopped committing models (correctly — #0380); every consumer had to resolve one instead, and this
 lane never learned to. The west build failed at CONFIGURE with "declares system semantics but no
