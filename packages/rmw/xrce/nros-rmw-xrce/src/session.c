@@ -505,9 +505,12 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t* session, int32_t timeou
      * delivered to callbacks. `nros_platform_clock_ms` is monotonic ms since
      * boot (k_uptime_get on Zephyr) and is the contract for relative deadline
      * deltas (mirrors `uxr_millis` in platform_aliases.c). */
-    uint64_t start_ms = nros_platform_clock_ms();
+    /* issue 0548 — `clock_ns` is the exported symbol; `clock_ms` became a
+     * `static inline` wrapper in RFC-0073 and links only where this file sees
+     * the current `<nros/platform.h>`, which on Zephyr it does not. */
+    uint64_t start_ms = nros_platform_clock_ns() / 1000000u;
     for (;;) {
-        uint64_t now_ms = nros_platform_clock_ms();
+        uint64_t now_ms = nros_platform_clock_ns() / 1000000u;
         int elapsed_ms = (int)(now_ms - start_ms);
         int remaining = t - elapsed_ms;
         if (remaining <= 0) {
@@ -516,7 +519,7 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t* session, int32_t timeou
         (void)uxr_run_session_time(&st->session, remaining);
         /* If the run returned well before `remaining`, yield ~1 ms so the next
          * pass picks up freshly-arrived inbound without busy-spinning. */
-        uint64_t after_ms = nros_platform_clock_ms();
+        uint64_t after_ms = nros_platform_clock_ns() / 1000000u;
         if ((after_ms - now_ms) < 1u) {
             nros_platform_sleep_ms(1);
         }

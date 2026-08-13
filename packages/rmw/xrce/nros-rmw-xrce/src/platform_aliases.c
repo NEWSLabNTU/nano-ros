@@ -23,12 +23,23 @@
 
 #include "nros/platform.h"
 
+/* issue 0548 — call the NANOSECOND clock directly.
+ *
+ * RFC-0073 / phase-350 retired `nros_platform_clock_{ms,us}` as ABI symbols: no
+ * port defines them any more, and `<nros/platform.h>` carries `static inline`
+ * wrappers instead. This shim kept calling them, so every Zephyr XRCE leaf
+ * failed at LINK with `undefined reference` — the include here resolves to a
+ * stale copy of the header on that path, and an inline that is not in scope is
+ * an extern call to a symbol nobody exports.
+ *
+ * Calling `clock_ns` is the fix that does not depend on WHICH platform.h wins:
+ * it is a real exported symbol on every port. It also stops `uxr_nanos` from
+ * scaling microseconds back up by 1000, which threw away precision the
+ * nanosecond clock already had — the loss RFC-0073 existed to remove. */
 int64_t uxr_millis(void) {
-    return (int64_t) nros_platform_clock_ms();
+    return (int64_t) (nros_platform_clock_ns() / 1000000u);
 }
 
 int64_t uxr_nanos(void) {
-    /* `nros_platform_clock_us` returns microseconds. Scale to
-     * nanoseconds for micro-XRCE's `uxr_nanos` contract. */
-    return (int64_t) nros_platform_clock_us() * 1000;
+    return (int64_t) nros_platform_clock_ns();
 }

@@ -62,25 +62,30 @@
  *
  * BARE-METAL: drive a free-running counter from SysTick (1 kHz → ms) or the
  * DWT cycle counter (→ sub-µs), e.g.
- *   uint64_t nros_platform_clock_us(void) {
- *       return (uint64_t) DWT->CYCCNT * 1000000ULL / SystemCoreClock;  // +wrap
+ *   uint64_t nros_platform_clock_ns(void) {
+ *       return (uint64_t) DWT->CYCCNT * 1000000000ULL / SystemCoreClock;  // +wrap
  *   }
+ *
+ * issue 0548 — a port implements `clock_ns` and `clock_resolution_ns`, NOT the
+ * retired `clock_{ms,us}` pair (RFC-0073). Those two are `static inline`
+ * wrappers in `<nros/platform.h>` now, so defining them here does not merely
+ * waste code: it collides with the header's own definitions wherever both are
+ * visible, and leaves the symbol the runtime actually calls undefined.
  * ==========================================================================*/
 
-uint64_t nros_platform_clock_ms(void) {
+uint64_t nros_platform_clock_ns(void) {
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
         return 0;
     }
-    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
-uint64_t nros_platform_clock_us(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-        return 0;
-    }
-    return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000ULL;
+/* The honest granularity of the source above. `clock_gettime(CLOCK_MONOTONIC)`
+ * reports nanoseconds and delivers them on a hosted kernel; a SysTick-driven
+ * port would say 1000000 here (1 ms) rather than pretend to ns. */
+uint64_t nros_platform_clock_resolution_ns(void) {
+    return 1;
 }
 
 /* ============================================================================
@@ -139,8 +144,8 @@ size_t nros_platform_heap_total_bytes(void) {
  *
  * BARE-METAL: busy-wait against the clock, or __WFI() until the next tick.
  *   void nros_platform_sleep_us(size_t us) {
- *       uint64_t end = nros_platform_clock_us() + us;
- *       while (nros_platform_clock_us() < end) { }   // or __WFE() to idle
+ *       uint64_t end = nros_platform_clock_ns() + (uint64_t)us * 1000ULL;
+ *       while (nros_platform_clock_ns() < end) { }   // or __WFE() to idle
  *   }
  * ==========================================================================*/
 
@@ -404,7 +409,7 @@ int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime) {
     if (cv == NULL || m == NULL) {
         return -1;
     }
-    /* `abstime` is a monotonic deadline in `clock_ms` units. Convert to a
+    /* `abstime` is a monotonic deadline in milliseconds. Convert to a
      * relative delay and re-anchor against CLOCK_REALTIME (what
      * pthread_cond_timedwait uses by default). */
     uint64_t now_ms = nros_platform_clock_ms();
