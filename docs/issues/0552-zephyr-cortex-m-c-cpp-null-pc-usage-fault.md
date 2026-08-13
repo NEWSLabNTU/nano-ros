@@ -35,13 +35,10 @@ dereference — control transferred to 0.
 
 * **Reproduces SOLO**, sequentially, on a freshly built fixture — not a
   parallel-sweep flake. Both the C and the C++ leaf, identically.
-* **Rust on the same board passes.** `zephyr/mps2_an385/rust/talker/zenoh`
-  builds and runs; only the C and C++ images fault. The split is by LANGUAGE on
-  one board, which points at the C/C++ registration seam rather than at the
-  board port: on Zephyr there are no POSIX-style Rust ctor sections, so C/C++
-  reach the backend through an explicit `nros_cpp_init` →
-  `nros_app_register_backends` call, and a slot never filled there is exactly a
-  NULL indirect call.
+* ~~**Rust on the same board passes.**~~ **REFUTED 2026-08-13 — see below.**
+  The language-split reasoning that followed from it (C/C++ registration seam,
+  `nros_cpp_init` → `nros_app_register_backends`, a NULL slot) rests on a
+  premise that does not hold, and should not be pursued on this basis.
 * **native_sim is unaffected** — the same C/C++ examples pass there, so this is
   specific to the Cortex-M coordinate.
 
@@ -96,3 +93,36 @@ in hand.
 No bisect (no known-good revision to bisect against — see above), and no
 inspection of the faulting image's symbol table to name the NULL slot. Both are
 the obvious next steps; the second is cheap and should come first.
+
+
+## CORRECTION 2026-08-13 — Rust faults too, and the split is not by language
+
+The Rust image on `mps2_an385` faults **identically**: `PC = 0x00000000`, every
+register zeroed, "Illegal use of the EPSR", ~25 ms after the C/C++ images do —
+right after it prints `rust: rustapp::app_main: Waiting for messages`.
+
+**The real split is whether a zenoh router is reachable**, measured on the same
+fixture with the harness's own QEMU arguments:
+
+| condition | runs | PC=0 faults | publishes |
+| --- | --- | --- | --- |
+| zenohd listening on 10600 | 2 | **2** | 0 |
+| no router | 2 | **0** | — |
+
+So the fault is in a path taken once the session actually connects, and it is
+BOARD-WIDE rather than a C/C++ registration seam. The `nros_cpp_init` hypothesis
+above cannot explain a Rust image that never goes through it.
+
+**Why the original claim was plausible:** nothing ran the Rust cell. `matrix::CELLS`
+has declared `(ZephyrQemuCortexM, Rust, Zenoh, Pubsub)` a `Runtime` cell since
+phase-346 W3, but `zephyr_cortex_m_qemu.rs` only ever had C and C++ tests, so
+"Rust builds and runs" could only have been a build observation or a run without
+a router. `zephyr_cortex_m_rust_zenoh_pubsub_e2e` exists now and executes it.
+
+**A second artifact that will mislead the next reader,** found the same way: the
+two log orderings differ. For C/C++ the talker's `Publishing:` reaches the stream
+BEFORE the boot banner, so those cells wait on the net line. Rust flushes the
+other way — `net_config` first, publishes after — so waiting on the net line
+kills the guest immediately after "Network ready", *before* the 500 ms timer, and
+the run then looks exactly like a dead clock (issue 0531) when it is not. The
+Rust cell waits on the talker line for that reason.

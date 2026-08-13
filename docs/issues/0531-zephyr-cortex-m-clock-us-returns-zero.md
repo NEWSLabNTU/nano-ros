@@ -131,3 +131,43 @@ Remaining options if better resolution is wanted by default:
 - The general shape of this — a platform clock whose resolution and
   availability are per-board facts the ABI cannot express — is issue
   0532.
+
+
+## Status 2026-08-13 — the FIX is in; the confirmation is BLOCKED
+
+**Fixed by RFC-0073 / phase-352.** `nros-platform-zephyr/src/platform.c` no
+longer calls `k_cycle_get_64()` unconditionally:
+
+```c
+uint64_t nros_platform_clock_ns(void) {
+    if (IS_ENABLED(CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER)) {
+        return (uint64_t) k_cyc_to_ns_floor64(k_cycle_get_64());
+    }
+    return (uint64_t) k_ticks_to_ns_floor64(k_uptime_ticks());
+}
+```
+
+The cycle counter is used only where the board provides one; every other board
+falls back to the tick clock. The comment there cites this issue by number. The
+symbol itself is gone — RFC-0073 replaced `clock_{ms,us}` with `clock_ns`.
+
+**The regression test now exists.** This issue asked for one ("a `qemu_cortex_m3`
+run is both the confirmation and the regression test"), and the right witness is
+the Rust cell of `mps2_an385` — a 12 MHz board, comfortably under the 60 MHz
+threshold that decides `CORTEX_M_SYSTICK_64BIT_CYCLE_COUNTER`. Its talker
+publishes from a 500 ms `nros_cpp_timer_create`, so `assert_talker` IS the clock
+assertion: a dead clock produces no publishes.
+
+`matrix::CELLS` had declared that cell `Runtime` since phase-346 W3 with nothing
+running it; `zephyr_cortex_m_rust_zenoh_pubsub_e2e` now does.
+
+**Confirmation is blocked by issue 0552, which is board-wide.** Every image on
+this board — C, C++ AND Rust — branches to `PC = 0` shortly after net init when
+a zenoh router is reachable (measured 2/2 with a router, 0/2 without). No image
+survives long enough for a timer to matter, so the clock fix cannot be exercised
+here yet. 0552's claim that "Rust on the same board passes" is refuted there with
+the measurements.
+
+So: keep this issue OPEN, but not as unfinished work — the fix is in and the test
+is written. What remains is one green run of
+`zephyr_cortex_m_rust_zenoh_pubsub_e2e`, available the moment 0552 is resolved.

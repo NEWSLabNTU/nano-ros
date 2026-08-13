@@ -53,6 +53,15 @@ use std::time::Duration;
 /// budget the FreeRTOS MPS2 lane uses on the identical machine and NIC.
 const BOOT_BUDGET: Duration = Duration::from_secs(90);
 
+/// Budget for a cell that waits on the TALKER line rather than the net line.
+///
+/// Deliberately far below `BOOT_BUDGET`: the board reaches "Network ready" at
+/// ~2.15 s and the talker's timer period is 500 ms, so a healthy image publishes
+/// within a few seconds. Waiting 90 s for a line a HALTED image will never print
+/// just converts a fast, legible failure into nextest's 60 s per-test timeout,
+/// which reports "TIMEOUT" and hides the fault text in the output.
+const PUBLISH_BUDGET: Duration = Duration::from_secs(15);
+
 /// Zephyr's `net_config` announcing the static address from
 /// `cmake/zephyr/mps2-an385.conf`. This is the platform's distinguishing
 /// evidence: it can only be printed by the in-kernel IP stack driving a real
@@ -64,7 +73,21 @@ const NET_STACK_READY_MARKER: &str = "IPv4 address: 10.0.2.15";
 /// port comes from the matrix allocator rather than a literal, so a future
 /// platform-index change moves the bake and the test together instead of
 /// leaving one of them behind.
-fn run_pubsub_cell(lang: &str, matrix_lang: Lang) {
+/// `wait_marker` is per-cell because the two log orderings genuinely differ, and
+/// the difference is not cosmetic — it decides when QEMU is killed.
+///
+/// For C/C++ the talker's first `Publishing:` reaches the stream BEFORE the
+/// boot banner (Zephyr's logging subsystem flushes on its own schedule), so
+/// waiting on the talker line returns at ~0.1 s with `net_config` still
+/// unflushed and the driver assertion then fails a healthy run. Those cells wait
+/// on the NET line, making the accumulated output a superset.
+///
+/// Rust flushes the other way round: `net_config` lands first and the publishes
+/// follow. Waiting on the net line there kills the guest ~immediately after
+/// "Network ready", BEFORE the 500 ms timer has fired — which reads exactly like
+/// issue 0531's dead-clock symptom and is not it. That cell waits on the TALKER
+/// line, so its accumulated output is the superset instead.
+fn run_pubsub_cell(lang: &str, matrix_lang: Lang, wait_marker: &str, budget: Duration) {
     if !is_qemu_available() {
         nros_tests::skip!("qemu-system-arm not found");
     }
@@ -102,7 +125,7 @@ fn run_pubsub_cell(lang: &str, matrix_lang: Lang) {
     // still unflushed, and the driver assertion below then fails on a run that
     // is in fact perfectly healthy. Waiting for the later-flushed line makes the
     // accumulated output a superset, so both assertions see what they need.
-    let output = qemu.collect_until(NET_STACK_READY_MARKER, BOOT_BUDGET);
+    let output = qemu.collect_until(wait_marker, budget);
     qemu.kill();
 
     eprintln!("Zephyr mps2_an385 {lang} zenoh talker output:\n{output}");
@@ -121,10 +144,36 @@ fn run_pubsub_cell(lang: &str, matrix_lang: Lang) {
 
 #[test]
 fn zephyr_cortex_m_c_zenoh_pubsub_e2e() {
-    run_pubsub_cell("c", Lang::C);
+    run_pubsub_cell("c", Lang::C, NET_STACK_READY_MARKER, BOOT_BUDGET);
 }
 
 #[test]
 fn zephyr_cortex_m_cpp_zenoh_pubsub_e2e() {
-    run_pubsub_cell("cpp", Lang::Cpp);
+    run_pubsub_cell("cpp", Lang::Cpp, NET_STACK_READY_MARKER, BOOT_BUDGET);
+}
+
+/// The Rust cell of this board, which `matrix::CELLS` has declared `Runtime`
+/// since phase-346 W3 while no test ran it — a Runtime row nothing executes is
+/// the lie RFC-0051 exists to prevent.
+///
+/// It is also the only way to CONFIRM issue 0531 today. That bug —
+/// `k_cycle_get_64()` returning a silent permanent 0 below 60 MHz, so every
+/// periodic callback dies while subscriptions keep working — was fixed by
+/// RFC-0073 (`platform.c` now falls back to the tick clock) but never verified
+/// on hardware, because verification needs a sub-60 MHz board and this is it at
+/// 12 MHz. The talker publishes from a 500 ms `nros_cpp_timer_create`, so
+/// `assert_talker` IS the clock assertion: a dead clock produces no publishes.
+///
+/// The C and C++ cells cannot supply that evidence — issue 0552 has both
+/// branching to `PC=0` right after net init on this same board, which kills the
+/// image before any timer runs. Rust is unaffected there, which is what makes
+/// this cell the witness.
+#[test]
+fn zephyr_cortex_m_rust_zenoh_pubsub_e2e() {
+    run_pubsub_cell(
+        "rust",
+        Lang::Rust,
+        nros_tests::output::TALKER_READY_MARKER,
+        PUBLISH_BUDGET,
+    );
 }
