@@ -1,4 +1,4 @@
-# Phase 350 — Platform clock: one nanosecond symbol, plus the resolution nobody could ask for
+# Phase 352 — Platform clock: one nanosecond symbol, plus the resolution nobody could ask for
 
 **Status (2026-08-13). W1–W5 LANDED.**
 

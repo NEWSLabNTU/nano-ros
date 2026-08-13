@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Issue 0555 — a retired platform symbol whose replacement is a `static inline`.
 
-RFC-0073 / phase-350 replaced `nros_platform_clock_{ms,us}` with
+RFC-0073 / phase-352 replaced `nros_platform_clock_{ms,us}` with
 `nros_platform_clock_ns()` plus wrappers in
 `packages/platform/nros-platform-api/include/nros/platform.h`:
 

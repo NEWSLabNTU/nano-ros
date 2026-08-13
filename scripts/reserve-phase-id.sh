@@ -5,9 +5,10 @@
 #
 # WHY THIS EXISTS
 #
-# Two sessions opened `phase-350` on 2026-08-13 — `phase-350-west-fixtures-join-
-# the-manifest` at 11:44 and `phase-350-platform-clock-ns` at 13:58 — for
-# entirely unrelated work. Neither could see the other: both read "highest
+# Two sessions opened `phase-350` on 2026-08-13 — `west-fixtures-join-the-
+# manifest` at 11:44 and `platform-clock-ns` at 13:58 — for entirely unrelated
+# work. (The second was renumbered to `phase-352` once this tool existed; the
+# first kept 350.) Neither could see the other: both read "highest
 # existing + 1" from a tree that did not yet contain the other's file. That is
 # the same check-then-act race `reserve-issue-id.sh` was written for, in the
 # third numbered series CLAUDE.md names.

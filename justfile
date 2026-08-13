@@ -679,7 +679,7 @@ check-issue-ids:
 
 # Two sessions opened `phase-350` for unrelated work on 2026-08-13, neither able
 # to see the other — the same check-then-act race as issue ids, in the third
-# numbered series.
+# numbered series. (The later one became `phase-352`.)
 #
 # Only for work needing its OWN number: a phase number is NOT unique per file
 # (26 of 342 carry several docs, one effort split across them), so adding a doc

@@ -5,7 +5,7 @@ status: resolved
 resolved_in: issue-0548
 type: bug
 area: rmw-xrce
-related: [phase-350, rfc-0073, issue-0528, issue-0532]
+related: [phase-352, rfc-0073, issue-0528, issue-0532]
 ---
 
 ## Symptom
@@ -31,7 +31,7 @@ build down exactly as issue 0528 did.
 
 ## Cause
 
-RFC-0073 / phase-350 (`bde6638ed`) replaced `nros_platform_clock_{ms,us}` with
+RFC-0073 / phase-352 (`bde6638ed`) replaced `nros_platform_clock_{ms,us}` with
 `nros_platform_clock_ns` plus **static inline** wrappers in
 `packages/platform/nros-platform-api/include/nros/platform.h`:
 

@@ -5,7 +5,7 @@ status: resolved
 type: bug
 severity: high
 area: rmw, zephyr, build
-related: [issue-0541, issue-0160, rfc-0054, rfc-0073, phase-350]
+related: [issue-0541, issue-0160, rfc-0054, rfc-0073, phase-352]
 resolved_in: "issue-0547 (include nros/platform.h; delete the hand copies)"
 ---
 
@@ -33,7 +33,7 @@ uint64_t nros_platform_random_u64(void);
 }
 ```
 
-RFC-0073 (phase-350, `bde6638ed`) then replaced the `clock_ms` / `clock_us` pair
+RFC-0073 (phase-352, `bde6638ed`) then replaced the `clock_ms` / `clock_us` pair
 with `clock_ns`, and `nros/platform.h` now carries `clock_ms` as a `static
 inline` shim:
 

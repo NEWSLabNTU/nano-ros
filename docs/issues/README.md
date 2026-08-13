@@ -144,7 +144,7 @@ deliberately absent. Self-tested both directions. See `archived/0550-*`. (2026-0
 
 RESOLVED 2026-08-13 — **#547** the Cyclone backend hand-declared the platform ABI
 (`nros_platform_{clock_ms,sleep_ms,random_u64}`) in three per-platform `extern "C"` blocks, so RFC-0073's
-`clock_ms`->`clock_ns` rename (phase-350) compiled fine and failed at LINK: `internal.hpp:63: undefined
+`clock_ms`->`clock_ns` rename (phase-352) compiled fine and failed at LINK: `internal.hpp:63: undefined
 reference to 'nros_platform_clock_ms'`. `platform.h` now carries `clock_ms` as a `static inline` shim and
 already declared all three, so no hand copy was load-bearing — they only let the file disagree with the
 header. Issue 0160's mirrored-FFI class in FUNCTION form: the struct version corrupts a field, this one
@@ -339,7 +339,7 @@ answering a question about a different program. Fix should reuse the ONE lowerin
 it through the per-crate feature hooks (the phase-314 argument). See `archived/0543-*`. (2026-08-13)
 
 RESOLVED 2026-08-13 (see the combined entry above) — **#548** — the XRCE C shim (`nros-rmw-xrce/src/{session,platform_aliases}.c`) linked against
-`nros_platform_clock_{ms,us}`, which RFC-0073 / phase-350 replaced with `clock_ns` plus STATIC INLINE
+`nros_platform_clock_{ms,us}`, which RFC-0073 / phase-352 replaced with `clock_ns` plus STATIC INLINE
 wrappers — no port defines them any more. Every Zephyr XRCE leaf therefore fails at link with 5 undefined
 references, and since the zephyr module is an order-only prerequisite of every platform it takes the
 tier-2 fixture build down. The shim does `#include "nros/platform.h"`, so on the Zephyr path that include

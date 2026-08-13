@@ -5,12 +5,12 @@ status: resolved
 resolved_in: issue-0555
 type: tech-debt
 area: platform
-related: [issue-0548, issue-0547, issue-0541, rfc-0073, phase-350]
+related: [issue-0548, issue-0547, issue-0541, rfc-0073, phase-352]
 ---
 
 ## Why
 
-RFC-0073 / phase-350 (`bde6638ed`) replaced `nros_platform_clock_{ms,us}` with
+RFC-0073 / phase-352 (`bde6638ed`) replaced `nros_platform_clock_{ms,us}` with
 `nros_platform_clock_ns()` plus `static inline` wrappers in
 `packages/platform/nros-platform-api/include/nros/platform.h`. No port defines
 those symbols any more — **the wrappers are the definition**, and a caller gets

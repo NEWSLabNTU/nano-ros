@@ -19,7 +19,7 @@
 // issue 0547 — the platform ABI comes from its OWN header, never re-declared.
 //
 // This block used to hand-declare `nros_platform_{clock_ms,sleep_ms,random_u64}`
-// in three per-platform `extern "C"` blocks. RFC-0073 (phase-350) then replaced
+// in three per-platform `extern "C"` blocks. RFC-0073 (phase-352) then replaced
 // the `clock_ms`/`clock_us` pair with `clock_ns` and made `clock_ms` a
 // `static inline` shim in `nros/platform.h` — at which point a local
 // re-declaration saying `extern` still COMPILED, and the linker was left to

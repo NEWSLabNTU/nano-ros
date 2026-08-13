@@ -2,7 +2,7 @@
 id: 546
 title: "The px4 compile-check codegens but never syncs, so `nros` resolves against public crates.io — three leaves that have never once type-checked, and nothing says so"
 status: resolved
-resolved_in: phase-350
+resolved_in: phase-352
 type: bug
 severity: medium
 area: build

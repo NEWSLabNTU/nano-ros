@@ -25,7 +25,7 @@
 
 /* issue 0548 — call the NANOSECOND clock directly.
  *
- * RFC-0073 / phase-350 retired `nros_platform_clock_{ms,us}` as ABI symbols: no
+ * RFC-0073 / phase-352 retired `nros_platform_clock_{ms,us}` as ABI symbols: no
  * port defines them any more, and `<nros/platform.h>` carries `static inline`
  * wrappers instead. This shim kept calling them, so every Zephyr XRCE leaf
  * failed at LINK with `undefined reference` — the include here resolves to a

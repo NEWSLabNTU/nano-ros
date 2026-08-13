@@ -2,7 +2,7 @@
 id: 545
 title: "Two core crates cannot run `cargo test` at all — a dead-code error and a test that no longer compiles — and a third test asserts a build-time knob it does not control"
 status: resolved
-resolved_in: "same-day fix; phase-350 follow-up"
+resolved_in: "same-day fix; phase-352 follow-up"
 type: bug
 area: testing
 related: [issue-0095, issue-0436]
