@@ -96,6 +96,19 @@ pub fn render_probe_cmakelists(comps: &[CmakeProbeOptions]) -> String {
         "# never reachable from a firmware one. NOTE: this must be the variable\n",
         "# NanoRosRuntimeCrate reads; a plain cache var is inert.\n",
         "set(NROS_EXTRA_CPP_FEATURES \"metadata-mode\")\n\n",
+        "# issue 0543 — the bringup's DECLARED capabilities, lowered by the same\n",
+        "# `nros config show --format cmake` a real build includes (see\n",
+        "# NanoRosWorkspace.cmake). The probe compiles the USER'S sources, so it\n",
+        "# must compile them with the user's configuration: `safety` lowers to\n",
+        "# `NANO_ROS_SAFETY_E2E`, which gates\n",
+        "# `Node::create_subscription_with_safety` in nros-cpp's header — without\n",
+        "# it the probe reported correct code as \"no member named …\".\n",
+        "#\n",
+        "# The file is WRITTEN by the generator from the CLI's own output, never\n",
+        "# re-derived here: a second copy of the feature->define lowering is what\n",
+        "# phase-314 spent its length deleting. OPTIONAL because a workspace with\n",
+        "# no bringup legitimately has none.\n",
+        "include(\"${CMAKE_CURRENT_LIST_DIR}/nros_capabilities.cmake\" OPTIONAL)\n\n",
         "find_package(nano_ros REQUIRED)\n\n",
     ));
     // Each package added once even when it declares several components.
@@ -210,6 +223,7 @@ pub fn run_probes(probe_dir: &Path, comps: &[CmakeProbeOptions]) -> Result<Vec<P
         probe_dir.join("CMakeLists.txt"),
         render_probe_cmakelists(comps),
     )?;
+    write_capabilities(probe_dir)?;
     for c in comps {
         std::fs::write(
             probe_dir.join(format!("{}.cpp", c.probe_target())),
@@ -327,6 +341,71 @@ fn run_step(cmd: &mut Command, step: &str, who: &str) -> Result<()> {
             String::from_utf8_lossy(&out.stderr),
         );
     }
+    Ok(())
+}
+
+/// Lower the workspace's declared capabilities into the probe project — issue
+/// 0543.
+///
+/// `nano_ros_workspace()` runs `nros config show --system <s> --format cmake`
+/// and `include()`s the result; this writes the SAME command's output beside the
+/// generated `CMakeLists.txt`, which includes it. One lowering, two consumers.
+///
+/// Best-effort by design: no bringup, or a CLI that cannot answer, leaves the
+/// file absent and the probe behaves exactly as before. Nothing here invents a
+/// default — a probe that silently enabled everything would hide the real
+/// configuration errors it exists to surface.
+fn write_capabilities(probe_dir: &Path) -> Result<()> {
+    // `<ws>/build/nros-metadata/metadata-probe-cmake` -> `<ws>`.
+    let Some(ws_root) = probe_dir.ancestors().nth(3) else {
+        return Ok(());
+    };
+    let mut systems: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(ws_root.join("src")) {
+        for e in entries.flatten() {
+            if e.path().join("system.toml").is_file()
+                && let Some(name) = e.file_name().to_str()
+            {
+                systems.push(name.to_string());
+            }
+        }
+    }
+    systems.sort();
+    // Capabilities are per SYSTEM; the probe project is per WORKSPACE
+    // (phase-313). With one bringup — every workspace in this tree — that is the
+    // same scope. With several there is no single right answer, so skip and say
+    // so: a wrong capability set is worse than none.
+    let [system] = systems.as_slice() else {
+        if systems.len() > 1 {
+            eprintln!(
+                "sync: metadata — {} bringups in {}; capabilities not lowered into the \
+                 probe (issue 0543: probe is per workspace, capabilities are per system)",
+                systems.len(),
+                ws_root.display()
+            );
+        }
+        return Ok(());
+    };
+    // This process IS the CLI, so `config show` is one exec away — no PATH
+    // lookup and no stale sibling binary (the shape issue 0363 guards).
+    let Ok(nros) = std::env::current_exe() else {
+        return Ok(());
+    };
+    let Ok(out) = Command::new(&nros)
+        .args(["config", "show", "--workspace"])
+        .arg(ws_root)
+        .arg("--system")
+        .arg(system)
+        .args(["--format", "cmake"])
+        .output()
+    else {
+        return Ok(());
+    };
+    if !out.status.success() {
+        return Ok(());
+    }
+    std::fs::write(probe_dir.join("nros_capabilities.cmake"), out.stdout)
+        .wrap_err_with(|| format!("write {}/nros_capabilities.cmake", probe_dir.display()))?;
     Ok(())
 }
 
