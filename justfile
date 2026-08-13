@@ -416,7 +416,7 @@ check-fast: \
     check-workspace-order \
     check-atomic-sync-writes \
     check-cmake-corrosion-prefix \
-    check-path-env-fingerprints
+    check-path-env-fingerprints check-retired-platform-clock-symbols
     @echo "Fast checks passed!"
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
@@ -760,6 +760,15 @@ check-board-abi-mirror:
 [private]
 check-nuttx-integration-makefile:
     @bash scripts/check-nuttx-integration-makefile.sh
+
+# Issue 0555 — `nros_platform_clock_{ms,us}` are `static inline` wrappers in
+# `nros/platform.h` now (RFC-0073), so the header IS the definition. The rename
+# broke four consumers in a row, each visible only after the previous cleared
+# (#541, upstream 5dc2fa869, #547, #548), and #548 asked for this gate by name.
+# Two arms: a use with the header out of scope, and a hand-written `extern`
+# declaration — which compiles and then fails at link. Buildless.
+check-retired-platform-clock-symbols:
+    @python3 scripts/check-retired-platform-clock-symbols.py
 
 # eyre's `Context` alias is behind `#[cfg(feature = "anyhow")]` from 0.6.13, so
 # code using it compiles only against a graph that resolves 0.6.12.

@@ -1,7 +1,8 @@
 ---
 id: 528
 title: "Zephyr leaves fail `EXECUTOR_OPAQUE_U64S too small for Executor + backing`, blocking the tier-2 fixture build"
-status: open
+status: resolved
+resolved_in: issue-0528
 type: bug
 area: zephyr
 related: [issue-0472, issue-0464, phase-343, phase-336]
@@ -182,3 +183,23 @@ probe dir rather than the leaf.
 That session also, wrongly, reopened this issue as "never fixed" on the strength
 of that sweep. It had simply not pulled since 12:48. The fix above was already
 landed and verified at lane scale; this note replaces that reopening.
+
+
+## RESOLVED 2026-08-13 — the zephyr module builds
+
+This issue's own exit condition was "stays OPEN until the zephyr module
+builds". It does, at full-sweep scale:
+
+```
+just build-test-fixtures            (lane=all)
+  == zephyr == OK
+  EXECUTOR_OPAQUE_U64S asserts   0        (was: six leaves, whole module down)
+  zephyr fixtures built           69       (every rmw x language coordinate)
+```
+
+`e5bda71fb`'s `probe_key()` + `knob_identity()` fix holds under the 32-job
+parallel sweep that produced the original first-writer-wins poisoning, which is
+the condition that mattered — the failure was never reproducible solo.
+
+Note the evidence predates the 2026-08-13 afternoon pull (`1283130ac`); nothing
+in that range touches the sizes probe.

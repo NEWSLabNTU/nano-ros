@@ -51,6 +51,23 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+RESOLVED 2026-08-13 — **#528 / #548 / #555**, closed together on one full-sweep measurement.
+`just build-test-fixtures` (lane=all) reports `== zephyr == OK` with 69 fixtures built, zero
+`EXECUTOR_OPAQUE_U64S` asserts (was six leaves, whole module down) and zero clock undefined refs —
+which is #528's own stated exit condition ("stays OPEN until the zephyr module builds") and both of
+#548's criteria, `build-rs-action-client-xrce` being `zephyr-fixture-12` in that run. #548's second
+criterion swept by hand too: of 15 first-party C/C++ files naming `nros_platform_clock_{ms,us}`,
+twelve include `nros/platform.h` and see the `static inline` wrappers, one IS the defining header, and
+two mention the names only in prose. **#555 is the gate #548 asked for** — three arms (use without the
+header; a hand-written `extern` declaration, which compiles and fails at LINK; a second TRACKED
+definition), comments stripped so the two prose files do not cry wolf. **It does not catch the issue
+that asked for it, and that is recorded rather than papered over:** replaying the real pre-fix sources,
+#547's `internal.hpp` is caught (3 hits) and #548's `platform_aliases.c` is CLEAN — that file included
+the header and declared nothing; what failed was the include RESOLVING to a stale copy on Zephyr's
+include path, a property of `-I` order that no source-scanning gate can see. The declaration arm's first
+draft read `return nros_platform_clock_ms();` as a declaration; its own self-test caught that.
+See `archived/0528-*`, `archived/0548-*`, `archived/0555-*`. (2026-08-13)
+
 Recently resolved (2026-08-13): **#554** (build) — `NROS_FIXTURE_SCOPE=native` demanded four west-built
 compile-checks the native lane cannot produce, so `just ci` died at the staleness gate before a single test
 ran and `just build-test-fixtures lane=native` could not help. `a12e2c3e4` (#536 / phase-350 W2) added four
@@ -321,7 +338,7 @@ breaks: a probe that compiles the user's source must build it with the user's co
 answering a question about a different program. Fix should reuse the ONE lowering rather than re-deriving
 it through the per-crate feature hooks (the phase-314 argument). See `archived/0543-*`. (2026-08-13)
 
-**#548** — the XRCE C shim (`nros-rmw-xrce/src/{session,platform_aliases}.c`) links against
+RESOLVED 2026-08-13 (see the combined entry above) — **#548** — the XRCE C shim (`nros-rmw-xrce/src/{session,platform_aliases}.c`) linked against
 `nros_platform_clock_{ms,us}`, which RFC-0073 / phase-350 replaced with `clock_ns` plus STATIC INLINE
 wrappers — no port defines them any more. Every Zephyr XRCE leaf therefore fails at link with 5 undefined
 references, and since the zephyr module is an order-only prerequisite of every platform it takes the
@@ -354,7 +371,7 @@ totality is untouched — the block is still resolved for every platform, only t
 both directions by tripwire, and on the failing leaf (332 s, `zephyr.elf` linked, 0 errors). See
 `archived/0534-*`. (2026-08-13)
 
-**#528** — every Zephyr fixture leaf fails `EXECUTOR_OPAQUE_U64S too small for Executor + backing` in
+RESOLVED 2026-08-13 (see the combined entry above) — **#528** — every Zephyr fixture leaf failed `EXECUTOR_OPAQUE_U64S too small for Executor + backing` in
 `nros-c`'s compile-time assert, taking the zephyr module — and with it `ci-matrix` — down. CAUSE FOUND and
 FIX LANDED 2026-08-13 (`e5bda71fb`): the shared `build/sizes-probe` dir was keyed `(rustc, target, features)`
 while the sizing KNOBS (`NROS_EXECUTOR_MAX_CBS` and friends, resolved from env or Zephyr's `$DOTCONFIG` since

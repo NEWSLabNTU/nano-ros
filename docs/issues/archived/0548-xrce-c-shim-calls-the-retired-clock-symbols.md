@@ -1,7 +1,8 @@
 ---
 id: 548
 title: "The XRCE C shim links against the retired `nros_platform_clock_{ms,us}`, so every Zephyr XRCE leaf fails at link — tier 2's next blocker"
-status: open
+status: resolved
+resolved_in: issue-0548
 type: bug
 area: rmw-xrce
 related: [phase-350, rfc-0073, issue-0528, issue-0532]
@@ -78,3 +79,39 @@ reaches leaf 12. This is the next blocker in the same lane, not a recurrence.
   see the inline definition; a `git grep` for the retired names is the cheap
   check, and it should probably become a gate given this is the second consumer
   the rename missed.
+
+
+## RESOLVED 2026-08-13 — both acceptance criteria met
+
+**1. The lane gets past the leaf.** `build-rs-action-client-xrce` is
+`zephyr-fixture-12` in the full sweep's target list, and the module completed:
+
+```
+just build-test-fixtures            (lane=all)
+  == zephyr == OK
+  clock undefined refs            0
+  zephyr fixtures built           69
+```
+
+**2. The reference sweep is clean.** All 15 first-party C/C++ files naming
+`nros_platform_clock_{ms,us}`: twelve `#include <nros/platform.h>` and so see
+the `static inline` wrappers; the other three are
+`nros-platform-api/include/nros/platform.h` (which IS the definition) and two
+files that mention the names only in prose explaining they are retired
+(`nros-board-threadx-qemu-riscv64/startup.c`,
+`zephyr/nros_platform_zephyr_shims.c`).
+
+The call sites in this shim were migrated to `nros_platform_clock_ns()`
+directly, as this issue recommended — `uxr_nanos` had been multiplying
+microseconds back up by 1000 and losing the resolution the ns clock has.
+
+**The gate this issue asked for is issue 0555**, with a measured caveat worth
+recording here: replaying the actual pre-fix sources through it, #547's
+`internal.hpp` is caught (3 hits) and THIS issue's `platform_aliases.c` is NOT.
+That file included the header and declared nothing; what failed was the include
+RESOLVING to a stale copy on Zephyr's include path, which is a property of the
+build's `-I` order and not of any source text. 0555 covers the hand-declaration,
+missing-include and second-tracked-copy shapes; the stale-untracked-copy shape
+stays a build-side problem (issue 0196's rule).
+
+Note the evidence predates the 2026-08-13 afternoon pull (`1283130ac`).
