@@ -1,7 +1,8 @@
 ---
 id: 565
-title: "The two NuttX Rust realtime rows fail for DIFFERENT reasons, and neither is a scheduling bug — arm loses its session, riscv crashes"
-status: open
+title: "SPLIT into #0569 (arm: session ConnectionFailed) and #0570 (riscv: main-task stack overflow) — filed as one bug on an inferred verdict"
+status: resolved
+resolved_in: issue-0565
 type: bug
 area: boards
 related: [issue-0564, issue-0263, issue-0246, phase-281, phase-285]
@@ -131,3 +132,25 @@ should not be chased:
 
 They share only the cell family and the symptom the test reported, which is
 exactly how one wrong verdict merged two unrelated defects.
+
+
+## SPLIT 2026-08-13 — this issue is the wrong unit of work
+
+Filed as one bug because the verdict said one thing. The console says two, with
+nothing in common but the cell family:
+
+* **#0569** — `nuttx-arm/rust`: tiers start, `Executor::open` then fails
+  `Transport(ConnectionFailed)` and the entry aborts. A transport/session
+  problem.
+* **#0570** — `nuttx-riscv/rust`: `nsh_main` reaches 89.5% of its stack and the
+  guest takes an assertion dump. A stack-budget problem.
+
+Closed as SPLIT rather than fixed: nothing here was repaired, and leaving a
+merged issue open would keep pointing the next reader at leads (the `run_tiers`
+path, a clock unit/resolution error) that the console refutes for both rows.
+
+The lasting change from this issue is `d97c9c606` — the verdict now prints the
+guest's last 25 lines, which is what separated the two. Kept for the record
+because the same mistake is cheap to repeat: an assertion that INFERS a cause
+("the low tier was not scheduled") and discards the evidence will merge every
+failure that shares its symptom.

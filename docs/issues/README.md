@@ -87,6 +87,26 @@ caller-supplied storage rather than return by value. NOT established: whether ea
 materialises its own copy — one clear was observed, the multiplier was not. See `0563-*`. (2026-08-14)
 
 **#565** — NuttX **Rust**, BOTH arches: the 100 ms low tier is never scheduled, so `/telem` never reaches 5
+
+**#0569** — `nuttx-arm` Rust `realtime_tiers_e2e`: the low tier SPAWNS and gets its priority (`tier priority set
+tier=`low` prio=100`), then `Executor::open` fails `Transport(ConnectionFailed)` and the entry aborts. A
+transport/session problem, not scheduling — and the `core pin FAILED … kernel lacks CONFIG_SMP` line above it is a
+stated fallback, not the fault. Split out of #565. See `0569-*`. (2026-08-13)
+
+**#0570** — `nuttx-riscv` Rust `realtime_tiers_e2e`: a NuttX assertion dump whose task table diagnoses itself —
+`nsh_main` at **89.5%!** of 65 208 bytes while the spawned tiers sit at 1.3% and 0.5%. Main-task stack
+exhaustion, NOT #0246's spawned-tier stack class. Split out of #565. See `0570-*`. (2026-08-13)
+
+RESOLVED 2026-08-13 — **#565** filed as one bug ("the 100 ms low tier is never scheduled, both arches") on the
+strength of a verdict that INFERRED its cause from missing telemetry and then killed the guest unread. Both leads
+it opened with — the Rust `run_tiers` path, a clock unit/resolution error — are refuted by the console for BOTH
+rows. Closed as SPLIT into #569/#570; nothing here was repaired. The lasting change is `d97c9c606`: the failure
+now drains the guest before killing it and prints the last 25 lines, or says outright that the guest printed
+NOTHING. That is issue #0445's rule one test over, and it separated two unrelated defects on the first run. An
+assertion that infers a cause and discards the evidence will merge every failure sharing its symptom.
+See `archived/0565-*`. (2026-08-13)
+
+RESOLVED 2026-08-13 (SPLIT into #569/#570, see above) — **#565** — NuttX **Rust**, BOTH arches: the 100 ms low tier is never scheduled, so `/telem` never reaches 5
 deliveries. 14 of 16 `realtime_tiers_e2e` rows pass — every zephyr/freertos/threadx/native cell, AND the NuttX
 C/C++ cells on the same boards — so the suspicion is the Rust `run_tiers` path (`QemuArmVirt::run_tiers`,
 `QemuRvVirt::run_tiers`) rather than board tier plumbing. The 10 ms tier is observed fine, so it is not the tier
