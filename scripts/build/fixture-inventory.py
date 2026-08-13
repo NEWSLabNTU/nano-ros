@@ -179,7 +179,6 @@ def zephyr_rows(repo_root, include_zephyr):
         str(repo_root / "scripts/build/zephyr-fixture-leaves.sh"),
         "--emit",
         "records",
-        "--include-logging-smoke",
     ]
     try:
         proc = subprocess.run(cmd, cwd=repo_root, text=True, capture_output=True, check=True)

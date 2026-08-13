@@ -4241,16 +4241,18 @@ builder = "west"
 dir = "packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim"
 board = "native_sim/native/64"
 west_role = "logging-smoke"
-west_build_name = "logging-smoke-zephyr-native-sim"
-# phase-350 W1 — this leaf emits NO cmake defs and an EMPTY staleness
-# signature, which is what the hand-written block it replaced did. Both
-# look wrong (an empty sig written to a sig file is a CONSTANT, so the
-# leaf can never read stale, and it gets no codegen-tool / toolchain-cache
-# / sccache defs its siblings all get) — but this row is a byte-identical
-# rewire, not a behaviour change, so the anomaly is DECLARED here rather
-# than silently corrected. Fixing it changes what rebuilds; that is its
-# own change with its own evidence.
-west_bare = true
+# issue 0549 — the build dir is `build-logging-smoke`, which is where the
+# TEST looks (`binaries/mod.rs::build_logging_smoke_zephyr_native_sim`).
+#
+# It used to be `logging-smoke-zephyr-native-sim`, a dir no lane built and
+# nothing read: this leaf was gated behind `--include-logging-smoke`, a flag
+# only read-only tooling passed, while the real image came from a separate
+# `just zephyr build-logging-smoke` recipe. Two builders, two dirs, one of
+# them dead. That also explains the `west_bare = true` this row used to
+# carry — no cmake defs and an empty staleness signature, which looked
+# arbitrary until the leaf turned out to be vestigial. It builds with the
+# lane now, with the same defs and a real signature as its siblings.
+west_build_name = "build-logging-smoke"
 west_id = "zephyr/native_sim/native/64/logging-smoke"
 
 

@@ -30,7 +30,6 @@ Options:
                             record desired pristine mode (default: env or auto)
   --filter REGEX            filter against "board build_dir src conf_files id"
                             (default: $NROS_ZEPHYR_FIXTURE_FILTER)
-  --include-logging-smoke   also emit the Zephyr logging-smoke image leaf
   --include-workspace-entry also emit the Zephyr workspace-Entry leaf
   -h, --help                show this help
 
@@ -54,7 +53,6 @@ toolchain_cache_dir=""
 sccache_disable="${NROS_ZEPHYR_SCCACHE_DISABLE:-0}"
 pristine="${NROS_ZEPHYR_PRISTINE:-auto}"
 fixture_filter="${NROS_ZEPHYR_FIXTURE_FILTER:-}"
-include_logging_smoke=0
 include_workspace_entry=0
 
 while [ "$#" -gt 0 ]; do
@@ -108,9 +106,6 @@ while [ "$#" -gt 0 ]; do
             shift
             [ "$#" -gt 0 ] || { usage; exit 2; }
             fixture_filter="$1"
-            ;;
-        --include-logging-smoke)
-            include_logging_smoke=1
             ;;
         --include-workspace-entry)
             include_workspace_entry=1
@@ -342,7 +337,7 @@ fi
 
 selected=0
 while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
-    row_zenoh_locator row_xrce_port row_cyclone_domain row_conf_files row_bare; do
+    row_zenoh_locator row_xrce_port row_cyclone_domain row_conf_files _row_reserved; do
     [ -n "$board" ] || continue
 
     # Host gating, unchanged: cyclonedds leaves need an idlc. The manifest lists
@@ -353,14 +348,11 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         continue
     fi
 
-    # `--include-logging-smoke` still gates its leaf. Becoming a manifest row
-    # made it an ordinary member of this loop, which silently emitted it in
-    # every mode — a real behaviour change the byte-diff caught. The flag is
-    # OPT-IN for callers that want the extra image, so the row is skipped
-    # without it.
-    if [ "$role" = "logging-smoke" ] && [ "$include_logging_smoke" != "1" ]; then
-        continue
-    fi
+    # issue 0549 — logging-smoke is an ORDINARY leaf now. It used to be gated
+    # behind `--include-logging-smoke`, a flag no build lane ever passed, so the
+    # leaf was emitted for inventory and never produced while a separate
+    # `just zephyr build-logging-smoke` recipe built the image the test reads.
+    # One builder, one dir, built with the lane.
     if [ "$role" = "entry" ] && [ "$include_workspace_entry" != "1" ]; then
         continue
     fi
@@ -435,14 +427,6 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         "toolchain_cache_dir=$toolchain_cache_dir" \
         "make=$make_bin" \
         "sccache_launcher=$sccache_launcher")"
-    # `west_bare` rows carry neither defs nor signature — preserved exactly as
-    # the hand-written logging-smoke block had it. See that row's comment: an
-    # empty sig is a CONSTANT, so the leaf never reads stale. Declared, not
-    # fixed, because fixing it changes what rebuilds.
-    if [ -n "$row_bare" ]; then
-        extra_cmake_defs=""
-        sig=""
-    fi
     emit_record fixture "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw" \
         "$src_rel" "$src_dir" "$build_name" "$build_dir" "$log_dir/${build_name}.log" \
         "$xrce_agent_port" "$zenoh_locator" "$cyclone_domain" "$conf_files" \
@@ -455,8 +439,8 @@ done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaves "${
 # `build-cortex-m-*` naming, `west_zenoh_locator` the mps2 allocator slots
 # (`alloc::port_of(ZephyrQemuCortexM, ...)` = 10600/10700/10800 at the SLIRP
 # host 10.0.2.2, not 127.0.0.1), and `west_role` the logging-smoke role that is
-# not a directory name. `--include-logging-smoke` still gates its leaf, now at
-# the top of that loop rather than around a block.
+# not a directory name. issue 0549 then retired the `--include-logging-smoke`
+# flag with the duplicate builder it existed for: the leaf is ordinary now.
 
 # Phase 225.P.6 — workspace-Entry leaf (Approach A). Constructed directly,
 # bypassing variant_offset_for_role (role="entry" is unknown to it). The

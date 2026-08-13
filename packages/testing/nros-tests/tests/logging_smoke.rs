@@ -258,7 +258,7 @@ fn logging_smoke_esp32_qemu_emits_every_severity() {
 #[test]
 fn logging_smoke_zephyr_native_sim_emits_every_severity() {
     let binary = build_logging_smoke_zephyr_native_sim().expect(
-        "logging-smoke-zephyr-native-sim fixture not built — run `just zephyr build-logging-smoke`",
+        "logging-smoke-zephyr-native-sim fixture not built — run `just zephyr build-fixtures`",
     );
 
     let mut child = Command::new(binary)

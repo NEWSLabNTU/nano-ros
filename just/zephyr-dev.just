@@ -156,71 +156,11 @@ build-c:
     done
     echo "Zephyr C examples built successfully!"
 
-# Phase 88.15.e — build the nros-log Zephyr native_sim smoke
-# fixture (boots Zephyr `native_sim/native/64` as a Linux ELF,
-# emits every Severity via the nros-log facade, and exits through
-# `nsi_exit(0)`). Consumed by
-# `packages/testing/nros-tests/tests/logging_smoke.rs`.
-[group("examples")]
-build-logging-smoke:
-    #!/usr/bin/env bash
-    set -e
-    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    if [ ! -d "$WORKSPACE/zephyr" ]; then
-        echo "Error: Zephyr workspace not found at $WORKSPACE"
-        echo "Run: ./scripts/zephyr/setup.sh"
-        exit 1
-    fi
-    source scripts/build/cargo.sh
-    CODEGEN="$(nros_cargo_codegen_c_bin)"
-    MAKE_BIN="$(pwd)/third-party/make/make"
-    if [ ! -x "$MAKE_BIN" ]; then
-        MAKE_BIN="$(command -v make)"
-    fi
-    export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
-    if [ ! -x "$CODEGEN" ]; then
-        echo "  Building host nros-codegen..."
-        cargo_profile_args="$(nros_cargo_profile_arg_string)"
-        nros_cargo_ensure_codegen_c
-    fi
-    # Phase 220.D — resolve absolute paths up front. The default workspace
-    # path is relative (`zephyr-workspace` or `../nano-ros-workspace`),
-    # which both `west build -d` and the fixture source-dir argument resolve
-    # against cwd; mixing that with the in-workspace `cd` made the recipe
-    # fragile. Pin both to absolute paths and pass the fixture source as an
-    # absolute path so west's pristine cache + SOURCE_DIR stay in sync.
-    NROS_ROOT="$(pwd)"
-    WORKSPACE_ABS="$(cd "$WORKSPACE" && pwd)"
-    FIXTURE_SRC="$NROS_ROOT/packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim"
-    BUILD_DIR="$WORKSPACE_ABS/build-logging-smoke"
-    # Phase 220.D — guard against a stale CMakeCache from a previous
-    # workspace layout (e.g. legacy in-tree `nano-ros/zephyr-workspace/`).
-    # `-p auto` defers to the cache's `pristine.cmake`; if that path no
-    # longer exists, the build fails before any cmake re-configure.
-    CACHE_FILE="$BUILD_DIR/CMakeCache.txt"
-    if [ -f "$CACHE_FILE" ]; then
-        cached_zephyr_base="$(sed -n 's/^ZEPHYR_BASE:PATH=//p' "$CACHE_FILE" | head -1)"
-        if [ -n "$cached_zephyr_base" ] && [ ! -d "$cached_zephyr_base" ]; then
-            echo "  Stale CMakeCache (ZEPHYR_BASE=$cached_zephyr_base no longer exists) — wiping $BUILD_DIR"
-            rm -rf "$BUILD_DIR"
-        fi
-    fi
-    echo "  Building logging-smoke-zephyr-native-sim -> $BUILD_DIR"
-    # issue 0093 — Zephyr 4.4's `find_package(Python3)` requires >=3.12. Prepend the
-    # provisioned py3.12 venv to PATH (empty on the 3.7 line) so `west`/cmake resolve
-    # the 3.12 python — same as the example-fixture path (zephyr-ci.just). Without it
-    # this testing-bin fixture configures with the system python (3.10) and 4.4 fails.
-    venvbin="{{ZEPHYR_VENV_BIN}}"
-    if [ -n "$venvbin" ]; then
-        export PATH="$(realpath "$venvbin"):$PATH"
-    fi
-    # issue #87 — native_sim uses host gcc (no Zephyr SDK download). Board is
-    # always native_sim here; export host unless the caller overrode it.
-    export ZEPHYR_TOOLCHAIN_VARIANT="${ZEPHYR_TOOLCHAIN_VARIANT:-host}"
-    cd "$WORKSPACE_ABS"
-    west build -b native_sim/native/64 -d "$BUILD_DIR" -p auto \
-        "$FIXTURE_SRC" \
-        -- -D_NANO_ROS_CODEGEN_TOOL="$CODEGEN" -DMAKE="$MAKE_BIN"
+# issue 0549 — the `build-logging-smoke` recipe lived here and is GONE. It was
+# a SECOND builder for a fixture the manifest already declares: it wrote
+# `<workspace>/build-logging-smoke/` (which the test reads) while the manifest
+# leaf wrote a different dir nothing read, behind a flag no lane passed. The
+# leaf builds with `just zephyr build-fixtures` now, into the same dir.
 
 # Build Zephyr C++ examples
 [group("examples")]

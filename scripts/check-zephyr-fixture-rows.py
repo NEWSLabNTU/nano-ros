@@ -51,7 +51,7 @@ def emitted_leaves():
         [
             "bash", str(REPO / "scripts/build/zephyr-fixture-leaves.sh"),
             "--emit", "records",
-            "--include-logging-smoke", "--include-workspace-entry",
+            "--include-workspace-entry",
         ],
         capture_output=True, text=True, cwd=REPO,
     )

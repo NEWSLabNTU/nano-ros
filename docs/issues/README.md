@@ -115,20 +115,16 @@ because `git stash` does not change the ENCLOSING directory's cargo config. Fixe
 `not(feature = "rmw-cffi")`, `Some(noop_callback)` with an `unsafe extern "C"` pointee, and deriving the
 slot test from `MAX_CBS`. 261 nros-node tests pass with no flags. See `archived/0545-*`. (2026-08-13)
 
-**#549** (build/testing, open 2026-08-13) — the Zephyr logging-smoke image has TWO builders writing two
-build dirs, and the manifest's one is unreachable. `just/zephyr-dev.just:165` writes
-`<workspace>/build-logging-smoke/` (2.9 GB here), is called by `zephyr-ci.just:367`, and is what
-`binaries/mod.rs:3729` reads. The `builder = "west"` row writes
-`<workspace>/logging-smoke-zephyr-native-sim/`, is gated behind `--include-logging-smoke`, and **no build
-lane passes that flag** — only `fixture-inventory.py` and a gate do, so it is emitted for inventory and
-never produced. This explains the `west_bare = true` anomaly phase-350 W1 declared rather than fixed: the
-leaf emits no cmake defs and an EMPTY staleness signature because it is a VESTIGIAL second definition
-nothing consumes. Issue 0535's class surviving inside the manifest. Benign today (the unreachable half
-never runs) but the row claims a coordinate it does not occupy, and the real builder has no row — so it is
-invisible to `row_coord()`, lane narrowing and the staleness gate. Fix: pick one builder, point the row at
-`build-logging-smoke`, retire the flag. Found while deleting dead build dirs — it came within one check of
-being deleted as garbage, because the recipe sets its build dir in a shell variable no path-scan sees.
-See `0549-*`.
+RESOLVED 2026-08-13 — **#549** the Zephyr logging-smoke image had TWO builders and the manifest's one was
+unreachable. `zephyr-dev.just` wrote `<workspace>/build-logging-smoke/` (what the test reads) while the
+`builder = "west"` row wrote a different dir behind `--include-logging-smoke`, a flag NO build lane passed
+— so that leaf was emitted for inventory and never produced. That also explained the `west_bare = true`
+anomaly phase-350 W1 declared rather than fixed: no cmake defs, empty staleness signature, because the
+leaf was vestigial. Fixed by pointing the row at `build-logging-smoke`, deleting `west_bare` (its only
+user), retiring the flag, and deleting both the second recipe and `zephyr-ci.just`'s `want_logging` special
+case — whose stated reason ("lives outside the entries loop") stopped being true when W1 gave the leaf a
+row. Verified with the build dir WIPED first: the lane produced the image in 119 s and the test passed
+against it. See `archived/0549-*`. (2026-08-13)
 
 **#527** (testing, open 2026-08-12) — the doctest phase overwrites the junit.xml the skip-rewrite just
 produced, so a failed sweep reports a trustworthy COUNT of real failures and destroys the record of WHICH

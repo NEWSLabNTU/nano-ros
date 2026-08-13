@@ -1130,12 +1130,13 @@ def main():
                         west_id(e),
                         *(str(v or "") for v in authored),
                         ";".join(e.get("conf_files", [])),
-                        # `west_bare`: emit NO cmake defs and an EMPTY staleness
-                        # signature. Declared per-row rather than derived,
-                        # because it preserves a pre-existing oddity (see the
-                        # logging-smoke row's comment) that a future change may
-                        # want to remove deliberately.
-                        "1" if e.get("west_bare") else "",
+                        # (issue 0549 — a `west_bare` field rode here, blanking
+                        # a leaf's cmake defs and staleness signature. Exactly
+                        # one row used it, and that row turned out to be a
+                        # vestigial duplicate; the field went with the fix. The
+                        # trailing position is kept EMPTY rather than removed so
+                        # the record width does not change under readers.)
+                        "",
                     )
                 )
                 + "\n"

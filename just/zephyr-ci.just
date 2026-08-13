@@ -344,29 +344,15 @@ build-fixtures:
         NROS_ZEPHYR_CCACHE_TEMPDIR="$ccache_tmpdir" \
             scripts/build/zephyr-fixture-make-driver.sh "${zephyr_leaf_args[@]}"
     fi
-    # Phase 177.9 — the logging-smoke native_sim fixture is consumed by
-    # logging_smoke.rs but lives under packages/testing/.../bins (not
-    # examples/), so it's outside the entries loop above. build-all puts
-    # zephyr in its fixture fanout, so build it here too — otherwise
-    # build-all is not a superset of test-all's fixture needs and
-    # logging_smoke_zephyr_native_sim hard-fails "fixture not built".
-    # Honor the same filter; a logging-only filter is valid even when
-    # the normal Zephyr fixture generator emits no records.
-    want_logging=0
-    if [ -z "$fixture_filter" ] || [[ "logging-smoke-zephyr-native-sim" =~ $fixture_filter ]]; then
-        want_logging=1
-    fi
-    if [ "$normal_records" = "0" ] && [ "$want_logging" -eq 0 ]; then
+    # issue 0549 — the logging-smoke leaf used to be built HERE by a second
+    # recipe, because "it lives under packages/testing/.../bins, not examples/,
+    # so it's outside the entries loop above". phase-350 W1 made it a manifest
+    # row, which ended that: the leaf goes through the same driver as every
+    # other one, honours the same filter, and writes the same
+    # `build-logging-smoke` dir the test reads. The second builder is gone.
+    if [ "$normal_records" = "0" ]; then
         echo "  ✗ no Zephyr fixtures matched NROS_ZEPHYR_FIXTURE_FILTER=$fixture_filter"
         exit 1
-    fi
-    if [ "$want_logging" -eq 1 ]; then
-        # Reuse the standalone recipe so the build dir matches exactly what
-        # logging_smoke.rs's fixture helper looks for (test path contract).
-        echo "  → logging-smoke-zephyr-native-sim"
-        if ! ( cd "$nros_root" && just zephyr build-logging-smoke ); then
-            failures+=("logging-smoke-zephyr-native-sim")
-        fi
     fi
     if [ ${#failures[@]} -gt 0 ]; then
         printf '  ✗ failed: %s\n' "${failures[@]}"

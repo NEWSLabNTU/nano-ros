@@ -1,7 +1,7 @@
 ---
 id: 549
 title: "The Zephyr logging-smoke image has TWO builders writing two build dirs, and the manifest's one is unreachable"
-status: open
+status: resolved
 type: tech-debt
 area: build, testing
 related: [issue-0535, issue-0539, phase-350]
@@ -89,3 +89,34 @@ Found while deleting dead build dirs after phase-350: `build-logging-smoke`
 looked orphaned by every check that scanned manifest leaves and `-d build-…`
 recipe arguments, because this recipe sets its build dir in a shell variable.
 It came within one check of being deleted as garbage.
+
+## Resolved 2026-08-13 (phase-350 follow-up)
+
+One builder, one dir, built with the lane.
+
+* the row points at `build-logging-smoke` — the dir the test already read — so
+  the leaf and its consumer name the same path;
+* `west_bare` is GONE (this row was its only user), so the leaf now carries the
+  same cmake defs and a real staleness signature as every sibling;
+* `--include-logging-smoke` is retired: no build lane ever passed it, and with
+  the duplicate removed there is nothing left to gate;
+* the second builder — `just zephyr build-logging-smoke` in `zephyr-dev.just` —
+  and the `want_logging` special case in `zephyr-ci.just` are deleted. That
+  special case justified itself with "it lives under `packages/testing/.../bins`,
+  not `examples/`, so it's outside the entries loop", which stopped being true
+  when phase-350 W1 gave the leaf a row;
+* `logging_smoke.rs`'s failure hint named the deleted recipe; it says
+  `just zephyr build-fixtures` now.
+
+**Verified end to end, not by inspection.** The build dir was WIPED first, so the
+lane had to produce it: `just zephyr build-fixtures` (filtered to the leaf) wrote
+`build-logging-smoke/zephyr/zephyr.exe` in 119 s, and
+`logging_smoke_zephyr_native_sim_emits_every_severity` then passed against it.
+West fixtures 4/4. `just check-fast` green; 32/32 across the fixture and lane
+gates; `check-zephyr-fixture-rows` still 58 = 58.
+
+The defs the leaf gets now are a superset of what the deleted recipe passed
+(`_NANO_ROS_CODEGEN_TOOL` + `MAKE`, plus the toolchain-cache dir, `USE_CCACHE=0`
+and the sccache launchers every sibling gets). None of those change the image —
+they are cache and launcher knobs — and no `CONF_FILE` is passed either way,
+which is what the recipe did too.
