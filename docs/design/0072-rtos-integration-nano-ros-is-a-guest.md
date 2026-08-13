@@ -154,6 +154,181 @@ which an out-of-tree user does not have. That is the whole problem.
   `if/elseif` on `NANO_ROS_BOARD`, and the toolchain file must be fixed before
   `project()`. So the *source* must describe N boards while *delivery* carries 1.
 
+## 2c. What six ecosystems agree on — and the revised model
+
+Surveyed 2026-08-12/13: upstream FreeRTOS, ESP-IDF, Pico SDK, STM32Cube, NXP
+MCUXpresso, Infineon MTB, Eclipse ThreadX + ST X-CUBE-AZRTOS, PX4.
+
+### The convergent model
+
+Every one of them separates a **board directory** from **the user's project**,
+and none of them lets the user's project edit the board. PX4 is the cleanest
+instance and worth copying outright:
+
+```
+boards/<vendor>/<board>/          ← everything board-intrinsic
+  default.px4board                  Kconfig defconfig (the board's baseline)
+  <label>.px4board                  variants, stored as DELTAS over default
+  nuttx-config/<cfg>/defconfig      the RTOS config, owned by the BOARD
+  nuttx-config/scripts/*.ld         memory map
+  nuttx-config/include/board.h      clocks, pinmux, DMA map
+  src/*.cpp                         bring-up (the `drivers_board` library)
+  init/rc.board_*                   board default parameters
+  firmware.prototype                flashing identity (board_id, image_maxsize)
+  cmake/upload.cmake                board-idiomatic flashing (18 boards ship one)
+```
+
+and the user supplies exactly two things: `EXTERNAL_MODULES_LOCATION=<abs path>`
+and *which board×label to build*. Nothing else.
+
+Three properties worth stealing:
+
+1. **A board exists because a file exists.** No registry — the target list is
+   `find boards -name '*.px4board'`. That is phase-348's discovery rule,
+   arrived at independently.
+2. **Variants are deltas over a default**, merged by `merge_config.py`. That is
+   RFC-0049's ladder, arrived at independently.
+3. **The board owns the RTOS config.** `make … savedefconfig` writes back *into*
+   `boards/<v>/<b>/nuttx-config/<cfg>/defconfig`. The RTOS is a submodule the
+   board configures — not something the project reconfigures.
+
+### The refined categories
+
+The survey corrects two things in §2b's A/B split.
+
+**Flashing is board-intrinsic; simulation is not.** PX4 puts `cmake/upload.cmake`
+in the board dir but keeps simulator runners in
+`src/modules/simulation/…/sitl_targets_*.cmake`. That resolves the runner
+question: the **mechanism** by which a board is programmed (DFU, ST-LINK,
+`rsync` to a Pi) is a board fact; the **instance parameters** (`AUTOPILOT_HOST`,
+which serial port, which probe serial) are project facts; and an **emulator
+invocation is test-harness configuration**, belonging to neither. nano-ros's
+QEMU strings are the third kind, which is why they sit awkwardly in board
+descriptors today.
+
+**Some facts are jointly owned.** ThreadX/ST shows a linker script carrying both
+the memory map (board) and the driver's DMA sections — `.RxDescripSection` must
+land in a DMA-reachable region (board *constrains*) at a placement the project
+*chooses*, spelled differently per toolchain (GCC attribute, IAR `@`, Keil a
+hard-coded `at(0x24030000)`). A pure A/B split cannot express this; the board
+must be able to state a **constraint** that the project satisfies.
+
+### The compatibility fact a free choice cannot express
+
+NetX Duo ships a **smaller port table than ThreadX** — 24 arches against 47. A
+ThreadX arch with no NetX counterpart **cannot be paired**. So "the user
+declares the netstack" (§3.3) is too permissive: the pairing has a validity
+domain, and the honest form is that a provider declares which platforms it
+supports and the resolver rejects the rest with a list of what is available.
+
+### The PX4 constraint that changes our integration story
+
+> *"Everything a board declares is Kconfig-selectable per label; nothing an
+> external module provides is."*
+
+An external module gets **one lever** — `EXTERNAL_MODULES_LOCATION`,
+all-or-nothing — and one insertion point, `add_subdirectory` at
+`CMakeLists.txt:454`, which is **before** `src/lib` and `platforms`. Consequences
+we must design around rather than discover:
+
+* nano-ros **cannot be per-board selectable** on PX4 as an external module. To
+  get a `<label>.px4board` opt-in, code must be in-tree — which is exactly what
+  PX4 did for zenoh (`src/modules/zenoh/` + `boards/px4/fmu-v6x/zenoh.px4board`,
+  with `zenoh-pico` as a PX4-forked submodule).
+* `DEPENDS` on `px4_work_queue`/`cdr` etc. **hard-errors** from an external
+  module, because those targets do not exist yet at line 454. Only
+  `uorb_headers`, `git_*` and self-defined targets are available; a later
+  `target_link_libraries()` still works.
+* The `EXTERNAL` keyword on `px4_add_module()` is parsed and **never read**, and
+  `external_module_paths` is accumulated and never read. Neither is a hook.
+
+This is RFC-0003's *hookless vendor* case, now with the precise reason: not that
+PX4 lacks a configure-time hook, but that its configuration namespace is closed
+to out-of-tree contributors.
+
+## 2d. The revised design, optimised for UX
+
+### One rule, borrowed because users already know it
+
+**A board is a directory. It exists because it exists.** No registry, no central
+edit — PX4's rule, and phase-348's scan already implements it. A user adds a
+board by creating a directory in their workspace; nothing in nano-ros changes.
+
+### What a board package contains (category A)
+
+Everything the six ecosystems agree is board-intrinsic:
+
+```
+<ws>/src/my_board/
+  package.xml            <nano_ros_provides kind="board" name="nucleo-h723zg"/>
+  nros-board.toml        identity, platform, target triple, capabilities,
+                         entry shape, toolchain file, arch profile,
+                         supported netstacks, flashing MECHANISM,
+                         memory constraints the project must satisfy
+```
+
+Purged of: runner strings, `${workspace}` paths, config-header locations —
+everything §2b measured as site content in six of nine descriptors.
+
+### Where site facts go (category B) — no new file
+
+`[deploy.<name>]` in the bringup's `system.toml` **already exists**, already
+keyed per board, already read at codegen time — 59 blocks in the tree, nine in
+one workspace. It gains the site keys rather than a sibling file being invented:
+
+```toml
+[deploy.nucleo-h723zg]
+kind    = "self"
+board   = "nucleo-h723zg"     # the join key to the board package (already there)
+target  = "thumbv7em-none-eabihf"
+
+sdk.cube      = "{env:CUBE_PROJECT}"      # machine path, env-interpolated
+netstack      = "lwip"
+config_files  = { tx_user = "Core/Inc/tx_user.h", nx_user = "Core/Inc/nx_user.h" }
+upload        = { port = "/dev/ttyACM0" }  # instance params; MECHANISM is the board's
+```
+
+This satisfies the SSoT requirement (one file, per workspace, greppable),
+survives multi-board workspaces (keyed per deploy), and needs no new discovery
+path. `config_files` is a **named map** rather than a directory, because ThreadX
+needs `TX_USER_FILE` *and* `NX_USER_FILE` and FreeRTOS+TCP needs
+`FreeRTOSConfig.h` *and* `FreeRTOSIPConfig.h`.
+
+### Test-harness config is a third thing
+
+QEMU invocations are neither board nor project — they are how *our tests* run a
+payload. They move to the test harness, keyed by board, leaving both the board
+package and the user's deploy block clean. A user with real hardware never sees
+them.
+
+### The UX this buys
+
+| profile | what they write | what they never touch |
+| --- | --- | --- |
+| our fixtures | nothing | — |
+| Zephyr / NuttX / ESP-IDF | one manifest line (unchanged) | board packages |
+| vendored FreeRTOS or ThreadX, CMake host | one board package + one `[deploy.*]` block | nano-ros itself |
+| IDE host (CubeIDE, IAR, MTB) | the same, plus `nros emit` | — |
+| PX4 | `EXTERNAL_MODULES_LOCATION` | everything else — and they get no per-board opt-in (§2c) |
+
+The measurable win is against what the vendors make users do today: ST
+duplicates one memory map across **twelve** application directories, three
+linker-script dialects and three startup files per application. A first-class
+board package is something **neither upstream ThreadX nor ST provides** — so
+this is new value, not repackaging.
+
+### Sequencing
+
+1. `[deploy.*]` gains the site keys; `nros config explain` reports file, section
+   and rung. Nothing moves yet.
+2. Generate this repo's site values from `just/sdk-env.just`; both live, gated
+   for agreement (the phase-347 pattern).
+3. Move runner / linker / `${workspace}` out of descriptors; delete the
+   withholding filter, which then has nothing to filter.
+4. Board packages declare **supported netstacks**; the resolver rejects an
+   unsupported pair with the list (the NetX Duo lesson).
+5. Retire the interim `[env] NROS_BOARD_TOML` row.
+
 ## 3. Overall design
 
 ### 3.1 Four things, each owning one fact
