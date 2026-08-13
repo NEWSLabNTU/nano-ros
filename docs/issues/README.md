@@ -201,6 +201,18 @@ build would have taken the `[SKIPPED]` branch. That half is fixed; this one need
 feature's dependency set to provide the host platform symbols (the `posix-c-port` trick
 `metadata_build.rs` uses for the same ABI). See `archived/0526-*`. (2026-08-12)
 
+**#552** — the Zephyr Cortex-M (`mps2_an385`) C and C++ zenoh images branch to `PC=0` ~75 ms after net
+init, before publishing anything: `USAGE FAULT / Illegal use of the EPSR`, every register zero. That is a
+call through a NULL function pointer, not a stack overflow. RUST on the SAME board passes and native_sim is
+unaffected, so the split is by LANGUAGE on one coordinate — which points at the C/C++ registration seam
+(`nros_cpp_init` → `nros_app_register_backends`; no ctor sections on Zephyr) and at the FORCE_LINK class,
+where a `#[no_mangle]` dropped from the staticlib by DCE gives a NULL slot with no link error. Reproduces
+SOLO on a fresh build, both leaves. REFUTED: not #531 — reverting exactly that hunk and rebuilding still
+faults (tested, not argued), recorded because the coincidence is compelling. Only visible now because #534
+blocked the Zephyr build, which is also why #531 shipped un-runtime-verified; whether these cells EVER
+passed is NOT established, so do not call it a regression without a green revision in hand. See `0552-*`.
+(2026-08-13)
+
 **#544** — every Zephyr RUST fixture leaf fails at `cargo build` with `the argument
 '--no-default-features' cannot be used multiple times`, taking the zephyr module — and `ci-matrix` —
 down; the C/C++ lanes are unaffected, which is why a C-only verification against the same tree passed
