@@ -114,3 +114,78 @@ Open question worth deciding explicitly: whether `clock_resolution_ns`
 is allowed to change after boot (Zephyr runtime cycle rate, ESP-IDF APB
 rescale). Simplest contract is "constant after platform init, ports
 that cannot promise that must report their worst case".
+
+## Measured: the cost axis is DIVISION, not the unit (2026-08-13)
+
+The objection to nanoseconds is "finer unit, more expensive on a 32-bit
+MCU". Measured on the mps2-an385 lane, that is false — and the real
+cost driver turns out to argue *for* nanoseconds.
+
+Method: each candidate is an `#[inline(never)]` function reading
+SysTick `LOAD`/`VAL` plus the FreeRTOS tick, called 1000 times under
+`qemu -icount shift=0`, where one guest instruction is 1 ns of guest
+time, so elapsed µs × 1000 is instructions retired. All four share the
+same register-sampling prologue.
+
+| candidate | per-read instructions |
+|---|---|
+| `us`, as the port does today (`cycles * 1_000 / (load+1)`) | **91** |
+| `ns`, naive (`cycles * 1_000_000_000 / (load+1)`) | **94** |
+| `ns`, exact multiplier (`cycles * 40`, 25 MHz ⇒ 40 ns/cycle) | **37** |
+| raw counter + frequency, no conversion (the NuttX `perf_gettime` shape) | **34** |
+
+Four conclusions, three of them surprising:
+
+1. **The unit is not the cost axis.** ns costs the same as µs (94 vs
+   91). The wider intermediate does not push the arithmetic onto a slow
+   64-bit path; the runtime division dominates either way.
+2. **Division is the cost axis** — 91 → 37 instructions, 2.5× cheaper,
+   purely from replacing a divide with a multiply.
+3. **Nanoseconds make that multiply possible MORE often than
+   microseconds do.** ns-per-cycle is an integer for 25, 50, 100, 125,
+   200 and 250 MHz (40, 20, 10, 8, 5, 4); µs-per-cycle is never an
+   integer above 1 MHz, so a µs ABI is *forced* into a division on
+   exactly the boards where an ns ABI is free. Normalizing to ns is
+   cheaper than normalizing to µs.
+4. **Raw counter + frequency is not worth its complexity.** It saves 3
+   instructions over exact-ns (34 vs 37, ~8%) while pushing wrap
+   handling, frequency plumbing and conversion onto every caller. The
+   NuttX shape is the right answer for a profiling counter with
+   genuinely unknown units; it is the wrong trade here.
+
+Note that today's µs path is the most expensive option measured — ~91
+instructions, ~3.6 µs at 25 MHz — and the executor reads it every spin.
+So this is not only an accuracy change.
+
+### Revised proposal
+
+Unchanged: `clock_ns` as the single monotonic symbol, plus
+`clock_resolution_ns`, with `clock_ms`/`clock_us` as header wrappers.
+Rejected on evidence: the raw-counter-plus-frequency alternative.
+
+Added, and this is the part the measurement earns:
+
+- **The ABI should document the exact-multiplier path as the expected
+  implementation**, not leave it to each port to rediscover. Where the
+  counter frequency divides 1e9, a port converts with a compile-time
+  `NS_PER_CYCLE` multiply; the ABI text should say so and the reference
+  ports should demonstrate it.
+- Where it does not divide evenly (12 MHz on `qemu_cortex_m3`,
+  168 MHz on STM32F4), a fixed-point reciprocal — multiply by
+  `2^32 / freq`, then shift — keeps it division-free at the cost of a
+  wider multiply. Worth measuring before mandating.
+- `clock_resolution_ns` then has a second job beyond diagnostics: it is
+  the number a port must be honest about *because* the fast path
+  depends on it. A port that returns 40 is claiming a 25 MHz counter.
+
+### Still open
+
+- Whether a separate cheap/coarse entry point survives. The gap between
+  a bare tick read (~7 instructions, measured earlier) and exact-ns
+  (~37) is real but small in absolute terms; the interesting question
+  is whether any caller reads the clock often enough to care once the
+  division is gone. The executor's per-spin read is the candidate.
+- The same measurement on silicon. QEMU's `icount` counts instructions,
+  not cycles, so it does not model memory-access latency for the
+  register reads — the instruction ratios should hold, the absolute
+  microseconds should not be quoted.
