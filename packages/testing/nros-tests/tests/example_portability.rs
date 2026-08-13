@@ -153,6 +153,19 @@ fn collect_sources() -> SourceMap {
                 continue;
             };
             for program in programs.flatten() {
+                // `examples/workspaces/` is not `<platform>/<lang>/<program>`:
+                // its second level is a WORKSPACE name that collides with the
+                // language names (`c`, `cpp`), and its third level holds BUILD
+                // OUTPUT — `build-workspace-fixtures{,-cyclonedds,-threadx,…}`,
+                // each with a `src/` full of generated and copied sources. The
+                // walk admitted twelve of them as "programs", and they carried
+                // 24 127 of the ~25 000 files it read: 96 % of this gate's I/O
+                // was generated trees. They form single-member groups, so they
+                // passed trivially and nothing ever reported them.
+                let prog_name = program.file_name().to_string_lossy().to_string();
+                if is_build_output(&prog_name) {
+                    continue;
+                }
                 let src = program.path().join("src");
                 if !src.is_dir() {
                     continue;
@@ -237,6 +250,14 @@ fn classify(lang_ext: &str, rel: &str, has_lib: bool) -> FileKind {
 /// diverge from platforms that need no such module.
 const GLUE_MODULES: &[&str] = &["app_main"];
 
+/// Build output, not authored source: a `build*/` or `target*/` directory at
+/// either level of the walk. One spelling, because the outer level (a program
+/// dir that IS an output tree) and the inner level (an output tree inside a
+/// program) are the same rule and drifted apart once already.
+fn is_build_output(name: &str) -> bool {
+    name.starts_with("build") || name.starts_with("target")
+}
+
 /// Every source file under `src/`, normalized and tagged, in filename order.
 fn classified_files(src: &Path) -> Option<Vec<(String, String, FileKind)>> {
     let has_lib = src.join("lib.rs").is_file();
@@ -246,6 +267,15 @@ fn classified_files(src: &Path) -> Option<Vec<(String, String, FileKind)>> {
         for entry in fs::read_dir(&dir).ok()?.flatten() {
             let path = entry.path();
             if path.is_dir() {
+                // The `collect_sources` doc has always said this walk "never
+                // descends into a program's `build*/` or `target*/` output".
+                // It did — nothing implemented the claim. An example that has
+                // been built in place therefore contributed its whole build
+                // tree to the comparison.
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                if is_build_output(&name) {
+                    continue;
+                }
                 stack.push(path);
                 continue;
             }
