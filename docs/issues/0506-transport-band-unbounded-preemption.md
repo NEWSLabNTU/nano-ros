@@ -418,3 +418,57 @@ cannot be separated by a router rule — that needs publisher identity in
 the rule, or per-criticality topics, and it is the same limitation that
 makes message priority (which IS per-publisher) complementary rather
 than redundant.
+
+## Probe: the device-side drain budget is LOSSY as posed (2026-08-14)
+
+The design above proposed bounding `_zp_unicast_read`'s inner "drain
+every buffered frame" loop. Measured with a frame cap on the 2 kHz lane
+(raw numbers: `results/issue506_drain_budget.md` in the evaluation
+workspace):
+
+| cell | stalls >50 ms | miss >15 ms | viol | rx/s | chain % |
+|---|---|---|---|---|---|
+| unbounded (today) | 10 | 1.79% | 65 | 282 | 13.2% |
+| budget = 16 frames | 4 | 0.59% | 22 | **10** | **5.7%** |
+| budget = 4 frames | 5 | 0.85% | 29 | **10** | **5.4%** |
+| budget = 1 frame | 12 | 1.70% | 71 | 268 | 13.2% |
+
+Cadence does improve. It improves because messages are being **thrown
+away**, not deferred:
+
+```c
+// Prepare buffer
+_z_zbuf_reset(&ztu->_common._zbuf);
+```
+
+Every non-`single_read` call resets the receive buffer, so anything the
+budget declines to drain is discarded on the next call — the exact
+defect the unbounded loop exists to fix ("one recv can pull multiple
+stream frames … a frame left here is silently lost"). The inbound drain
+collapsing 282 → 10 msg/s is that loss, and chain delivery halves with
+it.
+
+A frame cap here is therefore a drop policy, not a budget.
+
+Budget = 1 is the control: it degenerates to the pre-loop single-frame
+path where the outer read task simply re-enters, so total work is
+unchanged and it matches unbounded on every column.
+
+### What this changes
+
+- **The device-side half has a prerequisite the design did not name:**
+  `_zp_unicast_read` must be able to return with bytes unread and resume
+  from them. That is a change to zenoh-pico's rx state machine, not the
+  one-line cap this probe used. Until then, "budget the drain" cannot be
+  implemented without losing frames.
+- **The head-of-line prediction is UNRESOLVED**, not confirmed. The
+  probe was written to test "cadence protected, chain latency worsened";
+  chain p95 barely moved (796 → 759-786 ms), but with delivery halved
+  that is a different population rather than a measurement. It needs the
+  non-lossy implementation.
+- **Router-side pacing remains the only mechanism measured to fix both
+  harms** — 0 stalls and chain at its ~30% ceiling — because it removes
+  the work at the source instead of discarding it at the sink. That
+  strengthens, rather than weakens, the two-enforcement-point shape: the
+  router rule is not merely the one that saves CPU, it is currently the
+  only one that can shed without losing what matters.
