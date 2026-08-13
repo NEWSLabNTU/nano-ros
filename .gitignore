@@ -71,6 +71,8 @@ tools/*
 /nros-0.1.0-linux-x86_64.tar.gz
 /target-zpico-build-matrix/
 /target-zpico-drift-gate/
+# Fixture target dir for the posix zenoh build (`build-test-fixtures`).
+/target-zenoh-fixture-posix/
 # issue 0389 — `just test-zpico-multisession` builds the shim at
 # ZPICO_MAX_SESSIONS=2; its own target dir keeps the default-1 tiers from
 # rebuilding it back and forth on every alternation.
