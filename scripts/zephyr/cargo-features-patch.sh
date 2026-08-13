@@ -7,11 +7,36 @@
 # inject `--no-default-features --features rmw-<x>` based on the
 # Kconfig RMW choice (CONFIG_NROS_RMW_<X>=y).
 #
-# Upstream has TODOs at lines 200-205 and 246-249 noting the
-# missing pass-through — this patch fills the gap.
+# Upstream has TODOs noting the missing pass-through — this patch fills the gap.
 #
 # Idempotent: detects each injected block via grep and only adds missing
 # blocks.
+#
+# ONE INJECTION SITE, and hunk 3 enforces it (issue 0544).
+#
+# The pass-through goes INSIDE `add_cargo_target_with_zephyr_env`, which every
+# caller routes through, so one injection covers `cargo build` and `cargo doc`
+# both. An earlier revision of this comment claimed the awk matched "two such
+# lines: cargo build (~199) and cargo doc (~243)" — that described an upstream
+# layout that has since been refactored into the shared function, so the awk
+# matches ONE line and always did the whole job.
+#
+# Someone reading that stale comment concluded the pass-through was only half
+# applied and hand-added `${EXTRA_CARGO_ARGS}` to BOTH call sites
+# (`CARGO_ARGS build ${EXTRA_CARGO_ARGS}` / `CARGO_ARGS doc ...`). Those edits
+# are in no tracked producer, and hunk 2's guard greps only its OWN marker, so
+# it could not see them. Function-level injection PLUS caller-level injection
+# put the flag on the command twice, and cargo 1.97.1 rejects that outright:
+#
+#     error: the argument '--no-default-features' cannot be used multiple times
+#
+# Every Zephyr Rust leaf failed at `cargo build`, taking the zephyr fixture
+# module — and `ci-matrix` — down, while the C/C++ lanes stayed green because
+# they never see EXTRA_CARGO_ARGS.
+#
+# So this script now REPAIRS as well as applies: hunk 3 strips caller-level
+# copies. A workspace that already carries them is fixed by re-running setup,
+# rather than staying broken until someone re-derives the diagnosis.
 
 set -euo pipefail
 
@@ -75,9 +100,12 @@ if ! grep -q "nano-ros: NROS_CARGO_PROFILE override" "$CMAKE_FILE"; then
 fi
 
 if ! grep -q "nano-ros: EXTRA_CARGO_ARGS pass-through" "$CMAKE_FILE"; then
-    # Inject ${EXTRA_CARGO_ARGS} immediately after every line containing
-    # only `${rust_build_type_arg}`. There are two such lines: cargo build
-    # (~199) and cargo doc (~243). awk handles both in one pass.
+    # Inject ${EXTRA_CARGO_ARGS} immediately after the line containing only
+    # `${rust_build_type_arg}`, INSIDE `add_cargo_target_with_zephyr_env`.
+    # That function builds the command every caller uses, so one injection
+    # serves `cargo build` and `cargo doc` both — do NOT also add it at a call
+    # site, or the flag lands on the command twice (issue 0544; hunk 3 removes
+    # such copies).
     TMP="$(mktemp)"
     awk '
     {
@@ -94,6 +122,43 @@ if ! grep -q "nano-ros: EXTRA_CARGO_ARGS pass-through" "$CMAKE_FILE"; then
 
     mv "$TMP" "$CMAKE_FILE"
     changed=1
+fi
+
+# --- 3. strip caller-level copies of the pass-through (issue 0544) -----------
+#
+# `CARGO_ARGS build ${EXTRA_CARGO_ARGS}` / `CARGO_ARGS doc ${EXTRA_CARGO_ARGS}`
+# duplicate what hunk 2 already injects inside the function. Upstream's own
+# lines are bare (`CARGO_ARGS build`), so removing the variable restores the
+# upstream text exactly — this cannot damage a clean checkout, and it repairs a
+# workspace that a stale reading of hunk 2's old comment left broken.
+#
+# Unconditional rather than guarded by a marker: the copies it removes carry no
+# marker of their own, which is precisely why hunk 2's guard could not see them.
+if grep -qE '^[[:space:]]*CARGO_ARGS (build|doc) \$\{EXTRA_CARGO_ARGS\}' "$CMAKE_FILE"; then
+    TMP="$(mktemp)"
+    sed -E 's/^([[:space:]]*CARGO_ARGS (build|doc)) \$\{EXTRA_CARGO_ARGS\}[[:space:]]*$/\1/' \
+        "$CMAKE_FILE" > "$TMP"
+    mv "$TMP" "$CMAKE_FILE"
+    changed=1
+    echo "[cargo-features-patch] removed caller-level EXTRA_CARGO_ARGS copies (issue 0544)"
+fi
+
+# The invariant, asserted rather than assumed: the pass-through reaches the
+# cargo command EXACTLY once. A second occurrence is a duplicated flag, and
+# cargo rejects `--no-default-features` twice — a failure that reads as a cargo
+# usage error, several layers from the file that caused it.
+# Count CODE occurrences only. The injected block and the call sites both carry
+# explanatory comments that name the variable, and counting those would make
+# this fire on a correct file — the same prose-counting mistake that makes a
+# grep-based gate useless.
+occurrences="$(grep -v '^[[:space:]]*#' "$CMAKE_FILE" | grep -c '\${EXTRA_CARGO_ARGS}' || true)"
+if [ "$occurrences" -ne 1 ]; then
+    echo "ERROR: \${EXTRA_CARGO_ARGS} appears $occurrences time(s) in" >&2
+    echo "       $CMAKE_FILE — expected exactly 1 (issue 0544)." >&2
+    echo "       More than one puts the flag on the cargo command twice:" >&2
+    echo "         error: the argument '--no-default-features' cannot be used multiple times" >&2
+    grep -n '\${EXTRA_CARGO_ARGS}' "$CMAKE_FILE" >&2 || true
+    exit 1
 fi
 
 if [ "$changed" -eq 0 ]; then

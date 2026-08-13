@@ -350,18 +350,20 @@ blocked the Zephyr build, which is also why #531 shipped un-runtime-verified; wh
 passed is NOT established, so do not call it a regression without a green revision in hand. See `0552-*`.
 (2026-08-13)
 
-**#544** — every Zephyr RUST fixture leaf fails at `cargo build` with `the argument
-'--no-default-features' cannot be used multiple times`, taking the zephyr module — and `ci-matrix` —
-down; the C/C++ lanes are unaffected, which is why a C-only verification against the same tree passed
-clean. `EXTRA_CARGO_ARGS` reaches the cargo line TWICE: `cargo-features-patch.sh` injects it inside
-`add_cargo_target_with_zephyr_env` (covering every caller), and both CALL SITES carry a hand-added copy
-that exists in no tracked producer. Upstream `404fcef` has neither (`CARGO_ARGS build` / `CARGO_ARGS doc`
-are bare). Root cause is patch-site drift: the script's comment claims "two such lines: cargo build
-(~199) and cargo doc (~243)", but upstream refactored both commands into one shared function, so the
-awk now matches ONE line — and its guard greps only its own marker, so it could not see the hand edits
-compensating for the half it stopped covering. Worked around locally (caller copies removed, two Rust
-leaves verified); the REPO is unchanged, so this reproduces on any workspace still carrying them. See
-`0544-*`. (2026-08-13)
+RESOLVED 2026-08-13: **#544** — every Zephyr RUST fixture leaf failed at `cargo build` with `the argument
+'--no-default-features' cannot be used multiple times`, taking the zephyr module — and `ci-matrix` — down,
+while the C/C++ lanes stayed green because they never see `EXTRA_CARGO_ARGS`. Patch-site drift:
+`cargo-features-patch.sh` injects the pass-through INSIDE `add_cargo_target_with_zephyr_env` (covering every
+caller), but its comment described a pre-refactor upstream layout — "two such lines: cargo build (~199) and
+cargo doc (~243)" — so a reader concluded it was half-applied and hand-added copies at BOTH call sites, which
+its own marker-grep could not see. Function-level plus caller-level = the flag twice. Fixed by making the
+script REPAIR as well as apply: it strips caller-level copies (upstream's lines are bare, so this restores
+upstream text exactly), corrects the comment, and now FAILS unless the variable appears exactly once in code
+— comments excluded, since both sites carry prose naming it. Verified on all four module states: repaired,
+drifted, repeat, and pristine `404fcef`. The `patches.yml` delivery is deliberately NOT added: a second
+delivery path for the same injection is what caused this, and there is no BYO 4.x workspace here to test
+`west patch` against — the exactly-once guard is the precondition that makes adding it safe later. See
+`archived/0544-*`. (2026-08-13)
 
 RESOLVED 2026-08-13 — **#542** — the C/C++ metadata probe writes `set(NROS_EXTRA_CPP_FEATURES "metadata-mode")`, and
 `nros_feature_set()` appends that to WHATEVER crate it assembles — so the probe asks `nros-c` for a
