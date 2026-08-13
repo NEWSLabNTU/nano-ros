@@ -316,6 +316,62 @@ def row_selector(entry):
     return (str(entry.get("dir") or "").rstrip("/"), rmw, features, ndf, env)
 
 
+WEST_ROLES = (
+    "talker",
+    "listener",
+    "service-server",
+    "service-client",
+    "action-server",
+    "action-client",
+)
+
+
+def west_role(entry):
+    """The leaf's role — authored, or the dir basename for the six role leaves.
+
+    phase-350 W1: `examples/zephyr/rust/talker` IS the talker leaf, so the
+    basename is the fact and `west_role` only exists for the leaves whose role
+    is not a directory name (`logging-smoke`, and the entries when they land).
+    """
+    authored = entry.get("west_role")
+    if authored:
+        return authored
+    name = (entry.get("dir") or "").rstrip("/").rsplit("/", 1)[-1]
+    if name not in WEST_ROLES:
+        _fail(
+            entry,
+            f"west row has no `west_role` and its dir basename {name!r} is not "
+            f"one of the role leaves ({', '.join(WEST_ROLES)})",
+        )
+    return name
+
+
+def west_lang_tag(entry):
+    """`rs`/`c`/`cpp` — the spelling zephyr build dirs use for the lang axis.
+
+    Issue 0539 calls this out as one axis with two spellings; it stays here (one
+    producer) until that item retires the short form outright.
+    """
+    return {"rust": "rs", "c": "c", "cpp": "cpp", "mixed": "mixed"}.get(
+        entry.get("lang"), entry.get("lang")
+    )
+
+
+def west_build_name(entry):
+    """The west build-dir NAME, authored or derived as `build-<tag>-<role>-<rmw>`."""
+    return entry.get("west_build_name") or (
+        f"build-{west_lang_tag(entry)}-{west_role(entry)}-{row_coord(entry)[2]}"
+    )
+
+
+def west_id(entry):
+    """The leaf id, authored or `zephyr/<board>/<lang>/<role>/<rmw>`."""
+    return entry.get("west_id") or (
+        f"zephyr/{entry.get('board', '')}/{entry.get('lang', '')}"
+        f"/{west_role(entry)}/{row_coord(entry)[2]}"
+    )
+
+
 def row_builder(entry):
     """The row's effective builder: `cargo`, `cmake`, or `west` — phase-350 W1.
 
@@ -822,6 +878,11 @@ def main():
             # consumes this instead of re-deriving a group key it cannot spell
             # (the key is a `cksum` over the row's variant signature).
             "fixture-groups",
+            # phase-350 W1 — the zephyr west lane's leaf table, so
+            # `zephyr-fixture-leaves.sh` iterates the MANIFEST instead of the
+            # nested bash loops in `fixture-matrix.sh` that were a second
+            # spelling of it (issue 0535).
+            "west-leaves",
             # Issue 0482 — shape-check `[[fixture]]` rows. `validate-workspaces`
             # has required `platform`/`lang`/`rmw` on workspace rows since
             # phase-295; plain rows had no validator at all, so a row missing
@@ -888,6 +949,73 @@ def main():
                 platforms.add(e["platform"])
         for name in sorted(platforms):
             sys.stdout.write(f"{name}\n")
+        return
+
+    if a.command == "west-leaves":
+        # phase-350 W1 — one record per `builder = "west"` row, in manifest
+        # order, carrying what the emitter needs to build the leaf:
+        #
+        #   <board>\x1f<lang>\x1f<lang_tag>\x1f<rmw>\x1f<role>\x1f<dir>
+        #   \x1f<build_name>\x1f<id>\x1f<zenoh_locator>\x1f<xrce_port>
+        #   \x1f<cyclone_domain>\x1f<conf_files>
+        #
+        # IDENTITY only. The isolation triple (locator / xrce port / cyclone
+        # domain) is emitted EMPTY for the six role leaves, because those derive
+        # from the allocator offsets and that formula keeps its one home in
+        # `zephyr-fixture-leaves.sh` beside `nros_tests::alloc`'s mirror --
+        # exporting a computed port here would make the manifest a second
+        # spelling of the allocator, which is the defect this phase removes.
+        # The other leaves already held literals in the script, so their rows
+        # carry the same literal and the emitter uses it verbatim.
+        #
+        # `conf_files` is the RELATIVE overlay list only; the absolute NSOS /
+        # board tail is a host path the script appends.
+        for e in load(a.manifest):
+            if e.get("builder") != "west":
+                continue
+            if a.platform and e.get("platform") != a.platform:
+                continue
+            # The isolation triple is emitted when the row AUTHORED one, not
+            # when the role happens to be a role leaf: the mps2 witness leaves
+            # ARE `talker`s, yet their locator (`tcp/10.0.2.2:106xx`) is a
+            # literal the native_sim formula cannot produce -- it is a different
+            # board's allocator slot, on the SLIRP host address. Keying this on
+            # the role dropped it and would have silently rebuilt those three
+            # leaves against the wrong router.
+            authored = (
+                e.get("west_zenoh_locator"),
+                e.get("west_xrce_agent_port"),
+                e.get("west_cyclone_domain"),
+            )
+            # The leaf's rmw LABEL, which is not always its coordinate: the
+            # logging-smoke leaf omits `rmw` (so it coordinates at the `zenoh`
+            # default, like every other rmw-less row) but the emitter has always
+            # spelled its record `default`, and this rewire must not change a
+            # single emitted byte.
+            rmw_label = e.get("rmw") or "default"
+            sys.stdout.write(
+                SEP.join(
+                    (
+                        str(e.get("board", "")),
+                        str(e.get("lang", "")),
+                        west_lang_tag(e),
+                        rmw_label,
+                        west_role(e),
+                        str(e.get("dir", "")),
+                        west_build_name(e),
+                        west_id(e),
+                        *(str(v or "") for v in authored),
+                        ";".join(e.get("conf_files", [])),
+                        # `west_bare`: emit NO cmake defs and an EMPTY staleness
+                        # signature. Declared per-row rather than derived,
+                        # because it preserves a pre-existing oddity (see the
+                        # logging-smoke row's comment) that a future change may
+                        # want to remove deliberately.
+                        "1" if e.get("west_bare") else "",
+                    )
+                )
+                + "\n"
+            )
         return
 
     if a.command == "coords":

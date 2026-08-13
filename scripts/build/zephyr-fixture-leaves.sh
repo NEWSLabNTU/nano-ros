@@ -298,155 +298,138 @@ lang_idx_for_lang() {
     esac
 }
 
+# phase-350 W1 — the leaf table is `examples/fixtures.toml`, read through
+# `fixtures-manifest.py west-leaves`.
+#
+# This used to be a nested `lang × rmw × role` loop over `nros_fixture_langs` /
+# `nros_fixture_roles` / `fixture_rmws`, plus a separate block for the mps2
+# witness leaves and another for logging-smoke. That was a SECOND spelling of a
+# matrix the manifest is supposed to own (issue 0535): the leaves had no
+# `row_coord()`, so no lane could select a coordinate inside the zephyr module
+# and the run side had to treat every artifact as unattributable.
+#
+# What stayed here, deliberately: the ISOLATION FORMULA. A role leaf's zenoh
+# port / xrce port / cyclone domain is `alloc::port_of(...)` arithmetic over
+# (lang, role), mirrored in `nros_tests::alloc` — exporting the computed value
+# from the manifest would make the manifest a second spelling of the ALLOCATOR,
+# trading one duplication for another. So the row carries identity and this
+# script keeps the formula, except where the row authored a literal the formula
+# cannot produce (the mps2 witness leaves sit on a different board's slots at
+# the SLIRP host address, and logging-smoke has none at all).
 selected=0
-for lang in $(nros_fixture_langs); do
-    lang_tag="$(nros_zephyr_lang_tag "$lang")"
-    lang_offset="$(lang_offset_for_lang "$lang")"
-    lang_idx="$(lang_idx_for_lang "$lang")"
-    for rmw in "${fixture_rmws[@]}"; do
-        for role in $(nros_fixture_roles); do
-            board="native_sim/native/64"
-            build_name="build-${lang_tag}-${role}-${rmw}"
-            build_dir="$build_root/$build_name"
-            src="zephyr/${lang}/${role}"
-            src_dir="$nros_root/examples/$src"
-            best_effort=0
-            xrce_agent_port=""
-            zenoh_locator=""
-            cyclone_domain=""
-            variant_offset="$(variant_offset_for_role "$role")"
-            variant_idx="$(variant_idx_for_role "$role")"
-            conf_files="prj.conf;prj-${rmw}.conf;$native_sim_nsos_conf"
-            extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
+    row_zenoh_locator row_xrce_port row_cyclone_domain row_conf_files row_bare; do
+    [ -n "$board" ] || continue
 
-            if [ "$rmw" = "xrce" ]; then
-                xrce_agent_port=$((2400 + lang_offset + variant_offset))
-                extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_XRCE_AGENT_PORT=$xrce_agent_port"
-            fi
-            if [ "$rmw" = "zenoh" ]; then
-                zenoh_port=$((7400 + lang_offset + variant_offset))
-                zenoh_locator="tcp/127.0.0.1:$zenoh_port"
-                extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$zenoh_locator\""
-            fi
-            if [ "$rmw" = "cyclonedds" ]; then
-                cyclone_domain=$((22 + variant_idx * 3 + lang_idx))
-                extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_DOMAIN_ID=$cyclone_domain"
-            fi
-            extra_cmake_defs="$extra_cmake_defs -DCONF_FILE=$conf_files"
-
-            sccache_launcher=0
-            if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
-                sccache_launcher=1
-                extra_cmake_defs="$extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
-            fi
-
-            id="zephyr/${board}/${lang}/${role}/${rmw}"
-            target="fixture/zephyr/${board}/${lang}/${role}/${rmw}"
-            filter_haystack="$board $build_name $src $conf_files $id"
-            if [ -n "$fixture_filter" ] && ! [[ "$filter_haystack" =~ $fixture_filter ]]; then
-                continue
-            fi
-            selected=$((selected + 1))
-            log="$log_dir/${build_name}.log"
-            sig_file="$build_dir/.nros-zephyr-fixture.sig"
-            sig="$(printf '%s\n' \
-                "board=$board" \
-                "src=$src" \
-                "xrce_port=$xrce_agent_port" \
-                "conf_files=$conf_files" \
-                "zenoh_locator=$zenoh_locator" \
-                "codegen_tool=$codegen_tool" \
-                "toolchain_cache_dir=$toolchain_cache_dir" \
-                "make=$make_bin" \
-                "sccache_launcher=$sccache_launcher")"
-            emit_record fixture "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw" \
-                "$src" "$src_dir" "$build_name" "$build_dir" "$log" "$xrce_agent_port" \
-                "$zenoh_locator" "$cyclone_domain" "$conf_files" "$extra_cmake_defs" \
-                "$sig" "$sig_file" "$best_effort" "$pristine"
-        done
-    done
-done
-
-# phase-337 W2.f — the Cortex-M witness leaves (`mps2_an385`).
-#
-# Not folded into the loop above: that loop is native_sim × every lang × every
-# rmw × every role, and this board covers exactly {c, cpp} × zenoh × talker.
-# Widening the loop's board axis would multiply 27 native_sim leaves by a board
-# that only two of them apply to, so the witness gets its own block — the same
-# shape the logging-smoke and workspace-entry leaves already use.
-#
-# phase-346 W3 — the rust leaf JOINED once issue 0432's two upstream defects were
-# patched (`zephyr/patches.yml` + `scripts/zephyr/zephyr-lang-rust-*`): the DT
-# generator now pads a 1-cell `gpios` to the arity `GpioPin::new` takes, and the
-# `gpio-keys` augment carries the `cfg: CONFIG_GPIO` its two siblings always had.
-# Before that, no board with gpio nodes could compile the `zephyr` crate at all.
-#
-# The locator is the allocator's, not a literal: `alloc::port_of(
-# ZephyrQemuCortexM, {C,Cpp}, Pubsub)` = 10700 / 10800. The HOST half of it is
-# 10.0.2.2 rather than 127.0.0.1 — under NSOS the guest's loopback IS the host,
-# on a real guest it is the guest, and SLIRP always puts the host at 10.0.2.2.
-for cm_lang in c cpp rust; do
-    cm_lang_tag="$(nros_zephyr_lang_tag "$cm_lang")"
-    cm_lang_idx="$(lang_idx_for_lang "$cm_lang")"
-    cm_board="mps2_an385"
-    cm_role="talker"
-    cm_rmw="zenoh"
-    cm_build_name="build-cortex-m-${cm_lang_tag}-${cm_role}-${cm_rmw}"
-    cm_build_dir="$build_root/$cm_build_name"
-    cm_src="zephyr/${cm_lang}/${cm_role}"
-    cm_src_dir="$nros_root/examples/$cm_src"
-    cm_port=$((10600 + cm_lang_idx * 100))
-    cm_locator="tcp/10.0.2.2:$cm_port"
-    cm_conf_files="prj.conf;prj-${cm_rmw}.conf;$nros_root/cmake/zephyr/mps2-an385.conf"
-    cm_extra_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
-    cm_extra_defs="$cm_extra_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$cm_locator\""
-    cm_extra_defs="$cm_extra_defs -DCONF_FILE=$cm_conf_files"
-    cm_sccache=0
-    if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
-        cm_sccache=1
-        cm_extra_defs="$cm_extra_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+    # Host gating, unchanged: cyclonedds leaves need an idlc. The manifest lists
+    # them unconditionally (a row is an identity, not a host capability), so the
+    # skip moves here — which is also what lets `check-zephyr-fixture-rows.py`
+    # compare the two sides per-RMW instead of demanding raw set equality.
+    if [ "$rmw" = "cyclonedds" ] && ! printf '%s\n' "${fixture_rmws[@]}" | grep -qx cyclonedds; then
+        continue
     fi
 
-    cm_id="zephyr/${cm_board}/${cm_lang}/${cm_role}/${cm_rmw}"
-    cm_target="fixture/zephyr/${cm_board}/${cm_lang}/${cm_role}/${cm_rmw}"
-    cm_haystack="$cm_board $cm_build_name $cm_src $cm_conf_files $cm_id"
-    if [ -n "$fixture_filter" ] && ! [[ "$cm_haystack" =~ $fixture_filter ]]; then
+    # `--include-logging-smoke` still gates its leaf. Becoming a manifest row
+    # made it an ordinary member of this loop, which silently emitted it in
+    # every mode — a real behaviour change the byte-diff caught. The flag is
+    # OPT-IN for callers that want the extra image, so the row is skipped
+    # without it.
+    if [ "$role" = "logging-smoke" ] && [ "$include_logging_smoke" != "1" ]; then
+        continue
+    fi
+
+    build_dir="$build_root/$build_name"
+    # `src` is repo-relative in the manifest; the example leaves all sit under
+    # `examples/`, and logging-smoke does not.
+    case "$src" in
+        examples/*) src_rel="${src#examples/}"; src_dir="$nros_root/$src" ;;
+        *) src_rel="$src"; src_dir="$nros_root/$src" ;;
+    esac
+    best_effort=0
+    xrce_agent_port=""
+    zenoh_locator=""
+    cyclone_domain=""
+    extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+
+    # Conf overlays: the row carries the RELATIVE list, this script appends the
+    # absolute board/NSOS tail (a host path, not a fact about the fixture).
+    conf_files=""
+    if [ -n "$row_conf_files" ]; then
+        case "$board" in
+            mps2_an385) conf_tail="$nros_root/cmake/zephyr/mps2-an385.conf" ;;
+            *) conf_tail="$native_sim_nsos_conf" ;;
+        esac
+        conf_files="$row_conf_files;$conf_tail"
+    fi
+
+    if [ -n "$row_zenoh_locator$row_xrce_port$row_cyclone_domain" ]; then
+        # The row authored its isolation values (mps2 witness leaves).
+        zenoh_locator="$row_zenoh_locator"
+        xrce_agent_port="$row_xrce_port"
+        cyclone_domain="$row_cyclone_domain"
+    elif [ "$role" != "logging-smoke" ]; then
+        # The allocator formula, for the six role leaves.
+        lang_offset="$(lang_offset_for_lang "$lang")"
+        lang_idx="$(lang_idx_for_lang "$lang")"
+        variant_offset="$(variant_offset_for_role "$role")"
+        variant_idx="$(variant_idx_for_role "$role")"
+        case "$rmw" in
+            xrce) xrce_agent_port=$((2400 + lang_offset + variant_offset)) ;;
+            zenoh) zenoh_locator="tcp/127.0.0.1:$((7400 + lang_offset + variant_offset))" ;;
+            cyclonedds) cyclone_domain=$((22 + variant_idx * 3 + lang_idx)) ;;
+        esac
+    fi
+
+    [ -z "$xrce_agent_port" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_XRCE_AGENT_PORT=$xrce_agent_port"
+    [ -z "$zenoh_locator" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$zenoh_locator\""
+    [ -z "$cyclone_domain" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_DOMAIN_ID=$cyclone_domain"
+    [ -z "$conf_files" ] || extra_cmake_defs="$extra_cmake_defs -DCONF_FILE=$conf_files"
+
+    sccache_launcher=0
+    if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+        sccache_launcher=1
+        extra_cmake_defs="$extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+    fi
+
+    target="fixture/$id"
+    filter_haystack="$board $build_name $src_rel $conf_files $id"
+    if [ -n "$fixture_filter" ] && ! [[ "$filter_haystack" =~ $fixture_filter ]]; then
         continue
     fi
     selected=$((selected + 1))
-    cm_log="$log_dir/${cm_build_name}.log"
-    cm_sig_file="$cm_build_dir/.nros-zephyr-fixture.sig"
-    cm_sig="$(printf '%s\n' \
-        "board=$cm_board" \
-        "src=$cm_src" \
-        "xrce_port=" \
-        "conf_files=$cm_conf_files" \
-        "zenoh_locator=$cm_locator" \
+    sig_file="$build_dir/.nros-zephyr-fixture.sig"
+    sig="$(printf '%s\n' \
+        "board=$board" \
+        "src=$src_rel" \
+        "xrce_port=$xrce_agent_port" \
+        "conf_files=$conf_files" \
+        "zenoh_locator=$zenoh_locator" \
         "codegen_tool=$codegen_tool" \
         "toolchain_cache_dir=$toolchain_cache_dir" \
         "make=$make_bin" \
-        "sccache_launcher=$cm_sccache")"
-    emit_record fixture "$cm_id" "$cm_target" "$cm_board" "$cm_lang" "$cm_lang_tag" \
-        "$cm_role" "$cm_rmw" "$cm_src" "$cm_src_dir" "$cm_build_name" "$cm_build_dir" \
-        "$cm_log" "" "$cm_locator" "" "$cm_conf_files" "$cm_extra_defs" \
-        "$cm_sig" "$cm_sig_file" 0 "$pristine"
-done
-
-if [ "$include_logging_smoke" = "1" ]; then
-    id="zephyr/native_sim/native/64/logging-smoke"
-    target="fixture/zephyr/native_sim/native/64/logging-smoke"
-    build_name="logging-smoke-zephyr-native-sim"
-    build_dir="$build_root/$build_name"
-    filter_haystack="native_sim/native/64 $build_name logging-smoke-zephyr-native-sim $id"
-    if [ -z "$fixture_filter" ] || [[ "$filter_haystack" =~ $fixture_filter ]]; then
-        selected=$((selected + 1))
-        emit_record fixture "$id" "$target" "native_sim/native/64" rust rs logging-smoke default \
-            "packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim" \
-            "$nros_root/packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim" \
-            "$build_name" "$build_dir" "$log_dir/${build_name}.log" "" "" "" "" "" "" \
-            "$build_dir/.nros-zephyr-fixture.sig" 0 "$pristine"
+        "sccache_launcher=$sccache_launcher")"
+    # `west_bare` rows carry neither defs nor signature — preserved exactly as
+    # the hand-written logging-smoke block had it. See that row's comment: an
+    # empty sig is a CONSTANT, so the leaf never reads stale. Declared, not
+    # fixed, because fixing it changes what rebuilds.
+    if [ -n "$row_bare" ]; then
+        extra_cmake_defs=""
+        sig=""
     fi
-fi
+    emit_record fixture "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw" \
+        "$src_rel" "$src_dir" "$build_name" "$build_dir" "$log_dir/${build_name}.log" \
+        "$xrce_agent_port" "$zenoh_locator" "$cyclone_domain" "$conf_files" \
+        "$extra_cmake_defs" "$sig" "$sig_file" "$best_effort" "$pristine"
+done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaves)
+
+# phase-350 W1 — the mps2 witness leaves and the logging-smoke leaf used to sit
+# in two more hand-written blocks here. They are manifest rows now, emitted by
+# the loop above like every other leaf: `west_build_name` carries the
+# `build-cortex-m-*` naming, `west_zenoh_locator` the mps2 allocator slots
+# (`alloc::port_of(ZephyrQemuCortexM, ...)` = 10600/10700/10800 at the SLIRP
+# host 10.0.2.2, not 127.0.0.1), and `west_role` the logging-smoke role that is
+# not a directory name. `--include-logging-smoke` still gates its leaf, now at
+# the top of that loop rather than around a block.
 
 # Phase 225.P.6 — workspace-Entry leaf (Approach A). Constructed directly,
 # bypassing variant_offset_for_role (role="entry" is unknown to it). The

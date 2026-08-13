@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). W0 LANDED. W1.a PARTIAL (58 of 74 rows + a drift gate). W1.b–W6 open.**
+**Status (2026-08-13). W0 LANDED. W1.a LANDED — 58 of 74 rows, and the zephyr emitter now reads them (byte-identical). W1.b–W6 open; 12 entry leaves + the 4 `west-fixtures.sh` fixtures still to row.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -178,10 +178,14 @@ concept.
       west row.
 - [x] `check-zephyr-fixture-rows.py` — the rows and the emitter cannot drift
       while both exist.
+- [x] **`zephyr-fixture-leaves.sh` CONSUMES the rows** (`fixtures-manifest.py
+      west-leaves`). `nros_fixture_langs` / `nros_fixture_roles` /
+      `nros_zephyr_lang_tag` deleted from `fixture-matrix.sh`; the mps2 and
+      logging-smoke blocks are gone. **Proven byte-identical** in all four
+      emitter modes.
 - [ ] **12 entry leaves** need `[[workspace_fixture]]` rows (see below).
-- [ ] **4 `west-fixtures.sh` fixtures** still bash arrays.
-- [ ] `zephyr-fixture-leaves.sh` and `west-fixtures.sh` CONSUME the rows.
-      Delete `nros_fixture_langs`/`nros_fixture_roles` and the two bash arrays.
+- [ ] **4 `west-fixtures.sh` fixtures** still bash arrays; that script still
+      declares its own matrix.
 - [ ] `examples_fixture_coverage.rs` reads the rows instead of restating the
       role matrix in `ZEPHYR_LANGS` × `ZEPHYR_ROLES` — **three spellings of one
       matrix collapse to one**, or this is the sizes-header mirror again.
@@ -208,6 +212,41 @@ rather than asserting raw equality (red for a reason the developer cannot act on
 gets a gate disabled) — and rather than the host-safe-but-blind
 `emitted ⊆ manifest`, which would let a deleted leaf keep its row forever. That
 is how `fixture-inventory.py` rotted (#538).
+
+### The rewire's oracle, and the two defects it caught
+
+`zephyr-fixture-leaves.sh --emit records` runs no build tool, so the rewire has
+a perfect oracle: capture the 70 records before, iterate the manifest instead of
+the bash loops, and require the output to be **byte-identical**. It is, in all
+four flag modes. Two real defects surfaced only because the comparison was
+byte-exact rather than "looks right":
+
+1. **`--include-logging-smoke` stopped gating its leaf.** Becoming an ordinary
+   manifest row made it an ordinary member of the loop, emitted in every mode.
+   A count-based or spot check would have passed.
+2. **The mps2 witness leaves lost their locator.** The first cut keyed "does
+   this row derive its isolation values?" on the ROLE, and those leaves are
+   `talker`s — but their locator is `tcp/10.0.2.2:106xx`, a different board's
+   allocator slot at the SLIRP host address, which the native_sim formula cannot
+   produce. They would have been rebuilt against the wrong router. The predicate
+   now keys on what the row AUTHORED.
+
+**A third finding is declared, not fixed:** the logging-smoke leaf emits no
+cmake defs and an EMPTY staleness signature into a real sig-file path — so its
+signature is a constant and the leaf can never read stale, and it gets none of
+the codegen-tool / toolchain-cache / sccache defs its siblings get. That is what
+the hand-written block did. A byte-identical rewire must preserve it, so the row
+carries `west_bare = true` with the anomaly written down. Fixing it changes what
+rebuilds, which is its own change with its own evidence.
+
+### What stayed in the script, deliberately
+
+The ISOLATION FORMULA. A role leaf's zenoh/xrce port and cyclone domain is
+allocator arithmetic over (lang, role) mirrored in `nros_tests::alloc`, so
+exporting the computed value from the manifest would trade one duplication for
+another — the manifest would become a second spelling of the allocator. Rows
+carry identity; the script keeps the formula; a row carries a literal only where
+the formula cannot produce one and the script already held that literal.
 
 ### Three things the rows exposed
 

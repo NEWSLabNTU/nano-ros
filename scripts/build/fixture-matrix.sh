@@ -12,31 +12,16 @@ nros_cmake_export_prefix_path
 # Shared fixture matrix primitives. Keep this file shell-only so every
 # platform just recipe can source it without pulling in Python or Rust.
 
-nros_fixture_roles() {
-    printf '%s\n' \
-        talker \
-        listener \
-        service-server \
-        service-client \
-        action-server \
-        action-client
-}
-
-nros_fixture_langs() {
-    printf '%s\n' rust c cpp
-}
-
-nros_zephyr_lang_tag() {
-    case "$1" in
-        rust) printf '%s\n' rs ;;
-        c) printf '%s\n' c ;;
-        cpp) printf '%s\n' cpp ;;
-        *)
-            echo "unknown fixture language: $1" >&2
-            return 2
-            ;;
-    esac
-}
+# phase-350 W1 — `nros_fixture_roles`, `nros_fixture_langs` and
+# `nros_zephyr_lang_tag` lived here and were DELETED. They were the zephyr west
+# lane's copy of a matrix `examples/fixtures.toml` owns (issue 0535): the leaves
+# they enumerated had no `row_coord()`, so no lane could select a coordinate
+# inside the zephyr module. `zephyr-fixture-leaves.sh` reads
+# `fixtures-manifest.py west-leaves` now, and was their only caller.
+#
+# The `rust`/`c`/`cpp` -> `rs`/`c`/`cpp` tag survives as
+# `fixtures-manifest.py::west_lang_tag`, one producer, until issue 0539 retires
+# the short spelling of the lang axis outright.
 
 nros_cmake_fixture_build() {
     local src_dir="$1"
