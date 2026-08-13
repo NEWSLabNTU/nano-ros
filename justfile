@@ -2421,7 +2421,7 @@ rust-rtos-link-check: _require-leaf-includes
 ci:
     @NROS_FIXTURE_LANE=native bash scripts/check-tier-preconditions.sh
     @NROS_FIXTURE_SCOPE=native NROS_TEST_SCOPE=native NROS_FIXTURE_LANE=native just check rust-rtos-link-check test-all
-    @echo "CI passed (tier 1 — host only; platform coverage needs `just ci-matrix`)!"
+    @echo "CI passed (tier 1 — host only; platform coverage needs \`just ci-matrix\`)!"
 
 # Tier 2 — phase-318 W4.d. Gate exactly the fixture COORDINATES the lane selected.
 #

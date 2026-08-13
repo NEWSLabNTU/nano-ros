@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+RESOLVED 2026-08-14 — **#568** every GREEN `just ci` ended in two `error: recipe … failed` lines,
+because tier 1's success banner spelt `` `just ci-matrix` `` inside DOUBLE quotes: a recipe line goes to
+`sh`, so that is command substitution, and the last act of a passing tier-1 run was to execute tier 2's
+lane gate and splice its output into the sentence. The gate fails fast on tier-1 fixtures, which is why
+this cost seconds rather than hours — and why nobody looked. Nine sibling echoes across `just/*.just`
+already escape their backticks; this was the tenth. Sweep: `grep -n 'echo "[^"]*`' justfile just/*.just`.
+See `0568-*`. (2026-08-14)
+
 **#567** (rmw, open 2026-08-14) — `_zp_unicast_read` RESETS its receive buffer on every call
 (`_z_zbuf_reset`), so it cannot return with bytes unread; the inner loop below it therefore drains every
 buffered frame by construction, because stopping early silently loses them (the defect that comment
