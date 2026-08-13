@@ -2976,25 +2976,25 @@ dir = "packages/testing/nros-tests/fixtures/one_dep_component_pkg"
 output = ".compile-ok"
 
 [[compile_check_fixture]]
-id = "n9_form1"
+id = "main_macro_form1"
 builder = "cargo-check"
 dir = "packages/testing/nros-tests/fixtures/n9_workspace"
 output = ".compile-ok"
 
 [[compile_check_fixture]]
-id = "n9_form2"
+id = "main_macro_form2"
 builder = "cargo-check"
 dir = "packages/testing/nros-tests/fixtures/n9_workspace"
 output = ".compile-ok"
 
 [[compile_check_fixture]]
-id = "n9_form3"
+id = "main_macro_form3"
 builder = "cargo-check"
 dir = "packages/testing/nros-tests/fixtures/n9_workspace"
 output = ".compile-ok"
 
 [[compile_check_fixture]]
-id = "n9_form4"
+id = "main_macro_form4"
 builder = "cargo-check"
 dir = "packages/testing/nros-tests/fixtures/n9_workspace"
 output = ".compile-ok"
@@ -3013,13 +3013,13 @@ dir = "packages/testing/nros-tests/fixtures/orchestration_tiers_native"
 output = "target/debug/demo_entry"
 
 [[compile_check_fixture]]
-id = "o4_pkg_index"
+id = "pkg_index_workspace"
 builder = "cargo-build"
 dir = "packages/testing/nros-tests/fixtures/o4_pkg_index_workspace"
 output = ".compile-ok"
 
 [[compile_check_fixture]]
-id = "o5_nav2_compat"
+id = "nav2_compat_smoke"
 builder = "cargo-build"
 dir = "packages/testing/nros-tests/fixtures/o5_nav2_compat_smoke"
 # The crate lives in a subdir; `pkg` defaults to demo_entry.
@@ -3027,7 +3027,7 @@ manifest_dir = "demo_entry"
 output = "target/debug/demo_entry"
 
 [[compile_check_fixture]]
-id = "o3_board_agnostic"
+id = "board_agnostic_run_plan"
 builder = "cargo-build"
 dir = "packages/testing/nros-tests/fixtures/n_board_agnostic_run_plan"
 pkg = "posix_entry"
@@ -3107,13 +3107,13 @@ dir = "examples/workspaces/cpp"
 output = "nros-metadata.json"
 
 [[compile_check_fixture]]
-id = "l9_register_cpp"
+id = "node_register_cpp"
 builder = "cmake-configure"
 dir = "packages/testing/nros-tests/fixtures/l9_register_cpp"
 output = "nros-metadata.json"
 
 [[compile_check_fixture]]
-id = "l9_register_c"
+id = "node_register_c"
 builder = "cmake-configure"
 dir = "packages/testing/nros-tests/fixtures/l9_register_c"
 output = "nros-metadata.json"

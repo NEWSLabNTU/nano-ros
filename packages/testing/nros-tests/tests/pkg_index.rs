@@ -8,7 +8,7 @@
 //! ran (the macro `compile_error!()`s if it can't resolve a node pkg).
 //!
 //! Per issue 0041 ("No compilation inside tests") this compile runs in the
-//! **build stage**: the `o4_pkg_index` build-fixture (`compile-check-fixtures.sh`,
+//! **build stage**: the `pkg_index_workspace` build-fixture (`compile-check-fixtures.sh`,
 //! run by `build-test-fixtures`) stages the workspace + `cargo build -p
 //! demo_entry`. This test INSPECTS the prebuilt result — the build's success
 //! (`.compile-ok` stamp) IS the headline assertion; the per-node `node_{a,b,c}`
@@ -47,7 +47,7 @@ fn n10_pkg_index_resolves_across_workspace() -> nros_tests::TestResult<()> {
 
     // The build-stage `cargo build -p demo_entry` succeeded (the `.compile-ok`
     // stamp). A failed pkg-index resolve would `compile_error!()` first.
-    let stamp = nros_tests::fixtures::require_compile_check("o4_pkg_index")?;
+    let stamp = nros_tests::fixtures::require_compile_check("pkg_index_workspace")?;
     let deps = stamp.parent().expect("stamp dir").join("target/debug/deps");
 
     // Each node pkg's rlib must be present — the macro emits a per-node

@@ -8,7 +8,7 @@
 //! both `primary_node` and `secondary_node`, plus an `nros-plan.json` carrying
 //! the resolved `<arg>` / `<remap>` / `<include>` evidence.
 //!
-//! Per issue 0041 the compile runs in the **build stage**: the `o5_nav2_compat`
+//! Per issue 0041 the compile runs in the **build stage**: the `nav2_compat_smoke`
 //! build-fixture (`compile-check-fixtures.sh`) stages the workspace (rewriting
 //! `@NANO_ROS_ROOT@` + `@NROS_CLI_ROOT@`) + `cargo build -p demo_entry` in the
 //! `demo_entry/` subdir (excluded from the fixture root workspace), with
@@ -42,7 +42,7 @@ fn walk(root: &Path) -> Vec<PathBuf> {
 #[test]
 fn n11_launch_xml_ros2_compat_smoke() -> nros_tests::TestResult<()> {
     // Build-stage `cargo build -p demo_entry` succeeded (`.compile-ok` stamp).
-    let stamp = nros_tests::fixtures::require_compile_check("o5_nav2_compat")?;
+    let stamp = nros_tests::fixtures::require_compile_check("nav2_compat_smoke")?;
     let staged = stamp.parent().expect("stamp dir");
 
     // Locate the emitted run_plan.rs under demo_entry/target/.../build/
@@ -53,7 +53,7 @@ fn n11_launch_xml_ros2_compat_smoke() -> nros_tests::TestResult<()> {
         .find(|e| e.file_name().and_then(|n| n.to_str()) == Some("run_plan.rs"))
         .unwrap_or_else(|| {
             panic!(
-                "nros-build did not emit run_plan.rs under {} — was the o5_nav2_compat \
+                "nros-build did not emit run_plan.rs under {} — was the nav2_compat_smoke \
                  build-fixture built? (`just build-test-fixtures`)",
                 build_dir.display()
             )
@@ -64,7 +64,7 @@ fn n11_launch_xml_ros2_compat_smoke() -> nros_tests::TestResult<()> {
     // stub (compiles, but no N.11 directives exercised) → skip with the reason.
     if run_plan.contains("Placeholder") {
         nros_tests::skip!(
-            "o5_nav2_compat build-fixture emitted the offline Placeholder stub at {} \
+            "nav2_compat_smoke build-fixture emitted the offline Placeholder stub at {} \
              (play_launch_parser absent at build time) — no codegen evidence to assert",
             run_plan_path.display()
         );

@@ -101,3 +101,39 @@ one vocabulary once.
 
 Sequence after 0535's rows exist but before its scripts are cut over, so the
 cutover writes the final names.
+
+## Status: the ids are done and gated; the renames are deferred (phase-350 W5)
+
+**Drift 4 (phase-coded ids) is CLOSED.** Nine ids were renamed after what the
+fixture does, and `fixtures-manifest.py::_reject_work_item_id` now refuses a new
+one on all three row tables:
+
+| was | is |
+| --- | --- |
+| `n9_form1`…`n9_form4` | `main_macro_form1`…`4` |
+| `o3_board_agnostic` | `board_agnostic_run_plan` |
+| `o4_pkg_index` | `pkg_index_workspace` |
+| `o5_nav2_compat` | `nav2_compat_smoke` |
+| `l9_register_c` / `_cpp` | `node_register_c` / `_cpp` |
+
+The gate rejects a leading letter+digits+underscore and any `phase<N>` /
+`issue<N>` token; `mps2` and `qemu-arm-baremetal` keep their digits because
+those are part of a name, not an index into a plan. Verified rejecting all three
+spellings before being trusted.
+
+An id IS the build-root name, so the rename moved nine build roots — rebuilt in
+138 s, and the orphaned old roots deleted.
+
+**Drifts 1–3 are DEFERRED, with the cost measured rather than assumed.** Each is
+now a rename of a directory holding build output:
+
+* the lang axis (`rs` vs `rust`) reaches build-dir NAMES, so retiring the short
+  spelling renames every zephyr build dir — a **215 GB** workspace invalidated
+  for a cosmetic gain. Its drift is already contained: phase-350 W1 deleted the
+  bash copy, so `west_lang_tag` has ONE producer.
+* the `build/<kind>` outliers and the zephyr build-dir schemes are the same
+  trade against the caches under them.
+
+Worth doing when a pristine rebuild is happening anyway; not worth forcing one.
+The RULE should still be written into RFC-0070 so new kinds follow it — that is
+a doc change nobody pays for, and it is the part still open here.

@@ -691,8 +691,8 @@ completed:
       2026-08-03, handing over). `scripts/build/compile-check-fixtures.sh`
       GENERATES two of the `nros::main!` forms it proves:
 
-          n9_form3: nros::main!(model = "demo_bringup");
-          n9_form4: nros::main!(board = …, model = "demo_bringup:config/system_model.yaml");
+          main_macro_form3: nros::main!(model = "demo_bringup");
+          main_macro_form4: nros::main!(board = …, model = "demo_bringup:config/system_model.yaml");
 
       W7.d swept the in-tree entry SOURCES; this script writes its forms at
       build time, so it was not in that sweep. It stages with

@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). W0, W1, W2 COMPLETE — all 74 west fixtures are manifest rows (the last four landed in W2), the emitter reads them, the lane narrows by coordinate (tier2: 7 leaves, was 70), and the coverage gate reads rows. W3–W6 open.**
+**Status (2026-08-13). W0, W1, W2, W4, W6 COMPLETE; W5 partial. All 74 west fixtures are manifest rows, the emitter reads them, the lane narrows by coordinate (tier2: 7 leaves, was 70), the coverage gates read rows, work-item ids are gated, and W4 answered #509 with a NO. W3 (FVP) open — it needs a retire-vs-restore decision.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -453,39 +453,109 @@ cleanly rebuilt tree (museum binaries make this number a lie — CLAUDE.md
 "fixture mtime treadmill"). Any leaf removed names the cell that still covers
 its claim.
 
-## W5 — One vocabulary (#539)
+### ANSWERED: no leaf should be deleted
 
-- [ ] Lang axis: `rust`, one spelling. Delete `nros_zephyr_lang_tag` or derive
-      it from `matrix::Lang`.
-- [ ] State the `build/<kind>` rule in RFC-0070 and rename the five outliers
-      (`fixtures-cargo`, `compile-check`, `zephyr-fixture-build` vs
-      `-make-driver`, `borrowed-e`, `px`).
-- [ ] Zephyr build-dir names derive from the row coordinate (available after W1),
-      so the name has a producer instead of a convention.
-- [ ] Gate against phase/issue-coded fixture ids — `n9_form1`, `o4_pkg_index`,
-      `l9_register_c`, `build-245-asan` — the rule test names already carry.
+With coordinates in place, #509's question is finally askable. Measured:
 
-**Sequence inside W1's cutover, not after it.** The join W1 performs is
-`(platform, lang, rmw)` against `<lang>-<role>-<rmw>` path segments, with
-`rust`/`rs` disagreeing; renaming afterwards means touching every path twice.
+| lane | west leaves selected |
+| --- | --- |
+| tier1 | 0 |
+| tier2 | 7 |
+| tier2-nightly | 38 |
+| **union of all lanes** | **44 of 70** |
 
-## W6 — Close the class
+**26 leaves (37 %, 63 GB) are selected by NO lane** — only `lane=all` builds
+them. That looks like the retirement candidate #509 was reaching for, and it is
+not: every one of their coordinates carries Runtime cells in `matrix::CELLS`
+(`ZephyrNativeSim` alone has 3–10 cells per (lang, rmw) pair). They are outside
+the pairwise **sample**, not outside the matrix. Deleting them deletes coverage
+`lane=all` exercises — the same answer phase-329 W8 got when it assumed rows
+were redundant, and the reason that item was retracted.
 
-Every gap above was invisible because the one coverage gate walks `examples/**`
-for `package.xml` and nothing else.
+So **#509's "can the coordinate cover retire some?" resolves to NO.** What the
+coordinate bought is W1.b's narrowing (tier2: 7 instead of 70), which is banked.
+The remaining 63 GB is the price of `lane=all` covering the matrix, and the
+lever on it is disk, not leaf count.
 
-- [ ] Extend it (or add its sibling) so **every** test-consumed artifact root is
-      a manifest row or a tracked exception with a reason: the
-      `packages/testing/nros-tests/bins/` crates (which is how #540 hid), the
-      `build/<kind>` fixture trees, `target-zenoh-fixture-posix`, the esp32
-      `.bin` postprocess, the ros-editions tree.
-- [ ] Legitimate exceptions stay exceptions — the zenoh symbol fixture's literal
-      path is deliberate (phase-336 allow-list) and ros-editions is a separate
-      axis by RFC-0058 — but each is DECLARED, and a dead exception fails the
-      gate the way `examples_fixture_coverage.rs`'s stale-exception arm does.
+**(a) The four feature entries: 2.2 GB each, 8.8 GB total.** Consolidating them
+into one multi-feature image would save ~6.6 GB — 3 % of the workspace — and is
+NOT free: each is an isolated system with its own zenohd port, and the four
+workloads (param services, QoS matching, lifecycle transitions, safety CRC)
+would then share one `system.toml` and one image. That changes what is under
+test, and the isolation exists precisely to stop them interfering. Given
+phase-342 W1 (a fold cost 3.6× wall-clock and erased the scheduler vocabulary)
+and phase-329 W8, **not attempted without a build to measure the runtime
+effect** — which is a 40-minute lane this session did not run.
 
-*Acceptance:* adding a fixture outside the manifest fails a gate, in CI, with a
-message naming the manifest.
+**(b) The three realtime entries: KEEP**, as drafted. phase-296 W5.5 made Zephyr
+honour sched dims natively (`k_thread_deadline_set`); these are platform
+behaviour, not feature duplication.
+
+## W5 — One vocabulary (#539) — **PARTIAL: the ids are done and gated; the
+renames are deferred with a reason**
+
+- [x] **Work-item ids renamed and BANNED.** Nine fixture ids carried a work-item
+      letter from a phase nobody has open. They now name behaviour, and
+      `_reject_work_item_id` refuses the next one, on all three row tables:
+
+      | was | is |
+      | --- | --- |
+      | `n9_form1`…`n9_form4` | `main_macro_form1`…`4` |
+      | `o3_board_agnostic` | `board_agnostic_run_plan` |
+      | `o4_pkg_index` | `pkg_index_workspace` |
+      | `o5_nav2_compat` | `nav2_compat_smoke` |
+      | `l9_register_c` / `_cpp` | `node_register_c` / `_cpp` |
+
+      CLAUDE.md already forbids this for TEST names ("Phases go stale"); the
+      argument is stronger for a fixture id, which outlives the phase by longer
+      and is typed by hand into `--id`. The gate rejects a leading
+      letter+digits+underscore and any `phase<N>` / `issue<N>` token — `mps2`
+      and `qemu-arm-baremetal` keep their digits, because those are part of a
+      name rather than an index into a plan.
+- [ ] **Lang axis (`rust` vs `rs`) — DEFERRED.** `west_lang_tag` has ONE
+      producer now (W1 deleted the bash copy), so the drift is contained. The
+      remaining step is retiring the short spelling from build-dir NAMES, and
+      that renames every zephyr build dir — invalidating a **215 GB** workspace
+      for a cosmetic gain. Not worth it as a standalone change; do it if a
+      pristine rebuild is happening for another reason.
+- [ ] **`build/<kind>` outliers — DEFERRED**, same trade: renaming
+      `fixtures-cargo` / `compile-check` / `zephyr-fixture-build` invalidates
+      the caches under them. The RULE should still be written into RFC-0070 so
+      new kinds follow it; that is a doc change nobody has to pay for.
+- [ ] **Zephyr build-dir names from the row coordinate** — the row now carries
+      `west_build_name`, so the name HAS a producer; making it derived rather
+      than authored is the same rename as above.
+
+**The measured cost is why these are deferred rather than skipped.** Every
+remaining item is a rename of a directory that currently holds build output.
+The ids were free (a build root is cheap to recreate: 138 s for all nine); the
+directories are not.
+
+## W6 — Close the class — **LANDED**
+
+Every gap this phase found was invisible because the one coverage gate walks
+`examples/**` for `package.xml` and nothing else.
+
+- [x] `fixture_source_coverage.rs`, the sibling that covers the rest:
+      every crate under `packages/testing/nros-tests/bins/` is a manifest row or
+      a tracked exception with a reason — the hole #540 fell through — and the
+      declared non-manifest producers must still exist.
+- [x] Legitimate exceptions stay exceptions, but DECLARED: `ros-edition-pose-pub`
+      (RFC-0058 per-run edition axis), `idf-fixtures.sh`, `ros-editions.just`,
+      and the license-gated FVP recipes. A stale exception FAILS, the way
+      `examples_fixture_coverage.rs`'s stale arm does.
+
+**Verified failing in all three directions before being trusted:** an uncovered
+bin fails; an allowlist entry that GAINS a row fails; a declared producer that
+disappears fails. Restoring each makes it pass.
+
+*Acceptance, met:* adding a fixture bin outside the manifest fails a gate whose
+message names the manifest and the issue.
+
+**What it does not yet cover:** `target-zenoh-fixture-posix` and the esp32
+`.bin` postprocess are still literal paths on both sides. They are named in the
+Inventory above and in #535; folding them in needs a row shape for
+"postprocess of another row's artifact", which the manifest does not have.
 
 ---
 

@@ -4,7 +4,7 @@
 //! the deploy/rmw tuple lives in package.xml.)
 //!
 //! The cmake configure runs in the **build stage** — two cmake fixtures
-//! (`l9_register_cpp`, `l9_register_c` under
+//! (`node_register_cpp`, `node_register_c` under
 //! `compile-check-fixtures.sh`) each configure a tiny CMakeLists exercising one
 //! cmake fn and emit `nros-metadata.json`. These tests inspect the prebuilt JSON
 //! rather than running cmake at run time (issue 0034 / 0041). The negative
@@ -18,7 +18,7 @@ fn metadata(id: &str) -> nros_tests::TestResult<String> {
 
 #[test]
 fn nano_ros_node_register_emits_metadata() -> nros_tests::TestResult<()> {
-    let body = metadata("l9_register_cpp")?;
+    let body = metadata("node_register_cpp")?;
     assert!(
         body.contains("\"name\": \"talker\"") && body.contains("\"class\": \"talker_pkg::Talker\""),
         "metadata missing component entry:\n{body}"
@@ -44,7 +44,7 @@ fn nano_ros_node_register_emits_metadata() -> nros_tests::TestResult<()> {
 
 #[test]
 fn nano_ros_node_register_accepts_c_language() -> nros_tests::TestResult<()> {
-    let body = metadata("l9_register_c")?;
+    let body = metadata("node_register_c")?;
     assert!(
         body.contains("\"class\": \"c_talker_pkg::Talker\""),
         "metadata class mismatch:\n{body}"

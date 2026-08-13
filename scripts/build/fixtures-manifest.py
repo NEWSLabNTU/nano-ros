@@ -129,11 +129,41 @@ def load_compile_check_fixtures(path):
         return tomllib.load(f).get("compile_check_fixture", [])
 
 
+# phase-350 W5 (issue 0539) — a fixture id names BEHAVIOUR, not the work item
+# that introduced it.
+#
+# CLAUDE.md already bans this for test names ("Test names describe behavior, not
+# phase numbers [...] Phases go stale"), and the argument is stronger for a
+# fixture id: it outlives the phase by longer and is typed by hand into
+# `fixtures-build.sh --id`. Nine ids carried a work-item letter from a phase
+# nobody has open (`n9_form1`, `o4_pkg_index`, `l9_register_c`, ...); they were
+# renamed, and this stops the next one.
+#
+# The pattern is a LEADING letter+digits+underscore, which is what the
+# work-item spellings share and what ordinary names do not — `mps2` and
+# `qemu-arm-baremetal` contain digits without matching, because the digits are
+# part of a real name rather than an index into a plan.
+_WORK_ITEM_ID = re.compile(r"^[a-z]\d+_")
+_PHASE_ISSUE_ID = re.compile(r"\b(phase|issue)[-_]?\d+", re.IGNORECASE)
+
+
+def _reject_work_item_id(entry, fixture_id):
+    if _WORK_ITEM_ID.match(fixture_id) or _PHASE_ISSUE_ID.search(fixture_id):
+        _fail(
+            entry,
+            f"fixture id {fixture_id!r} names a work item, not a behaviour. "
+            "Phases and issues go stale and the id outlives them (issue 0539); "
+            "CLAUDE.md already forbids this for test names. Rename it after "
+            "what the fixture DOES.",
+        )
+
+
 def validate_compile_check_fixture(entry):
     """Shape-check one compile-check row. Raises ValueError via `_fail`."""
     for key in ("id", "builder"):
         if not entry.get(key):
             _fail(entry, f"missing required key {key!r}")
+    _reject_work_item_id(entry, entry["id"])
 
     builder = entry["builder"]
     if builder not in COMPILE_CHECK_BUILDERS:
@@ -908,6 +938,10 @@ def validate_fixture(entry):
     rmw = entry.get("rmw")
     if rmw is not None and rmw not in KNOWN_RMWS:
         _fail(entry, f"unknown rmw {rmw!r} (expected one of: {', '.join(KNOWN_RMWS)})")
+
+    # issue 0539 — same rule for a plain row's optional id.
+    if entry.get("id"):
+        _reject_work_item_id(entry, entry["id"])
 
 
 def validate_fixtures(entries):

@@ -16,14 +16,14 @@
 //!    launch.xml at the SAME `nros-build` rev — the operational
 //!    definition of board-agnostic codegen. Asserted by reading the
 //!    committed fixture sources directly (no compile).
-//! 2. **Host emit (build stage):** the `o3_board_agnostic` build-fixture
+//! 2. **Host emit (build stage):** the `board_agnostic_run_plan` build-fixture
 //!    (`compile-check-fixtures.sh`) does `cargo build -p posix_entry`
 //!    in the build stage; this test INSPECTS the prebuilt
 //!    `out/run_plan.rs` — a well-formed `pub fn run_plan(...)` body
 //!    registering `shared_node_pkg`, NOT a Board-leaking emit.
 //!
 //! Per issue 0041 ("No compilation inside tests") no cargo runs at test
-//! time — the resolver `require_compile_check("o3_board_agnostic")` keys
+//! time — the resolver `require_compile_check("board_agnostic_run_plan")` keys
 //! off the build-stage `.compile-ok` stamp.
 //!
 //! ## FreeRTOS cross-Board leg (deferred — Wave B)
@@ -90,7 +90,7 @@ fn board_agnostic_run_plan_links_against_any_board() -> nros_tests::TestResult<(
     // --- Leg 2: host emit (build stage). `cargo build -p posix_entry`
     // ran in the build stage (`.compile-ok` stamp); inspect the
     // prebuilt `out/run_plan.rs`.
-    let stamp = nros_tests::fixtures::require_compile_check("o3_board_agnostic")?;
+    let stamp = nros_tests::fixtures::require_compile_check("board_agnostic_run_plan")?;
     let staged = stamp.parent().expect("stamp dir");
     let build_dir = staged.join("posix_entry/target/debug/build");
     let run_plan_path = walk(&build_dir)
@@ -98,7 +98,7 @@ fn board_agnostic_run_plan_links_against_any_board() -> nros_tests::TestResult<(
         .find(|e| e.file_name().and_then(|n| n.to_str()) == Some("run_plan.rs"))
         .unwrap_or_else(|| {
             panic!(
-                "nros-build did not emit run_plan.rs under {} — was the o3_board_agnostic \
+                "nros-build did not emit run_plan.rs under {} — was the board_agnostic_run_plan \
                  build-fixture built? (`just build-test-fixtures`)",
                 build_dir.display()
             )
@@ -109,7 +109,7 @@ fn board_agnostic_run_plan_links_against_any_board() -> nros_tests::TestResult<(
     // Placeholder stub (compiles, but exercises no real codegen) → skip.
     if is_placeholder_stub(&run_plan) {
         nros_tests::skip!(
-            "o3_board_agnostic build-fixture emitted the offline Placeholder stub at {} \
+            "board_agnostic_run_plan build-fixture emitted the offline Placeholder stub at {} \
              (nros-build codegen unavailable at build time) — no emit to assert",
             run_plan_path.display()
         );

@@ -257,7 +257,7 @@ scenario '
     check "compile-check out_root" \
         "$repo_root/build/compile-check" "$(nros_build_dir compile-check)"
     check "compile-check stamp dir" \
-        "$repo_root/build/compile-check/n9_form1" "$(nros_build_dir compile-check n9_form1)"
+        "$repo_root/build/compile-check/main_macro_form1" "$(nros_build_dir compile-check main_macro_form1)"
     check "cmake-fixtures out_root" \
         "$repo_root/build/cmake-fixtures" "$(nros_build_dir cmake-fixtures)"
     check "cmake-fixtures stamp dir" \
@@ -277,7 +277,7 @@ scenario '
 scenario '
     export NROS_REPO_ROOT="$repo_root" NROS_BUILD_ROOT=/scratch/nros
     check "compile-check follows NROS_BUILD_ROOT" \
-        "/scratch/nros/compile-check/n9_form1" "$(nros_build_dir compile-check n9_form1)"
+        "/scratch/nros/compile-check/main_macro_form1" "$(nros_build_dir compile-check main_macro_form1)"
     check "west-fixtures follows NROS_BUILD_ROOT" \
         "/scratch/nros/west-fixtures" "$(nros_build_dir west-fixtures)"
 '

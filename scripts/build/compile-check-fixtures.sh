@@ -49,14 +49,14 @@ post_stage() {
     local id="$1" staged="$2"
     local main_rs="$staged/src/demo_entry/src/main.rs"
     case "$id" in
-        n9_form1)
+        main_macro_form1)
             printf '//! n9 form 1 (no args).\n\nnros::main!();\n' > "$main_rs" ;;
-        n9_form2)
+        main_macro_form2)
             printf '//! n9 form 2 (board only).\n\nnros::main!(board = ::nros_board_linux::LinuxBoard);\n' > "$main_rs" ;;
-        n9_form3)
+        main_macro_form3)
             # phase-330 W7 — the canonical multi-node form is INPUT-addressed.
             printf '//! n9 form 3 (launch, default — the canonical multi-node form).\n\nnros::main!(launch = "demo_bringup");\n' > "$main_rs" ;;
-        n9_form4)
+        main_macro_form4)
             # phase-330 W7.g — the ONE compile proof that the DEPRECATED
             # `model =` arm still works during its window; resolves the BUILD
             # artifact (the sync below materialises it) via the ladder.

@@ -27,20 +27,20 @@ fn assert_form(id: &str) -> nros_tests::TestResult<()> {
 
 #[test]
 fn main_macro_form1_no_args_compiles() -> nros_tests::TestResult<()> {
-    assert_form("n9_form1")
+    assert_form("main_macro_form1")
 }
 
 #[test]
 fn main_macro_form2_board_only_compiles() -> nros_tests::TestResult<()> {
-    assert_form("n9_form2")
+    assert_form("main_macro_form2")
 }
 
 #[test]
 fn main_macro_form3_model_default_compiles() -> nros_tests::TestResult<()> {
-    assert_form("n9_form3")
+    assert_form("main_macro_form3")
 }
 
 #[test]
 fn main_macro_form4_all_explicit_compiles() -> nros_tests::TestResult<()> {
-    assert_form("n9_form4")
+    assert_form("main_macro_form4")
 }

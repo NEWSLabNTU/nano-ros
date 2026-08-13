@@ -620,8 +620,8 @@ mod tests {
             root.join("build/compile-check")
         );
         assert_eq!(
-            build_dir("compile-check", &["n9_form1"]),
-            root.join("build/compile-check").join("n9_form1")
+            build_dir("compile-check", &["main_macro_form1"]),
+            root.join("build/compile-check").join("main_macro_form1")
         );
         assert_eq!(
             build_dir("cmake-fixtures", &[]),
