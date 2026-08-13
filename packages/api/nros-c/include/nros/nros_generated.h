@@ -3069,9 +3069,9 @@ nros_ret_t nros_executor_set_param_string(struct nros_executor_t *executor,
 NROS_PUBLIC bool nros_executor_has_param(struct nros_executor_t *executor, const char *name);
 
 /**
- * Monotonic microseconds since a platform-defined epoch.
+ * Monotonic nanoseconds since a platform-defined epoch (RFC-0073).
  */
-extern uint64_t nros_platform_clock_us(void);
+extern uint64_t nros_platform_clock_ns(void);
 
 /**
  * Sleep at least `us` microseconds.

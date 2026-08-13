@@ -79,7 +79,10 @@ fn clock_ns_advances_over_a_real_sleep() {
 #[test]
 fn clock_ns_resolution_is_honest() {
     let res = CffiPlatform::clock_resolution_ns();
-    assert!(res > 0, "resolution must be non-zero — there is no 'unknown'");
+    assert!(
+        res > 0,
+        "resolution must be non-zero — there is no 'unknown'"
+    );
     let mut prev = CffiPlatform::clock_ns();
     for _ in 0..5000 {
         let now = CffiPlatform::clock_ns();
