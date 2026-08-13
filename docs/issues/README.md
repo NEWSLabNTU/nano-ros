@@ -51,6 +51,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-13): **#559** (build) — every `build-test-fixtures lane=native` left a TRACKED
+config modified, so `git pull --rebase` refused until you `git checkout` output the next build regenerates.
+`nros sync` projects a board's `cargo_config` into `<leaf>/.cargo/nros-board.toml` and adds it to the leaf
+config's `include`; the generated file states its own contract — "This file IS committed … a fresh clone
+must be able to LINK this leaf before any sync has run". **39 leaves commit both; `threadx-linux/rust/talker`
+committed neither**, so sync legitimately rewrote both on every build, and a fresh clone lacked a projection
+its board declares (issue 0440's LINK-time gap). Fixed by committing them, matching the 39: sync is now a
+no-op, `cargo metadata` exit 0, `check-cargo-config-tracked` OK. **What this does NOT claim:** I first read
+it as "three tracked configs include an untracked projection" — issue 0463's hard parse error — which was an
+artifact of grepping the string anywhere in the file instead of in the `include` line; checked properly, 39
+name it and all 39 have it committed, zero mismatches. talker's five siblings share its deploy and have no
+projection at all, not even from an explicit sync, so this is not five more missing leaves; that asymmetry
+is a phase-341 question and normalising all six on a guess would be the larger error. See
+`archived/0559-*`. (2026-08-13)
+
 **#557** (rmw/zephyr, open 2026-08-13) — the Zephyr Cyclone ACTION images (C and C++) fail SOLO on a green
 `lane=all`, so not sweep contention. The verdict reads "action-server didn't reach readiness within 60 s";
 the guest says it failed IMMEDIATELY — `<err> os: tid 0x581fa0 is in use!` x6 at consecutive tids (Zephyr
@@ -776,7 +791,7 @@ not. `nros setup --tool cyclonedds` is inert because phase 186 sets `CMAKE_DISAB
 native" — the CMake path, which every C/C++ example takes, never got it. One of two sibling paths fixed; the
 third instance of that class this session. Fixed with `ENABLE_LTO OFF` on the self-provision, and re-proved twice since — phase-347 W5 rebuilt the cyclone fixture from scratch (13 MB binary, 28 descriptor symbols) and the post-corrosion-bump workspace rebuild completed RC=0. See `archived/0492-*`. (2026-08-10)
 
-**#494** (testing, RESOLVED 2026-08-10) — `just ci-matrix` was NON-DETERMINISTIC: same tree, same commit,
+Recently resolved (2026-08-10): **#494** (testing) — `just ci-matrix` was NON-DETERMINISTIC: same tree, same commit,
 **223 real failures then 20** on an immediate re-run, 203 of the first run's being
 `lane-coords-tier2.txt: no coordinates`. `nros_lane_coords_file` used `cargo run … > "$out"`, and the shell
 truncates the target the instant the redirection is set up while cargo compiles for seconds-to-minutes — so
@@ -784,7 +799,7 @@ every reader in that window saw a zero-length file. Blast radius came from a COR
 narrowing fails closed on empty coordinates (an empty file must not read as "no narrowing"), so one
 truncated file failed every narrowed test at once. Fixed by writing to a temp file and `mv`-ing into place
 (atomic `rename(2)`). The determinism is the point — a gate that reports 223 then 20 teaches people to
-re-run instead of read.
+re-run instead of read. See `archived/0494-*`. (2026-08-10)
 
 Recently resolved (2026-08-10, phase-340): **#489** — every ESP32 test skipped `"qemu-system-riscv32 not
 available"` on a host where `nros setup --tool esp32-qemu` had JUST succeeded — the skip message named the command
