@@ -51,6 +51,24 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#567** (rmw, open 2026-08-14) — `_zp_unicast_read` RESETS its receive buffer on every call
+(`_z_zbuf_reset`), so it cannot return with bytes unread; the inner loop below it therefore drains every
+buffered frame by construction, because stopping early silently loses them (the defect that comment
+records). That blocks the device-side half of #506: capping the loop at 4/16 frames does improve cadence
+(stalls 10 -> 4/5, missed periods 1.79% -> 0.59/0.85%) but collapses inbound delivery 282 -> 10 msg/s and
+halves chain delivery — a drop policy, not a budget. Control: a cap of 1 degenerates to the pre-loop
+single-frame path and matches unbounded on every column. Needs a resumable rx path (reset only when the
+buffer is genuinely drained), and a decision on local patch vs upstreaming to zenoh-pico. See `0567-*`.
+
+**#566** (platform-zephyr, open 2026-08-14) — without `CONFIG_POSIX_API` the Zephyr port stubs its ENTIRE
+threading half — ~20 functions across `task_*`, `mutex_*`, `mutex_rec_*` and `condvar_*` — each returning
+-1 at RUNTIME (`platform.c:177` gates them, `:322-410` is the stub arm). Zephyr has `k_mutex`, `k_condvar`
+and `k_thread_create` natively on every board with no opt-in, and the FreeRTOS/ThreadX ports call their
+kernels directly, so this port is reaching for a compatibility layer and giving up when it is absent
+rather than using what the kernel provides. Found because #531's verification needed a board that had
+never run the smoke suite: `qemu_cortex_m3` passes the clock checks then fails `mutex_init`. A -1 nobody
+checks is worse than a build error naming the missing Kconfig. See `0566-*`.
+
 **#563** (tech-debt, open 2026-08-14) — the executor's 88192-byte inline storage is STATIC (`.bss`,
 `static ::nros::Node __nros_node;`), but CONSTRUCTING it costs ~23 KB of stack: ~13.4 KB already consumed
 at `nros_cpp_init` entry plus a ~9.3 KB temporary cleared inside `Executor::assemble`, which returns the
