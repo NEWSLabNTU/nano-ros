@@ -761,7 +761,11 @@ paid 68 times. It taxes the whole sweep because zephyr is an ORDER-ONLY prerequi
 platform (`zephyr (solo)`), so those 40 min are serial addition. The knob that would help is west-build
 CONCURRENCY, not `ninja-jobs` (8 threads cannot speed up 18 edges) — and that is capped by #0086's rustup
 staging collision, so raising it needs that guard re-checked. Empty `build/zephyr-ccache` is a red
-herring: the leaves pass `USE_CCACHE=0` and use sccache instead. See `0509-*`. (2026-08-10)
+herring: the leaves pass `USE_CCACHE=0` and use sccache instead. See `0509-*`. (2026-08-10) RE-MEASURED 2026-08-13 mid-lane: the `/8` divisor is INERT under the fifo jobserver (make takes `-j` from
+the full token budget; leaf recipes omit `NROS_ZEPHYR_NINJA_JOBS` so ninja draws tokens dynamically) — sampled
+13 concurrent cmake, 7 ninja, far past the 4 this row assumed. And the box is 76% IDLE with 18% iowait and
+~0 compilers: the lane is DISK-bound on a rotational disk, not job-starved. Concurrency is therefore NOT the
+lever; per-leaf configure work and storage are.
 
 **Re-measured 2026-08-13 (phase-350):** a fully warm lane is **592 s (9 m 52 s)**, not 40 min — the
 original figure was taken MID-SWEEP with seven other families competing, so it should not be quoted as the
