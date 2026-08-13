@@ -61,9 +61,14 @@ just nuttx setup        # contributor helper: stages the shell +
 
 This runs `scripts/nuttx/stage-external-apps.sh`, which writes
 `$NUTTX_APPS_DIR/external/Make.defs` + `Kconfig` and symlinks the
-integration shell (`external/nano-ros`) plus every example app
-(`external/nano-ros-<example>-<lang>`). Menuconfig surfaces them
+integration shell in as `external/nano-ros`. Menuconfig surfaces it
 under `Application Configuration → External Modules`.
+
+Passing `--bringup <dir>` additionally stages a per-bringup app
+(`external/<bringup>/`, with the bringup tree symlinked alongside as
+`external/<bringup>-source`) — the Phase 212 multi-package workspace
+shape. There are no per-EXAMPLE symlinks: that staging loop was
+retired in phase-212.M-F.12 when the bringup path superseded it.
 
 If you'd rather wire it yourself (e.g. into a vendored apps tree):
 
@@ -217,10 +222,10 @@ steps:
    already carries the full networking + TLS stack zenoh-pico
    needs; copy it to `$NUTTX_DIR/.config` and run
    `make olddefconfig`.
-2. **Stage the integration shell + example apps.** Run
+2. **Stage the integration shell.** Run
    `scripts/nuttx/stage-external-apps.sh "$NUTTX_APPS_DIR"` to symlink
-   `integrations/nuttx/` and every example app into
-   `$NUTTX_APPS_DIR/external/`. Remove `$NUTTX_APPS_DIR/Kconfig` so
+   `integrations/nuttx/` into `$NUTTX_APPS_DIR/external/` (add
+   `--bringup <dir>` for a workspace app). Remove `$NUTTX_APPS_DIR/Kconfig` so
    NuttX's `mkkconfig.sh` rediscovers the new
    `apps/external/Kconfig`.
 3. **Flip the nano-ros Kconfig knobs via `kconfig-tweak`.** The

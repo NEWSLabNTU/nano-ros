@@ -407,7 +407,7 @@ check-fast: \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
-    check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
+    check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
@@ -754,6 +754,12 @@ check-abi-bindings:
 [private]
 check-board-abi-mirror:
     @bash scripts/check-board-abi-mirror.sh
+
+# issue 0488 residue 4 follow-up — the NuttX integration Makefile is on a path no
+# lane executes (`CONFIG_NROS` is set by no shipped defconfig), so it rots.
+[private]
+check-nuttx-integration-makefile:
+    @bash scripts/check-nuttx-integration-makefile.sh
 
 # eyre's `Context` alias is behind `#[cfg(feature = "anyhow")]` from 0.6.13, so
 # code using it compiles only against a graph that resolves 0.6.12.

@@ -41,6 +41,33 @@ build:
     # lane linked against missing/foreign objects (arm_vectortab.o absent).
     scripts/nuttx/build-nuttx.sh
 
+# Build the nano-ros integration app the way the BOOK tells a user to
+# (issue 0488 residue 4 follow-up). No shipped defconfig sets `CONFIG_NROS`, so
+# `just nuttx build` compiles the kernel and never this app — which is how the
+# documented flow accumulated three independent breakages in two weeks (a stale
+# `packages/core` cargo path, a `+=` reading `NANO_ROS_ROOT` before it was
+# defined, and a missing object dir under `PREFIX`).
+#
+# NOT in `check-fast`: it needs the NuttX toolchain and it mutates the shared
+# tree's `.config`, which is issue 0525's last-configured-wins state. It
+# restores the config afterwards, including on failure. `check-nuttx-integration-makefile`
+# covers the two classes a static read can settle; this covers the compile.
+[group("main")]
+build-integration-app:
+    #!/usr/bin/env bash
+    set -e
+    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
+    if [ ! -d "$nuttx_dir/arch" ]; then
+        echo "NuttX not provisioned — run 'just nuttx setup' first."; exit 0
+    fi
+    scripts/nuttx/stage-external-apps.sh "${NUTTX_APPS_DIR:-$(pwd)/third-party/nuttx/nuttx-apps}"
+    backup="$(mktemp)"
+    cp "$nuttx_dir/.config" "$backup"
+    restore() { cp "$backup" "$nuttx_dir/.config"; ( cd "$nuttx_dir" && make olddefconfig >/dev/null 2>&1 ); rm -f "$backup"; }
+    trap restore EXIT
+    ( cd "$nuttx_dir" && echo "CONFIG_NROS=y" >> .config && make olddefconfig >/dev/null && make -j"$(nproc)" )
+    echo "integration app built; objects under \$APPDIR/external/.nros-build/<arch>/"
+
 # Build NuttX QEMU ARM virt examples
 [group("main")]
 build-examples:

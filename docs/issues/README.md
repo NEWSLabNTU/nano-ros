@@ -553,9 +553,18 @@ threadx-riscv64; 3.95 s → 0.12 s per probe in a controlled A/B. Also removed a
 FreeRTOS row with no `[env]` block made the board build script PANIC outside `just`, which
 `rust-fixture-stale.sh` (stderr to `/dev/null`) read as "not stale". See `archived/0491-*`. (2026-08-10)
 
-**#488** (build, open 2026-08-10, phase-340 P2) — the second-build-path sweep's RESIDUE: sites writing a
-per-leaf cargo dir that `check-example-leaf-target-dirs` deliberately does not cover, each needing its
-consumer moved in the same commit. **Residues 1-3 are FIXED (2026-08-12):** the wake-latency pair,
+RESOLVED 2026-08-13 — **#488** the second-build-path RESIDUE: sites writing a per-leaf cargo dir that
+`check-example-leaf-target-dirs` does not cover. Residues 1-3 (wake-latency, rtic-run-plan-e2e,
+qemu-smoltcp-bridge, ros-editions, the three run-recipes, stack-analysis) moved to manifest rows, shared
+groups or derived roots. Residue 4 — NuttX apps compiling INTO the source tree — is fixed by
+`PREFIX := $(APPDIR)/external/.nros-build/$(CONFIG_ARCH)/`: `$(APPDIR)` because make resolves `$(CURDIR)`
+through the staging SYMLINK to the physical dir, which is how a user's `make` wrote into the nano-ros
+install; the arch because one apps tree serves both. Verified on the documented user flow
+(`CONFIG_NROS=y` + `make -j8` exits 0, objects under `.nros-build/arm/`, source tree clean), and the
+interim `.gitignore` ledger is deleted. Doing it uncovered three unrelated breakages on that flow — a
+stale `packages/core` cargo path, a `+=` reading `NANO_ROS_ROOT` before it was defined, and a missing
+mirrored object dir — all rooted in NO defconfig setting `CONFIG_NROS`, now covered by
+`check-nuttx-integration-makefile` + `just nuttx build-integration-app`. See `archived/0488-*`. (2026-08-13):** the wake-latency pair,
 `rtic-run-plan-e2e` and `qemu-smoltcp-bridge` are `[[fixture]]` rows resolved through those rows; the
 freertos / threadx-linux / threadx-riscv64 run-paths and the cyclonedds make-driver leaf use the shared
 group; `ros-editions` and `stack-analysis.sh` take a derived `<root>/<kind>/<coordinate>` instead, because

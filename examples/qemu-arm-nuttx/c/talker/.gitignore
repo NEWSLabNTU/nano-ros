@@ -4,9 +4,3 @@
 /build-xrce/
 /build-cyclonedds/
 /generated/
-
-# NuttX apps `make` build artifacts (objects emitted beside sources)
-/.built
-/.depend
-/Make.dep
-/src/*.o

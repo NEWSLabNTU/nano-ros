@@ -1,7 +1,8 @@
 ---
 id: 488
-title: "Second-build-path residue: per-leaf cargo dirs — residues 1-3 FIXED; only residue 4 (NuttX objects written into the source leaf) remains"
-status: open
+title: "Second-build-path residue: per-leaf cargo dirs — ALL FOUR residues fixed"
+status: resolved
+resolved_in: issue-0488
 type: tech-debt
 area: build
 related: [phase-340, rfc-0070, issue-0475, issue-0393]
@@ -388,3 +389,53 @@ scoped patterns sit in the repo-root `.gitignore` tagged as a symptom ledger, an
 the ledger is deleted when the build moves out of tree.
 
 This issue stays open for residue 4 alone.
+
+
+## Residue 4 RESOLVED 2026-08-13 — and the cross-arch hypothesis is now moot
+
+`integrations/nuttx/Makefile` sets `PREFIX := $(APPDIR)/external/.nros-build/$(CONFIG_ARCH)/`,
+so objects, `.built`, `.depend` and `Make.dep` land in the user's apps tree
+instead of the nano-ros checkout, and each arch gets its own dir.
+
+`$(APPDIR)` rather than `$(CURDIR)`, measured: make resolves CURDIR through the
+staging SYMLINK to the physical directory, so `$(CWD)` was
+`<nano-ros>/integrations/nuttx`. That is the mechanism by which a user's `make`
+wrote into the nano-ros install. The sibling `apps-external-template/Makefile`
+needs no such line and that was CHECKED rather than assumed: it is COPIED into
+`apps/external/<bringup>/`, so its CURDIR is already the user's tree.
+
+**The cross-arch collision recorded above as an unreproduced hypothesis is now
+structurally impossible** — the arch is in the coordinate — so it is closed as
+moot rather than confirmed. It was never observed; what the fix removes is the
+possibility.
+
+Upstream's `clean::` deletes bare `.built` / `Make.dep` / `.depend` and cannot
+see prefixed ones, so ours removes this arch's dir. The interim `.gitignore`
+ledger is deleted (19 leaf files), as this issue said it would be once the build
+moved out of tree.
+
+### Three defects the fix uncovered, none of them residue 4
+
+Running the documented flow for the first time in weeks:
+
+1. `--manifest-path $(NANO_ROS_ROOT)/packages/core/nros-c` — moved to
+   `packages/api/` on 2026-07-31 (phase-321 W2.e). 6 sites.
+2. `CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/…` placed NINE LINES ABOVE the
+   `NANO_ROS_ROOT :=` defining it. NuttX's CFLAGS is simply-expanded, so `+=`
+   appended an empty prefix; `CSRCS` is recursive, which is why the SOURCE
+   resolved and only the header went missing.
+3. An absolute `CSRCS` under a `PREFIX` whose mirrored parent nothing creates.
+
+The root cause of all three is one fact: **no shipped defconfig sets
+`CONFIG_NROS`**, so no lane ever compiles this app and the book's own
+instructions are unexecuted. Addressed by `check-nuttx-integration-makefile`
+(paths exist; no use-before-define in a `+=` — both arms tripwired against the
+real defects) and `just nuttx build-integration-app`, which runs the flow the
+book documents and restores the shared `.config` afterwards.
+
+### A note on my own testing
+
+Defect (3) was invisible to my standalone harness because the harness's compile
+rule had a `mkdir -p $(dir $@)` that upstream's does not. It went green on a
+build the real path could not do. The harness settled placement, arch separation
+and `clean`; only the real build settled whether it compiles.
