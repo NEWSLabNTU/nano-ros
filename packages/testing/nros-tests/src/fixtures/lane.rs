@@ -165,10 +165,27 @@ pub fn manifest_rows() -> &'static [Row] {
             let f: Vec<&str> = line.split('\x1f').collect();
             assert_eq!(
                 f.len(),
-                7,
-                "unexpected `coords` record shape (expected 7 \\x1f-separated \
-                 fields: kind, platform, lang, rmw, dir, id, artifact_root): {line:?}"
+                8,
+                "unexpected `coords` record shape (expected 8 \\x1f-separated \
+                 fields: kind, platform, lang, rmw, dir, id, artifact_root, \
+                 builder): {line:?}"
             );
+            // phase-350 W1 — `west` rows are OUT of the coordinate-narrowed run
+            // set, because they are out of the coordinate-narrowed BUILD set:
+            // `just zephyr build-fixtures` selects leaves module-level, not by
+            // coordinate (the `NROS_FIXTURE_COORDS` plumbing stops at the
+            // platform fan-out). This module's whole contract is that the two
+            // sides skip the SAME rows, so a row the build cannot omit must not
+            // be one the run does.
+            //
+            // phase-350 W1.b flips them in: once the zephyr lane narrows by
+            // coordinate, dropping this filter makes
+            // `every_omittable_row_is_attributable_from_its_artifacts` demand a
+            // real `row_artifact_root` for them — which is W1.d, and is the
+            // right ordering pressure rather than an accident.
+            if f[7] == "west" {
+                continue;
+            }
             rows.push(Row {
                 kind: f[0].to_string(),
                 coord: (f[1].to_string(), f[2].to_string(), f[3].to_string()),

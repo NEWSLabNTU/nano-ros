@@ -112,8 +112,8 @@ fn fixture_coords() -> (BTreeSet<Coord>, Vec<String>) {
         let f: Vec<&str> = line.split('\x1f').collect();
         assert_eq!(
             f.len(),
-            7,
-            "unexpected `coords` record shape (expected 7 \\x1f-separated fields): {line:?}"
+            8,
+            "unexpected `coords` record shape (expected 8 \\x1f-separated fields): {line:?}"
         );
         let (table, p, l, r, dir) = (f[0], f[1], f[2], f[3], f[4]);
         let is_ws = table == "workspace_fixture";

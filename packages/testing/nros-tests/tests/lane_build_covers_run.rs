@@ -392,7 +392,7 @@ fn every_fixture_row_is_reachable_through_the_coordinate_filter() {
     let mut plain_rows = 0usize;
     for line in coords_text.lines().filter(|l| !l.is_empty()) {
         let f: Vec<&str> = line.split('\x1f').collect();
-        assert_eq!(f.len(), 7, "unexpected coords record: {line:?}");
+        assert_eq!(f.len(), 8, "unexpected coords record: {line:?}");
         triples.insert(format!("{},{},{}", f[1], f[2], f[3]));
         if f[0] == "fixture" {
             plain_rows += 1;
@@ -412,23 +412,40 @@ fn every_fixture_row_is_reachable_through_the_coordinate_filter() {
     }
     std::fs::write(&coord_file, body).expect("write coord file");
 
-    let listed = Command::new("python3")
-        .arg(&manifest)
-        .arg("list")
-        .arg("--coords-from")
-        .arg(&coord_file)
-        .current_dir(&root)
-        .output()
-        .expect("run fixtures-manifest.py list --coords-from");
-    assert!(
-        listed.status.success(),
-        "list --coords-from failed: {}",
-        String::from_utf8_lossy(&listed.stderr)
-    );
-    let selected = String::from_utf8_lossy(&listed.stdout)
-        .lines()
-        .filter(|l| !l.is_empty())
-        .count();
+    // Count per BUILDER, because "reachable through the coordinate filter" is a
+    // question about a row's OWN build lane. phase-350 W1 gave the zephyr west
+    // leaves rows, and a west row must stay invisible to the cargo/cmake lane —
+    // handing one to `fixtures-build.sh` would cargo-build a Zephyr app, and to
+    // the staleness probe would have it watch a `target/` nothing writes. So
+    // `list` excludes them unless asked by name, and the zephyr lane asks.
+    //
+    // Summing the two lists keeps the invariant exactly as strong: a row
+    // reachable through NEITHER still fails, which is the case issue 0482 is
+    // about. What it stops asserting is that one list sees every builder.
+    let list_with = |extra: &[&str]| -> usize {
+        let mut cmd = Command::new("python3");
+        cmd.arg(&manifest)
+            .arg("list")
+            .arg("--coords-from")
+            .arg(&coord_file);
+        for a in extra {
+            cmd.arg(a);
+        }
+        let out = cmd
+            .current_dir(&root)
+            .output()
+            .expect("run fixtures-manifest.py list --coords-from");
+        assert!(
+            out.status.success(),
+            "list --coords-from {extra:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .count()
+    };
+    let selected = list_with(&[]) + list_with(&["--builder", "west"]);
 
     assert_eq!(
         selected, plain_rows,

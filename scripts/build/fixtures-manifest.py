@@ -213,6 +213,14 @@ def is_cargo_row(entry):
         return False
     if entry.get("builder") == "cargo":
         return True
+    # phase-350 W1 — a `west` row builds through `west build` into the ZEPHYR
+    # WORKSPACE, so it is neither cargo nor cmake in the sense this predicate
+    # decides. Answering "cargo" for the rust ones would hand them to
+    # `nros_fixture_target_dir_flag` and claim their bytes land in
+    # `<dir>/target`, which nothing writes -- the exact failure phase-344 W2
+    # fixed for the threadx cyclonedds rows.
+    if entry.get("builder") == "west":
+        return False
     return entry.get("lang") not in ("c", "cpp")
 
 
@@ -308,6 +316,20 @@ def row_selector(entry):
     return (str(entry.get("dir") or "").rstrip("/"), rmw, features, ndf, env)
 
 
+def row_builder(entry):
+    """The row's effective builder: `cargo`, `cmake`, or `west` — phase-350 W1.
+
+    ONE spelling of "what builds this row", exported by `coords` so a consumer
+    never has to infer it. An explicit `builder` wins; otherwise the language
+    default stands, which is the rule `is_cargo_row` has encoded since
+    phase-344 W2.
+    """
+    declared = entry.get("builder")
+    if declared in ("cargo", "cmake", "west"):
+        return declared
+    return "cargo" if is_cargo_row(entry) else "cmake"
+
+
 def row_artifact_root(entry):
     """Where a row's built artifacts land, as a repo-relative path — phase-340 W3.
 
@@ -329,6 +351,17 @@ def row_artifact_root(entry):
     """
     d = (entry.get("dir") or "").rstrip("/")
     if not d:
+        return ""
+    # phase-350 W1 — a `west` row's artifacts do NOT land under `dir`. They land
+    # in the Zephyr WORKSPACE (`$build_root/<west_build_name>`), whose root is a
+    # host fact (`NROS_ZEPHYR_BUILD_ROOT`, the in-repo `zephyr-workspace/`, or a
+    # sibling checkout) that no manifest can name. Return "" — UNATTRIBUTABLE —
+    # rather than a repo-relative guess: `fixtures::lane` fails closed on an
+    # empty root (never skips), and a wrong path would be worse than none, which
+    # is the whole lesson of phase-344 W2. Giving these rows a real artifact
+    # root is phase-350 W1.d; it needs the row to name the build-dir NAME and
+    # the resolver to join it with the workspace root it already discovers.
+    if entry.get("builder") == "west":
         return ""
     if not is_cargo_row(entry):
         return f"{d}/{cmake_build_subdir(entry)}"
@@ -474,7 +507,15 @@ def matches_filters(entry, args, *, for_probe=False):
         return False
     if args.platform and entry.get("platform") != args.platform:
         return False
-    if getattr(args, "builder", None):
+    # phase-350 W1 — `west` rows are OPT-IN. Every existing `list` consumer is
+    # the cargo/cmake lane or its staleness probe (`fixtures-build.sh`,
+    # `check-fixtures-stale.sh`, `drop-family-artifacts.sh`); handing them a row
+    # that `west build`s into the Zephyr workspace would have them cargo-build a
+    # Zephyr app, probe a `target/` nothing writes, or delete the wrong tree.
+    # The zephyr lane asks for them by name (`--builder west`).
+    if (entry.get("builder") == "west") != (getattr(args, "builder", None) == "west"):
+        return False
+    if getattr(args, "builder", None) in ("cargo", "cmake"):
         want_cargo = args.builder == "cargo"
         if is_cargo_row(entry) != want_cargo:
             return False
@@ -851,7 +892,7 @@ def main():
 
     if a.command == "coords":
         # Issue 0482. One
-        # `<kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>\x1f<id>\x1f<artifact_root>`
+        # `<kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>\x1f<id>\x1f<artifact_root>\x1f<builder>`
         # line per BUILDABLE row of both coordinate-bearing tables, with the
         # coordinate resolved by `row_coord` — the same function the lane filter
         # uses. `skip_build` rows are omitted for the same reason
@@ -867,6 +908,13 @@ def main():
         # that produced it, and hence to its coordinate. That is what lets a
         # coordinate-scoped test RUN skip exactly the rows its lane's BUILD
         # omitted, deciding both from this one table with this one `row_coord`.
+        #
+        # phase-350 W1 — `builder` rides along for the same reason: not every row
+        # is narrowed by the same lane. The zephyr west rows are selected
+        # module-level today, not by coordinate, so the run-side predicate must
+        # be able to tell them apart from a cargo/cmake row it CAN skip. Without
+        # this field the consumer would have to re-derive the builder from
+        # `lang`, which is the proxy phase-344 W2 already found wrong.
         for kind, rows in (
             ("fixture", load(a.manifest)),
             ("workspace_fixture", load_workspace_fixtures(a.manifest)),
@@ -885,6 +933,7 @@ def main():
                             str(e.get("dir", e.get("id", ""))),
                             str(e.get("id", "")),
                             row_artifact_root(e),
+                            row_builder(e),
                         )
                     )
                     + "\n"

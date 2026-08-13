@@ -142,12 +142,17 @@ impl PlatformId {
             // Those are different vocabularies that merely share a spelling.
             PlatformId::Linux => &["linux"],
             PlatformId::ZephyrNativeSim => &["zephyr"],
-            // phase-337 W2.c/W2.e — declared, but NO `fixtures.toml` row spells
-            // it: this board is built by the west leaves lane, which carries its
-            // own staleness signature (same channel as `ZephyrNativeSim`'s
-            // examples). The token still has to exist — a platform the
-            // vocabulary cannot name selects nothing and looks fast rather than
-            // broken, which is the trap `Px4`'s token comment already records.
+            // phase-337 W2.c/W2.e declared this token with NO `fixtures.toml`
+            // row spelling it, because the board was built by the west leaves
+            // lane off its own bash matrix. phase-350 W1 gave that lane rows, so
+            // three `builder = "west"` rows spell it now (the mps2 talker
+            // witness, one per language).
+            //
+            // Those rows are why the token is not just cosmetic: the witness
+            // leaves spell the SAME `dir`, `lang` and `rmw` as their native_sim
+            // siblings, so putting both boards under `zephyr` would give two
+            // distinct rows one coordinate — and a coordinate is what every
+            // lane-scoped build and the whole staleness gate select on.
             PlatformId::ZephyrQemuCortexM => &["zephyr-cortex-m"],
             PlatformId::FreertosMps2 => &["freertos"],
             PlatformId::NuttxArm => &["nuttx"],

@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). W0 LANDED. W1–W6 open.**
+**Status (2026-08-13). W0 LANDED. W1.a PARTIAL (58 of 74 rows + a drift gate). W1.b–W6 open.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -42,6 +42,7 @@ absence, which nothing can report.
 | set | count | build declared in | consumers |
 | --- | --- | --- | --- |
 | zephyr west leaves | **70** | `fixture-matrix.sh` + `zephyr-fixture-leaves.sh` | `zephyr.rs`, `qos_zephyr_*`, workspace e2es |
+
 | `build/west-fixtures/<id>` | 4 | `west-fixtures.sh` bash arrays | `board_import`, `cli_bringup_zephyr`, `zephyr_self_pkg` |
 | FVP | 4 | `just/zephyr-setup.just` only | `fvp_smoke`, `fvp_runtime_ws`, **2 with no runner** |
 | `target-zenoh-fixture-posix` | 1 | root recipe, literal `--target-dir` | `zenoh_archive_symbols`, `zenoh_header_parity` |
@@ -49,6 +50,11 @@ absence, which nothing can report.
 | `tests/esp-idf-smoke` | 1 | `idf-fixtures.sh` | `cli_bringup_esp_idf` |
 | ros-editions bins | 7 | `just ros_editions build-{fixture,e2e-fixtures}` | `ros_editions_*` |
 | `bins/int32-observer` | 1 | **nothing** | **nothing** |
+
+*Correction (W1, 2026-08-13):* "70 with no manifest row" is 69 — one entry leaf,
+`build-ws-rs-entry-zenoh`, has had a `[[workspace_fixture]]` row
+(`workspace-rust-zephyr`) all along. The west lane ignores it and re-derives the
+leaf anyway, so the defect class is unchanged; the count was not.
 
 Zephyr leaf shape: 3 langs × 6 roles × 3 rmws = 54, + 12 `ws-*-entry`,
 + 3 mps2 talkers, + 1 logging-smoke = 70. Reproduce:
@@ -159,28 +165,70 @@ says nothing runs those two examples), so it stays until W3 decides.
 leg; `grep -rn 'int32.observer\|int32_observer'` returns only archived docs and
 this phase's own issue.
 
-## W1 — The 74 get rows (#535)
+## W1 — The 74 get rows (#535) — **W1.a PARTIAL; W1.b/c/d open**
 
 The manifest already models non-cargo builders (`cmake`, `cmake-configure`,
 `cross-build`, `cxx-syntax`), so this is a `builder = "west"` row, not a new
 concept.
 
-- [ ] `[[fixture]]` rows for the 70 zephyr leaves and the 4 west fixtures,
-      carrying `(platform, lang, rmw)` so `row_coord()` answers.
-- [ ] `zephyr-fixture-leaves.sh` and `west-fixtures.sh` CONSUME the manifest
-      (`--coords-from`), as `fixtures-build.sh` and
-      `workspace-fixtures-build.sh` already do. Delete
-      `nros_fixture_langs`/`nros_fixture_roles` and the two bash arrays.
+- [x] **58 `[[fixture]]` rows** for the non-entry zephyr leaves, carrying
+      `(platform, lang, rmw)` so `row_coord()` answers.
+- [x] `builder = "west"` taught to `is_cargo_row()` / `row_artifact_root()` /
+      `matches_filters()`, so the cargo/cmake lane and its probe cannot see a
+      west row.
+- [x] `check-zephyr-fixture-rows.py` — the rows and the emitter cannot drift
+      while both exist.
+- [ ] **12 entry leaves** need `[[workspace_fixture]]` rows (see below).
+- [ ] **4 `west-fixtures.sh` fixtures** still bash arrays.
+- [ ] `zephyr-fixture-leaves.sh` and `west-fixtures.sh` CONSUME the rows.
+      Delete `nros_fixture_langs`/`nros_fixture_roles` and the two bash arrays.
 - [ ] `examples_fixture_coverage.rs` reads the rows instead of restating the
       role matrix in `ZEPHYR_LANGS` × `ZEPHYR_ROLES` — **three spellings of one
       matrix collapse to one**, or this is the sizes-header mirror again.
 - [ ] `row_artifact_root()` answers for a west leaf, so the staleness probe can
       attribute it instead of exempting it wholesale.
 
-*Acceptance:* `NROS_FIXTURE_COORDS` is read by the zephyr lane;
-`build-test-fixtures lane=tier1` builds strictly fewer than 70 zephyr leaves and
-the tier-1 run is still green; `just fixture-staleness` reports a coordinate for
-every west leaf.
+*Acceptance (unchanged, NOT yet met):* `NROS_FIXTURE_COORDS` is read by the
+zephyr lane; `build-test-fixtures lane=tier1` builds strictly fewer than 70
+zephyr leaves and the tier-1 run is still green; `just fixture-staleness`
+reports a coordinate for every west leaf.
+
+### Rows before consumer, and the gate that makes it safe
+
+Landing rows nothing reads would ADD a spelling — the defect this phase is
+about. So the rows ship with `scripts/check-zephyr-fixture-rows.py`, which
+compares the emitter's leaf set against the west rows on
+`(board, lang, role, rmw)` in both directions and fails on either a leaf with no
+row or a row with no leaf. Verified red both ways before being wired in.
+
+It normalises ONE axis: `zephyr-fixture-leaves.sh` gates cyclonedds on `idlc`
+being present, so a host without it emits 36 role leaves where the manifest
+always has 54. The gate restricts both sides to the RMWs this host emitted
+rather than asserting raw equality (red for a reason the developer cannot act on
+gets a gate disabled) — and rather than the host-safe-but-blind
+`emitted ⊆ manifest`, which would let a deleted leaf keep its row forever. That
+is how `fixture-inventory.py` rotted (#538).
+
+### Three things the rows exposed
+
+1. **`zephyr-cortex-m` gets its first row.** The mps2 witness leaves spell the
+   same `dir`, `lang` and `rmw` as their native_sim siblings, so one platform
+   token for both would have given two rows one coordinate. phase-337 W2.c had
+   already declared the token for exactly this board, noting "no `fixtures.toml`
+   row spells it". These are that row — so **that comment is now stale**.
+2. **The 12 entry leaves are Workspace cells, not `[[fixture]]` rows.**
+   `fixture_rows_all_modeled_by_matrix` rejected them, naming the orphan
+   coordinate `(ZephyrNativeSim, Mixed, Zenoh, is_ws=false)` — the mixed entry.
+   A workspace row is a different SHAPE (`dir` is the workspace ROOT with
+   `bringup`/`entry` beside it, not the entry app dir), so they are their own
+   step. One already exists: `workspace-rust-zephyr`, which carries
+   `skip_probe = true` and the precedent that a zephyr workspace row is built by
+   the west lane.
+3. **A west row's artifacts are genuinely unattributable today.**
+   `row_artifact_root()` returns `""` for them rather than a repo-relative
+   guess: the bytes land in the Zephyr WORKSPACE, whose root is a host fact no
+   manifest can name. Failing closed beats a wrong path (phase-344 W2). Giving
+   them a real root is W1.d.
 
 **Land W1 before W2/W4.** Both need a row to attach a decision to.
 

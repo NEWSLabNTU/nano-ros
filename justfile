@@ -1228,6 +1228,11 @@ check-fixtures-manifest:
     # exception that came true must fail, or the list rots into a false
     # negative read as authoritative precisely when someone audits coverage.
     @python3 scripts/build/fixture-inventory.py --check
+    # phase-350 W1 (issue 0535) — the zephyr west leaves now have manifest rows,
+    # but `zephyr-fixture-leaves.sh` still derives its own matrix, so the two are
+    # briefly two spellings of one thing. This makes them unable to drift until
+    # the emitter reads the rows. Read-only: the emitter runs no build tool.
+    @python3 scripts/check-zephyr-fixture-rows.py
 
 # Every `docs/{design,issues}/NNNN-*.md` path written anywhere — prose, issue
 # frontmatter, or a cmake error message — must resolve. Renumbering on an id
