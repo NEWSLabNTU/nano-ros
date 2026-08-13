@@ -215,3 +215,23 @@ Alternative worth pricing if that stalls: the probe build dir is REGENERABLE
 scratch — nothing reads it after the sidecars are written — so deleting it on
 success reclaims the 50 GiB at the cost of a cold probe on the next sync. That
 trade needs a measurement of cold-probe time, which nobody has taken.
+
+
+## The measurement is BLOCKED, and probing for it found why (2026-08-13)
+
+Attempting the cold-vs-warm probe timing this issue asked for: warm
+`nros sync examples/workspaces/safety` takes **30.9 s** and ENDS IN FAILURE —
+the probe cannot build, because it asks `nros-c` for `metadata-mode`, a feature
+only `nros-cpp` has (issue 0542).
+
+So the 14 trees / 50.26 GiB are not a working cache whose value is being
+weighed. They are the residue of probe builds that get as far as compiling the
+runtime and then fail at the `nros-c` cargo step. Three of the four C/C++
+components in that workspace have no sidecar producer at all.
+
+Both of this issue's open questions wait on 0542:
+
+* "is the probe tree worth keeping?" cannot be timed cold against warm until a
+  probe can finish.
+* the shared-`CMAKE_BINARY_DIR` direction would currently be sharing a broken
+  build.
