@@ -259,10 +259,9 @@ refused). Now gated by `check-submodule-pinned-locks.py` in `check-fast`: `cargo
 --offline`, **0.25 s, no network** — resolution rather than a build, because resolution is what breaks. The
 leaf set is DERIVED (tracked lock + a `path` dep resolving inside a `.gitmodules` path), not listed, so it
 follows the next leaf that grows a submodule dep. Verified three ways against the REAL pre-fix lock: green
-on the fix, red on the break with the `just lock-update` remedy, SKIP when the submodule is absent. Does
-NOT fix the filing's reason 2 — `setup-launch-resolve` is still built only by the 40-minute fixture lane,
-so a compile regression there still waits; making `check-fast` build it was rejected as trading a
-sub-second check for a compile. See `archived/0560-*`. (2026-08-13)
+on the fix, red on the break with the `just lock-update` remedy, SKIP when the submodule is absent. Reason 2 is closed too: `check-launch-resolve-builds` in `check-build` runs the REAL recipe (~14 s warm,
+catching link errors a `cargo check` misses), skipping when the submodule is absent so a bare clone can
+still `just check`. Split by TIER — lock check sub-second in `check-fast`, compile in the build tier. See `archived/0560-*`. (2026-08-13)
 
 **#527** (testing, open 2026-08-12) — the doctest phase overwrites the junit.xml the skip-rewrite just
 produced, so a failed sweep reports a trustworthy COUNT of real failures and destroys the record of WHICH

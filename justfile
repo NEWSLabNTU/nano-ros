@@ -488,7 +488,7 @@ check-test-targets:
 # (`check.yml` non-push), not on every direct push to main.
 [group("main")]
 check-build: \
-    check-cli-fresh \
+    check-cli-fresh check-launch-resolve-builds \
     check-test-targets \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-borrowed-e2e check-dep-chain \
@@ -497,6 +497,35 @@ check-build: \
     check-no-tracked-file-find \
     native::check
     @echo "Build checks passed!"
+
+# issue 0560 reason 2 — `setup-launch-resolve` was a dependency of
+# `build-test-fixtures` and NOTHING else, so a compile regression in the resolver
+# waited for whoever next ran the ~40-minute fixture lane rather than failing its
+# author. #560 gated the LOCK drift (sub-second, in `check-fast`); this covers
+# the compile, which needs a build tier.
+#
+# It invokes the REAL recipe rather than a second `cargo check` spelling: same
+# profile, same flags, and it catches link errors a `cargo check` would miss —
+# ~14 s warm against 6 s, which is the cheaper half of the trade. The artifact it
+# leaves is the one `nros sync` wants anyway.
+#
+# SKIPS when the submodule is absent, so `just check` still runs on a bare clone.
+# That is deliberately NOT what `setup-launch-resolve` itself does: issue 0409
+# made that recipe FAIL there, because its job is to produce the binary and
+# exiting 0 without one let `nros sync` run on a stale resolver. A verification
+# lane answers a different question — "can this be checked?" — and the honest
+# answer without the submodule is no.
+[private]
+check-launch-resolve-builds:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    resolve="packages/cli/third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml"
+    if [ ! -f "$resolve" ]; then
+        echo "[check-launch-resolve-builds] SKIP — play_launch submodule not initialised"
+        echo "    git submodule update --init packages/cli/third-party/play_launch"
+        exit 0
+    fi
+    just setup-launch-resolve
 
 # issue #202 — run the CLI sub-workspace's test suite (unit tests across
 # nros-cli-core / rosidl-* / nros-build + the plan-pipeline e2e). Before this

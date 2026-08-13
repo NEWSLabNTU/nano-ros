@@ -117,9 +117,25 @@ lock (`567101c43~1`) rather than a synthetic one:
 | the actual pre-fix lock | rc=1, naming the leaf, the cargo error, and `just lock-update` |
 | submodule directory absent | `SKIP … not initialised`, rc=0 |
 
-**What this does NOT fix:** reason 2 of the filing — `setup-launch-resolve` is
-still built only by `build-test-fixtures`. The gate makes the *lock* drift fail
-fast, which is the failure that actually occurred; a compile regression in that
-leaf would still wait for the fixture lane. Making `check-fast` build it was
-rejected deliberately: it trades a sub-second resolution check for a compile,
-and resolution is what broke.
+**Reason 2 is closed too (2026-08-13):** `check-launch-resolve-builds` in
+`check-build`. It invokes the REAL `setup-launch-resolve` recipe rather than a
+second `cargo check` spelling — same profile and flags, and it catches link
+errors a `cargo check` would miss, for ~14 s warm against 6 s. The artifact it
+leaves is the one `nros sync` wants anyway.
+
+The split is by TIER, deliberately: the lock check is sub-second and lives in
+`check-fast`; the compile needs a build tier, so it lives in `check-build`, next
+to the other cargo lanes. Making `check-fast` compile the resolver was rejected —
+it trades a sub-second resolution check for a build, and resolution is what
+broke.
+
+It SKIPS when the submodule is absent so `just check` still runs on a bare clone,
+which is deliberately NOT what `setup-launch-resolve` does: issue 0409 made that
+recipe FAIL there, because its job is to produce the binary and exiting 0 without
+one let `nros sync` run on a stale resolver. A verification lane answers a
+different question, and without the submodule the honest answer is "cannot
+check".
+
+Verified both ways: a deliberate type error in `nros-launch-resolve/src/main.rs`
+fails the lane (rc=101, `error[E0308]`), and a moved-away submodule skips (rc=0)
+with the `git submodule update --init` remedy.
