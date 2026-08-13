@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). COMPLETE except W5's deferred directory renames. All 74 west fixtures are manifest rows, the emitter reads them, the lane narrows by coordinate (tier2: 7 leaves, was 70), the coverage gates read rows, work-item ids are gated, the `build/<kind>` rule is RFC-0070 R5, W4 answered #509 with a NO, and the runnerless FVP code is retired. The remaining renames are deferred with the cache cost measured.**
+**Status (2026-08-13). COMPLETE except W5's deferred directory renames, and one UNMEASURED acceptance item (tier-2 wall-clock vs #509's 40 min baseline — the leaf count is 70 → 7, but a count is not a duration). All 74 west fixtures are manifest rows, the emitter reads them, the lane narrows by coordinate, the coverage gates read rows, work-item ids are gated, the `build/<kind>` rule is RFC-0070 R5, W4 answered #509 with a NO, and the FVP + logging-smoke code with no consumer is retired.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -165,7 +165,7 @@ says nothing runs those two examples), so it stays until W3 decides.
 leg; `grep -rn 'int32.observer\|int32_observer'` returns only archived docs and
 this phase's own issue.
 
-## W1 — The 74 get rows (#535) — **W1.a PARTIAL; W1.b/c/d open**
+## W1 — The 74 get rows (#535) — **LANDED** (W1.d retracted, see below)
 
 The manifest already models non-cargo builders (`cmake`, `cmake-configure`,
 `cross-build`, `cxx-syntax`), so this is a `builder = "west"` row, not a new
@@ -185,8 +185,9 @@ concept.
       emitter modes.
 - [x] **12 entry leaves** are `[[workspace_fixture]]` rows, emitted by the same
       loop. 573 more lines of copy-paste deleted; still byte-identical.
-- [ ] **4 `west-fixtures.sh` fixtures** still bash arrays; that script still
-      declares its own matrix.
+- [x] **4 `west-fixtures.sh` fixtures** — done in W2: they are
+      `[[compile_check_fixture]]` rows and that script reads them. Its two bash
+      arrays are gone, which completed the 74.
 - [x] **W1.c** — `examples_fixture_coverage.rs` reads the rows instead of
       restating the role matrix in `ZEPHYR_LANGS` × `ZEPHYR_ROLES`. **Three
       spellings of one matrix are now one.**
@@ -446,7 +447,7 @@ FVP artifacts is reachable from `build-test-fixtures`, so both gated tests still
 skip with a message that cannot distinguish "license-gated SDK absent" from
 "nobody built it". That is phase-217's when FVP work resumes.
 
-## W4 — Leaf-count triage, on evidence
+## W4 — Leaf-count triage, on evidence — **ANSWERED: delete nothing**
 
 Three candidate groups, from the audit. **Each is a measurement, not a
 foregone deletion** — phase-329 W8 retracted its dedup precisely because
@@ -605,12 +606,26 @@ W1, because a fixture with no row has nothing to attach a decision to.
 
 ## Acceptance (phase)
 
-- Zero west-built fixtures outside `examples/fixtures.toml`; `row_coord()`
-  answers for all 453.
-- The zephyr lane honors `NROS_FIXTURE_COORDS`, and `lane=tier1` builds strictly
-  fewer zephyr leaves than `lane=all` with tier 1 still green.
-- One spelling of the lang axis, one `build/<kind>` rule, one zephyr build-dir
-  scheme, no phase-coded fixture ids — each gated.
-- No build recipe produces an artifact no test consumes.
-- Lane wall-clock re-measured against #509's 40 min baseline on a cleanly
-  rebuilt tree, with the leaf-count delta named.
+Scored 2026-08-13. Three met, one partial, one **not measured**.
+
+- [x] **Zero west-built fixtures outside `examples/fixtures.toml`;
+      `row_coord()` answers for all of them.** 70 zephyr leaves (W1) + the 4
+      `west-fixtures.sh` ones (W2).
+- [x] **The zephyr lane honors `NROS_FIXTURE_COORDS`**, and a narrowed lane
+      builds strictly fewer leaves: tier2 selects 7 of 70, nightly 38, tier1 0.
+- [x] **No build recipe produces an artifact no test consumes** — W3 retired the
+      FVP pair, #549 retired the duplicate logging-smoke builder.
+- [~] **One vocabulary, each gated.** Work-item ids: done and gated. The
+      `build/<kind>` rule: written as RFC-0070 R5, with its two non-conforming
+      kinds named. The lang axis and the zephyr build-dir scheme: DEFERRED, and
+      not gated — a gate would fail on 27 dirs it is not yet time to rename.
+- [ ] **NOT MEASURED: lane wall-clock against #509's 40 min baseline.** The
+      leaf-count delta is named (70 → 7 for tier2), but a *count* is not a
+      *duration*: #509's cost is ~140 s of fixed per-leaf overhead, and whether
+      cutting 63 leaves removes ~63× that or hits some other floor is exactly
+      what a timed `build-test-fixtures lane=tier2` on a cleanly rebuilt tree
+      would say. **Do not quote a speedup from this phase until that runs.**
+
+The last one is the honest gap in an otherwise-complete phase: everything here
+is verified structurally, and the single number a reader most wants — how much
+faster tier 2 got — is the one nobody has taken.
