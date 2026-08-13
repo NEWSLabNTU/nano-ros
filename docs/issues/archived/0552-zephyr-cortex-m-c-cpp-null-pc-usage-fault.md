@@ -1,7 +1,7 @@
 ---
 id: 552
-title: "Zephyr Cortex-M C and C++ zenoh images branch to `PC=0` right after net init; Rust on the same board is fine"
-status: open
+title: "Zephyr Cortex-M C/C++ images overflow the main stack with the executor inline storage, faulting as `PC=0`"
+status: resolved
 type: bug
 area: zephyr
 related: [issue-0531, issue-0534, phase-337]
@@ -77,7 +77,79 @@ and no green run of this coordinate has been produced or found. Do not assume
 this is a regression from a specific commit until someone has a passing revision
 in hand.
 
-## Where to look
+## ROOT CAUSE — a main-thread STACK OVERFLOW, not a NULL pointer
+
+**The `PC = 0` reading in this issue was wrong.** It is a consequence, not the
+cause, and the "call through a NULL function pointer" framing above would have
+sent the next reader into the registration/DCE seam for nothing.
+
+Recovered by dumping the exception frame under gdb (breakpoint on
+`z_arm_fault`, which receives `msp`/`psp`), with a zenoh router listening on the
+port the image has BAKED IN — `tcp/10.0.2.2:10700`, allocated by the matrix's
+`port_of`, not a literal. Without that listener the image exits cleanly via
+`run_components failed rc=-100` and never reaches the fault at all, which is a
+different code path and cost two invalid runs before I noticed.
+
+Both stack pointers were garbage:
+
+| | value | lands in |
+| --- | --- | --- |
+| PSP | `0x2001E5A0` | `z_idle_threads` — a thread control block, not a stack |
+| MSP | `0x2001E4E0` | `g_sessions` — the zenoh session array |
+
+So the CPU stacked its exception frame into arbitrary data, every stacked
+register read back zero, and the reported `PC` was zero along with them.
+
+Rebuilding the same image with `CONFIG_HW_STACK_PROTECTION=y` collapsed it to
+one line:
+
+```
+***** MPU FAULT *****  Data Access Violation   MMFAR Address: 0x20075a00
+>>> ZEPHYR FATAL ERROR 2: Stack overflow on CPU 0
+Current thread: 0x2001e898 (main)
+```
+
+The faulting PC symbolises to `__aeabi_memset4` reached from
+`nros_node::executor::spin` — the bulk zeroing of the executor's INLINE STORAGE,
+which the C/C++ entry places on the main thread stack. This build sizes it at
+`NROS_EXECUTOR_SIZE = 88192` bytes against a `CONFIG_MAIN_STACK_SIZE` of
+`16384`: a 5.4x overflow.
+
+That is also why RUST on the same board passes — its entry does not put the
+executor there — and why native_sim is unaffected, since the POSIX arch main
+thread does not have a 16 KB stack. The language split that looked like a
+registration-seam clue was the allocation site all along.
+
+Same class as FreeRTOS's 64 KB `APP_TASK_STACK` (platform-implementation-notes:
+"inline executor arena on stack"), for the same reason.
+
+## Fix
+
+`cmake/zephyr/mps2-an385.conf`:
+
+* `CONFIG_MAIN_STACK_SIZE` 16384 -> 131072. ~40 KB of headroom over the current
+  executor size, on a board with 4 MB of SRAM — the file already notes it is
+  "not a tight board".
+* `CONFIG_HW_STACK_PROTECTION=y` + `CONFIG_THREAD_NAME=y` kept PERMANENTLY, not
+  reverted with the rest of the diagnostic scaffolding. A guard region costs an
+  MPU slot and a little RAM; the alternative is what this issue documents — a
+  fault whose registers are all zero, whose first plausible reading is wrong,
+  and which cost a gdb session to attribute. The next overflow on this board
+  names its own thread.
+
+Verified: `zephyr_cortex_m_c_zenoh_pubsub_e2e` and
+`zephyr_cortex_m_cpp_zenoh_pubsub_e2e` both PASS (4.4 s / 3.4 s), zero USAGE
+FAULTs and zero stack overflows, on freshly rebuilt fixtures.
+
+## Not addressed here
+
+The executor is ~86 KB of stack for any C/C++ entry, and every board pays it out
+of a hand-picked constant. `NROS_EXECUTOR_SIZE` is generated and known at build
+time, so a board conf could be CHECKED against it rather than tuned after a
+crash — nothing today relates the two, and the next board to add an entry finds
+this the same way. Worth its own issue.
+
+## Where to look## Where to look
 
 * `nros_app_register_backends` / `nros_cpp_init` on the Cortex-M C and C++
   paths: which slot is still NULL when the first spin runs, and whether the

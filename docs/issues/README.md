@@ -338,17 +338,20 @@ build would have taken the `[SKIPPED]` branch. That half is fixed; this one need
 feature's dependency set to provide the host platform symbols (the `posix-c-port` trick
 `metadata_build.rs` uses for the same ABI). See `archived/0526-*`. (2026-08-12)
 
-**#552** — the Zephyr Cortex-M (`mps2_an385`) C and C++ zenoh images branch to `PC=0` ~75 ms after net
-init, before publishing anything: `USAGE FAULT / Illegal use of the EPSR`, every register zero. That is a
-call through a NULL function pointer, not a stack overflow. RUST on the SAME board passes and native_sim is
-unaffected, so the split is by LANGUAGE on one coordinate — which points at the C/C++ registration seam
-(`nros_cpp_init` → `nros_app_register_backends`; no ctor sections on Zephyr) and at the FORCE_LINK class,
-where a `#[no_mangle]` dropped from the staticlib by DCE gives a NULL slot with no link error. Reproduces
-SOLO on a fresh build, both leaves. REFUTED: not #531 — reverting exactly that hunk and rebuilding still
-faults (tested, not argued), recorded because the coincidence is compelling. Only visible now because #534
-blocked the Zephyr build, which is also why #531 shipped un-runtime-verified; whether these cells EVER
-passed is NOT established, so do not call it a regression without a green revision in hand. See `0552-*`.
-(2026-08-13)
+RESOLVED 2026-08-13: **#552** — the Zephyr Cortex-M (`mps2_an385`) C and C++ zenoh images died ~75 ms after
+net init with `USAGE FAULT / Illegal use of the EPSR` and `PC = 0x00000000`, every register zero. NOT a NULL
+function pointer, which is what that dump reads like and what this issue first claimed: it is a main-thread
+STACK OVERFLOW. The C/C++ entry puts the executor's inline storage on the main stack —
+`NROS_EXECUTOR_SIZE = 88192` against `CONFIG_MAIN_STACK_SIZE = 16384`, a 5.4x overflow — so the SP walked
+into `z_idle_threads` and `g_sessions` and the CPU stacked an all-zero exception frame. RUST passes on the
+same board because its entry does not allocate there, and native_sim's main thread has no 16 KB stack; the
+language split that looked like a registration-seam clue was the allocation site. Same class as FreeRTOS's
+64 KB `APP_TASK_STACK`. Attributed by dumping the frame under gdb with a router on the image's BAKED port
+(`tcp/10.0.2.2:10700` from `port_of` — without a listener the image exits via `rc=-100` and never faults),
+then confirmed in one line by `CONFIG_HW_STACK_PROTECTION=y`: `FATAL ERROR 2: Stack overflow ... thread:
+main`. Fixed by raising the stack to 131072 and KEEPING the MPU guard on, so the next overflow names itself.
+Both cells pass, zero faults. Follow-up worth filing: `NROS_EXECUTOR_SIZE` is known at build time and no
+board conf is checked against it. See `archived/0552-*`. (2026-08-13)
 
 RESOLVED 2026-08-13: **#544** — every Zephyr RUST fixture leaf failed at `cargo build` with `the argument
 '--no-default-features' cannot be used multiple times`, taking the zephyr module — and `ci-matrix` — down,
