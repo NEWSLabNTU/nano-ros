@@ -577,6 +577,7 @@ PX4_XRCE_EXAMPLES=(
 )
 px4_autopilot_dir="$repo_root/third-party/px4/PX4-Autopilot"
 px4_n=0
+px4_fail_n=0
 if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
     # issue 0520 — this script is invoked ONCE PER COMPILE-CHECK UNIT (87 of them
     # under `build-test-fixtures lane=all`, in parallel), and every invocation
@@ -619,6 +620,32 @@ if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
             echo "   px4_msgs codegen FAILED for $id (no stamp)" >&2
             continue
         fi
+        # issue 0546 — SYNC before checking. These leaves name the runtime by
+        # REGISTRY name (`nros = { version = "*" }`), which is normal for an
+        # example leaf here: `nros sync` writes the `.cargo/config.toml` whose
+        # `[patch.crates-io]` redirects those names at in-repo paths (RFC-0048
+        # W9). This block codegen'd `generated/px4_msgs` and then checked
+        # WITHOUT syncing, so `version = "*"` resolved the only way left to it —
+        # against the public crates.io index:
+        #
+        #     error: no matching package named `nros` found
+        #     location searched: crates.io index
+        #
+        # No `.cargo/config.toml` exists for these leaves in the repository
+        # (`git ls-files examples/px4 | grep -c cargo` is 0), so this was not a
+        # host quirk: every checkout that ran the px4 compile-check hit it, and
+        # the bindings this block exists to type-check never once did.
+        px4_cli="${NROS_CLI_BIN:-${NROS_CLI:-$(command -v nros || true)}}"
+        if [ -z "$px4_cli" ]; then
+            echo "   px4: nros CLI not found — cannot sync $id (just setup-cli)" >&2
+            px4_fail_n=$((px4_fail_n + 1))
+            continue
+        fi
+        if ! ( cd "$repo_root/$dir" && "$px4_cli" sync >/dev/null ); then
+            echo "   nros sync FAILED for $id (no stamp)" >&2
+            px4_fail_n=$((px4_fail_n + 1))
+            continue
+        fi
         mkdir -p "$out_root/$id"
         rm -f "$out_root/$id/.compile-ok"
         if ( cd "$repo_root/$dir" && cargo check ); then
@@ -627,6 +654,7 @@ if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
             px4_n=$((px4_n + 1))
         else
             echo "   cargo-check FAILED for $id (no stamp)" >&2
+            px4_fail_n=$((px4_fail_n + 1))
         fi
     done
 else
@@ -636,4 +664,4 @@ fi
 # phase-319 W2 — counts come from the manifest now, not from array lengths.
 check_n="$(compile_check_records cargo-check | wc -l)"
 build_n="$(compile_check_records cargo-build | wc -l)"
-echo "fixtures built (check=$check_n build=$build_n cmake=$cmake_n cxx=$cxx_n cargo-check=$cargo_check_n px4=$px4_n)."
+echo "fixtures built (check=$check_n build=$build_n cmake=$cmake_n cxx=$cxx_n cargo-check=$cargo_check_n px4=$px4_n/$((px4_n + px4_fail_n)))."

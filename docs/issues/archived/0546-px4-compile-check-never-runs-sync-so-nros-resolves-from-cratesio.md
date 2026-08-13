@@ -1,7 +1,8 @@
 ---
 id: 546
 title: "The px4 compile-check codegens but never syncs, so `nros` resolves against public crates.io — three leaves that have never once type-checked, and nothing says so"
-status: open
+status: resolved
+resolved_in: phase-350
 type: bug
 severity: medium
 area: build
@@ -81,16 +82,41 @@ and the gap is silent anyway.
 `px4=0` is printed on every build and reads as "no px4 work to do" rather than
 "every px4 leaf failed" — a zero that means the opposite of what it looks like.
 
-## Fix
+## Fix — DONE 2026-08-13
 
-1. **Run `nros sync` for the leaf before `cargo check`**, the way every other
-   registry-naming leaf gets its patch table. That is the smallest change and
-   matches the rule already stated in CLAUDE.md ("Rust leaf `.cargo/config.toml`
-   is `nros sync`-managed").
-2. Then decide what `px4=0` should do. A compile-check whose whole point is
-   "these must at least type-check" should not pass the build when zero of them
-   did. Either fail, or print the count against an expected one so the number is
-   readable — `px4=0/3` cannot be mistaken for success the way `px4=0` can.
+1. **`nros sync` runs before `cargo check`**, through the script's OWN existing
+   idiom (`${NROS_CLI_BIN:-${NROS_CLI:-$(command -v nros)}}`, the same
+   resolution its staged-workspace path already uses) rather than a second
+   spelling. A missing CLI and a failing sync each get their own message and
+   count as failures instead of falling through to a confusing cargo error.
+
+2. **`px4=$px4_n` → `px4=N/M`.** `px4=0` read as "no px4 work to do"; `px4=0/3`
+   cannot be misread. A `px4_fail_n` counter feeds the denominator.
+
+### It works, and it is the first time these have ever type-checked
+
+```
+px4-probe            Finished dev profile in 11.22s
+px4-stub             Finished dev profile in 10.04s
+offboard-companion   Finished dev profile in  6.12s
+```
+
+End to end through the real script: **`px4=3/3`** (was `px4=0`), with
+`.compile-ok` stamped for all three.
+
+### Deliberately NOT done: making the script exit nonzero
+
+Every other lane in `compile-check-fixtures.sh` treats a failure as "no stamp"
+and leaves the verdict to a coverage gate. Making px4 the single lane that
+hard-fails would invent a second policy in a file that has one. Now that these
+actually compile, `N/M` makes a future regression visible — which was the real
+complaint — without changing how the script signals.
+
+### Out of scope: the px4 RUNTIME tests
+
+`px4_xrce`'s two tests still report `not prebuilt`: they need built binaries
+plus PX4 SITL and a Micro-XRCE-DDS agent, which is what the block's comment
+means by "compile-check only". That is the #102 / #136 debt, untouched here.
 
 `px4_probe` fails identically — verified directly, not inferred:
 
