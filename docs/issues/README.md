@@ -253,6 +253,18 @@ case — whose stated reason ("lives outside the entries loop") stopped being tr
 row. Verified with the build dir WIPED first: the lane produced the image in 119 s and the test passed
 against it. See `archived/0549-*`. (2026-08-13)
 
+**#560** (build/tooling, open 2026-08-13) — `just setup-launch-resolve` could not build on main, and two
+structural reasons kept it hidden. The `play_launch` submodule advanced to rlm **v0.1.6** while
+`packages/cli/nros-launch-resolve/Cargo.lock` still pinned **v0.1.4**; with `--locked` injected by the
+cargo shim, cargo refuses outright. (1) A STALE WORKTREE MASKS IT — a checkout behind the pointer matches
+the stale lock and builds fine, which is the inverse of the documented submodule hazard and the same
+condition that lets `git add -u` silently revert someone's bump (`a29a4441e`). (2) THE ONLY CONSUMER IS
+BEHIND THE 40-MINUTE LANE — `setup-launch-resolve` is a dependency of `build-test-fixtures` and nothing
+else, never of `check-fast`, so a breaking bump is found by whoever next runs the fixture sweep rather than
+by its author. Wants a `cargo metadata --locked` check over leaves whose dependency versions are decided
+outside their own tree: verified to fail on the pre-fix lock and pass on the fixed one, in seconds, no
+build. Instance fixed in `567101c43`. See `0560-*`. (2026-08-13)
+
 **#527** (testing, open 2026-08-12) — the doctest phase overwrites the junit.xml the skip-rewrite just
 produced, so a failed sweep reports a trustworthy COUNT of real failures and destroys the record of WHICH
 they were. `rewrite-skipped-junit` prints "Real failures: 19 / 19"; read the file afterwards and it holds
