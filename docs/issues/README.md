@@ -201,6 +201,19 @@ build would have taken the `[SKIPPED]` branch. That half is fixed; this one need
 feature's dependency set to provide the host platform symbols (the `posix-c-port` trick
 `metadata_build.rs` uses for the same ABI). See `archived/0526-*`. (2026-08-12)
 
+**#544** — every Zephyr RUST fixture leaf fails at `cargo build` with `the argument
+'--no-default-features' cannot be used multiple times`, taking the zephyr module — and `ci-matrix` —
+down; the C/C++ lanes are unaffected, which is why a C-only verification against the same tree passed
+clean. `EXTRA_CARGO_ARGS` reaches the cargo line TWICE: `cargo-features-patch.sh` injects it inside
+`add_cargo_target_with_zephyr_env` (covering every caller), and both CALL SITES carry a hand-added copy
+that exists in no tracked producer. Upstream `404fcef` has neither (`CARGO_ARGS build` / `CARGO_ARGS doc`
+are bare). Root cause is patch-site drift: the script's comment claims "two such lines: cargo build
+(~199) and cargo doc (~243)", but upstream refactored both commands into one shared function, so the
+awk now matches ONE line — and its guard greps only its own marker, so it could not see the hand edits
+compensating for the half it stopped covering. Worked around locally (caller copies removed, two Rust
+leaves verified); the REPO is unchanged, so this reproduces on any workspace still carrying them. See
+`0544-*`. (2026-08-13)
+
 RESOLVED 2026-08-13 — **#542** — the C/C++ metadata probe writes `set(NROS_EXTRA_CPP_FEATURES "metadata-mode")`, and
 `nros_feature_set()` appends that to WHATEVER crate it assembles — so the probe asks `nros-c` for a
 feature only `nros-cpp` has (`git log -S` shows nros-c never had it) and the build dies with
@@ -255,13 +268,18 @@ totality is untouched — the block is still resolved for every platform, only t
 both directions by tripwire, and on the failing leaf (332 s, `zephyr.elf` linked, 0 errors). See
 `archived/0534-*`. (2026-08-13)
 
-RESOLVED 2026-08-13: **#528** — Zephyr leaves failing `EXECUTOR_OPAQUE_U64S too small` NO LONGER REPRODUCES:
-the leaf builds and a full module build shows zero occurrences across 69 leaves. Nobody fixed it deliberately
-and the cause was never established — no pulled commit touches the sizing path. Recorded honestly: my
-2026-08-12 attribution reused the SAME build dirs on both arms, which rules out a code change of mine but NOT
-build STATE, i.e. the sizes-header mirror class (0088 → 0268). A CLI rebuild happened in between, which
-regenerates everything keyed on its stamp — the most likely reading is stale generated state. If it returns:
-rebuild the CLI first, then compare arms with a pristine build dir on each. See `archived/0528-*`. (2026-08-13)
+**#528** — every Zephyr fixture leaf fails `EXECUTOR_OPAQUE_U64S too small for Executor + backing` in
+`nros-c`'s compile-time assert, taking the zephyr module — and with it `ci-matrix` — down. CAUSE FOUND and
+FIX LANDED 2026-08-13 (`e5bda71fb`): the shared `build/sizes-probe` dir was keyed `(rustc, target, features)`
+while the sizing KNOBS (`NROS_EXECUTOR_MAX_CBS` and friends, resolved from env or Zephyr's `$DOTCONFIG` since
+0460) change the probed SIZE and were not in the key — so a knob-16 leaf and a knob-default leaf shared one
+probe dir and first-writer-wins. `probe_key()` now mixes `knob_identity()`; both probe orders verified.
+Stays OPEN only until tier 2 completes end to end. Independently corroborated the same day by a parallel
+sweep on a PRE-FIX tree, which hit it at `cpp-action-{client,server}-xrce` (a different coordinate than the
+day before — the coordinate-hopping a first-writer-wins cache produces) and separated it from a sizing bug:
+fails inside the 32-job sweep, ok when the build dir is wiped and rebuilt SOLO. That session also briefly
+reopened this issue as "never fixed"; it had not pulled since 12:48, and the reopening is retracted in the
+issue. See `0528-*`. (2026-08-13)
 
 RESOLVED 2026-08-12: **#432** — `zephyr-lang-rust`'s DT codegen could not compile for ANY board with gpio
 nodes, so Rust-on-Zephyr was native_sim-only. Fixed by phase-346 W2/W3, with the diagnosis CORRECTED: the
