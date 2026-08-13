@@ -149,7 +149,7 @@ build would have taken the `[SKIPPED]` branch. That half is fixed; this one need
 feature's dependency set to provide the host platform symbols (the `posix-c-port` trick
 `metadata_build.rs` uses for the same ABI). See `archived/0526-*`. (2026-08-12)
 
-**#542** — the C/C++ metadata probe writes `set(NROS_EXTRA_CPP_FEATURES "metadata-mode")`, and
+RESOLVED 2026-08-13 — **#542** — the C/C++ metadata probe writes `set(NROS_EXTRA_CPP_FEATURES "metadata-mode")`, and
 `nros_feature_set()` appends that to WHATEVER crate it assembles — so the probe asks `nros-c` for a
 feature only `nros-cpp` has (`git log -S` shows nros-c never had it) and the build dies with
 `the package 'nros-c' does not contain this feature`. C/C++ components therefore cannot regenerate their
@@ -158,7 +158,7 @@ checkout because the sidecars are gitignored and already present, and no lane de
 "path nothing executes" shape as 0488 residue 4. It also explains 0522's 50.26 GiB: those 14 probe trees
 are residue of builds that compile the runtime and then fail, so 0522's keep-or-delete measurement is
 blocked until this is fixed. Same hook as issue 0304, one level on: applying it in ONE place is not
-enough when that place serves two crates. See `0542-*`. (2026-08-13)
+enough when that place serves two crates. See `archived/0542-*`. (2026-08-13)
 
 **#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
 manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared

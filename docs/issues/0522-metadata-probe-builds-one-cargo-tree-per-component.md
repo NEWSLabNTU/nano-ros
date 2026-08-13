@@ -235,3 +235,23 @@ Both of this issue's open questions wait on 0542:
   probe can finish.
 * the shared-`CMAKE_BINARY_DIR` direction would currently be sharing a broken
   build.
+
+
+## The keep-or-delete measurement, taken 2026-08-13 (once 0542 unblocked it)
+
+`examples/workspaces/c`, sidecars deleted before each run:
+
+| | time |
+| --- | --- |
+| WARM — probe tree kept (4.8 GiB) | **6.0 s** |
+| COLD — probe tree deleted | **23.2 s** |
+
+The cache buys ~17 s per re-probe for 4.8 GiB, i.e. roughly **3.5 GiB per second
+saved**, and it is only consulted when a sidecar is missing — which no lane
+causes. On that ratio, deleting the probe tree after a successful probe looks
+like the better default for CI and the worse one for a developer iterating on a
+component's metadata.
+
+That makes the remaining question a policy one rather than an unknown: keep it
+warm locally, drop it in a lane. Which is a smaller decision than the
+shared-`CMAKE_BINARY_DIR` direction above, and independent of it.

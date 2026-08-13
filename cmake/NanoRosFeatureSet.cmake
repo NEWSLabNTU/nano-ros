@@ -186,8 +186,24 @@ function(nros_feature_set out_var)
     # ---- consumer extension point -----------------------------------------
     # Applied ONCE, by construction. This is the hook whose per-path duplication
     # caused issue 0304; there is now only one place for it to be missed.
-    if(NROS_EXTRA_CPP_FEATURES)
+    #
+    # issue 0542 — and it is applied PER CRATE, because one place is not enough
+    # when that place serves two. `NROS_EXTRA_CPP_FEATURES` used to be appended
+    # to whatever crate was being assembled, so the metadata probe's
+    # `set(NROS_EXTRA_CPP_FEATURES "metadata-mode")` reached `nros-c` too — and
+    # `metadata-mode` exists only on `nros-cpp` (`git log -S` shows nros-c never
+    # had it). Every C/C++ probe build then died with "the package 'nros-c' does
+    # not contain this feature", so no C/C++ component could regenerate its
+    # metadata sidecar.
+    #
+    # The variable already NAMED its crate; the assembly just ignored the name.
+    # `CRATE` is a required argument here, so honouring it costs nothing and
+    # makes the mistake unspellable rather than merely absent.
+    if(_FS_CRATE STREQUAL "cpp" AND NROS_EXTRA_CPP_FEATURES)
         list(APPEND _feats ${NROS_EXTRA_CPP_FEATURES})
+    endif()
+    if(_FS_CRATE STREQUAL "c" AND NROS_EXTRA_C_FEATURES)
+        list(APPEND _feats ${NROS_EXTRA_C_FEATURES})
     endif()
 
     list(REMOVE_DUPLICATES _feats)

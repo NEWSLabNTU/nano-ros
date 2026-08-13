@@ -1,7 +1,7 @@
 ---
 id: 542
 title: "The C/C++ metadata probe asks `nros-c` for `metadata-mode`, a feature only `nros-cpp` has — so C/C++ components cannot regenerate their sidecars"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0522, issue-0304, phase-313]
@@ -86,3 +86,47 @@ the mistake unspellable rather than merely absent.
 * A C-only workspace probes without `nros-cpp` in its graph at all.
 * Then 0522's measurement becomes possible: time a cold probe (tree deleted)
   against a warm one, and decide whether the 50 GiB is worth keeping.
+
+
+## Resolution (2026-08-13)
+
+`nros_feature_set()` already takes `CRATE` (`c` or `cpp`) as a REQUIRED argument
+and validates it — the assembly simply ignored it when applying the consumer
+hook. The variable already named its crate; honouring that name is the whole fix:
+
+```cmake
+if(_FS_CRATE STREQUAL "cpp" AND NROS_EXTRA_CPP_FEATURES)
+    list(APPEND _feats ${NROS_EXTRA_CPP_FEATURES})
+endif()
+if(_FS_CRATE STREQUAL "c" AND NROS_EXTRA_C_FEATURES)
+    list(APPEND _feats ${NROS_EXTRA_C_FEATURES})
+endif()
+```
+
+The symmetric `NROS_EXTRA_C_FEATURES` is added so a future C-side consumer has a
+hook that cannot be spelt into the wrong crate — which is what made this a bug
+rather than an omission.
+
+**Verified on `examples/workspaces/c`**, cold (probe tree deleted, sidecars
+deleted): `nros sync` exits 0, **0 "no producer" lines, 6 sidecars regenerated**.
+Before the fix the same command failed every C/C++ probe with "the package
+'nros-c' does not contain this feature: metadata-mode".
+
+`examples/workspaces/safety` improves from 3 failures to 2, and the two that
+remain are a DIFFERENT defect, not this one: its C++ sources call
+`nros::Node::create_subscription_with_safety`, which no longer exists on that
+class. Same root shape as this issue (an unexercised path drifting from the API)
+but a separate fix, and not folded in here.
+
+## The measurement issue 0522 wanted, now that a probe can finish
+
+`examples/workspaces/c`, same workspace, sidecars deleted each time:
+
+| | time |
+| --- | --- |
+| WARM (probe tree kept, 4.8 GiB) | **6.0 s** |
+| COLD (probe tree deleted) | **23.2 s** |
+
+So the cache buys ~17 s per workspace re-probe and costs 4.8 GiB — about **3.5
+GiB per second saved**, and the probe only re-runs when a sidecar is missing.
+Recorded in 0522 as the input to its keep-or-delete question.
