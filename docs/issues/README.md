@@ -553,55 +553,23 @@ three tests read the zenoh fixture, not two; seven esp32 sites, not two — and 
 landing: `just esp32 clean` had been routed onto the ARM zenoh-pico constant and would have deleted the
 wrong tree. See `archived/0535-*`. (2026-08-13)
 
-**#536** (build/testing, open 2026-08-13) — three of the four `west-fixtures.sh` fixtures assert a
-CONFIGURE-time fact and pay for a full kernel build anyway: `west_board_import` reads four `CMakeCache.txt`
-variables, `zephyr_self_pkg_{rust,sibling}` read `system_config.h`. The self-pkg pair runs a link the
-script itself calls "doomed" at `west-fixtures.sh:112`, discards the failure, and stamps on a file written
-before the link began. Only `west_bringup_zephyr` boots an ELF. The manifest already has the concept —
-`builder = "cmake-configure"` backs 12 compile-check rows. Land with #535, and keep the stamp
-distinguishable from a linked fixture's or a build-only lane reads as covered (#537's failure mode).
-See `0536-*`.
+RESOLVED 2026-08-13 — **#536** the four `west-fixtures.sh` fixtures are `[[compile_check_fixture]]` rows with
+two builders (`west-build`, `west-configure`), `output` as the stamp gate, and the builder recorded in the
+stamp. Three build with `--cmake-only` now. The filing's cost claim did NOT survive measurement: "pay for a
+full kernel build" is true of DISK and only for one fixture (93 MB → 7.3 MB); the self-pkg pair costs
+nothing to stop because it fails at cmake GENERATE, before any compilation. See `archived/0536-*`.
 
-RESOLVED 2026-08-13 — **#537** the FVP artifacts nothing ran are GONE. Maintainer decision: FVP support is
-wanted later, but there is no effort for it now and unused code should not sit waiting. Retired
-`build-fvp-aemv8r-cyclonedds{,-rust}`, their `run-` siblings, and
-`examples/zephyr/{rust,cpp}/talker-aemv8r` — whose runners phase-298 W4 deleted, so they had built images
-nothing booted for months while the justfile still read as a complete lane. Kept everything with a
-consumer, which is also what a future revival needs: the `fvp-aemv8r-smp` board crate,
-`nano_ros_use_board()`, the `west_board_import` fixture (whose test runs in CI — it reads CMakeCache and
-needs no FVP binary), and the ws-entry runtime. The ARM FVP book chapter documented the deleted recipes as
-its Build/Run path and linked a dead README; it and four other docs now describe what exists. NOT closed
-by this: none of the surviving FVP artifacts is reachable from `build-test-fixtures`, so the gated tests
-still cannot distinguish "license-gated SDK absent" from "nobody built it" — phase-217's when FVP work
-resumes. See `archived/0537-*`. (2026-08-13)
+RESOLVED 2026-08-13 — **#538** `fixture-inventory.py` is gated (`--check`) and its four stale rows are
+deleted. The open half — whether the file survives at all — is decided: KEPT. Its hand-authored half is now
+redundant and down to one true entry, but `prerequisite_rows()` models 22 SDK-prerequisite / preflight /
+`shared_mutation` facts no manifest row carries, and phase-339 treated that model as an obligation ("a stale
+`shared_mutation` is worse than none"). See `archived/0538-*`.
 
-**#538** (build/testing, open 2026-08-13) — `scripts/build/fixture-inventory.py` advertises itself as the
-list of "recipe leaves not yet in the fixture manifest", has **no consumer** (grep over `justfile just
-scripts packages .github` returns only archived prose), and is wrong both ways: 3 of its 5 hand-authored
-rows have had manifest rows since phase-344 W2 — which added one *for this exact reason* — while the 70
-zephyr leaves, the 4 west fixtures, all 4 FVP artifacts, the esp32 `.bin` postprocess and the ros-editions
-tree are absent. An unmaintained list that answers the right question is read as authoritative exactly
-when someone is auditing coverage. Retire it (preferred, after #535) or gate its staleness. See `0538-*`.
-
-RESOLVED 2026-08-13 — **#539** fixture naming: three of four drifts closed. The `rs` lang short form is
-retired (zephyr dirs are `build-rust-…`) — and this filing's own status note claiming `west_lang_tag` had
-"ONE producer, so the drift is contained" was WRONG: there were two, the build side and
-`zephyr::build_dir_for_example`, which had to move together or build and resolver would name different
-dirs. `build/<kind>` got a RULE (RFC-0070 R5) and `fixtures-cargo` → `cargo-fixtures`. Zephyr build-dir
-names closed as satisfied — the name has a producer. Work-item ids closed and gated earlier. STILL OPEN,
-and not for the reason this issue gave: `compile-check` → `compile-check-fixtures` is not mechanizable,
-because the token names four things (kind, lane, `list-compile-checks` subcommand, three scripts) — a
-global replace rewrote 43 files and produced `list-compile-check-fixturess`. It needs the kind extracted
-to a named constant first; the 9.4 GB was never the blocker. Measured: a rename FORFEITS its cache (`mv`
-fails — `CMakeCache.txt` bakes its own absolute path), 62 GB reclaimed, zephyr workspace 208 → 159 GB.
-See `archived/0539-*`. (2026-08-13)
-
-**#540** (testing, open 2026-08-13) — `packages/testing/nros-tests/bins/int32-observer` was retired by
-issue 0128 T0 ("qos/safety e2es ride `int32-sink`") and the crate directory survived: no fixture row, no
-builder, no consumer, only archived docs mention it. It hid because the one coverage gate walks
-`examples/**` for `package.xml` and never looks at `bins/` — which is also why two LIVE fixtures there
-(`logging-smoke-zephyr-native-sim`, `ros-edition-pose-pub`) have no row either. Delete the crate, then
-close the class. See `0540-*`.
+RESOLVED 2026-08-13 — **#540** `bins/int32-observer` deleted, and the CLASS it hid in is now enforced:
+`fixture_source_coverage.rs` asserts every crate under `bins/` is a manifest row or a tracked exception,
+failing in three directions (each verified red first). The two live bins this issue named as unrowed are
+handled — `logging-smoke-zephyr-native-sim` has a west row (0549 removed its duplicate builder) and
+`ros-edition-pose-pub` is an allowlisted RFC-0058 exception. See `archived/0540-*`.
 
 **#509** (build/testing, open 2026-08-10) — the Zephyr fixture lane is PER-LEAF-OVERHEAD bound, not compile
 bound. Measured mid-sweep: **40 min for 68 leaves**, and across all of them just **1254 ninja edges**

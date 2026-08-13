@@ -1,7 +1,7 @@
 ---
 id: 536
 title: "Three west fixtures assert a configure-time fact but pay for a full kernel build, one of them for a link the script expects to fail"
-status: open
+status: resolved
 type: performance
 area: build, testing
 related: [issue-0509, issue-0535, issue-0034, issue-0041]
@@ -91,3 +91,10 @@ intent, not a measurement, and I repeated it without checking.
 Behaviour is unchanged: the lane produced 3/4 before and 3/4 after on the same
 tree, with the same fixture failing (`west_bringup_zephyr`, whose SystemModel is
 absent — a pre-existing `nros sync` precondition, not this change).
+
+## Closed 2026-08-13
+
+Nothing conditional remains. The four fixtures are rows, three build with
+`west-configure`, `output` is the stamp gate, and the builder rides in the stamp.
+The cost claim in the title is corrected in the status section above — it was
+true of disk and only for one fixture.

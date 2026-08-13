@@ -1,7 +1,7 @@
 ---
 id: 538
 title: "fixture-inventory.py claims to list the fixtures outside the manifest, has no consumer, and is wrong in both directions"
-status: open
+status: resolved
 type: tech-debt
 area: build, testing
 related: [issue-0535, issue-0537, phase-226, phase-344]
@@ -95,4 +95,21 @@ once the manifest can answer that half by itself.
 and **4** were stale — the table above already listed four. Counted by the gate,
 not by hand, which is the point.
 
-Open half: whether the file survives W1 at all.
+## Closed 2026-08-13 — it survives, and here is the reason
+
+The open half was "whether the file survives W1 at all", on the theory that once
+the manifest could answer "what is outside the manifest?", the inventory was
+redundant. W1 landed and the theory only half holds.
+
+**Kept.** Its `hand_authored_rows()` half IS now redundant and is down to one
+true entry (`esp-idf-smoke`), gated so it cannot rot again. But
+`prerequisite_rows()` is not redundant: 22 of its rows model SDK prerequisites,
+serial preflight steps and `shared_mutation` hazards that NO manifest row
+carries and nothing else records. phase-339 treated that model as an obligation
+— "a stale `shared_mutation` is worse than none" — and deleting the file would
+drop it silently, which is the failure that note warns about.
+
+So the file stays as what it now honestly is: a read-only hazard/prerequisite
+model with a gated inventory attached, rather than a second answer to a question
+the manifest owns. If `prerequisite_rows()` ever finds a better home, the rest
+goes with it.

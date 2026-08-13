@@ -1,7 +1,7 @@
 ---
 id: 540
 title: "packages/testing/nros-tests/bins/int32-observer was retired by issue 0128 and the crate survived: no row, no builder, no consumer"
-status: open
+status: resolved
 type: tech-debt
 area: testing
 related: [issue-0128, phase-276]
@@ -54,3 +54,18 @@ stops the next orphan, and the two LIVE bins with no row
 (`logging-smoke-zephyr-native-sim`, `ros-edition-pose-pub`) are still unrowed;
 they are issue 0535's set and phase-350 W6's gate. Closing this on the deletion
 alone would be fixing the reported site and not the class.
+
+## Closed 2026-08-13 — the class is enforced now
+
+The deletion was never the point; this stayed open for the class. phase-350 W6
+closed it: `packages/testing/nros-tests/tests/fixture_source_coverage.rs`
+asserts every crate under `bins/` is a manifest row or a tracked exception with
+a reason, and fails in three directions (uncovered bin, exception that gained a
+row, declared producer that vanished) — each verified red before being trusted.
+
+The two LIVE bins this issue named as unrowed are handled: `logging-smoke-zephyr-
+native-sim` has a `builder = "west"` row (and issue 0549 removed its duplicate
+builder), and `ros-edition-pose-pub` is an allowlisted exception naming the
+RFC-0058 edition axis that builds it.
+
+So the next orphan fails a gate instead of sitting for months.

@@ -1,6 +1,15 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). COMPLETE — every acceptance item met and every W5 rename done. The zephyr lane costs 592 s warm and tier 2 costs 76 s (**7.8×**, ~8.6 min/sweep; NOT the 31× a naive read of #509 suggests — that baseline does not reproduce here). All 18 build-cache kinds conform to RFC-0070 R5, gated in both languages.**
+**Status: COMPLETE (archived 2026-08-13).** All work items landed; W1.d retracted
+with reasons and W4 answered NO rather than acted on. Every acceptance item met,
+including the wall-clock. All seven issues it filed are resolved: #535–#540 and
+#549.
+
+**Headline:** the zephyr lane costs 592 s warm; tier 2 costs 76 s — **7.8×**,
+~8.6 min per tier-2 sweep. NOT the 31× a naive read of #509's published 40 min
+suggests: that baseline was taken mid-sweep and does not reproduce standalone,
+which is why the measurement was kept open instead of being closed on a leaf
+count.
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -511,7 +520,7 @@ effect** — which is a 40-minute lane this session did not run.
 honour sched dims natively (`k_thread_deadline_set`); these are platform
 behaviour, not feature duplication.
 
-## W5 — One vocabulary (#539) — **LANDED except one rename that is not mechanizable**
+## W5 — One vocabulary (#539) — **LANDED**
 
 - [x] **Work-item ids renamed and BANNED.** Nine fixture ids carried a work-item
       letter from a phase nobody has open. They now name behaviour, and
