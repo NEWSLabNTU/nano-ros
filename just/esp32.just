@@ -110,7 +110,12 @@ build-qemu:
     done
     echo ""
     echo "Creating flash images..."
-    mkdir -p build/esp32-qemu
+    # issue 0535 — the packed `.bin` is a POSTPROCESS of the cargo rows above,
+    # so it has no manifest row of its own; the KIND is what this producer and
+    # `esp32_emulator.rs` share instead of a literal each.
+    source scripts/build/build-root.sh
+    esp32_qemu_dir="$(nros_build_dir "$NROS_KIND_ESP32_QEMU")"
+    mkdir -p "$esp32_qemu_dir"
     for ex in talker listener; do
         # Crate [[bin]] names use underscores (esp32_qemu_talker); the packed
         # flash image keeps the historical hyphenated name every QEMU
@@ -125,7 +130,7 @@ build-qemu:
         artifact_dir="$(nros_fixture_row_artifact_dir \
             "examples/qemu-esp32-baremetal/rust/$ex" qemu-esp32-baremetal "" "")"
         elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/$elf_name"
-        out="build/esp32-qemu/esp32-qemu-$ex.bin"
+        out="$esp32_qemu_dir/esp32-qemu-$ex.bin"
         # Issue 0439 — the build loop above is lane-narrowable, so under a lane
         # that excludes `qemu-esp32-baremetal,rust` it correctly builds nothing
         # and there is no ELF to pack. Skip ONLY for that reason: an absent ELF
@@ -235,14 +240,16 @@ test-basic: build-qemu
     echo ""
     if ! command -v qemu-system-riscv32 &>/dev/null; then
         echo "WARNING: qemu-system-riscv32 not found - skipping runtime test"
-        echo "Flash images are at: build/esp32-qemu/"
+        echo "Flash images are at: $(bash -c 'source scripts/build/build-root.sh; nros_build_dir "$NROS_KIND_ESP32_QEMU"')/"
         exit 0
     fi
     echo "Running boot test..."
+    source scripts/build/build-root.sh
+    esp32_qemu_dir="$(nros_build_dir "$NROS_KIND_ESP32_QEMU")"
     tmpfile=$(mktemp)
     trap 'rm -f "$tmpfile"' EXIT
     timeout 20 qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
-        -drive "file=build/esp32-qemu/esp32-qemu-talker.bin,if=mtd,format=raw" \
+        -drive "file=$esp32_qemu_dir/esp32-qemu-talker.bin,if=mtd,format=raw" \
         -nic none \
         > "$tmpfile" 2>&1 || true
     cat "$tmpfile"
@@ -283,7 +290,8 @@ clean:
     for ex in talker listener; do
         rm -rf "examples/qemu-esp32-baremetal/rust/$ex/target"
     done
-    rm -rf build/esp32-qemu build/esp32-zenoh-pico
+    source scripts/build/build-root.sh
+    rm -rf "$(nros_build_dir "$NROS_KIND_ESP32_QEMU")" "$(nros_build_dir "$NROS_KIND_ESP32_ZENOH_PICO")"
     echo "ESP32 build artifacts cleaned"
 
 # =============================================================================
@@ -292,14 +300,20 @@ clean:
 
 # Run ESP32 talker on QEMU
 talker: build-qemu
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/build-root.sh
     qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
-        -drive "file=build/esp32-qemu/esp32-qemu-talker.bin,if=mtd,format=raw" \
+        -drive "file=$(nros_build_dir "$NROS_KIND_ESP32_QEMU")/esp32-qemu-talker.bin,if=mtd,format=raw" \
         -nic user,model=open_eth
 
 # Run ESP32 listener on QEMU
 listener: build-qemu
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/build-root.sh
     qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
-        -drive "file=build/esp32-qemu/esp32-qemu-listener.bin,if=mtd,format=raw" \
+        -drive "file=$(nros_build_dir "$NROS_KIND_ESP32_QEMU")/esp32-qemu-listener.bin,if=mtd,format=raw" \
         -nic user,model=open_eth
 
 # Start zenohd router for ESP32 QEMU examples (allocator rust-pubsub port 9800)

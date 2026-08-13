@@ -611,10 +611,12 @@ disappears fails. Restoring each makes it pass.
 *Acceptance, met:* adding a fixture bin outside the manifest fails a gate whose
 message names the manifest and the issue.
 
-**What it does not yet cover:** `target-zenoh-fixture-posix` and the esp32
-`.bin` postprocess are still literal paths on both sides. They are named in the
-Inventory above and in #535; folding them in needs a row shape for
-"postprocess of another row's artifact", which the manifest does not have.
+**Completed 2026-08-13:** `target-zenoh-fixture-posix` and the esp32 `.bin`
+postprocess were the last two, and they did NOT need the row shape this section
+predicted. Neither is a fixture in the manifest's sense — each is a postprocess
+of another row's artifact — so what they shared with their consumers was a PATH,
+and the KIND is the right unit. The zenoh one also moved out of the repo root
+into the one build root (R1). Details in #535.
 
 ---
 

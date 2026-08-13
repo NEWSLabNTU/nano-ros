@@ -70,8 +70,10 @@ fn test_esp32_qemu_talker_boots() {
     let elf = build_esp32_qemu_talker().expect("Failed to build esp32-qemu-talker");
 
     // Create flash image
-    let root = nros_tests::project_root();
-    let flash_image = root.join("build/esp32-qemu/esp32-qemu-talker.bin");
+    // issue 0535 — the packed image has no manifest row (it is a postprocess of
+    // one), so the KIND is what this test and `just esp32 build-qemu` share.
+    let flash_image =
+        nros_tests::build_dir(nros_tests::kind::ESP32_QEMU, &[]).join("esp32-qemu-talker.bin");
     create_esp32_flash_image(elf, &flash_image).expect("Failed to create flash image");
 
     // Boot without networking
@@ -115,9 +117,9 @@ fn build_esp32_flash_images() -> (std::path::PathBuf, std::path::PathBuf) {
     let talker_elf = build_esp32_qemu_talker().expect("Failed to build esp32-qemu-talker");
     let listener_elf = build_esp32_qemu_listener().expect("Failed to build esp32-qemu-listener");
 
-    let root = nros_tests::project_root();
-    let talker_bin = root.join("build/esp32-qemu/esp32-qemu-talker.bin");
-    let listener_bin = root.join("build/esp32-qemu/esp32-qemu-listener.bin");
+    let esp32_qemu = nros_tests::build_dir(nros_tests::kind::ESP32_QEMU, &[]);
+    let talker_bin = esp32_qemu.join("esp32-qemu-talker.bin");
+    let listener_bin = esp32_qemu.join("esp32-qemu-listener.bin");
 
     create_esp32_flash_image(talker_elf, &talker_bin).expect("Failed to create talker flash image");
     create_esp32_flash_image(listener_elf, &listener_bin)
@@ -275,8 +277,8 @@ fn test_esp32_talker_listener_e2e() {
 /// Helper: build ESP32 talker flash image only
 fn build_esp32_talker_flash() -> std::path::PathBuf {
     let talker_elf = build_esp32_qemu_talker().expect("Failed to build esp32-qemu-talker");
-    let root = nros_tests::project_root();
-    let talker_bin = root.join("build/esp32-qemu/esp32-qemu-talker.bin");
+    let talker_bin =
+        nros_tests::build_dir(nros_tests::kind::ESP32_QEMU, &[]).join("esp32-qemu-talker.bin");
     create_esp32_flash_image(talker_elf, &talker_bin).expect("Failed to create talker flash image");
     talker_bin
 }
@@ -284,8 +286,8 @@ fn build_esp32_talker_flash() -> std::path::PathBuf {
 /// Helper: build ESP32 listener flash image only
 fn build_esp32_listener_flash() -> std::path::PathBuf {
     let listener_elf = build_esp32_qemu_listener().expect("Failed to build esp32-qemu-listener");
-    let root = nros_tests::project_root();
-    let listener_bin = root.join("build/esp32-qemu/esp32-qemu-listener.bin");
+    let listener_bin =
+        nros_tests::build_dir(nros_tests::kind::ESP32_QEMU, &[]).join("esp32-qemu-listener.bin");
     create_esp32_flash_image(listener_elf, &listener_bin)
         .expect("Failed to create listener flash image");
     listener_bin
@@ -502,8 +504,8 @@ fn test_esp32_workspace_entry_e2e() {
     let entry_elf = get_prebuilt_esp32_qemu_workspace_entry().expect(
         "Failed to resolve prebuilt ESP32 workspace Entry — run `just esp32 build-fixtures` first",
     );
-    let root = nros_tests::project_root();
-    let entry_bin = root.join("build/esp32-qemu/esp32-ws-entry.bin");
+    let entry_bin =
+        nros_tests::build_dir(nros_tests::kind::ESP32_QEMU, &[]).join("esp32-ws-entry.bin");
     create_esp32_flash_image(&entry_elf, &entry_bin)
         .expect("Failed to create workspace Entry flash image");
 

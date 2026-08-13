@@ -452,6 +452,18 @@ pub mod kind {
     pub const ZENOHD: &str = "zenohd";
     pub const ZEPHYR_WORKSPACE_BUILDS: &str = "zephyr-workspace-builds";
 
+    /// The espflash-packed ESP32-C3 QEMU flash images. A POSTPROCESS of the
+    /// `qemu-esp32-baremetal` cargo rows rather than a row of its own — the
+    /// manifest has no shape for "another row's artifact, repacked" — so the
+    /// KIND is what the two sides share instead of a row (issue 0535).
+    pub const ESP32_QEMU: &str = "esp32-qemu";
+
+    /// The pinned POSIX zenoh staticlib + its generated `zenoh_generic_config.h`,
+    /// built by `just build-zenoh-posix-fixture` for the symbol/parity gates.
+    /// Lived at the repo root as `target-zenoh-fixture-posix/` until issue 0535
+    /// moved it under the one build root (R1).
+    pub const ZENOH_FIXTURE_POSIX: &str = "zenoh-fixture-posix";
+
     /// The `rmw_zenoh_cpp` colcon overlay. Spelled with UNDERSCORES, unlike
     /// every other kind — it mirrors the upstream workspace name rather than
     /// this repo's kebab vocabulary. Left as-is: renaming moves a real cache

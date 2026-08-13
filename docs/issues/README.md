@@ -542,17 +542,16 @@ resolution is a per-board, sometimes per-BOOT value (Zephyr runtime cycle rate, 
 compile-time constant cannot carry it. Proposes one `clock_ns` symbol plus `clock_resolution_ns`, with
 `clock_ms`/`clock_us` as header wrappers. See `0532-*`.
 
-**#535** (build/testing, open 2026-08-13) — **74 west-built fixtures have no manifest row, so they have no
-coordinate.** `examples/fixtures.toml` holds 379 rows and `row_coord()` is the ONE predicate phase-340 W3
-made both halves of a lane read — but 70 zephyr leaves (matrix in `fixture-matrix.sh` +
-`zephyr-fixture-leaves.sh`) and 4 `west-fixtures.sh` fixtures (bash arrays) sit outside it, ~16 % of the
-surface. `NROS_FIXTURE_COORDS` has ZERO hits in the zephyr lane, so a lane can only include or exclude the
-zephyr MODULE wholesale; the run half calls them unattributable and never skips them. Not issue 0482's
-shape (two disagreeing computations) but an ABSENCE, which nothing can report. It also blocks #509's
-cheapest lever — "can the coordinate cover retire some leaves?" cannot be asked of a fixture with no
-coordinate — and phase-329 W8.d from the other side. The role matrix is currently spelled THREE times
-(bash fns, bash arrays, `examples_fixture_coverage.rs` constants); the fix collapses them to rows.
-See `0535-*` and phase-350.
+RESOLVED 2026-08-13 — **#535** the 74 west fixtures are manifest rows (70 zephyr leaves + the four
+`west-fixtures.sh` ones), the emitter reads them, and the lane narrows by coordinate: tier 2 builds 7
+instead of 70, measured 592 s → 76 s. The two literal-path fixtures this issue also named are fixed by a
+different mechanism than a row: neither IS a fixture in the manifest's sense — each is a postprocess of
+another row's artifact — so what they shared with their consumers was a PATH, and the fix is the KIND.
+`target-zenoh-fixture-posix/` moved out of the repo root to `build/zenoh-fixture-posix` (RFC-0070 R1) and
+the esp32 `.bin` literals in seven places became `kind::ESP32_QEMU`. The filing's list was incomplete —
+three tests read the zenoh fixture, not two; seven esp32 sites, not two — and one bug was caught before
+landing: `just esp32 clean` had been routed onto the ARM zenoh-pico constant and would have deleted the
+wrong tree. See `archived/0535-*`. (2026-08-13)
 
 **#536** (build/testing, open 2026-08-13) — three of the four `west-fixtures.sh` fixtures assert a
 CONFIGURE-time fact and pay for a full kernel build anyway: `west_board_import` reads four `CMakeCache.txt`

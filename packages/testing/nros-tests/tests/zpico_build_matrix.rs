@@ -13,7 +13,7 @@
 //!
 //! The matrix is intentionally narrow on the test runner. The
 //! host-runnable POSIX archive is built by `just build-test-fixtures`
-//! at `target-zenoh-fixture-posix/`; cross-compile builds for FreeRTOS
+//! at `build/zenoh-fixture-posix/`; cross-compile builds for FreeRTOS
 //! / NuttX / ThreadX / Zephyr embedded targets are covered by their
 //! per-platform `just <plat> build-fixtures` recipes. Re-running any of
 //! those builds inside nextest would double CI wall-clock for no extra
@@ -75,10 +75,9 @@ fn zpico_sys_has_no_cmake_dep() {
     );
 }
 
-fn prebuilt_posix_archive(root: &Path) -> PathBuf {
+fn prebuilt_posix_archive() -> PathBuf {
     for profile in ["release", "debug"] {
-        let archive = root
-            .join("target-zenoh-fixture-posix")
+        let archive = nros_tests::build_dir(nros_tests::kind::ZENOH_FIXTURE_POSIX, &[])
             .join(profile)
             .join("libnros_rmw_zenoh_staticlib.a");
         if archive.is_file() {
@@ -92,13 +91,13 @@ fn prebuilt_posix_archive(root: &Path) -> PathBuf {
     if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() {
         nros_tests::skip!(
             "zenoh-posix staticlib fixture not built (light tier); searched {}",
-            root.join("target-zenoh-fixture-posix").display()
+            nros_tests::build_dir(nros_tests::kind::ZENOH_FIXTURE_POSIX, &[]).display()
         );
     }
     panic!(
         "POSIX zenoh staticlib fixture not built. Run `just build-test-fixtures` \
          or `just build-zenoh-posix-fixture` first; searched {}",
-        root.join("target-zenoh-fixture-posix").display()
+        nros_tests::build_dir(nros_tests::kind::ZENOH_FIXTURE_POSIX, &[]).display()
     );
 }
 
@@ -108,8 +107,7 @@ fn prebuilt_posix_archive(root: &Path) -> PathBuf {
 /// test body.
 #[test]
 fn zpico_posix_archive_carries_link_feature_symbols() {
-    let root = workspace_root();
-    let archive = prebuilt_posix_archive(&root);
+    let archive = prebuilt_posix_archive();
 
     // POSIX's `LinkPolicy` enables tcp / udp_unicast / udp_multicast,
     // disables serial / ws / bluetooth / raweth / tls (link-tls is

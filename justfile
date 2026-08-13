@@ -1929,8 +1929,8 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
 # overwrite both with Phase 146.2 `LinkPolicy::threadx()` content).
 #
 # Output (deterministic — one `zpico-sys-<hash>` per --target-dir):
-#   target-zenoh-fixture-posix/release/libnros_rmw_zenoh_staticlib.a
-#   target-zenoh-fixture-posix/release/build/zpico-sys-*/out/
+#   build/zenoh-fixture-posix/release/libnros_rmw_zenoh_staticlib.a
+#   build/zenoh-fixture-posix/release/build/zpico-sys-*/out/
 #       zenoh-config/zenoh_generic_config.h
 #
 # Tests discover these paths via the `NROS_TESTS_ZENOH_ARCHIVE`
@@ -1945,11 +1945,17 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
 # pinning both sides to one built-in profile is the stable choice.
 [group("full-matrix")]
 build-zenoh-posix-fixture:
+    #!/usr/bin/env bash
+    set -e
+    # issue 0535 — was `--target-dir target-zenoh-fixture-posix`, a repo-root
+    # cache dir named by a literal here AND in the two tests that read it. It is
+    # under the one build root now (RFC-0070 R1) and both sides name the KIND.
+    source scripts/build/build-root.sh
     # profile-literal-ok: symbol fixture: path asserted by zenoh_archive_symbols + the parity script
     cargo build --release \
         -p nros-rmw-zenoh-staticlib \
         --features platform-posix \
-        --target-dir target-zenoh-fixture-posix
+        --target-dir "$(nros_build_dir "$NROS_KIND_ZENOH_FIXTURE_POSIX")"
 
 # Workflow (Phase 177.9): `just test-all` (full coverage) → read the failures →
 # debug/fix → `just test-failed` (reruns just those) → repeat until clean.
@@ -4484,7 +4490,6 @@ clean-fixtures:
     #!/usr/bin/env bash
     set -e
     rm -rf tmp/build-test-fixtures-* tmp/build-test-fixtures-latest
-    rm -rf target-zenoh-fixture-posix
     rm -rf build/zephyr-fixtures
     find tests -maxdepth 2 -type d -name build -exec rm -rf {} + 2>/dev/null || true
     find tests -maxdepth 2 -type f \( -name sdkconfig -o -name 'sdkconfig.old' \) \
@@ -4525,7 +4530,9 @@ clean: clean-examples clean-fixtures
     rm -rf target-embedded target-zpico-multisession
     rm -rf "${CARGO_TARGET_DIR:-$PWD/target}-embedded" "${CARGO_TARGET_DIR:-$PWD/target}-zpico-multisession"
     # Build-stage outputs under build/ (SDK installs preserved — see clean-setup).
-    rm -rf build/zephyr-fixtures build/esp32-qemu build/qemu-zenoh-pico
+    source scripts/build/build-root.sh
+    rm -rf build/zephyr-fixtures "$(nros_build_dir "$NROS_KIND_ESP32_QEMU")" \
+        "$(nros_build_dir "$NROS_KIND_QEMU_ZENOH_PICO")"
     @echo "Build artifacts cleaned (SDK installs + host nros-codegen preserved; 'just clean-setup' to remove them)"
 
 # Remove SDK/tool installs produced by `just setup` (Cyclone, XRCE Agent,

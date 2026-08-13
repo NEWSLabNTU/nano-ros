@@ -16,7 +16,7 @@
 //!
 //! Phase 150.E rev3 — the staticlib is now read from the
 //! deterministic POSIX fixture --target-dir at
-//! `target-zenoh-fixture-posix/release/libnros_rmw_zenoh_staticlib.a`
+//! `build/zenoh-fixture-posix/release/libnros_rmw_zenoh_staticlib.a`
 //! (built by `just build-zenoh-posix-fixture`, pulled in by
 //! `just build-test-fixtures`). The shared workspace
 //! `target/release/libnros_rmw_zenoh_staticlib.a` was unreliable:
@@ -63,8 +63,7 @@ fn resolve_archive_path(root: &Path) -> Result<PathBuf, String> {
         ));
     }
     for profile in ["release", "debug"] {
-        let candidate = root
-            .join("target-zenoh-fixture-posix")
+        let candidate = nros_tests::build_dir(nros_tests::kind::ZENOH_FIXTURE_POSIX, &[])
             .join(profile)
             .join("libnros_rmw_zenoh_staticlib.a");
         if candidate.is_file() {

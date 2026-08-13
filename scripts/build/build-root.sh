@@ -105,6 +105,13 @@ export NROS_KIND_XRCE_AGENT="xrce-agent"
 export NROS_KIND_ZENOHD="zenohd"
 export NROS_KIND_ZEPHYR_FIXTURE_BUILD="zephyr-fixture-build"
 export NROS_KIND_ZEPHYR_FIXTURE_MAKE_DRIVER="zephyr-fixture-make-driver"
+# issue 0535 — the last two fixtures whose path was a literal on BOTH sides.
+export NROS_KIND_ESP32_QEMU="esp32-qemu"
+# The RISC-V zenoh-pico archive for ESP32 — DISTINCT from `qemu-zenoh-pico`
+# (the ARM one). Folding the two together in `just esp32 clean` would have
+# deleted the wrong tree; caught before landing.
+export NROS_KIND_ESP32_ZENOH_PICO="esp32-zenoh-pico"
+export NROS_KIND_ZENOH_FIXTURE_POSIX="zenoh-fixture-posix"
 
 # nros_build_dir <kind> [<coordinate>...]
 # RFC-0070 R2 — `<root>/<kind>/<coordinate>`, the ONE naming shape.

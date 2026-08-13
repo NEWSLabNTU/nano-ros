@@ -269,9 +269,9 @@ def prerequisite_rows():
             "rmw": "zenoh",
             "role": "zenoh-staticlib",
             "dir": "packages/rmw/zenoh/nros-rmw-zenoh-staticlib",
-            "build_root": "target-zenoh-fixture-posix",
+            "build_root": "build/zenoh-fixture-posix",
             "scheduler": "just build-test-fixtures -> just build-zenoh-posix-fixture",
-            "shared_mutation": "target-zenoh-fixture-posix",
+            "shared_mutation": "build/zenoh-fixture-posix",
             "notes": "root fixture prerequisite for zenoh archive/header parity tests",
         },
         {

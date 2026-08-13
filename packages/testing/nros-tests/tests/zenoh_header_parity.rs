@@ -16,7 +16,7 @@
 //! 1. `NROS_TESTS_ZENOH_HEADER` — explicit absolute path, wins.
 //!    Use this in CI / out-of-tree consumers (e.g. point at a CMake
 //!    build's `<build>/_deps/.../zenoh_generic_config.h`).
-//! 2. `<workspace>/target-zenoh-fixture-posix/release/build/
+//! 2. `<workspace>/build/zenoh-fixture-posix/release/build/
 //!    zpico-sys-*/out/zenoh-config/zenoh_generic_config.h` —
 //!    deterministic fixture built by `just build-zenoh-posix-fixture`
 //!    (pulled in by `just build-test-fixtures`). Only ONE
@@ -62,8 +62,7 @@ fn resolve_header_path() -> Result<PathBuf, String> {
     // both are deterministic because this --target-dir houses
     // exactly one feature set (`platform-posix`).
     for profile in ["release", "debug"] {
-        let build_dir = root
-            .join("target-zenoh-fixture-posix")
+        let build_dir = nros_tests::build_dir(nros_tests::kind::ZENOH_FIXTURE_POSIX, &[])
             .join(profile)
             .join("build");
         let Ok(entries) = fs::read_dir(&build_dir) else {
@@ -106,7 +105,7 @@ fn parse_define(header: &str, key: &str) -> Option<String> {
 
 #[test]
 fn posix_canonical_header_matches_link_policy() {
-    // Issue #34 — the zenoh-posix fixture (`target-zenoh-fixture-posix/`) is
+    // Issue #34 — the zenoh-posix fixture (`build/zenoh-fixture-posix/`) is
     // built by `just build-zenoh-posix-fixture` / `build-test-fixtures`, which
     // the light host-integration lane does NOT run (it builds only the core
     // rust + workspace fixtures). Skip cleanly there (NROS_FIXTURES_OPTIONAL set)
