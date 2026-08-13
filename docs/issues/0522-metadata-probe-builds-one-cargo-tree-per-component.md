@@ -159,3 +159,59 @@ path (`/nros-metadata/`). Split after the fix: the cargo harness class is gone,
 the cmake class is the 50.3 GiB above, and **75.7 GiB across 94 dirs is pre-fix
 residue** — output nothing writes any more. Deleting it belongs to issue 0488's
 cleanup, not to a bug fix.
+
+
+## The cmake half, re-checked 2026-08-13 — it is NOT the same defect
+
+I called `metadata-probe-cmake` "a second producer" of this issue's defect. That
+was too strong, and the distinction matters for what to do about it.
+
+**Location is already right.** The cargo harness wrote one full target dir per
+COMPONENT, inside the component's own leaf. The cmake probe is per WORKSPACE
+(`probe_dir_for_workspace`, phase-313 — "was per component, which is what made
+every probe rebuild the runtime") and lands in `<ws>/build/nros-metadata/`, i.e.
+the workspace's own build dir. That is where build output belongs, and
+`check-workspace-build-output` exempts it deliberately.
+
+**The bytes are corrosion's, not cmake's.** Measured on
+`examples/workspaces/safety`: 4.8 GiB total, of which `build/cargo` is **4.7
+GiB**. Same ratio phase-344 measured for cmake dirs generally (83.2 %). So the
+14 trees / 50.26 GiB are 14 copies of the same Rust dependency graph, one per
+workspace — a DUPLICATION problem, not a misplacement one.
+
+**Corrosion 0.6.x changes what is possible here, and the pin moved this session
+(v0.5.1 -> v0.6.1).** The target dir is:
+
+```cmake
+# Corrosion.cmake ~781 — "so if you build multiple workspaces … they won't
+# collide if they use a common dependency"
+string(SHA1 cargo_path_hash ${workspace_manifest_path})
+cmake_path(APPEND CMAKE_BINARY_DIR ${build_dir} cargo "${cargo_folder_name}_${cargo_path_hash}" …)
+```
+
+Rooted at `CMAKE_BINARY_DIR`, then separated per WORKSPACE MANIFEST. Two facts
+follow:
+
+* Corrosion offers no knob to move the cargo dir on its own — the only lever is
+  the consuming project's `CMAKE_BINARY_DIR`.
+* Projects sharing one `CMAKE_BINARY_DIR` no longer collide, because 0.6 hashes
+  by manifest path. That is precisely the collision issue 0493 recorded against
+  Corrosion `< 0.6.0`, which shared one `cargo/build` across workspace roots and
+  produced duplicate `#[no_mangle]` symbols.
+
+So the direction is: give the cmake probe projects ONE shared
+`CMAKE_BINARY_DIR` (under `$NROS_BUILD_ROOT`, `<root>/<kind>/<coordinate>`), and
+let corrosion's own per-manifest hashing keep them apart. The probes all import
+the same nano-ros manifest, so they should collapse to one cargo tree rather
+than 14.
+
+**Not done here, and the reason is 0493.** That issue is open and is about
+exactly this sharing; doing it under this issue would be fixing 0493 without
+its evidence. What this entry adds is the measurement (4.7 of 4.8 GiB is
+corrosion), the mechanism (Corrosion.cmake:781), and the fact that the 0.6.1 pin
+may have removed the objection.
+
+Alternative worth pricing if that stalls: the probe build dir is REGENERABLE
+scratch — nothing reads it after the sidecars are written — so deleting it on
+success reclaims the 50 GiB at the cost of a cold probe on the next sync. That
+trade needs a measurement of cold-probe time, which nobody has taken.

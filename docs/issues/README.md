@@ -191,7 +191,7 @@ read-only out-of-tree SDK). Measured on `examples/workspaces/rust`: 6 dirs / 3.2
 package + bin names were part of the fix, not tidy-up: cargo does not hash the final artifact name, so a
 shared dir with one `probe` binary is phase-340 W1's last-writer-wins collision. **STILL OPEN** for the
 second producer — the corrosion-driven `metadata-probe-cmake` path, 14 trees / 50.3 GiB, whose dir is
-chosen by cmake and belongs with issue 0493. See `0522-*`. (2026-08-12)
+chosen by cmake and belongs with issue 0493. RE-CHECKED 2026-08-13: the cmake half is NOT the same defect — its location is already correct (per WORKSPACE, in the workspace's own `build/`), and 4.7 of its 4.8 GiB is CORROSION's cargo tree, so it is duplication (14 copies of one dep graph) rather than misplacement. Corrosion offers no target-dir knob; the only lever is the consuming project's `CMAKE_BINARY_DIR` — and 0.6.x now hashes by workspace manifest, which is exactly the collision 0493 recorded against `< 0.6.0`, so the pin bump this session may have unblocked sharing. Belongs with 0493. See `0522-*`. (2026-08-12)
 
 RESOLVED 2026-08-12: **#511** — `rust-rtos-link-check` "overflowed NuttX ROM by N bytes" because the ARM image
 was linked with the RISC-V memory map, where ROM has LENGTH 0. N was never an excess — it was the image's whole
