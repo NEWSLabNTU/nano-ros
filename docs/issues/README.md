@@ -86,7 +86,7 @@ both ways: 65536 passes all three cortex-m cells, 32768 trips the MPU guard. Fix
 caller-supplied storage rather than return by value. NOT established: whether each frame in the chain
 materialises its own copy — one clear was observed, the multiplier was not. See `0563-*`. (2026-08-14)
 
-**#565** — NuttX **Rust**, BOTH arches: the 100 ms low tier is never scheduled, so `/telem` never reaches 5
+RESOLVED 2026-08-13 (SPLIT into #569/#570) — **#565** — NuttX **Rust**, BOTH arches: the 100 ms low tier was reported as never scheduled, so `/telem` never reached 5
 
 **#0569** — `nuttx-arm` Rust `realtime_tiers_e2e`: the low tier SPAWNS and gets its priority (`tier priority set
 tier=`low` prio=100`), then `Executor::open` fails `Transport(ConnectionFailed)` and the entry aborts. A
