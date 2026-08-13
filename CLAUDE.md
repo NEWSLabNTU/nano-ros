@@ -430,7 +430,11 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   claims `refs/issue-ids/NNNN` on origin, which git rejects if it already exists; the `pre-push`
   hook (`just setup-hooks`) refuses to push a duplicate even if the tool was skipped. Expect
   `docs/issues/README.md` rebase conflicts; write full background logs to files (`| tail` hides
-  the real error). → AGENTS.md Multi-Session Pitfalls.
+  the real error). **Same race, same fix, third series: `just phase-new <slug>`** for work needing
+  its OWN phase number (two sessions opened `phase-350` for unrelated work on 2026-08-13). NOT for
+  a doc joining an existing effort — a phase number is deliberately not unique per file (26 of 342
+  carry several), so there is no phase uniqueness gate and adding a doc to an existing phase reuses
+  its number. → AGENTS.md Multi-Session Pitfalls.
 
 ## Verification
 Kani (bounded harnesses, `just verify-kani`) + Verus (unbounded proofs, `just verify-verus`).

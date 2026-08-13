@@ -677,6 +677,19 @@ check-readiness-marker-literals:
 check-issue-ids:
     @scripts/ci/issue-ids-check.sh
 
+# Two sessions opened `phase-350` for unrelated work on 2026-08-13, neither able
+# to see the other — the same check-then-act race as issue ids, in the third
+# numbered series.
+#
+# Only for work needing its OWN number: a phase number is NOT unique per file
+# (26 of 342 carry several docs, one effort split across them), so adding a doc
+# to an existing effort reuses that number and skips this.
+#
+# Reserve the next free PHASE number atomically across parallel sessions.
+[group("docs")]
+phase-new slug="":
+    @scripts/reserve-phase-id.sh {{slug}}
+
 # Reserve the next free issue id ATOMICALLY across parallel sessions, and print
 # it. Use this instead of eyeballing the highest existing number: that is a
 # check-then-act race, and it has produced six id collisions (see
