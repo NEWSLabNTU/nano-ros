@@ -118,7 +118,11 @@ pub enum SiteError {
     Parse {
         origin: String,
         deploy: String,
-        source: toml::de::Error,
+        /// Boxed because `toml::de::Error` is ~144 bytes on its own, which made
+        /// every `Result<_, SiteError>` in this module trip clippy's
+        /// `result_large_err` under rust 1.96. The error path is cold; the Ok
+        /// path is what should stay small.
+        source: Box<toml::de::Error>,
     },
     #[error(
         "{origin}: [deploy.{deploy}.nros] refers to {reference}, which is not set.\n  \
@@ -144,7 +148,7 @@ impl SiteConfig {
             .map_err(|source| SiteError::Parse {
                 origin: origin.to_string(),
                 deploy: deploy.to_string(),
-                source,
+                source: Box::new(source),
             })
     }
 
