@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). DRAFT — no work item started.**
+**Status (2026-08-13). W0 LANDED. W1–W6 open.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -101,19 +101,63 @@ about. #509's last direction says exactly this and cannot be acted on today:
 
 ---
 
-## W0 — Zero-risk deletions
+## W0 — Zero-risk deletions — **LANDED**
 
-- [ ] Delete `packages/testing/nros-tests/bins/int32-observer/` (#540) — retired
+- [x] Delete `packages/testing/nros-tests/bins/int32-observer/` (#540) — retired
       by issue 0128 T0, crate survived, no row / no builder / no consumer.
-- [ ] Retire `scripts/build/fixture-inventory.py` (#538) or gate it. It claims
-      to BE this phase's inventory, has no consumer, and 3 of its 5
-      hand-authored rows have had manifest rows since phase-344 W2. Prefer
-      deletion once W1 lands; gate it if W1 stalls.
-- [ ] Fix the `TEST_DRIVEN_BUILDERS` entry in `examples_fixture_coverage.rs` to
-      match whatever W3 decides for the two runnerless FVP artifacts.
+- [x] **Gate** `scripts/build/fixture-inventory.py` (#538), not retire it, and
+      delete its four stale rows.
+- [x] Correct `packages/reference/README.md`, which said `fixture-inventory.py`
+      *builds* `qemu-smoltcp-bridge`. It builds nothing — it is read-only.
 
-*Acceptance:* `just ci` green; `grep -rn int32.observer` returns only archived
-docs.
+### Why the inventory was gated rather than deleted
+
+This item was drafted "prefer deletion once W1 lands", on the reading that W1
+makes the file redundant by construction. That reading was incomplete: the file
+is also where **`shared_mutation` hazards are declared**, and phase-339 W-item
+treated that as a real obligation —
+
+> `scripts/build/fixture-inventory.py`: the `nuttx-kernel-export-preflight` row
+> declares `shared_mutation: …`. When the sharing is gone the declaration must
+> go with it — **a stale `shared_mutation` is worse than none.**
+
+Deleting the file would drop that model silently, which is the same failure the
+phase-339 note is warning about. So: gate now (issue 0538's option 2), and let
+W1 decide the home of `prerequisite_rows()` once the manifest can answer the
+"outside the manifest" half on its own.
+
+`--check` asserts each `hand-authored-*` row is genuinely absent from
+`examples/fixtures.toml`, resolving `rmw` the way `row_coord()` does (absent
+⇒ zenoh) so the two sides read a row identically — issue 0482 is what a second,
+disagreeing resolution of that field costs. It is wired into
+`check-fixtures-manifest`, so it runs in `just check`.
+
+**Verified failing before trusted.** First run flagged 5; two were
+`kind: postprocess` rows (espflash packing a `.bin` beside a manifest row's
+cargo ELF), which SHARE their row's coordinate by construction and are exempt —
+they assert "a step runs after this row", not "this build is outside the
+manifest". Narrowed to `hand-authored-*`, it flagged the 4 real ones, which are
+now deleted:
+
+| row | why it was stale |
+| --- | --- |
+| `qemu-smoltcp-bridge` | row at `fixtures.toml:1669` |
+| `native-rust-cyclonedds-talker` | row exists |
+| `native-rust-cyclonedds-listener` | row exists |
+| `threadx-riscv64-rust-talker-cyclonedds` | row added by phase-344 W2 **for this exact reason** |
+
+*Correction to #538 as filed:* it says "3 of its 5 hand-authored rows". The list
+holds **7** rows and **4** were stale (its own table already listed four). The
+remaining true one is `esp-idf-smoke`; two are exempt postprocess rows.
+
+**W0.c moved to W3.** The draft asked to fix the `TEST_DRIVEN_BUILDERS` entry in
+`examples_fixture_coverage.rs` "to match whatever W3 decides" — which is
+W3-blocked by construction, not zero-risk. The comment is accurate today (it
+says nothing runs those two examples), so it stays until W3 decides.
+
+*Acceptance, met:* `just check-fixtures-manifest` green with the new `--check`
+leg; `grep -rn 'int32.observer\|int32_observer'` returns only archived docs and
+this phase's own issue.
 
 ## W1 — The 74 get rows (#535)
 

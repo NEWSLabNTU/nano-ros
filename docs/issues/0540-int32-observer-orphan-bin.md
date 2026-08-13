@@ -46,3 +46,11 @@ Then close the class rather than the instance: extend the coverage gate (or add
 its sibling) so every crate under `packages/testing/nros-tests/bins/` is either
 a `[[fixture]]` row or a tracked exception with a reason. Without that, the next
 retired fixture bin sits here just as long.
+
+## Status: instance deleted (phase-350 W0, 2026-08-13), class still open
+
+The crate is gone. **This issue stays open for the class half** — nothing yet
+stops the next orphan, and the two LIVE bins with no row
+(`logging-smoke-zephyr-native-sim`, `ros-edition-pose-pub`) are still unrowed;
+they are issue 0535's set and phase-350 W6's gate. Closing this on the deletion
+alone would be fixing the reported site and not the class.

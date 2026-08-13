@@ -1220,6 +1220,14 @@ check-fixtures-manifest:
     # every coordinate-scoped lane; a row naming a typo'd `rmw` lands on a
     # coordinate no lane and no matrix cell can hold.
     @python3 scripts/build/fixtures-manifest.py validate-fixtures
+    # phase-350 W0 (issue 0538) — `fixture-inventory.py`'s hand-authored list
+    # asserts "this build is NOT in the manifest" for each of its rows, and had
+    # NO consumer, so four of them went on asserting it after the build migrated
+    # in — one of them a row phase-344 W2 added for exactly that reason. Same
+    # shape as `examples_fixture_coverage.rs`'s stale-exception arm: an
+    # exception that came true must fail, or the list rots into a false
+    # negative read as authoritative precisely when someone audits coverage.
+    @python3 scripts/build/fixture-inventory.py --check
 
 # Every `docs/{design,issues}/NNNN-*.md` path written anywhere — prose, issue
 # frontmatter, or a cmake error message — must resolve. Renumbering on an id

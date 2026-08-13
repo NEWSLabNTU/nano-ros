@@ -521,58 +521,19 @@ def prerequisite_rows():
 
 def hand_authored_rows():
     rows = [
-        {
-            "id": "qemu-smoltcp-bridge",
-            "platform": "qemu-arm-baremetal",
-            "kind": "hand-authored-cargo",
-            "lang": "rust",
-            "rmw": "",
-            "role": "qemu-smoltcp-bridge",
-            "dir": "packages/testing/qemu-smoltcp-bridge",
-            "build_root": "packages/testing/qemu-smoltcp-bridge/target",
-            "scheduler": "just qemu build-fixtures",
-            "shared_mutation": "packages/testing/qemu-smoltcp-bridge/target",
-            "notes": "not covered by examples/fixtures.toml",
-        },
-        {
-            "id": "native-rust-cyclonedds-talker",
-            "platform": "linux",
-            "kind": "hand-authored-cargo",
-            "lang": "rust",
-            "rmw": "cyclonedds",
-            "role": "talker",
-            "dir": "examples/native/rust/talker",
-            "build_root": "examples/native/rust/talker/target-cyclonedds",
-            "scheduler": "scripts/build/fixture-make-driver.sh linux-cyclonedds-rust",
-            "shared_mutation": "examples/native/rust/talker/generated; examples/native/rust/talker/target-cyclonedds",
-            "notes": "pure-cargo Cyclone lane outside manifest",
-        },
-        {
-            "id": "native-rust-cyclonedds-listener",
-            "platform": "linux",
-            "kind": "hand-authored-cargo",
-            "lang": "rust",
-            "rmw": "cyclonedds",
-            "role": "listener",
-            "dir": "examples/native/rust/listener",
-            "build_root": "examples/native/rust/listener/target-cyclonedds",
-            "scheduler": "scripts/build/fixture-make-driver.sh linux-cyclonedds-rust",
-            "shared_mutation": "examples/native/rust/listener/generated; examples/native/rust/listener/target-cyclonedds",
-            "notes": "pure-cargo Cyclone lane outside manifest",
-        },
-        {
-            "id": "threadx-riscv64-rust-talker-cyclonedds",
-            "platform": "threadx-riscv64",
-            "kind": "hand-authored-cmake",
-            "lang": "rust",
-            "rmw": "cyclonedds",
-            "role": "talker",
-            "dir": "examples/qemu-riscv64-threadx/rust/talker",
-            "build_root": "examples/qemu-riscv64-threadx/rust/talker/build-cyclonedds",
-            "scheduler": "just threadx_riscv64 build-fixture-extras",
-            "shared_mutation": "examples/qemu-riscv64-threadx/rust/talker/build-cyclonedds",
-            "notes": "gated helper build_threadx_cmake_rmw",
-        },
+        # phase-350 W0 (issue 0538) — FOUR rows deleted here, all of which had
+        # gone on asserting "outside examples/fixtures.toml" after the build
+        # migrated INTO it:
+        #
+        #   qemu-smoltcp-bridge                     row at fixtures.toml:1669
+        #   native-rust-cyclonedds-{talker,listener}
+        #   threadx-riscv64-rust-talker-cyclonedds  row added by phase-344 W2
+        #
+        # The last is the sharpest: phase-344 W2 added its row carrying a
+        # comment that explains it was needed because "without a row its output
+        # was unattributable and `row_artifact_root()` named a `target/` dir
+        # nothing writes" — the exact fact this list still denied. Nothing read
+        # the list, so nothing failed. `--check` now fails on a stale claim.
         {
             "id": "esp32-qemu-flash-images",
             "platform": "qemu-esp32-baremetal",
@@ -616,6 +577,94 @@ def hand_authored_rows():
     for row in rows:
         row["source"] = "just/*.just"
         yield row
+
+
+def manifest_claims(manifest):
+    """Every `(dir, platform, lang, rmw)` the manifest itself covers.
+
+    `rmw` is resolved the way `fixtures-manifest.py::row_coord` resolves it —
+    absent means zenoh — because a hand-authored row claiming to be outside the
+    manifest must be checked against the SAME reading of a row the lane uses.
+    Issue 0482 is what a second, disagreeing resolution of this field costs.
+    """
+    claims = set()
+    for section in ("fixture", "workspace_fixture", "compile_check_fixture"):
+        for row in manifest.get(section, []):
+            d = row.get("dir", "")
+            if not d:
+                continue
+            claims.add(
+                (
+                    d.rstrip("/"),
+                    row.get("platform", ""),
+                    row.get("lang", ""),
+                    row.get("rmw") or "zenoh",
+                )
+            )
+    return claims
+
+
+def check_hand_authored(repo_root, manifest):
+    """Issue 0538 — fail when a `hand_authored_rows()` entry is no longer true.
+
+    Every row in that list asserts "this build is NOT in examples/fixtures.toml".
+    The list had no consumer and no gate, so three of its five entries went on
+    asserting that after phase-344 W2 and its siblings gave them rows — and
+    phase-344 W2's row carries a comment explaining it was added for exactly the
+    reason the inventory still denied.
+
+    Direction is one-way ON PURPOSE. A hand-authored row that GAINED a manifest
+    row is a stale claim this catches. The reverse — a build outside the
+    manifest with no row here — is issue 0535's 74 fixtures, which this file
+    cannot enumerate and must not pretend to; `examples_fixture_coverage.rs` and
+    phase-350 W6 own that direction.
+
+    `kind: postprocess` rows are EXEMPT, and not as a convenience. Such a row
+    asserts "a step runs AFTER this manifest row" (espflash packing a `.bin`
+    beside a cargo ELF), not "this build is outside the manifest" — so it
+    SHARES its row's coordinate by construction and matching one is correct,
+    not stale. Only the `hand-authored-*` kinds make the claim this checks.
+    """
+    claims = manifest_claims(manifest)
+    stale = []
+    for row in hand_authored_rows():
+        if not row.get("kind", "").startswith("hand-authored"):
+            continue
+        key = (
+            row.get("dir", "").rstrip("/"),
+            row.get("platform", ""),
+            row.get("lang", ""),
+            row.get("rmw") or "zenoh",
+        )
+        if key in claims:
+            stale.append((row.get("id", "<no id>"), key, row.get("notes", "")))
+
+    if not stale:
+        checked = sum(
+            1
+            for r in hand_authored_rows()
+            if r.get("kind", "").startswith("hand-authored")
+        )
+        print(
+            f"fixture-inventory: OK ({checked} hand-authored row(s) checked, none "
+            f"of them claimed by examples/fixtures.toml)"
+        )
+        return 0
+
+    print(
+        f"fixture-inventory: {len(stale)} hand-authored row(s) assert they are "
+        f"outside examples/fixtures.toml, but the manifest has a row for them:",
+        file=sys.stderr,
+    )
+    for ident, (d, platform, lang, rmw) in ((s[0], s[1]) for s in stale):
+        print(f"  {ident}: {d} ({platform}/{lang}/{rmw})", file=sys.stderr)
+    print(
+        "\nThe build migrated and hand_authored_rows() was not told. Delete the "
+        "entry from scripts/build/fixture-inventory.py:hand_authored_rows().\n"
+        "See docs/issues/0538-fixture-inventory-is-a-stale-second-answer.md.",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def collect(repo_root, args):
@@ -670,6 +719,11 @@ def main():
     parser.add_argument("--source")
     parser.add_argument("--summary", action="store_true")
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help="issue 0538: fail if a hand-authored row now has a manifest row",
+    )
+    parser.add_argument(
         "--no-zephyr",
         dest="include_zephyr",
         action="store_false",
@@ -679,6 +733,8 @@ def main():
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
+    if args.check:
+        sys.exit(check_hand_authored(repo_root, load_toml(repo_root / args.manifest)))
     rows = collect(repo_root, args)
     if args.summary:
         write_summary(rows, sys.stdout)

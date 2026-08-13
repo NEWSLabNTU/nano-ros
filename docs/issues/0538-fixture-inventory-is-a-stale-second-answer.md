@@ -21,7 +21,7 @@ consumer**: `grep -rn fixture-inventory` over `justfile just scripts packages
 tests, or gates against it, so nothing has ever failed when it drifted — and it
 has drifted in both directions.
 
-### Wrong: 3 of its 5 hand-authored rows now have manifest rows
+### Wrong: 4 of its 7 hand-authored rows now have manifest rows
 
 `hand_authored_rows()` (`fixture-inventory.py:522`) claims these are outside
 `examples/fixtures.toml`:
@@ -72,3 +72,27 @@ One of two, not both:
 
 Option 1 is preferred and should follow issue 0535. Option 2 is the fallback if
 0535 stalls — an ungated list is the one outcome to not keep.
+
+## Status: option 2 landed (phase-350 W0, 2026-08-13)
+
+Gated, not retired. The reason option 1 was NOT taken is worth recording,
+because the filing above missed it: this file is also where `shared_mutation`
+hazards are DECLARED, and phase-339 treated that as an obligation — "a stale
+`shared_mutation` is worse than none". Deleting the file drops that model
+silently, which is the failure that note warns about. So the "outside the
+manifest" half is now gated, and W1 decides the home of `prerequisite_rows()`
+once the manifest can answer that half by itself.
+
+- `--check` asserts every `hand-authored-*` row is genuinely absent from
+  `examples/fixtures.toml`, resolving `rmw` the way `row_coord()` does (absent
+  ⇒ zenoh), wired into `check-fixtures-manifest` → `just check`.
+- `kind: postprocess` rows are exempt: they assert "a step runs AFTER this
+  manifest row" (espflash packing a `.bin` beside a cargo ELF), so sharing the
+  row's coordinate is correct, not stale.
+- The four stale rows are deleted.
+
+**Correction to this filing:** it says "3 of its 5"; the list holds **7** rows
+and **4** were stale — the table above already listed four. Counted by the gate,
+not by hand, which is the point.
+
+Open half: whether the file survives W1 at all.

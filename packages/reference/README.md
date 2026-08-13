@@ -1,7 +1,9 @@
 > **phase-321 W2.b — scope of this directory.**
-> `qemu-smoltcp-bridge` moved to `packages/testing/`: it is test support that
-> `fixture-inventory.py` and the qemu-baremetal lane build, not reference
-> material. What remains here is `stm32f4-porting/{polling,rtic}` — **porting
+> `qemu-smoltcp-bridge` moved to `packages/testing/`: it is test support the
+> qemu-baremetal lane builds, not reference material. (It has had a
+> `fixtures.toml` row since then; `fixture-inventory.py` never built anything —
+> it is a read-only diagnostic, and phase-350 W0 deleted the stale row where it
+> claimed this leaf was outside the manifest.) What remains here is `stm32f4-porting/{polling,rtic}` — **porting
 > templates that NOTHING builds**. They are not workspace members and
 > `just/native.just` only runs `size` on a prebuilt binary `|| echo "build
 > failed"`, so they can rot silently. Treat them as documentation-with-code,
