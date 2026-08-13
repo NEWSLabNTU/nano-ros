@@ -1,7 +1,8 @@
 ---
 id: 525
 title: "One NuttX checkout serves two arches, and its `.config` is last-configured-wins"
-status: open
+status: resolved
+resolved_in: issue-0525
 type: tech-debt
 area: nuttx
 related: [issue-0511, issue-0477, issue-0433, phase-339, phase-337]
@@ -165,3 +166,78 @@ and the answer was never only the kernel checkout.
    dance. **Still open, and now the only one.** With (1) and (2) landed the
    state can no longer reach a compile input and no longer surprises the reader,
    so this buys tidiness rather than correctness — probably not worth the disk.
+
+
+## RESOLVED 2026-08-13 — the apps tree verified, direction 3 declined
+
+### The apps object tree is fixed, and now measured
+
+This issue's last correctness gap was the SECOND shared mutable tree — the apps
+object tree — recorded above as "Not reproduced". Its fix landed as issue 0488
+residue 4: `integrations/nuttx/Makefile` now sets
+
+```make
+NROS_APPS_ARCH  := $(patsubst "%",%,$(CONFIG_ARCH))
+NROS_APPS_BUILD := $(APPDIR)$(DELIM)external$(DELIM).nros-build$(DELIM)$(NROS_APPS_ARCH)
+PREFIX          := $(NROS_APPS_BUILD)$(DELIM)
+```
+
+Run today on the documented user flow (`just nuttx build-integration-app`, which
+sets `CONFIG_NROS=y` and builds the kernel with the app):
+
+```console
+$ ls third-party/nuttx/nuttx-apps/external/.nros-build/
+arm
+
+$ find …/.nros-build -name '*.o'
+…/.nros-build/arm/mnt/…/nros-platform-posix/src/platform.c.….o     (2 objects)
+
+$ find packages/platform/nros-platform-posix/src integrations/nuttx \
+      -name '*.o' -o -name '.built' -o -name 'Make.dep' -o -name '.depend' | wc -l
+0
+```
+
+So objects land under an ARCH-keyed root and the nano-ros source tree stays
+clean — the two properties this issue said were missing.
+
+The arch separation is STRUCTURAL, not coincidental: `$(CONFIG_ARCH)` is a
+literal path component, and the two defconfigs spell it differently —
+
+```
+packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig    CONFIG_ARCH="arm"
+packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig  CONFIG_ARCH="risc-v"
+```
+
+— so `.nros-build/arm/` and `.nros-build/risc-v/` cannot collide, and one arch's
+objects can no longer reach the other's `libapps.a`.
+
+**What was NOT run, and why.** The experiment this issue proposed was
+arm→riscv end to end. Only the arm half was executed: the riscv half
+reconfigures the shared kernel tree to `rv-virt` and leaves it there, which
+perturbs the fixture state, and it would demonstrate a separation that the
+literal path component already guarantees. An empty `CONFIG_ARCH` — the one way
+the two could share a root — is refused outright rather than collapsed into a
+shared dir (`NROS_APPS_BUILD_OK`, issue 0551).
+
+### Direction 3 is declined, not deferred
+
+Per-arch checkouts (a worktree per arch) would remove the shared mutable state
+entirely. This issue already argued against it and the argument still holds:
+with directions 1 and 2 landed, the state cannot reach a compile input
+(`nuttx_include_root` + `check-nuttx-shared-tree-headers`) and no longer
+surprises the reader (`build-nuttx.sh` states what it guarantees). Direction 3
+buys tidiness at the cost of disk and a second submodule dance.
+
+Recording it as DECLINED rather than leaving the issue open on it: an issue that
+stays open on a direction its own text argues against is not tracking work, it
+is tracking a preference.
+
+### What the gate does NOT cover, restated
+
+`check-nuttx-shared-tree-headers` is keyed on header inputs. Issue 0551 later
+found four more readers it could not see — a `config/*/nros-platform.toml`
+manifest row, the repo-root `CMakeLists.txt`, and two Rust sites whose receiver
+was not NAMED nuttx — and widened the gate's scope to `.toml`, `config/` and the
+root `CMakeLists.txt` (1365 → 1653 files). The property this issue names is
+therefore contained by two mechanisms, not one, and 0551 is where the scope
+argument lives.

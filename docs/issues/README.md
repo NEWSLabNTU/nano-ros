@@ -86,6 +86,22 @@ both ways: 65536 passes all three cortex-m cells, 32768 trips the MPU guard. Fix
 caller-supplied storage rather than return by value. NOT established: whether each frame in the chain
 materialises its own copy — one clear was observed, the multiplier was not. See `0563-*`. (2026-08-14)
 
+RESOLVED 2026-08-13 — **#525** the NuttX shared-tree property, closed on its last correctness gap and an explicit
+decline of the rest. Directions 1 and 2 landed 2026-08-12 (`nuttx_include_root` + `check-nuttx-shared-tree-headers`,
+and `build-nuttx.sh` stating that it guarantees the SNAPSHOT and not the tree). What remained was the SECOND shared
+mutable tree this issue recorded as "Not reproduced" — the apps OBJECT tree, where `PREFIX` was empty so objects
+landed beside their sources and one arch's could survive into the other's `libapps.a`. Its fix landed as #0488
+residue 4 (`PREFIX` from an ARCH-keyed `.nros-build/<CONFIG_ARCH>/`), and it is now MEASURED on the documented user
+flow: objects under `.nros-build/arm/`, and zero `.o`/`.built`/`Make.dep`/`.depend` beside the nano-ros sources.
+The separation is structural rather than lucky — `$(CONFIG_ARCH)` is a literal path component and the defconfigs
+spell it `"arm"` vs `"risc-v"`, while an EMPTY arch is refused outright instead of collapsing to a shared root
+(#0551). Only the arm half of the proposed arm→riscv experiment was run: the riscv half reconfigures the shared
+kernel tree and leaves it there, and would demonstrate what the path component already guarantees — stated rather
+than glossed. Direction 3 (a worktree per arch) is DECLINED, not deferred, on this issue's own reasoning: with 1
+and 2 landed the state cannot reach a compile input and no longer surprises the reader, so it buys tidiness for
+disk. An issue left open on a direction its own text argues against is tracking a preference, not work.
+See `archived/0525-*`. (2026-08-13)
+
 Recently resolved (2026-08-13): **#559** (build) — every `build-test-fixtures lane=native` left a TRACKED
 config modified, so `git pull --rebase` refused until you `git checkout` output the next build regenerates.
 `nros sync` projects a board's `cargo_config` into `<leaf>/.cargo/nros-board.toml` and adds it to the leaf
@@ -508,7 +524,7 @@ non-`zephyr` module there. Verified end to end: 4 x E0061 before, a real ARM ELF
 built through the fixture path; the Cortex-M witness now builds `rust` beside `c`/`cpp`.
 See `archived/0432-*`. (2026-08-12)
 
-**#525** — one NuttX checkout serves both arches and NuttX builds IN PLACE, so `.config` /
+RESOLVED 2026-08-13 (see the entry above) — **#525** — one NuttX checkout serves both arches and NuttX built IN PLACE, so `.config` /
 `include/nuttx/config.h` are last-configured-wins: which arch the tree holds is a property of BUILD ORDER, not
 of the build being run. `lane=tier2` builds riscv after arm, and the state is STICKY — once a per-arch export
 exists `build-nuttx.sh` skips reconfiguring ("export up-to-date"), so asking for ARM does not restore the ARM
