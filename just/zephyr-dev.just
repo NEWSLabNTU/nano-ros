@@ -94,6 +94,14 @@ build-one example rmw="zenoh" board="native_sim/native/64":
             echo "WARN: no native_sim line overlay at $line_overlay" >&2
         fi
         ;;
+    qemu_cortex_m3*)
+        # No entropy device on this board; the net stack needs sys_rand_get.
+        # Overlays live here rather than in a per-example `boards/*.conf`
+        # because Zephyr only auto-merges those when CONF_FILE is UNSET
+        # (cmake/modules/configuration_files.cmake:39) and every build here
+        # sets it explicitly — so a `boards/` fragment is silently inert.
+        conf="$conf;$(pwd)/cmake/zephyr/qemu-cortex-m3.conf"
+        ;;
     esac
     bd="build-$(echo '{{example}}' | tr '/' '-')-{{rmw}}"
     echo "Zephyr {{NROS_ZEPHYR_VERSION}}: building zephyr/{{example}} ({{rmw}}, {{board}}) -> $workspace/$bd"

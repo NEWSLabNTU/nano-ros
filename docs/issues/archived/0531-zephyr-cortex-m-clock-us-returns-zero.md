@@ -1,7 +1,8 @@
 ---
 id: 531
 title: "nros_platform_clock_us() returns 0 forever on Zephyr Cortex-M boards under 60 MHz, so the executor's timers never fire"
-status: open
+status: resolved
+resolved_in: "fix landed 2026-08-13; verified on qemu_cortex_m3 2026-08-14"
 type: bug
 area: platform-zephyr
 related: [issue-0502, issue-0529, issue-0532]
@@ -86,7 +87,28 @@ each board and reading `zephyr/include/generated/zephyr/autoconf.h`:
 So on `qemu_cortex_m3` the port called `k_cycle_get_64()` in the exact
 configuration where it returns 0.
 
-**Not** confirmed by running an image: both Zephyr lanes currently fail
+### Confirmed on hardware-equivalent, 2026-08-14
+
+`tests/zephyr-c-smoke` built for `qemu_cortex_m3` (12 MHz, no
+`TIMER_HAS_64BIT_CYCLE_COUNTER`) and run under QEMU, as a same-binary A/B
+with only `nros_platform_clock_ns` swapped:
+
+| build | output |
+|---|---|
+| pre-fix (`k_cyc_to_ns_floor64(k_cycle_get_64())` unconditionally) | `clock_ms: 0 -> 0` → **FAIL: clock_ms did not advance** |
+| fixed (tick fallback where the board has no 64-bit cycle counter) | `clock_ms: 0 -> 60` across a 50 ms sleep → pass |
+
+That is the defect and the fix, end to end, on the board class the issue
+names. Two things the run needed, neither related to the clock: the board
+has no entropy device (`cmake/zephyr/qemu-cortex-m3.conf` enables Zephyr's
+explicitly-not-random generator), and the smoke app's native_sim-sized
+heap and stack overflow 64 KB of RAM.
+
+An unrelated `FAIL: mutex_init` follows the clock line on this board and
+is NOT investigated here — the clock assertions precede it and both
+report cleanly.
+
+**Superseded note** — the earlier claim that this was: both Zephyr lanes currently fail
 to build before reaching this file, in `zpico-sys`'
 `zenoh-pico/system/platform/zephyr.h:18` with `fatal error: version.h:
 No such file or directory` — which is issue **0529** (the zpico platform

@@ -66,6 +66,18 @@ projection at all, not even from an explicit sync, so this is not five more miss
 is a phase-341 question and normalising all six on a guess would be the larger error. See
 `archived/0559-*`. (2026-08-13)
 
+Recently resolved (2026-08-14): **#531** (platform-zephyr) — `nros_platform_clock_us()` returned 0 FOREVER on
+Zephyr Cortex-M boards at or below 60 MHz: the port read `k_cycle_get_64()`, which returns 0 unless
+`CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER` is set (its `__ASSERT` compiles out in release), and the SysTick
+driver only selects that symbol `default y if (SYS_CLOCK_HW_CYCLES_PER_SEC > 60000000)`. The executor
+derives its timer delta from this clock, so periodic callbacks never fired while subscriptions kept
+working. Fixed by preferring the cycle counter where the board provides one and falling back to
+`k_uptime_ticks()` otherwise. **Now verified by running it**: same binary, only the clock function swapped,
+on `qemu_cortex_m3` (12 MHz) — pre-fix `clock_ms: 0 -> 0` and FAIL, fixed `0 -> 60` across a 50 ms sleep.
+The lane needed two board facts on the way, neither clock-related: no entropy device (new
+`cmake/zephyr/qemu-cortex-m3.conf`), and a native_sim-sized heap that overflows 64 KB of RAM. See
+`archived/0531-*`. (2026-08-14)
+
 **#557** (rmw/zephyr, open 2026-08-13) — the Zephyr Cyclone ACTION images (C and C++) fail SOLO on a green
 `lane=all`, so not sweep contention. The verdict reads "action-server didn't reach readiness within 60 s";
 the guest says it failed IMMEDIATELY — `<err> os: tid 0x581fa0 is in use!` x6 at consecutive tids (Zephyr
@@ -588,16 +600,6 @@ takes `build-test-fixtures lane=all` down with rc=2, so no tier needing the full
 — and it hid because `lane=tier2` reports the same three as a soft `cargo-check FAILED … (no stamp)` and
 still exits 0. Fixed by syncing each leaf after codegen, before the cargo build. See `archived/0510-*`.
 (2026-08-10)
-
-**#531** (platform-zephyr, open 2026-08-13) — `nros_platform_clock_us()` returns 0 FOREVER on Zephyr
-Cortex-M boards at or below 60 MHz. The port computes us from `k_cycle_get_64()`, which returns 0 unless
-`CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER` is set (its `__ASSERT` compiles out in release), and the Cortex-M
-SysTick driver only selects that symbol `default y if (SYS_CLOCK_HW_CYCLES_PER_SEC > 60000000)`. Nothing
-in this repo enables it, and the tier-2 `ZephyrQemuCortexM` board runs at 12 MHz. The executor defaults
-its timer accounting to this clock, so the per-spin delta is 0 forever and PERIODIC CALLBACKS NEVER FIRE
-while subscriptions keep working — the image looks alive with every timer dead. native_sim, FVP, x86,
-ESP32 and Cortex-M above 60 MHz are unaffected (their drivers select the symbol). Static analysis only so
-far; a `qemu_cortex_m3` run is both the confirmation and the regression test. See `0531-*`.
 
 **#532** (embedded, open 2026-08-13) — the platform clock ABI fixes a UNIT (`clock_ms` + `clock_us`) but
 cannot express RESOLUTION, so every port either lies or truncates: microseconds are a lie on ThreadX
