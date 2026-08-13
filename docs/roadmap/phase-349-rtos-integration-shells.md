@@ -81,7 +81,18 @@ in a comment before it was checked; it is true of three lookups out of four.
 > A path env var with three spellings is precisely what thrashed the shared
 > cargo group before.
 
-### W2.0 — carry the board descriptor to build scripts *(prerequisite)*
+### W2.0 — carry the board descriptor to build scripts *(prerequisite)* — **SUPERSEDED**
+
+> Superseded by [phase-351](phase-351-board-facts-and-site-config.md) (2026-08-13).
+> The leaf-`[env]` carrier landed and works for standalone leaves, but the
+> six-ecosystem survey showed the payload is wrong: it points at the board
+> DESCRIPTOR, when what a build script needs is the RESOLVED facts —
+> board (A) merged with the project's `[deploy.*]` site block (B). It also
+> never reaches workspace members, because corrosion runs cargo from
+> `workspace_toml_dir`. phase-351 W6 retires it.
+
+The investigation below stands and is why phase-351 exists.
+
 
 Investigated 2026-08-13. Findings below are measured, not reasoned — see the
 methodology note at the end, which exists because reasoning got it wrong first.

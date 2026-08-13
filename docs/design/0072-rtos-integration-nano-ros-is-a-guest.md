@@ -4,7 +4,7 @@ title: "RTOS integration: nano-ros is an imported library, and the RTOS owns its
 status: Draft
 since: 2026-08
 last-reviewed: 2026-08
-implements-tracked-by: []
+implements-tracked-by: [phase-349, phase-351]
 supersedes: []
 superseded-by: null
 ---
@@ -63,7 +63,7 @@ control outright — the *application* `include()`s the SDK root, and everything
 Any design where nano-ros compiles the RTOS must reimplement all of that. Under
 §1's principle we implement none of it.
 
-## 2b. The LIVE design — what the tree does today (surveyed 2026-08-13)
+## 3. The LIVE design — what the tree does today (surveyed 2026-08-13)
 
 Documented before proposing changes, because two prior drafts of this RFC
 re-derived things the tree already had.
@@ -154,7 +154,7 @@ which an out-of-tree user does not have. That is the whole problem.
   `if/elseif` on `NANO_ROS_BOARD`, and the toolchain file must be fixed before
   `project()`. So the *source* must describe N boards while *delivery* carries 1.
 
-## 2c. What six ecosystems agree on — and the revised model
+## 4. What six ecosystems agree on — and the revised model
 
 Surveyed 2026-08-12/13: upstream FreeRTOS, ESP-IDF, Pico SDK, STM32Cube, NXP
 MCUXpresso, Infineon MTB, Eclipse ThreadX + ST X-CUBE-AZRTOS, PX4.
@@ -246,7 +246,7 @@ This is RFC-0003's *hookless vendor* case, now with the precise reason: not that
 PX4 lacks a configure-time hook, but that its configuration namespace is closed
 to out-of-tree contributors.
 
-## 2d. The revised design, optimised for UX
+## 5. The revised design, optimised for UX
 
 ### One rule, borrowed because users already know it
 
@@ -329,7 +329,355 @@ this is new value, not repackaging.
    unsupported pair with the list (the NetX Duo lesson).
 5. Retire the interim `[env] NROS_BOARD_TOML` row.
 
-## 3. Overall design
+## 6. Worked examples, one per integration shape
+
+The site block **shrinks as the RTOS takes over**. That gradient is the design
+working: nano-ros asks for exactly what the host does not already provide.
+
+### 6.1 Linux / native — the degenerate case
+
+```toml
+# packages/boards/linux/nros-board.toml                    (A — exists today)
+[[board]]
+names = ["linux", "native", "posix"]
+platform = "posix"; target = "x86_64-unknown-linux-gnu"
+entry_kind = "hosted-main"        # nano-ros owns main()
+link_kind  = "none"
+net_stack  = "host"               # the OS has sockets; nothing to choose
+```
+```toml
+# <bringup>/system.toml                                     (B)
+[deploy.native]
+kind = "self"; board = "native"; target = "x86_64-unknown-linux-gnu"
+```
+
+No SDK root, no netstack, no flashing. Every other row is a delta from this.
+
+### 6.2 FreeRTOS on MPS2-AN385 — our fixture
+
+```toml
+# packages/boards/nros-board-mps2-an385-freertos/nros-board.toml   (A)
+[[board]]
+names = ["freertos", "mps2-an385-freertos"]
+platform = "freertos"; target = "thumbv7m-none-eabi"; arch = "cortex-m3"
+entry_kind = "board-run"          # the board crate owns main()
+net_stack  = "nanoros-owned"
+supported_netstacks = ["lwip", "freertos_plus_tcp"]     # the pairing domain
+[board.cmake]
+toolchain_file = "cmake/toolchain/arm-freertos-armcm3.cmake"   # must precede project()
+```
+```toml
+[deploy.freertos]                                          # (B)
+kind = "self"; board = "mps2-an385-freertos"; target = "thumbv7m-none-eabi"
+netstack     = "lwip"
+sdk.freertos = "{env:FREERTOS_DIR}"
+sdk.lwip     = "{env:LWIP_DIR}"
+config_files = { freertos = "boards/mps2/FreeRTOSConfig.h",
+                 lwip     = "boards/mps2/lwipopts.h" }
+```
+```toml
+# test-harness config                                       (C)
+[run.mps2-an385-freertos]
+emulator = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic …"
+```
+
+That last block is the `runner` **removed** from the descriptor. It is duplicated
+across `baremetal` and `freertos` today precisely because it describes the
+*machine*, not the board package.
+
+### 6.3 Vendored FreeRTOS — STM32Cube, the real user
+
+The board package is **theirs**, in their workspace, and holds no paths:
+
+```toml
+# my_ws/src/nucleo_h723zg/nros-board.toml                   (A — user-authored)
+[[board]]
+names = ["nucleo-h723zg"]
+platform = "freertos"; target = "thumbv7em-none-eabihf"; arch = "cortex-m7"
+entry_kind = "board-run"
+supported_netstacks = ["lwip"]
+[board.upload]
+mechanism = "st-link"             # HOW this board is programmed — a board fact
+```
+```toml
+[deploy.nucleo]                                            # (B)
+kind = "self"; board = "nucleo-h723zg"; target = "thumbv7em-none-eabihf"
+netstack = "lwip"
+sdk.cube = "{env:CUBE_PROJECT}"
+include_dirs = [
+  "{sdk.cube}/Middlewares/Third_Party/FreeRTOS/Source/include",
+  "{sdk.cube}/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F",
+  "{sdk.cube}/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2",
+  "{sdk.cube}/Middlewares/Third_Party/LwIP/src/include",
+  "{sdk.cube}/Core/Inc",
+]
+upload = { port = "/dev/ttyACM0" }      # instance params — a project fact
+```
+
+Three things this states that no derivation could: the port directory is
+`ARM_CM4F` **on a Cortex-M7** (ST's own examples do this); `Core/Inc` supplies
+*both* config headers because they are application files; and the CMSIS-RTOS
+directory is named **once**, so the two files both called `cmsis_os.h` cannot be
+resolved by accident of `-I` order.
+
+### 6.4 Zephyr — the RTOS owns everything
+
+```toml
+[[board]]                                                  # (A)
+names = ["zephyr"]; platform = "zephyr"
+entry_kind = "zephyr-staticlib"   # a west module, not main()
+net_stack  = "rtos-owned"         # zsock; nothing for us to choose
+```
+```toml
+[deploy.zephyr]                                            # (B)
+kind = "self"; board = "zephyr"
+zephyr_board = "qemu_cortex_m3"   # west's namespace, not ours
+```
+
+No `sdk.*`, no `config_files`, no `netstack`: Zephyr owns the stack and its
+Kconfig owns the knobs.
+
+### 6.5 NuttX — RTOS-owned, but we stage into its tree
+
+```toml
+[[board]]                                                  # (A)
+names = ["nuttx", "NuttX"]; platform = "nuttx"; target = "armv7a-nuttx-eabihf"
+entry_kind = "board-run"; link_kind = "nuttx-staging"      # we land on EXTRA_LIBS
+net_stack  = "rtos-owned"
+```
+```toml
+[deploy.nuttx]                                             # (B)
+kind = "self"; board = "nuttx"; target = "armv7a-nuttx-eabihf"
+sdk.nuttx      = "{env:NUTTX_DIR}"
+sdk.nuttx_apps = "{env:NUTTX_APPS_DIR}"
+```
+
+This is where today's `${workspace}/third-party/nuttx/libc` goes — it was always
+a site fact, which is why the withholding filter had to strip it.
+
+### 6.6 PX4 — the hookless case, and what the design must NOT promise
+
+```toml
+[[board]]                                                  # (A)
+names = ["px4-fmu-v6x"]; platform = "nuttx"
+entry_kind = "px4-module"; link_kind = "px4-external"
+net_stack  = "rtos-owned"
+```
+```toml
+[deploy.px4]                                               # (B)
+kind = "self"; board = "px4-fmu-v6x"
+px4.dir    = "{env:PX4_DIR}"
+px4.target = "px4_fmu-v6x_default"        # <vendor>_<model>_<label>
+```
+
+PX4's configuration namespace is **closed to out-of-tree code**: everything a
+board declares is Kconfig-selectable per label; nothing an external module
+provides is. So a `[deploy.*]` block **cannot** produce a `<label>.px4board`
+opt-in, and codegen must run *ahead* of the vendor tool (RFC-0003's hookless
+path), emitting module dirs into `$PX4_DIR/src/modules/`. Per-board selection
+would require being in-tree, as PX4 itself did for zenoh.
+
+### 6.7 ThreadX — one name, two integrations
+
+Today `threadx` is **two** descriptor entries with different `platform` and
+`entry_kind`. The revision makes that explicit rather than accidental:
+
+```toml
+[[board]]                                                  # (A) host simulator
+names = ["threadx-linux"]; platform = "threadx-linux"
+target = "x86_64-unknown-linux-gnu"; entry_kind = "hosted-main"
+
+[[board]]                                                  # (A) RISC-V target
+names = ["threadx-riscv64"]; platform = "threadx-riscv64"
+target = "riscv64gc-unknown-none-elf"; entry_kind = "board-run"
+supported_netstacks = ["netxduo"]
+```
+```toml
+[deploy.threadx_rv64]                                      # (B)
+kind = "self"; board = "threadx-riscv64"
+sdk.threadx = "{env:THREADX_DIR}"
+sdk.netxduo = "{env:NETXDUO_DIR}"
+config_files = { tx_user = "boards/rv64/tx_user.h",
+                 nx_user = "boards/rv64/nx_user.h" }
+```
+
+`config_files` is a **named map** because of this row: ThreadX needs
+`TX_USER_FILE` *and* `NX_USER_FILE`, and one `config_dir` cannot express it.
+
+### 6.8 ESP32 — IDF component
+
+```toml
+[[board]]                                                  # (A)
+names = ["esp32-qemu", "esp32", "esp32c3"]; platform = "esp32"
+target = "riscv32imc-unknown-none-elf"; entry_kind = "board-run"
+net_stack = "rtos-owned"          # esp_netif over IDF's lwIP fork
+```
+```toml
+[deploy.esp32]                                             # (B)
+kind = "self"; board = "esp32-qemu"
+idf.dir = "{env:IDF_PATH}"
+```
+
+No `config_files`: IDF **generates** `FreeRTOSConfig.h` and `lwipopts.h` from
+`sdkconfig`, so the site block must not pretend to own them.
+
+## 7. Build process
+
+### 5.1 Host build is CMake
+
+```
+ 1  host configure       user's project (CubeMX, NXP, IDF, Pico, plain CMake)
+ 2  import               add_subdirectory(nano-ros) — or the west/IDF/NuttX shell
+ 3  discover             nros ws providers → board pkg → platform + integration
+ 4  resolve              capabilities merged; required-vs-provided checked
+ 5  contribute           integration supplies include dirs / defines / targets
+ 6  select port          backend descriptor picks its sources from (rtos, netstack)
+ 7  compile              Rust staticlib  +  C shim  +  backend port
+                         ── all with the HOST's include dirs and defines ──
+ 8  link                 user links NanoRos::NanoRos
+```
+
+Steps 6–7 are the load-bearing ones. The backend's port sources and the C shim
+must see the host's config headers; that is the whole reason nano-ros cannot
+ship a prebuilt C half, and why the include dirs in §4.2 are the real contract.
+
+### 5.2 Host build is not CMake
+
+Steps 1–6 run under `nros emit`, step 7 happens inside the user's IDE project,
+step 8 is their linker settings. The generated `README-INTEGRATION.md` names
+their paths because it is rendered from their integration.
+
+### 5.3 What fails, and how
+
+* **A required capability nothing provides** → configure error naming the
+  capability, the platform that required it, and the integration that did not
+  supply it.
+* **A `(rtos, netstack)` pair the backend has no port for** → error listing the
+  pairs that backend does support. This is how "FreeRTOS+TCP is unreachable"
+  becomes a message instead of a silent mis-pairing.
+* **An include dir that does not exist** → checked at configure, named. The ST
+  case makes this essential: six paths, several of them submodules that may be
+  uninitialised.
+
+## 8. Configuration method
+
+RFC-0049's ladder is unchanged:
+
+```
+builtin  <  platform toml  <  board toml  <  env
+```
+
+Additions:
+
+* **Capabilities merge along the same ladder.** An integration asserts what the
+  host provides.
+* **A vendor build's own config may be a knob source.** ESP-IDF and NXP generate
+  their config headers from Kconfig; nano-ros already reads Zephyr's `.config`
+  via `kconfig_fallback_str`. An integration may name where the host's resolved
+  config lives, so knobs resolve from it instead of being restated. Optional,
+  and worth it only for the Kconfig-based SDKs.
+
+Two rules taken from ESP-IDF's documented mistakes:
+
+* **Config visibility is not build membership** — "a `CONFIG_*` option being set
+  does not mean the component that defines it is part of the build". Separate
+  predicates, separately named.
+* **Record provenance on override.** IDF keeps a documented total order
+  (`COMPONENT_SOURCE`) *and* `COMPONENT_OVERRIDEN_DIR` so the winner can reach
+  the loser. That is stronger than phase-348 W5's "warn with both paths" and
+  should replace it.
+
+## 9. What changes in-tree
+
+1. `config/freertos-lwip/` → `config/freertos/`, with
+   `names = ["freertos", "freertos-lwip"]`.
+2. The six lwIP-specific lines move into the zenoh backend descriptor as a
+   `(rtos, netstack)` port row; `freertos_plus_tcp` gains a row and becomes
+   reachable.
+3. `[build.zenoh]` leaves every platform file. Platforms keep `[capabilities]`,
+   `[arch.*]`, `compile`, `required_env`.
+4. `nros_freertos_build_kernel()` and `nros_freertos_build_lwip()` are retired;
+   the mps2 fixture adopts upstream's `CMakeLists.txt`.
+5. `FREERTOS_PORT` stops being ours. Upstream owns that name and takes an enum
+   (`GCC_ARM_CM3`); we currently take a path fragment (`GCC/ARM_CM3`) under the
+   same name, which fails confusingly for anyone arriving from upstream docs.
+6. A `freertos` integration shell joins the other three, so the FreeRTOS row
+   stops being the exception.
+
+## 10. Maintainability
+
+**Vendor knowledge lives in the user's workspace.** We ship descriptors only for
+what we test, and never chase six config conventions across five SDK release
+trains. NXP alone pins FreeRTOS across two west repos joined by a hard-coded
+sibling path — not something we could track, and under this design we never try.
+
+What nano-ros owns shrinks to: the capability vocabulary, the integration
+shells, the backend port tables, and its own code.
+
+## 11. Open questions
+
+1. **Capability vocabulary.** `threads`, `sockets_bsd`, `select`,
+   `per_fd_tx_ceiling` exist informally. Needs one authoritative list plus a
+   gate that every declared capability is consumed by something.
+2. **`generic` platform dir** — nothing inherits from it and `inherits` is unset
+   in all seven files. Delete or document.
+3. **`esp32` has no platform config** at all, so it declares no requirements.
+4. **Prebuilt Rust staticlib distribution** (§4.3) needs a triple × feature
+   matrix decision; out of scope here.
+5. **Does `board.integration` stay inline?** One file is better UX; a shared
+   `stm32cube-h7` integration reused across boards argues for factoring it into
+   its own discovered provider package. Inline first, factor when a second board
+   needs it.
+
+## 12. Prerequisites
+
+Both are RESOLVED (2026-08-13), so this work inherits neither.
+
+* **`FREERTOS_PORT`'s two vocabularies** (§7.5) —
+  [issue 0530](../issues/archived/0530-freertos-port-two-vocabularies.md). The
+  builder now accepts upstream's enum as well as our path fragment, so §7.5's
+  migration to upstream's `CMakeLists.txt` changes nothing for anyone already
+  writing `GCC_ARM_CM3`.
+* **Zephyr unselectable by the zpico resolver** —
+  [issue 0529](../issues/0529-zephyr-platform-knobs-never-resolve.md). The
+  resolver gap was real and is fixed.
+
+  **The severity asserted in this section's first draft was wrong.** It claimed
+  `config/zephyr/nros-platform.toml`'s `[knobs.zenoh.tx] batch = true` — the
+  phase-290 promotion measured at 15–20× streaming — never applies. It does
+  apply: the C lane gets it from `zephyr/Kconfig` defaults forwarded by
+  `nros_rmw_zenoh.cmake`, and there is no ABI split either, because
+  `build_c_shim` is skipped on Zephyr and `rust_consts()` never emits
+  `tx_batch`. The real defect was two sources for one fact agreeing only by
+  coincidence, now compared by `check-zephyr-knob-agreement`.
+## Appendix A — the earlier framing, and why it changed
+
+Kept rather than deleted: two drafts of this RFC reached conclusions the survey
+later corrected, and the corrections are the useful part.
+
+**Draft 1 led with three integration modes** (`extern` / `adopt` / `build`),
+treating "nano-ros compiles the RTOS" as one option among three. That is
+over-modelled — it is the anomaly to delete, not a supported mode. §1 replaced
+it with the principle.
+
+**Draft 2 put `[board.integration]` in the board descriptor.** Every field in it
+(`rtos`, `netstack`, `include_dirs`, `defines`) is site configuration, so it
+belonged in the project, not the board package. §5 relocates it to
+`[deploy.<name>]`.
+
+**Draft 2 also proposed a `netstack` provider kind with selection.** The survey
+found no vendor leaves the stack selectable — NXP's lwIP fork *contains* the
+ethernetif drivers — and that NetX Duo ships a smaller port table than ThreadX,
+so pairings have a validity domain rather than being a free choice. §4 replaces
+selection with a `supported_netstacks` declaration the resolver checks.
+
+**Draft 3 nearly invented `nros-site.toml`** beside `[deploy.<name>]`, which
+already existed with 59 blocks in the tree.
+
+The superseded section bodies follow, for anyone tracing why a decision moved.
+
+### A.1 — superseded "Overall design" (draft 2)
+
 
 ### 3.1 Four things, each owning one fact
 
@@ -416,7 +764,8 @@ a selector to select. Capabilities give the decoupling. A selection mechanism
 can wait for a genuine second stack on one RTOS — declaring the second tenant
 before the first asks is the mistake the `[knobs.*]` deferral avoided.
 
-## 4. User workflow
+### A.2 — superseded worked examples (draft 2)
+
 
 ### 4.1 The user already has an RTOS project
 
@@ -537,90 +886,8 @@ config_target = "freertos_config"    # we define it; it carries FreeRTOSConfig.h
 The shipped FreeRTOS is an example, in the same sense that the nano-ros tree is
 merely search root 0 in phase-348. Nothing in the product depends on it.
 
-## 5. Build process
+### A.3 — superseded UX summary (draft 2)
 
-### 5.1 Host build is CMake
-
-```
- 1  host configure       user's project (CubeMX, NXP, IDF, Pico, plain CMake)
- 2  import               add_subdirectory(nano-ros) — or the west/IDF/NuttX shell
- 3  discover             nros ws providers → board pkg → platform + integration
- 4  resolve              capabilities merged; required-vs-provided checked
- 5  contribute           integration supplies include dirs / defines / targets
- 6  select port          backend descriptor picks its sources from (rtos, netstack)
- 7  compile              Rust staticlib  +  C shim  +  backend port
-                         ── all with the HOST's include dirs and defines ──
- 8  link                 user links NanoRos::NanoRos
-```
-
-Steps 6–7 are the load-bearing ones. The backend's port sources and the C shim
-must see the host's config headers; that is the whole reason nano-ros cannot
-ship a prebuilt C half, and why the include dirs in §4.2 are the real contract.
-
-### 5.2 Host build is not CMake
-
-Steps 1–6 run under `nros emit`, step 7 happens inside the user's IDE project,
-step 8 is their linker settings. The generated `README-INTEGRATION.md` names
-their paths because it is rendered from their integration.
-
-### 5.3 What fails, and how
-
-* **A required capability nothing provides** → configure error naming the
-  capability, the platform that required it, and the integration that did not
-  supply it.
-* **A `(rtos, netstack)` pair the backend has no port for** → error listing the
-  pairs that backend does support. This is how "FreeRTOS+TCP is unreachable"
-  becomes a message instead of a silent mis-pairing.
-* **An include dir that does not exist** → checked at configure, named. The ST
-  case makes this essential: six paths, several of them submodules that may be
-  uninitialised.
-
-## 6. Configuration method
-
-RFC-0049's ladder is unchanged:
-
-```
-builtin  <  platform toml  <  board toml  <  env
-```
-
-Additions:
-
-* **Capabilities merge along the same ladder.** An integration asserts what the
-  host provides.
-* **A vendor build's own config may be a knob source.** ESP-IDF and NXP generate
-  their config headers from Kconfig; nano-ros already reads Zephyr's `.config`
-  via `kconfig_fallback_str`. An integration may name where the host's resolved
-  config lives, so knobs resolve from it instead of being restated. Optional,
-  and worth it only for the Kconfig-based SDKs.
-
-Two rules taken from ESP-IDF's documented mistakes:
-
-* **Config visibility is not build membership** — "a `CONFIG_*` option being set
-  does not mean the component that defines it is part of the build". Separate
-  predicates, separately named.
-* **Record provenance on override.** IDF keeps a documented total order
-  (`COMPONENT_SOURCE`) *and* `COMPONENT_OVERRIDEN_DIR` so the winner can reach
-  the loser. That is stronger than phase-348 W5's "warn with both paths" and
-  should replace it.
-
-## 7. What changes in-tree
-
-1. `config/freertos-lwip/` → `config/freertos/`, with
-   `names = ["freertos", "freertos-lwip"]`.
-2. The six lwIP-specific lines move into the zenoh backend descriptor as a
-   `(rtos, netstack)` port row; `freertos_plus_tcp` gains a row and becomes
-   reachable.
-3. `[build.zenoh]` leaves every platform file. Platforms keep `[capabilities]`,
-   `[arch.*]`, `compile`, `required_env`.
-4. `nros_freertos_build_kernel()` and `nros_freertos_build_lwip()` are retired;
-   the mps2 fixture adopts upstream's `CMakeLists.txt`.
-5. `FREERTOS_PORT` stops being ours. Upstream owns that name and takes an enum
-   (`GCC_ARM_CM3`); we currently take a path fragment (`GCC/ARM_CM3`) under the
-   same name, which fails confusingly for anyone arriving from upstream docs.
-6. A `freertos` integration shell joins the other three, so the FreeRTOS row
-   stops being the exception.
-
-## 8. UX summary
 
 | profile | what they write |
 | --- | --- |
@@ -635,49 +902,3 @@ The mitigation is a scaffolder, not documentation — `nros init --from-cube
 reading `prj.conf`. Both are mechanical; the information is already in those
 files.
 
-## 9. Maintainability
-
-**Vendor knowledge lives in the user's workspace.** We ship descriptors only for
-what we test, and never chase six config conventions across five SDK release
-trains. NXP alone pins FreeRTOS across two west repos joined by a hard-coded
-sibling path — not something we could track, and under this design we never try.
-
-What nano-ros owns shrinks to: the capability vocabulary, the integration
-shells, the backend port tables, and its own code.
-
-## 10. Open questions
-
-1. **Capability vocabulary.** `threads`, `sockets_bsd`, `select`,
-   `per_fd_tx_ceiling` exist informally. Needs one authoritative list plus a
-   gate that every declared capability is consumed by something.
-2. **`generic` platform dir** — nothing inherits from it and `inherits` is unset
-   in all seven files. Delete or document.
-3. **`esp32` has no platform config** at all, so it declares no requirements.
-4. **Prebuilt Rust staticlib distribution** (§4.3) needs a triple × feature
-   matrix decision; out of scope here.
-5. **Does `board.integration` stay inline?** One file is better UX; a shared
-   `stm32cube-h7` integration reused across boards argues for factoring it into
-   its own discovered provider package. Inline first, factor when a second board
-   needs it.
-
-## 11. Prerequisites
-
-Both are RESOLVED (2026-08-13), so this work inherits neither.
-
-* **`FREERTOS_PORT`'s two vocabularies** (§7.5) —
-  [issue 0530](../issues/archived/0530-freertos-port-two-vocabularies.md). The
-  builder now accepts upstream's enum as well as our path fragment, so §7.5's
-  migration to upstream's `CMakeLists.txt` changes nothing for anyone already
-  writing `GCC_ARM_CM3`.
-* **Zephyr unselectable by the zpico resolver** —
-  [issue 0529](../issues/0529-zephyr-platform-knobs-never-resolve.md). The
-  resolver gap was real and is fixed.
-
-  **The severity asserted in this section's first draft was wrong.** It claimed
-  `config/zephyr/nros-platform.toml`'s `[knobs.zenoh.tx] batch = true` — the
-  phase-290 promotion measured at 15–20× streaming — never applies. It does
-  apply: the C lane gets it from `zephyr/Kconfig` defaults forwarded by
-  `nros_rmw_zenoh.cmake`, and there is no ABI split either, because
-  `build_c_shim` is skipped on Zephyr and `rust_consts()` never emits
-  `tx_batch`. The real defect was two sources for one fact agreeing only by
-  coincidence, now compared by `check-zephyr-knob-agreement`.
