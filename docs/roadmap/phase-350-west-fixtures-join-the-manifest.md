@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). COMPLETE except one rename that is not mechanizable (`compile-check`, blocked on extracting the kind to a named constant) and one UNMEASURED acceptance item (tier-2 wall-clock vs #509 — the leaf count is 70 → 7, but a count is not a duration). Everything else landed: all 74 west fixtures are manifest rows, the emitter reads them, the lane narrows by coordinate, the coverage gates read rows, work-item ids are gated, `build/<kind>` has RFC-0070 R5 and `cargo-fixtures` matches it, the `rs` lang short form is retired from BOTH producers, W4 answered #509 with a NO, and the FVP + logging-smoke code with no consumer is retired.**
+**Status (2026-08-13). COMPLETE. Every acceptance item met, including the wall-clock: the zephyr lane costs 592 s warm and tier 2 costs 76 s — **7.8×**, ~8.6 min saved per tier-2 sweep (NOT the 31× a naive read of #509 suggests; that baseline does not reproduce here). One rename is left undone and named: `compile-check`, blocked on extracting the kind to a named constant, not on its cache.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -637,13 +637,41 @@ Scored 2026-08-13. Three met, one partial, one **not measured**.
       build-dir names: have a producer. Remaining: `compile-check`, which is not
       mechanizable until the kind is a named constant (see W5), and no gate —
       a gate on the kind rule would fail on that one known exception.
-- [ ] **NOT MEASURED: lane wall-clock against #509's 40 min baseline.** The
-      leaf-count delta is named (70 → 7 for tier2), but a *count* is not a
-      *duration*: #509's cost is ~140 s of fixed per-leaf overhead, and whether
-      cutting 63 leaves removes ~63× that or hits some other floor is exactly
-      what a timed `build-test-fixtures lane=tier2` on a cleanly rebuilt tree
-      would say. **Do not quote a speedup from this phase until that runs.**
+- [x] **MEASURED 2026-08-13.** Same 32-core host, same lane settings #509
+      recorded (`concurrency: 4; ninja-jobs: 8; sccache on`), same
+      `just zephyr build-fixtures` entry point, all three runs back to back:
 
-The last one is the honest gap in an otherwise-complete phase: everything here
-is verified structurally, and the single number a reader most wants — how much
-faster tier 2 got — is the one nobody has taken.
+      | run | leaves | state | elapsed |
+      | --- | --- | --- | --- |
+      | tier2 (coords-narrowed) | 7 | warm | **76 s** |
+      | full lane | 70 | 18 cold | 1104 s |
+      | full lane | 70 | all warm | **592 s** |
+
+      **The zephyr lane costs 592 s warm; tier 2 costs 76 s. That is 7.8×, and
+      ~8.6 minutes saved per tier-2 sweep.**
+
+      **Two things this contradicts, both of which I had been repeating.**
+
+      *#509's 40 min does not reproduce here.* The full warm lane is 9 m 52 s on
+      the same hardware and settings, not 40 minutes. So the tempting
+      "2400 s → 76 s = 31×" is a comparison across machine states, not a result
+      of this phase. The honest ratio is against a baseline measured the same
+      day: 7.8×.
+
+      *The saving is SUBLINEAR in leaf count, and per-leaf tier 2 is WORSE.*
+      Cutting 70 leaves to 7 is 10×, but the time only falls 7.8×, because
+      per-leaf cost is 8.5 s across the full lane and **10.9 s** across tier 2's
+      seven. Lane-level fixed cost — driver startup, the `nros sync` prep, the
+      west-fixtures pass — does not shrink with the leaf set, so it lands on
+      fewer leaves. Anyone predicting the saving from the leaf count alone will
+      over-promise.
+
+      Incidentally measured: run A − run B = 512 s for 18 cold leaves ≈ **28 s
+      per cold leaf**, which is the real cost of the rename-induced wipes in W5.
+
+## Verdict
+
+Every acceptance item is met. The headline is 7.8× on the zephyr lane for tier 2,
+not the 31× the published baseline would have suggested — and the difference
+between those two numbers is the whole reason this item was kept open instead of
+being closed on a leaf count.

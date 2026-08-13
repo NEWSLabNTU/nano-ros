@@ -481,6 +481,15 @@ platform (`zephyr (solo)`), so those 40 min are serial addition. The knob that w
 CONCURRENCY, not `ninja-jobs` (8 threads cannot speed up 18 edges) — and that is capped by #0086's rustup
 staging collision, so raising it needs that guard re-checked. Empty `build/zephyr-ccache` is a red
 herring: the leaves pass `USE_CCACHE=0` and use sccache instead. See `0509-*`. (2026-08-10)
+
+**Re-measured 2026-08-13 (phase-350):** a fully warm lane is **592 s (9 m 52 s)**, not 40 min — the
+original figure was taken MID-SWEEP with seven other families competing, so it should not be quoted as the
+lane's standalone cost. The narrowing this issue asked for now exists (phase-350 W1.b): tier 2 builds 7
+leaves instead of 70, **7.8×**, not the 10× the leaf count implies — per-leaf is 8.5 s over the full lane
+vs 10.9 s over tier 2's seven, because lane-level fixed cost does not shrink with the leaf set. That
+CONFIRMS this issue's core claim from the other direction. Its closing question ("can the cover retire
+some leaves?") is answered NO in W4: the 26 leaves no lane selects sit on coordinates with Runtime cells.
+
 **#507** (rmw, open 2026-08-10) — the cyclonedds fork carries TWO nano-ros-only lock changes
 upstream lacks: striped addrset locks (`942dda3c`) and the Zephyr-native ddsrt sync backend
 (`a09babf3`). Upstream `5e82de60` still has the per-addrset mutex and no Zephyr backend, so this

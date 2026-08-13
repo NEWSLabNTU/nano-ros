@@ -77,3 +77,36 @@ holds at the higher count.
 
 Not filed as a regression — no evidence this ever ran faster. It is a standing
 tax on every full sweep, measured here for the first time.
+
+## Re-measured 2026-08-13 (phase-350) — the 40 min does not reproduce; the lane is 592 s warm
+
+Same 32-core host, same settings this issue recorded (`concurrency: 4;
+ninja-jobs: 8; sccache on`), same `just zephyr build-fixtures`:
+
+| run | leaves | state | elapsed |
+| --- | --- | --- | --- |
+| full lane | 70 | all warm | **592 s** (9 m 52 s) |
+| full lane | 70 | 18 cold | 1104 s |
+| tier 2, coordinate-narrowed | 7 | warm | **76 s** |
+
+**A fully warm lane is 9 m 52 s, not 40 min.** This does not overturn the
+measurement above — that one was taken MID-SWEEP during `lane=all`, with seven
+other platform families competing for the box, and this issue's own point is
+that the cost is fixed per-leaf overhead rather than compilation. Contention
+plausibly accounts for the rest. But the 40 min should not be quoted as the
+lane's standalone cost, and anything built on it (including a "31× faster"
+reading of phase-350's narrowing) is comparing across machine states.
+
+**The narrowing this issue asked for now exists**, via phase-350 W1.b: the lane
+honours `NROS_FIXTURE_COORDS`, so tier 2 builds 7 leaves instead of 70. Measured
+7.8×, not the 10× the leaf count implies — per-leaf cost is 8.5 s over the full
+lane and 10.9 s over tier 2's seven, because lane-level fixed cost (driver
+startup, `nros sync` prep, the west-fixtures pass) does not shrink with the leaf
+set. **This issue's core claim is thereby confirmed from the other direction:**
+fixed overhead dominates, so removing leaves buys less than proportional time.
+
+Its closing question — "can the coordinate cover retire some leaves?" — is
+answered NO in phase-350 W4: all 26 leaves no lane selects sit on coordinates
+carrying Runtime cells, so they are outside the pairwise sample, not redundant.
+
+Also measured, from the two full runs: **~28 s per cold leaf** (512 s for 18).
