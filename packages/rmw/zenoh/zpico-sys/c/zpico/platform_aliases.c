@@ -337,24 +337,24 @@ int8_t _z_condvar_wait_until(void *cv, void *m, const uint64_t *abstime_ms) {
  * ----------------------------------------------------------------------- */
 
 uint64_t z_clock_now(void) {
-    return nros_platform_clock_ms();
+    return (nros_platform_clock_ns() / 1000000ULL);
 }
 
 unsigned long z_clock_elapsed_us(const uint64_t *clock) {
     if (clock == NULL) return 0;
-    uint64_t now = nros_platform_clock_ms();
+    uint64_t now = (nros_platform_clock_ns() / 1000000ULL);
     return (unsigned long) ((now - *clock) * 1000ULL);
 }
 
 unsigned long z_clock_elapsed_ms(const uint64_t *clock) {
     if (clock == NULL) return 0;
-    uint64_t now = nros_platform_clock_ms();
+    uint64_t now = (nros_platform_clock_ns() / 1000000ULL);
     return (unsigned long) (now - *clock);
 }
 
 unsigned long z_clock_elapsed_s(const uint64_t *clock) {
     if (clock == NULL) return 0;
-    uint64_t now = nros_platform_clock_ms();
+    uint64_t now = (nros_platform_clock_ns() / 1000000ULL);
     return (unsigned long) ((now - *clock) / 1000ULL);
 }
 

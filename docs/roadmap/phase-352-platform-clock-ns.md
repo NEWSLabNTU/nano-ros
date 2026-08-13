@@ -1,6 +1,6 @@
 # Phase 352 — Platform clock: one nanosecond symbol, plus the resolution nobody could ask for
 
-**Status (2026-08-13). W1–W5 LANDED.**
+**Status (2026-08-13). COMPLETE — W1–W6 LANDED.**
 
 **Implements:** [RFC-0073](../design/0073-platform-clock-nanoseconds-and-resolution.md).
 
@@ -83,10 +83,30 @@ mps2-an385 QEMU lane runs the 3-phase demo with cadence unchanged.
 
 ---
 
-## W6 — Retire the legacy symbols — **OPEN**
+## W6 — Retire the legacy symbols — **LANDED**
 
-Deliberately not part of the landing change. `NROS_PLATFORM_LEGACY_CLOCK_UNITS`
-exists so an out-of-tree port that still *defines* `clock_ms`/`clock_us` keeps
-working for one release; W6 deletes the escape hatch and the macro after that
-window. In-tree there is nothing left to retire — no port defines the old
-symbols as of W2/W3.
+- [x] The `static inline` wrappers and `NROS_PLATFORM_LEGACY_CLOCK_UNITS` are
+      gone from `<nros/platform.h>`. `nros_platform_clock_ms` and
+      `nros_platform_clock_us` no longer exist in any form.
+- [x] The Rust trait's provided `clock_ms`/`clock_us` conveniences go with
+      them — `PlatformClock` is now exactly the two methods the ABI requires.
+- [x] 30 call sites across 13 C/C++ files divide `clock_ns()` themselves.
+- [x] `nros-cpp`'s no_std clock stopped scaling microseconds up by 1000 (the
+      extra zeros were never real precision) and reads `clock_ns` directly.
+- [x] **`nros new-platform`'s scaffold** emitted `clock_us`/`clock_ms` for
+      every newly scaffolded port — it now emits `clock_ns` +
+      `clock_resolution_ns`, so a new port is born on the current ABI rather
+      than on one that was retired before it was written.
+
+*Acceptance, met:* both gates pass (`check-platform-abi-mirror`,
+`check-retired-platform-clock-symbols` over 576 tracked sources), core crate
+tests pass (nros-node 261, nros-platform-cffi 2 + 11 port conformance,
+nros-log 40, nros 8), and the FreeRTOS mps2-an385 QEMU lane runs the 3-phase
+demo unchanged — ctrl 10.000 ms, steer 32.999, wd 100.024 against their
+declarations, chain at its 29.5% ceiling, 95 emergency gate ticks through the
+outage.
+
+Not covered by this repo's checkout: the XRCE lane, whose
+`micro-xrce-dds-client` submodule is not initialised here, so
+`cargo build --workspace` stops at its build script. Its clock call sites were
+converted with the rest and the retired-symbol gate covers its sources.

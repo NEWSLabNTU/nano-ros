@@ -278,7 +278,7 @@ void nros_zephyr_irq_unlock(unsigned int key) {
 
 /* phase-243 — the nros_platform_time_ns / sleep_ns exported wrappers are retired.
  * nros-c's no_std path (platform-zephyr) now uses the canonical
- * nros_platform_clock_us() / sleep_us() (nros-platform-zephyr provides them), so
+ * (nros_platform_clock_ns() / 1000ULL) / sleep_us() (nros-platform-zephyr provides them), so
  * no Rust caller needs the ns symbols here anymore. */
 
 /* ── Phase 97.4.zephyr-native_sim debug printk shims ─────────────────

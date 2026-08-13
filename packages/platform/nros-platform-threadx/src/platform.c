@@ -460,7 +460,7 @@ int8_t nros_platform_condvar_wait(void *cv, void *m) {
 
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
     if (cv == NULL || m == NULL) return -1;
-    uint64_t now = nros_platform_clock_ms();
+    uint64_t now = (nros_platform_clock_ns() / 1000000ULL);
     ULONG timeout_ticks = abstime_ms > now
         ? (ULONG) ((abstime_ms - now) * TX_TIMER_TICKS_PER_SECOND / 1000U)
         : 0;

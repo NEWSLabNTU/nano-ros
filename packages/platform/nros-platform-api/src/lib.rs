@@ -83,16 +83,6 @@ pub trait PlatformClock {
     /// non-zero difference two successive reads can report. Non-zero,
     /// and constant after platform init.
     fn clock_resolution_ns() -> u64;
-
-    /// Monotonic microseconds. Derived; ports do not override.
-    fn clock_us() -> u64 {
-        Self::clock_ns() / 1_000
-    }
-
-    /// Monotonic milliseconds. Derived; ports do not override.
-    fn clock_ms() -> u64 {
-        Self::clock_ns() / 1_000_000
-    }
 }
 
 // ============================================================================

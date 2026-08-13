@@ -37,9 +37,9 @@ int main(void) {
     printk("nros-platform-zephyr-c smoke begin\n");
 
     /* Clock */
-    uint64_t t0 = nros_platform_clock_ms();
+    uint64_t t0 = (nros_platform_clock_ns() / 1000000ULL);
     nros_platform_sleep_ms(50);
-    uint64_t t1 = nros_platform_clock_ms();
+    uint64_t t1 = (nros_platform_clock_ns() / 1000000ULL);
     printk("  clock_ms: %" PRIu64 " -> %" PRIu64 "\n", t0, t1);
     CHECK(t1 >= t0 + 30, "clock_ms did not advance");
 

@@ -618,7 +618,7 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     if (cv == NULL || m == NULL) return -1;
     nros_freertos_condvar_t *c = (nros_freertos_condvar_t *) cv;
 
-    uint64_t now = nros_platform_clock_ms();
+    uint64_t now = (nros_platform_clock_ns() / 1000000ULL);
     uint32_t rel_ms = abstime_ms > now ? (uint32_t) (abstime_ms - now) : 0;
 
     xSemaphoreTake((SemaphoreHandle_t) c->mutex, portMAX_DELAY);

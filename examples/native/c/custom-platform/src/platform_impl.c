@@ -412,7 +412,7 @@ int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime) {
     /* `abstime` is a monotonic deadline in milliseconds. Convert to a
      * relative delay and re-anchor against CLOCK_REALTIME (what
      * pthread_cond_timedwait uses by default). */
-    uint64_t now_ms = nros_platform_clock_ms();
+    uint64_t now_ms = (nros_platform_clock_ns() / 1000000ULL);
     uint64_t rel_ms = abstime > now_ms ? abstime - now_ms : 0;
 
     struct timespec deadline;

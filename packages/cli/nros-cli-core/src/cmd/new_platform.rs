@@ -72,7 +72,7 @@ description = "nano-ros platform layer for {name}: clock, sleep, net shims"
 //! A platform crate owns the software-stack primitives every nano-ros
 //! component above it consumes:
 //!
-//! - `clock`  — a monotonic `clock_us()/clock_ms()` source
+//! - `clock`  — a monotonic `clock_ns()` source + its resolution
 //! - `sleep`  — `sleep_ms()` (+ optional idle-yield hook installation)
 //! - net shims — the `nros_platform_*` socket ABI, or a zenoh-pico
 //!   system-layer under `[build.zenoh]` in `nros-platform.toml`
@@ -83,20 +83,26 @@ description = "nano-ros platform layer for {name}: clock, sleep, net shims"
 #![no_std]
 
 pub mod clock {{
-    /// Monotonic microseconds since boot. TODO: wire to the {name} timer.
-    pub fn clock_us() -> u64 {{
+    /// Monotonic nanoseconds since boot. TODO: wire to the {name} timer.
+    ///
+    /// RFC-0073: nanoseconds is the ABI's unit. Where the counter
+    /// frequency divides 1e9 the conversion is a compile-time multiply —
+    /// prefer that over a runtime division.
+    pub fn clock_ns() -> u64 {{
         todo!("port: monotonic clock for {name}")
     }}
 
-    /// Monotonic milliseconds since boot.
-    pub fn clock_ms() -> u64 {{
-        clock_us() / 1_000
+    /// Smallest non-zero difference [`clock_ns`] can report. Non-zero:
+    /// state the tick or cycle step honestly rather than implying the
+    /// unit's precision.
+    pub fn clock_resolution_ns() -> u64 {{
+        todo!("port: clock resolution for {name}")
     }}
 }}
 
 pub mod sleep {{
     /// Sleep for `ms` milliseconds. TODO: wire to the {name} scheduler
-    /// (or a busy-wait against `clock::clock_ms` on a bare-metal port).
+    /// (or a busy-wait against `clock::clock_ns` on a bare-metal port).
     pub fn sleep_ms(ms: u32) {{
         let _ = ms;
         todo!("port: sleep for {name}")

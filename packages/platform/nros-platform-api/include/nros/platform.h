@@ -139,19 +139,13 @@ uint64_t nros_platform_clock_ns(void);
  *  honestly offer. */
 uint64_t nros_platform_clock_resolution_ns(void);
 
-/* Unit conversions (RFC-0073). Header-only: no port implements these, and
- * the ABI mirror gate skips `static inline` by design. An out-of-tree port
- * still DEFINING the old symbols sets NROS_PLATFORM_LEGACY_CLOCK_UNITS to
- * suppress the wrappers for one deprecation window. */
-#ifndef NROS_PLATFORM_LEGACY_CLOCK_UNITS
-static inline uint64_t nros_platform_clock_us(void) {
-    return nros_platform_clock_ns() / 1000u;
-}
-
-static inline uint64_t nros_platform_clock_ms(void) {
-    return nros_platform_clock_ns() / 1000000u;
-}
-#endif
+/* RFC-0073 / phase-352 W6 — `nros_platform_clock_ms` and
+ * `nros_platform_clock_us` are RETIRED. They were kept for one release as
+ * `static inline` wrappers behind NROS_PLATFORM_LEGACY_CLOCK_UNITS; both
+ * the wrappers and the escape hatch are now gone. Callers divide
+ * `nros_platform_clock_ns()` themselves — and a caller that hand-declares
+ * either retired name is caught by
+ * `scripts/check-retired-platform-clock-symbols.py` (issue #555). */
 
 /* ---- Allocation ---- */
 

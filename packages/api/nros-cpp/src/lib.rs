@@ -2559,11 +2559,10 @@ pub extern "C" fn nros_cpp_time_ns() -> u64 {
     }
     #[cfg(not(feature = "std"))]
     {
-        // phase-243: the canonical platform µs clock, ns-scaled — for every no_std
-        // platform incl. Zephyr (was a Zephyr-only `nros_platform_time_ns` extern,
-        // an A-only symbol now retired).
-        <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_us()
-            .saturating_mul(1_000)
+        // RFC-0073 / phase-352: the platform clock IS nanoseconds now, so
+        // this stopped scaling microseconds up (phase-243 had to, and the
+        // extra zeros were never real precision).
+        <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_ns()
     }
 }
 

@@ -1484,7 +1484,7 @@ mod test_self_export {
     fn macro_expansion_dispatches() {
         // Touch every group through the FFI surface to confirm the
         // generated symbols are reachable and dispatch resolves.
-        assert_eq!(super::CffiPlatform::clock_ms(), 0);
+        assert_eq!(super::CffiPlatform::clock_ns(), 0);
         assert_eq!(
             <super::CffiPlatform as ::nros_platform_api::PlatformAlloc>::alloc(0),
             core::ptr::null_mut(),

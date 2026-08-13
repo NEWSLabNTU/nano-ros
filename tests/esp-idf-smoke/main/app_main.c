@@ -31,9 +31,9 @@ void app_main(void) {
     ESP_LOGI(TAG, "nros-platform-esp-idf-c smoke test");
 
     /* Clock */
-    uint64_t t0 = nros_platform_clock_ms();
+    uint64_t t0 = (nros_platform_clock_ns() / 1000000ULL);
     vTaskDelay(pdMS_TO_TICKS(50));
-    uint64_t t1 = nros_platform_clock_ms();
+    uint64_t t1 = (nros_platform_clock_ns() / 1000000ULL);
     ESP_LOGI(TAG, "clock_ms: %" PRIu64 " -> %" PRIu64 " (delta=%" PRIu64 ")",
              t0, t1, t1 - t0);
     if (t1 < t0 + 20) {

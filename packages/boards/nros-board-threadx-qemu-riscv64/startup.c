@@ -36,7 +36,7 @@ void *memmove(void *d, const void *s, __SIZE_TYPE__ n) {
 
 /* phase-243 — the legacy nros-c platform stubs (time_ns/sleep_ns + atomic-bool)
  * this TU carried are retired. nros-c's no_std path now uses the canonical ABI:
- * nros_platform_clock_us()/sleep_us() (provided by the linked nros-platform-threadx
+ * (nros_platform_clock_ns() / 1000ULL)/sleep_us() (provided by the linked nros-platform-threadx
  * port) + core::sync::atomic. No example references the old symbols anymore. */
 
 /* ---- UART output for printf ---- */

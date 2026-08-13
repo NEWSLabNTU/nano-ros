@@ -27,6 +27,9 @@
 //
 //     internal.hpp:63: undefined reference to `nros_platform_clock_ms'
 //
+// (W6 has since retired the shim outright, so the name is gone entirely and
+// the call here divides `clock_ns` itself.)
+//
 // All three symbols are declared in `nros/platform.h`, so none of the hand
 // copies were load-bearing; they only made the file able to disagree with the
 // header. RFC-0054's rule is that the C header IS the SSoT for this ABI, and
@@ -77,9 +80,9 @@ inline uint64_t platform_now_ms() {
 #if defined(NROS_PLATFORM_FREERTOS)
     return static_cast<uint64_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS;
 #elif defined(NROS_PLATFORM_ZEPHYR) || defined(__ZEPHYR__)
-    return nros_platform_clock_ms();
+    return (nros_platform_clock_ns() / 1000000ULL);
 #elif defined(NROS_PLATFORM_THREADX)
-    return nros_platform_clock_ms();
+    return (nros_platform_clock_ns() / 1000000ULL);
 #else
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     return static_cast<uint64_t>(

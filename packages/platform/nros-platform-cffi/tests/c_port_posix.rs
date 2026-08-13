@@ -36,12 +36,14 @@ use nros_platform_api::{
 use nros_platform_cffi::CffiPlatform;
 
 #[test]
-fn clock_ms_is_monotonic() {
-    let t0 = CffiPlatform::clock_ms();
+fn clock_advances_across_a_five_ms_sleep() {
+    // phase-352 W6 retired `clock_ms`; the millisecond domain is now the
+    // caller's own division.
+    let t0 = CffiPlatform::clock_ns() / 1_000_000;
     std::thread::sleep(Duration::from_millis(5));
-    let t1 = CffiPlatform::clock_ms();
+    let t1 = CffiPlatform::clock_ns() / 1_000_000;
     assert!(t1 >= t0);
-    assert!(t1 - t0 >= 4, "clock_ms must advance at least ~5ms");
+    assert!(t1 - t0 >= 4, "the clock must advance at least ~5ms");
 }
 
 /// RFC-0073 conformance 1/3 — the clock never goes backwards.

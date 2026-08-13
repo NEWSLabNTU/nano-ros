@@ -400,7 +400,7 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
      * (monotonic). pthread_cond_timedwait uses CLOCK_REALTIME by
      * default; we convert the monotonic deadline into a relative
      * delay and re-anchor against REALTIME. */
-    uint64_t now_mono_ms = nros_platform_clock_ms();
+    uint64_t now_mono_ms = (nros_platform_clock_ns() / 1000000ULL);
     uint64_t rel_ms = abstime_ms > now_mono_ms ? abstime_ms - now_mono_ms : 0;
 
     struct timespec realtime;
