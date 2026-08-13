@@ -51,6 +51,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-13): **#554** (build) — `NROS_FIXTURE_SCOPE=native` demanded four west-built
+compile-checks the native lane cannot produce, so `just ci` died at the staleness gate before a single test
+ran and `just build-test-fixtures lane=native` could not help. `a12e2c3e4` (#536 / phase-350 W2) added four
+west `[[compile_check_fixture]]` rows; `check-fixtures-stale.sh` lists compile-checks with no builder or
+lane filter, so every scope demanded every row — while the manifest says outright "Built by the WEST lane
+… never by compile-check-fixtures.sh". That is #482's distinction missed for the compile-check inventory:
+which fixtures must be FRESH is the lane's cell cover, not every row. Fixed by dropping `west-*` rows when
+the scope is `native`; `all` and `coords` still demand them, since silently dropping one there would hide a
+real staleness. Verified both directions by counting what each branch passes to the probe — native 0/36,
+all and coords 4/40 — and end to end (exit 1 → exit 0). **The predicate is a PREFIX and that was not
+obvious:** there are TWO west builders (`west-build` ×1, `west-configure` ×3), so matching the literal
+`west-build` would have fixed one of four and left three failing identically; the correction then landed in
+the COMMENT only, leaving the awk on the literal, which the gate run caught. Same mistake twice — verifying
+the change I meant to make rather than the one on disk. See `archived/0554-*`. (2026-08-13)
+
 RESOLVED 2026-08-13 — **#547** the Cyclone backend hand-declared the platform ABI
 (`nros_platform_{clock_ms,sleep_ms,random_u64}`) in three per-platform `extern "C"` blocks, so RFC-0073's
 `clock_ms`->`clock_ns` rename (phase-350) compiled fine and failed at LINK: `internal.hpp:63: undefined

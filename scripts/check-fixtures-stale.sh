@@ -213,7 +213,35 @@ fi
 compile_check_records=()
 while IFS= read -r line; do
     [ -n "$line" ] && compile_check_records+=("$line")
-done < <(python3 scripts/build/fixtures-manifest.py list-compile-checks 2>/dev/null)
+done < <(
+    # issue 0554 — a NATIVE run must not demand west-built rows.
+    #
+    # `list-compile-checks` returns every row regardless of builder, and
+    # `#536 / phase-350 W2` added four west compile-checks. TWO builders, not
+    # one — `west-build` (1 row) and `west-configure` (3) — so the predicate is
+    # the `west-` PREFIX. Matching the literal `west-build` would have dropped
+    # one of the four and left the other three failing exactly as before.
+    # Their own manifest comment says it plainly: "Built by the WEST lane
+    # (west-fixtures.sh), never by compile-check-fixtures.sh: west needs a
+    # provisioned Zephyr workspace, so the lane that owns one runs them."
+    #
+    # So `NROS_FIXTURE_SCOPE=native` — tier 1, host fixtures only — started
+    # failing on four `.inputsig` files the native lane has no way to produce,
+    # and `just ci` could not reach a single test. That is #482's distinction:
+    # which fixtures must be FRESH is the lane's cell cover, not every row in
+    # the manifest.
+    #
+    # Scoped to `native` deliberately. `all` (tier 3) and `coords` (tier 2)
+    # keep demanding them: those lanes either build west or select by
+    # coordinate, and silently dropping a west row there would hide a real
+    # staleness — the failure mode this gate exists to prevent.
+    if [ "$SCOPE" = "native" ]; then
+        python3 scripts/build/fixtures-manifest.py list-compile-checks 2>/dev/null \
+            | awk -F'\x1f' '$2 !~ /^west-/'
+    else
+        python3 scripts/build/fixtures-manifest.py list-compile-checks 2>/dev/null
+    fi
+)
 
 compile_check_stale=()
 if [ ${#compile_check_records[@]} -eq 0 ]; then
