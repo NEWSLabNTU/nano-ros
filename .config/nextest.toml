@@ -805,3 +805,20 @@ filter = "binary(sched_dims_applied_e2e)"
 test-group = "sched-dims-serial"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
+
+# issue 0564 — the 0413 consolidation cost, one binary further out. phase-329 W1
+# folded 15 per-cell `realtime_tiers_*` files into ONE test that iterates every
+# RealtimeTiers cell in a single process, and the timeout budget did not follow.
+# Unlike 0413's native-only sweep this one BOOTS QEMU images (zephyr, nuttx-arm,
+# nuttx-riscv, freertos, threadx) and waits for five 100 ms-tier deliveries per
+# cell, so its wall clock is the sum of sixteen boot+observe rows.
+#
+# Measured on this host: 127 s and 204 s on two consecutive runs — the variance
+# is why the kill window is generous rather than snug against the larger figure.
+# The default (30 s period, terminate-after 2 = 60 s hard kill) truncated it
+# mid-sweep, and that is worse than slow: rows are evaluated IN ORDER, so the
+# kill meant the later cells were never run at all. Two genuine NuttX Rust
+# failures had been sitting behind it unseen (issue 0565).
+[[profile.default.overrides]]
+filter = "binary(realtime_tiers_e2e)"
+slow-timeout = { period = "180s", terminate-after = 3 }

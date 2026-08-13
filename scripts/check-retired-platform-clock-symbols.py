@@ -76,8 +76,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The retired names, and the header whose `static inline` now defines them.
 RETIRED = ["nros_platform_clock_ms", "nros_platform_clock_us"]
+# The header the names used to live in. Phase-352 W6 removed the wrappers from
+# it, so it is no longer a definition site — it is only where the vacuity check
+# below confirms they stayed gone.
 DEFINING_HEADER = "packages/platform/nros-platform-api/include/nros/platform.h"
-INCLUDE_PAT = re.compile(r'#\s*include\s*[<"][^>"]*nros/platform\.h[>"]')
 
 SUFFIXES = (".c", ".h", ".cpp", ".hpp", ".cc", ".cxx")
 
@@ -143,8 +145,6 @@ def tracked_files():
 def offenders(files):
     hits = []
     for rel in files:
-        if rel == DEFINING_HEADER:
-            continue                      # this IS the definition
         path = os.path.join(ROOT, rel)
         try:
             with open(path, encoding="utf-8", errors="replace") as fh:
@@ -166,10 +166,11 @@ def offenders(files):
         for m in DECL_PAT.finditer(code):
             line = code[:m.start()].count("\n") + 1
             hits.append((rel, line, "declares", m.group(1)))
-        # arm 1 — a reference with the definition out of scope.
-        if not INCLUDE_PAT.search(code):
-            first = min(code[:m.start()].count("\n") + 1 for m in found.values())
-            hits.append((rel, first, "uses without <nros/platform.h>", ", ".join(used)))
+        # arm 1 — ANY code reference. Phase-352 W6 retired the wrappers
+        # outright, so including the header no longer supplies them and there is
+        # no spelling of a use that links.
+        first = min(code[:m.start()].count("\n") + 1 for m in found.values())
+        hits.append((rel, first, "references a RETIRED symbol", ", ".join(used)))
     return hits
 
 
@@ -191,14 +192,18 @@ def self_test():
         if not offenders([rel]):
             sys.stderr.write("self-test: an unincluded use was NOT reported\n")
             sys.exit(2)
-        # 2 — the same call WITH the header is clean.
+        # 2 — phase-352 W6: including the header no longer rescues a use,
+        #     because the header no longer defines anything. Any reference is an
+        #     error now, and this arm exists to keep the earlier, weaker rule
+        #     ("use is fine if you include it") from creeping back.
         write('#include "nros/platform.h"\n'
               'uint64_t f(void){ return nros_platform_clock_ms(); }\n')
-        if offenders([rel]):
-            sys.stderr.write("self-test: an included use WAS reported\n")
+        if not offenders([rel]):
+            sys.stderr.write("self-test: an INCLUDED use was NOT reported\n")
             sys.exit(2)
-        # 3 — a hand declaration is reported even WITH the header (#547's shape:
-        #     it compiles, then fails at link).
+        # 3 — a hand declaration is reported (#547's shape: it compiled, then
+        #     failed at link). Upstream's header comment names this gate as what
+        #     catches it.
         write('#include "nros/platform.h"\n'
               'extern uint64_t nros_platform_clock_ms(void);\n')
         if not offenders([rel]):
@@ -212,14 +217,15 @@ def self_test():
         if offenders([rel]):
             sys.stderr.write("self-test: a comment WAS reported\n")
             sys.exit(2)
-        # 5 — arm 3: a second definition of the wrappers IS reported…
+        # 5 — arm 3: ANY definition of the wrappers IS reported — after W6 there
+        #     is no legitimate one, not even in the header they used to live in.
         write('static inline uint64_t nros_platform_clock_ms(void) { return 0; }\n')
         if not extra_definers([rel]):
             sys.stderr.write("self-test: a duplicate definition was NOT reported\n")
             sys.exit(2)
-        # …and a file that merely calls them is not a definition.
-        write('#include "nros/platform.h"\n'
-              'uint64_t f(void){ return nros_platform_clock_ms(); }\n')
+        # …and a file that merely calls them is not a DEFINITION (it is still an
+        # arm-1 offender, which is a different report).
+        write('uint64_t f(void){ return nros_platform_clock_ms(); }\n')
         if extra_definers([rel]):
             sys.stderr.write("self-test: a caller WAS reported as a definer\n")
             sys.exit(2)
@@ -235,8 +241,6 @@ def extra_definers(files):
     5dc2fa869 were each a stale committed header copy."""
     out = []
     for rel in files:
-        if rel == DEFINING_HEADER:
-            continue
         try:
             with open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace") as fh:
                 code = strip_comments(fh.read())
@@ -282,12 +286,13 @@ def main():
         for rel, line, why, what in hits:
             sys.stderr.write(f"         {rel}:{line}: {why} — {what}\n")
         sys.stderr.write(
-            "\n       `nros_platform_clock_{ms,us}` are `static inline` wrappers in\n"
-            f"       {DEFINING_HEADER}.\n"
-            "       No port defines them, so a caller must INCLUDE that header, and a\n"
-            "       hand-written `extern` declaration cannot substitute — it compiles\n"
-            "       and then fails at link (issues 0547, 0548). Prefer calling\n"
-            "       `nros_platform_clock_ns()` directly: ms/us are lossy views.\n"
+            "\n       `nros_platform_clock_{ms,us}` are RETIRED (RFC-0073 / phase-352 W6).\n"
+            "       They spent one release as `static inline` wrappers behind\n"
+            "       NROS_PLATFORM_LEGACY_CLOCK_UNITS; the wrappers and the escape hatch\n"
+            "       are both gone, so NOTHING defines these names and no spelling of a\n"
+            "       use links — including <nros/platform.h> no longer rescues one.\n"
+            "       Call `nros_platform_clock_ns()` and divide: ms/us were lossy views,\n"
+            "       which is why they went (issues 0547, 0548, 0555).\n"
         )
         return 1
     print(f"check-retired-platform-clock-symbols: OK ({len(files)} tracked C/C++ source(s))")

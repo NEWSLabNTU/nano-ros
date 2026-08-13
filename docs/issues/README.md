@@ -86,6 +86,30 @@ both ways: 65536 passes all three cortex-m cells, 32768 trips the MPU guard. Fix
 caller-supplied storage rather than return by value. NOT established: whether each frame in the chain
 materialises its own copy — one clear was observed, the multiplier was not. See `0563-*`. (2026-08-14)
 
+**#565** — NuttX **Rust**, BOTH arches: the 100 ms low tier is never scheduled, so `/telem` never reaches 5
+deliveries. 14 of 16 `realtime_tiers_e2e` rows pass — every zephyr/freertos/threadx/native cell, AND the NuttX
+C/C++ cells on the same boards — so the suspicion is the Rust `run_tiers` path (`QemuArmVirt::run_tiers`,
+`QemuRvVirt::run_tiers`) rather than board tier plumbing. The 10 ms tier is observed fine, so it is not the tier
+mechanism in general; a 100 ms period is exactly where a clock unit/resolution error strands a timer while a
+10 ms one keeps firing, and RFC-0073 / phase-352 W6 landed the same week — cheap to rule in or out first (see
+#0532). Adjacent and resolved: #0263, same family (spawned NuttX Rust tiers), different failure (wrong priority
+vs no scheduling). **Not necessarily new** — it hid behind #0564's truncation and may have failed for as long as
+that budget was wrong, so a bisect must not read a killed run as PASS. See `0565-*`. (2026-08-13)
+
+RESOLVED 2026-08-13 — **#564** the one red in an otherwise clean tier 1: `realtime_tiers_e2e` TIMEOUT at 60.003 s,
+reproducing solo and printing nothing (the test installs an empty panic hook to classify rows itself, so silence
+is by design, not a hang). It is #0413's consolidation cost one binary further out — phase-329 W1 folded 15
+per-cell files into ONE test iterating every RealtimeTiers cell in a single process, and the timeout budget did
+not follow; it had `[test-groups.*]` for baked-port sharing but no `slow-timeout` at all, so it ran on the default
+30 s × 2. The trigger was fixture COVERAGE, not code: these cells `skip!` fast when their fixtures are absent, so
+on a partial tree it finished inside 60 s — after a full `build-test-fixtures` every row actually BOOTS a QEMU
+image. Worse than slow: rows run IN ORDER and the kill lands mid-sweep, so later cells were never run while the
+verdict said TIMEOUT — #0445's absorbing-verdict shape in another mechanism, and it had been hiding two real
+failures (#0565). Budgeted `period = 180s, terminate-after = 3` against two measured runs of 127 s and 204 s; the
+variance is why the window is generous rather than snug. A consolidated matrix test's wall clock scales with how
+many cells have FIXTURES, not how many it declares — so a timeout that always passed can fail the day someone
+finally builds the full matrix. See `archived/0564-*`. (2026-08-13)
+
 RESOLVED 2026-08-13 — **#525** the NuttX shared-tree property, closed on its last correctness gap and an explicit
 decline of the rest. Directions 1 and 2 landed 2026-08-12 (`nuttx_include_root` + `check-nuttx-shared-tree-headers`,
 and `build-nuttx.sh` stating that it guarantees the SNAPSHOT and not the tree). What remained was the SECOND shared
