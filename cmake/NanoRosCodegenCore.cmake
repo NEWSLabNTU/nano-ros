@@ -269,16 +269,51 @@ endfunction()
 # bug, host x86_64 objects landing in an ARM link. FindRust also writes
 # `Rust_CARGO_TARGET_CACHED` as CACHE INTERNAL, and a cache entry is visible
 # from every scope, so it is the reliable read.
+#
+# WHY THE MEMO SITS BELOW THE EXPLICIT TARGET AND NOT ABOVE IT (issue 0553)
+#
+# `_NROS_RUST_TARGET` is a permanent `CACHE INTERNAL` entry and nothing
+# invalidates it, so the version of this function that short-circuited on it
+# FIRST let whichever scope called it first decide for the whole build tree —
+# forever, across every later reconfigure, because the memo lives in the cache
+# rather than in a target dir that a clean rebuild would remove.
+#
+# `examples/workspaces/realtime-cpp/build-workspace-fixtures-nuttx` was
+# configured host-first, so it answered `x86_64-unknown-linux-gnu` while its own
+# cache plainly carried `Rust_CARGO_TARGET:STRING=armv7a-nuttx-eabihf`. Two
+# distinct failures came out of that one stale string:
+#
+#   * the message FFI staticlib path is `<target-dir>/<triple>/<profile>/`, so
+#     the glue was built and named under `x86_64-unknown-linux-gnu` and the ARM
+#     link died on `libnano_ros_cpp_ffi_std_msgs.a: file format not recognized`;
+#   * `nros_nuttx_include_root()` derives the NuttX arch from this triple, saw
+#     a host triple, matched neither arm nor riscv, and fell back to the shared
+#     tree — reintroducing issue 0551 in the one tree that had it worst.
+#
+# So: an EXPLICIT target always wins, and the memo is consulted only when
+# nothing explicit is visible. That keeps what the memo is actually for (not
+# re-running `rustc -vV` per call, and giving a scope that cannot see the normal
+# variable a consistent answer) while making a stale one unreachable in any
+# build that states its triple. Existing poisoned trees self-heal on the next
+# configure; no cache wipe is needed.
+#
+# The corrosion copies stay BELOW the memo deliberately. `Rust_CARGO_TARGET_CACHED`
+# was `x86_64-unknown-linux-gnu` in that very tree while the requested target was
+# ARM, so promoting them above the memo would let a blind scope overwrite a good
+# memo with corrosion's host copy — the same bug facing the other way.
 function(_nros_resolve_rust_target _out)
-    if(DEFINED CACHE{_NROS_RUST_TARGET})
-        set(${_out} "$CACHE{_NROS_RUST_TARGET}" PARENT_SCOPE)
-        return()
-    endif()
-
     set(_t "")
     if(DEFINED Rust_CARGO_TARGET AND NOT Rust_CARGO_TARGET STREQUAL "")
         # A toolchain file or an in-scope find_package() said so. Wins outright.
         set(_t "${Rust_CARGO_TARGET}")
+    elseif(DEFINED CACHE{Rust_CARGO_TARGET} AND NOT "$CACHE{Rust_CARGO_TARGET}" STREQUAL "")
+        # `-DRust_CARGO_TARGET=…` on the configure line. A cache entry is visible
+        # from every scope, so this is the reading that survives the
+        # `add_subdirectory()` boundary the normal variable does not cross.
+        set(_t "$CACHE{Rust_CARGO_TARGET}")
+    elseif(DEFINED CACHE{_NROS_RUST_TARGET} AND NOT "$CACHE{_NROS_RUST_TARGET}" STREQUAL "")
+        set(${_out} "$CACHE{_NROS_RUST_TARGET}" PARENT_SCOPE)
+        return()
     elseif(DEFINED CACHE{Rust_CARGO_TARGET_CACHED} AND NOT "$CACHE{Rust_CARGO_TARGET_CACHED}" STREQUAL "")
         set(_t "$CACHE{Rust_CARGO_TARGET_CACHED}")
     elseif(DEFINED CACHE{_CORROSION_RUST_CARGO_TARGET} AND NOT "$CACHE{_CORROSION_RUST_CARGO_TARGET}" STREQUAL "")
@@ -308,6 +343,8 @@ function(_nros_resolve_rust_target _out)
             "`rustc -vV` did not report a host. Set -DRust_CARGO_TARGET=<triple>.")
     endif()
 
+    # Rewritten on every resolution that got here, so the memo tracks the
+    # authoritative answer instead of freezing the first one (issue 0553).
     set(_NROS_RUST_TARGET "${_t}" CACHE INTERNAL
         "cargo target triple for nano-ros' own cargo custom commands (phase-340 W3)")
     set(${_out} "${_t}" PARENT_SCOPE)

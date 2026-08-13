@@ -1,7 +1,8 @@
 ---
 id: 551
 title: "`make olddefconfig` deletes the NuttX tree's generated `config.h`, and five build inputs were reaching that tree instead of the export snapshot"
-status: open
+status: resolved
+resolved_in: issue-0551
 type: bug
 area: build
 related: [issue-0525, issue-0511, issue-0550, issue-0488, phase-339]
@@ -112,27 +113,27 @@ values while grepping for names, over three of the five trees the rule covers.
   accessor-routed form — self-tested in-file.
 * `third-party/nuttx/nuttx-appsexternal.nros-build/` does not reappear.
 
-## Residual — still open
+## Residual — CLOSED by issue 0553
 
-Two things this pass did NOT close:
+Both things this pass left open turned out to be ONE defect, and neither was a
+NuttX problem. See `archived/0553-*`.
 
-1. **A fifth site.** With the in-tree header deliberately removed (a stress test
-   STRICTER than the real contract), `nros-nuttx-ffi`'s cc build in
-   `examples/workspaces/realtime-cpp` still reaches
-   `third-party/nuttx/nuttx/include` via include lists cmake passes into it
-   (`file_regular` / `file_deferred` in `nuttx_ffi_build.rs`). With a healthy
-   tree this is invisible. It should be routed through the accessor like the
-   other four.
+1. **There was no fifth site.** `nros-nuttx-ffi`'s include list is generated
+   from `$<TARGET_PROPERTY:…,INTERFACE_INCLUDE_DIRECTORIES>` — the same `NanoRos`
+   property fixed as site 4 above. It resolved to the shared tree because
+   `nros_nuttx_include_root()` was handed a HOST triple, matched neither `arm`
+   nor `riscv`, and took its fallback. The fix here was correct; the input was
+   poisoned.
 
-2. **An unrelated blocker behind it**, newly reachable now that the header
-   failure is gone — `realtime-cpp`'s nuttx entry links a HOST archive into an
-   ARM image:
+2. **The wrong-arch link had the same cause.** `_nros_resolve_rust_target`
+   memoized into a permanent `CACHE INTERNAL` entry that nothing invalidates,
+   so a build tree configured host-first answered `x86_64-unknown-linux-gnu`
+   forever — while its own cache carried
+   `Rust_CARGO_TARGET:STRING=armv7a-nuttx-eabihf`. The message FFI staticlib
+   path embeds that triple, so the glue was built under the host triple and ld
+   rejected it on the ARM line.
 
-   ```
-   -L .../nano_ros_cpp_ffi_std_msgs/target/x86_64-unknown-linux-gnu/nros-minsizerel
-   ld: libnano_ros_cpp_ffi_std_msgs.a: error adding symbols: file format not recognized
-   ```
-
-   That is phase-155's wrong-arch class in the message FFI subprojects, not an
-   include-resolution problem. It was masked by this issue and needs its own
-   investigation; it should get its own id.
+0553 demotes the memo below any explicit target and adds the memo coverage
+`check-cargo-target-spelling` never had. `just nuttx build-fixtures-arm` is
+green: rc=0, 5 artifacts, zero `nuttx/config.h` and zero
+`file format not recognized`.

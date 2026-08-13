@@ -66,7 +66,27 @@ obvious:** there are TWO west builders (`west-build` ×1, `west-configure` ×3),
 the COMMENT only, leaving the awk on the literal, which the gate run caught. Same mistake twice — verifying
 the change I meant to make rather than the one on disk. See `archived/0554-*`. (2026-08-13)
 
-**#551** — `just build-test-fixtures` took the whole NuttX lane down with `fatal error: nuttx/config.h: No
+RESOLVED 2026-08-13 — **#553** two failures that looked unrelated had one cause, and it is not NuttX-specific.
+`_nros_resolve_rust_target` memoized its answer into a permanent `CACHE INTERNAL` entry and short-circuited
+on it FIRST, and nothing invalidates it — so whichever scope called it first decided the triple for the whole
+build tree, forever, surviving every reconfigure because the memo lives in the cache rather than a target dir
+a clean rebuild removes. `examples/workspaces/realtime-cpp/build-workspace-fixtures-nuttx` was configured
+host-first and answered `x86_64-unknown-linux-gnu` while its own cache carried
+`Rust_CARGO_TARGET:STRING=armv7a-nuttx-eabihf`. One stale string produced BOTH of #551's residuals: the msg
+FFI staticlib path embeds the triple, so the glue built under the host triple and ld died with
+`libnano_ros_cpp_ffi_std_msgs.a: file format not recognized`; and `nros_nuttx_include_root()` derives the
+NuttX arch from that triple, matched neither arm nor riscv, and took its shared-tree fallback — which is why
+#551's "fifth site" looked unfixed. There was no fifth site; the include list is generated from the same
+`NanoRos` INTERFACE property #551 already fixed, fed a poisoned triple. Fixed by demoting the memo below any
+explicit target (and below a `-D` cache read, which crosses `add_subdirectory()` where the normal var does
+not), rewriting it on every resolution so it tracks the authoritative answer; corrosion's copies stay BELOW
+the memo, since `Rust_CARGO_TARGET_CACHED` was the HOST triple in that very tree and promoting it would be
+the same bug facing the other way. Poisoned trees self-heal on the next configure. It survived because
+`check-cargo-target-spelling` covered this resolver in seven arms and had NO memo coverage at all — three
+added, verified non-vacuous (the first goes red under the old precedence). `just nuttx build-fixtures-arm`
+rc=0, 5 artifacts including the leaf that failed the ARM link. See `archived/0553-*`. (2026-08-13)
+
+RESOLVED 2026-08-13 — **#551** — `just build-test-fixtures` took the whole NuttX lane down with `fatal error: nuttx/config.h: No
 such file or directory`, and the header was missing because `just nuttx build-integration-app`'s restore
 runs `make olddefconfig`, whose `clean_context` DELETES it (`tools/Unix.mk`). `.config` came back
 byte-perfect; the tree came back de-contextualized, and `build-nuttx.sh` keys its short-circuit on
@@ -84,7 +104,9 @@ Makefile's parse-time `$(shell mkdir -p …)`, which ran during `apps_preconfig`
 `CONFIG_ARCH` both empty and created `nuttx-appsexternal.nros-build/`. config.h failures now 0. **Still
 open:** a fifth site (`nros-nuttx-ffi`'s cmake-passed include lists) and, newly reachable behind it, a
 HOST `libnano_ros_cpp_ffi_std_msgs.a` on realtime-cpp's ARM link line — phase-155's wrong-arch class,
-needs its own id. A gate's SCOPE is part of the rule it enforces. See `0551-*`. (2026-08-13)
+needs its own id. **Both closed by #553 the same day, as one defect** (a stale cargo-target memo poisoning
+the arch resolution); there was no fifth site. A gate's SCOPE is part of the rule it enforces.
+See `archived/0551-*`. (2026-08-13)
 
 RESOLVED 2026-08-13 — **#550** `just build-test-fixtures` died at leaf 17 on `Cannot find source file:
 third-party/dds/cyclonedds/src/ddsrt/src/sync/zephyr/sync.c`, and it was not a code bug: the submodule sat

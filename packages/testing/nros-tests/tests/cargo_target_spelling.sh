@@ -204,6 +204,41 @@ configure "TARGET_IN_CONFIG omits the flag, not the triple" expect-pass \
     "NROS_PROBE_ARGS=[build;--manifest-path;/x/Cargo.toml;--target-dir;/x/target;--profile;nros-minsizerel]" \
     - -DNROS_PROBE_EXTRA_ARG=TARGET_IN_CONFIG
 
+# 6b — issue 0553: a STALE memo must not outrank an explicit target.
+#      `_NROS_RUST_TARGET` is a permanent `CACHE INTERNAL` entry that nothing
+#      invalidates, and the resolver used to short-circuit on it FIRST — so a
+#      build tree configured host-first answered "host" forever, across every
+#      later reconfigure, because the memo lives in the cache and not in a
+#      target dir a clean rebuild would remove. That is how a workspace whose
+#      own cache said `armv7a-nuttx-eabihf` built its message FFI glue under
+#      `x86_64-unknown-linux-gnu` and died at the ARM link with "file format not
+#      recognized" — and, downstream, how `nros_nuttx_include_root()` saw a host
+#      triple, matched no NuttX arch, and fell back to the shared tree (0551).
+#
+#      This arm hands the configure BOTH a poisoned memo and the real target.
+#      The memo must lose. The gate had no memo coverage at all, which is
+#      exactly why the precedence could be wrong for as long as it was.
+configure "a stale memo loses to an explicit target" expect-pass \
+    "NROS_PROBE_TRIPLE=[armv7a-nuttx-eabihf]" \
+    - -DRust_CARGO_TARGET=armv7a-nuttx-eabihf \
+    -D_NROS_RUST_TARGET:INTERNAL=x86_64-unknown-linux-gnu
+
+# 6c — and with NOTHING explicit, the memo is still the answer: it exists to
+#      spare a `rustc -vV` per call and to give a scope that cannot see the
+#      normal variable a consistent reading. Demoting it must not disable it.
+configure "the memo is still used when nothing explicit is visible" expect-pass \
+    "NROS_PROBE_TRIPLE=[thumbv7m-none-eabi]" \
+    - -D_NROS_RUST_TARGET:INTERNAL=thumbv7m-none-eabi
+
+# 6d — the memo also outranks corrosion's cache copy, which is what makes the
+#      demotion safe: `Rust_CARGO_TARGET_CACHED` was the HOST triple in the very
+#      tree whose requested target was ARM, so letting it climb above the memo
+#      would be the same bug facing the other way.
+configure "the memo outranks corrosion's cache copy" expect-pass \
+    "NROS_PROBE_TRIPLE=[thumbv7m-none-eabi]" \
+    - -D_NROS_RUST_TARGET:INTERNAL=thumbv7m-none-eabi \
+    -DRust_CARGO_TARGET_CACHED=x86_64-unknown-linux-gnu
+
 # 7 — the second and third sites of the class. The Zephyr generators key on
 #     NROS_RUST_TARGET, whose unknown-arch fallback used to be the empty string;
 #     it must now name the host triple, and the module must reach the resolver
