@@ -160,6 +160,16 @@ are residue of builds that compile the runtime and then fail, so 0522's keep-or-
 blocked until this is fixed. Same hook as issue 0304, one level on: applying it in ONE place is not
 enough when that place serves two crates. See `archived/0542-*`. (2026-08-13)
 
+**#543** — the metadata probe builds a component WITHOUT the bringup's declared capabilities, so a
+component using a capability-gated API cannot be probed: `nros sync examples/workspaces/safety` reports
+`'class nros::Node' has no member named 'create_subscription_with_safety'`. Not API drift — the method
+exists behind `#if defined(NANO_ROS_SAFETY_E2E)`, the workspace declares `features = ["safety"]`, and
+`NanoRosCapabilities.cmake` lowers it; the probe's generated CMakeLists just carries no capability input
+at all. Surfaced once issue 0542 was fixed (that workspace's failures went 3 → 2). The general rule it
+breaks: a probe that compiles the user's source must build it with the user's configuration, or it is
+answering a question about a different program. Fix should reuse the ONE lowering rather than re-deriving
+it through the per-crate feature hooks (the phase-314 argument). See `0543-*`. (2026-08-13)
+
 **#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
 manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared
 `anyhow = "1"` with zero uses, and `packages/cli`'s `[workspace.dependencies]` entry was inherited by
