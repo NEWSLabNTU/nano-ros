@@ -109,7 +109,19 @@ COMPILE_CHECK_BUILDERS = (
     "cmake-configure",   # cmake configure (+ build) into build/cmake-fixtures/<id>
     "cross-build",       # `cargo build --target <target>` for one or more profiles
     "cxx-syntax",        # `c++ -fsyntax-only` over a snippet; no artifact
+    # phase-350 W2 (issue 0536) — the west lane's two shapes. Both build into
+    # `build/west-fixtures/<id>` via `scripts/build/west-fixtures.sh`, NOT via
+    # `compile-check-fixtures.sh`: west needs a provisioned Zephyr workspace, so
+    # the lane that owns it runs them. They live in this table because that is
+    # what they ARE — "configure (or build) succeeded and artifact X exists" —
+    # and because a row here is what `output` was invented for.
+    "west-build",        # full `west build`; `output` is the image
+    "west-configure",    # `west build --cmake-only`; `output` is a configure artifact
 )
+
+# The two builders above, so the west lane and the compile-check lane can each
+# ask "is this one of mine?" without restating the pair.
+WEST_COMPILE_CHECK_BUILDERS = ("west-build", "west-configure")
 
 
 def load_compile_check_fixtures(path):
@@ -144,6 +156,22 @@ def validate_compile_check_fixture(entry):
     if builder == "cross-build" and not entry.get("target"):
         _fail(entry, "missing required key 'target' for builder 'cross-build'")
 
+    if builder in WEST_COMPILE_CHECK_BUILDERS:
+        # `west_subdir` is the APP dir inside `dir` ('.' when the app is the
+        # root); `west_board` may be empty, meaning "take it from board.cmake".
+        if not entry.get("west_subdir"):
+            _fail(entry, f"missing required key 'west_subdir' for builder {builder!r}")
+        _require_dir(
+            entry,
+            Path(entry["dir"]) / entry["west_subdir"],
+            "west app dir (dir/west_subdir)",
+        )
+        # `output` is the whole point of the split: it is what the stamp gates
+        # on, and naming a configure artifact vs an image is what makes
+        # "configure only" checkable rather than a claim in a comment (0536).
+        if not entry.get("output"):
+            _fail(entry, f"missing required key 'output' for builder {builder!r}")
+
 
 def validate_compile_check_fixtures(entries):
     seen = {}
@@ -158,7 +186,11 @@ def validate_compile_check_fixtures(entries):
 
 def compile_check_record(entry):
     """One \x1f-separated record: id, builder, dir, pkg, manifest_dir, target,
-    profiles, output. Empty field = absent; the script defaults them."""
+    profiles, output, west_subdir, west_board, west_extra.
+
+    Empty field = absent; the script defaults them. The three `west_*` tail
+    fields are phase-350 W2's; every existing reader takes the first eight
+    positionally and is unaffected by a longer record."""
     return SEP.join(
         (
             entry.get("id", ""),
@@ -169,6 +201,9 @@ def compile_check_record(entry):
             entry.get("target", ""),
             ",".join(entry.get("profiles", [])),
             entry.get("output", ""),
+            entry.get("west_subdir", ""),
+            entry.get("west_board", ""),
+            entry.get("west_extra", ""),
         )
     )
 

@@ -58,3 +58,36 @@ a comment about a doomed link.
 would then be identical for a fixture that configures and one that configures
 and links, which is how a build-only lane starts reading as covered — the
 failure mode already recorded against the FVP aemv8r leaves in issue 0537.
+
+## Status: landed, and this filing's PREMISE was partly wrong (phase-350 W2)
+
+The four fixtures are `[[compile_check_fixture]]` rows now, with two builders
+(`west-build`, `west-configure`), `output` as the stamp gate, and the builder
+recorded in the stamp. What did NOT hold up is the cost claim above.
+
+**Measured on one tree, same machine, full `west build` vs `--cmake-only`:**
+
+| fixture | full | cmake-only | note |
+| --- | --- | --- | --- |
+| `west_board_import` | 3 s, **93 MB** | 3 s, **7.3 MB** | 12.7× less disk, same time |
+| `zephyr_self_pkg_rust` | 3 s, 3.0 MB | 2 s, 3.0 MB | no saving |
+
+So "pay for a full kernel build" is true of **disk**, not of time, and only for
+`west_board_import`. The self-pkg pair costs nothing to "stop" because there was
+never a link to skip: it fails at the cmake GENERATE step ("No SOURCES given to
+target: app") — before any compilation. This filing read the script's own
+"attempts the doomed link" comment as evidence of expense; it is a comment about
+intent, not a measurement, and I repeated it without checking.
+
+**What the change is actually worth**, none of it the headline above:
+
+* the four fixtures leave `west-fixtures.sh`'s two bash arrays for the manifest
+  (issue 0535's goal — they were the last of the 74 outside it);
+* `output` makes "configure only" a CHECKABLE property instead of a comment,
+  and it is one stamp rule for both shapes: the artifact the row names exists;
+* the builder rides in the stamp, so a consumer can tell the shapes apart;
+* 93 MB → 7.3 MB on one fixture.
+
+Behaviour is unchanged: the lane produced 3/4 before and 3/4 after on the same
+tree, with the same fixture failing (`west_bringup_zephyr`, whose SystemModel is
+absent — a pre-existing `nros sync` precondition, not this change).

@@ -4523,3 +4523,66 @@ west_id = "zephyr/native_sim/native/64/workspace-entry-mixed"
 west_zenoh_locator = "tcp/127.0.0.1:7730"
 skip_probe = true
 
+
+# ---------------------------------------------------------------------------
+# west compile-check lane — phase-350 W2 (issue 0536).
+#
+# The four fixtures `scripts/build/west-fixtures.sh` used to hold as two bash
+# arrays. They are compile-check rows because that is what they assert:
+# "configure (or build) succeeded and artifact X exists". `output` is the gate.
+#
+# THREE OF THE FOUR NEED NO IMAGE. Their consumers read a configure-time
+# artifact and nothing else, so they build with `west-configure`
+# (`west build --cmake-only`) instead of paying for a kernel link:
+#
+#   west_board_import        board_import.rs reads CMakeCache.txt, 4 vars
+#   zephyr_self_pkg_rust     zephyr_self_pkg.rs reads system_config.h
+#   zephyr_self_pkg_sibling  ditto
+#
+# The self-pkg pair is the sharpest case: the old block ran a link it KNEW
+# would fail ("the link needs the rest of the runtime — out of scope"), threw
+# the failure away, and stamped on a file written before the link began. The
+# `output` field says that plainly now, and `--cmake-only` stops paying for it.
+#
+# `west_bringup_zephyr` genuinely boots its `zephyr.exe`, so it stays a full
+# `west-build`. The difference is visible in `output`, which is what makes
+# "configure only" a checkable property rather than a claim in a comment.
+#
+# Built by the WEST lane (west-fixtures.sh), never by compile-check-fixtures.sh:
+# west needs a provisioned Zephyr workspace, so the lane that owns one runs them.
+# ---------------------------------------------------------------------------
+
+[[compile_check_fixture]]
+id = "west_bringup_zephyr"
+builder = "west-build"
+dir = "packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr"
+west_subdir = "zephyr_app"
+west_board = "native_sim/native/64"
+west_extra = "-DCONF_FILE=prj.conf;prj-zenoh.conf"
+output = "zephyr/zephyr.exe"
+
+[[compile_check_fixture]]
+id = "west_board_import"
+builder = "west-configure"
+dir = "packages/testing/nros-tests/fixtures/board_import_fvp"
+west_subdir = "."
+west_board = ""
+output = "CMakeCache.txt"
+
+[[compile_check_fixture]]
+id = "zephyr_self_pkg_rust"
+builder = "west-configure"
+dir = "packages/testing/nros-tests/fixtures/zephyr_self_pkg/self"
+west_subdir = "alpha_pkg"
+west_board = "native_sim/native/64"
+west_extra = "-DCONF_FILE=prj.conf"
+output = "nros-system/system_config.h"
+
+[[compile_check_fixture]]
+id = "zephyr_self_pkg_sibling"
+builder = "west-configure"
+dir = "packages/testing/nros-tests/fixtures/zephyr_self_pkg/sibling"
+west_subdir = "caller"
+west_board = "native_sim/native/64"
+west_extra = "-DCONF_FILE=prj.conf"
+output = "nros-system/system_config.h"

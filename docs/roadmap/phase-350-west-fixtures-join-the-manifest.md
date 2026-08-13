@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). W0 and W1 COMPLETE — all 70 zephyr leaves are manifest rows, the emitter reads them (byte-identical), the lane narrows by coordinate (tier2: 7 leaves, was 70), the coverage gate reads rows, and W1.d is retracted with reasons. W2–W6 open; the 4 `west-fixtures.sh` fixtures still to row.**
+**Status (2026-08-13). W0, W1, W2 COMPLETE — all 74 west fixtures are manifest rows (the last four landed in W2), the emitter reads them, the lane narrows by coordinate (tier2: 7 leaves, was 70), and the coverage gate reads rows. W3–W6 open.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -359,7 +359,7 @@ So `row_artifact_root()` keeps returning `""` for a west row. That is not a gap:
 it is the true statement "not attributable by path", which `fixtures::lane`
 fails closed on and the coordinate route answers instead.
 
-## W2 — Configure-only fixtures stop paying for a link (#536)
+## W2 — Configure-only fixtures declare it, and stop paying for it in disk (#536) — **LANDED**
 
 Three of four west fixtures assert a configure-time fact:
 
@@ -373,12 +373,43 @@ Three of four west fixtures assert a configure-time fact:
 The self-pkg pair runs a link `west-fixtures.sh:112` already calls "doomed", then
 stamps on a file written before the link began.
 
-- [ ] Give the three `builder = "west-configure"` and stop at configure.
-- [ ] The stamp must DISTINGUISH configure-only from configure+link, so a
-      build-only lane cannot read as covered — that failure mode is #537.
+- [x] The four fixtures are `[[compile_check_fixture]]` rows; `west-fixtures.sh`
+      reads them and its two bash arrays are gone. **That was the last of the 74
+      outside the manifest.**
+- [x] The three configure-only ones build with `west build --cmake-only`.
+- [x] `output` is the stamp gate for both shapes, and the BUILDER rides in the
+      stamp, so a consumer can tell them apart (#537's failure mode).
 
-*Acceptance:* the three produce no ELF and their tests pass unchanged; per-leaf
-wall-clock for them measured before/after and recorded here.
+### The measurement contradicted the item's premise
+
+*Acceptance said: "per-leaf wall-clock measured before/after and recorded here."
+Measured, and it does not say what the item assumed.*
+
+| fixture | full `west build` | `--cmake-only` | |
+| --- | --- | --- | --- |
+| `west_board_import` | 3 s, **93 MB** | 3 s, **7.3 MB** | 12.7× less disk, same time |
+| `zephyr_self_pkg_rust` | 3 s, 3.0 MB | 2 s, 3.0 MB | no saving |
+
+"Stop paying for a kernel link" is true of **disk**, and only for
+`west_board_import`. The self-pkg pair costs nothing to stop because there was
+never a link: it fails at the cmake GENERATE step ("No SOURCES given to target:
+app"), before any compilation. #536 read the script's own "attempts the doomed
+link" comment as evidence of expense — a comment about intent, not a
+measurement.
+
+**So the value here is the DECLARATION, not the seconds:** four fixtures leave
+their bash arrays for the manifest, `output` makes "configure only" checkable
+instead of asserted in prose, and the stamp says which shape produced it.
+
+*Acceptance, met:* the lane produced 3/4 before and 3/4 after on the same tree,
+same fixture failing — `west_bringup_zephyr`, whose SystemModel is absent
+(a pre-existing `nros sync` precondition, verified by running the pre-change
+script in place: identical result, 16 s vs 18 s).
+
+**A caveat on that verification:** the first attempt ran the old script from
+`/tmp`, which broke its `repo_root` derivation and reported a meaningless 0/4.
+A comparison whose control is misconfigured is worse than none — it was redone
+in place via `git stash`.
 
 ## W3 — FVP: close it or retire it (#537)
 

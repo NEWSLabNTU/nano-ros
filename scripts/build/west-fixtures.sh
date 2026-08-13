@@ -59,6 +59,11 @@ fi
 # herring). A date-only legacy stamp reads as stale — one rebuild refreshes.
 west_fixture_stamp() {
     local bld="$1"
+    # phase-350 W2 — the BUILDER rides in the stamp. A `west-configure` fixture
+    # and a `west-build` one leave different things on disk, and a consumer that
+    # cannot tell them apart is how a build-only lane reads as covered (the
+    # failure recorded in issue 0537). Optional so an older stamp still parses.
+    local builder="${2:-}"
     local nros_bin="$repo_root/packages/cli/target/release/nros"
     {
         date -u +%Y-%m-%dT%H:%M:%SZ
@@ -67,21 +72,45 @@ west_fixture_stamp() {
         else
             printf 'tool:nros=absent\n'
         fi
+        [ -z "$builder" ] || printf 'builder=%s\n' "$builder"
     } > "$bld/.compile-ok"
 }
 
-# id : src-rel : app-subdir ('.' = src root) : board ('' = from board.cmake) : extra-cmake-args
-WEST_FIXTURES=(
-    "west_bringup_zephyr:packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr:zephyr_app:native_sim/native/64:-DCONF_FILE=prj.conf;prj-zenoh.conf"
-    "west_board_import:packages/testing/nros-tests/fixtures/board_import_fvp:.::"
-)
+# phase-350 W2 (issue 0536) — the leaf table is `examples/fixtures.toml`, read
+# through `fixtures-manifest.py list-compile-checks --builder west-*`.
+#
+# This used to be two bash arrays (`WEST_FIXTURES`, `SELF_PKG_FIXTURES`), each
+# with its own colon-delimited format — a second spelling of a matrix the
+# manifest owns (issue 0535), and the reason these four fixtures had no
+# coordinate and no `output` anyone could check.
+#
+# The BUILDER is the contract now:
+#
+#   west-build      full `west build`; `output` is the image
+#   west-configure  `west build --cmake-only`; `output` is a configure artifact
+#
+# Three of the four are `west-configure`. Their consumers read a CMakeCache
+# variable or a baked `system_config.h` and never touch an image, so they no
+# longer pay for a kernel link. The self-pkg pair in particular used to run a
+# link this script itself called doomed, discard the failure, and stamp on a
+# file written before the link started.
+#
+# The stamp records the BUILDER, so "configure only" is a property a consumer
+# can read rather than a claim in a comment — and `output` is the gate either
+# way, which is what makes the two shapes distinguishable at all.
+records="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
+    list-compile-checks --builder west-build; \
+    python3 "$repo_root/scripts/build/fixtures-manifest.py" \
+    list-compile-checks --builder west-configure)"
 
 n=0
-for entry in "${WEST_FIXTURES[@]}"; do
-    IFS=':' read -r id src subdir board extra <<< "$entry"
+total=0
+while IFS=$'\x1f' read -r id builder src _pkg _manifest_dir _target _profiles output subdir board extra; do
+    [ -n "$id" ] || continue
+    total=$((total + 1))
     [ -d "$repo_root/$src" ] || { echo "west-fixtures: src missing: $src" >&2; continue; }
     bld="$out_root/$id"
-    echo "== west-fixture: $id (board=${board:-board.cmake}) =="
+    echo "== west-fixture: $id ($builder, board=${board:-board.cmake}) =="
     rm -rf "$bld"
     # issue 0533 — resolve each bringup's SystemModel before the west build.
     # The model is a BUILD ARTIFACT (phase-330 W4.a stopped committing them), so
@@ -105,6 +134,7 @@ for entry in "${WEST_FIXTURES[@]}"; do
         done
     fi
     args=(build -d "$bld")
+    [ "$builder" = "west-configure" ] && args+=(--cmake-only)
     [ -n "$board" ] && args+=(-b "$board")
     args+=("$repo_root/$src/$subdir")
     [ -n "$extra" ] && args+=(-- "$extra")
@@ -114,50 +144,17 @@ for entry in "${WEST_FIXTURES[@]}"; do
     case "$board" in
         native_sim*) [ -z "${ZEPHYR_TOOLCHAIN_VARIANT:-}" ] && tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=host) ;;
     esac
-    if env "${tc_env[@]}" west "${args[@]}"; then
-        west_fixture_stamp "$bld"
-        echo "   built $bld"
+    # The stamp gate is `output` EXISTS, for both builders — not west's exit
+    # code. A `west-configure` row is expected to stop before linking, and a
+    # `west-build` row that exits 0 without its image is not built either. One
+    # rule, and it is the row's own declaration.
+    env "${tc_env[@]}" west "${args[@]}" || true
+    if [ -e "$bld/$output" ]; then
+        west_fixture_stamp "$bld" "$builder"
+        echo "   ok $bld ($output)"
         n=$((n + 1))
     else
-        echo "   west build failed for $id (no stamp; test will report)" >&2
+        echo "   MISSING $output for $id (no stamp; the test will report)" >&2
     fi
-done
-echo "west fixtures built ($n/${#WEST_FIXTURES[@]})."
-
-# §212.M-F.3 self-pkg bringup (issue 0041 — promoted from zephyr_self_pkg.rs's
-# in-test `fs::write`). These exercise the `nros_system_generate` shim's L.7
-# self-pkg resolver; the contract is "the configure-time BAKE
-# (nros-system/system_{config.h,main.c}) fires", NOT a full ELF link (the link
-# needs the rest of the runtime — out of scope, same as the original test). So
-# the stamp gate is BAKE-EXISTS, not west's exit code: `west build` configures
-# (baking) then attempts the doomed link, and we stamp iff the bake landed.
-#   id : src-rel : app-subdir
-SELF_PKG_FIXTURES=(
-    "zephyr_self_pkg_rust:packages/testing/nros-tests/fixtures/zephyr_self_pkg/self:alpha_pkg"
-    "zephyr_self_pkg_sibling:packages/testing/nros-tests/fixtures/zephyr_self_pkg/sibling:caller"
-)
-sp_n=0
-for entry in "${SELF_PKG_FIXTURES[@]}"; do
-    IFS=':' read -r id src subdir <<< "$entry"
-    [ -d "$repo_root/$src/$subdir" ] || { echo "west-fixtures: src missing: $src/$subdir" >&2; continue; }
-    bld="$out_root/$id"
-    echo "== west-fixture: $id (self-pkg bake-only) =="
-    rm -rf "$bld"
-    # The link failure is expected → don't let it abort the script (set -u only,
-    # no -e, but be explicit). Inspect the bake afterward.
-    # issue #87 — native_sim → host gcc toolchain (no Zephyr SDK download).
-    sp_tc_env=()
-    [ -z "${ZEPHYR_TOOLCHAIN_VARIANT:-}" ] && sp_tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=host)
-    env "${sp_tc_env[@]}" west build -b native_sim/native/64 -d "$bld" "$repo_root/$src/$subdir" \
-        -- -DCONF_FILE=prj.conf || true
-    # Issue 0154 — post-258 bake contract: config header + config cmake
-    # (system_main.c retired with the install seam).
-    if [ -f "$bld/nros-system/system_config.h" ] && [ -f "$bld/nros-system/system_config.cmake" ]; then
-        west_fixture_stamp "$bld"
-        echo "   baked $bld/nros-system (link out-of-scope)"
-        sp_n=$((sp_n + 1))
-    else
-        echo "   self-pkg bake MISSING for $id (shim regressed?; test will report)" >&2
-    fi
-done
-echo "self-pkg fixtures baked ($sp_n/${#SELF_PKG_FIXTURES[@]})."
+done <<< "$records"
+echo "west fixtures: $n/$total ok."
