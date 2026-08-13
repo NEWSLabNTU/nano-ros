@@ -17,7 +17,7 @@ ignore file.
 coordinate, so it has no shared cargo group (RFC-0070 R2 names a cache
 `<kind>/<coordinate>`) — which is exactly why phase-340 B2/B3's migration
 never reached it. Measured on an already-migrated platform: the shared group
-`build/fixtures-cargo/freertos` was written at 01:53 and
+`build/cargo-fixtures/freertos` was written at 01:53 and
 `examples/qemu-arm-freertos/rust/talker/target/nros-minsizerel` at 01:55, from
 one `lane=all` run. Every gate was green while that happened, because no gate
 asked this question.

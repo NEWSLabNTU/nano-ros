@@ -505,18 +505,18 @@ pub fn select_row_in<'a>(
     }
 }
 
-/// `build/fixtures-cargo/<slug>` — the shell's `nros_fixture_target_dir_flag`
+/// `build/cargo-fixtures/<slug>` — the shell's `nros_fixture_target_dir_flag`
 /// spelt through [`build_dir`], so `NROS_BUILD_ROOT` moves both halves
 /// (RFC-0070 R3). `tests/build_root_derivation.sh` asserts the two agree.
 pub fn group_dir(slug: &str) -> PathBuf {
-    build_dir("fixtures-cargo", &[slug])
+    build_dir("cargo-fixtures", &[slug])
 }
 
 /// The one shared group dir a platform produces, for resolvers that know a
 /// platform and a binary name but no manifest row.
 ///
 /// This is the replacement for `fixture_shared_target_dir(platform)`, which
-/// hardcoded `build/fixtures-cargo/<platform>` and so could express only the
+/// hardcoded `build/cargo-fixtures/<platform>` and so could express only the
 /// DEFAULT group. It now asks the export, and — critically — FAILS when the
 /// platform produces more than one group instead of silently answering for the
 /// default one. `check-fixture-groups`'s A2 arm made that same guarantee from
@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn two_variants_of_one_leaf_land_in_different_groups() {
         // The refutation of the platform-grained key, as an assertion. Under
-        // it both of these resolve to `fixtures-cargo/linux/debug/talker` and
+        // it both of these resolve to `cargo-fixtures/linux/debug/talker` and
         // the second silently overwrote the first.
         let t = table();
         let (row, suffix) = attribute(

@@ -11,7 +11,7 @@
 # Phase 226.D — the leading <platform> field drives the shared
 # fixture-target-dir resolver (scripts/build/fixtures-target-dir.sh), the
 # SAME helper fixtures-build.sh uses. Without it the probe would inspect the
-# example-local target/ tree while the build wrote build/fixtures-cargo/<group>,
+# example-local target/ tree while the build wrote build/cargo-fixtures/<group>,
 # producing permanent false-stale reports.
 #
 # `cargo build --message-format=json` is a no-op when fresh and rebuilds only

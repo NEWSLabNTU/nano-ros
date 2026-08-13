@@ -897,16 +897,15 @@ fn decode_alias(
     })
 }
 
-/// Build-dir slot for the alias. Collapsed shape:
-/// `build-<lang_tag>-<case>-<rmw>[-a9]` where `lang_tag` is
-/// `rs` / `c` / `cpp`.
+/// Build-dir slot for the alias: `build-<lang>-<case>-<rmw>[-a9]`.
+///
+/// issue 0539 — this used to map `rust` -> `rs` here, and
+/// `fixtures-manifest.py::west_lang_tag` carried the same mapping on the BUILD
+/// side. Two producers of one spelling; both retired together, or the build and
+/// this resolver would name different directories.
 fn build_dir_for_example(example_name: &str) -> String {
     if let Some((lang, case, rmw, suffix)) = decode_alias(example_name) {
-        let lang_tag = match lang {
-            "rust" => "rs",
-            other => other,
-        };
-        format!("build-{lang_tag}-{case}-{rmw}{suffix}")
+        format!("build-{lang}-{case}-{rmw}{suffix}")
     } else {
         "build".to_string()
     }

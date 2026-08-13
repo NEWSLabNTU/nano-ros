@@ -367,7 +367,7 @@ perturbation. See `0516-*`. (2026-08-11)
 
 RESOLVED 2026-08-12 — **#517** the fixture resolver spelled a row's VARIANT identity as a leaf path
 literal, so `target_dir` could not be deleted. The framing was wrong: all 124 cargo rows are SHARED, so every
-one builds into `build/fixtures-cargo/<slug>` and none writes to its leaf `target*` at all — the leaf root was a
+one builds into `build/cargo-fixtures/<slug>` and none writes to its leaf `target*` at all — the leaf root was a
 KEY encoded as a path, surviving only because `require_in_lane` re-derived the row FROM that path. Fixed by
 making the lane check take the ROW (`require_coord_in_lane` + `select_row`), converting the ~17 inline spellers
 (`select_sole_row` for the 83 one-row leaves, `FixtureVariant::rmw` for the rest), then deleting all 41 keys —
@@ -451,15 +451,18 @@ zephyr leaves, the 4 west fixtures, all 4 FVP artifacts, the esp32 `.bin` postpr
 tree are absent. An unmaintained list that answers the right question is read as authoritative exactly
 when someone is auditing coverage. Retire it (preferred, after #535) or gate its staleness. See `0538-*`.
 
-**#539** (build/testing, open 2026-08-13) — fixture naming has four independent drifts RFC-0070/phase-334
-never scoped (they settled the build-cache ROOT, not the leaf vocabulary): the lang axis has two spellings
-(`rust` in the manifest, `rs` on disk via `nros_zephyr_lang_tag`); the 14 `build/<kind>` roots follow no
-rule (`cmake-fixtures`/`idf-fixtures`/`west-fixtures` but `fixtures-cargo` reversed and `compile-check`
-bare, plus two roots for one zephyr family); zephyr build dirs use three unrelated schemes at once
-including issue-numbered `build-245-asan`; and manifest ids mix `_`/`-` with nine phase-coded names
-(`n9_form1`, `o4_pkg_index`, `l9_register_c`) — the rule CLAUDE.md already enforces for test names.
-Sequence INSIDE #535's cutover: that join is `(platform, lang, rmw)` against `<lang>-<role>-<rmw>` path
-segments with `rust`/`rs` disagreeing, so renaming after means touching every path twice. See `0539-*`.
+RESOLVED 2026-08-13 — **#539** fixture naming: three of four drifts closed. The `rs` lang short form is
+retired (zephyr dirs are `build-rust-…`) — and this filing's own status note claiming `west_lang_tag` had
+"ONE producer, so the drift is contained" was WRONG: there were two, the build side and
+`zephyr::build_dir_for_example`, which had to move together or build and resolver would name different
+dirs. `build/<kind>` got a RULE (RFC-0070 R5) and `fixtures-cargo` → `cargo-fixtures`. Zephyr build-dir
+names closed as satisfied — the name has a producer. Work-item ids closed and gated earlier. STILL OPEN,
+and not for the reason this issue gave: `compile-check` → `compile-check-fixtures` is not mechanizable,
+because the token names four things (kind, lane, `list-compile-checks` subcommand, three scripts) — a
+global replace rewrote 43 files and produced `list-compile-check-fixturess`. It needs the kind extracted
+to a named constant first; the 9.4 GB was never the blocker. Measured: a rename FORFEITS its cache (`mv`
+fails — `CMakeCache.txt` bakes its own absolute path), 62 GB reclaimed, zephyr workspace 208 → 159 GB.
+See `archived/0539-*`. (2026-08-13)
 
 **#540** (testing, open 2026-08-13) — `packages/testing/nros-tests/bins/int32-observer` was retired by
 issue 0128 T0 ("qos/safety e2es ride `int32-sink`") and the crate directory survived: no fixture row, no

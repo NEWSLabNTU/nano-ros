@@ -18,7 +18,7 @@ spellings encode "which RMW" alone:
 examples/native/rust/talker/target-zenoh/         # cargo, RMW suffix
 examples/workspaces/c/build-workspace-fixtures/   # cmake, stage suffix
 examples/workspaces/c/build-workspace-fixtures-freertos/   # + platform suffix
-build/fixtures-cargo/<group>/                     # phase-226 group key
+build/cargo-fixtures/<group>/                     # phase-226 group key
 ```
 
 Counted 2026-08-06: **117 `target*` and 249 `build*` directories inside source
@@ -117,17 +117,25 @@ Conforming today (16 of 18):
 | bare `<family>` | `cargo`, `tools`, `zenohd`, `xrce-agent`, `qemu-zenoh-pico`, `sizes-probe`, `stack-analysis`, `link-determinism`, `borrowed-e2e`, `fixture-make-driver`, `zephyr-fixture-make-driver` |
 | `<family>.lock` | `zephyr-fixture-build.lock`, `px4-msgs-codegen.lock` |
 
-**Two do not, and are knowingly left alone:**
+**One did not, and was renamed 2026-08-13:** `fixtures-cargo` → `cargo-fixtures`.
 
-| kind | should be | why not yet |
-| --- | --- | --- |
-| `compile-check` | `compile-check-fixtures` | holds 9.4 GB |
-| `fixtures-cargo` | `cargo-fixtures` (order reversed) | holds 14 GB |
+**One still does not, and is left alone deliberately:** `compile-check` should be
+`compile-check-fixtures`, and is not renameable mechanically. The token names
+FOUR things — this build-dir kind, the compile-check LANE, the
+`list-compile-checks` subcommand, and three scripts (`compile-check-fixtures.sh`,
+`-signature.sh`, `compile-check-stale.sh`). A global replace rewrote 43 files and
+produced `list-compile-check-fixturess` and prose about "the
+compile-check-fixtures lane"; it was reverted. Renaming it safely needs the kind
+extracted to a NAMED CONSTANT first, so the rename is one edit rather than a
+search over an overloaded word.
 
-Renaming a kind invalidates the cache under it, and both of these are large. The
-rule is stated so NEW kinds follow it — which is the part that costs nothing and
-the part that actually stops the drift. Rename these two opportunistically, when
-a pristine rebuild is happening for another reason; do not force one for a name.
+**What a kind rename actually costs, measured.** Moving the directory does NOT
+preserve the cache: `build/fixtures-cargo` held `CMakeCache.txt` files with the
+old absolute path baked in, so after `mv` the nested cmake builds failed with
+"The current CMakeCache.txt directory ... is different than the directory ...
+where CMakeCache.txt was created". The 14 GB had to be wiped; rebuilding just
+the linux/rust slice took 453 s, and the other platforms rebuild when their
+lanes next run. Budget a rename accordingly — the cache is forfeit, not moved.
 
 > **A correction, recorded because the inaccurate version is in issue 0539's
 > filing.** That issue also lists `borrowed-e` and `px` as "truncations of
@@ -219,7 +227,7 @@ Non-negotiable ordering, because the 236 literals are what makes this risky:
    Step 2 splits in two, and the split was not visible when this was written
    (phase-334 W2.b, 2026-08-07). The **already-rooted** families
    (`build/compile-check`, `build/cmake-fixtures`, `build/idf-fixtures`,
-   `build/west-fixtures`, `build/fixtures-cargo`) migrate cleanly: they are
+   `build/west-fixtures`, `build/cargo-fixtures`) migrate cleanly: they are
    R1-shaped but not R3-derived, so `nros_build_dir` reproduces them byte for
    byte and only `NROS_BUILD_ROOT` behaviour changes. The **in-source** suffix
    zoo — which is all 236 of the counted literals — has no root in it to derive,

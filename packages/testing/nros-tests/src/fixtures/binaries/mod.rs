@@ -2626,7 +2626,7 @@ pub fn build_test_fixture_at_profile(
     // that ambiguous and declines to redirect, and this funnel resolved the
     // un-redirected leaf path — where a pre-group build had left a binary. All
     // five `large_msg` zenoh tests read that museum artifact and reported STALE
-    // while the freshly built one sat in `build/fixtures-cargo/<slug>`.
+    // while the freshly built one sat in `build/cargo-fixtures/<slug>`.
     //
     // MULTI-row, not `leaf_has_rows`: see `groups::leaf_is_multi_row` for why
     // the wider predicate would break the sole-row leaves reached from here.
@@ -2652,11 +2652,11 @@ pub fn build_test_fixture_at_profile(
 /// `platform` selects the group, `triple` is the cross target the leaf's
 /// `.cargo/config.toml [build] target` puts in the path, `binary_name` is the
 /// Cargo `[[bin]]` name; the binary lands at
-/// `build/fixtures-cargo/<group>/<triple>/<profile>/<binary_name>`.
+/// `build/cargo-fixtures/<group>/<triple>/<profile>/<binary_name>`.
 ///
 /// phase-340 B2 — the group now comes from
 /// [`crate::fixtures::groups::sole_group_dir`] instead of a hardcoded
-/// `fixtures-cargo/<platform>`, which is what made this the DEFAULT-group-only
+/// `cargo-fixtures/<platform>`, which is what made this the DEFAULT-group-only
 /// resolver `check-fixture-groups`'s A2 arm was blocking migrations on. Two
 /// consequences, both deliberate:
 ///
@@ -3614,7 +3614,7 @@ static LOGGING_SMOKE_MPS2_BAREMETAL_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// fixture must already be built (`just qemu build-fixtures`).
 pub fn build_logging_smoke_mps2_baremetal() -> TestResult<&'static Path> {
     LOGGING_SMOKE_MPS2_BAREMETAL_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("logging-smoke-mps2-baremetal"))
         .map(|p| p.as_path())
 }
@@ -3735,7 +3735,7 @@ pub fn build_logging_smoke_zephyr_native_sim() -> TestResult<&'static Path> {
 /// Build the qemu-wcet-bench example and return its path (cached)
 pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
     QEMU_WCET_BENCH_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rs-wcet-bench"))
         .map(|p| p.as_path())
 }
@@ -3743,7 +3743,7 @@ pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
 /// Build the qemu-lan9118 example and return its path (cached)
 pub fn build_qemu_lan9118() -> TestResult<&'static Path> {
     QEMU_LAN9118_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rs-lan9118"))
         .map(|p| p.as_path())
 }
@@ -4123,7 +4123,7 @@ pub fn custom_msg_binary() -> PathBuf {
 /// Build qemu-bsp-talker (cached)
 pub fn build_qemu_bsp_talker() -> TestResult<&'static Path> {
     QEMU_BSP_TALKER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-bsp-talker"))
         .map(|p| p.as_path())
 }
@@ -4131,7 +4131,7 @@ pub fn build_qemu_bsp_talker() -> TestResult<&'static Path> {
 /// Build qemu-bsp-listener (cached)
 pub fn build_qemu_bsp_listener() -> TestResult<&'static Path> {
     QEMU_BSP_LISTENER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-bsp-listener"))
         .map(|p| p.as_path())
 }
@@ -4170,7 +4170,7 @@ pub fn qemu_bsp_listener_binary() -> PathBuf {
 /// Build qemu-serial-talker (cached)
 pub fn build_qemu_serial_talker() -> TestResult<&'static Path> {
     QEMU_SERIAL_TALKER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-serial-talker"))
         .map(|p| p.as_path())
 }
@@ -4186,7 +4186,7 @@ pub fn qemu_serial_talker_binary() -> PathBuf {
 /// Build qemu-serial-listener (cached)
 pub fn build_qemu_serial_listener() -> TestResult<&'static Path> {
     QEMU_SERIAL_LISTENER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-serial-listener"))
         .map(|p| p.as_path())
 }
@@ -4206,7 +4206,7 @@ pub fn qemu_serial_listener_binary() -> PathBuf {
 /// step, this is the resolve step).
 pub fn build_qemu_talker_xrce() -> TestResult<&'static Path> {
     QEMU_TALKER_XRCE_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-talker-xrce"))
         .map(|p| p.as_path())
 }
@@ -4617,7 +4617,7 @@ pub fn xrce_stress_test_binary() -> PathBuf {
 /// Build qemu-bsp-large-msg-test (cached).
 pub fn build_qemu_large_msg_test() -> TestResult<&'static Path> {
     QEMU_LARGE_MSG_TEST_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-bsp-large-msg-test"))
         .map(|p| p.as_path())
 }
@@ -4891,7 +4891,7 @@ static QEMU_RTIC_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-talker (cached)
 pub fn build_qemu_rtic_talker() -> TestResult<&'static Path> {
     QEMU_RTIC_TALKER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-talker"))
         .map(|p| p.as_path())
 }
@@ -4899,7 +4899,7 @@ pub fn build_qemu_rtic_talker() -> TestResult<&'static Path> {
 /// Build qemu-rtic-listener (cached)
 pub fn build_qemu_rtic_listener() -> TestResult<&'static Path> {
     QEMU_RTIC_LISTENER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-listener"))
         .map(|p| p.as_path())
 }
@@ -4913,7 +4913,7 @@ static QEMU_RTIC_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-service-server (cached)
 pub fn build_qemu_rtic_service_server() -> TestResult<&'static Path> {
     QEMU_RTIC_SERVICE_SERVER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-service-server"))
         .map(|p| p.as_path())
 }
@@ -4921,7 +4921,7 @@ pub fn build_qemu_rtic_service_server() -> TestResult<&'static Path> {
 /// Build qemu-rtic-service-client (cached)
 pub fn build_qemu_rtic_service_client() -> TestResult<&'static Path> {
     QEMU_RTIC_SERVICE_CLIENT_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-service-client"))
         .map(|p| p.as_path())
 }
@@ -5136,7 +5136,7 @@ static QEMU_RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-action-server (cached)
 pub fn build_qemu_rtic_action_server() -> TestResult<&'static Path> {
     QEMU_RTIC_ACTION_SERVER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-action-server"))
         .map(|p| p.as_path())
 }
@@ -5144,7 +5144,7 @@ pub fn build_qemu_rtic_action_server() -> TestResult<&'static Path> {
 /// Build qemu-rtic-action-client (cached)
 pub fn build_qemu_rtic_action_client() -> TestResult<&'static Path> {
     QEMU_RTIC_ACTION_CLIENT_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-action-client"))
         .map(|p| p.as_path())
 }
@@ -5162,7 +5162,7 @@ static QEMU_RTIC_MIXED_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-mixed-talker (cached)
 pub fn build_qemu_rtic_mixed_talker() -> TestResult<&'static Path> {
     QEMU_RTIC_MIXED_TALKER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-mixed-talker"))
         .map(|p| p.as_path())
 }
@@ -5170,7 +5170,7 @@ pub fn build_qemu_rtic_mixed_talker() -> TestResult<&'static Path> {
 /// Build qemu-rtic-mixed-listener (cached)
 pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
     QEMU_RTIC_MIXED_LISTENER_BINARY
-        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        // Phase 226.D — built into build/cargo-fixtures/qemu-arm-baremetal.
         .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-mixed-listener"))
         .map(|p| p.as_path())
 }

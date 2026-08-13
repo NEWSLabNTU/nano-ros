@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). COMPLETE except W5's deferred directory renames, and one UNMEASURED acceptance item (tier-2 wall-clock vs #509's 40 min baseline — the leaf count is 70 → 7, but a count is not a duration). All 74 west fixtures are manifest rows, the emitter reads them, the lane narrows by coordinate, the coverage gates read rows, work-item ids are gated, the `build/<kind>` rule is RFC-0070 R5, W4 answered #509 with a NO, and the FVP + logging-smoke code with no consumer is retired.**
+**Status (2026-08-13). COMPLETE except one rename that is not mechanizable (`compile-check`, blocked on extracting the kind to a named constant) and one UNMEASURED acceptance item (tier-2 wall-clock vs #509 — the leaf count is 70 → 7, but a count is not a duration). Everything else landed: all 74 west fixtures are manifest rows, the emitter reads them, the lane narrows by coordinate, the coverage gates read rows, work-item ids are gated, `build/<kind>` has RFC-0070 R5 and `cargo-fixtures` matches it, the `rs` lang short form is retired from BOTH producers, W4 answered #509 with a NO, and the FVP + logging-smoke code with no consumer is retired.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -511,8 +511,7 @@ effect** — which is a 40-minute lane this session did not run.
 honour sched dims natively (`k_thread_deadline_set`); these are platform
 behaviour, not feature duplication.
 
-## W5 — One vocabulary (#539) — **PARTIAL: the ids are done and gated; the
-renames are deferred with a reason**
+## W5 — One vocabulary (#539) — **LANDED except one rename that is not mechanizable**
 
 - [x] **Work-item ids renamed and BANNED.** Nine fixture ids carried a work-item
       letter from a phase nobody has open. They now name behaviour, and
@@ -532,36 +531,53 @@ renames are deferred with a reason**
       letter+digits+underscore and any `phase<N>` / `issue<N>` token — `mps2`
       and `qemu-arm-baremetal` keep their digits, because those are part of a
       name rather than an index into a plan.
-- [ ] **Lang axis (`rust` vs `rs`) — DEFERRED.** `west_lang_tag` has ONE
-      producer now (W1 deleted the bash copy), so the drift is contained. The
-      remaining step is retiring the short spelling from build-dir NAMES, and
-      that renames every zephyr build dir — invalidating a **215 GB** workspace
-      for a cosmetic gain. Not worth it as a standalone change; do it if a
-      pristine rebuild is happening for another reason.
-- [x] **The `build/<kind>` RULE is written down** — RFC-0070 **R5**
-      (2026-08-13). R2 governed only the `<coordinate>` half of
-      `<kind>/<coordinate>`, so the kind names had grown by precedent. New kinds
-      now have a rule; that is the half that costs nothing.
-- [ ] **Renaming the two non-conforming kinds — DEFERRED**, same trade as the
-      lang axis: `compile-check` (→ `-fixtures`, 9.4 GB) and `fixtures-cargo`
-      (→ `cargo-fixtures`, 14 GB) invalidate the caches under them. Named in R5
-      as knowingly-deferred, not left as unexplained exceptions.
+- [x] **Lang axis: the `rs` short form is RETIRED** (2026-08-13). Zephyr build
+      dirs are `build-rust-talker-zenoh` now, not `build-rs-…`.
 
-      **Writing R5 corrected the audit.** #539 listed five-plus outliers; there
-      are TWO. `borrowed-e`/`px` were `borrowed-e2e`/`px4-msgs-codegen` — my own
-      `grep`'s character class stopped at the first digit — and the
-      `zephyr-fixture-*` pair is a lock file plus a driver dir, not two roots for
-      one family. 16 of 18 kinds already conform. The correction is recorded in
-      both #539 and R5, against the wrong version, rather than quietly replacing
-      it.
-- [ ] **Zephyr build-dir names from the row coordinate** — the row now carries
-      `west_build_name`, so the name HAS a producer; making it derived rather
-      than authored is the same rename as above.
+      **A correction: this item said "`west_lang_tag` has ONE producer now, so
+      the drift is contained." That was wrong.** There were TWO —
+      `fixtures-manifest.py::west_lang_tag` on the build side and
+      `nros_tests::zephyr::build_dir_for_example` on the test side, each
+      carrying its own `rust` -> `rs` mapping. They had to be retired together
+      or the build and the resolver would name different directories. The drift
+      was not contained, which made this MORE worth doing than the deferral
+      claimed, not less.
 
-**The measured cost is why these are deferred rather than skipped.** Every
-remaining item is a rename of a directory that currently holds build output.
-The ids were free (a build root is cheap to recreate: 138 s for all nine); the
-directories are not.
+      Verified as a pair, not by inspection: the lane built
+      `build-rust-talker-zenoh/zephyr/zephyr.exe` (77 s) and
+      `case_01_zenoh_rust_talker_boots` then resolved it. 18 orphaned
+      `build-rs-*` dirs removed — **48 GB**, workspace 208 GB -> 159 GB.
+- [x] **`fixtures-cargo` → `cargo-fixtures` — DONE** (2026-08-13), and it
+      measured what a kind rename costs. `mv` does NOT preserve the cache: the
+      14 GB tree held `CMakeCache.txt` files with the old absolute path baked
+      in, so the moved copy failed with "The current CMakeCache.txt directory
+      ... is different than the directory ... where CMakeCache.txt was created".
+      Wiped and rebuilt; the linux/rust slice alone took 453 s, other platforms
+      rebuild when their lanes run.
+- [ ] **`compile-check` → `compile-check-fixtures` — NOT MECHANIZABLE, left
+      alone.** The token names FOUR things: this build-dir kind, the
+      compile-check LANE, the `list-compile-checks` subcommand, and three
+      scripts (`compile-check-fixtures.sh`, `-signature.sh`,
+      `compile-check-stale.sh`). A global replace rewrote 43 files and produced
+      `list-compile-check-fixturess` and prose about "the compile-check-fixtures
+      lane" — reverted. **The prerequisite is extracting the kind to a named
+      constant**, so the rename is one edit instead of a search over an
+      overloaded word. That is the real blocker; the cache cost is secondary.
+- [x] **Zephyr build-dir names have a producer** — the row's
+      `west_build_name`, authored only where the derivation cannot produce the
+      name (the mps2 witness leaves). Making it *derived everywhere* would
+      rename the dirs a second time for no behavioural gain, so the item is
+      closed as satisfied in substance rather than pursued for uniformity.
+**What the renames actually cost, now measured rather than estimated.** A kind
+or tag rename FORFEITS the cache under it — `mv` does not work, because
+`CMakeCache.txt` bakes its own absolute path and the moved copy fails with "The
+current CMakeCache.txt directory ... is different than the directory ... where
+CMakeCache.txt was created". So: 14 GB wiped for `cargo-fixtures` (linux/rust
+slice rebuilt in 453 s), 48 GB wiped for the lang axis (one leaf rebuilt in
+77 s). Total reclaimed 62 GB; the rest rebuilds when each lane next runs.
+
+The one rename NOT done is the one that turned out not to be a cache problem at
+all — see `compile-check` below.
 
 ## W6 — Close the class — **LANDED**
 
@@ -616,9 +632,11 @@ Scored 2026-08-13. Three met, one partial, one **not measured**.
 - [x] **No build recipe produces an artifact no test consumes** — W3 retired the
       FVP pair, #549 retired the duplicate logging-smoke builder.
 - [~] **One vocabulary, each gated.** Work-item ids: done and gated. The
-      `build/<kind>` rule: written as RFC-0070 R5, with its two non-conforming
-      kinds named. The lang axis and the zephyr build-dir scheme: DEFERRED, and
-      not gated — a gate would fail on 27 dirs it is not yet time to rename.
+      `build/<kind>` rule: RFC-0070 R5, and `fixtures-cargo` renamed to match.
+      The lang axis: the `rs` short form is retired, both producers. Zephyr
+      build-dir names: have a producer. Remaining: `compile-check`, which is not
+      mechanizable until the kind is a named constant (see W5), and no gate —
+      a gate on the kind rule would fail on that one known exception.
 - [ ] **NOT MEASURED: lane wall-clock against #509's 40 min baseline.** The
       leaf-count delta is named (70 → 7 for tier2), but a *count* is not a
       *duration*: #509's cost is ~140 s of fixed per-leaf overhead, and whether

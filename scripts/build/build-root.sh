@@ -17,7 +17,7 @@
 #                   require_cmake_fixture                   (resolver)
 #   idf-fixtures    scripts/build/idf-fixtures.sh  + require_idf_fixture
 #   west-fixtures   scripts/build/west-fixtures.sh + require_west_fixture
-#   fixtures-cargo  fixtures-target-dir.sh (step 1) + fixture_shared_target_dir
+#   cargo-fixtures  fixtures-target-dir.sh (step 1) + fixture_shared_target_dir
 #
 # The Rust half of a family cannot source this file, so `nros_tests::build_root`
 # / `nros_tests::build_dir` mirror these two functions — ONE mirror, pinned to

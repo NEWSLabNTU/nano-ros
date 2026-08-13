@@ -287,7 +287,7 @@ else
     NROS_REPO_ROOT="${NROS_REPO_ROOT:-$PWD}"; export NROS_REPO_ROOT
     # Phase 226.D — shared fixture-only --target-dir resolver. Eligible
     # default-config rows for a migrated platform (qemu-arm-baremetal,
-    # examples) share one `build/fixtures-cargo/<group>` so nano-ros
+    # examples) share one `build/cargo-fixtures/<group>` so nano-ros
     # crates compile once for the group, not once per example dir. The
     # stale probe sources the SAME helper (rust-fixture-stale.sh).
     # shellcheck source=scripts/build/fixtures-target-dir.sh

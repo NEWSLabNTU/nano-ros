@@ -1,7 +1,7 @@
 ---
 id: 539
 title: "Fixture naming has four independent drifts: two spellings of the lang axis, no rule for build/<kind>, three schemes for zephyr build dirs, phase-coded manifest ids"
-status: open
+status: resolved
 type: tech-debt
 area: build, testing
 related: [issue-0535, rfc-0070, phase-334]
@@ -32,7 +32,7 @@ The 14 kinds in use, as passed to `nros_build_dir`:
 
 ```
 borrowed-e   cargo        cmake-fixtures  compile-check
-fixture-make-driver       fixtures-cargo  idf-fixtures
+fixture-make-driver       cargo-fixtures  idf-fixtures
 link-determinism          px              sizes-probe
 tools        west-fixtures
 zephyr-fixture-build      zephyr-fixture-make-driver
@@ -41,7 +41,7 @@ zephyr-fixture-build      zephyr-fixture-make-driver
 Three separate inconsistencies:
 
 * `cmake-fixtures` / `idf-fixtures` / `west-fixtures` are `<tech>-fixtures`, but
-  `fixtures-cargo` **reverses the order** and `compile-check` drops the suffix
+  `cargo-fixtures` **reverses the order** and `compile-check` drops the suffix
   entirely — for a family that is a fixture kind in exactly the same sense.
 * `zephyr-fixture-build` and `zephyr-fixture-make-driver` are two roots for one
   family, distinguished by which script writes them, not by what they hold.
@@ -55,7 +55,7 @@ Three separate inconsistencies:
 > different things sharing a prefix, not two roots for one family.
 >
 > The real outlier set is **two** kinds, not five: `compile-check` (missing the
-> `-fixtures` suffix) and `fixtures-cargo` (order reversed). 16 of 18 kinds
+> `-fixtures` suffix) and `cargo-fixtures` (order reversed). 16 of 18 kinds
 > already conform. Left in place above so the correction is legible against what
 > it corrects.
 
@@ -152,5 +152,41 @@ Worth doing when a pristine rebuild is happening anyway; not worth forcing one.
 fixture trees is `<family>-fixtures`; anything else is the bare `<family>`; a
 lock is `<family>.lock`. New kinds follow it, which is the half that costs
 nothing and the half that actually stops the drift. The two non-conforming kinds
-(`compile-check` at 9.4 GB, `fixtures-cargo` at 14 GB) are named there as
+(`compile-check` at 9.4 GB, `cargo-fixtures` at 14 GB) are named there as
 knowingly-deferred renames rather than left as unexplained exceptions.
+
+## Resolved 2026-08-13 (phase-350 W5) — three of four drifts closed, one named as blocked
+
+* **Drift 1, the lang axis: CLOSED.** The `rs` short form is retired; zephyr
+  build dirs are `build-rust-talker-zenoh`. **This filing's later status note
+  said `west_lang_tag` had "ONE producer, so the drift is contained" — wrong.**
+  There were two: `west_lang_tag` (build) and
+  `nros_tests::zephyr::build_dir_for_example` (test), each with its own
+  `rust` -> `rs` mapping. They had to move together or the build and the
+  resolver would name different dirs. Verified as a pair: the lane built
+  `build-rust-talker-zenoh/zephyr/zephyr.exe` and the boot test resolved it.
+* **Drift 2, `build/<kind>`: RULE written (RFC-0070 R5), one of two renames
+  done.** `fixtures-cargo` -> `cargo-fixtures`. `compile-check` ->
+  `compile-check-fixtures` is **not mechanizable** and is left alone: the token
+  names four things — the kind, the compile-check LANE, the
+  `list-compile-checks` subcommand, and three scripts. A global replace rewrote
+  43 files and produced `list-compile-check-fixturess`; reverted. The
+  prerequisite is extracting the kind to a NAMED CONSTANT so the rename is one
+  edit. Tracked in R5 and phase-350 W5.
+* **Drift 3, zephyr build-dir schemes: CLOSED as satisfied in substance.** The
+  name has a producer (the row's `west_build_name`), authored only where the
+  derivation cannot produce it. Making it derived everywhere renames the dirs a
+  second time for no behavioural gain.
+* **Drift 4, phase-coded ids: CLOSED and gated** (see the earlier status note).
+
+**What a rename costs, measured rather than assumed.** The cache is FORFEIT, not
+moved: `mv build/fixtures-cargo build/cargo-fixtures` produced "The current
+CMakeCache.txt directory ... is different than the directory ... where
+CMakeCache.txt was created" on the first nested cmake build, because
+`CMakeCache.txt` bakes its own absolute path. 14 GB wiped (linux/rust slice
+rebuilt in 453 s) plus 48 GB of orphaned `build-rs-*` — 62 GB reclaimed, the
+zephyr workspace down from 208 GB to 159 GB.
+
+The deferral this issue argued for was right about the cost and wrong about the
+reason for the one rename still open: `compile-check` is blocked by an
+overloaded token, not by its 9.4 GB.

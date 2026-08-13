@@ -119,7 +119,7 @@ build-qemu:
         elf_name="esp32_qemu_${ex}"
         # phase-340 item 7 — ask where the build WROTE, never assume the leaf.
         # `qemu-esp32-baremetal` shares a target dir, so this row's artifacts
-        # live under `build/fixtures-cargo/<group>/`; the helper returns the
+        # live under `build/cargo-fixtures/<group>/`; the helper returns the
         # leaf's own `target/` for any platform that has not migrated, so this
         # line is correct on both sides of a migration.
         artifact_dir="$(nros_fixture_row_artifact_dir \

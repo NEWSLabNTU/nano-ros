@@ -357,7 +357,7 @@ pub fn run_coords() -> Option<&'static BTreeSet<Coord>> {
 /// a different coordinate.
 ///
 /// `None` for anything outside the manifest's artifact roots — the shared
-/// `build/fixtures-cargo/<platform>` dirs (phase-226.D), the Zephyr west build
+/// `build/cargo-fixtures/<platform>` dirs (phase-226.D), the Zephyr west build
 /// roots, the compile-check lane. Callers must treat `None` as "do not skip".
 ///
 /// Also `None` when the longest match is AMBIGUOUS — see [`attribute_path_in`].
@@ -464,7 +464,7 @@ pub fn is_in_lane(row: &Row, coords: &BTreeSet<Coord>) -> bool {
 /// path so `attribute_path` can re-derive that same row is what forces a
 /// per-variant LEAF directory to exist at all. The bytes have not lived in one
 /// since phase-340 B3 — all 124 cargo rows build into
-/// `build/fixtures-cargo/<slug>` — so the leaf path was serving purely as a key,
+/// `build/cargo-fixtures/<slug>` — so the leaf path was serving purely as a key,
 /// and this is that key without the path.
 ///
 /// `label` is for the message only; pass the row's dir.
@@ -662,7 +662,7 @@ mod tests {
         // turns "never built" into "skipped" (issue 0445).
         for p in [
             "build/zephyr-workspace-builds/build-ws-c-entry-zenoh/zephyr/zephyr.exe",
-            "build/fixtures-cargo/qemu-arm-baremetal/thumbv7m-none-eabi/x/y",
+            "build/cargo-fixtures/qemu-arm-baremetal/thumbv7m-none-eabi/x/y",
             "build/cmake-fixtures/some-id/bin",
             "packages/testing/nros-smoke/target/x/y",
         ] {

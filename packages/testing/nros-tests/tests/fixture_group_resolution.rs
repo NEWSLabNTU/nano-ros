@@ -89,7 +89,7 @@ fn migrating_linux_gives_each_talker_variant_its_own_group_dir() {
             row.shared,
             "talker variant {label} is not shared with `linux` migrated"
         );
-        dirs.insert(build_dir("fixtures-cargo", &[row.slug.as_str()]));
+        dirs.insert(build_dir("cargo-fixtures", &[row.slug.as_str()]));
     }
 
     assert_eq!(

@@ -45,7 +45,7 @@ fi
 COVERAGE=(
     # FreeRTOS firmware: the board supplies strong netif hooks (LAN9118/lwIP).
     "examples/qemu-arm-freertos/rust|freertos_rs_*entry|nros_board_register_netif nros_board_poll_netif"
-    "build/fixtures-cargo/qemu-arm-freertos|freertos_rs_*entry|nros_board_register_netif nros_board_poll_netif"
+    "build/cargo-fixtures/qemu-arm-freertos|freertos_rs_*entry|nros_board_register_netif nros_board_poll_netif"
     # (phase-249 P4a removed the weak nros_app_register_backends default — it is now
     #  a generated strong def or a link error, never a weak-overridable symbol, so
     #  it left this image gate.)

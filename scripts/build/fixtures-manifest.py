@@ -261,7 +261,7 @@ def is_cargo_row(entry):
     into a shared cargo `--target-dir` group at all. `fixtures-build.sh` only
     ever hands the cargo path to `nros_fixture_target_dir_flag`, so a cmake row
     must never appear in the group export — a cmake artifact redirected to
-    `fixtures-cargo/<slug>` is a resolver looking somewhere nothing was written.
+    `cargo-fixtures/<slug>` is a resolver looking somewhere nothing was written.
     """
     # phase-344 W2 — BUILDER-keyed, not language-keyed. `lang` was a proxy that
     # held only while every rust row built with cargo. It does not: the six
@@ -412,14 +412,18 @@ def west_role(entry):
 
 
 def west_lang_tag(entry):
-    """`rs`/`c`/`cpp` — the spelling zephyr build dirs use for the lang axis.
+    """The lang, verbatim — issue 0539 retired the `rs` short form (2026-08-13).
 
-    Issue 0539 calls this out as one axis with two spellings; it stays here (one
-    producer) until that item retires the short form outright.
+    This used to map `rust` -> `rs` for zephyr build-dir names, and it was not
+    the only place that did: `nros_tests::zephyr::build_dir_for_example` carried
+    the same two-line mapping for the TEST side. Two producers of one spelling,
+    which is the drift 0539 is about — the two had to be retired together or the
+    build and the resolver would name different directories.
+
+    Kept as a function rather than inlined so the axis still has ONE name here
+    if a future board needs a per-language dir token again.
     """
-    return {"rust": "rs", "c": "c", "cpp": "cpp", "mixed": "mixed"}.get(
-        entry.get("lang"), entry.get("lang")
-    )
+    return entry.get("lang")
 
 
 def west_build_name(entry):

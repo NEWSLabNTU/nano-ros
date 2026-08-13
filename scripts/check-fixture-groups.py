@@ -20,7 +20,7 @@ Nothing enforced this before.  `qemu-arm-baremetal` — the one migrated platfor
 **The gate is also what refuted phase-340 W1's proposed platform-grained group
 key** (2026-08-08).  Under that key `linux`'s 65 rows become one group, and
 `examples/native/rust/talker`'s four rows — default, `rmw-zenoh`, `rmw-xrce`,
-`link-tls` — all write `fixtures-cargo/linux/<profile>/talker`.  The shipped
+`link-tls` — all write `cargo-fixtures/linux/<profile>/talker`.  The shipped
 version of this gate reported "no artifact-name collisions" for exactly that
 configuration, because A1 keyed its owner set on the leaf DIRECTORY and the four
 rows share one.  Widening the key to the ROW turns the same experiment into 11
@@ -48,11 +48,11 @@ Three arms, all fatal:
 
       It used to read "every group a shared platform produces is the DEFAULT
       group (slug == platform)", because the Rust resolver
-      (`fixture_shared_target_dir`) returned `build_dir("fixtures-cargo",
+      (`fixture_shared_target_dir`) returned `build_dir("cargo-fixtures",
       &[platform])` and had no mirror of the shell's hashed variant slug.  A
       platform whose rows carry features or env would have made the BUILD write
-      `fixtures-cargo/<plat>-<hash>` while the TEST looked in
-      `fixtures-cargo/<plat>` — issue #393 verbatim — so the arm blocked every
+      `cargo-fixtures/<plat>-<hash>` while the TEST looked in
+      `cargo-fixtures/<plat>` — issue #393 verbatim — so the arm blocked every
       migration except the one accidentally collision-free platform.
 
       The Rust resolver now reads `fixtures-manifest.py fixture-groups`, which

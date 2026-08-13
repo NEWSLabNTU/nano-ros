@@ -133,7 +133,7 @@ PY
         # which is a SECOND spelling of a build the manifest already describes:
         # `examples/fixtures.toml` carries a `linux`/`rust`/`cyclonedds` row for
         # each role, and `linux` is in `NROS_FIXTURE_SHARED_PLATFORMS`, so the
-        # fixture lane builds those rows into `build/fixtures-cargo/<slug>`.
+        # fixture lane builds those rows into `build/cargo-fixtures/<slug>`.
         #
         # The two spellings did not merely duplicate bytes, they DISAGREED: the
         # test resolver reads the manifest row (issue 0517), i.e. the group dir,

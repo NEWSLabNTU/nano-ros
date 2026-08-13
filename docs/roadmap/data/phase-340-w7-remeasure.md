@@ -40,7 +40,7 @@ host.
 *Not comparable:* "leave the cargo state alone" now means something different.
 In W1/W5 the warm cargo state was ~116 per-leaf `target*` dirs, so a workspace
 rebuild recompiled the shared nano-ros crates once per leaf. After phase-340 B3
-all 124 cargo rows build into `build/fixtures-cargo/<slug>`, so the warm state is
+all 124 cargo rows build into `build/cargo-fixtures/<slug>`, so the warm state is
 18 group dirs the rebuild genuinely reuses. **That IS the change being
 measured** — but the figure is "cold workspaces against a warm SHARED cache"
 where W1/W5's was "cold workspaces against a warm PER-LEAF cache". A tree with no
@@ -55,7 +55,7 @@ counted the same way:
 
 | | rlibs | distinct identities |
 | --- | --- | --- |
-| `build/fixtures-cargo/` (live, 18 group dirs) | 47 | 24 |
+| `build/cargo-fixtures/` (live, 18 group dirs) | 47 | 24 |
 | `examples/**/target*` (leaf dirs, now residue) | 1892 | 60 |
 
 The live side is what the fixture lane actually compiles: 47 `nros_core` rlibs
@@ -84,7 +84,7 @@ across five target dirs for one binary. On this tree:
 | | | |
 | --- | --- | --- |
 | `examples/` | 402 GiB (2026-08-06) | **306 GiB** |
-| live fixture cargo output (`build/fixtures-cargo/`) | — | **15 GiB** |
+| live fixture cargo output (`build/cargo-fixtures/`) | — | **15 GiB** |
 
 The five-dirs-per-leaf pattern is gone: the `target_dir` column that authored
 those names was deleted (issue 0517), every cargo row shares a group dir, and

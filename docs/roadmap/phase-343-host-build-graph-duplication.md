@@ -317,7 +317,7 @@ needs the lane". The measurement decides it without the lane:
   applies only *within* one cargo invocation, and arm B is N invocations.
 
 So the platform-grained key is sound, and `fixture_shared_target_dir`'s existing
-`build_dir("fixtures-cargo", &[platform])` is already the right answer. The
+`build_dir("cargo-fixtures", &[platform])` is already the right answer. The
 remaining verification is the namespace one, which phase-340 already ran
 (0 collisions, 7 platforms, 122 rust rows) — not a semantic one.
 

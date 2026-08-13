@@ -262,7 +262,7 @@ knowledge a precondition check should carry instead of a prose paragraph.
 **(c) NEW DEFECT, FIXED — the staleness probe reported an unbuildable fixture as
 fresh.** In the run that produced the 101 failures,
 `check-fixtures-stale: scope=native` **PASSED** while
-`build/fixtures-cargo/linux/nros-relwithdebinfo/talker` did not exist; the tests
+`build/cargo-fixtures/linux/nros-relwithdebinfo/talker` did not exist; the tests
 then failed one-by-one with `Test fixture binary not prebuilt: … Run
 just build-test-fixtures first`.
 

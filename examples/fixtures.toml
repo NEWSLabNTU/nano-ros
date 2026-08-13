@@ -4230,7 +4230,7 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/rust/talker"
 board = "mps2_an385"
-west_build_name = "build-cortex-m-rs-talker-zenoh"
+west_build_name = "build-cortex-m-rust-talker-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10600"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 

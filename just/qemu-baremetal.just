@@ -112,7 +112,7 @@ build:
     echo "Building QEMU ARM examples..."
     # phase-340 P2 — `qemu-arm-baremetal` is a migrated platform (phase-226.D,
     # the first one), so its default-config manifest rows build into
-    # `build/fixtures-cargo/qemu-arm-baremetal`. Both loops below used to run a
+    # `build/cargo-fixtures/qemu-arm-baremetal`. Both loops below used to run a
     # bare in-leaf `cargo build`, writing a SECOND per-leaf copy of the same
     # artifacts — the same second build path phase-340 P2 closed on freertos,
     # here re-creating `examples/qemu-arm-baremetal/**/target/`. The dir comes
@@ -223,7 +223,7 @@ test verbose="": build-fixtures
 # eligible row into this tree instead of each example's local target/, so the
 # kernel paths below resolve here. Mirrors fixture_shared_target_dir() in
 # packages/testing/nros-tests/src/fixtures/binaries/mod.rs.
-FIXTURE_TARGET := absolute_path("build/fixtures-cargo/qemu-arm-baremetal") / "thumbv7m-none-eabi" / PROFILE_DIR
+FIXTURE_TARGET := absolute_path("build/cargo-fixtures/qemu-arm-baremetal") / "thumbv7m-none-eabi" / PROFILE_DIR
 
 # Run basic QEMU test (nros serialization on Cortex-M3)
 [group("debug")]
@@ -260,7 +260,7 @@ build-rtic-main-e2e:
     source scripts/build/cargo.sh
     # issue 0488 residue 1 — this leaf IS a `[[fixture]]` row
     # (qemu-arm-baremetal/rust), and that platform is migrated, so the fixture
-    # lane compiles it into `build/fixtures-cargo/<slug>`. The bare in-leaf build
+    # lane compiles it into `build/cargo-fixtures/<slug>`. The bare in-leaf build
     # here wrote the leaf's own `target/` instead, and `test-rtic-main-e2e` then
     # `-kernel`ed THAT — a second copy nothing else reads, and a path that
     # disagrees with where the lane writes.
@@ -549,7 +549,7 @@ clean: clean-zenoh-pico
     done
     rm -rf packages/testing/qemu-smoltcp-bridge/target
     # Phase 226.D — shared fixture-only Cargo target dir.
-    rm -rf build/fixtures-cargo/qemu-arm-baremetal
+    rm -rf build/cargo-fixtures/qemu-arm-baremetal
     echo "QEMU bare-metal build artifacts cleaned"
 
 # =============================================================================

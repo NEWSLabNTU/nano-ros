@@ -87,7 +87,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     #
     # phase-340 P2 — but NOT a bare `cargo build`. `linux` is a migrated
     # platform (phase-340 B3), so every default-config `linux` fixture row
-    # already builds into `build/fixtures-cargo/linux`; a bare in-leaf build
+    # already builds into `build/cargo-fixtures/linux`; a bare in-leaf build
     # here wrote a SECOND, per-leaf copy of the same artifacts and re-created
     # the `examples/**/target/` dirs R1 exists to remove. The dir comes from the
     # same resolver the manifest build and the staleness probe call — no literal

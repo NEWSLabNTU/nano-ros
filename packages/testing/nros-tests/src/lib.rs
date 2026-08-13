@@ -443,7 +443,7 @@ pub fn build_root() -> std::path::PathBuf {
 ///
 /// ```ignore
 /// build_dir("compile-check", &[id])   // <root>/compile-check/<id>
-/// build_dir("fixtures-cargo", &[])    // <root>/fixtures-cargo
+/// build_dir("cargo-fixtures", &[])    // <root>/cargo-fixtures
 /// ```
 pub fn build_dir(kind: &str, coords: &[&str]) -> std::path::PathBuf {
     assert!(
@@ -642,8 +642,8 @@ mod tests {
         );
         // scripts/build/fixtures-target-dir.sh (migrated in step 1)
         assert_eq!(
-            build_dir("fixtures-cargo", &["qemu-arm-baremetal"]),
-            root.join("build/fixtures-cargo").join("qemu-arm-baremetal")
+            build_dir("cargo-fixtures", &["qemu-arm-baremetal"]),
+            root.join("build/cargo-fixtures").join("qemu-arm-baremetal")
         );
 
         // R2 — empty coordinate parts are skipped, as in the shell helper.

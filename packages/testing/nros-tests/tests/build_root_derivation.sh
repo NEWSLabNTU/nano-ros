@@ -93,7 +93,7 @@ scenario '
     export NROS_REPO_ROOT="$repo_root"
     source scripts/build/fixtures-target-dir.sh
     check "shared platform -> old literal path" \
-        " --target-dir $repo_root/build/fixtures-cargo/qemu-arm-baremetal" \
+        " --target-dir $repo_root/build/cargo-fixtures/qemu-arm-baremetal" \
         "$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
     # phase-340 B3 — the "unmigrated" example must be a platform that is
     # actually unmigrated. This arm named `linux`, which B3 migrated, so it
@@ -122,7 +122,7 @@ scenario '
     # Same group as a bare row: the authored STRING is not in the key, so a row
     # that only differs by spelling its own dir joins the default group.
     check "authored dir no longer opts out" \
-        " --target-dir $repo_root/build/fixtures-cargo/qemu-arm-baremetal" \
+        " --target-dir $repo_root/build/cargo-fixtures/qemu-arm-baremetal" \
         "$(nros_fixture_target_dir_flag qemu-arm-baremetal "--target-dir target-zenoh" "")"
     # NOTE: this scenario body is a SINGLE-QUOTED string. No apostrophes in
     # these comments — one closes the body, and everything after it evaluates in
@@ -236,7 +236,7 @@ scenario '
     export NROS_REPO_ROOT="$repo_root" NROS_BUILD_ROOT=/scratch/nros
     source scripts/build/fixtures-target-dir.sh
     check "shared platform follows NROS_BUILD_ROOT" \
-        " --target-dir /scratch/nros/fixtures-cargo/qemu-arm-baremetal" \
+        " --target-dir /scratch/nros/cargo-fixtures/qemu-arm-baremetal" \
         "$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
 '
 
@@ -267,10 +267,10 @@ scenario '
         "$repo_root/build/idf-fixtures" "$(nros_build_dir idf-fixtures)"
     check "west-fixtures out_root" \
         "$repo_root/build/west-fixtures" "$(nros_build_dir west-fixtures)"
-    # fixtures-cargo: the shell half moved in step 1, the resolver half here.
-    check "fixtures-cargo resolver dir" \
-        "$repo_root/build/fixtures-cargo/qemu-arm-baremetal" \
-        "$(nros_build_dir fixtures-cargo qemu-arm-baremetal)"
+    # cargo-fixtures: the shell half moved in step 1, the resolver half here.
+    check "cargo-fixtures resolver dir" \
+        "$repo_root/build/cargo-fixtures/qemu-arm-baremetal" \
+        "$(nros_build_dir cargo-fixtures qemu-arm-baremetal)"
 '
 
 # …and all of them relocate together, which is the whole point of one root.
@@ -319,7 +319,7 @@ scenario '
     leaf="$(cd examples && env bash -c "nros_fixture_target_dir_flag qemu-arm-baremetal \"\" \"\"" 2>/dev/null)"
     check "make leaf resolves the same dir as the parent" "$inproc" "$leaf"
     check "make leaf dir is the pre-migration path" \
-        " --target-dir $repo_root/build/fixtures-cargo/qemu-arm-baremetal" "$leaf"
+        " --target-dir $repo_root/build/cargo-fixtures/qemu-arm-baremetal" "$leaf"
     # phase-340 W2 — the strip runs in the leaf too, and it is the half that
     # would fail SILENTLY: a leaf missing it passes cargo two --target-dir
     # flags and the build still succeeds, into the wrong tree.
@@ -350,7 +350,7 @@ scenario '
 # sees code only.
 scenario '
     f=packages/testing/nros-tests/src/fixtures/binaries/mod.rs
-    hits="$(grep -nE "\"build/(compile-check|cmake-fixtures|idf-fixtures|west-fixtures|fixtures-cargo)" "$f" || true)"
+    hits="$(grep -nE "\"build/(compile-check|cmake-fixtures|idf-fixtures|west-fixtures|cargo-fixtures)" "$f" || true)"
     if [ -n "$hits" ]; then
         echo "  FAIL $f still resolves a migrated family from a literal"
         echo "$hits" | sed "s/^/        /"
@@ -416,7 +416,7 @@ else
     fail=1
 fi
 
-# phase-340 W2 — the THIRD spelling of the fixtures-cargo group path.
+# phase-340 W2 — the THIRD spelling of the cargo-fixtures group path.
 # `just/qemu-baremetal.just` computes FIXTURE_TARGET with a parse-time
 # `absolute_path()` literal, recorded in phase-334 W2.b as a deliberate
 # non-migration (a bash call there needs a `shell()` on every justfile parse).
@@ -433,7 +433,7 @@ scenario '
         rc=1
     fi
     check "FIXTURE_TARGET == the derived qemu-arm-baremetal group dir" \
-        "$(nros_build_dir fixtures-cargo qemu-arm-baremetal)" "$repo_root/$lit"
+        "$(nros_build_dir cargo-fixtures qemu-arm-baremetal)" "$repo_root/$lit"
 '
 
 echo "phase-340 B2 — the Rust resolver holds NO copy of the eligibility rule:"

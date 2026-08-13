@@ -309,7 +309,7 @@ fn every_west_leaf_is_placeable_by_coordinate() {
 ///
 /// This is the issue-0445 guard: the run must not be able to turn "never built"
 /// into "skipped" for the families it cannot attribute (the Zephyr west leaves,
-/// the shared `build/fixtures-cargo` dirs, the compile-check lane). Those are
+/// the shared `build/cargo-fixtures` dirs, the compile-check lane). Those are
 /// built module-level rather than by coordinate, so nothing is missing and a
 /// hard failure remains the right answer.
 #[test]
@@ -317,7 +317,7 @@ fn an_unattributable_artifact_is_never_skipped() {
     let coords: BTreeSet<Coord> = std::iter::once(all_coords()[0].clone()).collect();
     for p in [
         "build/zephyr-workspace-builds/build-ws-c-entry-zenoh/zephyr/zephyr.exe",
-        "build/fixtures-cargo/qemu-arm-baremetal/thumbv7m-none-eabi/p/bin",
+        "build/cargo-fixtures/qemu-arm-baremetal/thumbv7m-none-eabi/p/bin",
         "build/cmake-fixtures/some-id/bin",
         "/somewhere/entirely/else/bin",
     ] {
