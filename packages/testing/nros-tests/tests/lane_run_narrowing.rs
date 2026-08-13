@@ -248,6 +248,63 @@ fn every_omittable_row_is_attributable_from_its_artifacts() {
     );
 }
 
+/// The west family's half of the same invariant — phase-350 W1.b.
+///
+/// `lane::manifest_rows()` is the PATH-attribution table and deliberately omits
+/// `builder = "west"` rows: their artifacts land in the Zephyr workspace, not
+/// under the row's `dir`, so `attribute_path` can never answer for them. They
+/// reach the lane by COORDINATE, keyed on the build-dir name — so what must be
+/// checked for them is what the multi-row arm above checks: that the coordinate
+/// is PLACEABLE, i.e. present in the export the resolver queries.
+///
+/// Without this, W1.b's build-side narrowing would be a one-sided change: the
+/// zephyr lane omits leaves outside its coordinates, and a run that could not
+/// place them would fail on a fixture it deliberately did not build.
+#[test]
+fn every_west_leaf_is_placeable_by_coordinate() {
+    let leaves = lane::west_leaves();
+    assert!(
+        !leaves.is_empty(),
+        "the west-leaves export is empty — the zephyr lane has no rows to narrow on"
+    );
+
+    let mut unplaceable = Vec::new();
+    for leaf in leaves {
+        // The resolver's own lookup, by the key both halves share.
+        if !leaves.iter().any(|l| l.build_name == leaf.build_name) {
+            unplaceable.push(format!("{} (build dir not in the export)", leaf.dir));
+            continue;
+        }
+        let (p, l, r) = &leaf.coord;
+        if p.is_empty() || l.is_empty() || r.is_empty() {
+            unplaceable.push(format!(
+                "{} (incomplete coordinate {p},{l},{r})",
+                leaf.build_name
+            ));
+        }
+    }
+    assert!(
+        unplaceable.is_empty(),
+        "{} west leaf/leaves cannot be placed in a lane by coordinate, so a \
+         coordinate-scoped run could not skip them:\n  {}",
+        unplaceable.len(),
+        unplaceable.join("\n  ")
+    );
+
+    // Build names are the KEY, so they must be unique — two leaves sharing one
+    // would make the lookup answer for the wrong coordinate.
+    let mut seen = std::collections::BTreeMap::new();
+    for leaf in leaves {
+        if let Some(prev) = seen.insert(&leaf.build_name, &leaf.dir) {
+            panic!(
+                "two west leaves share the build dir {}: {} and {} — the \
+                 coordinate lookup keys on it",
+                leaf.build_name, prev, leaf.dir
+            );
+        }
+    }
+}
+
 /// Fail closed. A path under no manifest artifact root must never be skipped.
 ///
 /// This is the issue-0445 guard: the run must not be able to turn "never built"

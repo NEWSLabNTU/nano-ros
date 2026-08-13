@@ -953,6 +953,15 @@ pub fn get_prebuilt_zephyr_example(
     let build_root = zephyr_build_root(&workspace);
     let build_dir = build_dir_for_example(example_name);
 
+    // phase-350 W1.b — a coordinate-scoped lane build now omits west leaves
+    // outside its coordinates, so the run must recognise them as out-of-lane
+    // instead of failing on a fixture the build deliberately skipped. West
+    // leaves cannot be attributed by PATH (their artifacts live in the Zephyr
+    // workspace, not under the row's dir), so they take the coordinate route —
+    // the same one issue 0517's multi-row leaves take — keyed on the build-dir
+    // name both halves already agree on.
+    crate::fixtures::lane::require_west_leaf_in_lane(&build_dir, example_name)?;
+
     // Determine binary path based on platform
     let binary_path = match platform {
         ZephyrPlatform::NativeSim => build_root.join(format!("{}/zephyr/zephyr.exe", build_dir)),
@@ -1019,6 +1028,11 @@ pub fn get_prebuilt_zephyr_workspace_entry() -> TestResult<PathBuf> {
         .ok_or_else(|| TestError::BuildFailed("Zephyr workspace not found".to_string()))?;
 
     let build_root = zephyr_build_root(&workspace);
+    // phase-350 W1.b — same coordinate route as `get_prebuilt_zephyr_example`.
+    crate::fixtures::lane::require_west_leaf_in_lane(
+        ZEPHYR_WORKSPACE_ENTRY_BUILD_DIR,
+        "workspaces/rust/src/zephyr_entry",
+    )?;
     let binary_path = build_root.join(format!(
         "{ZEPHYR_WORKSPACE_ENTRY_BUILD_DIR}/zephyr/zephyr.exe"
     ));

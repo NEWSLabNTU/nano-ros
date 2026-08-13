@@ -682,6 +682,28 @@ def _validate_rust_workspace(entry, root, entry_dir):
     _require_file(entry, entry_dir / "Cargo.toml", "entry Cargo.toml")
 
 
+def _strip_cmake_comments(text):
+    """Drop `#` comments so a gate matches CODE, not prose — phase-350 W1.
+
+    CMake has no block comment worth modelling here, and `#` inside a quoted
+    string is rare enough in these files that the simple rule is the honest one:
+    everything from an unquoted `#` to end of line goes. Lines are kept (as
+    blanks) so any future line-numbered error stays accurate.
+    """
+    out = []
+    for line in text.split("\n"):
+        in_str = False
+        cut = len(line)
+        for i, ch in enumerate(line):
+            if ch == '"' and (i == 0 or line[i - 1] != "\\"):
+                in_str = not in_str
+            elif ch == "#" and not in_str:
+                cut = i
+                break
+        out.append(line[:cut])
+    return "\n".join(out)
+
+
 def _validate_zephyr_workspace(entry, root, entry_dir):
     # A Zephyr west app is neither a cargo member nor a plain
     # add_executable/add_library target — it is driven by
@@ -690,18 +712,30 @@ def _validate_zephyr_workspace(entry, root, entry_dir):
     entry_cmake = entry_dir / "CMakeLists.txt"
     _require_file(entry, entry_cmake, "entry CMakeLists.txt")
 
-    text = entry_cmake.read_text(encoding="utf-8")
+    # phase-350 W1 — match CODE, not prose. This read the raw text, so a token
+    # in a COMMENT satisfied it: four of the six zephyr entries link with
+    # `nano_ros_add_executable()` and merely MENTION `rust_cargo_application()`
+    # in a comment, and passed on the mention. The one entry whose comments
+    # happen not to name it (`mixed`) then failed — a gate that accepts four
+    # rows for the wrong reason and rejects the fifth for a real one is worse
+    # than no gate (the issue-0196 class).
+    text = _strip_cmake_comments(entry_cmake.read_text(encoding="utf-8"))
     if "project(" not in text:
         _fail(entry, "entry CMakeLists.txt does not call project(...)")
-    has_rust_app = "rust_cargo_application" in text
-    has_app_sources = bool(
-        re.search(r"\btarget_sources\s*\(\s*app\b", text, re.DOTALL)
-    )
-    if not (has_rust_app or has_app_sources):
+    # The three shapes a Zephyr app is actually linked by here:
+    #   rust_cargo_application()   zephyr-lang-rust, the pure-Rust entry
+    #   target_sources(app ...)    plain Zephyr
+    #   nano_ros_add_executable()  the RFC-0048 ament verb — what five of the
+    #                              six workspace entries use
+    linkers = ("rust_cargo_application", "nano_ros_add_executable")
+    has_verb = any(re.search(rf"\b{v}\s*\(", text) for v in linkers)
+    has_app_sources = bool(re.search(r"\btarget_sources\s*\(\s*app\b", text, re.DOTALL))
+    if not (has_verb or has_app_sources):
         _fail(
             entry,
-            "entry CMakeLists.txt does not link a Zephyr app "
-            "(expected rust_cargo_application() or target_sources(app ...))",
+            "entry CMakeLists.txt does not link a Zephyr app (expected "
+            "rust_cargo_application(), nano_ros_add_executable(), or "
+            "target_sources(app ...))",
         )
 
     _require_file(entry, entry_dir / "prj.conf", "entry prj.conf")
@@ -970,10 +1004,31 @@ def main():
         #
         # `conf_files` is the RELATIVE overlay list only; the absolute NSOS /
         # board tail is a host path the script appends.
-        for e in load(a.manifest):
-            if e.get("builder") != "west":
+        # BOTH coordinate-bearing tables. The 12 workspace ENTRY leaves are
+        # Workspace cells (`fixture_rows_all_modeled_by_matrix` rejects them as
+        # plain rows), so they live in `[[workspace_fixture]]` — but the west
+        # lane builds them exactly like every other leaf, from the entry app dir
+        # `<dir>/src/<entry>`, the same path `validate-workspaces` checks. A
+        # zephyr workspace row IS a west row; that table has no `builder` key to
+        # say so, so the platform is the discriminator.
+        west_rows = [e for e in load(a.manifest) if e.get("builder") == "west"]
+        for e in load_workspace_fixtures(a.manifest):
+            if e.get("platform") not in ("zephyr", "zephyr-cortex-m"):
                 continue
+            e = dict(e)
+            e["dir"] = f"{e['dir'].rstrip('/')}/src/{e['entry']}"
+            e.setdefault("west_role", "entry")
+            west_rows.append(e)
+
+        for e in west_rows:
             if a.platform and e.get("platform") != a.platform:
+                continue
+            # phase-350 W1.b — lane narrowing, through `row_coord` like every
+            # other lane-scoped build. This is the whole point of the rows: the
+            # zephyr lane could previously only be taken or left as a MODULE, so
+            # `lane=tier2` -- which needs two zephyr coordinates -- built all 70
+            # leaves and serial-added ~40 min to the sweep (issue 0509).
+            if a.coords_from and row_coord(e) not in _coords_for(a.coords_from):
                 continue
             # The isolation triple is emitted when the row AUTHORED one, not
             # when the role happens to be a role leaf: the mps2 witness leaves

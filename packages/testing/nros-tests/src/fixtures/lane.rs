@@ -198,6 +198,95 @@ pub fn manifest_rows() -> &'static [Row] {
     })
 }
 
+/// One `builder = "west"` leaf: its west build-dir NAME and its coordinate.
+///
+/// phase-350 W1.b. West leaves reach the lane by COORDINATE, never by path —
+/// the same route issue 0517's multi-row leaves take, and for a stronger
+/// reason: their artifacts do not land under the row's `dir` at all, but in the
+/// Zephyr WORKSPACE, whose root is a host fact no manifest can name. So the key
+/// is the build-dir name, which the BUILD and the RUN both already have.
+#[derive(Debug, Clone)]
+pub struct WestLeaf {
+    pub build_name: String,
+    pub coord: Coord,
+    pub dir: String,
+}
+
+static WEST_LEAVES: std::sync::OnceLock<Vec<WestLeaf>> = std::sync::OnceLock::new();
+
+/// Every west leaf, from `fixtures-manifest.py west-leaves`.
+pub fn west_leaves() -> &'static [WestLeaf] {
+    WEST_LEAVES.get_or_init(|| {
+        let root = project_root();
+        let out = std::process::Command::new("python3")
+            .arg(root.join("scripts/build/fixtures-manifest.py"))
+            .arg("west-leaves")
+            .current_dir(&root)
+            .output();
+        let out = match out {
+            Ok(o) if o.status.success() => o,
+            Ok(o) => panic!(
+                "fixtures-manifest.py west-leaves failed ({}): {}",
+                o.status,
+                String::from_utf8_lossy(&o.stderr)
+            ),
+            Err(e) => panic!("could not run fixtures-manifest.py west-leaves: {e}"),
+        };
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        let mut rows = Vec::new();
+        for line in text.lines().filter(|l| !l.is_empty()) {
+            let f: Vec<&str> = line.split('\x1f').collect();
+            assert_eq!(
+                f.len(),
+                13,
+                "unexpected `west-leaves` record shape (expected 13 \\x1f-separated \
+                 fields): {line:?}"
+            );
+            // board, lang, lang_tag, rmw, role, dir, build_name, id, ...
+            //
+            // The leaf's rmw LABEL is not always its coordinate: the
+            // logging-smoke leaf spells `default` and coordinates at the
+            // `zenoh` fallback, exactly as `row_coord` resolves it.
+            let rmw = if f[3] == "default" { "zenoh" } else { f[3] };
+            // The board discriminates the platform token the same way the rows
+            // do — the mps2 witness leaves are `zephyr-cortex-m`, or they would
+            // share a coordinate with their native_sim siblings.
+            let platform = if f[0] == "mps2_an385" {
+                "zephyr-cortex-m"
+            } else {
+                "zephyr"
+            };
+            rows.push(WestLeaf {
+                build_name: f[6].to_string(),
+                coord: (platform.to_string(), f[1].to_string(), rmw.to_string()),
+                dir: f[5].to_string(),
+            });
+        }
+        rows
+    })
+}
+
+/// Skip when the west leaf built into `build_name` is outside this run's lane.
+///
+/// phase-350 W1.b closed the loop the build side had opened: the zephyr lane
+/// now narrows by coordinate, so a lane build legitimately omits leaves — and
+/// without this the run would resolve one of those and fail on a fixture it had
+/// deliberately not built. That asymmetry is what `lane_run_narrowing` gates
+/// against for every other family.
+///
+/// Unknown `build_name` is NOT a skip: an unrecognised leaf is a resolver the
+/// manifest does not model, and guessing "out of lane" there would silently
+/// stop running it. Fail-closed means run it.
+pub fn require_west_leaf_in_lane(build_name: &str, label: &str) -> TestResult<()> {
+    if run_coords().is_none() {
+        return Ok(());
+    }
+    let Some(leaf) = west_leaves().iter().find(|l| l.build_name == build_name) else {
+        return Ok(());
+    };
+    require_coord_in_lane(&leaf.coord, label)
+}
+
 /// Parse a lane-coords file body. Same format and same refusals as
 /// `_coords_for` in `fixtures-manifest.py` — one `platform,lang,rmw` per line,
 /// `#` comments allowed, and an EMPTY selection is refused rather than treated

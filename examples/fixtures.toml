@@ -291,6 +291,9 @@ entry = "zephyr_entry"
 codegen_out = "build-fixtures/demo_bringup"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-rs-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-entry"
+west_zenoh_locator = "tcp/127.0.0.1:7430"
 # skip_probe = true (issue 0030): the zephyr workspace Entry is built by the
 # WEST lane (scripts/build/zephyr-fixture-leaves.sh --include-workspace-entry,
 # via `just zephyr build-fixtures`), which tracks its own staleness in the
@@ -4249,4 +4252,274 @@ west_build_name = "logging-smoke-zephyr-native-sim"
 # own change with its own evidence.
 west_bare = true
 west_id = "zephyr/native_sim/native/64/logging-smoke"
+
+
+# ---------------------------------------------------------------------------
+# zephyr west WORKSPACE entries — phase-350 W1.
+#
+# The 12 entry leaves are Workspace cells in `matrix::CELLS`, so they are
+# `[[workspace_fixture]]` rows, not `[[fixture]]` ones: the coverage gate
+# `fixture_rows_all_modeled_by_matrix` rejects a plain row here, naming the
+# orphan coordinate (it caught the mixed entry as `is_ws=false`).
+#
+# They are built by the WEST lane (`zephyr-fixture-leaves.sh`), never by
+# `workspace-fixtures-build.sh` — nothing invokes that with `zephyr`. Hence
+# `skip_probe = true` on every one, the same reason `workspace-rust-zephyr`
+# has carried it since issue 0030: the cargo/cmake workspace lane neither
+# builds these NOR writes the `.nros-workspace-fixture.*.inputsig` stamp its
+# probe then demands, so requiring it is permanently unsatisfiable.
+#
+# `west_*` keys carry what the west leaf needs and the workspace shape has no
+# field for: the build-dir name, the leaf id, and the zenoh locator (an
+# allocator slot per cell — `alloc::port_of(ZephyrNativeSim, <lang>, Entry*)`).
+# ---------------------------------------------------------------------------
+
+# phase-276 W1 (#128) — the PARAMETERISED Rust workspace Entry
+# (examples/workspaces/features/src/zephyr_rust_params_entry): the
+# params-on-embedded coverage cell. Same native_sim/NSOS west path as the
+# base Rust workspace entry above; `system.toml [param_services]` + the
+# entry's `nros/param-services` feature make the (#128-fixed)
+# Framework::Zephyr emit register the six ROS 2 parameter services. Dials a
+# DISTINCT zenohd port (7470), so it does NOT serialize with the pubsub
+# fixtures. Consumed by tests/entry_e2e.rs (zephyr_rust_params cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-rs-params"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "zephyr_rust_params_entry"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-rs-params-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-params-entry"
+west_zenoh_locator = "tcp/127.0.0.1:7470"
+skip_probe = true
+
+# phase-276 W3 (#128) — the MANAGED (lifecycle) Rust workspace Entry
+# (examples/workspaces/features/src/zephyr_rust_lifecycle_entry): the
+# lifecycle-on-embedded coverage cell. `system.toml [lifecycle] autostart =
+# "active"` + the entry's `nros/lifecycle-services` feature make the
+# (#128-fixed) Framework::Zephyr emit register the five REP-2002 lifecycle
+# services + drive the boot autostart. Distinct zenohd port (7480). Consumed
+# by tests/entry_e2e.rs (zephyr_rust_lifecycle cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-rs-lifecycle"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "zephyr_rust_lifecycle_entry"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-rs-lifecycle-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-lifecycle-entry"
+west_zenoh_locator = "tcp/127.0.0.1:7480"
+skip_probe = true
+
+# phase-276 W5 — the QOS-OVERRIDE Rust workspace Entry
+# (examples/workspaces/features/src/zephyr_rust_qos_entry): the
+# qos-on-embedded coverage cell. The QoS profiles are declared per-entity in
+# node code (RFC-0041, reliable + transient_local on /qos_chatter); the
+# on-target QoS-matched pair republishes its receive count on /qos_ok.
+# Distinct zenohd port (7460). Consumed by tests/entry_e2e.rs
+# (zephyr_rust_qos cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-rs-qos"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+entry = "zephyr_rust_qos_entry"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-rs-qos-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-qos-entry"
+west_zenoh_locator = "tcp/127.0.0.1:7460"
+skip_probe = true
+
+# phase-276 W4 — the E2E-SAFETY (CRC) Rust workspace Entry
+# (examples/workspaces/safety/src/zephyr_rust_safety_entry): the
+# safety-on-embedded coverage cell. The system declares [system].features =
+# ["safety"] → the zenoh backend attaches the E2E CRC + sequence number on
+# publish and validates on receive; the on-target safe_listener republishes
+# its CRC-VALIDATED count on /safe_ok. Distinct zenohd port (7490). Consumed
+# by tests/entry_e2e.rs (zephyr_rust_safety cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-rs-safety"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/safety"
+bringup = "src/demo_bringup"
+entry = "zephyr_rust_safety_entry"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-rs-safety-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-safety-entry"
+west_zenoh_locator = "tcp/127.0.0.1:7490"
+skip_probe = true
+
+# phase-276 W6 — the MULTIHOST robot1 (talker) Rust workspace Entry
+# (examples/workspaces/rust/src/zephyr_entry_robot1): the
+# multihost-on-embedded coverage cell. `nros::main!(model =
+# "demo_bringup:config/multihost_robot1_model.yaml")` bakes only the robot1
+# slice (the talker; per-host model resolved with `host:=robot1`,
+# phase-326); the robot2 listener is a native per-host entry in the paired
+# e2e, so /chatter crosses hosts. Distinct zenohd port (7492). Consumed by
+# tests/multihost_e2e.rs (zephyr_rust cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-rs-mh-robot1"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "zephyr_entry_robot1"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-rs-mh-robot1-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-mh-robot1-entry"
+west_zenoh_locator = "tcp/127.0.0.1:7492"
+skip_probe = true
+
+# phase-276 W2 / issue #128 half 2 — the RT-TIERS Rust workspace Entry
+# (examples/workspaces/realtime-rust/src/zephyr_entry): the
+# tiers-on-embedded coverage cell. system.toml declares two [tiers.*] with
+# [tiers.*.zephyr] priorities, so the macro emits ZephyrBoard::run_tiers —
+# one k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10
+# ms) + telem (100 ms) publish /ctrl + /telem. Distinct zenohd port (7491).
+# Consumed by tests/realtime_tiers_e2e.rs (zephyr_rust cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-rs-realtime"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-rust"
+bringup = "src/demo_bringup"
+entry = "zephyr_entry"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-rs-realtime-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-realtime-entry"
+west_zenoh_locator = "tcp/127.0.0.1:7491"
+skip_probe = true
+
+# phase-281 W3b — the RT-TIERS C++ workspace Entry
+# (examples/workspaces/realtime-cpp/src/zephyr_entry): the FIRST full west
+# link + runtime proof of the W3a ZephyrBoard::run_tiers seam. The C++
+# sibling of the rust realtime entry above; demo_bringup/system.toml
+# declares two [tiers.*] with [tiers.*.zephyr] priorities, so the C++
+# codegen emits a plain int main(void) calling ZephyrBoard::run_tiers
+# (nros_board_zephyr_run_tiers) — one k_thread per tier over ONE shared
+# session (RFC-0015 Model 1); ctrl (10 ms, high) publishes /ctrl, telem (100
+# ms, low) publishes /telem. CONFIG_NROS_CPP_API (prj.conf) compiles the W3a
+# seam. Distinct zenohd port (7691). Consumed by tests/realtime_tiers_e2e.rs
+# (zephyr_cpp cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-cpp-realtime"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-cpp"
+bringup = "src/demo_bringup"
+entry = "zephyr_entry"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-cpp-realtime-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-realtime-entry-cpp"
+west_zenoh_locator = "tcp/127.0.0.1:7691"
+skip_probe = true
+
+# phase-281 W3c — the RT-TIERS C workspace Entry
+# (examples/workspaces/realtime-c/src/zephyr_entry): the FIRST full west
+# link + runtime proof of the W3a ZephyrBoard::run_tiers seam for a C node
+# (the C sibling of the wscpprt cpp realtime entry above; closes the
+# c×zephyr cell). demo_bringup/system.toml declares two [tiers.*] with
+# [tiers.*.zephyr] priorities, so the C codegen emits a plain int main(void)
+# calling ZephyrBoard::run_tiers (nros_board_zephyr_run_tiers) — one
+# k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10 ms,
+# high) publishes /ctrl, telem (100 ms, low) publishes /telem.
+# CONFIG_NROS_C_API (prj.conf) compiles the W3a seam. Distinct zenohd port
+# (7591). Consumed by tests/realtime_tiers_e2e.rs (zephyr_c cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-c-realtime"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-c"
+bringup = "src/demo_bringup"
+entry = "zephyr_entry"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-c-realtime-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-realtime-entry-c"
+west_zenoh_locator = "tcp/127.0.0.1:7591"
+skip_probe = true
+
+# phase-263 C2d — the C WORKSPACE entry (Approach A). Same native_sim/NSOS
+# west path as the Rust workspace entry above, but the Zephyr application
+# dir is examples/workspaces/c/src/zephyr_entry (find_package(Zephyr) +
+# nano_ros_entry(BOARD zephyr …) — the C/C++ analog of
+# rust_cargo_application()). It dials a DISTINCT zenohd port (7530), so it
+# does NOT serialize with the rust workspace/single-node pubsub fixtures.
+# Consumed by tests/entry_e2e.rs (zephyr_c cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-c"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "zephyr_entry"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-c-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-entry-c"
+west_zenoh_locator = "tcp/127.0.0.1:7530"
+skip_probe = true
+
+# phase-263 C2c — the C++ WORKSPACE entry (typed std_msgs). Same
+# native_sim/NSOS west path as the C workspace entry; the Zephyr application
+# dir is examples/workspaces/cpp/src/zephyr_entry. Distinct zenohd port
+# (7630). Consumed by tests/entry_e2e.rs (zephyr_cpp cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-cpp"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "zephyr_entry"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-cpp-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-entry-cpp"
+west_zenoh_locator = "tcp/127.0.0.1:7630"
+skip_probe = true
+
+# phase-263 C2c-zephyr — the MIXED WORKSPACE entry (C talker + C++ listener
+# + Rust heartbeat). Same native_sim/NSOS west path as the cpp entry; the
+# Zephyr application dir is examples/workspaces/mixed/src/zephyr_entry. The
+# entry sets NROS_WS_RUST_NODE_DIRS so the nano-ros module bundles the Rust
+# node into the nros_ws_runtime umbrella staticlib (single Rust runtime).
+# Distinct zenohd port (7730). Consumed by tests/entry_e2e.rs (zephyr_mixed
+# cell).
+[[workspace_fixture]]
+id = "workspace-zephyr-mixed"
+platform = "zephyr"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/mixed"
+bringup = "src/demo_bringup"
+entry = "zephyr_entry"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-mixed-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-entry-mixed"
+west_zenoh_locator = "tcp/127.0.0.1:7730"
+skip_probe = true
 

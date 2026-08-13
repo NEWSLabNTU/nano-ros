@@ -1,6 +1,6 @@
 # Phase 350 — West fixtures join the manifest: one SSoT, one vocabulary, one coordinate
 
-**Status (2026-08-13). W0 LANDED. W1.a LANDED — 58 of 74 rows, and the zephyr emitter now reads them (byte-identical). W1.b–W6 open; 12 entry leaves + the 4 `west-fixtures.sh` fixtures still to row.**
+**Status (2026-08-13). W0, W1.a, W1.b LANDED — all 70 zephyr leaves are manifest rows, the emitter reads them (byte-identical), and the lane narrows by coordinate: tier2 builds 7 leaves instead of 70. W1.c, W1.d, W2–W6 open; the 4 `west-fixtures.sh` fixtures still to row.**
 
 **Implements:** [RFC-0051](../design/0051-test-matrix-architecture.md) (the fixture half),
 [RFC-0070](../design/0070-build-cache-layout.md) (the naming rule it never
@@ -183,7 +183,8 @@ concept.
       `nros_zephyr_lang_tag` deleted from `fixture-matrix.sh`; the mps2 and
       logging-smoke blocks are gone. **Proven byte-identical** in all four
       emitter modes.
-- [ ] **12 entry leaves** need `[[workspace_fixture]]` rows (see below).
+- [x] **12 entry leaves** are `[[workspace_fixture]]` rows, emitted by the same
+      loop. 573 more lines of copy-paste deleted; still byte-identical.
 - [ ] **4 `west-fixtures.sh` fixtures** still bash arrays; that script still
       declares its own matrix.
 - [ ] `examples_fixture_coverage.rs` reads the rows instead of restating the
@@ -270,6 +271,54 @@ the formula cannot produce one and the script already held that literal.
    them a real root is W1.d.
 
 **Land W1 before W2/W4.** Both need a row to attach a decision to.
+
+## W1.b — The zephyr lane narrows by coordinate — **LANDED**
+
+The point of the rows. `NROS_FIXTURE_COORDS` now reaches the zephyr lane, read
+from the env and passed as `--coords-from` exactly like `fixtures-build.sh` and
+`workspace-fixtures-build.sh` — one filter, through `row_coord`.
+
+**Measured, same manifest, per lane:**
+
+| lane | west leaves selected | of |
+| --- | --- | --- |
+| tier1 | 0 (zephyr not in the lane) | 70 |
+| **tier2** | **7** | 70 |
+| tier2-nightly | 38 | 70 |
+
+tier2 needs exactly two zephyr coordinates (`zephyr,cpp,xrce` and
+`zephyr-cortex-m,c,zenoh`) and now builds the 7 leaves on them instead of all
+70. Against #509's measurement (~140 s of fixed per-leaf overhead, 40 min for
+68 leaves, serial-added because zephyr is an order-only prerequisite of every
+other family) that is the single largest cut available to the lane.
+
+An empty or absent coords file is FATAL, not a silent fallthrough — falling
+through would build everything while the log says "lane".
+
+### The half that would have been a regression
+
+Narrowing the BUILD without teaching the RUN is precisely the asymmetry
+`lane_run_narrowing` exists to catch: the lane omits leaves, then the run
+resolves one and fails on a fixture it deliberately did not build. W1.a had
+excluded west rows from `lane::manifest_rows()` — the very gate that would have
+caught it — so it would have shipped silently.
+
+West leaves cannot be attributed by PATH (their artifacts live in the Zephyr
+workspace, not under the row's `dir`), so they take the **coordinate route**:
+the same one issue 0517's multi-row leaves take, keyed on the build-dir name
+both halves already agree on. `require_west_leaf_in_lane` sits ahead of the
+freshness check in both zephyr resolvers, and an unknown build dir does NOT skip
+(fail-closed means run it).
+
+Verified in both directions, not just gated: with tier2 coords a `zephyr,rust,zenoh`
+leaf reports `[SKIPPED] out of lane`, and an in-lane `zephyr,cpp,xrce` leaf does
+not. (Bare `cargo nextest` renders `skip!` as a failure; only `just test-all`'s
+junit rewrite shows it as a skip — CLAUDE.md's note.)
+
+`every_west_leaf_is_placeable_by_coordinate` is the family's half of the
+attributability invariant, mirroring the multi-row arm: every west leaf must
+carry a complete coordinate in the export the resolver queries, and build-dir
+names must be unique because the lookup keys on them.
 
 ## W2 — Configure-only fixtures stop paying for a link (#536)
 
