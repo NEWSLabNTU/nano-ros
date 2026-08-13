@@ -132,13 +132,13 @@ impl nros_platform_api::PlatformCriticalSection for Mps2An385Platform {
 
 impl nros_platform_api::PlatformClock for Mps2An385Platform {
     #[inline]
-    fn clock_ms() -> u64 {
-        clock::clock_ms()
+    fn clock_ns() -> u64 {
+        clock::clock_ns()
     }
 
     #[inline]
-    fn clock_us() -> u64 {
-        clock::clock_ms() * 1000
+    fn clock_resolution_ns() -> u64 {
+        clock::NS_PER_TICK
     }
 }
 

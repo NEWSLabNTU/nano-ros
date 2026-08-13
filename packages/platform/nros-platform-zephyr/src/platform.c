@@ -42,31 +42,34 @@
 
 /* ---- Clock ---- */
 
-uint64_t nros_platform_clock_ms(void) {
-    int64_t ms = k_uptime_get();
-    return ms < 0 ? 0 : (uint64_t) ms;
+/* RFC-0073 — nanoseconds, from whichever source this board actually has.
+ *
+ * Issue #531: `k_cycle_get_64()` returns 0 unless
+ * CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER is set (its __ASSERT compiles out in
+ * release), and the Cortex-M SysTick driver only selects that symbol
+ * `default y if (SYS_CLOCK_HW_CYCLES_PER_SEC > 60000000)`. So the cycle
+ * counter is used only where the board provides one; everywhere else the
+ * tick clock, which every board has. `IS_ENABLED` rather than `#ifdef` so
+ * both arms keep compiling everywhere. */
+uint64_t nros_platform_clock_ns(void) {
+    if (IS_ENABLED(CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER)) {
+        return (uint64_t) k_cyc_to_ns_floor64(k_cycle_get_64());
+    }
+    return (uint64_t) k_ticks_to_ns_floor64(k_uptime_ticks());
 }
 
-/* Issue #531 — `k_cycle_get_64()` is NOT unconditionally available: it
- * returns 0 when `CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER` is off, and its
- * guarding `__ASSERT` compiles out in a release build, so the failure is
- * a silent permanent zero. On the Cortex-M SysTick driver that symbol is
- * `default y if (SYS_CLOCK_HW_CYCLES_PER_SEC > 60000000)`, so every
- * Cortex-M board at or below 60 MHz (including the tier-2 qemu_cortex_m3
- * at 12 MHz) got a clock that never advanced — and since the executor
- * derives its timer delta from this clock, periodic callbacks never
- * fired while subscriptions kept working.
- *
- * Fall back to the tick clock, which every Zephyr board has. That is
- * coarser (`CONFIG_SYS_CLOCK_TICKS_PER_SEC`, 1 kHz in this project's
- * configs) but correct; the cycle counter is still preferred wherever
- * the board actually provides it. `IS_ENABLED` rather than `#ifdef` so
- * both arms keep compiling on every board. */
-uint64_t nros_platform_clock_us(void) {
+uint64_t nros_platform_clock_resolution_ns(void) {
     if (IS_ENABLED(CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER)) {
-        return (uint64_t) k_cyc_to_us_floor64(k_cycle_get_64());
+        /* One cycle. `sys_clock_hw_cycles_per_sec()` rather than the
+         * Kconfig constant because a driver may only know its frequency
+         * at runtime (CONFIG_TIMER_READS_ITS_FREQUENCY_AT_RUNTIME). */
+        const uint64_t hz = (uint64_t) sys_clock_hw_cycles_per_sec();
+        if (hz != 0U) {
+            const uint64_t ns = 1000000000ULL / hz;
+            return ns == 0U ? 1U : ns;
+        }
     }
-    return (uint64_t) k_ticks_to_us_floor64(k_uptime_ticks());
+    return (uint64_t) k_ticks_to_ns_floor64(1);
 }
 
 /* ---- Allocation ---- */

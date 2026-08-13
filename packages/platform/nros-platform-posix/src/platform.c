@@ -32,20 +32,23 @@
 
 /* ---- Clock (monotonic) ---- */
 
-uint64_t nros_platform_clock_ms(void) {
+/* RFC-0073 — the source is already nanoseconds, so this is the one port
+ * that never had to truncate and now does not. */
+uint64_t nros_platform_clock_ns(void) {
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
         return 0;
     }
-    return (uint64_t) ts.tv_sec * 1000ULL + (uint64_t) ts.tv_nsec / 1000000ULL;
+    return (uint64_t) ts.tv_sec * 1000000000ULL + (uint64_t) ts.tv_nsec;
 }
 
-uint64_t nros_platform_clock_us(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-        return 0;
+uint64_t nros_platform_clock_resolution_ns(void) {
+    struct timespec res;
+    if (clock_getres(CLOCK_MONOTONIC, &res) != 0) {
+        return 1; /* unknown: claim the finest, never zero */
     }
-    return (uint64_t) ts.tv_sec * 1000000ULL + (uint64_t) ts.tv_nsec / 1000ULL;
+    uint64_t ns = (uint64_t) res.tv_sec * 1000000000ULL + (uint64_t) res.tv_nsec;
+    return ns == 0 ? 1 : ns;
 }
 
 /* ---- Allocation ---- */

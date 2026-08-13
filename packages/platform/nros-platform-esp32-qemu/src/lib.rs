@@ -134,12 +134,12 @@ impl nros_platform_api::PlatformYield for Esp32QemuPlatform {
 
 impl nros_platform_api::PlatformClock for Esp32QemuPlatform {
     #[inline]
-    fn clock_ms() -> u64 {
-        clock::clock_ms()
+    fn clock_ns() -> u64 {
+        clock::clock_ns()
     }
     #[inline]
-    fn clock_us() -> u64 {
-        clock::clock_us()
+    fn clock_resolution_ns() -> u64 {
+        clock::RESOLUTION_NS
     }
 }
 

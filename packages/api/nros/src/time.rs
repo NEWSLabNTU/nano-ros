@@ -2,7 +2,7 @@
 //!
 //! Node packages are platform-agnostic: the same crate compiles into a
 //! POSIX, FreeRTOS, or Zephyr image, so it can reach neither the
-//! per-platform timing types nor the `nros_platform_clock_us` C export
+//! per-platform timing types nor the `nros_platform_clock_ns` C export
 //! directly. This module is the portable spelling. Uses that motivated
 //! it: `dt` in control laws (assuming the nominal period silently
 //! misintegrates whenever a callback runs late), timestamping published
@@ -18,7 +18,7 @@
 //!
 //! - `std` builds: [`std::time::Instant`], anchored at first use.
 //! - `no_std` + `rmw-cffi` builds: the platform's
-//!   `nros_platform_clock_us` export — the same linkage contract the
+//!   `nros_platform_clock_ns` export — the same linkage contract the
 //!   executor and the wake primitives already rely on, so this adds no
 //!   new requirement. Resolution is whatever the platform delivers
 //!   (issue #502: sub-tick on FreeRTOS Cortex-M, tick-quantized on
@@ -48,19 +48,20 @@ pub fn now() -> Duration {
 
 /// Monotonic time since an unspecified epoch.
 ///
-/// Reads the platform port's `nros_platform_clock_us` (microsecond
-/// resolution at best — see issue #502 for per-port truth).
+/// Reads the platform port's `nros_platform_clock_ns` (RFC-0073). What
+/// the low digits are worth is per-port; ask
+/// `nros_platform_clock_resolution_ns`.
 #[cfg(all(not(feature = "std"), feature = "rmw-cffi"))]
 #[must_use]
 pub fn now() -> Duration {
     unsafe extern "C" {
-        fn nros_platform_clock_us() -> u64;
+        fn nros_platform_clock_ns() -> u64;
     }
     // SAFETY: bare query of the platform's monotonic us counter; the
     // symbol is guaranteed by whichever platform port linked the
     // binary (the same contract the executor's default timer clock
     // depends on).
-    Duration::from_micros(unsafe { nros_platform_clock_us() })
+    Duration::from_nanos(unsafe { nros_platform_clock_ns() })
 }
 
 /// Convenience: [`now`] as whole microseconds.

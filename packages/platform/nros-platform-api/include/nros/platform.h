@@ -109,13 +109,49 @@ typedef int32_t nros_platform_ret_t;
 
 /* ---- Clock (monotonic) ---- */
 
-/** Monotonic milliseconds since a platform-defined epoch (boot, program
- *  start, …). Never decreases. Wraps after ~584 million years. */
-uint64_t nros_platform_clock_ms(void);
+/** Monotonic nanoseconds since a platform-defined epoch (boot, program
+ *  start, …). Never decreases. Wraps after ~584 years.
+ *
+ *  Must be backed by a hardware counter or the OS tick — never by a
+ *  software counter that only advances when polled.
+ *
+ *  Available immediately after platform init, before any other nros
+ *  subsystem. SHOULD be callable from an ISR; a port whose clock is not
+ *  ISR-safe must say so in its port documentation.
+ *
+ *  RFC-0073: this replaced the former `clock_ms` / `clock_us` pair. Ports
+ *  that can convert without a runtime division should — where the counter
+ *  frequency divides 1e9 (25/50/100/125/200/250 MHz) a compile-time
+ *  ns-per-cycle multiply is ~2.5x cheaper than the divide it replaces. */
+uint64_t nros_platform_clock_ns(void);
 
-/** Monotonic microseconds since the same epoch as `nros_platform_clock_ms`.
- *  Used for fine-grained spin / wait deadlines. */
-uint64_t nros_platform_clock_us(void);
+/** Granularity of `nros_platform_clock_ns`, in nanoseconds: the smallest
+ *  non-zero difference two successive reads can report.
+ *
+ *  Examples: 1000000 for a 1 kHz tick, 40 for a 25 MHz cycle counter,
+ *  1000 for a microsecond hardware timer.
+ *
+ *  Must be non-zero, and constant for the lifetime of the program after
+ *  platform init. A port whose underlying rate is only known at runtime
+ *  returns the resolved value; one whose rate can change under it returns
+ *  the COARSEST value it may exhibit. There is no "unknown" encoding — a
+ *  port that cannot answer honestly is reporting a clock it cannot
+ *  honestly offer. */
+uint64_t nros_platform_clock_resolution_ns(void);
+
+/* Unit conversions (RFC-0073). Header-only: no port implements these, and
+ * the ABI mirror gate skips `static inline` by design. An out-of-tree port
+ * still DEFINING the old symbols sets NROS_PLATFORM_LEGACY_CLOCK_UNITS to
+ * suppress the wrappers for one deprecation window. */
+#ifndef NROS_PLATFORM_LEGACY_CLOCK_UNITS
+static inline uint64_t nros_platform_clock_us(void) {
+    return nros_platform_clock_ns() / 1000u;
+}
+
+static inline uint64_t nros_platform_clock_ms(void) {
+    return nros_platform_clock_ns() / 1000000u;
+}
+#endif
 
 /* ---- Allocation ---- */
 

@@ -45,18 +45,20 @@
 
 /* ---- Clock ---- */
 
-uint64_t nros_platform_clock_ms(void) {
-    return (uint64_t) tx_time_get() * MS_PER_TICK;
+/* RFC-0073 — the tick is all ThreadX portably offers (no sub-tick source:
+ * TX_TRACE_TIME_SOURCE is a port-private macro), so nanoseconds here are a
+ * constant multiply of a coarse counter. That is not a widening of what
+ * this port knows: `clock_resolution_ns` states the tick, so a caller can
+ * see that the low digits are always zero rather than infer precision the
+ * signature seems to promise. The old `clock_us` DIVIDED; this multiplies. */
+#define NS_PER_TICK ((uint64_t) (1000000000ULL / TX_TIMER_TICKS_PER_SECOND))
+
+uint64_t nros_platform_clock_ns(void) {
+    return (uint64_t) tx_time_get() * NS_PER_TICK;
 }
 
-/* Issue #502 — tick-quantized: with the default 100 Hz ThreadX tick this
- * advances in 10 ms steps despite the microsecond signature. ThreadX has
- * no portable sub-tick counter (the tick source is port-defined), so
- * unlike the FreeRTOS Cortex-M port this stays coarse until a per-port
- * hardware-timer hook exists. Callers doing sub-tick timing on ThreadX
- * are measuring the tick rate, not the event. */
-uint64_t nros_platform_clock_us(void) {
-    return (uint64_t) tx_time_get() * MS_PER_TICK * 1000ULL;
+uint64_t nros_platform_clock_resolution_ns(void) {
+    return NS_PER_TICK;
 }
 
 /* ---- Byte-pool wiring ----

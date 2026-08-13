@@ -44,6 +44,54 @@ fn clock_ms_is_monotonic() {
     assert!(t1 - t0 >= 4, "clock_ms must advance at least ~5ms");
 }
 
+/// RFC-0073 conformance 1/3 — the clock never goes backwards.
+#[test]
+fn clock_ns_never_decreases() {
+    let mut prev = CffiPlatform::clock_ns();
+    for _ in 0..1000 {
+        let now = CffiPlatform::clock_ns();
+        assert!(now >= prev, "clock_ns went backwards: {prev} -> {now}");
+        prev = now;
+    }
+}
+
+/// RFC-0073 conformance 2/3 — the clock ADVANCES.
+///
+/// This is the case that would have caught issue #0531, where the Zephyr
+/// port returned a permanent 0 on every Cortex-M board under 60 MHz: the
+/// image looked alive, subscriptions worked, and every periodic callback
+/// was silently dead because the executor's timer delta was always zero.
+/// Nothing in the tree asserted this before.
+#[test]
+fn clock_ns_advances_over_a_real_sleep() {
+    let t0 = CffiPlatform::clock_ns();
+    std::thread::sleep(Duration::from_millis(10));
+    let t1 = CffiPlatform::clock_ns();
+    let elapsed = t1.saturating_sub(t0);
+    assert!(
+        elapsed >= 5_000_000,
+        "clock_ns must advance across a 10 ms sleep, saw {elapsed} ns          (a clock stuck at zero is the #0531 failure)"
+    );
+}
+
+/// RFC-0073 conformance 3/3 — the reported resolution is honest: no
+/// non-zero delta may be finer than the port claims it can resolve.
+#[test]
+fn clock_ns_resolution_is_honest() {
+    let res = CffiPlatform::clock_resolution_ns();
+    assert!(res > 0, "resolution must be non-zero — there is no 'unknown'");
+    let mut prev = CffiPlatform::clock_ns();
+    for _ in 0..5000 {
+        let now = CffiPlatform::clock_ns();
+        let delta = now - prev;
+        assert!(
+            delta == 0 || delta >= res,
+            "reported a {delta} ns step while claiming {res} ns resolution"
+        );
+        prev = now;
+    }
+}
+
 #[test]
 fn sleep_ms_blocks_at_least_requested() {
     let start = Instant::now();

@@ -74,11 +74,25 @@ pub use wake::{WAKE_STORAGE_ALIGN, WAKE_STORAGE_BYTES, Wake, WakeInitError, Wake
 /// The most critical platform primitive. Must be backed by a hardware timer
 /// or OS tick — never by a software counter that only advances when polled.
 pub trait PlatformClock {
-    /// Returns monotonic time in milliseconds.
-    fn clock_ms() -> u64;
+    /// Monotonic nanoseconds since a platform-defined epoch. Never
+    /// decreases. See `<nros/platform.h>` for the full contract
+    /// (RFC-0073).
+    fn clock_ns() -> u64;
 
-    /// Returns monotonic time in microseconds.
-    fn clock_us() -> u64;
+    /// Granularity of [`Self::clock_ns`] in nanoseconds: the smallest
+    /// non-zero difference two successive reads can report. Non-zero,
+    /// and constant after platform init.
+    fn clock_resolution_ns() -> u64;
+
+    /// Monotonic microseconds. Derived; ports do not override.
+    fn clock_us() -> u64 {
+        Self::clock_ns() / 1_000
+    }
+
+    /// Monotonic milliseconds. Derived; ports do not override.
+    fn clock_ms() -> u64 {
+        Self::clock_ns() / 1_000_000
+    }
 }
 
 // ============================================================================

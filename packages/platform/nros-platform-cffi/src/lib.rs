@@ -115,13 +115,13 @@ pub struct CffiPlatform;
 
 impl nros_platform_api::PlatformClock for CffiPlatform {
     #[inline]
-    fn clock_ms() -> u64 {
-        unsafe { nros_platform_clock_ms() }
+    fn clock_ns() -> u64 {
+        unsafe { nros_platform_clock_ns() }
     }
 
     #[inline]
-    fn clock_us() -> u64 {
-        unsafe { nros_platform_clock_us() }
+    fn clock_resolution_ns() -> u64 {
+        unsafe { nros_platform_clock_resolution_ns() }
     }
 }
 
@@ -598,12 +598,12 @@ impl nros_platform_api::PlatformLog for CffiPlatform {
 macro_rules! nros_platform_export_clock {
     ($ty:ty) => {
         #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_clock_ms() -> u64 {
-            <$ty as ::nros_platform_api::PlatformClock>::clock_ms()
+        pub extern "C" fn nros_platform_clock_ns() -> u64 {
+            <$ty as ::nros_platform_api::PlatformClock>::clock_ns()
         }
         #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_clock_us() -> u64 {
-            <$ty as ::nros_platform_api::PlatformClock>::clock_us()
+        pub extern "C" fn nros_platform_clock_resolution_ns() -> u64 {
+            <$ty as ::nros_platform_api::PlatformClock>::clock_resolution_ns()
         }
     };
 }
@@ -1333,11 +1333,11 @@ mod test_self_export {
     pub struct TestPlatform;
 
     impl PlatformClock for TestPlatform {
-        fn clock_ms() -> u64 {
+        fn clock_ns() -> u64 {
             0
         }
-        fn clock_us() -> u64 {
-            0
+        fn clock_resolution_ns() -> u64 {
+            1
         }
     }
     impl PlatformAlloc for TestPlatform {

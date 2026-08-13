@@ -87,3 +87,27 @@ pub fn clock_ms() -> u64 {
     let elapsed_ticks = wraps * 0x1_0000_0000u64 + (0xFFFF_FFFFu64 - current as u64);
     elapsed_ticks / TICKS_PER_MS
 }
+
+/// Nanoseconds per timer tick. 25 MHz divides 1e9 exactly, so the
+/// conversion is a multiply rather than a division (RFC-0073).
+pub const NS_PER_TICK: u64 = 1_000_000_000 / SYSCLK_HZ;
+
+/// Get the current time in nanoseconds from the hardware timer.
+///
+/// Same wrap accounting as [`clock_ms`] — and the same requirement to be
+/// called at least once per ~171 s. This is the port's real resolution:
+/// 40 ns, where the former `clock_us` reported `clock_ms() * 1000` and so
+/// moved in 1 ms steps under a microsecond name.
+pub fn clock_ns() -> u64 {
+    let current = read_timer_value();
+    let last = LAST_VALUE.load(Ordering::Relaxed);
+
+    if current > last {
+        WRAP_COUNT.fetch_add(1, Ordering::Relaxed);
+    }
+    LAST_VALUE.store(current, Ordering::Relaxed);
+
+    let wraps = WRAP_COUNT.load(Ordering::Relaxed) as u64;
+    let elapsed_ticks = wraps * 0x1_0000_0000u64 + (0xFFFF_FFFFu64 - current as u64);
+    elapsed_ticks * NS_PER_TICK
+}

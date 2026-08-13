@@ -39,8 +39,8 @@ void nros_platform_stub_reset_counters(void) {
 
 /* ---- Clock ---- */
 
-uint64_t nros_platform_clock_ms(void)                           { bump(NROS_STUB_CLOCK); return 0; }
-uint64_t nros_platform_clock_us(void)                           { bump(NROS_STUB_CLOCK); return 0; }
+uint64_t nros_platform_clock_ns(void)                           { bump(NROS_STUB_CLOCK); return 0; }
+uint64_t nros_platform_clock_resolution_ns(void)                { bump(NROS_STUB_CLOCK); return 1; }
 
 /* ---- Alloc ---- */
 

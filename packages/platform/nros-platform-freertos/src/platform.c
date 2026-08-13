@@ -82,30 +82,25 @@ static void _trace(const char *s) {
 
 /* ---- Clock ---- */
 
-uint64_t nros_platform_clock_ms(void) {
-    return (uint64_t) xTaskGetTickCount() * MS_PER_TICK;
-}
+/* RFC-0073 — nanoseconds, and cheaper than the microseconds they replace.
+ * The sub-tick interpolation (issue #502) used to finish with a runtime
+ * division; where `configCPU_CLOCK_HZ` divides 1e9 — 25/50/100/125/200/250
+ * MHz, i.e. most Cortex-M parts — the conversion is instead a compile-time
+ * ns-per-cycle multiply. Measured on mps2-an385 (25 MHz, 40 ns/cycle):
+ * 37 instructions per read against 91 for the old us path.
+ *
+ * The tick-boundary, ISR-pending and tickless hazards are unchanged from
+ * #502; see the retry loop below. */
+/* `configCPU_CLOCK_HZ` / `configTICK_RATE_HZ` expand to CASTS, so they are
+ * not usable in `#if` — the branch below is an ordinary `if` on constant
+ * expressions instead, which the compiler folds and dead-code-eliminates
+ * exactly like a preprocessor test. */
+#define NROS_CPU_HZ ((uint64_t) configCPU_CLOCK_HZ)
+#define NROS_NS_PER_CYCLE (1000000000ULL / NROS_CPU_HZ)
+#define NROS_CPU_HZ_DIVIDES_1E9 (NROS_NS_PER_CYCLE * NROS_CPU_HZ == 1000000000ULL)
 
-/* Issue #502 — `clock_us` used to return `tick * US_PER_TICK`, i.e. a
- * millisecond counter under a microsecond signature (10% of a 10 ms
- * period was quantization). On Cortex-M the standard FreeRTOS port
- * drives the tick from SysTick, so the down-counter gives the sub-tick
- * fraction for free. Hazards handled below:
- *
- *   - tick-boundary race: tick and VAL are two reads; take a snapshot
- *     and retry until the tick count is stable around it.
- *   - counted-to-zero-but-ISR-pending (e.g. caller holds a critical
- *     section): VAL has reloaded but the tick has not incremented yet.
- *     ICSR.PENDSTSET identifies that window; credit one extra tick.
- *     PENDSTSET is sampled on both sides of the VAL read so a wrap
- *     landing mid-snapshot forces a retry instead of a mis-credit.
- *   - tickless idle / non-SysTick tick sources: the reload register is
- *     read at runtime (not computed from configCPU_CLOCK_HZ); if
- *     SysTick is unprogrammed (LOAD == 0) fall back to tick-only.
- *
- * Non-Cortex-M ports (and builds defining
- * NROS_PLATFORM_FREERTOS_NO_SUBTICK) keep the tick-quantized value —
- * honest, just coarse. */
+#define NS_PER_TICK ((uint64_t) (1000000000ULL / (uint64_t) configTICK_RATE_HZ))
+
 #if (defined(__ARM_ARCH_6M__) || defined(__ARM_ARCH_7M__) ||       \
      defined(__ARM_ARCH_7EM__) || defined(__ARM_ARCH_8M_BASE__) || \
      defined(__ARM_ARCH_8M_MAIN__)) &&                             \
@@ -113,7 +108,7 @@ uint64_t nros_platform_clock_ms(void) {
 #define NROS_SYSTICK_SUBTICK 1
 #endif
 
-uint64_t nros_platform_clock_us(void) {
+uint64_t nros_platform_clock_ns(void) {
 #ifdef NROS_SYSTICK_SUBTICK
     volatile uint32_t *const syst_load = (volatile uint32_t *) 0xE000E014UL;
     volatile uint32_t *const syst_val = (volatile uint32_t *) 0xE000E018UL;
@@ -133,13 +128,30 @@ uint64_t nros_platform_clock_us(void) {
             }
             const uint64_t ticks = (uint64_t) t1 + (pend1 ? 1U : 0U);
             const uint64_t subtick_cycles = (uint64_t) (load - val);
-            return ticks * US_PER_TICK
-                   + subtick_cycles * US_PER_TICK / ((uint64_t) load + 1U);
+            if (NROS_CPU_HZ_DIVIDES_1E9) {
+                /* Fast path: a compile-time multiply. Measured on
+                 * mps2-an385 (25 MHz, 40 ns/cycle) at 37 instructions per
+                 * read against 91 for the divide below. */
+                return ticks * NS_PER_TICK + subtick_cycles * NROS_NS_PER_CYCLE;
+            }
+            return ticks * NS_PER_TICK
+                   + subtick_cycles * NS_PER_TICK / ((uint64_t) load + 1U);
         }
     }
     /* SysTick unprogrammed — some other timer drives the tick. */
 #endif
-    return (uint64_t) xTaskGetTickCount() * US_PER_TICK;
+    return (uint64_t) xTaskGetTickCount() * NS_PER_TICK;
+}
+
+uint64_t nros_platform_clock_resolution_ns(void) {
+#ifdef NROS_SYSTICK_SUBTICK
+    volatile uint32_t *const syst_load = (volatile uint32_t *) 0xE000E014UL;
+    if ((*syst_load & 0x00FFFFFFUL) != 0U) {
+        /* One CPU cycle — never zero, even above 1 GHz. */
+        return NROS_NS_PER_CYCLE == 0ULL ? 1ULL : NROS_NS_PER_CYCLE;
+    }
+#endif
+    return NS_PER_TICK;
 }
 
 /* ---- Allocation ---- */

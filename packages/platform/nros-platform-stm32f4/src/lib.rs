@@ -117,12 +117,18 @@ impl nros_platform_api::PlatformYield for Stm32f4Platform {
 
 impl nros_platform_api::PlatformClock for Stm32f4Platform {
     #[inline]
-    fn clock_ms() -> u64 {
-        clock::clock_ms()
+    fn clock_ns() -> u64 {
+        clock::clock_ms() * 1_000_000
     }
+
+    /// 1 ms — the software accumulator's step, not the 6 ns the DWT
+    /// counter underneath could resolve (RFC-0073: report what the
+    /// returned value actually moves in). Widening the accumulator to
+    /// carry DWT cycles is a separate change; until then this is the
+    /// honest number.
     #[inline]
-    fn clock_us() -> u64 {
-        clock::clock_ms() * 1000
+    fn clock_resolution_ns() -> u64 {
+        1_000_000
     }
 }
 

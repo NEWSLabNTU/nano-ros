@@ -21,12 +21,12 @@ pub type nros_platform_log_flush_fn_t = ::core::option::Option<unsafe extern "C"
 pub type nros_platform_timer_callback_t =
     ::core::option::Option<unsafe extern "C" fn(user_data: *mut core::ffi::c_void)>;
 unsafe extern "C" {
-    #[doc = " Monotonic milliseconds since a platform-defined epoch (boot, program\n  start, …). Never decreases. Wraps after ~584 million years."]
-    pub fn nros_platform_clock_ms() -> u64;
+    #[doc = " Monotonic nanoseconds since a platform-defined epoch (boot, program\n  start, …). Never decreases. Wraps after ~584 years.\n\n  Must be backed by a hardware counter or the OS tick — never by a\n  software counter that only advances when polled.\n\n  Available immediately after platform init, before any other nros\n  subsystem. SHOULD be callable from an ISR; a port whose clock is not\n  ISR-safe must say so in its port documentation.\n\n  RFC-0073: this replaced the former `clock_ms` / `clock_us` pair. Ports\n  that can convert without a runtime division should — where the counter\n  frequency divides 1e9 (25/50/100/125/200/250 MHz) a compile-time\n  ns-per-cycle multiply is ~2.5x cheaper than the divide it replaces."]
+    pub fn nros_platform_clock_ns() -> u64;
 }
 unsafe extern "C" {
-    #[doc = " Monotonic microseconds since the same epoch as `nros_platform_clock_ms`.\n  Used for fine-grained spin / wait deadlines."]
-    pub fn nros_platform_clock_us() -> u64;
+    #[doc = " Granularity of `nros_platform_clock_ns`, in nanoseconds: the smallest\n  non-zero difference two successive reads can report.\n\n  Examples: 1000000 for a 1 kHz tick, 40 for a 25 MHz cycle counter,\n  1000 for a microsecond hardware timer.\n\n  Must be non-zero, and constant for the lifetime of the program after\n  platform init. A port whose underlying rate is only known at runtime\n  returns the resolved value; one whose rate can change under it returns\n  the COARSEST value it may exhibit. There is no \"unknown\" encoding — a\n  port that cannot answer honestly is reporting a clock it cannot\n  honestly offer."]
+    pub fn nros_platform_clock_resolution_ns() -> u64;
 }
 unsafe extern "C" {
     #[doc = " Allocate `size` bytes; return `NULL` on failure. May be called from\n  any thread."]

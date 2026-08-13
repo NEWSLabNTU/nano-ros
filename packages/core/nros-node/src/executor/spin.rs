@@ -7243,21 +7243,25 @@ fn check_deadline_miss(
 // at ~67 ms on Zephyr native_sim) and tick rounding made fast tiers fire
 // late. Measured on-target; mechanism documented at the fallback site.)
 //
-// Every platform port exports `nros_platform_clock_us` through the same
+// Every platform port exports `nros_platform_clock_ns` through the same
 // linkage contract the wake primitives rely on (`nros_platform_export_clock!`
 // in nros-platform-cffi), so an rmw-cffi no_std build can safely default the
 // executor clock to it; `ExecutorConfig::clock_us` stays as an override.
 #[cfg(all(not(feature = "std"), feature = "rmw-cffi"))]
 unsafe extern "C" {
-    fn nros_platform_clock_us() -> u64;
+    fn nros_platform_clock_ns() -> u64;
 }
 
 #[cfg(all(not(feature = "std"), feature = "rmw-cffi"))]
 fn default_platform_clock_us() -> u64 {
-    // SAFETY: bare query of the platform's monotonic µs counter; the symbol
+    // SAFETY: bare query of the platform's monotonic ns counter; the symbol
     // is guaranteed by whichever platform port linked the binary (the same
     // contract `nros_platform_wake_*` already depends on).
-    unsafe { nros_platform_clock_us() }
+    //
+    // RFC-0073 made the ABI nanoseconds; the executor's own accounting is
+    // still microseconds (`clock_us_fn`, `delta_us`), so the division lives
+    // here rather than being pushed into every port.
+    unsafe { nros_platform_clock_ns() / 1_000 }
 }
 
 /// The executor's default timer clock: the platform monotonic counter on

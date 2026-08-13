@@ -22,8 +22,8 @@
 // cbindgen:ignore
 #[cfg(not(feature = "std"))]
 unsafe extern "C" {
-    /// Monotonic microseconds since a platform-defined epoch.
-    fn nros_platform_clock_us() -> u64;
+    /// Monotonic nanoseconds since a platform-defined epoch (RFC-0073).
+    fn nros_platform_clock_ns() -> u64;
 
     /// Sleep at least `us` microseconds.
     fn nros_platform_sleep_us(us: usize);
@@ -49,13 +49,14 @@ pub fn get_time_ns() -> u64 {
 
 /// Get current monotonic time in nanoseconds (no_std version).
 ///
-/// phase-243: derived from the canonical platform µs clock (`clock_us * 1000`).
-/// The callers are ms-scale spins/deadlines (executor/service/action), so µs
-/// granularity is ample; add a dedicated `clock_ns` to the ABI if ns is ever
-/// needed rather than resurrecting the A ns-clock.
+/// RFC-0073 made nanoseconds the ABI's own unit, so this stopped
+/// fabricating them by multiplying microseconds (`clock_us * 1000`, which
+/// advertised a precision the source did not have) and now reads the
+/// platform clock directly. What the low digits are worth is a question
+/// `nros_platform_clock_resolution_ns` answers.
 #[cfg(not(feature = "std"))]
 pub fn get_time_ns() -> u64 {
-    unsafe { nros_platform_clock_us().wrapping_mul(1000) }
+    unsafe { nros_platform_clock_ns() }
 }
 
 /// Get system time in nanoseconds since Unix epoch.

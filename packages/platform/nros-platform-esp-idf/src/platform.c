@@ -47,13 +47,16 @@
 
 /* ---- Clock — esp_timer_get_time is monotonic, microseconds ---- */
 
-uint64_t nros_platform_clock_us(void) {
+/* RFC-0073 — esp_timer is a free-running 64-bit hardware counter with a
+ * microsecond timebase, so nanoseconds are a constant multiply and the
+ * resolution it can honestly claim is 1 us. */
+uint64_t nros_platform_clock_ns(void) {
     int64_t us = esp_timer_get_time();
-    return us < 0 ? 0 : (uint64_t) us;
+    return us < 0 ? 0 : (uint64_t) us * 1000ULL;
 }
 
-uint64_t nros_platform_clock_ms(void) {
-    return nros_platform_clock_us() / 1000ULL;
+uint64_t nros_platform_clock_resolution_ns(void) {
+    return 1000ULL;
 }
 
 /* ---- Allocation — ESP-IDF redirects libc malloc to heap_caps ---- */

@@ -413,7 +413,7 @@ impl SinkSlot {
 /// Current monotonic time for `Record::timestamp_ns` (issue #503).
 ///
 /// With the `platform-clock` feature this reads
-/// `nros_platform_clock_us` — the universal per-platform export the
+/// `nros_platform_clock_ns` — the universal per-platform export the
 /// executor's timer accounting already links — scaled to nanoseconds.
 /// Without the feature it returns `0` ("unavailable"), the historical
 /// behavior, and imposes no link-time requirement.
@@ -426,13 +426,13 @@ pub fn __timestamp_ns() -> u64 {
     #[cfg(feature = "platform-clock")]
     {
         unsafe extern "C" {
-            fn nros_platform_clock_us() -> u64;
+            fn nros_platform_clock_ns() -> u64;
         }
         // SAFETY: bare query of the platform's monotonic us counter;
         // the symbol comes from whichever `nros-platform-<rtos>` port
         // linked the binary (the contract `PlatformSink ->
         // nros_platform_log_write` already relies on).
-        unsafe { nros_platform_clock_us() }.wrapping_mul(1000)
+        unsafe { nros_platform_clock_ns() }
     }
     #[cfg(not(feature = "platform-clock"))]
     {
