@@ -74,6 +74,19 @@ ROOT, not under `src/`, which sync rejects. Fixed by syncing INSIDE each bringup
 shim's self-pkg resolution looks anyway. Verified from a deleted model + build dir. The `|| true` masking
 is NOT fixed and is the second instance after #0510. See `archived/0533-*`. (2026-08-13)
 
+Recently resolved (2026-08-13): **#545** (testing) — TWO core crates could not run `cargo test` at all and a
+third test asserted a knob it does not control. `nros-node` failed `-D dead_code` on
+`Executor::extra_session_ids`, whose only reader is `rmw-cffi`-gated; `nros-platform-cffi`'s lib test passed
+a bare fn where bindgen's `Option`-wrapped function pointer was expected, so the whole crate's tests —
+INCLUDING the port conformance suite guarding the platform ABI — had stopped compiling; and
+`test_entry_slots_exhausted` hard-coded "MAX_CBS=4" against a BUILD-TIME knob. That last one bites through
+directory nesting: cargo reads `.cargo/config.toml` upward, so a workspace vendoring nano-ros and setting
+`NROS_EXECUTOR_MAX_CBS` for its own image silently sets it for the submodule too, and the failure reads
+like an executor capacity bug. It was misdiagnosed here for a full session as "fails on a clean tree",
+because `git stash` does not change the ENCLOSING directory's cargo config. Fixed by scoping the allow to
+`not(feature = "rmw-cffi")`, `Some(noop_callback)` with an `unsafe extern "C"` pointee, and deriving the
+slot test from `MAX_CBS`. 261 nros-node tests pass with no flags. See `archived/0545-*`. (2026-08-13)
+
 **#527** (testing, open 2026-08-12) — the doctest phase overwrites the junit.xml the skip-rewrite just
 produced, so a failed sweep reports a trustworthy COUNT of real failures and destroys the record of WHICH
 they were. `rewrite-skipped-junit` prints "Real failures: 19 / 19"; read the file afterwards and it holds

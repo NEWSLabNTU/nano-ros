@@ -1496,10 +1496,16 @@ mod test_self_export {
     fn timer_macro_emits() {
         // Default impl returns Unsupported → null handle.
         let h = unsafe {
-            super::nros_platform_timer_create_periodic(1000, noop_callback, core::ptr::null_mut())
+            super::nros_platform_timer_create_periodic(
+                1000,
+                Some(noop_callback),
+                core::ptr::null_mut(),
+            )
         };
         assert!(h.is_null(), "default Unsupported impl must surface as NULL");
     }
 
-    extern "C" fn noop_callback(_: *mut c_void) {}
+    // bindgen wraps C function-pointer parameters in `Option`, and the
+    // pointee is `unsafe extern "C"` — issue #545.
+    unsafe extern "C" fn noop_callback(_: *mut c_void) {}
 }

@@ -1102,31 +1102,43 @@ fn test_arena_overflow() {
 
 #[test]
 fn test_entry_slots_exhausted() {
+    // Issue #545 — `MAX_CBS` is a BUILD-TIME knob (`NROS_EXECUTOR_MAX_CBS`,
+    // also reachable via `$DOTCONFIG`), and cargo reads `.cargo/config.toml`
+    // from the current directory UPWARD — so a workspace that vendors
+    // nano-ros and raises the knob for its own image raises it here too.
+    // Assume nothing: fill exactly `MAX_CBS` slots, then assert the next
+    // one is refused. Small rx buffers so the slot table, not the arena,
+    // is the bound being tested.
     let session = MockSession::new();
-    // MAX_CBS=4 slots. Use small buffers to avoid arena overflow before
-    // exhausting slots.
     let mut executor = Executor::from_session(session);
     let nid = executor
         .node_builder("test_entry_slots_exhausted")
         .build()
         .unwrap();
 
-    for topic in &["/a", "/b", "/c", "/d"] {
-        executor
+    for i in 0..crate::config::MAX_CBS {
+        let topic = alloc::format!("/slot{i}");
+        let r = executor
             .node_mut(nid)
-            .subscription(topic)
+            .subscription(&topic)
             .qos(QosSettings::default().keep_last(1))
             .typed::<TestMsg>()
             .rx_buffer::<64>()
-            .build(|_msg: &TestMsg| {})
-            .unwrap();
+            .build(|_msg: &TestMsg| {});
+        assert!(
+            r.is_ok(),
+            "registration {i} of MAX_CBS={} failed with {r:?} — if this is \
+             BufferTooSmall the ARENA is the binding constraint, not the \
+             slot table, and this test needs splitting (see #545)",
+            crate::config::MAX_CBS
+        );
     }
 
-    // 5th registration should fail — all 4 slots are taken. Issue 0095:
-    // distinct `ExecutorFull` (capacity), not the generic `BufferTooSmall`.
+    // One past the table. Issue 0095: distinct `ExecutorFull` (capacity),
+    // not the generic `BufferTooSmall`.
     let result = executor
         .node_mut(nid)
-        .subscription("/e")
+        .subscription("/one-too-many")
         .qos(QosSettings::default().keep_last(1))
         .typed::<TestMsg>()
         .rx_buffer::<64>()

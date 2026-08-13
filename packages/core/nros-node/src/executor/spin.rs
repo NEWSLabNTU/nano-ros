@@ -1122,6 +1122,14 @@ pub struct Executor<'s> {
     /// locator, which fails (see `primary_rmw_name`'s note: zenoh-pico's global
     /// state is a process singleton). That is why the PX4 bridge could open both
     /// sessions and then fail to bind its outward Node.
+    ///
+    /// Written unconditionally by `open_multi*`, but the only READER is
+    /// `NodeBuilder::resolve_session_slot`, which is `rmw-cffi`-gated — so
+    /// without that feature the field is genuinely unread and the
+    /// workspace's `-D dead_code` is right to say so. Allow it exactly
+    /// there rather than blanket-allowing a field that must stay live in
+    /// every configuration that can reach the reader.
+    #[cfg_attr(not(feature = "rmw-cffi"), allow(dead_code))]
     pub(crate) extra_session_ids:
         heapless::Vec<(heapless::String<32>, heapless::String<128>), { crate::config::MAX_NODES }>,
     /// Phase 156 — primary session's rmw name + locator, captured
