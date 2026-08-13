@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#563** (tech-debt, open 2026-08-14) — the executor's 88192-byte inline storage is STATIC (`.bss`,
+`static ::nros::Node __nros_node;`), but CONSTRUCTING it costs ~23 KB of stack: ~13.4 KB already consumed
+at `nros_cpp_init` entry plus a ~9.3 KB temporary cleared inside `Executor::assemble`, which returns the
+object by value before it is written into storage already reserved for it. That is why #552's board conf
+needs 131072, and why shrinking `MAX_CBS`/`ARENA_SIZE` does NOT shrink what that knob must cover. Measured
+both ways: 65536 passes all three cortex-m cells, 32768 trips the MPU guard. Fix is to construct into
+caller-supplied storage rather than return by value. NOT established: whether each frame in the chain
+materialises its own copy — one clear was observed, the multiplier was not. See `0563-*`. (2026-08-14)
+
 Recently resolved (2026-08-13): **#559** (build) — every `build-test-fixtures lane=native` left a TRACKED
 config modified, so `git pull --rebase` refused until you `git checkout` output the next build regenerates.
 `nros sync` projects a board's `cargo_config` into `<leaf>/.cargo/nros-board.toml` and adds it to the leaf

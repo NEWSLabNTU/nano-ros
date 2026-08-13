@@ -198,3 +198,74 @@ other way — `net_config` first, publishes after — so waiting on the net line
 kills the guest immediately after "Network ready", *before* the 500 ms timer, and
 the run then looks exactly like a dead clock (issue 0531) when it is not. The
 Rust cell waits on the talker line for that reason.
+
+
+## Mechanism addendum (2026-08-14) — two claims in the fix comment, corrected
+
+The fix (`80442f438`, MAIN_STACK 16384 -> 131072 + `CONFIG_HW_STACK_PROTECTION`)
+is right and is what closed this. Two statements in the board conf's comment
+were not, and both were separately measured while arriving at the same root
+cause. The conf now carries the corrected text; recorded here too because this
+is the file the next person reads.
+
+**1. The 88192-byte `NROS_EXECUTOR_SIZE` storage is not on the main stack.**
+The C/C++ entry template declares it `static ::nros::Node __nros_node;` —
+`.bss`, not a stack local. Cross-check that settles it independently: 65536 was
+tried and passed all three cells 3/3, which is impossible if an 88 KB object
+were on that stack. So "at the old 16384 that is a 5.4x overflow" is not the
+arithmetic, and **shrinking `MAX_CBS` / `ARENA_SIZE` does not shrink what
+`CONFIG_MAIN_STACK_SIZE` has to cover.**
+
+What does overflow is the executor CONSTRUCTION path: ~13.4 KB already consumed
+by the time `nros_cpp_init` is entered (`sp = 0x20075e88` against a
+`z_main_stack` base of `0x20075320` — 2920 bytes left), then a ~9.3 KB temporary
+cleared inside `Executor::assemble`. Caught with a ranged watchpoint over the
+idle stack:
+
+```
+#0  __aeabi_memclr4          r0 = 0x20072e7c   r1 = 0x200752dc
+#2  Executor::assemble       spin.rs:1318
+#3  Executor::from_session_in spin.rs:1436
+#4  Executor::open_in        spin.rs:176
+#5  nros_cpp_init            nros-cpp/src/lib.rs:672
+```
+
+`0x200752dc` is inside `z_idle_stacks` (`0x20075220..0x20075320`).
+
+**2. "Rust on this same board passes" is refuted**, which is the same
+language-split premise this issue was originally filed on and the CORRECTION
+section above already records. Measured on the Rust leaf against its own baked
+port: **2 runs with a router reachable -> 2 faults; 2 runs without -> 0 faults.**
+All three languages fault at 16384. The split is the ROUTER, because
+`Executor::assemble` only runs once the session opens — nothing about the router
+is special, it is just what makes the call chain deep enough.
+
+**Why the mechanism matters even though the number is now generous.** 131072 is
+comfortably clear either way. But a comment that attributes the overflow to a
+sizing constant invites someone to reduce that constant and then reduce this
+knob to match, which would silently reintroduce the fault — and the fault's
+signature is an all-zero register dump against a thread that did not overflow.
+
+### Confirming the PendSV mechanism
+
+QEMU's `-d int` shows the switch to idle and the fault adjacent, with nothing in
+between:
+
+```
+...taking pending nonsecure exception 14      <- PendSV
+Exception return: magic PC fffffffd previous exception 14
+...successful exception return
+Taking exception 18 [v7M INVSTATE UsageFault]
+```
+
+`xPSR = 0` means the T bit is clear, which IS `INVSTATE` (`CFSR = 0x00020000`).
+The all-zero registers are not a NULL call — they are the CPU faithfully
+loading a context of zeros from a wiped idle stack.
+
+### A dead end worth recording
+
+A watchpoint on `z_main_stack - 4` never fires, which looks like conclusive
+proof that main did NOT overflow. It is not: a large frame allocation drops `sp`
+by ~11 KB in a single subtraction and writes nothing at the words it skips. Only
+a watchpoint over the whole destination region catches the writer. This cost
+several hours and briefly "refuted" the correct answer.

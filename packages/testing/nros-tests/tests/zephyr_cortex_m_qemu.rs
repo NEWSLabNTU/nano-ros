@@ -21,13 +21,15 @@
 //! driver, opens a zenoh session through SLIRP to a router on the host and
 //! publishes.
 //!
-//! ## No Rust cell
+//! ## Three cells, one per language
 //!
-//! The pinned `zephyr-lang-rust` cannot compile the `zephyr` crate for ANY board
-//! whose devicetree has gpio nodes — a five-argument `GpioPin::new` against a
-//! six-argument signature (**issue 0432**). That is essentially every real
-//! board. It is an upstream defect and orthogonal to what this witness covers,
-//! which the C and C++ entries exercise identically.
+//! C, C++ and Rust. This section used to say a Rust cell was impossible here:
+//! the pinned `zephyr-lang-rust` could not compile the `zephyr` crate for any
+//! board whose devicetree has gpio nodes — a five-argument `GpioPin::new`
+//! against a six-argument signature (**issue 0432**), which an385 has and
+//! native_sim does not. 0432 was resolved 2026-08-12 by phase-346 W2/W3, and
+//! `matrix::CELLS` had declared the Rust cell `Runtime` since phase-346 W3 with
+//! nothing running it — the kind of undeclared gap RFC-0051 exists to prevent.
 //!
 //! ## Prerequisites
 //!
