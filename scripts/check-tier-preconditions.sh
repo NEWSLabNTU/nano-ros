@@ -109,7 +109,48 @@ probe "test fixtures missing or stale for this lane" \
     "just build-test-fixtures lane=${_fixture_build_lane}   (bypass: NROS_SKIP_FIXTURE_CHECK=1)" \
     just _require-fixtures
 
-# 6. The pinned make. `nros_pool_run` needs make 4.4's FIFO jobserver: the
+#    NOT added alongside it: `check-artifact-identity-budget`, which issue 0466
+#    lists in the same finding (stop #3, "1.9 GB of Aug-7 rlibs"). Its own
+#    `started_at` filter (issues 0499/0513) now answers that case with
+#    "[SKIP] … this tree is history, not that build" — and this batch runs
+#    BEFORE fixtures are built, which is exactly when that filter reports SKIP.
+#    Adding it here would contribute a line that can never fire, which is the
+#    gate-narrower-than-its-rule shape this tree keeps paying for. It stays in
+#    `check-fast`, where the tree it measures is the one the run produced.
+#
+# 6. Residue a long-lived checkout accumulates. Issue 0466's finding (a): the
+#    batch checked the CONTRACT but not the TREE'S HISTORY, so a stray `target/`
+#    beside workspace source was stop #2 of five on 2026-08-11 — cheap to detect
+#    up front, discovered last. The gate already runs in `check-fast`; what it
+#    lacked was a seat in the ONE listing, so it arrived as its own 40-minute
+#    round trip after this batch had already reported green.
+#
+#    Buildless and source-free, like every probe above it.
+probe "build output beside workspace source (long-lived-tree residue)" \
+    "rm -rf the named dir(s) — build output belongs under \$NROS_BUILD_ROOT (RFC-0070 R1)" \
+    bash scripts/check-workspace-build-output.sh
+
+# 7. The CLI and the launch resolver are built by SEPARATE recipes and must
+#    agree on an argument list (#0363 C), and `setup-cli` deliberately only
+#    WARNS when it leaves the resolver behind — its job is to produce the CLI,
+#    and the resolver has its own skip conditions. A warning printed at the tail
+#    of one recipe is not something the next run re-states, so the skew reaches
+#    a fixture build and surfaces there instead. Report it with everything else.
+#
+#    WARN, not fail: a resolver older than the CLI is only WRONG if the argument
+#    list moved, which this cannot know. Failing on it would block the
+#    legitimate CLI-only setup that `setup-cli` is careful to allow.
+_resolver="packages/cli/nros-launch-resolve/target/release/nros-launch-resolve"
+_cli_bin="packages/cli/target/release/nros"
+if [ -f "$_resolver" ] && [ -f "$_cli_bin" ] && [ "$_cli_bin" -nt "$_resolver" ]; then
+    echo "check-tier-preconditions: WARNING — nros-launch-resolve is OLDER than" >&2
+    echo "  the in-tree CLI. They are separate recipes that must agree on an" >&2
+    echo "  argument list (issue 0363 C); a skew surfaces deep in a fixture" >&2
+    echo "  build, not here." >&2
+    echo "  Remedy: just setup-launch-resolve" >&2
+fi
+
+# 8. The pinned make. `nros_pool_run` needs make 4.4's FIFO jobserver: the
 #    system make on Ubuntu 22.04 is 4.3, whose pipe-FD jobserver a grandchild
 #    (cargo, or cmake's sub-make) cannot join. Without it every jobserver
 #    fan-out in the tree — example checks, fixture builds, the compile-check
@@ -132,7 +173,7 @@ if [ ! -x "third-party/make/make" ] ||
     echo "  Remedy: just install-make" >&2
 fi
 
-# 7. A lane that silently DEGRADES is worse than one that fails: without GNU
+# 9. A lane that silently DEGRADES is worse than one that fails: without GNU
 #    parallel the example check walks ~99 leaves serially and reads as a hung
 #    tier, not a missing package. Warn — do not fail — since the lane is correct,
 #    only slow.
@@ -143,7 +184,7 @@ if ! command -v parallel >/dev/null 2>&1; then
 fi
 
 if [ "$failed" -eq 0 ]; then
-    echo "check-tier-preconditions: OK (submodules, CLI, leaf includes, build sources, fixtures)"
+    echo "check-tier-preconditions: OK (submodules, CLI, leaf includes, build sources, fixtures, build-output residue)"
     exit 0
 fi
 

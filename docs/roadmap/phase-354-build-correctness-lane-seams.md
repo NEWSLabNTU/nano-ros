@@ -61,10 +61,20 @@ redone:
 * `52e6bda8e` (2026-08-14) landed "one zephyr staleness spelling, so every entry
   is covered" — the issue's own zephyr `skip_probe = true` finding.
 
-What remains is the issue's later sections: the compile-check lane's gate being
-NARROWER than the tests it gates (the issue-0196 shape, and the fourth gate this
-year whose coverage was narrower than its rule), and the entry-resolver source-
-dir bridging the issue sketches via `ZEPHYR_WORKSPACE_ENTRY_SRC_KEY`.
+* 2026-08-15 landed finding (a): `check-workspace-build-output` joined the
+  batch, and the launch-resolve skew below is re-stated there as a WARNING.
+  `check-artifact-identity-budget` was checked and DECLINED — its `started_at`
+  filter (0499/0513) already answers the tree the finding cites, and the batch
+  runs before fixtures exist, so it would only ever SKIP.
+
+The entry-resolver source-dir bridging via `ZEPHYR_WORKSPACE_ENTRY_SRC_KEY` is
+DONE, not remaining — it is what `52e6bda8e` above is; all 16 resolvers now name
+a leaf. (This paragraph previously credited that commit and listed its content as
+outstanding two lines later, which is how the same work gets done twice.)
+
+What remains is one item: the compile-check lane's gate being NARROWER than the
+tests it gates (the issue-0196 shape, and the fourth gate this year whose
+coverage was narrower than its rule).
 
 Observed twice on 2026-08-14/15 and worth folding in: after any pull, the
 ordered remedy is `just setup-cli` → `just setup-launch-resolve` → fixtures, and

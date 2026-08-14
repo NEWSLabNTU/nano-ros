@@ -527,3 +527,64 @@ terms:
 This issue has now absorbed four distinct defects across three months. The
 zephyr half is done; the rest deserves its own number rather than a fifth
 section here.
+
+
+## Finding (a), fixed 2026-08-15 — one gate joined the batch, one was checked and declined
+
+Finding (a) above named two gates that "already exist and could simply run
+inside the precondition batch". One of the two no longer needs to.
+
+**`check-workspace-build-output` — added.** Stop #2 of the five on 2026-08-11 (a
+Jul-14 `target/` inside `examples/workspaces/mixed/src/rust_heartbeat_pkg`). It
+is buildless and source-free, so it fits the batch's contract exactly. It was
+already running in `check-fast`; what it lacked was a seat in the ONE listing,
+so it arrived as its own round trip after the batch had reported green.
+
+Verified by mutation rather than by reading: with a stray `target/` planted under
+a workspace `src/` and a stale CLI, the batch reports
+
+```
+ 2 tier precondition(s) unmet — ALL of them, not just the first
+  [x] in-tree nros CLI is stale
+  [x] build output beside workspace source (long-lived-tree residue)
+```
+
+which is the property this issue asked for — two causes, one verdict, one round
+trip instead of two.
+
+**`check-artifact-identity-budget` — deliberately NOT added.** The finding cites
+it as stop #3 ("1.9 GB of Aug-7 rlibs under `mixed/build-workspace-fixtures`"),
+but that failure mode is already gone: the `started_at` filter (issues 0499 /
+0513) now answers exactly that tree with
+
+```
+[SKIP] artifact-identity budget: all N rlib(s) … predate started_at=… —
+       this tree is history, not that build.
+```
+
+and this batch runs BEFORE fixtures are built, which is precisely when that
+filter reports SKIP. Adding it here would contribute a line that can never fire
+— a gate whose coverage is narrower than the rule it advertises, which is the
+shape this tree has now paid for four times. It stays in `check-fast`, where the
+tree it measures is the one the run produced.
+
+Worth stating plainly because the issue text argued the other way and the text
+was three days older than the fix: **check the gate's current behaviour before
+acting on a finding about it.**
+
+**Launch-resolve skew — added as a WARNING.** phase-354 W2's acceptance names it.
+`setup-cli` warns when it leaves `nros-launch-resolve` older than the CLI and
+deliberately does not fail (a CLI-only setup is legitimate, and the resolver has
+its own skip conditions). But a warning at the tail of one recipe is not
+something the next run re-states, so the skew reaches a fixture build and
+surfaces there. The batch now re-states it. WARN, not fail, for the same reason
+`setup-cli` warns: a resolver older than the CLI is only WRONG if the argument
+list moved, which neither can know.
+
+### Still open in this issue
+
+* the compile-check lane's signature does not hash each row's in-repo
+  path-dependency closure, so that gate stays narrower than the tests it gates
+  (the issue-0196 shape);
+* no `nros setup --tool <t> --check`, so a provisioned tool that drifted behind
+  its pin still presents as a link failure (#0493's corrosion 0.5.1 vs 0.6.1).
