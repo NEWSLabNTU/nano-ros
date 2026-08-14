@@ -604,14 +604,10 @@ pub fn manage_cyclonedds_max_types(workspace: &Path, value: Option<usize>) -> Re
     }
     std::fs::create_dir_all(&cfg_dir)
         .wrap_err_with(|| format!("codegen-system: mkdir {}", cfg_dir.display()))?;
-    let tmp = cfg.with_file_name(format!(
-        ".config.toml.nros-maxtypes-tmp.{}",
-        std::process::id()
-    ));
-    std::fs::write(&tmp, out)
-        .wrap_err_with(|| format!("codegen-system: write {}", tmp.display()))?;
-    std::fs::rename(&tmp, &cfg)
-        .wrap_err_with(|| format!("codegen-system: rename -> {}", cfg.display()))?;
+    // issue 0562 — a leaf `.cargo/config.toml` restamp is the expensive one:
+    // cargo re-fingerprints the whole leaf behind it.
+    crate::atomic_file::atomic_write(&cfg, &out)
+        .wrap_err_with(|| format!("codegen-system: write {}", cfg.display()))?;
     Ok(true)
 }
 

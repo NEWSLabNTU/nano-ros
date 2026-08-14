@@ -629,14 +629,7 @@ impl ProviderIndex {
                 .wrap_err_with(|| format!("creating {}", parent.display()))?;
         }
         let body = serde_json::to_string_pretty(self)? + "\n";
-        let tmp = path.with_extension(format!(
-            "tmp{}",
-            std::process::id() // unique per writer; renamed away immediately
-        ));
-        std::fs::write(&tmp, body).wrap_err_with(|| format!("writing {}", tmp.display()))?;
-        std::fs::rename(&tmp, path)
-            .wrap_err_with(|| format!("renaming into place: {}", path.display()))?;
-        Ok(())
+        crate::atomic_file::atomic_write(path, &body)
     }
 
     pub fn read(path: &Path) -> Result<Self> {

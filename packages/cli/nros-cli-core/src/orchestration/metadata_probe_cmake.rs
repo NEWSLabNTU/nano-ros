@@ -219,15 +219,17 @@ pub fn run_probes(probe_dir: &Path, comps: &[CmakeProbeOptions]) -> Result<Vec<P
     }
     std::fs::create_dir_all(probe_dir)
         .wrap_err_with(|| format!("create {}", probe_dir.display()))?;
-    std::fs::write(
-        probe_dir.join("CMakeLists.txt"),
-        render_probe_cmakelists(comps),
+    // issue 0562 — write-if-changed: this directory is a cmake project, so a
+    // restamped CMakeLists.txt costs a full probe reconfigure per sync.
+    crate::atomic_file::atomic_write(
+        &probe_dir.join("CMakeLists.txt"),
+        &render_probe_cmakelists(comps),
     )?;
     write_capabilities(probe_dir)?;
     for c in comps {
-        std::fs::write(
-            probe_dir.join(format!("{}.cpp", c.probe_target())),
-            render_probe_main(c)?,
+        crate::atomic_file::atomic_write(
+            &probe_dir.join(format!("{}.cpp", c.probe_target())),
+            &render_probe_main(c)?,
         )?;
         if let Some(parent) = c.output_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -438,7 +440,7 @@ fn write_capabilities(probe_dir: &Path) -> Result<()> {
     if !out.status.success() {
         return Ok(());
     }
-    std::fs::write(probe_dir.join("nros_capabilities.cmake"), out.stdout)
+    crate::atomic_file::atomic_write_bytes(&probe_dir.join("nros_capabilities.cmake"), &out.stdout)
         .wrap_err_with(|| format!("write {}/nros_capabilities.cmake", probe_dir.display()))?;
     Ok(())
 }

@@ -3011,13 +3011,9 @@ fn write_central_patch_file(nano_ros_path: &Path) -> Result<PathBuf> {
         ));
     }
     let dst = nrp.join(CENTRAL_PATCH_FILE);
-    if std::fs::read_to_string(&dst).ok().as_deref() == Some(body.as_str()) {
-        return Ok(dst);
-    }
-    let tmp = dst.with_file_name(format!(".{CENTRAL_PATCH_FILE}.tmp.{}", std::process::id()));
-    std::fs::write(&tmp, &body).wrap_err_with(|| format!("sync: write {}", tmp.display()))?;
-    std::fs::rename(&tmp, &dst)
-        .wrap_err_with(|| format!("sync: rename {} -> {}", tmp.display(), dst.display()))?;
+    // issue 0562 — the shared helper is both halves (skip-if-identical +
+    // atomic rename); this used to be a third private copy.
+    crate::atomic_file::atomic_write(&dst, &body)?;
     Ok(dst)
 }
 
@@ -3421,17 +3417,10 @@ fn write_patch_block(
         .wrap_err_with(|| format!("sync: read {}", authority.display()))?;
     let migrated = strip_managed_patch_from_cargo(&body);
     if migrated != body {
-        let fname = authority
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Cargo.toml");
-        let tmp =
-            authority.with_file_name(format!(".{fname}.nros-sync-tmp.{}", std::process::id()));
-        std::fs::write(&tmp, migrated)
-            .wrap_err_with(|| format!("sync: write {}", tmp.display()))?;
-        std::fs::rename(&tmp, authority).wrap_err_with(|| {
-            format!("sync: rename {} -> {}", tmp.display(), authority.display())
-        })?;
+        // issue 0562 — the fifth private copy of temp+rename; the shared helper
+        // does the `migrated != body` check itself, but keep the explicit
+        // guard so the one-time migration stays readable at the call site.
+        crate::atomic_file::atomic_write(authority, &migrated)?;
     }
 
     println!(

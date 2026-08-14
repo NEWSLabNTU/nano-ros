@@ -40,6 +40,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CORE="packages/cli/nros-cli-core/src"
+# The implementation moved DOWN to cargo-nano-ros (issue 0562): nros-cli-core
+# depends on it, and `provider_scan` there writes a sync-owned file of its own,
+# so the lower crate is the only place ONE spelling can serve both.
+LOW="packages/cli/cargo-nano-ros/src"
 
 # Function bodies that write a sync-owned, concurrently-read file. Grepping the
 # whole file would drag in its unit tests, which legitimately use `fs::write` to
@@ -50,6 +54,11 @@ GUARDED=(
     "$CORE/orchestration/metadata_refresh.rs:stamp_provenance"
     "$CORE/orchestration/metadata_refresh.rs:mark_unprobeable"
     "$CORE/orchestration/metadata_build.rs:relativise_source_artifacts"
+    # issue 0562 — the probe directory IS a cmake project, so these writers
+    # restamping their output costs a probe reconfigure on every sync, not just
+    # a torn read.
+    "$CORE/orchestration/metadata_probe_cmake.rs:run_probes"
+    "$CORE/orchestration/metadata_probe_cmake.rs:write_capabilities"
 )
 
 fail=0
@@ -92,10 +101,29 @@ fi
 # first one failed to reach the sidecar.
 # `git grep`, not `grep -r`: check-no-tracked-file-find rejects a filesystem
 # walk to locate TRACKED files (measured 7m36s -> 0.8s over the same 232 paths).
-dupes="$(git grep -ln 'fn atomic_write' -- "$CORE" | grep -v 'atomic_file.rs' || true)"
+dupes="$(git grep -ln 'fn atomic_write' -- "$CORE" "$LOW" | grep -v 'atomic_file.rs' || true)"
 if [ -n "$dupes" ]; then
     echo "ERROR: a second atomic_write implementation exists — use nros_cli_core::atomic_file:" >&2
     echo "$dupes" | sed 's/^/  /' >&2
+    fail=1
+fi
+
+# issue 0562 — and no private TEMP+RENAME either. The atomicity rule grew four
+# spellings of the same body (`facade::write_if_changed`,
+# `metadata_build::write_if_changed`, an inline check in `cmd/ws.rs`, and
+# `model_ingest`'s), and the sites that mattered — the probe-cmake writers and
+# `providers.json` — had none of them, so an unchanged tree was restamped and
+# reconfigured on every sync. A delegating wrapper is fine; a second body is not.
+#
+# The generated metadata harness is exempt by the same reasoning as above: it is
+# emitted as source into a standalone crate that cannot depend on the CLI.
+renames="$(git grep -n 'fs::rename(&tmp' -- "$CORE" "$LOW" \
+    | grep -v 'atomic_file.rs' \
+    | grep -v 'std::fs::rename(&tmp, out)' || true)"
+if [ -n "$renames" ]; then
+    echo "ERROR: a private temp+rename exists — call atomic_file::atomic_write instead:" >&2
+    echo "$renames" | sed 's/^/  /' >&2
+    echo "       (it is atomic AND write-if-changed; a private copy gets only half)" >&2
     fail=1
 fi
 

@@ -170,3 +170,30 @@ Related: zephyr#54289 is the cautionary case for the opposite failure — adding
 jobserver to twister collapsed its parallelism to one cmake at a time and turned
 a 3 h run into 8 h+. Our jobserver is behaving correctly; that is what the
 sample above establishes.
+
+## Measured again 2026-08-14 — a "warm no-op" lane still replays 1244 ninja edges
+
+Seven consecutive no-op runs of `just zephyr build-fixtures`, with nothing
+changed between them, each produced a byte-identical 1728-line log: the same
+**1244 ninja edges** (a full Zephyr static-library link set) and the same **129
+`Compiling` lines** rebuilding `nros-c` via cargo, all from the west-fixtures
+step. So the lane has no true warm state — the "skip per-leaf prep whose inputs
+are unchanged" direction is not a micro-optimisation here, it is the difference
+between a no-op costing nothing and costing a full link.
+
+Their wall times, for provably identical work:
+
+```
+50s  50s  51s  695s  450s  634s  630s
+```
+
+**Lane wall-clock is therefore not a usable instrument on this host** — a 14x
+spread with the work held constant, consistent with this issue's own 76 % idle /
+18 % iowait sample and with phase-338's 60x page-cache effect. Any past or future
+A/B that reads a lane timing difference as a code effect is reading cache state.
+Measure a deterministic proxy (edge counts, restamped-file counts) instead.
+
+Issue 0562 removed one contributor — sync restamping byte-identical files, which
+forced cmake reconfigures downstream — and is the first item of the revised
+direction list above. The 1244 edges are the remainder, and they are the bigger
+half.

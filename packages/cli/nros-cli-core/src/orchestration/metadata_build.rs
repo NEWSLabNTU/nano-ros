@@ -572,10 +572,8 @@ pub fn host_triple() -> String {
 }
 
 fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
-    if std::fs::read_to_string(path).ok().as_deref() == Some(contents) {
-        return Ok(());
-    }
-    std::fs::write(path, contents).wrap_err_with(|| format!("write {}", path.display()))
+    // issue 0562 — delegates; this copy also lacked the ATOMICITY half.
+    crate::atomic_file::atomic_write(path, contents)
 }
 
 #[cfg(test)]

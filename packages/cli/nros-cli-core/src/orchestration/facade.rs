@@ -416,14 +416,12 @@ fn rel_from(base: &Path, target: &Path) -> String {
 /// every fixture on every sync. Atomic (tmp + rename) so a killed sync cannot
 /// leave a half-written manifest that cargo then parses.
 fn write_if_changed(dst: &Path, body: &str) -> Result<bool> {
-    if std::fs::read_to_string(dst).ok().as_deref() == Some(body) {
-        return Ok(false);
-    }
-    let tmp = dst.with_extension(format!("nros-sync-tmp.{}", std::process::id()));
-    std::fs::write(&tmp, body).wrap_err_with(|| format!("facade: write {}", tmp.display()))?;
-    std::fs::rename(&tmp, dst)
-        .wrap_err_with(|| format!("facade: rename into {}", dst.display()))?;
-    Ok(true)
+    // issue 0562 — one spelling. This was one of four private copies of the
+    // same skip-if-identical logic; the shared helper now owns it, and the
+    // sites that never had a copy (the probe-cmake writers, providers.json)
+    // get the behaviour for free.
+    crate::atomic_file::atomic_write_reporting(dst, body.as_bytes())
+        .wrap_err_with(|| format!("facade: write {}", dst.display()))
 }
 
 #[cfg(test)]

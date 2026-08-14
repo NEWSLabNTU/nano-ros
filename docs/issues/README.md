@@ -752,6 +752,20 @@ failing in three directions (each verified red first). The two live bins this is
 handled — `logging-smoke-zephyr-native-sim` has a west row (0549 removed its duplicate builder) and
 `ros-edition-pose-pub` is an allowlisted RFC-0058 exception. See `archived/0540-*`.
 
+**#562** (cli/build, open 2026-08-14) — `nros sync` REWROTE byte-identical files, restamping their
+mtimes and buying a cmake reconfigure for no change. `atomic_write_bytes` never compared content, and the
+skip-if-identical idiom existed in FOUR private copies (`facade`, `metadata_build`, an inline check in
+`cmd/ws.rs`, `model_ingest`) while the sites that actually cost configure work had none — above all
+`metadata_probe_cmake`, whose probe directory IS a cmake project, so a restamped `CMakeLists.txt` forces a
+probe reconfigure every sync. Fixed as a class: ONE helper in `cargo_nano_ros::atomic_file` (the lower
+crate, so `provider_scan`'s `providers.json` shares it), atomic AND write-if-changed, with all five
+unguarded sites and all four private copies delegating; `check-atomic-sync-writes` extended to ban a
+private temp+rename (it immediately caught a fifth copy). No-op sync restamps: `workspaces/features` 27→6
+(the 6 are cmake's own build dir), `native/rust/talker` 2→0, zephyr lane `build/nros/**` 5→0. The intended
+wall-clock A/B is INCONCLUSIVE and says something worth keeping: seven no-op lane runs doing provably
+identical work (byte-identical 1728-line logs) took 50–695 s, so lane timing on this HDD host measures page
+cache, not code. See `0562-*`.
+
 **#509** (build/testing, open 2026-08-10) — the Zephyr fixture lane is PER-LEAF-OVERHEAD bound, not compile
 bound. Measured mid-sweep: **40 min for 68 leaves**, and across all of them just **1254 ninja edges**
 (mean 18/leaf), only 8 reconfigures, sccache at 96.8 %, and 4 rustc + 2 C compilers live on a 32-core box.

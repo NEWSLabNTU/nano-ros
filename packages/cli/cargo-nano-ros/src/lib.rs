@@ -33,6 +33,7 @@
 //! ```
 
 pub mod ament_installer;
+pub mod atomic_file;
 pub mod cache;
 pub mod capability_resolver;
 pub mod config_patcher;
