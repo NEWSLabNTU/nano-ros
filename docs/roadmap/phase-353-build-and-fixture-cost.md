@@ -68,18 +68,40 @@ against a stale number repeats what phase-343 W2 had to undo.
      `file 1 is not in sorted order` and produced meaningless output; the real
      answer was 6. Use an explicit stat-map compare here, not `comm`.
 
-* **#446** — "the same crate is compiled ~21× across leaf target dirs". Filed
-  before phase-340's coordinate-keyed group dirs and phase-343 W1's shared probe
-  dir. Re-run the census (`nros-core` rlibs across leaf `target*/…/deps`) and
-  restate the factor. The issue's real question — *what actually makes those
-  builds incompatible* — is unanswered either way, and is the part worth
-  keeping.
+* **#446** — **DONE (2026-08-15). Re-measured; the issue stays OPEN with a
+  current number and a sharper target.** Original scope re-run
+  (`libnros_core-*.rlib` under `*/nros-relwithdebinfo/deps/`):
+
+  | | 2026-08-06 | 2026-08-15 |
+  | --- | --- | --- |
+  | rlibs | 106 | **707** |
+  | target dirs | 60 | **385** |
+  | `-C metadata` identities | 5 | **49** |
+  | factor | 21.2x | **14.4x** |
+
+  The ratio improved and the absolute waste grew, because the tree grew. The
+  finding is that **the duplication MOVED**: the worst population is now
+  `build/sizes-probe` at **25.8x** (155 rlibs, 6 identities, **37 GB**) — the
+  directory phase-343 W1 created to remove duplication. Under its single
+  `rustc-1.97.1` key sit 110 sub-key directories holding 18 identities, the top
+  two being one compilation done 70 and 69 times.
+
+  Cause, and it is deliberate rather than a bug: `probe_key` hashes the REQUEST
+  (target, features, every set `NROS_*` knob plus Zephyr `$DOTCONFIG` knobs)
+  while `-C metadata` hashes what determines the ARTIFACT. Most knobs move
+  `ExecutorInlineStorage` in `nros-node` without touching `nros-core`, so they
+  split the directory without splitting the artifact. That breadth is issue
+  0528's fix.
+
+  **Direction 3 of the issue is already DONE** — phase-340 W3 normalised the
+  `--target` split (gate `check-cargo-target-spelling`). Direction 1 now has a
+  better target than when it was written; see W4.
 
 **Acceptance.** Each of #562 and #446 carries a dated re-measurement on this
 tree, and is either resolved with evidence or restated with a current number.
 No implementation lands under this phase before that.
 
-**Status: #562 done. #446 outstanding.** The whitespace-churn hunt above is the
+**Status: W1 COMPLETE.** The whitespace-churn hunt above is the
 one piece of #562 that survived it, and it is a correctness annoyance rather
 than a cost item — fix it when the writer is identified, not by widening
 write-if-changed, which cannot see it.
@@ -115,6 +137,40 @@ Note W1's re-measurements may reduce what this campaign needs to cover — phase
 **Acceptance.** Either a runner exists and the campaign runs, or #200 is
 restated against post-340/343 disk figures so a future runner is sized correctly.
 
+## W4 — Collapse the probe dir's over-keying (#446; opened by W1)
+
+W1's measurement makes this the phase's largest contained prize: **110 probe
+sub-directories holding 18 distinct `nros-core` identities, 37 GB**, where cargo
+itself says most of those artifacts are interchangeable.
+
+The constraint comes first and is absolute: **issue 0528's invariant must
+hold.** A knob that CAN change a probed size must still split the key, or the
+failure returns as order-dependent corruption — a 4-CBS leaf poisoning a 16-CBS
+one into `EXECUTOR_OPAQUE_U64S too small`, which survives a clean rebuild of the
+failing leaf because the poisoned directory is the shared one.
+
+So the question is NOT "share more". It is **which `NROS_*` knobs actually reach
+the probed types**. `knob_identity()` takes every `NROS_*` in the environment
+plus the Zephyr `$DOTCONFIG` lines, on the stated grounds that an
+unknown-but-set knob should key the probe rather than silently share. That is
+the right default for an UNKNOWN knob; it is not obviously right for one whose
+reach is known.
+
+Two shapes, in order of preference:
+
+1. **Narrow the knob set per knob, by argument.** Each knob removed from the key
+   needs a stated reason it cannot reach a probed size. Slow, safe, and it
+   degrades gracefully — an unlisted knob keeps today's behaviour.
+2. **Key on the probed OUTPUT rather than the request.** Two requests yielding
+   identical sizes could share regardless of spelling. More invasive, and needs
+   care about when the sizes are known relative to when the directory is chosen.
+
+**Acceptance.** A measured reduction in probe sub-key count and disk, with the
+0528 reproduction — a 4-CBS and a 16-CBS leaf probing in BOTH orders — passing
+both ways. No change lands without that reproduction being run: it is the
+specific failure this keying exists to prevent, and it is invisible on a clean
+rebuild of the leaf that fails.
+
 ---
 
 ## Deliberately not doing
@@ -125,3 +181,6 @@ restated against post-340/343 disk figures so a future runner is sized correctly
   identity. Any proposal here that assumes otherwise is already refuted.
 * **No new caching layer.** Three of these four issues are about work that
   should not happen, not about caching work that does.
+* **No loosening of the probe key without a per-knob argument.** W4 exists
+  because the key is over-broad, but that breadth IS issue 0528's fix; a blanket
+  narrowing trades a disk cost for a corruption class.

@@ -119,3 +119,72 @@ obvious next experiment.
 Measured 2026-08-06 while investigating why `just build-test-fixtures` takes
 minutes with an idle CPU. All commands above are reproducible; the factor table
 came from `scratchpad/reuse-factors.sh` (one build per row, fresh target dir).
+
+## Re-measured 2026-08-15 (phase-353 W1)
+
+The 2026-08-06 census predates phase-340 (coordinate-keyed fixture target dirs),
+phase-340 W3 (every cmake-emitted cargo command passes `--target`, host
+included) and phase-343 W1 (the shared sizes-probe dir). Re-run in the ORIGINAL
+scope — `libnros_core-*.rlib` under `*/nros-relwithdebinfo/deps/`:
+
+| | 2026-08-06 | 2026-08-15 |
+| --- | --- | --- |
+| rlibs | 106 | **707** |
+| distinct target dirs | 60 | **385** |
+| distinct `-C metadata` identities | 5 | **49** |
+| duplication factor | 21.2x | **14.4x** |
+
+The ratio improved; the absolute waste grew, because the tree grew (60 → 385
+dirs). Neither number alone is the story — **the duplication moved.**
+
+### Where it is now
+
+| population | rlibs | identities | factor |
+| --- | --- | --- | --- |
+| `build/sizes-probe` | 155 | **6** | **25.8x** |
+| `examples/**` | 375 | 27 | 13.9x |
+| `packages/**` | 96 | 13 | 7.4x |
+| `build/cmake-fixtures` | 20 | 2 | 10.0x |
+| `build/cargo-fixtures` | 31 | 13 | 2.4x |
+
+The worst duplicator is now **the shared probe dir that phase-343 W1 created to
+remove duplication**. Under its single `rustc-1.97.1` key sit **110 sub-key
+directories holding 18 distinct nros-core identities**, and the top two are one
+compilation done **70** and **69** times. It occupies **37 GB** (35 GB under
+that one rustc key).
+
+### Why — and it is deliberate, not a bug
+
+`nros_sizes_build::probe_key` hashes `(target, sorted features, EVERY set
+`NROS_*` knob + the matching `CONFIG_NROS_*` lines from Zephyr's `$DOTCONFIG`)`.
+The knob half is deliberately broad, and its own comment says why: issue 0528
+showed that sharing a probe dir across a knob difference is *order-dependent
+corruption* — whichever leaf probes first writes the sizes, and a 4-CBS leaf
+poisons a 16-CBS one into `EXECUTOR_OPAQUE_U64S too small`.
+
+So the probe key is a hash of the REQUEST, while `-C metadata` is a hash of what
+actually determines the ARTIFACT. Most `NROS_*` knobs change
+`ExecutorInlineStorage` (in `nros-node`) without changing `nros-core`'s
+compilation at all — so they split the directory without splitting the artifact.
+This is the issue's own thesis, now applying hardest to the dedup mechanism:
+**isolation at the DIRECTORY level, incompatibility at the IDENTITY level.**
+
+### What this changes about the directions
+
+* **Direction 3 (normalise the `--target` split) is DONE.** phase-340 W3 made
+  every cmake-emitted cargo command pass `--target`, host included, with gate
+  `check-cargo-target-spelling`. That merger has already happened.
+* **Direction 1 (share by identity) is still the right idea, and the probe dir
+  is now its best target** — 110 dirs collapsing to 18 is a bigger, more
+  contained prize than the `examples/**` spread.
+* **Any change here must preserve issue 0528's invariant.** A knob that CAN
+  change a probed size must still split the key. The tractable question is
+  whether the knob set can be narrowed to the knobs that actually reach the
+  probed types, rather than every `NROS_*` in the environment — which is a
+  correctness argument to be made per knob, not a blanket loosening.
+* **Direction 2 (`incremental`) remains unmeasured** and is unaffected by this.
+
+The issue's central question — *what actually makes those builds incompatible* —
+now has a sharper answer for the largest population: **nothing does.** For 110
+of the probe directories, cargo itself says the artifacts are interchangeable;
+they are separate because the key is conservative on purpose.
