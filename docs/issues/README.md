@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#579** (platform-nuttx, open 2026-08-15) — `apply_tier_priority` is called from ONE place, the SPAWNED
+tier path, so the boot tier keeps the init task's priority and its declared `[tiers.*.nuttx] priority` is
+parsed, baked, carried to the board and dropped. The in-tree realtime workspace declares high=110 (boot)
+over low=100 and the guest runs BOTH at 100 — #0570's crash dump shows `PRI 100` for `nsh_main` and both
+pthreads. A declared number is an ORDERING, so dropping one silently inverts the set, on the one tier that
+also drives the shared session flush. ThreadX already fixed exactly this (`nros_threadx_set_current_priority`,
+whose comment names the inversion) and Zephyr avoids it by sorting (#0251); NuttX does neither. NOT #0572's
+cause — that was #0570's mirror overflow; recorded so the misreading is not repeated. See `0579-*`. (2026-08-15)
+
 Recently resolved (2026-08-15): **#577** — `cargo test -p nros-node --lib` failed
 (`violations_beyond_the_ring_are_counted`, `ExecutorFull`) while `just ci` was green. TWO defects. The test
 registered `MAX_VIOLATIONS + 4` = 12 timers against a `MAX_CBS` whose default has been 4 since 2026-03, so

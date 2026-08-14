@@ -172,6 +172,23 @@ where
     F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
+    // issue 0572 — a panic on this guest is INVISIBLE: Rust prints the message
+    // and location to stderr, and stderr never reaches the NuttX serial console
+    // here (the same finding that hid every `eprintln!` diagnostic in this
+    // function). A boot tier that panics after spawning its siblings would look
+    // exactly like one that silently stopped scheduling. Route it to stdout.
+    // (For 0572 itself this came back NEGATIVE — no panic — which is why the
+    // hook stays: that was worth knowing and cost a build to learn.)
+    {
+        use std::io::Write as _;
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(std::boxed::Box::new(move |info| {
+            println!("nros: PANIC {info}");
+            let _ = std::io::stdout().flush();
+            prev(info);
+        }));
+    }
+
     <B as nros_platform::BoardInit>::init_hardware();
 
     // NuttX virtio-net needs a brief warm-up after kernel
