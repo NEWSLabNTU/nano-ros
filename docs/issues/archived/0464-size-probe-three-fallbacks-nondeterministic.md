@@ -240,3 +240,49 @@ Both halves are now closed.
 The failure mode this issue described — a wrong size substituted silently, with
 the const assertion catching it for 2 of 15 macros — is now a build error naming
 the macro, for every macro.
+
+## Postscript 2026-08-15 — the fourth committed artifact was WRONG, not just stale
+
+Found after this issue was resolved, while re-reading it. This issue flagged the
+artifact and characterised it as agreeing with a deleted constant:
+
+> `packages/api/nros-c/include/nros/nros_config_generated_nuttx.h` hardcodes
+> `EXECUTOR_OPAQUE_U64S 9912` — exactly `79_296 / 8`, agreeing with layer 3's
+> constant rather than with a measurement.
+
+**It contradicted itself, and the macro left behind is the one that allocates.**
+`#167` had bumped the two macros that DESCRIBE the executor and missed the one
+`uint64_t _opaque[…]` actually uses:
+
+```c
+/* #167 — safe upper bound (was 79296, stale): current codegen needs ~80704 on
+ * rv-virt; too-small here overflows the executor storage buffer. */
+#define NROS_EXECUTOR_STORAGE_SIZE 98304   /* bumped */
+#define NROS_EXECUTOR_SIZE         98296   /* bumped */
+#define EXECUTOR_OPAQUE_U64S       9912    /* NOT bumped */
+```
+
+79296 against the 98296 the same file declares for what goes in it: the array
+was **19008 bytes short**, and below the ~80704 its own comment states rv-virt
+needs. The C++ twin was fixed correctly by #167; only the C side was half-done.
+Corrected to `98304 / 8 = 12288` in `188fc8078`.
+
+**Not deleted.** The obvious reading of this issue's principle — committed size
+constants cannot track a type they do not observe — says remove the fallback.
+That would be wrong: the C++ twin documents it as REACHED in real builds ("when
+the per-build mirror does not reach a TU that emits
+`Node::GlobalStorageHolder<>::storage`, ODR-picked across the nros-cpp library +
+entry"), and #167 records the consequence of it being too small — `open_in`
+wrote past the buffer and smashed a saved return address, rv-virt boot panic
+`EPC=0x4`. A snapshot that is reached must be correct, not absent.
+
+The header is now **self-checking**: `_Static_assert`s require every `_opaque`
+width to cover the size the same file states. A snapshot still cannot observe
+the type it describes — only the per-build header can, and it supersedes this
+one whenever the build system supplies it — but it can no longer contradict
+itself. Tripwired: restoring `9912` fails the including TU with
+`static assertion failed: "EXECUTOR_OPAQUE_U64S is smaller than
+NROS_EXECUTOR_SIZE"`.
+
+This is the same lesson as the unguarded macros, one layer out: the values that
+rot are the ones nothing compares against anything.

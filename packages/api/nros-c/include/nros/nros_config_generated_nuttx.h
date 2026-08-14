@@ -17,7 +17,13 @@
 #define NROS_ACTION_SERVER_INTERNAL_SIZE 96
 #define SESSION_OPAQUE_U64S 66
 #define PUBLISHER_OPAQUE_U64S 70
-#define EXECUTOR_OPAQUE_U64S 9912
+/* #464 — was 9912, i.e. 79296 bytes: the value #167 REPLACED in the two macros
+ * above and missed here, even though this is the one that sizes the array
+ * (`uint64_t _opaque[EXECUTOR_OPAQUE_U64S]` in nros_generated.h). The comment
+ * above states rv-virt needs ~80704, so 9912 was already too small by this
+ * file's own requirement, and it contradicted NROS_EXECUTOR_STORAGE_SIZE by
+ * 19008 bytes. `98304 / 8` keeps the three in agreement — asserted below. */
+#define EXECUTOR_OPAQUE_U64S 12288
 #define GUARD_HANDLE_OPAQUE_U64S 3
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S 8
 #undef SUBSCRIPTION_OPAQUE_U64S
@@ -30,6 +36,41 @@
 #define ACTION_SERVER_OPAQUE_U64S 786
 #undef ACTION_CLIENT_OPAQUE_U64S
 #define ACTION_CLIENT_OPAQUE_U64S 2193
+/* Issue 0464 — this file is a hand-maintained SNAPSHOT, so the pairs below can
+ * drift against each other, and one of them did: #167 bumped
+ * NROS_EXECUTOR_{STORAGE_,}SIZE and left EXECUTOR_OPAQUE_U64S at the stale
+ * 9912, leaving the array 19008 bytes shorter than the size the same file
+ * declared for what goes in it. Nothing noticed, because a snapshot cannot
+ * observe the type it describes.
+ *
+ * These assertions cost nothing and make the file self-checking: every
+ * `_opaque` width must cover the size this header itself states. They do not
+ * make the snapshot CURRENT — only the per-build header can, and it supersedes
+ * this one whenever the build system supplies it — but they do make an
+ * internally contradictory snapshot a compile error at the including TU.
+ *
+ * C11 / C++11 for `_Static_assert`; older toolchains simply skip the check. */
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L)
+#define NROS__NUTTX_FALLBACK_ASSERT(cond, msg) _Static_assert(cond, msg)
+#elif defined(__cplusplus) && __cplusplus >= 201103L
+#define NROS__NUTTX_FALLBACK_ASSERT(cond, msg) static_assert(cond, msg)
+#else
+#define NROS__NUTTX_FALLBACK_ASSERT(cond, msg)
+#endif
+
+NROS__NUTTX_FALLBACK_ASSERT(EXECUTOR_OPAQUE_U64S * 8 >= NROS_EXECUTOR_SIZE,
+                            "EXECUTOR_OPAQUE_U64S is smaller than NROS_EXECUTOR_SIZE");
+NROS__NUTTX_FALLBACK_ASSERT(EXECUTOR_OPAQUE_U64S * 8 >= NROS_EXECUTOR_STORAGE_SIZE,
+                            "EXECUTOR_OPAQUE_U64S is smaller than NROS_EXECUTOR_STORAGE_SIZE");
+NROS__NUTTX_FALLBACK_ASSERT(SESSION_OPAQUE_U64S * 8 >= NROS_SESSION_SIZE,
+                            "SESSION_OPAQUE_U64S is smaller than NROS_SESSION_SIZE");
+NROS__NUTTX_FALLBACK_ASSERT(PUBLISHER_OPAQUE_U64S * 8 >= NROS_PUBLISHER_SIZE,
+                            "PUBLISHER_OPAQUE_U64S is smaller than NROS_PUBLISHER_SIZE");
+NROS__NUTTX_FALLBACK_ASSERT(GUARD_HANDLE_OPAQUE_U64S * 8 >= NROS_GUARD_CONDITION_SIZE,
+                            "GUARD_HANDLE_OPAQUE_U64S is smaller than NROS_GUARD_CONDITION_SIZE");
+NROS__NUTTX_FALLBACK_ASSERT(NROS_LIFECYCLE_CTX_OPAQUE_U64S * 8 >= NROS_LIFECYCLE_CTX_SIZE,
+                            "NROS_LIFECYCLE_CTX_OPAQUE_U64S is smaller than NROS_LIFECYCLE_CTX_SIZE");
+
 #ifdef __cplusplus
 extern "C" {
 #endif
