@@ -141,7 +141,7 @@ HARNESS to capture that console for exactly these lines, and they were being
 written to a stream that never arrives. All 11 sites in
 `packages/boards/nros-board-nuttx/src/lib.rs` now write to stdout.
 
-## What is NOT known
+## What is NOT known  [ANSWERED — see the RESOLVED section below]
 
 Why `spawn_scoped` does not return, or — if it does — why the boot thread makes
 no further progress. That needs a debugger on the guest (or a NuttX-side thread
@@ -188,6 +188,20 @@ function's `{r4, r5, r6, r7, r9, lr}` and execution limped on with garbage.
 Fixed by `__PTHREAD_ATTR_SIZE__` 5 -> 14 (#570). `realtime_tiers_e2e` now
 reports **16 row(s) ran, 0 skipped, 0 out of lane** and passes, `nuttx-arm/rust`
 included, with no change to any tier, timer, or transport code.
+
+This is the answer to "What is NOT known" above, and that section's narrowing is
+what makes it legible: point 4 — "the last thing it is seen doing is
+`spawn_scoped` for `low`" — is the finding. `spawn_scoped` calls
+`Thread::new`, and `Thread::new` is where the overflow happens. The boot thread
+makes no further progress because its saved registers were overwritten inside
+that call. The instrumentation was right up to the edge of it; what no amount of
+in-guest printf could show is that the corruption is in the CALLER's frame,
+which is why the section correctly said the next probe had to observe the thread
+from outside. It did — `qemu-system-riscv32 -d exec,int` on the riscv sibling.
+
+The "do not bisect on tier-1 greens" warning stands and was well placed: this was
+never a regression from any nano-ros commit. The mirror has been 20 bytes for as
+long as the fork has existed; the cell simply had not run.
 
 #569, #570 and #572 were three separate issues written from three different
 symptoms of one 36-byte overflow. Nothing in any of the three symptom reports
