@@ -47,6 +47,20 @@ It lands on the worst tier to get wrong: the boot tier is the SESSION OWNER,
 whose spin drives the shared zenoh-pico flush for every other tier (the reason
 issue 0246 keeps the sporadic budget off it).
 
+## The SAME BOARD's C arm already does it
+
+`packages/boards/nros-board-nuttx-qemu/c/nuttx_run_tiers.c:562`:
+
+```c
+    (void)pthread_setschedparam(pthread_self(), SCHED_FIFO, &bsp);
+```
+
+and its header comment states the contract outright: *"the boot tier adopts its
+declared RAW priority on the caller thread via `pthread_setschedparam(…)` (the
+spawned tiers get theirs at `pthread_create`)"*. So this is not an open design
+question for the family — the C and Rust arms of ONE board disagree, and only
+the Rust one drops the value.
+
 ## The two sibling boards already solved this, differently
 
 * **ThreadX** applies it. `nros_threadx_set_current_priority` exists precisely
@@ -85,6 +99,8 @@ and discarded.
 
 * a `[tiers.*.nuttx] priority` on the boot tier either takes effect or is
   refused loudly — never accepted and dropped;
+* the Rust arm agrees with the C arm of its own board
+  (`nuttx_run_tiers.c:562`), which is the narrowest possible fix;
 * the guest states the boot tier's EFFECTIVE priority (the console already
   prints its name, groups and knobs since #572's instrumentation);
 * whichever of the ThreadX or Zephyr shapes NuttX adopts is written down as the
