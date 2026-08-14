@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-15): **#472** thirteen of fifteen opaque-storage macros had no compile-time
+size check, so a wrong probe was a short buffer rather than a build error. Fixed by `76a787b46`; the row
+below was left in the open spelling when the file was archived, which had `check-issue-index` red on main.
+See `archived/0472-*`.
+
+Recently resolved (2026-08-15): **#464** the size probe's two silent fallbacks (a polling race, and
+committed `NUTTX_FALLBACK_SIZES` constants that had rotted ~11 % BELOW the real size) were removed and
+verified incl. NuttX on 2026-08-07, leaving only the half this issue's status line tracked: the macros
+that had no compile-time check to catch a wrong size. #472 closed that — all fifteen `*_OPAQUE_U64S` now
+assert against `size_of` of the type they store, and `check-opaque-storage-guards` reports
+`15 macro(s) emitted, all guarded`. A silently substituted size is now a build error naming the macro.
+See `archived/0464-*`.
+
 **#579** (platform-nuttx, open 2026-08-15) — `apply_tier_priority` is called from ONE place, the SPAWNED
 tier path, so the boot tier keeps the init task's priority and its declared `[tiers.*.nuttx] priority` is
 parsed, baked, carried to the board and dropped. The in-tree realtime workspace declares high=110 (boot)
@@ -1295,17 +1308,6 @@ the issue-0196 rule about a gate's coverage being narrower than its rule. FIXED 
 than guarded. Caveat for re-testers: the leaf that exposed this was re-synced by an unrelated NuttX build,
 so the original symptom no longer reproduces here. See `archived/0474-*`.
 
-**#472** (build, open 2026-08-06) — thirteen of fifteen opaque-storage macros have NO compile-time size
-check. C/C++ callers allocate opaque byte arrays sized from Rust's `size_of::<T>()`; only
-`EXECUTOR_OPAQUE_U64S` and `CPP_EXECUTOR_OPAQUE_U64S` assert the type fits. For PUBLISHER, SUBSCRIPTION,
-SESSION, SERVICE_*, ACTION_*, LIFECYCLE_CTX and the RAW_* set, a too-small value is a short buffer at
-runtime rather than a build error. Split out of #464: that issue removed two SOURCES of wrong sizes (a
-poll that could return another consumer's rlib; constants rotted ~11% low) and is done, but the guards
-outlive it — they are what makes any future wrong size fail instead of corrupt. Also here: nros-cpp's
-"probe returned 0 -> OPAQUE_U64S = 1, do not link" is advice in a build-script warning with nothing
-enforcing it; issue 0360's variant-symbol mechanism would make it a link error. Fix must be generated +
-gated, not fifteen hand-written asserts — the thirteen are unguarded because each was added one at a time.
-
 Recently resolved (2026-08-07): **#471** — `wait_for_output_pattern` returns `Ok` on TIMEOUT whenever the process printed anything at all;
 the pattern is consulted only for the early-exit path. So `wait_for_output_pattern(MARKER, …)?` means "the
 process was not silent", NOT "the marker appeared". **233 of 283 call sites** ignore the returned string and
@@ -1360,26 +1362,6 @@ phase 209's three port templates sat in any fixture row, test or recipe — `jus
 which kept the build half true while the run half died silently (issue 0317's shape, 0196's rule with no
 gate). Fixed by `4b30c29cb` + `8151819b7`, and `390f4f9eb` gave the port templates a lane that can fail.
 See `archived/0465-*`.
-**#464** (build, open 2026-08-06) — the size probe has THREE stacked fallbacks and the last one is a
-stale literal. `nros-c`/`nros-cpp` derive the C/C++ opaque-storage macros from Rust's `size_of::<T>()`:
-(1) an isolated nested cargo build, (2) a **poll of the outer target dir** with a 60 s timeout, (3)
-committed `NUTTX_FALLBACK_SIZES`. Each masks the previous, and all three transitions announce
-themselves only via `cargo:warning`, invisible in a normal build. Layer 3's `EXECUTOR_SIZE = 79_296`
-sits BELOW the measured `89_392`, and these macros size the byte arrays C/C++ callers allocate for Rust
-types — so losing a timing race substitutes a short buffer. The reassurance that "the const assertion
-catches it" holds for **2 of 15** opaque macros (`EXECUTOR`, `CPP_EXECUTOR`); the other thirteen —
-PUBLISHER, SUBSCRIPTION, SESSION, SERVICE_*, ACTION_*, LIFECYCLE_CTX, the RAW_* set — have no
-compile-time size check at all. Layers 1+2 exist to cover each other: layer 2 needs ordering, which is
-why `nros` is a build-dependency purely to force it (phase-340 W5.a: 16 units and 4 duplicated crates
-per invocation), and layer 1 needs no ordering, making that edge dead weight for the default path. The
-fallback's stated justification (custom JSON target specs) is stale — none exist in the tree, and NuttX
-build-std is now handled inside layer 1. PROBE HALF FIXED 2026-08-06/07 (`8e3bfc639`): both fallbacks deleted, the probe now computes or fails,
-and `just verify-size-probe` — which had itself been exiting 1 before asserting anything, its HEADER
-pointing at a stub with zero size defines — was resurrected. Verified on NuttX, the target the constants
-existed for: the probe's stamp names an isolated nested build for `riscv32imac-unknown-nuttx-elf` and
-yields 88224, ~11% ABOVE the deleted 79_296. STILL OPEN, and the larger risk: the thirteen unguarded
-opaque macros, so any future wrong size still lands as a short buffer rather than a build error.
-
 Recently resolved (2026-08-06): **#444** — every FreeRTOS **Rust** cell (pubsub, service AND action —
 the issue's action-only scope came from one run and was wrong) booted, printed "Network ready." and
 stalled forever. Reproduced on main with fresh fixtures, so not branch-specific. TWO faults, both from

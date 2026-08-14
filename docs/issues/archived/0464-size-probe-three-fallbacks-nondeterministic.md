@@ -1,7 +1,7 @@
 ---
 id: 464
 title: "The size probe has three stacked fallbacks; losing a timing race silently substitutes stale constants into C storage sizes"
-status: open   # layers 2+3 removed and VERIFIED incl. NuttX 2026-08-07; the unguarded-macro half remains
+status: resolved
 type: bug
 area: build
 related: [phase-340, issue-0196, issue-0351]
@@ -218,3 +218,25 @@ resolve at link time — the mechanism issue 0360 already established).
   depends on either crate. So no esp32 branch was needed to remove layer 2.
 * ~~NuttX remains unverified for the removal.~~ **VERIFIED 2026-08-07 by
   `just nuttx build-fixtures`** — see below.
+
+## Resolution (2026-08-15)
+
+Both halves are now closed.
+
+* **Layers 2 and 3** — the polling fallback and the committed
+  `NUTTX_FALLBACK_SIZES` constants — were removed and verified, including
+  NuttX, on 2026-08-07. The probe is layer 1 only: on failure the caller fails
+  the build rather than guessing a size.
+* **The unguarded-macro half**, which this issue's status line carried as the
+  remaining work, is closed by issue 0472 (`76a787b46`). All fifteen
+  `*_OPAQUE_U64S` macros now carry a compile-time assertion against the
+  `size_of` of the type they store, and `check-opaque-storage-guards` keeps the
+  next one from joining unguarded — verified on this tree:
+
+  ```
+  check-opaque-storage-guards: OK (15 macro(s) emitted, all guarded)
+  ```
+
+The failure mode this issue described — a wrong size substituted silently, with
+the const assertion catching it for 2 of 15 macros — is now a build error naming
+the macro, for every macro.
