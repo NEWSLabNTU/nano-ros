@@ -89,3 +89,36 @@ all sites converted:
 | --- | --- | --- |
 | suite solo | 17/17 | 17/17 |
 | two full suites concurrently | both 16/17 | both 17/17, twice |
+
+## Follow-up (same day): the rule generalised, and gated
+
+The fix above covered the cyclone suite. Sweeping the whole repo for literal
+domains found one more live offender in a different language:
+
+* `bridge_zenoh_to_cyclonedds.rs` spawned its bridge with
+  `.env("ROS_DOMAIN_ID", "0")` — while the other two tests IN THE SAME FILE
+  already called `nros_tests::unique_ros_domain_id()`. Domain 0 is the worst
+  literal available: it is where every process that never considered a domain
+  also lands. Nothing in that test consumes the Cyclone side (it asserts on the
+  bridge's own "forwarded" log), so the domain was free — which is exactly why
+  it must not be shared.
+
+Two literals are deliberate and documented at their sites:
+
+* `px4_xrce_e2e.rs` — must MATCH PX4's own `uxrce_dds_client`, configured inside
+  PX4 rather than from our side; assigning on one end only would stop the two
+  from meeting. That path is keyed by the agent's UDP port, which is unique per
+  run, so it is not a shared discovery bus.
+* `ros_env.rs` — unit tests asserting on generated script TEXT; the literal is
+  expected output, not a domain anything joins.
+
+The build-time `domain_id = 0` in example and fixture `system.toml` /
+`config.toml` is a different thing and was left alone: those are compile-time
+config for embedded images and for copy-out example projects, where 0 is the
+ROS default a user expects.
+
+Gate: `check-test-domain-assignment` (wired into `just check`), which bans a
+literal as a `ROS_DOMAIN_ID` value or as `create_session`'s third argument, and
+asserts the three assigners still share one range. Self-tested red in both
+languages before landing — its first draft matched `create_session`'s SECOND
+argument (a length, always 0) and flagged every already-fixed site.

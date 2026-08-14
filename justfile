@@ -416,6 +416,7 @@ check-fast: \
     check-opaque-storage-guards \
     check-workspace-order \
     check-atomic-sync-writes \
+    check-test-domain-assignment \
     check-zenohd-spawn-sites \
     check-cmake-corrosion-prefix \
     check-path-env-fingerprints check-retired-platform-clock-symbols
@@ -1378,6 +1379,12 @@ check-issue-index:
 [private]
 check-atomic-sync-writes:
     @bash scripts/check-atomic-sync-writes.sh
+
+# Issue 0580 — a test must ASSIGN its ROS domain, never name one: a literal is a
+# shared bus, and two concurrent runs colliding on it presents as WRONG DATA
+# rather than as a collision.
+check-test-domain-assignment:
+    @bash scripts/check-test-domain-assignment.sh
 
 # Issue 0573 — ZenohRouter must stay the only zenohd spawner.
 check-zenohd-spawn-sites:

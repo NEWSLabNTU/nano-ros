@@ -122,12 +122,20 @@ fn test_zenoh_to_cyclonedds_bridge_e2e(zenohd_unique: ZenohRouter, talker_binary
 
     let zenoh_locator = zenohd_unique.locator();
 
-    // 1. Spawn the bridge: zenoh ingress + Cyclone DDS egress on domain 0.
+    // 1. Spawn the bridge: zenoh ingress + Cyclone DDS egress.
+    //
+    // issue 0580 — an ASSIGNED domain, like the other two tests in this file.
+    // This one had `"0"` hardcoded, which is the worst literal available: it is
+    // where every process that never thought about a domain also lands. Nothing
+    // here consumes the Cyclone side (the assertion reads the bridge's own
+    // "forwarded" log), so the domain is free — which is exactly why it must
+    // not be shared.
+    let domain = nros_tests::unique_ros_domain_id();
     let mut bridge_cmd = Command::new(&bridge_bin);
     bridge_cmd
         .env("RUST_LOG", "info")
         .env("ZENOH_LOCATOR", &zenoh_locator)
-        .env("ROS_DOMAIN_ID", "0");
+        .env("ROS_DOMAIN_ID", domain.to_string());
     let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "bridge-zenoh-to-cyclonedds-fwd")
         .expect("spawn bridge");
     bridge

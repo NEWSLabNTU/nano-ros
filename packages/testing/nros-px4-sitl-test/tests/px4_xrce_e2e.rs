@@ -136,7 +136,15 @@ fn px4_sitl_xrce_companion_receives_timesync() {
     ))
     .expect("start uxrce_dds_client");
 
-    // 4. Run the nano-ros probe against the same agent (PX4 default domain 0).
+    // 4. Run the nano-ros probe against the same agent.
+    //
+    // issue 0580 — this literal is NOT ours to assign, and is the documented
+    // exception to "derive the domain". The probe has to land on the same
+    // domain as PX4's own `uxrce_dds_client`, which defaults to 0 and is
+    // configured inside PX4, not from here; assigning a domain on this side
+    // alone would simply stop the two from meeting. The XRCE path is keyed by
+    // the agent's UDP port (`AGENT_PORT`), which IS unique per run, so this
+    // does not share a discovery bus the way a DDS domain would.
     let locator = format!("127.0.0.1:{AGENT_PORT}");
     let mut probe = Command::new(&probe_bin)
         .env("NROS_LOCATOR", &locator)
