@@ -51,16 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#572** (platform-nuttx, open 2026-08-14) — the `nuttx-arm/rust` realtime-tiers cell delivers
-**zero** samples on its 10 ms `/ctrl` tier while the 100 ms `/telem` tier on the same image, same run,
-delivers five. The guest console (readable now that every verdict arm drains it, not just the one
-issue 0565 fixed) names exactly one tier: `low`, the SPAWNED one. `high` is the boot tier — session
-owner, deliberately Fifo — and it publishes nothing. Not a spawn failure, not a session failure, not
-#0246's budget trap (the mitigation is engaged). Same cell as #569, different console: there the session
-itself fails. Not slow — nothing. Reproduces on a from-scratch `just nuttx build-fixtures-arm`, and the
-other 15 cells (including `nuttx-riscv`) pass. Whether it is a REGRESSION is unknown and tier-1 greens
-carry no information about it: #571 shows the cell has been silently skipped. Same shape as archived
-0144 and #447/#458, both races on the multi-tier path. See `0572-*`. (2026-08-14)
+Recently resolved (2026-08-14): **#0572** — `nuttx-arm/rust` delivered ZERO samples on its 10 ms `/ctrl` tier while
+the 100 ms `/telem` tier worked. Third symptom of #0570's one bad write: `pthread_attr_init`/`destroy` put NuttX's
+56-byte `pthread_attr_t` into the fork's 20-byte mirror, and on arm the 36-byte overflow lands on
+`Thread::new`'s pushed `{r4, r5, r6, r7, r9, lr}`. `high` is the BOOT tier, i.e. the CALLER of `Thread::new` — so
+the corrupted tier is the one doing the spawning, and `low` on the new thread is untouched. That is why it was
+zero and not slow. Fixed with `__PTHREAD_ATTR_SIZE__` 5 -> 14; `realtime_tiers_e2e` reports 16 rows ran, 0 skipped,
+0 out of lane, all pass. #0569/#0570/#0572 were three issues written from three symptoms of one overflow.
+See `archived/0572-*`.
 
 RESOLVED 2026-08-14 — **#571** `realtime_tiers` reported a 12-second tier-1 PASS having run 1 of its 16
 rows: `lane-filter.sh native` narrows by NAME, and phase-329 left FOUR consumers as one generically-named

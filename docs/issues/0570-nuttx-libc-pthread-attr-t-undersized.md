@@ -306,9 +306,15 @@ at `sp+8` and `s4` at `sp+40` (a 20-byte overlap) to 96 bytes with `attr` at
 `sp+4` and `s4` at `sp+72`; arm's local area goes 32 -> 72 bytes under the same
 `push {r4, r5, r6, r7, r9, lr}`. Both now clear the 56-byte write.
 
-`realtime_tiers_e2e`: **16 of 16 rows pass**, 88.8 s — including `nuttx-arm/rust`,
-which is #569. The arm row was the same smash landing on different registers, as
-the section above suspected; #569 is closed by this.
+`realtime_tiers_e2e`: **16 row(s) ran, 0 skipped, 0 out of lane**, all pass
+(147 s, re-measured after #571 stopped the lane silently skipping cells) —
+including `nuttx-arm/rust`. That row was BOTH #569 (the session open failing)
+and #572 (the high tier delivering zero): the same smash landing on different
+registers, exactly as the section above suspected. Both are closed by this.
+
+On arm the corrupted tier is the BOOT one, because it is the CALLER of
+`Thread::new` — which is why #572 saw the FAST tier silent and the spawned slow
+tier healthy, the opposite of what the symptom suggests.
 
 The gate is `scripts/check-nuttx-libc-struct-sizes.py` (`just
 check-nuttx-libc-struct-sizes`, and `just nuttx ci`, where a configured kernel

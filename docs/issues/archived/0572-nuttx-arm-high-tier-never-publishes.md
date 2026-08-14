@@ -2,7 +2,7 @@
 id: 572
 title: "nuttx-arm/rust realtime tiers: the 10 ms /ctrl tier delivers NOTHING
   while the 100 ms /telem tier works"
-status: open
+status: resolved
 type: bug
 area: platform-nuttx
 related: [issue-0569, issue-0570, issue-0565, issue-0571, issue-0246, rfc-0015, phase-281]
@@ -159,3 +159,42 @@ The failure shape — one tier's publisher never producing while its sibling doe
 race) and #447/#458 (a registration race plus an unstamped handle tag), both on
 the multi-tier path. Those are the first places to look; whether this is a
 recurrence or a fourth instance is open.
+
+
+## RESOLVED 2026-08-14 — the third symptom of #570's one bad write
+
+`pthread_attr_init`/`pthread_attr_destroy` write NuttX's full 56-byte
+`pthread_attr_t` into the 20-byte mirror the vendored `libc` fork declares
+(`__PTHREAD_ATTR_SIZE__ = 5`, the `CONFIG_SCHED_SPORADIC=n` layout; both boards
+set `=y`). On arm the object sits at `sp+0` of a 32-byte local area under
+`push {r4, r5, r6, r7, r9, lr}` in `std::sys::thread::unix::Thread::new`, so the
+overflow lands squarely on the pushed registers — including `lr`.
+
+That is why the fast tier delivered NOTHING while the slow tier on the same
+image and session worked, and the direction is the opposite of what "the spawned
+one is the broken one" would suggest. `high` is the BOOT tier — it runs on the
+main task and is the CALLER of `Thread::new`. The overflow lands on that
+caller's saved registers, so the tier that gets corrupted is the one doing the
+spawning, while `low`, which runs on the freshly created thread, is untouched
+and publishes normally. The observation in this issue's own symptom section —
+that the console names only `low` — is consistent with that: `low` reached its
+self-apply path because nothing had corrupted it.
+
+The "zero, not slow" shape was the tell: the tier's state was destroyed before
+it ever published, not throttled. On riscv the same write hit `ra` instead and
+the main task jumped to address 0 outright (#570); on arm it hit the same
+function's `{r4, r5, r6, r7, r9, lr}` and execution limped on with garbage.
+
+Fixed by `__PTHREAD_ATTR_SIZE__` 5 -> 14 (#570). `realtime_tiers_e2e` now
+reports **16 row(s) ran, 0 skipped, 0 out of lane** and passes, `nuttx-arm/rust`
+included, with no change to any tier, timer, or transport code.
+
+#569, #570 and #572 were three separate issues written from three different
+symptoms of one 36-byte overflow. Nothing in any of the three symptom reports
+could have distinguished them; what did was `qemu-system-riscv32 -d exec,int`
+naming the faulting instruction.
+
+## Acceptance — met
+
+* `nuttx-arm/rust` passes its `CounterRatio3x` proof (16/16 rows, 147 s);
+* the cause names why `/ctrl` was zero rather than slow.
