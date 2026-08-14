@@ -85,24 +85,32 @@ implications can simply be deleted.
 
 `examples/qemu-riscv64-threadx/rust/*/Cargo.toml`: `rmw-cyclonedds = ["nros/alloc"]`.
 
-### E. `std` implied `alloc` in 10 crates — FIXED
+### E. `std` implies `alloc` — NOT a defect, and this entry was wrong
 
-`nros`, `nros-c`, `nros-cpp`, `nros-core`, `nros-node`, `nros-log`,
-`nros-params`, `nros-serdes`, `nros-rmw`, `nros-rmw-cffi`, `nros-rmw-zenoh`,
-`nros-bridge` all had `std = ["alloc", …]`. Removed in phase-360 W2 (revised).
-It was never needed — every crate compiles with the two independent:
+Counted here originally: `nros`, `nros-c`, `nros-cpp`, `nros-node`, `nros-log`,
+`nros-rmw-zenoh` declared `std = ["alloc", …]`, and it was read as implicit heap
+enablement of the same kind as A–D. **It is not.** A `std` build links an
+allocator by definition, so `std` ⇒ heap is a fact about the standard library,
+not a favour one crate does another; the only question is where it is written
+down.
 
-```
-nros-core / nros-serdes / nros-params / nros-rmw / nros-rmw-cffi / nros-bridge
-   --features std   (no alloc)   ok
-   --features alloc (no std)     ok
-nros-node / nros / nros-c / nros-log   --features std (no alloc)   ok
-```
+phase-360 W2 removed it, and the removal was reverted (2026-08-15) once the cost
+was measured: the code needs the implication either way, so deleting it from six
+manifests re-created it at 123 use sites as
+`cfg(any(feature = "alloc", feature = "std"))` — 88 more std-mentioning branches
+for phase-359 to unwind, invisible to that campaign's ratchet. The edge is now
+declared in **twelve** crates (the six above plus `nros-core`, `nros-serdes`,
+`nros-params`, `nros-rmw`, `nros-rmw-cffi`, `nros-bridge`, which had been
+carrying it in `cfg` without declaring it), and every heap gate in the workspace
+is `cfg(feature = "alloc")`.
 
-Issue 0581 is fixed on the SOURCE side instead: `nros-core`'s `heap::{Vec,
-String}` and `extern crate alloc` were gated `any(alloc, std)` and are now
-`alloc` alone, so a `std`-only build no longer gets heap types whose serializer
-impls `nros-serdes` was never asked to compile.
+What A–D have and E does not: A–D let a feature that is not about the heap turn
+the heap on — a BACKEND, a PLATFORM, a capability. Those 34 sites are still 0.
+The rule is "no feature other than `std` enables `alloc`", not "nothing does".
+
+Issue 0581 is fixed by this edge: `nros-core`'s `std` forwards `alloc`, which
+forwards `nros-serdes/alloc`, so `heap::{Vec, String}` and their serializer
+impls arrive together. Verified at `nros-core --features std` alone.
 
 ## The malloc / panic half
 

@@ -11,7 +11,7 @@
 //!
 //! Hermetic — no real backend, no zenohd. The CFFI marshalling
 //! (`run_process_in_place` trampoline + the capability cache) is what's tested.
-#![cfg(any(feature = "alloc", feature = "std"))]
+#![cfg(feature = "alloc")]
 
 use core::{
     ffi::c_void,

@@ -12,7 +12,7 @@
 //! Tests run against hand-written stub vtables. No real transport
 //! needed — the routing logic in `CffiSession::ping_session` is
 //! what's under test.
-#![cfg(any(feature = "alloc", feature = "std"))]
+#![cfg(feature = "alloc")]
 
 use core::{
     ffi::c_void,

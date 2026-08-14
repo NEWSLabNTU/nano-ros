@@ -19,7 +19,7 @@ crate-type = ["staticlib", "cdylib", "lib"]
 [features]
 # phase-360 W3 / issue 0582 — EMPTY; `std` is opt-in per dep-site.
 default = []
-std = ["nros/std", "nros-node/std", "nros-rmw/std"]
+std = ["alloc", "nros/std", "nros-node/std", "nros-rmw/std"]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 
 # RMW backend (cffi vtable dispatch) — every backend ships as a cffi

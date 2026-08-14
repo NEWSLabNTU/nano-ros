@@ -697,7 +697,7 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
 /// that previously charged the full cycle `delta_us` against every
 /// Sporadic SC regardless of which entries actually fired.
 #[test]
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 fn test_atomic_sporadic_per_callback_runtime_consumed() {
     use crate::executor::{
         sched_context::{OptUs, SchedClass, SchedContext},
@@ -777,7 +777,7 @@ fn test_atomic_sporadic_per_callback_runtime_consumed() {
 /// (we can't preempt a running callback), so this is the
 /// diagnostic signal end-callers consume to tune budgets.
 #[test]
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 fn test_atomic_overrun_exceeds_budget() {
     use crate::executor::{
         sched_context::{OptUs, SchedClass, SchedContext},

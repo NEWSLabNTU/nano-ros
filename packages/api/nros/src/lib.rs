@@ -112,7 +112,7 @@ compile_error!("`ros-{humble,iron,jazzy}` are mutually exclusive — select one 
 #[cfg(feature = "std")]
 extern crate std;
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 // Phase 216.A.5 — the `nros::node!()` proc-macro emits absolute paths
@@ -219,7 +219,7 @@ pub use node::{
 // Phase 212.M.5.a.4 — internal helper consumed by `nros::node!()`
 // for the BSP dispatch path. Public-but-doc-hidden so the macro expand
 // resolves it as `::nros::__private_node_state_into_raw`.
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 #[doc(hidden)]
 pub use node::__private_node_state_into_raw;
 // phase-359 W8 — follows `node_metadata`'s re-gate: the type needs `alloc`,

@@ -53,7 +53,7 @@ use super::{
 /// One-time, executor-lifetime allocation (the executor lives for the program);
 /// intentionally not freed. `alloc`-only — no_std-no-alloc entries supply their
 /// own `static`/stack backing via `from_session_in` / the `nros::main!` macro.
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 fn leak_default_backing(sizing: super::storage::ExecutorSizing) -> &'static mut [MaybeUninit<u64>] {
     alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()))
 }
@@ -217,7 +217,7 @@ impl<'s> Executor<'s> {
     }
 }
 
-#[cfg(all(feature = "rmw-cffi", any(feature = "alloc", feature = "std")))]
+#[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
 impl Executor<'static> {
     /// Open a new executor session using the active RMW backend, at the
     /// build-time default sizing. Convenience over
@@ -484,7 +484,7 @@ impl<'cfg> SessionSpec<'cfg> {
 // or ambiguous path. Embedded users with multiple backends use the
 // bridge surface `Executor::open_multi` instead.
 #[cfg(all(feature = "std", feature = "rmw-cffi"))]
-fn read_rmw_selector_env() -> Option<std::vec::Vec<u8>> {
+fn read_rmw_selector_env() -> Option<alloc::vec::Vec<u8>> {
     let raw = std::env::var_os("NROS_RMW")?;
     let bytes = raw.as_encoded_bytes();
     if bytes.is_empty() {
@@ -1001,7 +1001,7 @@ pub struct Executor<'s> {
     /// handle for ISR-driven refill. Populated by
     /// `register_sporadic_timer`; dropped on Executor `Drop` via the
     /// stored `destroy_fn`.
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     pub(crate) sporadic_atomic_states: &'s mut [Option<(
         portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
         OpaqueTimerHandle,
@@ -1320,7 +1320,7 @@ impl<'s> Executor<'s> {
             sched_contexts,
             sched_context_bindings,
             sporadic_states,
-            #[cfg(any(feature = "alloc", feature = "std"))]
+            #[cfg(feature = "alloc")]
             sporadic_atomic_states,
             remaps,
         } = slices;
@@ -1337,7 +1337,7 @@ impl<'s> Executor<'s> {
             sched_contexts,
             sched_context_bindings,
             sporadic_states,
-            #[cfg(any(feature = "alloc", feature = "std"))]
+            #[cfg(feature = "alloc")]
             sporadic_atomic_states,
             major_frame_us: 0,
             #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
@@ -1476,7 +1476,7 @@ impl Executor<'static> {
     /// backing (executor-lifetime, one-time) and calls
     /// [`from_session_in`](Self::from_session_in). Per-entry sizing goes through
     /// the macro / `open_in` instead.
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     pub fn from_session(session: session::ConcreteSession) -> Self {
         let sizing = super::storage::ExecutorSizing::DEFAULT;
         // SAFETY: the leaked backing is exactly `sizing.u64_len()` words,
@@ -1493,7 +1493,7 @@ impl Executor<'static> {
     /// - `session_ptr` must point to a valid, initialized session that lives at
     ///   least as long as this executor.
     /// - The caller must not move or drop the session while the executor exists.
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     pub unsafe fn from_session_ptr(session_ptr: *mut session::ConcreteSession) -> Self {
         let sizing = super::storage::ExecutorSizing::DEFAULT;
         // SAFETY: leaked backing as in `from_session`; session_ptr contract
@@ -1516,7 +1516,7 @@ impl<'s> Executor<'s> {
     /// `session` must outlive every executor/task built from it (the
     /// orchestration `main()` holds it and never returns / WFIs), and must not
     /// be mutated except through these executors' spin calls.
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     pub unsafe fn open_with_session(session: *mut session::ConcreteSession) -> Executor<'static> {
         unsafe { Executor::<'static>::from_session_ptr(session) }
     }
@@ -1572,7 +1572,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// The handle's session must still be alive (its owning executor not moved
     /// or dropped); access only through executor spin calls.
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     pub unsafe fn open_with_session_handle(handle: SessionHandle) -> Executor<'static> {
         unsafe { Executor::<'static>::open_with_session(handle.0) }
     }
@@ -2281,7 +2281,7 @@ impl<'s> Executor<'s> {
     /// The Executor stores both the Arc and the handle so Drop can
     /// clean them up. Calling this on a non-Sporadic SC returns
     /// `Err(InvalidSchedContextBinding)`.
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     pub fn register_sporadic_timer(
         &mut self,
         sc_id: super::sched_context::SchedContextId,
@@ -5232,7 +5232,7 @@ impl<'s> Executor<'s> {
         // full-timeout drive_io call.
         #[cfg(all(
             not(feature = "std"),
-            not(all(any(feature = "alloc", feature = "std"), feature = "rmw-cffi"))
+            not(all(feature = "alloc", feature = "rmw-cffi"))
         ))]
         let primary_drive_timeout_ms = timeout_ms;
 
@@ -5460,13 +5460,13 @@ impl<'s> Executor<'s> {
             // (cycle-level delta_us attribution) handles the unregistered
             // case. Either way, exhausted budget skips dispatch.
             if matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
-                #[cfg(any(feature = "alloc", feature = "std"))]
+                #[cfg(feature = "alloc")]
                 let atomic_has_budget = self
                     .sporadic_atomic_states
                     .get(sc_idx)
                     .and_then(|s| s.as_ref())
                     .map(|(state, _)| state.has_budget());
-                #[cfg(not(any(feature = "alloc", feature = "std")))]
+                #[cfg(not(feature = "alloc"))]
                 let atomic_has_budget: Option<bool> = None;
                 let has_budget = match atomic_has_budget {
                     Some(b) => b,
@@ -5490,7 +5490,7 @@ impl<'s> Executor<'s> {
                 // `delta_us` over-attribution that previously hit the
                 // atomic state was a worst-case bandwidth limiter;
                 // per-callback measurement is strictly tighter.
-                #[cfg(not(any(feature = "alloc", feature = "std")))]
+                #[cfg(not(feature = "alloc"))]
                 {
                     let _ = sc_idx; // polled-state path lives in
                     // `sporadic_states`; this branch is a no-op when
@@ -5642,8 +5642,7 @@ impl<'s> Executor<'s> {
              elapsed_us: u32,
              sched_context_bindings: &[super::sched_context::SchedContextId],
              sched_contexts: &[Option<super::sched_context::SchedContext>],
-             #[cfg(any(feature = "alloc", feature = "std"))]
-             sporadic_atomic_states: &[Option<(
+             #[cfg(feature = "alloc")] sporadic_atomic_states: &[Option<(
                 portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
                 OpaqueTimerHandle,
             )>]| {
@@ -5656,7 +5655,7 @@ impl<'s> Executor<'s> {
                 if !matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
                     return;
                 }
-                #[cfg(any(feature = "alloc", feature = "std"))]
+                #[cfg(feature = "alloc")]
                 if let Some((state, _)) =
                     sporadic_atomic_states.get(sc_idx).and_then(|s| s.as_ref())
                 {
@@ -5674,7 +5673,7 @@ impl<'s> Executor<'s> {
                         state.record_overrun(elapsed_us - state.budget_capacity_us);
                     }
                 }
-                #[cfg(not(any(feature = "alloc", feature = "std")))]
+                #[cfg(not(feature = "alloc"))]
                 {
                     let _ = (sc_idx, elapsed_us);
                 }
@@ -5757,7 +5756,7 @@ impl<'s> Executor<'s> {
                             elapsed_us,
                             &self.sched_context_bindings[..],
                             &self.sched_contexts[..],
-                            #[cfg(any(feature = "alloc", feature = "std"))]
+                            #[cfg(feature = "alloc")]
                             &self.sporadic_atomic_states[..],
                         );
                     }
@@ -5797,7 +5796,7 @@ impl<'s> Executor<'s> {
                             elapsed_us,
                             &self.sched_context_bindings[..],
                             &self.sched_contexts[..],
-                            #[cfg(any(feature = "alloc", feature = "std"))]
+                            #[cfg(feature = "alloc")]
                             &self.sporadic_atomic_states[..],
                         );
                     }
@@ -6733,18 +6732,18 @@ impl<'s> Executor<'s> {
 /// Caller of `register_sporadic_timer` builds this via
 /// `OpaqueTimerHandle::new(handle, destroy_fn)` after their
 /// `PlatformTimer::create_periodic` call returns.
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 pub struct OpaqueTimerHandle {
     handle: *mut core::ffi::c_void,
     destroy_fn: extern "C" fn(*mut core::ffi::c_void),
 }
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 unsafe impl Send for OpaqueTimerHandle {}
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 unsafe impl Sync for OpaqueTimerHandle {}
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 impl OpaqueTimerHandle {
     /// # Safety
     /// `handle` must be a live platform-specific timer handle that
@@ -6758,7 +6757,7 @@ impl OpaqueTimerHandle {
     }
 }
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 impl Drop for OpaqueTimerHandle {
     fn drop(&mut self) {
         if !self.handle.is_null() {

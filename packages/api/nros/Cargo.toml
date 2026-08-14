@@ -40,6 +40,7 @@ ffi-size-markers = []
 # nothing. Implies `std` (the probe writes a file and exits).
 metadata-mode = []
 std = [
+    "alloc",
     "nros-core/std",
     "nros-node/std",
     "nros-rmw/std",

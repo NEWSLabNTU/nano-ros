@@ -43,7 +43,7 @@ use panic_halt as _;
 #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
 mod rmw_backend;
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 // Opt-in RTOS heap-usage tracking (issue #6). A single shared `HeapStats`
@@ -310,13 +310,7 @@ rmw_modules! {
 // silently changes what their firmware image is; naming the feature they must
 // add does not.
 // ---------------------------------------------------------------------------
-#[cfg(all(
-    feature = "param-services",
-    not(any(feature = "alloc", feature = "std"))
-))]
+#[cfg(all(feature = "param-services", not(feature = "alloc")))]
 compile_error!("`param-services` allocates: add \"alloc\" to this crate's features");
-#[cfg(all(
-    feature = "lifecycle-services",
-    not(any(feature = "alloc", feature = "std"))
-))]
+#[cfg(all(feature = "lifecycle-services", not(feature = "alloc")))]
 compile_error!("`lifecycle-services` allocates: add \"alloc\" to this crate's features");

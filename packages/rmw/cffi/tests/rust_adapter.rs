@@ -5,7 +5,7 @@
 //! drives the resulting vtable end-to-end via `CffiSession`, and
 //! confirms each trampoline reached its trait counterpart.
 
-#![cfg(any(feature = "alloc", feature = "std"))]
+#![cfg(feature = "alloc")]
 #![allow(clippy::manual_c_str_literals)]
 
 use std::sync::{

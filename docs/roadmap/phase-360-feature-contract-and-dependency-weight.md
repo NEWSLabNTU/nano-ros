@@ -1,15 +1,17 @@
 # Phase 360 — The `std`/`alloc` contract, and what a firmware build actually compiles
 
-**Status (2026-08-15).** IN PROGRESS, and **partly BLOCKED on a decision** —
-`phase-359` (drop `std` from the core crates) landed on `main` the same day and
-contradicts W1/W2.a on one point; see "Overlap with phase-359" below before
-touching W1, W2.a or W4(a). W1, W2.a, W3, W3.b and all of W8 landed; the feature
-contract holds as a STATE (0 implicit `alloc`/`std` enables, no `no_std` crate
-defaults to `std`, one `#[global_allocator]`). **W4, the gate that would make it
-an invariant, is not written** — until it is, every number here is a
-measurement. W2.b (two dead declarations) needs a decision; W5–W7 (dependency
-weight, issue 0583) are not started and are the part of this phase nothing else
-owns.
+**Status (2026-08-15).** IN PROGRESS. `phase-359` (drop `std` from the core
+crates) landed on `main` the same day and contradicted W1/W2.a; **that is
+settled — `std` is being dropped, so this phase keeps the `std ⇒ alloc` manifest
+edge and defers the rest to phase-359** (see "Overlap with phase-359" below).
+W1, W2.a, W3, W3.b and all of W8 landed; the contract holds as a STATE (`alloc`
+is the one heap predicate, no capability or platform feature enables it, no
+`no_std` crate defaults to `std`, one `#[global_allocator]`). **W4, the gate
+that would make it an invariant, is not written** — until it is, every number
+here is a measurement. W2.b (two dead declarations) needs a decision; W5–W7
+(dependency weight, issue 0583) are not started and are the part of this phase
+nothing else owns — and after the phase-359 reconciliation they are the larger
+part of what is left.
 
 **Numbering.** Drafted offline as "phase-341" against a stale `main` and
 renumbered THREE times, because every renumber read a local maximum that a push
@@ -41,7 +43,7 @@ issue 0582 names one of the five `-C metadata` identities issue 0446 counts, and
 it is the one that survives any cache-layout fix, because to cargo the two units
 are genuinely different feature sets.
 
-## Overlap with phase-359 (drop-`std` campaign) — OPEN, needs a decision
+## Overlap with phase-359 (drop-`std` campaign) — RESOLVED 2026-08-15
 
 [phase-359](phase-359-drop-std-campaign.md) landed on `main` 2026-08-15, while
 this branch was rebasing onto it. It is not adjacent work — it reaches the same
@@ -57,8 +59,8 @@ phase — phase-355 is dependency debt, but its three issues are #374, #507, #52
 **Where they disagree.** phase-359 W8 states the flavours as `core` /
 `core+alloc` / `std`, i.e. an ORDERED chain in which `std` implies `alloc`, and
 records `std = ["alloc", ...]` as the existing spelling of it. W1/W2.a here
-declare the opposite — that `std` and `alloc` are INDEPENDENT axes — and deleted
-the `std ⇒ alloc` edge from six crates.
+declared the opposite — that `std` and `alloc` are INDEPENDENT axes — and
+deleted the `std ⇒ alloc` edge from six crates.
 
 **What the deletion cost, measured 2026-08-15** (HEAD vs `origin/main`, `cfg`
 lines in `packages/core` + `packages/api` that mention `feature = "std"`
@@ -83,28 +85,55 @@ The one thing it does catch is a symptom of the same edge: `nros-node: path
 346 -> 347`, because `read_rmw_selector_env` must return `std::vec::Vec<u8>`
 here where `main` returns `alloc::vec::Vec<u8>` — under `std` alone there is no
 `alloc` to name. **This blind spot is worth filing against phase-359 W0
-regardless of how the decision below goes.**
+regardless of the decision below.**
 
-**The decision.** Issue 0581's actual defect — `nros_core::heap::Vec<u32>`
-existing with no `Serialize` impl — was fixed on the SOURCE side (`extern crate
-alloc` and the `heap` re-export moved from `any(alloc, std)` to `alloc` alone),
-and that fix holds whether or not the manifest edge exists. So the edge deletion
-is a separate, optional design choice, and it is the only part of this phase
-that conflicts.
+**The decision — SETTLED 2026-08-15: `std` is being dropped, so the manifest
+edge stays and the phase defers to phase-359.**
 
-* **(A) Keep the axes independent.** phase-359 inherits 88 extra branches and
-  its W8 flavour model has to be rewritten. Buys the property that a `std`
-  consumer never silently acquires a heap — which matters for exactly as long
-  as `std` exists in these crates.
-* **(B) Restore `std = ["alloc", ...]`, keep the source-side fix.** The 123
-  `any(...)` predicates collapse back to `cfg(feature = "alloc")`, the census
-  regression goes away, and phase-359 W10 removes the edge for free when `std`
-  itself goes. **Recommended** — the property (A) buys expires on the same
-  schedule as its cost, and (B) does not lose 0581's fix.
+The options were (A) keep the axes independent, and (B) restore
+`std = ["alloc", …]`. (A) buys one property: a `std` consumer never silently
+acquires a heap. That property expires the moment phase-359 W10 lands, and its
+cost — 123 duplicated predicates — has to be unwound by the same campaign. (B)
+was taken.
 
-Until this is settled, W1's normative text must NOT be written into
-`ARCHITECTURE.md` and W4's clause (a) must not be gated: both would make one of
-the two phases wrong by fiat.
+What that meant in practice, and it is worth stating plainly because the earlier
+draft of this section had it backwards: **W2.a never made the axes independent.**
+It deleted the edge from six manifests and then re-created it at the use sites,
+123 times, as `cfg(any(feature = "alloc", feature = "std"))` — `nros-core`'s own
+comment called that "THE heap predicate". The semantics were always `std` ⇒
+heap, identical to `main`'s; only the spelling differed, and the spelling was
+the expensive part.
+
+Applied:
+
+* `std = ["alloc", …]` restored in twelve crates — the six that had it plus
+  `nros-core`, `nros-serdes`, `nros-params`, `nros-rmw`, `nros-rmw-cffi`,
+  `nros-bridge`, which never did and had been carrying the implication in `cfg`
+  instead. `nros-node`'s `dep:portable-atomic-util` moved back off `std`; it
+  rides `alloc` and `std` reaches it by implication, which is also the shape
+  phase-359 W2 needs when it collapses the five field pairs.
+* All 123 predicates collapsed to `cfg(feature = "alloc")` /
+  `cfg(not(feature = "alloc"))`. **These gates are now in their final form:
+  deleting `std` requires no `cfg` edit in this set at all.**
+* `read_rmw_selector_env` returns `alloc::vec::Vec<u8>` again.
+
+Issue 0581 is still fixed, and by a smaller change than the one it replaced: the
+defect was `nros-core`'s heap gate and `nros-serdes`'s disagreeing, and
+`nros-core`'s `std` now forwards `alloc` to `nros-serdes`, so the types and
+their impls arrive together. Verified with the reproducer at `nros-core`'s
+`std`-only feature set — `nros_core::heap::Vec<u32>` serializes.
+
+Verified after the reversal: census back to baseline (181 cfg / 425 path, "no
+crate moved"), the wide count back to `main`'s 252/183 exactly;
+`check-no-std`, `check-workspace-features`, and the `nros-c` / `nros-cpp` clippy
+lanes green; seven host feature combos and seven bare-metal target/feature pairs
+(thumbv7em, aarch64-unknown-none, armv7r) check clean.
+
+**Still open, and independent of this:** the census blind spot. `CFG_RE` anchors
+`feature = "std"` immediately after `cfg(` or `cfg(not(`, so a predicate
+reaching `std` through `any(...)` is invisible to the ratchet — it reported 183
+sites for both trees while the real difference was 88. Worth an issue against
+phase-359 W0; the gate cannot see the regression it exists to catch.
 
 ## Goal
 
@@ -214,14 +243,17 @@ timings are not comparable — use `thumbv7em-none-eabihf`.
 
 ## Work items
 
-**W1 — the contract, written once (REVISED).** Add to
-`docs/design/ARCHITECTURE.md` §2 (feature axes) as normative text:
+**W1 — the contract, written once (REVISED TWICE — see the phase-359 overlap
+above).** Add to `docs/design/ARCHITECTURE.md` §2 (feature axes) as normative
+text:
 
-> `std` and `alloc` are INDEPENDENT axes, and both are enabled only by the end
-> user, per package. `std` does not imply `alloc`. No feature other than `std`
-> or `alloc` may enable either — a crate that requires the heap or the standard
-> library says so with `compile_error!` naming the feature the user must add,
-> and never turns it on for them.
+> `alloc` is the heap axis, and it is the ONLY spelling of it: every heap-gated
+> item is `cfg(feature = "alloc")`. `std` implies `alloc`, in one manifest line
+> per crate (`std = ["alloc", …]`) and nowhere else — so a hosted consumer never
+> has to name `alloc`, and an embedded one never acquires a heap without asking.
+> No feature OTHER than `std` may enable `alloc`, and none may enable `std`: a
+> crate that requires the heap says so with `compile_error!` naming the feature
+> the user must add, and never turns it on for them.
 >
 > Orthogonally: `malloc` and `panic` are UNIFIED PER PLATFORM. Exactly one
 > `#[global_allocator]` and one `#[panic_handler]` per image, selected by the
@@ -230,39 +262,54 @@ timings are not comparable — use `thumbv7em-none-eabihf`.
 Every crate feature table points here instead of restating it. *No code.*
 Acceptance: the rule exists in exactly one place.
 
-*(The earlier version of W1 said the opposite — "a crate that declares both must
-declare `std = ["alloc", …]`". That is wrong for an embedded target: it makes
-`std` a way to acquire a heap without asking for one. Superseded; issue 0581's
-defect is fixed on the source side instead, see W2.)*
+*Two superseded drafts, kept because each was wrong in an instructive way.* The
+first said "a crate that declares both must declare `std = ["alloc", …]`" —
+correct, but justified only as tidiness. The second inverted it to "`std` and
+`alloc` are INDEPENDENT axes; `std` does not imply `alloc`", reasoning that
+`std` must not be a way to acquire a heap without asking. That reasoning did not
+survive contact with the implementation: the code needs the implication either
+way, so deleting it from the manifests only respelled it as `any(alloc, std)` in
+123 `cfg`s. **A rule the code has to route around is not a contract.** The text
+above is the first draft, with the reason the first draft lacked.
 
 **W2 — make the manifests obey it.** Two halves, because only one of them is
 monotonic.
 
-*W2.a — SUPERSEDED, then reversed (LANDED).* This first landed as
-`std = ["alloc", …]` on six crates. That is implicit heap enablement and is
-exactly what W1 (revised) forbids, so it was reverted, and the `std ⇒ alloc`
-edge was removed from the six crates that already had it too —
-`nros`, `nros-node`, `nros-c`, `nros-cpp`, `nros-log`, `nros-rmw-zenoh`.
-**No crate in the workspace now has `std` listing `alloc`.**
+*W2.a — twice superseded, and the third state is the first one (LANDED).* The
+history is worth keeping because the middle step looked like progress:
 
-The edge was never load-bearing. Every crate compiles with the axes independent:
+1. `std = ["alloc", …]` on six crates — the implication written once per crate.
+2. Reverted as "implicit heap enablement", and the edge removed from all six.
+   But the code still needs the implication, so it reappeared at the use sites
+   as `cfg(any(feature = "alloc", feature = "std"))`, 123 times.
+3. Restored, and extended to the six crates that had been carrying it in `cfg`
+   without ever declaring it — `nros-core`, `nros-serdes`, `nros-params`,
+   `nros-rmw`, `nros-rmw-cffi`, `nros-bridge`. **Twelve crates now declare
+   `std = ["alloc", …]`, and every heap gate in the workspace is
+   `cfg(feature = "alloc")`.**
+
+Step 2's stated benefit was that a `std` consumer could not silently acquire a
+heap. It never delivered that — `any(alloc, std)` grants exactly the same heap,
+one `cfg` at a time — and it cost phase-359 88 extra std-mentioning branches to
+unwind. The measurement is in the overlap section above.
+
+The axes do still compile independently, which is what step 2 was really
+testing, and that stays true with the edge present (it is a manifest default, not
+a constraint):
 
 ```
 nros-core / nros-serdes / nros-params / nros-rmw / nros-rmw-cffi / nros-bridge
-    --features std   (no alloc)   ok
     --features alloc (no std)     ok
-nros-node / nros / nros-c / nros-log
-    --features std   (no alloc)   ok
-nros-node / nros     --features std,alloc              ok
+nros-core / nros-serdes / nros-rmw / nros-node / nros / nros-log
+    --features std   (implies alloc)   ok
+thumbv7em / aarch64-unknown-none / armv7r   bare and alloc      ok
 ```
 
-Issue 0581 is fixed on the SOURCE side instead: `nros-core/src/lib.rs` gated
-`extern crate alloc` and the RFC-0033 `heap::{Vec, String}` re-export on
-`any(alloc, std)`; both are now `alloc` alone. A `std`-only build therefore no
-longer gets heap types whose `Serialize` impls `nros-serdes` — which received
-only `std` — was never asked to compile. The reproducer fails at the import
-(`unresolved import nros_core::heap`, pointing at the gate) rather than at a
-missing trait impl deep in serialization.
+Issue 0581 is fixed by the edge itself: `nros-core`'s `std` forwards `alloc`,
+which forwards `nros-serdes/alloc`, so `heap::{Vec, String}` and the RFC-0033
+`Serialize`/`Deserialize` impls arrive together instead of one without the
+other. Verified with a reproducer built against `nros-core --features std`
+alone: `nros_core::heap::Vec<u32>` serializes.
 
 *W2.b — the dead declarations (OPEN, needs a decision).* `nros-platform/alloc`
 is commented *"capability feature — enabled by RMW shims to declare
@@ -362,11 +409,21 @@ generation, so they were never a byte-for-byte template product.
 `scripts/check-feature-contract.sh`, wired into `just ci`, asserting over every
 workspace member:
 
-- **(a)** no feature body other than `std`/`alloc`/`default` enables `std` or
-  `alloc` — the user spells the heap at their own dep-site, per package.
-  *An earlier draft of this clause said the opposite* ("a crate declaring both
-  `std` and `alloc` lists `alloc` in `std`"), written before W1/W2 decided to
-  DELETE the `std ⇒ alloc` edge. Enforcing it would re-break issue 0581.
+- **(a)** the heap has ONE spelling, in both layers. In the manifest: a crate
+  declaring both features lists `std = ["alloc", …]`, and **no other** feature
+  body enables `alloc` or `std` — a capability or platform feature that needs
+  the heap makes the user say so. In the source: every heap gate is
+  `cfg(feature = "alloc")`; `cfg(any(feature = "alloc", feature = "std"))` is
+  rejected outright, because that is the manifest edge re-spelled per use site
+  and it is what W2.a's middle state cost 88 branches. *Two earlier drafts of
+  this clause disagreed with each other and with this one; the overlap section
+  above records why the manifest half won.*
+- **(a′)** the same rule stated for the census's benefit: adding a `cfg` that
+  reaches `std` through anything but the anchored `cfg(feature = "std")` /
+  `cfg(not(feature = "std"))` form hides the site from
+  `check-std-census.py`. (a) forbids the one spelling that actually occurred,
+  but the gate on phase-359's side should stop counting selectively — see the
+  blind spot noted in the overlap section.
 - **(b)** no `no_std`-capable crate declares a non-empty `default` containing
   `std` or `alloc`.
 - **(c)** every declared `std`/`alloc` feature has a `cfg` site or forwards to a

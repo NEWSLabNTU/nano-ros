@@ -18,10 +18,12 @@ categories = ["embedded", "no-std"]
 # phase-360 W3 / issue 0582 — EMPTY; `std` is opt-in per dep-site.
 default = []
 # phase-360 W2 (final) — `portable-atomic-util` is an IMPLEMENTATION dep (the
-# no_std stand-in for `std::sync::Arc`), not the heap axis. The heap predicate
-# is `any(alloc, std)`, so the dep has to be present on both sides of it or
-# declaration and use sites drift apart.
-std = ["nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log", "dep:portable-atomic-util"]
+# no_std stand-in for `std::sync::Arc`), not the heap axis, so it rides `alloc`
+# and `std` reaches it by implying `alloc`. It is declared once, on the feature
+# whose `cfg` sites use it. (phase-359 W2 collapses the five std/alloc field
+# pairs onto `portable_atomic_util::Arc` for BOTH flavours, which is why the dep
+# must not be std-conditional.)
+std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log"]
 alloc = ["nros-core/alloc", "nros-rmw/alloc", "dep:portable-atomic-util"]
 
 # Phase 110 — compile-time scheduler selection. Default ships only

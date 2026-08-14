@@ -18,7 +18,7 @@ default = []
 # phase-360 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
 # opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
 # must make the user say `alloc`, never turn it on behind their back.
-std = ["nros-node/std"]
+std = ["alloc", "nros-node/std"]
 alloc = ["nros-node/alloc"]
 # Phase 128.G — TOML-driven entrypoint. Reads `nros.toml` and builds
 # an Executor + Nodes + bridges from the manifest. Pulls `toml` +

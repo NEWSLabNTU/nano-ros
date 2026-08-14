@@ -27,7 +27,7 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 #[cfg(feature = "std")]
@@ -2819,5 +2819,5 @@ mod qos_override_tests {
 // silently changes what their firmware image is; naming the feature they must
 // add does not.
 // ---------------------------------------------------------------------------
-#[cfg(all(feature = "bridge", not(any(feature = "alloc", feature = "std"))))]
+#[cfg(all(feature = "bridge", not(feature = "alloc")))]
 compile_error!("`bridge` boxes every entity handle: add \"alloc\" to this crate's features");

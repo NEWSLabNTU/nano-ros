@@ -13,23 +13,24 @@
 #[cfg(feature = "std")]
 extern crate std;
 
-// phase-360 W2 (final) / issue 0581 — `any(alloc, std)` is THE heap predicate,
-// used in this exact spelling everywhere in the workspace.
+// phase-360 W2 (final) / issue 0581 — `alloc` is THE heap predicate, in this
+// exact spelling everywhere in the workspace. `std` reaches it through the
+// MANIFEST (`std = ["alloc", …]`), not through a wider `cfg`.
 //
-// `alloc` and `std` are standard-library CRATES, not Cargo features; the
-// features are only our convention for "compile the heap paths". A `std` build
-// links an allocator by definition, so it has a heap — hence `any(...)`, and
-// hence a hosted consumer never has to name `alloc`. Verified: a `no_std` rlib
-// using `alloc` builds for thumbv7em with no allocator anywhere; the
-// requirement appears only when a final artifact is linked
-// ("no global memory allocator found but one is required"), which is exactly
-// where malloc is unified per platform.
+// A `std` build links an allocator by definition, so it does have a heap, and a
+// hosted consumer must not have to name `alloc` — but that implication belongs
+// in one manifest line per crate, not in every `cfg`. Spelling it
+// `any(alloc, std)` at the use sites was tried and reverted: it put the same
+// fact in 123 places and left phase-359 (which DELETES `std` from these crates)
+// with 88 extra branches to unwind, in `nros-node` above all. With the manifest
+// edge, dropping `std` needs no `cfg` edit at all — these gates are already in
+// their final form.
 //
-// Issue 0581 was never this predicate — it was that THIS crate used
-// `any(alloc, std)` while `nros-serdes` used `alloc` alone, so a `std`-only
-// build got a `heap::Vec<T>` it could name and could not serialize. The fix is
-// that both now spell it the same way.
-#[cfg(any(feature = "alloc", feature = "std"))]
+// Issue 0581 was never about which predicate: it was that THIS crate's heap
+// gate and `nros-serdes`'s disagreed, so a `std`-only build got a `heap::Vec<T>`
+// it could name and could not serialize. The fix is that `std` now forwards
+// `alloc` here, so the types and their impls arrive together.
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 pub mod action;
@@ -67,13 +68,13 @@ pub use nros_serdes::{
 pub use heapless;
 
 /// Heap-backed containers for generated `mode = "heap"` message fields
-/// (RFC-0033). Available whenever a heap is — the `alloc` feature, or `std`,
-/// which links an allocator by definition. `nros-serdes` gates its matching
-/// `Serialize`/`Deserialize` impls on the SAME predicate, which is what issue
-/// 0581 was about. Generated code
-/// refers to `nros_core::heap::{Vec, String}` so the same path works in both
-/// crate and inline (`build.rs`) codegen modes.
-#[cfg(any(feature = "alloc", feature = "std"))]
+/// (RFC-0033). Gated on `alloc`, which `std` implies — so a hosted consumer
+/// gets these by asking for `std` and never has to name `alloc`. `nros-serdes`
+/// gates its matching `Serialize`/`Deserialize` impls on the SAME feature and
+/// receives it through the same forward, which is what issue 0581 was about.
+/// Generated code refers to `nros_core::heap::{Vec, String}` so the same path
+/// works in both crate and inline (`build.rs`) codegen modes.
+#[cfg(feature = "alloc")]
 pub mod heap {
     pub use alloc::{string::String, vec::Vec};
 }

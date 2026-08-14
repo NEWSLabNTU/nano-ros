@@ -401,5 +401,5 @@ mod tests {
 // ---------------------------------------------------------------------------
 #[cfg(all(feature = "config", not(feature = "std")))]
 compile_error!("`config` parses TOML via serde: add \"std\" to this crate's features");
-#[cfg(all(feature = "cffi", not(any(feature = "alloc", feature = "std"))))]
+#[cfg(all(feature = "cffi", not(feature = "alloc")))]
 compile_error!("`cffi` boxes every entity handle: add \"alloc\" to this crate's features");

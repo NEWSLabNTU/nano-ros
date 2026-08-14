@@ -81,7 +81,7 @@ link-tls = ["zpico-sys/link-tls"]
 # vtable via `nros_rmw::set_custom_transport(...)` BEFORE opening
 # the session.
 link-custom = ["zpico-sys/link-custom"]
-std = ["zpico-sys/std", "nros-rmw/std", "log"]
+std = ["alloc", "zpico-sys/std", "nros-rmw/std", "log"]
 alloc = ["nros-rmw/alloc"]
 rtic = []
 polling = []

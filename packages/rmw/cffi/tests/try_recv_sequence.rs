@@ -14,7 +14,7 @@
 //!
 //! Both paths share the user-facing call shape; the test asserts
 //! they deliver identical content.
-#![cfg(any(feature = "alloc", feature = "std"))]
+#![cfg(feature = "alloc")]
 
 use core::{
     ffi::c_void,

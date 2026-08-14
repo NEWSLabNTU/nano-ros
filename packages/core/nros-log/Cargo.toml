@@ -32,7 +32,7 @@ categories = ["embedded", "no-std", "development-tools::debugging"]
 
 [features]
 default = ["max-level-trace", "buffer-size-256"]
-std = []
+std = ["alloc"]
 alloc = []
 
 # Issue #503 — populate `Record::timestamp_ns` from the platform's

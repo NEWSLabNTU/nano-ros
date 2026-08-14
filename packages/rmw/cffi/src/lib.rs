@@ -17,7 +17,7 @@
 
 #![no_std]
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 #[cfg(feature = "std")]
@@ -45,10 +45,10 @@ use nros_rmw::{
 // Phase 115.L.0 — generic Rust→C-vtable adapter. Lives behind the
 // `alloc` feature because each entity handle is boxed for stable
 // address mgmt; every nros backend already requires alloc.
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 pub mod rust_adapter;
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 pub use rust_adapter::{RustBackend, RustBackendAdapter};
 
 // Phase 249 P4b.1 — `.init_array` ctor self-registration
@@ -555,11 +555,11 @@ struct MessageInfoSlot {
     key: portable_atomic::AtomicUsize,
     valid: portable_atomic::AtomicBool,
     info: UnsafeCell<MessageInfo>,
-    #[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
     validate_requested: portable_atomic::AtomicBool,
-    #[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
     integrity_valid: portable_atomic::AtomicBool,
-    #[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
     integrity: UnsafeCell<nros_rmw::IntegrityStatus>,
 }
 
@@ -569,11 +569,11 @@ impl MessageInfoSlot {
             key: portable_atomic::AtomicUsize::new(0),
             valid: portable_atomic::AtomicBool::new(false),
             info: UnsafeCell::new(MessageInfo::new()),
-            #[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+            #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
             validate_requested: portable_atomic::AtomicBool::new(false),
-            #[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+            #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
             integrity_valid: portable_atomic::AtomicBool::new(false),
-            #[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+            #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
             integrity: UnsafeCell::new(nros_rmw::IntegrityStatus {
                 gap: 0,
                 duplicate: false,
@@ -603,7 +603,7 @@ fn lookup_message_info_slot(key: usize) -> Option<&'static MessageInfoSlot> {
         .find(|slot| slot.key.load(Ordering::Acquire) == key)
 }
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 fn get_or_insert_message_info_slot(key: usize) -> Option<&'static MessageInfoSlot> {
     if key == 0 {
         return None;
@@ -625,7 +625,7 @@ fn get_or_insert_message_info_slot(key: usize) -> Option<&'static MessageInfoSlo
     None
 }
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 pub(crate) fn store_cffi_message_info(key: usize, info: Option<MessageInfo>) {
     let Some(slot) = get_or_insert_message_info_slot(key) else {
         return;
@@ -654,7 +654,7 @@ fn take_cffi_message_info(key: usize) -> Option<MessageInfo> {
     Some(unsafe { *slot.info.get() })
 }
 
-#[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+#[cfg(all(feature = "alloc", feature = "safety-e2e"))]
 fn request_cffi_integrity_status(key: usize) {
     let Some(slot) = get_or_insert_message_info_slot(key) else {
         return;
@@ -663,14 +663,14 @@ fn request_cffi_integrity_status(key: usize) {
     slot.validate_requested.store(true, Ordering::Release);
 }
 
-#[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+#[cfg(all(feature = "alloc", feature = "safety-e2e"))]
 pub(crate) fn take_cffi_integrity_request(key: usize) -> bool {
     lookup_message_info_slot(key)
         .map(|slot| slot.validate_requested.swap(false, Ordering::AcqRel))
         .unwrap_or(false)
 }
 
-#[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+#[cfg(all(feature = "alloc", feature = "safety-e2e"))]
 pub(crate) fn store_cffi_integrity_status(key: usize, status: nros_rmw::IntegrityStatus) {
     let Some(slot) = get_or_insert_message_info_slot(key) else {
         return;
@@ -683,7 +683,7 @@ pub(crate) fn store_cffi_integrity_status(key: usize, status: nros_rmw::Integrit
     slot.integrity_valid.store(true, Ordering::Release);
 }
 
-#[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+#[cfg(all(feature = "alloc", feature = "safety-e2e"))]
 fn take_cffi_integrity_status(key: usize) -> Option<nros_rmw::IntegrityStatus> {
     let slot = lookup_message_info_slot(key)?;
     if !slot.integrity_valid.swap(false, Ordering::AcqRel) {
@@ -697,7 +697,7 @@ fn clear_cffi_message_info(key: usize) {
         return;
     };
     slot.valid.store(false, Ordering::Release);
-    #[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
     {
         slot.validate_requested.store(false, Ordering::Release);
         slot.integrity_valid.store(false, Ordering::Release);
@@ -1842,7 +1842,7 @@ impl<'a> CffiSlot<'a> {
 /// discard reclaims the allocation. `Box::into_raw` of this struct
 /// becomes the slot's opaque `token` so commit / discard can find
 /// it back.
-#[cfg(all(feature = "lending", any(feature = "alloc", feature = "std")))]
+#[cfg(all(feature = "lending", feature = "alloc"))]
 struct ArenaStaging {
     buf: alloc::vec::Vec<u8>,
 }
@@ -1867,7 +1867,7 @@ impl<'a> Drop for CffiSlot<'a> {
         }
         if self.fallback {
             // Phase 124.A.3 — reclaim the staging allocation.
-            #[cfg(any(feature = "alloc", feature = "std"))]
+            #[cfg(feature = "alloc")]
             unsafe {
                 let _ = alloc::boxed::Box::from_raw(self.token as *mut ArenaStaging);
             }
@@ -1907,7 +1907,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
             // Requires `alloc` for the dynamic staging; no_std-no_alloc
             // builds return None and let the caller fall back to a
             // non-loan path.
-            #[cfg(any(feature = "alloc", feature = "std"))]
+            #[cfg(feature = "alloc")]
             {
                 let mut staging = alloc::boxed::Box::new(ArenaStaging {
                     buf: alloc::vec![0u8; len],
@@ -1923,7 +1923,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
                     fallback: true,
                 }));
             }
-            #[cfg(not(any(feature = "alloc", feature = "std")))]
+            #[cfg(not(feature = "alloc"))]
             {
                 let _ = len;
                 return Ok(None);
@@ -1978,7 +1978,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
             // Phase 124.A.3 — fallback path: reclaim the staging
             // box, run a single publish_raw of the cursor-truncated
             // contents.
-            #[cfg(any(feature = "alloc", feature = "std"))]
+            #[cfg(feature = "alloc")]
             {
                 // SAFETY: `slot.token` came from
                 // `Box::into_raw(Box<ArenaStaging>)` in try_lend_slot.
@@ -1987,7 +1987,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
                 let bytes = &staging.buf[..slot.cursor.min(staging.buf.len())];
                 return Publisher::publish_raw(self, bytes);
             }
-            #[cfg(not(any(feature = "alloc", feature = "std")))]
+            #[cfg(not(feature = "alloc"))]
             {
                 return Err(TransportError::Unsupported);
             }
@@ -2396,7 +2396,7 @@ impl nros_rmw::Subscription for CffiSubscription {
             .map(|opt| opt.map(|len| (len, take_cffi_message_info(key))))
     }
 
-    #[cfg(all(any(feature = "alloc", feature = "std"), feature = "safety-e2e"))]
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
     fn try_recv_validated(
         &mut self,
         buf: &mut [u8],

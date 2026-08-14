@@ -13,7 +13,7 @@
 //! The test runs against a hand-written stub vtable. No real backend
 //! needed — the routing logic in `CffiClient` is what's under
 //! test.
-#![cfg(any(feature = "alloc", feature = "std"))]
+#![cfg(feature = "alloc")]
 
 use core::{
     ffi::c_void,

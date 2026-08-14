@@ -14,7 +14,7 @@
 //!    stub `publish_raw` and compared against the chunked input.
 //!
 //! Both paths deliver byte-identical wire output.
-#![cfg(any(feature = "alloc", feature = "std"))]
+#![cfg(feature = "alloc")]
 
 use core::{
     ffi::c_void,

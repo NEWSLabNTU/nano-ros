@@ -24,7 +24,7 @@ use super::{
     spin::{MAX_REMAPS, RemapRule},
 };
 
-#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 type SporadicAtomic = (
     portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
     super::spin::OpaqueTimerHandle,
@@ -41,7 +41,7 @@ pub(crate) struct ExecutorStorage<const CBS: usize, const SC: usize, const ARENA
     sched_contexts: [Option<SchedContext>; SC],
     sched_context_bindings: [SchedContextId; CBS],
     sporadic_states: [Option<SporadicState>; SC],
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     sporadic_atomic_states: [Option<SporadicAtomic>; SC],
     remaps: [Option<RemapRule>; MAX_REMAPS],
 }
@@ -54,7 +54,7 @@ pub(crate) struct ExecutorSlices<'s> {
     pub(crate) sched_contexts: &'s mut [Option<SchedContext>],
     pub(crate) sched_context_bindings: &'s mut [SchedContextId],
     pub(crate) sporadic_states: &'s mut [Option<SporadicState>],
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     pub(crate) sporadic_atomic_states: &'s mut [Option<SporadicAtomic>],
     /// Issue 0563 — the SEVENTH sized table. phase-271 moved six of these out
     /// of `Executor` and into caller-owned storage; the remap table was left
@@ -79,7 +79,7 @@ struct FieldOffsets {
     sched_contexts: usize,
     sched_context_bindings: usize,
     sporadic_states: usize,
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     sporadic_atomic_states: usize,
     remaps: usize,
     size: usize,
@@ -115,7 +115,7 @@ const fn compute_offsets(cbs: usize, sc: usize, arena: usize) -> FieldOffsets {
     let sched_contexts = place!(sc, Option<SchedContext>);
     let sched_context_bindings = place!(cbs, SchedContextId);
     let sporadic_states = place!(sc, Option<SporadicState>);
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     let sporadic_atomic_states = place!(sc, Option<SporadicAtomic>);
     let remaps = place!(MAX_REMAPS, Option<RemapRule>);
 
@@ -126,7 +126,7 @@ const fn compute_offsets(cbs: usize, sc: usize, arena: usize) -> FieldOffsets {
         sched_contexts,
         sched_context_bindings,
         sporadic_states,
-        #[cfg(any(feature = "alloc", feature = "std"))]
+        #[cfg(feature = "alloc")]
         sporadic_atomic_states,
         remaps,
         size,
@@ -276,7 +276,7 @@ pub(crate) unsafe fn carve<'s>(
         }
         let sporadic_s = core::slice::from_raw_parts_mut(sp_p, sc);
 
-        #[cfg(any(feature = "alloc", feature = "std"))]
+        #[cfg(feature = "alloc")]
         let atomic_s = {
             let ap = base.add(o.sporadic_atomic_states) as *mut Option<SporadicAtomic>;
             let mut i = 0;
@@ -301,7 +301,7 @@ pub(crate) unsafe fn carve<'s>(
             sched_contexts: sched_contexts_s,
             sched_context_bindings: bindings_s,
             sporadic_states: sporadic_s,
-            #[cfg(any(feature = "alloc", feature = "std"))]
+            #[cfg(feature = "alloc")]
             sporadic_atomic_states: atomic_s,
             remaps: remaps_s,
         }
@@ -339,7 +339,7 @@ mod tests {
     // so it needs `alloc`. It compiled under `--no-default-features` only
     // because feature unification from another workspace member happened to
     // turn `nros-node/alloc` on; nothing does that now.
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     #[test]
     fn carve_yields_right_lengths_and_inits() {
         // Heap-allocate: the default test config (MAX_CBS/MAX_SC/ARENA_SIZE from

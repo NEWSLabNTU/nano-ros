@@ -20,6 +20,7 @@ crate-type = ["staticlib", "lib"]
 # phase-360 W3 / issue 0582 — EMPTY; `std` is opt-in per dep-site.
 default = []
 std = [
+    "alloc",
     "nros/std",
     "nros-node/std",
     "nros-rmw/std",

@@ -129,3 +129,28 @@ Item 1 is a behaviour change for out-of-tree consumers on the `std`-without-`all
 path — that path is the bug, so the change is the fix, but it belongs in a
 release note. See phase-360 for sequencing, and issue 0582 for the second half
 of the same manifest problem (the `default` feature splitting compile units).
+
+## Current state (2026-08-15) — fixed as filed, after one detour
+
+**Item 1 landed, and the recommendation above is the one that survived.**
+phase-360 W2 first implemented it, then reverted it on the argument that `std`
+must not be a way to acquire a heap without asking — which respelled the same
+implication as `cfg(any(feature = "alloc", feature = "std"))` at 123 use sites.
+Measured against `main`, that added 88 std-mentioning `cfg` branches, 66 of them
+in `nros-node`, for phase-359 (which DELETES `std` from these crates) to unwind;
+its census could not see any of them. The revert was reverted.
+
+Twelve crates now declare `std = ["alloc", …]` — the six that had it plus
+`nros-core`, `nros-serdes`, `nros-params`, `nros-rmw`, `nros-rmw-cffi`,
+`nros-bridge` — and every heap gate in the workspace is
+`cfg(feature = "alloc")`, which is also its final form once `std` is gone.
+
+Verified: the reproducer above compiles against `nros-core --features std`
+alone (`heap::Vec<u32>` serializes); `check-std-census` reports "no crate
+moved"; `check-no-std` and `check-workspace-features` green; seven bare-metal
+target/feature pairs check clean.
+
+Items 2–4 remain open: the one-place statement is phase-360 W1 (not yet written
+into `ARCHITECTURE.md`), the dead declarations are W2.b, and the gate is W4.
+Until W4 exists this is a state, not an invariant — which is why this issue is
+still `open`.

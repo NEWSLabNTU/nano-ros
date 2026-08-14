@@ -324,7 +324,7 @@ pub enum TransportError {
     /// Available only with the `alloc` feature. Use this when the
     /// diagnostic is formatted at runtime (e.g. from a C error code
     /// plus a socket address).
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     BackendDynamic(alloc::string::String),
 }
 
@@ -2120,7 +2120,7 @@ pub trait ServiceTrait {
     /// Identical to `handle_request` but the handler returns a heap-allocated reply.
     /// This is needed for services with large response types (e.g., parameter services
     /// where `Vec<ParameterValue, 64>` is ~1MB+) that would overflow the stack.
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     fn handle_request_boxed<S: RosService>(
         &mut self,
         req_buf: &mut [u8],

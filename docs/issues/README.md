@@ -1164,7 +1164,7 @@ in three crates is gratuitous — all three allocator modules use only `core::al
 Separately, **`#[panic_handler]` was gated on the ALLOCATOR feature**, so "I need panic" had to be
 spelled `global-allocator` — which is exactly how `compile-check-fixtures.sh:490` died on
 `#[panic_handler] function required` under phase-360 W3, inside a `|| echo` that swallowed it.
-**All 34 sites are now 0**, the `std ⇒ alloc` edge (12 crates) is removed, and W8.c cut the
+**All 34 sites are now 0** and W8.c cut the
 `#[global_allocator]` count **4 → 1**: `nros-c` and `nros-platform` had defined one under
 IDENTICAL gates (kept apart by a manifest comment, while `nros-c` deps `nros-platform`
 non-optionally), and `nros-platform-mps2-an385` / `zpico-alloc` shipped two more that bypassed
