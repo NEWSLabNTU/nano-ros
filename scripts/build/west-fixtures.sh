@@ -76,6 +76,36 @@ west_fixture_stamp() {
     } > "$bld/.compile-ok"
 }
 
+# Issue 0574 — ALSO write the `.inputsig` the compile-check staleness probe
+# reads, at the root that probe derives.
+#
+# These four rows are compile-checks that this lane owns because west needs a
+# provisioned Zephyr workspace. `compile-check-fixtures.sh` is the only other
+# writer of `.inputsig`, and its builder loop covers `cargo-check cargo-build
+# cross-build cmake-configure cxx-syntax` — not `west-build` / `west-configure`.
+# So nothing wrote these, while `check-fixtures-stale.sh` requires them under
+# scope `coords` (tier 2) and `all` (tier 3): a COMPLETE, green
+# `build-test-fixtures lane=tier2` was followed by `ci-matrix` failing at
+# `_lane-gate` before one test ran, and rebuilding could never help. Tier 1
+# escaped only because that gate exempts west rows for `SCOPE = native`.
+#
+# `.compile-ok` (above) is this lane's own stamp and stays — it records the
+# BUILDER, which is what makes "configure only" checkable (phase-350 W2). It
+# answers a different question from `.inputsig`, which is "built from the
+# sources on disk right now".
+#
+# The signature MUST be computed from the WHOLE record line, because that is
+# what `compile-check-stale.sh` passes when it recomputes the expected value —
+# hashing a reconstructed 8-field prefix here would read as permanently stale.
+write_compile_check_inputsig() {
+    local record="$1" id="$2"
+    local stamp_dir
+    stamp_dir="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" "$id")"
+    mkdir -p "$stamp_dir"
+    bash "$repo_root/scripts/build/compile-check-signature.sh" "$record" \
+        > "$stamp_dir/.inputsig" 2>/dev/null || rm -f "$stamp_dir/.inputsig"
+}
+
 # phase-350 W2 (issue 0536) — the leaf table is `examples/fixtures.toml`, read
 # through `fixtures-manifest.py list-compile-checks --builder west-*`.
 #
@@ -105,7 +135,10 @@ records="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
 
 n=0
 total=0
-while IFS=$'\x1f' read -r id builder src _pkg _manifest_dir _target _profiles output subdir board extra; do
+while IFS= read -r record; do
+    [ -n "$record" ] || continue
+    IFS=$'\x1f' read -r id builder src _pkg _manifest_dir _target _profiles output subdir board extra \
+        <<< "$record"
     [ -n "$id" ] || continue
     total=$((total + 1))
     [ -d "$repo_root/$src" ] || { echo "west-fixtures: src missing: $src" >&2; continue; }
@@ -151,6 +184,7 @@ while IFS=$'\x1f' read -r id builder src _pkg _manifest_dir _target _profiles ou
     env "${tc_env[@]}" west "${args[@]}" || true
     if [ -e "$bld/$output" ]; then
         west_fixture_stamp "$bld" "$builder"
+        write_compile_check_inputsig "$record" "$id"
         echo "   ok $bld ($output)"
         n=$((n + 1))
     else
