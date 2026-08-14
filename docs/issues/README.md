@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-15): **#577** — `cargo test -p nros-node --lib` failed
+(`violations_beyond_the_ring_are_counted`, `ExecutorFull`) while `just ci` was green. TWO defects. The test
+registered `MAX_VIOLATIONS + 4` = 12 timers against a `MAX_CBS` whose default has been 4 since 2026-03, so
+it panicked on the fifth — it landed 2026-08-11 and had NEVER passed. It survived because no lane ran it:
+`test-all` is `nextest --workspace`, which resolves `nros-node` WITHOUT `std` (a dependent takes it
+`default-features = false`, the 0270 carve-out), compiling out all seven `#[cfg(feature = "std")]` tests in
+`executor/tests.rs`. Proved with the same filter against both builds — the workspace listing is empty, the
+`-p nros-node` listing has them — and corroborated against a tier-1 sweep where 152 `nros-node` cases ran
+and none were these. Fixed by making the test `MAX_CBS`-independent (one timer, repeated stalls; measured
+`dropped=4`) and adding `check-node-std-tests` to `check-build` beside `check-cli-tests`, which it mirrors.
+`packages/api/nros` checked and is NOT affected (it GAINS tests under `--workspace`). NOT done: a general
+gate that every per-package test also exists in the workspace build. See `archived/0577-*`. (2026-08-15)
+
 Recently resolved (2026-08-14): **#573** eleven `zenohd` orphans were alive on the dev host with no test runner
 running, the oldest 3.8 days. Two private `RouterHandle` copies (`nros-rmw-zenoh`'s `cffi_smoke.rs` and
 `status_events_matrix.rs`) spawned zenohd with a bare `Command::spawn()` instead of the shared

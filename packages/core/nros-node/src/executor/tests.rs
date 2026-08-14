@@ -3856,13 +3856,26 @@ fn a_violation_is_logged_and_still_drainable() {
 fn violations_beyond_the_ring_are_counted() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
-    // More timers than the ring can hold verdicts for.
+    // ONE timer, stalled repeatedly — not `MAX_VIOLATIONS + 4` timers.
+    //
+    // This test asked for 12 callback slots against a `MAX_CBS` that has
+    // defaulted to 4 since 2026-03, so `register_timer` returned
+    // `ExecutorFull` on the fifth and the `.unwrap()` panicked. It never
+    // passed; it was simply never run (see the module note on the `std`
+    // feature gate), so the ring-overflow behaviour it exists to prove has
+    // been unverified since #514 landed.
+    //
+    // Overflowing the ring does not need one timer per violation: a single
+    // overrunning timer produces a fresh violation on every stalled spin, and
+    // nothing here drains, so `MAX_VIOLATIONS + 4` spins overflow a ring of
+    // `MAX_VIOLATIONS`. That also keeps the test independent of `MAX_CBS`,
+    // which is a build-time knob any consumer may set.
+    executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
     for _ in 0..(super::monitor::MAX_VIOLATIONS + 4) {
-        executor
-            .register_timer(TimerDuration::from_millis(10), || {})
-            .unwrap();
+        let _ = elapse_then_spin_once(&mut executor, 120);
     }
-    let _ = elapse_then_spin_once(&mut executor, 120);
     assert!(
         executor.violations_dropped() >= 1,
         "overflow counted: dropped={}",

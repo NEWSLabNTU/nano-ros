@@ -494,7 +494,8 @@ check-build: \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-borrowed-e2e check-dep-chain \
     check-embedded-feature-unification \
-    check-c check-cpp check-rmw-cyclonedds check-cli-tests check-feature-set-ssot \
+    check-c check-cpp check-rmw-cyclonedds check-cli-tests check-node-std-tests \
+    check-feature-set-ssot \
     check-no-tracked-file-find \
     native::check
     @echo "Build checks passed!"
@@ -541,6 +542,28 @@ check-cli-tests:
     set -e
     cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet
     echo "CLI tests passed!"
+
+# nros-node's `std`-gated unit tests. `just test-all` runs `cargo nextest
+# --workspace`, which builds each crate with its OWN default features — and
+# `std` is not one of nros-node's — so seven `#[cfg(feature = "std")]` tests in
+# `executor/tests.rs` existed in no lane at all. Confirmed against a full tier-1
+# sweep: 152 `nros-node` cases ran and not one of those seven was among them.
+#
+# A test nothing runs is worse than no test, and this is what that costs:
+# `violations_beyond_the_ring_are_counted` (issue 0514's overflow-counting
+# proof) asked for `MAX_VIOLATIONS + 4` callback slots against a `MAX_CBS` whose
+# default has been 4 since 2026-03, so it panicked `ExecutorFull` on the fifth
+# `register_timer`. It had NEVER passed — it landed broken 2026-08-11 and no
+# lane noticed for four days.
+#
+# Same shape as issue 0319 (a backend suite with no lane, red on main for two
+# days) and the issue-0196 rule generally: a gate whose coverage is narrower
+# than the thing it is supposed to enforce.
+check-node-std-tests:
+    #!/usr/bin/env bash
+    set -e
+    cargo test -p nros-node --lib --features std --quiet
+    echo "nros-node std-gated tests passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on
 # packages/cli, so ~107 warnings accreted unnoticed. Mirrors check-cli-tests
