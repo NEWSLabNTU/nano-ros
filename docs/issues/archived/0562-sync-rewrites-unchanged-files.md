@@ -1,7 +1,7 @@
 ---
 id: 562
 title: "`nros sync` rewrote byte-identical files, restamping mtimes and charging a cmake reconfigure for no change"
-status: open
+status: resolved
 type: performance
 area: cli, build
 related: [issue-0509, issue-0466, issue-0457, issue-0463]
@@ -122,3 +122,58 @@ Every one of those seven runs replayed **1244 ninja edges** — a full Zephyr
 static-library link set — plus a 129-crate cargo rebuild of `nros-c`, from the
 west-fixtures step. That is unrelated to this issue and belongs to 0509's
 "skip per-leaf prep whose inputs are unchanged" line; recorded there.
+
+## Verified resolved (2026-08-15)
+
+The class fix is in the tree and both of the issue's headline measurements
+reproduce on a no-op sync (warm-up run, snapshot, second run, compare mtimes):
+
+| leaf | this issue predicted | measured 2026-08-15 |
+| --- | --- | --- |
+| `examples/native/rust/talker` | 0 | **0** |
+| `examples/workspaces/features` | 6 | **6** |
+
+All six under `features` are inside `build/nros-metadata/metadata-probe-cmake/build/`
+and are written by cmake itself, exactly as this issue predicted; **sync-owned
+restamps are 0**. The writers that used to be unguarded —
+`metadata_probe_cmake::{run_probes,write_capabilities}`, `provider_scan`,
+`model_ingest`, `cmd/ws.rs` — no longer restamp their outputs.
+
+One spelling survives, in the lower crate, with the core crate re-exporting it:
+
+```rust
+// cargo_nano_ros::atomic_file
+pub fn atomic_write_reporting(dst: &Path, body: &[u8]) -> Result<bool> {
+    if std::fs::read(dst).is_ok_and(|existing| existing == body) {
+        return Ok(false);
+    }
+    ...
+}
+```
+
+Gate: `check-atomic-sync-writes`.
+
+### A measurement note, because the first attempt was wrong
+
+The first pass used `comm` on `find -printf` output and reported 31 890
+restamped files. That number was garbage — `comm` warned `file 1 is not in
+sorted order` and its output on unsorted input is meaningless. The counts above
+come from an explicit stat-map comparison. A tool that warns and continues will
+be believed if the warning scrolls past; this issue's own thesis is that
+mtime-driven work is invisible, so measuring it with a silently-wrong instrument
+would have been a fitting way to close it wrongly.
+
+### Not closed by this: the whitespace churn
+
+`examples/threadx-linux/rust/talker/.cargo/config.toml` was observed modified
+after tier-1 runs on 2026-08-14 and 2026-08-15 with a pure-whitespace diff
+(`["../..` becoming `[ "../..`). That is a CONTENT difference, which
+write-if-changed cannot suppress by design, so it was never this issue's to fix
+— this issue's claim that "the file's content was stable the whole time" does
+not hold for that leaf.
+
+It does NOT reproduce from a direct `nros sync` of that leaf on this tree, so
+either it was fixed in passing or it comes from a different writer reached only
+by the full lane. Recorded in
+[phase-353](../roadmap/phase-353-build-and-fixture-cost.md) W1 rather than left
+inside a resolved issue.

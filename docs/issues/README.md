@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-15): **#562** `nros sync` rewrote byte-identical files, restamping mtimes and
+buying a cmake reconfigure for no change. The class fix (ONE write-if-changed helper in
+`cargo_nano_ros::atomic_file`, re-exported by `nros-cli-core`, replacing four private spellings and
+reaching the five writers that had none) had landed without the status being flipped. Both headline
+measurements re-verified on no-op syncs: `examples/native/rust/talker` 2 -> **0** restamped,
+`examples/workspaces/features` 27 -> **6**, and all six are cmake's own outputs under the probe's
+`build/` — sync-owned restamps are **0**. The first measurement attempt reported 31890 files because it
+ran `comm` on unsorted input, which warns and continues; the numbers above come from a stat-map compare.
+NOT closed by this: the threadx leaf's `.cargo/config.toml` whitespace churn is a CONTENT difference
+write-if-changed cannot suppress, and is recorded in phase-353 W1. See `archived/0562-*`.
+
 Recently resolved (2026-08-15): **#472** thirteen of fifteen opaque-storage macros had no compile-time
 size check, so a wrong probe was a short buffer rather than a build error. Fixed by `76a787b46`; the row
 below was left in the open spelling when the file was archived, which had `check-issue-index` red on main.
@@ -883,20 +894,6 @@ its missing half, since keeping the demand is only sound if the building lane wr
 `west-fixtures.sh` now stamps the sig on the same success condition, passing the RAW manifest line —
 the signature hashes the record verbatim, so an 8-field reconstruction of an 11-field line would have
 turned "missing" into a permanent "stale". See `archived/0576-*`.
-
-**#562** (cli/build, open 2026-08-14) — `nros sync` REWROTE byte-identical files, restamping their
-mtimes and buying a cmake reconfigure for no change. `atomic_write_bytes` never compared content, and the
-skip-if-identical idiom existed in FOUR private copies (`facade`, `metadata_build`, an inline check in
-`cmd/ws.rs`, `model_ingest`) while the sites that actually cost configure work had none — above all
-`metadata_probe_cmake`, whose probe directory IS a cmake project, so a restamped `CMakeLists.txt` forces a
-probe reconfigure every sync. Fixed as a class: ONE helper in `cargo_nano_ros::atomic_file` (the lower
-crate, so `provider_scan`'s `providers.json` shares it), atomic AND write-if-changed, with all five
-unguarded sites and all four private copies delegating; `check-atomic-sync-writes` extended to ban a
-private temp+rename (it immediately caught a fifth copy). No-op sync restamps: `workspaces/features` 27→6
-(the 6 are cmake's own build dir), `native/rust/talker` 2→0, zephyr lane `build/nros/**` 5→0. The intended
-wall-clock A/B is INCONCLUSIVE and says something worth keeping: seven no-op lane runs doing provably
-identical work (byte-identical 1728-line logs) took 50–695 s, so lane timing on this HDD host measures page
-cache, not code. See `0562-*`.
 
 **#509** (build/testing, open 2026-08-10) — the Zephyr fixture lane is PER-LEAF-OVERHEAD bound, not compile
 bound. Measured mid-sweep: **40 min for 68 leaves**, and across all of them just **1254 ninja edges**

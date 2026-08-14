@@ -35,22 +35,31 @@ Two of the four may already be closed or substantially moved by work that landed
 after they were filed. Establish that first; a phase that starts by implementing
 against a stale number repeats what phase-343 W2 had to undo.
 
-* **#562** — the issue says `atomic_write_bytes` "never compared content", so
-  every sync restamped mtimes and charged a cmake reconfigure. The code now
-  documents itself as WRITE-IF-CHANGED (`packages/cli/nros-cli-core/src/atomic_file.rs`,
-  header comment: "byte-identical content is not rewritten, so an unchanged file
-  keeps its mtime and costs no downstream reconfigure"). **Determine whether the
-  fix landed and the status was simply never flipped**, or whether residue
-  remains. Note the issue's own "Separately" section hands the zephyr no-op
-  finding to #509, so closing #562 does not close that.
+* **#562** — **DONE (2026-08-15). RESOLVED and archived.** The class fix was in
+  the tree and the status had simply never been flipped, which is what this work
+  item existed to determine. Both headline measurements re-verified on no-op
+  syncs: `examples/native/rust/talker` 2 → **0** restamped files,
+  `examples/workspaces/features` 27 → **6** — and all six are cmake's own
+  outputs under `build/nros-metadata/metadata-probe-cmake/build/`, so
+  **sync-owned restamps are 0**. See
+  [archived/0562](../issues/archived/0562-sync-rewrites-unchanged-files.md).
 
-  Observed independently on 2026-08-14 and 2026-08-15: a `nros sync` during
-  tier 1 leaves `examples/threadx-linux/rust/talker/.cargo/config.toml` modified
-  with a PURE WHITESPACE diff (`["../..` becoming `[ "../..`). That is a
-  *content* difference, so write-if-changed cannot suppress it — sync is not a
-  fixed point on its own output. Whether that belongs to #562 or is a separate
-  defect is W1's to decide; it currently shows up as spurious unstaged churn
-  that blocks `git pull --rebase` until discarded.
+  Two things carried forward from it:
+
+  1. **The whitespace churn is NOT #562 and is still unexplained.**
+     `examples/threadx-linux/rust/talker/.cargo/config.toml` came back modified
+     after tier-1 runs on 2026-08-14 and 2026-08-15 with a pure-whitespace diff
+     (`["../..` becoming `[ "../..`). That is a CONTENT difference, which
+     write-if-changed cannot suppress by design. It does **not** reproduce from
+     a direct `nros sync` of that leaf, so the writer is reached only by the
+     full lane — most likely `model_ingest`, which #562 named as a leaf
+     `.cargo/config.toml` writer. Until it is found, it shows up as unstaged
+     churn that blocks `git pull --rebase` until discarded by hand, and CLAUDE.md
+     is explicit that a blanket `git add -u` must never scoop it up.
+  2. **A measurement lesson worth keeping.** The first restamp measurement used
+     `comm` on `find -printf` output and reported 31 890 files. `comm` warned
+     `file 1 is not in sorted order` and produced meaningless output; the real
+     answer was 6. Use an explicit stat-map compare here, not `comm`.
 
 * **#446** — "the same crate is compiled ~21× across leaf target dirs". Filed
   before phase-340's coordinate-keyed group dirs and phase-343 W1's shared probe
@@ -62,6 +71,11 @@ against a stale number repeats what phase-343 W2 had to undo.
 **Acceptance.** Each of #562 and #446 carries a dated re-measurement on this
 tree, and is either resolved with evidence or restated with a current number.
 No implementation lands under this phase before that.
+
+**Status: #562 done. #446 outstanding.** The whitespace-churn hunt above is the
+one piece of #562 that survived it, and it is a correctness annoyance rather
+than a cost item — fix it when the writer is identified, not by widening
+write-if-changed, which cannot see it.
 
 ## W2 — The Zephyr lane's per-leaf overhead (#509)
 
