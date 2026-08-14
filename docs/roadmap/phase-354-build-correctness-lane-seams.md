@@ -1,0 +1,123 @@
+# Phase 354 — Contract seams: the places two sides disagree about one fact
+
+**Status (2026-08-15). PLANNING — nothing implemented.** Four open BUGS (not
+costs) whose owning phases have since closed or never existed, so none has a
+live home. Each is two sides of a seam disagreeing about one fact.
+
+**Owns:** [issue 0493](../issues/0493-two-workspace-roots-share-one-corrosion-target-dir-duplicate-no-mangle-symbols.md),
+[issue 0466](../issues/0466-tier1-setup-contract-unstated.md),
+[issue 0454](../issues/0454-raw-send-goal-ffi-does-not-strip-cdr-header.md),
+[issue 0532](../issues/0532-platform-clock-abi-unit-and-resolution.md).
+
+**Related:** [phase-345](phase-345-one-door-build-parity.md) (COMPLETE; named
+#466 and #374), [phase-344](phase-344-cmake-cache-relocation.md) and
+[phase-347](phase-347-rmw-as-a-declared-provider.md) (both name #493),
+[RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md) / [phase-318](archived/) (the tier
+contract #466 is about).
+
+## Why a new phase rather than an existing one
+
+Both issues are referenced by phases that are COMPLETE or whose remaining waves
+are blocked on unrelated work. A referenced issue in a finished phase has no
+owner — it is a footnote. These two are live defects that break a lane today.
+
+---
+
+## W1 — Two cargo workspace ROOTS, one corrosion target dir (#493)
+
+`just build-test-fixtures lane=native` dies on `examples/workspaces/mixed`
+(`ws-group-10`) with
+
+```
+ld.lld: error: duplicate symbol: nros_rmw_cffi_register
+```
+
+because a mixed workspace's umbrella staticlib bundles the nros stack twice.
+
+This is adjacent to a hazard already documented in CLAUDE.md — Corrosion
+`< 0.6.0` shares one `cargo/build` across workspace roots, which is why the SDK
+store's newest-first prefix ordering (issue 0500) exists. **Establish first
+whether #493 is that same Corrosion-version defect or a second, independent
+one**, because if it is the former the fix is a pin and a gate, not a build
+change.
+
+**Acceptance.** `lane=native` reaches the mixed workspace and links. The
+diagnosis names which of the two causes it was, with the Corrosion version the
+failing tree resolved (`nano-ros: Corrosion <ver> via <origin>` from the
+configure output — CLAUDE.md is explicit that this must be READ, never inferred
+from having run the installer).
+
+## W2 — Tier 1's unstated, ORDERED setup contract (#466)
+
+`just ci` is the instruction every task ends with, and over one session it
+stopped **eight** consecutive times on a correctly-cloned tree, only one of them
+a test failure. The issue has been added to repeatedly through 2026-08-12.
+
+Partially mitigated already, and that mitigation should be credited rather than
+redone:
+
+* `just check-tier-preconditions` batches the unmet preconditions and reports
+  them all at once, at the head of `just ci`.
+* `52e6bda8e` (2026-08-14) landed "one zephyr staleness spelling, so every entry
+  is covered" — the issue's own zephyr `skip_probe = true` finding.
+
+What remains is the issue's later sections: the compile-check lane's gate being
+NARROWER than the tests it gates (the issue-0196 shape, and the fourth gate this
+year whose coverage was narrower than its rule), and the entry-resolver source-
+dir bridging the issue sketches via `ZEPHYR_WORKSPACE_ENTRY_SRC_KEY`.
+
+Observed twice on 2026-08-14/15 and worth folding in: after any pull, the
+ordered remedy is `just setup-cli` → `just setup-launch-resolve` → fixtures, and
+`setup-cli` warns that `nros-launch-resolve` is older but does **not** fail, so
+a run can proceed with the two disagreeing on an argument list (issue 0363 C).
+That is the same "unstated, ordered" shape #466 is about.
+
+**Acceptance.** The compile-check gate watches the same inputs as the tests it
+gates, demonstrated by a case that the gate previously passed and the test
+failed. Every precondition reachable by `check-tier-preconditions` reports as
+part of ONE batch, including the launch-resolve skew.
+
+## W3 — `*_send_goal_raw` never strips the encapsulation header (#454)
+
+The C/C++ FFIs take a parameter named `goal_cdr` and never strip its header, so
+`PollingActionClient` would ship the #448 double-encapsulation bug onto the
+wire. The parameter NAME says one thing and the code does another — the seam is
+between the FFI's stated contract and its behaviour.
+
+This is a wire-format defect, not a build one, and it is here because a bug does
+not warrant a phase of its own. It is small and self-contained; the risk is that
+it stays unowned because it fits nowhere.
+
+Note phase-303 (XCDR2/extensibility) is PARKED with its premise refuted and no
+active driver, so it is not the home for this despite the topic overlap.
+
+**Acceptance.** A `PollingActionClient` goal round-trips against a real peer
+with exactly one encapsulation header, demonstrated on the wire rather than by
+reading the encoder.
+
+## W4 — Verify #532 against phase-352 before planning anything (#532)
+
+#532 says the platform clock ABI fixes a unit but cannot express resolution, so
+every port either lies or truncates.
+
+[Phase 352](phase-352-platform-clock-ns.md) is COMPLETE and its title is "one
+nanosecond symbol, **plus the resolution nobody could ask for**" — which is, on
+its face, exactly #532's subject. So the first task is not design: it is to
+determine whether #532 is already resolved and simply never closed.
+
+**Acceptance.** #532 is either closed against phase-352 with the specific
+mechanism named, or restated to say what phase-352 did NOT cover. Do not plan
+work on it before that check.
+
+---
+
+## Deliberately not doing
+
+* **Not re-litigating the tier split.** RFC-0061's three tiers are settled;
+  #466 is about the contract being unstated, not about the tiers being wrong.
+* **Not opening a phase per bug.** W3 and W4 are singletons; they are here
+  because an unowned bug is one nobody re-reads, not because they share a
+  mechanism with W1/W2.
+* **No new gate before W1's diagnosis.** If #493 is the known Corrosion-version
+  hazard, adding a second mechanism alongside `check-cmake-corrosion-prefix`
+  would be the "second spelling" antipattern CLAUDE.md names.
