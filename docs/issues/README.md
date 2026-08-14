@@ -535,6 +535,20 @@ own symptom is GONE (zero `EXECUTOR_OPAQUE_U64S` asserts from scratch, was six l
 reaches leaf 12. Probably migrate the callers to `clock_ns` — `uxr_nanos` currently scales microseconds
 back up by 1000, losing precision the ns clock has. See `0548-*`. (2026-08-13)
 
+**#574** — tier 2 and tier 3 demand `build/compile-check-fixtures/<id>/.inputsig` for the four WEST
+compile-checks (`west_bringup_zephyr`, `west_board_import`, `zephyr_self_pkg_{rust,sibling}`), and NO
+producer writes it: `compile-check-fixtures.sh` is the only `.inputsig` writer and its builder loop omits
+`west-build`/`west-configure`, while `west-fixtures.sh` builds them fine and stamps `.compile-ok` under
+`build/west-fixtures/<id>/` — a different filename in a different tree. So a COMPLETE green
+`build-test-fixtures lane=tier2` is followed by `ci-matrix` dying at `_lane-gate` before one test runs, and
+rebuilding does not help. Verified: after a green tier-2 build AND a direct `west-fixtures.sh` reporting
+`4/4 ok`, all four `.inputsig` paths are still absent while all four west trees exist. Tier 1 escapes via an
+existing `SCOPE = native` exemption whose comment argues coords/all "either build west or select by
+coordinate" — they do build it; the gate just cannot see the stamp. Third instalment of the 0536/0537 seam.
+Fix forward (not another exemption, which would restore #482's hazard): have the west lane write the same
+`.inputsig` via `compile-check-signature.sh`, so one stamp convention covers every compile-check row.
+Workaround `NROS_SKIP_FIXTURE_CHECK=1` disables the check for ALL fixtures. See `0574-*`. (2026-08-14)
+
 **#561** — after `git submodule update` moves `packages/cli/third-party/play_launch`, every `nros sync`
 fails the 0409 pin guard AND no sanctioned command fixes it: `just setup-cli` reports success while
 rebuilding nothing (silent, binary mtime unchanged), and `cargo clean -p nros-cli-core` does not help
