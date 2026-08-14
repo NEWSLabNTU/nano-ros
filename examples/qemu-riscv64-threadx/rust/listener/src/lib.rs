@@ -76,7 +76,7 @@ nros::node!(Listener);
 // `register` declares the Listener. No manual `Executor::open` / `register_rmw` /
 // spin loop / hardcoded locator in the example (Phase 245 / issue 0049 P1/P3/P4/P6).
 
-// phase-345 W8.e / issue 0496 — the backend requires the heap; it does not
+// phase-359 W8.e / issue 0585 — the backend requires the heap; it does not
 // silently enable it. Build as `--features rmw-cyclonedds,alloc`.
 #[cfg(all(feature = "rmw-cyclonedds", not(any(feature = "alloc", feature = "std"))))]
 compile_error!("`rmw-cyclonedds` allocates: add \"alloc\" (--features rmw-cyclonedds,alloc)");

@@ -41,7 +41,7 @@ mkdir -p "$out_dir"
 # nros-c → libnros_c.a (CDR readers) + the per-build config header, from ONE build
 # so the header's variant hash matches the archive's (stub) sizing.
 echo "borrowed-e2e: building nros-c (platform-posix)…"
-# phase-345 W3 — `std` explicit (host build; nros-c `default = []` now).
+# phase-359 W3 — `std` explicit (host build; nros-c `default = []` now).
 ( cd "$repo_root" && cargo build -p nros-c --features std,platform-posix >/dev/null )
 # profile-literal-ok: unprofiled: the line above is a plain `cargo build`, so
 # `target/debug/` IS the derived output dir for it.

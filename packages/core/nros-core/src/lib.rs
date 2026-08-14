@@ -13,7 +13,7 @@
 #[cfg(feature = "std")]
 extern crate std;
 
-// phase-345 W2 (final) / issue 0492 — `any(alloc, std)` is THE heap predicate,
+// phase-359 W2 (final) / issue 0581 — `any(alloc, std)` is THE heap predicate,
 // used in this exact spelling everywhere in the workspace.
 //
 // `alloc` and `std` are standard-library CRATES, not Cargo features; the
@@ -25,7 +25,7 @@ extern crate std;
 // ("no global memory allocator found but one is required"), which is exactly
 // where malloc is unified per platform.
 //
-// Issue 0492 was never this predicate — it was that THIS crate used
+// Issue 0581 was never this predicate — it was that THIS crate used
 // `any(alloc, std)` while `nros-serdes` used `alloc` alone, so a `std`-only
 // build got a `heap::Vec<T>` it could name and could not serialize. The fix is
 // that both now spell it the same way.
@@ -70,7 +70,7 @@ pub use heapless;
 /// (RFC-0033). Available whenever a heap is — the `alloc` feature, or `std`,
 /// which links an allocator by definition. `nros-serdes` gates its matching
 /// `Serialize`/`Deserialize` impls on the SAME predicate, which is what issue
-/// 0492 was about. Generated code
+/// 0581 was about. Generated code
 /// refers to `nros_core::heap::{Vec, String}` so the same path works in both
 /// crate and inline (`build.rs`) codegen modes.
 #[cfg(any(feature = "alloc", feature = "std"))]

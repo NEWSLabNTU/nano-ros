@@ -1,10 +1,10 @@
 ---
-id: 494
+id: 583
 title: "a firmware build of `nros` compiles 57 crates; 47 of them exist only to run the `nros::main!` proc-macro"
 status: open
 type: tech-debt
 area: build
-related: [issue-0493, phase-262, phase-345, rfc-0032, rfc-0052]
+related: [issue-0582, phase-262, phase-359, rfc-0032, rfc-0052]
 ---
 
 ## The number

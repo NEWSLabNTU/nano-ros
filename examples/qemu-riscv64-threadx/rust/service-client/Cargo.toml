@@ -23,7 +23,7 @@ path = "src/lib.rs"
 [features]
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-threadx-qemu-riscv64/rmw-zenoh"]
-# phase-345 W8.e / issue 0496 — selecting a BACKEND no longer enables the heap.
+# phase-359 W8.e / issue 0585 — selecting a BACKEND no longer enables the heap.
 # Cyclone DDS allocates, so build it as `--features rmw-cyclonedds,alloc`; the
 # `compile_error!` in src/lib.rs says so if you forget.
 rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys"]

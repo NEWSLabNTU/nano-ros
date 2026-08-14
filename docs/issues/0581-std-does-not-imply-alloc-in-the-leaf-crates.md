@@ -1,10 +1,10 @@
 ---
-id: 492
+id: 581
 title: "`std` implies `alloc` in half the stack and not the other half — the default feature state cannot serialize a heap message field"
 status: open
 type: bug
 area: build
-related: [rfc-0033, rfc-0005, rfc-0006, issue-0493, phase-345]
+related: [rfc-0033, rfc-0005, rfc-0006, issue-0582, phase-359]
 ---
 
 ## The contradiction
@@ -127,5 +127,5 @@ One rule, stated once, for every crate that can build `no_std`:
 
 Item 1 is a behaviour change for out-of-tree consumers on the `std`-without-`alloc`
 path — that path is the bug, so the change is the fix, but it belongs in a
-release note. See phase-345 for sequencing, and issue 0493 for the second half
+release note. See phase-359 for sequencing, and issue 0582 for the second half
 of the same manifest problem (the `default` feature splitting compile units).

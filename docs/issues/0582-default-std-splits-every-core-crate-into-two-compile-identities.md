@@ -1,10 +1,10 @@
 ---
-id: 493
+id: 582
 title: "`default = [\"std\"]` on the no_std crates splits each of them into two compile identities in ONE cargo invocation"
 status: open
 type: tech-debt
 area: build
-related: [issue-0446, issue-0492, phase-334, phase-340, phase-345]
+related: [issue-0446, issue-0581, phase-334, phase-340, phase-359]
 ---
 
 ## The measurement
@@ -114,7 +114,7 @@ Nothing merged. Two reasons, both worth writing down:
 So this issue's *build-effort* premise does not survive measurement, and it is
 NOT one of issue 0446's five identities in the way claimed above — that
 paragraph is retained as the record of a wrong call. What W3 is worth is
-elsewhere: the explicitness (below) and issue 0495, which it uncovered.
+elsewhere: the explicitness (below) and issue 0584, which it uncovered.
 
 ## Direction
 
@@ -133,7 +133,7 @@ Crates to convert: `nros-core`, `nros-serdes`, `nros-params`, `nros-node`,
 This is a **breaking change for out-of-tree consumers** — `nros-core = "0.5"`
 stops being a `std` build. It needs the whole set converted in one commit, every
 in-tree dep-site made explicit in the same commit, and a release note. Pair it
-with issue 0492 (the `std`/`alloc` implication), which touches the same
+with issue 0581 (the `std`/`alloc` implication), which touches the same
 manifests: doing them separately means editing every `[features]` block twice.
 
 Gate afterwards: extend `scripts/check-feature-set-ssot.sh`, or add a sibling

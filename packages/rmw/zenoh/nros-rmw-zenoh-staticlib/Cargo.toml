@@ -42,7 +42,7 @@ platform-zephyr = ["nros-rmw-zenoh/platform-zephyr"]
 #
 # A SEPARATE feature rather than folding the deps into `platform-zephyr`:
 # `panic-halt` on the std path would collide with std's own panic handler, so
-# phase-345 W8.d / issue 0496 — these rows select the malloc/panic PROVIDER
+# phase-359 W8.d / issue 0585 — these rows select the malloc/panic PROVIDER
 # (`nros-platform/global-allocator`, `panic-halt`) for the platform and nothing
 # else. They no longer list `alloc`/`std`: the heap and the standard library are
 # the end user's call, named at their own dep-site.

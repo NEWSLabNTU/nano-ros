@@ -33,7 +33,7 @@ nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 
 [features]
 default = []
-# phase-345 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
+# phase-359 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
 # opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
 # must make the user say `alloc`, never turn it on behind their back.
 std = ["nros-rmw/std"]
