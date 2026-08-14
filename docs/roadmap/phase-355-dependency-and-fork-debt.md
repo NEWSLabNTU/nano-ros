@@ -1,6 +1,13 @@
 # Phase 355 — Dependency and fork debt: what we carry that upstream does not
 
-**Status (2026-08-15). PLANNING — nothing implemented.** Three standing
+**Status (2026-08-15). W1 LANDED, W2 + W3 DECIDED.** W1 corrected six book
+pages (the cited one was already fixed). W2 and W3 owed decisions rather than
+code, and both are recorded in their issues; the two residual EDITS — offering
+the cyclonedds changes upstream, and deleting `play_launch_parser`'s dead
+`anyhow` line — are vendored-fork work, which by repo policy ends with a branch
+prepared locally and the maintainer pushing.
+
+Originally: Three standing
 tech-debt items about dependencies the tree owns rather than consumes. None is
 urgent; all three get worse silently, which is why they want a phase rather than
 a backlog line.
@@ -104,6 +111,27 @@ legitimate; the issue is that none has been chosen.
 (bump / replace / accept-with-reason). If accept, the reason states what an
 unmaintained `anyhow` actually risks here — it is a stable, widely-used crate,
 and "unmaintained" is not by itself an exploit.
+
+**DONE 2026-08-15 — decided, and one is not the change this expected.** Two
+chains, not three sites; both measured with `cargo tree -i` rather than read off
+the lockfiles:
+
+* **`play_launch_parser` → REMOVE.** Expected a port to `eyre`; there is nothing
+  to port. `anyhow = "1.0"` is declared in the fork crate's manifest and used
+  NOWHERE in it (zero hits in `src/` and `tests/`; its errors are `thiserror`) —
+  the third instance of the dead-declaration pattern this issue already deleted
+  twice. It IS compiled into `nros-launch-resolve`, so removing it is worth
+  doing. Left as a prepared decision rather than an edit: it is a vendored fork
+  (maintainer pushes, fork branch before superproject pointer) and it moves a
+  leaf lock, which must go through `just lock-update`.
+* **wasi / wit-bindgen family → ACCEPT.** It enters through `cbindgen →
+  tempfile → getrandom → wasip2/p3 → wit-bindgen`, so it is not "someone else's
+  tree" — but `cargo tree -i anyhow` prints NOTHING for the host target and
+  nothing for `--target all`: the crates that pull it sit behind features
+  nothing enables. It is a lockfile entry that is never compiled, in any
+  configuration this workspace builds. "Unmaintained crate in our lockfile" and
+  "unmaintained crate in our binaries" are different risks, and this is the
+  first.
 
 ---
 
