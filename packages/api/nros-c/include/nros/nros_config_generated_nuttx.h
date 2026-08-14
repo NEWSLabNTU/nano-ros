@@ -33,7 +33,13 @@
 #undef SERVICE_CLIENT_OPAQUE_U64S
 #define SERVICE_CLIENT_OPAQUE_U64S 707
 #undef ACTION_SERVER_OPAQUE_U64S
-#define ACTION_SERVER_OPAQUE_U64S 786
+/* #464 postscript — was 786, below a real per-build value (a host probe of the
+ * same type measures 799). This file must be an upper bound over ALL per-build
+ * values; raised with margin, matching the C++ twin. NOT verified against a
+ * 32-bit NuttX build, where the true size is likely smaller — raised because
+ * 786 demonstrably failed the contract for one configuration, not because 816
+ * was measured anywhere. */
+#define ACTION_SERVER_OPAQUE_U64S 816
 #undef ACTION_CLIENT_OPAQUE_U64S
 #define ACTION_CLIENT_OPAQUE_U64S 2193
 /* Issue 0464 — this file is a hand-maintained SNAPSHOT, so the pairs below can

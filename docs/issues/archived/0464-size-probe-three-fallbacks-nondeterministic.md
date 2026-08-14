@@ -286,3 +286,42 @@ NROS_EXECUTOR_SIZE"`.
 
 This is the same lesson as the unguarded macros, one layer out: the values that
 rot are the ones nothing compares against anything.
+
+### The C++ twin was stale too — a different constant, the same shape
+
+The postscript above said "the C++ twin was fixed correctly by #167; only the C
+side was left half-done". That was true of #167 and wrong as a statement about
+the file, because a LATER fix left the C++ twin behind in its turn.
+
+`nros-build-helpers/src/cpp.rs` states the invariant:
+
+```rust
+// … issue 0436 added the 8-byte handle `tag` … so the overhead is 16.
+const CPP_CONTEXT_OVERHEAD: usize = 16;
+let storage_bytes = probe_executor.max(8) + CPP_CONTEXT_OVERHEAD;
+```
+
+The snapshot encoded `98304 - 98296 = 8` — the PRE-0436 overhead. So if the
+fallback fired, the C++ side allocated 8 bytes too few, and the bytes it ran
+past were the handle `tag` whose entire purpose is turning a mixed-up executor
+handle into a clean error rather than memory corruption. Corrected to 98312 and
+asserted: the header now checks
+`NROS_CPP_EXECUTOR_STORAGE_SIZE >= NROS_EXECUTOR_SIZE + 16`, tripwired by
+restoring 98304.
+
+Also raised in BOTH twins: `ACTION_SERVER_OPAQUE_U64S` / its C++ counterpart
+were 786, below a real per-build value (a host probe of the same type measures
+799) against a file whose contract is "a safe UPPER BOUND … above the largest
+per-build value". Raised to 816 with margin. Stated plainly in both files: that
+is NOT verified on a 32-bit NuttX target, where the true size is likely smaller
+— it is raised because 786 demonstrably failed the contract for one real
+configuration, not because 816 was measured.
+
+Both fallbacks were re-checked to still agree with each other on every shared
+macro (`NROS_EXECUTOR_SIZE`, `NROS_GUARD_CONDITION_SIZE`, `NROS_PUBLISHER_SIZE`,
+`NROS_SERVICE_CLIENT_SIZE`, …), and both compile clean.
+
+Three fixes in a row now — #167's C half, 0436's C++ half, and the action-server
+bound — all the same failure: **a hand-maintained number left behind by a change
+to the thing it was derived from.** The assertions are the cheap part; noticing
+that a snapshot has no way to know it went stale is the point.
