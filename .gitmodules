@@ -18,7 +18,14 @@
 	url = https://github.com/jerry73204/lwip.git
 [submodule "third-party/threadx/kernel"]
 	path = third-party/threadx/kernel
-	url = https://github.com/eclipse-threadx/threadx.git
+	url = https://github.com/NEWSLabNTU/threadx.git
+	branch = nros-lp64-ulong
+	# NEWSLabNTU/threadx forks eclipse-threadx/threadx for one patch the
+	# upstream linux/gnu port needs on any LP64 host that is not x86_64:
+	# `tx_port.h` keyed LONG/ULONG narrowing and ALIGN_TYPE on `__x86_64__`,
+	# so on aarch64/riscv64 ULONG silently became 64-bit and ALIGN_TYPE fell
+	# back to it — truncating every pointer a byte-pool block stores. Keyed
+	# on `__LP64__` instead. Upstream issue eclipse-threadx/threadx#532.
 [submodule "third-party/threadx/netxduo"]
 	path = third-party/threadx/netxduo
 	url = https://github.com/NEWSLabNTU/netxduo.git
