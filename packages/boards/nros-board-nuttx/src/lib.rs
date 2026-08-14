@@ -292,42 +292,15 @@ where
     }
 }
 
-/// phase-281 W3-nuttx (RFC-0015 Model 1) — per-tier multi-task NuttX entry.
-///
-/// The multi-tier sibling of [`run_entry`]: opens the ONE RMW session, then
-/// runs one [`nros::Executor`] per [`nros_platform::TierSpec`] over that shared
-/// session. NuttX ships `std` and its zenoh-pico build sets
-/// `Z_FEATURE_MULTI_THREAD = 1` (`platforms/nuttx/nros-platform.toml`
-/// `[platform.nuttx]`), so `std::thread` maps onto NuttX pthreads and this
-/// mirrors the **native posix** [`nros_board_linux`] `run_tiers` (a scoped
-/// thread per tier over one session) rather than the FFI k_thread shim the
-/// Zephyr / bare-metal boards need.
-///
-/// ## Ordering (issue #144 — the interest-handshake race)
-///
-/// zenoh-pico entity declares carry an interest handshake; two threads that
-/// declare concurrently race it, and the losing publisher's write filter can
-/// stay closed (every put silently dropped). To avoid it we run the **boot
-/// tier's `setup` FIRST on the boot task** (its declares finish before any
-/// other tier starts), THEN spawn the remaining tiers. A spawned tier's `setup`
-/// overlaps only the boot tier's *spin* (keepalives / data, not declares) — the
-/// two-tier demo is therefore race-free. (For the single-tier deploy the
-/// byte-identical [`run_entry`] path is used instead.)
-///
-/// `setup` is `Fn` (invoked once per tier) + `Sync` (spawned tiers share
-/// `&setup`); it must register entities only — this fn owns each tier's
-/// `active_groups` filter + the spin loop. Blocks forever (the boot tier's spin
-/// never returns); returns only if the boot tier's `setup` fails before spin.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
-/// phase-296 W5.9 — NuttX kernel sporadic server, self-applied on the
-/// CALLING thread. Defined in the board seam C file (`nuttx_run_tiers.c`,
-/// compiled by the board crate's build.rs) so `struct sched_param`'s
-/// config-gated sporadic fields are laid out per THIS kernel's config (the
-/// #131 layout-mirror trap avoided). Returns 1 when the kernel accepted
-/// SCHED_SPORADIC, 0 otherwise (no CONFIG_SCHED_SPORADIC / no policy
-/// declared / kernel rejection — the C side logs the marker or the loud
-/// fallback; the executor's cooperative Sporadic SchedContext remains the
-/// enforcement either way).
+// phase-296 W5.9 — NuttX kernel sporadic server, self-applied on the
+// CALLING thread. Defined in the board seam C file (`nuttx_run_tiers.c`,
+// compiled by the board crate's build.rs) so `struct sched_param`'s
+// config-gated sporadic fields are laid out per THIS kernel's config (the
+// #131 layout-mirror trap avoided). Returns 1 when the kernel accepted
+// SCHED_SPORADIC, 0 otherwise (no CONFIG_SCHED_SPORADIC / no policy
+// declared / kernel rejection — the C side logs the marker or the loud
+// fallback; the executor's cooperative Sporadic SchedContext remains the
+// enforcement either way).
 #[cfg(target_os = "nuttx")]
 unsafe extern "C" {
     fn nros_nuttx_apply_current_sporadic(
@@ -339,14 +312,14 @@ unsafe extern "C" {
     ) -> i32;
 }
 
-/// phase-296 W5.11 — NuttX SMP core affinity (the placement dim), self-applied
-/// on the CALLING thread. Defined in the board seam C file (`nuttx_run_tiers.c`)
-/// so `cpu_set_t` / `pthread_setaffinity_np` lay out per THIS kernel's config
-/// (config-gated on CONFIG_SMP — the #131 layout trap avoided; Rust never
-/// mirrors the set). Returns 1 when the kernel accepted the pin, 0 otherwise
-/// (unpinned tier / no CONFIG_SMP / rejection — the C side logs the accept
-/// marker or the loud fallback note). The ABI carried `core_plus1` since W2 but
-/// had NO consumer before this — a declared `core` was silently dropped.
+// phase-296 W5.11 — NuttX SMP core affinity (the placement dim), self-applied
+// on the CALLING thread. Defined in the board seam C file (`nuttx_run_tiers.c`)
+// so `cpu_set_t` / `pthread_setaffinity_np` lay out per THIS kernel's config
+// (config-gated on CONFIG_SMP — the #131 layout trap avoided; Rust never
+// mirrors the set). Returns 1 when the kernel accepted the pin, 0 otherwise
+// (unpinned tier / no CONFIG_SMP / rejection — the C side logs the accept
+// marker or the loud fallback note). The ABI carried `core_plus1` since W2 but
+// had NO consumer before this — a declared `core` was silently dropped.
 #[cfg(target_os = "nuttx")]
 unsafe extern "C" {
     fn nros_nuttx_apply_current_affinity(name: *const core::ffi::c_char, core_plus1: u32) -> i32;
@@ -448,6 +421,40 @@ fn apply_tier_affinity(tier: &nros_platform::TierSpec<'_>) {
 #[inline]
 fn apply_tier_affinity(_tier: &nros_platform::TierSpec<'_>) {}
 
+// issue 0579 / phase-358 W4 — this doc block and the `#[cfg]` below it were
+// STRANDED ~150 lines above, before the `apply_tier_*` extern blocks that got
+// inserted between them and this fn. Attributes bind to the NEXT item, so the
+// cfg was guarding an `unsafe extern "C"` block and `run_tiers` — which uses
+// `println!` and threads — was compiled UNCONDITIONALLY. It has not bitten
+// because this crate is workspace-excluded and only ever built for NuttX. The
+// rustdoc `unused doc comment` error on those extern blocks was the symptom.
+/// phase-281 W3-nuttx (RFC-0015 Model 1) — per-tier multi-task NuttX entry.
+///
+/// The multi-tier sibling of [`run_entry`]: opens the ONE RMW session, then
+/// runs one [`nros::Executor`] per [`nros_platform::TierSpec`] over that shared
+/// session. NuttX ships `std` and its zenoh-pico build sets
+/// `Z_FEATURE_MULTI_THREAD = 1` (`platforms/nuttx/nros-platform.toml`
+/// `[platform.nuttx]`), so `std::thread` maps onto NuttX pthreads and this
+/// mirrors the **native posix** [`nros_board_linux`] `run_tiers` (a scoped
+/// thread per tier over one session) rather than the FFI k_thread shim the
+/// Zephyr / bare-metal boards need.
+///
+/// ## Ordering (issue #144 — the interest-handshake race)
+///
+/// zenoh-pico entity declares carry an interest handshake; two threads that
+/// declare concurrently race it, and the losing publisher's write filter can
+/// stay closed (every put silently dropped). To avoid it we run the **boot
+/// tier's `setup` FIRST on the boot task** (its declares finish before any
+/// other tier starts), THEN spawn the remaining tiers. A spawned tier's `setup`
+/// overlaps only the boot tier's *spin* (keepalives / data, not declares) — the
+/// two-tier demo is therefore race-free. (For the single-tier deploy the
+/// byte-identical [`run_entry`] path is used instead.)
+///
+/// `setup` is `Fn` (invoked once per tier) + `Sync` (spawned tiers share
+/// `&setup`); it must register entities only — this fn owns each tier's
+/// `active_groups` filter + the spin loop. Blocks forever (the boot tier's spin
+/// never returns); returns only if the boot tier's `setup` fails before spin.
+#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
 pub fn run_tiers<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
     tiers: &[nros_platform::TierSpec<'_>],
@@ -535,13 +542,18 @@ where
     // rest: this guest's stderr does not reach the serial console.
     println!(
         "nros: boot tier `{}` (session owner) — groups {:?}, class {:?}, \
-         budget {:?} us, period {:?} us, spin {} us",
+         budget {:?} us, period {:?} us, spin {} us, priority {}",
         boot_tier.name,
         boot_tier.groups,
         boot_tier.class,
         boot_tier.budget_us,
         boot_tier.period_us,
-        boot_tier.spin_period_us
+        boot_tier.spin_period_us,
+        // issue 0579 — the EFFECTIVE priority, so "accepted and dropped" is
+        // visible from the console instead of needing a crash dump's tier
+        // table to notice. `0` means the tier declared none and the thread
+        // keeps whatever the init task was started with.
+        boot_tier.priority
     );
     let _ = std::io::stdout().flush();
     boot_crt.executor_mut().set_active_groups(boot_tier.groups);
@@ -697,6 +709,32 @@ where
         // declared `core` (safe here — a core pin, unlike the sporadic budget
         // above, does not cap CPU so it cannot starve the shared flush).
         apply_tier_affinity(boot_tier);
+        // issue 0579 — and its declared PRIORITY, for exactly the reason the
+        // affinity call above gives. `apply_tier_priority` was called from
+        // `nuttx_run_one_tier` only, so tiers[0] parsed its
+        // `[tiers.<name>.nuttx] priority`, baked it into the TierSpec, carried
+        // it to the board and dropped it.
+        //
+        // Dropping one number out of an ORDERING does not make that tier
+        // "default" — it silently reorders the set: a spawned tier declaring
+        // 105 outranks a boot tier that declared 110, the inverse of what the
+        // author wrote, with no diagnostic. It lands on the worst tier to get
+        // wrong, since the boot tier is the session owner whose spin drives the
+        // shared zenoh-pico flush.
+        //
+        // This is NOT issue 0246. That rule keeps the kernel SPORADIC SERVER
+        // off the session owner because a spent budget drops it to
+        // `sched_ss_low_priority` and stalls the shared flush — a mechanism
+        // that CAPS CPU. A plain `pthread_setschedparam` priority caps nothing,
+        // which is the same distinction the affinity comment draws, and
+        // `boot_is_budgeted` above keeps the budget off the owner independently.
+        //
+        // ThreadX takes this answer too (`nros_threadx_set_current_priority`,
+        // whose comment names the same inversion); Zephyr takes the other one,
+        // sorting so tiers[0] is the numerically-largest = lowest-priority tier
+        // and never needs to outrank anything (issue 0251). Two answers exist;
+        // this board now has one of them rather than neither.
+        apply_tier_priority(boot_tier);
         nuttx_spin_tier_forever(&mut boot_crt, boot_tier);
     });
 
