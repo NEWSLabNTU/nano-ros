@@ -4517,7 +4517,13 @@ doc-rmw-cffi:
         exit 0
     fi
     mkdir -p target/doxygen/rmw-cffi
-    (cd packages/rmw/cffi && doxygen Doxyfile)
+    # Issue 0581 — the Doxyfile lives with the ABI crate, not the shim crate.
+    # phase-321 W2.e moved the RMW SHIM crates into packages/rmw/; the ABI
+    # headers (and this Doxyfile, whose PROJECT_NAME is "nros rmw-cffi" and
+    # whose OUTPUT_DIRECTORY is target/doxygen/rmw-cffi) stayed in
+    # packages/core/nros-rmw-abi. The recipe followed the crates and the
+    # Doxyfile did not move with them.
+    (cd packages/core/nros-rmw-abi && doxygen Doxyfile)
     echo "rmw-cffi docs generated: target/doxygen/rmw-cffi/html/index.html"
 
 # Generate Doxygen for the platform vtable (porter-facing). Triggers a
@@ -4591,14 +4597,20 @@ book:
     set -e
     rm -rf target/doc target/doxygen
     # `nros::Executor`, `nros::Promise`, `nros::Node`, etc. only re-export
-    # under `cfg(any(rmw-zenoh, rmw-xrce, rmw-dds, rmw-cffi))`. Pass an
-    # rmw + platform feature combo so the deployed rustdoc actually shows
-    # the public-facing types (otherwise the reference stub's
-    # `[Executor](struct.Executor.html)` link 404s).
-    # nros-rmw-xrce is mutually exclusive with nros-rmw-zenoh (compile-
-    # time mutex on `nros`), so it's not part of this invocation.
+    # under an rmw feature, so pass an rmw + platform combo or the deployed
+    # rustdoc omits the public-facing types and the reference stub's
+    # `[Executor](struct.Executor.html)` link 404s.
+    #
+    # Issue 0581 — this said `rmw-zenoh` and had not compiled since the RMW
+    # backends moved behind the CFFI seam (RFC-0054): `nros` carries
+    # `rmw-cffi`, `rmw-cyclonedds`, `rmw-lending` and no `rmw-zenoh`, so cargo
+    # failed with "none of the selected packages contains this feature" before
+    # rustdoc ran — which also means `mdbook build` never ran, so a book-only
+    # change could not be previewed at all. The gate in `nros/src/lib.rs` is
+    # `#[cfg(feature = "rmw-cffi")]` today; the old comment's
+    # `rmw-xrce / rmw-dds` are gone with it.
     cargo doc --no-deps \
-        --features rmw-zenoh,platform-posix,ros-humble \
+        --features rmw-cffi,platform-posix,ros-humble,safety-e2e \
         -p nros \
         -p nros-rmw \
         -p nros-rmw-cffi \

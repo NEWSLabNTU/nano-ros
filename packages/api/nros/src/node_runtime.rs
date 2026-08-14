@@ -235,7 +235,7 @@ impl PublisherResolver for CellResolver<'_> {
 /// 1. [`from_executor`](Self::from_executor) wraps an open
 ///    [`Executor`].
 /// 2. [`register_node`](Self::register_node) builds the
-///    component's `State`, runs [`Node::register`] over an
+///    component's `State`, runs [`Node::register`](crate::node::Node::register) over an
 ///    internal [`NodeRuntime`] adapter that materialises nodes /
 ///    pubs / subs / timers on the real executor, and wires each
 ///    subscription + timer callback to dispatch into
@@ -281,8 +281,8 @@ impl ExecutorNodeRuntime {
     /// `TierSpec`) so `nros` needs no board/platform dependency; a board passes
     /// `tier.class`, `tier.period_us`, … straight through.
     ///
-    /// `real_time` + `budget_us` + `period_us` → [`SchedClass::Sporadic`];
-    /// `best_effort` → [`SchedClass::BestEffort`]; `time_triggered` +
+    /// `real_time` + `budget_us` + `period_us` → [`SchedClass::Sporadic`](crate::SchedClass::Sporadic);
+    /// `best_effort` → [`SchedClass::BestEffort`](crate::SchedClass::BestEffort); `time_triggered` +
     /// `period_us` → the cyclic dispatcher (major frame = period, window =
     /// `budget_us` or the whole frame); `deadline_us` sets the SC deadline and
     /// `deadline_policy` its action. A tier with no class/budget/deadline
@@ -321,10 +321,10 @@ impl ExecutorNodeRuntime {
         self.components.len()
     }
 
-    /// Register a [`Node`] (which must also be
+    /// Register a [`Node`](crate::node::Node) (which must also be
     /// [`ExecutableNode`]) into this runtime. Builds the
     /// component's `State` (via [`ExecutableNode::init`]) and
-    /// walks [`Node::register`] over the live executor — every
+    /// walks [`Node::register`](crate::node::Node::register) over the live executor — every
     /// declared node / pub / sub / timer materialises as a real
     /// executor handle, and subscription + timer callbacks are wired
     /// to dispatch into [`ExecutableNode::on_callback`].
@@ -1565,7 +1565,7 @@ where
 /// Phase 257 (W0-B) — C-ABI typed component install. Recovers the shared `Executor`
 /// from the foreign typed entry's handle (`global_handle()` / `Node::executor_handle()`
 /// = the `_opaque` `*mut Executor<'static>`; cf. nros-c `get_executor_from_ptr`) and registers
-/// `C` on it via [`register_node_borrowed`]. The component's `ComponentCell` is kept
+/// `C` on it via `register_node_borrowed` (private helper). The component's `ComponentCell` is kept
 /// alive by the executor's own callback `Arc` clones (phase-257 D1), so this drops the
 /// returned cell. Returns `0` on success, `-1` on a null handle or a registration error.
 ///

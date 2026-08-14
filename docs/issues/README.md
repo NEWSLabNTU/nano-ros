@@ -659,6 +659,21 @@ matches guard CONSTRUCTS). Corrections: the list of fifteen was stale (three CPP
 zero" poisoning the artifact at link) deliberately NOT done — split out as **#578**. See `archived/0472-*`.
 (2026-08-15)
 
+RESOLVED 2026-08-15: **#581** — `just book` had been broken on main, and each failure hid the next.
+(1) `--features rmw-zenoh` names a feature RFC-0054 retired when the backends moved behind the CFFI seam
+(`nros` has `rmw-cffi`, `rmw-cyclonedds`, `rmw-lending`), so cargo failed BEFORE rustdoc — and since
+`cargo doc` is the recipe's first step, `mdbook build` never ran either: a book-only change could not be
+previewed at all. (2) With that fixed, rustdoc surfaced EIGHT unresolved intra-doc links — one RFC-0073
+fallout (`PlatformClock::clock_ms`, retired for `clock_ns`), five unqualified (`Node`, `SchedClass::*` are
+not in scope in `node_runtime.rs`), two behind `safety-e2e` (correct links, feature not enabled — fixed by
+enabling it, which also documents the safety API rather than deleting the links). (3) Then a public doc
+linking a private `register_node_borrowed`. (4) Then `doc-rmw-cffi` pointing at `packages/rmw/cffi`, which
+has no Doxyfile: phase-321 W2.e moved the SHIM crates there while the ABI crate and its Doxyfile stayed in
+`packages/core/nros-rmw-abi`. All four doxygen recipes checked; the other three resolve. Verified by output,
+not exit code: `nros/struct.Executor.html` exists, which is the link the recipe exists to keep from 404ing.
+Root cause of the rot: no lane runs `just book` — wiring it into one is the durable fix and is NOT done.
+See `archived/0581-*`. (2026-08-15)
+
 **#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
 manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared
 `anyhow = "1"` with zero uses, and `packages/cli`'s `[workspace.dependencies]` entry was inherited by
