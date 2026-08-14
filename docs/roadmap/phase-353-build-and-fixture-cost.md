@@ -86,12 +86,13 @@ against a stale number repeats what phase-343 W2 had to undo.
   `rustc-1.97.1` key sit 110 sub-key directories holding 18 identities, the top
   two being one compilation done 70 and 69 times.
 
-  Cause, and it is deliberate rather than a bug: `probe_key` hashes the REQUEST
-  (target, features, every set `NROS_*` knob plus Zephyr `$DOTCONFIG` knobs)
-  while `-C metadata` hashes what determines the ARTIFACT. Most knobs move
-  `ExecutorInlineStorage` in `nros-node` without touching `nros-core`, so they
-  split the directory without splitting the artifact. That breadth is issue
-  0528's fix.
+  Cause: `probe_key` hashes the REQUEST (target, features, every set `NROS_*`
+  knob plus Zephyr `$DOTCONFIG` knobs) while `-C metadata` hashes what
+  determines the ARTIFACT.
+
+  **Corrected 2026-08-15 by W4's evidence.** This entry first said the split
+  came from sizing knobs moving `ExecutorInlineStorage`. That was reasoning, not
+  measurement, and it is wrong about the dominant population — see W4.
 
   **Direction 3 of the issue is already DONE** — phase-340 W3 normalised the
   `--target` split (gate `check-cargo-target-spelling`). Direction 1 now has a
@@ -139,37 +140,82 @@ restated against post-340/343 disk figures so a future runner is sized correctly
 
 ## W4 — Collapse the probe dir's over-keying (#446; opened by W1)
 
-W1's measurement makes this the phase's largest contained prize: **110 probe
+**Status (2026-08-15). SAFETY NET + DIAGNOSIS LANDED; the narrowing itself is
+NOT done and now has evidence behind it.**
+
+W1's measurement made this the phase's largest contained prize: **110 probe
 sub-directories holding 18 distinct `nros-core` identities, 37 GB**, where cargo
 itself says most of those artifacts are interchangeable.
 
-The constraint comes first and is absolute: **issue 0528's invariant must
-hold.** A knob that CAN change a probed size must still split the key, or the
-failure returns as order-dependent corruption — a 4-CBS leaf poisoning a 16-CBS
-one into `EXECUTOR_OPAQUE_U64S too small`, which survives a clean rebuild of the
-failing leaf because the poisoned directory is the shared one.
+### The constraint, first
 
-So the question is NOT "share more". It is **which `NROS_*` knobs actually reach
-the probed types**. `knob_identity()` takes every `NROS_*` in the environment
-plus the Zephyr `$DOTCONFIG` lines, on the stated grounds that an
-unknown-but-set knob should key the probe rather than silently share. That is
-the right default for an UNKNOWN knob; it is not obviously right for one whose
-reach is known.
+**Issue 0528's invariant must hold.** A knob that CAN change a probed size must
+still split the key, or the failure returns as order-dependent corruption — a
+4-CBS leaf poisoning a 16-CBS one into `EXECUTOR_OPAQUE_U64S too small`, which
+survives a clean rebuild of the failing leaf because the poisoned directory is
+the shared one.
 
-Two shapes, in order of preference:
+**Landed: that reproduction is now a test**, not a memory
+(`nros-sizes-build`): `zephyr_dotconfig_sizing_knob_splits_the_probe_key`
+(two `$DOTCONFIG`s differing only in `CONFIG_NROS_EXECUTOR_MAX_CBS`),
+`env_sizing_knob_splits_the_probe_key` (the env route, issue 0460), and
+`identical_inputs_share_a_probe_key` — the control, without which a key that
+split on everything would pass the first two and be useless.
 
-1. **Narrow the knob set per knob, by argument.** Each knob removed from the key
-   needs a stated reason it cannot reach a probed size. Slow, safe, and it
-   degrades gracefully — an unlisted knob keeps today's behaviour.
-2. **Key on the probed OUTPUT rather than the request.** Two requests yielding
-   identical sizes could share regardless of spelling. More invasive, and needs
-   care about when the sizes are known relative to when the directory is chosen.
+Verified by sabotage: deleting the knob half of `probe_key` fails both
+reproductions with
+`a 4-CBS and a 16-CBS Zephyr leaf landed on the SAME probe key — issue 0528 is
+back`, while the control still passes. Restored, 5/5 green.
+
+### The diagnosis, which needed the key to be attributable
+
+The key is an opaque FNV hash and the directories recorded nothing, so the 110
+dirs could not be attributed to target, features or knobs without re-deriving
+every consumer's build. **A key that cannot be attributed cannot be narrowed**,
+so each probe dir now writes `nros-probe-key-inputs.txt` when it is created —
+write-once, diagnostic only, never an input to the key it describes.
+
+The first such record answered the question immediately. 100 of the 110 sub-keys
+share ONE target triple, and the knob list looks like this:
+
+```
+target   x86_64-unknown-linux-gnu
+features alloc,default,rmw-cffi,std
+knob     NROS_CARGO_FLAGS=--locked
+knob     NROS_C_INCLUDE=/home/aeon/repos/nano-ros/packages/api/nros-c/include
+knob     NROS_REPO_DIR=/home/aeon/repos/nano-ros
+knob     NROS_ZEPHYR_BUILD_ROOT=/tmp/nros-build-aeon/zephyr
+knob     NROS_ZEPHYR_CCACHE_DIR=/tmp/nros-build-aeon/ccache
+   … 11 more, nearly all absolute paths
+```
+
+**The dominant splitter is absolute PATHS**, set by `activate.sh` — not sizing
+knobs. `knob_identity()` sweeps every `NROS_*` in the environment, and this
+environment is mostly path plumbing. A path cannot change a compiled size, so
+these split the directory while cargo says the artifact is identical.
+
+This is the class CLAUDE.md already names as issue 0491: *never fingerprint on a
+PATH variable — cargo compares an env value as TEXT, and one directory has three
+spellings here.* The same defect, one layer over, in a key rather than a
+`rerun-if-env-changed`.
+
+### What the narrowing should be, and what it must not be
+
+**Not** "exclude paths". `NROS_BOARD_TOML` is a path whose CONTENT carries
+sizing knobs, so a blanket path rule would reintroduce 0528 by a new route.
+
+The shape that inverts the risk correctly is an explicit **denylist with a
+stated reason per entry** — environment plumbing that provably cannot reach a
+probed size (`NROS_REPO_DIR`, `NROS_*_INCLUDE`, `NROS_*_SRC`,
+`NROS_ZEPHYR_CCACHE_*`, `NROS_ZEPHYR_BUILD_ROOT`, `NROS_CARGO_FLAGS`, the
+`NROS_ESP_IDF_*` pair). Everything unlisted keeps today's behaviour, so an
+unknown-but-set knob still keys the probe — which is the property
+`knob_identity()`'s comment defends and which must survive.
 
 **Acceptance.** A measured reduction in probe sub-key count and disk, with the
-0528 reproduction — a 4-CBS and a 16-CBS leaf probing in BOTH orders — passing
-both ways. No change lands without that reproduction being run: it is the
-specific failure this keying exists to prevent, and it is invisible on a clean
-rebuild of the leaf that fails.
+0528 reproduction passing, plus a `nros-probe-key-inputs.txt` census showing
+which knobs still split. Each denylist entry carries its reason in the source.
+
 
 ---
 

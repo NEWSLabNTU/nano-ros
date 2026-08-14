@@ -275,6 +275,27 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
         PathBuf::from(out_dir).join(format!("sizes-probe-target-{rustc_slug}"))
     };
 
+    // phase-353 W4 — record WHY this directory exists.
+    //
+    // The key is an opaque FNV hash, so a probe dir carries no evidence of what
+    // produced it. Measured 2026-08-15: 110 sub-key directories under one rustc
+    // key holding 18 distinct `nros-core` identities, 37 GB — and there was no
+    // way to tell whether they were split by target, by features or by knobs
+    // without re-deriving every consumer's build. A key that cannot be
+    // attributed cannot be narrowed, so narrowing it starts here.
+    //
+    // Write-once (`create_new`): identical for a given key by construction, and
+    // never rewritten, so concurrent probes racing on the same directory cannot
+    // expose a partial read and no mtime is restamped (issue 0562).
+    //
+    // Diagnostic only — nothing reads this back. It must never become an input
+    // to the key it describes.
+    if let Err(e) = write_key_provenance(&probe_target_dir, &target, &forwarded) {
+        // A probe that cannot write its own note is not a probe that should
+        // fail; the sizes are what matter.
+        println!("cargo:warning=nros-sizes-build: could not record probe key inputs: {e}");
+    }
+
     let mut cmd = Command::new(&cargo);
     cmd.env("CARGO_TARGET_DIR", &probe_target_dir)
         .arg("build")
@@ -580,6 +601,35 @@ fn resolved_features_for(crate_name: &str) -> Result<Vec<String>, Error> {
 ///
 /// FNV-1a rather than a hashing crate: this crate is deliberately dependency-free
 /// so a build script can use it without dragging a graph along.
+/// Record the inputs behind a probe directory's key, next to the artifacts.
+///
+/// See the call site for why (phase-353 W4). Written once and never updated.
+fn write_key_provenance(dir: &Path, target: &str, features: &[String]) -> std::io::Result<()> {
+    use std::io::Write;
+    std::fs::create_dir_all(dir)?;
+    let mut body = String::new();
+    body.push_str("# nros sizes-probe key inputs (phase-353 W4). Diagnostic only.\n");
+    body.push_str("# Written once, when this directory was first created.\n");
+    body.push_str(&format!("rustc\t{}\n", rustc_version_slug()));
+    body.push_str(&format!("target\t{target}\n"));
+    let mut sorted: Vec<&str> = features.iter().map(String::as_str).collect();
+    sorted.sort_unstable();
+    body.push_str(&format!("features\t{}\n", sorted.join(",")));
+    for (k, v) in knob_identity() {
+        body.push_str(&format!("knob\t{k}={v}\n"));
+    }
+    match std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(dir.join("nros-probe-key-inputs.txt"))
+    {
+        Ok(mut f) => f.write_all(body.as_bytes()),
+        // Already recorded by whoever created the directory first.
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 fn probe_key(target: &str, features: &[String]) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut mix = |b: &[u8]| {
@@ -1064,6 +1114,134 @@ mod tests {
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Clear every knob the key reads, so a test states its own inputs rather
+    /// than inheriting the developer's shell. Returns what was removed.
+    fn clear_knob_env() -> Vec<(String, String)> {
+        let prior: Vec<(String, String)> = env::vars()
+            .filter(|(k, _)| k.starts_with("NROS_") || k == "DOTCONFIG")
+            .collect();
+        for (k, _) in &prior {
+            unsafe { env::remove_var(k) }
+        }
+        prior
+    }
+
+    fn restore_knob_env(prior: Vec<(String, String)>) {
+        for (k, _) in env::vars().filter(|(k, _)| k.starts_with("NROS_") || k == "DOTCONFIG") {
+            unsafe { env::remove_var(&k) }
+        }
+        for (k, v) in prior {
+            unsafe { env::set_var(k, v) }
+        }
+    }
+
+    /// Issue 0528, as a test rather than a memory.
+    ///
+    /// Two Zephyr leaves at the SAME (target, features) that disagree about
+    /// `CONFIG_NROS_EXECUTOR_MAX_CBS` must not share a probe directory. They did,
+    /// and the result was order-dependent corruption: whichever probed first
+    /// wrote `EXECUTOR_SIZE` for its own MAX_CBS, and in one order the 16-CBS
+    /// leaf then compiled against a constant sized for 4 and died on
+    /// `EXECUTOR_OPAQUE_U64S too small`. It survived a clean rebuild of the
+    /// failing leaf because the poisoned state was in the SHARED dir.
+    ///
+    /// This is the reproduction any narrowing of `knob_identity()` must keep
+    /// passing (phase-353 W4).
+    #[test]
+    fn zephyr_dotconfig_sizing_knob_splits_the_probe_key() {
+        let _g = env_lock();
+        let prior = clear_knob_env();
+
+        let dir = std::env::temp_dir().join(format!("nros-0528-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("tmp dir");
+        let four = dir.join("dotconfig-4");
+        let sixteen = dir.join("dotconfig-16");
+        // Only the MAX_CBS line differs; everything else is identical, so a
+        // difference in the key can come from nothing else.
+        std::fs::write(&four, "CONFIG_NROS_EXECUTOR_MAX_CBS=4\nCONFIG_OTHER=1\n").unwrap();
+        std::fs::write(
+            &sixteen,
+            "CONFIG_NROS_EXECUTOR_MAX_CBS=16\nCONFIG_OTHER=1\n",
+        )
+        .unwrap();
+
+        unsafe { env::set_var("DOTCONFIG", &four) }
+        let key_4 = probe_key("thumbv7m-none-eabi", &["rmw-zenoh".to_string()]);
+        unsafe { env::set_var("DOTCONFIG", &sixteen) }
+        let key_16 = probe_key("thumbv7m-none-eabi", &["rmw-zenoh".to_string()]);
+
+        assert_ne!(
+            key_4, key_16,
+            "a 4-CBS and a 16-CBS Zephyr leaf landed on the SAME probe key — \
+             issue 0528 is back, and it fails only in one build ORDER"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+        restore_knob_env(prior);
+    }
+
+    /// The env route to the same knob (issue 0460: the crate resolves these from
+    /// the env OR from `$DOTCONFIG`, so the key must watch both).
+    #[test]
+    fn env_sizing_knob_splits_the_probe_key() {
+        let _g = env_lock();
+        let prior = clear_knob_env();
+
+        let bare = probe_key("x86_64-unknown-linux-gnu", &[]);
+        unsafe { env::set_var("NROS_EXECUTOR_MAX_CBS", "16") }
+        let with_knob = probe_key("x86_64-unknown-linux-gnu", &[]);
+        assert_ne!(
+            bare, with_knob,
+            "setting NROS_EXECUTOR_MAX_CBS did not change the probe key"
+        );
+
+        restore_knob_env(prior);
+    }
+
+    /// The CONTROL, and the reason the two tests above are worth anything.
+    ///
+    /// A key that split on everything would satisfy them and be useless — it is
+    /// what produces the 110 directories holding 18 identities that phase-353 W4
+    /// exists to reduce. So: identical inputs must COLLIDE, and feature ORDER
+    /// must not split.
+    #[test]
+    fn identical_inputs_share_a_probe_key() {
+        let _g = env_lock();
+        let prior = clear_knob_env();
+
+        let a = probe_key(
+            "x86_64-unknown-linux-gnu",
+            &["rmw-zenoh".into(), "std".into()],
+        );
+        let b = probe_key(
+            "x86_64-unknown-linux-gnu",
+            &["rmw-zenoh".into(), "std".into()],
+        );
+        assert_eq!(a, b, "the same inputs produced two different probe keys");
+
+        // Sorted internally, so order is not an input.
+        let reordered = probe_key(
+            "x86_64-unknown-linux-gnu",
+            &["std".into(), "rmw-zenoh".into()],
+        );
+        assert_eq!(
+            a, reordered,
+            "feature ORDER split the probe key — that is a directory per spelling"
+        );
+
+        // A knob that is not set at all must not be conjured into the key.
+        let c = probe_key(
+            "x86_64-unknown-linux-gnu",
+            &["rmw-zenoh".into(), "std".into()],
+        );
+        assert_eq!(
+            a, c,
+            "the key is not stable across calls with identical inputs"
+        );
+
+        restore_knob_env(prior);
     }
 
     #[test]
