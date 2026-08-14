@@ -608,6 +608,18 @@ confirmed to fail without the fix. NOT swept: whether another `build.rs` in the 
 the stamp cannot see — third time this list has been found narrower than the build.
 See `archived/0561-*`. (2026-08-14)
 
+RESOLVED 2026-08-15 (not a live hole): **#578** — I split this out of #472's item 2 claiming that a `0` size
+probe emits a `1`-wide opaque macro with only a build-script warning against linking it, and proposed 0360's
+variant-symbol poison. Checked before implementing, and the premise fails three ways: (a) on probe-zero
+`generate_config` returns BEFORE writing the per-build header, so a C/C++ consumer resolves the committed
+stub and hits its `#error` at COMPILE time — earlier than the proposed link failure, and the `1` never
+reaches a caller's `_opaque`; (b) `nros-c`'s `config` module and both executor asserts are `rmw-cffi`-gated,
+and probe-zero IS the no-`rmw-cffi` case, so the value has no Rust consumer either; (c) the docstring's
+fat-LTO-probes-zero case is historical — a release build with `lto = "fat"` + `rmw-cffi` now succeeds with
+zero such warnings, so the poison would have added risk for no gain. What remains worth attention is a
+DIFFERENT mechanism with an existing owner: the stub's `NROS_PLATFORM_NUTTX` arm includes a committed header
+that bypasses the probe — the file #464 caught rotted ~11 % low. See `archived/0578-*`. (2026-08-15)
+
 RESOLVED 2026-08-15: **#472** — thirteen of fifteen `*_OPAQUE_U64S` macros had no compile-time size check,
 so a probe that under-stated a size was a SHORT BUFFER written past in C rather than a build error. The naive
 fix is a no-op: the Rust consts are already `u64s_for::<T>()`, so asserting them against `size_of` is
