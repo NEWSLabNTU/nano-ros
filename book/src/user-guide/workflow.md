@@ -16,8 +16,10 @@ source ./activate.sh        # OR: direnv allow / source ./activate.fish
 nros setup native --rmw zenoh        # or qemu-arm-freertos, zephyr, …
 ```
 
-`nros setup` ships prebuilt toolchains per platform per RMW — see
-[Installation](../getting-started/installation.md).
+`nros setup` provides most components prebuilt per platform per RMW; a few
+without a seeded asset (notably `zenohd`, the default RMW's daemon) are built
+from source. `nros setup <board> --rmw <rmw> --dry-run` shows which is which on
+your host — see [Installation](../getting-started/installation.md).
 
 For multi-package workspaces (Pattern A — recommended for POSIX +
 mixed C / C++ / Rust deployments), put nano-ros and your packages

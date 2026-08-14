@@ -37,10 +37,15 @@ for users mid-migration from the pre-218 release-fetch shape.
 ### `nros setup [<board>] [--rmw <rmw>] [--tool <name>] [--source <name>] [--prefix <dir>] [--list] [--licenses] [--dry-run]`
 
 Provision the toolchain/SDK for a board. `nros setup` is the single
-canonical provisioning command — it ships **prebuilt toolchains per
-platform per RMW** (cross-compiler, emulator, RMW host daemon, SDK
-sources) from a pinned index into a shared store (`${NROS_HOME:-~/.nros}/sdk`). No
+canonical provisioning command. Most components are **prebuilt per platform
+per RMW** (cross-compiler, emulator, RMW host daemon, SDK sources), fetched
+from a pinned index into a shared store (`${NROS_HOME:-~/.nros}/sdk`). No
 hand-installed cross-toolchains; no ROS distro required.
+
+Packages are prebuilt where the index has a binary for your host and built
+from source otherwise; `zenohd` is the notable source build, and zenoh is the
+default `--rmw`. `--dry-run` prints the plan without fetching. Full explanation:
+[Installation](../getting-started/installation.md#provision-your-toolchain-with-nros-setup).
 
 ```sh
 nros setup native --rmw zenoh            # host build + zenoh router

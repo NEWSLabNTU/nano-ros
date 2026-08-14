@@ -59,11 +59,16 @@ source ./activate.sh        # OR: direnv allow / source ./activate.fish
 just setup-cli              # builds packages/cli/target/release/nros
 ```
 
-`nros setup` ships prebuilt toolchains per platform per RMW — the
+`nros setup` provides most components prebuilt per platform per RMW — the
 cross-compiler, emulator, RMW host daemon, and SDK sources (including the Zephyr
 west workspace + Zephyr SDK bits) are fetched from a pinned index into a shared
 store at `${NROS_HOME:-~/.nros}/sdk`. You do not hand-install a cross-toolchain, and you do not
 need ROS 2 installed.
+
+Packages are prebuilt where the index has a binary for your host and built from
+source otherwise — `zenohd` is the notable source build, and zenoh is the default
+`--rmw`. `--dry-run` prints the plan for your host. See
+[Installation](installation.md#provision-your-toolchain-with-nros-setup) for the full explanation.
 
 ## Step 1: Initialize Workspace (One-Time)
 

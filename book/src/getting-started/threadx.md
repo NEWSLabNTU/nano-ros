@@ -23,10 +23,15 @@ for the per-RMW cell status.
 ## Setup
 
 `nros setup` is the single canonical command to prepare a machine to build
-nano-ros for a board. It ships prebuilt toolchains per platform per RMW — the
+nano-ros for a board. Most components are prebuilt per platform per RMW — the
 cross-compiler, emulator, RMW host daemon, and SDK sources (the ThreadX/NetX
 sources, and for threadx-linux the POSIX-sim sources) are fetched from a pinned
 index into a shared store at `${NROS_HOME:-~/.nros}/sdk`. You do not need ROS 2 installed.
+
+Packages are prebuilt where the index has a binary for your host and built from
+source otherwise — `zenohd` is the notable source build, and zenoh is the default
+`--rmw`. `--dry-run` prints the plan for your host. See
+[Installation](installation.md#provision-your-toolchain-with-nros-setup) for the full explanation.
 
 Build the in-tree `nros` CLI (Phase 218):
 

@@ -13,7 +13,7 @@ own kernel build and you want to add ROS 2 communication.
 
 > **Prereqs.** Install the `nros` CLI once per machine, then run
 > `nros setup qemu-arm-nuttx --rmw <zenoh|xrce|cyclonedds>` (`--rmw`
-> defaults to `zenoh`). This fetches a prebuilt toolchain set into
+> defaults to `zenoh`). This fetches a mostly-prebuilt toolchain set into
 > `${NROS_HOME:-~/.nros}/sdk` — the NuttX cross-compiler, the emulator, the NuttX
 > sources, and the RMW host daemon — so you do **not** hand-install
 > a cross-toolchain and do **not** need a ROS 2 install:

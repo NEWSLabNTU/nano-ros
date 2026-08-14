@@ -83,6 +83,20 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 # return once the nano-ros-sdk repo seeds zenohd-1.7.2-nros2 assets
 # (ci/nano-ros-sdk/scripts/build-zenohd.sh carries the same flag); until
 # then every host source-builds via the recipe below.
+# zenohd — SOURCE-ONLY, and the one that matters most for a first-time user:
+# zenoh is the DEFAULT rmw, so `nros setup native` (the book's headline board)
+# takes the source recipe below. The other two RMW daemons DO ship prebuilts
+# (`[tool.cyclonedds]`, `[tool.xrce-agent]`), which is why this reads as a
+# surprise rather than as the norm.
+#
+# `dist.<host>` is left out until a prebuilt asset is seeded on
+# NEWSLabNTU/nano-ros-sdk — same state as `[tool.sccache]` below, and the same
+# remedy. The rebuild carries `--features zenoh/transport_serial`, so an
+# upstream zenohd release cannot be used as the asset unmodified.
+#
+# Issue 0374 / phase-355 W1: the book used to promise prebuilts without
+# qualification. It now points at `--dry-run` for the per-host answer rather
+# than enumerating, so seeding an asset here needs no doc edit.
 [tool.zenohd]
 version = "1.7.2-nros2"
 upstream = "1.7.2" # = source.ref
