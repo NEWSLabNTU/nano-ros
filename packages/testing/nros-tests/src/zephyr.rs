@@ -969,22 +969,25 @@ pub fn get_prebuilt_zephyr_example(
         }
     };
 
-    let binary = crate::fixtures::require_prebuilt_binary_fresh_zephyr(&binary_path)?;
-    // Honor the same bypass the sibling fixture guards do (native/cmake/rust
-    // paths all check this) — an mtime-heuristic false-positive (#147) shouldn't
-    // block a run the caller knows was built another way. Previously this guard
-    // omitted the check, so a content-current image with a newer-mtime source
-    // (e.g. an inert edit) wrongly aborted.
-    if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_none()
-        && is_binary_stale(&binary, example_name)
-    {
-        return Err(TestError::BuildFailed(format!(
-            "Zephyr fixture binary is stale: {}\n\
-             Run `just zephyr build-fixtures` before running Zephyr tests \
-             (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
-            binary.display()
-        )));
-    }
+    // Issue 0466 — the source-candidate check used to live HERE, as a second
+    // block after the `.d` guard, and only here. That is why every workspace
+    // entry resolved through `binaries/mod.rs` (params, lifecycle, qos, safety,
+    // multihost, the three realtime ones, and the C/C++/mixed entries) got the
+    // `.d` guard alone. Both halves now live inside
+    // `require_prebuilt_binary_fresh_zephyr`, one spelling, so a new resolver
+    // cannot pick up half the coverage by accident.
+    let decoded = decode_alias(example_name);
+    let leaf = format!("examples/{}", example_path_for_name(example_name));
+    let conf_files = conf_files_for_example(example_name);
+    let binary = crate::fixtures::require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        crate::fixtures::ZephyrLeafSource {
+            dir: &leaf,
+            lang: decoded.map(|(lang, _, _, _)| lang),
+            rmw: decoded.map(|(_, _, rmw, _)| rmw),
+            conf_files: conf_files.as_deref(),
+        },
+    )?;
     eprintln!("Using prebuilt Zephyr binary: {}", binary.display());
     Ok(binary)
 }
@@ -1036,21 +1039,19 @@ pub fn get_prebuilt_zephyr_workspace_entry() -> TestResult<PathBuf> {
         "{ZEPHYR_WORKSPACE_ENTRY_BUILD_DIR}/zephyr/zephyr.exe"
     ));
 
-    let binary =
-        crate::fixtures::require_prebuilt_binary_fresh_zephyr(&binary_path).map_err(|_| {
-            TestError::BuildFailed(format!(
-                "Zephyr workspace Entry binary not found: {}\n\
-             Build the workspace fixtures first: `just zephyr build-fixtures`.",
-                binary_path.display()
-            ))
-        })?;
-    if is_binary_stale(&binary, ZEPHYR_WORKSPACE_ENTRY_SRC_KEY) {
-        return Err(TestError::BuildFailed(format!(
-            "Zephyr workspace Entry binary is stale: {}\n\
-             Run `just zephyr build-fixtures` before running Zephyr tests.",
-            binary.display()
-        )));
-    }
+    // Issue 0466 — one spelling; see `get_prebuilt_zephyr_example`. The leaf is
+    // the WHOLE `workspaces/rust` tree rather than `src/zephyr_entry`, which is
+    // what `ZEPHYR_WORKSPACE_ENTRY_SRC_KEY` has always meant: the entry pulls in
+    // sibling node packages from that workspace, so watching only its own dir
+    // would under-watch. Errors are no longer remapped — `stale_error` names the
+    // input that moved, which "binary not found" threw away.
+    let binary = crate::fixtures::require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        crate::fixtures::ZephyrLeafSource::zenoh(
+            &format!("examples/{ZEPHYR_WORKSPACE_ENTRY_SRC_KEY}"),
+            "rust",
+        ),
+    )?;
     eprintln!(
         "Using prebuilt Zephyr workspace Entry binary: {}",
         binary.display()
@@ -1058,8 +1059,6 @@ pub fn get_prebuilt_zephyr_workspace_entry() -> TestResult<PathBuf> {
     Ok(binary)
 }
 
-/// Return true if the built binary is older than the example or shared nros
-/// sources that are linked into Zephyr fixtures.
 /// Whether a `packages/core/<crate>` subdir should be watched for staleness
 /// of a fixture whose language API crate is `lang_api_crate` (`Some("nros-c")`
 /// for C, `Some("nros-cpp")` for C++, `Some("nros")` for Rust, `None` if the
@@ -1072,7 +1071,38 @@ fn core_crate_is_watched(crate_name: &str, lang_api_crate: Option<&str>) -> bool
     !is_other_lang_api
 }
 
-fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
+/// The one implementation of "is this Zephyr image older than the sources it was
+/// built from", keyed on a source DIRECTORY rather than an example alias.
+///
+/// Issue 0466 — this used to be reachable only through an `is_binary_stale`
+/// wrapper keyed on a `decode_alias` NAME, so it covered the per-example leaves and
+/// exactly ONE workspace entry. Every other entry (params, lifecycle, qos,
+/// safety, multihost, the three realtime ones, and the C/C++/mixed entries) went
+/// through `require_prebuilt_binary_fresh_zephyr` alone, which watches only the
+/// cargo staticlib's `.d`. Measured on `build-ws-rs-qos-entry-zenoh`: that `.d`
+/// lists 529 deps and the only `.conf` among them is the GENERATED
+/// `<build_root>/zephyr/.conf` — the leaf's own `prj.conf`, the file an author
+/// edits, appears ZERO times. So raising `CONFIG_NROS_MAX_QUERYABLES` left every
+/// image "fresh" with the old value compiled in, and the qos and lifecycle cells
+/// failed with product-level assertions that sent two sessions (0460, then this
+/// one) looking at the product instead of the image.
+///
+/// Worse for C and C++: `zephyr_staticlib_dep_file` looks for `librustapp.d`, a
+/// C-only image has none, and the helper then returns `Ok` — those entries had
+/// NO freshness check at all, only an existence check.
+///
+/// `lang` is the alias language token (`"c"` / `"cpp"` / `"rust"`), used only to
+/// drop the OTHER languages' API crates from the watch set; `None` watches every
+/// core crate, which never under-watches. `rmw` likewise narrows to one backend
+/// package, `None` watches all three. `conf_files` is the `;`-separated
+/// `-DCONF_FILE` value when the leaf uses one.
+pub(crate) fn source_dir_is_stale(
+    binary_path: &Path,
+    example_dir: &Path,
+    lang: Option<&str>,
+    rmw: Option<&str>,
+    conf_files: Option<&str>,
+) -> bool {
     let Ok(binary_mtime) = binary_path.metadata().and_then(|m| m.modified()) else {
         // Can't stat the binary — assume stale so we rebuild and get a
         // real error instead of reusing something mysterious.
@@ -1080,9 +1110,6 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
     };
 
     let root = project_root();
-    let example_dir = root
-        .join("examples")
-        .join(example_path_for_name(example_name));
 
     // The example-local set catches app source, Kconfig overlays, and Rust
     // dependency changes. The package set catches shared nros backend/platform
@@ -1107,7 +1134,7 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
     // nros-platform-*, …) stays watched, and new crates are picked up
     // automatically; only the two non-matching language API crates are
     // dropped. `nros` = Rust API, `nros-c` = C API, `nros-cpp` = C++ API.
-    let lang_api_crate = match decode_alias(example_name).map(|(lang, _, _, _)| lang) {
+    let lang_api_crate = match lang {
         Some("c") => Some("nros-c"),
         Some("cpp") => Some("nros-cpp"),
         Some("rust") => Some("nros"),
@@ -1127,7 +1154,7 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
         // under-watches, at worst keeps the old over-broad behaviour).
         Err(_) => candidates.push(core_dir),
     }
-    match decode_alias(example_name).map(|(_, _, rmw, _)| rmw) {
+    match rmw {
         Some("cyclonedds") => candidates.push(root.join("packages/rmw/cyclonedds")),
         Some("xrce") => candidates.push(root.join("packages/rmw/xrce")),
         Some("zenoh") => candidates.push(root.join("packages/rmw/zenoh")),
@@ -1137,7 +1164,7 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
             candidates.push(root.join("packages/rmw/zenoh"));
         }
     }
-    if let Some(conf_files) = conf_files_for_example(example_name) {
+    if let Some(conf_files) = conf_files {
         for conf_file in conf_files.split(';') {
             candidates.push(example_dir.join(conf_file));
         }

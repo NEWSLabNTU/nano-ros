@@ -1030,6 +1030,41 @@ fn zephyr_staticlib_dep_file(build_root: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Which leaf a Zephyr image was built FROM — issue 0466.
+///
+/// A west-built `zephyr.exe` carries no usable back-pointer to its sources: it
+/// is linked from a staticlib plus kernel objects into a build root named by
+/// COORDINATE (`build-ws-rs-qos-entry-zenoh`), not by path. So the resolver has
+/// to say. Every resolver names its leaf, and
+/// [`require_prebuilt_binary_fresh_zephyr`] rejects a dir that does not exist
+/// rather than quietly watching nothing — a typo here would reinstate exactly
+/// the hole this closes.
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct ZephyrLeafSource<'a> {
+    /// Repo-relative leaf dir, e.g. `examples/workspaces/features/src/zephyr_rust_qos_entry`.
+    pub dir: &'a str,
+    /// `"c"` / `"cpp"` / `"rust"`; `None` watches every core API crate (the
+    /// mixed entry, which links all three).
+    pub lang: Option<&'a str>,
+    /// RMW token; `None` watches all three backend packages.
+    pub rmw: Option<&'a str>,
+    /// `;`-separated `-DCONF_FILE` value when the leaf uses one.
+    pub conf_files: Option<&'a str>,
+}
+
+impl<'a> ZephyrLeafSource<'a> {
+    /// The common case: a zenoh leaf of known language, west-default conf files
+    /// (`prj.conf` is already in the candidate set).
+    pub(crate) fn zenoh(dir: &'a str, lang: &'a str) -> Self {
+        Self {
+            dir,
+            lang: Some(lang),
+            rmw: Some("zenoh"),
+            conf_files: None,
+        }
+    }
+}
+
 /// Existence contract PLUS a detect-only staleness check for a Zephyr
 /// workspace-entry image (issue #147 / phase-278). `zephyr.exe` is LINKED by
 /// west from the cargo staticlib `librustapp.a` + C/kernel objects, so its own
@@ -1039,23 +1074,28 @@ fn zephyr_staticlib_dep_file(build_root: &Path) -> Option<PathBuf> {
 /// against the LINKED `zephyr.exe` mtime: a Rust source newer than the image
 /// means west never relinked. Reads the staticlib `.d` + `stat()`; never
 /// builds. Missing `.d` → existence-only fallback.
-pub(crate) fn require_prebuilt_binary_fresh_zephyr(zephyr_exe: &Path) -> TestResult<PathBuf> {
+pub(crate) fn require_prebuilt_binary_fresh_zephyr(
+    zephyr_exe: &Path,
+    src: ZephyrLeafSource<'_>,
+) -> TestResult<PathBuf> {
     let resolved = require_prebuilt_binary(zephyr_exe)?;
     if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_some() {
         return Ok(resolved);
     }
-    // `<build-root>/zephyr/zephyr.exe` → `<build-root>`.
-    let Some(build_root) = zephyr_exe.parent().and_then(Path::parent) else {
-        return Ok(resolved);
-    };
-    let (Some(dep_file), Ok(exe_mtime)) = (
-        zephyr_staticlib_dep_file(build_root),
-        fs::metadata(zephyr_exe).and_then(|m| m.modified()),
-    ) else {
-        return Ok(resolved);
-    };
     staleness::begin_probe();
-    if let Some(newer) = dep_file_newer_than(&dep_file, exe_mtime) {
+
+    // Half 1 — the cargo staticlib's `.d`. Watches the REAL dependency closure
+    // of the Rust half (529 entries for a workspace leaf, generated msg crates
+    // included), which no hand-written candidate list could enumerate. Absent
+    // for a C-only image, which is precisely why it cannot be the only half.
+    // `<build-root>/zephyr/zephyr.exe` → `<build-root>`. Every link in the chain
+    // is genuinely optional — a C-only image has no staticlib `.d` at all — so a
+    // miss anywhere just means half 1 has nothing to say, and half 2 answers.
+    if let Some(build_root) = zephyr_exe.parent().and_then(Path::parent)
+        && let Ok(exe_mtime) = fs::metadata(zephyr_exe).and_then(|m| m.modified())
+        && let Some(dep_file) = zephyr_staticlib_dep_file(build_root)
+        && let Some(newer) = dep_file_newer_than(&dep_file, exe_mtime)
+    {
         return Err(staleness::stale_error(
             "Zephyr fixture",
             zephyr_exe,
@@ -1064,6 +1104,39 @@ pub(crate) fn require_prebuilt_binary_fresh_zephyr(zephyr_exe: &Path) -> TestRes
              (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
         ));
     }
+
+    // Half 2 — issue 0466. The leaf's own AUTHORED sources: `prj.conf`, the
+    // board overlays, `CMakeLists.txt`, `src/`, plus the shared core and RMW
+    // crates. Half 1 sees none of them: measured on `build-ws-rs-qos-entry-zenoh`,
+    // the leaf's `prj.conf` appears ZERO times in the `.d`, whose only `.conf` is
+    // the build's own GENERATED one. That is how a `CONFIG_NROS_MAX_QUERYABLES`
+    // bump left every image "fresh" with the old value compiled in, and the qos
+    // and lifecycle cells failed with product-level assertions that sent two
+    // sessions looking at the product instead of the image (0460, then 0466).
+    // For a C or C++ entry there is no `.d` at all, so before this half those
+    // images were existence-checked and nothing more.
+    let src_dir = crate::project_root().join(src.dir);
+    if !src_dir.is_dir() {
+        // A resolver naming a dir that does not exist would watch NOTHING and
+        // silently reinstate the hole. Fail loudly instead.
+        return Err(TestError::BuildFailed(format!(
+            "Zephyr fixture {} declares source dir `{}`, which does not exist.\n\
+             A `ZephyrLeafSource` must name the leaf the image is built from \
+             (issue 0466).",
+            zephyr_exe.display(),
+            src.dir
+        )));
+    }
+    if crate::zephyr::source_dir_is_stale(&resolved, &src_dir, src.lang, src.rmw, src.conf_files) {
+        return Err(staleness::stale_error(
+            "Zephyr fixture",
+            zephyr_exe,
+            &src_dir,
+            "Run `just zephyr build-fixtures` first \
+             (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
+        ));
+    }
+
     staleness::record_fresh(zephyr_exe);
     Ok(resolved)
 }
@@ -3160,7 +3233,16 @@ pub fn build_zephyr_rust_example_rmw(case: &str, rmw: Rmw) -> TestResult<PathBuf
         case,
         rmw.cmake_value()
     ));
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    let leaf = format!("examples/zephyr/rust/{case}");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource {
+            dir: &leaf,
+            lang: Some("rust"),
+            rmw: Some(rmw.cmake_value()),
+            conf_files: None,
+        },
+    )
 }
 
 /// phase-337 W2.f — the Zephyr Cortex-M witness (`mps2_an385`) leaf resolver.
@@ -3192,7 +3274,16 @@ pub fn build_zephyr_cortex_m_example(lang: &str, case: &str, rmw: Rmw) -> TestRe
         case,
         rmw.cmake_value()
     ));
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    let leaf = format!("examples/zephyr/{lang}/{case}");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource {
+            dir: &leaf,
+            lang: Some(lang),
+            rmw: Some(rmw.cmake_value()),
+            conf_files: None,
+        },
+    )
 }
 
 /// Phase 168.4 — collapsed-shape Zephyr C / C++ example resolver.
@@ -3212,7 +3303,16 @@ pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestR
         case,
         rmw.cmake_value()
     ));
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    let leaf = format!("examples/zephyr/{lang}/{case}");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource {
+            dir: &leaf,
+            lang: Some(lang),
+            rmw: Some(rmw.cmake_value()),
+            conf_files: None,
+        },
+    )
 }
 
 /// phase-263 C2d — the Zephyr (native_sim) C WORKSPACE embedded entry (talker + listener),
@@ -3221,7 +3321,10 @@ pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestR
 /// Rust workspace zephyr entry; consumed by `tests/entry_e2e.rs` (zephyr_c cell).
 pub fn build_zephyr_workspace_c_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-c-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/workspaces/c/src/zephyr_entry", "c"),
+    )
 }
 
 /// phase-263 C2c — the Zephyr (native_sim) C++ WORKSPACE embedded entry (talker + listener,
@@ -3230,7 +3333,10 @@ pub fn build_zephyr_workspace_c_entry() -> TestResult<PathBuf> {
 /// `tests/entry_e2e.rs` (zephyr_cpp cell).
 pub fn build_zephyr_workspace_cpp_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-cpp-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/workspaces/cpp/src/zephyr_entry", "cpp"),
+    )
 }
 
 /// phase-263 C2c-zephyr — the Zephyr (native_sim) MIXED WORKSPACE embedded entry (C talker +
@@ -3240,7 +3346,17 @@ pub fn build_zephyr_workspace_cpp_entry() -> TestResult<PathBuf> {
 /// `tests/entry_e2e.rs` (zephyr_mixed cell).
 pub fn build_zephyr_workspace_mixed_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-mixed-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        // The mixed entry links C, C++ AND Rust nodes, so `lang: None` —
+        // no language API crate may be dropped from the watch set.
+        ZephyrLeafSource {
+            dir: "examples/workspaces/mixed/src/zephyr_entry",
+            lang: None,
+            rmw: Some("zenoh"),
+            conf_files: None,
+        },
+    )
 }
 
 /// phase-276 W1 (#128) — the Zephyr (native_sim) PARAMETERISED Rust workspace Entry
@@ -3250,7 +3366,13 @@ pub fn build_zephyr_workspace_mixed_entry() -> TestResult<PathBuf> {
 /// zephyr.exe`; consumed by `tests/entry_e2e.rs` (zephyr_rust_params cell).
 pub fn build_zephyr_workspace_rust_params_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-rs-params-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh(
+            "examples/workspaces/features/src/zephyr_rust_params_entry",
+            "rust",
+        ),
+    )
 }
 
 /// phase-276 W3 (#128) — the Zephyr (native_sim) MANAGED (lifecycle) Rust workspace Entry
@@ -3261,7 +3383,13 @@ pub fn build_zephyr_workspace_rust_params_entry() -> TestResult<PathBuf> {
 pub fn build_zephyr_workspace_rust_lifecycle_entry() -> TestResult<PathBuf> {
     let binary_path =
         zephyr_build_root().join("build-ws-rs-lifecycle-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh(
+            "examples/workspaces/features/src/zephyr_rust_lifecycle_entry",
+            "rust",
+        ),
+    )
 }
 
 /// phase-276 W5 — the Zephyr (native_sim) QOS-OVERRIDE Rust workspace Entry
@@ -3272,7 +3400,13 @@ pub fn build_zephyr_workspace_rust_lifecycle_entry() -> TestResult<PathBuf> {
 /// consumed by `tests/entry_e2e.rs` (zephyr_rust_qos cell).
 pub fn build_zephyr_workspace_rust_qos_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-rs-qos-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh(
+            "examples/workspaces/features/src/zephyr_rust_qos_entry",
+            "rust",
+        ),
+    )
 }
 
 /// phase-276 W4 — the Zephyr (native_sim) E2E-SAFETY (CRC) Rust workspace Entry
@@ -3284,7 +3418,13 @@ pub fn build_zephyr_workspace_rust_qos_entry() -> TestResult<PathBuf> {
 /// consumed by `tests/entry_e2e.rs` (zephyr_rust_safety cell).
 pub fn build_zephyr_workspace_rust_safety_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-rs-safety-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh(
+            "examples/workspaces/safety/src/zephyr_rust_safety_entry",
+            "rust",
+        ),
+    )
 }
 
 /// phase-276 W6 — the Zephyr (native_sim) MULTIHOST robot1 (talker) Rust workspace
@@ -3298,7 +3438,10 @@ pub fn build_zephyr_workspace_rust_safety_entry() -> TestResult<PathBuf> {
 pub fn build_zephyr_workspace_rust_multihost_robot1_entry() -> TestResult<PathBuf> {
     let binary_path =
         zephyr_build_root().join("build-ws-rs-mh-robot1-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/workspaces/rust/src/zephyr_entry_robot1", "rust"),
+    )
 }
 
 /// phase-276 W2 / issue #128 half 2 — the Zephyr (native_sim) RT-TIERS Rust
@@ -3312,7 +3455,10 @@ pub fn build_zephyr_workspace_rust_multihost_robot1_entry() -> TestResult<PathBu
 pub fn build_zephyr_workspace_rust_realtime_entry() -> TestResult<PathBuf> {
     let binary_path =
         zephyr_build_root().join("build-ws-rs-realtime-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-rust/src/zephyr_entry", "rust"),
+    )
 }
 
 /// phase-281 W3b — the Zephyr (native_sim) RT-TIERS C++ workspace Entry
@@ -3327,7 +3473,10 @@ pub fn build_zephyr_workspace_rust_realtime_entry() -> TestResult<PathBuf> {
 pub fn build_zephyr_workspace_cpp_realtime_entry() -> TestResult<PathBuf> {
     let binary_path =
         zephyr_build_root().join("build-ws-cpp-realtime-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-cpp/src/zephyr_entry", "cpp"),
+    )
 }
 
 /// phase-281 W3c — the Zephyr (native_sim) RT-TIERS C workspace Entry
@@ -3341,7 +3490,10 @@ pub fn build_zephyr_workspace_cpp_realtime_entry() -> TestResult<PathBuf> {
 /// consumed by `tests/realtime_tiers_c_zephyr_e2e.rs`.
 pub fn build_zephyr_workspace_c_realtime_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-c-realtime-entry-zenoh/zephyr/zephyr.exe");
-    require_prebuilt_binary_fresh_zephyr(&binary_path)
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-c/src/zephyr_entry", "c"),
+    )
 }
 
 /// Phase 118.C — collapsed-shape ThreadX-RV64 C / C++ example resolver.

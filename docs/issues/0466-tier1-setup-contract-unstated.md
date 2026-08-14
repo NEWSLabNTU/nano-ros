@@ -466,3 +466,64 @@ let the ~10 entry resolvers name their leaf.
 This is the issue-0196 rule again ("build-side stale probes must watch the same
 inputs as test-side gates"), and it is the fourth gate found this year whose
 coverage was narrower than the rule it enforced.
+
+
+## FIXED 2026-08-15 — the two zephyr spellings are one, and every entry is covered
+
+The last section named the fix precisely and it held up: route
+`require_prebuilt_binary_fresh_zephyr` through the same candidate machinery
+`is_binary_stale` already implemented, taking a source DIR so the workspace
+entries can name their leaf.
+
+What landed:
+
+* `is_binary_stale(binary, example_name)` — the alias-keyed wrapper — is gone.
+  Its body is now `zephyr::source_dir_is_stale(binary, example_dir, lang, rmw,
+  conf_files)`, keyed on a directory. The alias decode moved to the two callers
+  that have an alias.
+* `require_prebuilt_binary_fresh_zephyr` takes a `ZephyrLeafSource { dir, lang,
+  rmw, conf_files }` and runs BOTH halves: the staticlib `.d` (the real cargo
+  dependency closure, which no hand-written list could enumerate) and the leaf
+  source candidates (`prj.conf`, boards, CMakeLists, src, shared core + rmw
+  crates). Neither subsumes the other, which is why the fix is a union and not a
+  replacement.
+* All 16 call sites name their leaf — 14 in `fixtures/binaries/mod.rs`, 2 in
+  `zephyr.rs`. A `dir` that does not exist is a HARD error, not a silent pass:
+  a typo there would watch nothing and reinstate the exact hole, which is the
+  failure mode this issue is about.
+
+### Verified by mutation, not by reading
+
+`tests/zephyr_leaf_staleness.rs` appends a marker to a leaf's `prj.conf`,
+asserts the RESOLVER now errors, restores the bytes, and asserts it stops. Both
+directions are load-bearing: the second is #147's property that a
+content-identical mtime bump is NOT stale, without which every pull reports the
+whole lane stale and the verdict becomes noise.
+
+It drives `build_zephyr_workspace_{rust,c}_realtime_entry`, not the probe
+underneath them. That distinction is the point — `source_dir_is_stale` has
+worked since #147; the defect was that the resolvers never called it, so a test
+reaching past them would have passed on the broken tree.
+
+Neutering the new half (`if false && …`) turns both tests red; restoring turns
+them green. The C case is the one that previously had NO check at all
+(`zephyr_staticlib_dep_file` looks for `librustapp.d`, a C-only image has none,
+and the helper returned `Ok`).
+
+### What this does NOT fix
+
+The other items this issue accumulated are untouched and still open on their own
+terms:
+
+* finding (a), 2026-08-11 — `check-workspace-build-output` and
+  `check-artifact-identity-budget` still are not inside the precondition batch,
+  so long-lived-tree residue is still discovered last;
+* finding (b) — no `nros setup --tool <t> --check`, so a provisioned tool that
+  drifted behind its pin (corrosion 0.5.1 vs #0493's 0.6.1) still presents as a
+  link failure;
+* the compile-check signature still does not hash the row's in-repo path-dep
+  closure, so that lane's gate remains narrower than its tests.
+
+This issue has now absorbed four distinct defects across three months. The
+zephyr half is done; the rest deserves its own number rather than a fifth
+section here.
