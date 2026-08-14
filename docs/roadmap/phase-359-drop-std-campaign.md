@@ -1,0 +1,185 @@
+# phase-359 — drop `std` from the core crates, and make `alloc` explicit
+
+**Status (2026-08-15). W0 and W1 landed; W2–W10 not started.** The campaign
+removes `std` from the crates that run on targets, leaving `core` and
+`core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
+"separate the std/no_std lanes" framing, which manages the split rather than
+removing it.
+
+## Why
+
+`std` here is not a convenience layer over the platform — it is a SECOND
+implementation of one. The measured surface is three primitives:
+
+| std API | occurrences |
+| --- | --- |
+| `std::sync` | 172 |
+| `std::time` | 50 |
+| `std::thread` | 29 |
+| `std::io` | 4 |
+| `std::collections` | 2 |
+| `thread_local!` | 1 |
+
+No `fs`, `net`, `process` or printing. And `nros-platform-posix` — C over libc —
+already provides every one of them: `nros_platform_clock_ns` (`clock_gettime`),
+`nros_platform_wake_wait_ms`/`wake_signal` (`pthread_cond_timedwait`), the
+`pthread_mutex_*` family, sleep/yield/task/alloc. The replacement exists before
+the migration starts.
+
+The cost of keeping both is visible in `Executor`'s fields, which carry each
+concept twice — and in one case as two different TYPES:
+
+| concept | std | alloc |
+| --- | --- | --- |
+| wake flag | `Arc<AtomicBool>` | `wake_flag_alloc` |
+| node wake | `node_wake` | `node_wake_alloc` |
+| wake ctx | `Arc<WakeCtx>` | `Arc<WakeCtxAlloc>` |
+| async flag | `has_async_wake` | `has_async_wake_alloc` |
+| spin clock | `last_spin_end: Instant` | `last_spin_end_us: u64` |
+
+"What time is it" has three implementations: `Instant`, an injected
+`clock_us_fn` pointer, and the unused `PlatformClock` trait.
+
+**There is no layering obstacle.** `nros-node` already depends on
+`nros-platform-api` (20 traits, including `PlatformClock`, `PlatformTime`,
+`PlatformThreading`, `PlatformSleep`, `PlatformCriticalSection`) and
+`nros-platform` does not depend back. The seam was bypassed, not unavailable.
+
+### What the Condvar audit already settled
+
+Performance is not the risk. Every flavour BLOCKS; none busy-spins. `std`
+prefers `NodeWake::wait_ms` (kernel semaphore via `nros_platform_wake_*`) and
+falls back to `Condvar` only when the platform vtable exposes no wake;
+`alloc`/no_std blocks on the same ABI; core-only delegates to the transport's
+blocking `drive_io`. On Linux `Condvar` IS `pthread_cond_wait`, so the seam
+reaches the same syscall. **Dropping `std` deletes a redundant fallback, not a
+mechanism.** (The `has_async_wake*` guard that sends poll-only backends — XRCE,
+current Cyclone — to a full-timeout `drive_io` is deliberate, phase-127.C.4.)
+
+## Baseline (W0, measured on 249277946)
+
+181 cfg sites, 425 `std::` paths, nine crates:
+
+| crate | cfg | `std::` |
+| --- | --- | --- |
+| `nros-node` | 85 | 346 |
+| `nros` | 61 | 20 |
+| `nros-c` | 11 | 9 |
+| `nros-params` | 11 | 18 |
+| `nros-core` | 6 | 6 |
+| `nros-cpp` | 4 | 26 |
+| `nros-log` / `nros-rmw` / `nros-serdes` | 1 each | 0 |
+
+Excluded for cause, both found by measuring: `nros-macros` (`proc-macro = true`
+— runs on the host, and its `std::` are tokens it EMITS) and
+`nros-orchestration-ir` (documents itself as host-only schema code).
+
+The "~190 sites" figure used while planning was a hand-grep and was wrong in
+both directions. The gate's numbers supersede it.
+
+**Two live `std` platforms, not one.** Linux, and NuttX —
+`nros-board-nuttx-qemu` depends on `nros-board-nuttx`, which requests `std`,
+and NuttX targets compile std from source via `build-std`. NuttX is W7 and is
+the plan's largest unknown.
+
+## Work items
+
+### W0 — census + ratchet — **DONE 2026-08-15**
+
+`scripts/check-std-census.py`, wired into `check-fast`. Freezes the per-crate
+counts and fails when one goes UP, or when a crate enters scope that the
+baseline has never seen. Counts going DOWN also fail, on purpose: lowering the
+baseline in the same commit puts progress in the diff.
+
+Verified both directions — a planted `std::primitive::u8` fails with
+`nros-rmw: path 0 -> 1`; a comment naming `std::sync::Condvar` does not count
+(comment text is stripped, because sibling commits legitimately ADD such prose
+while REMOVING the use).
+
+### W1 — make the guarantee checkable — **DONE 2026-08-15**
+
+`check-no-std` covered 9 of the 32 crates that declare `no_std`, and
+`nros-node` — 85 of the cfg sites — was not among them. Added `nros-node`,
+`nros-platform`, `nros-diagnostics`, `nros`, verified on both bare-metal
+targets first.
+
+**The trap this hit, which the next work item should expect too.** Adding the
+crates was not enough: `nros-node`'s executor is behind
+`#[cfg(any(has_rmw, test))]`, and `has_rmw` is set by build.rs only when an RMW
+feature is on — so a bare `--no-default-features` check compiles the crate
+SHELL and none of the 85 sites. A planted `std::string::String` passed it in
+0.06 s (cached). The lane now also checks the `alloc,rmw-cffi` slice on both
+targets, which does catch it. A gate written to prevent the issue-0196 shape
+nearly shipped with that exact shape.
+
+### W2 — collapse the duplicated pairs
+
+`portable_atomic_util::Arc` and `portable_atomic::AtomicBool` compile on `std`
+too, so the five pairs above become one field each. No abstraction, no trait —
+deletion. Largest structural win per unit of risk; do it before anything that
+needs a design.
+
+### W3 — public API conversion (BREAKING — schedule early)
+
+Five methods leak `std` types, and every native consumer touches two of them:
+
+```rust
+spin_period(std::time::Duration)        -> core::time::Duration      mechanical
+halt_flag()   -> std::sync::Arc<..>     -> portable_atomic_util::Arc mechanical
+wake_handle() -> std::sync::Arc<..>     -> portable_atomic_util::Arc mechanical
+signal_fd()   -> std::io::Result<c_int>    needs a decision
+join()        -> std::thread::Result<()>   needs a decision
+```
+
+### W4 — one spelling of "what time is it"
+
+Three implementations collapse to one. 50 sites.
+
+### W5 — threads through `PlatformThreading` / `task_*`
+
+29 sites.
+
+### W6 — residue
+
+`std::io` (4), `HashMap` -> `BTreeMap` (2, tiny N), the single `thread_local!`.
+
+### W7 — NuttX off `std`
+
+The other live `std` platform. `nros-platform-nuttx` exists and NuttX is POSIX,
+so the posix C layer is the template. **Unsized** — the plan's biggest unknown.
+
+### W8 — make `alloc` explicit
+
+`alloc` is already a separate feature (`std = ["alloc", ...]`), so the real
+flavours are `core` / `core+alloc` / `std`. The `_alloc` field names prove the
+code already treats it as first-class. Document what each implies, and gate it.
+
+### W9 — lanes and cell checks
+
+Separate `std`/`no_std` lanes (shapes genuinely differ: 74 `Linux` cells vs 132
+elsewhere) plus a per-cell flavour assertion. Best after W2–W6 shrink the
+divergence.
+
+### W10 — flip the default, delete the feature
+
+`nros` currently defaults to `std`.
+
+## Costs accepted
+
+* **Panic ergonomics** — no `RUST_BACKTRACE`, typically `panic=abort`. Partly
+  recoverable: the application binary may still link `std`.
+* **Core dependency freedom** — permanently constrains what core may depend on.
+  Cost today ~zero (`heapless`, `portable-atomic`, `atomic-waker` are already
+  no_std).
+* **`std::thread` conveniences** — join results, names, scoped threads.
+
+## Not measured
+
+`nros` (61 cfg sites) and `nros-params` (11) are uninspected — a large part of
+the work and the weakest estimate here. W7 is unsized.
+
+And expect untested code. Two paths in one session turned out to have no lane
+at all: seven `std`-gated `nros-node` tests that no lane ran, one of which had
+NEVER passed (issue 0577), and the extra-session wake install that was `std`-only
+on the dynamic path with no no_std multi-RMW test to catch it. Budget for that
+rather than treating each as a surprise.

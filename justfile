@@ -405,6 +405,7 @@ check-fast: \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
+    check-std-census \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -2643,6 +2644,19 @@ ci-full: check rust-rtos-link-check test-all test-ignored
 # `just ci` / `just test-all`; this is the fast per-push tier.
 # =============================================================================
 
+# phase-359 W0 — the `std` census ratchet. Buildless (reads sources), so it
+# belongs in the fast tier next to the other convention gates.
+#
+# The campaign to drop `std` from the core crates spans 181 cfg sites and 425
+# `std::` paths over nine crates. This freezes those counts per crate and FAILS
+# when one goes up — including a crate entering scope that the baseline has
+# never seen. Counts going DOWN also "fail", loudly and on purpose: the fix is
+# to lower the baseline in the same commit, so progress lands in the diff
+# instead of a claim in a message.
+[group("ci")]
+check-std-census:
+    @python3 scripts/check-std-census.py
+
 # no_std core-crate compile check across the embedded targets `ci.yml` gates
 # (.github/workflows/ci.yml). Bare portable crates only — no SDKs, no link.
 [group("ci")]
@@ -2650,7 +2664,30 @@ check-no-std:
     #!/usr/bin/env bash
     set -e
     crates="-p nros-core -p nros-log -p nros-serdes -p nros-params \
-        -p nros-platform-api -p nros-platform-cffi -p nros-platform-critical-section -p nros-rmw"
+        -p nros-platform-api -p nros-platform-cffi -p nros-platform-critical-section -p nros-rmw \
+        -p nros-node -p nros-platform -p nros-diagnostics -p nros"
+    # phase-359 W1 — the four crates on the second line joined 2026-08-15. This
+    # lane covered 9 of the 32 crates that DECLARE `no_std`, and `nros-node` —
+    # the one with 85 of the ~190 `cfg(feature = "std")` sites, i.e. the crate
+    # where a `std::` slip is most likely — was not among them. Until now the
+    # only thing catching such a slip was an embedded fixture build: a real
+    # backstop, but a ~40-minute one that fails whoever runs it rather than its
+    # author.
+    #
+    # `$rmw_crates` below is NOT redundant with `$crates`, and the reason is the
+    # whole point of the work item. `nros-node`'s executor lives behind
+    # `#[cfg(any(has_rmw, test))]` — `has_rmw` is set by build.rs only when an
+    # RMW feature is on — so a bare `--no-default-features` check compiles the
+    # crate SHELL and none of the 85 sites. Verified rather than assumed: a
+    # `std::string::String` planted in `node_record.rs` passes the bare check
+    # (0.06s, cached) and fails the RMW-enabled one with
+    # `cannot find module or crate `std``. A lane that only ran the bare check
+    # would have been decoration — the issue-0196 shape, in a gate written to
+    # prevent it.
+    #
+    # Still NOT covered: the board/platform-specific crates (they need SDKs and
+    # a linker, which this lane deliberately excludes).
+    rmw_crates="-p nros-node -p nros"
     # `rustup target add` FIRST, serially: two concurrent adds of different
     # targets touch the same toolchain dir.
     for target in thumbv7m-none-eabi riscv32imc-unknown-none-elf; do
@@ -2664,6 +2701,8 @@ check-no-std:
     printf '%s\n' \
         "echo '== check-no-std: thumbv7m-none-eabi ==' && cargo check $crates -p nros-rmw-cffi --no-default-features --target thumbv7m-none-eabi" \
         "echo '== check-no-std: riscv32imc-unknown-none-elf ==' && cargo check $crates --no-default-features --target riscv32imc-unknown-none-elf" \
+        "echo '== check-no-std: executor slice (alloc+rmw-cffi), thumbv7m ==' && cargo check $rmw_crates --no-default-features --features alloc,rmw-cffi --target thumbv7m-none-eabi" \
+        "echo '== check-no-std: executor slice (alloc+rmw-cffi), riscv32imc ==' && cargo check $rmw_crates --no-default-features --features alloc,rmw-cffi --target riscv32imc-unknown-none-elf" \
         | nros_pool_run check-no-std
     echo "check-no-std OK."
 
