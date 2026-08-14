@@ -1,21 +1,29 @@
-# Phase 359 — The `std`/`alloc` contract, and what a firmware build actually compiles
+# Phase 360 — The `std`/`alloc` contract, and what a firmware build actually compiles
 
-**Status (2026-08-10).** IN PROGRESS — W1, W2.a, W3, W3.b and all of W8 landed;
-the feature contract holds as a STATE (0 implicit `alloc`/`std` enables, no
-`no_std` crate defaults to `std`, one `#[global_allocator]`). **W4, the gate
-that would make it an invariant, is not written** — until it is, every number
-here is a measurement. W2.b (two dead declarations) needs a decision; W5–W7
-(dependency weight, issue 0583) are not started.
+**Status (2026-08-15).** IN PROGRESS, and **partly BLOCKED on a decision** —
+`phase-359` (drop `std` from the core crates) landed on `main` the same day and
+contradicts W1/W2.a on one point; see "Overlap with phase-359" below before
+touching W1, W2.a or W4(a). W1, W2.a, W3, W3.b and all of W8 landed; the feature
+contract holds as a STATE (0 implicit `alloc`/`std` enables, no `no_std` crate
+defaults to `std`, one `#[global_allocator]`). **W4, the gate that would make it
+an invariant, is not written** — until it is, every number here is a
+measurement. W2.b (two dead declarations) needs a decision; W5–W7 (dependency
+weight, issue 0583) are not started and are the part of this phase nothing else
+owns.
 
 **Numbering.** Drafted offline as "phase-341" against a stale `main` and
-renumbered TWICE, because both renumbers read the local maximum instead of
-reserving an id. First (2026-08-10): 341 → 345, issues 0467–0471 → 0492–0496 —
-and by then upstream had spent those too. Second (2026-08-15, on the rebase onto
-a `main` 303 commits further along): 345 → 359, issues 0492–0496 → 0581–0585,
-this time via `just phase-new` / `just issue-new`. Same class as the seven
-collisions those tools exist to stop; note they fell back to the RACY local
-maximum here because this host cannot authenticate to `origin`, so the
-reservation refs were never pushed — re-check before the branch lands.
+renumbered THREE times, because every renumber read a local maximum that a push
+had already moved. 341 → 345 (2026-08-10, upstream had spent 341–344 and issues
+0467–0471); 345 → 359 (2026-08-15, upstream had spent 345 and 0492–0496);
+359 → 360 (2026-08-15, same day — upstream landed `phase-359-drop-std-campaign`
+while this branch was rebasing onto it). Issues are 0581–0585 and have not
+moved since the second renumber. `just phase-new` / `just issue-new` were used
+for the last two, but **both fell back to the RACY local-maximum path** because
+this host cannot authenticate to `origin` ("Password authentication is not
+supported"), so no `refs/*-ids/NNNN` reservation was ever pushed. Re-check
+before the branch lands. Three collisions is not bad luck: an id read from a
+local checkout is stale the moment another session pushes, and this branch has
+been out of tree long enough for that to happen every time.
 
 **Touches:** RFC-0005 (RMW layer), RFC-0006 (portable RMW/platform interface),
 RFC-0033 (message field capacity — the `mode = "heap"` types this contract
@@ -32,6 +40,71 @@ all* and *what a feature flag means*. They touch disjoint files and compose:
 issue 0582 names one of the five `-C metadata` identities issue 0446 counts, and
 it is the one that survives any cache-layout fix, because to cargo the two units
 are genuinely different feature sets.
+
+## Overlap with phase-359 (drop-`std` campaign) — OPEN, needs a decision
+
+[phase-359](phase-359-drop-std-campaign.md) landed on `main` 2026-08-15, while
+this branch was rebasing onto it. It is not adjacent work — it reaches the same
+manifests, and on one design point the two phases pull in opposite directions.
+
+**Where they agree.** phase-359 W10 is "flip the default, delete the feature",
+and notes `nros` still defaults to `std`. W3 here already did the flip, across
+eight crates plus ten in-tree dep-sites. W8.c (four `#[global_allocator]`
+definitions collapsed to one owner) is orthogonal to `std` and nothing in
+phase-359 touches it. W5–W7 (dependency weight, issue 0583) is unowned by any
+phase — phase-355 is dependency debt, but its three issues are #374, #507, #524.
+
+**Where they disagree.** phase-359 W8 states the flavours as `core` /
+`core+alloc` / `std`, i.e. an ORDERED chain in which `std` implies `alloc`, and
+records `std = ["alloc", ...]` as the existing spelling of it. W1/W2.a here
+declare the opposite — that `std` and `alloc` are INDEPENDENT axes — and deleted
+the `std ⇒ alloc` edge from six crates.
+
+**What the deletion cost, measured 2026-08-15** (HEAD vs `origin/main`, `cfg`
+lines in `packages/core` + `packages/api` that mention `feature = "std"`
+anywhere in the predicate, comments stripped — the same scope and stripping
+`check-std-census.py` uses):
+
+| | `main` | here | Δ |
+| --- | --- | --- | --- |
+| `nros-node` | 140 | 206 | +66 |
+| all nine crates | 252 | 340 | **+88** |
+
+The edge did not disappear; it moved from ONE line per manifest into 123
+`cfg(any(feature = "alloc", feature = "std"))` predicates at the use sites.
+That is the exact quantity phase-359's `cfg` metric exists to shrink — "the
+SHAPE of the split: the branches a reader has to hold in their head" — and
+`nros-node`, which took 66 of them, is that campaign's largest target.
+
+**The census cannot see any of it.** `CFG_RE` anchors `feature = "std"`
+immediately after `cfg(` or `cfg(not(`, so a predicate that reaches `std`
+through `any(...)` does not count. The gate reports 183 sites for both trees.
+The one thing it does catch is a symptom of the same edge: `nros-node: path
+346 -> 347`, because `read_rmw_selector_env` must return `std::vec::Vec<u8>`
+here where `main` returns `alloc::vec::Vec<u8>` — under `std` alone there is no
+`alloc` to name. **This blind spot is worth filing against phase-359 W0
+regardless of how the decision below goes.**
+
+**The decision.** Issue 0581's actual defect — `nros_core::heap::Vec<u32>`
+existing with no `Serialize` impl — was fixed on the SOURCE side (`extern crate
+alloc` and the `heap` re-export moved from `any(alloc, std)` to `alloc` alone),
+and that fix holds whether or not the manifest edge exists. So the edge deletion
+is a separate, optional design choice, and it is the only part of this phase
+that conflicts.
+
+* **(A) Keep the axes independent.** phase-359 inherits 88 extra branches and
+  its W8 flavour model has to be rewritten. Buys the property that a `std`
+  consumer never silently acquires a heap — which matters for exactly as long
+  as `std` exists in these crates.
+* **(B) Restore `std = ["alloc", ...]`, keep the source-side fix.** The 123
+  `any(...)` predicates collapse back to `cfg(feature = "alloc")`, the census
+  regression goes away, and phase-359 W10 removes the edge for free when `std`
+  itself goes. **Recommended** — the property (A) buys expires on the same
+  schedule as its cost, and (B) does not lose 0581's fix.
+
+Until this is settled, W1's normative text must NOT be written into
+`ARCHITECTURE.md` and W4's clause (a) must not be gated: both would make one of
+the two phases wrong by fiat.
 
 ## Goal
 

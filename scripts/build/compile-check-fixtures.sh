@@ -530,7 +530,7 @@ if command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # them leave no stamp (consuming test reports the gap per tier). The sizes
     # need not be exact — this is a `-fsyntax-only` check, not a link.
     echo "== generating nros-cpp / nros-c config headers for cxx-syntax =="
-    # phase-359 W3 — `std` is EXPLICIT. `nros-c`/`nros-cpp` used to default to
+    # phase-360 W3 — `std` is EXPLICIT. `nros-c`/`nros-cpp` used to default to
     # it; now `default = []`, and this is a HOST build, so without asking the
     # build is `no_std` and dies on `#[panic_handler]` / "unwinding panics are
     # not supported without std". It failed into the `|| echo` below, which

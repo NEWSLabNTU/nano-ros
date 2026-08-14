@@ -394,7 +394,7 @@ mod tests {
 }
 
 // ---------------------------------------------------------------------------
-// phase-359 W8.e / issue 0585 — capabilities REQUIRE the heap / the standard
+// phase-360 W8.e / issue 0585 — capabilities REQUIRE the heap / the standard
 // library, they do not enable it. Turning `alloc` or `std` on for the user
 // silently changes what their firmware image is; naming the feature they must
 // add does not.

@@ -71,7 +71,7 @@ libc = "0.2"
 # on any POSIX host without an SDK Manager install.
 nvidia-ivc = { path = "../../drivers/ipc/nvidia-ivc", features = ["unix-mock", "std"] }
 
-# Workspace dependencies for type access (optional). phase-359 W3 — both now
+# Workspace dependencies for type access (optional). phase-360 W3 — both now
 # default to `no_std`; the test harness always runs hosted, so ask for `std`.
 nros-core = { path = "../../core/nros-core", default-features = false, features = ["std"], optional = true }
 nros-serdes = { path = "../../core/nros-serdes", default-features = false, features = ["std"], optional = true }

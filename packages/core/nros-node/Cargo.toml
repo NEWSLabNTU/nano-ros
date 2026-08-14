@@ -15,9 +15,9 @@ keywords = ["ros2", "node", "executor", "embedded", "no-std"]
 categories = ["embedded", "no-std"]
 
 [features]
-# phase-359 W3 / issue 0582 — EMPTY; `std` is opt-in per dep-site.
+# phase-360 W3 / issue 0582 — EMPTY; `std` is opt-in per dep-site.
 default = []
-# phase-359 W2 (final) — `portable-atomic-util` is an IMPLEMENTATION dep (the
+# phase-360 W2 (final) — `portable-atomic-util` is an IMPLEMENTATION dep (the
 # no_std stand-in for `std::sync::Arc`), not the heap axis. The heap predicate
 # is `any(alloc, std)`, so the dep has to be present on both sides of it or
 # declaration and use sites drift apart.

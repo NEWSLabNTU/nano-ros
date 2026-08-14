@@ -1163,7 +1163,7 @@ capability features (`param-services`, `lifecycle-services`, `bridge`, `config`,
 in three crates is gratuitous — all three allocator modules use only `core::alloc::GlobalAlloc`.
 Separately, **`#[panic_handler]` was gated on the ALLOCATOR feature**, so "I need panic" had to be
 spelled `global-allocator` — which is exactly how `compile-check-fixtures.sh:490` died on
-`#[panic_handler] function required` under phase-359 W3, inside a `|| echo` that swallowed it.
+`#[panic_handler] function required` under phase-360 W3, inside a `|| echo` that swallowed it.
 **All 34 sites are now 0**, the `std ⇒ alloc` edge (12 crates) is removed, and W8.c cut the
 `#[global_allocator]` count **4 → 1**: `nros-c` and `nros-platform` had defined one under
 IDENTICAL gates (kept apart by a manifest comment, while `nros-c` deps `nros-platform`
@@ -1173,14 +1173,14 @@ be spelled. Two things fell out: `extern crate nros_platform` is load-bearing (a
 is DCE'd before its lang item lands — the FORCE_LINK class), and over-aligned requests now return
 null instead of silently under-aligned memory. **Left open**: nothing GATES any of this — W4's
 `check-feature-contract.sh` is still unwritten, so every figure here is a measurement, not an
-invariant. See `0585-*` and phase-359 W2/W4/W8. (2026-08-07, W8.c 2026-08-10)
+invariant. See `0585-*` and phase-360 W2/W4/W8. (2026-08-07, W8.c 2026-08-10)
 Recently resolved (2026-08-07): **#584** — `nros/ffi-size-markers`, the `#[used]` attribute that
 stops `--gc-sections` dropping the `__NROS_SIZE_*` statics the C/C++ opaque-storage macros are
 probed from, was enabled by **exactly one thing**: `nros`'s `default` set. Both consumers dep
 `nros` with `default-features = false`, so `cargo tree -p nros-c` resolved `nros v0.5.0 alloc,std`
 — no markers. They appeared only in a whole-workspace build, by feature unification from an
 unrelated member, while `nros-c`'s own manifest says the C ABI surface is "built per-platform by
-cmake not by the workspace lane". Upstream of issue 0464's fallback chain. Resolved in phase-359
+cmake not by the workspace lane". Upstream of issue 0464's fallback chain. Resolved in phase-360
 W3 — requested explicitly at all four dep-sites. **Not verified**: that it ever produced a wrong
 macro value in a shipped artifact; `#[used]` acts at link time and this host cannot build the
 C/C++ lanes. Summary in `docs/issues/archived/0584-*`.
@@ -1195,7 +1195,7 @@ Phase 262 already cut `nros-build` out of the macro; the weight came back one ju
 at a time, and `nros-macros` is a NON-optional dep of `nros`, so a pure-library user pays all of it.
 Removable in order: the `model = "…"` arm's `ros-launch-manifest-{model,sched}` (a **git** dep, 7
 crates incl. the duplicate `thiserror` major), then `toml` 0.8→0.9 (5 more, un-splits the resolver),
-then `nros-macros` optional. See `0583-*` and phase-359 W5–W7. (2026-08-07)
+then `nros-macros` optional. See `0583-*` and phase-360 W5–W7. (2026-08-07)
 **#582** (build, open 2026-08-07) — `default = ["std"]` on the `no_std` crates splits each of them
 into **two compile identities inside ONE cargo invocation**. Measured over `cargo check --workspace
 --timings`: `nros-core` and `nros-params` each compile once as `[alloc, std]` and once as `[alloc,
@@ -1204,7 +1204,7 @@ std, default]` — the delta is the inert string `default` and nothing else. 19 
 one of the five `-C metadata` identities issue 0446 counts for `nros-core`, and it is the one that
 survives any cache-layout fix, because to cargo the two units are genuinely different feature sets.
 `nros-rmw` already converted to `default = []` and its manifest says it "matches nros-core" —
-`nros-core` never did. See `0582-*` and phase-359 W3. (2026-08-07)
+`nros-core` never did. See `0582-*` and phase-360 W3. (2026-08-07)
 **#581** (build, open 2026-08-07) — `std` implies `alloc` in `nros`/`nros-node`/`nros-rmw-zenoh`/
 `nros-c` and does NOT in `nros-core`/`nros-serdes`/`nros-rmw`/`nros-params`/`nros-platform`, and the
 source layer disagrees with its own manifest: `nros-core/src/lib.rs:19` gates `extern crate alloc`
@@ -1215,7 +1215,7 @@ forwards only `std` to `nros-serdes`. At `nros-core`'s **default** feature set,
 why per-type failure never surfaced in a build. Only reachable from OUTSIDE the workspace, which is
 exactly the generated-message-crate shape. Two dead declarations found alongside:
 `nros-platform/alloc` and `nros-rmw-cyclonedds/std` — declared, zero `cfg` sites, forward nowhere.
-See `0581-*` and phase-359 W1–W2/W4. (2026-08-07)
+See `0581-*` and phase-360 W1–W2/W4. (2026-08-07)
 
 Recently resolved (2026-08-11): the on-target-time trio (embedded/api), filed from external RT-cadence
 measurement and fixed as one series. #502: `nros_platform_clock_us` was MILLISECOND-quantized under a us

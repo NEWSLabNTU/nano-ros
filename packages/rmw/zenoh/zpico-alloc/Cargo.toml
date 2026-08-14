@@ -18,7 +18,7 @@ default = []
 ## Track peak heap usage (adds two atomics per heap) and expose the reusable
 ## `HeapStats` counter for instrumenting the RTOS allocator wrappers.
 stats = []
-## phase-359 W8.c / issue 0585 — `global-alloc` is GONE. It implemented
+## phase-360 W8.c / issue 0585 — `global-alloc` is GONE. It implemented
 ## `GlobalAlloc` for `FreeListHeap` so a board could install the free-list heap
 ## as its `#[global_allocator]` directly. Its only consumer,
 ## `nros-platform-mps2-an385`, did exactly that — and thereby bypassed

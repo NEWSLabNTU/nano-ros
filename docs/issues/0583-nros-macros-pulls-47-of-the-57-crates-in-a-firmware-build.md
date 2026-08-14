@@ -4,7 +4,7 @@ title: "a firmware build of `nros` compiles 57 crates; 47 of them exist only to 
 status: open
 type: tech-debt
 area: build
-related: [issue-0582, phase-262, phase-359, rfc-0032, rfc-0052]
+related: [issue-0582, phase-262, phase-360, rfc-0032, rfc-0052]
 ---
 
 ## The number

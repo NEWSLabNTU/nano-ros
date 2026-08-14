@@ -129,7 +129,7 @@ pub mod zephyr {
 // allocator. Enable via `nros-platform/global-allocator` in the
 // example crate's `Cargo.toml` to wire it in.
 
-// phase-359 W8.c / issue 0585 — this is the ONE `#[global_allocator]` in the
+// phase-360 W8.c / issue 0585 — this is the ONE `#[global_allocator]` in the
 // tree. `nros-c` used to define a second one under an identical gate, reaching
 // the same heap by a different route (a direct `extern "C" nros_platform_alloc`
 // rather than the trait), and the two were kept apart only by a manifest
@@ -163,7 +163,7 @@ mod global_allocator {
 
     unsafe impl GlobalAlloc for PlatformGlobalAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            // phase-359 W8.c — an over-aligned request FAILS rather than
+            // phase-360 W8.c — an over-aligned request FAILS rather than
             // silently returning under-aligned memory. The ABI cannot express
             // alignment, so the honest answer to `align > 8` is null, which
             // routes the caller into `handle_alloc_error`. The previous
@@ -191,7 +191,7 @@ mod global_allocator {
     static ALLOCATOR: PlatformGlobalAllocator = PlatformGlobalAllocator;
 }
 
-// phase-359 W8.c — the Rust-footprint heap counter, moved here with the
+// phase-360 W8.c — the Rust-footprint heap counter, moved here with the
 // allocator it instruments. It counts only what passes through the
 // `#[global_allocator]`; the C side's direct `nros_platform_alloc` traffic
 // (zenoh-pico's `z_malloc` etc.) is not seen, so it under-reports true heap

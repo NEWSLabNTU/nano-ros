@@ -14,13 +14,13 @@ keywords = ["ros2", "embedded", "no-std", "robotics", "middleware"]
 categories = ["embedded", "no-std", "network-programming"]
 
 [features]
-# phase-359 W3 / issue 0582 — EMPTY. `no_std` is the baseline; `std` is a thing
+# phase-360 W3 / issue 0582 — EMPTY. `no_std` is the baseline; `std` is a thing
 # you ask for, in one spelling, at your own dep-site. A non-empty `default` also
 # made `default` itself a feature-set member, so a consumer reaching this crate
 # via `default-features = false` + explicit `std` and one reaching it through
 # the default were TWO compile units for identical code.
 default = []
-# phase-359 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
+# phase-360 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
 # opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
 # must make the user say `alloc`, never turn it on behind their back.
 # Issue 0581 is fixed on the SOURCE side instead: `heap::{Vec, String}` and

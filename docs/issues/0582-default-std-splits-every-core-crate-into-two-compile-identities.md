@@ -4,7 +4,7 @@ title: "`default = [\"std\"]` on the no_std crates splits each of them into two 
 status: open
 type: tech-debt
 area: build
-related: [issue-0446, issue-0581, phase-334, phase-340, phase-359]
+related: [issue-0446, issue-0581, phase-334, phase-340, phase-360]
 ---
 
 ## The measurement

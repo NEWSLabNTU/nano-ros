@@ -32,7 +32,7 @@ critical-section = ["cortex-m/critical-section-single-core"]
 # symbols by expanding the `nros-platform-cffi` macro against
 # `Mps2An385Platform`.
 cffi-export = ["dep:nros-platform-cffi"]
-# phase-359 W8.c / issue 0585 — `global-alloc` is GONE. Its job (zenoh-pico
+# phase-360 W8.c / issue 0585 — `global-alloc` is GONE. Its job (zenoh-pico
 # `z_malloc` and Rust `Box`/`Vec` on ONE heap) is unchanged and now automatic:
 # this crate's free-list heap is the arena, `Mps2An385Platform: PlatformAlloc`
 # is how the Rust side reaches it, and `nros-platform/global-allocator` is the

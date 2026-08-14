@@ -4,8 +4,8 @@ title: "`nros/ffi-size-markers` was enabled ONLY by a default feature both consu
 status: resolved
 type: bug
 area: build
-related: [issue-0464, issue-0582, phase-359, rfc-0054]
-resolved_in: "phase-359 W3"
+related: [issue-0464, issue-0582, phase-360, rfc-0054]
+resolved_in: "phase-360 W3"
 ---
 
 ## What was true
@@ -55,7 +55,7 @@ probe has to fall back at all.
 
 ## What is true now
 
-phase-359 W3 emptied `nros`'s `default`, which removed the accidental safety net
+phase-360 W3 emptied `nros`'s `default`, which removed the accidental safety net
 entirely — so the feature is now requested where it is needed, at all four
 dep-sites (`[dependencies]` and `[build-dependencies]` of each consumer):
 
@@ -81,6 +81,6 @@ instrumented, this is a hypothesis worth testing against it.
 ## Gate
 
 The class is "a load-bearing feature enabled only by a `default` that every
-real dep-site disables". phase-359 W4's `check-feature-contract` should assert
+real dep-site disables". phase-360 W4's `check-feature-contract` should assert
 it directly: for each crate, no feature listed in `default` may be UNREACHABLE
 from every non-`default-features` dep-site in the workspace.

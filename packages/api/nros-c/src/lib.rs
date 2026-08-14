@@ -62,7 +62,7 @@ extern crate alloc;
 // the platform query for the unified figure. Both return `0` on ports that
 // don't instrument their heap.
 //
-// phase-359 W8.c — the counter itself moved to `nros-platform` with the
+// phase-360 W8.c — the counter itself moved to `nros-platform` with the
 // allocator it instruments (there is only one allocator now). What stays here
 // is the C surface: these `#[no_mangle]` names are part of the C/C++ API and
 // must keep coming from this crate.
@@ -108,7 +108,7 @@ mod heap_stats {
 // `Box`/`Vec` route through the platform vtable (`nros_platform_alloc` → the
 // port's kernel allocator: FreeRTOS `pvPortMalloc`, Zephyr `k_malloc`,
 // ThreadX `tx_byte_allocate`, …) so the C/C++ API Rust heap and zenoh-pico's
-// C-side `z_malloc` share one funnel and one arena. What changed in phase-359
+// C-side `z_malloc` share one funnel and one arena. What changed in phase-360
 // W8.c is WHO installs the lang item.
 //
 // This crate used to define its own `#[global_allocator]` under the gate
@@ -137,7 +137,7 @@ extern crate nros_platform;
 // standalone C/C++ staticlib needs its own. A halt+reboot would be ideal
 // but needs port-specific config (e.g. Zephyr's k_panic + CONFIG_ASSERT_
 // VERBOSE); looping is the safest no_std-compatible default.
-// phase-359 W8.b / issue 0585 — gated on `panic-spin`, NOT on
+// phase-360 W8.b / issue 0585 — gated on `panic-spin`, NOT on
 // `global-allocator`. Asking for a panic handler no longer means asking for a
 // heap; the `platform-*` features select both, so they stay unified per
 // platform without being the same switch.
@@ -305,7 +305,7 @@ rmw_modules! {
 }
 
 // ---------------------------------------------------------------------------
-// phase-359 W8.e / issue 0585 — capabilities REQUIRE the heap / the standard
+// phase-360 W8.e / issue 0585 — capabilities REQUIRE the heap / the standard
 // library, they do not enable it. Turning `alloc` or `std` on for the user
 // silently changes what their firmware image is; naming the feature they must
 // add does not.

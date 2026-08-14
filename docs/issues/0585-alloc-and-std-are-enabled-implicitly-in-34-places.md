@@ -4,7 +4,7 @@ title: "`alloc` and `std` are turned on implicitly in 34 places — picking a PL
 status: open
 type: bug
 area: build
-related: [issue-0581, issue-0582, issue-0464, rfc-0033, rfc-0034, phase-359]
+related: [issue-0581, issue-0582, issue-0464, rfc-0033, rfc-0034, phase-360]
 ---
 
 ## The rule this issue exists to enforce
@@ -89,7 +89,7 @@ implications can simply be deleted.
 
 `nros`, `nros-c`, `nros-cpp`, `nros-core`, `nros-node`, `nros-log`,
 `nros-params`, `nros-serdes`, `nros-rmw`, `nros-rmw-cffi`, `nros-rmw-zenoh`,
-`nros-bridge` all had `std = ["alloc", …]`. Removed in phase-359 W2 (revised).
+`nros-bridge` all had `std = ["alloc", …]`. Removed in phase-360 W2 (revised).
 It was never needed — every crate compiles with the two independent:
 
 ```
@@ -137,7 +137,7 @@ an rlib/staticlib build does not reach it.
 **2. `#[panic_handler]` is gated on the ALLOCATOR feature.** In `nros-c` there
 is no way to ask for a panic handler without asking for a global allocator —
 "I need panic" is spelled `global-allocator`. This is not theoretical: with
-phase-359 W3's `default = []`, a plain host build of `nros-c` has neither `std`
+phase-360 W3's `default = []`, a plain host build of `nros-c` has neither `std`
 nor `global-allocator` and dies with
 
 ```
@@ -184,7 +184,7 @@ smaller than it looks from the 34-site count.
 
 ## Gate
 
-phase-359 W4's `check-feature-contract` gains: **no feature body may list
+phase-360 W4's `check-feature-contract` gains: **no feature body may list
 `alloc` or `std`, or forward `<dep>/alloc` / `<dep>/std`, unless the feature IS
 `alloc`/`std`.** That is a mechanical check over `[features]` and it is exactly
 the 34 rows above.

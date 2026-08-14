@@ -67,7 +67,7 @@ nros::node!(AddTwoIntsServer);
 // `register` declares the server. No manual `Executor::open` / `register_rmw` /
 // spin loop / hardcoded locator in the example.
 
-// phase-359 W8.e / issue 0585 — the backend requires the heap; it does not
+// phase-360 W8.e / issue 0585 — the backend requires the heap; it does not
 // silently enable it. Build as `--features rmw-cyclonedds,alloc`.
 #[cfg(all(feature = "rmw-cyclonedds", not(any(feature = "alloc", feature = "std"))))]
 compile_error!("`rmw-cyclonedds` allocates: add \"alloc\" (--features rmw-cyclonedds,alloc)");

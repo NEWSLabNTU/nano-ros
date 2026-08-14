@@ -13,7 +13,7 @@
 #[cfg(feature = "std")]
 extern crate std;
 
-// phase-359 W2 (final) / issue 0581 — `any(alloc, std)` is THE heap predicate,
+// phase-360 W2 (final) / issue 0581 — `any(alloc, std)` is THE heap predicate,
 // used in this exact spelling everywhere in the workspace.
 //
 // `alloc` and `std` are standard-library CRATES, not Cargo features; the

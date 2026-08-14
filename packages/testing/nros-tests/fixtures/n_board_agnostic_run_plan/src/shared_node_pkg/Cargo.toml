@@ -41,7 +41,7 @@ default = []
 # Phase 248 C5c — the Component pkg is fully platform-AGNOSTIC: each Entry
 # pkg brings its platform via a direct `nros-platform { features=["platform-X"] }`
 # dep, so these gates no longer forward `nros/platform-*` (retired from nros).
-# phase-359 W8.d / issue 0585 — `posix` is a PLATFORM name; it no longer carries
+# phase-360 W8.d / issue 0585 — `posix` is a PLATFORM name; it no longer carries
 # `nros/std` (a functional axis). The Entry pkg names `std` on its own `nros`
 # dep, next to the platform it picked, exactly as CMake already does.
 posix = []
