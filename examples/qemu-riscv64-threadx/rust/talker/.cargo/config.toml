@@ -1,4 +1,4 @@
-include = ["../../../../../nros-patch.toml", "nros-board.toml"]
+include = [ "../../../../../nros-patch.toml", "nros-board.toml"]
 
 [patch.crates-io]
 nros-board-threadx-qemu-riscv64 = { path = "../../../../packages/boards/nros-board-threadx-qemu-riscv64" }  # nros-managed
