@@ -133,13 +133,6 @@ impl From<object::Error> for Error {
     }
 }
 
-/// Locate the rlib for `crate_name` containing Phase 87's size-probe
-/// symbols (any defined symbol starting with `symbol_prefix`).
-///
-/// Builds `crate_name` in an isolated nested target dir and returns the
-/// resulting rlib. There is no fallback: on failure the caller must fail the
-/// build rather than guess a size (issue 0464).
-
 /// Issue 0563 — make the CONSUMING build script re-run when the crate this
 /// probe measured changes.
 ///
@@ -189,6 +182,12 @@ fn emit_probe_watches(rlib: &Path) {
     }
 }
 
+/// Locate the rlib for `crate_name` containing Phase 87's size-probe
+/// symbols (any defined symbol starting with `symbol_prefix`).
+///
+/// Builds `crate_name` in an isolated nested target dir and returns the
+/// resulting rlib. There is no fallback: on failure the caller must fail the
+/// build rather than guess a size (issue 0464).
 pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
     find_dep_rlib_isolated(crate_name, symbol_prefix)
 }
