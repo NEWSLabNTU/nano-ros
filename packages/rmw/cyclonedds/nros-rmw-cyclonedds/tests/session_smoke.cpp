@@ -11,6 +11,7 @@
 #include "nros/rmw_ret.h"
 #include "nros/rmw_vtable.h"
 #include "nros_rmw_cyclonedds.h"
+#include "nros_test_domain.h"
 
 namespace {
 
@@ -37,7 +38,7 @@ int main() {
     // Domain 42 keeps this test off the default ROS_DOMAIN_ID so a
     // running ROS 2 stack on the same host doesn't see our short-
     // lived participant.
-    nros_rmw_ret_t r = g_vt->create_session(nullptr, 0, 42, s.node_name, &s);
+    nros_rmw_ret_t r = g_vt->create_session(nullptr, 0, nros_test_domain(42), s.node_name, &s);
     if (r != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "open returned %d\n", static_cast<int>(r));
         return 2;

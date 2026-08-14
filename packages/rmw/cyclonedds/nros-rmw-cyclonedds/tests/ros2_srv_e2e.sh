@@ -35,7 +35,11 @@ if ! command -v ros2 >/dev/null 2>&1; then
 fi
 
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-118}"
+# issue 0580 — a per-run domain, not a literal: a fixed one is a shared bus
+# that two concurrent copies of this test discover each other on.
+# shellcheck source=packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/ros2_e2e_common.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ros2_e2e_common.sh"
+export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-$(nros_unique_ros_domain_id)}"
 
 e2e_iface() {
     if [ -n "${NROS_RMW_CYCLONEDDS_E2E_IFACE:-}" ]; then

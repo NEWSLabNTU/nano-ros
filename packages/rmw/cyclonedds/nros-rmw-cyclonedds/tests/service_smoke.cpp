@@ -13,6 +13,7 @@
 #include "nros/rmw_ret.h"
 #include "nros/rmw_vtable.h"
 #include "nros_rmw_cyclonedds.h"
+#include "nros_test_domain.h"
 
 namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
@@ -33,7 +34,7 @@ int main() {
     nros_rmw_session_t s{};
     s.node_name  = "service_smoke";
     s.namespace_ = "/";
-    if (g_vt->create_session(nullptr, 0, 99, s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 

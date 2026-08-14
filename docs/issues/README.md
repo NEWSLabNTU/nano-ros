@@ -862,6 +862,28 @@ failing in three directions (each verified red first). The two live bins this is
 handled — `logging-smoke-zephyr-native-sim` has a west row (0549 removed its duplicate builder) and
 `ros-edition-pose-pub` is an allowlisted RFC-0058 exception. See `archived/0540-*`.
 
+RESOLVED 2026-08-15 — **#580** every cyclone interop test named its DDS domain with a LITERAL (117/118 in
+the two shell scripts; 99 ×6, 88, 42 across the C++ binaries), so two concurrent runs joined one bus and
+the collision presented as wrong DATA: a tier-2 sweep showed `nros sub captured 'hello-from-nros'` — case
+A.1's own publisher payload — while solo runs passed 17/17 twice. Fixed with ONE scheme in three languages
+(`ros2_e2e_common.sh`, `nros_test_domain.h`, both mirroring `nros_tests::unique_ros_domain_id`):
+`ROS_DOMAIN_ID` when set, else a per-process domain in 1..=232. Note for the next person: two concurrent
+copies of the FAILING TEST passed — the collision needs one suite's A.1 publisher alive during the other's
+A.2 window, so only two concurrent full SUITES reproduce it. A failed repro at the wrong granularity is not
+evidence of absence. And fixing only the shell half moved the failure to `service_roundtrip`, one file over.
+See `archived/0580-*`.
+
+RESOLVED 2026-08-15 — **#576** the four west-built compile-checks (`west_bringup_zephyr`,
+`west_board_import`, `zephyr_self_pkg_rust`, `zephyr_self_pkg_sibling`) never wrote the `.inputsig` the
+staleness gate reads, so tier 2 and tier 3 died at the gate right after a fully green
+`build-test-fixtures lane=all`. Build side wrote `.compile-ok` under `build/west-fixtures/<id>/`; the gate
+read `.inputsig` under `build/compile-check-fixtures/<id>/` — the issue-0196 rule, in the compile-check
+inventory. #0554 dropped these rows for `SCOPE=native` and rightly KEPT them for `all`/`coords`; this was
+its missing half, since keeping the demand is only sound if the building lane writes what the gate reads.
+`west-fixtures.sh` now stamps the sig on the same success condition, passing the RAW manifest line —
+the signature hashes the record verbatim, so an 8-field reconstruction of an 11-field line would have
+turned "missing" into a permanent "stale". See `archived/0576-*`.
+
 **#562** (cli/build, open 2026-08-14) — `nros sync` REWROTE byte-identical files, restamping their
 mtimes and buying a cmake reconfigure for no change. `atomic_write_bytes` never compared content, and the
 skip-if-identical idiom existed in FOUR private copies (`facade`, `metadata_build`, an inline check in
