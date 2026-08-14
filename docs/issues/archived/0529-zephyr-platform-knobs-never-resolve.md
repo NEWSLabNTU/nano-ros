@@ -2,7 +2,7 @@
 id: 529
 title: "The zpico platform resolver can never select `zephyr`, so
   `config/zephyr/nros-platform.toml`'s knobs are unreachable"
-status: open
+status: resolved
 type: bug
 area: build-system
 related: [issue-0460, issue-0135, phase-290, rfc-0049]
@@ -83,3 +83,35 @@ covers the new site.
 2. A gate asserting the Zephyr Kconfig defaults and the platform TOML agree, so
    the two sources cannot drift apart silently. That is the part with lasting
    value — the resolver fix alone changes no behaviour.
+
+## FIXED — verified 2026-08-15, both items
+
+Landed in `292547dd5` and never closed out. Both fix items above check out
+against the tree as it stands:
+
+1. **The resolver is total.** `runner.rs` now reads
+   `… else if use_zephyr { Some("zephyr") } …`, so the Zephyr branch selects
+   `config/zephyr/nros-platform.toml` and its `[knobs.zenoh.tx]` is reachable.
+2. **The drift gate exists and runs.** `scripts/check-zephyr-knob-agreement.py`
+   is wired into `check-fast` (justfile:415) and reports
+   `zephyr knob agreement: OK (batch=y, split_lock=y, flush_ms=50)` — the
+   Kconfig defaults and the TOML compared, so the "two sources agreeing by
+   coincidence" can no longer drift silently. That was the part this issue
+   called the one with lasting value, and it is the part that landed.
+
+### The trap this issue predicted sprang immediately — as issue 0534
+
+> **A trap that springs later.** The moment `build_c_shim` is enabled on Zephyr,
+> or a knob the Rust lane *does* read is added to that table, the resolver
+> silently hands back builtins.
+
+The direction was right and the mechanism was the mirror image. Making the
+resolver total did not just unlock the knobs: naming the platform is ALSO what
+gates `build_zenoh_pico_unified`, so a build script began cc-compiling the
+vendored `system/zephyr/*.c` and every Zephyr C zenoh leaf died at
+`fatal error: version.h`. That is issue **0534**, fixed by making the manifest
+declare `compiled_by = "platform"` — the fix which lets the resolver stay total
+while keeping cargo out of a C build that Zephyr's own build system owns.
+
+Worth recording together: this issue's "no behaviour change today" was true of
+the knobs and false of the build, and the two were the same condition.

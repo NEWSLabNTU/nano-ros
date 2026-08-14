@@ -715,16 +715,16 @@ the translation is announced, not silent), and failing resolution errors AT the 
 compiler dirs actually present. Forward-compatible on purpose: phase-349 W3 retires this builder for upstream's own
 CMakeLists, at which point the enum is the only vocabulary. See `0530-*`. (2026-08-13)
 
-**#529** — the zpico platform resolver can never select `zephyr` (`use_zephyr` is absent from the `platform_name` chain
-and every Zephyr target matches `is_embedded_target()`), so `config/zephyr/nros-platform.toml` — the only platform file
-carrying `[knobs.zenoh.tx]` — is unreachable. **Latent, not live, and my first two write-ups of it were wrong**: the
-optimisation IS applied on Zephyr, via `zephyr/Kconfig` defaults (`y`/`y`/50) forwarded by `nros_rmw_zenoh.cmake`, and
-there is no ABI split because `build_c_shim` is skipped on Zephyr and `rust_consts()` never emits `tx_batch`. What it
-actually is: two sources for one fact agreeing only by coincidence, a config file that silently does nothing when
-edited, and a trap that springs the moment a knob the Rust lane DOES read joins that table. The 0460 gate misses it
-because the trio is published from `nros_rmw_zenoh.cmake`, not `nros_cargo_build.cmake`'s `_nros_resolve_knob`
-(issue-0196 rule). Resolver fixed; drift between the two sources now gated by `check-zephyr-knob-agreement`. Left open
-for the real fix — one authority with the other as a ladder rung. See `0529-*`. (2026-08-13)
+RESOLVED 2026-08-15: **#529** — the zpico resolver could never select `zephyr`, so
+`config/zephyr/nros-platform.toml`'s `[knobs.zenoh.tx]` — the only such table in the tree — was unreachable
+and editing it did nothing. Landed in `292547dd5` and verified 2026-08-15: the resolver is total
+(`else if use_zephyr => Some("zephyr")`), and `check-zephyr-knob-agreement.py` is wired into `check-fast`
+and passes, comparing the Kconfig defaults against the TOML so the two sources cannot drift silently — the
+part this issue called the one with lasting value. NOTE the trap it predicted sprang immediately, mirrored:
+naming the platform is ALSO what gates `build_zenoh_pico_unified`, so a build script started cc-compiling
+the vendored `system/zephyr/*.c` and every Zephyr C zenoh leaf died on `version.h` — issue 0534, fixed by
+`compiled_by = "platform"`. "No behaviour change today" was true of the knobs and false of the build, and
+both were the same condition. See `archived/0529-*`. (2026-08-15)
 
 RESOLVED 2026-08-11 — **#518** `SourceMetadata` could not be parsed AT ALL: `SourceTimer` is
 `deny_unknown_fields`, and #505 *added* `period_us` beside the kept `period_ms`, so every sidecar parse died on
