@@ -2,10 +2,10 @@
 id: 571
 title: "`realtime_tiers` passes tier 1 in 12 s by SKIPPING 15 of its 16 cells —
   build the images and it exceeds nextest's 60 s"
-status: open
+status: resolved
 type: bug
 area: testing
-related: [issue-0572, issue-0466, issue-0445, rfc-0051, phase-329]
+related: [issue-0572, issue-0564, issue-0565, issue-0460, issue-0357, issue-0466, issue-0445, rfc-0051, phase-329]
 ---
 
 ## Symptom
@@ -57,7 +57,57 @@ run prints **nothing at all** — not the cells that passed, not the one that
 failed. The red cell (issue 0572) was invisible until the binary was run
 outside nextest.
 
-## Fix — needs a decision, not just a patch
+## Fixed (2026-08-14)
+
+**The timeout half was fixed in parallel by issue 0564** (another session, same
+day): a binary-level `slow-timeout = { period = "180s", terminate-after = 3 }`.
+That is why this issue's two observations came apart — 0564 measured 127 s and
+204 s and budgeted for them; this issue is about the OTHER half, which a budget
+cannot address.
+
+**The lane half.** `scripts/test/lane-filter.sh native` narrows tier 1 by
+excluding platform tokens in binary and test NAMES. Issue 0357 already recorded
+that binary exclusion alone was insufficient and added the test-name exclusion.
+Consolidation defeats both: FOUR consumers are one generically-named test each
+over every platform's cells —
+
+    entry_e2e entry_matrix
+    multihost_e2e multihost
+    realtime_tiers_e2e realtime_tiers
+    roundtrip_xprocess_e2e roundtrip_xprocess
+
+so no name filter can reach their cells. They now narrow their own cell list
+through `nros_tests::lane_scope::admits` — the run-scope twin of
+`fixtures::lane::require_coord_in_lane`, which solves the same problem for tier
+2's coordinate scoping (issue 0482: a lane that cannot be a name filter must be
+applied where the test binds to a platform). Gate:
+`check-lane-scope-consumers` (mutation-verified).
+
+**The visibility half.** Every consumer now PRINTS what it did not run.
+`realtime_tiers` under `NROS_TEST_SCOPE=native`:
+
+    realtime_tiers: 4 row(s) ran, 0 skipped, 12 out of lane
+      - nuttx/rust: out of lane (NROS_TEST_SCOPE=native admits the host board only)
+      …
+
+and a run where NO row ran is a `skip!`, not a pass. `entry_matrix` already had
+this (issue 0460, the same finding one binary over).
+
+**A third defect, found on the way.** Five `[test-groups.*-realtime-*-port]`
+groups existed to serialize a realtime_tiers CASE against the partner e2e
+sharing its baked image and slirp port. Every filter naming them selected a
+test name phase-329 deleted, so all five had NO live members — the port
+serialization had been silently off, and both surviving binaries
+(`realtime_tiers_e2e`, `sched_dims_applied_e2e`) could boot the same port
+concurrently. `sched_dims_applied_e2e`'s own comment had predicted exactly this
+residual. Retired into one `matrix-consumers-serial` group holding all five
+consolidated consumers. Verified with `cargo nextest show-config test-groups`:
+zero overrides now match no test.
+
+*Verified:* tier 1 green — `1403 tests run: 1337 passed, 72 skipped`,
+`realtime_tiers` PASS in 22 s having reported its 12 out-of-lane rows.
+
+## Original plan (superseded by the above)
 
 1. **Per-cell time budget + report as you go.** A cell that overruns should fail
    as that cell, not take the suite's clock with it, and results should print

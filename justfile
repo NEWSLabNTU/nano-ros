@@ -412,7 +412,7 @@ check-fast: \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-package-xml-comments check-provider-announcements check-provider-index \
-    check-zephyr-knob-agreement check-site-config \
+    check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
     check-workspace-order \
     check-atomic-sync-writes \
     check-cmake-corrosion-prefix \
@@ -1127,6 +1127,16 @@ check-board-cargo-config-applied:
 # one re-opens the issue-0380 hand-edit/regeneration conflict. Supersedes
 # check-model-dims (W5.b: the dim baseline protected committed files that no
 # longer exist; `nros ws model-dims` remains for inspection).
+# issue 0571 — a matrix consumer the lane filter cannot reach by NAME must
+# narrow its own cell list (`nros_tests::lane_scope::admits`). Four consumers
+# are ONE generically-named test each over every platform's cells, so
+# `scripts/test/lane-filter.sh native` excludes nothing of theirs: tier 1 boots
+# whatever images exist, and the cells whose images do not exist vanish into a
+# green. Buildless.
+[private]
+check-lane-scope-consumers:
+    @python3 scripts/check-lane-scope-consumers.py
+
 [private]
 check-no-tracked-models:
     @bash scripts/check-no-tracked-models.sh

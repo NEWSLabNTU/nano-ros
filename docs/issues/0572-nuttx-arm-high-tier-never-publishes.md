@@ -5,7 +5,7 @@ title: "nuttx-arm/rust realtime tiers: the 10 ms /ctrl tier delivers NOTHING
 status: open
 type: bug
 area: platform-nuttx
-related: [issue-0571, rfc-0015, phase-281]
+related: [issue-0569, issue-0570, issue-0565, issue-0571, issue-0246, rfc-0015, phase-281]
 ---
 
 ## Symptom
@@ -50,6 +50,44 @@ cell was invisible — tier 1 has been reporting PASS by skipping it.
   from a hand-authored line to a sync-managed one with the IDENTICAL path
   (`cargo metadata` resolves `libc 0.2.183` →`third-party/nuttx/libc` either
   way). The cell had never actually run in the sessions before it.
+
+## The guest console (2026-08-14, after the evidence gap below was closed)
+
+```
+nros entry ready
+nros: multi-tier run — 2 tier(s) over one session
+nros: tier priority set tier=`low` prio=100
+nros: core pin FAILED tier=`low` cpu=0 — kernel lacks CONFIG_SMP, tier runs unpinned
+```
+
+Four lines, and only ONE tier in them. `low` is `tiers[1]`, a SPAWNED thread —
+the Rust arm self-applies priority at tier entry, so a spawned tier prints that
+marker. `high` is `tiers[0]`, the BOOT tier: it owns the session, keeps the
+default Fifo SchedContext deliberately (issue 0246 — a budgeted context there
+caps the shared zenoh-pico flush and starves delivery), and prints no marker.
+
+So the spawned tier is healthy and the SESSION-OWNING tier publishes nothing.
+Not a spawn failure (no `FAILED to spawn tier` line), not a session failure (the
+session opened and `/telem` flows through it), and not the 0246 budget trap
+(`[tiers.high.nuttx]` declares `budget_us`+`period_us`, so `boot_is_budgeted` is
+true and `run_tiers` drops both for the boot tier — the mitigation is engaged).
+
+## Evidence gap this had to close first
+
+Issue 0565 taught the verdict to print the guest console — on the ONE path where
+the symptom was noticed (the low-tier anchor). This failure takes the RATIO
+path, which killed the guest *before* reading it, so the console was destroyed
+by construction. Every verdict arm now drains through one
+`guest_console(&mut guest)` helper before killing, which is how the four lines
+above exist at all.
+
+## Relationship to #569
+
+Same cell, DIFFERENT console. #569 has these four lines PLUS `RMW session open
+failed — ConnectionFailed` and an abort, so neither tier delivers. Here the
+session opens and the low tier delivers five to eight samples. Either two
+defects share a cell, or one root cause presents two ways depending on timing.
+Whoever takes one should read the other.
 
 ## What is NOT known
 

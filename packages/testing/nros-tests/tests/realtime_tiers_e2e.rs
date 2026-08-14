@@ -389,6 +389,34 @@ impl Guest {
 // Shared helpers
 // =============================================================================
 
+/// The guest's last 25 console lines, drained BEFORE it is killed, formatted
+/// for a panic message.
+///
+/// phase-351 — issue 0565 added this reasoning to the ONE arm where the
+/// symptom was noticed (the low-tier anchor) and left the others killing the
+/// guest first, which by construction destroys the evidence. Issue 0572 is what
+/// that costs: `/ctrl` counter 0 with a healthy `/telem`, and no guest console
+/// to say whether the high tier failed to spawn, failed to open a session, or
+/// published into a closed writer. Every verdict path calls this now, so the
+/// gap cannot reopen in a third arm.
+///
+/// Best-effort by construction — a wedged guest returns what it buffered, and
+/// an empty string is itself the diagnosis.
+fn guest_console(guest: &mut Guest) -> String {
+    let drained = guest.drain(Duration::from_secs(3));
+    let tail: Vec<&str> = drained.lines().rev().take(25).collect();
+    let tail = tail
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n           ");
+    if tail.is_empty() {
+        "<the guest printed NOTHING — it did not reach the entry banner>".to_string()
+    } else {
+        tail
+    }
+}
+
 /// Spawn a native `int32-sink` observer on `topic` (prints `Received: <n>`
 /// per message) dialing `locator`.
 fn spawn_listener(topic: &'static str, locator: &str) -> ManagedProcess {
@@ -495,8 +523,19 @@ fn realtime_tiers() {
     std::panic::set_hook(Box::new(|_| {}));
     let mut ran = 0usize;
     let mut skipped: Vec<String> = Vec::new();
+    let mut out_of_lane: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     for c in &cells {
+        // issue 0571 — narrow by LANE here, because no name filter can reach
+        // inside one test. `lane-filter.sh native` excludes platform tokens in
+        // binary and test NAMES; this binary has neither, so without this a
+        // tier-1 host boots every QEMU image it happens to have lying around.
+        if !nros_tests::lane_scope::admits(c.platform) {
+            for exec in exec_for(c.platform, c.lang) {
+                out_of_lane.push(nros_tests::lane_scope::skip_note(c.platform, exec.label));
+            }
+            continue;
+        }
         for exec in exec_for(c.platform, c.lang) {
             ran += 1;
             let label = format!("{}/{}", plat_str(c.platform), exec.label);
@@ -517,6 +556,19 @@ fn realtime_tiers() {
     }
     std::panic::set_hook(prev_hook);
 
+    // issue 0571 — say what was NOT run, always. A row that skipped because its
+    // fixture is absent used to vanish into a green verdict unless EVERY row
+    // skipped, so "1 of 16 ran" and "16 of 16 passed" printed the same thing.
+    // That is what let issue 0572 sit unseen behind a 12-second PASS.
+    println!(
+        "realtime_tiers: {ran} row(s) ran, {} skipped, {} out of lane",
+        skipped.len(),
+        out_of_lane.len()
+    );
+    for note in out_of_lane.iter().chain(skipped.iter()) {
+        println!("  - {note}");
+    }
+
     assert!(
         failed.is_empty(),
         "realtime_tiers: {} of {} row(s) FAILED:\n  {}",
@@ -524,10 +576,17 @@ fn realtime_tiers() {
         ran,
         failed.join("\n  ")
     );
-    if skipped.len() == ran {
+    if ran == 0 || skipped.len() == ran {
         nros_tests::skip!(
-            "all {ran} realtime-tiers row(s) skipped:\n  {}",
-            skipped.join("\n  ")
+            "no realtime-tiers row RAN ({} skipped, {} out of lane):\n  {}",
+            skipped.len(),
+            out_of_lane.len(),
+            skipped
+                .iter()
+                .chain(out_of_lane.iter())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n  ")
         );
     }
 }
@@ -652,27 +711,14 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             // scheduled" could not be told apart from "the tier never spawned".
             // Same rule as issue 0445: a verdict states what it examined.
             // Drain BEFORE killing: a live guest still has its console open.
-            let guest_tail = guest.drain(Duration::from_secs(3));
+            let tail = guest_console(&mut guest);
             guest.kill();
-            let tail: Vec<&str> = guest_tail.lines().rev().take(25).collect();
-            let tail: String = tail
-                .into_iter()
-                .rev()
-                .collect::<Vec<_>>()
-                .join("\n           ");
             ctrl.kill();
             telem.kill();
             panic!(
                 "[{} {}] low-tier /telem never reached 5 deliveries — the low tier was \
                  not scheduled ({})\n         guest console (last 25 lines):\n           {}",
-                platform,
-                lang,
-                cell.note,
-                if tail.is_empty() {
-                    "<the guest printed NOTHING — it did not reach the entry banner>".to_string()
-                } else {
-                    tail
-                }
+                platform, lang, cell.note, tail
             )
         });
 
@@ -682,6 +728,9 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             // received; the deterministic proof reads the MONOTONIC payload
             // counter, not raw sample counts (delivery batching/drops under
             // scheduler/QEMU jitter distort counts, never the counter).
+            // phase-351 — BEFORE the kill (issue 0565's rule, applied to this
+            // arm too): #572 failed here with no guest evidence at all.
+            let tail = guest_console(&mut guest);
             guest.kill();
             let ctrl_all = ctrl
                 .wait_for_all_output(Duration::from_secs(3))
@@ -703,10 +752,11 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             assert!(
                 telem_max > 0,
                 "[{} {}] low-tier /telem counter never advanced (max {telem_max}) — the \
-                 low tier did not run ({})",
+                 low tier did not run ({})\n         guest console (last 25 lines):\n           {}",
                 platform,
                 lang,
-                cell.note
+                cell.note,
+                tail
             );
             // Issue 0447 — dump the raw observer text, not just the counters.
             // `ctrl_max` is an `unwrap_or(0)`, so 0 means "nothing parsed",
@@ -719,27 +769,31 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                  /telem counter {telem_max} — the 10 ms tier is not outrunning the \
                  100 ms tier ({})\n\
                  --- /ctrl observer output (empty ⇒ nothing was received at all) ---\n{}\n\
-                 --- /telem observer output ---\n{}",
+                 --- /telem observer output ---\n{}\n\
+                 --- guest console (last 25 lines) ---\n           {}",
                 platform,
                 lang,
                 cell.note,
                 ctrl_all,
-                telem_all
+                telem_all,
+                tail
             );
         }
         Proof::CountRatio3x | Proof::CountStrict => {
             let ctrl_out = ctrl
                 .wait_for_output_count(prefix, 1, Duration::from_secs(2))
                 .unwrap_or_else(|_| {
+                    let tail = guest_console(&mut guest);
                     guest.kill();
                     ctrl.kill();
                     telem.kill();
                     panic!(
                         "[{} {}] high-tier /ctrl produced nothing — the high tier was \
-                         not scheduled ({})",
-                        platform, lang, cell.note
+                         not scheduled ({})\n         guest console (last 25 lines):\n           {}",
+                        platform, lang, cell.note, tail
                     )
                 });
+            let tail = guest_console(&mut guest);
             guest.kill();
             ctrl.kill();
             telem.kill();
@@ -748,10 +802,12 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             let ctrl_n = nros_tests::count_pattern(&ctrl_out, prefix);
             assert!(
                 telem_n >= 5,
-                "[{} {}] expected ≥5 low-tier /telem deliveries, got {telem_n} ({})",
+                "[{} {}] expected ≥5 low-tier /telem deliveries, got {telem_n} ({})\n\
+                 --- guest console (last 25 lines) ---\n           {}",
                 platform,
                 lang,
-                cell.note
+                cell.note,
+                tail
             );
             if matches!(cell.proof, Proof::CountRatio3x) {
                 // 10 ms vs 100 ms ⇒ ~10×; a clear ≥3× margin stays robust
@@ -759,19 +815,23 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 assert!(
                     ctrl_n >= telem_n * 3,
                     "[{} {}] expected the high tier (/ctrl, 10 ms) to deliver ≥3× the \
-                     low tier (/telem, 100 ms): ctrl={ctrl_n} telem={telem_n} ({})",
+                     low tier (/telem, 100 ms): ctrl={ctrl_n} telem={telem_n} ({})\n\
+                     --- guest console (last 25 lines) ---\n           {}",
                     platform,
                     lang,
-                    cell.note
+                    cell.note,
+                    tail
                 );
             } else {
                 assert!(
                     ctrl_n > telem_n,
                     "[{} {}] ctrl (10 ms tier) delivered {ctrl_n} ≤ telem's {telem_n} — \
-                     the high tier is not outrunning the low tier ({})",
+                     the high tier is not outrunning the low tier ({})\n\
+                     --- guest console (last 25 lines) ---\n           {}",
                     platform,
                     lang,
-                    cell.note
+                    cell.note,
+                    tail
                 );
             }
         }

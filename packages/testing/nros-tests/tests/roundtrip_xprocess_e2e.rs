@@ -262,6 +262,33 @@ fn roundtrip_xprocess() {
         "matrix regression: no Workspace Service/Action runtime cells for this consumer"
     );
 
+    // issue 0571 — narrow by LANE before running anything: this test's NAME
+    // carries no platform token, so `scripts/test/lane-filter.sh native` cannot
+    // exclude its embedded cells the way it excludes a platform-named binary.
+    // Without this a tier-1 host boots whatever QEMU images happen to exist.
+    let out_of_lane: Vec<String> = cells
+        .iter()
+        .filter(|c| !nros_tests::lane_scope::admits(c.platform))
+        .map(|c| nros_tests::lane_scope::skip_note(c.platform, lang_str(c.lang)))
+        .collect();
+    let cells: Vec<&MCell> = cells
+        .into_iter()
+        .filter(|c| nros_tests::lane_scope::admits(c.platform))
+        .collect();
+    if !out_of_lane.is_empty() {
+        eprintln!(
+            "roundtrip_xprocess: {} cell(s) out of lane:\n  {}",
+            out_of_lane.len(),
+            out_of_lane.join("\n  ")
+        );
+    }
+    if cells.is_empty() {
+        nros_tests::skip!(
+            "every cell is out of this run's lane:\n  {}",
+            out_of_lane.join("\n  ")
+        );
+    }
+
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     let mut skipped: Vec<String> = Vec::new();

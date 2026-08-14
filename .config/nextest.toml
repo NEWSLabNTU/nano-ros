@@ -72,31 +72,21 @@ max-threads = 1
 # starts never collide. W5.8 follow-up: the EDF e2e grew cpp/c cases that
 # share the ws-realtime-{cpp,c} images + their baked ports with the
 # realtime_tiers_e2e zephyr_cpp/zephyr_c cells, so those join the group too.
-[test-groups.zephyr-realtime-rust-port]
-max-threads = 1
 
 # phase-296 W5.9 — same RESOURCE pattern for NuttX: the arm cpp realtime
 # image + its baked router port are shared by realtime_tiers_e2e's
 # nuttx_arm_cpp cell and the sporadic-policy e2e — serialize them.
-[test-groups.nuttx-realtime-cpp-port]
-max-threads = 1
 
 # phase-296 W5.10 — shared threadx-linux realtime image + baked port:
 # serialize the preempt-threshold e2e with the realtime cell.
-[test-groups.threadx-realtime-rust-port]
-max-threads = 1
 
 # phase-296 W5.11 — shared nuttx-arm RUST realtime image + baked port
 # (`port_of(NuttxArm, Rust, RealtimeTiers)`): the core-pin e2e and
 # realtime_tiers_e2e's `nuttx_arm_rust` cell start a router on the same port.
-[test-groups.nuttx-realtime-rust-port]
-max-threads = 1
 
 # phase-296 W5.11 — shared freertos mps2 CPP realtime image + baked port
 # (`port_of(FreertosMps2, Cpp, RealtimeTiers)`): the core-pin e2e and
 # realtime_tiers_e2e's `freertos_cpp` cell start a router on the same port.
-[test-groups.freertos-realtime-cpp-port]
-max-threads = 1
 
 # Resource: QEMU host-load throttle (2 MPS2 slirp guests + a zenohd per
 # test). Ports are allocator-unique per (variant, lang) since phase-89.13/
@@ -406,65 +396,28 @@ retries = 2
 # via `alloc::port_of`), so no group serialization needed against the
 # arm-nuttx groups. The #199-follow-up C talker e2e (c_riscv_nuttx_e2e,
 # allocator port 8700) has the same boot profile.
-# phase-295 W3.b — the 15 per-cell realtime_tiers_* binaries consolidated
-# into binary(realtime_tiers_e2e); the riscv cells are selected by their
-# `nuttx_riscv_*` case names.
+# phase-295 W3.b consolidated the 15 per-cell realtime_tiers_* binaries into
+# binary(realtime_tiers_e2e), and phase-329 W1 consolidated their CASES into one
+# test — so the `test(nuttx_riscv)` branch this filter used to carry selected
+# nothing (issue 0571). The riscv realtime cells take their budget from the
+# binary-level override below; this row is now purely the #199-follow-up C
+# talker e2e it also always named.
 [[profile.default.overrides]]
-filter = "binary(c_riscv_nuttx_e2e) | (binary(realtime_tiers_e2e) & test(nuttx_riscv))"
+filter = "binary(c_riscv_nuttx_e2e)"
 slow-timeout = { period = "150s", terminate-after = 2 }
 retries = 1
 
-# phase-296 W5.5 (final-review finding 1) — see
-# [test-groups.zephyr-realtime-rust-port]. Same slow-timeout/retries as the
-# other Zephyr native_sim (NSOS) QEMU-class lanes below (cold boot + zenoh
-# discovery flakes under host load).
-[[profile.default.overrides]]
-filter = "(binary(realtime_tiers_e2e) and (test(zephyr_rust) or test(zephyr_cpp) or test(zephyr_c)))"
-test-group = "zephyr-realtime-rust-port"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# phase-296 W5.9 — serialize the shared nuttx cpp realtime image/port; QEMU
-# lane timeout/retries mirror the nuttx cells' own budget.
-[[profile.default.overrides]]
-filter = "(binary(realtime_tiers_e2e) and test(nuttx_arm_cpp))"
-test-group = "nuttx-realtime-cpp-port"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# phase-302 W5 (issue 0263) — the RUST arm's tier-priority marker e2e shares
-# the nuttx rust realtime image/port with its realtime cell; serialize them.
-[[profile.default.overrides]]
-filter = "(binary(realtime_tiers_e2e) and test(nuttx_arm_rust))"
-test-group = "nuttx-realtime-rust-port"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# phase-296 W5.10 — see [test-groups.threadx-realtime-rust-port].
-[[profile.default.overrides]]
-filter = "(binary(realtime_tiers_e2e) and test(threadx_linux_rust))"
-test-group = "threadx-realtime-rust-port"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# phase-296 W5.11 — serialize the nuttx-arm RUST core-pin e2e with the shared
-# realtime image/port; QEMU lane timeout/retries mirror the nuttx cells.
-[[profile.default.overrides]]
-filter = "(binary(realtime_tiers_e2e) and test(nuttx_arm_rust))"
-test-group = "nuttx-realtime-rust-port"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# phase-296 W5.11 — serialize the freertos CPP core-pin e2e with the shared
-# realtime image/port; same QEMU throttle as the other freertos lanes.
-[[profile.default.overrides]]
-filter = "(binary(realtime_tiers_e2e) and test(freertos_cpp))"
-test-group = "freertos-realtime-cpp-port"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
+# issue 0571 — five overrides stood here (phase-296 W5.5/W5.9/W5.10/W5.11,
+# phase-302 W5), each serializing ONE realtime_tiers_e2e CASE against the
+# partner e2e that shares its baked image and port. Every one of them selected a
+# test name that phase-329 W1 deleted when it folded those cases into a single
+# test, so all five had been inert. Their intent lives on in
+# [test-groups.matrix-consumers-serial], which serializes the consolidated
+# consumers as whole binaries — the only shape nextest can express for a test
+# that spans every platform at once.
 
 [[profile.default.overrides]]
-filter = "binary(nuttx_qemu) or (binary(entry_e2e) and test(nuttx_arm)) or (binary(rtos_e2e) and test(Platform__Nuttx))"
+filter = "binary(nuttx_qemu) or (binary(rtos_e2e) and test(Platform__Nuttx))"
 test-group = "qemu-nuttx"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
@@ -497,7 +450,7 @@ retries = 2
 # realtime_tiers_e2e threadx_linux_rust case (phase-297 W5) rides the same
 # host-load throttle.
 [[profile.default.overrides]]
-filter = "binary(threadx_linux) or (binary(rtos_e2e) and test(Platform__ThreadxLinux)) or (binary(realtime_tiers_e2e) and test(threadx_linux))"
+filter = "binary(threadx_linux) or (binary(rtos_e2e) and test(Platform__ThreadxLinux))"
 test-group = "threadx-linux"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
@@ -797,12 +750,32 @@ test-group = "qemu-emulated"
 # still run alongside `realtime_tiers_e2e` cells that share those ports. If it
 # flakes that way, the fix is to merge it into those groups rather than to widen
 # the timeout.
-[test-groups.sched-dims-serial]
+# issue 0571 — ONE group for every consolidated multi-platform consumer, and
+# the resolution of the residual the paragraph above predicted.
+#
+# phase-329 folded per-cell binaries into single tests that each iterate EVERY
+# platform's cells in one process. Five such tests exist, and they boot the same
+# baked images on the same allocator ports as one another. Per-cell groups could
+# express that; a single test cannot be in five groups, so the five per-cell
+# groups (`nuttx-realtime-rust-port`, `nuttx-realtime-cpp-port`,
+# `threadx-realtime-rust-port`, `freertos-realtime-cpp-port`,
+# `zephyr-realtime-rust-port`) had NO live members at all — every filter naming
+# them selected a test name that consolidation deleted. They are retired here.
+#
+# One group holding all five consumers is the expressible answer: conservative
+# (it serializes pairs that may not actually collide) but never wrong.
+#
+# RESIDUAL, unchanged and stated: a consumer can still run alongside a
+# PER-PLATFORM binary whose port it reuses (`realtime_tiers`'s nuttx-arm rust
+# cell reuses rtos_e2e's talker image and port 8200). nextest allows one group
+# per test, so that cannot be expressed at the same time as this one. If it
+# flakes that way, move the per-platform partner into this group too.
+[test-groups.matrix-consumers-serial]
 max-threads = 1
 
 [[profile.default.overrides]]
 filter = "binary(sched_dims_applied_e2e)"
-test-group = "sched-dims-serial"
+test-group = "matrix-consumers-serial"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
@@ -820,5 +793,6 @@ retries = 2
 # kill meant the later cells were never run at all. Two genuine NuttX Rust
 # failures had been sitting behind it unseen (issue 0565).
 [[profile.default.overrides]]
-filter = "binary(realtime_tiers_e2e)"
+filter = "binary(realtime_tiers_e2e) or binary(entry_e2e) or binary(multihost_e2e) or binary(roundtrip_xprocess_e2e)"
+test-group = "matrix-consumers-serial"
 slow-timeout = { period = "180s", terminate-after = 3 }

@@ -53,18 +53,24 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 **#572** (platform-nuttx, open 2026-08-14) — the `nuttx-arm/rust` realtime-tiers cell delivers
 **zero** samples on its 10 ms `/ctrl` tier while the 100 ms `/telem` tier on the same image, same run,
-delivers five. Not slow — nothing. Reproduces on a from-scratch `just nuttx build-fixtures-arm`, and the
+delivers five. The guest console (readable now that every verdict arm drains it, not just the one
+issue 0565 fixed) names exactly one tier: `low`, the SPAWNED one. `high` is the boot tier — session
+owner, deliberately Fifo — and it publishes nothing. Not a spawn failure, not a session failure, not
+#0246's budget trap (the mitigation is engaged). Same cell as #569, different console: there the session
+itself fails. Not slow — nothing. Reproduces on a from-scratch `just nuttx build-fixtures-arm`, and the
 other 15 cells (including `nuttx-riscv`) pass. Whether it is a REGRESSION is unknown and tier-1 greens
 carry no information about it: #571 shows the cell has been silently skipped. Same shape as archived
 0144 and #447/#458, both races on the multi-tier path. See `0572-*`. (2026-08-14)
 
-**#571** (testing, open 2026-08-14) — `realtime_tiers` is ONE test over 16 cells, so its wall-clock and
-its verdict are functions of **which fixture images happen to exist**: 12 s PASS with native only (15
-cells silently absent), ~70 s and a nextest TIMEOUT once the embedded images are built. Tier 1 never
-builds them, so the lane has been reporting green BECAUSE the images are missing — 0445's shape at the
-suite level. And a timed-out run prints NOTHING (per-cell panics are swallowed until a final report), so
-the red cell inside it (#572) was invisible until the binary ran outside nextest. Found during an
-unrelated phase-351 W3 sweep. See `0571-*`. (2026-08-14)
+RESOLVED 2026-08-14 — **#571** `realtime_tiers` reported a 12-second tier-1 PASS having run 1 of its 16
+rows: `lane-filter.sh native` narrows by NAME, and phase-329 left FOUR consumers as one generically-named
+test each over every platform's cells, which no name filter can reach into (issue 0357's finding, one
+level deeper). They now narrow their own cell list via `nros_tests::lane_scope::admits` — the run-scope
+twin of tier 2's `require_coord_in_lane` — and PRINT what did not run; a run where no row ran is a skip,
+not a pass. The timeout half was fixed in parallel by #564. Third defect found on the way: five
+`*-realtime-*-port` test-groups had NO live members (every filter named a case consolidation deleted), so
+the slirp-port serialization they existed for had been silently off — retired into one
+`matrix-consumers-serial` group. Gate: `check-lane-scope-consumers`. See `archived/0571-*`. (2026-08-14)
 
 RESOLVED 2026-08-14 — **#568** every GREEN `just ci` ended in two `error: recipe … failed` lines,
 because tier 1's success banner spelt `` `just ci-matrix` `` inside DOUBLE quotes: a recipe line goes to

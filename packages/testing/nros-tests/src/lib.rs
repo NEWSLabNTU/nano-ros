@@ -46,6 +46,7 @@ pub mod fixtures;
 pub mod buckets;
 pub mod ci_lane;
 pub mod interop;
+pub mod lane_scope;
 pub mod matrix;
 pub mod output;
 pub mod platform;
