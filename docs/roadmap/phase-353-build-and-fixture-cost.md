@@ -46,16 +46,23 @@ against a stale number repeats what phase-343 W2 had to undo.
 
   Two things carried forward from it:
 
-  1. **The whitespace churn is NOT #562 and is still unexplained.**
+  1. **The whitespace churn is NOT #562, and no longer reproduces.**
      `examples/threadx-linux/rust/talker/.cargo/config.toml` came back modified
      after tier-1 runs on 2026-08-14 and 2026-08-15 with a pure-whitespace diff
      (`["../..` becoming `[ "../..`). That is a CONTENT difference, which
-     write-if-changed cannot suppress by design. It does **not** reproduce from
-     a direct `nros sync` of that leaf, so the writer is reached only by the
-     full lane — most likely `model_ingest`, which #562 named as a leaf
-     `.cargo/config.toml` writer. Until it is found, it shows up as unstaged
-     churn that blocks `git pull --rebase` until discarded by hand, and CLAUDE.md
-     is explicit that a blanket `git add -u` must never scoop it up.
+     write-if-changed cannot suppress by design, so it was never #562's.
+
+     Re-checked on 2026-08-15 after #562's verification: **clean** after a
+     direct `nros sync` of that leaf, and **clean** after a full green tier 1
+     (`git status --porcelain -- examples/` empty both times). So something
+     between those runs fixed it, or it needed a state this tree no longer has.
+
+     Left recorded rather than declared fixed, because two observations and two
+     clean checks is not a diagnosis and nobody has identified the writer.
+     #562 named `model_ingest` as a leaf `.cargo/config.toml` writer, which is
+     where to look first if it returns. Symptom to watch for: unstaged churn
+     that blocks `git pull --rebase` until discarded — and CLAUDE.md is explicit
+     that a blanket `git add -u` must never scoop it up.
   2. **A measurement lesson worth keeping.** The first restamp measurement used
      `comm` on `find -printf` output and reported 31 890 files. `comm` warned
      `file 1 is not in sorted order` and produced meaningless output; the real
