@@ -395,6 +395,23 @@ impl ExecutorNodeRuntime {
         Ok(())
     }
 
+    /// [`Self::spin_once`], returning the executor's own per-iteration counts
+    /// instead of discarding them — issue 0572.
+    ///
+    /// `spin_once` throws away a `SpinOnceResult` that already carries exactly
+    /// what a stalled tier needs to be diagnosed: how many timers fired, how
+    /// many subscription callbacks ran, and how many errored. Without it, "the
+    /// tier's timer never fires" and "the tier's callback runs and its publish
+    /// fails" are the same observation from outside the guest — a silent topic.
+    pub fn spin_once_counted(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<nros_node::SpinOnceResult, ExecutorError> {
+        let result = self.executor.spin_once(timeout);
+        self.run_ticks();
+        Ok(result)
+    }
+
     /// Phase 216.B.3 / C.3 follow-up — route a signaled callback to
     /// every registered component slot.
     ///

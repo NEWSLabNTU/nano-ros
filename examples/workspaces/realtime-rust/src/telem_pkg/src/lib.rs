@@ -19,6 +19,10 @@ impl Node for Telem {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("telem_node"))?;
+        // issue 0572 — say that this node's register() RAN. A tier that never
+        // dispatches and a node that was never registered on it look identical
+        // from outside: the topic is simply silent.
+        log::info!("Telem::register on a tier admitting group `telem`");
         node.callback_group("telem")?;
         let pub_telem = node.create_publisher_for_topic::<Int32>("/telem")?;
         let _t =
@@ -40,7 +44,20 @@ impl ExecutableNode for Telem {
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_telem" {
             let msg = Int32 { data: *state };
-            let _ = ctx.publish_to_topic::<Int32, 8>("/telem", &msg);
+            // issue 0572 — the result used to be discarded, which made "the
+            // timer never fired" and "every publish failed" the same
+            // observation from outside: `/telem` silent, guest console empty.
+            // The FIRST tick and every error now say so. Only the first, because
+            // this tier fires every 10 ms and a per-tick line would swamp the
+            // serial console the e2e observers read.
+            match ctx.publish_to_topic::<Int32, 8>("/telem", &msg) {
+                Ok(()) => {
+                    if *state == 0 {
+                        log::info!("on_telem: first publish OK (tier `low` is dispatching)");
+                    }
+                }
+                Err(e) => log::error!("on_telem: publish to /telem FAILED: {e:?}"),
+            }
             *state = state.wrapping_add(1);
         }
     }

@@ -89,7 +89,65 @@ session opens and the low tier delivers five to eight samples. Either two
 defects share a cell, or one root cause presents two ways depending on timing.
 Whoever takes one should read the other.
 
+## Narrowed, 2026-08-14 — it is the BOOT tier, and it never spins
+
+Ten build/run cycles of in-guest instrumentation (all of it kept, see below).
+The console now says:
+
+```
+nros: boot tier `high` (session owner) — groups ["ctrl"], class Some("real_time"),
+      budget Some(5000) us, period Some(10000) us, spin 1000 us
+[INFO] Control::register on a tier admitting group `ctrl`
+[INFO] Telem::register on a tier admitting group `telem`
+nros: spawning tier `low` — groups ["telem"], class None, spin 10000 us
+nros: tier priority set tier=`low` prio=100
+nros: core pin FAILED tier=`low` cpu=0 — kernel lacks CONFIG_SMP, tier runs unpinned
+[INFO] Control::register on a tier admitting group `ctrl`
+[INFO] Telem::register on a tier admitting group `telem`
+nros: tier `low` entering spin — wake primitive available (16 byte(s))
+[INFO] on_telem: first publish OK (tier `low` is dispatching)
+nros: tier `low` completed spin 1
+nros: tier `low` FIRST dispatch at spin 1 — 1 timer(s), 0 sub callback(s)
+```
+
+Established:
+
+1. **`high` IS the boot tier** (`tiers[0]`, the session owner). Its knobs
+   survived the bake exactly as `system.toml` declares them, and its groups are
+   `["ctrl"]` — nothing is misrouted.
+2. **`Control::register` RUNS on it.** The ctrl timer is registered on the boot
+   executor, under a group that executor admits.
+3. **The boot tier never completes a single spin.** `nuttx_spin_tier_forever`'s
+   first statement prints `entering spin`; `low` prints it, `high` never does.
+   So this is not "the timer fires and the publish fails" and not "the tier is
+   slow" — the session-owning tier does not reach its loop.
+4. The last thing it is seen doing is `spawn_scoped` for `low`. The child runs
+   to completion of its own setup and spins happily on the SAME session.
+5. **Not the sporadic budget.** `boot_is_budgeted` is true, so `run_tiers`
+   already drops budget+period for the owner and keeps Fifo (issue 0246's
+   mitigation) — verified from the printed knobs.
+6. **Not console I/O.** Suspecting the parent was blocked writing to a console
+   the child was using, every post-spawn write on the boot thread was removed
+   and the run repeated: `/ctrl` still zero. (This ruled out a hypothesis that
+   the earlier evidence supported — worth recording so nobody re-runs it.)
+
+## A second defect, fixed on the way: stderr is a black hole on this guest
+
+Every diagnostic in `run_tiers` was an `eprintln!` — a failed tier spawn, a
+boot-tier setup failure, a spin error, the budget notice. **None of them can
+ever appear on this guest's serial console**, which is why the `boot_is_budgeted`
+notice was missing from a run where it must have executed. Issue 0565 taught the
+HARNESS to capture that console for exactly these lines, and they were being
+written to a stream that never arrives. All 11 sites in
+`packages/boards/nros-board-nuttx/src/lib.rs` now write to stdout.
+
 ## What is NOT known
+
+Why `spawn_scoped` does not return, or — if it does — why the boot thread makes
+no further progress. That needs a debugger on the guest (or a NuttX-side thread
+dump), not more printf: the next probe has to observe the parent thread's state
+from outside, because everything it could print from inside is already either
+printed or proven absent.
 
 Whether this is a regression at all, and if so from when. Tier 1 has been
 skipping this cell (issue 0571), so the last run that proves it working is

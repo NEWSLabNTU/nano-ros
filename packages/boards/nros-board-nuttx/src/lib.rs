@@ -225,14 +225,14 @@ where
     // no transport and `Executor::open` fails with `Transport(ConnectionFailed)`.
     #[cfg(feature = "rmw-zenoh")]
     if let Err(err) = ::nros_rmw_zenoh::register() {
-        eprintln!("nros: zenoh RMW backend register failed: {:?}", err);
+        println!("nros: zenoh RMW backend register failed: {:?}", err);
     }
 
     let executor = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
-            eprintln!("Executor::open failed: {:?}", err);
-            let _ = std::io::stderr().flush();
+            println!("Executor::open failed: {:?}", err);
+            let _ = std::io::stdout().flush();
             std::process::exit(1);
         }
     };
@@ -256,8 +256,8 @@ where
 
     let _ = std::io::stdout().flush();
     if let Err(ref e) = setup_result {
-        eprintln!("Application error: {:?}", e);
-        let _ = std::io::stderr().flush();
+        println!("Application error: {:?}", e);
+        let _ = std::io::stdout().flush();
         return setup_result;
     }
 
@@ -268,8 +268,8 @@ where
     // / ThreadX siblings; the user terminates via signal or shell.
     loop {
         if let Err(err) = nros_platform::NodeDispatchRuntime::spin_once(&mut crt, 10) {
-            eprintln!("spin_once error: {:?}", err);
-            let _ = std::io::stderr().flush();
+            println!("spin_once error: {:?}", err);
+            let _ = std::io::stdout().flush();
             std::process::exit(1);
         }
     }
@@ -450,7 +450,7 @@ where
     let _ = std::io::stdout().flush();
 
     if tiers.is_empty() {
-        eprintln!("nros: run_tiers called with no tiers — nothing to run");
+        println!("nros: run_tiers called with no tiers — nothing to run");
         std::process::exit(1);
     }
 
@@ -478,7 +478,7 @@ where
     // is explicit (mirrors `run_entry`).
     #[cfg(feature = "rmw-zenoh")]
     if let Err(err) = ::nros_rmw_zenoh::register() {
-        eprintln!("nros: zenoh RMW backend register failed: {:?}", err);
+        println!("nros: zenoh RMW backend register failed: {:?}", err);
     }
 
     // The boot task opens the one session and owns it for the program's life
@@ -486,12 +486,12 @@ where
     let boot_exec = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
-            eprintln!(
+            println!(
                 "nros: Executor::open failed ({:?}); multi-tier entry needs a live session \
                  — aborting.",
                 err
             );
-            let _ = std::io::stderr().flush();
+            let _ = std::io::stdout().flush();
             std::process::exit(1);
         }
     };
@@ -510,6 +510,23 @@ where
 
     // issue #144 — boot-tier declares FIRST, before spawning any other tier.
     let boot_tier = &tiers[0];
+    // issue 0572 — say WHICH tier is the session-owning boot tier, and with what.
+    // The boot tier is the one that prints no priority marker (it keeps the
+    // inherited FIFO priority by design), so the console showed the spawned
+    // tiers only and the reader could not tell whether tiers[0] was the tier
+    // they meant, nor whether its knobs survived the bake. On STDOUT with the
+    // rest: this guest's stderr does not reach the serial console.
+    println!(
+        "nros: boot tier `{}` (session owner) — groups {:?}, class {:?}, \
+         budget {:?} us, period {:?} us, spin {} us",
+        boot_tier.name,
+        boot_tier.groups,
+        boot_tier.class,
+        boot_tier.budget_us,
+        boot_tier.period_us,
+        boot_tier.spin_period_us
+    );
+    let _ = std::io::stdout().flush();
     boot_crt.executor_mut().set_active_groups(boot_tier.groups);
     // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT). BUT the
     // boot tier is the SESSION OWNER: `apply_tier_sched_policy` installs the
@@ -550,8 +567,13 @@ where
     {
         let mut ctx = nros_platform::RuntimeCtx::with_runtime(&mut boot_crt);
         if let Err(e) = setup(&mut ctx) {
-            eprintln!("nros: boot tier `{}` setup failed: {:?}", boot_tier.name, e);
-            let _ = std::io::stderr().flush();
+            // issue 0572 — STDOUT. This guest's stderr does not reach the serial
+            // console, so every `println!` diagnostic in this function has been
+            // invisible: a boot-tier setup failure, a failed tier spawn, a spin
+            // error. Issue 0565 taught the harness to capture the console for
+            // exactly these lines, and they could never appear in it.
+            println!("nros: boot tier `{}` setup FAILED: {:?}", boot_tier.name, e);
+            let _ = std::io::stdout().flush();
             return Err(e);
         }
     }
@@ -563,6 +585,12 @@ where
         // `&setup`. The boot declares are already done, so these only overlap the
         // boot tier's spin.
         for tier in &tiers[1..] {
+            // issue 0572 — the spawned tiers' identity + groups, same reason.
+            println!(
+                "nros: spawning tier `{}` — groups {:?}, class {:?}, spin {} us",
+                tier.name, tier.groups, tier.class, tier.spin_period_us
+            );
+            let _ = std::io::stdout().flush();
             // issue #246 — a Rust `std::thread` spawned with no explicit stack
             // requests the std default (2 MiB), which `pthread_create` cannot
             // satisfy from NuttX's small kernel heap → ENOMEM ("failed to spawn
@@ -606,7 +634,7 @@ where
                         break;
                     }
                     Err(e) => {
-                        eprintln!(
+                        println!(
                             "nros: spawn tier `{}` attempt {}/{} failed (stack {} B, \
                              kind {:?}, os error {:?}): {e}",
                             tier.name,
@@ -616,17 +644,17 @@ where
                             e.kind(),
                             e.raw_os_error()
                         );
-                        let _ = std::io::stderr().flush();
+                        let _ = std::io::stdout().flush();
                         std::thread::yield_now();
                     }
                 }
             }
             if !spawned {
-                eprintln!(
+                println!(
                     "nros: FAILED to spawn tier `{}` after {} attempts — tier will not run",
                     tier.name, SPAWN_ATTEMPTS
                 );
-                let _ = std::io::stderr().flush();
+                let _ = std::io::stdout().flush();
             }
         }
         // phase-296 W5.9 / issue #246 — the boot tier is the SESSION OWNER:
@@ -640,13 +668,13 @@ where
         // NEVER budget-capped. The budget dim's kernel-Native realization applies
         // to NON-owner tiers, which self-apply it in `nuttx_run_one_tier`.
         if boot_is_budgeted {
-            eprintln!(
+            println!(
                 "nros: tier `{}` declares a sporadic budget but is the session-owning \
                  boot tier — kept SCHED_FIFO (a kernel/cooperative budget cap would \
                  stall the shared session flush; non-owner tiers realize the budget)",
                 boot_tier.name
             );
-            let _ = std::io::stderr().flush();
+            let _ = std::io::stdout().flush();
         }
         // phase-296 W5.11 — placement dim: the boot tier self-pins to its
         // declared `core` (safe here — a core pin, unlike the sporadic budget
@@ -694,6 +722,8 @@ fn nuttx_run_one_tier<F, E>(
     F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
+    use std::io::Write as _;
+
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
     crt.executor_mut().set_active_groups(tier.groups);
     // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
@@ -714,10 +744,12 @@ fn nuttx_run_one_tier<F, E>(
     {
         let mut ctx = nros_platform::RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = setup(&mut ctx) {
-            eprintln!(
-                "nros: tier `{}` setup failed: {:?} — tier task exiting",
+            // issue 0572 — STDOUT; this guest's stderr never reaches the console.
+            println!(
+                "nros: tier `{}` setup FAILED: {:?} — tier task exiting",
                 tier.name, e
             );
+            let _ = std::io::stdout().flush();
             return;
         }
     }
@@ -730,10 +762,80 @@ fn nuttx_spin_tier_forever(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
     tier: &nros_platform::TierSpec<'_>,
 ) {
+    use std::io::Write as _;
+
+    // issue 0572 — which wait the executor's spin will take. The primary
+    // (session-owning) executor sleeps in the wake primitive when the backend
+    // installed a wake callback; a borrowed one polls. `storage_size() == 0`
+    // means no platform wake primitive is linked and the executor falls back to
+    // a std `Condvar` — which on NuttX is the documented hang (this port's spin
+    // is supposed to use `sem_timedwait`).
+    unsafe extern "C" {
+        fn nros_platform_wake_storage_size() -> usize;
+    }
+    // SAFETY: documented pure probe, callable before init.
+    let wake_bytes = unsafe { nros_platform_wake_storage_size() };
+    println!(
+        "nros: tier `{}` entering spin — wake primitive {} ({} byte(s))",
+        tier.name,
+        if wake_bytes == 0 {
+            "ABSENT (std Condvar fallback)"
+        } else {
+            "available"
+        },
+        wake_bytes
+    );
+    let _ = std::io::stdout().flush();
+
     let period_ms = ((tier.spin_period_us / 1000).max(1)) as u32;
+    // issue 0572 — a per-tier heartbeat carrying the counts `spin_once` used to
+    // discard. A tier that dispatches NOTHING and a tier that is not running at
+    // all look identical from outside the guest (a silent topic), and that
+    // ambiguity is what left this cell undiagnosed. Once per ~5 s of spins, so
+    // it costs one line per tier per five seconds on the serial console.
+    // ~1 s, not 5: the e2e kills the guest a couple of seconds after the slow
+    // tier's anchor, so a 5 s heartbeat never printed once.
+    let heartbeat_every = (1_000_000 / tier.spin_period_us.max(1)).max(1);
+    let mut iters: u64 = 0;
+    let (mut timers, mut subs, mut errs) = (0usize, 0usize, 0usize);
+    let mut announced_first = false;
     loop {
-        if let Err(err) = nros_platform::NodeDispatchRuntime::spin_once(crt, period_ms) {
-            eprintln!("nros: tier `{}` spin error: {:?}", tier.name, err);
+        match crt.spin_once_counted(std::time::Duration::from_millis(period_ms as u64)) {
+            Ok(r) => {
+                timers += r.timers_fired;
+                subs += r.subscriptions_processed;
+                errs += r.subscription_errors + r.service_errors;
+            }
+            Err(err) => {
+                // STDOUT: this guest's stderr never reaches the serial console.
+                println!("nros: tier `{}` spin error: {:?}", tier.name, err);
+                let _ = std::io::stdout().flush();
+            }
+        }
+        iters += 1;
+        if iters == 1 {
+            // The loop is ALIVE. Distinguishes "spinning but never dispatching"
+            // from "never reached the spin at all" — two very different bugs
+            // that both present as a silent topic.
+            println!("nros: tier `{}` completed spin 1", tier.name);
+            let _ = std::io::stdout().flush();
+        }
+        // One-shot, and the datum that does not depend on how long the guest
+        // lives: did this tier EVER dispatch anything?
+        if !announced_first && (timers > 0 || subs > 0) {
+            announced_first = true;
+            println!(
+                "nros: tier `{}` FIRST dispatch at spin {} — {} timer(s), {} sub callback(s)",
+                tier.name, iters, timers, subs
+            );
+            let _ = std::io::stdout().flush();
+        }
+        if iters % heartbeat_every == 0 {
+            println!(
+                "nros: tier `{}` alive — {} spin(s), {} timer(s) fired, {} sub callback(s), {} error(s)",
+                tier.name, iters, timers, subs, errs
+            );
+            let _ = std::io::stdout().flush();
         }
     }
 }
