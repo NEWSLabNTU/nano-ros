@@ -599,6 +599,21 @@ confirmed to fail without the fix. NOT swept: whether another `build.rs` in the 
 the stamp cannot see — third time this list has been found narrower than the build.
 See `archived/0561-*`. (2026-08-14)
 
+RESOLVED 2026-08-15: **#472** — thirteen of fifteen `*_OPAQUE_U64S` macros had no compile-time size check,
+so a probe that under-stated a size was a SHORT BUFFER written past in C rather than a build error. The naive
+fix is a no-op: the Rust consts are already `u64s_for::<T>()`, so asserting them against `size_of` is
+tautological. The real exposure is that the HEADER's widths are probe-derived in `nros-build-helpers::c` —
+two derivations of one fact — so the guards now compare each type against the number the header states, with
+the probe-derived widths plumbed into the Rust config (the executor pattern, generalised to nine more) and
+the config emitted AFTER the probes, which is the mechanical reason only the executor could be guarded
+before. Tripwired: stating SESSION as 1 u64 fails the build naming the macro. Gated by
+`check-opaque-storage-guards` in `check-fast` — whose FIRST version was false coverage and whose own
+tripwire caught it (every macro is also a `pub const`, so "name appears in file" always said yes; it now
+matches guard CONSTRUCTS). Corrections: the list of fifteen was stale (three CPP_* removed in phase 87.6/
+87.11), and the five `NROS_CPP_RAW_*` are the same probe and types as their C counterparts. Item 2 ("probed
+zero" poisoning the artifact at link) deliberately NOT done — split out as **#578**. See `archived/0472-*`.
+(2026-08-15)
+
 **#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
 manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared
 `anyhow = "1"` with zero uses, and `packages/cli`'s `[workspace.dependencies]` entry was inherited by

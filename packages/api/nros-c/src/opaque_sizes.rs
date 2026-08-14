@@ -92,6 +92,112 @@ pub const ACTION_CLIENT_OPAQUE_U64S: usize = 1;
 
 pub const GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardConditionHandle>();
 
+// ── Opaque-storage guards (issue 0472) ───────────────────────────────────
+//
+// A C caller allocates `uint64_t _opaque[<MACRO>]` and the runtime writes a
+// Rust value into it. The macro's value comes from PROBING a compiled rlib
+// (`nros-build-helpers::c`); the value written is `size_of::<T>()`. Two
+// derivations of one fact — and if the probe's is smaller, the write runs past
+// the buffer. In C. At a distance from the cause.
+//
+// Exactly two of the fifteen macros carried an assertion before this
+// (`EXECUTOR_OPAQUE_U64S`, `CPP_EXECUTOR_OPAQUE_U64S`), and the executor's had
+// already earned its keep: issue 0464 records it catching a committed NuttX
+// constant that had rotted ~11 % low. The rest could only fail as corruption.
+//
+// `>=`, not `==`: over-sizing wastes bytes and is safe, under-sizing is the
+// bug. The probe's `max(8)` floor for the raw handles makes an exact
+// comparison wrong for small types anyway.
+//
+// SKIPPED when the probe returned 0, which means "no rlib to read" — a
+// `cargo check --no-default-features` run. Hard-failing that would break
+// `just check`, and issue 0472 records the accommodation as legitimate; what it
+// also records as MISSING is enforcement at link time, so a `1`-sized macro
+// cannot be linked. That is its item 2 and is not addressed here.
+macro_rules! guard_opaque {
+    ($stated:expr, $ty:ty, $what:literal) => {
+        const _: () = assert!(
+            $stated == 0 || size_of::<$ty>() <= $stated * 8,
+            concat!(
+                $what,
+                ": the generated header states a SMALLER opaque size than the Rust type needs, ",
+                "so a C caller's `_opaque` buffer would be written past. The header value is ",
+                "probe-derived (nros-build-helpers::c); the type's size is the truth. Rebuild ",
+                "with a clean `build/sizes-probe`, and see issue 0472."
+            )
+        );
+    };
+}
+
+#[cfg(feature = "rmw-cffi")]
+const _: () = {
+    guard_opaque!(
+        crate::config::PROBE_SESSION_U64S,
+        nros::internals::RmwSession,
+        "SESSION_OPAQUE_U64S"
+    );
+    guard_opaque!(
+        crate::config::PROBE_PUBLISHER_U64S,
+        nros::internals::RmwPublisher,
+        "PUBLISHER_OPAQUE_U64S"
+    );
+    guard_opaque!(
+        crate::config::PROBE_RAW_SUBSCRIPTION_U64S,
+        nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>,
+        "SUBSCRIPTION_OPAQUE_U64S"
+    );
+    guard_opaque!(
+        crate::config::PROBE_RAW_SERVICE_SERVER_U64S,
+        nros_node::RawServiceServer<
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            { crate::config::MESSAGE_BUFFER_SIZE },
+        >,
+        "SERVICE_SERVER_OPAQUE_U64S"
+    );
+    guard_opaque!(
+        crate::config::PROBE_RAW_SERVICE_CLIENT_U64S,
+        nros_node::RawServiceClient<
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            { crate::config::MESSAGE_BUFFER_SIZE },
+        >,
+        "SERVICE_CLIENT_OPAQUE_U64S"
+    );
+    guard_opaque!(
+        crate::config::PROBE_RAW_ACTION_SERVER_U64S,
+        nros_node::ActionServerCore<
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            4,
+        >,
+        "ACTION_SERVER_OPAQUE_U64S"
+    );
+    guard_opaque!(
+        crate::config::PROBE_RAW_ACTION_CLIENT_U64S,
+        nros_node::ActionClientCore<
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            { crate::config::MESSAGE_BUFFER_SIZE },
+            { crate::config::MESSAGE_BUFFER_SIZE },
+        >,
+        "ACTION_CLIENT_OPAQUE_U64S"
+    );
+    // These two types are backend-independent, but the guard still rides the
+    // same cfg: `crate::config` is the GENERATED module, and it exists only
+    // under `rmw-cffi` (lib.rs). Without the feature there is no probe, no
+    // emitted header and nothing linking against one, so there is nothing to
+    // disagree about.
+    guard_opaque!(
+        crate::config::PROBE_GUARD_HANDLE_U64S,
+        nros_node::GuardConditionHandle,
+        "GUARD_HANDLE_OPAQUE_U64S"
+    );
+    guard_opaque!(
+        crate::config::PROBE_LIFECYCLE_CTX_U64S,
+        nros_node::lifecycle::LifecyclePollingNodeCtx,
+        "NROS_LIFECYCLE_CTX_OPAQUE_U64S"
+    );
+};
+
 // ── Lifecycle (no RMW dependency) ────────────────────────────────────────
 //
 // Phase 87: `NROS_LIFECYCLE_CTX_OPAQUE_U64S` is now derived from

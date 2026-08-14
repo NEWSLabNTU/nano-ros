@@ -413,6 +413,7 @@ check-fast: \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-package-xml-comments check-provider-announcements check-provider-index \
     check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
+    check-opaque-storage-guards \
     check-workspace-order \
     check-atomic-sync-writes \
     check-zenohd-spawn-sites \
@@ -3679,6 +3680,12 @@ check-site-config:
 [private]
 check-zephyr-knob-agreement:
     @python3 scripts/check-zephyr-knob-agreement.py
+
+# Issue 0472 — every `*_OPAQUE_U64S` macro must have a compile-time size guard,
+# so a probe that under-states a size is a build error and not a short buffer
+# written past in C.
+check-opaque-storage-guards:
+    @python3 scripts/check-opaque-storage-guards.py
 
 # phase-348 W4 — build order derived from package.xml `<depend>`, not from the
 # order a SUBDIRS list happens to be written in. Every workspace CMakeLists

@@ -146,21 +146,6 @@ fn generate_config(
     // `cargo:rerun-if-env-changed` plumbing on `DEP_NROS_NODE_ARENA_SIZE`.
     let _ = arena_size;
 
-    // Phase 221.C: extracted to `templates/nros_c_config.rs.template`.
-    // `@PLACEHOLDER@` follows the CMake `configure_file()` convention used
-    // elsewhere in the tree (cmake/*.in, templates/overlay-board/*.template).
-    let contents = read_template(manifest_dir, "nros_c_config.rs.template")
-        .replace("@NROS_EXECUTOR_MAX_HANDLES@", &max_cbs.to_string())
-        .replace("@LET_BUFFER_SIZE@", &let_buffer_size.to_string())
-        .replace(
-            "@SERVICE_DEFAULT_TIMEOUT_MS@",
-            &service_timeout_ms.to_string(),
-        )
-        .replace("@MESSAGE_BUFFER_SIZE@", &message_buffer_size.to_string())
-        .replace("@EXECUTOR_OPAQUE_U64S@", &executor_opaque_u64s.to_string());
-
-    std::fs::write(Path::new(out_dir).join("nros_c_config.rs"), contents).unwrap();
-
     // --- Phase 87: probe-derived sizes (Rust-as-SSoT) ------------------------
     //
     // Phase 118.B: hand-math upper bound for `EXECUTOR_SIZE` deleted —
@@ -193,6 +178,71 @@ fn generate_config(
         probed.get("RAW_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize;
     let probe_raw_action_client =
         probed.get("RAW_ACTION_CLIENT_SIZE").copied().unwrap_or(0) as usize;
+
+    // Phase 221.C: extracted to `templates/nros_c_config.rs.template`.
+    // `@PLACEHOLDER@` follows the CMake `configure_file()` convention used
+    // elsewhere in the tree (cmake/*.in, templates/overlay-board/*.template).
+    //
+    // Emitted AFTER the probes (issue 0472). It used to be written above, before
+    // any of them was read, which is why the Rust side could compare only the
+    // executor against what the header states — the other probe values were not
+    // yet in scope. The `_opaque` widths a C caller allocates come from these
+    // probes; `opaque_sizes.rs` now asserts each against its type's real
+    // `size_of`, so a wrong number is a build error rather than a short buffer.
+    let contents = read_template(manifest_dir, "nros_c_config.rs.template")
+        .replace("@NROS_EXECUTOR_MAX_HANDLES@", &max_cbs.to_string())
+        .replace("@LET_BUFFER_SIZE@", &let_buffer_size.to_string())
+        .replace(
+            "@SERVICE_DEFAULT_TIMEOUT_MS@",
+            &service_timeout_ms.to_string(),
+        )
+        .replace("@MESSAGE_BUFFER_SIZE@", &message_buffer_size.to_string())
+        .replace("@EXECUTOR_OPAQUE_U64S@", &executor_opaque_u64s.to_string())
+        // Same `div_ceil(8)` the header macros below are built from, so the
+        // guard compares the number the header ACTUALLY states, not a
+        // re-derivation that could differ.
+        .replace(
+            "@PROBE_SESSION_U64S@",
+            &probe_session.div_ceil(8).to_string(),
+        )
+        .replace(
+            "@PROBE_PUBLISHER_U64S@",
+            &probe_publisher.div_ceil(8).to_string(),
+        )
+        .replace(
+            "@PROBE_GUARD_HANDLE_U64S@",
+            &probe_guard.div_ceil(8).to_string(),
+        )
+        .replace(
+            "@PROBE_LIFECYCLE_CTX_U64S@",
+            &probe_lifecycle_ctx.div_ceil(8).to_string(),
+        )
+        .replace(
+            "@PROBE_RAW_SUBSCRIPTION_U64S@",
+            &probe_raw_subscription.max(8).div_ceil(8).to_string(),
+        )
+        .replace(
+            "@PROBE_RAW_SERVICE_SERVER_U64S@",
+            &probe_raw_service_server.max(8).div_ceil(8).to_string(),
+        )
+        .replace(
+            "@PROBE_RAW_SERVICE_CLIENT_U64S@",
+            &probe_raw_service_client.max(8).div_ceil(8).to_string(),
+        )
+        .replace(
+            "@PROBE_RAW_ACTION_SERVER_U64S@",
+            &probe_raw_action_server.max(8).div_ceil(8).to_string(),
+        )
+        .replace(
+            "@PROBE_RAW_ACTION_CLIENT_U64S@",
+            &probe_raw_action_client.max(8).div_ceil(8).to_string(),
+        )
+        .replace(
+            "@PROBE_ACTION_SERVER_RAW_HANDLE_U64S@",
+            &probe_action_server_raw_handle.div_ceil(8).to_string(),
+        );
+
+    std::fs::write(Path::new(out_dir).join("nros_c_config.rs"), contents).unwrap();
 
     // Inline opaque storage in u64 units. cbindgen-generated nros_generated.h
     // references these by name (`uint64_t _opaque[SESSION_OPAQUE_U64S]`,

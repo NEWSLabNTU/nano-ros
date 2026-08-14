@@ -15,3 +15,31 @@ pub const MESSAGE_BUFFER_SIZE: usize = @MESSAGE_BUFFER_SIZE@;
 /// Validated at compile time by `size_of::<Executor>()` assertion.
 pub const EXECUTOR_OPAQUE_U64S: usize = @EXECUTOR_OPAQUE_U64S@;
 
+// ── Probe-derived opaque sizes, as the HEADER states them (issue 0472) ──────
+//
+// These are the numbers the generated C header hands to callers — the width of
+// the `_opaque` array a C or C++ caller allocates. They come from PROBING the
+// compiled runtime, which is a different derivation from the `size_of::<T>()`
+// the Rust side uses, and two derivations of one fact is exactly the shape that
+// needs an assertion rather than a comment.
+//
+// Without them in scope, the Rust side had nothing to compare against, so
+// thirteen of the fifteen opaque macros could only fail as a SHORT BUFFER at
+// run time, in C, at a distance from the cause. `opaque_sizes.rs` asserts each
+// against its type; see the guard block there.
+//
+// Zero means "no probe" — a `cargo check --no-default-features` run with no
+// rlib to read. The guards skip that case deliberately: hard-failing it would
+// break `just check`, which is the accommodation issue 0472 records as
+// legitimate but unenforced at LINK time (its item 2, still open).
+pub const PROBE_SESSION_U64S: usize = @PROBE_SESSION_U64S@;
+pub const PROBE_PUBLISHER_U64S: usize = @PROBE_PUBLISHER_U64S@;
+pub const PROBE_GUARD_HANDLE_U64S: usize = @PROBE_GUARD_HANDLE_U64S@;
+pub const PROBE_LIFECYCLE_CTX_U64S: usize = @PROBE_LIFECYCLE_CTX_U64S@;
+pub const PROBE_RAW_SUBSCRIPTION_U64S: usize = @PROBE_RAW_SUBSCRIPTION_U64S@;
+pub const PROBE_RAW_SERVICE_SERVER_U64S: usize = @PROBE_RAW_SERVICE_SERVER_U64S@;
+pub const PROBE_RAW_SERVICE_CLIENT_U64S: usize = @PROBE_RAW_SERVICE_CLIENT_U64S@;
+pub const PROBE_RAW_ACTION_SERVER_U64S: usize = @PROBE_RAW_ACTION_SERVER_U64S@;
+pub const PROBE_RAW_ACTION_CLIENT_U64S: usize = @PROBE_RAW_ACTION_CLIENT_U64S@;
+pub const PROBE_ACTION_SERVER_RAW_HANDLE_U64S: usize = @PROBE_ACTION_SERVER_RAW_HANDLE_U64S@;
+
