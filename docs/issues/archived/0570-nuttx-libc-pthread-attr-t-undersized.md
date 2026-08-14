@@ -1,7 +1,7 @@
 ---
 id: 570
 title: "Rust's NuttX `pthread_attr_t` is 20 bytes, NuttX's is 56 — every `pthread_attr_init`/`destroy` from Rust std smashes 36 bytes of the caller's frame"
-status: open
+status: resolved
 type: bug
 area: boards
 related: [issue-0565, issue-0569, issue-0246, issue-0167, issue-0160, phase-285]
@@ -324,14 +324,13 @@ NuttX headers and fails any mirror smaller than its struct; self-tested by
 reverting the constant, which reproduces the exact failure and prescribes
 `>= 14`.
 
-### One thing NOT fixed here
+### Publication
 
-The superproject pins the libc submodule at `adb4c59` (#167's `--wrap=poll`
-shim), and **no branch on the fork remote contains it** — `git fetch` leaves
-`origin/main` at upstream's `2aa834e`. So the pin is already unresolvable from a
-fresh clone, and this fix sits on top of it. Both commits need pushing to the
-fork before the superproject pointer can move (the agent does not push fork
-remotes). Filed separately.
+The fix rides `origin/nuttx-0.2` of the fork (`826c4ca9`, a fast-forward from
+#167's `adb4c592e`), which is the branch this NuttX lineage has always lived on.
+The superproject pin names the same commit. #575 was filed claiming the pin was
+unpublished; that was refuted — `git branch -r --contains` was answering about a
+shallow, single-refspec clone, not about the remote.
 
 ## Status
 
