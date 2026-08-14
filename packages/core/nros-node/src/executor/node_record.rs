@@ -309,8 +309,20 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
         // Phase 104.C.6.b — install the shared wake flag on the
         // freshly opened extra session so its backend notifications
         // can short-circuit `spin_once`.
+        //
+        // BOTH flavours, mirroring the construction path in
+        // `Executor::open_in`. Until now only the `std` arm was here, so a
+        // no_std build opening an extra session through THIS path (the
+        // dynamic one — a node naming a second RMW) never installed the
+        // wake callback: arrivals on that session could not short-circuit
+        // `spin_once`, and its traffic waited up to the full spin timeout
+        // instead of waking on arrival. Silent, latency-only, and no_std-only.
+        // `install_wake_signal_on_extra_alloc` already existed; it simply was
+        // not called here.
         #[cfg(feature = "std")]
         self.executor.install_wake_signal_on_extra(idx - 1);
+        #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
+        self.executor.install_wake_signal_on_extra_alloc(idx - 1);
         Ok(idx as u8)
     }
 

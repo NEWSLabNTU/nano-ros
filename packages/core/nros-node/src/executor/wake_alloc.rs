@@ -19,12 +19,23 @@
 //! WakeCtxAlloc` into a backend session via
 //! `set_wake_callback(Some(cb), ctx)`.
 //!
-//! Phase 141.A.3 will add the `install_wake_signal_on_*_alloc`
-//! Executor methods that lazily construct the `Arc<WakeCtxAlloc>`
-//! and hand its raw pointer to the active session. Until then,
-//! the type compiles and tests against the alloc-side API but
-//! has no in-tree caller — `#[allow(dead_code)]` keeps the
-//! lint quiet.
+//! The `install_wake_signal_on_{primary,extra}_alloc` Executor methods
+//! that lazily construct the `Arc<WakeCtxAlloc>` and hand its raw pointer
+//! to the active session now EXIST and are wired: the primary from both
+//! `Executor::open_in` constructors, the extra one from the construction
+//! path in `open_in` and from `NodeRecord::resolve_session_slot`.
+//!
+//! This paragraph used to say Phase 141.A.3 "will add" them and that the
+//! type "has no in-tree caller". That went stale when the wiring landed and
+//! read as "the no_std wake is unimplemented", which is the opposite of the
+//! truth — this IS the primitive both flavours prefer (`std` falls back to
+//! `Condvar` only when the platform vtable exposes no wake).
+//!
+//! The `#[allow(dead_code)]` below is left in place but NOT re-justified:
+//! removing it produced no warning in the one feature combination this file
+//! compiles under (`alloc + rmw-cffi`, thumbv7m), so it may now be redundant.
+//! Dropping it is a separate cleanup — stated rather than assumed, which is
+//! the mistake the paragraph above corrects.
 
 // Phase 248 (C2) — platform-agnostic: no `platform-*` feature gate.
 // The no_std wake mirror routes through the `nros_platform_wake_*` C
