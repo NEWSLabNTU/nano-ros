@@ -1,7 +1,8 @@
 ---
 id: 566
 title: "Without CONFIG_POSIX_API the Zephyr port's mutex / condvar / task primitives are stubs that return -1 at RUNTIME, on a kernel that has all of them natively"
-status: open
+status: resolved
+resolved_in: "same-day fix; native k_mutex/k_condvar/k_thread arm"
 type: bug
 area: platform-zephyr
 related: [issue-0531]
@@ -63,7 +64,32 @@ compatibility layer.
    always looked healthy; a small Cortex-M app that does not is silently
    degraded.
 
-## Fix direction
+## Resolution (2026-08-14)
+
+The `#else` arm is implemented against native Zephyr primitives instead
+of stubbed. `mutex_*` and `mutex_rec_*` are backed by `k_mutex` (which is
+recursive for the owning thread via `lock_count` — `kernel/mutex.c:117`,
+exactly what the ABI requires of the `_rec_` family), `condvar_*` by
+`k_condvar`, and `task_*` by `k_thread` where a stack can be allocated.
+
+Storage: the caller's opaque object holds a POINTER to a heap-allocated
+kernel object rather than the object inline. It has to — the smallest
+consumer on this platform sizes these from `pthread_mutex_t`, a
+`uint32_t`, which cannot hold a `struct k_mutex`. This is the same shape
+the FreeRTOS port uses for its `SemaphoreHandle_t`.
+
+`task_*` still returns -1 without `CONFIG_DYNAMIC_THREAD` +
+`CONFIG_THREAD_STACK_INFO`, because a dynamically created thread needs a
+dynamically allocated stack. That case is now narrow and documented at
+the call site, and it no longer takes mutexes and condvars down with it.
+
+Verified on both arms of the `#ifdef`:
+
+    qemu_cortex_m3 (no POSIX_API)   smoke PASS — mutex round-trip ok,
+                                    timer fires over 200ms: 10
+    native_sim (POSIX_API)          smoke PASS — unchanged
+
+## Fix direction (as filed)
 
 - Implement the `#else` arm against native Zephyr primitives (`k_mutex`,
   `k_condvar`, `k_thread`) instead of stubbing it. The opaque-storage

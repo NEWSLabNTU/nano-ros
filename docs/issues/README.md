@@ -83,14 +83,17 @@ halves chain delivery — a drop policy, not a budget. Control: a cap of 1 degen
 single-frame path and matches unbounded on every column. Needs a resumable rx path (reset only when the
 buffer is genuinely drained), and a decision on local patch vs upstreaming to zenoh-pico. See `0567-*`.
 
-**#566** (platform-zephyr, open 2026-08-14) — without `CONFIG_POSIX_API` the Zephyr port stubs its ENTIRE
-threading half — ~20 functions across `task_*`, `mutex_*`, `mutex_rec_*` and `condvar_*` — each returning
--1 at RUNTIME (`platform.c:177` gates them, `:322-410` is the stub arm). Zephyr has `k_mutex`, `k_condvar`
-and `k_thread_create` natively on every board with no opt-in, and the FreeRTOS/ThreadX ports call their
-kernels directly, so this port is reaching for a compatibility layer and giving up when it is absent
-rather than using what the kernel provides. Found because #531's verification needed a board that had
-never run the smoke suite: `qemu_cortex_m3` passes the clock checks then fails `mutex_init`. A -1 nobody
-checks is worse than a build error naming the missing Kconfig. See `0566-*`.
+Recently resolved (2026-08-14): **#566** (platform-zephyr) — without `CONFIG_POSIX_API` the Zephyr port
+stubbed its ENTIRE threading half (~20 `task_*`/`mutex_*`/`mutex_rec_*`/`condvar_*` functions, each
+returning -1 at RUNTIME) on a kernel that has `k_mutex`, `k_condvar` and `k_thread_create` natively. Found
+because #531's verification needed a board that had never run the smoke suite. Now implemented against
+those primitives, with the caller's opaque storage holding a POINTER to a heap-allocated kernel object —
+it has to, since the smallest consumer sizes these from `pthread_mutex_t` (a `uint32_t`) which cannot hold
+a `struct k_mutex`; same shape as the FreeRTOS port's `SemaphoreHandle_t`. `k_mutex` is recursive for the
+owning thread, which is what `mutex_rec_*` requires. `task_*` still needs `CONFIG_DYNAMIC_THREAD` (a
+dynamic thread needs a dynamic stack) but that case is narrow, documented, and no longer drags mutexes
+down with it. Verified both arms: `qemu_cortex_m3` smoke PASS (was FAIL at mutex_init), `native_sim`
+unchanged. See `archived/0566-*`. (2026-08-14)
 
 **#563** (tech-debt, open 2026-08-14) — the executor's 88192-byte inline storage is STATIC (`.bss`,
 `static ::nros::Node __nros_node;`), but CONSTRUCTING it costs ~23 KB of stack: ~13.4 KB already consumed

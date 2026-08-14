@@ -319,108 +319,230 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 
 #else
 
-int8_t nros_platform_task_init(void *task, void *attr,
-                               void *(*entry)(void *), void *arg) {
-    (void) task;
-    (void) attr;
-    (void) entry;
-    (void) arg;
-    return -1;
-}
+/* Issue #566 — the non-POSIX arm used to stub ~20 functions to -1, on a
+ * kernel that has all of these natively. A -1 nobody checks is worse than
+ * no implementation at all: it hands the caller a mutex that does not
+ * lock. These are now backed by `k_mutex` / `k_condvar` / `k_thread`.
+ *
+ * Storage: the ABI's objects are caller-provided and opaque, and the
+ * smallest consumer on this platform sizes them from `pthread_mutex_t`
+ * (a `uint32_t`), which cannot hold a `struct k_mutex` inline. So the
+ * caller's storage holds a POINTER to a heap-allocated kernel object —
+ * the same shape the FreeRTOS port uses for its `SemaphoreHandle_t`.
+ * That needs storage of at least `sizeof(void *)`, which every caller
+ * provides on this 32-bit ABI. */
 
-int8_t nros_platform_task_join(void *task) {
-    (void) task;
-    return -1;
-}
-
-int8_t nros_platform_task_detach(void *task) {
-    (void) task;
-    return -1;
-}
-
-int8_t nros_platform_task_cancel(void *task) {
-    (void) task;
-    return -1;
-}
-
-void nros_platform_task_exit(void) {}
-
-void nros_platform_task_free(void **task) {
-    (void) task;
-}
-
-/* ---- Mutex ---- */
+#define NROS_Z_HANDLE(ptr) (*(void **) (ptr))
 
 int8_t nros_platform_mutex_init(void *m) {
-    (void) m;
-    return -1;
+    if (m == NULL) return -1;
+    struct k_mutex *mu = k_malloc(sizeof(struct k_mutex));
+    if (mu == NULL) return -1;
+    if (k_mutex_init(mu) != 0) {
+        k_free(mu);
+        return -1;
+    }
+    NROS_Z_HANDLE(m) = mu;
+    return 0;
 }
 
 int8_t nros_platform_mutex_drop(void *m) {
-    (void) m;
+    if (m == NULL) return 0;
+    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    if (mu == NULL) return 0;
+    k_free(mu);
+    NROS_Z_HANDLE(m) = NULL;
     return 0;
 }
 
 int8_t nros_platform_mutex_lock(void *m) {
-    (void) m;
-    return -1;
+    if (m == NULL) return -1;
+    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    if (mu == NULL) return -1;
+    return k_mutex_lock(mu, K_FOREVER) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_try_lock(void *m) {
-    (void) m;
+    if (m == NULL) return -1;
+    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    if (mu == NULL) return -1;
+    /* 0 = acquired, 1 = would block (ABI's `try` contract), -1 = error. */
+    int rc = k_mutex_lock(mu, K_NO_WAIT);
+    if (rc == 0)      return 0;
+    if (rc == -EBUSY) return 1;
     return -1;
 }
 
 int8_t nros_platform_mutex_unlock(void *m) {
-    (void) m;
-    return -1;
+    if (m == NULL) return -1;
+    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    if (mu == NULL) return -1;
+    return k_mutex_unlock(mu) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_mutex_rec_init(void *m)       { return nros_platform_mutex_init(m); }
-int8_t nros_platform_mutex_rec_drop(void *m)       { return nros_platform_mutex_drop(m); }
-int8_t nros_platform_mutex_rec_lock(void *m)       { return nros_platform_mutex_lock(m); }
-int8_t nros_platform_mutex_rec_try_lock(void *m)   { return nros_platform_mutex_try_lock(m); }
-int8_t nros_platform_mutex_rec_unlock(void *m)     { return nros_platform_mutex_unlock(m); }
-
-/* ---- Condvars ---- */
+/* `k_mutex` is recursive for the owning thread (`lock_count`, see
+ * zephyr/kernel/mutex.c), which is exactly what the ABI requires of
+ * `mutex_rec_*` — zenoh-pico deadlocks on a non-recursive one. */
+int8_t nros_platform_mutex_rec_init(void *m)     { return nros_platform_mutex_init(m); }
+int8_t nros_platform_mutex_rec_drop(void *m)     { return nros_platform_mutex_drop(m); }
+int8_t nros_platform_mutex_rec_lock(void *m)     { return nros_platform_mutex_lock(m); }
+int8_t nros_platform_mutex_rec_try_lock(void *m) { return nros_platform_mutex_try_lock(m); }
+int8_t nros_platform_mutex_rec_unlock(void *m)   { return nros_platform_mutex_unlock(m); }
 
 int8_t nros_platform_condvar_init(void *cv) {
-    (void) cv;
-    return -1;
+    if (cv == NULL) return -1;
+    struct k_condvar *c = k_malloc(sizeof(struct k_condvar));
+    if (c == NULL) return -1;
+    if (k_condvar_init(c) != 0) {
+        k_free(c);
+        return -1;
+    }
+    NROS_Z_HANDLE(cv) = c;
+    return 0;
 }
 
 int8_t nros_platform_condvar_drop(void *cv) {
-    (void) cv;
+    if (cv == NULL) return 0;
+    struct k_condvar *c = NROS_Z_HANDLE(cv);
+    if (c == NULL) return 0;
+    k_free(c);
+    NROS_Z_HANDLE(cv) = NULL;
     return 0;
 }
 
 int8_t nros_platform_condvar_signal(void *cv) {
-    (void) cv;
-    return -1;
+    if (cv == NULL) return -1;
+    struct k_condvar *c = NROS_Z_HANDLE(cv);
+    if (c == NULL) return -1;
+    return k_condvar_signal(c) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_signal_all(void *cv) {
-    (void) cv;
-    return -1;
-}
-
-int8_t nros_platform_condvar_signal_from_isr(void *cv) {
-    (void) cv;
-    return -1;
+    if (cv == NULL) return -1;
+    struct k_condvar *c = NROS_Z_HANDLE(cv);
+    if (c == NULL) return -1;
+    return k_condvar_broadcast(c) >= 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_wait(void *cv, void *m) {
-    (void) cv;
-    (void) m;
-    return -1;
+    if (cv == NULL || m == NULL) return -1;
+    struct k_condvar *c = NROS_Z_HANDLE(cv);
+    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    if (c == NULL || mu == NULL) return -1;
+    return k_condvar_wait(c, mu, K_FOREVER) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
-    (void) cv;
-    (void) m;
-    (void) abstime_ms;
+    if (cv == NULL || m == NULL) return -1;
+    struct k_condvar *c = NROS_Z_HANDLE(cv);
+    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    if (c == NULL || mu == NULL) return -1;
+    /* `abstime_ms` is on the same monotonic epoch as the platform clock;
+     * k_condvar_wait takes a RELATIVE timeout. */
+    uint64_t now_ms = nros_platform_clock_ns() / 1000000ULL;
+    k_timeout_t rel = (abstime_ms > now_ms)
+                          ? K_MSEC((uint32_t) (abstime_ms - now_ms))
+                          : K_NO_WAIT;
+    int rc = k_condvar_wait(c, mu, rel);
+    if (rc == 0)         return 0;
+    if (rc == -EAGAIN)   return 1; /* timed out — the ABI's `1` */
     return -1;
 }
+
+/* Tasks need a stack, and a dynamically-created thread needs
+ * CONFIG_DYNAMIC_THREAD to allocate one. Where that is unavailable this
+ * still cannot spawn — but it says so at the call rather than pretending,
+ * and mutexes/condvars above no longer go down with it. */
+#if defined(CONFIG_DYNAMIC_THREAD) && defined(CONFIG_THREAD_STACK_INFO)
+
+#ifndef NROS_ZEPHYR_TASK_STACK_SIZE
+#define NROS_ZEPHYR_TASK_STACK_SIZE 4096
+#endif
+
+struct nros_z_task {
+    struct k_thread thread;
+    k_thread_stack_t *stack;
+    void *(*entry)(void *);
+    void *arg;
+};
+
+static void nros_z_task_trampoline(void *p1, void *p2, void *p3) {
+    (void) p2;
+    (void) p3;
+    struct nros_z_task *t = (struct nros_z_task *) p1;
+    (void) t->entry(t->arg);
+}
+
+int8_t nros_platform_task_init(void *task, void *attr,
+                               void *(*entry)(void *), void *arg) {
+    (void) attr;
+    if (task == NULL || entry == NULL) return -1;
+    struct nros_z_task *t = k_malloc(sizeof(struct nros_z_task));
+    if (t == NULL) return -1;
+    t->stack = k_thread_stack_alloc(NROS_ZEPHYR_TASK_STACK_SIZE, 0);
+    if (t->stack == NULL) {
+        k_free(t);
+        return -1;
+    }
+    t->entry = entry;
+    t->arg = arg;
+    k_thread_create(&t->thread, t->stack, NROS_ZEPHYR_TASK_STACK_SIZE,
+                    nros_z_task_trampoline, t, NULL, NULL,
+                    K_PRIO_PREEMPT(5), 0, K_NO_WAIT);
+    NROS_Z_HANDLE(task) = t;
+    return 0;
+}
+
+int8_t nros_platform_task_join(void *task) {
+    if (task == NULL) return -1;
+    struct nros_z_task *t = NROS_Z_HANDLE(task);
+    if (t == NULL) return -1;
+    return k_thread_join(&t->thread, K_FOREVER) == 0 ? 0 : -1;
+}
+
+int8_t nros_platform_task_detach(void *task) {
+    (void) task; /* Zephyr threads need no detach; storage is freed by _free. */
+    return 0;
+}
+
+int8_t nros_platform_task_cancel(void *task) {
+    if (task == NULL) return -1;
+    struct nros_z_task *t = NROS_Z_HANDLE(task);
+    if (t == NULL) return -1;
+    k_thread_abort(&t->thread);
+    return 0;
+}
+
+void nros_platform_task_exit(void) {
+    k_thread_abort(k_current_get());
+}
+
+void nros_platform_task_free(void **task) {
+    if (task == NULL || *task == NULL) return;
+    struct nros_z_task *t = (struct nros_z_task *) *task;
+    if (t->stack != NULL) {
+        (void) k_thread_stack_free(t->stack);
+    }
+    k_free(t);
+    *task = NULL;
+}
+
+#else /* no CONFIG_DYNAMIC_THREAD */
+
+int8_t nros_platform_task_init(void *task, void *attr,
+                               void *(*entry)(void *), void *arg) {
+    (void) task; (void) attr; (void) entry; (void) arg;
+    /* Needs CONFIG_POSIX_API, or CONFIG_DYNAMIC_THREAD +
+     * CONFIG_THREAD_STACK_INFO for a dynamically allocated stack. */
+    return -1;
+}
+int8_t nros_platform_task_join(void *task)   { (void) task; return -1; }
+int8_t nros_platform_task_detach(void *task) { (void) task; return -1; }
+int8_t nros_platform_task_cancel(void *task) { (void) task; return -1; }
+void nros_platform_task_exit(void) {}
+void nros_platform_task_free(void **task)    { (void) task; }
+
+#endif /* CONFIG_DYNAMIC_THREAD */
 
 #endif
 
