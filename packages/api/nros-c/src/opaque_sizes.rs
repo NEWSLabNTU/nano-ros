@@ -114,6 +114,13 @@ pub const GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardCondition
 // `just check`, and issue 0472 records the accommodation as legitimate; what it
 // also records as MISSING is enforcement at link time, so a `1`-sized macro
 // cannot be linked. That is its item 2 and is not addressed here.
+// Gated to match its ONLY consumer, the `rmw-cffi` block below. Without this a
+// `--no-default-features` build (which `check-workspace-features` runs) cfg's
+// every invocation out and leaves the definition unused, which `-D warnings`
+// rejects as `unused_macros`. Gating the definition rather than `#[allow]`ing
+// it keeps definition and uses on ONE condition, so a future use outside that
+// cfg fails loudly instead of silently compiling against nothing.
+#[cfg(feature = "rmw-cffi")]
 macro_rules! guard_opaque {
     ($stated:expr, $ty:ty, $what:literal) => {
         const _: () = assert!(
