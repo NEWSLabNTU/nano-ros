@@ -100,22 +100,12 @@ fn main() {
             play_launch.join(rel).join("HEAD").display()
         );
     }
-    let pin = if play_launch.join(".git").exists() {
-        std::process::Command::new("git")
-            .args([
-                "-C",
-                &play_launch.display().to_string(),
-                "rev-parse",
-                "HEAD",
-            ])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "unknown".to_string())
-    } else {
-        "unknown".to_string()
-    };
+    // Issue 0561 — ONE expression computes this, shared with `source_stamp()`
+    // via the `include!` above. It used to be spelled out again here, which is
+    // how the stamp came to watch something different from what the build baked:
+    // the two agreed only by inspection, and then stopped. The 0419 gate (a
+    // submodule needs a `.git` FILE, or `git -C` walks up to the superproject)
+    // lives inside `play_launch_pin` now, so it cannot be forgotten at one site.
+    let pin = play_launch_pin(&root).unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=NROS_PLAY_LAUNCH_SHA={pin}");
 }

@@ -568,20 +568,18 @@ only" checkable. Verified at the GATE with the stamps deleted first: probe went 
 in-tree CLI was stale after a 17-commit pull and these fixtures are a function of the codegen tool
 (issue 0561 wearing another hat). See `archived/0574-*`. (2026-08-15)
 
-**#561** — after `git submodule update` moves `packages/cli/third-party/play_launch`, every `nros sync`
-fails the 0409 pin guard AND no sanctioned command fixes it: `just setup-cli` reports success while
-rebuilding nothing (silent, binary mtime unchanged), and `cargo clean -p nros-cli-core` does not help
-because the skip happens before cargo runs. `setup-cli` skips on `nros source-stamp`, whose
-`is_cli_input()` excludes any path containing `/third-party/` — where play_launch lives — on the premise
-that vendored submodules are "not nano-ros build inputs". For ONE fact that premise is false:
-`nros-cli-core/build.rs` reads the submodule HEAD and bakes `NROS_PLAY_LAUNCH_SHA`, which is exactly what
-the 0409 guard compares. So the pin is a build input the stamp cannot see, and the two freshness notions
-disagree in the only case that matters. `build.rs` does emit `rerun-if-changed` for the gitdir HEAD, but
-that is the wrong layer — setup-cli never reaches cargo. The file names the rule it breaks two lines
-above the filter ("watches less than what the build consumes is the issue-0196 shape"), and this is the
-SECOND time this stamp has been found too narrow (phase-330 W1.a was local path deps). Fix: hash the
-submodule's HEAD sha — not its file list, so the "thousands of files" objection does not apply. Workaround:
-`cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`. See `0561-*`. (2026-08-13)
+Recently resolved (2026-08-14): **#561** — after `git submodule update` moved
+`packages/cli/third-party/play_launch`, every `nros sync` failed the 0409 pin guard AND no sanctioned
+command fixed it: `just setup-cli` reported success while rebuilding nothing, because it skips on
+`nros source-stamp`, whose `is_cli_input()` excludes `/third-party/`. That exclusion is right for files
+and wrong for ONE fact — `build.rs` bakes the submodule HEAD as `NROS_PLAY_LAUNCH_SHA`, so the pin IS a
+build input. Fixed by folding the pin SHA (not the file list, so the "thousands of files" objection
+stands) into `source_stamp()` AND routing `build.rs` through the same `play_launch_pin()`, so baked and
+recomputed values are one expression instead of two that agreed by inspection; the 0419 walk-up gate moved
+inside it. Regression test builds a REAL nested repo (a fake `.git` cannot reproduce the walk-up) and was
+confirmed to fail without the fix. NOT swept: whether another `build.rs` in the closure bakes something
+the stamp cannot see — third time this list has been found narrower than the build.
+See `archived/0561-*`. (2026-08-14)
 
 **#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
 manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared

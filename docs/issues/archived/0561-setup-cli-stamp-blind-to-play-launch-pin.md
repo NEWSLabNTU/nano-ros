@@ -1,10 +1,10 @@
 ---
 id: 561
 title: "`setup-cli`'s source stamp excludes the play_launch submodule, so a pin bump is unfixable by `setup-cli`"
-status: open
+status: resolved
 type: bug
 area: build
-related: [issue-0409, issue-0363, issue-0196, phase-330]
+related: [issue-0409, issue-0363, issue-0196, issue-0419, issue-0560, phase-330]
 ---
 
 ## Symptom
@@ -103,3 +103,59 @@ local path dependencies), and the fix both times was to widen it to what the
 build actually consumes.
 
 Found while running tier 2 for issue 0528's acceptance, on 2026-08-13.
+
+
+## RESOLVED 2026-08-14
+
+`source_stamp()` now folds in the play_launch pin, and — the part that matters
+for not regressing — `build.rs` no longer computes that pin itself. Both go
+through one `play_launch_pin(root)` in `source_stamp.rs`, which `build.rs`
+already `include!`s. The value baked at build time and the value recomputed at
+run time are now ONE expression rather than two that happened to agree until
+they didn't.
+
+The SHA, not the submodule's file list, so the "would drag in thousands of
+files" reason for excluding `third-party/` from `is_cli_input` stands untouched.
+
+The 0419 gate (a submodule needs a `.git` FILE, or `git -C` walks UP and returns
+the SUPERPROJECT's HEAD) moved inside that function, so it can no longer be
+remembered at one call site and forgotten at the other.
+
+### Verified
+
+Test `moving_the_play_launch_pin_changes_the_stamp` builds a real nested repo —
+a fake `.git` file cannot reproduce the 0419 walk-up — and asserts three things:
+an uninitialised submodule reads as unknown rather than as the superproject's
+HEAD; initialising it moves the stamp; moving the pin moves the stamp again.
+
+Confirmed it fails without the fix before trusting it:
+
+```
+assertion `left != right` failed: initialising the submodule changes what the
+next build bakes, so it must change the stamp
+  left: "5d10dc1cd1e2b256"
+ right: "5d10dc1cd1e2b256"
+```
+
+End to end, against this issue's own reproduce steps:
+
+```console
+$ nros source-stamp                       # fresh (73ff07515da90611)
+$ git -C .../play_launch checkout 0cd95a003
+$ nros source-stamp                       # STALE
+$ just setup-cli
+   Compiling nros-cli-core …              # <- it rebuilds now
+$ git -C .../play_launch checkout 1792e7d34 && just setup-cli
+$ nros source-stamp                       # fresh (73ff07515da90611), same value
+```
+
+The last line is the determinism check: returning the pin returns the stamp, so
+this is a function of the tree and not of history.
+
+### On the "worth checking" note above
+
+Not done: whether any other `build.rs` in the CLI's dependency closure bakes
+something the stamp cannot see. This fix closes the known instance and makes the
+two spellings one, but that sweep is still open — and this is the THIRD time the
+input list has been found narrower than the build (phase-330 W1.a for local path
+deps, then `.jinja`, now the pin), so the sweep is probably worth someone's time.

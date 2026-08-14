@@ -68,6 +68,41 @@ fn is_cli_input(rel: &str) -> bool {
         && !rel.contains("/testing_workspaces/")
 }
 
+/// Repo-relative location of the layer-2 resolver submodule (RFC-0060).
+const PLAY_LAUNCH_DIR: &str = "packages/cli/third-party/play_launch";
+
+/// The play_launch commit this tree would build against — the one actually
+/// CHECKED OUT in the submodule working tree.
+///
+/// Issue 0561: this is a CLI build input even though it is not a file under any
+/// watched directory. `build.rs` bakes it as `NROS_PLAY_LAUNCH_SHA` and the
+/// issue-0409 guard compares that value, so a stamp blind to it disagreed with
+/// the build in the one case that mattered — moving the pin left the stamp
+/// unchanged, `setup-cli` skipped the rebuild while reporting success, and no
+/// sanctioned command could clear the resulting mismatch.
+///
+/// Both callers go through here so they cannot drift: `build.rs` `include!`s
+/// this file, so the value baked at build time and the value recomputed at run
+/// time come from ONE expression rather than two that happen to agree.
+///
+/// The SHA, not the submodule's file list — that keeps the "would drag in
+/// thousands of files" objection to watching `third-party/` intact while still
+/// watching what the build actually consumes.
+///
+/// `None` when the submodule is not initialised. Gating on the `.git` FILE is
+/// issue 0419: an uninitialised submodule is an empty directory that EXISTS,
+/// and `git -C <empty dir> rev-parse HEAD` walks UP to the enclosing repo and
+/// returns the SUPERPROJECT's HEAD — which would make this component move with
+/// every nano-ros commit and re-stale the CLI constantly.
+fn play_launch_pin(root: &Path) -> Option<String> {
+    let dir = root.join(PLAY_LAUNCH_DIR);
+    if !dir.join(".git").exists() {
+        return None;
+    }
+    let sha = git(&dir, &["rev-parse", "HEAD"])?.trim().to_string();
+    (!sha.is_empty()).then_some(sha)
+}
+
 fn git(root: &Path, args: &[&str]) -> Option<String> {
     let out = Command::new("git")
         .arg("-C")
@@ -289,6 +324,21 @@ pub fn source_stamp(root: &Path) -> Option<String> {
         }
     }
 
+    // 4. the play_launch pin (issue 0561). Not a file under any watched
+    // directory — and `is_cli_input` excludes `/third-party/` besides — but
+    // `build.rs` bakes it into the binary, so by this file's own rule ("any
+    // input list here that watches less than what the build consumes is the
+    // issue-0196 shape") it belongs in the stamp. Folded in unconditionally,
+    // including the uninitialised case, so that `git submodule update --init`
+    // moves the stamp: that init changes what the next build bakes.
+    h = fnv1a(b"play_launch_pin", h);
+    h = fnv1a(
+        play_launch_pin(root)
+            .unwrap_or_else(|| "unknown".to_string())
+            .as_bytes(),
+        h,
+    );
+
     Some(format!("{h:016x}"))
 }
 
@@ -415,5 +465,69 @@ mod tests {
             source_stamp(root).unwrap(),
             "committing an untracked source must not change the stamp"
         );
+    }
+
+    /// Issue 0561 — moving the play_launch pin must move the stamp.
+    ///
+    /// The pin is a build input (`build.rs` bakes it as `NROS_PLAY_LAUNCH_SHA`)
+    /// but it is not a file under any watched directory, so before this it was
+    /// invisible to the stamp: `setup-cli` skipped the rebuild while reporting
+    /// success, and the 0409 guard then compared a stale baked pin against a
+    /// freshly built resolver — a lane no sanctioned command could unstick.
+    ///
+    /// Built as a real nested repo rather than a fake `.git` file, because the
+    /// 0419 behaviour under test (`git -C` walking UP out of an uninitialised
+    /// submodule) only reproduces against real git.
+    #[test]
+    fn moving_the_play_launch_pin_changes_the_stamp() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        sh(root, "git init -q -b main .");
+        std::fs::create_dir_all(root.join("packages/cli/x/src")).unwrap();
+        std::fs::write(root.join("packages/cli/x/src/lib.rs"), "fn a() {}\n").unwrap();
+        std::fs::write(
+            root.join("packages/cli/x/Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.0.0\"\n",
+        )
+        .unwrap();
+        sh(root, "git add -A && git commit -qm init");
+
+        // Uninitialised: an empty directory that EXISTS. This must NOT pick up
+        // the superproject's HEAD (issue 0419).
+        let sub = root.join(PLAY_LAUNCH_DIR);
+        std::fs::create_dir_all(&sub).unwrap();
+        assert_eq!(
+            play_launch_pin(root),
+            None,
+            "an uninitialised submodule must read as unknown, not as the \
+             superproject's HEAD"
+        );
+        let without = source_stamp(root).expect("stamp without a pin");
+
+        // A real checkout at one commit.
+        sh(
+            &sub,
+            "git init -q -b main . && git commit -q --allow-empty -m one",
+        );
+        let pin_one = play_launch_pin(root).expect("pin after init");
+        let at_one = source_stamp(root).expect("stamp at pin one");
+        assert_ne!(
+            without, at_one,
+            "initialising the submodule changes what the next build bakes, so \
+             it must change the stamp"
+        );
+
+        // Move the pin. Nothing else in the tree changes.
+        sh(&sub, "git commit -q --allow-empty -m two");
+        let pin_two = play_launch_pin(root).expect("pin after move");
+        assert_ne!(pin_one, pin_two, "the fixture must actually move the pin");
+        let at_two = source_stamp(root).expect("stamp at pin two");
+        assert_ne!(
+            at_one, at_two,
+            "moving the play_launch pin must re-stale the CLI (issue 0561)"
+        );
+
+        // And it is stable when nothing moves.
+        assert_eq!(at_two, source_stamp(root).unwrap(), "stamp must be stable");
     }
 }
