@@ -432,8 +432,18 @@ test-all verbose="":
     cargo nextest run "${cargo_nextest_args[@]}" "${e2e_args[@]}"
 
 # CI: check prerequisites + test
+#
+# Issue 0570 — `check-nuttx-libc-struct-sizes` also sits in `check-fast`, but it
+# can only MEASURE where a kernel has been configured and a cross compiler is on
+# PATH; there it degrades to NOT CHECKED. This lane is where both hold, so it is
+# the one that actually enforces the rule.
 [group("full-matrix")]
-ci: doctor test
+ci: doctor check-libc-struct-sizes test
+
+# Issue 0570 — see `check-nuttx-libc-struct-sizes` in the root justfile.
+[group("full-matrix")]
+check-libc-struct-sizes:
+    @python3 {{ justfile_directory() }}/scripts/check-nuttx-libc-struct-sizes.py
 
 # Install NuttX prerequisites. Phase 197.4 — provisioning delegated to
 # `nros setup qemu-arm-nuttx` (toolchain + sources); the NuttX-specific

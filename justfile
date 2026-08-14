@@ -397,7 +397,7 @@ check-fast: \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
-    check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers \
+    check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers check-nuttx-libc-struct-sizes \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
     check-capability-slot-counts check-kconfig-knob-forwarding \
@@ -1165,6 +1165,18 @@ check-cbindgen-pin:
 [private]
 check-nuttx-shared-tree-headers:
     @python3 scripts/check-nuttx-shared-tree-headers.py
+
+# Issue 0570 — the vendored NuttX `libc` fork mirrors NuttX's opaque types as
+# byte blobs, but NuttX sizes several of them from Kconfig, so a mirror that is
+# too small is a stack smash at every libc call that writes the whole struct
+# (#167's `pollfd`, #570's `pthread_attr_t` — both landed on a saved return
+# address). Compiles a `sizeof` probe against the configured headers. NOT
+# buildless: reports NOT CHECKED, exit 0, on a tree with no configured NuttX or
+# no cross compiler, which is why it also runs in the nuttx lane where both
+# exist.
+[private]
+check-nuttx-libc-struct-sizes:
+    @python3 scripts/check-nuttx-libc-struct-sizes.py
 
 # Issue 0452 — the committed cbindgen headers must match a fresh generation.
 # The Rust->C mirror of `check-abi-bindings`, which has guarded the C->Rust

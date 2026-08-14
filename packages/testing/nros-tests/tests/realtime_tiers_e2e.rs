@@ -389,8 +389,8 @@ impl Guest {
 // Shared helpers
 // =============================================================================
 
-/// The guest's last 25 console lines, drained BEFORE it is killed, formatted
-/// for a panic message.
+/// The guest's console, drained BEFORE it is killed, formatted for a panic
+/// message.
 ///
 /// phase-351 — issue 0565 added this reasoning to the ONE arm where the
 /// symptom was noticed (the low-tier anchor) and left the others killing the
@@ -403,18 +403,40 @@ impl Guest {
 /// Best-effort by construction — a wedged guest returns what it buffered, and
 /// an empty string is itself the diagnosis.
 fn guest_console(guest: &mut Guest) -> String {
-    let drained = guest.drain(Duration::from_secs(3));
-    let tail: Vec<&str> = drained.lines().rev().take(25).collect();
-    let tail = tail
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>()
-        .join("\n           ");
-    if tail.is_empty() {
-        "<the guest printed NOTHING — it did not reach the entry banner>".to_string()
-    } else {
-        tail
+    console_excerpt(&guest.drain(Duration::from_secs(3)))
+}
+
+/// Excerpt a guest console: the first [`HEAD`] lines, then the last [`TAIL`].
+///
+/// Issue 0570 — the first cut printed only the LAST 25 lines, which is right for
+/// a guest that simply stopped producing and WRONG for one that crashed: a NuttX
+/// assertion dump is hundreds of lines (`stack_dump:` hex pages, then
+/// `dump_tasks:`), so a 25-line tail lands in the middle of the hex and the line
+/// that names the cause — the assertion, its file:line, the exception — has
+/// scrolled off the top. That cost a whole diagnosis: 0570 was filed as a stack
+/// overflow read off the task table in the tail, and the 8x stack raise that
+/// followed left the crash untouched, because the actual reason was never in the
+/// window. (It was `pthread_attr_destroy` smashing a saved `ra`.)
+///
+/// So show BOTH ends. The head carries why it died; the tail carries the state
+/// it died in.
+fn console_excerpt(console: &str) -> String {
+    const HEAD: usize = 30;
+    const TAIL: usize = 20;
+    const SEP: &str = "\n           ";
+
+    let lines: Vec<&str> = console.lines().collect();
+    if lines.is_empty() {
+        return "<the guest printed NOTHING — it did not reach the entry banner>".to_string();
     }
+    if lines.len() <= HEAD + TAIL {
+        return lines.join(SEP);
+    }
+    let elided = lines.len() - HEAD - TAIL;
+    let mut out: Vec<String> = lines[..HEAD].iter().map(|l| l.to_string()).collect();
+    out.push(format!("… {elided} line(s) elided …"));
+    out.extend(lines[lines.len() - TAIL..].iter().map(|l| l.to_string()));
+    out.join(SEP)
 }
 
 /// Spawn a native `int32-sink` observer on `topic` (prints `Received: <n>`
@@ -717,7 +739,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             telem.kill();
             panic!(
                 "[{} {}] low-tier /telem never reached 5 deliveries — the low tier was \
-                 not scheduled ({})\n         guest console (last 25 lines):\n           {}",
+                 not scheduled ({})\n         guest console:\n           {}",
                 platform, lang, cell.note, tail
             )
         });
@@ -752,7 +774,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             assert!(
                 telem_max > 0,
                 "[{} {}] low-tier /telem counter never advanced (max {telem_max}) — the \
-                 low tier did not run ({})\n         guest console (last 25 lines):\n           {}",
+                 low tier did not run ({})\n         guest console:\n           {}",
                 platform,
                 lang,
                 cell.note,
@@ -770,7 +792,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                  100 ms tier ({})\n\
                  --- /ctrl observer output (empty ⇒ nothing was received at all) ---\n{}\n\
                  --- /telem observer output ---\n{}\n\
-                 --- guest console (last 25 lines) ---\n           {}",
+                 --- guest console ---\n           {}",
                 platform,
                 lang,
                 cell.note,
@@ -789,7 +811,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                     telem.kill();
                     panic!(
                         "[{} {}] high-tier /ctrl produced nothing — the high tier was \
-                         not scheduled ({})\n         guest console (last 25 lines):\n           {}",
+                         not scheduled ({})\n         guest console:\n           {}",
                         platform, lang, cell.note, tail
                     )
                 });
@@ -803,7 +825,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             assert!(
                 telem_n >= 5,
                 "[{} {}] expected ≥5 low-tier /telem deliveries, got {telem_n} ({})\n\
-                 --- guest console (last 25 lines) ---\n           {}",
+                 --- guest console ---\n           {}",
                 platform,
                 lang,
                 cell.note,
@@ -816,7 +838,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                     ctrl_n >= telem_n * 3,
                     "[{} {}] expected the high tier (/ctrl, 10 ms) to deliver ≥3× the \
                      low tier (/telem, 100 ms): ctrl={ctrl_n} telem={telem_n} ({})\n\
-                     --- guest console (last 25 lines) ---\n           {}",
+                     --- guest console ---\n           {}",
                     platform,
                     lang,
                     cell.note,
@@ -827,7 +849,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                     ctrl_n > telem_n,
                     "[{} {}] ctrl (10 ms tier) delivered {ctrl_n} ≤ telem's {telem_n} — \
                      the high tier is not outrunning the low tier ({})\n\
-                     --- guest console (last 25 lines) ---\n           {}",
+                     --- guest console ---\n           {}",
                     platform,
                     lang,
                     cell.note,

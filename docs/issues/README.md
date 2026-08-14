@@ -115,14 +115,28 @@ materialises its own copy — one clear was observed, the multiplier was not. Se
 
 RESOLVED 2026-08-13 (SPLIT into #569/#570) — **#565** — NuttX **Rust**, BOTH arches: the 100 ms low tier was reported as never scheduled, so `/telem` never reached 5
 
-**#0569** — `nuttx-arm` Rust `realtime_tiers_e2e`: the low tier SPAWNS and gets its priority (`tier priority set
-tier=`low` prio=100`), then `Executor::open` fails `Transport(ConnectionFailed)` and the entry aborts. A
-transport/session problem, not scheduling — and the `core pin FAILED … kernel lacks CONFIG_SMP` line above it is a
-stated fallback, not the fault. Split out of #565. See `0569-*`. (2026-08-13)
+Recently resolved (2026-08-14): **#0569** — `nuttx-arm` Rust `realtime_tiers_e2e` aborted with
+`Transport(ConnectionFailed)` after the entry banner. NOT a transport bug: same root cause as #0570 — the 56-byte
+`pthread_attr_init`/`destroy` write into a 20-byte mirror, which on arm lands on `Thread::new`'s pushed
+`{r4, r5, r6, r7, r9, lr}`. Its own note said "do not assume a shared fix" with #0570; the note was right to demand
+evidence and wrong about the answer. 16/16 rows pass with no transport change. See `archived/0569-*`.
 
-**#0570** — `nuttx-riscv` Rust `realtime_tiers_e2e`: a NuttX assertion dump whose task table diagnoses itself —
-`nsh_main` at **89.5%!** of 65 208 bytes while the spawned tiers sit at 1.3% and 0.5%. Main-task stack
-exhaustion, NOT #0246's spawned-tier stack class. Split out of #565. See `0570-*`. (2026-08-13)
+**#0570** — CAUSE PROVEN 2026-08-14: the vendored NuttX `libc` fork mirrors `pthread_attr_t` as 20 bytes
+(`__PTHREAD_ATTR_SIZE__ = 5`), the `SCHED_SPORADIC=n` layout; both NuttX boards set `CONFIG_SCHED_SPORADIC=y`, so
+the real struct is **56**. `pthread_attr_init`/`destroy` memcpy/memset 56 bytes into it, running 36 past the end
+and over `Thread::new`'s saved `ra`/`s0`–`s4` — riscv then `ret`s to address 0 (`EPC 00000000`). Same fork, same
+class as #0167's 24-vs-8-byte `pollfd`. Live on arm too (the write lands on `{r4..r9, lr}`) — re-test #0569 against
+the fix. The 89.5% stack reading in the original filing was a co-symptom; 8x the stack changed nothing. Fix =
+size the constant to the LARGEST layout + a gate that measures every mirrored type against the built headers.
+Split out of #565. FIXED + VERIFIED 2026-08-14 (`__PTHREAD_ATTR_SIZE__` 5 -> 14; 16/16 rows pass), gated by
+`check-nuttx-libc-struct-sizes`; stays open only until the fork commits are published (#0575). See `0570-*`.
+(2026-08-14)
+
+**#0575** — the superproject pins `third-party/nuttx/libc` at `adb4c59` (#0167's `--wrap=poll` shim) and NO remote
+branch contains it: the commit was never pushed to the fork, so `git submodule update --init` cannot resolve it in a
+fresh clone and every NuttX **Rust** row is unbuildable there. Green here for a reason that does not survive a
+clone. `check-submodule-drift` cannot see it — it asks about the working tree, this is about the remote. #0570's fix
+sits on top of the same unpublished commit. See `0575-*`. (2026-08-14)
 
 RESOLVED 2026-08-13 — **#565** filed as one bug ("the 100 ms low tier is never scheduled, both arches") on the
 strength of a verdict that INFERRED its cause from missing telemetry and then killed the guest unread. Both leads
