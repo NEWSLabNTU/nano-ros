@@ -120,6 +120,10 @@ pub const GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardCondition
 // rejects as `unused_macros`. Gating the definition rather than `#[allow]`ing
 // it keeps definition and uses on ONE condition, so a future use outside that
 // cfg fails loudly instead of silently compiling against nothing.
+//
+// A SECOND trigger, found independently on the feature-contract branch: with
+// this crate's `default` emptied, a plain `cargo check -p nros-c` resolves
+// without `rmw-cffi` too — so the lane is not the only way in.
 #[cfg(feature = "rmw-cffi")]
 macro_rules! guard_opaque {
     ($stated:expr, $ty:ty, $what:literal) => {
