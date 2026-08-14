@@ -1,7 +1,7 @@
 ---
 id: 574
 title: "Tier 2 and tier 3 demand `.inputsig` for the four west compile-checks, and no builder writes it"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0536, issue-0537, issue-0535, issue-0482, phase-350]
@@ -91,3 +91,44 @@ for EVERY fixture, not just these four, so it is a way to get a test signal and
 not a fix.
 
 Found 2026-08-14 while running tier 2 for issue 0528's acceptance.
+
+## FIXED 2026-08-15 (`72c297d36`)
+
+`west-fixtures.sh` now writes the `.inputsig` alongside its own `.compile-ok`,
+on the same success condition (`output` exists).
+
+Two details taken from the probe rather than assumed:
+
+* the signature is computed from the **whole record line**, because that is what
+  `compile-check-stale.sh` passes when it recomputes the expected value. A
+  reconstructed 8-field prefix would hash differently and read as PERMANENTLY
+  STALE — worse than the missing stamp, since it looks like real staleness. The
+  read loop keeps the raw line for this;
+* the stamp root is derived with `nros_build_dir "$NROS_KIND_COMPILE_CHECK"`,
+  the same call the probe makes, so writer and reader cannot drift.
+
+`.compile-ok` stays. It records the BUILDER, which is what makes "configure
+only" checkable (phase-350 W2), and answers a different question from "built
+from the sources on disk right now".
+
+Verified at the gate, not just on disk:
+
+```
+before:  4/4 missing   (probe: "west_bringup_zephyr (missing …/.inputsig)" ×4)
+after:   fresh: west_bringup_zephyr / west_board_import
+         fresh: zephyr_self_pkg_rust / zephyr_self_pkg_sibling
+```
+
+Stamps were deleted first so the pass could not be inherited from an earlier
+run.
+
+### A stale CLI masqueraded as a regression, briefly
+
+The first run after the fix built only 1/4, the other three failing `nros sync`
+with `system_config.h` missing — which looked like the change had broken them.
+It had not: the pull had moved 17 commits and the in-tree CLI was stale, and
+these fixtures are a function of the codegen tool. Rebuilding the CLI restored
+4/4. Worth recording because the symptom (three fixtures failing at sync right
+after a west-lane edit) points straight at the edit, and the cause was two steps
+away. It is also issue 0561 wearing another hat: `just setup-cli` will not fix
+this for you.
