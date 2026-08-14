@@ -74,14 +74,17 @@ this cost seconds rather than hours — and why nobody looked. Nine sibling echo
 already escape their backticks; this was the tenth. Sweep: `grep -n 'echo "[^"]*`' justfile just/*.just`.
 See `archived/0568-*`. (2026-08-14)
 
-**#567** (rmw, open 2026-08-14) — `_zp_unicast_read` RESETS its receive buffer on every call
-(`_z_zbuf_reset`), so it cannot return with bytes unread; the inner loop below it therefore drains every
-buffered frame by construction, because stopping early silently loses them (the defect that comment
-records). That blocks the device-side half of #506: capping the loop at 4/16 frames does improve cadence
-(stalls 10 -> 4/5, missed periods 1.79% -> 0.59/0.85%) but collapses inbound delivery 282 -> 10 msg/s and
-halves chain delivery — a drop policy, not a budget. Control: a cap of 1 degenerates to the pre-loop
-single-frame path and matches unbounded on every column. Needs a resumable rx path (reset only when the
-buffer is genuinely drained), and a decision on local patch vs upstreaming to zenoh-pico. See `0567-*`.
+Recently resolved (2026-08-14): **#567** (rmw) — `_zp_unicast_read` reset its receive buffer on EVERY call,
+so it could never return with bytes unread and any budget on its drain loop discarded frames instead of
+deferring them. Fixed in the zenoh-pico fork (43ddb0ec) by resetting only when the buffer is empty and
+compacting otherwise — smaller than expected, because `_z_unicast_client_read` already coped with
+pre-existing buffered bytes. Verified: a 16-frame cap now holds inbound delivery at 274 msg/s where the
+same cap previously collapsed it to 10; no regression at idle or 1 kHz. Does NOT establish that a budget
+buys cadence — on the resumable path a 16-frame cap left stalls unchanged while a 4-frame cap improved
+them only by throttling delivery via TCP backpressure, and second reps of both landed in a degraded regime
+that also appeared in unrelated cells, so the 2 kHz harness is bimodal and those cells are not evidence.
+#506's device half is implementable; whether it is worth implementing is open. See `archived/0567-*`.
+(2026-08-14)
 
 Recently resolved (2026-08-14): **#566** (platform-zephyr) — without `CONFIG_POSIX_API` the Zephyr port
 stubbed its ENTIRE threading half (~20 `task_*`/`mutex_*`/`mutex_rec_*`/`condvar_*` functions, each
