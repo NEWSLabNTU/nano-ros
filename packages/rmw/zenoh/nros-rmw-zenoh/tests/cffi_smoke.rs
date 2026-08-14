@@ -3,8 +3,6 @@
 #![cfg(feature = "platform-posix")]
 
 use std::{
-    net::TcpListener,
-    process::{Child, Command, Stdio},
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
@@ -12,6 +10,7 @@ use std::{
 use nros_rmw::{Publisher, QosSettings, Session, Subscription, TopicInfo};
 use nros_rmw_cffi::{CffiSession, NROS_RMW_RET_OK, RustBackendAdapter};
 use nros_rmw_zenoh::ZenohRmw;
+use nros_tests::fixtures::ZenohRouter;
 
 #[test]
 fn zenoh_cffi_register_returns_ok() {
@@ -43,68 +42,36 @@ fn zenoh_vtable_monomorphised_with_every_slot() {
 // Pubsub round-trip via a one-shot zenohd fixture.
 // ----------------------------------------------------------------------------
 
-/// Same resolution as every other zenohd consumer: the shared harness helper
-/// (build/zenohd → `nros setup` store → PATH). See status_events_matrix.rs and
-/// issue 0388 — hardcoding the repo-local path made a store-provisioned host
-/// look like it had no zenohd.
-fn zenohd_path() -> std::path::PathBuf {
-    nros_tests::process::zenohd_binary_path()
-}
-
+/// One zenohd per test run, shared across tests via OnceLock + Mutex.
+/// Returns the locator string the tests should connect to. `None` if
+/// the zenohd binary isn't built (caller should skip).
+///
+/// Issue 0573 — this used to be a private `RouterHandle` that spawned zenohd
+/// with a bare `Command::spawn()`. That copy leaked a router on EVERY run: it
+/// armed no `PR_SET_PDEATHSIG`, so nextest's SIGKILL left an orphan, and its
+/// `impl Drop` was dead code because Rust never drops a `static`. Eleven such
+/// routers were found alive on a dev host, the oldest 3.8 days old. It also
+/// re-introduced the bind-port-0-then-close race that issue 0470 removed.
+///
+/// `ZenohRouter` carries all three fixes already, so this goes through the
+/// shared fixture. Holding it in a `static` is still fine: `PR_SET_PDEATHSIG`,
+/// not `Drop`, is what bounds the child when the parent is killed.
 fn router_locator() -> Option<String> {
-    static ROUTER: OnceLock<Mutex<Option<RouterHandle>>> = OnceLock::new();
-    let cell = ROUTER.get_or_init(|| Mutex::new(RouterHandle::start()));
-    let guard = cell.lock().ok()?;
-    guard.as_ref().map(|h| h.locator.clone())
-}
-
-struct RouterHandle {
-    _child: Child,
-    locator: String,
-}
-
-impl RouterHandle {
-    fn start() -> Option<Self> {
-        let zenohd = zenohd_path();
-        if !zenohd.is_file() {
-            eprintln!(
-                "[zenoh-cffi] zenohd not found (build/zenohd, nros setup store, PATH) \
-                 — run `nros setup <board> --rmw zenoh`; pubsub test skipped"
-            );
-            return None;
-        }
-        let listener = TcpListener::bind("127.0.0.1:0").ok()?;
-        let port = listener.local_addr().ok()?.port();
-        drop(listener);
-        let endpoint = format!("tcp/127.0.0.1:{port}");
-        let child = Command::new(&zenohd)
-            .args(["--listen", &endpoint, "--no-multicast-scouting"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .ok()?;
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            if std::net::TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
-                break;
+    static ROUTER: OnceLock<Mutex<Option<ZenohRouter>>> = OnceLock::new();
+    let cell = ROUTER.get_or_init(|| {
+        Mutex::new(match ZenohRouter::start_unique() {
+            Ok(r) => Some(r),
+            Err(e) => {
+                eprintln!(
+                    "[zenoh-cffi] could not start zenohd ({e:?}) — run \
+                     `nros setup <board> --rmw zenoh`; test skipped"
+                );
+                None
             }
-            if Instant::now() >= deadline {
-                return None;
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        Some(Self {
-            _child: child,
-            locator: endpoint,
         })
-    }
-}
-
-impl Drop for RouterHandle {
-    fn drop(&mut self) {
-        let _ = self._child.kill();
-        let _ = self._child.wait();
-    }
+    });
+    let guard = cell.lock().ok()?;
+    guard.as_ref().map(|h| h.locator())
 }
 
 /// In-process pub→sub round-trip via the C vtable.

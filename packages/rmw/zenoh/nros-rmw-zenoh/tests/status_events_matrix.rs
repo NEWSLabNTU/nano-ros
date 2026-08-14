@@ -27,85 +27,42 @@ use nros_rmw::{
     TopicInfo, Transport, TransportConfig, TransportError,
 };
 use nros_rmw_zenoh::ZenohTransport;
+use nros_tests::fixtures::ZenohRouter;
 use std::{
-    net::TcpListener,
-    process::{Child, Command, Stdio},
     sync::{Mutex, OnceLock},
-    time::{Duration, Instant},
+    time::Duration,
 };
-
-/// zenohd is a SETUP-provided prerequisite, not something tests build. Resolve
-/// it through the shared harness helper, which tries `build/zenohd/zenohd`, then
-/// the `nros setup` store (`$NROS_HOME/sdk/zenohd/<v>/bin`, honouring NROS_HOME),
-/// then PATH. This file used to hardcode the repo-local path alone, so a host
-/// provisioned exactly as the book documents — `nros setup <board> --rmw zenoh`,
-/// which installs to the store — failed this test with zenohd sitting installed
-/// (issue 0388).
-fn zenohd_path() -> std::path::PathBuf {
-    nros_tests::process::zenohd_binary_path()
-}
 
 /// One zenohd per test run, shared across tests via OnceLock + Mutex.
 /// Returns the locator string the tests should connect to. `None` if
 /// the zenohd binary isn't built (caller should skip).
+///
+/// Issue 0573 — this used to be a private `RouterHandle` that spawned zenohd
+/// with a bare `Command::spawn()`. That copy leaked a router on EVERY run: it
+/// armed no `PR_SET_PDEATHSIG`, so nextest's SIGKILL left an orphan, and its
+/// `impl Drop` was dead code because Rust never drops a `static`. Eleven such
+/// routers were found alive on a dev host, the oldest 3.8 days old. It also
+/// re-introduced the bind-port-0-then-close race that issue 0470 removed.
+///
+/// `ZenohRouter` carries all three fixes already, so this goes through the
+/// shared fixture. Holding it in a `static` is still fine: `PR_SET_PDEATHSIG`,
+/// not `Drop`, is what bounds the child when the parent is killed.
 fn router_locator() -> Option<String> {
-    static ROUTER: OnceLock<Mutex<Option<RouterHandle>>> = OnceLock::new();
-    let cell = ROUTER.get_or_init(|| Mutex::new(RouterHandle::start()));
-    let guard = cell.lock().ok()?;
-    guard.as_ref().map(|h| h.locator.clone())
-}
-
-struct RouterHandle {
-    _child: Child,
-    locator: String,
-}
-
-impl RouterHandle {
-    fn start() -> Option<Self> {
-        let zenohd = zenohd_path();
-        if !zenohd.is_file() {
-            eprintln!(
-                "[zenoh-matrix] zenohd not found (looked at build/zenohd/zenohd, \
-                 the nros setup store and PATH) — run `nros setup <board> --rmw zenoh`"
-            );
-            return None;
-        }
-        // Bind a listener to grab a free port, then close it before
-        // spawning zenohd. Race-y but good enough for a single-shot
-        // test fixture; zenohd retries on bind failure anyway.
-        let listener = TcpListener::bind("127.0.0.1:0").ok()?;
-        let port = listener.local_addr().ok()?.port();
-        drop(listener);
-        let endpoint = format!("tcp/127.0.0.1:{port}");
-        let child = Command::new(&zenohd)
-            .args(["--listen", &endpoint, "--no-multicast-scouting"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .ok()?;
-        // Poll the port until accept-ready or timeout.
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            if std::net::TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
-                break;
+    static ROUTER: OnceLock<Mutex<Option<ZenohRouter>>> = OnceLock::new();
+    let cell = ROUTER.get_or_init(|| {
+        Mutex::new(match ZenohRouter::start_unique() {
+            Ok(r) => Some(r),
+            Err(e) => {
+                eprintln!(
+                    "[zenoh-matrix] could not start zenohd ({e:?}) — run \
+                     `nros setup <board> --rmw zenoh`; test skipped"
+                );
+                None
             }
-            if Instant::now() >= deadline {
-                return None;
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        Some(Self {
-            _child: child,
-            locator: endpoint,
         })
-    }
-}
-
-impl Drop for RouterHandle {
-    fn drop(&mut self) {
-        let _ = self._child.kill();
-        let _ = self._child.wait();
-    }
+    });
+    let guard = cell.lock().ok()?;
+    guard.as_ref().map(|h| h.locator())
 }
 
 unsafe extern "C" fn dummy_cb(_kind: EventKind, _payload: *const c_void, _ctx: *mut c_void) {}
@@ -140,7 +97,7 @@ fn topic() -> TopicInfo<'static> {
 fn zenoh_event_matrix() {
     use nros_rmw::QosPolicyMask;
     // issue 0388 — an absent zenohd is an unmet PRECONDITION, not a defect, and
-    // `RouterHandle::start` already treats it that way ("tests will skip"). This
+    // `router_locator` already treats it that way ("tests will skip"). This
     // `expect` then panicked anyway, so the tier reported a missing prerequisite
     // exactly like a broken assertion. `skip!` makes the two distinguishable:
     // tier 1 rewrites [SKIPPED] panics to <skipped> and passes, while a real

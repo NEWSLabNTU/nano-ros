@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-14): **#573** eleven `zenohd` orphans were alive on the dev host with no test runner
+running, the oldest 3.8 days. Two private `RouterHandle` copies (`nros-rmw-zenoh`'s `cffi_smoke.rs` and
+`status_events_matrix.rs`) spawned zenohd with a bare `Command::spawn()` instead of the shared
+`ZenohRouter`, so they armed no `PR_SET_PDEATHSIG` — and they held it in a `static OnceLock`, whose
+`Drop` Rust never runs, so each leaked a router on every CLEAN run too. Their `impl Drop` was dead code
+that read like cleanup. Both also re-introduced the bind-port-0-then-close race #470 had removed. The
+fixture had been hardened twice (#470, #388) and both hardenings reached only the call site everyone knew
+about. Fixed by deleting both copies for `ZenohRouter::start_unique()`; gate `check-zenohd-spawn-sites`
+(verified to fail on the pre-fix tree) keeps it the only spawner. Sweep:
+`git grep -ln 'zenohd_binary_path' -- '*.rs'`. See `archived/0573-*`.
+
 Recently resolved (2026-08-14): **#0572** — `nuttx-arm/rust` delivered ZERO samples on its 10 ms `/ctrl` tier while
 the 100 ms `/telem` tier worked. Third symptom of #0570's one bad write: `pthread_attr_init`/`destroy` put NuttX's
 56-byte `pthread_attr_t` into the fork's 20-byte mirror, and on arm the 36-byte overflow lands on

@@ -415,6 +415,7 @@ check-fast: \
     check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
     check-workspace-order \
     check-atomic-sync-writes \
+    check-zenohd-spawn-sites \
     check-cmake-corrosion-prefix \
     check-path-env-fingerprints check-retired-platform-clock-symbols
     @echo "Fast checks passed!"
@@ -1353,6 +1354,10 @@ check-issue-index:
 [private]
 check-atomic-sync-writes:
     @bash scripts/check-atomic-sync-writes.sh
+
+# Issue 0573 — ZenohRouter must stay the only zenohd spawner.
+check-zenohd-spawn-sites:
+    @bash scripts/check-zenohd-spawn-sites.sh
 
 # Issue 0466 — report EVERY unmet tier precondition at once (CLI stamp, leaf
 # includes, build sources, fixtures for the lane) instead of one per ~40-minute
