@@ -71,6 +71,26 @@ branch prepared locally and the maintainer pushing.
 issue), or documented as permanently-ours with the reason it cannot go upstream.
 "Still carrying it" with no decision is what this work item exists to end.
 
+**DONE 2026-08-15 — decision recorded; PRs are the maintainer's step.** The
+census found **15** fork-only commits against `origin/releases/0.10.x`, not two:
+this item was scoped to the newest pair. Each is now classified in
+[issue 0507](../issues/0507-cyclonedds-fork-carries-two-unupstreamed-changes.md)
+with its reason —
+
+* **offer upstream (10):** the striped addrset locks (`942dda3c`, the strongest
+  candidate and not platform-specific), the three "fail loudly / say which pool
+  ran out" diagnostics, the Zephyr sync backend (additive, behind
+  `DDSRT_WITH_ZEPHYR`, needs a `WITH_ZEPHYR` option in cyclone's own
+  `src/ddsrt/CMakeLists.txt`), and the three Zephyr socket-layer fixes;
+* **permanently ours (5):** the ThreadX NetX port and its follow-ups (~1450
+  lines) plus the FreeRTOS TLS fix. A new platform port is a maintenance burden
+  upstream has no CI, users, or hardware for. Stating that is better than hoping
+  it goes away, and it is precisely the residue that makes rebases cost.
+
+Submitting the PRs is deliberately NOT part of this: CLAUDE.md keeps fork-remote
+pushes with the maintainer, and opening a PR against `eclipse-cyclonedds` is an
+outward-facing act. What W2 owed was the decision, and the decision exists.
+
 ## W3 — `anyhow`'s three transitive dependants (#524)
 
 Census of 2026-08-12 found four sites; the two first-party ones are gone. Three

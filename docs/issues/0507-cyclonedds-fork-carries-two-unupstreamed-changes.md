@@ -59,6 +59,86 @@ For an upstream PR the Zephyr backend also needs a `WITH_ZEPHYR` option in
 cyclone's own `src/ddsrt/CMakeLists.txt`. nano-ros never needed one: the Zephyr
 build lists ddsrt sources manually in `zephyr/cmake/nros_rmw_cyclonedds.cmake`.
 
+
+## Census 2026-08-15 (phase-355 W2) — it is FIFTEEN commits, not two
+
+This issue was written about the two changes issue 0496 added. Measured against
+the release line the fork is based on, `origin/releases/0.10.x..fork/nano-ros`
+is **15 commits**. The two named here are the newest, not the whole debt:
+
+| # | commit | change | diffstat |
+| --- | --- | --- | --- |
+| 1 | `942dda3c` | ddsi/addrset: stripe the lock instead of one mutex per addrset | 167+/51- |
+| 2 | `a09babf3` | ddsrt: Zephyr-native sync backend (`k_mutex`/`k_condvar`) | 301+ |
+| 3 | `8601ca66` | freertos/threadx sync ports say what failed before aborting | 63+/13- |
+| 4 | `5b87ee52` | ddsrt/posix: say which pool ran out; fix cond/rwlock too | 45+/7- |
+| 5 | `4c8ff8c2` | ddsrt/posix: fail loudly when `pthread_mutex_init` fails | 6+/1- |
+| 6 | `1d794c0a` | ddsi_udp: Zephyr multicast join via `struct ip_mreqn` | 23+ |
+| 7 | `4aa337b0` | q_sockwaitset: AF_UNIX socketpair self-pipe on Zephyr | 13+ |
+| 8 | `290152c0` | zephyr: tolerate NSOS socket gaps | 182+/13- |
+| 9 | `22150fbf` | freertos: avoid TLS-only DDS state | 78+/13- |
+| 10 | `902f7707` | ddsrt: add ThreadX NetX port | 1231+/14- |
+| 11-15 | `56e6170a` `e8ce7315` `5558c6ae` `12b4af2c` `6eb92277` | ThreadX port follow-ups | 220+/83- |
+
+A correction to my own reading on the way: `git branch -a --contains` reported
+none of these on a fork branch, which looks like "the superproject records a
+commit no one can fetch". It was **stale remote-tracking refs** — after
+`git fetch fork --prune` all three are on `fork/nano-ros`, and
+`git fetch fork <sha>` served it directly. Nothing is unpushed. Recorded because
+the false alarm is one `git fetch` away from being believed.
+
+## The decision W2 asks for
+
+Grouped by what upstream would actually be asked to take. PR submission is NOT
+done here: CLAUDE.md's vendored-fork rule keeps fork-remote pushes with the
+maintainer, and opening a PR against `eclipse-cyclonedds` is an outward-facing
+act that is theirs to make. What this records is the decision and the reason, so
+"still carrying it" stops being the default.
+
+### OFFER UPSTREAM — not platform-specific, useful to everyone
+
+* **`942dda3c` striped addrset locks.** The strongest candidate, as this issue
+  already argued: not Zephyr-specific, removes an allocation per addrset on
+  every platform, and the two nesting changes it forced (the copy became atomic;
+  callbacks no longer run under the lock) are correctness improvements in their
+  own right. Regression cover exists and is mutation-validated
+  (`nros_rmw_cyclonedds_addrset_striped_lock_concurrency`).
+* **`5b87ee52` + `4c8ff8c2` + `8601ca66` diagnostics.** ~110 lines total whose
+  entire content is "fail loudly, and say which pool ran out". They fix the
+  failure mode this project hit repeatedly — an anonymous `abort()` 20 s into a
+  40-participant graph (issues 0371/0496). Nothing about them is nano-ros
+  specific, and a maintainer reviewing them needs no embedded context.
+
+### OFFER UPSTREAM — additive, behind a switch
+
+* **`a09babf3` Zephyr sync backend.** Additive and selected by
+  `DDSRT_WITH_ZEPHYR`, so it cannot regress an existing platform. Needs one
+  thing nano-ros never did: a `WITH_ZEPHYR` option in cyclone's own
+  `src/ddsrt/CMakeLists.txt`, because the Zephyr build lists ddsrt sources
+  manually in `zephyr/cmake/nros_rmw_cyclonedds.cmake`.
+* **`1d794c0a`, `4aa337b0`, `290152c0` Zephyr socket-layer fixes.** Portability
+  fixes against Zephyr's NSOS quirks. Individually small and independently
+  defensible.
+
+### PERMANENTLY OURS — offered only if upstream asks
+
+* **`902f7707` + its five follow-ups — the ThreadX NetX port** (~1450 lines
+  across 21 files). This is a new platform port, not a fix. Upstream carries
+  ports for the platforms it supports and takes on their maintenance; proposing
+  one it has no CI for, no users asking for, and no way to test is asking a
+  maintainer to adopt a burden. Keeping it ours is the honest arrangement — and
+  it is *why* the rebase cost this issue worries about exists, so it should be
+  stated rather than hoped away.
+* **`22150fbf` FreeRTOS TLS-only state.** Same reasoning, smaller.
+
+### What this changes about the rebase cost
+
+Ten of the fifteen are offerable; five are ours by choice. If the offerable ten
+land upstream, every future rebase carries a ThreadX port and one FreeRTOS fix
+rather than fifteen patches across the addrset locking discipline and the whole
+ddsrt platform layer — which is the recurring cost this issue was opened to
+bound.
+
 ## Known-and-intentional, not part of this
 
 `ddsrt_rwlock_t` and `ddsrt_once_t` stay on pthreads under the Zephyr backend.
