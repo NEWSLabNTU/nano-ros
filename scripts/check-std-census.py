@@ -4,9 +4,10 @@
 ## Why a census at all
 
 The campaign to drop `std` from the core crates is a migration, not a patch:
-181 `cfg(feature = "std")` sites and 425 `std::` paths, spread over nine
-crates — measured, after two crates were excluded for cause (below); the "~190"
-figure quoted while planning was a hand-grep and was wrong in both directions. Without a committed baseline "did that work item land?" is
+242 `cfg` mentions of the `std` feature and 421 `std::` paths over nine crates,
+after excluding two crates for cause (below). Two earlier figures were wrong and
+are superseded: the "~190" from planning was a hand-grep, and W0's own first
+"181" came from a regex that could not see `cfg(all(feature = "std", ...))`. Without a committed baseline "did that work item land?" is
 unanswerable, and — the failure mode that actually matters — nothing stops a
 new `std::` site appearing in a crate someone already finished.
 
@@ -62,19 +63,28 @@ SCOPE = ["packages/core", "packages/api"]
 #                          `system.toml`, consumed by the CLI.
 EXCLUDE = {"nros-macros", "nros-orchestration-ir"}
 
-CFG_RE = re.compile(r'cfg(?:_attr)?\s*\(\s*(?:not\s*\(\s*)?feature\s*=\s*"std"')
+# Any `feature = "std"` appearing inside a cfg attribute, in ANY nesting.
+#
+# The first version of this anchored on `cfg(` / `cfg(not(` immediately followed
+# by the feature, which silently missed every `cfg(all(feature = "std", ...))` —
+# 26 of them in `spin.rs` alone. It was caught by W2: four cfg lines were
+# deleted and the gate reported no movement. A ruler that cannot see the most
+# common form of the thing it measures is worse than no ruler, because it reads
+# as progress.
+CFG_FEATURE_RE = re.compile(r'feature\s*=\s*"std"')
 PATH_RE = re.compile(r'\bstd::')
 
-# phase-359 W0 baseline, measured 2026-08-15 on 249277946.
+# phase-359 baseline. W0 measured it; W2 lowered `nros-node` (cfg 139 -> 131,
+# path 346 -> 342) and the corrected cfg metric re-measured everything.
 # Lower these as work items land; the gate rejects any increase.
 BASELINE = {
-    "nros": {"cfg": 61, "path": 20},
-    "nros-c": {"cfg": 11, "path": 9},
-    "nros-core": {"cfg": 6, "path": 6},
-    "nros-cpp": {"cfg": 4, "path": 26},
+    "nros": {"cfg": 66, "path": 20},
+    "nros-c": {"cfg": 13, "path": 9},
+    "nros-core": {"cfg": 8, "path": 6},
+    "nros-cpp": {"cfg": 8, "path": 26},
     "nros-log": {"cfg": 1, "path": 0},
-    "nros-node": {"cfg": 85, "path": 346},
-    "nros-params": {"cfg": 11, "path": 18},
+    "nros-node": {"cfg": 131, "path": 342},
+    "nros-params": {"cfg": 13, "path": 18},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},
 }
@@ -109,7 +119,8 @@ def census():
                     code = strip_comments(line)
                     if not code:
                         continue
-                    cfg += len(CFG_RE.findall(code))
+                    if "cfg" in code:
+                        cfg += len(CFG_FEATURE_RE.findall(code))
                     path += len(PATH_RE.findall(code))
             if (cfg or path) and crate_dir.name not in EXCLUDE:
                 out[crate_dir.name] = {"cfg": cfg, "path": path}

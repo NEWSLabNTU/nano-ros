@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0 and W1 landed; W2–W10 not started.** The campaign
+**Status (2026-08-15). W0, W1 and W2 landed; W3–W10 not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -56,19 +56,29 @@ reaches the same syscall. **Dropping `std` deletes a redundant fallback, not a
 mechanism.** (The `has_async_wake*` guard that sends poll-only backends — XRCE,
 current Cyclone — to a full-timeout `drive_io` is deliberate, phase-127.C.4.)
 
-## Baseline (W0, measured on 249277946)
+## Baseline
 
-181 cfg sites, 425 `std::` paths, nine crates:
+**242** `cfg` mentions of the `std` feature and **421** `std::` paths, nine
+crates (current, i.e. after W2):
 
 | crate | cfg | `std::` |
 | --- | --- | --- |
-| `nros-node` | 85 | 346 |
-| `nros` | 61 | 20 |
-| `nros-c` | 11 | 9 |
-| `nros-params` | 11 | 18 |
-| `nros-core` | 6 | 6 |
-| `nros-cpp` | 4 | 26 |
+| `nros-node` | 131 | 342 |
+| `nros` | 66 | 20 |
+| `nros-c` | 13 | 9 |
+| `nros-params` | 13 | 18 |
+| `nros-core` | 8 | 6 |
+| `nros-cpp` | 8 | 26 |
 | `nros-log` / `nros-rmw` / `nros-serdes` | 1 each | 0 |
+
+**Two earlier totals were wrong and are superseded.** The "~190" used while
+planning was a hand-grep. W0's own first number, 181, came from a regex
+anchored on `cfg(feature = "std")` / `cfg(not(feature = "std"))` that could not
+see `cfg(all(feature = "std", ...))` — 26 of those in `spin.rs` alone. W2
+exposed it: four cfg lines were deleted and the gate reported no movement. The
+metric now counts any `feature = "std"` inside a cfg attribute, at any nesting.
+A ruler blind to the commonest form of what it measures is worse than none,
+because it reads as progress.
 
 Excluded for cause, both found by measuring: `nros-macros` (`proc-macro = true`
 — runs on the host, and its `std::` are tokens it EMITS) and
@@ -112,12 +122,28 @@ SHELL and none of the 85 sites. A planted `std::string::String` passed it in
 targets, which does catch it. A gate written to prevent the issue-0196 shape
 nearly shipped with that exact shape.
 
-### W2 — collapse the duplicated pairs
+### W2 — collapse the duplicated pairs — **PARTIALLY DONE 2026-08-15**
 
-`portable_atomic_util::Arc` and `portable_atomic::AtomicBool` compile on `std`
-too, so the five pairs above become one field each. No abstraction, no trait —
-deletion. Largest structural win per unit of risk; do it before anything that
-needs a design.
+`node_wake` and `has_async_wake` are now ONE field each
+(`nros-node` cfg 139 -> 131, path 346 -> 342). `portable_atomic_util::Arc`
+compiles on `std` too and `std` implies `alloc`, so the two arms were two
+spellings of one thing; the inner `NodeWake` was already shared. Verified on
+four combinations: std, std+rmw-cffi, alloc+rmw-cffi (thumbv7m), and core-only
++rmw-cffi with no alloc, where the fields correctly vanish.
+
+**Three of the five pairs are NOT deletion, contrary to this doc's first
+version**, and they move to the work items that actually own them:
+
+* `wake_flag`, `halt_flag` — returned by PUBLIC methods as
+  `std::sync::Arc<AtomicBool>` (`wake_handle()`, `halt_flag()`). Retyping them
+  is the breaking change scheduled as **W3**, not a silent W2 edit.
+* `wake_ctx` — `WakeCtx` carries the `Condvar` + `Mutex` pair;
+  `WakeCtxAlloc` carries `flag` + `node_wake`. They are different types because
+  the std one wraps a mechanism this campaign is REMOVING, so merging them
+  belongs after the Condvar path goes (**W4**/**W10**), not before.
+
+`WakeCtx::node_wake` was retyped to the portable Arc so the one shared field
+has one type across both structs.
 
 ### W3 — public API conversion (BREAKING — schedule early)
 
