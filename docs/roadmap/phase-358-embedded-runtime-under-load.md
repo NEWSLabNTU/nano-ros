@@ -51,6 +51,26 @@ either #271 closed with evidence or restated with the remaining delta. If it
 still overflows, a size gate is the follow-on — the regression went unnoticed
 because nothing measured it.
 
+**ATTEMPTED 2026-08-15 — the figure cannot be produced, and the reason is the
+result.** The repro lives in `autoware_sentinel`, which pins nano-ros by git rev
+— and that pin is still `d9af52be`, the GOOD one, so the sentinel as checked out
+builds the image that FIT. Re-measuring means bumping to current main, where
+three things it names are gone: `nros-board-orin-spe` (crate removed),
+`platform-orin-spe` (feature removed — phase-337 W7.b, a back-compat alias for
+`platform-freertos`), and `rmw-zenoh` (retired by RFC-0054; the same removal
+that had broken `just book`, issue 0581).
+
+So W1 is a CONSUMER PORT before it is a measurement, and until that port lands
+#271's number can never be refreshed — which blocks anything downstream that
+needs to know the current footprint. Recorded in the issue with the table of
+what moved. This phase's suspicion that `58d271471` already recovered much of
+the regression is plausible and remains UNTESTED; testing it needs an armv7r
+build of the minimal image, i.e. the port.
+
+A host-side `EXECUTOR_OPAQUE_U64S` under #271's knob set was measured (18031
+u64s ≈ 144 KB) and deliberately NOT offered as the answer: the budget is a
+256 KB BTCM on armv7r, where pointers are half the width.
+
 ## W2 — Timer overrun policy and counter (#505)
 
 Two separable pieces:

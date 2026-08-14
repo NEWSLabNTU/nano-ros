@@ -263,3 +263,46 @@ The sentinel's firmware builds against a PINNED nano-ros checkout
 (`~/repos/nano-ros-sentinel`, at `54175c040`) that predates the knob; bumping
 it pulls in the phase-312 launch-toolchain restructure, which is too broad to
 fold into a footprint fix.
+
+
+## Phase-358 W1 attempt, 2026-08-15 — the re-measurement is BLOCKED, and that is the finding
+
+Phase 358 opens by warning that this number is probably stale in the project's
+favour (`58d271471` carved the remap table, Executor 11632 -> 4992) and asks for
+a current BTCM figure before anything is designed. **That figure cannot be
+produced today**, for a reason worth writing down rather than rediscovering.
+
+The repro lives in `autoware_sentinel` (`just build-spe-image`), which consumes
+nano-ros by git pin. That pin is still `d9af52be` — the GOOD one. So the
+sentinel as checked out builds the image that FIT; the regression was seen on a
+bump it never landed. Re-measuring means bumping the pin to current main, and
+three separate things the consumer names have since been removed from nano-ros:
+
+| the sentinel asks for | state on current main |
+| --- | --- |
+| `nros-board-orin-spe` (crate) | **gone** — no such crate; `git ls-files` finds only archived docs |
+| `platform-orin-spe` (feature) | **gone** — "a back-compat alias for `platform-freertos` since 121.10 … gone with their boards" (phase-337 W7.b, in `nros-platform/Cargo.toml`) |
+| `rmw-zenoh` (feature) | **retired** by RFC-0054 when the backends moved behind the CFFI seam; `nros` carries `rmw-cffi` / `rmw-cyclonedds` / `rmw-lending` (this is also what broke `just book`, issue 0581) |
+
+So this is a CONSUMER PORT, not a measurement: the board crate must become the
+consumer's own (the out-of-tree board seam, phase-346), the platform feature
+becomes `platform-freertos` directly — which is what the alias forwarded to
+anyway — and the RMW selection moves to `rmw-cffi` plus a backend.
+
+Until that port happens, **this issue's number can never be refreshed**, and any
+plan that depends on knowing the current footprint is blocked behind it. That is
+a more useful statement than "needs a size audit".
+
+### What was measured, and why it does not substitute
+
+`EXECUTOR_OPAQUE_U64S` under this issue's own knob set
+(`NROS_EXECUTOR_MAX_CBS=8`, `NROS_SUBSCRIPTION_BUFFER_SIZE=256`) is **18031
+u64s ≈ 144 KB** — but on `x86_64`, and this issue's budget is a 256 KB BTCM on
+`armv7r`, where pointers are half the width. A host figure is not comparable to
+it and is not offered as one. (It is also larger than the same crate's
+default-knob host figure of 11191 u64s, which I cannot account for without
+resolving the arena term — another reason not to lean on it.)
+
+The honest state of phase 358's suspicion: `58d271471` plausibly recovered a
+large part of this, and **that remains untested**. Testing it needs an armv7r
+build of the minimal image, which needs the port above.
