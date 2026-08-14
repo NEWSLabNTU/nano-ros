@@ -113,14 +113,19 @@ dynamic thread needs a dynamic stack) but that case is narrow, documented, and n
 down with it. Verified both arms: `qemu_cortex_m3` smoke PASS (was FAIL at mutex_init), `native_sim`
 unchanged. See `archived/0566-*`. (2026-08-14)
 
-**#563** (tech-debt, open 2026-08-14) — the executor's 88192-byte inline storage is STATIC (`.bss`,
-`static ::nros::Node __nros_node;`), but CONSTRUCTING it costs ~23 KB of stack: ~13.4 KB already consumed
-at `nros_cpp_init` entry plus a ~9.3 KB temporary cleared inside `Executor::assemble`, which returns the
-object by value before it is written into storage already reserved for it. That is why #552's board conf
-needs 131072, and why shrinking `MAX_CBS`/`ARENA_SIZE` does NOT shrink what that knob must cover. Measured
-both ways: 65536 passes all three cortex-m cells, 32768 trips the MPU guard. Fix is to construct into
-caller-supplied storage rather than return by value. NOT established: whether each frame in the chain
-materialises its own copy — one clear was observed, the multiplier was not. See `0563-*`. (2026-08-14)
+Recently resolved (2026-08-15): **#563** — the executor's 88192-byte inline storage is STATIC (`.bss`), but
+CONSTRUCTING it cost ~23 KB of stack, because `Executor` itself was 11632 bytes and is returned by value
+before being written into that storage. `remap_table` alone was 6664 of those bytes (57%): the SEVENTH
+sized table, left inline when phase-271 moved the other six into caller-owned carved storage. Now carved
+too — `size_of::<Executor>()` 11632 -> 4992, with NO `ExecutorSizing` change (fixed `MAX_REMAPS` count,
+`u64_len()` covers it), so the C/C++ inline storage moves only 88192 -> 88264: the same 6.6 KB relocated
+off the constructing thread's stack. Measured on the board that motivated it: at MAIN_STACK 32768, which
+previously overflowed for all three, C and C++ now PASS (Rust's path is deeper and still wants more, so the
+conf stays at 131072). Guard: `executor_stays_small_enough_to_construct_on_a_stack` (<= 6 KiB, loose on
+purpose). Exposed and fixed a second defect: a build script re-runs only when its OWN package changes, so
+`EXECUTOR_OPAQUE_U64S` went stale against a dependency's layout change and failed with a const assert
+naming neither cause nor remedy — `nros-sizes-build` now watches rustc's own depfile for the probe rlib.
+See `archived/0563-*`. (2026-08-15)
 
 RESOLVED 2026-08-13 (SPLIT into #569/#570) — **#565** — NuttX **Rust**, BOTH arches: the 100 ms low tier was reported as never scheduled, so `/telem` never reached 5
 

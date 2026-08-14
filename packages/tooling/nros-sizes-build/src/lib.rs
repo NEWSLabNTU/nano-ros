@@ -139,6 +139,56 @@ impl From<object::Error> for Error {
 /// Builds `crate_name` in an isolated nested target dir and returns the
 /// resulting rlib. There is no fallback: on failure the caller must fail the
 /// build rather than guess a size (issue 0464).
+
+/// Issue 0563 — make the CONSUMING build script re-run when the crate this
+/// probe measured changes.
+///
+/// The probe answers "how big is `Executor` on this target", and its consumers
+/// bake that number into a generated header (`EXECUTOR_OPAQUE_U64S`). But a
+/// build script is re-run only when its OWN package changes, never when a
+/// dependency does — so editing `nros-node`'s layout left the number stale,
+/// while `nros-c` itself recompiled against the new layout. The two then
+/// disagreed and the const assert fired:
+///
+/// ```text
+/// error[E0080]: evaluation panicked: EXECUTOR_OPAQUE_U64S too small for
+/// Executor + backing
+/// ```
+///
+/// which names neither the real cause nor a working remedy — the suggested
+/// knobs are unrelated, and only `touch`ing the consumer's `build.rs` cleared
+/// it. That is the issue-0196 shape (a probe watching less than it consumes)
+/// and the same family as the sizes-header mirror bugs 0088/0114/0122/0123/
+/// 0245/0268.
+///
+/// The watch list is rustc's own depfile for the probe rlib, so it is exact and
+/// carries no hardcoded paths: every source that went into the measurement is
+/// watched, and nothing else.
+fn emit_probe_watches(rlib: &Path) {
+    let dep = rlib.with_extension("d");
+    let Ok(text) = std::fs::read_to_string(&dep) else {
+        return;
+    };
+    // `<target>: <src> <src> …`. Only the first colon separates; Windows drive
+    // letters are not a concern here and paths in this tree contain no spaces.
+    let Some((_, rest)) = text.split_once(':') else {
+        return;
+    };
+    // Anything under the probe's own target dir is a build artifact (OUT_DIR
+    // `*_config.rs` and friends). Watching those would arm a rebuild on output
+    // this very probe produces, so they are skipped — sources only.
+    let probe_root = rlib.ancestors().find(|p| p.ends_with("sizes-probe"));
+    for f in rest.split_whitespace() {
+        let path = Path::new(f);
+        if let Some(root) = probe_root
+            && path.starts_with(root)
+        {
+            continue;
+        }
+        println!("cargo:rerun-if-changed={f}");
+    }
+}
+
 pub fn find_dep_rlib(crate_name: &str, symbol_prefix: &str) -> Result<PathBuf, Error> {
     find_dep_rlib_isolated(crate_name, symbol_prefix)
 }
@@ -416,10 +466,12 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
                 if let Ok(sizes) = extract_sizes(&path, symbol_prefix)
                     && !sizes.is_empty()
                 {
+                    emit_probe_watches(&path);
                     return Ok(path);
                 }
                 // Symbol-less rlib — still return the path so callers
                 // can emit a warning and fall back.
+                emit_probe_watches(&path);
                 return Ok(path);
             }
         }

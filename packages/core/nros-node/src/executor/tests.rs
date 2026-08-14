@@ -3923,3 +3923,41 @@ fn spin_quantization_audit_accepts_exact_multiples() {
     assert_eq!(executor.timer_period_us(id), Some(50_000));
     assert_eq!(executor.timer_overruns(id), Some(0));
 }
+
+/// Issue 0563 — `Executor` must stay small enough that CONSTRUCTING one is not
+/// a large stack temporary.
+///
+/// It is returned by value from `assemble` -> `from_session_in` -> `open_in`
+/// before being written into the caller's (static) storage, so its size is paid
+/// on the stack of whatever thread opens it. On Zephyr Cortex-M that thread is
+/// `main`, and at 11632 bytes it overflowed a 16 KB stack into the idle
+/// thread's saved context — issue 0552, which presented as `PC=0` and read for
+/// a day as a call through a NULL function pointer.
+///
+/// Measured breakdown at the time (host, 64-bit):
+///
+/// ```text
+/// Executor          = 11632
+///   remap_table     =  6664   <- 57%, the seventh sized table, still inline
+///   nodes           =  1448
+///   monitor_states  =   128
+///   component_slots =   104
+///   dispatch_slots  =    72
+/// ```
+///
+/// Moving `remap_table` into the carved backing (where phase-271 had already
+/// put the other six) removed that 6664. The bound below is deliberately loose
+/// — this guards against a NEW multi-KB inline table appearing, not against
+/// small drift, and host `size_of` is not the target's anyway.
+#[test]
+fn executor_stays_small_enough_to_construct_on_a_stack() {
+    let size = core::mem::size_of::<Executor<'static>>();
+    assert!(
+        size <= 6 * 1024,
+        "size_of::<Executor>() = {size} — a new inline table has landed in the \
+         struct. It is built as a stack temporary before being moved into the \
+         caller's storage, so this is main-stack cost on every embedded board \
+         (issue 0563). Carve it from the backing like `entries`/`remap_table` \
+         instead of holding it inline."
+    );
+}

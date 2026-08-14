@@ -1078,7 +1078,14 @@ pub struct Executor<'s> {
     /// both sides against the owning node's identity at lookup, via the shared
     /// `crate::names` seam (the same semantics the Rust `ExecutorSink` path
     /// applies). Declaration order is match order (first rule wins).
-    pub(crate) remap_table: heapless::Vec<RemapRule, { MAX_REMAPS }>,
+    /// Issue 0563 — CARVED, not inline. As a `heapless::Vec<RemapRule,
+    /// MAX_REMAPS>` this one field was 6664 bytes of an 11632-byte `Executor`
+    /// (57%), which is what made building an executor a ~9.3 KB stack
+    /// temporary and overflowed the Zephyr Cortex-M main stack (issue 0552).
+    /// It is the seventh sized table; phase-271 moved the other six here.
+    /// `remap_len` is the fill cursor — occupied slots are `[0, remap_len)`.
+    pub(crate) remap_table: &'s mut [Option<RemapRule>],
+    pub(crate) remap_len: usize,
     /// Phase 216 follow-up — per-Node dispatch trampoline registry.
     ///
     /// Populated by [`Executor::register_dispatch_slot`]; walked by
@@ -1309,6 +1316,7 @@ impl<'s> Executor<'s> {
             sporadic_states,
             #[cfg(feature = "alloc")]
             sporadic_atomic_states,
+            remaps,
         } = slices;
         // Slot 0 = the auto-created default Fifo SC (see field doc). carve
         // initialised the whole table to `None`; populate the reserved slot.
@@ -1337,7 +1345,8 @@ impl<'s> Executor<'s> {
             nodes: heapless::Vec::new(),
             node_sched_table: heapless::Vec::new(),
             group_sched_table: heapless::Vec::new(),
-            remap_table: heapless::Vec::new(),
+            remap_table: remaps,
+            remap_len: 0,
             dispatch_slots: heapless::Vec::new(),
             component_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
@@ -1663,7 +1672,12 @@ impl<'s> Executor<'s> {
         rule.namespace.push_str(ns)?;
         rule.from.push_str(from)?;
         rule.to.push_str(to)?;
-        self.remap_table.push(rule).map_err(|_| ())
+        // Same contract as the `heapless::Vec::push` this replaces: full table
+        // is an error the caller surfaces, never a silently dropped rule.
+        let slot = self.remap_table.get_mut(self.remap_len).ok_or(())?;
+        *slot = Some(rule);
+        self.remap_len += 1;
+        Ok(())
     }
 
     /// Resolve a source-level entity name for the node identified by
@@ -1679,9 +1693,9 @@ impl<'s> Executor<'s> {
         source: &str,
     ) -> Result<crate::names::ResolvedName, ()> {
         let ns = if namespace.is_empty() { "/" } else { namespace };
-        let rules = self
-            .remap_table
+        let rules = self.remap_table[..self.remap_len]
             .iter()
+            .flatten()
             .filter(|r| r.node_name.as_str() == node_name && r.namespace.as_str() == ns)
             .map(|r| (r.from.as_str(), r.to.as_str()));
         crate::names::resolve_name(source, node_name, ns, rules)

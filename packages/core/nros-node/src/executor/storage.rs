@@ -21,6 +21,7 @@ use core::{
 use super::{
     arena::CallbackMeta,
     sched_context::{SchedContext, SchedContextId, SporadicState},
+    spin::{MAX_REMAPS, RemapRule},
 };
 
 #[cfg(feature = "alloc")]
@@ -42,6 +43,7 @@ pub(crate) struct ExecutorStorage<const CBS: usize, const SC: usize, const ARENA
     sporadic_states: [Option<SporadicState>; SC],
     #[cfg(feature = "alloc")]
     sporadic_atomic_states: [Option<SporadicAtomic>; SC],
+    remaps: [Option<RemapRule>; MAX_REMAPS],
 }
 
 /// The typed, mutable sub-slices an [`Executor`](super::spin::Executor) borrows
@@ -54,6 +56,18 @@ pub(crate) struct ExecutorSlices<'s> {
     pub(crate) sporadic_states: &'s mut [Option<SporadicState>],
     #[cfg(feature = "alloc")]
     pub(crate) sporadic_atomic_states: &'s mut [Option<SporadicAtomic>],
+    /// Issue 0563 — the SEVENTH sized table. phase-271 moved six of these out
+    /// of `Executor` and into caller-owned storage; the remap table was left
+    /// inline and grew to 6664 bytes of an 11632-byte struct (57%), which is
+    /// what made constructing an executor a ~9.3 KB STACK temporary and
+    /// overflowed the Zephyr Cortex-M main stack in issue 0552.
+    ///
+    /// Fixed count (`MAX_REMAPS`) rather than a new `ExecutorSizing` knob:
+    /// the capability is unchanged, so this needs no public API change and no
+    /// regeneration of every entry's sizing. The required backing grows by the
+    /// same bytes, but that lands in the caller's STATIC buffer instead of on
+    /// the stack, which is the entire point.
+    pub(crate) remaps: &'s mut [Option<RemapRule>],
 }
 
 /// Byte offsets of each field within the backing + total size/align. Computed
@@ -67,6 +81,7 @@ struct FieldOffsets {
     sporadic_states: usize,
     #[cfg(feature = "alloc")]
     sporadic_atomic_states: usize,
+    remaps: usize,
     size: usize,
     align: usize,
 }
@@ -102,6 +117,7 @@ const fn compute_offsets(cbs: usize, sc: usize, arena: usize) -> FieldOffsets {
     let sporadic_states = place!(sc, Option<SporadicState>);
     #[cfg(feature = "alloc")]
     let sporadic_atomic_states = place!(sc, Option<SporadicAtomic>);
+    let remaps = place!(MAX_REMAPS, Option<RemapRule>);
 
     let size = align_up(off, max_align);
     FieldOffsets {
@@ -112,6 +128,7 @@ const fn compute_offsets(cbs: usize, sc: usize, arena: usize) -> FieldOffsets {
         sporadic_states,
         #[cfg(feature = "alloc")]
         sporadic_atomic_states,
+        remaps,
         size,
         align: max_align,
     }
@@ -270,6 +287,14 @@ pub(crate) unsafe fn carve<'s>(
             core::slice::from_raw_parts_mut(ap, sc)
         };
 
+        let remaps_p = base.add(o.remaps) as *mut Option<RemapRule>;
+        let mut i = 0;
+        while i < MAX_REMAPS {
+            remaps_p.add(i).write(None);
+            i += 1;
+        }
+        let remaps_s = core::slice::from_raw_parts_mut(remaps_p, MAX_REMAPS);
+
         ExecutorSlices {
             arena: arena_s,
             entries: entries_s,
@@ -278,6 +303,7 @@ pub(crate) unsafe fn carve<'s>(
             sporadic_states: sporadic_s,
             #[cfg(feature = "alloc")]
             sporadic_atomic_states: atomic_s,
+            remaps: remaps_s,
         }
     }
 }
