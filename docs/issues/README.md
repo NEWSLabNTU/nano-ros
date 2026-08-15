@@ -62,7 +62,7 @@ ran `comm` on unsorted input, which warns and continues; the numbers above come 
 NOT closed by this: the threadx leaf's `.cargo/config.toml` whitespace churn is a CONTENT difference
 write-if-changed cannot suppress, and is recorded in phase-353 W1. See `archived/0562-*`.
 
-Recently resolved (2026-08-15): **#584** — the ThreadX-Linux logging smoke fixture booted, entered the
+Recently resolved (2026-08-15): **#585** — the ThreadX-Linux logging smoke fixture booted, entered the
 Rust entry, exited 0 and emitted NONE of its six log lines. Root cause: the board's log writer hardcoded
 `const SYS_WRITE: isize = 1`, and the Linux syscall number is per-ARCHITECTURE — `write` is 1 on x86_64
 and **64** on every asm-generic port (aarch64/riscv64/loongarch64), where 1 is `io_destroy`. Off x86 it
@@ -74,7 +74,7 @@ false trails recorded in the issue: it is not bisectable against #0582 (before t
 link on aarch64 at all), and `+whole-archive` on `libglue.a` was the leading hypothesis and was FALSIFIED.
 `nm` on the linked image — one command — showed every symbol present and killed the link-class theory that
 had cost a whole detour. Lesson: when a program runs to completion and prints nothing, establish that the
-code is PRESENT before theorising about why it is not reached. See `archived/0584-*`. (2026-08-15)
+code is PRESENT before theorising about why it is not reached. See `archived/0585-*`. (2026-08-15)
 
 **#582** (build, open 2026-08-15) — the host is assumed to be `x86_64` in six places, and five of the six
 fail SILENTLY. Three spellings of one mistake: (1) `c_char` is `u8` on ARM and `i8` on x86, so

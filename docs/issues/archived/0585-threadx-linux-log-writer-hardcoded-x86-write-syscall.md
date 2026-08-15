@@ -1,5 +1,5 @@
 ---
-id: 584
+id: 585
 title: "The ThreadX-Linux log writer hardcoded the x86_64 `write` syscall
   number, so off x86 the image was silently mute"
 status: resolved

@@ -15,7 +15,7 @@ and almost none of it says why. The failures look unrelated to each other and to
 the host architecture.
 
 A **seventh** instance of this class was found afterwards and is resolved
-separately as [[0584]]: the board's log writer hardcoded the x86_64 `write`
+separately as [[0585]]: the board's log writer hardcoded the x86_64 `write`
 syscall number, so off x86 every log line went to an unrelated syscall and the
 image ran silently mute. Same shape, same invisibility on x86.
 
