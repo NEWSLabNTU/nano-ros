@@ -135,6 +135,7 @@ records="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
 
 n=0
 total=0
+reused=0
 while IFS= read -r record; do
     [ -n "$record" ] || continue
     IFS=$'\x1f' read -r id builder src _pkg _manifest_dir _target _profiles output subdir board extra \
@@ -144,6 +145,39 @@ while IFS= read -r record; do
     [ -d "$repo_root/$src" ] || { echo "west-fixtures: src missing: $src" >&2; continue; }
     bld="$out_root/$id"
     echo "== west-fixture: $id ($builder, board=${board:-board.cmake}) =="
+
+    # phase-353 W2 (issue 0509) — REUSE an up-to-date build instead of deleting
+    # it.
+    #
+    # `rm -rf "$bld"` ran unconditionally, so this lane had no warm state by
+    # construction: every invocation was a cold `west build`. That is what issue
+    # 0509 measured as seven consecutive no-op runs each replaying 1244 ninja
+    # edges and a 129-crate cargo rebuild of `nros-c`, with byte-identical logs.
+    # The lane's own direction list leads with "skip per-leaf prep whose inputs
+    # are unchanged"; this is that, at the only place that can decide it.
+    #
+    # The freshness question was already answered here and thrown away: the
+    # signature written below (`write_compile_check_inputsig`) hashes the
+    # manifest record, the row's source tree AND the nros CLI's codegen
+    # fingerprint. Reading it back is the whole change. Using the SAME signature
+    # the test-side probe recomputes is issue 0196's rule — a build-side probe
+    # that watches less than the gate lets a museum bake pass.
+    #
+    # Reuse requires ALL of: an identical signature, the declared `output` still
+    # present, and this lane's own `.compile-ok` stamp. Any doubt falls through
+    # to the unconditional wipe below, so the failure mode is the old cost, not
+    # a stale fixture.
+    _wf_sig_dir="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" "$id")"
+    _wf_want="$(bash "$repo_root/scripts/build/compile-check-signature.sh" "$record" 2>/dev/null || true)"
+    _wf_have="$(cat "$_wf_sig_dir/.inputsig" 2>/dev/null || true)"
+    if [ -n "$_wf_want" ] && [ "$_wf_want" = "$_wf_have" ] &&
+        [ -e "$bld/$output" ] && [ -f "$bld/.compile-ok" ]; then
+        echo "   reused $bld ($output) — inputs unchanged"
+        n=$((n + 1))
+        reused=$((reused + 1))
+        continue
+    fi
+
     rm -rf "$bld"
     # issue 0533 — resolve each bringup's SystemModel before the west build.
     # The model is a BUILD ARTIFACT (phase-330 W4.a stopped committing them), so
@@ -191,4 +225,4 @@ while IFS= read -r record; do
         echo "   MISSING $output for $id (no stamp; the test will report)" >&2
     fi
 done <<< "$records"
-echo "west fixtures: $n/$total ok."
+echo "west fixtures: $n/$total ok ($reused reused, $((n - reused)) built)."

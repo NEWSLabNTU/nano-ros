@@ -109,18 +109,53 @@ write-if-changed, which cannot see it.
 
 ## W2 — The Zephyr lane's per-leaf overhead (#509)
 
-Measured: 68 leaves in 40 minutes on a 32-core host, 1254 ninja edges replayed
-per run, almost none of it compiling. #562's own text hands its "the zephyr
-no-op lane is not a no-op" finding here: every one of seven consecutive runs
-replayed a full Zephyr static-library link set plus a 129-crate `nros-c`
-rebuild.
+**Status (2026-08-15). PARTLY DONE — one unconditional wipe removed and
+measured; the 1244-edge replay is NOT it, and this phase's own framing of that
+was wrong.**
 
-The shape to investigate is "skip per-leaf prep whose inputs are unchanged",
-which is #509's line. Not started; no design committed.
+### Landed: `west-fixtures.sh` had no warm state, by construction
 
-**Acceptance.** A stated cause for the replayed edges (not a guess), and either
-a fix with a before/after wall-clock on the same lane, or a written finding that
-the cost is irreducible with the reason.
+It ran `rm -rf "$bld"` unconditionally on every invocation, so every run was a
+cold `west build`. The freshness answer was already being computed in the same
+loop and discarded — `write_compile_check_inputsig` hashes the manifest record,
+the row's source tree and the nros CLI's codegen fingerprint, and writes it
+after a successful build, but nothing read it back.
+
+Reading it is the whole change, and using that signature satisfies issue 0196:
+the build-side probe now watches exactly what the test-side probe recomputes.
+Reuse needs an identical signature AND the declared `output` AND the
+`.compile-ok` stamp; anything else falls through to the old wipe, so the failure
+mode is the old cost, never a stale fixture.
+
+| run | result | elapsed |
+| --- | --- | --- |
+| cold | `1/4 ok (0 reused, 1 built)` | 17.8 s |
+| warm | `1/4 ok (1 reused, 0 built)` | 9.7 s |
+
+### Not landed, and the attribution was wrong
+
+Issue 0509 attributes the no-op lane's **1244 ninja edges and 129 `Compiling`
+lines** to "the west-fixtures step", and this phase repeated that. Measured:
+`west-fixtures.sh` emits **0 `Compiling` lines** and runs in under 18 s cold. It
+builds four compile-check ROWS, not the 70-leaf set.
+
+The 1244 edges therefore belong to the 70-leaf lane
+(`zephyr-fixture-make-driver.sh` / `just/zephyr-ci.just`), which already carries
+`--pristine auto`, so its replay is not an unconditional wipe and needs its own
+diagnosis.
+
+**The lead**, unverified: a 129-crate cargo rebuild of `nros-c` per no-op run is
+a fingerprint invalidation — CLAUDE.md's issue-0491 class, where an env value is
+compared as TEXT. W4 found precisely that shape one layer over
+(`NROS_BUILD_LOG_DIR` and `NROS_WS_RECORDS_FILE` carry a timestamp and a pid).
+`check-path-env-fingerprints` passes on the tracked Rust sources, so if this is
+the cause it is reaching cargo by a route that gate does not cover. Answering it
+needs a lane run.
+
+**Acceptance (unchanged).** A stated cause for the replayed edges, and either a
+fix with a before/after EDGE COUNT — not wall-clock, which issue 0509 itself
+showed is unusable on this host at a 14x spread — or a written finding that the
+cost is irreducible.
 
 ## W3 — The timing campaign (#200), and why it stays parked
 

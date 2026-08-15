@@ -197,3 +197,60 @@ Issue 0562 removed one contributor — sync restamping byte-identical files, whi
 forced cmake reconfigures downstream — and is the first item of the revised
 direction list above. The 1244 edges are the remainder, and they are the bigger
 half.
+
+## phase-353 W2 (2026-08-15) — `west-fixtures.sh` had NO warm state, by construction
+
+Direction (1), "skip per-leaf prep whose inputs are unchanged", applied at the
+one place that was provably throwing the answer away.
+
+`scripts/build/west-fixtures.sh` ran
+
+```sh
+bld="$out_root/$id"
+rm -rf "$bld"
+```
+
+**unconditionally, every invocation.** So this lane could never be warm: each run
+deleted the build directory and did a cold `west build`.
+
+The freshness question was already being answered in the same loop and
+discarded. `write_compile_check_inputsig` hashes the manifest record, the row's
+source tree and the nros CLI's codegen fingerprint (issue 0574 / phase-319 W3),
+and writes it AFTER a successful build — but nothing read it back. Reading it is
+the whole fix. Using that same signature is issue 0196's rule: the build-side
+probe now watches exactly what the test-side probe recomputes.
+
+Reuse requires all of: identical signature, the row's declared `output` still
+present, and this lane's `.compile-ok` stamp. Anything else falls through to the
+old unconditional wipe, so the failure mode is the old cost rather than a stale
+fixture.
+
+Measured, back-to-back on this host:
+
+| run | result | elapsed |
+| --- | --- | --- |
+| cold | `1/4 ok (0 reused, 1 built)` | 17.8 s |
+| warm | `1/4 ok (1 reused, 0 built)` | 9.7 s |
+
+(1 of 4 because three rows need provisioning this host lacks; they retry each
+run because a row that never succeeded has no signature to match.)
+
+### It is NOT the 1244 edges, and this issue's attribution needs correcting
+
+The 2026-08-14 measurement above attributes the no-op lane's **1244 ninja edges
+and 129 `Compiling` lines** to "the west-fixtures step". Measured here:
+`west-fixtures.sh` emits **0 `Compiling` lines** and finishes in under 18 s cold.
+It builds the four west-* compile-check ROWS, not the 70-leaf fixture set.
+
+So the 1244 edges come from the 70-leaf lane
+(`zephyr-fixture-make-driver.sh` / `just/zephyr-ci.just`), which is a different
+mechanism: it already has `--pristine auto` ("re-pristines when the cmake inputs
+actually change"), so its replay is NOT an unconditional wipe.
+
+**The remaining lead**, unverified: a 129-crate cargo rebuild of `nros-c` on
+every no-op run is a fingerprint invalidation, which is CLAUDE.md's issue-0491
+class (an env value compared as TEXT — a path with several spellings, or a
+run-scoped value). phase-353 W4 found exactly that shape one layer over, where
+`NROS_BUILD_LOG_DIR` and `NROS_WS_RECORDS_FILE` carry a timestamp and a pid.
+Whether either reaches the zephyr cargo build's fingerprint is the next thing to
+check, and it needs a lane run to answer.
