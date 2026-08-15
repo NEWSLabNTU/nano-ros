@@ -108,6 +108,15 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   exists in the submodule → enter it, fetch, rebase local onto upstream, check out the
   superproject’s expected commit, record the result in the parent. Never leave a submodule at an
   older local commit when the remote pointer advanced.
+- **A submodule pin moves FORWARD only** — every submodule keeps linear history on
+  its branch, so a bump is a fast-forward to a descendant. A rewind silently unships
+  whatever the skipped commits fixed, and `-Subproject commit <hex>` is two hex
+  strings no reviewer can order by eye: on 2026-08-15 a 24-file commit about
+  issue-ID renumbering moved zenoh-pico BACK over a Zephyr `socklen_t` build fix and
+  nothing noticed for seven hours. Gated by `check-submodule-pins` (fast line) AND
+  the `pre-push` hook — the hook because a rewind is usually INHERITED from a rebase
+  rather than authored, which is exactly the window a pre-commit check misses.
+  Deliberate rollback: `NROS_ALLOW_SUBMODULE_REWIND=1`, and say why.
 - **Vendored-fork branch workflow (cyclonedds, netxduo, …):** land fixes with linear history
   (commit in submodule → `git fetch origin` + `git remote prune origin` → `git rebase origin/<branch>`
   → push). **Push the fork branch FIRST, then bump the superproject pointer** to the pushed commit.

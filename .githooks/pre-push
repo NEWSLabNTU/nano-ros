@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Refuse to push a duplicate issue id.
+# Refuse to push (a) a duplicate issue id, or (b) a submodule pin that moved
+# backward.
 #
 # `scripts/reserve-issue-id.sh` stops two sessions from CHOOSING the same id.
 # This stops a duplicate from LANDING when the reservation was skipped, or when
@@ -36,13 +37,20 @@ check="$repo_root/scripts/ci/issue-ids-check.sh"
 #
 # Non-branch pushes (`refs/issue-ids/*`, tags, notes) carry no issue files and
 # have nothing to corrupt.
+# git feeds the ref lines on stdin ONCE. Both checks below need them, so spool
+# them to a temp file rather than letting the first consumer eat them (an
+# earlier draft did, and the pin check silently never ran).
+hook_stdin="$(mktemp)"
+trap 'rm -f "$hook_stdin"' EXIT
+cat > "$hook_stdin"
+
 guard=0
 while read -r _local_ref _local_sha remote_ref _remote_sha; do
     [ -z "${remote_ref:-}" ] && continue
     case "$remote_ref" in
         refs/heads/*) guard=1 ;;
     esac
-done
+done < "$hook_stdin"
 
 # NO ref lines means git is pushing nothing — it already rejected the update
 # locally (e.g. a non-fast-forward reservation re-claim, which is the CAS
@@ -67,6 +75,40 @@ if ! out="$("$check" 2>&1)"; then
     echo "  Reserve ids atomically to avoid this entirely:" >&2
     echo "      just issue-new <slug>" >&2
     exit 1
+fi
+
+# A submodule pin may only move FORWARD (fast-forward to a descendant).
+#
+# Here for the same reason the issue-id check is: WHEN it runs. A rewind is
+# usually not authored, it is INHERITED — you rebase onto a main whose pin went
+# backward, and your push carries that rewind along with your own work. Nothing
+# between the rebase and the push looks at it, and a `-Subproject commit` line
+# is two hex strings that no reviewer can order by eye.
+#
+# The baseline is the remote's ACTUAL sha (git hands it to us per ref), not
+# `origin/main`, which can be stale by exactly the window that matters.
+pins="$repo_root/scripts/ci/submodule-pins-check.sh"
+if [ -x "$pins" ]; then
+    while IFS= read -r line; do
+        set -- $line
+        remote_ref="${3:-}"
+        remote_sha="${4:-}"
+        local_sha="${2:-}"
+        case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
+        # All-zero remote sha = a new branch; nothing on the remote to regress.
+        case "$remote_sha" in *[!0]*) ;; *) continue ;; esac
+        [ -n "$local_sha" ] || continue
+        if ! out="$("$pins" "$remote_sha" "$local_sha" 2>&1)"; then
+            printf '%s\n' "$out" >&2
+            echo "" >&2
+            echo "pre-push: REFUSING to push — a submodule pin would move backward." >&2
+            echo "" >&2
+            echo "  If this appeared right after a rebase, the rewind is probably not" >&2
+            echo "  yours: someone else's commit moved the pin back and you inherited" >&2
+            echo "  it. Restore the newer commit as shown above and push again." >&2
+            exit 1
+        fi
+    done < "$hook_stdin"
 fi
 
 exit 0

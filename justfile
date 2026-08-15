@@ -415,7 +415,7 @@ check-fast: \
     check-package-xml-comments check-provider-announcements check-provider-index \
     check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
     check-board-facts-delivery \
-    check-opaque-storage-guards check-cpp-ffi-error-mapping \
+    check-opaque-storage-guards check-cpp-ffi-error-mapping check-submodule-pins \
     check-workspace-order \
     check-atomic-sync-writes \
     check-test-domain-assignment \
@@ -1228,6 +1228,17 @@ check-nuttx-libc-struct-sizes:
 [private]
 check-cpp-ffi-error-mapping:
     @python3 scripts/check-cpp-ffi-error-mapping.py
+
+# A submodule pin may only move FORWARD. Every submodule here keeps linear
+# history on its branch, so a bump is a fast-forward to a descendant; a rewind
+# silently unships whatever the skipped commits fixed, and `-Subproject commit
+# <hex>` is not something a reviewer can order by eye. 2026-08-15: a 24-file
+# commit about issue-ID renumbering moved zenoh-pico BACK over a Zephyr
+# `socklen_t` build fix, and nothing noticed for seven hours.
+# Deliberate rollback: NROS_ALLOW_SUBMODULE_REWIND=1 (and say why).
+[private]
+check-submodule-pins:
+    @bash scripts/ci/submodule-pins-check.sh
 
 # Issue 0452 — the committed cbindgen headers must match a fresh generation.
 # The Rust->C mirror of `check-abi-bindings`, which has guarded the C->Rust
