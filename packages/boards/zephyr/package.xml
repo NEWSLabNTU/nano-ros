@@ -28,5 +28,9 @@
       spellings of one fact drift.
     -->
     <nano_ros_provides kind="board" name="zephyr"/>
+    <!-- issue 0606 added this to the descriptor's `names` (a `[deploy.*].board`
+         may name the west board string directly); the announcement half was
+         missed, which is the drift this export exists to prevent. -->
+    <nano_ros_provides kind="board" name="native_sim/native/64"/>
   </export>
 </package>

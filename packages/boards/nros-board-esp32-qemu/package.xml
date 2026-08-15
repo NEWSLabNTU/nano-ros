@@ -22,6 +22,7 @@
       spellings of one fact drift.
     -->
     <nano_ros_provides kind="board" name="esp32-qemu"/>
+    <nano_ros_provides kind="board" name="esp32dev"/>
     <nano_ros_provides kind="board" name="esp32"/>
     <nano_ros_provides kind="board" name="esp32c3"/>
     <nano_ros_provides kind="board" name="esp32-c3"/>

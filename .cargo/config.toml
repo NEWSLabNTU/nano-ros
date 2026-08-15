@@ -16,6 +16,13 @@ rustflags = ["-C", "symbol-mangling-version=v0"]
 # needs the setting HERE to see it. See the manifest for the measurement.
 [profile.dev]
 opt-level = 1
+# phase-359 W10 — mirrors the manifest's `panic = "abort"`, added there so a
+# bare `cargo check -p <crate>` works on this workspace's `no_std` crates:
+# `nros-c` / `nros-cpp` build staticlib/cdylib artifacts and rustc refuses
+# `no_std` + `panic = "unwind"` for those. The manifest governs the root
+# workspace only, so a leaf resolving `dev` through the config walk-up — every
+# Zephyr west leaf — got `unwind` and the mismatch this file exists to prevent.
+panic = "abort"
 incremental = false
 
 # phase-336 — the nano-ros presets, so a bare `cargo build --profile

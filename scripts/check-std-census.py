@@ -108,7 +108,7 @@ BASELINE = {
     # `any(alloc, std)` spellings are gone. Branches this campaign no longer
     # has to unwind.
     "nros-core": {"cfg": 3, "path": 2},
-    "nros-cpp": {"cfg": 8, "path": 26},
+    "nros-cpp": {"cfg": 10, "path": 21},
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.

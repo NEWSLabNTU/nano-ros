@@ -887,6 +887,30 @@ macro_rules! nros_platform_export_threading {
         pub extern "C" fn nros_platform_task_storage_align() -> usize {
             <$ty as ::nros_platform_api::PlatformThreading>::task_storage_align()
         }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_storage_size() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_storage_size()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_storage_align() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_storage_align()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_rec_storage_size() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_rec_storage_size()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_mutex_rec_storage_align() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::mutex_rec_storage_align()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_condvar_storage_size() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::condvar_storage_size()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_condvar_storage_align() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::condvar_storage_align()
+        }
     };
 }
 

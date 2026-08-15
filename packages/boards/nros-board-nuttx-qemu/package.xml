@@ -22,7 +22,10 @@
     -->
     <nano_ros_provides kind="board" name="nuttx"/>
     <nano_ros_provides kind="board" name="NuttX"/>
+    <nano_ros_provides kind="board" name="nuttx-qemu-arm"/>
+    <nano_ros_provides kind="board" name="qemu-armv7a-nsh"/>
     <nano_ros_provides kind="board" name="nuttx-riscv"/>
     <nano_ros_provides kind="board" name="NuttX-riscv"/>
+    <nano_ros_provides kind="board" name="nuttx-qemu-riscv"/>
   </export>
 </package>

@@ -579,6 +579,36 @@ pub trait PlatformThreading {
     fn task_storage_align() -> usize {
         1
     }
+    /// Caller-storage size requirement (bytes) for a plain mutex.
+    ///
+    /// phase-364 W2 declared the lock family's probes in `platform.h` without
+    /// the trait or macro halves — the same shape phase-359 W10 left for
+    /// `task`, one commit later. Defaults match the pair above: `0` size means
+    /// "this platform offers no such primitive", `1` alignment is the
+    /// no-constraint answer, and both are safe to call before any `*_init`.
+    fn mutex_storage_size() -> usize {
+        0
+    }
+    /// Caller-storage alignment requirement (bytes) for a plain mutex.
+    fn mutex_storage_align() -> usize {
+        1
+    }
+    /// Caller-storage size requirement (bytes) for a RECURSIVE mutex.
+    fn mutex_rec_storage_size() -> usize {
+        0
+    }
+    /// Caller-storage alignment requirement (bytes) for a recursive mutex.
+    fn mutex_rec_storage_align() -> usize {
+        1
+    }
+    /// Caller-storage size requirement (bytes) for a condition variable.
+    fn condvar_storage_size() -> usize {
+        0
+    }
+    /// Caller-storage alignment requirement (bytes) for a condition variable.
+    fn condvar_storage_align() -> usize {
+        1
+    }
 }
 
 /// Network poll callback for bare-metal platforms using smoltcp.
