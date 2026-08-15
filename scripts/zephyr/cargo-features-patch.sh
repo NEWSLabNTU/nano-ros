@@ -161,6 +161,47 @@ if [ "$occurrences" -ne 1 ]; then
     exit 1
 fi
 
+# --- 4. board FACTS + SITE config onto the cargo env (phase-351 W5 / issue 0605)
+#
+# The Zephyr RUST entry's cargo is spawned HERE, by zephyr-lang-rust — not by
+# `nros_cargo_build()` — so the hook W5 put in that function never ran for these
+# cells and the arm shipped INERT: a full configure printed no delivery line and
+# no reason, which is the silence the wave exists to remove (issue 0529).
+#
+# Injected BEFORE `cargo`, because `cmake -E env` treats every KEY=VALUE up to
+# the first non-assignment as the environment and everything after as the
+# command. Placing it with the other pass-throughs (after `${rust_build_type_arg}`,
+# which is already an ARGUMENT) would make cargo see `NROS_BOARD=…` as a
+# subcommand.
+#
+# `NROS_BOARD_FACTS_ENV` is the CACHE INTERNAL list `nros_resolve_board_facts()`
+# fills; empty (a host build, an unmapped board) expands to nothing and the
+# command is byte-identical to before.
+if ! grep -q "nano-ros: board facts" "$CMAKE_FILE"; then
+    TMP="$(mktemp)"
+    awk '
+    {
+        if ($0 ~ /^[[:space:]]+cargo \$\{cargo_command\}[[:space:]]*$/) {
+            print "      # nano-ros: board facts + site config (phase-351 W5, issue 0605)."
+            print "      # MUST precede `cargo` — `cmake -E env` ends the env at the"
+            print "      # first non-KEY=VALUE argument."
+            print "      ${NROS_BOARD_FACTS_ENV}"
+        }
+        print
+    }
+    ' "$CMAKE_FILE" > "$TMP"
+
+    if ! grep -q "NROS_BOARD_FACTS_ENV" "$TMP"; then
+        rm -f "$TMP"
+        echo "[cargo-features-patch] ERROR: no `cargo \${cargo_command}` line to inject before" >&2
+        echo "       in $CMAKE_FILE — upstream layout changed; fix this patch rather" >&2
+        echo "       than leaving the Zephyr rust lane without its board rung (issue 0605)." >&2
+        exit 1
+    fi
+    mv "$TMP" "$CMAKE_FILE"
+    changed=1
+fi
+
 if [ "$changed" -eq 0 ]; then
     echo "[cargo-features-patch] already applied to $CMAKE_FILE"
 else

@@ -99,14 +99,15 @@ platform) — which let the three ad-hoc fallbacks be deleted. Gate: `check-depl
 (mutation-verified) fails a value that resolves to zero or several descriptors. See `archived/0606-*`.
 (2026-08-16)
 
-**#605** (build, open 2026-08-15) — phase-351 W5's Zephyr arm is INERT for the Rust entry lane. It was
-committed "unverified" while the lane skipped (`west not found`); with the workspace provisioned, a full
-configure prints ZERO `nano-ros: board facts` lines — not the delivery, and not any of the three "NOT
-delivered" reasons. Cause: the hook sits in `nros_cargo_build()`, which builds the CORE crates, while a
-Zephyr Rust entry is built by zephyr-lang-rust's `rust_cargo_application()`. The widened
-`check-board-facts-delivery` gate cannot see it either — that cargo invocation belongs to a THIRD-PARTY
-module, so the delivery must be arranged where we CALL it. Unmeasured: whether the C/C++ Zephyr cells get
-them (#0590 stops the lane first). See `0605-*`. (2026-08-15)
+RESOLVED 2026-08-16 — **#605** phase-351 W5's Zephyr arm was INERT for the Rust entry lane: that cargo is
+spawned by zephyr-lang-rust's `rust_cargo_application()`, which the hook in `nros_cargo_build()` never
+reached. Fixed in three parts — the module resolves the facts once at module scope (from
+`APPLICATION_SOURCE_DIR`, an entry leaf); `cargo-features-patch.sh` gains a hunk injecting
+`${NROS_BOARD_FACTS_ENV}` BEFORE `cargo` (`cmake -E env` ends the env at the first non-KEY=VALUE arg) that
+fails loudly if upstream moves that line; and `board-facts` accepts the leaf shape those examples use
+(`[package.metadata.nros.deploy.<key>]` with no `entry` stanza). Verified in the GENERATED ninja, not just
+the configure message. Still unmeasured: the C/C++ Zephyr cells, which #0590 stops before they configure.
+See `archived/0605-*`. (2026-08-16)
 
 **#612** (testing, open 2026-08-16) — `tests/signal_fd_wake.rs` cannot LINK in any configuration and no
 lane enables the feature, so `signal-fd-wake` has never been runtime-tested. `nros-node` carries no platform

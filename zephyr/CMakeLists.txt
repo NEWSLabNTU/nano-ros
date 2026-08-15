@@ -32,6 +32,18 @@ macro(_nros_zephyr_backend_features _out)
 endmacro()
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
+
+# phase-351 W5 / issue 0605 — resolve the board facts ONCE per Zephyr configure,
+# at MODULE scope.
+#
+# Two consumers need them and neither can resolve them itself: this module's own
+# `nros_cargo_build()` (the C/C++ core crates), and zephyr-lang-rust's
+# `rust_cargo_application()`, which builds the RUST entry's cargo command inside
+# the module tree — reached only by the `${NROS_BOARD_FACTS_ENV}` the
+# cargo-features patch injects there. Resolving here means the cache entry
+# exists before either runs; the app's `APPLICATION_SOURCE_DIR` (an entry leaf,
+# carrying `[package.metadata.nros.entry] deploy`) is what it resolves FROM.
+nros_resolve_board_facts()
 # Phase 212.H.1 — nros_system_generate(<bringup-pkg>) shells the
 # `nros codegen-system` host-time bake at zephyr cmake configure
 # time. Consumes <bringup>/system.toml + launch/*.xml; emits a baked

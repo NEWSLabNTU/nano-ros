@@ -228,20 +228,32 @@ fn deploys_from_manifest(ws: &Path) -> Result<Option<Vec<PickedDeploy>>> {
     else {
         return Ok(None);
     };
-    let Some(deploy_key) = nros
+    // `[package.metadata.nros.entry] deploy` when the leaf declares an entry;
+    // otherwise the single `[package.metadata.nros.deploy.<key>]` table. The
+    // Zephyr examples are the second shape — they carry the deploy block with
+    // no `entry` stanza — and requiring the first made them resolve to nothing
+    // (issue 0605: that is the lane this wave was trying to reach).
+    let deploy_tbl = nros.get("deploy").and_then(|d| d.as_table());
+    let deploy_key: String = match nros
         .get("entry")
         .and_then(|e| e.get("deploy"))
         .and_then(|d| d.as_str())
-    else {
-        return Ok(None);
+    {
+        Some(k) => k.to_string(),
+        None => match deploy_tbl {
+            Some(t) if t.len() == 1 => t.keys().next().expect("len == 1").clone(),
+            // Several, and nothing says which this build is: that is a question
+            // for the caller (`--deploy`), not a guess.
+            _ => return Ok(None),
+        },
     };
-    let block = nros.get("deploy").and_then(|d| d.get(deploy_key));
+    let block = nros.get("deploy").and_then(|d| d.get(&deploy_key));
     let target = crate::orchestration::cargo_metadata_schema::DeployTarget {
         board: Some(deploy_key.to_string()),
         nros: block.and_then(|b| b.get("nros")).cloned(),
         ..Default::default()
     };
-    Ok(Some(vec![(deploy_key.to_string(), target)]))
+    Ok(Some(vec![(deploy_key, target)]))
 }
 
 fn pick_deploys(ws: &Path, deploy: Option<&str>, board: Option<&str>) -> Result<Vec<PickedDeploy>> {
