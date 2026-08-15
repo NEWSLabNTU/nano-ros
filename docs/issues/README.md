@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-16): **#620** — `NROS_PLATFORM_TASK_STORAGE_SIZE` was 256 B, sized from a 32-bit
+port ("~232 B on 32-bit"), while ThreadX-Linux is a HOSTED port whose `TX_THREAD` measures 352 B — so the
+`_Static_assert` fired and took out the threadx-linux family. Fixed upstream CONCURRENTLY by `199c8b0d3`
+(phase-364 W2/W3), which raised the shared bound to 512; `lane=tier2` now reports `== threadx_linux == OK`
+with zero assertions. Filed and resolved within the hour, so recorded rather than deleted: the assert is
+phase-360 W5's replacement for zpico-sys's hand-computed "≈ with 2× margin" table (#0570), this was its
+FIRST firing, and it fired on a real overflow — a silent overrun turned into a compile error naming the port.
+See `archived/0620-*`. (2026-08-16)
+
 Recently resolved (2026-08-16): **#519** the plan reported a 500 µs timer as `0ms`. The render was
 ALREADY fixed in the tree (planner emits `period_us`; `explain.rs` prefers it and falls back to widened
 `period_ms`) — what was missing is a test, so the exact defect could return silently one `unwrap_or_else`
@@ -58,17 +67,6 @@ away. Three added, and proven by sabotage: restoring the truncation fails the 05
 STILL OPEN and now unowned: `SchedContext.period_ms`/`budget_ms`/`deadline_ms` carry the same truncation;
 this issue deferred that to #505, which resolved without moving them. Carried to phase-357 W1, where the
 unit for declared timing is settled once rather than per-field. See `archived/0519-*`.
-
-**#620** (platform, open 2026-08-16) — `NROS_PLATFORM_TASK_STORAGE_SIZE` is 256 B and its own comment says why:
-"ThreadX `TX_THREAD` is the large one (~232 B on 32-bit)". ThreadX-Linux is a HOSTED port, so its `TX_THREAD`
-is **352 B** measured — 96 over — and `_Static_assert` in `nros-platform-threadx/src/platform.c:587` fails,
-taking out the whole threadx-linux fixture family. The assert is phase-360 W5's replacement for zpico-sys's
-hand-computed "≈ with 2× margin" table (#0570) and is working exactly as designed — first real firing, real
-overflow. Fix is a PER-PORT raise (the header documents the hatch: "a port may raise a bound by defining it
-before including this header"), not a bump of the shared bound, which every 32-bit consumer embedding by
-value would pay for. Likely NOT aarch64-specific — the cause is the DATA MODEL, so an x86_64 threadx-linux
-build should hit the same assert; worth confirming rather than assuming, per #0582's lesson. See `0620-*`.
-(2026-08-16)
 
 **#619** (build/api, open 2026-08-16) — `cargo test -p nros-c` cannot LINK: `nros-log`'s `PlatformSink` calls
 `nros_platform_log_write`/`_flush`, supplied by a platform C port that no test binary links, so `just ci-matrix`

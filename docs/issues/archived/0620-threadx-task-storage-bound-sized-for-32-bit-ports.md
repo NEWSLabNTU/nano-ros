@@ -2,7 +2,7 @@
 id: 620
 title: "`NROS_PLATFORM_TASK_STORAGE_SIZE` is 256 B, sized from a 32-bit port —
   ThreadX's `TX_THREAD` is 352 B on a 64-bit host, so threadx-linux cannot compile"
-status: open
+status: resolved
 type: bug
 area: platform
 related: [issue-0617, issue-0570, issue-0582]
@@ -53,7 +53,29 @@ compile error in the port instead of a silent overrun in the consumer. This
 issue is the first time it has fired in anger, and it fired on a real overflow,
 not a false positive.
 
-## Fix
+## Resolved upstream, concurrently
+
+Fixed by `199c8b0d3 fix(phase-364 W2/W3): TX_THREAD is 360 bytes, not ~232 — the
+assert caught it`, which raised the shared bound to 512. That landed while this
+issue was being written, so the analysis below describes a real failure that no
+longer reproduces: `just build-test-fixtures lane=tier2` now reports
+`== threadx_linux == OK` with zero assertions.
+
+Their measurement (360 B) and mine (352 B) differ because we measured different
+ports/configs; either way the 256 B bound was short and the assert was right.
+
+Two things from the analysis survive the fix and are worth keeping:
+
+- The assert did its job on first firing. It is phase-360 W5's replacement for
+  `zpico-sys`'s hand-computed "≈ with 2× margin" table (issue 0570), and it
+  turned a silent overrun into a compile error naming the port.
+- The bound is now a single number covering both 32-bit and LP64 ports. That is
+  the simpler choice and it is fine while one number covers everything; if a
+  future port makes 512 costly for the 32-bit tier, the header already documents
+  the per-port hatch ("a port may raise a bound by defining it before including
+  this header"), and the alternative below is the argument for using it.
+
+## The fix that was proposed here (not taken)
 
 The header already documents the intended escape hatch:
 
