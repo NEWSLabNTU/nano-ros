@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-16): **#519** the plan reported a 500 µs timer as `0ms`. The render was
+ALREADY fixed in the tree (planner emits `period_us`; `explain.rs` prefers it and falls back to widened
+`period_ms`) — what was missing is a test, so the exact defect could return silently one `unwrap_or_else`
+away. Three added, and proven by sabotage: restoring the truncation fails the 0519 case and ONLY it.
+STILL OPEN and now unowned: `SchedContext.period_ms`/`budget_ms`/`deadline_ms` carry the same truncation;
+this issue deferred that to #505, which resolved without moving them. Carried to phase-357 W1, where the
+unit for declared timing is settled once rather than per-field. See `archived/0519-*`.
+
 **#620** (platform, open 2026-08-16) — `NROS_PLATFORM_TASK_STORAGE_SIZE` is 256 B and its own comment says why:
 "ThreadX `TX_THREAD` is the large one (~232 B on 32-bit)". ThreadX-Linux is a HOSTED port, so its `TX_THREAD`
 is **352 B** measured — 96 over — and `_Static_assert` in `nros-platform-threadx/src/platform.c:587` fails,
@@ -1085,14 +1093,6 @@ every ad-hoc pattern and be switched off within a week: verified that `"crc=ok"`
 reintroduced — NEW gate errors naming `LISTENER_WAITING_BANNER`, OLD gate reports OK. Zero hits on the
 current tree, so it lands green and fires only on the regression, which is why it needed no baseline. See
 `archived/0512-*`. (2026-08-13)
-
-**#519** — the plan's timer period is still milliseconds, so `nros explain` renders a sub-millisecond timer as
-`0ms`. `#505` added `period_us` to the metadata JSON; `planner.rs:1463` still reads only `period_ms`
-(`.unwrap_or(0)`), so a 500 us timer plans as `0` with `period_us: 500` unread beside it. Display and artifact
-fidelity only — `PlanEntity::Timer.period_ms` has exactly one consumer (`explain.rs:250`) and reaches no emitter,
-so the timer still RUNS at the right rate. Deferred from #518 because it changes the plan schema (nine committed
-`plan_*.json` fixtures) and needs a call on whether `SchedContext`'s sibling `_ms` fields move too — #505's to
-make. See `0519-*`. (2026-08-11)
 
 RESOLVED 2026-08-13 — **#530** `FREERTOS_PORT` is UPSTREAM's variable name with incompatible values: upstream takes an
 ENUM keyed into a 1356-line generator-expression table (`GCC_ARM_CM4F`), `nros_freertos_build_kernel()` takes a PATH

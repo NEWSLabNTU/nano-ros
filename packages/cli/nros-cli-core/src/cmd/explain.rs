@@ -377,3 +377,65 @@ fn transport_detail(t: &crate::orchestration::plan::PlanTransport) -> String {
     }
     parts.join("")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::orchestration::{plan::EntityTrace, schema::SourceLocation};
+
+    fn timer(period_ms: u64, period_us: Option<u64>) -> PlanEntity {
+        PlanEntity::Timer {
+            id: "t".into(),
+            source_entity: "n".into(),
+            callback: None,
+            period_ms,
+            period_us,
+            trace: EntityTrace {
+                source_artifact: SourceLocation {
+                    artifact: "system.toml".into(),
+                    line: None,
+                    column: None,
+                },
+                manifest_endpoint: None,
+                declaration_slot: None,
+            },
+        }
+    }
+
+    /// Issue 0519 — the plan said `0ms` for a timer firing at 500 µs.
+    ///
+    /// `#505` gave the runtime microsecond resolution and added `period_us`
+    /// beside the truncating `period_ms`; the plan path kept reading only the
+    /// truncating one, so a sub-millisecond timer was REPORTED at a rate it does
+    /// not run at. The render was fixed to prefer `period_us`; nothing pinned
+    /// it, so the exact defect could return silently.
+    #[test]
+    fn a_sub_millisecond_timer_is_not_reported_as_zero() {
+        let line = entity_line(&timer(0, Some(500)));
+        assert!(
+            line.contains("500us"),
+            "a 500 µs timer must report its real period, got {line:?}"
+        );
+        assert!(
+            !line.contains("0ms"),
+            "issue 0519 is back — the plan reports a rate the timer does not run at: {line:?}"
+        );
+    }
+
+    /// The overwhelming case, and what every existing expectation reads: a
+    /// whole-millisecond timer still prints milliseconds. A fix that rendered
+    /// `10000us` everywhere would satisfy the test above and be a regression.
+    #[test]
+    fn a_whole_millisecond_timer_still_prints_milliseconds() {
+        assert!(entity_line(&timer(10, Some(10_000))).contains("10ms"));
+    }
+
+    /// A plan written before #505 carries only `period_ms`. Absent `period_us`
+    /// means "`period_ms` widened", not "zero" — those fixtures are legitimate
+    /// inputs, which is why the fix prefers-and-falls-back rather than
+    /// replacing the field.
+    #[test]
+    fn a_pre_505_plan_without_period_us_widens_the_millisecond_field() {
+        assert!(entity_line(&timer(25, None)).contains("25ms"));
+    }
+}

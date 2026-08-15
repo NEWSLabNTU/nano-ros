@@ -1,7 +1,13 @@
 # Phase 357 — WCET as declared data: making derived scheduling mean something
 
-**Status (2026-08-15). PLANNING — nothing implemented.** Three orchestration
+**Status (2026-08-16). W3 DONE; W1 and W2 not started.** Three orchestration
 issues that are one dependency chain, not three tasks.
+
+* **W1 (#404, the WCET schema)** — NOT STARTED. Wants an RFC before code.
+* **W2 (#259, quantitative scheduling)** — blocked on W1, by construction.
+* **W3 (#519, sub-millisecond timer period)** — DONE. The render was already
+  correct; what was missing was a test pinning it, now added and proven by
+  sabotage. The issue's SchedContext half is unowned and folded into W1 below.
 
 **Owns:** [issue 0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md),
 [issue 0404](../issues/0404-wcet-declaration-schema.md),
@@ -81,6 +87,17 @@ the plan should follow it rather than invent a third unit.
 
 **Acceptance.** A sub-millisecond timer renders with its actual period.
 Whatever unit is chosen matches phase-352's, and the choice is stated.
+
+**DONE 2026-08-16.** The render already preferred `period_us` and fell back to a
+widened `period_ms`; a 500 µs timer prints `timer 500us`. Nothing pinned it, so
+three tests were added in `cmd/explain.rs` and verified by sabotage — restoring
+the truncation fails the 0519 case and only that one.
+
+**Folded into W1:** #519 also flagged `SchedContext.period_ms` / `budget_ms` /
+`deadline_ms`, deferring the unit decision to #505. #505 has since resolved
+WITHOUT moving them, so that question is unowned rather than deferred. It is a
+plan-SCHEMA change and belongs where the unit for declared timing is settled
+once, which is W1 — not three more per-field migrations.
 
 ---
 
