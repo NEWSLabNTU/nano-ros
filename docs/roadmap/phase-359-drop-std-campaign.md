@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0–W4 and W6 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W9 landed; W7 DESIGN EXPLORED. W7 and W10 not started.** The campaign
+**Status (2026-08-15). W0–W4 and W6 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W9 landed; W7 INVESTIGATED and sized — its three blocking questions are answered and none blocks. W7 and W10 not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -301,7 +301,7 @@ is a set of host-only features plus one clock provider. That reframes the rest
 of the campaign: W7-W10 are about deciding where those features live, not about
 migrating executor code.
 
-### W7 — NuttX off `std` — **DESIGN EXPLORED 2026-08-15, not started**
+### W7 — NuttX off `std` — **INVESTIGATED 2026-08-15, sized, not started**
 
 NuttX is the second and last `std` platform (W9's derivation: `Linux`,
 `NuttxArm`, `NuttxRiscv`). Until it moves, W10 cannot happen — the `std` feature
@@ -381,15 +381,82 @@ That is a stronger reason to do W7 than the ~56 paths it removes.
   proved by `check-no-std`; it needs `nuttx_qemu` runtime cells actually
   executed.
 
-#### Open questions, to answer before starting
+#### The three open questions — ANSWERED 2026-08-15
 
-1. Does the patched libc have any consumer OTHER than std's NuttX port? If yes,
-   the fork stays and the prize shrinks to build time.
-2. Does anything in the NuttX image depend on std's panic UNWINDING rather than
-   just the hook? `panic_abort` in `build-std` suggests not, but it is asserted
-   there, not verified.
-3. Is `_SC_HOST_NAME_MAX` (and its siblings) reachable from any no_std path, or
-   purely std's? That decides whether question 1 is even open.
+**1. Does the patched libc have any consumer other than std's NuttX port? No —
+the fork is retired by W7.** The fork carries exactly four nano-ros commits on
+upstream libc 0.2.178, and every one names std as the caller in its own title or
+resolution:
+
+| commit | patch | who needs it |
+| --- | --- | --- |
+| `bc6c8dfc6` | `_SC_HOST_NAME_MAX` | std's `sys/net/hostname/unix.rs` |
+| `10d142a80` | missing pthread symbols | std's thread port |
+| `826c4ca91` | `pthread_attr_t` sized for `CONFIG_SCHED_SPORADIC` | issue 0570's title: "every `pthread_attr_init`/`destroy` **from Rust std** smashes 36 bytes of the caller's frame" |
+| `adb4c592e` | `poll()` `--wrap` ABI shim | issue 0167's title: "`struct pollfd` ABI mismatch (**std 8B** ↔ NuttX 24B)" |
+
+The check that matters is the converse — whether nano-ros's OWN Rust code needs
+the fork on NuttX — and it does not. `nros-node`'s `libc` dep is
+`[target.'cfg(all(target_os = "linux"))'.dependencies]`, so it never reaches a
+NuttX build at all; `nros-platform-cffi` declares `libc = "0.2"` but its sources
+contain zero `libc::` paths. The remaining `libc` consumers (`nros-board-linux`,
+`nros-cli-core`, `nros-tests`) are host/Linux-only.
+
+**2. Does anything depend on unwinding? No.** `catch_unwind` /
+`AssertUnwindSafe` appear only under `packages/testing/nros-tests` — the host
+harness, which runs on Linux and is out of scope for a NuttX image. The
+abort strategy is asserted in three independent places rather than one:
+`build-std = [..., "panic_abort"]`, `panic = "abort"` in the workspace profiles,
+and — decisively — `armv7a-nuttx-eabihf`'s own upstream target spec carries
+`"panic-strategy": "abort"`. So the port owes the panic HOOK's behaviour
+(diagnostics), never the unwinder.
+
+**3. Is `_SC_HOST_NAME_MAX` reachable from a no_std path? No — purely std's.**
+Every occurrence in the tree is the patch itself, a `.cargo/config.toml` comment
+explaining the patch, or `nros-sizes-build`'s note about it. No nano-ros code
+calls `sysconf` at all. Question 1 was therefore never open on this axis.
+
+#### What the investigation additionally settled
+
+**NuttX already has a complete non-std platform implementation, in C.**
+`packages/platform/nros-platform-nuttx` is CMake-only — no `src/` — and builds
+`libnros_platform_nuttx.a` from the POSIX `platform.c`/`net.c`/`timer.c`
+verbatim, reaching NuttX's own libc. That is the path the C/C++ NuttX examples
+already take today, on the same OS, with no Rust std anywhere. W7 is not
+"write a platform layer for NuttX"; it is "make the Rust board use the one that
+exists".
+
+Mapping the base board's measured std surface onto the seam, all of it is
+already exported by `<nros/platform.h>`:
+
+| board's use | count | seam replacement |
+| --- | --- | --- |
+| `io::stdout` + `io::Write` | 30 | `nros_platform_log_write` / `_log_flush` |
+| `process::exit` | 9 | `nros_platform_task_exit` — same call libstd makes (`_exit(2)`); an nsh-dispatched app task IS the process here |
+| `thread::{Builder,spawn,scope}` | 4 | `nros_platform_task_init` / `_join` / `_detach`; its `attr` carries priority AND stack size, which is what issue 0246's `.stack_size` fix needed |
+| `thread::{sleep,yield_now}` | 3 | `nros_platform_sleep_ms` / `nros_platform_yield_now` |
+| `time::Duration` | 4 | none needed — `std::time::Duration` IS `core::time::Duration` |
+| `fs::OpenOptions` on `/dev/urandom` | 1 | `nros_platform_random_fill` — the site DUPLICATES a seam facility |
+| `os::unix::io::RawFd` | 1 | a `c_int` alias |
+| `panic::{set_hook,take_hook}` | 2 | `#[panic_handler]` — still the one real change, as recorded above |
+
+**One correction to the working hypothesis.** I expected upstream to declare the
+NuttX targets no_std, which would have made building std there a fight against
+the target spec. It does not: `rustc --print target-spec-json` reports
+`"std": true` for both `armv7a-nuttx-eabihf` and
+`riscv32imac-unknown-nuttx-elf`. std on NuttX is supported-but-tier-3, so the
+cost is not illegitimacy — it is that no std ships prebuilt (hence `build-std`)
+and libc's NuttX module lags (hence the four patches). The prize is real, but it
+is build time and fork maintenance, not correctness.
+
+#### Sizing, now that the questions are answered
+
+Confined to two crates (`nros-board-nuttx` + its qemu wrapper, 56 paths), with
+every replacement already exported by a C ABI that NuttX images link today. The
+one genuinely new artifact is the `#[panic_handler]`, which must reproduce the
+existing hook's flush-then-delay or NuttX panics go silent (issues 0572/0583).
+Retiring `third-party/nuttx/libc` and narrowing `build-std` to `core`/`alloc`
+are consequences of finishing, not separate work.
 
 ### W8 — make `alloc` explicit — **STARTED 2026-08-15**
 
@@ -587,7 +654,9 @@ something real is better than adding it now.
 ## Not measured
 
 `nros` (61 cfg sites) and `nros-params` (11) are uninspected — a large part of
-the work and the weakest estimate here. W7 is unsized.
+the work and the weakest estimate here. (Both were measured later — see W8.
+W7 was sized on 2026-08-15 and is no longer the unknown this paragraph
+described.)
 
 And expect untested code. Two paths in one session turned out to have no lane
 at all: seven `std`-gated `nros-node` tests that no lane ran, one of which had
