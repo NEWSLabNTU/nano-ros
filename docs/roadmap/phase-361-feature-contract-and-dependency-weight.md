@@ -525,14 +525,59 @@ not their only consumer. **Same shape as W2.b**: an item asserted a dependency
 was reachable by one path, and the claim was never re-derived after the code
 moved under it.
 
-**W6 — `toml` 0.8 → 0.9 — STILL BLOCKED, and the blocker is confirmed rather
-than assumed.** `cargo tree -i toml` shows four consumers: `nros-macros`,
-`nros-orchestration-ir` (ours, bumpable) and `ros-launch-manifest-{model,sched}`
-(git deps at tag `v0.1.6`, not ours). Bumping our two leaves 0.8 alive through
-the other two, so the `toml_edit` → `winnow 0.7` chain survives and nothing is
-un-split. W6 was blocked on W5; with W5 dead it is blocked on an upstream bump
-in the `ros-launch-manifest` repo — a fork remote, which by repo policy the
-agent prepares and the maintainer pushes.
+**W6 — `toml` 0.8 → 0.9 — CLOSED 2026-08-16, not viable.** Not blocked: done as
+an experiment, measured, and the goal turned out not to exist.
+
+The bump itself works. Our three consumers (`nros-macros`,
+`nros-orchestration-ir`, `nros-board-common`) compile on 0.9 unchanged — the
+usage is `Value`, `Table`, `from_str`, `de::Error` — and so do the two upstream
+crates (`ros-launch-manifest-{model,sched}`, bumped in a clone and built). With
+a local `[patch]` pointing at that clone, the whole chain ran on 0.9.
+
+**What it costs, measured on the same `cargo tree` three ways:**
+
+| firmware build (`alloc,rmw-cffi,macros`) | crates |
+| --- | --- |
+| everything on 0.8 | **58** |
+| ours 0.9, upstream 0.8 (half-bumped) | **64** |
+| everything on 0.9 | **59** |
+
+W6 predicted dropping `toml_edit`, `winnow 0.7`, `toml_write`, `serde_spanned
+0.6`, `toml_datetime 0.6`. Those names do go — and one-for-one equivalents
+arrive: `toml_parser 1.1`, `toml_writer 1.1`, `serde_spanned 1.1`,
+`toml_datetime 0.7`, `winnow 1.0`. **0.9 renamed the stack rather than removing
+it**, so the full bump is +1 crate and the half-bump is +6. If anyone does this
+later: both halves move together or not at all.
+
+**The un-split prize is unreachable, and not for a reason we control.**
+Workspace-wide toml-stack crates: **14 before, 14 after the maximal bump.** With
+every crate we can move on 0.9, exactly one consumer holds 0.8:
+
+```
+toml v0.8.23
+└── tokei v14.0.0
+    └── nros-tests (dev-dependency)
+```
+
+and one `toml 0.8` drags the entire old chain (`toml_edit 0.22` -> `winnow 0.7`,
+`serde_spanned 0.6`, `toml_datetime 0.6`, `toml_write 0.1`) with it. `tokei =
+"14"` is the newest published release and pins 0.8; there is no 0.9-based tokei
+to move to. The split was never between our pin and `cbindgen`'s — it is between
+`tokei` and everything else, and our three crates were never the reason.
+
+The remaining options are all worse than the payoff: fork `tokei` (a fork remote
+and a maintenance burden for a line-counting dev-dep), or drop it and shell out
+to the CLI — which `loc_budgets.rs:14` records was the earlier shape and *"never
+ran"*, which is precisely why the crate dep exists.
+
+`tokei` is a DEV-dependency of `nros-tests`: it never reaches firmware, the
+`nros` library graph, or anything shipped. The 0.8 stack it holds costs host
+build time on `cargo check --workspace`, nothing else.
+
+**Closed.** A currency bump remains defensible on its own terms — both halves are
+verified compiling on 0.9 today, and the prepared upstream clone needs only a tag
+push — but that is a maintenance argument, not a dependency-weight one, and
+filing it here would leave a work item whose stated prize does not exist.
 
 **W7 — `nros-macros` optional — LANDED 2026-08-16.**
 

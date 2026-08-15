@@ -1340,8 +1340,10 @@ Recently resolved (2026-08-16, phase-361 W7): **#0592** — a firmware build of 
 `ros-launch-manifest` git deps, a duplicate `thiserror` major). `nros-macros` is now optional behind a
 `macros` feature: **58 -> 19 crates**. The removal ORDER this issue proposed did not survive re-derivation —
 the `model =` arm's 7 crates are on the MAINLINE `launch =` path (not the deprecated override), and `toml`
-0.8 -> 0.9 stays blocked on the `ros-launch-manifest` git deps pinned at `v0.1.6` — so the one viable step
-took the whole prize. Its stated shape was illegal too: a default-on `macros` is unreachable when all 62
+0.8 -> 0.9 turned out to COST a crate rather than save five (0.9 renames the stack: `toml_edit` ->
+`toml_parser`, `winnow 0.7` -> `winnow 1.0`), with the un-split prize unreachable because `tokei` — a dev-dep,
+already at its newest release — pins 0.8 and drags the old chain along. So the one viable step took the whole
+prize. Its stated shape was illegal too: a default-on `macros` is unreachable when all 62
 in-workspace dep-sites pass `default-features = false`, which `check-feature-contract` clause (d) rejects as
 #0593's shape. Landed opt-in: 145 in-tree crates gained it, and the 52 that dep `nros` without invoking a
 macro now stop compiling the subtree. Breaking out-of-tree — add `features = ["macros"]`. Lock did not move.

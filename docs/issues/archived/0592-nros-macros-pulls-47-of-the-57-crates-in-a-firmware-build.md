@@ -193,9 +193,20 @@ keeping:
    not the deprecated override — `main_macro.rs` parses a SystemModel after
    `model_location::ensure_model(...)`, and `nros-orchestration-ir` uses them in
    four modules for the RFC-0052 tier schema.
-2. **`toml` 0.8 -> 0.9 stays blocked upstream.** Re-measured 2026-08-16: four
-   consumers, two ours and two the `ros-launch-manifest` git deps pinned at tag
-   `v0.1.6`. Bumping ours leaves 0.8 — and `toml_edit`, `winnow 0.7` — alive.
+2. **`toml` 0.8 -> 0.9 is not blocked — it is not worth doing.** Done as an
+   experiment 2026-08-16 and measured: our three consumers and both upstream
+   crates compile on 0.9 unchanged, and with the whole chain bumped the firmware
+   build goes 58 -> **59 crates**. 0.9 RENAMED the stack rather than removing it
+   (`toml_edit` -> `toml_parser`, `toml_write` -> `toml_writer`, `winnow 0.7` ->
+   `winnow 1.0`), so the predicted five-crate drop is a one-for-one swap, and a
+   half-bump costs +6.
+
+   The un-split prize is unreachable for a reason outside our control: with
+   everything we can move on 0.9, `tokei v14.0.0` — a DEV-dependency of
+   `nros-tests`, and the newest published release — still pins `toml 0.8` and
+   drags the entire old chain with it. Workspace stack crates: 14 before, 14
+   after. The split is between `tokei` and everything else; our pin was never
+   the cause.
 3. **Making `nros-macros` optional was the only viable step, and it took the
    whole prize** rather than the incremental 57 -> 50 -> 45 -> 11 this issue
    sketched.
