@@ -140,13 +140,40 @@ probe "build output beside workspace source (long-lived-tree residue)" \
 #    WARN, not fail: a resolver older than the CLI is only WRONG if the argument
 #    list moved, which this cannot know. Failing on it would block the
 #    legitimate CLI-only setup that `setup-cli` is careful to allow.
-_resolver="packages/cli/nros-launch-resolve/target/release/nros-launch-resolve"
-_cli_bin="packages/cli/target/release/nros"
-if [ -f "$_resolver" ] && [ -f "$_cli_bin" ] && [ "$_cli_bin" -nt "$_resolver" ]; then
-    echo "check-tier-preconditions: WARNING — nros-launch-resolve is OLDER than" >&2
-    echo "  the in-tree CLI. They are separate recipes that must agree on an" >&2
-    echo "  argument list (issue 0363 C); a skew surfaces deep in a fixture" >&2
-    echo "  build, not here." >&2
+# issue 0588 — a lane that cannot run is a precondition, and this recipe exists
+# to report every one of them BEFORE a run is committed to (issue 0466). The
+# Zephyr lane skips when its workspace is absent; four west-owned compile-check
+# fixtures are built by that lane and by no other, and they are unattributable
+# to a coordinate so every run scope requires them. Left unsaid here, the
+# operator learned it from `_lane-gate` twenty minutes later as four missing
+# `.inputsig` files. WARN rather than fail: an unprovisioned host is legitimate
+# for tier 1, and only the wider tiers actually need the lane.
+_zephyr_ws="${NROS_ZEPHYR_WORKSPACE:-}"
+if [ -z "$_zephyr_ws" ]; then
+    for _cand in zephyr-workspace ../nano-ros-workspace; do
+        [ -d "$_cand/zephyr" ] && _zephyr_ws="$_cand" && break
+    done
+fi
+if [ -z "$_zephyr_ws" ] || [ ! -d "$_zephyr_ws/zephyr" ]; then
+    echo "check-tier-preconditions: WARNING — no Zephyr workspace, so the zephyr" >&2
+    echo "  fixture lane will SKIP. Tier 1 does not need it; tier 2+ does — the" >&2
+    echo "  west-built compile-check fixtures (west_bringup_zephyr," >&2
+    echo "  west_board_import, zephyr_self_pkg_{rust,sibling}) are built by that" >&2
+    echo "  lane alone and are required by every run scope (issue 0588)." >&2
+    echo "  Remedy: just zephyr setup" >&2
+fi
+
+# issue 0590 — ask about SOURCES, not binary mtimes. The old test was
+# `cli -nt resolver`, and `setup-launch-resolve` is a cargo no-op when the
+# resolver's sources have not changed, so it never relinked and the warning
+# could not be cleared by the remedy it printed. Source staleness is the real
+# invariant behind 0363 C (the two drift only when one is built from stale
+# sources) and it IS clearable.
+. "$(dirname "$0")/build/launch-resolve-stale.sh"
+if nros_launch_resolve_stale "."; then
+    echo "check-tier-preconditions: WARNING — nros-launch-resolve is older than its" >&2
+    echo "  own SOURCES. It and the in-tree CLI must agree on an argument list" >&2
+    echo "  (issue 0363 C); a skew surfaces deep in a fixture build, not here." >&2
     echo "  Remedy: just setup-launch-resolve" >&2
 fi
 

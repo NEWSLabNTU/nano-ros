@@ -233,14 +233,13 @@ build-fixtures:
     set -e
     source scripts/build/cargo.sh
     PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
+    source scripts/build/lane-skip.sh   # issue 0588 — SKIPPED, not OK
     if [ ! -d "$PX4_DIR/msg" ]; then
-        echo "[PREREQ] PX4-Autopilot .msg tree not found at $PX4_DIR/msg — run: just px4 setup"
-        exit 0
+        nros_lane_skip "PX4-Autopilot .msg tree not found at $PX4_DIR/msg — run: just px4 setup"
     fi
     nros_cli="$(nros_cli_bin)"
     if ! "$nros_cli" generate-px4-msgs --help >/dev/null 2>&1; then
-        echo "[PREREQ] '$nros_cli' lacks 'generate-px4-msgs' — rebuild the in-tree CLI (just setup-cli)"
-        exit 0
+        nros_lane_skip "'$nros_cli' lacks 'generate-px4-msgs' — rebuild the in-tree CLI (just setup-cli)"
     fi
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     for ex in px4-stub offboard-companion px4-probe; do

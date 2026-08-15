@@ -88,6 +88,21 @@ def exposed_leaves():
     return found
 
 
+# issue 0589 — cargo's own words separate the two causes. An `--offline` run
+# that needs a crate it has not cached says so explicitly; a lock that does not
+# satisfy its manifest fails during RESOLUTION and never mentions the network.
+# Matched on both halves of the sentence so a message that merely contains the
+# word "offline" (a crate named `offline`, a path with it) is not misread.
+def _is_offline_cache_miss(stderr):
+    """True when cargo could not reach the network for a crate the lock names."""
+    text = stderr or ""
+    if "--offline was specified" in text and "HTTP request" in text:
+        return True
+    # cargo words the pure cache miss differently in some versions; require the
+    # offline mention either way, so a real mismatch is never absorbed here.
+    return "--offline" in text and "failed to download" in text
+
+
 def main():
     leaves = exposed_leaves()
     if not leaves:
@@ -110,28 +125,60 @@ def main():
             cwd=leaf, capture_output=True, text=True,
         )
         if proc.returncode != 0:
-            failures.append((rel, proc.stderr.strip().splitlines()))
+            # issue 0589 — TWO conditions reach this branch and they have
+            # different causes and opposite remedies. Cargo distinguishes them
+            # for us: an `--offline` download failure is a property of THIS
+            # HOST's registry cache and says nothing about the lock, while a
+            # genuine mismatch is the moved-pointer case this gate exists for.
+            # Reporting both as 0560 told an operator to `lock-update` a
+            # byte-correct lock, which is precisely the churn 0359/0378 exist to
+            # prevent — in the imperative, to a reader with no reason to doubt.
+            kind = "cold-cache" if _is_offline_cache_miss(proc.stderr) else "mismatch"
+            failures.append((rel, proc.stderr.strip().splitlines(), kind))
         else:
             print(f"  ok   {rel} resolves under --locked")
 
     if failures:
+        mismatched = [f for f in failures if f[2] == "mismatch"]
+        cold = [f for f in failures if f[2] == "cold-cache"]
         print("", file=sys.stderr)
-        print(
-            f"[FAIL] {len(failures)} lock(s) pinned by a submodule manifest no longer "
-            f"resolve:", file=sys.stderr,
-        )
-        for rel, err in failures:
-            print(f"\n  {rel}", file=sys.stderr)
-            for line in err[-4:]:
-                print(f"      {line}", file=sys.stderr)
-        print(
-            "\n  The submodule pointer moved and the lock did not follow (issue 0560).\n"
-            "  Update it the sanctioned way — never a bare `cargo generate-lockfile`:\n"
-            "      just lock-update \"\" \"\" <leaf-dir>\n"
-            "  then REVIEW the diff: added/removed packages are a dependency change,\n"
-            "  which is expected when a pinned tag moves, but should be seen.",
-            file=sys.stderr,
-        )
+
+        if cold:
+            print(
+                f"[FAIL] {len(cold)} lock(s) name a crate this host has not cached:",
+                file=sys.stderr,
+            )
+            for rel, err, _ in cold:
+                print(f"\n  {rel}", file=sys.stderr)
+                for line in err[-4:]:
+                    print(f"      {line}", file=sys.stderr)
+            print(
+                "\n  This is a HOST state, not a lock defect — the lock names the crate\n"
+                "  correctly and this gate resolves `--offline`. Populate the cache; the\n"
+                "  lock is not touched:\n"
+                "      (cd <leaf-dir> && cargo fetch --locked)\n"
+                "  Do NOT run `lock-update` for this — re-resolving a correct lock is the\n"
+                "  churn issues 0359/0378 exist to prevent (issue 0589).",
+                file=sys.stderr,
+            )
+
+        if mismatched:
+            print(
+                f"\n[FAIL] {len(mismatched)} lock(s) pinned by a submodule manifest no "
+                f"longer resolve:", file=sys.stderr,
+            )
+            for rel, err, _ in mismatched:
+                print(f"\n  {rel}", file=sys.stderr)
+                for line in err[-4:]:
+                    print(f"      {line}", file=sys.stderr)
+            print(
+                "\n  The submodule pointer moved and the lock did not follow (issue 0560).\n"
+                "  Update it the sanctioned way — never a bare `cargo generate-lockfile`:\n"
+                "      just lock-update \"\" \"\" <leaf-dir>\n"
+                "  then REVIEW the diff: added/removed packages are a dependency change,\n"
+                "  which is expected when a pinned tag moves, but should be seen.",
+                file=sys.stderr,
+            )
         return 1
 
     print(f"submodule-pinned locks: OK ({checked} leaf/leaves resolve under --locked)")

@@ -23,14 +23,18 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    # issue 0588 — SKIPPED is its own verdict. These two used to `exit 0`, so a
+    # host with no Zephyr workspace got `== zephyr == OK` for a lane that built
+    # nothing, and the four west-owned compile-check fixtures went missing
+    # twenty minutes downstream instead of being reported here.
+    source scripts/build/lane-skip.sh
     trap 'for pid in $(jobs -pr); do kill "$pid" 2>/dev/null || true; done; wait; exit 130' INT TERM
     if ! command -v west >/dev/null 2>&1; then
-        echo "Zephyr skip: west not found"; exit 0
+        nros_lane_skip "west not found — install it, or provision with \`just zephyr setup\`"
     fi
     workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-        echo "Zephyr skip: {{ZEPHYR_WORKSPACE}} not set up (run \`just zephyr setup\`)"
-        exit 0
+        nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up — run \`just zephyr setup\`"
     fi
     # Phase 180.B — examples read the ROS interface package dirs from env
     # (no more hardcoded /opt/ros/humble/share/* PKG_DIR). Default to the

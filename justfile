@@ -1698,7 +1698,7 @@ test-doc:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    # phase-360 W3 — `std` explicit: `nros` no longer defaults to it, and the
+    # phase-361 W3 — `std` explicit: `nros` no longer defaults to it, and the
     # doc examples are hosted.
     cargo test $cargo_profile_args --doc -p nros --features std
 
@@ -2092,8 +2092,14 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
             # budget) must not leak into the children, where a bare ninja or
             # cargo would join the tiny pool instead of using the explicit
             # NROS_BUILD_JOBS split it was handed (same audit).
-            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env -u MAKEFLAGS -u CARGO_MAKEFLAGS NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status); log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"\n\n' \
-                "$platform" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform"
+            # issue 0588 — THREE verdicts, not two. rc 78 (`nros_lane_skip`,
+            # scripts/build/lane-skip.sh) means the lane could not run because a
+            # precondition is missing; that is neither OK nor FAILED, and
+            # printing it as OK is what hid an unprovisioned Zephyr workspace
+            # until `_lane-gate` failed on artifacts twenty minutes later. The
+            # reason comes back through the lane log's `NROS_LANE_SKIP:` marker.
+            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env -u MAKEFLAGS -u CARGO_MAKEFLAGS NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -eq 78 ]; then echo "== %s == SKIPPED ($$(sed -n "s/^NROS_LANE_SKIP: //p" %q | tail -1))"; else if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status); log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"; fi\n\n' \
+                "$platform" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform" "$log" "$platform"
         done
     } > "$makefile"
     make -j "$make_jobs" -f "$makefile"
@@ -2134,7 +2140,7 @@ build-zenoh-posix-fixture:
     # under the one build root now (RFC-0070 R1) and both sides name the KIND.
     source scripts/build/build-root.sh
     # profile-literal-ok: symbol fixture: path asserted by zenoh_archive_symbols + the parity script
-    # phase-360 W8.d — `platform-posix` selects the platform, not the standard
+    # phase-361 W8.d — `platform-posix` selects the platform, not the standard
     # library. This archive is a HOSTED artifact, so it names `std` itself.
     cargo build --release \
         -p nros-rmw-zenoh-staticlib \
@@ -2740,7 +2746,7 @@ check-flavour-lanes:
 check-std-census:
     @python3 scripts/check-std-census.py
 
-# phase-360 W4 — the `std`/`alloc` feature contract (ARCHITECTURE.md §2).
+# phase-361 W4 — the `std`/`alloc` feature contract (ARCHITECTURE.md §2).
 # Six clauses over every crate in `packages/`: `std` implies `alloc` in the
 # MANIFEST and nowhere else, the heap gate has one spelling, no `no_std` crate
 # defaults to `std`, no declared `std`/`alloc` feature is inert, no `default`
@@ -4048,10 +4054,14 @@ setup-cli:
     # setup-cli's job is to produce the binary, and the resolver has its own
     # skip conditions (submodule absent, no CPython), so hard-failing here would
     # block a legitimate CLI-only setup.
-    resolver="$root/packages/cli/nros-launch-resolve/target/release/nros-launch-resolve"
-    if [ -f "$resolver" ] && [ "$bin" -nt "$resolver" ]; then
-        echo "[setup-cli] WARNING: nros-launch-resolve is OLDER than the CLI just built." >&2
-        echo "            They are separate recipes that must agree on an argument list" >&2
+    # issue 0590 — SOURCE staleness, not `bin -nt resolver`. Having just built
+    # the CLI, that comparison was true forever: `setup-launch-resolve` no-ops
+    # when the resolver's sources are unchanged, so it never relinks. Same
+    # helper as check-tier-preconditions, one spelling.
+    source scripts/build/launch-resolve-stale.sh
+    if nros_launch_resolve_stale "$root"; then
+        echo "[setup-cli] WARNING: nros-launch-resolve is older than its own SOURCES." >&2
+        echo "            It and this CLI must agree on an argument list" >&2
         echo "            (issue 0363 C). Rebuild it:  just setup-launch-resolve" >&2
     fi
     warn_stale_shadow
@@ -4572,7 +4582,7 @@ doc-c:
     header="packages/api/nros-c/include/nros/nros_generated.h"
     if [ ! -f "$header" ]; then
         echo "Generated header not found, building nros-c first..."
-        # phase-360 W3 — `std` explicit (host build; nros-c `default = []` now).
+        # phase-361 W3 — `std` explicit (host build; nros-c `default = []` now).
         cargo build -p nros-c --features "std,rmw-zenoh,platform-posix,ros-humble"
     fi
     mkdir -p target/doxygen/c

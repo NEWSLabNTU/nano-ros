@@ -177,8 +177,9 @@ build-fixtures:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    source scripts/build/lane-skip.sh   # issue 0588 — SKIPPED, not OK
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-        echo "QEMU bare-metal skip: arm-none-eabi-gcc not found"; exit 0
+        nros_lane_skip "arm-none-eabi-gcc not found — install the ARM bare-metal toolchain"
     fi
     # Issue 0483 — the emulator suite needs libzenohpico.a, and building fixtures
     # without it produced the worst possible outcome: this recipe succeeded and
@@ -278,9 +279,9 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
     set -euo pipefail
     mkdir -p {{LOG_DIR}}/latest
     source scripts/dev/zenohd.sh
+    source scripts/build/lane-skip.sh   # issue 0588 — SKIPPED, not OK
     if ! zenohd_bin="$(nros_zenohd_bin)"; then
-        echo "QEMU RTIC E2E skip: zenohd not found"
-        exit 0
+        nros_lane_skip "zenohd not found — run \`just zenohd setup\`"
     fi
     # issue 0488 residue 1 — the kernel path comes from the same
     # `nros_fixture_group` answer `build-rtic-main-e2e` builds with.
