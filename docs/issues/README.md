@@ -68,6 +68,15 @@ dev packages install under `/usr/lib/llvm-14/include`), so a header probe there 
 that hard-blocks setup. `libslirp` is the other control (runtime package, versioned SONAME, correct). See
 `archived/0603-*`. (2026-08-15)
 
+**#606** (cli, open 2026-08-15) — `[deploy.*].board` and a descriptor's `names` are different vocabularies:
+every in-tree site block says `board = "mps2-an385-freertos"`, which that descriptor does not list
+(`freertos`/`freeRTOS`/`FreeRTOS`), so `BoardCatalog::resolve_deploy` matches nothing and `nros sync` skips
+those board projections — reporting it as a COUNT at the end, never a name. phase-351 hit it three times and
+worked around it three times (the site-config gate keys on names AND directory; `board-facts`'s
+`resolve_board` repeats that in Rust; the standalone-leaf path maps `entry.deploy` onto the board because
+those manifests have no `board =` at all). phase-341 W3 closed part of this by hand; the rest was never
+ruled. Fix = pick ONE mapping, then delete all three fallbacks. See `0606-*`. (2026-08-15)
+
 **#605** (build, open 2026-08-15) — phase-351 W5's Zephyr arm is INERT for the Rust entry lane. It was
 committed "unverified" while the lane skipped (`west not found`); with the workspace provisioned, a full
 configure prints ZERO `nano-ros: board facts` lines — not the delivery, and not any of the three "NOT
