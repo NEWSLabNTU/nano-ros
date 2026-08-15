@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0–W4, W6, W9 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W7 IMPLEMENTED — NuttX is off `std`, `build-std` narrowed to `core`/`alloc`. W10 not started.** The campaign
+**Status (2026-08-16). W0–W4, W6, W9 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W7 IMPLEMENTED — NuttX is off `std`. W10 IN PROGRESS: the platform task ABI gained storage probes, `scheduler-os-priority` and `signal-fd-wake` are ported off `std::thread`, and the condvar wake path is deleted — `nros-node` 106/76 -> 91/40. The manifest half (nine crates' `std` features, 54 consumers, 8 generated crates, 2 template copies) is not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -705,7 +705,7 @@ are toolchain-gated out of tier 1 anyway — so a `std` mode would today select
 either exactly `native` or a set nothing can run. Adding it when it selects
 something real is better than adding it now.
 
-### W10 — flip the default, delete the feature — **MEASURED 2026-08-16, blocked on one decision**
+### W10 — flip the default, delete the feature — **IN PROGRESS: `nros-node`'s three std-backed blocks are ported/deleted 2026-08-16**
 
 `nros` currently defaults to `std`. (`nros-platform` no longer does —
 phase-361 W3 made it `default = []`.)
@@ -752,30 +752,99 @@ things plus noise:
 The rest is the std clock provider (`clock_base: Instant`, `std_epoch_us` — W4
 already unified the ACCESSOR, this is the last provider) and one `eprintln!`.
 
-#### The decision this is blocked on
+#### The decision — SETTLED 2026-08-16: port, do not move
 
 Items 2 and 3 are `std::thread`-backed capabilities living in a crate W10 makes
-`no_std`. Two honest options, and they differ in what the user gets:
+`no_std`. The choice was between porting them onto the platform task ABI and
+moving them out of `nros-node` into a std-side crate. **Ported**, so both become
+reachable on every platform instead of staying std-only corners of a core crate,
+and no public import path breaks.
 
-* **Port them onto the platform task ABI** (`nros_platform_task_init/_join`,
-  which W7 has now exercised on NuttX). They would then work on every platform
-  rather than only std ones. Costs: `HashMap` becomes a fixed-capacity map, the
-  `mpsc` queue becomes a platform primitive, and both features' semantics shift
-  from "std threads" to "platform tasks".
-* **Move them out of `nros-node`** into a std-side crate above the core layer.
-  Keeps the implementations exactly as they are and keeps the core `no_std`,
-  but they stop being reachable through `nros` and users import them from
-  elsewhere — an API break for anyone using either feature today.
+##### What the port needed first
 
-Doing W10 without settling this means either half-porting the hot path or
-silently dropping two features, so it is asked rather than assumed.
+`nros_platform_task_init` takes "opaque caller-provided storage (size determined
+by the implementor)" and had **no way to ask what that size is**. Fine for a C
+caller — POSIX writes `pthread_t t;` and passes `&t` — and impossible from Rust,
+which is the caller being added. Hard-coding it instead is issue 0570 exactly.
 
-#### Attempted and reverted
+The wake primitive had already solved this with
+`nros_platform_wake_storage_{size,align}`, so tasks now match it: the same five
+ports gained `nros_platform_task_storage_{size,align}` returning their own
+storage type (`pthread_t`, `nros_freertos_task_t`, `TX_THREAD`,
+`nros_esp_task_t`), plus the C test stub, with the committed bindgen output
+regenerated because the header is the ABI SSoT (RFC-0054).
 
-The condvar collapse was started and backed out on 2026-08-16 when item 3
-surfaced: `WakeSignalFd`'s worker calls `cv.notify_all()`, so deleting the
-condvar pair mid-way leaves the hottest path in the project half-migrated. The
-tree is unchanged; the measurement above is what the attempt bought.
+##### The three landings
+
+| what | `nros-node` cfg / path |
+| --- | --- |
+| ABI probes (prerequisite, no consumer) | — |
+| `scheduler-os-priority` -> platform tasks | 106/76 -> 95/65 |
+| `signal-fd-wake` -> platform task | 95/65 -> 95/54 |
+| condvar wake path deleted | 95/54 -> **91/40** |
+
+`std::thread::spawn` -> `nros_platform_task_init`; `JoinHandle::join` ->
+`nros_platform_task_join`; `std::sync::mpsc` -> `heapless::mpmc::MpMcQueue` +
+`NodeWake`; `recv_timeout(10ms)` -> `NodeWake::wait_ms(10)`; `HashMap` ->
+`heapless::FnvIndexMap`. The allocate-spawn-join sequence is shared
+(`executor/platform_task.rs`) rather than written twice, and `join` is an
+explicit method rather than `Drop` because both callers must signal their worker
+BEFORE waiting — a `Drop` that joined implicitly would deadlock against a worker
+still blocked in its own wait.
+
+##### Four consequences, all deliberate
+
+* **The mailbox is bounded.** `mpsc` was unbounded; a producer outrunning a
+  worker grew it without limit. `try_dispatch` now reports refusal and the
+  caller dispatches cooperatively — backpressure instead of unbounded memory on
+  an RT path. The old spawn was infallible (`.expect`) and the old queue never
+  refused, so the dispatch site had no failure branch; it has one now.
+* **The pool is capacity-limited** (8 priorities) and remembers a level the
+  platform refused, so a failing spawn is tried once rather than every cycle.
+* **A platform is now REQUIRED to host workers.** `NodeWake` is gated
+  `all(feature = "alloc", feature = "rmw-cffi")` because it calls
+  `nros_platform_*`; blocking on it inherits that. A std thread needed no
+  platform, so the port ADDS this dependency — and it is the honest one: a
+  worker cannot be given an OS priority without an OS. Registering the
+  dispatcher stays available everywhere; only the pool needs the platform.
+* **`signal-fd-wake` keeps its `target_os = "linux"`.** The eventfd is what
+  makes the write async-signal-safe. What it stopped being is std-only.
+
+##### Coverage moved, and one gap was already there
+
+`test_os_priority_worker_dispatches_callback` lives in a module compiled
+`not(feature = "rmw-cffi")` (a real backend would displace `MockSession`), so in
+that configuration there is no pool and the test now rides the cooperative
+fallback. Its assertion still holds; its wording was corrected rather than left
+implying worker coverage it no longer has.
+
+`tests/signal_fd_wake.rs` cannot link in ANY configuration — `nros-node` has no
+platform provider in its dev-dependencies — and no lane enables the feature.
+Both predate this work; filed as **#0612**, issue 0577's class. The signalfd
+port is therefore compile-verified only.
+
+#### The condvar deletion, which the ports unblocked
+
+Attempted first and reverted on 2026-08-16, because `WakeSignalFd`'s worker
+called `cv.notify_all()` and deleting the pair mid-way leaves the hottest path
+half-migrated. Landed after both ports: `Executor::{wake_cv, wake_mu}`,
+`WakeCtx::{cv, mu}` and the `wait_timeout_while` arm are gone, and the runtime
+wake callback signals ONE primitive because `spin_once` waits on one. Phase
+130.3 predicted this edit when it added the semaphore beside the condvar — "a
+future migration to a single primitive flips one branch instead of two".
+
+Where that arm was reached (no platform wake linked), the spin now drives the
+transport for the full timeout: an async wake can no longer cut the wait short,
+but it still BLOCKS, and it is what the `alloc` arm always did there.
+
+#### What remains of W10
+
+The three `nros-node` blocks are done; 91 cfg sites and 40 paths remain there,
+now mostly paired arms that collapse mechanically. Still untouched: the other
+eight crates (60 cfg sites), the 54 consumer manifests, the 8 generated message
+crates, the 2 codegen template copies, and `nros-board-linux` — the manifest
+half, which must land as one change because a manifest naming a deleted feature
+is a resolution error.
 
 ## Costs accepted
 
