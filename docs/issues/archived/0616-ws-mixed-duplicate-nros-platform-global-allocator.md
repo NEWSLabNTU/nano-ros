@@ -103,6 +103,99 @@ graph and false of a link, and this is the case that shows the difference.
 * Not a fixture-staleness artifact: it reproduces from a clean
   `cmake --build` of that directory.
 
+## Investigation 2026-08-16 — two eliminations, then the mechanism
+
+**Not the generated manifest's feature set.** Reconstructed the failing runtime
+manifest exactly — `nros-cpp` with
+`["ros-humble", "rmw-zenoh-cffi", "std", "platform-zephyr"]`, plus
+`rust_heartbeat_pkg`, `crate-type = ["staticlib"]`, host triple — and it BUILDS
+CLEAN:
+
+```
+cargo build --manifest-path <reconstructed> -p nros_ws_runtime \
+    --target x86_64-unknown-linux-gnu
+    Finished
+```
+
+The graph finding above is confirmed independently, for the posix variant (the
+in-tree `build-workspace-fixtures/nros_ws_runtime`) and this zephyr
+reconstruction: `cargo tree -d` reports **no duplicate `nros-platform`**. It does
+report `nros-core`/`nros-rmw`/`nros-serdes` twice — that is the host-graph vs
+target-graph split issue 0591 records as legitimate, not this.
+
+**Not a shared target dir.** Built `nros-rmw-zenoh-staticlib` (the `[4/7]` step)
+and then the runtime into one `CARGO_TARGET_DIR`. Both succeeded.
+
+**The mechanism is the LINK, and it is visible in the archives.** Every
+`crate-type = ["staticlib"]` root bakes the allocator into its own `.a` when
+`global-allocator` is on. Measured with `nm`:
+
+```
+libnros_c.a                     ___rustc___rust_alloc, ___rustc___rust_alloc_zeroed,
+                                ___rustc___rust_alloc_error_handler, and
+                                nros_platform::global_allocator::PlatformGlobalAllocator's
+                                GlobalAlloc impl — all global `T`
+libnros_rmw_zenoh_staticlib.a   the same allocator symbols
+```
+
+There are **four** such roots in `packages/`: `nros-c`, `nros-cpp`,
+`nros-rmw-zenoh-staticlib`, `nros-rmw-xrce-cffi-staticlib`. And both sides of
+this fixture request the allocator, by different routes:
+
+```
+nros-cpp/platform-zephyr -> nros-c/platform-zephyr -> "global-allocator"
+                                                   -> nros-platform/platform-zephyr
+
+nros-rmw-zenoh-staticlib/platform-zephyr-baremetal -> nros-platform/global-allocator
+                                                   -> dep:panic-halt
+```
+
+So an image linking the ws-runtime staticlib AND the backend staticlib links two
+allocators. Nothing about that is visible to `cargo tree`, which is why the graph
+and the error disagree.
+
+## Why the current design cannot hold this invariant
+
+`#[global_allocator]` is a lang item: **unique per LINKED ARTIFACT**. nano-ros
+declares it in `nros-platform`, a mid-graph library, gated on a feature — and
+issue 0594's guarantee, "cargo unifies one crate's one feature into one unit",
+is a property of ONE graph. A staticlib is not a graph; it is a sealed copy of
+one. Four sealed copies can each contain the item and each be individually
+correct.
+
+`check-feature-contract` clause (e) has the same blind spot by construction: it
+counts `#[global_allocator]` DEFINITIONS IN SOURCE, and there is exactly one.
+The count it should be making is per produced archive.
+
+## Fix options
+
+1. **One link root per image, enforced.** phase-241 W11 already designed
+   `nros-cpp` as "the ONE Rust staticlib a C++ binary links". Make that checked
+   rather than conventional: the backend staticlibs stop being independent link
+   roots (become rlibs bundled into the root), or stop requesting
+   `global-allocator`/`panic-*` — those lang items belong to whoever owns the
+   image, and a backend does not.
+2. **Move the item to the root crate.** `nros-platform` keeps providing the
+   `GlobalAlloc` TYPE; the `#[global_allocator]` STATIC is installed by the link
+   root through a macro (`nros_platform::install_global_allocator!()`). "One per
+   image" then means "one root", which the build system already controls, rather
+   than "one unit", which it does not.
+3. **A link-side gate, complementing either.** `nm` the produced archives and
+   assert at most one defines `___rust_alloc` per image. This is the check
+   clause (e) cannot make from source, and it is the layer the invariant
+   actually lives at.
+
+(1) is the smaller change and matches the existing intent; (2) is the one that
+makes the error impossible rather than caught. They compose: (2) plus (3) would
+leave no way to express the bug.
+
+## Still unreproduced here
+
+This host has no Zephyr workspace, so `cmake --build build-ws-mixed-entry-zenoh`
+could not be run. The mechanism above is established from the archives and the
+feature graph, NOT from the failing build. What would confirm it directly: the
+`--extern` lines, or `nm` on the two archives the failing link consumes.
+
 ## Acceptance
 
 * `ws-mixed-entry-zenoh` builds;
