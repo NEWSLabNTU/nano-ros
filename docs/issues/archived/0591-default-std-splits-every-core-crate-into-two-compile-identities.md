@@ -1,11 +1,35 @@
 ---
 id: 591
 title: "`default = [\"std\"]` on the no_std crates splits each of them into two compile identities in ONE cargo invocation"
-status: open
+status: resolved
 type: tech-debt
 area: build
+resolved_in: "phase-361 W3; the axis itself goes with phase-359 W10"
 related: [issue-0446, issue-0598, phase-334, phase-340, phase-360]
 ---
+
+> **RESOLVED.** Measured 2026-08-16: **zero crates carry `std` or `alloc` in a
+> `default` set.** The reported cause — `default = ["std"]` adding an inert
+> string that makes a second compile identity — is gone, held by
+> `check-feature-contract` clause (b) (phase-361 W4).
+>
+> **Read this before reopening on `cargo tree -d`.** That command still reports
+> `nros-core`, `nros-rmw` and `nros-serdes` twice, and it is NOT this issue. The
+> two identities are:
+>
+> ```
+> nros-core <- nros-rmw <- nros-orchestration-ir     (host / proc-macro graph)
+> nros-core <- nros      <- everything               (target graph)
+> ```
+>
+> i.e. the resolver-v2 host graph against the target graph, which phase-361 W3
+> recorded as legitimate when it measured that `default = []` merged no compile
+> units at all. A `--workspace` build resolves every member as a root with its
+> own features; two genuinely different feature sets are two units, correctly.
+>
+> phase-359 W10 removes the `std` feature entirely, after which no `default` can
+> name it and the narrow form of this issue is unstateable.
+
 
 ## The measurement
 

@@ -1,11 +1,30 @@
 ---
 id: 598
 title: "`std` implies `alloc` in half the stack and not the other half — the default feature state cannot serialize a heap message field"
-status: open
+status: resolved
 type: bug
 area: build
+resolved_in: "phase-361 W2.a; the axis itself goes with phase-359 W10"
 related: [rfc-0033, rfc-0005, rfc-0006, issue-0591, phase-361]
 ---
+
+> **RESOLVED — and about to become unaskable.** Measured 2026-08-16: **13 crates
+> declare both `std` and `alloc`, and 13 of 13 carry `std = ["alloc", …]`.** Zero
+> `any(feature = "alloc", feature = "std")` spellings remain anywhere in
+> `packages/`. One rule, one spelling, both layers.
+>
+> Held by `check-feature-contract` (phase-361 W4): clause (a/manifest) rejects a
+> crate declaring both without the edge, and clause (a/source) rejects the
+> `any(...)` respelling outright — the form W2.a tried and reverted, which put
+> the same fact in 123 places.
+>
+> **phase-359 W10 deletes the question.** Its remaining half removes the `std`
+> feature from nine crates, 54 consumer manifests, 8 generated message crates and
+> 2 codegen template copies. With no `std` feature there is nothing to imply
+> `alloc`, and this issue cannot recur in any form. The clauses that hold it
+> today should be simplified in the SAME change — a gate enforcing a contract
+> about a feature that no longer exists is its own kind of stale.
+
 
 ## The contradiction
 

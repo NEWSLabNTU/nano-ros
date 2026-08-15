@@ -1314,6 +1314,7 @@ is DCE'd before its lang item lands — the FORCE_LINK class), and over-aligned 
 null instead of silently under-aligned memory. **Left open**: nothing GATES any of this — W4's
 `check-feature-contract.sh` is still unwritten, so every figure here is a measurement, not an
 invariant. See `0594-*` and phase-361 W2/W4/W8. (2026-08-07, W8.c 2026-08-10)
+  **Retargeted at phase-359 W10 (2026-08-16):** 34 sites are down to **1** — `nros-tests`' `trigger-test = [… "nros-node/std"]`, a `std` forward W10 deletes. That site was INVISIBLE until today: clause (a) rejected `["std"]` in a feature body but not `["dep/std"]`, so the residual read as 1-and-benign with nothing having ruled on it. The clause now checks both spellings, carving out crates with no `no_std` mode (a hosted crate has no embedded image to protect — the same exemption clause (b) already makes). This one does NOT close with #0591/#0598: those are about `std` and W10 makes them unstateable, while this is about `alloc`, which survives as the remaining axis.
 Recently resolved (2026-08-07): **#0593** — `nros/ffi-size-markers`, the `#[used]` attribute that
 stops `--gc-sections` dropping the `__NROS_SIZE_*` statics the C/C++ opaque-storage macros are
 probed from, was enabled by **exactly one thing**: `nros`'s `default` set. Both consumers dep
@@ -1325,15 +1326,13 @@ W3 — requested explicitly at all four dep-sites. **Not verified**: that it eve
 macro value in a shipped artifact; `#[used]` acts at link time and this host cannot build the
 C/C++ lanes. Summary in `docs/issues/archived/0593-*`.
 
-**#0591** (build, open 2026-08-07) — `default = ["std"]` on the `no_std` crates splits each of them
-into **two compile identities inside ONE cargo invocation**. Measured over `cargo check --workspace
---timings`: `nros-core` and `nros-params` each compile once as `[alloc, std]` and once as `[alloc,
-std, default]` — the delta is the inert string `default` and nothing else. 19 crates split this way,
-~8 s of 113 s redundant; `libc`, `crossbeam-utils`, `winnow`, `memchr` split the same way. This names
-one of the five `-C metadata` identities issue 0446 counts for `nros-core`, and it is the one that
-survives any cache-layout fix, because to cargo the two units are genuinely different feature sets.
-`nros-rmw` already converted to `default = []` and its manifest says it "matches nros-core" —
-`nros-core` never did. See `0591-*` and phase-361 W3. (2026-08-07)
+Recently resolved (2026-08-16, phase-361 W3): **#0591** — `default = ["std"]` on the `no_std` crates made a
+second compile identity out of an inert string; 19 crates split that way, ~8 s of 113 s redundant. Measured
+today: **zero crates carry `std` or `alloc` in a `default`**, held by `check-feature-contract` clause (b).
+**Do not reopen this on `cargo tree -d`** — it still reports `nros-core`/`nros-rmw`/`nros-serdes` twice and
+that is the resolver-v2 HOST graph against the TARGET graph (`nros-orchestration-ir` side vs `nros` side),
+which W3 recorded as legitimate when it measured that `default = []` merged no units at all. phase-359 W10
+removes the `std` feature entirely, after which the narrow form is unstateable. See `archived/0591-*`.
 
 Recently resolved (2026-08-16, phase-361 W7): **#0592** — a firmware build of `nros` compiled 58 crates,
 39 of them only to run the `nros::main!` proc-macro (`syn`, `toml_edit`, `serde_yaml_ng`, the
@@ -1377,19 +1376,12 @@ never skippable by lane narrowing, so every run scope requires them — and its 
 it either. The unprovisioned host is legitimate; reporting the skip as OK is not. Needs a third lane
 verdict (SKIPPED), and both `exit 0` sites move together. #0196 shape. See `0599-*`. (2026-08-15)
 
-**#0598** (build, open 2026-08-07, renumbered from 0581 on 2026-08-15 when upstream spent that id) — `std` implies `alloc` in `nros`/`nros-node`/`nros-rmw-zenoh`/
-`nros-c` and does NOT in `nros-core`/`nros-serdes`/`nros-rmw`/`nros-params`/`nros-platform`, and the
-source layer disagrees with its own manifest: `nros-core/src/lib.rs:19` gates `extern crate alloc`
-and the RFC-0033 `heap::{Vec, String}` re-export on `any(alloc, std)`, while `nros-core/std`
-forwards only `std` to `nros-serdes`. At `nros-core`'s **default** feature set,
-`nros_core::heap::Vec<u32>` therefore exists with no `Serialize` impl — `no method named
-`serialize``. `String` hides it by auto-derefing to the ungated `impl Serialize for str`, which is
-why per-type failure never surfaced in a build. Only reachable from OUTSIDE the workspace, which is
-exactly the generated-message-crate shape. Two dead declarations found alongside:
-`nros-platform/alloc` (+ its sibling `threading`) — declared, zero `cfg` sites, forward nowhere; both
-DELETED in W2.b 2026-08-15. `nros-rmw-cyclonedds/std` was listed here too and that was WRONG — it gates two
-integration-test files via an inner `#![cfg]`, invisible to a `src/`-scoped grep, and is restored.
-See `0598-*` and phase-361 W1–W2/W4. (2026-08-07)
+Recently resolved (2026-08-16, phase-361 W2.a): **#0598** — `std` implied `alloc` in four crates and not in
+five others, and `nros-core`'s SOURCE assumed the implication its own manifest did not make, so at the default
+feature set `heap::Vec<u32>` existed with no `Serialize` impl. Measured today: **13 crates declare both, 13 of
+13 carry `std = ["alloc", …]`**, and zero `any(feature = "alloc", feature = "std")` spellings remain — clause
+(a/manifest) holds the edge, clause (a/source) rejects the respelling W2.a tried and reverted. phase-359 W10
+deletes the `std` feature outright, after which nothing can imply anything. See `archived/0598-*`.
 
 Recently resolved (2026-08-11): the on-target-time trio (embedded/api), filed from external RT-cadence
 measurement and fixed as one series. #502: `nros_platform_clock_us` was MILLISECOND-quantized under a us

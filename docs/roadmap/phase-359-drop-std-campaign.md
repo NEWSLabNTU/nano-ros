@@ -705,6 +705,28 @@ are toolchain-gated out of tier 1 anyway — so a `std` mode would today select
 either exactly `native` or a set nothing can run. Adding it when it selects
 something real is better than adding it now.
 
+#### What phase-361's gate expects from W10 (added 2026-08-16)
+
+`check-feature-contract` (phase-361 W4) currently asserts three things ABOUT
+`std` that stop meaning anything the moment this work item lands, and they
+should be edited in the SAME change rather than after it — a gate enforcing a
+contract about a deleted feature is its own kind of stale:
+
+* **(a/manifest)** "a crate declaring both lists `std = ["alloc", …]`" — with no
+  `std` feature there is nothing to declare. The half that SURVIVES is "no
+  feature other than `std` may enable `alloc`", which narrows to "no feature may
+  enable `alloc`".
+* **(a/source)** "`cfg(any(feature = "alloc", feature = "std"))` is rejected" —
+  unstateable afterwards, and harmless to keep, but it should go with the rest.
+* **(b)** "no `no_std`-capable crate defaults to `std`/`alloc`" — narrows to
+  `alloc`.
+
+Two issues close by construction when this lands: **0591** (a `default` cannot
+name a feature that does not exist) and **0598** (nothing can imply `alloc`).
+**0594 does not** — it is about `alloc`, which survives as the remaining axis,
+and its last open site is the `std` forward this work item removes
+(`nros-tests`' `trigger-test = [… "nros-node/std"]`).
+
 ### W10 — flip the default, delete the feature — **IN PROGRESS: `nros-node`'s three std-backed blocks are ported/deleted 2026-08-16**
 
 `nros` currently defaults to `std`. (`nros-platform` no longer does —

@@ -175,6 +175,15 @@ def clause_a_manifest(mans):
     bad = []
     for man, doc in mans:
         feats = (doc.get("features") or {})
+        # The rule exists to stop an EMBEDDED image acquiring a heap unasked. A
+        # crate with no `no_std` mode has no such image to protect: it is always
+        # hosted, and so is everything that can depend on it. Clause (b) already
+        # makes exactly this carve-out for `default`. Applied here only to the
+        # FORWARDING spelling — a hosted crate selecting `std` in a dependency
+        # (`nros-tests`' `trigger-test`) is a consumer choosing for itself,
+        # where the same crate writing `["std"]` in its own feature body would
+        # still be the thing this clause is about.
+        hosted = not is_no_std_capable(os.path.dirname(man))
         if "std" in feats and "alloc" in feats and "alloc" not in (feats["std"] or []):
             bad.append(
                 f"{rel(man)}: declares both `std` and `alloc` but `std` does not list `alloc`.\n"
@@ -184,12 +193,29 @@ def clause_a_manifest(mans):
         for name, body in feats.items():
             if name in ("std", "alloc", "default"):
                 continue  # `default` is clause (b)'s business
-            enabled = [x for x in (body or []) if x in HEAP_FEATURES]
+            # BOTH spellings. `["std"]` turns the heap on in THIS crate;
+            # `["dep/std"]` turns it on in a dependency, which reaches the same
+            # image by a different route. Checking only the first left a hole
+            # exactly the width of the one site that used it —
+            # `nros-tests`' `trigger-test = [… "nros-node/std"]` — so the
+            # residual count read as 1-and-benign when nothing had ruled on it.
+            enabled = [
+                x
+                for x in (body or [])
+                if x in HEAP_FEATURES
+                or (
+                    not hosted
+                    and "/" in x
+                    and not x.startswith("dep:")
+                    and x.split("/", 1)[1] in HEAP_FEATURES
+                )
+            ]
             if enabled:
                 bad.append(
                     f"{rel(man)}: feature `{name}` enables {enabled}.\n"
                     f"      A capability/backend/platform feature REQUIRES the heap, it does not\n"
-                    f"      grant it — emit `compile_error!` naming the feature the user must add."
+                    f"      grant it — emit `compile_error!` naming the feature the user must add.\n"
+                    f"      A `dep/std` forward counts: it reaches the same image by another route."
                 )
     return bad
 
@@ -493,6 +519,25 @@ def self_test():
               {"src/lib.rs": '#[cfg(feature = "std")]\n#[cfg(feature = "alloc")]\nfn f() {}\n'})
         expect("std-without-alloc", r, "a/manifest", want_fail=True)
 
+        # a/manifest — a NO_STD crate forwarding `dep/std`. The spelling that
+        # reaches the same image by another route, and the hole this clause had
+        # until 2026-08-16.
+        r = os.path.join(tmp, "a1c")
+        base(r)
+        crate(r, "x", '[package]\nname = "x"\n[features]\nstd = ["alloc"]\nalloc = []\n'
+                      'trigger = ["other/std"]\n',
+              {"src/lib.rs": '#![no_std]\n#[cfg(feature = "std")]\n#[cfg(feature = "alloc")]\nfn f() {}\n'})
+        expect("no_std-crate-forwards-dep-std", r, "a/manifest", want_fail=True)
+
+        # a/manifest — the SAME forward from a hosted crate is allowed: it has no
+        # embedded image to protect, the carve-out clause (b) already makes.
+        r = os.path.join(tmp, "a1d")
+        base(r)
+        crate(r, "x", '[package]\nname = "x"\n[features]\nstd = ["alloc"]\nalloc = []\n'
+                      'trigger = ["other/std"]\n',
+              {"src/lib.rs": '#[cfg(feature = "std")]\n#[cfg(feature = "alloc")]\nfn f() {}\n'})
+        expect("hosted-crate-forwards-dep-std", r, "a/manifest", want_fail=False)
+
         # a/manifest — a capability feature enabling the heap.
         r = os.path.join(tmp, "a1b")
         base(r)
@@ -654,7 +699,7 @@ def self_test():
         for f in failures:
             sys.stderr.write(f"self-test: {f}\n")
         return 2
-    print("check-feature-contract self-test: OK (19 cases, every clause fires and holds)")
+    print("check-feature-contract self-test: OK (21 cases, every clause fires and holds)")
     return 0
 
 

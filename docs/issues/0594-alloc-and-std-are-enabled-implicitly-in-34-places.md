@@ -7,6 +7,29 @@ area: build
 related: [issue-0598, issue-0582, issue-0464, rfc-0033, rfc-0034, phase-360]
 ---
 
+> **STAYS OPEN, retargeted at phase-359 W10 — and it is the one of the three
+> whose rule outlives the campaign.** 34 sites are down to **1**, measured
+> 2026-08-16, and the survivor is a `std` forward that W10 deletes:
+> `nros-tests`' `trigger-test = [… "nros-node/std"]`.
+>
+> **That site was invisible until today.** `check-feature-contract` clause (a)
+> rejected `["std"]` in a feature body but not `["dep/std"]`, so the residual
+> count read as 1-and-benign when nothing had ruled on it. The clause now checks
+> both spellings — a forward reaches the same image by another route — with one
+> carve-out: a crate that has no `no_std` mode may forward `std` to a dependency,
+> because the rule exists to stop an EMBEDDED image acquiring a heap unasked and
+> a hosted crate has no such image. That is the same exemption clause (b) already
+> makes for `default`, and it is why `nros-tests` passes rather than being
+> silently uncounted. Both directions are in the gate's self-test.
+>
+> **Why this issue does not close with the other two.** #0591 and #0598 are
+> about `std`, and phase-359 W10 makes them unstateable. This one is about
+> **`alloc`**, which survives the campaign as the remaining axis: after `std` is
+> gone, "no feature other than `alloc` may enable `alloc`" is still the rule that
+> stops a BACKEND or a PLATFORM choosing a heap for the user. Closing it now
+> would close the only one of the three that still has work behind it.
+
+
 ## The rule this issue exists to enforce
 
 On embedded, `std` and `alloc` are enabled **only when the end user says so**,
