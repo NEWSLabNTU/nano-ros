@@ -51,6 +51,30 @@ fn thumbv7m_target_installed() -> bool {
 
 #[test]
 fn baremetal_board_run_executes_run_plan() {
+    // issue 0584 x phase-351 — LANE first, before any capability probe.
+    //
+    // This binary boots a QEMU baremetal image, and its NAME carries no
+    // platform token, so `scripts/test/lane-filter.sh native` cannot exclude it
+    // (issue 0357's shape) — while the native lane, correctly, does not build
+    // that fixture. The old order then reported "fixture not prebuilt", a
+    // CAPABILITY skip, which since 0584 is a hard failure because an in-lane
+    // fixture must exist. It was never in lane. Saying so with the lane class
+    // is the difference between "tier 1 is broken" and "tier 1 does not run
+    // this cell", which is exactly the distinction 0584 asked for.
+    if !nros_tests::lane_scope::admits(nros_tests::matrix::PlatformId::QemuBaremetal) {
+        // `skip_class!`, not `skip!` with a hand-written marker: the plain macro
+        // prepends its own `[SKIPPED]`, so a class spelled into the message
+        // lands SECOND and the classifier reads the first one — which is how
+        // this still counted as `capability` on the first attempt.
+        nros_tests::skip_class!(
+            lane,
+            "{}",
+            nros_tests::lane_scope::skip_note(
+                nros_tests::matrix::PlatformId::QemuBaremetal,
+                "run-plan"
+            )
+        );
+    }
     if !thumbv7m_target_installed() {
         nros_tests::skip!("thumbv7m-none-eabi target not installed");
     }
