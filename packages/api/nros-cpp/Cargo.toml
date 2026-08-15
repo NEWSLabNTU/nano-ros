@@ -266,6 +266,20 @@ nros-build-helpers = { workspace = true }
 # `ffi-size-markers` requested at that dep-site (issue 0593), so the probe's
 # `--features=<resolved>` carries it.
 
+[dev-dependencies]
+# issue 0619 — a lib TEST is a final artifact and links no platform port, so the
+# platform ABI's `extern "C"` symbols (`nros_platform_log_write`,
+# `nros_platform_clock_ns`, …) have no definition and the harness fails to link.
+# The crate's LIBRARY is fine; only `cargo test` breaks, which is why it stayed
+# invisible until something ran the workspace test-compile.
+#
+# `posix-c-port` compiles `nros-platform-posix/src/{platform,net,timer}.c` — the
+# same host port every real consumer links, and the pattern `nros-tests` and the
+# test bins already use. DEV-only, so no consumer's link set changes. NOT
+# `c-stub-test`: that is mutually exclusive with `posix-c-port`, and feature
+# unification turns both on in a workspace build.
+nros-platform-cffi = { workspace = true, features = ["posix-c-port"] }
+
 [package.metadata.docs.rs]
 all-features = true
 

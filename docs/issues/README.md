@@ -78,14 +78,6 @@ is authoritative for that tree's next configure. `nros setup --tool corrosion` m
 reasoning, including the better version: the gate already knows the path it rejected and could LIST the stale
 trees instead of handing out a glob. See `0622-*`. (2026-08-16)
 
-**#619** (build/api, open 2026-08-16) — `cargo test -p nros-c` cannot LINK: `nros-log`'s `PlatformSink` calls
-`nros_platform_log_write`/`_flush`, supplied by a platform C port that no test binary links, so `just ci-matrix`
-and `just test-all` die at the compile step before running a test. The crate's library builds fine; only its
-harness fails. Verified NOT fallout from phase-361 — reverting the `nros-rmw/alloc` pin reproduces it
-identically. Same family as #0618 in a different register: a library assumes the FINAL ARTIFACT provides
-something and nothing checks it — lang items there, an `extern "C"` platform symbol here. Note #0420 when
-weighing a no-op fallback: a silently no-op log facade was its own bug. See `0619-*`. (2026-08-16)
-
 **#618** (build/api, open 2026-08-16) — `#[panic_handler]` and `#[global_allocator]` are link-time singletons
 of the FINAL ARTIFACT, but nano-ros picks them in LIBRARY crates keyed on the PLATFORM — so "exactly one per
 image" is not guaranteed by the build, it is maintained by hand at every dep-site. Both halves of #0617 are

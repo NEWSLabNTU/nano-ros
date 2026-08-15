@@ -1743,6 +1743,7 @@ dependencies = [
  "nros-log",
  "nros-node",
  "nros-platform",
+ "nros-platform-cffi",
  "nros-rmw",
  "nros-rmw-metadata",
  "nros-rmw-xrce-cffi",

@@ -36,6 +36,17 @@ extern crate std;
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;
 
+// issue 0619 — a lib TEST is a final artifact, so it must link a platform port
+// like any real consumer; without one, `nros_platform_clock_ns` and friends are
+// declared and never defined. The `posix-c-port` dev-dependency supplies them,
+// but a dev-dep nothing REFERENCES is dropped by rustc before its build script's
+// `-l` reaches the link line — the `-L …/nros-platform-cffi-*/out` was already
+// on the command and the archive still was not. So the reference has to be
+// explicit. Deliberately not a weak/no-op sink: issue 0420 was exactly that, a
+// log facade that silently did nothing on threadx/nuttx.
+#[cfg(test)]
+use nros_platform_cffi as _;
+
 // Opt-in RTOS heap-usage tracking (issue #6). A single shared `HeapStats`
 // counter instruments whichever RTOS global allocator is active (exactly one
 // platform feature is on at a time). `STATS` sees the Rust global allocator's

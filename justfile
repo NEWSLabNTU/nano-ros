@@ -3243,6 +3243,14 @@ check-workspace-features:
     # nros-c lib-test gating lands.
     @echo "  - workspace: test-compile --no-default-features"
     cargo test --no-run --workspace --exclude nros-c --no-default-features --quiet
+    # issue 0619 — the exclude above is what let nros-c's lib test rot unnoticed:
+    # excluded from the ONLY test-compile gate, it was covered by nothing at all.
+    # The exclude is about --no-default-features specifically (no panic handler,
+    # no platform port), so the fix is not to drop it but to give nros-c its own
+    # line with DEFAULT features, where it does link. Issue-0196 rule: a gate
+    # must cover the class it claims to.
+    @echo "  - nros-c: test-compile (default features)"
+    cargo test --no-run -p nros-c --quiet
     @echo "All feature checks passed!"
 
 # Provision the pinned clang-format (SSoT: `.clang-format-version`) as a

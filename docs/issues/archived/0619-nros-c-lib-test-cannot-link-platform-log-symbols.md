@@ -1,7 +1,7 @@
 ---
 id: 619
 title: "lib TESTS cannot link the platform symbol set: `nros-c` on `nros_platform_log_write`, `nros-cpp` on `nros_platform_clock_ns`"
-status: open
+status: resolved
 type: bug
 area: build/api
 related: [issue-0618, issue-0617, issue-0420]
@@ -56,7 +56,46 @@ Blocks `just ci-matrix` (tier 2) and `just test-all` at the compile step, so no
 test result is obtainable from those lanes regardless of the state of anything
 else.
 
-## Directions
+## Resolution (2026-08-16)
+
+The first candidate below, once corrected for the fact that
+`nros-platform-posix` is **not a cargo crate** — it is a directory of C sources
+(`src/{platform,net,timer}.c`) compiled by `nros-platform-cffi`'s
+`posix-c-port` feature. So the dev-dependency to take is
+`nros-platform-cffi = { features = ["posix-c-port"] }`, which is what
+`nros-tests` and the test bins already do; `c-stub-test` is the one that cannot
+work (see below).
+
+Two things were needed, and the second is the non-obvious one:
+
+1. `nros-cpp` gains that dev-dependency.
+2. `nros-cpp/src/lib.rs` gains `#[cfg(test)] use nros_platform_cffi as _;`.
+   Without it the fix looks applied and changes nothing: rustc drops a
+   dev-dependency that no code references, and the build script's
+   `cargo:rustc-link-lib` goes with it. The link line already carried
+   `-L .../nros-platform-cffi-*/out` while the archive itself was still absent —
+   a `-L` with no `-l`, which reads like the dep is wired when it is not.
+
+The no-op-sink direction was not taken, per this issue's own warning about 0420.
+
+### The `nros-c` half no longer reproduces
+
+`cargo test --no-run -p nros-c --profile nros-relwithdebinfo` — the exact repro
+recorded under *Symptom* — now links clean, and still does with the
+dev-dependency removed, so it was fixed in passing by the platform work earlier
+in this campaign rather than by anything here. No dev-dependency was added to
+`nros-c`: one was written, measured to be dead weight, and taken back out.
+
+### The gate that should have caught it
+
+`nros-c` was excluded from `check-workspace-features`, the only test-compile
+gate — so its lib test was covered by nothing at all, which is how it rotted to
+a hard link error unnoticed. The exclude is specifically about
+`--no-default-features` (no panic handler, no platform port), so it stays, and
+`nros-c` gets its own gate line at DEFAULT features where it does link.
+Issue-0196 rule: a gate must cover the class it claims to.
+
+## Directions (as filed, kept for the record)
 
 Not diagnosed further, so these are candidates rather than a plan:
 
