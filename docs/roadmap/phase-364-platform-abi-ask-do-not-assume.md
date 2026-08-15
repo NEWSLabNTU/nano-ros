@@ -1,6 +1,6 @@
 # phase-364 — the platform ABI states its own sizes, tasks and refusals
 
-**Status (2026-08-16). W1-W5 all LANDED — the phase is complete pending a tier-1 sweep. Implements [RFC-0076](../design/0076-platform-abi-ask-do-not-assume.md).**
+**Status (2026-08-16). W1, W2, W3, W5 LANDED; W4 WITHDRAWN — its gate already existed (`check-platform-abi-mirror`, Phase 121.4.b) and catches the rule. Implements [RFC-0076](../design/0076-platform-abi-ask-do-not-assume.md).**
 The ABI cannot say how big its own objects are, what a task should look like, or
 that a platform simply does not do something — so callers guess, and nothing
 checks the guesses. This phase makes each of those things sayable.
@@ -145,33 +145,38 @@ here. Raised to 512 after MEASURING. Under the old regime that number was prose
 about another platform's struct and the failure mode was a corrupted neighbour;
 under the new one it was a compile error in the port that owns the type.
 
-### W4 (M4) — generate the export list, so the two provider kinds cannot drift
+### W4 (M4) — the drift gate — **ALREADY EXISTED; W4 is WITHDRAWN**
 
-A platform provides the ABI as a hand-written `platform.c` or as Rust trait
-impls with symbols emitted by `nros_platform_export!`. Nothing keeps them in
-step: phase-359 W10 added the task probes to the header and all five C ports and
-NOT to the macro, so the three Rust ports do not export them **on `main`
-today**.
+The work item was written on a false premise, and the correction is the useful
+part.
 
-Generate the macro's symbol list from the header (which RFC-0054 already makes
-the SSoT for the consumer side) and gate that the exported set equals the
-declared set.
+**`scripts/check-platform-abi-mirror.sh` has gated exactly this rule since Phase
+121.4.b**, is wired into `just check`, and checks a SUPERSET of what W4 proposed:
+every `nros_platform_*` declaration in the header must appear both in
+`nros-platform-cffi`'s `extern "C"` block AND in one of the
+`nros_platform_export_*!` macros, across all three platform headers.
 
-**Acceptance**: the gate must FAIL on the pre-W4 tree — the W10 probes are its
-fixture — and pass after. A symbol declared and not exported becomes
-unrepresentable, not merely fixed.
+So RFC-0076 D4 — "two provider kinds and nothing keeps them in step" — was
+wrong. Something did. What actually happened is narrower and less flattering:
+phase-359 W10 introduced the drift, `just ci` would have caught it, and that
+session never reached the gate because tier 1 stopped at its preconditions
+first. The drift was then found and fixed by a parallel session running the
+existing gate.
 
-**LANDED.** The drift was NINE symbols, not one: W10's two task probes, W2's six
-lock probes and W3's `task_attr_init`. `scripts/check-platform-abi-exports.py`
-compares the header's declarations against the macro's exports and is wired into
-`check-fast`; verified to fail on the pre-W4 tree listing all nine, and to pass
-after.
+W4's own gate (`check-platform-abi-exports.py`) is therefore **deleted**. A
+second gate for one rule is the duplication this repo warns about, and the
+existing one is strictly better.
 
-Scope note: this implements the GUARANTEE (drift cannot land) rather than
-RFC-0076 C5's full generation of the macro body from the header. The check is
-what a reviewer can trust; generating the bodies is a refactor that can follow
-without changing the contract. Said here rather than left to look like the whole
-of C5.
+**The near-miss worth recording.** Adding the exports a second time put two
+`#[no_mangle]` definitions of the same symbol in ONE macro. `cargo check -p
+nros-platform-cffi` is blind to it — the macro is not invoked in the crate that
+defines it — so it only breaks in the three Rust ports that expand it. Caught by
+building `nros-platform-mps2-an385` with `cffi-export`, which is the check any
+change to that macro needs.
+
+What W4 leaves behind: `nros_platform_task_attr_init` (W3's) is exported once,
+concretely rather than through a trait method, because its answer is pure data
+and identical on every port.
 
 ### W5 (M5) — normalised priority, with a raw escape
 

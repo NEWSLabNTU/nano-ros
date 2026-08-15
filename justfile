@@ -406,7 +406,6 @@ check-fast: \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-std-census check-flavour-lanes check-feature-contract \
-    check-platform-abi-exports \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -2796,14 +2795,6 @@ ci-full: check rust-rtos-link-check test-all test-ignored
 check-flavour-lanes:
     @python3 scripts/check-flavour-lanes.py
 
-# phase-364 W4 — every symbol `<nros/platform.h>` declares must be exported by
-# `nros_platform_export!`, or the three RUST platform ports do not provide it and
-# a caller linking one gets an undefined symbol. phase-359 W10 added the task
-# storage probes to the header and the five C ports and not to the macro; this
-# gate is written against exactly that drift. Buildless (reads two files).
-[group("ci")]
-check-platform-abi-exports:
-    @python3 scripts/check-platform-abi-exports.py
 
 # phase-359 W0 — the `std` census ratchet. Buildless (reads sources), so it
 # belongs in the fast tier next to the other convention gates.

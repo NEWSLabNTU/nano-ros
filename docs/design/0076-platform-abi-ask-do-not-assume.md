@@ -122,7 +122,7 @@ and `-stm32f4` implement neither the task nor the wake family, so a caller that
 references them fails at link with `undefined symbol`, on a platform where the
 honest answer is `UNSUPPORTED`.
 
-### D4 — Two provider kinds, and only one of them is checked
+### D4 — Two provider kinds, and only one of them is checked — **WRONG, corrected 2026-08-16**
 
 A platform provides the ABI in one of two ways:
 
@@ -134,6 +134,16 @@ Adding a symbol means touching both, and nothing enforces it. W10 added the task
 storage probes to the header and to all five C ports **and not to the export
 macro** — so the three Rust ports do not export them, and a caller linking one
 gets undefined symbols. That gap is live in `main` as this is written.
+
+> **This defect does not exist.** `scripts/check-platform-abi-mirror.sh` has
+> gated exactly this since Phase 121.4.b, is wired into `just check`, and checks
+> a superset (the `extern "C"` block as well as the export macro, across all
+> three platform headers). The W10 gap was real, but it was a gate that had not
+> been RUN — that session's tier 1 stopped at its preconditions — not a gate that
+> was missing. Found when phase-364 W4 tried to build a second one; W4 is
+> withdrawn and C5 below is unnecessary. Recorded rather than deleted, because
+> "nothing enforces it" was an assumption this RFC made without checking, and
+> the same assumption is cheap to make again.
 
 ### D5 — Priority is platform-native, and the natives disagree
 
@@ -254,7 +264,7 @@ normalised band should not make it impossible. The tier vocabulary in
 `system.toml` targets the normalised band; a per-platform override stays
 per-platform, which is what `[tiers.<name>.nuttx] priority` already does.
 
-### C5 — Generate the export macro's symbol list from the header
+### C5 — Generate the export macro's symbol list from the header — **UNNECESSARY (see D4)**
 
 The header is already the ABI SSoT for the Rust *consumer* side (RFC-0054:
 `generated.rs` is committed bindgen output, gated by `check-abi-bindings`). The

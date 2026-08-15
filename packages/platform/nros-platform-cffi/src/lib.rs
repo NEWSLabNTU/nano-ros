@@ -871,48 +871,21 @@ macro_rules! nros_platform_export_threading {
         pub extern "C" fn nros_platform_wake_signal_from_isr(w: *mut ::core::ffi::c_void) -> i8 {
             <$ty as ::nros_platform_api::PlatformThreading>::wake_signal_from_isr(w)
         }
-        // phase-364 W4 — the probes and the attribute initialiser, emitted for
-        // RUST ports too. A symbol declared in the header used to reach only the
-        // hand-written C ports; `check-platform-abi-exports` now fails on that
-        // difference, and these nine are the drift it was written against.
         #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_task_storage_size() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::task_storage_size()
+        pub extern "C" fn nros_platform_wake_storage_size() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_storage_size()
         }
         #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_task_storage_align() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::task_storage_align()
+        pub extern "C" fn nros_platform_wake_storage_align() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_storage_align()
         }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_mutex_storage_size() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::mutex_storage_size()
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_mutex_storage_align() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::mutex_storage_align()
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_mutex_rec_storage_size() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::mutex_rec_storage_size()
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_mutex_rec_storage_align() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::mutex_rec_storage_align()
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_condvar_storage_size() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::condvar_storage_size()
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_condvar_storage_align() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::condvar_storage_align()
-        }
-        /// The attribute defaults are pure data, so this is emitted concretely
-        /// rather than dispatched: every port's answer is the same, and a trait
-        /// method would only invite a port to get it wrong.
+        /// phase-364 W3 — the attribute defaults are pure data, so this is
+        /// emitted concretely rather than dispatched through the trait: every
+        /// port's answer is identical, and a trait method would only invite a
+        /// port to get it wrong.
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_task_attr_init(
-            attr: *mut ::nros_platform_cffi::generated::nros_platform_task_attr_t,
+            attr: *mut $crate::generated::nros_platform_task_attr_t,
         ) {
             if attr.is_null() {
                 return;
@@ -927,14 +900,6 @@ macro_rules! nros_platform_export_threading {
                 (*attr).core = -1;
                 (*attr).flags = 0;
             }
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_wake_storage_size() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::wake_storage_size()
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_wake_storage_align() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::wake_storage_align()
         }
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_task_storage_size() -> usize {
