@@ -123,13 +123,17 @@ where zephyr/freertos/threadx select both — invisible while NuttX linked `std`
 is a DUPLICATED crate, not an under-provided one — issue 0493's class, fixed as #0616; phase-361 only made
 it louder by giving `nros-platform` a lang item. See `archived/0617-*`.
 
-**#614** (api-c, api-cpp, open 2026-08-16) — `cargo check -p nros-c` (and `-p nros-cpp`) with NO features
-fails on the host: "`#[panic_handler]` function required" + "unwinding panics are not supported without std".
-`--features std` passes, and `just check-c` / `check-cpp` pass because they name features — so nothing in CI is
-red. Cause is deliberate (phase-361 W3's `default = []`, whose consequence the manifest already documents next
-to `panic-spin`); what is missing is any hint that the remedy is `--features std`. Discoverability, not
-correctness — filed at that weight. I first reported it as a rebase regression, which was wrong.
-See `0614-*`. (2026-08-16)
+Recently resolved (2026-08-16, `7f4da362c`): **#0614** — `cargo check -p nros-c` (and `-p nros-cpp`) failed
+with two errors naming neither the crate's feature contract nor the fix, after phase-361 W3 correctly stopped
+these crates defaulting to `std`. Both build `staticlib`/`cdylib` — FINAL artifacts — so a bare check failed on
+a dependency rather than on anything the caller wrote. Fixed three ways at three levels: `default =
+["panic-spin"]` (a complete configuration without a `std` default — consumers take these `default-features =
+false` anyway); `[profile.dev] panic = "abort"` for the STRATEGY error, which cargo accepts only per profile so
+no feature could have fixed it, and which matches what every shipped image already does; and
+`nros_cpp_time_ns`'s no_std arm reaching `nros_platform_clock_ns` instead of `ConcretePlatform` — a
+compile-time requirement for a LINK-time fact. All four invocations in the issue's table re-verified green.
+Worth noting the issue filed itself as discoverability with three doc/`compile_error!` options, and cause (2)
+was reachable by none of them. See `archived/0614-*`. (2026-08-16)
 
 Recently resolved (2026-08-16): **#615** clause (d) reasoned only about DEP-SITES, so it called
 `nros-cpp`'s `default = ['panic-spin']` unreachable and asked for it to be emptied — which BREAKS the

@@ -2,11 +2,46 @@
 id: 614
 title: "`cargo check -p nros-c` with no features fails on the host, and the error
   names none of the cause"
-status: open
+status: resolved
 type: tech-debt
 area: api-c, api-cpp
 related: [phase-361, issue-0582, issue-0594]
+resolved_in: "7f4da362c"
 ---
+
+> **RESOLVED by `7f4da362c`** — "three ways it broke", and it fixed each at the
+> level it belonged to rather than papering the symptom:
+>
+> 1. **No panic handler.** `default = ["panic-spin"]` on both crates. That
+>    restores a complete configuration WITHOUT reintroducing a `std` default:
+>    every real consumer takes these crates `default-features = false` and picks
+>    its own provider, so nothing downstream changes.
+> 2. **`unwinding panics are not supported without std`.** That is the panic
+>    STRATEGY, which cargo accepts only per PROFILE — no feature could have
+>    fixed it. `[profile.dev] panic = "abort"`, which is also the honest setting:
+>    every embedded profile already aborts and every shipped image does, so
+>    `dev` was the outlier. Cargo forces `unwind` for `test`/`bench` regardless,
+>    so `#[should_panic]` and the harness's `catch_unwind` skip-classification
+>    are untouched.
+> 3. **`cannot find type ConcretePlatform`** in `nros_cpp_time_ns`'s no_std arm —
+>    a compile-time requirement for what is really a LINK-time fact. Now reached
+>    as `nros_platform_clock_ns`, the same contract the wake primitives use.
+>
+> The whole table above re-run 2026-08-16, all four green:
+>
+> | invocation | result |
+> | --- | --- |
+> | `cargo check -p nros-c` | passes |
+> | `cargo check -p nros-c --features std` | passes |
+> | `cargo check -p nros-cpp` | passes |
+> | `cargo check -p nros-cpp --features std` | passes |
+>
+> Note (2) is the part this issue's own "Options" section would have missed: all
+> three options here were documentation or a `compile_error!`, and the strategy
+> error could not be reached by either — a feature cannot set `panic = "abort"`.
+> Filing something as discoverability is a judgement about the cause, and this
+> one had a real defect underneath it.
+
 
 ## Symptom
 
