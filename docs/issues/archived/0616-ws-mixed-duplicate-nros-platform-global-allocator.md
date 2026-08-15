@@ -2,10 +2,10 @@
 id: 616
 title: "`ws-mixed-entry-zenoh` fails to build: two `nros_platform` units, so the
   one `#[global_allocator]` in the tree collides with itself"
-status: open
+status: resolved
 type: bug
 area: build, platform
-related: [issue-0594, issue-0614, phase-361]
+related: [issue-0594, issue-0500, issue-0614, phase-361]
 ---
 
 ## Symptom
@@ -111,3 +111,84 @@ graph and false of a link, and this is the case that shows the difference.
   disagreement impossible or loud, since 0594's stated guarantee ("cargo unifies
   one crate's one feature into one unit") is what this violated;
 * something covers the mixed entry, which is the only fixture that caught this.
+
+
+## 2026-08-16 — root cause: two cargo workspace roots sharing one `--target-dir`
+
+Fixed. The cause is neither of the two candidates guessed above, and the
+dependency graph was never wrong — `cargo tree` reporting one `nros-platform`
+was correct, because it can only report on ONE workspace at a time and this
+build uses two.
+
+`ws-mixed-entry-zenoh` runs four cargo invocations into one `--target-dir`
+(`<build>/nros-rust`), and they do not all belong to the same workspace:
+
+| invocation | `--manifest-path` | workspace |
+| --- | --- | --- |
+| `-p nros-c` | `nano-ros/Cargo.toml` | nros root |
+| `-p nros-cpp` | `nano-ros/Cargo.toml` | nros root |
+| `-p nros-rmw-zenoh-staticlib` | `nano-ros/Cargo.toml` | nros root |
+| `-p nros_ws_runtime` | `<build>/nros_ws_runtime/Cargo.toml` | **generated** |
+
+Cargo's `-C metadata` for a crate includes the path spelling it was reached
+by. Inside the nros workspace `nros-platform` is a MEMBER; from the generated
+`nros_ws_runtime` workspace it is an external path dependency. Same package,
+same features, two spellings — so two units, in one `deps/`.
+
+Both carry the allocator, because `nros-platform` holds the tree's one
+`#[global_allocator]` (issue 0594):
+
+| unit | features | `__rust_alloc` defined | recorded path |
+| --- | --- | --- | --- |
+| `1d11b987` | `["global-allocator", "platform-zephyr"]` | yes | `/home/aeon/repos/nano-ros/…/lib.rs` |
+| `6dafa462` | `["global-allocator", "platform-zephyr"]` | yes | `packages/platform/…/lib.rs` |
+| `5d895365` | `[]` | no | — |
+
+The two allocator units' fingerprints differ in exactly ONE field: `path`.
+Features, deps, profile, rustc, target and rustflags are byte-identical.
+
+A compile fails when it resolves a transitive `nros_platform` by searching
+`-L dependency=` (transitive deps get no `--extern`) and binds the second copy.
+That is why it was intermittent — the two units always existed, and only which
+one got bound varied.
+
+### Reproduction, from an empty target-dir
+
+```
+root-workspace build (-p nros-cpp)        -> 1 libnros_platform-*.rlib
+generated-workspace build (-p ws_runtime) -> 2 libnros_platform-*.rlib
+```
+
+Deterministic. Both spellings appear in the `.d` files, and every unit carries
+an mtime from that one build — not a leftover, which is what an earlier pass of
+this investigation wrongly concluded from the 6-vs-3 rlib count. (Six was two
+build generations of a genuine three; the three were never the anomaly.)
+
+### Fix
+
+`zephyr/cmake/nros_cargo_build.cmake` now derives `CARGO_TARGET_DIR` from the
+cargo WORKSPACE ROOT rather than sharing one. The nros workspace keeps
+`<build>/nros-rust` so every existing consumer path is unmoved; a foreign root
+gets `<build>/nros-rust-ws-<name>`.
+
+The root is resolved with `cargo locate-project --workspace`, not by comparing
+paths: `packages/cli/Cargo.toml` is a separate workspace INSIDE the repo, so a
+path-prefix test would have put it straight back into the shared directory.
+
+Nothing was lost by splitting. Units are keyed by that same path spelling, so
+two workspace roots can never reuse each other's artifacts — the shared
+directory produced collisions and no sharing.
+
+Backed by an assertion rather than a naming convention: a second workspace root
+claiming an already-claimed target-dir is now a configure-time `FATAL_ERROR`
+naming both claimants.
+
+### Same class as issue 0500
+
+CLAUDE.md already records this shape one lane over: *"Corrosion < 0.6.0 shares
+one `cargo/build` across workspace roots ⇒ duplicate `#[no_mangle]` ⇒ `mixed`
+cannot link."* Identical mechanism — one cargo artifact directory serving two
+workspace roots, surfacing as a duplicate symbol — in the Corrosion lane rather
+than the Zephyr one. `mixed` is the entry that caught it both times, because it
+is the only one that pulls both a C and a C++ runtime into a generated
+workspace alongside the root one.

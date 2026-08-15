@@ -256,6 +256,48 @@ function(nros_set_cargo_env_from_kconfig)
 endfunction()
 
 # =============================================================================
+# _nros_cargo_workspace_root(<manifest> <out-var>)
+#
+# Resolve the WORKSPACE root manifest that cargo would use for <manifest>, as a
+# realpath. This is the identity a `--target-dir` may serve (issue 0616): units
+# are keyed by the path spelling their workspace root implies, so two roots
+# sharing one directory get two copies of every shared crate.
+#
+# `cargo locate-project --workspace` is the authority — a manifest's workspace
+# root is not derivable from the path (`packages/cli/Cargo.toml` is its own
+# root while living inside the repo; a member manifest resolves UP to a root it
+# does not name).
+#
+# Falls back to the manifest itself if cargo cannot answer, which degrades to
+# "treat it as its own root" — a private target-dir. That is the safe
+# direction: a needless directory costs rebuild time, a shared one costs a
+# duplicate lang item.
+# =============================================================================
+function(_nros_cargo_workspace_root manifest out_var)
+    get_filename_component(_manifest_real "${manifest}" REALPATH)
+
+    execute_process(
+        COMMAND cargo locate-project --workspace --message-format plain
+                --manifest-path "${_manifest_real}"
+        OUTPUT_VARIABLE _root
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _rc
+        ERROR_VARIABLE _err)
+
+    if(NOT _rc EQUAL 0 OR _root STREQUAL "")
+        message(STATUS
+            "nano-ros: cargo locate-project could not resolve a workspace root for "
+            "${_manifest_real} (${_err}); treating it as its own root, which gives it "
+            "a private cargo target-dir (issue 0616).")
+        set(${out_var} "${_manifest_real}" PARENT_SCOPE)
+        return()
+    endif()
+
+    get_filename_component(_root "${_root}" REALPATH)
+    set(${out_var} "${_root}" PARENT_SCOPE)
+endfunction()
+
+# =============================================================================
 # nros_cargo_build(PACKAGE <pkg> FEATURES <features>)
 #
 # Builds a Rust crate from the nros workspace using Cargo and creates an
@@ -279,7 +321,6 @@ function(nros_cargo_build)
     nros_detect_rust_target()
 
     set(NROS_REPO_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../..)
-    set(CARGO_TARGET_DIR ${CMAKE_BINARY_DIR}/nros-rust)
 
     # phase-263 C2c-zephyr — a workspace with a Rust node bundles nros-cpp + every node into
     # the synthesised `nros_ws_runtime` umbrella crate (single-runtime invariant). That crate
@@ -290,6 +331,67 @@ function(nros_cargo_build)
     else()
         set(_cargo_manifest "${NROS_REPO_DIR}/Cargo.toml")
     endif()
+
+    # Issue 0616 — a `--target-dir` serves exactly ONE workspace root.
+    #
+    # The comment above says "everything else is shared", and the target-dir
+    # used to be part of that. It cannot be. Cargo's `-C metadata` for a crate
+    # includes the PATH SPELLING it was reached by, and one crate has two
+    # spellings across two workspaces: inside the nros workspace `nros-platform`
+    # is a member (recorded relative to that root), from the generated
+    # `nros_ws_runtime` workspace it is an external path dep (recorded
+    # absolute). Same package, same features, two `-C metadata` identities, two
+    # rlibs in one `deps/` — and `nros-platform` carries the tree's ONE
+    # `#[global_allocator]` (issue 0594), so BOTH copies define it. Whichever
+    # compile then resolves a transitive `nros_platform` by searching
+    # `-L dependency=` instead of an explicit `--extern` can bind the second
+    # one and fail with the crate conflicting with itself:
+    #
+    #     error: the `#[global_allocator]` in nros_platform conflicts with
+    #            global allocator in: nros_platform
+    #
+    # Sharing bought nothing to weigh against this: units are keyed by that
+    # same spelling, so two workspaces can never REUSE each other's artifacts.
+    # The shared directory produced only the collision. Measured on
+    # ws-mixed-entry-zenoh from an empty dir: root-workspace build → 1
+    # `libnros_platform-*.rlib`, then the generated-workspace build → 2.
+    #
+    # Keying on "is the manifest the repo root" would be wrong: `packages/cli`
+    # is a separate workspace INSIDE the repo, and a path-prefix test would put
+    # it back in the shared dir. Ask cargo which root it actually resolves.
+    _nros_cargo_workspace_root("${_cargo_manifest}" _cargo_ws_root)
+    get_filename_component(_nros_ws_root "${NROS_REPO_DIR}/Cargo.toml" REALPATH)
+    if(_cargo_ws_root STREQUAL _nros_ws_root)
+        # The nros workspace keeps the historical location, so every consumer
+        # of `<build>/nros-rust/...` (generated headers, LIB_PATH) is unmoved.
+        set(CARGO_TARGET_DIR ${CMAKE_BINARY_DIR}/nros-rust)
+    else()
+        get_filename_component(_foreign_dir "${_cargo_ws_root}" DIRECTORY)
+        get_filename_component(_foreign_name "${_foreign_dir}" NAME)
+        string(MAKE_C_IDENTIFIER "${_foreign_name}" _foreign_name)
+        set(CARGO_TARGET_DIR ${CMAKE_BINARY_DIR}/nros-rust-ws-${_foreign_name})
+    endif()
+
+    # The invariant, enforced rather than described (issue 0616). A naming
+    # scheme keeps roots apart only until someone adds a caller; this catches
+    # it at configure, where the message can name both claimants. Two foreign
+    # roots whose directories share a basename would otherwise collide here
+    # silently, and the failure they'd produce is a duplicate lang item six
+    # build steps later.
+    string(MAKE_C_IDENTIFIER "${CARGO_TARGET_DIR}" _td_key)
+    get_property(_td_owner GLOBAL PROPERTY "_NROS_TARGET_DIR_OWNER_${_td_key}")
+    if(_td_owner AND NOT _td_owner STREQUAL _cargo_ws_root)
+        message(FATAL_ERROR
+            "nros_cargo_build: two cargo workspace roots would share one --target-dir.\n"
+            "  target-dir: ${CARGO_TARGET_DIR}\n"
+            "  claimed by: ${_td_owner}\n"
+            "  now also:   ${_cargo_ws_root}\n"
+            "A target-dir serves exactly ONE workspace root: cargo keys a unit by the "
+            "path spelling its root implies, so the same crate gets two `-C metadata` "
+            "identities and `nros-platform`'s single `#[global_allocator]` is then "
+            "defined twice. Give the new root its own directory (issue 0616).")
+    endif()
+    set_property(GLOBAL PROPERTY "_NROS_TARGET_DIR_OWNER_${_td_key}" "${_cargo_ws_root}")
 
     # Determine library filename from package name
     string(REPLACE "-" "_" LIB_STEM ${ARG_PACKAGE})
@@ -466,10 +568,13 @@ function(nros_cargo_build)
         COMMENT "Building ${ARG_PACKAGE} via Cargo"
         VERBATIM
     )
-    # All nros_cargo_build() calls in one Zephyr build share
-    # ${CARGO_TARGET_DIR}. Serialize Cargo frontends to avoid artifact-dir
-    # lock stalls; Cargo/rustc still get parallel compiler tokens from the
-    # inherited jobserver.
+    # nros_cargo_build() calls that share a workspace root share a
+    # ${CARGO_TARGET_DIR} (issue 0616 split the foreign roots off into their
+    # own). Serialize Cargo frontends to avoid artifact-dir lock stalls;
+    # Cargo/rustc still get parallel compiler tokens from the inherited
+    # jobserver. Kept unconditional across roots: the ordering is also what
+    # makes the generated runtime crate build after the nros-c/nros-cpp
+    # headers it includes, and one frontend at a time is cheap.
     if(NOT ARG_PACKAGE STREQUAL "nros-c" AND TARGET nros_c_cargo_build)
         add_dependencies(${_target_name}_build nros_c_cargo_build)
     endif()

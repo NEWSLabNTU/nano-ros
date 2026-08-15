@@ -327,6 +327,19 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `cargo/build` across workspace roots ⇒ duplicate `#[no_mangle]` ⇒ `mixed` cannot link.
   **Read the configure's `nano-ros: Corrosion <ver> via <origin>` line — never infer the
   version from having run the installer.** Gate: `check-cmake-corrosion-prefix`.
+- **A cargo `--target-dir` serves exactly ONE workspace root (issue 0616)** — `-C metadata`
+  includes the path SPELLING a crate was reached by (a member is recorded relative to its
+  root, an external path dep absolutely), so two roots sharing a directory get two units of
+  every shared crate, identical in features/deps/profile and differing only in the `path`
+  fingerprint field. `nros-platform` holds the tree's one `#[global_allocator]` (0594), so
+  both copies define it, and a TRANSITIVE lookup (no `--extern`, only `-L dependency=`) may
+  bind either — the failure is intermittent while the cause is permanent. `cargo tree` cannot
+  see this: it reports ONE workspace. Sharing never bought anything — units keyed by that
+  spelling can't be reused across roots. Derive the dir from `cargo locate-project
+  --workspace`, never a path-prefix test (`packages/cli` is a separate workspace INSIDE the
+  repo); a second root claiming a claimed dir is a configure FATAL_ERROR. Same class as 0500
+  one lane over (Corrosion sharing `cargo/build` ⇒ duplicate `#[no_mangle]`); `mixed` is the
+  entry that catches it both times.
 - **A Kconfig knob reaches the Zephyr C lane and NOT the RUST one** — `nros_cargo_build.cmake`
   publishes knobs with `set(ENV{…})`, which only touches the configure-time process; the C lane
   re-bakes them into its command (`cmake -E env`), zephyr-lang-rust's `rust_cargo_application`

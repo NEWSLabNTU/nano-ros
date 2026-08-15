@@ -99,22 +99,31 @@ three zephyr compile-check fixtures. NOTE an earlier tier-2 run reported `== zep
 no west installed — a family reporting OK is not proof its toolchain exists. See `archived/0610-*`.
 (2026-08-15)
 
-**#616** (build, platform, open 2026-08-16) — `ws-mixed-entry-zenoh` fails: "the `#[global_allocator]` in
-nros_platform conflicts with global allocator in: nros_platform" — one crate named on BOTH sides. The only
-fixture of 70 that fails this way. #0594 removed a second allocator declaration so a duplicate lang item would
-be "impossible rather than merely discouraged", reasoning that "cargo unifies one crate's one feature into one
-unit" — and `cargo tree -i nros-platform -e features` on the generated manifest confirms EXACTLY ONE unit
-(`global-allocator`, no `std`). So cargo resolves one and rustc rejects two: one of them is not in the graph
-cargo prints. Leads: the `nros-rmw-zenoh-staticlib` built beside it carries its own copy, or host-vs-target
-`-C metadata` identities collide (the target here IS the host triple). NOT the #0589 work — verified by
-rebuilding with that change stashed. See `0616-*`. (2026-08-16)
+**#616** (build, platform, RESOLVED 2026-08-16) — `ws-mixed-entry-zenoh` failed with "the
+`#[global_allocator]` in nros_platform conflicts with global allocator in: nros_platform" — one crate named
+on BOTH sides, the only fixture of 70 to fail this way. Cause: **two cargo WORKSPACE ROOTS sharing one
+`--target-dir`.** The entry runs four cargo invocations into `<build>/nros-rust`; three use the nros root
+manifest, the fourth uses the generated `nros_ws_runtime/Cargo.toml`. `-C metadata` includes the path
+SPELLING a crate was reached by — a workspace member is recorded relative to its root, an external path dep
+absolutely — so `nros-platform` got two identities with byte-identical features/deps/profile/rustc/target,
+differing in exactly one fingerprint field (`path`). Both define the tree's single `#[global_allocator]`
+(#0594), and a transitive lookup (transitive deps get no `--extern`, only `-L dependency=`) can bind the
+second — hence the intermittency. `cargo tree` was right and useless: it reports one workspace, and this
+build has two. Fix: `CARGO_TARGET_DIR` derives from the cargo workspace root (`cargo locate-project
+--workspace` — a path-prefix test would misfile `packages/cli`, a separate workspace INSIDE the repo); the
+nros root keeps `nros-rust`, a foreign root gets `nros-rust-ws-<name>`; a second root claiming a claimed
+directory is a configure-time FATAL_ERROR. Nothing was lost — units are keyed by that spelling, so two roots
+could never reuse each other's artifacts anyway. SAME CLASS as #0500 (Corrosion <0.6.0 sharing one
+`cargo/build` across roots ⇒ duplicate `#[no_mangle]`); `mixed` caught both. Verified: each target-dir now
+holds exactly one allocator-defining unit, build green. See `archived/0616-*`. (2026-08-16)
 
 **#617** (build/api, open 2026-08-16) — THREE embedded link failures from one cause: phase-361's
 opt-in-features direction removed providers a `no_std` FINAL artifact needs, and none of the failures name
 the manifest that changed. (1) `E0004: TransportError::BackendDynamic(_) not covered` on thumbv7m — the
 variant is gated on `nros-rmw/alloc`, the arm was gated on `nros-cpp/alloc`, and that implication runs one
 way (FIXED, `e5bc6363e`); (2) `#[global_allocator] in nros_platform conflicts with global allocator in:
-nros_platform` in the mixed zephyr entry; (3) `#[panic_handler] function required` compiling `nros-c` for
+nros_platform` in the mixed zephyr entry (FIXED — it was two cargo workspace roots sharing one
+`--target-dir`, see #0616); (3) `#[panic_handler] function required` compiling `nros-c` for
 armv7a-nuttx-eabihf. (2) and (3) each take out a fixture family, so `lane=all` cannot finish and tier 2/3
 cannot reach a verdict. A HOST build detects none of them — it gets its panic handler and allocator from
 `std`. Rule the campaign needs: when a crate stops defaulting a provider, audit every dep-site that builds a
