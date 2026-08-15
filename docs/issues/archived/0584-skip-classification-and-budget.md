@@ -1,10 +1,11 @@
 ---
 id: 584
 title: "Skips are tolerated rather than asserted: a lane cannot tell an expected skip from a test that silently did not run"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: testing
+resolved_in: phase-340
 related: [issue-0527, issue-0445, issue-0196, issue-0350, phase-340]
 ---
 
@@ -62,7 +63,7 @@ peer that failed to come up).
 Worth measuring first: of the ~500 `skip!` sites, how many test a condition
 knowable before the binary starts?
 
-### 2. BUDGET the skips — the one that actually closes the hole
+### 2. BUDGET the skips — LANDED 2026-08-15
 
 Classes make skips countable. They do not make them checkable. `170 skipped` is
 indistinguishable from `170 tests silently did not run`, and no human eyeballs
@@ -90,3 +91,45 @@ Three places still convert a resolver `Err` whose message contains
 `"not prebuilt"` into a `[SKIPPED]` (`xrce_large_msg_test_binary` and two
 siblings). They are now unreachable in gated runs — the resolver panics first —
 but they encode the old rule and will be copied.
+
+## Budget landed 2026-08-15
+
+`scripts/test/check-skip-budget.py`, run at all three `test*` tails — on the
+failure path beside the real-failure names, and on the SUCCESS path, which is
+where an unnoticed skip actually lives: *"All failures were [SKIPPED]
+preconditions — treating as pass"* is also the sentence a lane that ran nothing
+prints.
+
+Two assertions, both DERIVED from what the run already knows, so there is no
+declaration file to drift out of date:
+
+1. **No `lane` skip for a coordinate the lane selected.** A lane skip carries
+   its coordinate (`out of lane: … is at coordinate p,l,r`) and
+   `$NROS_TEST_COORDS` carries the selection. A test skipping as out-of-lane for
+   a coordinate that IS in the lane means the resolver and the selector
+   disagree — the run did less than it reported, and neither number is wrong on
+   its own, which is why it is invisible without the comparison.
+2. **No skip whose reason is a missing fixture.** Since part 2 that is a hard
+   failure. Three `Err`-to-`[SKIPPED]` laundering sites remain in
+   `fixtures/binaries` (matching `"not prebuilt"`); they are unreachable in a
+   gated run but encode the old rule and will be copied. This names them if one
+   fires — which also retires item 3 of this issue as *watched* rather than
+   removed.
+
+**Deliberately not asserted: an expected COUNT per class.** Counts drift with
+the host's toolchains and with every test added, so they get edited to match
+reality on every red — the `#0196` failure mode, a gate whose coverage quietly
+narrows to whatever passes. Both rules above are properties.
+
+Verified in four directions on synthetic junit: both defects present (named, rc=1),
+clean run (rc=0), and no coordinate file — where assertion 1 reports
+*"NOT checked"* rather than silently passing, while assertion 2 still fires
+(rc=1). That third case matters: a budget that quietly checks nothing when its
+input is missing is worse than no budget.
+
+## What remains: direction 1 only
+
+Preferring DESELECTION over an in-test skip is still open and is now the whole
+of this issue's residue. Worth measuring first — of the ~500 `skip!` sites, how
+many test a condition knowable before the binary starts? Each one converted is a
+test that needs no panic, no junit rewrite, and no budget entry.

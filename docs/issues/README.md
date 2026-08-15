@@ -602,16 +602,15 @@ attributed them to genuine input change vs mtime artifact vs tool-fingerprint ov
 want different fixes. Measure and attribute first; do NOT re-run the wall-clock A/B #509 warned about.
 See `0604-*`.
 
-**#584** (testing, open 2026-08-15) — skips are TOLERATED, not asserted: `170 skipped` is
-indistinguishable from `170 tests silently did not run`, which is how a lane greens over a coverage hole
-(cf. 0445, 0350). Two halves LANDED already: `skip_class!` gives the marker a machine-readable class
-(`[SKIPPED:lane]`; plain `skip!` reads as `capability`) which the rewrite lifts onto
-`<skipped type="nros:…">` and summarises — before it, a 170-skip sweep could be classified for 4; and an
-absent in-lane fixture is no longer a skip at all — the shared resolver PANICS without the marker when a
-gate context is present, since `_require-fixtures` already promised freshness (ungated runs keep the
-recoverable `Err`; both arms asserted). REMAINS: prefer deselection over in-test skip (the runner's own
-channel needs no laundering), and BUDGET the skips against the set the lane declares so a surprise skip
-fails. See `0584-*`.
+RESOLVED 2026-08-15 — **#584** skips were TOLERATED rather than asserted, so `170 skipped` was
+indistinguishable from `170 tests silently did not run`. Three parts landed: `skip_class!` gives the marker
+a machine-readable class (a 170-skip sweep could previously be classified for 4); an absent in-lane fixture
+is no longer a skip at all but a hard failure at the shared resolver; and `check-skip-budget.py` now ASSERTS
+the skips at all three `test*` tails — including the success path, since "all failures were skips" is also
+what a lane that ran nothing prints. Its two rules are derived, not declared: no `lane` skip for a
+coordinate the lane selected, and no skip whose reason is a missing fixture. An expected COUNT per class was
+deliberately rejected — counts get edited to match reality on every red. Residue: prefer deselection over
+in-test skip. See `archived/0584-*`.
 
 RESOLVED 2026-08-15 — **#527** the doctest phase (and every suite a human re-ran while triaging) overwrote
 the rewritten `junit.xml`, so a failed sweep could say HOW MANY real failures it had but not WHICH. Fixed

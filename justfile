@@ -1577,8 +1577,13 @@ test-unit verbose="":
     if [ "$real" -ne 0 ]; then
         echo "ERROR: $real real (non-[SKIPPED]) test failure(s):"
         just _name-real-failures || true
+        just _check-skip-budget || true
         exit 1
     fi
+    # Issue 0584 — the success path is exactly where an unnoticed skip lives:
+    # "all failures were skips" is the sentence a lane that ran nothing also
+    # prints. Assert the skips before believing it.
+    just _check-skip-budget
     echo "All failures were [SKIPPED] preconditions — treating as pass."
 
 # nros-tests integration tests, skipping heavy cross-compile / QEMU groups.
@@ -1629,8 +1634,13 @@ test-integration verbose="": build-zenohd
     if [ "$real" -ne 0 ]; then
         echo "ERROR: $real real (non-[SKIPPED]) test failure(s):"
         just _name-real-failures || true
+        just _check-skip-budget || true
         exit 1
     fi
+    # Issue 0584 — the success path is exactly where an unnoticed skip lives:
+    # "all failures were skips" is the sentence a lane that ran nothing also
+    # prints. Assert the skips before believing it.
+    just _check-skip-budget
     echo "All failures were [SKIPPED] preconditions — treating as pass."
 
 # Shared helper: run a single nros-tests integration test binary with the
@@ -1670,8 +1680,13 @@ _nextest-platform test_name verbose="":
     if [ "$real" -ne 0 ]; then
         echo "ERROR: $real real (non-[SKIPPED]) test failure(s):"
         just _name-real-failures || true
+        just _check-skip-budget || true
         exit 1
     fi
+    # Issue 0584 — the success path is exactly where an unnoticed skip lives:
+    # "all failures were skips" is the sentence a lane that ran nothing also
+    # prints. Assert the skips before believing it.
+    just _check-skip-budget
     echo "All failures were [SKIPPED] preconditions — treating as pass."
 
 # Run rustdoc doctests for the `nros` umbrella crate.
@@ -1735,6 +1750,15 @@ _count-real-failures junit="target/nextest/default/junit.xml":
 _name-real-failures junit="":
     #!/usr/bin/env bash
     python3 scripts/test/name-real-failures.py {{junit}}
+
+# Issue 0584 — ASSERT the run's skips, do not merely count them. Two derived
+# properties, no declaration file to drift: no `lane` skip for a coordinate the
+# lane selected, and no skip whose reason is a missing fixture (that is a hard
+# failure since 0584 part 2). Reads the `junit-real.xml` snapshot and
+# `$NROS_TEST_COORDS`.
+_check-skip-budget junit="":
+    #!/usr/bin/env bash
+    python3 scripts/test/check-skip-budget.py {{junit}}
 
 # Print a one-line summary of test outcomes from junit.xml.
 _test-summary junit="target/nextest/default/junit.xml":
