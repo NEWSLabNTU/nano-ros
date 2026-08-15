@@ -142,6 +142,18 @@ fn main() {
         &threadx_dir,
         &port_subpath,
     );
+    // Same position-independence problem as the platform archive below, for the
+    // kernel's own API: zpico's `c/platform/threadx/task.c` calls
+    // `_txe_event_flags_delete` &c from inside the zpico-sys rlib, which lands
+    // after this archive on the link line.
+    //
+    // Scoped to the HOSTED port on purpose. Whole-archiving the kernel pulls all
+    // ~190 objects, which is free for a Linux simulation binary but is exactly
+    // the kind of image growth that matters on the bare-metal RISC-V port — and
+    // that port links fine as-is, so it keeps demand-driven member selection.
+    if port_subpath.starts_with("linux") {
+        kernel.link_lib_modifier("+whole-archive");
+    }
     kernel.compile("threadx_kernel");
 
     // ---- Build nros-platform-threadx C port ----
@@ -186,11 +198,30 @@ fn main() {
         platform.include(p);
     }
     nros_board_common::threadx_sources::add_nros_platform_threadx_build(&mut platform);
+    // `+whole-archive` on the platform ABI: its only consumers are the RMW
+    // shims (zpico's `platform_aliases.o` holds `U nros_platform_udp_open` &c),
+    // and those objects arrive BUNDLED INSIDE the zpico-sys rlib rather than as
+    // their own `-l`. That puts them after this archive on the link line, so a
+    // plain static lib is scanned before anything references it, every member is
+    // discarded as unused, and the link dies on ~20 undefined
+    // `nros_platform_{tcp,udp}_*`. Pulling it in whole makes resolution
+    // independent of position. 3 objects (platform/net/timer), so the size cost
+    // is nil — same force-link class as the RMW backend's `#[no_mangle]`
+    // exports (issues 0155/0163).
+    //
+    // Set on the cc::Build, NOT as a second `cargo:rustc-link-lib` line:
+    // `compile()` emits its own directive, and two directives naming one lib
+    // with different modifiers is a hard rustc error ("overriding linking
+    // modifiers from command line is not supported").
+    platform.link_lib_modifier("+whole-archive");
     platform.compile("nros_platform_threadx");
 
-    // Link order (reverse dependency): platform → kernel.
-    println!("cargo:rustc-link-lib=static=nros_platform_threadx");
-    println!("cargo:rustc-link-lib=static=threadx_kernel");
+    // Link order (reverse dependency): platform → kernel. BOTH halves are
+    // emitted by their own `compile()` above, carrying whatever link modifier
+    // was set on that `cc::Build`. Re-emitting either here as a bare
+    // `cargo:rustc-link-lib=static=…` would name the same lib a second time
+    // without the modifier, which rustc rejects outright ("overriding linking
+    // modifiers from command line is not supported").
 
     // Rerun triggers
     println!("cargo:rerun-if-changed=build.rs");

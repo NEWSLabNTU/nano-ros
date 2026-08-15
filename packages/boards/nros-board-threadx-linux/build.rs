@@ -99,6 +99,13 @@ fn main() {
     configure_linux(&mut nsos);
     nsos.include(nsos_netx_dir.join("include"));
     nsos.file(&nsos_src);
+    // `+whole-archive`, same reason as the platform/kernel archives in
+    // `nros-board-threadx`: this shim's callers (`nros-platform-threadx`'s
+    // `net.c`, which holds `U nx_bsd_recvfrom` &c) reach the linker from a
+    // different archive, and demand-driven member selection dropped this one
+    // before those references were seen. One `.c` file, so nothing to save by
+    // being clever about it.
+    nsos.link_lib_modifier("+whole-archive");
     nsos.compile("nsos_netx");
 
     println!("cargo:rerun-if-changed={}", nsos_src.display());
@@ -117,13 +124,32 @@ fn main() {
     // skipped because `__ZEPHYR__` is unset on a host build).
     glue.include(&nros_c_include);
     glue.file(&app_config_def_c);
+    // `+whole-archive` — and here it is load-bearing in a way the net shim's is
+    // not. `glue` holds the board's STRONG overrides of weak hooks. Under
+    // demand-driven selection a member is pulled only if something already
+    // references it, so an override that exists purely to BEAT a weak default is
+    // never pulled: the link succeeds, the weak default wins, and the image runs
+    // and quietly does nothing. That is not a link error you can read — the
+    // logging smoke fixture printed its banner, called the Rust entry, exited 0,
+    // and emitted no log lines at all.
+    //
+    // This archive used to be named a SECOND time as a bare
+    // `cargo:rustc-link-lib=static=glue` below, and that duplicate position on
+    // the link line is what happened to resolve it. Deleting the duplicate
+    // without adding the modifier reintroduced the defect (issue 0582).
+    glue.link_lib_modifier("+whole-archive");
     glue.compile("glue");
 
     // ---- Link order (reverse dependency) ----
     // `libnros_platform_threadx.a` + `libthreadx_kernel.a` come from the
     // generic `nros-board-threadx` crate's build.rs (152.2.B.3 lift).
-    println!("cargo:rustc-link-lib=static=glue");
-    println!("cargo:rustc-link-lib=static=nsos_netx");
+    //
+    // `glue` and `nsos_netx` are NOT re-emitted here: each `compile()` above
+    // already emits its own `cargo:rustc-link-lib`, and naming a lib a second
+    // time without its link modifier is a hard rustc error ("overriding linking
+    // modifiers from command line is not supported"). The duplicate lines these
+    // replace were an attempt to fix member selection by repeating the archive
+    // later on the command line; `+whole-archive` fixes it at the source.
     println!("cargo:rustc-link-lib=pthread");
 
     // ---- Rerun triggers ----
