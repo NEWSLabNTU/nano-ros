@@ -574,11 +574,27 @@ fn example_e2e(#[case] cell: Cell) {
     let first = start_image(&first_bin, &locator, first_role);
     let ready_out = first.wait_for_pattern(cell.ready_marker, Duration::from_secs(cell.ready_secs));
     if cell.ready_fatal && !ready_out.contains(cell.ready_marker) {
+        // issue 0557 / phase-358 W5 — lead with the GUEST's error when it has
+        // one. "didn't reach readiness within 60 s" is true and is the wrong
+        // headline for a boot that died immediately: the marker was never
+        // going to arrive, and the reader starts investigating latency instead
+        // of the `run_components failed rc=-100` four lines up. Same shape as
+        // issue 0445 one layer out — a self-explaining verdict standing in
+        // front of the real result.
+        let verdict = match nros_tests::output::first_guest_failure(&ready_out) {
+            Some(line) => format!(
+                "FAILED AT BOOT: {line}\n  (readiness marker `{}` never arrived; \
+                 the {} s wait observed the failure, it did not cause it)",
+                cell.ready_marker, cell.ready_secs
+            ),
+            None => format!(
+                "didn't reach readiness (`{}`) within {} s",
+                cell.ready_marker, cell.ready_secs
+            ),
+        };
         panic!(
-            "[{}] {first_role} didn't reach readiness (`{}`) within {} s — {}.\nOutput:\n{}",
+            "[{}] {first_role} {verdict} — {}.\nOutput:\n{}",
             cell.id(),
-            cell.ready_marker,
-            cell.ready_secs,
             cell.note,
             ready_out
         );

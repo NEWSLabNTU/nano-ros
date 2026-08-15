@@ -928,3 +928,98 @@ pub fn ready_marker(role: DemoRole, _lang: crate::matrix::Lang) -> &'static str 
         DemoRole::Int32Sink => INT32_SINK_READY_MARKER,
     }
 }
+
+// ── Guest-side failure signatures (issue 0557 / phase-358 W5) ───────────────
+//
+// A readiness wait that times out reports "didn't reach readiness within N s".
+// That is a true statement and usually the WRONG headline: when the guest died
+// at boot, the marker was never going to arrive, and the actual error is
+// already sitting in the collected output a few lines up. The reader takes the
+// timeout as the verdict and starts investigating latency.
+//
+// Issue 0445 named this shape at the fixture level — "a STALE verdict is
+// ABSORBING … whatever it would have done at runtime is replaced by a message
+// that explains itself" — and 0557 is the same thing one layer out: a
+// self-explaining harness verdict standing in front of a specific guest error.
+// 0557's own report shows six `tid … is in use!` lines and
+// `run_components failed rc=-100` under a headline that says the server
+// "didn't reach readiness within 60 s".
+//
+// So: when a readiness wait fails, LEAD with the guest's own error if there is
+// one. The signatures below are all failures observed in this tree, not a
+// speculative list:
+//
+//   `run_components failed rc=`  the entry's own failure code (0557)
+//   `ZEPHYR FATAL ERROR`         Zephyr's fatal handler (0552 stack overflow)
+//   `USAGE FAULT` / `MPU FAULT`  Cortex-M faults (0552: PC=0 from an overflow)
+//   `BUS FAULT` / `HARD FAULT`   siblings of the above
+//   `is in use!`                 Zephyr dynamic thread stack reuse (0557)
+//   `<err> os:`                  any Zephyr kernel error log line
+//   `panicked at`                a Rust panic inside the guest
+pub const GUEST_FAILURE_SIGNATURES: &[&str] = &[
+    "run_components failed rc=",
+    "ZEPHYR FATAL ERROR",
+    "USAGE FAULT",
+    "MPU FAULT",
+    "BUS FAULT",
+    "HARD FAULT",
+    "is in use!",
+    "<err> os:",
+    "panicked at",
+];
+
+/// The FIRST guest-side failure line in `output`, if any.
+///
+/// First rather than last, deliberately: the earliest failure is usually the
+/// cause and the rest are its consequences (0557's six consecutive `tid … is in
+/// use!` lines, 0552's register dump after the fault line).
+///
+/// Returns the whole line, trimmed — callers put it in the headline so the
+/// verdict names the failure instead of naming the wait that observed it.
+pub fn first_guest_failure(output: &str) -> Option<&str> {
+    output.lines().map(str::trim).find(|line| {
+        GUEST_FAILURE_SIGNATURES
+            .iter()
+            .any(|sig| line.contains(sig))
+    })
+}
+
+#[cfg(test)]
+mod guest_failure_tests {
+    use super::*;
+
+    #[test]
+    fn the_0557_transcript_reports_its_own_error_not_the_timeout() {
+        // Verbatim shape from issue 0557.
+        let out = "*** Booting Zephyr OS build v3.7.0 ***\n\
+                   <inf> cyclonedds: session_create: domain=29 entering\n\
+                   <err> os: tid 0x581fa0 is in use!\n\
+                   <inf> cyclonedds: dds_create_participant returned 49379019\n\
+                   nros zephyr entry: run_components failed rc=-100\n";
+        // The FIRST failure, which is the kernel error rather than the entry's
+        // downstream rc — that ordering is the point of the helper.
+        assert_eq!(
+            first_guest_failure(out),
+            Some("<err> os: tid 0x581fa0 is in use!")
+        );
+    }
+
+    #[test]
+    fn a_healthy_boot_has_no_failure_line() {
+        let out = "*** Booting Zephyr OS build v3.7.0 ***\n\
+                   Subscriber created for topic: /chatter\n\
+                   I heard: [Hello World: 1]\n";
+        assert_eq!(first_guest_failure(out), None);
+    }
+
+    #[test]
+    fn a_cortex_m_fault_is_recognised() {
+        // Issue 0552's transcript: the fault line precedes the register dump.
+        let out = "<err> os: ***** USAGE FAULT *****\n\
+                   <err> os:   Illegal use of the EPSR\n";
+        assert_eq!(
+            first_guest_failure(out),
+            Some("<err> os: ***** USAGE FAULT *****")
+        );
+    }
+}
