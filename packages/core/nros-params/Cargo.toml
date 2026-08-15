@@ -15,7 +15,11 @@ categories = ["embedded", "no-std"]
 
 [features]
 default = ["std"]
-std = []
+# phase-359 W8 — `std` implies `alloc`, matching nros / nros-node / nros-core.
+# The `ParameterVariant` impls below are gated on `alloc` (they are `alloc`
+# types); without this implication a consumer enabling only `std` would lose
+# them.
+std = ["alloc"]
 alloc = []
 
 [dependencies]

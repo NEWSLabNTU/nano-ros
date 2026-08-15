@@ -93,7 +93,8 @@ PATH_RE = re.compile(r'\bstd::')
 # metric correction, not progress; see the module docstring. W8 then re-gated
 # `nros`'s node_metadata from `std` to `alloc`: cfg 64 -> 25; then
 # `core::error::Error` made `nros-core`'s Error impls unconditional (cfg 7 -> 5,
-# path 5 -> 2).
+# path 5 -> 2), and `nros-params`'s ParameterVariant impls (cfg 13 -> 7,
+# path 8 -> 1).
 # Lower these as work items land; the gate rejects any increase.
 BASELINE = {
     "nros": {"cfg": 25, "path": 16},
@@ -102,7 +103,7 @@ BASELINE = {
     "nros-cpp": {"cfg": 8, "path": 26},
     "nros-log": {"cfg": 1, "path": 0},
     "nros-node": {"cfg": 105, "path": 76},
-    "nros-params": {"cfg": 13, "path": 8},
+    "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},
 }

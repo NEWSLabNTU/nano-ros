@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0–W4 and W6 landed; W5 RE-SCOPED after measurement; W8 STARTED (`nros` re-gated). W7, W9, W10 not started.** The campaign
+**Status (2026-08-15). W0–W4 and W6 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE. W7, W9, W10 not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -58,7 +58,7 @@ current Cyclone — to a full-timeout `drive_io` is deliberate, phase-127.C.4.)
 
 ## Baseline
 
-**172** `cfg` mentions of the `std` feature and **136** `std::` paths, nine
+**166** `cfg` mentions of the `std` feature and **129** `std::` paths, nine
 crates (current: after W4, W6 and the first W8 item, and after `#[cfg(test)]`
 code was excluded — see the metric correction below):
 
@@ -387,8 +387,50 @@ dependency to std builds that today need none — the same blocker that re-scope
 W5. The two epochs are also harmless: both are monotonic, and the module's own
 contract is "compare instants, never interpret one absolutely".
 
-Still to do for W8 proper: audit `nros-node`, `nros-params` and `nros-cpp` for
-the same mislabelling, and document what each flavour implies.
+#### The audit, completed 2026-08-15 — every remaining crate checked
+
+**`nros-params` — same mislabel, fixed.** `types.rs` gated the
+`ParameterVariant` impls for `String`, `Vec<i64>`, `Vec<f64>`, `Vec<bool>` and
+`Vec<String>` on `std`; all five are `alloc` types. Re-gated to `alloc`
+(cfg 13 -> 7, path 8 -> 1).
+
+One trap on the way, and it would have been a silent regression: unlike
+`nros` / `nros-node` / `nros-core`, this crate had `std = []` and `alloc = []`
+as INDEPENDENT features, so re-gating alone would have removed the impls from
+any consumer enabling only `std`. `std = ["alloc"]` now, matching the others.
+
+Verified three ways rather than two, because the change had to prove both a
+gain and the absence of a loss:
+
+* probe on `--features std` compiles -> no regression for std consumers;
+* probe on `--no-default-features --features alloc` for `thumbv7m-none-eabi`
+  compiles -> the impls are newly available on embedded;
+* restoring the old `std` gate makes that same build fail
+  `E0599: no method named to_parameter_value` -> they genuinely were absent.
+
+**`nros-cpp`, `nros-c`, `nros-node` — audited, NOT mislabelled.** Their `std`
+use is real:
+
+| crate | what it actually uses |
+| --- | --- |
+| `nros-cpp` | `std::env::var` (hosted boot config), `std::eprintln!`, `std::thread` |
+| `nros-c` | `std::env::var`, `std::time::{SystemTime, Instant}` |
+| `nros-node` | host-only features — see the residue classification above |
+
+So W8's mechanical part is finished. What is left in these crates is genuinely
+hosted (environment, threads, wall clock) or host-only features, not gates
+pointing at the wrong flavour.
+
+#### Score for the mislabel class
+
+Three gates were found to WITHHOLD capability rather than protect it, and each
+fix added something to embedded builds rather than only lowering a count:
+
+| gate | withheld |
+| --- | --- |
+| `nros::node_metadata` | the source-metadata JSON API |
+| `nros-core` error impls | the `Error` trait itself (no `dyn Error` on no_std) |
+| `nros-params::types` | `ParameterVariant` for `String`/`Vec<…>` |
 
 ### W9 — lanes and cell checks
 

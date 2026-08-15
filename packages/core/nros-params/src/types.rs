@@ -5,8 +5,11 @@
 
 use heapless::{String, Vec};
 
-#[cfg(feature = "std")]
-use std::string::ToString;
+// phase-359 W8 — `alloc`, not `std`: `ToString`, `String` and `Vec` all live in
+// `alloc`, so gating them on `std` withheld the `ParameterVariant` impls below
+// from `no_std + alloc` targets that can use them.
+#[cfg(feature = "alloc")]
+use alloc::string::ToString;
 
 pub use crate::config::*;
 
@@ -488,8 +491,8 @@ impl ParameterVariant for String<MAX_STRING_VALUE_LEN> {
 }
 
 // Implement ParameterVariant for std::string::String (std)
-#[cfg(feature = "std")]
-impl ParameterVariant for std::string::String {
+#[cfg(feature = "alloc")]
+impl ParameterVariant for alloc::string::String {
     fn to_parameter_value(&self) -> ParameterValue {
         ParameterValue::from_string(self.as_str()).unwrap_or_default()
     }
@@ -508,8 +511,8 @@ impl ParameterVariant for std::string::String {
 }
 
 // Implement ParameterVariant for std::vec::Vec<i64> (std)
-#[cfg(feature = "std")]
-impl ParameterVariant for std::vec::Vec<i64> {
+#[cfg(feature = "alloc")]
+impl ParameterVariant for alloc::vec::Vec<i64> {
     fn to_parameter_value(&self) -> ParameterValue {
         ParameterValue::IntegerArray(Vec::from_slice(self.as_slice()).unwrap_or_default())
     }
@@ -530,8 +533,8 @@ impl ParameterVariant for std::vec::Vec<i64> {
 }
 
 // Implement ParameterVariant for std::vec::Vec<f64> (std)
-#[cfg(feature = "std")]
-impl ParameterVariant for std::vec::Vec<f64> {
+#[cfg(feature = "alloc")]
+impl ParameterVariant for alloc::vec::Vec<f64> {
     fn to_parameter_value(&self) -> ParameterValue {
         ParameterValue::DoubleArray(Vec::from_slice(self.as_slice()).unwrap_or_default())
     }
@@ -552,8 +555,8 @@ impl ParameterVariant for std::vec::Vec<f64> {
 }
 
 // Implement ParameterVariant for std::vec::Vec<bool> (std)
-#[cfg(feature = "std")]
-impl ParameterVariant for std::vec::Vec<bool> {
+#[cfg(feature = "alloc")]
+impl ParameterVariant for alloc::vec::Vec<bool> {
     fn to_parameter_value(&self) -> ParameterValue {
         ParameterValue::BoolArray(Vec::from_slice(self.as_slice()).unwrap_or_default())
     }
@@ -574,8 +577,8 @@ impl ParameterVariant for std::vec::Vec<bool> {
 }
 
 // Implement ParameterVariant for std::vec::Vec<std::string::String> (std)
-#[cfg(feature = "std")]
-impl ParameterVariant for std::vec::Vec<std::string::String> {
+#[cfg(feature = "alloc")]
+impl ParameterVariant for alloc::vec::Vec<alloc::string::String> {
     fn to_parameter_value(&self) -> ParameterValue {
         let mut vec = Vec::new();
         for s in self {
