@@ -75,8 +75,8 @@ CFG_FEATURE_RE = re.compile(r'feature\s*=\s*"std"')
 PATH_RE = re.compile(r'\bstd::')
 
 # phase-359 baseline. W0 measured it; the corrected cfg metric re-measured
-# everything; W2 lowered `nros-node` cfg 139 -> 131 / path 346 -> 342, and W3
-# lowered it again to cfg 127 / path 321.
+# everything; then `nros-node` came down per work item: W2 139->131 / 346->342,
+# W3 131->127 / 342->321, W4 127->112 / 321->309.
 # Lower these as work items land; the gate rejects any increase.
 BASELINE = {
     "nros": {"cfg": 66, "path": 20},
@@ -84,7 +84,7 @@ BASELINE = {
     "nros-core": {"cfg": 8, "path": 6},
     "nros-cpp": {"cfg": 8, "path": 26},
     "nros-log": {"cfg": 1, "path": 0},
-    "nros-node": {"cfg": 127, "path": 321},
+    "nros-node": {"cfg": 112, "path": 309},
     "nros-params": {"cfg": 13, "path": 18},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

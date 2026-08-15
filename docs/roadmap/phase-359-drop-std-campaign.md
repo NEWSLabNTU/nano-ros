@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0, W1, W2 landed; W3 mostly landed; W4–W10 not started.** The campaign
+**Status (2026-08-15). W0–W4 landed (W2/W3 partially, by design); W5–W10 not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -58,12 +58,12 @@ current Cyclone — to a full-timeout `drive_io` is deliberate, phase-127.C.4.)
 
 ## Baseline
 
-**238** `cfg` mentions of the `std` feature and **400** `std::` paths, nine
-crates (current, i.e. after W3):
+**223** `cfg` mentions of the `std` feature and **388** `std::` paths, nine
+crates (current, i.e. after W4):
 
 | crate | cfg | `std::` |
 | --- | --- | --- |
-| `nros-node` | 127 | 321 |
+| `nros-node` | 112 | 309 |
 | `nros` | 66 | 20 |
 | `nros-c` | 13 | 9 |
 | `nros-params` | 13 | 18 |
@@ -182,9 +182,42 @@ here:
   which wraps a `std::thread::JoinHandle` and is `#[cfg(feature = "std")]`
   throughout. That is not an API-spelling change, it is the threading work item.
 
-### W4 — one spelling of "what time is it"
+### W4 — one spelling of "what time is it" — **DONE 2026-08-15**
 
-Three implementations collapse to one. 50 sites.
+There were **five**, not the three this doc claimed:
+
+1. `last_spin_end: Instant` (spin accounting, std)
+2. `monitor_clock_base: Instant` (monitor windows, std)
+3. a `static EPOCH: OnceLock<Instant>` for the sporadic refill
+4. a second `static EPOCH: OnceLock<Instant>` for the major-frame phase
+5. the injected `clock_us_fn` (no_std)
+
+(`PlatformClock` was the sixth and is still uncallable — its methods are
+associated fns, so using it would make `Executor` generic, which the FFI design
+forbids. That is why it went unused, and it is not a W4 fix.)
+
+All now route through one `now_us()`, read ONCE per spin. `clock_base` is the
+single std epoch, seeded eagerly at construction so `last_spin_end_us: Some(0)`
+still means "construction" and the first spin still credits pre-spin setup
+time — the property the old std seed existed for.
+
+`nros-node` cfg 127 -> 112, path 321 -> 309.
+
+**Two real defects fell out of the unification**, both consequences of "no clock
+on no_std" — which is false whenever a `clock_us` hook is injected:
+
+* The polled Sporadic budget refill was `#[cfg(feature = "std")]` with NO
+  no_std arm, so on embedded a budget exhausted once and never refilled. It now
+  runs on either flavour when a clock exists, and is skipped when none does —
+  identical to today where there is no clock.
+* The major-frame phase used `now_us = delta_us` on no_std: a per-spin INTERVAL
+  used as an absolute phase clock. It now uses the real clock when one is
+  injected, falling back to the old approximation only when none is.
+
+The per-dispatch latency measurement kept its flavour difference — std measures
+unconditionally because the std-only sporadic runtime accounting consumes it —
+but expresses it as a VALUE, `lat_active || dl_active || cfg!(feature = "std")`,
+instead of four cfg arms across two sites.
 
 ### W5 — threads through `PlatformThreading` / `task_*`
 

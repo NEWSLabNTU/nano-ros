@@ -1248,10 +1248,10 @@ pub struct Executor<'s> {
     /// time the caller spent between `spin_once` invocations (e.g. an
     /// explicit `thread::sleep`) counts toward timer accumulation just
     /// like time spent inside `drive_io`.
-    #[cfg(feature = "std")]
-    pub(crate) last_spin_end: Option<std::time::Instant>,
+
     /// Monotonic clock endpoint for no_std timer accounting.
-    #[cfg(not(feature = "std"))]
+    // phase-359 W4 — ONE field. The std twin held an `Instant`; both now hold
+    // µs from the single `now_us()` read.
     pub(crate) last_spin_end_us: Option<u64>,
     /// Optional platform clock hook supplied by `ExecutorConfig`.
     #[cfg(not(feature = "std"))]
@@ -1305,7 +1305,7 @@ pub struct Executor<'s> {
         heapless::Vec<super::monitor::Violation, { super::monitor::MAX_VIOLATIONS }>,
     /// Monotonic base for the std monitor clock (µs derived per check).
     #[cfg(feature = "std")]
-    pub(crate) monitor_clock_base: Option<std::time::Instant>,
+    pub(crate) clock_base: Option<std::time::Instant>,
 }
 
 impl<'s> Executor<'s> {
@@ -1396,8 +1396,11 @@ impl<'s> Executor<'s> {
             // very first `spin_once` credits time the caller spent
             // *before* it (e.g. setup, an explicit pre-spin sleep) just
             // like time spent between later calls.
+            // One field, two seeds: on std the epoch is construction (see
+            // `clock_base` above), so 0 IS the construction instant; on no_std
+            // the injected clock is absolute, so it must be read.
             #[cfg(feature = "std")]
-            last_spin_end: Some(std::time::Instant::now()),
+            last_spin_end_us: Some(0),
             #[cfg(not(feature = "std"))]
             last_spin_end_us: default_clock_us_fn().map(|clock| clock()),
             #[cfg(not(feature = "std"))]
@@ -1421,7 +1424,12 @@ impl<'s> Executor<'s> {
             report_violations: true,
             monitor_violations: heapless::Vec::new(),
             #[cfg(feature = "std")]
-            monitor_clock_base: None,
+            // phase-359 W4 — eager, not lazy: the std epoch must START at
+            // construction so `last_spin_end_us: Some(0)` below means
+            // "construction", preserving the property that the first spin
+            // credits time the caller spent BEFORE it (setup, a pre-spin
+            // sleep). Lazily seeding it on first read would silently drop that.
+            clock_base: Some(std::time::Instant::now()),
         }
     }
 
@@ -2004,18 +2012,24 @@ impl<'s> Executor<'s> {
         self.monitor_violations.clear();
     }
 
-    /// Monotonic µs for monitor windows: the no_std `clock_us` hook, or a
-    /// process-local Instant base on std.
-    fn monitor_now_us(&mut self) -> Option<u64> {
+    /// THE monotonic-µs read. phase-359 W4 — every consumer goes through here.
+    ///
+    /// Before this there were FIVE spellings of "what time is it": this one,
+    /// `last_spin_end: Instant`, and two ad-hoc `static EPOCH: OnceLock<Instant>`
+    /// blocks — plus `PlatformClock`, which nothing called because `Executor` is
+    /// deliberately non-generic and the trait's methods are associated fns.
+    ///
+    /// `None` means no clock is available (no_std with no injected hook).
+    /// Callers must degrade, not guess: a missing clock is why the sporadic
+    /// refill and the major-frame phase behaved differently on no_std.
+    fn now_us(&mut self) -> Option<u64> {
         #[cfg(not(feature = "std"))]
         {
             self.clock_us_fn.map(|clock| clock())
         }
         #[cfg(feature = "std")]
         {
-            let base = *self
-                .monitor_clock_base
-                .get_or_insert_with(std::time::Instant::now);
+            let base = *self.clock_base.get_or_insert_with(std::time::Instant::now);
             Some(base.elapsed().as_micros() as u64)
         }
     }
@@ -2024,7 +2038,7 @@ impl<'s> Executor<'s> {
     /// branch each when empty).
     fn run_contract_monitors(&mut self) {
         if !self.monitor_table.is_empty()
-            && let Some(now_us) = self.monitor_now_us()
+            && let Some(now_us) = self.now_us()
         {
             {
                 for (i, spec) in self
@@ -5067,10 +5081,10 @@ impl<'s> Executor<'s> {
         // them faster than wall-clock — observed as a 30 Hz control loop
         // overshooting to >200 Hz under sustained traffic. Carry the
         // sub-ms remainder across calls so precision is preserved.
-        #[cfg(feature = "std")]
-        let spin_start = std::time::Instant::now();
-        #[cfg(not(feature = "std"))]
-        let spin_start_us = self.clock_us_fn.map(|clock| clock());
+        // phase-359 W4 — the spin-ENTRY read, one spelling. Kept distinct from
+        // the post-IO read below because the first spin's delta is measured from
+        // entry; collapsing them would make that delta 0 on the first call only.
+        let spin_start_us = self.now_us();
 
         // RFC-0052 W3b.4 — contract monitors tick once per spin (window
         // logic inside; single branch when the baked table is empty).
@@ -5238,27 +5252,28 @@ impl<'s> Executor<'s> {
             let _ = extra.drive_io(0);
         }
 
-        #[cfg(feature = "std")]
-        let delta_us = {
-            let now = std::time::Instant::now();
-            // `last_spin_end` is seeded at construction time, so this
-            // path always has a Some(_) on every call.
-            let prev = self.last_spin_end.unwrap_or(spin_start);
-            let elapsed = now.saturating_duration_since(prev);
-            self.last_spin_end = Some(now);
-            elapsed.as_micros() as u64
+        // phase-359 W4 — ONE clock read per spin, shared by the delta below and
+        // every consumer further down. Replaces the std/no_std delta pair AND
+        // two ad-hoc `static EPOCH: OnceLock<Instant>` blocks that each kept
+        // their own std-only epoch.
+        let now_us_this_spin = self.now_us();
+
+        // Same rule on both flavours: measure elapsed when a clock exists, else
+        // credit the REQUESTED timeout. That fallback was previously reachable
+        // only on no_std; on std `Instant` always answered. It stays unreachable
+        // on std for the same reason — `now_us()` is infallible there — so this
+        // is one expression, not a behaviour change.
+        let delta_us = match now_us_this_spin {
+            Some(now) => {
+                let prev = self
+                    .last_spin_end_us
+                    .unwrap_or_else(|| spin_start_us.unwrap_or(now));
+                self.last_spin_end_us = Some(now);
+                now.saturating_sub(prev)
+            }
+            None => (timeout_ms as u64).saturating_mul(1000),
         };
-        #[cfg(not(feature = "std"))]
-        let delta_us = if let Some(clock) = self.clock_us_fn {
-            let now = clock();
-            let prev = self
-                .last_spin_end_us
-                .unwrap_or_else(|| spin_start_us.unwrap_or(now));
-            self.last_spin_end_us = Some(now);
-            now.saturating_sub(prev)
-        } else {
-            (timeout_ms as u64).saturating_mul(1000)
-        };
+
         if !self.spin_quantization_checked && timeout_ms > 0 {
             self.spin_quantization_checked = true;
             self.audit_spin_quantization((timeout_ms as u64).saturating_mul(1000));
@@ -5401,15 +5416,14 @@ impl<'s> Executor<'s> {
         // boundaries before deciding what to dispatch this cycle.
         // Refill is polled (not ISR-driven) — coarse but correct
         // upper-bound bandwidth limiter.
-        #[cfg(feature = "std")]
-        {
-            // Monotonic ms relative to a process-static epoch so the
-            // refill clock survives wall-clock jumps.
-            use std::sync::OnceLock;
-            static EPOCH: OnceLock<std::time::Instant> = OnceLock::new();
-            let now_ms = std::time::Instant::now()
-                .saturating_duration_since(*EPOCH.get_or_init(std::time::Instant::now))
-                .as_millis() as u64;
+        // phase-359 W4 — was `#[cfg(feature = "std")]` with NO no_std arm, so
+        // polled Sporadic budgets never refilled on embedded: they exhausted
+        // once and stayed exhausted. That was a consequence of "no clock on
+        // no_std", which is false whenever a `clock_us` hook is injected. Now it
+        // runs on either flavour when a clock exists, and is skipped when none
+        // does — identical to today's behaviour in that case.
+        if let Some(now_us) = now_us_this_spin {
+            let now_ms = now_us / 1000;
             // Use the cycle's `delta_us` as the per-SC consumption
             // estimate — worst-case attribution. Per-callback
             // measurement lands with a higher-precision clock hook.
@@ -5533,18 +5547,13 @@ impl<'s> Executor<'s> {
                         // frame using the accumulated `delta_us` clock
                         // (std-only precise; no_std uses `delta_us`
                         // approximation from spin cadence).
-                        #[cfg(feature = "std")]
-                        let now_us = {
-                            use std::sync::OnceLock;
-                            static EPOCH: OnceLock<std::time::Instant> = OnceLock::new();
-                            std::time::Instant::now()
-                                .saturating_duration_since(
-                                    *EPOCH.get_or_init(std::time::Instant::now),
-                                )
-                                .as_micros() as u64
-                        };
-                        #[cfg(not(feature = "std"))]
-                        let now_us = delta_us;
+                        // phase-359 W4 — the shared read. The no_std arm used
+                        // to be `now_us = delta_us`, i.e. a per-spin INTERVAL
+                        // used as an absolute phase clock, which the comment
+                        // above called an approximation. It is now the real
+                        // clock when one is injected, and falls back to the old
+                        // approximation only when none is.
+                        let now_us = now_us_this_spin.unwrap_or(delta_us);
                         let phase = (now_us % self.major_frame_us as u64) as u32;
                         let in_window = if off + dur <= self.major_frame_us {
                             phase >= off && phase < off + dur
@@ -5677,7 +5686,6 @@ impl<'s> Executor<'s> {
         // no_std (std measures anyway for the sporadic path).
         let mon_table = self.monitor_table;
         let lat_active = mon_table.iter().any(|m| m.max_latency_ms > 0);
-        #[cfg(not(feature = "std"))]
         let dl_active = self.sched_contexts.iter().flatten().any(|sc| {
             sc.deadline_us.is_some()
                 && !matches!(
@@ -5687,6 +5695,27 @@ impl<'s> Executor<'s> {
         });
         #[cfg(not(feature = "std"))]
         let mon_clock = self.clock_us_fn;
+        // phase-359 W4 — one predicate, no cfg block. `cfg!` is an expression,
+        // so the flavour difference stays a value instead of a branch: std
+        // measures unconditionally because the sporadic runtime accounting
+        // below (itself std-only) consumes the result, which is exactly what
+        // the comment above described and what the four-arm sites encoded.
+        let measure_us = lat_active || dl_active || cfg!(feature = "std");
+        // phase-359 W4 — ONE hoisted µs reader for the per-dispatch latency
+        // measurement below. Hoisted because `now_us()` takes `&mut self` and
+        // the dispatch loop already holds borrows; the std arm copies the epoch
+        // (a `Copy` `Instant`) so reading inside the loop touches no `self`.
+        // This is the last cfg pair in the timing path: the two call sites it
+        // serves each had FOUR arms (start + elapsed, per flavour).
+        #[cfg(feature = "std")]
+        let read_us = {
+            let base = self
+                .clock_base
+                .expect("clock_base is seeded at construction");
+            move || base.elapsed().as_micros().min(u64::MAX as u128) as u64
+        };
+        #[cfg(not(feature = "std"))]
+        let read_us = move || mon_clock.map(|c| c()).unwrap_or(0);
         // Deferred deadline-miss violations (the loop body holds an
         // immutable borrow of `self.entries`, so the ring is fed after).
         let mut deadline_misses: heapless::Vec<
@@ -5712,21 +5741,13 @@ impl<'s> Executor<'s> {
                 }
                 if let Some(meta) = self.entries[i].as_ref() {
                     let counts_before = snapshot_pub_counts(mon_table, lat_active);
-                    #[cfg(feature = "std")]
-                    let start = std::time::Instant::now();
-                    #[cfg(not(feature = "std"))]
-                    let start_us = if lat_active || dl_active {
-                        mon_clock.map(|c| c())
-                    } else {
-                        None
-                    };
+                    // Measured only when a consumer wants it, matching the
+                    // no_std arm this replaces — the std arm used to measure
+                    // unconditionally.
+                    let start_us = measure_us.then(&read_us);
                     dispatch_one(meta, arena_ptr, delta_us, &mut result);
-                    #[cfg(feature = "std")]
-                    let elapsed_us: Option<u32> =
-                        Some(start.elapsed().as_micros().min(u32::MAX as u128) as u32);
-                    #[cfg(not(feature = "std"))]
                     let elapsed_us: Option<u32> = start_us
-                        .and_then(|t0| mon_clock.map(|c| c().saturating_sub(t0)))
+                        .map(|t0| read_us().saturating_sub(t0))
                         .map(|d| d.min(u32::MAX as u64) as u32);
                     #[cfg(feature = "std")]
                     if let Some(elapsed_us) = elapsed_us {
@@ -5760,21 +5781,13 @@ impl<'s> Executor<'s> {
                 }
                 if let Some(meta) = self.entries[i].as_ref() {
                     let counts_before = snapshot_pub_counts(mon_table, lat_active);
-                    #[cfg(feature = "std")]
-                    let start = std::time::Instant::now();
-                    #[cfg(not(feature = "std"))]
-                    let start_us = if lat_active || dl_active {
-                        mon_clock.map(|c| c())
-                    } else {
-                        None
-                    };
+                    // Measured only when a consumer wants it, matching the
+                    // no_std arm this replaces — the std arm used to measure
+                    // unconditionally.
+                    let start_us = measure_us.then(&read_us);
                     dispatch_one(meta, arena_ptr, delta_us, &mut result);
-                    #[cfg(feature = "std")]
-                    let elapsed_us: Option<u32> =
-                        Some(start.elapsed().as_micros().min(u32::MAX as u128) as u32);
-                    #[cfg(not(feature = "std"))]
                     let elapsed_us: Option<u32> = start_us
-                        .and_then(|t0| mon_clock.map(|c| c().saturating_sub(t0)))
+                        .map(|t0| read_us().saturating_sub(t0))
                         .map(|d| d.min(u32::MAX as u64) as u32);
                     #[cfg(feature = "std")]
                     if let Some(elapsed_us) = elapsed_us {
