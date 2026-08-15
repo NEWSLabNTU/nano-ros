@@ -138,10 +138,20 @@ write-if-changed, which cannot see it.
 
 ## W2 — The Zephyr lane's per-leaf overhead (#509)
 
-**Status (2026-08-15). DIRECTION (1) DONE — the unconditional wipe in
-`west-fixtures.sh` WAS the 1244-edge replay. A no-op lane goes 1668 log lines to
-73, 1244 ninja edges to 0, 129 `Compiling` to 0. The 70-leaf overhead and the
-disk-bound finding remain.**
+**Status (2026-08-16). COMPLETE — all three directions answered.**
+
+* **(1) skip unchanged prep — DONE.** `west-fixtures.sh`'s unconditional wipe
+  WAS the 1244-edge replay. A no-op lane goes 1668 log lines to 73, 1244 ninja
+  edges to 0, 129 `Compiling` to 0.
+* **(2) storage — REFUTED.** iowait ~0 on both the HDD and the NVMe build root,
+  so there is no stall to recover.
+* **(3) fewer COLD leaves — DONE.** The dep-info staleness arm compares CONTENT,
+  not mtime.
+
+#509 itself CLOSED upstream (`07e4dce92`, 2026-08-15); its one surviving
+direction continues as **#604**, filed as a measurement rather than a defect.
+The sections below are the working notes, in the order they were written — the
+"remain" language in them predates (2) and (3).
 
 ### Landed: `west-fixtures.sh` had no warm state, by construction
 
