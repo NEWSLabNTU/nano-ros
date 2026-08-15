@@ -58,7 +58,7 @@ use heapless::{FnvIndexMap, mpmc::MpMcQueue};
 use portable_atomic::{AtomicBool, Ordering};
 use portable_atomic_util::Arc;
 
-use super::node_wake::NodeWake;
+use super::{node_wake::NodeWake, platform_task::PlatformTask};
 
 /// Mailbox depth per worker. Power of two — `MpMcQueue` requires it.
 ///
@@ -106,18 +106,6 @@ struct WorkerCtx {
     os_pri: u8,
 }
 
-unsafe extern "C" {
-    fn nros_platform_task_init(
-        task: *mut c_void,
-        attr: *mut c_void,
-        entry: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
-        arg: *mut c_void,
-    ) -> i8;
-    fn nros_platform_task_join(task: *mut c_void) -> i8;
-    fn nros_platform_task_storage_size() -> usize;
-    fn nros_platform_task_storage_align() -> usize;
-}
-
 /// Task entry. Elevates, then drains until halted.
 ///
 /// # Safety
@@ -148,51 +136,10 @@ unsafe extern "C" fn worker_entry(arg: *mut c_void) -> *mut c_void {
     core::ptr::null_mut()
 }
 
-/// Heap storage for one platform task handle, sized by the platform.
-///
-/// The size is asked for, never assumed — a hard-coded guess here is issue
-/// 0570, where a Rust-side `pthread_attr_t` mirror was 36 bytes short of
-/// NuttX's and `pthread_attr_init` smashed the caller's frame.
-struct TaskStorage {
-    ptr: *mut u8,
-    layout: core::alloc::Layout,
-}
-
-impl TaskStorage {
-    fn new() -> Option<Self> {
-        // SAFETY: both probes are documented pure functions, callable before
-        // any task exists.
-        let (size, align) = unsafe {
-            (
-                nros_platform_task_storage_size(),
-                nros_platform_task_storage_align(),
-            )
-        };
-        if size == 0 || align == 0 {
-            return None;
-        }
-        let layout = core::alloc::Layout::from_size_align(size, align).ok()?;
-        // SAFETY: `layout` has non-zero size.
-        let ptr = unsafe { alloc::alloc::alloc(layout) };
-        if ptr.is_null() {
-            return None;
-        }
-        Some(Self { ptr, layout })
-    }
-}
-
-impl Drop for TaskStorage {
-    fn drop(&mut self) {
-        // SAFETY: `ptr`/`layout` are the pair returned by `alloc` in `new`, and
-        // the task using them has already been joined by `OsPriorityWorker`.
-        unsafe { alloc::alloc::dealloc(self.ptr, self.layout) };
-    }
-}
-
 /// One worker task, its mailbox, and the storage the platform needs to track it.
 pub(crate) struct OsPriorityWorker {
     ctx: Arc<WorkerCtx>,
-    task: TaskStorage,
+    task: Option<PlatformTask>,
 }
 
 impl OsPriorityWorker {
@@ -209,7 +156,6 @@ impl OsPriorityWorker {
         ) -> Result<(), nros_platform_api::SchedError>,
     ) -> Option<Self> {
         let wake = NodeWake::new()?;
-        let task = TaskStorage::new()?;
         let ctx = Arc::new(WorkerCtx {
             mailbox: MpMcQueue::new(),
             halt: AtomicBool::new(false),
@@ -218,21 +164,13 @@ impl OsPriorityWorker {
             os_pri,
         });
         let arg = Arc::as_ptr(&ctx) as *mut c_void;
-        // SAFETY: `task.ptr` is storage of the size and alignment the platform
-        // asked for; `arg` points at a `WorkerCtx` this struct keeps alive
-        // until after `task_join` in `drop`.
-        let rc = unsafe {
-            nros_platform_task_init(
-                task.ptr as *mut c_void,
-                core::ptr::null_mut(),
-                worker_entry,
-                arg,
-            )
-        };
-        if rc != 0 {
-            return None;
-        }
-        Some(Self { ctx, task })
+        // SAFETY: `arg` points at a `WorkerCtx` this struct owns and keeps
+        // alive until after the join in `drop`.
+        let task = unsafe { PlatformTask::spawn(worker_entry, arg) }?;
+        Some(Self {
+            ctx,
+            task: Some(task),
+        })
     }
 
     /// Queue one dispatch. `false` when the mailbox is full — the caller then
@@ -251,10 +189,11 @@ impl Drop for OsPriorityWorker {
         self.ctx.halt.store(true, Ordering::Release);
         // Wake it so the halt is observed now rather than after the timeout.
         self.ctx.wake.signal();
-        // SAFETY: `task.ptr` holds the handle `task_init` wrote. Joining before
-        // the `Arc` and the storage are released is what makes the worker's
-        // reads of `WorkerCtx` — and of the executor's arena — sound.
-        unsafe { nros_platform_task_join(self.task.ptr as *mut c_void) };
+        // Joining before the `Arc` is released is what makes the worker's reads
+        // of `WorkerCtx` — and of the executor's arena — sound.
+        if let Some(task) = self.task.take() {
+            task.join();
+        }
     }
 }
 

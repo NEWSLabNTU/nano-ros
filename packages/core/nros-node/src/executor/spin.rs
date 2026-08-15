@@ -716,11 +716,63 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
 ///      `write(fd, &1u64, 8)`).
 ///   3. Worker thread reads the fd, signals wake_cv. spin_once
 ///      blocked in cv.wait_timeout_while sees flag=true and exits.
+///
+/// phase-359 W10 — the worker is a PLATFORM TASK, not a `std::thread`, and it
+/// forwards through the same [`NodeWake`](super::node_wake::NodeWake) the
+/// runtime wake callback uses rather than a `std::sync::Condvar`. The eventfd
+/// itself is still Linux — that is what makes the write async-signal-safe — so
+/// this stays `target_os = "linux"`; what it no longer is, is std-only.
 #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
 pub struct WakeSignalFd {
     fd: core::ffi::c_int,
-    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    worker: Option<std::thread::JoinHandle<()>>,
+    ctx: portable_atomic_util::Arc<SignalFdCtx>,
+    task: Option<super::platform_task::PlatformTask>,
+}
+
+/// What the signalfd worker task needs, reachable through one pointer.
+#[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+struct SignalFdCtx {
+    fd: core::ffi::c_int,
+    shutdown: portable_atomic::AtomicBool,
+    /// The executor's wake state — the same `WakeCtx` the runtime callback
+    /// decodes, reached as an address so the context is plainly `Send`.
+    wake_ctx: usize,
+}
+
+/// Worker entry: read the eventfd, forward as a wake, until shut down.
+///
+/// # Safety
+/// `arg` must point at a live [`SignalFdCtx`] whose `wake_ctx` addresses a
+/// `WakeCtx` that outlives this task.
+#[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+unsafe extern "C" fn signal_fd_worker(arg: *mut core::ffi::c_void) -> *mut core::ffi::c_void {
+    // SAFETY: the spawn site passes `Arc::as_ptr` of a ctx it keeps alive until
+    // after the join in `Drop`.
+    let ctx = unsafe { &*(arg as *const SignalFdCtx) };
+    loop {
+        let mut buf = [0u8; 8];
+        // SAFETY: reading 8 bytes from an eventfd into an 8-byte buffer.
+        let n = unsafe { libc::read(ctx.fd, buf.as_mut_ptr() as *mut core::ffi::c_void, 8) };
+        if ctx.shutdown.load(portable_atomic::Ordering::Acquire) {
+            return core::ptr::null_mut();
+        }
+        if n <= 0 {
+            // EINTR / EOF — shutdown was re-checked above, so loop.
+            continue;
+        }
+        // Same effect as `nros_rmw_runtime_wake_cb`, reached directly because
+        // the shutdown check above plus `Drop`'s join is what guarantees the
+        // `WakeCtx` is still alive.
+        // SAFETY: `wake_ctx` addresses the executor's `WakeCtx`, which outlives
+        // this task by that same guarantee.
+        unsafe {
+            let w = &*(ctx.wake_ctx as *const WakeCtx);
+            w.flag.store(true, portable_atomic::Ordering::SeqCst);
+            if let Some(wake) = w.node_wake.as_ref() {
+                wake.signal();
+            }
+        }
+    }
 }
 
 #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
@@ -728,59 +780,38 @@ impl WakeSignalFd {
     /// Spawn the worker. `wake_ctx_ptr` is the `*const WakeCtx`
     /// produced by `Executor::wake_ctx_ptr` — same value the
     /// runtime wake cb decodes.
-    fn new(wake_ctx_ptr: *const WakeCtx) -> Result<Self, std::io::Error> {
+    ///
+    /// phase-359 W10 — returns `NodeError` rather than `std::io::Error`. The
+    /// only caller is `Executor::signal_fd`, and the errno detail it used to
+    /// carry had no consumer: the one failure a caller can act on is "this
+    /// platform would not give me the worker", which is what
+    /// `NotInitialized` says — the eventfd and the task are both subsystems
+    /// this capability requires and neither is guaranteed.
+    fn new(wake_ctx_ptr: *const WakeCtx) -> Result<Self, NodeError> {
+        // SAFETY: `eventfd(2)` with a valid flag; returns -1 on failure.
         let fd = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC) };
         if fd < 0 {
-            return Err(std::io::Error::last_os_error());
+            return Err(NodeError::NotInitialized);
         }
-
-        let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let shutdown_clone = std::sync::Arc::clone(&shutdown);
-
-        // Pass wake_ctx pointer as usize so the closure is Send.
-        // SAFETY: the pointer is valid for the Executor's lifetime
-        // (WakeCtx is owned by the Executor's `wake_ctx: Arc<WakeCtx>`
-        // field which outlives this worker thread — we join in Drop).
-        let ctx_addr = wake_ctx_ptr as usize;
-        let worker = std::thread::Builder::new()
-            .name("nros-wakefd".into())
-            .spawn(move || {
-                let ctx = ctx_addr as *const WakeCtx;
-                loop {
-                    let mut buf = [0u8; 8];
-                    let n =
-                        unsafe { libc::read(fd, buf.as_mut_ptr() as *mut core::ffi::c_void, 8) };
-                    if n <= 0 {
-                        // EINTR / EOF — re-check shutdown then loop.
-                        if shutdown_clone.load(core::sync::atomic::Ordering::Acquire) {
-                            return;
-                        }
-                        continue;
-                    }
-                    if shutdown_clone.load(core::sync::atomic::Ordering::Acquire) {
-                        return;
-                    }
-                    // Same effect as nros_rmw_runtime_wake_cb. We
-                    // can't call it directly because it dereferences
-                    // ctx as &WakeCtx which would race with Executor
-                    // drop unless we hold a guarantee — the
-                    // shutdown_flag check above + Drop's join gives it.
-                    unsafe {
-                        let w = &*ctx;
-                        w.flag.store(true, core::sync::atomic::Ordering::SeqCst);
-                        w.cv.notify_all();
-                    }
-                }
-            })
-            .map_err(|e| {
-                unsafe { libc::close(fd) };
-                std::io::Error::other(alloc::format!("spawn nros-wakefd worker: {e}"))
-            })?;
-
+        let ctx = portable_atomic_util::Arc::new(SignalFdCtx {
+            fd,
+            shutdown: portable_atomic::AtomicBool::new(false),
+            wake_ctx: wake_ctx_ptr as usize,
+        });
+        let arg = portable_atomic_util::Arc::as_ptr(&ctx) as *mut core::ffi::c_void;
+        // SAFETY: `arg` points at a ctx this struct owns and keeps alive until
+        // after the join in `Drop`.
+        let Some(task) =
+            (unsafe { super::platform_task::PlatformTask::spawn(signal_fd_worker, arg) })
+        else {
+            // SAFETY: nothing else holds the fd — the task never started.
+            unsafe { libc::close(fd) };
+            return Err(NodeError::NotInitialized);
+        };
         Ok(Self {
             fd,
-            shutdown,
-            worker: Some(worker),
+            ctx,
+            task: Some(task),
         })
     }
 
@@ -796,16 +827,20 @@ impl WakeSignalFd {
 #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
 impl Drop for WakeSignalFd {
     fn drop(&mut self) {
-        self.shutdown
-            .store(true, core::sync::atomic::Ordering::Release);
-        // Wake the worker so it re-checks shutdown.
+        self.ctx
+            .shutdown
+            .store(true, portable_atomic::Ordering::Release);
+        // Wake the worker so it re-checks shutdown: it is blocked in `read`,
+        // which only this write can release.
         let one: u64 = 1;
+        // SAFETY: an 8-byte write to our own eventfd.
         unsafe {
             libc::write(self.fd, &one as *const u64 as *const core::ffi::c_void, 8);
         }
-        if let Some(j) = self.worker.take() {
-            let _ = j.join();
+        if let Some(task) = self.task.take() {
+            task.join();
         }
+        // SAFETY: the worker has exited, so nothing else touches the fd.
         unsafe { libc::close(self.fd) };
     }
 }
@@ -2588,7 +2623,9 @@ impl<'s> Executor<'s> {
     /// Returns the raw fd. The Executor retains ownership; do not
     /// `close()` it from the caller.
     #[cfg(all(feature = "signal-fd-wake", feature = "rmw-cffi", target_os = "linux"))]
-    pub fn signal_fd(&mut self) -> std::io::Result<core::ffi::c_int> {
+    /// phase-359 W10 — was `std::io::Result`. Same values, an error type that
+    /// does not require `std`.
+    pub fn signal_fd(&mut self) -> Result<core::ffi::c_int, NodeError> {
         let ctx_ptr = self.wake_ctx_ptr() as *const WakeCtx;
         if self.signal_fd.is_none() {
             self.signal_fd = Some(WakeSignalFd::new(ctx_ptr)?);

@@ -231,5 +231,23 @@ pub use executor::SpinPeriodResult;
 compile_error!("`param-services` allocates: add \"alloc\" to this crate's features");
 #[cfg(all(feature = "lifecycle-services", not(feature = "alloc")))]
 compile_error!("`lifecycle-services` allocates: add \"alloc\" to this crate's features");
+// phase-359 W10 — the forwarder's WORKER is a platform task now, not a
+// `std::thread`, and it signals a `NodeWake` rather than a `Condvar`. Two of
+// the three requirements are therefore no longer `std`: it needs the heap for
+// its context (`alloc`) and a linked platform for `nros_platform_task_*` /
+// `nros_platform_wake_*` (`rmw-cffi`, the same proxy `node_wake` uses).
+//
+// `std` REMAINS required, for one reason with a known end: the wake state it
+// forwards into is still `WakeCtx`, the condvar-carrying type gated on `std`.
+// Deleting that type — the campaign's next W10 step, and the one this port
+// unblocked — is what removes this line.
+#[cfg(all(feature = "signal-fd-wake", not(feature = "alloc")))]
+compile_error!("`signal-fd-wake` allocates: add \"alloc\" to this crate's features");
+#[cfg(all(feature = "signal-fd-wake", not(feature = "rmw-cffi")))]
+compile_error!(
+    "`signal-fd-wake` needs the platform task + wake ABI: add \"rmw-cffi\" to this crate's features"
+);
 #[cfg(all(feature = "signal-fd-wake", not(feature = "std")))]
-compile_error!("`signal-fd-wake` needs OS services: add \"std\" to this crate's features");
+compile_error!(
+    "`signal-fd-wake` still reaches the std-gated `WakeCtx`: add \"std\" (phase-359 W10 removes this)"
+);
