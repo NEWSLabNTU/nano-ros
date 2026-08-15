@@ -75,6 +75,19 @@ dev packages install under `/usr/lib/llvm-14/include`), so a header probe there 
 that hard-blocks setup. `libslirp` is the other control (runtime package, versioned SONAME, correct). See
 `archived/0603-*`. (2026-08-15)
 
+**#0609** (testing, open 2026-08-15) — fifteen zenoh interop / workspace-feature / multi-node tests fail as
+`rmw_zenoh_cpp: Unable to make PublisherData … the 'timestamping' setting must be enabled`, before their own
+assertions run. TWO quiet causes stacked. (1) `ZENOH_SESSION_CONFIG_URI` REPLACES rmw_zenoh_cpp's shipped
+`DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5`, and `write_zenoh_session_config` (`ros2.rs:107`) restates only
+`mode`/`connect`/`scouting` — so `timestamping` is dropped, and `/rosout` is transient-local, so NO ROS 2 node
+can start under our config. Verified: adding the block changes the error to `0 data: samples`, i.e. the node
+now starts. (2) That uncovers the second — `rmw_zenoh_overlay()` (`ros2.rs:24`) silently falls back to the
+distro RMW when `build/rmw_zenoh_ws/install` is absent, so `ros-humble-rmw-zenoh-cpp 0.1.1` (vendored against
+the 1.4.0-era zenoh; apt ships `zenohd 1.4.0`) talks to the `zenohd 1.7.2` the tests spawn — the skew
+CLAUDE.md's "Zenoh pinned 1.7.2 (rmw_zenoh_cpp compat)" exists to prevent. Fix: MERGE onto the shipped config
+rather than replace, and make the overlay fallback loud (`skip!`, not silence — #0599's shape).
+See `0609-*`. (2026-08-15)
+
 **#606** (cli, open 2026-08-15) — `[deploy.*].board` and a descriptor's `names` are different vocabularies:
 every in-tree site block says `board = "mps2-an385-freertos"`, which that descriptor does not list
 (`freertos`/`freeRTOS`/`FreeRTOS`), so `BoardCatalog::resolve_deploy` matches nothing and `nros sync` skips
