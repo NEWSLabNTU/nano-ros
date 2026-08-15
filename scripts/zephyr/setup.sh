@@ -76,9 +76,39 @@ SDK_INSTALL_DIR="$SCRIPT_DIR/sdk"
 
 # Zephyr SDK configuration
 ZEPHYR_SDK_VERSION="0.16.8"
-ZEPHYR_SDK_TARBALL="zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64.tar.xz"
+
+# The SDK tarball is keyed on the HOST architecture, and its checksum with it.
+# Both used to be hardcoded to x86_64 (issue 0582's class), which does not fail
+# at download — the x86_64 tarball fetches and verifies happily on aarch64 — but
+# dies later with:
+#
+#     Installing host tools ...
+#     ERROR: Host tools installation failed
+#
+# because the host tools inside it are x86_64 ELF binaries. The message names
+# neither the architecture nor the tarball, so it reads as a broken SDK.
+#
+# Checksums are the upstream ones, from
+# https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/sha256.sum
+# — the x86_64 value is unchanged from when it was hardcoded here.
+case "$(uname -m)" in
+    x86_64)
+        ZEPHYR_SDK_HOST_ARCH="x86_64"
+        ZEPHYR_SDK_SHA256="cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a"
+        ;;
+    aarch64|arm64)
+        ZEPHYR_SDK_HOST_ARCH="aarch64"
+        ZEPHYR_SDK_SHA256="83782b4cf595bb3da8a6c7c1ade01eed00ad03f8ba0c72da6680693192b3668d"
+        ;;
+    *)
+        echo "ERROR: no Zephyr SDK ${ZEPHYR_SDK_VERSION} mapping for host arch '$(uname -m)'." >&2
+        echo "  Upstream ships linux-x86_64 and linux-aarch64. Add the arch and its" >&2
+        echo "  sha256 from the release's sha256.sum, or set NROS_ZEPHYR_SKIP_SDK." >&2
+        exit 1
+        ;;
+esac
+ZEPHYR_SDK_TARBALL="zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-${ZEPHYR_SDK_HOST_ARCH}.tar.xz"
 ZEPHYR_SDK_URL="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/${ZEPHYR_SDK_TARBALL}"
-ZEPHYR_SDK_SHA256="cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a"
 
 # Parse arguments
 FORCE=false

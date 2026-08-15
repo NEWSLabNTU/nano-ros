@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-15): **#610** — `just zephyr setup` downloaded `zephyr-sdk-0.16.8_linux-x86_64.tar.xz`
+on ANY host. `scripts/zephyr/setup.sh` hardcoded the tarball AND its sha256, so on aarch64 the fetch and the
+CHECKSUM both succeeded and the SDK's own installer then died with `Installing host tools ... ERROR: Host
+tools installation failed` — naming neither the architecture nor the tarball, 1.3 GiB in. The cross
+toolchains are host-agnostic; the HOST TOOLS inside the tarball are native binaries, which is why only the
+install fails. Worse than the usual #0582 shape because the passing checksum argues the download was right,
+pointing suspicion at the SDK release instead of the request. Fixed: tarball + sha256 selected together from
+`uname -m` (upstream ships linux-aarch64; the x86_64 sum is byte-identical to the old hardcode, confirming
+the source), unmapped arch is a hard error naming what to add. Reached via tier 2's lane gate failing on
+three zephyr compile-check fixtures. NOTE an earlier tier-2 run reported `== zephyr == OK` on this host with
+no west installed — a family reporting OK is not proof its toolchain exists. See `archived/0610-*`.
+(2026-08-15)
+
 **#615** (build, open 2026-08-16) — `check-feature-contract` clause (d) reasons only about DEP-SITES, so it
 calls `nros-cpp`'s `default = ['panic-spin']` unreachable and asks for it to be emptied. That would BREAK
 the build: `nros-cpp` produces a staticlib — a FINAL artifact — and a `no_std` final artifact with no
