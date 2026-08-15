@@ -68,6 +68,16 @@ STILL OPEN and now unowned: `SchedContext.period_ms`/`budget_ms`/`deadline_ms` c
 this issue deferred that to #505, which resolved without moving them. Carried to phase-357 W1, where the
 unit for declared timing is settled once rather than per-field. See `archived/0519-*`.
 
+**#622** (build, open 2026-08-16) — the legacy-Corrosion `FATAL_ERROR`'s remedy clears only the WORKSPACE
+build trees, so following it verbatim reproduces the same error from the same line. The stale resolution is
+ALSO cached in every example LEAF build dir — 62 of them on the host that found this — and a `CMakeCache.txt`
+is authoritative for that tree's next configure. `nros setup --tool corrosion` meanwhile reports
+`present 0.6.1-nros1 (skip)`: the pin was never missing, the caches were. Issue 0500's shape one layer up —
+"having run the installer" says nothing, and neither does "having run the remedy". Fixed the message in place
+(add the leaf-cache sweep; deleting just the `CMakeCache.txt` suffices, the trees need not go) and filed the
+reasoning, including the better version: the gate already knows the path it rejected and could LIST the stale
+trees instead of handing out a glob. See `0622-*`. (2026-08-16)
+
 **#619** (build/api, open 2026-08-16) — `cargo test -p nros-c` cannot LINK: `nros-log`'s `PlatformSink` calls
 `nros_platform_log_write`/`_flush`, supplied by a platform C port that no test binary links, so `just ci-matrix`
 and `just test-all` die at the compile step before running a test. The crate's library builds fine; only its

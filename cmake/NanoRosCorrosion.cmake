@@ -181,10 +181,16 @@ function(nros_report_corrosion origin version location)
             "`deps/`, so every `#[no_mangle]` export collides at link and "
             "`nros-platform`'s single `#[global_allocator]` is defined twice "
             "(issues 0493, 0616).\n"
-            "Fix: provision the pinned copy and clear the trees that cached the old "
-            "topology in their CMakeCache —\n"
+            "Fix: provision the pinned copy and clear EVERY tree that cached the "
+            "old topology in its CMakeCache —\n"
             "    nros setup --tool corrosion\n"
             "    rm -rf examples/workspaces/*/build-workspace-fixtures*\n"
+            "    grep -rl 'corrosion/0\\.[0-5]' examples/*/*/*/build*/CMakeCache.txt "
+            "| xargs -r rm -f\n"
+            "  (issue 0622 — the example LEAF caches hold the resolved path too, 62 of "
+            "them on the host that found this, and clearing only the workspace trees "
+            "reproduces this error verbatim. Deleting the CMakeCache.txt is enough; the "
+            "trees themselves need not go.)\n"
             "Override for a deliberate experiment: -DNROS_ALLOW_LEGACY_CORROSION=ON")
     endif()
 endfunction()
