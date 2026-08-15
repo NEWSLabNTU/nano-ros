@@ -1,22 +1,36 @@
 # Phase 353 — Build and fixture cost: what the lanes actually pay
 
-**Status (2026-08-15). W1 COMPLETE, W4 COMPLETE, W2 direction (1) DONE, W3
-BLOCKED.** Opened to give four standing cost issues one owner instead of four.
+**Status (2026-08-15). W1, W2 and W4 COMPLETE; W3 BLOCKED.** Opened to give four standing cost issues one owner instead of four.
 
 * **W1** — #562 verified and RESOLVED (its fix had landed, status never
   flipped); #446 re-measured and restated.
 * **W4** — probe key narrowed: **25 -> 8** sub-keys, **7.2 G -> 2.2 G** on the
   same lane, and a second run now adds ZERO new keys.
-* **W2** — the zephyr no-op lane now does nothing: **1668 log lines -> 73,
-  1244 ninja edges -> 0, 129 `Compiling` -> 0.** Direction (2) storage is
-  REFUTED on this host (iowait ~0 on both HDD and NVMe build roots). Direction
-  (3), fewer COLD leaves, is what remains, and #509 stays open for it.
+* **W2** — all three directions answered.
+  * **(1) skip unchanged prep — DONE.** The zephyr no-op lane now does nothing:
+    **1668 log lines -> 73, 1244 ninja edges -> 0, 129 `Compiling` -> 0.**
+  * **(2) storage — REFUTED** on this host: iowait ~0 on both the HDD and the
+    NVMe build root, so there is no stall to recover.
+  * **(3) fewer COLD leaves — DONE.** The dep-info staleness arm compares
+    CONTENT, not mtime, so a `git pull --rebase` / `stash` / branch switch no
+    longer turns every prebuilt fixture cold. The mechanism already existed and
+    served the zephyr arm alone (issue 0442's shape); it now lives in
+    `fixtures::staleness` and both arms share it.
+
+  #509 stays open for the 70-leaf per-leaf overhead it is named for, which none
+  of these three addressed.
 * **W3** — #200 is blocked on a big-disk CI runner and is not actionable
   locally.
 
-**Remaining:** #509 direction (3), fewer COLD leaves — actionable here, and
-bounded by the mtime treadmill (#0466) rather than by hardware. #200's campaign
-still needs a runner.
+**Remaining:** only W3 — #200's timing campaign, which needs a big-disk CI
+runner. Everything actionable on a dev host is done.
+
+Carried OUT of this phase rather than left implied: #509 stays open for the
+70-leaf per-leaf overhead (its namesake, untouched by any of W2's three
+directions), #446 stays open with a current number and W4's census as its next
+lead, and #601 (a ROS `idlc` that is found but cannot load) blocks a cold
+cyclonedds build on any host where ROS is installed but not sourced into the
+build.
 
 **Owns:** [issue 0446](../issues/0446-build-artifact-reuse-factors.md),
 [issue 0509](../issues/0509-zephyr-lane-per-leaf-overhead.md),
