@@ -51,7 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-Recently resolved (2026-08-16): **#620** — `NROS_PLATFORM_TASK_STORAGE_SIZE` was 256 B, sized from a 32-bit
+Recently resolved (2026-08-16): **#624** (build, open 2026-08-16) — `check-examples` (`just/native.just` ~495) runs `cd <leaf> && cargo clippy`
+with no `--target-dir`, re-creating the 37 per-leaf `examples/**/target/` dirs that #0488 declared empty and
+gated. Not a regression of 0488 — a site its sweep never reached, in the population it closed. The gate runs
+BEFORE the examples lane, so each run passes, writes the dirs, and fails the NEXT run: the failure is always
+misattributed to whatever else changed, and clearing "fixes" it for exactly one run. Measured: delete all 37,
+run a green `just check`, all 37 return. Both branches (jobserver pool and `SERIAL=1`) write them. See
+`0624-*`. (2026-08-16)
+
+**#620** — `NROS_PLATFORM_TASK_STORAGE_SIZE` was 256 B, sized from a 32-bit
 port ("~232 B on 32-bit"), while ThreadX-Linux is a HOSTED port whose `TX_THREAD` measures 352 B — so the
 `_Static_assert` fired and took out the threadx-linux family. Fixed upstream CONCURRENTLY by `199c8b0d3`
 (phase-364 W2/W3), which raised the shared bound to 512; `lane=tier2` now reports `== threadx_linux == OK`
