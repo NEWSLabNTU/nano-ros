@@ -1,6 +1,12 @@
 # Phase 351 — Board facts and site config: split them, then retire the old path
 
-**Status (2026-08-15). COMPLETE — W1–W6 landed.** Supersedes
+**Status (2026-08-15). W1–W6 landed; W5's ZEPHYR arm reopened (issue 0605).**
+
+> The Zephyr delivery was committed "unverified — the lane skips (`west not
+> found`)". Provisioning the workspace made it verifiable, and it is inert for
+> the Rust entry lane. Recorded rather than left as a green claim: a wave whose
+> subject is values arriving silently cannot itself ship an arm that delivers
+> nothing without saying so. Supersedes
 [phase-349](phase-349-rtos-integration-shells.md) W2.0, whose leaf-`[env]`
 carrier is retired here (W6).
 
@@ -157,7 +163,7 @@ well rather than reporting a board it can plainly see as unknown.
 arches against 47 — so a ThreadX arch with no NetX counterpart **cannot be
 paired**. The pairing has a validity domain.
 
-## W5 — delivery, per lane ✅ (2026-08-15)
+## W5 — delivery, per lane ⚠️ (2026-08-15 — Zephyr arm open, issue 0605)
 
 - [x] `nros ws board-facts <ws> --board <name>` resolves ONE deploy's board rung
       + site config and prints `KEY=VALUE` lines: `NROS_BOARD`,
@@ -169,9 +175,13 @@ paired**. The pairing has a validity domain.
       the sibling of `nros_cargo_profile_env`, attaches them with
       `corrosion_set_env_vars` — the target's own build command, because
       `set(ENV{})` reaches only the configure-time process (issue 0460).
-- [x] Zephyr: the same VALUES on the `cmake -E env` command
-      `zephyr/cmake/nros_cargo_build.cmake` already builds for the knobs.
-      **Unverified on this host — the Zephyr lane skips (`west not found`).**
+- [ ] Zephyr: wired into the `cmake -E env` command
+      `zephyr/cmake/nros_cargo_build.cmake` builds for the knobs — and **INERT
+      for the Rust entry lane**, measured once the workspace was provisioned
+      (issue 0605). That function builds the CORE crates; a Zephyr Rust entry is
+      built by zephyr-lang-rust's `rust_cargo_application()`, which the hook
+      never reaches. Whether the C/C++ Zephyr cells get them is still unmeasured
+      — issue 0590 stops the lane before those cells configure.
 - [x] Gate `check-board-facts-delivery`: every `corrosion_import_crate()` must
       be followed by the helper, with an EXEMPT map that states why a file
       carries no board. Mutation-verified.

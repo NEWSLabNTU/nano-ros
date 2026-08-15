@@ -15,11 +15,20 @@ indistinguishable, at build time, from one that has nothing to deliver.
 
 Rule
 ----
-Every `corrosion_import_crate(` in `cmake/` must be followed, in the same
-function body, by `nros_board_facts_env(<target>)` — unless the file is listed
-in EXEMPT below with a reason.
+Every file that SPAWNS CARGO must deliver the facts:
 
-Buildless: reads `cmake/**/*.cmake`.
+  * a Corrosion consumer (`corrosion_import_crate(`) calls
+    `nros_board_facts_env(<target>)`;
+  * a lane that builds its own cargo command (`cmake -E env … cargo`) calls
+    `nros_resolve_board_facts()` and puts the result on that command.
+
+Both halves are needed because they are different mechanisms, and checking only
+the first is how the ZEPHYR arm shipped inert: that lane uses no Corrosion, so
+the original rule could not see it, and its `NANO_ROS_BOARD` is never set — the
+helper resolved nothing and (then) said nothing. Found only when the lane could
+finally run, which is the point of gating the mechanism rather than the value.
+
+Buildless: reads `cmake/**/*.cmake` and `zephyr/cmake/*.cmake`.
 """
 
 import os
@@ -27,7 +36,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CMAKE = os.path.join(ROOT, "cmake")
+CMAKE_DIRS = (os.path.join(ROOT, "cmake"), os.path.join(ROOT, "zephyr", "cmake"))
 
 # Imports that carry no board rung, each with the reason it cannot.
 EXEMPT = {
@@ -41,14 +50,21 @@ EXEMPT = {
 
 def main():
     offenders, checked, exempt = [], 0, 0
-    for dirpath, _dirs, files in os.walk(CMAKE):
+    walked = []
+    for root in CMAKE_DIRS:
+        for dirpath, _dirs, files in os.walk(root):
+            walked.append((dirpath, files))
+    for dirpath, files in walked:
         for name in sorted(files):
             if not name.endswith(".cmake"):
                 continue
             path = os.path.join(dirpath, name)
             with open(path, encoding="utf-8") as fh:
                 src = fh.read()
-            if "corrosion_import_crate(" not in src:
+            spawns_corrosion = "corrosion_import_crate(" in src
+            # `cmake -E env … cargo` — a lane that builds its own command.
+            spawns_own = re.search(r"-E env(.|\n)*?\bcargo\b", src) is not None
+            if not spawns_corrosion and not spawns_own:
                 continue
             # The definition of the helper itself is not a call site.
             if name == "NanoRosBoardFacts.cmake":
@@ -57,7 +73,10 @@ def main():
                 exempt += 1
                 continue
             checked += 1
-            if "nros_board_facts_env(" not in src:
+            delivers = "nros_board_facts_env(" in src or (
+                "nros_resolve_board_facts(" in src and "NROS_BOARD_FACTS_ENV" in src
+            )
+            if not delivers:
                 offenders.append(os.path.relpath(path, ROOT))
 
     if offenders:
@@ -79,7 +98,7 @@ def main():
         return 1
 
     print(
-        f"board-facts delivery: OK ({checked} cargo-importing cmake file(s) deliver "
+        f"board-facts delivery: OK ({checked} cargo-spawning cmake file(s) deliver "
         f"the facts, {exempt} exempt)"
     )
     return 0

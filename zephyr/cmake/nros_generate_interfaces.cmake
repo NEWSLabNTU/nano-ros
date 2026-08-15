@@ -2,6 +2,7 @@
 # phase-336 — the shared cargo-profile resolver (`nros profile`), included
 # at FILE scope so a function body never include()s inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosBoardFacts.cmake")
 
 nros_generate_interfaces (Zephyr)
 ---------------------------------
@@ -463,9 +464,15 @@ targets = [\"${NROS_RUST_TARGET}\"]
 
       # phase-336 — carry the preset definition; this generated crate is its own
       # workspace root and no longer appends a `[profile.*]` block.
+      # phase-351 W5 — the message FFI glue is TARGET code, so its cargo
+      # invocation carries the board facts like every other one. Cheap and
+      # unconditional on purpose: deciding per crate whether it "needs" the
+      # board rung is the judgment call that leaves one lane silently without
+      # it, which is how the Zephyr arm shipped inert.
+      nros_resolve_board_facts()
       set(_ffi_env "")
       if(NOT _NROS_FFI_ENV STREQUAL "")
-        set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV})
+        set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV})
       endif()
       add_custom_command(
         OUTPUT "${_ffi_lib}"

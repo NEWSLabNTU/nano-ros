@@ -64,6 +64,7 @@ set(_NANO_ROS_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
 # Phase 246 — shared codegen helpers (lib.rs assembly, rs-closure collect/export)
 # used by both this generator and the Zephyr-module sibling. include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardFacts.cmake")
 # `nros_read_package_xml_body()` — regex reads of a package.xml must not see
 # commented-out elements (phase-348 W1).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPackageXml.cmake")
@@ -540,9 +541,15 @@ function(nros_generate_interfaces target)
       # The preset's definition has to ride ON the command: this is a plain
       # custom command, so `corrosion_set_env_vars` cannot reach it. Empty for a
       # user-owned profile, where the crate's own manifest governs.
+      # phase-351 W5 — the message FFI glue is TARGET code, so its cargo
+      # invocation carries the board facts like every other one. Cheap and
+      # unconditional on purpose: deciding per crate whether it "needs" the
+      # board rung is the judgment call that leaves one lane silently without
+      # it, which is how the Zephyr arm shipped inert.
+      nros_resolve_board_facts()
       set(_ffi_env "")
       if(NOT _NROS_FFI_ENV STREQUAL "")
-        set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV})
+        set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV})
       endif()
       add_custom_command(
         OUTPUT "${_ffi_lib}"

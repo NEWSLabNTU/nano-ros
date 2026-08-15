@@ -68,6 +68,15 @@ dev packages install under `/usr/lib/llvm-14/include`), so a header probe there 
 that hard-blocks setup. `libslirp` is the other control (runtime package, versioned SONAME, correct). See
 `archived/0603-*`. (2026-08-15)
 
+**#605** (build, open 2026-08-15) — phase-351 W5's Zephyr arm is INERT for the Rust entry lane. It was
+committed "unverified" while the lane skipped (`west not found`); with the workspace provisioned, a full
+configure prints ZERO `nano-ros: board facts` lines — not the delivery, and not any of the three "NOT
+delivered" reasons. Cause: the hook sits in `nros_cargo_build()`, which builds the CORE crates, while a
+Zephyr Rust entry is built by zephyr-lang-rust's `rust_cargo_application()`. The widened
+`check-board-facts-delivery` gate cannot see it either — that cargo invocation belongs to a THIRD-PARTY
+module, so the delivery must be arranged where we CALL it. Unmeasured: whether the C/C++ Zephyr cells get
+them (#0590 stops the lane first). See `0605-*`. (2026-08-15)
+
 **#590** (rmw/zephyr, open 2026-08-15) — every cyclonedds cell of `just zephyr build-fixtures` fails to
 COMPILE on a freshly provisioned workspace (3.7 line, SDK 0.16.8): cyclone's ddsrt picks its POSIX environ
 backend, whose `setenv`/`unsetenv` Zephyr's libc declares only behind `CONFIG_POSIX_API`, and gcc >= 14
