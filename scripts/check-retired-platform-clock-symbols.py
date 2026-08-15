@@ -81,7 +81,16 @@ RETIRED = ["nros_platform_clock_ms", "nros_platform_clock_us"]
 # below confirms they stayed gone.
 DEFINING_HEADER = "packages/platform/nros-platform-api/include/nros/platform.h"
 
-SUFFIXES = (".c", ".h", ".cpp", ".hpp", ".cc", ".cxx")
+# `.rs` belongs here for the same reason the C files do — these are `extern "C"`
+# symbols, and Rust can declare, define or call them by name in exactly the two
+# shapes arms 1-3 describe. A C/C++-only scan left that half of the ABI unscanned.
+#
+# Not to be confused with the RUST-SIDE rename of the same era: pre-fix
+# `c_stub_platform.rs` called `CffiPlatform::clock_ms()`, a trait method, not this
+# symbol. That one needs no gate — a removed method is a compile error, whereas a
+# removed `extern "C"` symbol compiles and fails at link, which is the whole
+# reason this file exists.
+SUFFIXES = (".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".rs")
 
 # A declaration rather than a call: `uint64_t nros_platform_clock_ms(void);` or
 # an `extern` of the same. Anchored at LINE START, and the character class
@@ -96,12 +105,24 @@ DECL_PAT = re.compile(
 )
 
 
+CHAR_LIT = re.compile(r"'(?:\\.|[^\\'])'")
+
+
 def strip_comments(text):
     """Remove /* */ and // comments, preserving string literals and line count."""
     out = []
     i, n = 0, len(text)
     while i < n:
         c = text[i]
+        # A Rust lifetime (`'static`, `'a`) is not a char literal, and treating it
+        # as one makes the scanner run to the NEXT quote, swallowing whatever code
+        # lies between — a stripper that silently eats its input is worse than no
+        # stripper. So `'` opens a literal only when it actually closes like one.
+        # The rule holds for C too, where every char literal has the same shape.
+        if c == "'" and not CHAR_LIT.match(text, i):
+            out.append(c)
+            i += 1
+            continue
         if c == '"' or c == "'":
             quote = c
             out.append(c)
@@ -223,6 +244,39 @@ def self_test():
         if not extra_definers([rel]):
             sys.stderr.write("self-test: a duplicate definition was NOT reported\n")
             sys.exit(2)
+        # 6 — the Rust arms. `.rs` joined the scan set only after the gate had
+        #     already missed a Rust caller, so both directions get pinned here.
+        rs = os.path.join(d, "probe.rs")
+        rs_rel = os.path.relpath(rs, ROOT)
+
+        def write_rs(body):
+            with open(rs, "w") as fh:
+                fh.write(body)
+
+        write_rs('unsafe extern "C" {\n    fn nros_platform_clock_ms() -> u64;\n}\n')
+        if not offenders([rs_rel]):
+            sys.stderr.write("self-test: a Rust extern declaration was NOT reported\n")
+            sys.exit(2)
+        write_rs('#[unsafe(no_mangle)]\n'
+                 'pub extern "C" fn nros_platform_clock_us() -> u64 { 0 }\n')
+        if not extra_definers([rs_rel]):
+            sys.stderr.write("self-test: a Rust definition was NOT reported\n")
+            sys.exit(2)
+        # …and a lifetime must not derail the comment stripper. Without the
+        # char-literal rule the `'` opens a literal that runs to the next quote,
+        # so the retired name after it is never seen and this passes vacuously.
+        write_rs("fn f<'a>(x: &'a str) -> &'a str { x }\n"
+                 "fn g() -> u64 { unsafe { nros_platform_clock_ms() } }\n")
+        if not offenders([rs_rel]):
+            sys.stderr.write("self-test: a use after a LIFETIME was NOT reported\n")
+            sys.exit(2)
+        # prose in Rust is still prose.
+        write_rs('// nros_platform_clock_ms is retired; see RFC-0073.\n'
+                 'fn f() -> u64 { 0 }\n')
+        if offenders([rs_rel]):
+            sys.stderr.write("self-test: a Rust comment WAS reported\n")
+            sys.exit(2)
+
         # …and a file that merely calls them is not a DEFINITION (it is still an
         # arm-1 offender, which is a different report).
         write('uint64_t f(void){ return nros_platform_clock_ms(); }\n')
@@ -231,8 +285,12 @@ def self_test():
             sys.exit(2)
 
 
+# Two spellings of a definition: C's `static inline` wrapper, and Rust's
+# `#[no_mangle] … extern "C" fn`. Either one is a second definition site.
 DEFINE_PAT = re.compile(
-    r'static\s+inline\s+[\w \t*]*\b(?:%s)\s*\(' % "|".join(RETIRED)
+    r'static\s+inline\s+[\w \t*]*\b(?:%s)\s*\('
+    r'|extern\s+"C"\s+fn\s+(?:%s)\s*\('
+    % ("|".join(RETIRED), "|".join(RETIRED))
 )
 
 
@@ -295,7 +353,7 @@ def main():
             "       which is why they went (issues 0547, 0548, 0555).\n"
         )
         return 1
-    print(f"check-retired-platform-clock-symbols: OK ({len(files)} tracked C/C++ source(s))")
+    print(f"check-retired-platform-clock-symbols: OK ({len(files)} tracked C/C++/Rust source(s))")
     return 0
 
 
