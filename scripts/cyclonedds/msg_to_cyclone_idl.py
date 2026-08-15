@@ -108,7 +108,39 @@ def _adapter_bin_and_env() -> "tuple[Path, dict]":
             pythonpath = f"{pythonpath}{os.pathsep}{existing}"
         env["PYTHONPATH"] = pythonpath
         return vendored, env
-    return ros, env  # dead path — find_adapter names the remedies
+    # Neither rung is usable. The comment above already says "the directory
+    # existing is a PROXY; being importable is the property" — but returning
+    # `ros` here hands back a path whose SCRIPTS EXIST, so `find_adapter`'s
+    # `is_file()` passes and its carefully written remedy is never printed. The
+    # build then dies two layers down on
+    #
+    #     ModuleNotFoundError: No module named 'rosidl_adapter'
+    #
+    # which names neither the cause nor the fix. That is issue 0601's rule
+    # ("EXISTS is not RUNS") applied one layer up and left unfinished: 0601
+    # caught a findable idlc that could not LOAD; this is a findable msg2idl.py
+    # that cannot IMPORT. It blocked phase-353 W2's full-lane measurement.
+    #
+    # So refuse here, where the reason is still known.
+    ros_exists = ros.is_dir()
+    sys.exit(
+        "error: rosidl_adapter is not importable by this build's interpreter.\n"
+        + (
+            f"  ROS's copy is present ({ros}) but `import rosidl_adapter` fails,\n"
+            "  which means ROS's site-packages are not on PYTHONPATH in THIS\n"
+            "  build's environment — sourcing setup.bash in the launching shell\n"
+            "  does not reach a nested cmake/ninja.\n"
+            if ros_exists
+            else "  ROS's copy is absent.\n"
+        )
+        + f"  The vendored fallback is also absent ({_VENDORED_ROSIDL}).\n"
+        "\n"
+        "  Fix either one:\n"
+        "    nros setup --source rosidl      # vendored copy, no ROS needed\n"
+        "      (+ deps: pip3 install --user catkin_pkg 'empy==3.3.4' lark)\n"
+        "    source /opt/ros/<distro>/setup.bash   # into the BUILD's env\n"
+        "    NROS_ROSIDL_ADAPTER_BIN_DIR=<dir>     # explicit override"
+    )
 
 
 DEFAULT_ADAPTER_BIN, _ADAPTER_ENV = _adapter_bin_and_env()
