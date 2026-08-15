@@ -108,6 +108,16 @@ Zephyr Rust entry is built by zephyr-lang-rust's `rust_cargo_application()`. The
 module, so the delivery must be arranged where we CALL it. Unmeasured: whether the C/C++ Zephyr cells get
 them (#0590 stops the lane first). See `0605-*`. (2026-08-15)
 
+**#612** (testing, open 2026-08-16) — `tests/signal_fd_wake.rs` cannot LINK in any configuration and no
+lane enables the feature, so `signal-fd-wake` has never been runtime-tested. `nros-node` carries no platform
+provider in its dev-dependencies, so the moment the test's feature set pulls `NodeWake` in, every
+`nros_platform_wake_*` is undefined; sibling test binaries link only because nothing references them.
+Independently, `grep -rn signal-fd-wake just/ .github/ scripts/` finds one comment and no runner. Issue
+0577's class, and the instance phase-359's doc says to budget for — it surfaced when W10 ported the
+forwarder off `std::thread`, which is therefore compile-verified only. Fix needs BOTH a platform in
+dev-deps and a lane; loosening the test's `#![cfg]` until it compiles would restore the appearance of
+coverage without the substance. See `0612-*`. (2026-08-16)
+
 **#608** (testing, open 2026-08-15) — a fixture row built into a phase-340 shared cargo GROUP is
 resolved at the AMBIENT cargo profile, discarding the platform carve-out the caller just applied. NuttX
 Rust pins `nros-minsizerel` (the `lto=off` cross-CGU bug), and `binaries/nuttx.rs` honours that on the
