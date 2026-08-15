@@ -109,22 +109,5 @@ safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # that gets its allocator from `nros-c` gets its panic handler from there too,
 # and splitting them into two flags would let a build pick one of each and
 # duplicate a lang item.
-# Issue 0613 — EMPTY, and the feature below is reached explicitly.
-#
-# This default was unreachable: the crate's ONE in-workspace dep-site is
-# `nros-board-nuttx-qemu`, which takes it `default-features = false` and then
-# forwards the feature through its OWN `image-runtime` (default ON there). So
-# nothing could ever activate this list, and `check-feature-contract` clause (d)
-# says so — the same class as issue 0593, where `nros`'s default was a safety net
-# every real dep-site disabled.
-#
-# It must NOT be fixed by naming `image-runtime` at that dep-site: the two FFI
-# bins take the OVERLAY with `default-features = false` precisely to get the
-# runtime OFF (a C/C++ image gets `#[panic_handler]` and `#[global_allocator]`
-# from `nros-c`). Forcing it on at the inner dep-site would give those images two
-# of each — the lang-item duplication the comment above warns about.
-#
-# The pure-Rust path is unchanged: it enables the overlay's default, which
-# forwards to `image-runtime` here.
-default = []
+default = ["image-runtime"]
 image-runtime = ["nros-platform/global-allocator"]

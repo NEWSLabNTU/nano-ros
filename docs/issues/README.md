@@ -72,23 +72,13 @@ to `panic-spin`); what is missing is any hint that the remedy is `--features std
 correctness — filed at that weight. I first reported it as a rebase regression, which was wrong.
 See `0614-*`. (2026-08-16)
 
-**#615** (build, open 2026-08-16) — `check-feature-contract` clause (d) reasons only about DEP-SITES, so it
-calls `nros-cpp`'s `default = ['panic-spin']` unreachable and asks for it to be emptied. That would BREAK
-the build: `nros-cpp` produces a staticlib — a FINAL artifact — and a `no_std` final artifact with no
-panic provider does not link. Verified by applying the remedy: `error: #[panic_handler] function
-required, but not found`. A crate whose own artifact is final is a consumer of its own default, which the
-rule cannot see. Distinct from #0613, where the default really was dead and emptying it was verified
-inert. RED on the `just ci` line. See `0615-*`.
-
-Recently resolved (2026-08-16): **#613** `check-feature-contract` clause (d) failed on
-`nros-board-nuttx`: `default = ['image-runtime']` was unreachable, because its ONE in-workspace dep-site
-(`nros-board-nuttx-qemu`) takes it `default-features = false` and re-enables the feature by name. This is
-the class issue 0593's "Gate" section asked for, found in a second crate — the gate working, not a new
-defect. Naming the feature at that dep-site would have been WRONG: the two FFI bins disable the overlay's
-default precisely to get the runtime OFF, since a C/C++ image gets `#[panic_handler]` and
-`#[global_allocator]` from `nros-c`, and forcing it would duplicate both lang items. Fixed with
-`default = []`; verified inert by diffing resolved features before/after (identical, because the dep-site
-already disabled defaults). See `archived/0613-*`.
+Recently resolved (2026-08-16): **#615** clause (d) reasoned only about DEP-SITES, so it called
+`nros-cpp`'s `default = ['panic-spin']` unreachable and asked for it to be emptied — which BREAKS the
+build, since `nros-cpp` is a staticlib and a `no_std` final artifact needs a panic provider (verified:
+`error: #[panic_handler] function required, but not found`). A crate whose own build is final is a
+consumer of its own default. Fixed by exempting those, REPORTING the exemption rather than skipping
+silently, and self-testing both directions — a staticlib default passes, an rlib-only one still fails.
+See `archived/0615-*`.
 
 **#602** — `[source.threadx]` declares `eclipse-threadx/threadx` at `4b6e8100` while `.gitmodules` declares the
 `NEWSLabNTU` fork and the gitlink records `13d061a7` (whose parent IS `4b6e8100`; the commit between them is our

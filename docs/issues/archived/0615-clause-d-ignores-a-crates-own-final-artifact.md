@@ -1,7 +1,7 @@
 ---
 id: 615
 title: "`check-feature-contract` clause (d) counts only DEP-SITES, so it calls a default unreachable when the crate's OWN artifact needs it"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0593, issue-0613, issue-0591, phase-360, phase-361]
@@ -78,7 +78,7 @@ Here the default is live and load-bearing.
 (1) is the smallest change that is also correct in general; (2) is the safest if
 `crate-type` turns out to be a poor proxy on some crate.
 
-## Why this is filed rather than fixed
+## Why this was filed before being fixed
 
 `check-feature-contract` is phase-360 W4's gate and `nros-cpp`'s default is
 phase-361 W3's, both landed within days. Changing either mid-flight is how the
@@ -93,3 +93,50 @@ Found 2026-08-16 immediately after issue 0613 fixed the genuine instance of this
 class in `nros-board-nuttx`. Clause (d) then fired on `nros-cpp` — a different
 situation with the same symptom, which is what makes the dep-site-only
 implementation worth correcting rather than papering over.
+
+## Resolved 2026-08-16 — fix shape (1)
+
+`clause_d` now skips a crate whose OWN build is final — `crate-type` containing
+`staticlib`/`cdylib`/`bin`, or any `[[bin]]` target. That crate is a consumer of
+its own default, which the dep-site view cannot see.
+
+The exemption is REPORTED, not silent:
+
+```
+note (d) exempt, own build is final: nros-cpp (own build is final: ['lib', 'staticlib'])
+ok  (d) no `default` feature is unreachable
+```
+
+A gate that exempts without saying so is how issue 0442 hid.
+
+### Kept narrow, and self-tested in both directions
+
+Two cases added to `--self-test` (now 19):
+
+* `final-artifact-default-exempt` — a `staticlib` crate with an otherwise
+  unreachable default must PASS.
+* `rlib-only-default-still-fails` — the same shape with `crate-type = ["rlib"]`
+  must still FAIL.
+
+The second is the one that matters: an exemption that swallowed the rlib case
+would have silently retired the clause.
+
+## Postscript — issue 0613 was a FALSE POSITIVE, and is reverted
+
+Filing this exposed that the instance 0613 "fixed" was not real either.
+
+Upstream's `a32196ab2` (2026-08-15 13:49) had already fixed clause (d)'s blind
+spot: it now follows a feature reached by FORWARDING
+(`image-runtime = ["nros-board-nuttx/image-runtime"]` in the consumer's own
+feature table) and not only by `features = [...]` on the dep line. That is
+exactly how `nros-board-nuttx-qemu` reaches the feature.
+
+My 0613 diagnosis ran against a checkout predating that commit by ~11 hours, so
+I saw a stale failure and emptied `nros-board-nuttx`'s `default` to satisfy it.
+With the current gate, restoring `default = ["image-runtime"]` is green — the
+clause does not fire — so the manifest change was unnecessary, and it removed a
+default the crate's comment documents as intentional for out-of-tree pure-Rust
+consumers. **Reverted.**
+
+Verified both ways before reverting: with the current gate and the default
+restored, clause (d) reports `ok`.

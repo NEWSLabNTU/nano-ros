@@ -250,6 +250,36 @@ def clause_c(mans):
     return bad
 
 
+def builds_a_final_artifact(doc):
+    """True when the crate's OWN build produces something that must link.
+
+    Issue 0615 — clause (d) asks whether a `default` is reachable, but reasons
+    only about DEP-SITES. A crate whose own artifact is final has a consumer the
+    dep-site view cannot see: itself.
+
+    `nros-cpp` is the case. It declares `crate-type = ["staticlib", "lib"]`, and
+    a bare `cargo check -p nros-cpp` therefore builds a FINAL artifact — which
+    for `no_std` needs a panic provider, which is exactly what its
+    `default = ["panic-spin"]` supplies. Following the clause's advice and
+    emptying that default produces:
+
+        error: `#[panic_handler]` function required, but not found
+
+    So the clause would have demanded a change that breaks the build it was
+    meant to protect. Measured, not assumed (issue 0615).
+
+    An rlib-only crate — `nros-board-nuttx`, the genuine instance issue 0613
+    fixed — is NOT final: nothing links it alone, so its default really is dead
+    when every dep-site disables it, and the clause must keep firing there.
+    """
+    lib = doc.get("lib") or {}
+    kinds = set(lib.get("crate-type") or [])
+    if kinds & {"staticlib", "cdylib", "bin"}:
+        return True
+    # `[[bin]]` targets link too, and a crate can have them without a `[lib]`.
+    return bool(doc.get("bin"))
+
+
 def clause_d(mans):
     """No `default` feature is unreachable from every dep-site."""
     by_name = {}
@@ -293,12 +323,19 @@ def clause_d(mans):
                 )
 
     bad = []
+    exempt = []
     for nm, (man, doc) in sorted(by_name.items()):
         dflt = ((doc.get("features") or {}).get("default")) or []
         ss = sites.get(nm) or []
         if not dflt or not ss:
             continue
         if any(takes_default for (takes_default, _) in ss):
+            continue
+        # Issue 0615 — the crate's own build is a consumer the dep-site view
+        # cannot see. Recorded rather than skipped silently: a gate that
+        # exempts without saying so is how issue 0442 hid.
+        if builds_a_final_artifact(doc):
+            exempt.append(f"{nm} (own build is final: {sorted(set((doc.get('lib') or {}).get('crate-type') or []) | ({'bin'} if doc.get('bin') else set()))})")
             continue
         named = set()
         for (_, feats) in ss:
@@ -312,6 +349,8 @@ def clause_d(mans):
                 f"      disappears in the per-package build cmake runs (issue 0593). Request it\n"
                 f"      at the dep-sites that need it."
             )
+    if exempt:
+        print(f"  note (d) exempt, own build is final: {', '.join(exempt)}")
     return bad
 
 
@@ -528,6 +567,34 @@ def self_test():
               {"src/lib.rs": "fn f() {}\n"})
         expect("default-requested-explicitly", r, "d", want_fail=False)
 
+        # d — issue 0615: a crate whose OWN build is FINAL is a consumer the
+        # dep-site view cannot see. `nros-cpp` declares
+        # `crate-type = ["staticlib", "lib"]`, so a bare `cargo check -p
+        # nros-cpp` links, and its `default = ["panic-spin"]` is what supplies
+        # the panic handler. The clause used to demand that default be emptied,
+        # which produces `#[panic_handler] function required, but not found`.
+        r = os.path.join(tmp, "d4")
+        base(r)
+        crate(r, "x",
+              '[package]\nname = "x"\n[lib]\ncrate-type = ["staticlib", "lib"]\n'
+              '[features]\ndefault = ["markers"]\nmarkers = []\n',
+              {"src/lib.rs": '#[cfg(feature = "markers")]\nfn f() {}\n'})
+        crate(r, "y", '[package]\nname = "y"\n[dependencies]\nx = { path = "../x", default-features = false }\n',
+              {"src/lib.rs": "fn f() {}\n"})
+        expect("final-artifact-default-exempt", r, "d", want_fail=False)
+
+        # d — and the exemption must be NARROW: an rlib-only crate in the same
+        # shape still fails, which is the genuine instance issue 0613 looked at.
+        r = os.path.join(tmp, "d5")
+        base(r)
+        crate(r, "x",
+              '[package]\nname = "x"\n[lib]\ncrate-type = ["rlib"]\n'
+              '[features]\ndefault = ["markers"]\nmarkers = []\n',
+              {"src/lib.rs": '#[cfg(feature = "markers")]\nfn f() {}\n'})
+        crate(r, "y", '[package]\nname = "y"\n[dependencies]\nx = { path = "../x", default-features = false }\n',
+              {"src/lib.rs": "fn f() {}\n"})
+        expect("rlib-only-default-still-fails", r, "d", want_fail=True)
+
         # d — reached by FORWARDING (`dep/feature` in the consumer's own feature
         # table) rather than by `features = [...]` on the dep line. This is how
         # `nros-board-nuttx-qemu` reaches `image-runtime`, and reporting it as
@@ -587,7 +654,7 @@ def self_test():
         for f in failures:
             sys.stderr.write(f"self-test: {f}\n")
         return 2
-    print("check-feature-contract self-test: OK (17 cases, every clause fires and holds)")
+    print("check-feature-contract self-test: OK (19 cases, every clause fires and holds)")
     return 0
 
 

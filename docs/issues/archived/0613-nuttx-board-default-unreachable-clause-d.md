@@ -1,6 +1,6 @@
 ---
 id: 613
-title: "`nros-board-nuttx`'s `default = [image-runtime]` is unreachable — clause (d) finds issue 0593's class in a second crate"
+title: "RETRACTED: `nros-board-nuttx`'s `default` was NOT unreachable — I read a stale clause (d), fixed 11 hours earlier"
 status: resolved
 type: bug
 area: build
@@ -88,3 +88,38 @@ relied on defaults must now name `image-runtime`. That is the same trade issue
 0593 made for `nros`, and it is the point of the rule: a load-bearing feature
 should be requested where it is needed, not inherited from a default that every
 real dep-site turns off.
+
+## RETRACTED 2026-08-16 — this was a false positive, and the change is reverted
+
+The premise was wrong. Clause (d) did not have a real finding here.
+
+Upstream's `a32196ab2` (2026-08-15 13:49) had already fixed the clause's blind
+spot: it now follows a feature reached by FORWARDING —
+
+```toml
+# nros-board-nuttx-qemu
+image-runtime = ["nros-board-nuttx/image-runtime"]
+```
+
+— and not only by `features = [...]` on the dep line. Its own code comment says
+so, and names this crate as the case that motivated it.
+
+I diagnosed against a checkout ~11 hours older than that commit, saw the stale
+failure, and emptied `nros-board-nuttx`'s `default` to satisfy it. With the
+current gate, restoring `default = ["image-runtime"]` is GREEN — clause (d) does
+not fire.
+
+So the change was unnecessary, and not harmless: the crate's comment documents
+that default as intentional, so a pure-Rust image gets `#[panic_handler]` and
+`#[global_allocator]` without naming a flag. Emptying it moved that burden onto
+every out-of-tree direct consumer for no gain. **Reverted** to
+`default = ["image-runtime"]`.
+
+The "verified inert" measurement in this issue was true and still is — it showed
+the change did not alter what the ONE in-workspace dep-site resolves. What it
+could not show, because I never asked, was whether the change was NEEDED. Inert
+is not the same as warranted.
+
+The real instance of this class is issue 0615, found immediately afterwards in
+`nros-cpp`, where clause (d) reasons only about dep-sites and misses a crate
+whose own artifact is final.
