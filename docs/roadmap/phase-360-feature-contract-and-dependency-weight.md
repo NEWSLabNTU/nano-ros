@@ -18,20 +18,26 @@ renumbered THREE times, because every renumber read a local maximum that a push
 had already moved. 341 → 345 (2026-08-10, upstream had spent 341–344 and issues
 0467–0471); 345 → 359 (2026-08-15, upstream had spent 345 and 0492–0496);
 359 → 360 (2026-08-15, same day — upstream landed `phase-359-drop-std-campaign`
-while this branch was rebasing onto it). Issues are 0581–0585 and have not
-moved since the second renumber. `just phase-new` / `just issue-new` were used
-for the last two, but **both fell back to the RACY local-maximum path** because
-this host cannot authenticate to `origin` ("Password authentication is not
-supported"), so no `refs/*-ids/NNNN` reservation was ever pushed. Re-check
-before the branch lands. Three collisions is not bad luck: an id read from a
-local checkout is stale the moment another session pushes, and this branch has
-been out of tree long enough for that to happen every time.
+while this branch was rebasing onto it). Issues moved with them, and then one
+moved again: 0492–0496 → 0581–0585, and on the next pull **0581 → 0587**,
+because upstream spent 0581 on an unrelated `just book` fix hours after this
+branch claimed it. 0582–0585 are unmoved; 0586 was filed and immediately
+archived (see below).
+
+Every one of these was `just phase-new` / `just issue-new` falling back to the
+RACY local-maximum path — this host cannot authenticate to `origin` ("Password
+authentication is not supported"), so no `refs/*-ids/NNNN` reservation was ever
+pushed and the local maximum is only ever a guess. **Re-run both tools with a
+working credential before this branch lands**; until then every id here is
+unclaimed. Four collisions is not bad luck: an id read from a local checkout is
+stale the moment another session pushes, and this branch has been out of tree
+long enough for that to happen on every single pull.
 
 **Touches:** RFC-0005 (RMW layer), RFC-0006 (portable RMW/platform interface),
 RFC-0033 (message field capacity — the `mode = "heap"` types this contract
 governs), RFC-0034 (the `nros_platform_alloc` funnel W8.c enforces), RFC-0062
 (unified dependency SSOT).
-**Opens:** issue 0581 (`std` implies `alloc` in half the stack), issue 0582
+**Opens:** issue 0587 (`std` implies `alloc` in half the stack), issue 0582
 (`default = ["std"]` splits compile identities), issue 0583 (47 of 57 crates in
 a firmware build are proc-macro host tooling), issue 0585 (34 implicit
 `alloc`/`std` enables; the allocator-ownership half is closed by W8.c).
@@ -119,7 +125,7 @@ Applied:
   deleting `std` requires no `cfg` edit in this set at all.**
 * `read_rmw_selector_env` returns `alloc::vec::Vec<u8>` again.
 
-Issue 0581 is still fixed, and by a smaller change than the one it replaced: the
+Issue 0587 is still fixed, and by a smaller change than the one it replaced: the
 defect was `nros-core`'s heap gate and `nros-serdes`'s disagreeing, and
 `nros-core`'s `std` now forwards `alloc` to `nros-serdes`, so the types and
 their impls arrive together. Verified with the reproducer at `nros-core`'s
@@ -172,7 +178,7 @@ nros-core). Previously `default = ["std"]`"* — but `nros-core` still declares
 `nros-params`, `nros-rmw` do not. `nros-core/src/lib.rs:19` gates `extern crate
 alloc` — and the `heap::{Vec, String}` re-export RFC-0033 codegen emits — on
 `any(alloc, std)`, i.e. the source assumes the implication its own manifest does
-not make. Issue 0581 has the reproducer: at `nros-core`'s **default** feature
+not make. Issue 0587 has the reproducer: at `nros-core`'s **default** feature
 set, `nros_core::heap::Vec<u32>` exists and has no `Serialize` impl.
 
 ### RMW
@@ -309,7 +315,7 @@ nros-core / nros-serdes / nros-rmw / nros-node / nros / nros-log
 thumbv7em / aarch64-unknown-none / armv7r   bare and alloc      ok
 ```
 
-Issue 0581 is fixed by the edge itself: `nros-core`'s `std` forwards `alloc`,
+Issue 0587 is fixed by the edge itself: `nros-core`'s `std` forwards `alloc`,
 which forwards `nros-serdes/alloc`, so `heap::{Vec, String}` and the RFC-0033
 `Serialize`/`Deserialize` impls arrive together instead of one without the
 other. Verified with a reproducer built against `nros-core --features std`

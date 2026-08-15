@@ -168,18 +168,18 @@ assert against `size_of` of the type they store, and `check-opaque-storage-guard
 `15 macro(s) emitted, all guarded`. A silently substituted size is now a build error naming the macro.
 See `archived/0464-*`.
 
-**#586** (testing, open 2026-08-15) — phase-359's `std` census counts only `cfg` sites where
-`feature = "std"` sits IMMEDIATELY after `cfg(` / `cfg(not(`, so every `all(...)` / `any(...)` spelling
-is invisible: **69 of 252 sites (27 %)** in its own scope, 55 of them in `nros-node`, the campaign's
-largest work item. Mutation-verified — two planted `std`-conditional items in `nros-rmw` using no
-`std::` path leave the gate green; a third that also named `std::string::String` was caught by the
-PATH metric, which is the other half of the census and the docstring is explicit they move
-independently ("W2 deletes `cfg` branches without touching `path` counts" — W2 is exactly what this
-cannot measure). It already missed a real one: phase-360 W2.a's brief `std ⇒ alloc` deletion added 88
-std-mentioning branches and the gate reported 183 for both trees. Same class as #0196 (gate narrower
-than its rule) and the second instance inside phase-359 — W1's own notes record `check-no-std`
-compiling only the crate shell. Fix is a wider regex plus a re-baseline 183 → 252 in one commit.
-See `0586-*`. (2026-08-15)
+Recently resolved (2026-08-15, before it was filed): **#0586** — phase-359's `std` census counted only
+`cfg` sites where `feature = "std"` sat IMMEDIATELY after `cfg(` / `cfg(not(`, so every `all(...)` /
+`any(...)` spelling was invisible: 69 of 252 sites (27 %) in its own scope, 55 in `nros-node`, the
+campaign's largest work item. Fixed UPSTREAM by `a9d54004e` (phase-359 W2) hours before this file
+existed, and found from the other end — W2 deleted four cfg lines and the gate did not move, "the one
+thing a ratchet must never do". Matcher now takes any nesting; baseline re-measured 181 → 242 cfg / 425
+→ 421 path in the same commit. Archived for the independent derivation, which carries a mutation test
+upstream's does not: two planted `std`-conditional items with no `std::` path leave the gate green,
+while a third naming `std::string::String` is caught by the PATH metric — the two metrics are not
+redundant, which is why the `cfg` half had to be fixed and not leaned on. Still open for phase-359:
+`not(std)` and positive `std` sites are summed, so a conversion between them reads as no progress.
+See `archived/0586-*`.
 
 **#589** (zephyr, api-cpp, open 2026-08-15) — on `native_sim` ANY Rust `println!`/`eprintln!` recurses
 forever and SIGSEGVs the image: Zephyr's `stdinout_write_vmeth` is `return zvfs_write(1, buffer, count)` under
@@ -1218,7 +1218,7 @@ one of the five `-C metadata` identities issue 0446 counts for `nros-core`, and 
 survives any cache-layout fix, because to cargo the two units are genuinely different feature sets.
 `nros-rmw` already converted to `default = []` and its manifest says it "matches nros-core" —
 `nros-core` never did. See `0582-*` and phase-360 W3. (2026-08-07)
-**#581** (build, open 2026-08-07) — `std` implies `alloc` in `nros`/`nros-node`/`nros-rmw-zenoh`/
+**#0587** (build, open 2026-08-07, renumbered from 0581 on 2026-08-15 when upstream spent that id) — `std` implies `alloc` in `nros`/`nros-node`/`nros-rmw-zenoh`/
 `nros-c` and does NOT in `nros-core`/`nros-serdes`/`nros-rmw`/`nros-params`/`nros-platform`, and the
 source layer disagrees with its own manifest: `nros-core/src/lib.rs:19` gates `extern crate alloc`
 and the RFC-0033 `heap::{Vec, String}` re-export on `any(alloc, std)`, while `nros-core/std`
@@ -1228,7 +1228,7 @@ forwards only `std` to `nros-serdes`. At `nros-core`'s **default** feature set,
 why per-type failure never surfaced in a build. Only reachable from OUTSIDE the workspace, which is
 exactly the generated-message-crate shape. Two dead declarations found alongside:
 `nros-platform/alloc` and `nros-rmw-cyclonedds/std` — declared, zero `cfg` sites, forward nowhere.
-See `0581-*` and phase-360 W1–W2/W4. (2026-08-07)
+See `0587-*` and phase-360 W1–W2/W4. (2026-08-07)
 
 Recently resolved (2026-08-11): the on-target-time trio (embedded/api), filed from external RT-cadence
 measurement and fixed as one series. #502: `nros_platform_clock_us` was MILLISECOND-quantized under a us

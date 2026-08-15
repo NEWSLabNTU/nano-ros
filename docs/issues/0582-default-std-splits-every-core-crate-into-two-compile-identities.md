@@ -4,7 +4,7 @@ title: "`default = [\"std\"]` on the no_std crates splits each of them into two 
 status: open
 type: tech-debt
 area: build
-related: [issue-0446, issue-0581, phase-334, phase-340, phase-360]
+related: [issue-0446, issue-0587, phase-334, phase-340, phase-360]
 ---
 
 ## The measurement
@@ -133,7 +133,7 @@ Crates to convert: `nros-core`, `nros-serdes`, `nros-params`, `nros-node`,
 This is a **breaking change for out-of-tree consumers** — `nros-core = "0.5"`
 stops being a `std` build. It needs the whole set converted in one commit, every
 in-tree dep-site made explicit in the same commit, and a release note. Pair it
-with issue 0581 (the `std`/`alloc` implication), which touches the same
+with issue 0587 (the `std`/`alloc` implication), which touches the same
 manifests: doing them separately means editing every `[features]` block twice.
 
 Gate afterwards: extend `scripts/check-feature-set-ssot.sh`, or add a sibling

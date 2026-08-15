@@ -1,11 +1,38 @@
 ---
 id: 586
 title: The `std` census counts only anchored `cfg` sites, so 69 of 252 are invisible to its own ratchet
-status: open
+status: resolved
 type: bug
 area: testing
-related: [phase-359, phase-360, issue-0196, issue-0581]
+related: [phase-359, phase-360, issue-0196, issue-0587]
+resolved_in: "a9d54004e (phase-359 W2)"
 ---
+
+> **RESOLVED before it was filed — by `a9d54004e` (phase-359 W2), 2026-08-15
+> 03:10, hours ahead of this file.** Upstream hit the same defect from the other
+> end and fixed it: W2 deleted four `cfg` lines from `spin.rs` and the gate did
+> not move, "which is the one thing a ratchet must never do: it read as 'no
+> progress' when the truth was 'cannot see it'." `CFG_RE` now matches any
+> `feature = "std"` inside a `cfg` attribute at any nesting, and the baseline was
+> re-measured in the same commit — 181 → **242** cfg mentions, 425 → 421 paths,
+> with `nros-node` alone at 131/342.
+>
+> Kept, archived, for the independent derivation rather than the conclusion: this
+> file measured the blind spot from the OTHER direction (69 of 252 sites, 27 %,
+> and which combinator hid each) and carries a mutation test upstream's commit
+> does not — two planted `std`-conditional items using no `std::` path leave the
+> gate green, while a third that also named `std::string::String` is caught by
+> the PATH metric instead. That distinction is worth keeping: it shows the two
+> metrics are not redundant, which is the reason the `cfg` half had to be fixed
+> rather than leaned on. Upstream's count is 242 where this file measured 252;
+> the ~10 gap is comment-stripping detail and upstream's number is the one the
+> gate now enforces.
+>
+> Two items in "Direction" below were NOT taken and remain open questions for
+> phase-359: splitting `not(std)` from positive `std` sites (they are opposite
+> sides of the migration and are still summed), and verifying the widened matcher
+> in both directions.
+
 
 ## The defect
 

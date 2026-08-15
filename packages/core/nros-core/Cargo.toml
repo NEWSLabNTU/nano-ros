@@ -20,7 +20,7 @@ categories = ["embedded", "no-std", "network-programming"]
 # via `default-features = false` + explicit `std` and one reaching it through
 # the default were TWO compile units for identical code.
 default = []
-# phase-360 W2 (final) / issue 0581 — `std` implies `alloc`, in ONE line, and
+# phase-360 W2 (final) / issue 0587 — `std` implies `alloc`, in ONE line, and
 # forwards BOTH to `nros-serdes`. That is the whole fix: the defect was this
 # crate's heap gate and `nros-serdes`'s disagreeing, so a `std`-only build got
 # `heap::{Vec, String}` whose `Serialize` impls had never been compiled.

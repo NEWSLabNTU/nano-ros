@@ -1,5 +1,5 @@
 ---
-id: 581
+id: 587
 title: "`std` implies `alloc` in half the stack and not the other half — the default feature state cannot serialize a heap message field"
 status: open
 type: bug

@@ -13,7 +13,7 @@
 #[cfg(feature = "std")]
 extern crate std;
 
-// phase-360 W2 (final) / issue 0581 — `alloc` is THE heap predicate, in this
+// phase-360 W2 (final) / issue 0587 — `alloc` is THE heap predicate, in this
 // exact spelling everywhere in the workspace. `std` reaches it through the
 // MANIFEST (`std = ["alloc", …]`), not through a wider `cfg`.
 //
@@ -26,7 +26,7 @@ extern crate std;
 // edge, dropping `std` needs no `cfg` edit at all — these gates are already in
 // their final form.
 //
-// Issue 0581 was never about which predicate: it was that THIS crate's heap
+// Issue 0587 was never about which predicate: it was that THIS crate's heap
 // gate and `nros-serdes`'s disagreed, so a `std`-only build got a `heap::Vec<T>`
 // it could name and could not serialize. The fix is that `std` now forwards
 // `alloc` here, so the types and their impls arrive together.
@@ -71,7 +71,7 @@ pub use heapless;
 /// (RFC-0033). Gated on `alloc`, which `std` implies — so a hosted consumer
 /// gets these by asking for `std` and never has to name `alloc`. `nros-serdes`
 /// gates its matching `Serialize`/`Deserialize` impls on the SAME feature and
-/// receives it through the same forward, which is what issue 0581 was about.
+/// receives it through the same forward, which is what issue 0587 was about.
 /// Generated code refers to `nros_core::heap::{Vec, String}` so the same path
 /// works in both crate and inline (`build.rs`) codegen modes.
 #[cfg(feature = "alloc")]
