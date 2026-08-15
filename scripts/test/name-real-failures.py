@@ -28,17 +28,21 @@ an error path that has already decided to fail, and it must never turn a
 diagnosable failure into a confusing one of its own.
 """
 
+import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-SKIP_MARKER = "[SKIPPED]"
+# Matches both the bare marker and a classed one (`[SKIPPED:lane]`, issue 0584).
+# Anchored at the start because a real failure may legitimately mention the word.
+SKIP_RE = re.compile(r"^\[SKIPPED(?::[a-z_]+)?\]")
 
 
 def is_skip(node: ET.Element) -> bool:
-    return (node.get("message") or "").lstrip().startswith(SKIP_MARKER) or (
-        node.text or ""
-    ).lstrip().startswith(SKIP_MARKER)
+    return bool(
+        SKIP_RE.match((node.get("message") or "").lstrip())
+        or SKIP_RE.match((node.text or "").lstrip())
+    )
 
 
 def real_failures(path: Path) -> list[str]:

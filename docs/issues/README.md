@@ -478,6 +478,17 @@ on the fix, red on the break with the `just lock-update` remedy, SKIP when the s
 catching link errors a `cargo check` misses), skipping when the submodule is absent so a bare clone can
 still `just check`. Split by TIER — lock check sub-second in `check-fast`, compile in the build tier. See `archived/0560-*`. (2026-08-13)
 
+**#584** (testing, open 2026-08-15) — skips are TOLERATED, not asserted: `170 skipped` is
+indistinguishable from `170 tests silently did not run`, which is how a lane greens over a coverage hole
+(cf. 0445, 0350). Two halves LANDED already: `skip_class!` gives the marker a machine-readable class
+(`[SKIPPED:lane]`; plain `skip!` reads as `capability`) which the rewrite lifts onto
+`<skipped type="nros:…">` and summarises — before it, a 170-skip sweep could be classified for 4; and an
+absent in-lane fixture is no longer a skip at all — the shared resolver PANICS without the marker when a
+gate context is present, since `_require-fixtures` already promised freshness (ungated runs keep the
+recoverable `Err`; both arms asserted). REMAINS: prefer deselection over in-test skip (the runner's own
+channel needs no laundering), and BUDGET the skips against the set the lane declares so a surprise skip
+fails. See `0584-*`.
+
 RESOLVED 2026-08-15 — **#527** the doctest phase (and every suite a human re-ran while triaging) overwrote
 the rewritten `junit.xml`, so a failed sweep could say HOW MANY real failures it had but not WHICH. Fixed
 both cheap ways: `_rewrite-skipped-junit` now snapshots to `junit-real.xml` (a path no nextest run writes),

@@ -90,6 +90,45 @@ macro_rules! skip {
     };
 }
 
+/// [`skip!`] carrying a machine-readable CLASS — issue 0584.
+///
+/// "Could not run" is several different facts, and a consumer that cannot tell
+/// them apart cannot act on any of them. A sweep's junit held 170 skips of
+/// which only 4 could be classified after the fact, because the reason lived as
+/// prose inside a panic body and the `<skipped message=…>` that survived held
+/// `thread '…' panicked at …` instead.
+///
+/// The classes, and why they differ:
+///
+/// * `lane` — this coordinate is not in the running lane. Expected, and the
+///   count should match what the lane declares.
+/// * `capability` — this HOST cannot run it (no cross toolchain, no docker, no
+///   emulator). Expected on a lighter machine, never in full CI.
+/// * `resource` — a runtime prerequisite was unavailable (a port, a device, a
+///   peer process). Usually worth investigating even though it is not a
+///   regression.
+///
+/// There is deliberately NO `fixture` class: a missing in-lane fixture is not a
+/// skip at all, it is a broken promise by the build stage, and
+/// `fixtures::binaries` fails hard on it.
+///
+/// Plain [`skip!`] remains valid and is read as `capability`, which is what the
+/// overwhelming majority of its ~500 call sites actually mean.
+///
+/// A class makes skips COUNTABLE; issue 0584 tracks the half that makes them
+/// CHECKABLE — comparing a lane's actual skips against the set it declares, so
+/// a surprise skip fails instead of blending into a number nobody reads.
+#[macro_export]
+macro_rules! skip_class {
+    ($class:ident, $($arg:tt)*) => {
+        panic!(
+            "[SKIPPED:{}] {}",
+            stringify!($class),
+            format_args!($($arg)*)
+        )
+    };
+}
+
 use std::{
     io::{BufRead, BufReader},
     net::TcpStream,

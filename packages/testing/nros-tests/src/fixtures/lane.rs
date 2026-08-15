@@ -473,7 +473,7 @@ pub fn require_coord_in_lane(coord: &Coord, label: &str) -> TestResult<()> {
         return Ok(());
     };
     if let Some(reason) = skip_reason_for_coord(coord, label, coords) {
-        crate::skip!("{reason}");
+        crate::skip_class!(lane, "{reason}");
     }
     Ok(())
 }
@@ -540,7 +540,7 @@ pub fn require_in_lane(binary_path: &Path) -> TestResult<()> {
         return Ok(());
     };
     if let Some(reason) = skip_reason_for_path(binary_path, coords) {
-        crate::skip!("{reason}");
+        crate::skip_class!(lane, "{reason}");
     }
     Ok(())
 }
@@ -551,7 +551,7 @@ pub fn require_workspace_in_lane(fixture_id: &str) -> TestResult<()> {
         return Ok(());
     };
     if let Some(reason) = skip_reason_for_workspace_id(fixture_id, coords) {
-        crate::skip!("{reason}");
+        crate::skip_class!(lane, "{reason}");
     }
     Ok(())
 }

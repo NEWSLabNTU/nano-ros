@@ -42,18 +42,41 @@ from __future__ import annotations
 
 import os
 import sys
+import re
 import xml.etree.ElementTree as ET
 from typing import Optional
 
 DEFAULT_JUNIT = "target/nextest/default/junit.xml"
 SKIP_MARKER = "[SKIPPED]"
 
+# Issue 0584 — the marker may carry a CLASS: `[SKIPPED:lane] …`. Plain
+# `[SKIPPED]` reads as `capability`, which is what almost every unclassed call
+# site means. The class is lifted onto the `<skipped type=…>` attribute and
+# summarised on the console, because a reason kept only as prose inside a panic
+# body is unreadable downstream: a 170-skip sweep could be classified for 4 of
+# them after the fact, the rest having arrived as "thread '…' panicked at …".
+SKIP_CLASS_RE = re.compile(r"\[SKIPPED(?::([a-z_]+))?\]")
+DEFAULT_SKIP_CLASS = "capability"
+
+
+def _skip_class(failure: ET.Element) -> str:
+    """The declared class of a `[SKIPPED…]` marker, or the default."""
+    for text in (failure.get("message") or "", failure.text or ""):
+        m = SKIP_CLASS_RE.search(text)
+        if m:
+            return m.group(1) or DEFAULT_SKIP_CLASS
+    return DEFAULT_SKIP_CLASS
+
 
 def _is_skipped_failure(failure: ET.Element) -> bool:
     """Return True if the ``<failure>`` element is a ``[SKIPPED]`` marker."""
     msg = failure.get("message") or ""
     body = failure.text or ""
-    return SKIP_MARKER in msg or SKIP_MARKER in body
+    # The regex, NOT `SKIP_MARKER in …`: a classed marker is `[SKIPPED:lane]`,
+    # which does not contain the literal `[SKIPPED]`. Matching the bare string
+    # silently reclassified every classed skip as a real failure — caught by
+    # the mixed-class fixture in this script's own verification.
+    return bool(SKIP_CLASS_RE.search(msg) or SKIP_CLASS_RE.search(body))
 
 
 def _decr_attr(elem: ET.Element, attr: str, delta: int) -> None:
@@ -87,6 +110,7 @@ def rewrite(junit_path: str) -> int:
 
     root = tree.getroot()
     total_rewritten = 0
+    class_counts: dict[str, int] = {}
 
     # JUnit shape: <testsuites> > <testsuite>* > <testcase>* > <failure>?
     # nextest sometimes omits the outer <testsuites> and emits a single
@@ -106,9 +130,14 @@ def rewrite(junit_path: str) -> int:
             for f in failures:
                 msg = f.get("message") or SKIP_MARKER
                 body = f.text or ""
+                cls = _skip_class(f)
+                class_counts[cls] = class_counts.get(cls, 0) + 1
                 tc.remove(f)
                 skipped = ET.SubElement(tc, "skipped")
                 skipped.set("message", msg)
+                # The class as an attribute, so a consumer never has to parse
+                # prose. `type` is the conventional JUnit slot for it.
+                skipped.set("type", f"nros:{cls}")
                 if body:
                     skipped.text = body
             suite_delta += 1
@@ -116,6 +145,10 @@ def rewrite(junit_path: str) -> int:
         if suite_delta:
             _decr_attr(suite, "failures", -suite_delta)
             _decr_attr(suite, "skipped", suite_delta)
+
+    if class_counts:
+        breakdown = "  ".join(f"{k}={v}" for k, v in sorted(class_counts.items()))
+        print(f"rewrite-skipped-junit: skips by class: {breakdown}")
 
     if total_rewritten == 0:
         return 0

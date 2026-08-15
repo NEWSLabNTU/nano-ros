@@ -528,11 +528,57 @@ fn require_prebuilt_binary_checks(binary_path: &Path) -> TestResult<PathBuf> {
             binary_path.display()
         );
     }
+    // Issue 0584 part 2 — an ABSENT in-lane fixture is not a skip.
+    //
+    // The ~500 `skip!` call sites turn this `Err` into `[SKIPPED] … not
+    // prebuilt`, so a lane whose fixtures never got built reports skips and
+    // greens. That is the same silent-green shape as 0445 (an absorbing STALE
+    // verdict) and 0196 (a gate narrower than the rule it enforces): the run
+    // says nothing failed because nothing ran.
+    //
+    // A missing fixture is not an environment fact. It is a broken promise: a
+    // gated run has already asserted, at `_require-fixtures` /
+    // `check-fixtures-stale`, that this lane's fixtures exist and are fresh. If
+    // one is missing anyway, either the gate's coverage is wrong or the build
+    // stage failed quietly — both are bugs, and both must be loud.
+    //
+    // So when a gate context is present, PANIC rather than return: the panic
+    // carries no `[SKIPPED]` marker, so no call site can launder it into a skip
+    // and the junit rewrite counts it as the real failure it is. Ungated runs
+    // (a bare `cargo nextest` on a developer box that built nothing) keep the
+    // old `Err`, because there no one promised anything.
+    if gate_promised_fixtures() {
+        panic!(
+            "Test fixture binary MISSING for an in-lane coordinate: {}\n\
+             A gated run already asserted this lane's fixtures are built and \n\
+             fresh, so this is a broken promise, not an environment skip — \n\
+             either the staleness gate does not cover this row, or its build \n\
+             failed quietly.\n\
+             Build it:   just build-test-fixtures\n\
+             Ungate:     unset NROS_TEST_SCOPE / NROS_TEST_COORDS (then it \n\
+             degrades to a skip again), or NROS_FIXTURES_OPTIONAL=1 for the \n\
+             light tier.",
+            binary_path.display()
+        );
+    }
     Err(TestError::BuildFailed(format!(
         "Test fixture binary not prebuilt: {}\n\
          Run `just build-test-fixtures` first.",
         binary_path.display()
     )))
+}
+
+/// Did something already PROMISE that this lane's fixtures are present?
+///
+/// True when the run carries a lane scope — `NROS_TEST_SCOPE` (tier 1 narrows
+/// by name) or `NROS_TEST_COORDS` (tier 2 / nightly narrow by coordinate).
+/// Both are set by the `just` recipes that run `_require-fixtures` and
+/// `check-fixtures-stale` first, so their presence marks "a gate ran".
+///
+/// `NROS_FIXTURES_OPTIONAL` is the explicit opt-out and is handled by the
+/// caller above, before this is consulted.
+fn gate_promised_fixtures() -> bool {
+    std::env::var_os("NROS_TEST_SCOPE").is_some() || std::env::var_os("NROS_TEST_COORDS").is_some()
 }
 
 /// Split a cargo dep-info dependency list (`DEP DEP …`) into paths, honouring
@@ -4660,7 +4706,44 @@ pub fn build_xrce_large_msg_test() -> TestResult<&'static Path> {
 }
 
 /// rstest fixture that provides the xrce-large-msg-test binary path.
-///
+#[cfg(test)]
+mod fixture_absence_class_tests {
+    use super::*;
+
+    /// Issue 0584 part 2 — an absent fixture is a SKIP only when nothing
+    /// promised it. The two arms are the whole point of the change, so both are
+    /// asserted; testing only the panic would let the ungated arm rot into a
+    /// hard failure and break every developer's bare `cargo nextest`.
+    ///
+    /// `require_prebuilt_binary_checks` is the shared resolver — the sibling
+    /// `build_*` helpers all funnel through it, which is why the panic lives
+    /// there and not at the ~500 call sites that launder its `Err` into
+    /// `[SKIPPED] … not prebuilt`.
+    #[test]
+    fn ungated_absence_is_a_recoverable_error() {
+        // SAFETY: nextest runs each test in its own process.
+        unsafe {
+            std::env::remove_var("NROS_TEST_SCOPE");
+            std::env::remove_var("NROS_TEST_COORDS");
+        }
+        let missing = std::path::Path::new("/nonexistent/nros-fixture-absence-probe");
+        let got = require_prebuilt_binary_checks(missing);
+        assert!(
+            matches!(&got, Err(crate::TestError::BuildFailed(m)) if m.contains("not prebuilt")),
+            "ungated: expected a recoverable BuildFailed, got {got:?}"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "MISSING for an in-lane coordinate")]
+    fn gated_absence_is_a_hard_failure() {
+        // SAFETY: nextest runs each test in its own process.
+        unsafe { std::env::set_var("NROS_TEST_SCOPE", "native") }
+        let missing = std::path::Path::new("/nonexistent/nros-fixture-absence-probe");
+        let _ = require_prebuilt_binary_checks(missing);
+    }
+}
+
 /// Phase 150.F — "binary not prebuilt" is an environment/setup
 /// condition (user didn't run `just build-test-fixtures`), not a
 /// test-logic failure. Surface it via `nros_tests::skip!` so
