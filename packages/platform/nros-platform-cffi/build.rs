@@ -21,6 +21,14 @@
 fn main() {
     println!("cargo:rerun-if-changed=tests/c_stubs/platform_stubs.c");
     println!("cargo:rerun-if-changed=tests/c_stubs/platform_stubs.h");
+    // phase-364 W2 — the ABI HEADER is an input to every C file below, and was
+    // not watched. Editing `<nros/platform.h>` therefore did not rebuild the
+    // port, which is how a deliberately-broken `_Static_assert` bound went
+    // undetected while being tested: cargo had nothing to rebuild. Same shape as
+    // issue 0196 (a probe blind to one of its inputs).
+    println!("cargo:rerun-if-changed=../nros-platform-api/include/nros/platform.h");
+    println!("cargo:rerun-if-changed=../nros-platform-api/include/nros/platform_net.h");
+    println!("cargo:rerun-if-changed=../nros-platform-api/include/nros/platform_timer.h");
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/platform.c");
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/net.c");
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/timer.c");

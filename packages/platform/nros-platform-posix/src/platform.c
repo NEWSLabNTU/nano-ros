@@ -576,6 +576,35 @@ size_t nros_platform_task_storage_size(void) {
 size_t nros_platform_task_storage_align(void) {
     return _Alignof(pthread_t);
 }
+/* phase-364 W2 (RFC-0076 D1) — opaque-storage sizing for the lock family, the
+ * siblings of the `wake` and `task` probes.
+ *
+ * Two forms because callers need two. A Rust or otherwise-dynamic caller asks
+ * at RUNTIME and allocates; zenoh-pico embeds `_z_mutex_t` BY VALUE and needs
+ * the number at COMPILE time, which a function call cannot provide. The
+ * `_Static_assert`s below are what stop the two from drifting: the macro and
+ * the type are checked against each other in the port that owns both, so a
+ * wrong macro is a compile error here rather than a buffer overrun in a
+ * consumer.
+ *
+ * This replaces a hand-computed table in `zpico-sys` that guessed OTHER
+ * platforms' struct sizes with `≈` and a "2× safety margin". */
+size_t nros_platform_mutex_storage_size(void) { return sizeof(pthread_mutex_t); }
+size_t nros_platform_mutex_storage_align(void) { return _Alignof(pthread_mutex_t); }
+size_t nros_platform_mutex_rec_storage_size(void) { return sizeof(pthread_mutex_t); }
+size_t nros_platform_mutex_rec_storage_align(void) { return _Alignof(pthread_mutex_t); }
+size_t nros_platform_condvar_storage_size(void) { return sizeof(pthread_cond_t); }
+size_t nros_platform_condvar_storage_align(void) { return _Alignof(pthread_cond_t); }
+
+_Static_assert(NROS_PLATFORM_MUTEX_STORAGE_SIZE >= sizeof(pthread_mutex_t),
+               "NROS_PLATFORM_MUTEX_STORAGE_SIZE too small for this port");
+_Static_assert(NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE >= sizeof(pthread_mutex_t),
+               "NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE too small for this port");
+_Static_assert(NROS_PLATFORM_CONDVAR_STORAGE_SIZE >= sizeof(pthread_cond_t),
+               "NROS_PLATFORM_CONDVAR_STORAGE_SIZE too small for this port");
+_Static_assert(NROS_PLATFORM_TASK_STORAGE_SIZE >= sizeof(pthread_t),
+               "NROS_PLATFORM_TASK_STORAGE_SIZE too small for this port");
+
 
 /* ============================================================
  *   Critical section (Phase 121.9)

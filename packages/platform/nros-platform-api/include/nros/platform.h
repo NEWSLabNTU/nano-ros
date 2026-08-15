@@ -331,6 +331,62 @@ void nros_platform_task_free(void **task);
  *  primitive already solved this the right way; tasks now match it. */
 size_t nros_platform_task_storage_size(void);
 size_t nros_platform_task_storage_align(void);
+/** Opaque-storage sizing for the lock family, matching `wake` and `task`.
+ *  Pure functions, callable before the corresponding `_init`. */
+size_t nros_platform_mutex_storage_size(void);
+size_t nros_platform_mutex_storage_align(void);
+size_t nros_platform_mutex_rec_storage_size(void);
+size_t nros_platform_mutex_rec_storage_align(void);
+size_t nros_platform_condvar_storage_size(void);
+size_t nros_platform_condvar_storage_align(void);
+
+/* ---- Opaque-storage sizes, at COMPILE time ----
+ *
+ * phase-364 W2 (RFC-0076 D1). The probes above answer a caller that allocates
+ * at runtime. They cannot answer one that embeds these objects BY VALUE —
+ * zenoh-pico's `_z_mutex_t` is a type, and a function call cannot size an
+ * array — so the same facts are also available as macros.
+ *
+ * These are UPPER BOUNDS over every supported port, not per-port exact sizes: a
+ * single header cannot know which port will link, and a consumer that embeds by
+ * value must reserve enough for the one that does. Each port asserts its own
+ * type fits (`_Static_assert` in its `platform.c`), so a bound that stops being
+ * true is a compile error in the port rather than a silent overrun in the
+ * consumer.
+ *
+ * They replace a hand-computed table in `zpico-sys` that recorded other
+ * platforms' sizes as `≈` values with a "2× safety margin", checked by nobody,
+ * about structs that are Kconfig-dependent on at least two of those platforms —
+ * issue 0570's shape. The numbers below are deliberately generous for the same
+ * reason the old ones were; the difference is that they are now checked.
+ *
+ * A port may raise a bound by defining it before including this header. */
+#ifndef NROS_PLATFORM_TASK_STORAGE_SIZE
+/* ThreadX `TX_THREAD` is the large one (~232 B on 32-bit). */
+#  define NROS_PLATFORM_TASK_STORAGE_SIZE     256
+#endif
+#ifndef NROS_PLATFORM_MUTEX_STORAGE_SIZE
+/* 256, not a tighter fit, and the reason is recorded rather than guessed:
+ * `zpico-sys` bounded this at 64 B, met ThreadX's `TX_MUTEX` (~120 B with
+ * ownership / inheritance / suspension-list fields), and silently corrupted the
+ * neighbouring field — presenting as a HANG in `Executor::open` after the zenoh
+ * handshake, because every mutex op on the in-band executor trampled a
+ * neighbour. Over-reserving costs bytes; under-reserving costs that. */
+#  define NROS_PLATFORM_MUTEX_STORAGE_SIZE    256
+#endif
+#ifndef NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE
+#  define NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE 256
+#endif
+#ifndef NROS_PLATFORM_CONDVAR_STORAGE_SIZE
+/* POSIX `pthread_cond_t` is 48 B; a composite RTOS condvar
+ * (`TX_MUTEX + TX_SEMAPHORE + UINT`) is ~184. Same reasoning as the mutex. */
+#  define NROS_PLATFORM_CONDVAR_STORAGE_SIZE  256
+#endif
+#ifndef NROS_PLATFORM_STORAGE_ALIGN
+/* Every opaque type on every supported port is at most 8-byte aligned. */
+#  define NROS_PLATFORM_STORAGE_ALIGN         8
+#endif
+
 
 /* ---- Threading: non-recursive mutex ---- */
 

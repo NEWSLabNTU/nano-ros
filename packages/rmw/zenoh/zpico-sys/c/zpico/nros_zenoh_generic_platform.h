@@ -9,18 +9,11 @@
  *
  * The generic adapter types every zenoh-pico platform handle
  * (`_z_task_t`, `_z_mutex_t`, `_z_condvar_t`, …) as opaque
- * `uint8_t[N]` storage. Sizes match a worst-case across every
- * supported platform with a 2× safety margin:
- *
- *   - `_z_task_t`: 256 B   (POSIX pthread_t ≤ 8;
- *                           FreeRTOS TCB pointer + attrs ≈ 32;
- *                           ThreadX TX_THREAD ≈ 232)
- *   - `_z_mutex_t`: 64 B   (POSIX pthread_mutex_t = 40;
- *                           Zephyr k_mutex ≈ 32;
- *                           FreeRTOS xSemaphoreHandle ≈ 8)
- *   - `_z_condvar_t`: 64 B (POSIX pthread_cond_t = 48;
- *                           Zephyr k_condvar ≈ 32;
- *                           FreeRTOS event group ≈ 32)
+ * `uint8_t[N]` storage. phase-364 W2: the sizes come from
+ * `<nros/platform.h>`'s `NROS_PLATFORM_*_STORAGE_SIZE` bounds, which each
+ * port checks against its own type with a `_Static_assert`. They used to be
+ * a table of `≈` estimates maintained in this file; see the defines below
+ * for what that cost.
  *
  * `nros_platform_task_init` (phase 121 ABI) takes a `void *`
  * pointer to caller storage — an `N`-sized array satisfies
@@ -42,6 +35,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* phase-364 W2 — the storage bounds come from the ABI header now, not from a
+ * table maintained here. See below. */
+#include <nros/platform.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -50,21 +47,24 @@ extern "C" {
  *  Threading handles — opaque worst-case storage.
  * ----------------------------------------------------------------------- */
 
-#define NROS_ZP_TASK_STORAGE_BYTES    256
-/* Phase 154 — bumped from 64 → 256 to cover ThreadX's
- * `TX_MUTEX` (≈ 120 B with ownership / inheritance / suspension-
- * list fields) and `TX_SEMAPHORE` (≈ 60 B). The smaller bound
- * silently corrupted the next field when vendor `mutex.c`
- * (which sees the alias-flavoured 64 B storage with
- * NROS_PLATFORM_ALIASES) handed buffer to
- * `nros_platform_mutex_init` (which casts to `TX_MUTEX *` and
- * writes the full struct). Manifests as a hang in
- * `Executor::open` after the zenoh handshake completes — every
- * mutex op on the in-band executor corrupts a neighbouring
- * field. Same logic for `_z_condvar_t = { TX_MUTEX + TX_SEMAPHORE
- * + UINT }` ≈ 184 B. */
-#define NROS_ZP_MUTEX_STORAGE_BYTES   256
-#define NROS_ZP_CONDVAR_STORAGE_BYTES 256
+/* phase-364 W2 (RFC-0076 D1) — these were three hand-maintained numbers here,
+ * derived from a table of OTHER platforms' struct sizes recorded as `≈` values
+ * with a stated "2× safety margin", checked by nobody.
+ *
+ * Phase 154 is what that costs. The bound was 64 B, ThreadX's `TX_MUTEX` is
+ * ~120 B with its ownership / inheritance / suspension-list fields, and
+ * `nros_platform_mutex_init` casts the buffer to `TX_MUTEX *` and writes the
+ * whole struct — so it silently corrupted the neighbouring field, presenting as
+ * a HANG in `Executor::open` after the zenoh handshake completed, because every
+ * mutex op on the in-band executor trampled a neighbour.
+ *
+ * The bounds now come from `<nros/platform.h>`, where each port asserts its own
+ * type fits (`_Static_assert` in its `platform.c`). A bound that stops being
+ * true is a compile error in the port that broke it, rather than a corrupted
+ * neighbour in this consumer. */
+#define NROS_ZP_TASK_STORAGE_BYTES    NROS_PLATFORM_TASK_STORAGE_SIZE
+#define NROS_ZP_MUTEX_STORAGE_BYTES   NROS_PLATFORM_MUTEX_STORAGE_SIZE
+#define NROS_ZP_CONDVAR_STORAGE_BYTES NROS_PLATFORM_CONDVAR_STORAGE_SIZE
 
 typedef uint8_t _z_task_t[NROS_ZP_TASK_STORAGE_BYTES];
 typedef uint8_t _z_mutex_t[NROS_ZP_MUTEX_STORAGE_BYTES];

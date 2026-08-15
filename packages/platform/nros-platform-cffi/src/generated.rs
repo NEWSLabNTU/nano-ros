@@ -26,6 +26,11 @@ pub const NROS_PLATFORM_RET_UNSUPPORTED: i32 = -5;
 pub const NROS_PLATFORM_RET_NOMEM: i32 = -6;
 pub const NROS_PLATFORM_RET_INVALID: i32 = -7;
 pub const NROS_PLATFORM_RET_TIMEOUT: i32 = -8;
+pub const NROS_PLATFORM_TASK_STORAGE_SIZE: i32 = 256;
+pub const NROS_PLATFORM_MUTEX_STORAGE_SIZE: i32 = 256;
+pub const NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE: i32 = 256;
+pub const NROS_PLATFORM_CONDVAR_STORAGE_SIZE: i32 = 256;
+pub const NROS_PLATFORM_STORAGE_ALIGN: i32 = 8;
 unsafe extern "C" {
     #[doc = " Monotonic nanoseconds since a platform-defined epoch (boot, program\n  start, …). Never decreases. Wraps after ~584 years.\n\n  Must be backed by a hardware counter or the OS tick — never by a\n  software counter that only advances when polled.\n\n  Available immediately after platform init, before any other nros\n  subsystem. SHOULD be callable from an ISR; a port whose clock is not\n  ISR-safe must say so in its port documentation.\n\n  RFC-0073: this replaced the former `clock_ms` / `clock_us` pair. Ports\n  that can convert without a runtime division should — where the counter\n  frequency divides 1e9 (25/50/100/125/200/250 MHz) a compile-time\n  ns-per-cycle multiply is ~2.5x cheaper than the divide it replaces."]
     pub fn nros_platform_clock_ns() -> u64;
@@ -142,6 +147,25 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     pub fn nros_platform_task_storage_align() -> usize;
+}
+unsafe extern "C" {
+    #[doc = " Opaque-storage sizing for the lock family, matching `wake` and `task`.\n  Pure functions, callable before the corresponding `_init`."]
+    pub fn nros_platform_mutex_storage_size() -> usize;
+}
+unsafe extern "C" {
+    pub fn nros_platform_mutex_storage_align() -> usize;
+}
+unsafe extern "C" {
+    pub fn nros_platform_mutex_rec_storage_size() -> usize;
+}
+unsafe extern "C" {
+    pub fn nros_platform_mutex_rec_storage_align() -> usize;
+}
+unsafe extern "C" {
+    pub fn nros_platform_condvar_storage_size() -> usize;
+}
+unsafe extern "C" {
+    pub fn nros_platform_condvar_storage_align() -> usize;
 }
 unsafe extern "C" {
     pub fn nros_platform_mutex_init(m: *mut core::ffi::c_void) -> i8;
