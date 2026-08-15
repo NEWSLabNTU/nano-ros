@@ -30,6 +30,8 @@ diagnosable failure into a confusing one of its own.
 
 import re
 import sys
+
+import skip_marker
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -38,10 +40,20 @@ from pathlib import Path
 SKIP_RE = re.compile(r"^\[SKIPPED(?::[a-z_]+)?\]")
 
 
-def is_skip(node: ET.Element) -> bool:
-    return bool(
-        SKIP_RE.match((node.get("message") or "").lstrip())
-        or SKIP_RE.match((node.text or "").lstrip())
+def is_skip(node: ET.Element, case: ET.Element | None = None) -> bool:
+    """True when this failure is a `skip!` marker rather than a real failure.
+
+    The marker does not always reach the `<failure>` payload — for some harness
+    invocations it lands only in the sibling `<system-err>`, which cost tier 1 a
+    permanent red on a test that was skipping (see `skip_marker`). `case` is the
+    owning `<testcase>`; without it only the payload forms are checked.
+    """
+    streams = skip_marker.testcase_streams(case) if case is not None else ()
+    return (
+        skip_marker.skip_class_in(
+            (node.get("message"), node.text), streams
+        )
+        is not None
     )
 
 
@@ -54,7 +66,7 @@ def real_failures(path: Path) -> list[str]:
     for case in root.iter("testcase"):
         for tag in ("failure", "error"):
             node = case.find(tag)
-            if node is not None and not is_skip(node):
+            if node is not None and not is_skip(node, case):
                 cls = case.get("classname") or "?"
                 out.append(f"{cls} {case.get('name') or '?'}")
                 break

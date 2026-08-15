@@ -43,6 +43,8 @@ from __future__ import annotations
 import os
 import sys
 import re
+
+import skip_marker
 import xml.etree.ElementTree as ET
 from typing import Optional
 
@@ -59,8 +61,12 @@ SKIP_CLASS_RE = re.compile(r"\[SKIPPED(?::([a-z_]+))?\]")
 DEFAULT_SKIP_CLASS = "capability"
 
 
-def _skip_class(failure: ET.Element) -> str:
+def _skip_class(failure: ET.Element, case: ET.Element | None = None) -> str:
     """The declared class of a `[SKIPPED…]` marker, or the default."""
+    streams = skip_marker.testcase_streams(case) if case is not None else ()
+    cls = skip_marker.skip_class_in((failure.get("message"), failure.text), streams)
+    if cls is not None:
+        return cls
     for text in (failure.get("message") or "", failure.text or ""):
         m = SKIP_CLASS_RE.search(text)
         if m:
@@ -68,15 +74,26 @@ def _skip_class(failure: ET.Element) -> str:
     return DEFAULT_SKIP_CLASS
 
 
-def _is_skipped_failure(failure: ET.Element) -> bool:
-    """Return True if the ``<failure>`` element is a ``[SKIPPED]`` marker."""
-    msg = failure.get("message") or ""
-    body = failure.text or ""
-    # The regex, NOT `SKIP_MARKER in …`: a classed marker is `[SKIPPED:lane]`,
-    # which does not contain the literal `[SKIPPED]`. Matching the bare string
-    # silently reclassified every classed skip as a real failure — caught by
-    # the mixed-class fixture in this script's own verification.
-    return bool(SKIP_CLASS_RE.search(msg) or SKIP_CLASS_RE.search(body))
+def _is_skipped_failure(failure: ET.Element, case: ET.Element | None = None) -> bool:
+    """Return True if the ``<failure>`` element is a ``[SKIPPED]`` marker.
+
+    The regex, NOT `SKIP_MARKER in …`: a classed marker is `[SKIPPED:lane]`,
+    which does not contain the literal `[SKIPPED]`. Matching the bare string
+    silently reclassified every classed skip as a real failure — caught by the
+    mixed-class fixture in this script's own verification.
+
+    The marker also does not always reach this element: for some harness
+    invocations the panic text lands only in the sibling ``<system-err>``, and a
+    skip counted as a failure is a red no fix can clear. ``case`` is the owning
+    ``<testcase>``; the stream forms require the marker to be the panic MESSAGE
+    so a test that merely PRINTS `[SKIPPED]` for sub-cells cannot launder a real
+    failure (see ``skip_marker``).
+    """
+    streams = skip_marker.testcase_streams(case) if case is not None else ()
+    return (
+        skip_marker.skip_class_in((failure.get("message"), failure.text), streams)
+        is not None
+    )
 
 
 def _decr_attr(elem: ET.Element, attr: str, delta: int) -> None:
@@ -125,12 +142,12 @@ def rewrite(junit_path: str) -> int:
             failures = tc.findall("failure")
             if not failures:
                 continue
-            if not all(_is_skipped_failure(f) for f in failures):
+            if not all(_is_skipped_failure(f, tc) for f in failures):
                 continue
             for f in failures:
                 msg = f.get("message") or SKIP_MARKER
                 body = f.text or ""
-                cls = _skip_class(f)
+                cls = _skip_class(f, tc)
                 class_counts[cls] = class_counts.get(cls, 0) + 1
                 tc.remove(f)
                 skipped = ET.SubElement(tc, "skipped")
