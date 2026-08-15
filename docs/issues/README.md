@@ -51,6 +51,41 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#620** (platform, open 2026-08-16) — `NROS_PLATFORM_TASK_STORAGE_SIZE` is 256 B and its own comment says why:
+"ThreadX `TX_THREAD` is the large one (~232 B on 32-bit)". ThreadX-Linux is a HOSTED port, so its `TX_THREAD`
+is **352 B** measured — 96 over — and `_Static_assert` in `nros-platform-threadx/src/platform.c:587` fails,
+taking out the whole threadx-linux fixture family. The assert is phase-360 W5's replacement for zpico-sys's
+hand-computed "≈ with 2× margin" table (#0570) and is working exactly as designed — first real firing, real
+overflow. Fix is a PER-PORT raise (the header documents the hatch: "a port may raise a bound by defining it
+before including this header"), not a bump of the shared bound, which every 32-bit consumer embedding by
+value would pay for. Likely NOT aarch64-specific — the cause is the DATA MODEL, so an x86_64 threadx-linux
+build should hit the same assert; worth confirming rather than assuming, per #0582's lesson. See `0620-*`.
+(2026-08-16)
+
+**#619** (build/api, open 2026-08-16) — `cargo test -p nros-c` cannot LINK: `nros-log`'s `PlatformSink` calls
+`nros_platform_log_write`/`_flush`, supplied by a platform C port that no test binary links, so `just ci-matrix`
+and `just test-all` die at the compile step before running a test. The crate's library builds fine; only its
+harness fails. Verified NOT fallout from phase-361 — reverting the `nros-rmw/alloc` pin reproduces it
+identically. Same family as #0618 in a different register: a library assumes the FINAL ARTIFACT provides
+something and nothing checks it — lang items there, an `extern "C"` platform symbol here. Note #0420 when
+weighing a no-op fallback: a silently no-op log facade was its own bug. See `0619-*`. (2026-08-16)
+
+**#618** (build/api, open 2026-08-16) — `#[panic_handler]` and `#[global_allocator]` are link-time singletons
+of the FINAL ARTIFACT, but nano-ros picks them in LIBRARY crates keyed on the PLATFORM — so "exactly one per
+image" is not guaranteed by the build, it is maintained by hand at every dep-site. Both halves of #0617 are
+the two failure modes this permits: two providers (`#[global_allocator] in nros_platform conflicts with`) and
+none (`#[panic_handler] function required`). SIX providers exist under five different gating idioms
+(`nros-c`'s spin loop, `panic-halt`, three board crates — one of them UNGATED — and libstd), and the
+composition rule lives in prose: `nros-board-nuttx` documents that C/C++ images must take it with
+`default-features = false` so `nros-c` can own the runtime. Keying on the platform cannot work — two images
+for one platform legitimately want different handlers (print-and-exit for a fixture, log-and-reboot for a
+shipped controller), and `nros-c`'s own comment apologises for choosing a policy it cannot know. Direction:
+libraries never provide; the IMAGE chooses, in the user's project; the entry layer (`nros::main!` /
+`nano_ros_entry()`) supplies a default because it IS part of the final artifact — with one qualification, that
+a staticlib IS a final artifact when it is the deliverable, which is what #0615 discovered. Gate worth having:
+per image coordinate, count the crates that can emit the lang item under the selected features and require
+exactly one. Invisible on host lanes, where `std` supplies both. See `0618-*`. (2026-08-16)
+
 Recently resolved (2026-08-15): **#610** — `just zephyr setup` downloaded `zephyr-sdk-0.16.8_linux-x86_64.tar.xz`
 on ANY host. `scripts/zephyr/setup.sh` hardcoded the tarball AND its sha256, so on aarch64 the fetch and the
 CHECKSUM both succeeded and the SDK's own installer then died with `Installing host tools ... ERROR: Host
