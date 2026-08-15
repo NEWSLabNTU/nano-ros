@@ -1,4 +1,4 @@
-# Lane skip protocol — issue 0588.
+# Lane skip protocol — issue 0599.
 #
 # A platform fixture lane that cannot run because a PRECONDITION is missing (no
 # Zephyr workspace, no `arm-none-eabi-gcc`, no PX4 tree) is not a failure. It was

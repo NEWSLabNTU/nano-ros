@@ -97,12 +97,22 @@ PATH_RE = re.compile(r'\bstd::')
 # path 8 -> 1).
 # Lower these as work items land; the gate rejects any increase.
 BASELINE = {
-    "nros": {"cfg": 25, "path": 16},
+    # phase-361 W8.e: +1, a `compile_error!` guard. `metadata-mode` used to
+    # ENABLE `std`; it now REQUIRES it and says so. A guard must NAME the
+    # feature it checks, so making an implicit enable explicit costs one
+    # counted site and removes one implicit enable. Same shape as nros-node.
+    "nros": {"cfg": 26, "path": 16},
     "nros-c": {"cfg": 13, "path": 8},
-    "nros-core": {"cfg": 5, "path": 2},
+    # phase-361 W2.a: 5 -> 3. The heap gate is `cfg(feature = "alloc")` alone,
+    # `std` reaching it through `std = ["alloc", …]` in the manifest; the two
+    # `any(alloc, std)` spellings are gone. Branches this campaign no longer
+    # has to unwind.
+    "nros-core": {"cfg": 3, "path": 2},
     "nros-cpp": {"cfg": 8, "path": 26},
     "nros-log": {"cfg": 1, "path": 0},
-    "nros-node": {"cfg": 105, "path": 76},
+    # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
+    # feature used to list `"std"` and now requires it by name.
+    "nros-node": {"cfg": 106, "path": 76},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

@@ -1,5 +1,5 @@
 ---
-id: 588
+id: 599
 title: The Zephyr fixture lane exits 0 when the workspace is missing, so it reports OK and the failure surfaces 20 minutes later as four missing `.inputsig`
 status: open
 type: bug

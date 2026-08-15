@@ -233,7 +233,7 @@ build-fixtures:
     set -e
     source scripts/build/cargo.sh
     PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
-    source scripts/build/lane-skip.sh   # issue 0588 — SKIPPED, not OK
+    source scripts/build/lane-skip.sh   # issue 0599 — SKIPPED, not OK
     if [ ! -d "$PX4_DIR/msg" ]; then
         nros_lane_skip "PX4-Autopilot .msg tree not found at $PX4_DIR/msg — run: just px4 setup"
     fi

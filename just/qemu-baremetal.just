@@ -177,7 +177,7 @@ build-fixtures:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    source scripts/build/lane-skip.sh   # issue 0588 — SKIPPED, not OK
+    source scripts/build/lane-skip.sh   # issue 0599 — SKIPPED, not OK
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         nros_lane_skip "arm-none-eabi-gcc not found — install the ARM bare-metal toolchain"
     fi
@@ -279,7 +279,7 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
     set -euo pipefail
     mkdir -p {{LOG_DIR}}/latest
     source scripts/dev/zenohd.sh
-    source scripts/build/lane-skip.sh   # issue 0588 — SKIPPED, not OK
+    source scripts/build/lane-skip.sh   # issue 0599 — SKIPPED, not OK
     if ! zenohd_bin="$(nros_zenohd_bin)"; then
         nros_lane_skip "zenohd not found — run \`just zenohd setup\`"
     fi

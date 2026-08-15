@@ -88,7 +88,7 @@ def exposed_leaves():
     return found
 
 
-# issue 0589 — cargo's own words separate the two causes. An `--offline` run
+# issue 0600 — cargo's own words separate the two causes. An `--offline` run
 # that needs a crate it has not cached says so explicitly; a lock that does not
 # satisfy its manifest fails during RESOLUTION and never mentions the network.
 # Matched on both halves of the sentence so a message that merely contains the
@@ -125,7 +125,7 @@ def main():
             cwd=leaf, capture_output=True, text=True,
         )
         if proc.returncode != 0:
-            # issue 0589 — TWO conditions reach this branch and they have
+            # issue 0600 — TWO conditions reach this branch and they have
             # different causes and opposite remedies. Cargo distinguishes them
             # for us: an `--offline` download failure is a property of THIS
             # HOST's registry cache and says nothing about the lock, while a
@@ -158,7 +158,7 @@ def main():
                 "  lock is not touched:\n"
                 "      (cd <leaf-dir> && cargo fetch --locked)\n"
                 "  Do NOT run `lock-update` for this — re-resolving a correct lock is the\n"
-                "  churn issues 0359/0378 exist to prevent (issue 0589).",
+                "  churn issues 0359/0378 exist to prevent (issue 0600).",
                 file=sys.stderr,
             )
 

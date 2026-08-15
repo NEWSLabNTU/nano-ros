@@ -75,7 +75,7 @@ makes an implicit declaration fatal. zenoh and xrce build on the same workspace 
 all cyclone. Same class as #0566 (a port reaching for `CONFIG_POSIX_API` and giving up when absent) and
 as the two gcc-14 fixes on the zenoh-pico fork. Not established: whether it is new (0557 reports a RUNTIME
 failure of these images, so they build somewhere) or which of three fixes is right — the Zephyr ddsrt seam
-is under active change by another session, so that call is theirs. See `0590-*`. (2026-08-15)
+is under active change by another session, so that call is theirs. See `0596-*`. (2026-08-15)
 
 Recently resolved (2026-08-15): **#588** — WITHDRAWN, premise wrong in three ways, recorded because the
 misreading is the useful part. I claimed `build-test-fixtures lane=native` "builds nothing while stamping
@@ -168,7 +168,7 @@ assert against `size_of` of the type they store, and `check-opaque-storage-guard
 `15 macro(s) emitted, all guarded`. A silently substituted size is now a build error naming the macro.
 See `archived/0464-*`.
 
-Recently resolved (2026-08-15, before it was filed): **#0586** — phase-359's `std` census counted only
+Recently resolved (2026-08-15, before it was filed): **#0597** — phase-359's `std` census counted only
 `cfg` sites where `feature = "std"` sat IMMEDIATELY after `cfg(` / `cfg(not(`, so every `all(...)` /
 `any(...)` spelling was invisible: 69 of 252 sites (27 %) in its own scope, 55 in `nros-node`, the
 campaign's largest work item. Fixed UPSTREAM by `a9d54004e` (phase-359 W2) hours before this file
@@ -179,7 +179,7 @@ upstream's does not: two planted `std`-conditional items with no `std::` path le
 while a third naming `std::string::String` is caught by the PATH metric — the two metrics are not
 redundant, which is why the `cfg` half had to be fixed and not leaned on. Still open for phase-359:
 `not(std)` and positive `std` sites are summed, so a conversion between them reads as no progress.
-See `archived/0586-*`.
+See `archived/0597-*`.
 
 **#589** (zephyr, api-cpp, open 2026-08-15) — on `native_sim` ANY Rust `println!`/`eprintln!` recurses
 forever and SIGSEGVs the image: Zephyr's `stdinout_write_vmeth` is `return zvfs_write(1, buffer, count)` under
@@ -1230,7 +1230,7 @@ The gate itself did not change in the pull that surfaced this; phase-351 W5/W6 m
 projection, so the resolution is that phase's call. Three candidates in the issue, none obviously right.
 See `0595-*`. (2026-08-15)
 
-**#0590** (build, open 2026-08-15) — the `nros-launch-resolve` skew warning compares BINARY mtimes
+**#0596** (build, open 2026-08-15) — the `nros-launch-resolve` skew warning compares BINARY mtimes
 (`[ "$_cli_bin" -nt "$_resolver" ]`), and `just setup-launch-resolve` is a no-op when cargo has nothing to
 rebuild — so it never relinks, the mtime never moves, and the remedy the warning prints cannot clear it.
 Fires on every `check-tier-preconditions` after any `setup-cli`, in the list that exists to name real
@@ -1238,27 +1238,27 @@ unmet preconditions (#0466). Also the wrong question: touching the binary would 
 nothing, and a real skew with a newer binary goes undetected. The hazard is genuine (#0363 C — the two
 must agree on an argument list); the test for it is not. TWO spellings, `scripts/check-tier-preconditions.sh:145`
 and `justfile:3958`, which must move together. Fix: give the resolver a SOURCE STAMP like the CLI's and
-compare stamps. See `0590-*`. (2026-08-15)
+compare stamps. See `0596-*`. (2026-08-15)
 
-**#0589** (build, open 2026-08-15) — `check-submodule-pinned-locks` reported "the submodule pointer moved
+**#0600** (build, open 2026-08-15) — `check-submodule-pinned-locks` reported "the submodule pointer moved
 and the lock did not follow (issue 0560)" for a lock that is byte-identical to main's and names the crate
 it supposedly lost: the real error is `failed to download hermit-abi v0.5.2 … --offline was specified`, i.e.
 a COLD CACHE on this host. `cargo fetch --locked` pulled it plus six platform-irrelevant siblings and the
 gate passed with the lock untouched — which is why `setup-launch-resolve` had BUILT the binary fine minutes
 earlier (the build never needs them, only whole-graph resolution does). The misdiagnosis is not cosmetic:
 it prescribes `just lock-update`, i.e. re-resolving a correct lock, which is exactly the churn #0359/#0378
-were about. Match on the `--offline` marker and print `cargo fetch --locked` instead. See `0589-*`. (2026-08-15)
+were about. Match on the `--offline` marker and print `cargo fetch --locked` instead. See `0600-*`. (2026-08-15)
 
-**#0588** (testing, open 2026-08-15) — `just/zephyr-ci.just:32` prints `Zephyr skip: zephyr-workspace not
+**#0599** (testing, open 2026-08-15) — `just/zephyr-ci.just:32` prints `Zephyr skip: zephyr-workspace not
 set up` and then `exit 0`, so the driver records `== zephyr == OK` for a lane that built NOTHING. Twenty
 minutes later `_lane-gate` fails naming four missing `.inputsig` files (`west_bringup_zephyr`,
 `west_board_import`, `zephyr_self_pkg_{rust,sibling}`) — west-owned by design (`fixtures.toml:4553`) and
 never skippable by lane narrowing, so every run scope requires them — and its remedy is
 `just build-test-fixtures`, the command that just "succeeded". `check-tier-preconditions` does not mention
 it either. The unprovisioned host is legitimate; reporting the skip as OK is not. Needs a third lane
-verdict (SKIPPED), and both `exit 0` sites move together. #0196 shape. See `0588-*`. (2026-08-15)
+verdict (SKIPPED), and both `exit 0` sites move together. #0196 shape. See `0599-*`. (2026-08-15)
 
-**#0587** (build, open 2026-08-07, renumbered from 0581 on 2026-08-15 when upstream spent that id) — `std` implies `alloc` in `nros`/`nros-node`/`nros-rmw-zenoh`/
+**#0598** (build, open 2026-08-07, renumbered from 0581 on 2026-08-15 when upstream spent that id) — `std` implies `alloc` in `nros`/`nros-node`/`nros-rmw-zenoh`/
 `nros-c` and does NOT in `nros-core`/`nros-serdes`/`nros-rmw`/`nros-params`/`nros-platform`, and the
 source layer disagrees with its own manifest: `nros-core/src/lib.rs:19` gates `extern crate alloc`
 and the RFC-0033 `heap::{Vec, String}` re-export on `any(alloc, std)`, while `nros-core/std`
@@ -1270,7 +1270,7 @@ exactly the generated-message-crate shape. Two dead declarations found alongside
 `nros-platform/alloc` (+ its sibling `threading`) — declared, zero `cfg` sites, forward nowhere; both
 DELETED in W2.b 2026-08-15. `nros-rmw-cyclonedds/std` was listed here too and that was WRONG — it gates two
 integration-test files via an inner `#![cfg]`, invisible to a `src/`-scoped grep, and is restored.
-See `0587-*` and phase-361 W1–W2/W4. (2026-08-07)
+See `0598-*` and phase-361 W1–W2/W4. (2026-08-07)
 
 Recently resolved (2026-08-11): the on-target-time trio (embedded/api), filed from external RT-cadence
 measurement and fixed as one series. #502: `nros_platform_clock_us` was MILLISECOND-quantized under a us

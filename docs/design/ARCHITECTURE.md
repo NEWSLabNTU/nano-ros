@@ -88,7 +88,7 @@ heap gate is already in its final form: dropping `std` needs no `cfg` edit.
 survive on trust — `check-feature-contract` (W4) asserts each clause, and until
 that gate exists each is a measurement rather than an invariant.
 
-→ issue 0587 (the defect that produced the rule), issue 0594 (the 34 implicit
+→ issue 0598 (the defect that produced the rule), issue 0594 (the 34 implicit
 enables), phase-361, phase-359 (the campaign that removes `std` entirely).
 
 **Agnosticism contract.** The `platform-*` / `rmw-*` axis features are lowering targets that

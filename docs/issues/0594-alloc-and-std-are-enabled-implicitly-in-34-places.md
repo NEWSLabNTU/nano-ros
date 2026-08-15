@@ -4,7 +4,7 @@ title: "`alloc` and `std` are turned on implicitly in 34 places — picking a PL
 status: open
 type: bug
 area: build
-related: [issue-0587, issue-0582, issue-0464, rfc-0033, rfc-0034, phase-360]
+related: [issue-0598, issue-0582, issue-0464, rfc-0033, rfc-0034, phase-360]
 ---
 
 ## The rule this issue exists to enforce
@@ -108,7 +108,7 @@ What A–D have and E does not: A–D let a feature that is not about the heap t
 the heap on — a BACKEND, a PLATFORM, a capability. Those 34 sites are still 0.
 The rule is "no feature other than `std` enables `alloc`", not "nothing does".
 
-Issue 0587 is fixed by this edge: `nros-core`'s `std` forwards `alloc`, which
+Issue 0598 is fixed by this edge: `nros-core`'s `std` forwards `alloc`, which
 forwards `nros-serdes/alloc`, so `heap::{Vec, String}` and their serializer
 impls arrive together. Verified at `nros-core --features std` alone.
 

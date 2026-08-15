@@ -1,4 +1,4 @@
-# Is the built `nros-launch-resolve` older than its own SOURCES? — issue 0590.
+# Is the built `nros-launch-resolve` older than its own SOURCES? — issue 0596.
 #
 # Two sites used to ask a different question — "is the resolver binary older
 # than the CLI binary?" — and that question has no clearable answer:

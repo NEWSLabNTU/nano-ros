@@ -1,5 +1,5 @@
 ---
-id: 586
+id: 597
 title: The `std` census counts only anchored `cfg` sites, so 69 of 252 are invisible to its own ratchet
 status: resolved
 type: bug

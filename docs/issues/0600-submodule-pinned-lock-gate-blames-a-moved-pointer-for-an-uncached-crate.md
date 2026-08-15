@@ -1,5 +1,5 @@
 ---
-id: 589
+id: 600
 title: "`check-submodule-pinned-locks` blames a moved submodule pointer for what is an uncached crate under `--offline`"
 status: open
 type: bug

@@ -23,7 +23,7 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    # issue 0588 — SKIPPED is its own verdict. These two used to `exit 0`, so a
+    # issue 0599 — SKIPPED is its own verdict. These two used to `exit 0`, so a
     # host with no Zephyr workspace got `== zephyr == OK` for a lane that built
     # nothing, and the four west-owned compile-check fixtures went missing
     # twenty minutes downstream instead of being reported here.

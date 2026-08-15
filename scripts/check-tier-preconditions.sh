@@ -140,7 +140,7 @@ probe "build output beside workspace source (long-lived-tree residue)" \
 #    WARN, not fail: a resolver older than the CLI is only WRONG if the argument
 #    list moved, which this cannot know. Failing on it would block the
 #    legitimate CLI-only setup that `setup-cli` is careful to allow.
-# issue 0588 — a lane that cannot run is a precondition, and this recipe exists
+# issue 0599 — a lane that cannot run is a precondition, and this recipe exists
 # to report every one of them BEFORE a run is committed to (issue 0466). The
 # Zephyr lane skips when its workspace is absent; four west-owned compile-check
 # fixtures are built by that lane and by no other, and they are unattributable
@@ -159,11 +159,11 @@ if [ -z "$_zephyr_ws" ] || [ ! -d "$_zephyr_ws/zephyr" ]; then
     echo "  fixture lane will SKIP. Tier 1 does not need it; tier 2+ does — the" >&2
     echo "  west-built compile-check fixtures (west_bringup_zephyr," >&2
     echo "  west_board_import, zephyr_self_pkg_{rust,sibling}) are built by that" >&2
-    echo "  lane alone and are required by every run scope (issue 0588)." >&2
+    echo "  lane alone and are required by every run scope (issue 0599)." >&2
     echo "  Remedy: just zephyr setup" >&2
 fi
 
-# issue 0590 — ask about SOURCES, not binary mtimes. The old test was
+# issue 0596 — ask about SOURCES, not binary mtimes. The old test was
 # `cli -nt resolver`, and `setup-launch-resolve` is a cargo no-op when the
 # resolver's sources have not changed, so it never relinked and the warning
 # could not be cleared by the remedy it printed. Source staleness is the real

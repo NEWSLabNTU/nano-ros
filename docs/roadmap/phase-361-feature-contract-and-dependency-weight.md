@@ -13,27 +13,35 @@ here is a measurement. W2.b (two dead declarations) needs a decision; W5–W7
 nothing else owns — and after the phase-359 reconciliation they are the larger
 part of what is left.
 
-**Numbering — FIVE collisions, and the cause is unfixed.** Drafted offline as
-"phase-341"; renumbered 341 → 345 → 359 → 360 → **361**, and the issues with it:
-0467–0471 → 0492–0496 → 0581–0585, then 0581 → 0587 when upstream spent it, then
-0582–0585 → **0591–0594** when upstream spent those too. Every renumber read a
-local maximum; every one was stale before it landed, because `just phase-new` /
-`just issue-new` **cannot reach `origin` from this host** ("Password
-authentication is not supported"), fall back to the racy local-maximum path, and
-push no `refs/*-ids/NNNN` reservation.
+**Numbering — SIX collisions, and then the cause was fixed.** Drafted offline as
+"phase-341"; renumbered 341 → 345 → 359 → 360 → **361**, with the issues moving
+under it each time: 0467–0471 → 0492–0496 → 0581–0585, then 0581 → 0587, then
+0582–0585 → 0591–0594, then 0586–0590 → **0596–0600**.
 
-The tools are correct and the instruction is correct; the credential is missing,
-and a reservation nobody can push is not a reservation. **Before this branch
-lands, re-run both with a working credential** — phase-361 and issues 0587–0594
-are all unclaimed as of 2026-08-15. Recorded at this length because five is no
-longer bad luck: a long-lived branch renumbers once per pull, indefinitely, and
-the fix is one working push.
+Every one had the same cause. `just phase-new` / `just issue-new` reserve an id
+by pushing `refs/issue-ids/NNNN` to `origin` — a compare-and-swap no parallel
+session can race. **This host could not authenticate**, so every call fell back
+to the local maximum, which is a guess, and a guess goes stale the moment
+another session pushes. Six pulls, six renumbers.
+
+Fixed 2026-08-15 by authenticating. The reservations are now REAL: phase 361 and
+issues 0591–0600 are held as refs on `origin`. The last renumber was the
+informative one — 0586 through 0589 were already held by two other hosts
+(`newslab-server139`, `newslab-server243`) with entirely different slugs, none of
+which had landed a file yet. A local maximum could not have seen them, and no
+amount of care would have.
+
+One of those neighbours is worth naming: **`refs/issue-ids/0587` is slugged
+`cargo-config-gate-treats-authored-comments-as-sync-output`** — the same defect
+this branch filed as issue 0595. Two sessions found it independently within
+hours. Whichever lands second should fold into the first rather than carry a
+duplicate.
 
 **Touches:** RFC-0005 (RMW layer), RFC-0006 (portable RMW/platform interface),
 RFC-0033 (message field capacity — the `mode = "heap"` types this contract
 governs), RFC-0034 (the `nros_platform_alloc` funnel W8.c enforces), RFC-0062
 (unified dependency SSOT).
-**Opens:** issue 0587 (`std` implies `alloc` in half the stack), issue 0582
+**Opens:** issue 0598 (`std` implies `alloc` in half the stack), issue 0582
 (`default = ["std"]` splits compile identities), issue 0583 (47 of 57 crates in
 a firmware build are proc-macro host tooling), issue 0585 (34 implicit
 `alloc`/`std` enables; the allocator-ownership half is closed by W8.c).
@@ -86,7 +94,7 @@ through `any(...)` does not count. The gate reports 183 sites for both trees.
 The one thing it does catch is a symptom of the same edge: `nros-node: path
 346 -> 347`, because `read_rmw_selector_env` must return `std::vec::Vec<u8>`
 here where `main` returns `alloc::vec::Vec<u8>` — under `std` alone there is no
-`alloc` to name. **Filed as [issue 0586](../issues/0586-std-census-counts-only-anchored-cfg-sites.md)**,
+`alloc` to name. **Filed as [issue 0597](../issues/archived/0597-std-census-counts-only-anchored-cfg-sites.md)**,
 which measured the blind spot at 69 of 252 sites (27 %) in the census's own
 scope and mutation-verified it: two planted `std`-conditional items using no
 `std::` path leave the gate green.
@@ -121,7 +129,7 @@ Applied:
   deleting `std` requires no `cfg` edit in this set at all.**
 * `read_rmw_selector_env` returns `alloc::vec::Vec<u8>` again.
 
-Issue 0587 is still fixed, and by a smaller change than the one it replaced: the
+Issue 0598 is still fixed, and by a smaller change than the one it replaced: the
 defect was `nros-core`'s heap gate and `nros-serdes`'s disagreeing, and
 `nros-core`'s `std` now forwards `alloc` to `nros-serdes`, so the types and
 their impls arrive together. Verified with the reproducer at `nros-core`'s
@@ -134,12 +142,12 @@ lanes green; seven host feature combos and seven bare-metal target/feature pairs
 (thumbv7em, aarch64-unknown-none, armv7r) check clean.
 
 **Still open, and independent of this:** the census blind spot, now
-[issue 0586](../issues/0586-std-census-counts-only-anchored-cfg-sites.md).
+[issue 0597](../issues/archived/0597-std-census-counts-only-anchored-cfg-sites.md).
 `CFG_RE` anchors `feature = "std"` immediately after `cfg(` or `cfg(not(`, so
 every `all(...)` / `any(...)` spelling is invisible — 69 of 252 sites in its own
 scope, and it reported 183 for both trees here while the real difference was 88.
 The gate cannot see the regression it exists to catch. Fixing it is phase-359's
-call, not this phase's; 0586 carries the measurement and the direction.
+call, not this phase's; 0597 carries the measurement and the direction.
 
 ## Goal
 
@@ -174,7 +182,7 @@ nros-core). Previously `default = ["std"]`"* — but `nros-core` still declares
 `nros-params`, `nros-rmw` do not. `nros-core/src/lib.rs:19` gates `extern crate
 alloc` — and the `heap::{Vec, String}` re-export RFC-0033 codegen emits — on
 `any(alloc, std)`, i.e. the source assumes the implication its own manifest does
-not make. Issue 0587 has the reproducer: at `nros-core`'s **default** feature
+not make. Issue 0598 has the reproducer: at `nros-core`'s **default** feature
 set, `nros_core::heap::Vec<u32>` exists and has no `Serialize` impl.
 
 ### RMW
@@ -318,7 +326,7 @@ nros-core / nros-serdes / nros-rmw / nros-node / nros / nros-log
 thumbv7em / aarch64-unknown-none / armv7r   bare and alloc      ok
 ```
 
-Issue 0587 is fixed by the edge itself: `nros-core`'s `std` forwards `alloc`,
+Issue 0598 is fixed by the edge itself: `nros-core`'s `std` forwards `alloc`,
 which forwards `nros-serdes/alloc`, so `heap::{Vec, String}` and the RFC-0033
 `Serialize`/`Deserialize` impls arrive together instead of one without the
 other. Verified with a reproducer built against `nros-core --features std`
@@ -489,7 +497,7 @@ this phase's every other number is a hand-sweep. Fixed in the same commit.
 **Not covered, deliberately.** `examples/**` is out of scope — those are USER
 code (RFC-0026), and the contract's point is that the user spells `std`/`alloc`
 at their own dep-sites. And the census blind spot that (a/source) alludes to is
-phase-359's gate, not this one (issue 0586, fixed upstream).
+phase-359's gate, not this one (issue 0597, fixed upstream).
 
 ### W5–W7 — dependency weight: re-measured 2026-08-15, and the plan does not survive it
 

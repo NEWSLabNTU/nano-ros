@@ -2092,7 +2092,7 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
             # budget) must not leak into the children, where a bare ninja or
             # cargo would join the tiny pool instead of using the explicit
             # NROS_BUILD_JOBS split it was handed (same audit).
-            # issue 0588 — THREE verdicts, not two. rc 78 (`nros_lane_skip`,
+            # issue 0599 — THREE verdicts, not two. rc 78 (`nros_lane_skip`,
             # scripts/build/lane-skip.sh) means the lane could not run because a
             # precondition is missing; that is neither OK nor FAILED, and
             # printing it as OK is what hid an unprovisioned Zephyr workspace
@@ -4054,7 +4054,7 @@ setup-cli:
     # setup-cli's job is to produce the binary, and the resolver has its own
     # skip conditions (submodule absent, no CPython), so hard-failing here would
     # block a legitimate CLI-only setup.
-    # issue 0590 — SOURCE staleness, not `bin -nt resolver`. Having just built
+    # issue 0596 — SOURCE staleness, not `bin -nt resolver`. Having just built
     # the CLI, that comparison was true forever: `setup-launch-resolve` no-ops
     # when the resolver's sources are unchanged, so it never relinks. Same
     # helper as check-tier-preconditions, one spelling.
