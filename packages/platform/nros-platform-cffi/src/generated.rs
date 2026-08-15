@@ -20,12 +20,32 @@ pub type nros_platform_log_flush_fn_t = ::core::option::Option<unsafe extern "C"
 #[doc = " @file platform_timer.h\n @brief Canonical C ABI for the nros platform timer surface.\n\n Companion to `<nros/platform.h>`; sits beside the core 39-symbol\n ABI as the Phase 110.E platform-timer interface. Carved into a\n separate header because bare-metal / single-shot consumers can\n omit timer support without losing the canonical platform symbols.\n\n # Handle model\n\n  Platform timer handles are opaque `void *`. The implementation\n  allocates whatever it needs to track the underlying primitive\n  (`TimerHandle_t` on FreeRTOS, `TX_TIMER *` on ThreadX, `timer_t`\n  on POSIX, `*mut k_timer` on Zephyr); the runtime never inspects\n  the bytes pointed at.\n\n # Return-value conventions\n\n  - `create_periodic` / `create_oneshot` return non-NULL on success\n    and `NULL` on failure (analogous to libc `malloc`).\n  - `cancel` returns 1 when the cancellation prevented the callback\n    from firing, 0 if the callback already fired (or the timer was\n    already cancelled or destroyed), -1 on unrecoverable error.\n  - `destroy` is best-effort; idempotent on already-destroyed handles.\n\n # Threading / context\n\n  Callbacks are invoked from a platform-defined timer context — a\n  direct ISR on Zephyr / bare-metal, deferred to the FreeRTOS timer\n  task on FreeRTOS, a real-time signal on POSIX. Callback bodies\n  must be short, must not call back into nros_platform_* heap or\n  blocking primitives, and must use atomic operations for shared\n  state. `user_data` must outlive the timer handle."]
 pub type nros_platform_timer_callback_t =
     ::core::option::Option<unsafe extern "C" fn(user_data: *mut core::ffi::c_void)>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_platform_task_attr_t {
+    #[doc = " Task name for the kernel's own tables and crash dumps. `NULL` = the\n  port's default. Ports whose kernel has no name concept ignore it."]
+    pub name: *const core::ffi::c_char,
+    #[doc = " Stack size in BYTES. `0` = the port's default.\n\n  Always bytes, never words: FreeRTOS's `xTaskCreate` takes words, and the\n  private struct it replaced called the field `stack_depth` while ThreadX's\n  identically-named field was bytes. The conversion belongs in the one port\n  that needs it, not in every caller."]
+    pub stack_bytes: usize,
+    #[doc = " Caller-provided stack memory, or `NULL` to let the port obtain it.\n\n  ThreadX requires the stack from its caller; POSIX, FreeRTOS and ESP-IDF\n  let the kernel allocate and ignore this. A port that needs memory and is\n  given `NULL` obtains it itself and releases it in `task_free`."]
+    pub stack_mem: *mut core::ffi::c_void,
+    #[doc = " Scheduling priority in the NORMALISED band: `0` = least urgent, larger\n  = more urgent, `NROS_PLATFORM_PRIORITY_INHERIT` = keep the creating\n  task's.\n\n  phase-364 W5. This was \"platform-native\", and the natives disagree: `0`\n  is the HIGHEST priority on ThreadX and the LOWEST on FreeRTOS, while\n  Zephyr runs lower-is-more-urgent with negatives reserved for cooperative\n  threads. A tier priority is authored ONCE, in `system.toml`, and\n  deployed to several of them — so the same number meant \"run me first\" on\n  one board and \"run me last\" on another, with nothing in the ABI\n  recording which convention a port used.\n\n  Each port maps this band onto its own range and documents the map at its\n  `task_init`. Use `NROS_PLATFORM_PRIORITY_RAW(n)` to bypass the band when\n  tuning one RTOS against its own documentation — that is a legitimate\n  thing to do, and the band should not make it impossible."]
+    pub priority: i32,
+    #[doc = " SMP core to pin to, or `-1` for unpinned. Ignored on single-core."]
+    pub core: i8,
+    #[doc = " `NROS_PLATFORM_TASK_*` flags below."]
+    pub flags: u8,
+}
 pub const NROS_PLATFORM_RET_OK: i32 = 0;
 pub const NROS_PLATFORM_RET_ERROR: i32 = -1;
 pub const NROS_PLATFORM_RET_UNSUPPORTED: i32 = -5;
 pub const NROS_PLATFORM_RET_NOMEM: i32 = -6;
 pub const NROS_PLATFORM_RET_INVALID: i32 = -7;
 pub const NROS_PLATFORM_RET_TIMEOUT: i32 = -8;
+pub const NROS_PLATFORM_TASK_DETACHED: i32 = 1;
+pub const NROS_PLATFORM_PRIORITY_MIN: i32 = 0;
+pub const NROS_PLATFORM_PRIORITY_MAX: i32 = 255;
+pub const NROS_PLATFORM_PRIORITY_INHERIT: i32 = -2147483648;
 pub const NROS_PLATFORM_TASK_STORAGE_SIZE: i32 = 256;
 pub const NROS_PLATFORM_MUTEX_STORAGE_SIZE: i32 = 256;
 pub const NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE: i32 = 256;
@@ -111,7 +131,11 @@ unsafe extern "C" {
     pub fn nros_platform_time_since_epoch_nanos() -> u32;
 }
 unsafe extern "C" {
-    #[doc = " Spawn a new task. `task` is opaque caller-provided storage (size\n  determined by the implementor); `attr` carries scheduling hints\n  (priority, stack size, …) or is `NULL` for defaults; `entry` is the\n  task entry point; `arg` is forwarded to `entry`. Returns `0` on\n  success, non-zero on failure."]
+    #[doc = " Fill `attr` with the defaults — equivalent to passing `NULL` to\n  `task_init`.\n\n  Callers use this rather than a designated initialiser so that a field added\n  to the struct later stays source-compatible for out-of-tree ports."]
+    pub fn nros_platform_task_attr_init(attr: *mut nros_platform_task_attr_t);
+}
+unsafe extern "C" {
+    #[doc = " Spawn a new task. `task` is opaque caller-provided storage (size from\n  `nros_platform_task_storage_size`); `attr` is a\n  `nros_platform_task_attr_t *`, or `NULL` for every default; `entry` is the\n  task entry point; `arg` is forwarded to `entry`.\n\n  Returns `NROS_PLATFORM_RET_OK`, or `INVALID` (a NULL where storage or an\n  entry is required), `NOMEM` (resources exhausted now — retry may succeed) or\n  `UNSUPPORTED` (this port has no tasks at all)."]
     pub fn nros_platform_task_init(
         task: *mut core::ffi::c_void,
         attr: *mut core::ffi::c_void,
