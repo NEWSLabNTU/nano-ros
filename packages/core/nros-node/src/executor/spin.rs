@@ -633,13 +633,10 @@ mod group_filter_tests {
 #[cfg(all(feature = "std", feature = "rmw-cffi"))]
 pub(crate) struct WakeCtx {
     pub(crate) flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
-    pub(crate) cv: std::sync::Arc<std::sync::Condvar>,
-    #[allow(dead_code)] // Held by spin_once's wait predicate (124.B.4).
-    pub(crate) mu: std::sync::Arc<std::sync::Mutex<()>>,
-    /// Phase 130.3 — Zephyr+std uses the k_sem wake primitive; the
-    /// runtime cb signals both this and the std cv so a future
-    /// migration to a single primitive flips one branch instead
-    /// of two.
+    /// The wake primitive. Phase 130.3 added it beside a `std::sync::Condvar`
+    /// pair and noted that "a future migration to a single primitive flips one
+    /// branch instead of two"; phase-359 W10 is that migration, and this is the
+    /// one that survived.
     pub(crate) node_wake: Option<portable_atomic_util::Arc<super::node_wake::NodeWake>>,
 }
 
@@ -681,16 +678,14 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     // before dropping wake_ctx; this happens in `install_wake_*`
     // teardown path.
     let wake = unsafe { &*(ctx as *const WakeCtx) };
+    // Lock-free: the `flag` store is SeqCst and therefore happens-before any
+    // subsequent acquire in the waiter, so a wake cannot be missed even though
+    // nothing is held here.
     wake.flag.store(true, core::sync::atomic::Ordering::SeqCst);
-    // Lock-free notify. The waiter observes wake_flag under wake_mu
-    // in its wait_timeout_while predicate — flag.store with SeqCst
-    // happens-before any subsequent acquire in the waiter, so the
-    // waiter cannot miss the signal even though we don't hold mu
-    // here. Standard pthread cond-var idiom.
-    wake.cv.notify_all();
-    // Phase 130.3 — Zephyr+std waits on `NodeWake` (k_sem) instead
-    // of the std cv. Signal both so the cb keeps working whichever
-    // wait primitive spin_once is using.
+    // phase-359 W10 — ONE primitive. This used to signal both a
+    // `std::sync::Condvar` and (since phase 130.3) the `NodeWake`, "so the cb
+    // keeps working whichever wait primitive spin_once is using". `spin_once`
+    // now has only one, so this has only one to signal.
     if let Some(nw) = wake.node_wake.as_ref() {
         nw.signal();
     }
@@ -698,8 +693,8 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
 
 /// Phase 124.B.7.c — POSIX signalfd worker.
 ///
-/// Owns a Linux `eventfd` plus a worker thread that `read()`s the
-/// fd and forwards via `wake_ctx.cv.notify_all()`. The eventfd
+/// Owns a Linux `eventfd` plus a worker task that `read()`s the
+/// fd and forwards it as a wake. The eventfd
 /// write side is async-signal-safe per the kernel contract
 /// (`write(2)` to an eventfd is permitted from signal handlers),
 /// closing the gap that `pthread_cond_signal` leaves open on POSIX.
@@ -1228,12 +1223,6 @@ pub struct Executor<'s> {
     /// cb uninstalled; the cv wait still fires on its deadline,
     /// then drive_io(0) drains whatever the backend's internal
     /// poll has buffered.
-    #[cfg(feature = "std")]
-    #[allow(dead_code)] // Wired by spin_once after 124.B.4.
-    pub(crate) wake_cv: std::sync::Arc<std::sync::Condvar>,
-    #[cfg(feature = "std")]
-    #[allow(dead_code)]
-    pub(crate) wake_mu: std::sync::Arc<std::sync::Mutex<()>>,
     /// Phase 130.3 — Zephyr+std uses `nros_platform_wake_*` (k_sem)
     /// instead of `std::sync::Condvar` because Zephyr's libc
     /// `pthread_cond_timedwait` hangs past its deadline. `None`
@@ -1415,10 +1404,6 @@ impl<'s> Executor<'s> {
             halt_flag: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
             #[cfg(feature = "alloc")]
             wake_flag: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
-            #[cfg(feature = "std")]
-            wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
-            #[cfg(feature = "std")]
-            wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             node_wake: super::node_wake::NodeWake::new().map(portable_atomic_util::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
@@ -2638,8 +2623,6 @@ impl<'s> Executor<'s> {
         if self.wake_ctx.is_none() {
             self.wake_ctx = Some(std::sync::Arc::new(WakeCtx {
                 flag: self.wake_flag.clone(),
-                cv: std::sync::Arc::clone(&self.wake_cv),
-                mu: std::sync::Arc::clone(&self.wake_mu),
                 node_wake: self.node_wake.clone(),
             }));
         }
@@ -5223,24 +5206,25 @@ impl<'s> Executor<'s> {
                 timeout_ms
             }
         } else {
-            if !was_woken && self.has_async_wake {
-                let dur = core::time::Duration::from_millis(timeout_ms as u64);
-                // SAFETY-invariant: `wake_mu` guards `()` — it is purely the
-                // companion mutex for `wake_cv`, protecting no shared state. A
-                // poison (another thread panicked while holding it) cannot have
-                // corrupted anything, so recover the guard rather than aborting
-                // this hot spin loop.
-                let g = self.wake_mu.lock().unwrap_or_else(|e| e.into_inner());
-                let _ = self.wake_cv.wait_timeout_while(g, dur, |_| {
-                    !self
-                        .wake_flag
-                        .swap(false, core::sync::atomic::Ordering::SeqCst)
-                });
-            }
-            // drive_io is non-blocking when the cv-wait above ran;
-            // full-timeout otherwise so the transport's blocking recv
-            // yields the thread instead of busy-spinning.
-            if self.has_async_wake { 0 } else { timeout_ms }
+            // phase-359 W10 — no platform wake primitive: drive the transport
+            // for the caller's full timeout.
+            //
+            // This branch used to be a `std::sync::Condvar` wait, and it was
+            // the FALLBACK, never the mechanism — the `if` above shows the
+            // choice being made at runtime on `node_wake.is_some()`, always
+            // preferring the kernel-native semaphore. Every supported std host
+            // links one (the POSIX C port has had `nros_platform_wake_*` since
+            // phase 130, with its own `c_port_posix_wake` test), so on Linux
+            // this arm was already unreachable.
+            //
+            // What is lost where it IS reached: an async wake could cut the
+            // condvar wait short, and now it cannot. What is not lost is
+            // blocking — `drive_io(timeout)` blocks in the transport's own
+            // recv, which is where the campaign's condvar audit found every
+            // flavour ends up anyway. It is also exactly what the `alloc` arm
+            // below has always done in this case, so the two flavours stop
+            // disagreeing about a situation neither of them can service well.
+            timeout_ms
         };
 
         // std builds without rmw-cffi (mock-session tests, future
