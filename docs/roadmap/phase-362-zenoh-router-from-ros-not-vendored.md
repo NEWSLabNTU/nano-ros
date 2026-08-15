@@ -9,7 +9,7 @@ around them cannot work.
 **Owns:** the vendored `zenohd` retirement, the interop lane's router
 provenance, and the version-reporting that makes a convention break diagnosable.
 
-**Related:** [RFC-0056](../design/0056-ros-edition-interop-profile.md) (the ROS
+**Related:** [RFC-0056](../design/0056-ros-edition-axis.md) (the ROS
 edition axis this joins), [issue 0374](../issues/0374-zenohd-has-no-prebuilt-so-nros-setup-native-source-builds-it.md)
 (the prebuilt promise the vendored router breaks),
 [issue 0599](../issues/0599-zephyr-lane-reports-ok-when-it-skipped-everything.md)
