@@ -2,7 +2,7 @@
 id: 466
 title: "Tier 1 has an unstated, ORDERED setup contract — eight consecutive
   blockers, one of them a test"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0422, issue-0430, issue-0431, issue-0451, rfc-0061, phase-318]
@@ -588,3 +588,59 @@ list moved, which neither can know.
   (the issue-0196 shape);
 * no `nros setup --tool <t> --check`, so a provisioned tool that drifted behind
   its pin still presents as a link failure (#0493's corrosion 0.5.1 vs 0.6.1).
+
+
+## Finding (b), fixed 2026-08-15 — `nros setup --tool <name> --check`
+
+The last item. Finding (b) said "a landed fix is not an applied fix": #0493 was
+verified end-to-end on 2026-08-10 by bumping corrosion 0.5.1 -> 0.6.1, and the
+duplicate-symbol link failure still reproduced in full the next day on a tree
+where only 0.5.1 had ever been provisioned.
+
+The reason that gap existed is smaller than it looked: `run_check_all` — the
+doctor pass behind a bare `nros setup --check` — walked `[system.*]`,
+`[rust.toolchain.*]` and `[rust.cargo_tool.*]`, and **not `[tool.*]`**. The SDK
+store tools were the one declared class nothing verified. And `--tool <name>
+--check` could not be asked at all: the generic `--check` branch preceded the
+`--tool` branch, so it swallowed the name and walked everything.
+
+Both fixed: `[tool.*]` joins the doctor pass, and `--tool <name> --check` scopes
+to one tool and exits non-zero when it is not at its pin.
+
+### What implementing it exposed: two store layouts, two version vocabularies
+
+The first cut asserted `<store>/<tool>/<version>/` and reported corrosion
+MISSING on a machine where it is installed and working. It is not a versioned
+prefix — it is `<store>/corrosion/` with a `.installed-version` stamp reading
+`v0.6.1`, while the index pins `version = "0.6.1-nros1"`.
+
+Two provisioning paths, each with its own spelling of "what version is this":
+
+| path | layout | version compared |
+| --- | --- | --- |
+| `nros setup --tool` | `<store>/<tool>/<version>/` | index `version` (`0.6.1-nros1`) |
+| `just workspace install-*` | `<store>/<tool>/` + `.installed-version` | upstream tag (`v0.6.1`) |
+
+No normalisation was needed in the end, because the index already declares BOTH
+— `version` and `upstream` (`= source.ref`). The check reads each layout against
+its own field. That is worth recording as its own small seam: one tool, two
+installers, two truths, and `just workspace doctor` checks only the second while
+`nros setup --check` now checks the first. They agree today by coincidence of
+`upstream` being maintained.
+
+Scope, deliberate: the check asks about the SHARED store. A `--prefix` install
+(`build/zenohd`, `build/qemu`) is outside it by design, so "absent from the
+store" is the right answer there rather than a false negative.
+
+## Status
+
+Every item this issue accumulated is now addressed:
+
+* the zephyr `skip_probe` half — `52e6bda8e` (2026-08-14);
+* finding (a), the precondition batch — one gate added, one checked and declined
+  with evidence, launch-resolve skew reported;
+* the compile-check lane's narrow gate — phase-360 W4, which reads the closure
+  the build MEASURED instead of guessing it, extended to every builder;
+* finding (b), tool-version drift — this section.
+
+Resolved.

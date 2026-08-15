@@ -17,7 +17,7 @@ use crate::{
     cmd::board::find_workspace_root,
     orchestration::{
         board_metadata::parse_board_metadata,
-        sdk_index::{SdkIndex, host_key},
+        sdk_index::{SdkIndex, ToolPackage, host_key},
         sdk_store::{
             InstallAction, LOCK_FILE, SdkLock, SourceDisposition, execute, plan_install,
             provision_source, store_root, tool_prefix,
@@ -206,6 +206,13 @@ pub fn run(args: Args) -> Result<()> {
             args.dry_run,
             shallow_override(&args),
         );
+    }
+    // `--tool <name> --check` asks about ONE tool. Without this the generic
+    // `--check` below swallowed it and walked everything, so the targeted
+    // question issue 0466 asks for ("is THIS tool at its pin?") could not be
+    // put — which is why a drifted tool kept being discovered downstream.
+    if args.check && args.tool.is_some() {
+        return run_check_tool(&index, args.tool.as_deref().unwrap());
     }
     if args.check {
         return run_check_all(&index);
@@ -1478,6 +1485,94 @@ fn run_system(index: &SdkIndex, check_only: bool, run_sudo: bool) -> Result<()> 
     Ok(())
 }
 
+/// Is `[tool.<name>]` installed at the version the index pins? — issue 0466.
+///
+/// TWO store layouts are live and they carry DIFFERENT version vocabularies,
+/// both declared in the index, so this reads them rather than normalising one
+/// into the other:
+///
+///   * `nros setup --tool` installs a VERSIONED prefix,
+///     `<store>/<tool>/<version>/`, keyed on the index's repack id
+///     (`0.6.1-nros1`).
+///   * the `just workspace install-*` recipes install an UNVERSIONED prefix and
+///     stamp `<store>/<tool>/.installed-version` with the UPSTREAM tag
+///     (`v0.6.1`) — which the index also declares, as `upstream`.
+///
+/// Returns `(present, what the store actually holds)`. The second half is the
+/// diagnosis for "but I ran the installer": #0493's corrosion sat at 0.5.1
+/// against a 0.6.1 pin and surfaced hours later as duplicate `#[no_mangle]`
+/// symbols at link time.
+///
+/// Scope, stated rather than implied: this asks about the SHARED STORE. A tool
+/// installed with `--prefix` (the workspace-local `build/zenohd`, `build/qemu`)
+/// is deliberately outside it and is not answered here — `--prefix` exists so a
+/// checkout can pin its own copy, so "absent from the store" is the correct
+/// answer for those, not a false negative.
+fn tool_pin_status(index: &SdkIndex, name: &str, tool: &ToolPackage) -> (bool, Vec<String>) {
+    let store = crate::orchestration::sdk_store::store_root();
+    let _ = index;
+    let versioned = crate::orchestration::sdk_store::tool_prefix(&store, name, &tool.version);
+    let stamp = store.join(name).join(".installed-version");
+    let stamped = std::fs::read_to_string(&stamp)
+        .ok()
+        .map(|v| v.trim().to_string());
+
+    if versioned.is_dir() {
+        return (true, Vec::new());
+    }
+    if let (Some(found), Some(want)) = (stamped.as_deref(), tool.upstream.as_deref())
+        && found == want
+    {
+        return (true, Vec::new());
+    }
+
+    let mut held: Vec<String> = std::fs::read_dir(store.join(name))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+    if let Some(found) = stamped {
+        held.push(format!(".installed-version={found}"));
+    }
+    held.sort();
+    (false, held)
+}
+
+/// Issue 0466 finding (b) — is ONE tool at the version the index pins?
+///
+/// The generic `--check` walks every class and answers "is anything missing".
+/// This answers the question a build actually raises: the pin moved, or the
+/// store holds a stale prefix, and the consequence appears somewhere else
+/// (#0493: corrosion 0.5.1 against a 0.6.1 pin, surfacing as duplicate
+/// `#[no_mangle]` symbols at link time). Exit 1 when the pinned prefix is
+/// absent, and NAME what the store holds instead — that list is the whole
+/// diagnosis for "but I ran the installer".
+fn run_check_tool(index: &SdkIndex, name: &str) -> Result<()> {
+    let Some(tool) = index.tool.get(name) else {
+        bail!("nros setup: no [tool.{name}] in the index (see `nros setup --list`)");
+    };
+    let (present, held) = tool_pin_status(index, name, tool);
+    if present {
+        println!("  [OK]      tool    {name} {}", tool.version);
+        return Ok(());
+    }
+    println!(
+        "  [MISSING] tool    {name} {} (run: nros setup --tool {name})",
+        tool.version
+    );
+    if !held.is_empty() {
+        println!("            the store holds: {}", held.join(", "));
+        println!(
+            "            Installed is not the same as PINNED — that gap is how a landed\n\
+             \x20           fix stays inert (issue 0493), and the store ACCUMULATES, so a\n\
+             \x20           stale prefix can shadow the pin (issue 0500)."
+        );
+    }
+    bail!("nros setup --tool {name} --check: not at the pinned version")
+}
+
 /// phase-327 W3 — the generic walker: probe every declared class and print a
 /// remedy COMPUTED from the entry. Exit 1 when anything is missing.
 fn run_check_all(index: &SdkIndex) -> Result<()> {
@@ -1501,6 +1596,34 @@ fn run_check_all(index: &SdkIndex) -> Result<()> {
             _ => format!("map [system.{key}] for this host in nros-sdk-index.toml"),
         };
         report("system", key, run_probe(dep.check.as_ref()), remedy);
+    }
+
+    // [tool.*] — issue 0466 finding (b): "a landed fix is not an applied fix".
+    // This class was the ONE `run_check_all` never walked, so a provisioned tool
+    // that had drifted behind its pin was invisible here and surfaced later as
+    // something else entirely — #0493's corrosion 0.5.1-vs-0.6.1 presented as a
+    // duplicate-symbol LINK failure, hours from its cause.
+    //
+    // Presence is asked of the PINNED version's prefix specifically, not of the
+    // tool in general, because the store ACCUMULATES: `~/.nros/sdk/<tool>/` can
+    // hold several versions at once and `find_package` takes the first prefix
+    // that resolves (issue 0500). So an installed-but-wrong version is reported
+    // as MISSING with the pin named, and any OTHER versions present are listed —
+    // that list is the thing which explains a "but I installed it" build
+    // failure.
+    for (name, tool) in &index.tool {
+        let (present, held) = tool_pin_status(index, name, tool);
+        let label = if held.is_empty() {
+            format!("{name} {}", tool.version)
+        } else {
+            format!("{name} {} (store holds: {})", tool.version, held.join(", "))
+        };
+        let ok = if present {
+            ProbeResult::Present
+        } else {
+            ProbeResult::Missing
+        };
+        report("tool", &label, ok, format!("nros setup --tool {name}"));
     }
 
     // [rust.toolchain.*] — `rustup toolchain list` + per-component listing.

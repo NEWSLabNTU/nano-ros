@@ -1885,26 +1885,15 @@ tagged, and all 17 cells pass. Note it did not present as `STALE`: the probe pas
 and the assertion failed on its merits, reading as a live runtime defect (issue 0445's shape from the
 other side). See `archived/0462-*`.
 
-**#466** — Tier 1 has an unstated, ORDERED setup contract. Eight consecutive attempts at `just ci` on a
-clean, provisioned tree each stopped on a DIFFERENT precondition, and only one stop was a test: missing
-GNU `parallel` (the lane degrades to serial and reads as a hang), a stale in-tree `nros` after a tree
-refresh, `nros_box_publish` reading an intentionally-unset `$CARGO_TARGET_DIR`, then four source-level
-reds already sitting on main — including a crate that did not COMPILE (`mod log_bridge;` committed
-without its file). Two halves: (A) the required sequence — `nros setup --system`, CLI rebuild, publish,
-resolver, lane-scoped fixtures — is documented only in pieces, is order-dependent, and is re-armed by ANY
-refresh (pull/rebase/stash/rsync restages the CLI stamp and every fixture mtime); (B) those gates run
-ONLY in `just ci`, so while it is unreachable, reds accumulate — measurably, since two of the four were
-being fixed by a concurrent session in the same hour and landed as duplicate patches. **PARTLY FIXED
-2026-08-07:** the fixture-free lane was never missing — `check-fast` IS it, and had been unreachable
-because `check-cli-fresh` (needs a fresh CLI) and `check-test-targets` (needs the `-sys` sources)
-both sat in it, contradicting its own "buildless and SOURCE-FREE" docstring. With those moved to
-`check-build`, plus `check-leaf-lockfiles` no longer treating an unsynced tree as a failure, per-push
-CI went green after **20+ consecutive red runs** — and a third red behind them, `scaffold-journey`
-asking `nros new` for a platform it has refused since 2026-07-28, only became visible once the first
-two cleared. That sequence is the issue's own thesis observed rather than argued: a permanent red does
-not fail, it hides its neighbours. Still open: proposal (1), one precondition gate reporting every
-unmet item at once — worth more than first argued, since `just` stops at the first failed dependency
-and 25 gates sat behind `check-test-targets` alone. See `0466-*`. (2026-08-07) **REPRODUCED 2026-08-11 with the batched gate in place:** it caught 1 of 5 — the other four were month-old build residue (2 gates), a corrosion pin provisioned at 0.5.1 so #0493's landed 0.6.1 fix was INERT here, and never-built native fixtures surfacing as 101 `not prebuilt` test failures. Adds a NEW defect, since FIXED: the rust staleness probe discarded cargo's exit status and stderr, so a fixture that could NOT compile read as fresh — gate green, no artifact, ~100 tests later a `not prebuilt` panic. Now a `FAILED` record escalated to an error (mutation-verified). Plus the note that clearing the artifact-identity residue deletes the `.inputsig` stamps `_check-fixtures-stale` reads — two gates, one directory, opposing demands. Third worked example (2026-08-12): `entry_matrix`'s zephyr qos/lifecycle cells failed with plausible PRODUCT messages while running 08-07 images that predated #0460's fix — built `CONFIG_NROS_MAX_QUERYABLES=8` vs the tree's 16; rebuilding made both pass. The zephyr lane is `skip_probe = true`, so NO gate can see it: a stale zephyr image is indistinguishable from a current one. Rule: **a zephyr cell failing with a product-level message is a stale-image suspect first** — grep the built `.config` before believing the assertion.
+Recently resolved (2026-08-15): **#466** — tier 1's unstated, ORDERED setup contract. It accumulated four
+defects over three months and all are now closed: the zephyr `skip_probe` freshness hole (`52e6bda8e`); the
+precondition batch (one gate added, `check-artifact-identity-budget` checked and DECLINED because its
+`started_at` filter already answers the case the finding cites, plus the launch-resolve skew now reported);
+the compile-check gate being narrower than the tests it gates (phase-360 W4 — read the closure the build
+MEASURED rather than guessing it); and tool-version drift (`nros setup --tool <name> --check`; `[tool.*]` was
+the one declared class the doctor pass never walked, and `--check` swallowed the tool name). Closing that last
+one surfaced two store layouts carrying two version vocabularies, both already declared in the index.
+See `archived/0466-*`.
 
 Recently resolved (2026-08-06): **#458** — `nros_cpp_executor_open_over_session` never stamped the `CppContext`
 handle tag. The storage is `MaybeUninit`, so `cpp_ctx_checked` read garbage and every entry point
