@@ -1,0 +1,29 @@
+# A VENDORED nano-ros is not part of the consumer's package graph.
+#
+# `nros-pkg-index` walks a workspace root for `package.xml` and requires the
+# names it finds to be unique. nano-ros ships 272 of them (examples, templates,
+# fixtures) and they are deliberately NOT unique across the tree: every
+# copy-out workspace has its own `demo_bringup`, `talker_pkg`, `zephyr_entry`
+# and so on, because each is a separate project that a user copies out whole
+# (RFC-0026, RFC-0066). Within one workspace they are unique, which is the only
+# scope in which uniqueness means anything.
+#
+# A consumer that vendors nano-ros as a subdirectory — `nano-ros-rt-eval` does,
+# as a submodule — makes their root an ancestor of all 272, and the first
+# duplicate ends their build:
+#
+#     error: nros::main!: build_pkg_index: duplicate pkg name `demo_bringup`
+#            in workspace `/…/nano-ros-rt-eval`:
+#            `…/nano-ros/examples/templates/c-and-cpp-mixed-workspace/src/demo_bringup`
+#        and `…/nano-ros/examples/templates/multi-node-workspace/src/demo_bringup`
+#
+# naming two directories the consumer does not own, in a repository they merely
+# depend on, for a package they never asked to build.
+#
+# This marker prunes the whole tree from any walk that starts ABOVE it. It does
+# NOT affect nano-ros's own discovery: `build_pkg_index` exempts the root it
+# was given (`entry.depth() == 0` returns true before any marker is read), so
+# when nano-ros IS the workspace root this file is never consulted, and when it
+# is nested it prunes at depth 1.
+#
+# See issue 0621.

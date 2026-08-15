@@ -594,3 +594,80 @@ Also relevant to anyone re-running this: rebuilding needs the ENTRY crate cleane
 as well as `zpico-sys`. `libzenohpico.a` rebuilds without relinking the
 executable (issue 0475, here on a vendored source rather than an RMW backend),
 which is why several edits silently never reached the image.
+
+
+## 2026-08-16 — why the constant never reached codegen: neither cap site is in the image
+
+Answered with `nm` on the image the cells actually run, built from current main
+(`84d25f1f8`, zenoh-pico `f4ce3d9f`) on the FreeRTOS mps2-an385 lane:
+
+| symbol | in image |
+| --- | --- |
+| `_zp_unicast_read_task` | **yes** (0x2ad49) |
+| `_z_unicast_client_read` | yes |
+| `_z_unicast_process_messages` | yes |
+| `_zp_unicast_read` | **NO** |
+| `_zp_unicast_process_peer_event` | **NO** |
+| `_z_unicast_peer_read` | **NO** |
+
+Statics are visible in this output (`t _zp_unicast_failed`), so the absences are
+absences, not hidden local symbols.
+
+**Both cap attempts were placed in functions this image does not contain.** That
+is the whole of "the constant does not differentiate cap=1/4/16": a value in
+dead code folds away, so every cap produced one binary — while all of them
+differed from unbounded, because the `#if` around the *site* changed the
+translation unit either way. Nothing was wrong with the plumbing.
+
+It goes further, and this part corrects two earlier entries:
+
+* **`43ddb0ec` (#567's conditional reset) does not apply to this lane at all.**
+  It fixed `_zp_unicast_read`, the POLLED path, which is not linked here.
+* **`f4ce3d9f` (the task-path port, recorded in phase-358 W3 as "done since")
+  is also dead on this lane.** It lives in `_zp_unicast_process_peer_event`,
+  guarded by the sole `#if Z_FEATURE_UNICAST_PEER == 1` call site, and
+  `nros-zpico-build` emits `#define Z_FEATURE_UNICAST_PEER 0`. The port is
+  correct and it is not reached. Its "measured neutral" result is consistent
+  with that and was not evidence of anything.
+
+### What the live path actually does
+
+`_zp_unicast_read_task` → client branch → one `_z_unicast_client_read` +
+one `_z_unicast_process_messages` per iteration of `while (_read_task_running)`.
+**There is no inner drain loop on this path.** Over a TCP (stream) link
+`to_read` is a single frame, so the live code already does one frame per
+iteration — it is, in effect, permanently at cap = 1, losslessly, because the
+buffer is never reset out from under a remainder.
+
+So the four-column table cannot be produced as specified: unbounded, cap 16,
+cap 4 and cap 1 are not four configurations of this image. There is no drain
+loop here to bound.
+
+### What this means for the issue
+
+The premise needs restating rather than the experiment re-running. "Budget the
+drain loop" was derived from `_zp_unicast_read`, and the lane the numbers came
+from does not execute it. Two things follow:
+
+1. The rx work runs on its **own FreeRTOS task**, not inline in the app. So the
+   preemption measured here is a scheduling property — priority and CPU share
+   between the read task and the tiers — not an unbounded loop the app calls.
+   A budget is the wrong instrument for that; the right knobs are the read
+   task's priority and how much it is allowed to run per period.
+2. If a frame budget is still wanted for the POLLED path (multi-executor,
+   `Z_FEATURE_MULTI_THREAD=0`), it is `43ddb0ec`-ready and the cells for it must
+   be taken on an image that links `_zp_unicast_read` — not this one.
+
+Not proposing either here. The item asked why the constant does not reach
+codegen; it does not reach codegen because there is nothing on this lane to
+apply it to, and shipping a budget against a disproved premise is what the last
+two passes of this issue already did once each.
+
+### Method note
+
+Three passes of this issue drew a conclusion from reading a diff, and all three
+were wrong: the harness was called a blocker (it clones in seconds), the
+blocker was called cleared "by construction" (it was not, for this lane), and
+the task-path port was recorded as the fix (it is dead code here). The thing
+that settled it each time was building the image and looking at it. `nm` is
+four seconds.

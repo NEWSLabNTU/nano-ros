@@ -114,6 +114,20 @@ compile-time error instead of a link-time duplicate symbol — louder, not newer
 `packages/cli` is a separate workspace inside the repo), plus a configure-time FATAL_ERROR when two roots
 claim one directory. See `archived/0616-*`.
 
+RESOLVED 2026-08-16 — **#0621** a VENDORED nano-ros splices its 272 example packages into the CONSUMER's
+package index. `build_pkg_index` walks the consumer's root, descends into the nano-ros subdirectory and dies
+on the first duplicate — `demo_bringup`, naming two directories inside the dependency for a package the
+consumer never asked to build. The 28 duplicated names are CORRECT: every copy-out workspace has its own
+`demo_bringup` (x18) / `native_entry` (x12) / `talker_pkg` (x8), because RFC-0026 + RFC-0066 give the same
+role the same name deliberately, and they are unique per workspace — the only scope where uniqueness means
+anything. Fixed with `.nros-ignore` at the repo root, whose semantics fall out of the walker itself: the
+filter returns true for `depth() == 0` before reading any marker, so the file is never consulted when
+nano-ros IS the workspace root and prunes at depth 1 when nested. Also renamed three packages that really
+did collide — `native_talker` was declared by `talker` AND both custom-transport examples, one of them a
+listener — to `native_custom_transport_{talker,listener}`; fixing those alone only moved the failure to the
+next duplicate, which is what showed the duplicates were not the disease. Found bumping
+`nano-ros-rt-eval`'s pin for phase-358 W3's cells. See `archived/0621-*`. (2026-08-16)
+
 RESOLVED 2026-08-16 — **#617** embedded link failures from phase-361's opt-in-features direction: a `no_std`
 FINAL artifact needs one `#[global_allocator]` and one `#[panic_handler]`, and a HOST build detects neither
 missing (`std` supplies both). Fixed: the C++ mapper arm gated on `nros-cpp/alloc` while its variant is

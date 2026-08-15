@@ -196,8 +196,52 @@ pinned. Measured neutral without a budget, which is the expected result and the
 point: delivery did not collapse, so carrying a remainder does not corrupt the
 stream.
 
-**Still open, and W3 is NOT done:** no budget exists, and the four-column table
-does not either. A budget built on top did not differentiate cap=1/4/16 in
+**ANSWERED 2026-08-16 — the constant does not reach codegen because NEITHER cap
+site is in the image, and the four-column table cannot be produced as specified.**
+
+`nm` on the FreeRTOS mps2-an385 island built from current main: the image
+contains `_zp_unicast_read_task`, `_z_unicast_client_read` and
+`_z_unicast_process_messages`, and does NOT contain `_zp_unicast_read`,
+`_zp_unicast_process_peer_event` or `_z_unicast_peer_read`. Statics are visible
+in that output, so the absences are real.
+
+Both cap attempts sat in functions this image does not link. A value in dead
+code folds away — that is the whole of "cap=1/4/16 produced one identical
+binary", with all three differing from unbounded because the `#if` around the
+site changed the TU regardless.
+
+Two corrections to the entries above, both of which this build overturns:
+
+* **`43ddb0ec` does not apply to this lane** — it fixed the POLLED
+  `_zp_unicast_read`, absent here.
+* **`f4ce3d9f`, recorded above as "Done since", is dead code on this lane** —
+  it lives in `_zp_unicast_process_peer_event`, whose only call site is behind
+  `#if Z_FEATURE_UNICAST_PEER == 1`, and `nros-zpico-build` emits
+  `#define Z_FEATURE_UNICAST_PEER 0`. The port is correct; it is not reached.
+  Its "measured neutral" result follows from that and evidenced nothing.
+
+The live path has **no inner drain loop**: one `_z_unicast_client_read` + one
+`_z_unicast_process_messages` per iteration of the read task's loop, and over a
+TCP stream link `to_read` is a single frame. The lane is already at cap = 1,
+losslessly. Unbounded / 16 / 4 / 1 are not four configurations of this image.
+
+So #506's premise needs restating, not its experiment re-running: rx runs on its
+own FreeRTOS task, so the preemption measured is a scheduling property (priority
+and CPU share against the tiers), not an unbounded loop the app calls. A budget
+is the wrong instrument for that. Detail and the two follow-on options in #506.
+
+**Blocked on the way, fixed and filed as #0621:** the cells need the harness
+pin bumped to current main, and doing that broke the consumer's build — a
+vendored nano-ros splices its 272 example packages into the CONSUMER's package
+index, and the first duplicate (`demo_bringup`, ×18 by design) ends their build
+while naming two directories they do not own. Fixed with `.nros-ignore` at the
+repo root, which `build_pkg_index` ignores when nano-ros IS the root
+(`depth() == 0` is exempt) and honours when it is nested. Three packages also
+genuinely collided (`native_talker` ×3, including a *listener* declaring itself
+a talker) — renamed. With both fixed the island builds against current main,
+which is what made the `nm` above possible.
+
+**Still open:** no budget exists, and the four-column table does not either. A budget built on top did not differentiate cap=1/4/16 in
 codegen — all three produced one identical binary — so it was dropped rather
 than shipped unproven. That is the next question: why the constant does not
 reach codegen, then the cells.

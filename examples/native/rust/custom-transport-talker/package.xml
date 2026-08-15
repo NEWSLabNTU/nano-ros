@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>native_talker</name>
+  <name>native_custom_transport_talker</name>
   <version>0.1.0</version>
   <description>nano-ros native talker example</description>
   <maintainer email="example@example.com">Developer</maintainer>
