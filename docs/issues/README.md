@@ -60,6 +60,33 @@ as the two gcc-14 fixes on the zenoh-pico fork. Not established: whether it is n
 failure of these images, so they build somewhere) or which of three fixes is right — the Zephyr ddsrt seam
 is under active change by another session, so that call is theirs. See `0590-*`. (2026-08-15)
 
+**#588** (testing/build, open 2026-08-15) — `just build-test-fixtures lane=native` reports
+`check=0 build=0 cmake=0 cxx=0 cargo-check=0` — it builds NOTHING — and then writes
+`fixture stamp: .fixtures-built (lane=native)`. That stamp promises the lane's fixtures exist, so the
+resolver turns absent artifacts into hard failures instead of skips: four tests that had been skipping now
+fail `Test fixture binary MISSING for an in-lane coordinate`. Established: the binary
+(`add_two_ints_server`) exists NOWHERE — not under the current feature signature nor any of six older
+`cargo-fixtures/linux-*` dirs; the row IS in `fixtures.toml` and in the native lane; the builder ran its
+CODEGEN (`generate-rust: examples/native/rust/service-server`) and then compiled nothing. Same seam as
+0482 one layer down: the freshness half is satisfied (nothing stale) while the existence half is not, and
+the stamp reports only the first. The trap is that running the SANCTIONED builder is what converts a quiet
+gap into a red sweep. NOT investigated: why the row is selected for codegen but not for the build, and how
+many other rows are in the same state. See `0588-*`. (2026-08-15)
+
+**#587** (build/testing, open 2026-08-15) — `check-cargo-config-tracked` fails `check-fast`, calling six
+`examples/threadx-linux/rust/*/.cargo/config.toml` "pure sync output" and instructing `git rm --cached`.
+DO NOT: the premise is false and the remedy deletes documentation. Its predicate excludes comment lines, so
+a file whose only authored content is COMMENTS scores as sync output — and in these six the comment IS the
+file: it records issue 0582's finding (why there is deliberately no `[build] target`, because the literal
+`x86_64-unknown-linux-gnu` read as a host pin on x86 and a CROSS COMPILE everywhere else) plus where the
+artifact actually lands. A comment is content a clone cannot regenerate, which is the tracked-half rule
+CLAUDE.md states. It also contradicts issue 0559, which committed these files deliberately. Direction:
+treat content sync would not itself emit as authored — sync's output is fixed and known, so this needs no
+comment-length heuristic; an allowlist would be the hand-kept list this repo keeps paying for. NOT
+measured: whether the other ~39 leaves committing a config pass or fail under a corrected predicate.
+See `0587-*`. (2026-08-15)
+
+
 Recently resolved (2026-08-15): **#562** `nros sync` rewrote byte-identical files, restamping mtimes and
 buying a cmake reconfigure for no change. The class fix (ONE write-if-changed helper in
 `cargo_nano_ros::atomic_file`, re-exported by `nros-cli-core`, replacing four private spellings and
