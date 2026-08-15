@@ -551,9 +551,23 @@ fn require_prebuilt_binary_checks(binary_path: &Path) -> TestResult<PathBuf> {
         panic!(
             "Test fixture binary MISSING for an in-lane coordinate: {}\n\
              A gated run already asserted this lane's fixtures are built and \n\
-             fresh, so this is a broken promise, not an environment skip — \n\
-             either the staleness gate does not cover this row, or its build \n\
-             failed quietly.\n\
+             fresh, so this is a broken promise, not an environment skip.\n\
+             THREE things it can be, in the order worth checking (issue 0588 \n\
+             burned an issue cycle on the wrong one because this message \n\
+             offered only the last two):\n\
+             \n\
+             1. the NAME is wrong. A test may be asking for a ROS NODE name \n\
+                where the package's only `[[bin]]` is called something else \n\
+                — `add_two_ints_server` is the node, `service-server` is the \n\
+                binary. `find build examples -name <the name>` returning \n\
+                nothing is evidence about the NAME, not about the builder.\n\
+             2. the build failed quietly. Read the PER-STAGE log, \n\
+                tmp/build-test-fixtures-*/<family>.log — the driver only \n\
+                tails it on failure, so its own summary shows `== native ==` \n\
+                and `== native == OK` one line apart, and a `build=0` line \n\
+                from a DIFFERENT builder reads like this one's.\n\
+             3. the staleness gate does not cover this row.\n\
+             \n\
              Build it:   just build-test-fixtures\n\
              Ungate:     unset NROS_TEST_SCOPE / NROS_TEST_COORDS (then it \n\
              degrades to a skip again), or NROS_FIXTURES_OPTIONAL=1 for the \n\
