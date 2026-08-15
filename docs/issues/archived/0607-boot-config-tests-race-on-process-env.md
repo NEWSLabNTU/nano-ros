@@ -1,7 +1,7 @@
 ---
 id: 607
 title: "`boot_config_tests` race on process-global env under `cargo test`, so `check-node-std-tests` fails ~1 run in 3"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0466, phase-359]
@@ -83,3 +83,53 @@ Found 2026-08-15 while restoring tier 1 after issue 0601. The tests are not new
 — `packages/core/nros-node/src/executor/types.rs` was last touched by
 `3fd70f32a` (phase-359 W6) — and the failure reproduces on a tree with NO local
 changes to `packages/core/nros-node`.
+
+## Resolved 2026-08-15 — it was a stale CACHE, not a mutation race
+
+The title and the first diagnosis were both wrong, and the module's own
+`env_lock()` is why: a process-wide mutex already serialised every env mutation,
+and the failure happened anyway.
+
+**The real cause.** `try_resolve` reads env PRESENCE live but env VALUES from
+`ENV_CACHE`, a process-global `OnceLock` that freezes at whichever caller
+touched it first. Under `cargo test` all 262 unit tests share one process, so a
+later test's `EnvGuard` changes what `std::env::var` reports while the cached
+VALUE stays whatever the first caller saw. `noop_resolve_matches_from_env` then
+compares `resolve(default, true)` against `from_env()` and the two disagree:
+
+```
+assertion `left == right` failed
+  left: ""
+ right: "tcp/env:7447"
+```
+
+A mutex cannot fix that. It serialises WRITES; this is a stale READ of a cache
+that was already populated. Nine tests failed together because the first failure
+POISONED the mutex — 7 of the 9 were `PoisonError` on `.lock().unwrap()`, not
+independent failures.
+
+**The fix.** Under `cfg(test)` the cache is rebuilt per call, so tests see live
+env — the only coherent answer when the env is the thing they are varying.
+Production keeps the `OnceLock`: nothing there mutates the environment, so
+freezing it once is both correct and the point.
+
+**Two tests had been weakened to accommodate the bug**, each with a comment
+apologising for it — one asserted only `assert_ne!(cfg.node_name,
+"baked_node")`, the other only that the baked locator "did not win". Both now
+assert the actual env value. That is the part that makes the fix worth having:
+the coverage those tests were supposed to provide is back.
+
+### Measured
+
+| | |
+| --- | --- |
+| before | ~1 run in 5 failed (~1 in 3 on the first sample) |
+| after | **15 / 15 passed** |
+| bug reintroduced, with the restored assertions | **6 / 6 FAILED** |
+
+The last row is the important one: with the weak assertions the defect was a
+1-in-5 flake; with the strong ones it is a deterministic failure. The guard now
+fails on the bug it exists for.
+
+Two `env_cache()` caveat comments are deleted rather than left describing
+behaviour that no longer happens.

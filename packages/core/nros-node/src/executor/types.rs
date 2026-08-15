@@ -348,45 +348,79 @@ struct EnvCache {
 }
 
 #[cfg(feature = "std")]
+fn build_env_cache() -> EnvCache {
+    // Prefer NROS_LOCATOR / NROS_SESSION_MODE; accept legacy ZENOH_*
+    // names with a stderr deprecation warning.
+    let locator = std::env::var("NROS_LOCATOR")
+        .or_else(|_| {
+            std::env::var("ZENOH_LOCATOR").inspect(|_| {
+                std::eprintln!("nros: ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead");
+            })
+        })
+        // Issue 0330 — unset env leaves the locator EMPTY (= absent); the
+        // active backend substitutes its own default.
+        .unwrap_or_default();
+    let domain_id = std::env::var("ROS_DOMAIN_ID")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let mode_str = std::env::var("NROS_SESSION_MODE")
+        .or_else(|_| {
+            std::env::var("ZENOH_MODE").inspect(|_| {
+                std::eprintln!("nros: ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead");
+            })
+        })
+        .ok();
+    let mode = match mode_str.as_deref() {
+        Some("peer") => SessionMode::Peer,
+        _ => SessionMode::Client,
+    };
+    let node_name = std::env::var("NROS_NODE_NAME").unwrap_or_default();
+    EnvCache {
+        locator,
+        domain_id,
+        mode,
+        node_name,
+    }
+}
+
+/// The process-global cache, and why tests do NOT use it.
+///
+/// Issue 0607 — `try_resolve` reads env PRESENCE live but env VALUES from this
+/// `OnceLock`, which freezes at whichever test touched it first. Under
+/// `cargo test` every unit test shares one process, so a later test's
+/// `EnvGuard` changes what `std::env::var` reports while the cached VALUE stays
+/// whatever the first caller saw. The two then disagree and
+/// `noop_resolve_matches_from_env` fails comparing `resolve(default, true)`
+/// against `from_env()`:
+///
+/// ```text
+/// assertion `left == right` failed
+///   left: ""
+///  right: "tcp/env:7447"
+/// ```
+///
+/// It failed ~1 run in 5 and never single-threaded, and the module's
+/// `env_lock()` cannot help: the mutex serialises MUTATION, and this is a stale
+/// READ of a cache that was already populated. Two tests carried comments
+/// apologising for it and weakening their assertions instead.
+///
+/// So under `cfg(test)` the value is rebuilt per call — tests see live env,
+/// which is the only coherent answer when the env is what they are varying. The
+/// leak is bounded by the number of calls in a test binary and buys back
+/// determinism. Production keeps the `OnceLock`: nothing there mutates the
+/// environment, so freezing it once is both correct and the point.
+#[cfg(all(feature = "std", not(test)))]
 static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", not(test)))]
 fn env_cache() -> &'static EnvCache {
-    ENV_CACHE.get_or_init(|| {
-        // Prefer NROS_LOCATOR / NROS_SESSION_MODE; accept legacy ZENOH_*
-        // names with a stderr deprecation warning.
-        let locator = std::env::var("NROS_LOCATOR")
-            .or_else(|_| {
-                std::env::var("ZENOH_LOCATOR").inspect(|_| {
-                    std::eprintln!("nros: ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead");
-                })
-            })
-            // Issue 0330 — unset env leaves the locator EMPTY (= absent); the
-            // active backend substitutes its own default.
-            .unwrap_or_default();
-        let domain_id = std::env::var("ROS_DOMAIN_ID")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        let mode_str = std::env::var("NROS_SESSION_MODE")
-            .or_else(|_| {
-                std::env::var("ZENOH_MODE").inspect(|_| {
-                    std::eprintln!("nros: ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead");
-                })
-            })
-            .ok();
-        let mode = match mode_str.as_deref() {
-            Some("peer") => SessionMode::Peer,
-            _ => SessionMode::Client,
-        };
-        let node_name = std::env::var("NROS_NODE_NAME").unwrap_or_default();
-        EnvCache {
-            locator,
-            domain_id,
-            mode,
-            node_name,
-        }
-    })
+    ENV_CACHE.get_or_init(build_env_cache)
+}
+
+#[cfg(all(feature = "std", test))]
+fn env_cache() -> &'static EnvCache {
+    std::boxed::Box::leak(std::boxed::Box::new(build_env_cache()))
 }
 
 #[cfg(feature = "std")]
@@ -1403,13 +1437,13 @@ mod boot_config_tests {
         let resolved = ExecutorConfig::resolve(baked, true);
         let env_cfg = ExecutorConfig::from_env();
 
-        // Load-bearing assertion: baked value did NOT win.
-        // `env_cache()` is a process-global OnceLock, so the exact env string
-        // is only observable when this test initializes the cache first.
-        // The key check is that the baked locator was not returned.
-        assert_ne!(
-            resolved.locator, "tcp/baked:9999",
-            "baked locator must not override env"
+        // Issue 0607 — the exact env string is observable again: tests read
+        // live env rather than a process-global cache that whichever test ran
+        // first had already frozen. This was an `assert_ne!` against the baked
+        // value for exactly that reason.
+        assert_eq!(
+            resolved.locator, "tcp/env:7447",
+            "env locator must win over baked, with its own value"
         );
 
         // Secondary check: env value matches the cache (both draw from
@@ -1573,11 +1607,6 @@ mod boot_config_tests {
     #[test]
     fn try_resolve_node_name_env_rung() {
         let _l = env_lock().lock().unwrap();
-        // NOTE: env_cache() is a process-global OnceLock — in `cargo test`
-        // (shared process) another test may have initialized it before
-        // NROS_NODE_NAME was set, so only the PRESENCE gate is assertable
-        // process-independently. Under nextest (process per test) the value
-        // asserts exactly.
         let _g = EnvGuard::set("NROS_NODE_NAME", "env_node");
         let baked = BootConfig {
             node_name: Some("baked_node"),
@@ -1587,7 +1616,14 @@ mod boot_config_tests {
             Ok(c) => c,
             Err(e) => panic!("resolve failed: {e}"),
         };
-        assert_ne!(cfg.node_name, "baked_node", "env rung must override baked");
+        // Issue 0607 — the VALUE, not just "not the baked one". This used to be
+        // an `assert_ne!` because a process-global env cache could freeze before
+        // this test's EnvGuard ran; tests now read live env, so the env rung is
+        // observable exactly.
+        assert_eq!(
+            cfg.node_name, "env_node",
+            "env rung must override baked with its own value"
+        );
     }
 
     #[test]
