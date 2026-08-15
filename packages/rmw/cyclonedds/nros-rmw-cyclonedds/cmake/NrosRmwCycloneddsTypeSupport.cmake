@@ -77,20 +77,58 @@ endif()
 #
 # So `-h` separates "cannot load" from "loaded fine", and `--version` would
 # reject every healthy install.
-function(_nros_idlc_runs _path _out)
+function(_nros_idlc_runs _path _out_why _out_env)
+    # Try the tool as-is first. A healthy install needs nothing, and staying
+    # empty there keeps the generated command byte-identical on hosts that were
+    # never broken.
     execute_process(
         COMMAND "${_path}" -h
         RESULT_VARIABLE _rc
         OUTPUT_QUIET ERROR_VARIABLE _err)
     if(_rc EQUAL 0)
-        set(${_out} "" PARENT_SCOPE)
-    else()
-        string(STRIP "${_err}" _err)
-        if(_err STREQUAL "")
-            set(_err "exit ${_rc}")
-        endif()
-        set(${_out} "${_err}" PARENT_SCOPE)
+        set(${_out_why} "" PARENT_SCOPE)
+        set(${_out_env} "" PARENT_SCOPE)
+        return()
     endif()
+
+    # It did not run. Before giving up, try the ONE thing that is actually
+    # knowable from the path itself: a tool installed at `<prefix>/bin/idlc`
+    # links libraries under `<prefix>/lib`. That is what ROS's `setup.bash`
+    # would have put on the loader path, and deriving it from the tool's own
+    # prefix means this works for any prefix, not just /opt/ros/humble.
+    get_filename_component(_bin_dir "${_path}" DIRECTORY)
+    get_filename_component(_prefix "${_bin_dir}" DIRECTORY)
+    set(_lib_dirs "")
+    foreach(_cand "${_prefix}/lib" "${_prefix}/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+        if(IS_DIRECTORY "${_cand}")
+            list(APPEND _lib_dirs "${_cand}")
+        endif()
+    endforeach()
+    if(_lib_dirs)
+        list(JOIN _lib_dirs ":" _ld)
+        if(NOT "$ENV{LD_LIBRARY_PATH}" STREQUAL "")
+            set(_ld "${_ld}:$ENV{LD_LIBRARY_PATH}")
+        endif()
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E env "LD_LIBRARY_PATH=${_ld}" "${_path}" -h
+            RESULT_VARIABLE _rc2
+            OUTPUT_QUIET ERROR_QUIET)
+        if(_rc2 EQUAL 0)
+            message(STATUS
+                "nano-ros: idlc at ${_path} needs its own prefix libs; "
+                "running it with LD_LIBRARY_PATH=${_ld} (issue 0601)")
+            set(${_out_why} "" PARENT_SCOPE)
+            set(${_out_env} "LD_LIBRARY_PATH=${_ld}" PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+
+    string(STRIP "${_err}" _err)
+    if(_err STREQUAL "")
+        set(_err "exit ${_rc}")
+    endif()
+    set(${_out_why} "${_err}" PARENT_SCOPE)
+    set(${_out_env} "" PARENT_SCOPE)
 endfunction()
 
 function(_nros_find_idlc _out)
@@ -110,7 +148,9 @@ if(NOT TARGET CycloneDDS::idlc)
     # from PATH (e.g. a ROS 2 install) or a pre-set IDLC_EXECUTABLE.
     _nros_find_idlc(IDLC_EXECUTABLE)
     if(IDLC_EXECUTABLE)
-        _nros_idlc_runs("${IDLC_EXECUTABLE}" _nros_idlc_why)
+        _nros_idlc_runs("${IDLC_EXECUTABLE}" _nros_idlc_why _nros_idlc_env)
+        set(NROS_RMW_CYCLONEDDS_IDLC_ENV "${_nros_idlc_env}"
+            CACHE INTERNAL "env prefix idlc needs to run (issue 0601)")
         if(_nros_idlc_why)
             message(FATAL_ERROR
                 "idlc was found but cannot run: ${IDLC_EXECUTABLE}\n"
@@ -244,12 +284,33 @@ if(NROS_RMW_CYCLONEDDS_INCLUDE_TYPE_INFO OR
     else()
         set(_probe_idlc "${IDLC_EXECUTABLE}")
     endif()
+# Issue 0601 — the env idlc needs, as a command PREFIX.
+#
+# Empty on a healthy host, so the generated command stays byte-identical there
+# and no build.ninja churns. When set, every place that RUNS idlc must use it —
+# the xtypes probe and the codegen rule alike. A prefix applied at one site and
+# not its sibling is issue 0442's shape, which is why this is one variable
+# rather than two spellings.
+# CACHE INTERNAL, not a normal var: `nros_rmw_cyclonedds_idlc_compile` is called
+# from far-away directory scopes (an example's CMakeLists), and a normal
+# file-scope variable does not survive that — the same trap CLAUDE.md records as
+# the `_NROS_ENTRY_DIR` pattern, and the reason `NROS_RMW_CYCLONEDDS_IDLC` above
+# is cached too. A launcher that silently evaporates would put the codegen rule
+# back on the bare, unusable idlc.
+if(NROS_RMW_CYCLONEDDS_IDLC_ENV)
+    set(_NROS_IDLC_LAUNCHER "${CMAKE_COMMAND};-E;env;${NROS_RMW_CYCLONEDDS_IDLC_ENV}"
+        CACHE INTERNAL "command prefix that makes idlc runnable (issue 0601)")
+else()
+    set(_NROS_IDLC_LAUNCHER "" CACHE INTERNAL
+        "command prefix that makes idlc runnable (issue 0601)")
+endif()
+
     set(_probe_dir "${CMAKE_CURRENT_BINARY_DIR}/_nros_rmw_cyclonedds_xtypes_probe")
     file(MAKE_DIRECTORY "${_probe_dir}")
     file(WRITE "${_probe_dir}/probe.idl"
         "@final struct NrosRmwCycloneddsTypeinfoProbe { long x; };\n")
     execute_process(
-        COMMAND "${_probe_idlc}" -l c -o "${_probe_dir}" "${_probe_dir}/probe.idl"
+        COMMAND ${_NROS_IDLC_LAUNCHER} "${_probe_idlc}" -l c -o "${_probe_dir}" "${_probe_dir}/probe.idl"
         OUTPUT_QUIET ERROR_QUIET
         RESULT_VARIABLE _probe_rc
     )
@@ -349,7 +410,7 @@ function(nros_rmw_cyclonedds_idlc_compile output_var)
 
     add_custom_command(
         OUTPUT  "${_gen_c}" "${_gen_h}"
-        COMMAND "${_idlc}" ${_idlc_flags} -o "${_arg_OUTPUT_DIR}" "${_idl_abs}"
+        COMMAND ${_NROS_IDLC_LAUNCHER} "${_idlc}" ${_idlc_flags} -o "${_arg_OUTPUT_DIR}" "${_idl_abs}"
         DEPENDS "${_idl_abs}" ${_arg_EXTRA_DEPENDS}
         COMMENT "idlc ${_idl_stem}.idl"
         VERBATIM
