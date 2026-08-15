@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0–W4 landed; W6 landed; W5 RE-SCOPED after measurement — see below. W7–W10 not started.** The campaign
+**Status (2026-08-15). W0–W4 and W6 landed; W5 RE-SCOPED after measurement; W8 STARTED (`nros` re-gated). W7, W9, W10 not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -58,14 +58,14 @@ current Cyclone — to a full-timeout `drive_io` is deliberate, phase-127.C.4.)
 
 ## Baseline
 
-**213** `cfg` mentions of the `std` feature and **141** `std::` paths, nine
-crates (current: after W4 and W6, and after `#[cfg(test)]` code was excluded —
-see the metric correction below):
+**174** `cfg` mentions of the `std` feature and **140** `std::` paths, nine
+crates (current: after W4, W6 and the first W8 item, and after `#[cfg(test)]`
+code was excluded — see the metric correction below):
 
 | crate | cfg | `std::` |
 | --- | --- | --- |
 | `nros-node` | 105 | 76 |
-| `nros` | 66 | 20 |
+| `nros` | 25 | 17 |
 | `nros-c` | 13 | 9 |
 | `nros-params` | 13 | 18 |
 | `nros-core` | 8 | 6 |
@@ -306,11 +306,46 @@ migrating executor code.
 The other live `std` platform. `nros-platform-nuttx` exists and NuttX is POSIX,
 so the posix C layer is the template. **Unsized** — the plan's biggest unknown.
 
-### W8 — make `alloc` explicit
+### W8 — make `alloc` explicit — **STARTED 2026-08-15**
 
-`alloc` is already a separate feature (`std = ["alloc", ...]`), so the real
-flavours are `core` / `core+alloc` / `std`. The `_alloc` field names prove the
-code already treats it as first-class. Document what each implies, and gate it.
+`alloc` is a separate feature (`std = ["alloc", ...]`), so the real flavours are
+`core` / `core+alloc` / `std`. Measuring `nros` — the second-largest block and
+until now unexamined — showed the gates were not merely undocumented, they were
+WRONG.
+
+**`node_metadata.rs`: 37 of the crate's 64 `std` gates re-labelled to `alloc`.**
+The file's entire reason for a gate was one import:
+
+```rust
+use std::{format, string::String as StdString, vec::Vec as StdVec};
+```
+
+All three live in `alloc`. Gating them as `std` did not just mislabel them, it
+WITHHELD the source-metadata JSON API from `no_std + alloc` targets that can run
+it. Verified in both directions rather than assumed: with the re-gate a probe
+referencing `SourceMetadataExport` compiles for `thumbv7m-none-eabi` under
+`--no-default-features --features alloc`; with `node_metadata.rs` reverted the
+same probe fails `E0432: unresolved import`.
+
+`nros` cfg 64 -> 25 (-61 %), path 18 -> 17. The std build is unchanged, because
+`std` implies `alloc`.
+
+Remaining in `nros`, and it is genuinely hosted — not more mislabelling:
+
+| count | what |
+| --- | --- |
+| ~10 | `init.rs` — `std::env::var` x6 (`NROS_LOCATOR`, `ROS_DOMAIN_ID`, `RMW_IMPLEMENTATION`), `std::path::Path` |
+| ~10 | `lib.rs` — `extern crate std`, `pub mod init`, and the re-exports that follow from it |
+| 3 | `time.rs` — an `Instant`+`OnceLock` epoch, the same pattern W4 unified inside `nros-node` |
+| 4 | `node_runtime.rs` |
+
+There is no `no_std` equivalent of an environment, and RFC-0045 makes the env
+rung hosted-only by design, so `init.rs` stays. Two smaller follow-ups:
+`std::error::Error` moved to `core` in Rust 1.81 and is convertible, and
+`time.rs` should reuse W4's clock provider instead of keeping its own epoch.
+
+Still to do for W8 proper: audit `nros-node`, `nros-params` and `nros-cpp` for
+the same mislabelling, and document what each flavour implies.
 
 ### W9 — lanes and cell checks
 

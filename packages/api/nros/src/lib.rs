@@ -222,7 +222,9 @@ pub use node::{
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
 pub use node::__private_node_state_into_raw;
-#[cfg(feature = "std")]
+// phase-359 W8 — follows `node_metadata`'s re-gate: the type needs `alloc`,
+// not `std`.
+#[cfg(feature = "alloc")]
 pub use node_metadata::SourceMetadataExport;
 pub use node_metadata::{
     CallbackEffectKind, CallbackEffectMetadata, EntityKind, EntityMetadata, MetadataRecorder,
@@ -860,7 +862,7 @@ pub mod prelude {
     // Re-export component-mode API.
     #[cfg(feature = "rmw-cffi")]
     pub use crate::NodeExecutorRuntime;
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     pub use crate::SourceMetadataExport;
     pub use crate::{
         ActionTag, Callback, CallbackEffectKind, CallbackEffects, DeclaredNode,

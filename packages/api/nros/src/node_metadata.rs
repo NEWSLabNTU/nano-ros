@@ -5,10 +5,14 @@ use crate::{
     heapless::{String, Vec},
 };
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 use crate::{QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy};
-#[cfg(feature = "std")]
-use std::{format, string::String as StdString, vec::Vec as StdVec};
+#[cfg(feature = "alloc")]
+// phase-359 W8 — `alloc`, not `std`. These three are the file's ONLY reason for
+// a gate, and `alloc::{format, string::String, vec::Vec}` are the same types.
+// Gating them as `std` did not just mislabel them, it WITHHELD the source
+// metadata JSON API from `no_std + alloc` targets that can run it.
+use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 
 /// Maximum nodes recorded by the built-in metadata recorder.
 pub const DEFAULT_MAX_METADATA_NODES: usize = 8;
@@ -329,7 +333,7 @@ pub struct CallbackEffectMetadata {
 }
 
 /// Source metadata document settings used by the std JSON emitter.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 #[derive(Debug, Clone)]
 pub struct SourceMetadataExport<'a> {
     pub package: &'a str,
@@ -347,7 +351,7 @@ pub struct SourceMetadataExport<'a> {
     pub language: &'a str,
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 impl<'a> SourceMetadataExport<'a> {
     /// Create export settings with ROS package and component names.
     pub const fn new(package: &'a str, component: &'a str) -> Self {
@@ -454,7 +458,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     }
 
     /// Emit schema-version-1 source metadata JSON without opening transport.
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     pub fn to_source_metadata_json(
         &self,
         export: &SourceMetadataExport<'_>,
@@ -465,7 +469,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     }
 
     /// Write schema-version-1 source metadata JSON without opening transport.
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     pub fn write_source_metadata_json(
         &self,
         export: &SourceMetadataExport<'_>,
@@ -678,7 +682,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         seen.len()
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     fn write_nodes_json(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
         write!(out, "\"nodes\":[")?;
         for (index, node) in self.nodes.iter().enumerate() {
@@ -714,7 +718,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         write!(out, "]")
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     fn write_node_entities(
         &self,
         out: &mut impl core::fmt::Write,
@@ -731,7 +735,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         self.write_entity_array(out, "actions", node_id, EntityKind::ActionServer)
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     fn write_entity_array(
         &self,
         out: &mut impl core::fmt::Write,
@@ -761,7 +765,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         write!(out, "]")
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     fn write_callbacks_json(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
         let callbacks = self.source_callbacks();
         write!(out, "\"callbacks\":[")?;
@@ -809,7 +813,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         write!(out, "]")
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     fn write_parameters_json(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
         write!(out, "\"parameters\":[")?;
         for (index, entity) in self
@@ -839,7 +843,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         write!(out, "]")
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     fn write_trace_json(
         &self,
         export: &SourceMetadataExport<'_>,
@@ -860,7 +864,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         write!(out, "]}}")
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     fn source_callbacks(&self) -> StdVec<SourceCallbackRef> {
         let mut callbacks = StdVec::new();
         for entity in &self.entities {
@@ -928,7 +932,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 struct SourceCallbackRef {
     id: StdString,
     slot: Option<CallbackSlot>,
@@ -1005,7 +1009,7 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
     })
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_publisher_json(
     out: &mut impl core::fmt::Write,
     entity: &EntityMetadata,
@@ -1025,7 +1029,7 @@ fn write_publisher_json(
     write!(out, "}}")
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_subscriber_json(
     out: &mut impl core::fmt::Write,
     entity: &EntityMetadata,
@@ -1058,7 +1062,7 @@ fn write_subscriber_json(
     write!(out, "}}")
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_timer_json(out: &mut impl core::fmt::Write, entity: &EntityMetadata) -> core::fmt::Result {
     write!(out, "{{")?;
     write_json_field(out, "id", entity.id.as_str())?;
@@ -1083,7 +1087,7 @@ fn write_timer_json(out: &mut impl core::fmt::Write, entity: &EntityMetadata) ->
     write!(out, "}}")
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_service_json(
     out: &mut impl core::fmt::Write,
     entity: &EntityMetadata,
@@ -1114,7 +1118,7 @@ fn write_service_json(
     write!(out, "}}")
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_action_json(
     out: &mut impl core::fmt::Write,
     entity: &EntityMetadata,
@@ -1162,7 +1166,7 @@ fn write_action_json(
     write!(out, "}}")
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_source_name(
     out: &mut impl core::fmt::Write,
     value: &str,
@@ -1175,7 +1179,7 @@ fn write_source_name(
     write!(out, "}}")
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_interface(
     out: &mut impl core::fmt::Write,
     type_name: &str,
@@ -1191,7 +1195,7 @@ fn write_interface(
     write!(out, "}}")
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_qos(out: &mut impl core::fmt::Write, qos: QosSettings) -> core::fmt::Result {
     write!(out, "\"qos\":{{")?;
     write_json_field(out, "reliability", reliability_json(qos.reliability))?;
@@ -1211,7 +1215,7 @@ fn write_qos(out: &mut impl core::fmt::Write, qos: QosSettings) -> core::fmt::Re
     write!(out, ",\"extensions\":{{}}}}")
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_source_location(
     out: &mut impl core::fmt::Write,
     source: &SourceLocationMetadata,
@@ -1227,7 +1231,7 @@ fn write_source_location(
     write!(out, "}}")
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_parameter_default(
     out: &mut impl core::fmt::Write,
     default: Option<&ParameterDefault>,
@@ -1245,14 +1249,14 @@ fn write_parameter_default(
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_json_field(out: &mut impl core::fmt::Write, name: &str, value: &str) -> core::fmt::Result {
     write_json_string(out, name)?;
     out.write_char(':')?;
     write_json_string(out, value)
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_json_opt_field(
     out: &mut impl core::fmt::Write,
     name: &str,
@@ -1267,7 +1271,7 @@ fn write_json_opt_field(
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_json_string(out: &mut impl core::fmt::Write, value: &str) -> core::fmt::Result {
     out.write_char('"')?;
     for ch in value.chars() {
@@ -1284,7 +1288,7 @@ fn write_json_string(out: &mut impl core::fmt::Write, value: &str) -> core::fmt:
     out.write_char('"')
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_optional_ms(out: &mut impl core::fmt::Write, name: &str, value: u32) -> core::fmt::Result {
     write_json_string(out, name)?;
     out.write_char(':')?;
@@ -1295,7 +1299,7 @@ fn write_optional_ms(out: &mut impl core::fmt::Write, name: &str, value: u32) ->
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn write_optional_u32(out: &mut impl core::fmt::Write, value: Option<u32>) -> core::fmt::Result {
     if let Some(value) = value {
         write!(out, "{}", value)
@@ -1304,7 +1308,7 @@ fn write_optional_u32(out: &mut impl core::fmt::Write, value: Option<u32>) -> co
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn source_name_kind_json(kind: SourceNameKind) -> &'static str {
     match kind {
         SourceNameKind::Absolute => "absolute",
@@ -1313,7 +1317,7 @@ fn source_name_kind_json(kind: SourceNameKind) -> &'static str {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn effect_json_kind(kind: CallbackEffectKind) -> &'static str {
     match kind {
         CallbackEffectKind::Publishes => "publishes",
@@ -1322,7 +1326,7 @@ fn effect_json_kind(kind: CallbackEffectKind) -> &'static str {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn reliability_json(value: QosReliabilityPolicy) -> &'static str {
     match value {
         QosReliabilityPolicy::Reliable => "reliable",
@@ -1330,7 +1334,7 @@ fn reliability_json(value: QosReliabilityPolicy) -> &'static str {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn durability_json(value: QosDurabilityPolicy) -> &'static str {
     match value {
         QosDurabilityPolicy::Volatile => "volatile",
@@ -1338,7 +1342,7 @@ fn durability_json(value: QosDurabilityPolicy) -> &'static str {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn history_json(value: QosHistoryPolicy) -> &'static str {
     match value {
         QosHistoryPolicy::KeepLast => "keep_last",
@@ -1346,7 +1350,7 @@ fn history_json(value: QosHistoryPolicy) -> &'static str {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn liveliness_json(value: QosLivelinessPolicy) -> &'static str {
     match value {
         QosLivelinessPolicy::None => "system_default",
@@ -1356,14 +1360,14 @@ fn liveliness_json(value: QosLivelinessPolicy) -> &'static str {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 struct ParsedInterface {
     package: StdString,
     name: StdString,
     kind: &'static str,
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn parse_interface(type_name: &str, fallback_kind: &'static str) -> ParsedInterface {
     let parts: StdVec<&str> = type_name.split("::").collect();
     if parts.len() >= 4 {
@@ -1636,7 +1640,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     #[test]
     fn source_metadata_json_uses_agent_a_schema_shape() {
         let mut recorder = MetadataRecorder::<1, 5, 1>::new();

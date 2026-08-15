@@ -90,10 +90,11 @@ PATH_RE = re.compile(r'\bstd::')
 # everything; then `nros-node` came down per work item: W2 139->131 / 346->342,
 # W3 131->127 / 342->321, W4 127->112 / 321->309, W6 309->285 (pure re-export
 # spellings). Excluding `#[cfg(test)]` code then re-based every number — a
-# metric correction, not progress; see the module docstring.
+# metric correction, not progress; see the module docstring. W8 then re-gated
+# `nros`'s node_metadata from `std` to `alloc`: cfg 64 -> 25.
 # Lower these as work items land; the gate rejects any increase.
 BASELINE = {
-    "nros": {"cfg": 64, "path": 18},
+    "nros": {"cfg": 25, "path": 17},
     "nros-c": {"cfg": 13, "path": 8},
     "nros-core": {"cfg": 7, "path": 5},
     "nros-cpp": {"cfg": 8, "path": 26},
