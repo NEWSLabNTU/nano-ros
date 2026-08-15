@@ -97,15 +97,12 @@ pub enum EntryKind {
     ZephyrStaticlib,
 }
 
-/// Who owns NIC + IP bring-up.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum NetStack {
-    /// RTOS brings up the stack (Zephyr / NuttX).
-    RtosOwned,
-    /// Board crate owns the stack (smoltcp / lwIP / NetX / esp-hal).
-    NanorosOwned,
-}
+// phase-351 W6 — `NetStack` (`rtos-owned` / `nanoros-owned`) is GONE. It was
+// parsed and never read from the day it was added, and it answered the wrong
+// question: "who brings up NIC+IP", not "which stack", so nothing could act on
+// it. `supported_netstacks` (W4) answers the question consumers actually ask
+// and IS read — by `resolve_netstack`, by `nros ws board-facts`, and by
+// `check-site-config`.
 
 /// The per-board pieces the entry-point renderer interpolates into the shared
 /// board-run entry shape. `None` path interpolation here — these reference only
@@ -191,7 +188,6 @@ pub struct BoardDescriptor {
     pub local_aliases: Vec<String>,
     pub link_kind: LinkKind,
     pub entry_kind: EntryKind,
-    pub net_stack: NetStack,
     /// phase-351 W4 — the network stacks this board can actually be built with,
     /// in preference order; the first is the default when a deploy names none.
     ///
@@ -200,8 +196,7 @@ pub struct BoardDescriptor {
     /// table of 24 arches against ThreadX's 47, so a ThreadX arch with no NetX
     /// counterpart cannot be paired at all). Empty means "this board makes no
     /// stack choice" — the RTOS or the host owns it and a deploy must not try
-    /// to select one. Distinct from [`NetStack`], which answers *who brings up
-    /// NIC+IP*, not *which stack*.
+    /// to select one.
     #[serde(default)]
     pub supported_netstacks: Vec<String>,
     /// esp-hal / stm32 chip feature; `None` for non-chip platforms.
@@ -650,7 +645,6 @@ platform_feature = "platform-bare-metal"
 local_aliases = ["platform-stm32"]
 link_kind = "none"
 entry_kind = "board-run"
-net_stack = "nanoros-owned"
 chip = "stm32f429"
 board_crate = "nros-board-stm32f4"
 cargo_config = """
@@ -671,7 +665,6 @@ toolchain = "stable"
 platform_feature = "platform-bare-metal"
 link_kind = "none"
 entry_kind = "board-run"
-net_stack = "nanoros-owned"
 chip = "stm32f407"
 board_crate = "nros-board-stm32f4"
 
@@ -916,7 +909,6 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             local_aliases: vec![],
             link_kind: LinkKind::None,
             entry_kind: EntryKind::BoardRun,
-            net_stack: NetStack::NanorosOwned,
             supported_netstacks: Vec::new(),
             chip: None,
             board_crate: None,
@@ -1066,7 +1058,6 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             local_aliases: vec![],
             link_kind: LinkKind::None,
             entry_kind: EntryKind::HostedMain,
-            net_stack: NetStack::NanorosOwned,
             supported_netstacks: Vec::new(),
             chip: None,
             board_crate: None,

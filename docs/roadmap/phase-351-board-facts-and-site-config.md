@@ -1,6 +1,6 @@
 # Phase 351 — Board facts and site config: split them, then retire the old path
 
-**Status (2026-08-14). W1 + W2 + W3 LANDED; W4–W6 open.** Supersedes
+**Status (2026-08-15). COMPLETE — W1–W6 landed.** Supersedes
 [phase-349](phase-349-rtos-integration-shells.md) W2.0, whose leaf-`[env]`
 carrier is retired here (W6).
 
@@ -187,27 +187,44 @@ refuses only a real disagreement, naming the keys that differ. Refusing on the
 key count alone would have blocked every cmake build of that workspace over a
 distinction with no consequence.
 
-## W6 — retire the old path
+## W6 — retire the old path ✅ (2026-08-15)
 
-- [ ] Remove the `[env] NROS_BOARD_TOML` row from the leaf projection
-      (phase-349 W2.0). It points at the *descriptor*; the resolved facts
-      supersede it, and it never reached workspace members anyway — corrosion
-      runs cargo from `workspace_toml_dir`, so per-member config is invisible to
-      it.
-- [ ] Drop the now-dead `net_stack` ownership field, or give it a reader.
-      Parsed and never read since it was added; wrong axis (`rtos-owned` /
-      `nanoros-owned` answers *who brings up NIC+IP*, not *which stack*).
-- [ ] `just/sdk-env.just` becomes a thin default over the site file rather than
-      the source of truth.
+- [x] The `[env] NROS_BOARD_TOML` row is gone from the projection, and
+      `merge_env_row` — the helper that existed only to splice it — with it.
+      W5 delivers the same value from the invoker, which reaches workspace
+      members the row never could. The standalone lane
+      (`scripts/build/fixtures-build.sh`) exports it too, so the leaves that DID
+      read the row keep the rung: `nros ws board-facts` learned the second site
+      home for them (a copy-out example declares
+      `[package.metadata.nros.entry] deploy = "<board>"`, where the deploy KEY
+      is the board — those manifests carry no `board =` at all).
+- [x] `net_stack` and its `NetStack` type are deleted. RFC-0064 had already
+      concluded "delete rather than extend" and left an `[OPEN]` to check for a
+      reader first; there was none, for either meaning it carried. That item is
+      now closed in the RFC, which also re-points its cost axis at
+      `supported_netstacks`: a board that declares stacks supplies them,
+      an empty list means the host ecosystem does.
+- [x] `just/sdk-env.just` — **already the thin default**, measured rather than
+      changed: all 23 exports are `env("X", <repo-relative default>)`, so an
+      override wins and the site file's `{env:VAR}` resolves through it. Making
+      `just` READ the site file was considered and rejected: it would add a CLI
+      call to every recipe to remove a drift the W2 agreement gate already
+      prevents.
 
-*Acceptance:* `git grep NROS_BOARD_TOML` finds only history; the fixtures build.
+*Acceptance:* `git grep NROS_BOARD_TOML` finds only the zpico build script that
+READS it (the consumer, which is the point) and history;
+`check-board-projections` green over 47 leaves; `check-cargo-config-tracked` and
+`_require-leaf-includes` green after six threadx-linux projections dropped out
+(that board declares no `cargo_config`, so with the row gone it projects
+nothing — and no include was left naming a deleted file, which is issue 0463's
+invariant).
 
 ---
 
 ## Order
 
 ```
-W1 ✅ ──► W2 ✅ ──► W3 ✅ ──► W4 ──► W5 ──► W6
+W1 ✅ ──► W2 ✅ ──► W3 ✅ ──► W4 ✅ ──► W5 ✅ ──► W6 ✅
 ```
 
 Strictly sequential: each wave's acceptance is the next wave's precondition, and

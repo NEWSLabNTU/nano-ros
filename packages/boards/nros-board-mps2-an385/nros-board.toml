@@ -14,7 +14,6 @@ platform_feature = "platform-bare-metal"
 local_aliases = ["platform-bare-metal"]
 link_kind = "none"
 entry_kind = "board-run"
-net_stack = "nanoros-owned"
 # phase-351 W4 — the stacks this board can be built with: `src/network.rs` drives smoltcp over the LAN9118.
 supported_netstacks = ["smoltcp"]
 board_crate = "nros-board-mps2-an385"

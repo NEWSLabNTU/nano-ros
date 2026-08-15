@@ -359,8 +359,22 @@ else
         if [ -n "$tdir_flag" ]; then
             args="$(nros_fixture_strip_authored_target_dir "$args")"
         fi
+        # phase-351 W5/W6 — deliver the board rung + site config from HERE, the
+        # invoker, instead of from a leaf `[env]` row. Same values, one
+        # mechanism across every lane; a leaf that resolves no board (a host
+        # bin, a fixture with no deploy metadata) simply gets nothing, which is
+        # why a failure here is not fatal.
+        local facts=""
+        if [ -x "$NROS_CLI" ]; then
+            facts="$(NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" ws board-facts "$dir" 2>/dev/null || true)"
+        fi
         # shellcheck disable=SC2086
-        ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args $tdir_flag --quiet )
+        # `if`, not an and-list: the comment above records that a false
+        # and-list is itself a failing command under `.SHELLFLAGS := -eu`.
+        ( cd "$dir"
+          if [ -n "$envstr" ]; then export $envstr; fi
+          if [ -n "$facts" ]; then export $facts; fi
+          cargo build $cargo_profile_args $args $tdir_flag --quiet )
     }
     export -f nros_fixture_build_one
     # Phase 244.D1/C5 — Node+Entry split codegen pre-pass. The manifest builds

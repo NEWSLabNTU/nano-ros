@@ -8,7 +8,6 @@ platform_feature = "platform-bare-metal"
 local_aliases = ["platform-esp32-qemu"]
 link_kind = "none"
 entry_kind = "board-run"
-net_stack = "nanoros-owned"
 chip = "esp32c3"
 board_crate = "nros-board-esp32-qemu"
 cargo_config = '''

@@ -21,8 +21,7 @@ platform_feature = "platform-nuttx"
 local_aliases = ["platform-nuttx"]
 link_kind = "nuttx-staging"
 entry_kind = "board-run"
-net_stack = "rtos-owned"
-# phase-351 W4 — this board makes NO netstack choice: NuttX owns NIC+IP; the entry only pushes an address (`net_stack = rtos-owned`). An empty
+# phase-351 W4 — this board makes NO netstack choice: NuttX owns NIC+IP; the entry only pushes an address. An empty
 # list is a statement, not an omission: a deploy naming one is refused.
 supported_netstacks = []
 board_crate = "nros-board-nuttx-qemu"
@@ -116,8 +115,7 @@ platform_feature = "platform-nuttx"
 local_aliases = ["platform-nuttx"]
 link_kind = "nuttx-staging"
 entry_kind = "board-run"
-net_stack = "rtos-owned"
-# phase-351 W4 — this board makes NO netstack choice: NuttX owns NIC+IP; the entry only pushes an address (`net_stack = rtos-owned`). An empty
+# phase-351 W4 — this board makes NO netstack choice: NuttX owns NIC+IP; the entry only pushes an address. An empty
 # list is a statement, not an omission: a deploy naming one is refused.
 supported_netstacks = []
 board_crate = "nros-board-nuttx-qemu"

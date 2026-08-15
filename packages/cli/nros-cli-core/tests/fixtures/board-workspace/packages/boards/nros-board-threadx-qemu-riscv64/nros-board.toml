@@ -11,7 +11,6 @@ platform_feature = "platform-threadx"
 local_aliases = ["platform-threadx-riscv64"]
 link_kind = "none"
 entry_kind = "board-run"
-net_stack = "nanoros-owned"
 board_crate = "nros-board-threadx-qemu-riscv64"
 cargo_config = '''
 [build]

@@ -4397,47 +4397,6 @@ fn write_board_projection(
 /// is the failure this whole phase exists to remove.
 ///
 /// Returns one human-readable complaint per leaf that disagrees.
-/// phase-349 W2.0 — the `[env]` ROW carrying the board descriptor's path to
-/// build scripts.
-///
-/// **Why an env var and not a file the build script finds itself:** the
-/// consumer is `zpico-sys`'s build script, whose `CARGO_MANIFEST_DIR` is its
-/// own crate — a DEPENDENCY, four levels under the nano-ros root. No walk-up
-/// from there can ever reach a leaf, so the process environment is the only
-/// carrier. Cargo's `[env]` propagates into dependency build scripts, measured.
-///
-/// **Why it rides the projection rather than `config.toml`'s own `[env]`:**
-/// that table is user content sync PRESERVES (issues 0457/0463), while this
-/// file is already generated, already committed, and already `include`d.
-/// Cargo merges an included file's `[env]`, also measured.
-///
-/// `relative = true` bases on the parent of `.cargo/` — the leaf directory —
-/// so the value is checkout-independent and committable, the same property
-/// that lets phase-341 commit this projection at all.
-///
-/// `None` for an out-of-tree leaf, which has no relative path to our
-/// `packages/boards` and which #272 already declines to write into.
-fn board_toml_env_row(
-    leaf_dir: &Path,
-    nano_ros_root: &Path,
-    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
-) -> Option<String> {
-    let source = descriptor.source.as_deref()?;
-    let leaf = leaf_dir
-        .canonicalize()
-        .unwrap_or_else(|_| leaf_dir.to_path_buf());
-    let root = nano_ros_root
-        .canonicalize()
-        .unwrap_or_else(|_| nano_ros_root.to_path_buf());
-    let depth = leaf.strip_prefix(&root).ok()?.components().count();
-    let value = format!("{}{source}", "../".repeat(depth));
-    Some(format!(
-        "# phase-349 W2.0 — where this leaf's board descriptor lives, for build\n\
-         # scripts that need board FACTS (RFC-0049's board rung). `relative` is\n\
-         # resolved against this leaf, so the value is the same in every checkout.\n\
-         NROS_BOARD_TOML = {{ value = \"{value}\", relative = true }}\n"
-    ))
-}
 
 /// The projected body for one leaf.
 ///
@@ -4454,99 +4413,14 @@ fn render_board_projection_body(
         Some(raw) => project_board_config(raw, &prefix)?,
         None => String::new(),
     };
-    match board_toml_env_row(leaf_dir, nano_ros_root, descriptor) {
-        Some(row) => Ok(merge_env_row(&projected, &row)),
-        None => Ok(projected),
-    }
-}
-
-/// Splice `row` into the body's `[env]` table, creating the table only when the
-/// body has none.
-///
-/// A board's `cargo_config` MAY already carry `[env]` — nuttx and esp32 do,
-/// freertos does not. Prepending a second `[env]` table produces
-/// `duplicate key 'env' in document root`, the body then parses to zero keys,
-/// and the caller reads that as "this board projects nothing" and DELETES the
-/// leaf's committed projection. Twelve of them, silently, which is how this was
-/// found.
-///
-/// Textual splice rather than parse-and-reserialize: the body is committed with
-/// its comments, and a round-trip through a TOML value would drop them.
-fn merge_env_row(body: &str, row: &str) -> String {
-    let mut out = String::with_capacity(body.len() + row.len() + 64);
-    let mut spliced = false;
-    for line in body.lines() {
-        out.push_str(line);
-        out.push('\n');
-        if !spliced && line.trim() == "[env]" {
-            out.push_str(row);
-            spliced = true;
-        }
-    }
-    if spliced {
-        return out;
-    }
-    format!("[env]\n{row}\n{body}")
-}
-
-#[cfg(test)]
-mod board_env_row_tests {
-    use super::merge_env_row;
-
-    const ROW: &str = "NROS_BOARD_TOML = { value = \"../x/nros-board.toml\", relative = true }\n";
-
-    /// The failure that deleted twelve committed projections: nuttx and esp32
-    /// `cargo_config` blocks already carry `[env]`, so a prepended second table
-    /// produced `duplicate key 'env' in document root`. The body then parsed to
-    /// ZERO keys, which the caller reads as "this board projects nothing" — and
-    /// it removes the leaf's file.
-    #[test]
-    fn an_existing_env_table_is_merged_not_duplicated() {
-        let body = "[build]\ntarget = \"x\"\n\n[env]\nCC = \"gcc\"\n";
-        let out = merge_env_row(body, ROW);
-        assert_eq!(out.matches("[env]").count(), 1, "exactly one [env]:\n{out}");
-        assert!(out.contains("NROS_BOARD_TOML"));
-        assert!(out.contains("CC = \"gcc\""), "the board's own keys survive");
-        let v: toml::Value = out.parse().expect("must still parse");
-        let env = v
-            .get("env")
-            .and_then(|e| e.as_table())
-            .expect("[env] table");
-        assert!(env.contains_key("NROS_BOARD_TOML") && env.contains_key("CC"));
-    }
-
-    /// A body with no `[env]` gets one — the freertos shape, which is why 29 of
-    /// 41 leaves worked while the bug was live.
-    #[test]
-    fn a_body_without_env_gains_the_table() {
-        let body = "[target.thumbv7m-none-eabi]\nrunner = \"qemu\"\n";
-        let out = merge_env_row(body, ROW);
-        assert_eq!(out.matches("[env]").count(), 1);
-        let v: toml::Value = out.parse().expect("must parse");
-        assert!(v.get("env").is_some() && v.get("target").is_some());
-    }
-
-    /// Only the FIRST `[env]` is spliced — a second occurrence would itself be
-    /// a duplicate-key error in the source body, not ours to multiply.
-    #[test]
-    fn only_the_first_env_table_is_spliced() {
-        let body = "[env]\nA = \"1\"\n[other]\nx = 1\n";
-        let out = merge_env_row(body, ROW);
-        assert_eq!(out.matches("NROS_BOARD_TOML").count(), 1);
-    }
-
-    /// An empty body still yields valid TOML rather than a bare row at the
-    /// document root.
-    #[test]
-    fn an_empty_body_yields_a_valid_table() {
-        let out = merge_env_row("", ROW);
-        let v: toml::Value = out.parse().expect("must parse");
-        assert!(
-            v.get("env")
-                .and_then(|e| e.get("NROS_BOARD_TOML"))
-                .is_some()
-        );
-    }
+    // phase-351 W6 — the `[env] NROS_BOARD_TOML` row phase-349 W2.0 wrote here
+    // is GONE. It pointed at the descriptor so a build script could read the
+    // board rung, and it could only ever work for a STANDALONE leaf: cargo
+    // discovers config from the invocation CWD upward, and corrosion runs cargo
+    // from `workspace_toml_dir`, so no workspace member ever read it. W5 moved
+    // delivery to the invoker (`nros ws board-facts`, one resolution for every
+    // lane), which reaches both.
+    Ok(projected)
 }
 
 fn check_board_projection(
@@ -6197,7 +6071,7 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
 mod board_projection_tests {
     use super::*;
     use crate::orchestration::board_descriptor::{
-        BoardDescriptor, EntryKind, LinkKind, NetStack, PlatformKind, Toolchain,
+        BoardDescriptor, EntryKind, LinkKind, PlatformKind, Toolchain,
     };
 
     const NUTTX_BODY: &str = "\
@@ -6221,7 +6095,6 @@ rustflags = [
             local_aliases: vec![],
             link_kind: LinkKind::NuttxStaging,
             entry_kind: EntryKind::BoardRun,
-            net_stack: NetStack::RtosOwned,
             supported_netstacks: Vec::new(),
             chip: None,
             board_crate: Some("nros-board-nuttx-qemu".into()),
@@ -6365,16 +6238,17 @@ rustflags = [
         );
     }
 
-    /// A board whose `cargo_config` is ONLY a `[patch]` table still projects the
-    /// phase-349 W2.0 `[env]` row, because the DESCRIPTOR PATH is a fact
-    /// independent of what the body carries.
+    /// A board whose `cargo_config` is ONLY a `[patch]` table now projects
+    /// NOTHING — phase-351 W6.
     ///
-    /// This inverts the pre-W2.0 contract ("projects nothing, leave no file").
-    /// Deliberate: build scripts need the board descriptor's location for the
-    /// RFC-0049 board rung, and a leaf that resolves a board but carries no way
-    /// to find it is the silently-absent case #529 is about.
+    /// W2.0 made this case project an `[env] NROS_BOARD_TOML` row so a build
+    /// script could find the board rung. W5 moved that delivery to the INVOKER
+    /// (`nros ws board-facts`), which reaches workspace members too — the row
+    /// never could, because corrosion runs cargo from the workspace root. With
+    /// the row gone, a body holding only rows sync delivers inline has nothing
+    /// left to project, which is the pre-W2.0 contract restored.
     #[test]
-    fn patch_only_board_config_still_carries_the_descriptor_path() {
+    fn patch_only_board_config_projects_nothing() {
         let dir = leaf(Some("[env]\nCC = \"gcc\"\n"));
         let outcome = write_board_projection(
             dir.path(),
@@ -6385,16 +6259,12 @@ rustflags = [
             )),
         )
         .unwrap();
-        assert_ne!(
+        assert_eq!(
             outcome,
             BoardProjection::NoBoardConfig,
-            "the descriptor path is projected even when the body holds only \
-             rows that sync delivers inline"
+            "a body of only inline-delivered rows projects nothing (W6)"
         );
-        let body = std::fs::read_to_string(dir.path().join(".cargo").join(BOARD_CONFIG_FILE))
-            .expect("projection written");
-        assert!(body.contains("NROS_BOARD_TOML"), "body was:\n{body}");
-        assert_eq!(includes(&read_cfg(dir.path())).len(), 1);
+        assert!(!dir.path().join(".cargo").join(BOARD_CONFIG_FILE).exists());
     }
 
     /// A descriptor whose `cargo_config` is not valid TOML fails loudly, naming
@@ -6484,12 +6354,16 @@ rustflags = [
         );
     }
 
-    /// A board declaring no `cargo_config` at all still projects the W2.0
-    /// `[env]` row — same reasoning as above. Issue 0463's invariant (never an
-    /// include naming a file that is gone) is preserved by the file continuing
-    /// to exist, not by removing both.
+    /// A board that loses its `cargo_config` now takes its projection AND its
+    /// include with it — phase-351 W6.
+    ///
+    /// W2.0 kept the file alive for the `[env] NROS_BOARD_TOML` row; with that
+    /// row delivered by the invoker instead, there is nothing left to keep.
+    /// Issue 0463's invariant is what this really pins: the include must never
+    /// name a file that is gone, and dropping BOTH satisfies it exactly as
+    /// keeping both did.
     #[test]
-    fn board_without_cargo_config_still_carries_the_descriptor_path() {
+    fn board_without_cargo_config_drops_projection_and_include() {
         let dir = leaf(Some("[env]\nCC = \"gcc\"\n"));
         write_board_projection(dir.path(), dir.path(), "nuttx", &board(Some(NUTTX_BODY))).unwrap();
         assert_eq!(includes(&read_cfg(dir.path())).len(), 1);
@@ -6498,14 +6372,15 @@ rustflags = [
         // that never had one).
         let outcome =
             write_board_projection(dir.path(), dir.path(), "posix", &board(None)).unwrap();
-        assert_ne!(outcome, BoardProjection::NoBoardConfig);
-        let body = std::fs::read_to_string(dir.path().join(".cargo").join(BOARD_CONFIG_FILE))
-            .expect("projection written");
-        assert!(body.contains("NROS_BOARD_TOML"), "body was:\n{body}");
+        assert_eq!(outcome, BoardProjection::NoBoardConfig);
+        assert!(
+            !dir.path().join(".cargo").join(BOARD_CONFIG_FILE).exists(),
+            "the projection must be removed, not left stale"
+        );
         assert_eq!(
             includes(&read_cfg(dir.path())).len(),
-            1,
-            "the include must still name a file that EXISTS (issue 0463):\n{}",
+            0,
+            "no include may name the file just deleted (issue 0463):\n{}",
             read_cfg(dir.path())
         );
         assert!(

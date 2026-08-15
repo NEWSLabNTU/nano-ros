@@ -8,7 +8,6 @@ platform_feature = "platform-freertos"
 local_aliases = ["platform-freertos"]
 link_kind = "none"
 entry_kind = "board-run"
-net_stack = "nanoros-owned"
 board_crate = "nros-board-mps2-an385-freertos"
 cargo_config = '''
 [target.thumbv7m-none-eabi]

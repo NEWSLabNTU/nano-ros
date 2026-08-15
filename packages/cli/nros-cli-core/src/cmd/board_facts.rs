@@ -217,7 +217,53 @@ type PickedDeploy = (
     crate::orchestration::cargo_metadata_schema::DeployTarget,
 );
 
+/// A STANDALONE leaf's deploy, from its `Cargo.toml`.
+///
+/// RFC-0072 §5's site config has two homes, and this is the second: a copy-out
+/// example is not a workspace, has no bringup, and declares its target as
+/// `[package.metadata.nros.entry] deploy = "<board>"` with the per-deploy block
+/// beside it. The deploy KEY is the board there — those manifests carry no
+/// `board =` key at all — which is why this maps one onto the other rather than
+/// looking for a field that does not exist.
+fn deploys_from_manifest(ws: &Path) -> Result<Option<Vec<PickedDeploy>>> {
+    let manifest = ws.join("Cargo.toml");
+    if !manifest.is_file() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&manifest)
+        .map_err(|e| eyre!("read {}: {e}", manifest.display()))?;
+    let doc: toml::Value =
+        toml::from_str(&raw).map_err(|e| eyre!("{}: {e}", manifest.display()))?;
+    let Some(nros) = doc
+        .get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("nros"))
+    else {
+        return Ok(None);
+    };
+    let Some(deploy_key) = nros
+        .get("entry")
+        .and_then(|e| e.get("deploy"))
+        .and_then(|d| d.as_str())
+    else {
+        return Ok(None);
+    };
+    let block = nros.get("deploy").and_then(|d| d.get(deploy_key));
+    let mut target = crate::orchestration::cargo_metadata_schema::DeployTarget::default();
+    target.board = Some(deploy_key.to_string());
+    if let Some(site) = block.and_then(|b| b.get("nros")) {
+        target.nros = Some(site.clone());
+    }
+    Ok(Some(vec![(deploy_key.to_string(), target)]))
+}
+
 fn pick_deploys(ws: &Path, deploy: Option<&str>, board: Option<&str>) -> Result<Vec<PickedDeploy>> {
+    // A standalone leaf first: it has a Cargo.toml and no bringup, and asking
+    // for a system.toml there would fail naming a file that is not supposed to
+    // exist.
+    if let Some(from_manifest) = deploys_from_manifest(ws)? {
+        return Ok(from_manifest);
+    }
     let (path, system) = load_system_toml(ws)?;
     let mut candidates: Vec<(String, _)> = system.deploy.into_iter().collect();
     if let Some(want) = deploy {

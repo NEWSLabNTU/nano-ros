@@ -157,11 +157,14 @@ stops there.
 So: **delete `net_stack` from the descriptor rather than extend it.** It is
 redundant with `LinkFeatures` and strictly less general.
 
-**[OPEN]** `net_stack` currently carries a second meaning the link features do
-not — *who is responsible for building the stack* (`nanoros-owned` vs
-`rtos-owned`). That question is real, but it is a property of the integration
-shell, not of the board. Check whether anything reads the field for that purpose
-before deleting it.
+**[DONE — phase-351 W6, 2026-08-15]** Checked, and nothing read it: `net_stack`
+was parsed and never consulted from the day it was added, for either meaning.
+It is deleted, along with the `NetStack` type. The question it half-answered
+("who owns NIC + IP bring-up") is a property of the integration shell and is
+carried by RFC-0072's A/B split; the question consumers actually ask — *which*
+stack this board can be built with — is `supported_netstacks` (phase-351 W4),
+which IS read: by `BoardDescriptor::resolve_netstack`, by `nros ws board-facts`,
+and by `check-site-config`.
 
 ## Where board support survives, and why
 
@@ -412,10 +415,14 @@ surface stays small enough to actually run per task.
 ### The axis that decides cost: who owns NIC + IP bring-up
 
 Every board falls into one of two classes, and the classes differ by an order of
-magnitude in per-board cost. The descriptor **already declares this** —
-`net_stack = "rtos-owned" | "nanoros-owned"` in `nros-board.toml`, typed as
-`NetStack` at `nros-cli-core/src/orchestration/board_descriptor.rs:77-82`. It has
-no consumer today; it should become the spine of this matrix.
+magnitude in per-board cost.
+
+> **The descriptor no longer declares this** (phase-351 W6): `net_stack` was
+> deleted after four waves confirmed nothing read it. The class below is still
+> the right cost axis — it is now read off `supported_netstacks` instead, which
+> is the same partition stated as a fact consumers can act on: a board that
+> declares stacks supplies them (**nanoros-owned**); an empty list means the
+> host ecosystem does (**rtos-owned**).
 
 | Class | Who supplies boot/driver/stack | Per-board cost | Members |
 |---|---|---|---|

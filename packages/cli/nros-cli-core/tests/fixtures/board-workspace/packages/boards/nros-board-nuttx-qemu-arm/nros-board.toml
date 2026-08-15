@@ -8,7 +8,6 @@ platform_feature = "platform-nuttx"
 local_aliases = ["platform-nuttx"]
 link_kind = "nuttx-staging"
 entry_kind = "board-run"
-net_stack = "rtos-owned"
 board_crate = "nros-board-nuttx-qemu-arm"
 cargo_config = '''
 [build]

@@ -11,4 +11,3 @@ platform_feature = "platform-zephyr"
 local_aliases = ["platform-zephyr"]
 link_kind = "none"
 entry_kind = "zephyr-staticlib"
-net_stack = "rtos-owned"

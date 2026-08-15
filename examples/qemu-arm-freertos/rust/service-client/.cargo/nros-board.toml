@@ -17,12 +17,6 @@
 # the sibling `config.toml`, because a `[patch.crates-io]` in this file
 # would collide with the one that already lives there.
 
-[env]
-# phase-349 W2.0 — where this leaf's board descriptor lives, for build
-# scripts that need board FACTS (RFC-0049's board rung). `relative` is
-# resolved against this leaf, so the value is the same in every checkout.
-NROS_BOARD_TOML = { value = "../../../../packages/boards/nros-board-mps2-an385-freertos/nros-board.toml", relative = true }
-
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [

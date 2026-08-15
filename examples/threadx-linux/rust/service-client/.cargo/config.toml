@@ -1,4 +1,4 @@
-include = [ "../../../../../nros-patch.toml", "nros-board.toml"]
+include = [ "../../../../../nros-patch.toml"]
 # Phase 212.N.7 step-2 — Entry pkg cargo config.
 
 [build]
