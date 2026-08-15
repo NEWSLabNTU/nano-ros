@@ -1218,6 +1218,34 @@ one of the five `-C metadata` identities issue 0446 counts for `nros-core`, and 
 survives any cache-layout fix, because to cargo the two units are genuinely different feature sets.
 `nros-rmw` already converted to `default = []` and its manifest says it "matches nros-core" —
 `nros-core` never did. See `0582-*` and phase-360 W3. (2026-08-07)
+**#0590** (build, open 2026-08-15) — the `nros-launch-resolve` skew warning compares BINARY mtimes
+(`[ "$_cli_bin" -nt "$_resolver" ]`), and `just setup-launch-resolve` is a no-op when cargo has nothing to
+rebuild — so it never relinks, the mtime never moves, and the remedy the warning prints cannot clear it.
+Fires on every `check-tier-preconditions` after any `setup-cli`, in the list that exists to name real
+unmet preconditions (#0466). Also the wrong question: touching the binary would silence it while proving
+nothing, and a real skew with a newer binary goes undetected. The hazard is genuine (#0363 C — the two
+must agree on an argument list); the test for it is not. TWO spellings, `scripts/check-tier-preconditions.sh:145`
+and `justfile:3958`, which must move together. Fix: give the resolver a SOURCE STAMP like the CLI's and
+compare stamps. See `0590-*`. (2026-08-15)
+
+**#0589** (build, open 2026-08-15) — `check-submodule-pinned-locks` reported "the submodule pointer moved
+and the lock did not follow (issue 0560)" for a lock that is byte-identical to main's and names the crate
+it supposedly lost: the real error is `failed to download hermit-abi v0.5.2 … --offline was specified`, i.e.
+a COLD CACHE on this host. `cargo fetch --locked` pulled it plus six platform-irrelevant siblings and the
+gate passed with the lock untouched — which is why `setup-launch-resolve` had BUILT the binary fine minutes
+earlier (the build never needs them, only whole-graph resolution does). The misdiagnosis is not cosmetic:
+it prescribes `just lock-update`, i.e. re-resolving a correct lock, which is exactly the churn #0359/#0378
+were about. Match on the `--offline` marker and print `cargo fetch --locked` instead. See `0589-*`. (2026-08-15)
+
+**#0588** (testing, open 2026-08-15) — `just/zephyr-ci.just:32` prints `Zephyr skip: zephyr-workspace not
+set up` and then `exit 0`, so the driver records `== zephyr == OK` for a lane that built NOTHING. Twenty
+minutes later `_lane-gate` fails naming four missing `.inputsig` files (`west_bringup_zephyr`,
+`west_board_import`, `zephyr_self_pkg_{rust,sibling}`) — west-owned by design (`fixtures.toml:4553`) and
+never skippable by lane narrowing, so every run scope requires them — and its remedy is
+`just build-test-fixtures`, the command that just "succeeded". `check-tier-preconditions` does not mention
+it either. The unprovisioned host is legitimate; reporting the skip as OK is not. Needs a third lane
+verdict (SKIPPED), and both `exit 0` sites move together. #0196 shape. See `0588-*`. (2026-08-15)
+
 **#0587** (build, open 2026-08-07, renumbered from 0581 on 2026-08-15 when upstream spent that id) — `std` implies `alloc` in `nros`/`nros-node`/`nros-rmw-zenoh`/
 `nros-c` and does NOT in `nros-core`/`nros-serdes`/`nros-rmw`/`nros-params`/`nros-platform`, and the
 source layer disagrees with its own manifest: `nros-core/src/lib.rs:19` gates `extern crate alloc`
