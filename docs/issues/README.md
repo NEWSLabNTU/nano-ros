@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#602** — `[source.threadx]` declares `eclipse-threadx/threadx` at `4b6e8100` while `.gitmodules` declares the
+`NEWSLabNTU` fork and the gitlink records `13d061a7` (whose parent IS `4b6e8100`; the commit between them is our
+LP64 fix). Filed first as "provisioning reverts the fix" — REFUTED: `provision()` returns `Submodule` whenever
+`submodule` is set, that arm runs `git submodule update --init` against the GITLINK, and `git`/`ref` are read only
+in the Clone arm. The fields are inert here. What survives is a data file naming a push target we do not use — the
+clone's `origin` really was upstream, which is where the vendored-fork workflow would have pushed. Index fixed;
+a gate for it was written and deliberately DROPPED (it would police fields nothing reads). Five siblings drift the
+same way. Open question: what actually moved the checkout, and whether these fields belong at all.
+See `0602-*`. (2026-08-15)
+
 **#607** (testing, open 2026-08-15) — `boot_config_tests` set and read PROCESS-GLOBAL env vars, and
 `check-node-std-tests` runs `cargo test`, which puts a crate's unit tests in ONE process as threads. Nine
 of twenty-four fail together, ~1 run in 3, never with `--test-threads=1`. On the `just ci` line, so tier 1

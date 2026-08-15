@@ -336,8 +336,20 @@ submodule = "third-party/freertos/lwip"
 
 [source.threadx]
 version = "6.4.1"
-git = "https://github.com/eclipse-threadx/threadx.git"
-ref = "4b6e8100d932a3a67b34c6eb17f84f3bffb9e2ae"
+# issue 0602 — this pointed at UPSTREAM (`eclipse-threadx/threadx`) at
+# `4b6e8100`, while `.gitmodules` declares this fork and the superproject
+# records `13d061a7`. Those two commits are parent and child, and the one
+# between them is our own `fix(linux port): key LONG/ULONG and ALIGN_TYPE on the
+# data model, not x86_64`.
+#
+# It is INERT to provisioning — `provision()` returns `Submodule` whenever
+# `submodule` is set, and that arm runs `git submodule update --init` against the
+# GITLINK; `git`/`ref` are read only in the Clone arm. The harm is that the entry
+# is the one place stating where ThreadX comes from, and it named a push target
+# we do not use: a clone whose `origin` matched it sends the vendored-fork
+# workflow to upstream, which is what was observed on one machine.
+git = "https://github.com/NEWSLabNTU/threadx.git"
+ref = "13d061a73afd6dd3a3afda5fe71f94bbc411bc34"
 dest = "third-party/threadx/kernel"
 submodule = "third-party/threadx/kernel"
 
