@@ -161,6 +161,17 @@ platform-freertos = [
     "nros-rmw-zenoh?/platform-freertos",
 ]
 platform-nuttx = [
+    # issue 0617 — NuttX owns a kernel heap (`kmm_malloc`, reached through the
+    # cffi vtable's `nros_platform_alloc`), so it belongs with zephyr/freertos/
+    # threadx: the port SUPPLIES malloc and panic. It was the one RTOS row
+    # missing both, which went unnoticed only because NuttX images used to link
+    # `std` — libstd supplied the `#[panic_handler]` and the allocator. The
+    # drop-std campaign (phase-359/361) removed that cover and the row was never
+    # updated, so `nros-c` failed to compile for armv7a-nuttx-eabihf with
+    # "`#[panic_handler]` function required, but not found" and took the whole
+    # NuttX fixture family with it.
+    "global-allocator",
+    "panic-spin",
     "nros-platform/platform-nuttx",
     "nros-rmw-zenoh?/platform-nuttx",
 ]

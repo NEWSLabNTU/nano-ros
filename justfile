@@ -419,6 +419,7 @@ check-fast: \
     check-rust-stdio-on-zephyr \
     check-workspace-order \
     check-atomic-sync-writes \
+    check-platform-provider-features \
     check-test-domain-assignment \
     check-zenohd-spawn-sites \
     check-cmake-corrosion-prefix \
@@ -1451,6 +1452,13 @@ check-issue-index:
 [private]
 check-atomic-sync-writes:
     @bash scripts/check-atomic-sync-writes.sh
+
+# Issue 0617 — an RTOS `platform-*` feature must SUPPLY malloc and panic. A
+# no_std final artifact needs exactly one `#[global_allocator]` and one
+# `#[panic_handler]`; a HOST build cannot catch a missing provider because
+# `std` supplies both, which is how NuttX shipped with neither.
+check-platform-provider-features:
+    @python3 scripts/check-platform-provider-features.py
 
 # Issue 0580 — a test must ASSIGN its ROS domain, never name one: a literal is a
 # shared bus, and two concurrent runs colliding on it presents as WRONG DATA
