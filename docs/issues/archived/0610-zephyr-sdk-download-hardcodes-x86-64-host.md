@@ -66,20 +66,60 @@ $ curl -sL .../v0.16.8/sha256.sum | grep linux-aarch64
 
 ## Fix
 
-Select tarball and checksum together from `uname -m`, with an unmapped
-architecture as a hard error naming what to add rather than a silent default to
-x86_64. Both checksums are the upstream ones from the release's `sha256.sum`;
-the x86_64 value is byte-identical to the one that was hardcoded, which
-confirms the source.
+The artifact moved into the index, where host-keyed artifacts already live.
+`[tool.zephyr-sdk]` carries a `dist.<host>` row per host and `nros setup --tool
+zephyr-sdk --prefix scripts/zephyr/sdk` picks the one matching `host_key()`,
+downloads it, verifies the sha256 and unpacks it. The shell script keeps only
+the step the schema cannot express — running the SDK's own `setup.sh -t
+<target>` to register toolchains.
 
-Keeping the two in one `case` is deliberate: a tarball and a checksum that can
-drift apart is how you get a confusing verification failure later, and the pair
-is the unit that actually varies.
+A first pass fixed this in the script, selecting tarball and checksum together
+from `uname -m`. That was correct and still the wrong place: `packages/cli`'s
+own guidance is that board/toolchain/source knowledge belongs in
+`nros-sdk-index.toml`, and leaving it in bash would have meant two spellings of
+"which SDK does this host need" — the exact shape of the bug.
+
+Two things about this entry differ from its neighbours, both deliberate and
+both noted in the index:
+
+- **The URLs are upstream, not repackaged** into `NEWSLabNTU/nano-ros-sdk`.
+  Every other `dist.*` is a repack; this archive is 1.3 GiB and we apply
+  nothing to it, so a repack would cost a release asset per host for no gain.
+- **It unpacks to `<prefix>/zephyr-sdk-<version>/`**, not the `<prefix>/bin`
+  layout the repacked dists share — which is exactly the path the script and
+  `ZEPHYR_SDK_INSTALL_DIR` already expect, since `sdk_store.rs` runs `tar -xf`
+  with no `--strip-components`.
+
+Dropping out of the script with the fetch: the local download cache, the
+`sha256sum` re-verification, and the `aria2c` prerequisite. That last one is a
+real trade — aria2c pulled with 16 connections and `nros` uses curl, so a cold
+fetch is slower. Accepted: a second spelling of the host mapping is what caused
+this issue.
 
 ## Verified
 
-`just zephyr setup` completes on aarch64, and `just zephyr doctor` reports west,
-the Zephyr workspace and the `armv7a-none-eabi` Rust target all present.
+`just zephyr setup` completes on aarch64 and `just zephyr doctor` reports west,
+the Zephyr workspace and the `armv7a-none-eabi` Rust target present — that run
+used the first (in-script) form of the fix, and it is what unblocked the zephyr
+fixture family.
+
+For the index form, the two things that differ from a normal dist were checked
+directly rather than by re-downloading 1.3 GiB onto a host that already has the
+SDK:
+
+```
+$ nros setup --tool zephyr-sdk --prefix /tmp/zsdk-probe --dry-run
+nros setup --tool zephyr-sdk: prebuilt 0.16.8 (dist linux-arm64) → /tmp/zsdk-probe
+```
+
+and `tar -xf` on a synthetic `.tar.xz` unpacks to `prefix/zephyr-sdk-0.16.8/`,
+confirming both that GNU tar auto-detects xz (the `zstd` preflight in
+`sdk_store.rs` correctly does not fire for a `.xz` URL) and that nothing strips
+the leading directory. The fetch itself is the shared code path every other
+tool uses.
+
+**Not yet exercised: a cold end-to-end provision on a host without the SDK.**
+Worth doing once on a clean machine or with `--force`.
 
 ## How it was reached
 

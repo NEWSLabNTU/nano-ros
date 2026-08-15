@@ -15,7 +15,6 @@
 # Prerequisites (install manually):
 #   - Python 3.8+, pip
 #   - cmake, ninja-build
-#   - aria2c (for parallel downloads)
 #   - Rust toolchain (rustup)
 #
 # Usage:
@@ -71,44 +70,21 @@ WORKSPACE_DIR="$(cd "$WORKSPACE_DIR" && pwd)"
 # west-4.4.yml = 4.4 rolling. Set via NROS_ZEPHYR_MANIFEST.
 MANIFEST="${NROS_ZEPHYR_MANIFEST:-west.yml}"
 
-DOWNLOAD_DIR="$SCRIPT_DIR/downloads"
 SDK_INSTALL_DIR="$SCRIPT_DIR/sdk"
 
-# Zephyr SDK configuration
+# Zephyr SDK configuration.
+#
+# The VERSION is all that lives here — it names the install dir below. Which
+# tarball that version means on THIS host, and its checksum, are
+# `[tool.zephyr-sdk]` in `nros-sdk-index.toml`, fetched by `nros setup --tool`
+# (issue 0610). They were hardcoded to x86_64 here, which does not fail at
+# download — the x86_64 archive fetches and verifies happily anywhere — but dies
+# later inside the SDK's own installer with `Installing host tools ... ERROR:
+# Host tools installation failed`, naming neither the arch nor the tarball.
+#
+# Keep this in step with `[tool.zephyr-sdk].version`; the index is the SSOT for
+# everything else about the artifact.
 ZEPHYR_SDK_VERSION="0.16.8"
-
-# The SDK tarball is keyed on the HOST architecture, and its checksum with it.
-# Both used to be hardcoded to x86_64 (issue 0582's class), which does not fail
-# at download — the x86_64 tarball fetches and verifies happily on aarch64 — but
-# dies later with:
-#
-#     Installing host tools ...
-#     ERROR: Host tools installation failed
-#
-# because the host tools inside it are x86_64 ELF binaries. The message names
-# neither the architecture nor the tarball, so it reads as a broken SDK.
-#
-# Checksums are the upstream ones, from
-# https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/sha256.sum
-# — the x86_64 value is unchanged from when it was hardcoded here.
-case "$(uname -m)" in
-    x86_64)
-        ZEPHYR_SDK_HOST_ARCH="x86_64"
-        ZEPHYR_SDK_SHA256="cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a"
-        ;;
-    aarch64|arm64)
-        ZEPHYR_SDK_HOST_ARCH="aarch64"
-        ZEPHYR_SDK_SHA256="83782b4cf595bb3da8a6c7c1ade01eed00ad03f8ba0c72da6680693192b3668d"
-        ;;
-    *)
-        echo "ERROR: no Zephyr SDK ${ZEPHYR_SDK_VERSION} mapping for host arch '$(uname -m)'." >&2
-        echo "  Upstream ships linux-x86_64 and linux-aarch64. Add the arch and its" >&2
-        echo "  sha256 from the release's sha256.sum, or set NROS_ZEPHYR_SKIP_SDK." >&2
-        exit 1
-        ;;
-esac
-ZEPHYR_SDK_TARBALL="zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-${ZEPHYR_SDK_HOST_ARCH}.tar.xz"
-ZEPHYR_SDK_URL="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/${ZEPHYR_SDK_TARBALL}"
 
 # Parse arguments
 FORCE=false
@@ -191,7 +167,6 @@ echo "========================================"
 echo ""
 log_info "Workspace: $WORKSPACE_DIR"
 log_info "SDK directory: $SDK_INSTALL_DIR"
-log_info "Download cache: $DOWNLOAD_DIR"
 log_info "nros: $NANO_ROS_ROOT"
 echo ""
 
@@ -217,7 +192,6 @@ check_command pip3 || MISSING=1
 check_command cmake || MISSING=1
 check_command git || MISSING=1
 check_command ninja || { log_warn "ninja not found"; MISSING=1; }
-check_command aria2c || { log_warn "aria2c not found"; MISSING=1; }
 check_command rustc || MISSING=1
 check_command cargo || MISSING=1
 
@@ -316,58 +290,37 @@ log_success "Rust embedded targets ready"
 # =============================================================================
 
 SDK_PATH="$SDK_INSTALL_DIR/zephyr-sdk-$ZEPHYR_SDK_VERSION"
-SDK_TARBALL_PATH="$DOWNLOAD_DIR/$ZEPHYR_SDK_TARBALL"
 
-download_sdk() {
-    mkdir -p "$DOWNLOAD_DIR"
 
-    log_info "Downloading Zephyr SDK $ZEPHYR_SDK_VERSION..."
-    log_info "URL: $ZEPHYR_SDK_URL"
 
-    # aria2c options:
-    #   -x 16: 16 connections per server
-    #   -s 16: split file into 16 parts
-    #   -k 1M: minimum split size 1MB
-    #   -c: continue partial downloads
-    #   --checksum: verify sha256 after download
-    aria2c \
-        -x 16 \
-        -s 16 \
-        -k 1M \
-        -c \
-        --checksum=sha-256="$ZEPHYR_SDK_SHA256" \
-        -d "$DOWNLOAD_DIR" \
-        -o "$ZEPHYR_SDK_TARBALL" \
-        "$ZEPHYR_SDK_URL"
-
-    log_success "Download complete"
-}
-
-verify_sdk_checksum() {
-    if [ ! -f "$SDK_TARBALL_PATH" ]; then
-        return 1
-    fi
-
-    log_info "Verifying checksum..."
-    local actual_sha256
-    actual_sha256=$(sha256sum "$SDK_TARBALL_PATH" | cut -d' ' -f1)
-
-    if [ "$actual_sha256" = "$ZEPHYR_SDK_SHA256" ]; then
-        log_success "Checksum verified: $actual_sha256"
-        return 0
-    else
-        log_warn "Checksum mismatch!"
-        log_warn "  Expected: $ZEPHYR_SDK_SHA256"
-        log_warn "  Actual:   $actual_sha256"
-        return 1
-    fi
+provision_sdk_via_nros() {
+    # issue 0610 — the archive is host-keyed, so ASK THE INDEX rather than
+    # composing a URL here. `[tool.zephyr-sdk]` carries a `dist.<host>` row per
+    # host and `nros setup` picks the one matching `host_key()`, downloads,
+    # verifies the sha256 and unpacks it. The tarball has no top-level `bin/`,
+    # and `tar -xf` is run without `--strip-components`, so this lands exactly
+    # where the rest of this script expects: `$SDK_INSTALL_DIR/zephyr-sdk-<ver>`.
+    #
+    # This replaces a hand-rolled aria2c + sha256sum + tar block whose tarball
+    # name and checksum were hardcoded to x86_64 — which fetched 1.3 GiB, PASSED
+    # verification, and then failed inside the SDK's own installer on any other
+    # host, naming neither the architecture nor the tarball.
+    #
+    # Trade-off, deliberate: `nros` downloads with curl where this used aria2c
+    # with 16 connections, so a cold fetch is slower. Worth it — a second
+    # spelling of "which SDK does this host need" is what the bug was.
+    local nros_bin
+    # shellcheck source=../build/cargo.sh
+    source "$NANO_ROS_ROOT/scripts/build/cargo.sh"
+    nros_bin="$(nros_cli_bin)"
+    log_info "Provisioning Zephyr SDK $ZEPHYR_SDK_VERSION via nros (host-keyed dist)..."
+    "$nros_bin" setup --tool zephyr-sdk \
+        --prefix "$SDK_INSTALL_DIR" \
+        --index "$NANO_ROS_ROOT/nros-sdk-index.toml"
 }
 
 install_sdk() {
-    log_info "Extracting SDK to $SDK_INSTALL_DIR..."
-    mkdir -p "$SDK_INSTALL_DIR"
-
-    tar xf "$SDK_TARBALL_PATH" -C "$SDK_INSTALL_DIR"
+    provision_sdk_via_nros
 
     log_info "Running SDK setup..."
     cd "$SDK_PATH"
@@ -389,15 +342,11 @@ if [ "$SKIP_SDK" = true ]; then
 elif [ -d "$SDK_PATH" ] && [ -f "$SDK_PATH/setup.sh" ]; then
     log_info "Zephyr SDK already installed at $SDK_PATH"
 else
-    # Check if tarball exists and has correct checksum
-    if verify_sdk_checksum; then
-        log_info "Using cached SDK tarball"
-    else
-        # Download (or resume) the SDK
-        download_sdk
-    fi
-
-    # Install the SDK
+    # Download + verify + unpack is `nros setup --tool zephyr-sdk` (issue 0610);
+    # `install_sdk` then runs the SDK's own registration. The local
+    # download-cache/checksum dance this replaces lived here only because the
+    # fetch did — nros writes a provenance marker in the prefix and skips the
+    # download when the tool is already present.
     install_sdk
 fi
 
