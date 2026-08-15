@@ -98,34 +98,124 @@ pub fn ros2_env_setup(distro: &str) -> (String, tempfile::TempDir) {
     ros2_env_setup_with_locator(distro, "tcp/127.0.0.1:7447")
 }
 
-/// Write a zenoh session config file for rmw_zenoh_cpp and return a
-/// [`tempfile::TempDir`] that keeps the file alive. The config is written to
-/// `<tmpdir>/session_config.json5`.
+/// The `rmw_zenoh_cpp` session config we hand ROS 2, built by OVERLAYING our
+/// settings onto the one it ships — not by replacing it.
 ///
-/// The caller must hold the returned `TempDir` for the lifetime of the process
-/// that reads the config — dropping it deletes the directory and file.
+/// `ZENOH_SESSION_CONFIG_URI` REPLACES `DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5`
+/// wholesale; it does not merge. Issue 0609: this function used to write twenty
+/// lines carrying `mode`, `connect` and `scouting`, so every other setting the
+/// RMW relies on was silently dropped — `timestamping` among them. `/rosout` is
+/// transient-local and routes through zenoh-ext's `PublicationCache`, which
+/// REQUIRES timestamping, so under the old config **no ROS 2 node could start**:
+///
+/// ```text
+/// zenohc::publication_cache: Failed requirement for PublicationCache on
+///   0/rosout/…: the 'timestamping' setting must be enabled
+/// [ERROR] [rmw_zenoh_cpp]: Unable to make PublisherData.
+/// ```
+///
+/// Fifteen tests failed that way, and none of them was about `/rosout`.
+///
+/// Restating `timestamping` alone would fix today's symptom and leave the
+/// mechanism that lost it: the next setting the RMW starts depending on would
+/// vanish the same way, with a failure just as far from its cause. So we parse
+/// what it ships and override only the three things we actually need — client
+/// mode, our locator, and no multicast scouting.
+///
+/// Returns a [`tempfile::TempDir`] the caller MUST hold for the lifetime of the
+/// process reading the config; dropping it deletes the file.
 fn write_zenoh_session_config(locator: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("failed to create temp dir for zenoh session config");
     let config_path = dir.path().join("session_config.json5");
 
-    let config = format!(
-        r#"{{
-  mode: "client",
-  connect: {{
-    endpoints: ["{locator}"],
-    exit_on_failure: {{ client: true }},
-    timeout_ms: {{ client: 0 }},
-  }},
-  scouting: {{
-    multicast: {{
-      enabled: false,
-    }},
-  }},
-}}"#
-    );
+    let mut config = shipped_session_config().unwrap_or_else(|| {
+        // No ROS 2 install to read from. The bare config still carries
+        // `timestamping`, so this fallback is not a way to reintroduce 0609 —
+        // and a caller with no rmw_zenoh_cpp has nothing to hand it to anyway.
+        serde_json::json!({
+            "timestamping": {
+                "enabled": { "router": true, "peer": true, "client": true },
+                "drop_future_timestamp": false,
+            }
+        })
+    });
 
-    std::fs::write(&config_path, config).expect("failed to write zenoh session config");
+    let obj = config
+        .as_object_mut()
+        .expect("zenoh session config must be a JSON object");
+    obj.insert("mode".into(), serde_json::json!("client"));
+    obj.insert(
+        "connect".into(),
+        serde_json::json!({
+            "endpoints": [locator],
+            "exit_on_failure": { "client": true },
+            "timeout_ms": { "client": 0 },
+        }),
+    );
+    // Only the multicast switch — `scouting` carries gossip/autoconnect settings
+    // the RMW sets deliberately, and replacing the whole table would be 0609
+    // again at one level down.
+    if let Some(scouting) = obj.get_mut("scouting").and_then(|s| s.as_object_mut()) {
+        scouting.insert(
+            "multicast".into(),
+            match scouting.get("multicast").cloned() {
+                Some(serde_json::Value::Object(mut m)) => {
+                    m.insert("enabled".into(), serde_json::json!(false));
+                    serde_json::Value::Object(m)
+                }
+                _ => serde_json::json!({ "enabled": false }),
+            },
+        );
+    } else {
+        obj.insert(
+            "scouting".into(),
+            serde_json::json!({ "multicast": { "enabled": false } }),
+        );
+    }
+
+    // Serialized as JSON, which is a subset of JSON5 — no need to re-emit
+    // comments or unquoted keys, and the RMW parses either.
+    std::fs::write(
+        &config_path,
+        serde_json::to_string_pretty(&config).expect("serialize zenoh session config"),
+    )
+    .expect("failed to write zenoh session config");
     dir
+}
+
+/// `rmw_zenoh_cpp`'s own `DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5`, parsed.
+///
+/// Searched in the order the RMW itself would be found: the wire-matched
+/// overlay first (`build/rmw_zenoh_ws`, when it has been built), then the
+/// distro install. Returns `None` when neither exists or the file will not
+/// parse — the caller falls back rather than failing, because a host without
+/// ROS 2 must still be able to call this.
+///
+/// The file is real JSON5 (comments, unquoted keys, trailing commas), so it
+/// needs a JSON5 parser; `serde_json` cannot read it.
+fn shipped_session_config() -> Option<serde_json::Value> {
+    const REL: &str = "share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5";
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(overlay) = rmw_zenoh_overlay() {
+        // `<ws>/install/setup.bash` -> `<ws>/install/rmw_zenoh_cpp/<REL>`
+        if let Some(install) = overlay.parent() {
+            candidates.push(install.join("rmw_zenoh_cpp").join(REL));
+            candidates.push(install.join(REL));
+        }
+    }
+    for distro in ["humble", "iron", "jazzy", "rolling"] {
+        candidates.push(PathBuf::from(format!("/opt/ros/{distro}")).join(REL));
+    }
+    for path in candidates {
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        match json5::from_str::<serde_json::Value>(&text) {
+            Ok(v) if v.is_object() => return Some(v),
+            _ => continue,
+        }
+    }
+    None
 }
 
 /// Get ROS 2 environment setup command with custom locator.

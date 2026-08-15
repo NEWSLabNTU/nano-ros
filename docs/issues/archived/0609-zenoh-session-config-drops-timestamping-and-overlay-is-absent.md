@@ -1,11 +1,47 @@
 ---
 id: 609
 title: The zenoh interop harness replaces rmw_zenoh_cpp's session config and drops `timestamping`, then falls back to a distro RMW that cannot talk to our router
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0599, phase-311, rfc-0056]
+resolved_in: "session config merge + ros-humble-rmw-zenoh-cpp 0.1.9 (zenoh 1.8.0)"
 ---
+
+> **RESOLVED 2026-08-15 — both causes, by different hands.**
+>
+> **Cause 1 (ours) is fixed.** `write_zenoh_session_config` now parses
+> `rmw_zenoh_cpp`'s shipped `DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5` and
+> OVERLAYS `mode`, `connect` and the multicast switch onto it, instead of
+> writing twenty lines that replaced it. Restating `timestamping` alone was
+> deliberately not done: it would fix the symptom and leave the mechanism, so
+> the next setting the RMW came to depend on would vanish the same way. The
+> shipped file is real JSON5 (comments, unquoted keys, trailing commas), so this
+> needs the `json5` crate — already in the workspace lock as a transitive dep,
+> so the change adds an edge, not a version.
+>
+> **Cause 2 was the version skew, and the ROS package upgrade closed it.**
+> `ros-humble-rmw-zenoh-cpp` 0.1.1 → 0.1.9 moved the vendored zenoh **1.2.0 →
+> 1.8.0**, against our `zenohd` 1.7.2. The question this issue left open —
+> whether the remaining failure was the skew or something else — is answered:
+> it was the skew. 1.2.0 ↔ 1.7.2 established a session and delivered nothing;
+> 1.8.0 ↔ 1.7.2 delivers. **The pinned overlay was not needed**, which is worth
+> knowing: the overlay is one way to get a matched RMW, not the only one.
+>
+> Verified: `interop_e2e` **10/10** (every zenoh case plus the three cyclone
+> ones), and 25/27 across `workspace_features_e2e`, `qos_override_e2e` and both
+> multi-node graph binaries — the two non-passes are `[SKIPPED]` on a stale
+> `workspace-rust-native` fixture, unrelated.
+>
+> **Left open deliberately**, and not folded into this fix: the silent fallback
+> in `rmw_zenoh_overlay()`. It is no longer WRONG to fall back — the distro RMW
+> now matches well enough — so making its absence a hard skip would be the wrong
+> fix. What is still true is that nothing reports WHICH zenoh the run is using,
+> and the version that matters is in `zenoh_configure.h`, not in any package
+> version. A future distro regression would look exactly like this issue did.
+> That wants its own issue, phrased as "report the vendored zenoh version" rather
+> than "require the overlay".
+
 
 ## Symptom
 

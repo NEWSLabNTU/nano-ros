@@ -75,20 +75,17 @@ dev packages install under `/usr/lib/llvm-14/include`), so a header probe there 
 that hard-blocks setup. `libslirp` is the other control (runtime package, versioned SONAME, correct). See
 `archived/0603-*`. (2026-08-15)
 
-**#0609** (testing, open 2026-08-15) — fifteen zenoh interop / workspace-feature / multi-node tests fail as
-`rmw_zenoh_cpp: Unable to make PublisherData … the 'timestamping' setting must be enabled`, before their own
-assertions run. TWO quiet causes stacked. (1) `ZENOH_SESSION_CONFIG_URI` REPLACES rmw_zenoh_cpp's shipped
-`DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5`, and `write_zenoh_session_config` (`ros2.rs:107`) restates only
-`mode`/`connect`/`scouting` — so `timestamping` is dropped, and `/rosout` is transient-local, so NO ROS 2 node
-can start under our config. Verified: adding the block changes the error to `0 data: samples`, i.e. the node
-now starts. (2) That uncovers the second — `rmw_zenoh_overlay()` (`ros2.rs:24`) silently falls back to the
-distro RMW when `build/rmw_zenoh_ws/install` is absent, so the run pairs a zenoh **1.2.0** client with the
-`zenohd 1.7.2` the tests spawn — five minor versions, the skew CLAUDE.md's "Zenoh pinned 1.7.2
-(rmw_zenoh_cpp compat)" exists to prevent. The 1.2.0 is from the vendored library's own
-`zenoh_configure.h`; the apt package versions (0.1.1) are ROS wrapper versions and say nothing about the
-zenoh inside, and the apt `zenohd 1.4.0` is never spawned. Fix: MERGE onto the shipped config
-rather than replace, and make the overlay fallback loud (`skip!`, not silence — #0599's shape).
-See `0609-*`. (2026-08-15)
+Recently resolved (2026-08-15): **#0609** — fifteen zenoh interop / workspace-feature / multi-node tests failed
+as `rmw_zenoh_cpp: Unable to make PublisherData … the 'timestamping' setting must be enabled`, before their own
+assertions ran. TWO causes, fixed by different hands. (1) `ZENOH_SESSION_CONFIG_URI` REPLACES the shipped
+`DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5`; `write_zenoh_session_config` restated only `mode`/`connect`/`scouting`,
+so `timestamping` was dropped and — `/rosout` being transient-local — NO ROS 2 node could start. Now parses the
+shipped JSON5 and OVERLAYS our three settings onto it; restating one key would have left the mechanism.
+(2) The rest was the version skew: `ros-humble-rmw-zenoh-cpp` 0.1.1 → 0.1.9 moved the vendored zenoh
+**1.2.0 → 1.8.0** against our `zenohd` 1.7.2, and delivery works — 1.2.0 ↔ 1.7.2 established a session and
+delivered nothing. The pinned overlay was NOT needed. Verified `interop_e2e` 10/10. Still open elsewhere:
+nothing reports which zenoh a run uses, and the number lives in `zenoh_configure.h`, not any package version.
+See `archived/0609-*`. (2026-08-15)
 
 **#606** (cli, open 2026-08-15) — `[deploy.*].board` and a descriptor's `names` are different vocabularies:
 every in-tree site block says `board = "mps2-an385-freertos"`, which that descriptor does not list

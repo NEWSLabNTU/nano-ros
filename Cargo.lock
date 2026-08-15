@@ -2099,6 +2099,7 @@ version = "0.5.0"
 dependencies = [
  "assert_cmd",
  "duct",
+ "json5",
  "libc",
  "nros",
  "nros-cargo-profile",
