@@ -304,6 +304,84 @@ pub enum DrainMode {
 }
 ```
 
+### 4.4a Periodic-timer overrun policy (issue 0505)
+
+A periodic timer whose tier is preempted past several of its periods has a
+backlog. What happens to it is a semantics decision, and it belongs here rather
+than in whichever line of the dispatcher happens to implement it.
+
+```rust
+pub enum TimerOverrunPolicy {
+    /// DEFAULT. Coalesce the backlog: fire ONCE, drop the missed periods, count
+    /// them in `overruns`. Phase-preserving — the sub-period remainder carries
+    /// over, so activations stay on the declared cadence grid.
+    Skip,
+    /// Replay every missed activation back-to-back. For counters and
+    /// accumulators, where each tick carries state that must not be lost.
+    CatchUp,
+}
+```
+
+**The default is `Skip`, and the reason is not "bursts are surprising".** It is
+that `CatchUp` makes the runtime rate monitor report health during a fault.
+Measured A/B on the FreeRTOS mps2-an385 QEMU lane, same tree, only the default
+flipped, 2 kHz inbound flood, 2 runs each:
+
+| default  | achieved ctrl rate | replay activations | stalls/run |
+| --- | --- | --- | --- |
+| CatchUp | **100.03 Hz** (declared 100) | 275/run | 13.0 |
+| Skip    | 90.8–93.0 Hz | 8/run | 12.0 |
+
+Under `CatchUp` the island stalls for up to 611 ms at a stretch and the achieved
+publish rate is still exactly nominal, because every missed activation is
+replayed later inside the same counting window. `check_rate` counts publishes
+over ~5 s, so `rate-hierarchy-runtime` is STRUCTURALLY blind to a stall under
+`CatchUp` — the one runtime rule that ought to see the failure cannot. Under
+`Skip` the same stalls surface as a 7–9 % rate deficit.
+
+Precedent agrees: rclcpp advances `next_call_time` past "now", and Zephyr's
+`k_timer` coalesces expiries into one callback carrying an expiry count. Replay
+is the surprising behaviour, not the conservative one.
+
+Caveat, so the rate rule is not oversold: a 7–9 % deficit only trips
+`rate-hierarchy-runtime` if the declared minimum sits within ~10 % of nominal,
+and a single isolated stall (20 missed activations of a 100 Hz loop in a 5 s
+window = 0.4 %) will not trip it at any sane threshold. The rate rule catches
+sustained degradation; it is not a substitute for the explicit overrun signal
+below.
+
+**Overrun is counted and reported, not just handled.** Each timer carries a
+saturating `overruns`, and dropped activations reach the same violation ring as
+the rate/age/latency/deadline rules as `timer-overrun-runtime` (`fqn` = the bound
+SchedContext/tier name, `measured` = overruns accrued in the window, `declared` =
+tolerated count, 0 by default). The check runs after dispatch, so a stalling tier
+reports in the same cycle. Without it a replayed burst SATISFIES a rate check
+while being exactly the failure that check exists for.
+
+**Surface.** `Executor::set_timer_overrun_policy` / `timer_overruns`; the
+callback signature stays `FnMut()`, so the counter is queryable rather than
+pushed into user code (Zephyr passes an expiry count into the handler; taking
+that route here would have been a breaking change for no gain the counter does
+not already give). Making the policy declarable in launch-level scheduling
+metadata — a tier dim, `real_time` class implying `Skip` — is deliberately NOT
+decided here; it belongs with the contract schema.
+
+**Resolution.** Periods are microseconds end to end. They were milliseconds at
+three boundaries, each silent: `TimerDuration` stored ms (`from_micros(500)`
+produced a zero period that free-runs, `from_micros(1_500)` a 50 % rate error),
+the declarative path round-tripped through `EntityMetadata.period_ms`, and
+`nros-c` took ns on the ABI then truncated to ms — so the C surface promised
+nanoseconds, delivered milliseconds, and the two language paths disagreed about
+what a 500 µs timer does (C rejected it, Rust silently free-ran). Measured on the
+FreeRTOS lane, a mid tier declared at 33.333 ms: rate error −0.99 % before,
++0.01 % after.
+
+Still true and deliberately not fixed: a period that is not a multiple of its
+tier's spin period quantizes to the spin grid (33 ms on a 5 ms spin alternates
+35/30 ms, mean 33.07). The long-run rate is right and no activation is dropped,
+so no rule fires — correctly — but the jitter is predictable at resolve time and
+would be better as a resolver warning than a surprise on target.
+
 ### 4.5 ISR ↔ Executor SPSC Ring
 
 ReadySet is single-threaded (no `Sync`). When an ISR (transport RX, hardware timer, GuardCondition fire) needs to activate a callback, it writes into a **lock-free SPSC ring** read by the executor at the top of `spin_once`. Mirrors FreeRTOS `xQueueSendFromISR` / `xQueueReceive`.

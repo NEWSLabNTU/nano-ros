@@ -1,7 +1,7 @@
 ---
 id: 505
 title: "Periodic timers replay the whole backlog after a stall — 6 control callbacks 88 us apart — with no overrun policy and no overrun counter"
-status: open
+status: resolved
 type: enhancement
 area: embedded
 related: [issue-0502]
@@ -222,3 +222,48 @@ Remaining, deliberately out of scope here:
   fires — correctly, but the jitter is entirely predictable at resolve
   time and would be better as a resolver warning than a surprise on
   target. Filed as a separate concern.
+
+
+## RESOLVED 2026-08-15 — the last piece was the writing-down
+
+The three code pieces landed 2026-08-11 (policy + counter, microsecond
+resolution, `timer-overrun-runtime`). What remained was phase-358 W2's other
+half, which the code could not satisfy: *"the policy is written down with its
+rationale ... and the default is stated in the docs."* Until now the rationale
+lived only in this issue and in doc-comments, which is exactly the "chosen
+implicitly by the implementation" outcome W2 set out to avoid.
+
+* **RFC-0002 § 4.4a** (RT execution model) now carries the policy, the `Skip`
+  default, and the argument that actually justifies it — the measured A/B
+  showing `CatchUp` reporting 100.03 Hz on a declared 100 Hz loop while the tier
+  stalled for up to 611 ms, i.e. the rate monitor reporting health during the
+  fault it exists to catch. The rclcpp / Zephyr `k_timer` precedents, the
+  observability wiring, the surface decision (queryable counter, `FnMut()`
+  unchanged), and the microsecond resolution history are recorded with it,
+  including the caveat that a 7–9 % deficit only trips the rate rule when the
+  declared minimum sits within ~10 % of nominal.
+* **book/src/user-guide/configuration.md** states the user-facing default:
+  coalesced not replayed, phase preserved, `CatchUp` opt-in for
+  counters/accumulators, watch `timer-overrun-runtime` rather than a publish-rate
+  check.
+
+Verified against the code rather than against this issue's own summary before
+writing either: `#[default] Skip`, `elapsed_us %= period_us` (phase-preserving),
+saturating `overruns`, microseconds end to end including the C ABI's ns→µs
+conversion. `cargo test -p nros-node --lib overrun` — 18 passed.
+
+**W2's acceptance is met in substance but not in sequence, and that is worth
+stating.** It asked for the policy to be written down *before* it was coded. It
+was coded first, on 2026-08-11. Nothing here can undo that ordering; what this
+does is stop the decision living only in the implementation.
+
+### Deliberately still out of scope
+
+* No board entry glue drains violations into `nros-diagnostics` on the FreeRTOS
+  lane, so overruns are reportable but not yet reported on target — the same gap
+  every other runtime rule has there.
+* The policy is not declarable in launch-level scheduling metadata; whether a
+  tier dim should carry it belongs with the contract schema.
+* Period/spin quantization is still silent (33 ms on a 5 ms spin alternates
+  35/30, mean 33.07). No activation is dropped so no rule fires, correctly, but
+  it is predictable at resolve time and would be better as a resolver warning.

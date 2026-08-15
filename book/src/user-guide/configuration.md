@@ -98,6 +98,29 @@ Cargo features + Kconfig** (`prj*.conf` on Zephyr), not a config file.
 Multi-node RT is declared in `system.toml` (`[tiers.<name>.<rtos>]` +
 `[[node_overrides]]`) — see RFC-0015.
 
+### Periodic timers after a stall
+
+If a tier is preempted past several periods of a periodic timer, the backlog is
+**coalesced, not replayed**: the timer fires ONCE and the missed periods are
+counted. Phase is preserved, so activations stay on the declared cadence grid
+rather than drifting by each stall. This is the default (`TimerOverrunPolicy::Skip`)
+and matches rclcpp and Zephyr's `k_timer`.
+
+Replay is available — `Executor::set_timer_overrun_policy(.., CatchUp)` — and is
+the right choice for a counter or accumulator, where every tick carries state
+that must not be lost. It is the wrong choice for a control loop: the replayed
+activations compute with stale inputs and emit a burst of commands inside a
+fraction of a period.
+
+Overruns are counted per timer (`Executor::timer_overruns`) and reported as the
+`timer-overrun-runtime` violation. Watch that rather than a publish-rate check:
+under `CatchUp` a replayed burst makes the achieved rate look nominal — measured
+100.03 Hz on a declared 100 Hz loop while the tier was stalling for up to 611 ms
+at a time — so a rate monitor reports health during exactly the fault it exists
+to catch. Rationale and the measurements: RFC-0002 § 4.4a.
+
+Timer periods are microseconds throughout, including across the C ABI.
+
 ## Standalone `config.toml` — hand-written `no_std` apps (no codegen)
 
 A hand-written single-node app that writes its own `main()` and bypasses

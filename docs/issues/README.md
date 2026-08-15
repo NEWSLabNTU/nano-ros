@@ -1218,12 +1218,15 @@ gap at the same instant — a single too-fast remote publisher can blow every de
 tier priority can prevent it. Fix: budget the drain (sporadic-server-style), or cap per-subscription
 inbound at the rmw ring (tail-drop beats protocol-recovery preemption), plus a shed counter. See `0506-*`.
 
-**#505** (embedded, open 2026-08-10) — periodic timers REPLAY the whole backlog after a stall: a ~200 ms
-preemption of a 10 ms control callback produced 6 activations ~88 us apart (guest-clock stamps), i.e. a
-command burst at 100x the declared rate computed from stale inputs — and the application cannot detect it
-(no overrun counter, no lateness on the callback; a rate monitor is SATISFIED by the burst). Needs a
-per-timer overrun policy (`CatchUp` vs `Skip`/coalesce, declarable; `Skip` arguably the real-time default)
-and a missed-activation counter the scheduling monitors can read. See `0505-*`.
+Recently resolved (2026-08-15): **#505** — periodic timers replayed the whole backlog after a stall. The
+code landed 2026-08-11 (`TimerOverrunPolicy::{Skip,CatchUp}`, Skip default, saturating `overruns`,
+phase-preserving remainder, microseconds end to end, `timer-overrun-runtime`); what remained was phase-358
+W2's other half, which code cannot satisfy — the policy WRITTEN DOWN. Now RFC-0002 § 4.4a + the book, with the
+argument that justifies the default: under `CatchUp` a tier stalling up to 611 ms still reports 100.03 Hz on a
+declared 100 Hz loop, so `rate-hierarchy-runtime` is structurally blind to the fault it exists to catch.
+Verified against the code, not the issue's own summary. Out of scope: no diagnostics drain on the FreeRTOS
+lane, policy not declarable in launch metadata, period/spin quantization silent. See `archived/0505-*`.
+(2026-08-15)
 
 **#0594** (build, open 2026-08-07) — **`alloc` and `std` are turned on implicitly in 34 places, and
 picking a PLATFORM enables the heap.** `nros-c`/`nros-cpp`'s `platform-{zephyr,freertos,nuttx,threadx}`

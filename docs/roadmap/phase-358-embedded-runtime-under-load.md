@@ -87,6 +87,29 @@ Do (1) first; it is independently useful and it informs (2).
 **Acceptance.** An overrun is counted and reportable. The policy is written down
 with its rationale before it is coded, and the default is stated in the docs.
 
+**DONE 2026-08-15 — and this item was STALE when I picked it up.** It says "do
+(1) first"; (1) and (2) had both been implemented on 2026-08-11, along with a
+microsecond-resolution fix the item never anticipated. Issue 0505's own status
+section said so; the phase doc did not. Verified in code before believing either
+— `#[default] Skip`, `elapsed_us %= period_us` (phase-preserving), saturating
+`overruns`, `timer-overrun-runtime` in `monitor.rs`, microseconds end to end
+including the C ABI's ns→µs conversion.
+
+What was genuinely outstanding was the half the code cannot satisfy: the policy
+*written down*. Until now the rationale lived only in the issue and in
+doc-comments — precisely the "chosen implicitly by the implementation" outcome
+this item set out to prevent. Now in **RFC-0002 § 4.4a**, with the measurement
+that actually justifies the `Skip` default (under `CatchUp` a stalling tier
+reports 100.03 Hz on a declared 100 Hz loop, so the rate monitor reports health
+during the fault it exists to catch), and the user-facing default stated in
+**book/src/user-guide/configuration.md**.
+
+One part of the acceptance cannot be met retroactively: it asked for the policy
+to be written down BEFORE it was coded, and it was not. Recorded rather than
+glossed. Issue 0505 resolved; three follow-ups left explicitly out of scope there
+(no diagnostics drain on the FreeRTOS lane, policy not declarable in launch
+metadata, period/spin quantization silent).
+
 ## W3 — A budget for the transport band (#506)
 
 The history is worth stating precisely because it was measured: issue 0567 found `_zp_unicast_read` RESETS its receive buffer on every call, so
