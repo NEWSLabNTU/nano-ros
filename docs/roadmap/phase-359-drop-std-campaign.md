@@ -705,9 +705,77 @@ are toolchain-gated out of tier 1 anyway — so a `std` mode would today select
 either exactly `native` or a set nothing can run. Adding it when it selects
 something real is better than adding it now.
 
-### W10 — flip the default, delete the feature
+### W10 — flip the default, delete the feature — **MEASURED 2026-08-16, blocked on one decision**
 
-`nros` currently defaults to `std`.
+`nros` currently defaults to `std`. (`nros-platform` no longer does —
+phase-361 W3 made it `default = []`.)
+
+#### What deleting the feature actually touches
+
+| surface | count | note |
+| --- | --- | --- |
+| `cfg` sites in the nine crates | 166 | `nros-node` is 106 of them |
+| `std::` paths | 129 | `nros-node` 76, `nros-cpp` 26 |
+| consumer manifests naming `std` on a core crate | 54 | plus `nros-board-linux` |
+| generated message crates declaring `std = ["nros-core/std", …]` | 8 | committed output |
+| codegen templates that EMIT that declaration | 2 copies | `packs/scaffold/` and `templates/` — they must move together, or `nros sync` re-adds the feature to every regenerated crate |
+
+The manifest half is mechanical but must land in ONE change: a manifest naming
+a feature that no longer exists is a hard resolution error, not a warning.
+
+#### `nros-node`'s 106 sites are mostly paired, and the remainder is three features
+
+Measured over `spin.rs` (79 of the 106): 52 `std` arms against 23 `not(std)`
+arms. Pairing them by item name — after stripping the `_alloc` suffix the
+no_std twins carry — leaves 40 unpaired, and those cluster into exactly three
+things plus noise:
+
+1. **The condvar wake fallback** (~11 sites: `wake_cv`, `wake_mu`, `WakeCtx`,
+   `nros_rmw_runtime_wake_cb{,_from_isr}`, `wake_ctx_ptr`,
+   `install_wake_signal_on_primary`). **Decision-free — delete it.** It was
+   never the wake mechanism: `spin_once` picks at RUNTIME on
+   `node_wake.is_some()`, preferring the kernel-native semaphore and reaching
+   the condvar only when no platform wake primitive is linked. Every supported
+   std host links one (the POSIX C port has had `nros_platform_wake_*` since
+   phase 130, with its own `c_port_posix_wake` test), so on Linux the branch is
+   already dead code. Where no wake exists, the `alloc` arm installs no callback
+   and drives the transport for the full timeout — it still BLOCKS, which is
+   what the condvar audit checked for.
+2. **`scheduler-os-priority`** (~16 sites: `OsPriorityWorker`, `ThreadHandle`,
+   `os_priority_workers: std::collections::HashMap`, `WorkItem`,
+   `open_threaded`, two `Drop` impls). A real capability built on `std::thread`
+   + `mpsc` + `HashMap`.
+3. **`signal-fd-wake`** (Linux-only: `WakeSignalFd` spawns a
+   `std::thread::JoinHandle` worker on an `eventfd`, and its worker signals the
+   condvar directly — so item 1 cannot be finished without deciding this one).
+
+The rest is the std clock provider (`clock_base: Instant`, `std_epoch_us` — W4
+already unified the ACCESSOR, this is the last provider) and one `eprintln!`.
+
+#### The decision this is blocked on
+
+Items 2 and 3 are `std::thread`-backed capabilities living in a crate W10 makes
+`no_std`. Two honest options, and they differ in what the user gets:
+
+* **Port them onto the platform task ABI** (`nros_platform_task_init/_join`,
+  which W7 has now exercised on NuttX). They would then work on every platform
+  rather than only std ones. Costs: `HashMap` becomes a fixed-capacity map, the
+  `mpsc` queue becomes a platform primitive, and both features' semantics shift
+  from "std threads" to "platform tasks".
+* **Move them out of `nros-node`** into a std-side crate above the core layer.
+  Keeps the implementations exactly as they are and keeps the core `no_std`,
+  but they stop being reachable through `nros` and users import them from
+  elsewhere — an API break for anyone using either feature today.
+
+Doing W10 without settling this means either half-porting the hot path or
+silently dropping two features, so it is asked rather than assumed.
+
+#### Attempted and reverted
+
+The condvar collapse was started and backed out on 2026-08-16 when item 3
+surfaced: `WakeSignalFd`'s worker calls `cv.notify_all()`, so deleting the
+condvar pair mid-way leaves the hottest path in the project half-migrated. The
+tree is unchanged; the measurement above is what the attempt bought.
 
 ## Costs accepted
 
