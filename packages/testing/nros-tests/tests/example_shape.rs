@@ -926,8 +926,15 @@ fn zephyr_leaf_buildrs_uses_shared_bake() {
             }
         }
         let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-        let is_zephyr_leaf =
-            rel.starts_with("examples/zephyr/rust") || dir_name.starts_with("zephyr_entry");
+        // The workspace naming is TWO shapes, not one. `zephyr_entry` /
+        // `zephyr_entry_robot1` are the plain entries; RFC-0066's feature
+        // packages are `zephyr_rust_<feature>_entry`
+        // (lifecycle/params/qos/safety). Matching only `zephyr_entry*` left
+        // those four outside a guard whose doc comment says EVERY zephyr rust
+        // leaf — they happened to call the shared bake, so the hole was silent.
+        let is_zephyr_leaf = rel.starts_with("examples/zephyr/rust")
+            || dir_name.starts_with("zephyr_entry")
+            || (dir_name.starts_with("zephyr_") && dir_name.ends_with("_entry"));
         if is_zephyr_leaf {
             zephyr_leaves += 1;
             if !body.contains("nros_zephyr_build::bake_nros_config()") {
@@ -948,15 +955,23 @@ fn zephyr_leaf_buildrs_uses_shared_bake() {
     // Guard a silent-empty pass — the floor is NOT a coverage target, it fires
     // when the discovery rule stops matching a shape.
     //
-    // Was 13 (phase-291's count). phase-331 W3/W4 then deleted four themed
-    // micro-workspaces that each carried a `zephyr_entry` leaf
-    // (`ws-{lifecycle,params,qos,safety}-rust`), so the tree holds 10: seven
-    // under `examples/zephyr/rust/` plus `realtime-rust`'s and `rust`'s
-    // (`zephyr_entry` + `zephyr_entry_robot1`). The floor moves with a real
-    // deletion, never to make a red go away.
+    // The floor moves with a real deletion or a real widening, never to make a
+    // red go away. History: 13 (phase-291) -> 10 (phase-331 W3/W4 deleted four
+    // themed micro-workspaces carrying a `zephyr_entry` leaf) -> 13 again here,
+    // for two reasons that cancelled out to a red:
+    //
+    //   - `b169a0edb` (#537, phase-350 W3) retired `zephyr/rust/talker-aemv8r`
+    //     with the rest of the FVP code, leaving SIX under `examples/zephyr/rust/`
+    //     where the 10 assumed seven. A real deletion whose floor was not moved,
+    //     so this test has been red on main since.
+    //   - widening the rule above picks up the four `zephyr_rust_*_entry`
+    //     feature packages it had been skipping.
+    //
+    // 6 (examples/zephyr/rust) + 3 (zephyr_entry, zephyr_entry_robot1,
+    // realtime-rust's) + 4 (features/safety `zephyr_rust_*_entry`) = 13.
     assert!(
-        zephyr_leaves >= 10,
-        "expected >=10 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
+        zephyr_leaves >= 13,
+        "expected >=13 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
     );
 }
 
