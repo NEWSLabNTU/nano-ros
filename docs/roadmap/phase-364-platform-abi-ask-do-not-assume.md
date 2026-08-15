@@ -1,6 +1,6 @@
 # phase-364 — the platform ABI states its own sizes, tasks and refusals
 
-**Status (2026-08-16). W1, W2, W4 LANDED; W3 and W5 implemented, runtime verification in progress. Implements [RFC-0076](../design/0076-platform-abi-ask-do-not-assume.md).**
+**Status (2026-08-16). W1-W5 all LANDED — the phase is complete pending a tier-1 sweep. Implements [RFC-0076](../design/0076-platform-abi-ask-do-not-assume.md).**
 The ABI cannot say how big its own objects are, what a task should look like, or
 that a platform simply does not do something — so callers guess, and nothing
 checks the guesses. This phase makes each of those things sayable.
@@ -131,6 +131,19 @@ Found on the way: the NuttX C/C++ images lost their panic handler when
 phase-361 W8.b moved `nros-c`'s from the `global-allocator` gate onto its own
 `panic-spin` feature. The FFI bins now name that provider explicitly, which is
 the honest expression of "this bin owns the image runtime".
+
+**VERIFIED.** NuttX arm fixtures build clean and `just nuttx test` passes 2/2
+with `nros_nuttx_spawn_tier` gone. `just threadx_linux test-c-port` passes —
+the ThreadX acceptance this item owed, on the port where `attr == NULL` used to
+be a hard failure.
+
+And the ThreadX build is where W2's asserts paid for themselves: the wrapper
+storage tripped `NROS_PLATFORM_TASK_STORAGE_SIZE too small for this port`,
+because `sizeof(TX_THREAD)` is **360** bytes on the 64-bit port while the bound
+came from `zpico-sys`'s hand-written "≈ 232" — right for 32-bit, 128 bytes short
+here. Raised to 512 after MEASURING. Under the old regime that number was prose
+about another platform's struct and the failure mode was a corrupted neighbour;
+under the new one it was a compile error in the port that owns the type.
 
 ### W4 (M4) — generate the export list, so the two provider kinds cannot drift
 
