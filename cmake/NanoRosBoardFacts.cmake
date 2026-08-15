@@ -91,6 +91,23 @@ function(nros_resolve_board_facts)
         # point of W4. A dir with no deploy at all is not: the same modules
         # configure host-side helper builds. Both SAY so; a wave about values
         # arriving silently must not itself decide in silence.
+        # An UNRESOLVABLE board is issue 0606 (`[deploy.*].board` and a
+        # descriptor's `names` are different vocabularies — `nuttx-qemu-arm`
+        # matches neither the names nor the directory `nros-board-nuttx-qemu`).
+        # That is a known gap in the mapping, not a broken configuration, and
+        # failing here converts it into a broken LANE: `nros sync` has always
+        # skipped those leaves with a count. Say it loudly and continue; the
+        # FATAL below stays for a board that DOES resolve and whose deploy asks
+        # for something it cannot do (W4's netstack domain), which is a real
+        # configuration error the user can act on.
+        if(_err MATCHES "no board descriptor claims")
+            message(STATUS
+                "nano-ros: board facts NOT delivered — no descriptor claims this "
+                "deploy's board (issue 0606); the build proceeds without the "
+                "board rung, as it did before phase-351.")
+            set(NROS_BOARD_FACTS_ENV "" CACHE INTERNAL "phase-351 W5: unresolvable board (0606)")
+            return()
+        endif()
         if(_err MATCHES "no \\[deploy" OR _err MATCHES "no system.toml")
             message(STATUS
                 "nano-ros: board facts NOT delivered — ${_ws} declares no deploy "
