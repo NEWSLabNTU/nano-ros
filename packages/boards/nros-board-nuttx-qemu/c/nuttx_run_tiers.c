@@ -305,61 +305,14 @@ int nros_nuttx_apply_current_priority(const char* name, uint32_t priority) {
     return 0;
 }
 
-/* phase-359 W7 — spawn a detached tier task for the RUST arm.
+/* phase-364 W3 — `nros_nuttx_spawn_tier` is GONE.
  *
- * The Rust `run_tiers` used `std::thread::Builder::spawn_scoped`. Dropping std
- * from this family (phase-359) removes that, and the replacement has to live
- * HERE rather than in Rust for the same reason every other `nros_nuttx_*` shim
- * in this file does: `pthread_attr_t` is Kconfig-dependent on NuttX
- * (`CONFIG_SCHED_SPORADIC` alone changes its size), so a Rust-side layout mirror
- * is issue 0570 — where Rust's 20-byte `pthread_attr_t` met NuttX's 56-byte one
- * and `pthread_attr_init` smashed 36 bytes of the caller's frame. Compiled
- * against this kernel's own headers, the struct cannot disagree with it.
- *
- * Detached, because a tier task spins forever and is never joined — the same
- * lifetime `nuttx_create_tier_thread` below gives the C arm's tiers.
- *
- * Scheduling is deliberately INHERITED, not set here: the Rust arm self-applies
- * priority / sporadic / affinity at tier entry via the three
- * `nros_nuttx_apply_current_*` helpers above, which is where its markers are
- * emitted and what issues 0263 / 0246 / phase-296 W5.11 tuned. Setting policy at
- * create time as well would apply the tier's priority a second time, from a
- * second place — the C arm does it at create because it has no entry-side hook.
- *
- * Returns 0 on success, else the `pthread_create` errno (which the Rust caller
- * prints — std's `io::Error` had discarded it; see issue 0246). */
-int nros_nuttx_spawn_tier(const char* name, size_t stack_bytes, void* (*entry)(void*), void* arg);
-int nros_nuttx_spawn_tier(const char* name, size_t stack_bytes, void* (*entry)(void*), void* arg) {
-    if (entry == NULL) {
-        return EINVAL;
-    }
-    pthread_attr_t attr;
-    int rc = pthread_attr_init(&attr);
-    if (rc != 0) {
-        return rc;
-    }
-    (void)pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    (void)pthread_attr_setstacksize(
-        &attr, (stack_bytes > 0u) ? stack_bytes : NROS_NUTTX_TIER_STACK_BYTES);
-
-    pthread_t tid;
-    rc = pthread_create(&tid, &attr, entry, arg);
-    (void)pthread_attr_destroy(&attr);
-    if (rc != 0) {
-        return rc;
-    }
-    /* Name the task where the kernel supports it: issue 0579's diagnosis read
-     * tier identity out of a crash dump, and `std::thread::Builder::name` was
-     * what put it there. */
-#ifdef CONFIG_TASK_NAME_SIZE
-    if (name != NULL) {
-        (void)pthread_setname_np(tid, name);
-    }
-#else
-    (void)name;
-#endif
-    return 0;
-}
+ * phase-359 W7 added it because the platform ABI had no portable way to ask for
+ * a stack size, and building a `pthread_attr_t` from Rust is issue 0570. W3
+ * gave the ABI `nros_platform_task_attr_t`, so the Rust arm calls
+ * `nros_platform_task_init` directly and this shim has nothing left to do. The
+ * `pthread_attr_t` layout that must not be mirrored stays inside the POSIX port
+ * — which is where it always belonged, and which NuttX runs. */
 
 /* nuttx_tier_thread — body of each non-boot tier thread.
  *

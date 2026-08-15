@@ -293,11 +293,103 @@ uint32_t nros_platform_time_since_epoch_nanos(void);
 
 /* ---- Threading: tasks ---- */
 
-/** Spawn a new task. `task` is opaque caller-provided storage (size
- *  determined by the implementor); `attr` carries scheduling hints
- *  (priority, stack size, …) or is `NULL` for defaults; `entry` is the
- *  task entry point; `arg` is forwarded to `entry`. Returns `0` on
- *  success, non-zero on failure. */
+/* ---- Task attributes ----
+ *
+ * phase-364 W3 (RFC-0076 D2). `attr` used to be an undefined `void *`: IGNORED
+ * by the posix and zephyr ports, a PRIVATE struct in the freertos and esp-idf
+ * ports, and MANDATORY on threadx (a `NULL` was a hard failure). Three struct
+ * types, no shared definition, and therefore no portable way to ask for a stack
+ * size — which is why phase-359 W7 wrote a bespoke C shim to spawn a NuttX tier
+ * with a 64 KiB stack, and why W10's generic spawn passes `NULL` and would fail
+ * on ThreadX.
+ *
+ * One type now, defined here, and `attr == NULL` means "every default" on
+ * EVERY port. */
+typedef struct {
+    /** Task name for the kernel's own tables and crash dumps. `NULL` = the
+     *  port's default. Ports whose kernel has no name concept ignore it. */
+    const char *name;
+    /** Stack size in BYTES. `0` = the port's default.
+     *
+     *  Always bytes, never words: FreeRTOS's `xTaskCreate` takes words, and the
+     *  private struct it replaced called the field `stack_depth` while ThreadX's
+     *  identically-named field was bytes. The conversion belongs in the one port
+     *  that needs it, not in every caller. */
+    size_t stack_bytes;
+    /** Caller-provided stack memory, or `NULL` to let the port obtain it.
+     *
+     *  ThreadX requires the stack from its caller; POSIX, FreeRTOS and ESP-IDF
+     *  let the kernel allocate and ignore this. A port that needs memory and is
+     *  given `NULL` obtains it itself and releases it in `task_free`. */
+    void *stack_mem;
+    /** Scheduling priority in the NORMALISED band: `0` = least urgent, larger
+     *  = more urgent, `NROS_PLATFORM_PRIORITY_INHERIT` = keep the creating
+     *  task's.
+     *
+     *  phase-364 W5. This was "platform-native", and the natives disagree: `0`
+     *  is the HIGHEST priority on ThreadX and the LOWEST on FreeRTOS, while
+     *  Zephyr runs lower-is-more-urgent with negatives reserved for cooperative
+     *  threads. A tier priority is authored ONCE, in `system.toml`, and
+     *  deployed to several of them — so the same number meant "run me first" on
+     *  one board and "run me last" on another, with nothing in the ABI
+     *  recording which convention a port used.
+     *
+     *  Each port maps this band onto its own range and documents the map at its
+     *  `task_init`. Use `NROS_PLATFORM_PRIORITY_RAW(n)` to bypass the band when
+     *  tuning one RTOS against its own documentation — that is a legitimate
+     *  thing to do, and the band should not make it impossible. */
+    int32_t priority;
+    /** SMP core to pin to, or `-1` for unpinned. Ignored on single-core. */
+    int8_t core;
+    /** `NROS_PLATFORM_TASK_*` flags below. */
+    uint8_t flags;
+} nros_platform_task_attr_t;
+
+/** The task is never joined; its resources are reclaimed when it exits. */
+#define NROS_PLATFORM_TASK_DETACHED 0x01u
+
+/* ---- Normalised priority band (phase-364 W5) ----
+ *
+ * `0` = least urgent … `NROS_PLATFORM_PRIORITY_MAX` = most urgent. A port maps
+ * the band onto its native range; the map is documented at each port's
+ * `task_init` and is the ONLY place a direction is decided.
+ *
+ * The band is deliberately small. It is a portable ORDERING, not a claim that
+ * every RTOS has 256 usable levels — ThreadX ships 32 by default, FreeRTOS's
+ * `configMAX_PRIORITIES` is commonly 5 to 32, and a map that pretended
+ * otherwise would collapse distinct tiers onto one level without saying so. */
+#define NROS_PLATFORM_PRIORITY_MIN      0
+#define NROS_PLATFORM_PRIORITY_MAX      255
+/** Keep the creating task's priority. */
+#define NROS_PLATFORM_PRIORITY_INHERIT  INT32_MIN
+
+/** Escape hatch: pass `n` to the kernel untouched, bypassing the band.
+ *
+ * Encoded as a large negative so it cannot collide with a band value, and so a
+ * port that has not implemented the escape sees an out-of-band number rather
+ * than a plausible-looking priority. */
+#define NROS_PLATFORM_PRIORITY_RAW(n)   (-0x40000000 - (int32_t) (n))
+/** True when `p` came from `NROS_PLATFORM_PRIORITY_RAW`. */
+#define NROS_PLATFORM_PRIORITY_IS_RAW(p) \
+    ((p) <= -0x40000000 && (p) != NROS_PLATFORM_PRIORITY_INHERIT)
+/** The raw value `p` carries. Only valid when `IS_RAW(p)`. */
+#define NROS_PLATFORM_PRIORITY_RAW_VALUE(p) (-0x40000000 - (int32_t) (p))
+
+/** Fill `attr` with the defaults — equivalent to passing `NULL` to
+ *  `task_init`.
+ *
+ *  Callers use this rather than a designated initialiser so that a field added
+ *  to the struct later stays source-compatible for out-of-tree ports. */
+void nros_platform_task_attr_init(nros_platform_task_attr_t *attr);
+
+/** Spawn a new task. `task` is opaque caller-provided storage (size from
+ *  `nros_platform_task_storage_size`); `attr` is a
+ *  `nros_platform_task_attr_t *`, or `NULL` for every default; `entry` is the
+ *  task entry point; `arg` is forwarded to `entry`.
+ *
+ *  Returns `NROS_PLATFORM_RET_OK`, or `INVALID` (a NULL where storage or an
+ *  entry is required), `NOMEM` (resources exhausted now — retry may succeed) or
+ *  `UNSUPPORTED` (this port has no tasks at all). */
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg);
 

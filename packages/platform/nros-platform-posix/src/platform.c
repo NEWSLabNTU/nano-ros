@@ -206,17 +206,56 @@ static void *nros_posix_task_trampoline(void *raw) {
     return raw;
 }
 
+void nros_platform_task_attr_init(nros_platform_task_attr_t *attr) {
+    if (attr == NULL) {
+        return;
+    }
+    memset(attr, 0, sizeof(*attr));
+    attr->priority = INT32_MIN; /* inherit */
+    attr->core = -1;            /* unpinned */
+}
+
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
-    (void) attr;
     /* phase-364 W1 — INVALID: the caller passed a NULL where storage or an
      * entry point is required, which retrying cannot fix. */
     if (task == NULL || entry == NULL) {
         return NROS_PLATFORM_RET_INVALID;
     }
+
+    /* phase-364 W3 — `attr` is read now rather than ignored. This port used to
+     * do `(void) attr;`, which is why a caller could not ask for a stack size
+     * and why phase-359 W7 wrote `nros_nuttx_spawn_tier` in C to get one: NuttX
+     * runs this very port, so the shim existed to reach `pthread_attr_t` from a
+     * caller the ABI gave no way to express it. */
+    const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;
+
+    pthread_attr_t pattr;
+    pthread_attr_t *pattr_p = NULL;
+    if (a != NULL && (a->stack_bytes > 0u || (a->flags & NROS_PLATFORM_TASK_DETACHED) != 0u)) {
+        if (pthread_attr_init(&pattr) != 0) {
+            return NROS_PLATFORM_RET_NOMEM;
+        }
+        pattr_p = &pattr;
+        if (a->stack_bytes > 0u) {
+            /* Below PTHREAD_STACK_MIN the call fails; treat that as the caller
+             * asking for something impossible rather than a shortage. */
+            if (pthread_attr_setstacksize(&pattr, a->stack_bytes) != 0) {
+                (void) pthread_attr_destroy(&pattr);
+                return NROS_PLATFORM_RET_INVALID;
+            }
+        }
+        if ((a->flags & NROS_PLATFORM_TASK_DETACHED) != 0u) {
+            (void) pthread_attr_setdetachstate(&pattr, PTHREAD_CREATE_DETACHED);
+        }
+    }
+
     pthread_t *t = (pthread_t *) task;
-    /* The simple path: forward directly to pthread_create. */
-    if (pthread_create(t, NULL, entry, arg) != 0) {
+    int rc = pthread_create(t, pattr_p, entry, arg);
+    if (pattr_p != NULL) {
+        (void) pthread_attr_destroy(pattr_p);
+    }
+    if (rc != 0) {
         /* phase-364 W1 — NOMEM, not ERROR. `pthread_create` fails with EAGAIN
          * when the system is out of thread resources, and issue 0246 is exactly
          * that: a TRANSIENT failure on NuttX under load, which the tier spawn
@@ -224,11 +263,63 @@ int8_t nros_platform_task_init(void *task, void *attr,
          * shortage into a dead feature. */
         return NROS_PLATFORM_RET_NOMEM;
     }
+
+    /* phase-364 W5 — priority.
+     *
+     * POSIX runs the same direction as the band (higher = more urgent) but only
+     * under a real-time policy: under the default SCHED_OTHER the value is
+     * ignored, and setting SCHED_FIFO needs privilege the process may not have.
+     * So this is applied AFTER create, best-effort, and a refusal is not a
+     * spawn failure — the task runs at the inherited priority, which is what it
+     * did before this field existed.
+     *
+     * NuttX runs this port, and phase-296/issue 0263 already established that a
+     * tier self-applies its priority at entry through
+     * `nros_nuttx_apply_current_priority`; this covers the create-time case the
+     * ABI can express portably. */
+    if (a != NULL && a->priority != NROS_PLATFORM_PRIORITY_INHERIT) {
+        int lo = sched_get_priority_min(SCHED_FIFO);
+        int hi = sched_get_priority_max(SCHED_FIFO);
+        int native;
+        if (NROS_PLATFORM_PRIORITY_IS_RAW(a->priority)) {
+            native = (int) NROS_PLATFORM_PRIORITY_RAW_VALUE(a->priority);
+        } else if (a->priority >= 0 && hi > lo) {
+            int32_t band = a->priority > NROS_PLATFORM_PRIORITY_MAX
+                               ? NROS_PLATFORM_PRIORITY_MAX
+                               : a->priority;
+            native = lo + (int) (((int64_t) band * (hi - lo)) / NROS_PLATFORM_PRIORITY_MAX);
+        } else {
+            native = -1;
+        }
+        if (native >= 0) {
+            struct sched_param sp;
+            memset(&sp, 0, sizeof(sp));
+            sp.sched_priority = native;
+            (void) pthread_setschedparam(*t, SCHED_FIFO, &sp);
+        }
+    }
+
+    /* Naming is best-effort: it reaches crash dumps and `ps`, and a kernel that
+     * declines must not fail the spawn.
+     *
+     * Gated on `_GNU_SOURCE` rather than on the OS: `pthread_setname_np` is an
+     * extension, and this file deliberately compiles under `_POSIX_C_SOURCE`
+     * + `_DEFAULT_SOURCE`, which do not declare it. Testing the OS instead
+     * would compile to an implicit declaration — which is an ERROR here, not a
+     * warning — on exactly the platforms it was meant to help. */
+#ifdef _GNU_SOURCE
+    if (a != NULL && a->name != NULL) {
+        (void) pthread_setname_np(*t, a->name);
+    }
+#else
+    (void) 0; /* naming unavailable under this feature-test level */
+#endif
+
     /* Reference the trampoline so the compiler doesn't strip it; a
      * future signature change (e.g. argument repacking) will route
      * through it. */
     (void) nros_posix_task_trampoline;
-    return 0;
+    return NROS_PLATFORM_RET_OK;
 }
 
 int8_t nros_platform_task_join(void *task) {

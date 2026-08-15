@@ -796,9 +796,16 @@ impl WakeSignalFd {
         let arg = portable_atomic_util::Arc::as_ptr(&ctx) as *mut core::ffi::c_void;
         // SAFETY: `arg` points at a ctx this struct owns and keeps alive until
         // after the join in `Drop`.
-        let Some(task) =
-            (unsafe { super::platform_task::PlatformTask::spawn(signal_fd_worker, arg) })
-        else {
+        let Some(task) = (unsafe {
+            super::platform_task::PlatformTask::spawn(
+                signal_fd_worker,
+                arg,
+                // A read(2) loop and one atomic store — the smallest stack any
+                // port will honour is plenty.
+                8192,
+                c"nros-wakefd".as_ptr(),
+            )
+        }) else {
             // SAFETY: nothing else holds the fd — the task never started.
             unsafe { libc::close(fd) };
             return Err(NodeError::NotInitialized);

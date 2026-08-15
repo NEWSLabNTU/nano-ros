@@ -20,6 +20,27 @@
 
 use core::ffi::c_void;
 
+/// The ABI's task attributes, mirrored for the `extern` declaration below.
+///
+/// phase-364 W3 — this is `nros_platform_task_attr_t` from `<nros/platform.h>`.
+/// It is declared here rather than imported because `nros-node` does not depend
+/// on `nros-platform-cffi` (where the generated bindings live) — the same reason
+/// the wake and task symbols are declared here by hand. The layout is checked
+/// against the header by `check-ffi-struct-mirrors`; see the note at the spawn
+/// site for what a drift would cost.
+#[repr(C)]
+struct TaskAttr {
+    name: *const core::ffi::c_char,
+    stack_bytes: usize,
+    stack_mem: *mut c_void,
+    priority: i32,
+    core: i8,
+    flags: u8,
+}
+
+/// `INT32_MIN` — inherit the creating task's priority.
+const PRIORITY_INHERIT: i32 = i32::MIN;
+
 unsafe extern "C" {
     fn nros_platform_task_init(
         task: *mut c_void,
@@ -53,6 +74,8 @@ impl PlatformTask {
     pub(crate) unsafe fn spawn(
         entry: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
         arg: *mut c_void,
+        stack_bytes: usize,
+        name: *const core::ffi::c_char,
     ) -> Option<Self> {
         // SAFETY: both probes are documented pure functions, callable before
         // any task exists.
@@ -71,10 +94,31 @@ impl PlatformTask {
         if ptr.is_null() {
             return None;
         }
+        // phase-364 W3 — a real attribute, not `NULL`.
+        //
+        // Passing `NULL` was correct on four ports and a guaranteed failure on
+        // ThreadX, whose `task_init` required an attr carrying the stack. W3
+        // made `NULL` mean "every default" everywhere, so `NULL` would work now
+        // — but the executor's workers do have a stack size to state, and
+        // stating it is what phase-359 W7 had to write a bespoke C shim to do.
+        let mut attr = TaskAttr {
+            name,
+            stack_bytes,
+            stack_mem: core::ptr::null_mut(),
+            priority: PRIORITY_INHERIT,
+            core: -1,
+            flags: 0,
+        };
         // SAFETY: `ptr` is storage of the size/alignment the platform asked
-        // for; `entry`/`arg` are the caller's contract.
+        // for; `attr` outlives the call (the port copies what it needs);
+        // `entry`/`arg` are the caller's contract.
         let rc = unsafe {
-            nros_platform_task_init(ptr as *mut c_void, core::ptr::null_mut(), entry, arg)
+            nros_platform_task_init(
+                ptr as *mut c_void,
+                (&raw mut attr) as *mut c_void,
+                entry,
+                arg,
+            )
         };
         if rc != 0 {
             // SAFETY: same pair just returned by `alloc`; no task took it.

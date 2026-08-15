@@ -286,59 +286,126 @@ uint32_t nros_platform_time_since_epoch_nanos(void)   { return 0; }
 
 /* ---- Tasks ----
  *
- * Storage is a caller-allocated `TX_THREAD` instance (size known to
- * the application that supplies the stack as well; we forward both
- * via the `attr` argument's `stack_depth`).
+ * Storage is a caller-allocated `nros_threadx_task_t` — the size to allocate
+ * comes from `nros_platform_task_storage_size()`, so this port can carry a
+ * pointer beside the control block without any caller knowing.
  */
 
+/* phase-364 W3 — `nros_threadx_task_attr_t` deleted; the ABI defines
+ * `nros_platform_task_attr_t` for every port. */
+
+/* phase-364 W3 — task storage is a WRAPPER, not a bare `TX_THREAD`.
+ *
+ * ThreadX is the one port that cannot let the kernel find a stack: the caller
+ * supplies the memory. That is why `attr == NULL` used to be a hard failure
+ * here while posix and zephyr ignored `attr` entirely — the single largest
+ * portability hole in the old ABI.
+ *
+ * With W2's storage probe the port can declare its own size, so it now carries
+ * a pointer beside the control block and can OWN a stack it allocated when the
+ * caller supplied none. `attr == NULL` therefore means the same here as
+ * everywhere else. */
 typedef struct {
-    const char *name;
-    UINT priority;
-    size_t stack_depth;
-    void  *stack_base; /* required: caller supplies stack memory */
-} nros_threadx_task_attr_t;
+    TX_THREAD thread;
+    /** Non-NULL when this port allocated the stack and must release it. */
+    void *owned_stack;
+} nros_threadx_task_t;
+
+/** Default stack for a task spawned with no `stack_bytes`. Sized for the
+ *  zenoh-pico / executor call depth, matching the other ports' defaults. */
+#define NROS_THREADX_DEFAULT_STACK_BYTES 16384u
+
+void nros_platform_task_attr_init(nros_platform_task_attr_t *attr) {
+    if (attr == NULL) {
+        return;
+    }
+    memset(attr, 0, sizeof(*attr));
+    attr->priority = INT32_MIN;
+    attr->core = -1;
+}
 
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
-    /* phase-364 W1 — INVALID, not the generic ERROR: these are all "the caller
-     * passed something impossible", and retrying unchanged cannot help.
-     *
-     * `attr == NULL` is in that set only until W3, which makes a NULL attr mean
-     * "every default" on every port. It is the one place this port diverges
-     * from posix and zephyr, which ignore `attr` entirely. */
-    if (task == NULL || attr == NULL || entry == NULL) {
+    /* phase-364 W1/W3 — INVALID for a caller-side impossibility. `attr` is NO
+     * LONGER among them: a NULL means every default, as on every other port. */
+    if (task == NULL || entry == NULL) {
         return NROS_PLATFORM_RET_INVALID;
     }
-    const nros_threadx_task_attr_t *a = (const nros_threadx_task_attr_t *) attr;
-    if (a->stack_base == NULL || a->stack_depth == 0) {
-        return NROS_PLATFORM_RET_INVALID;
+    const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;
+
+    nros_threadx_task_t *slot = (nros_threadx_task_t *) task;
+    memset(slot, 0, sizeof(*slot));
+
+    size_t stack_bytes = (a != NULL && a->stack_bytes > 0u)
+                             ? a->stack_bytes
+                             : NROS_THREADX_DEFAULT_STACK_BYTES;
+    void *stack = (a != NULL) ? a->stack_mem : NULL;
+    if (stack == NULL) {
+        stack = nros_platform_alloc(stack_bytes);
+        if (stack == NULL) {
+            /* A shortage now, not a permanent property of the port. */
+            return NROS_PLATFORM_RET_NOMEM;
+        }
+        slot->owned_stack = stack;
     }
+
     /* ThreadX entry signature is `void(*)(ULONG)`. We forward our
-     * pointer-shaped `arg` via reinterpretation; same trick the Rust
-     * impl uses. */
-    /* Reinterpret the user's `void *(*)(void *)` entry as the
-     * ThreadX-shaped `void(*)(ULONG)`. The double-cast via
+     * pointer-shaped `arg` via reinterpretation; the double-cast via
      * `void *` defeats `-Werror=cast-function-type`; ABI parity is
      * the caller's responsibility (matches the Rust impl). */
     union { void *(*src)(void *); VOID (*dst)(ULONG); } _entry_cvt;
     _entry_cvt.src = entry;
+
+    /* phase-364 W5 — map the normalised band onto ThreadX's range.
+     *
+     * ThreadX INVERTS: 0 is the HIGHEST priority, TX_MAX_PRIORITIES-1 the
+     * lowest. The band is the other way round (larger = more urgent), so this
+     * is the port where a shared number would otherwise mean the opposite of
+     * what its author wrote — the reason W5 exists.
+     *
+     * `RAW` bypasses the map for a caller tuning ThreadX against its own
+     * documentation. */
+    UINT prio = (UINT) (TX_MAX_PRIORITIES / 2); /* default: mid-range */
+    if (a != NULL) {
+        if (NROS_PLATFORM_PRIORITY_IS_RAW(a->priority)) {
+            prio = (UINT) NROS_PLATFORM_PRIORITY_RAW_VALUE(a->priority);
+        } else if (a->priority != NROS_PLATFORM_PRIORITY_INHERIT && a->priority >= 0) {
+            int32_t band = a->priority > NROS_PLATFORM_PRIORITY_MAX
+                               ? NROS_PLATFORM_PRIORITY_MAX
+                               : a->priority;
+            /* Invert, then scale the band onto [0, TX_MAX_PRIORITIES-1]. */
+            int32_t inverted = NROS_PLATFORM_PRIORITY_MAX - band;
+            prio = (UINT) ((inverted * (TX_MAX_PRIORITIES - 1)) / NROS_PLATFORM_PRIORITY_MAX);
+        }
+    }
+    if (prio >= (UINT) TX_MAX_PRIORITIES) {
+        prio = (UINT) TX_MAX_PRIORITIES - 1u;
+    }
+
     UINT rc = tx_thread_create(
-        (TX_THREAD *) task,
-        a->name != NULL ? (char *) a->name : (char *) "nros",
+        &slot->thread,
+        (a != NULL && a->name != NULL) ? (char *) a->name : (char *) "nros",
         _entry_cvt.dst,
         (ULONG) (uintptr_t) arg,
-        a->stack_base,
-        (ULONG) a->stack_depth,
-        a->priority != 0 ? a->priority : 16,  /* TX_MAX_PRIORITIES / 2 */
-        a->priority != 0 ? a->priority : 16,
+        stack,
+        (ULONG) stack_bytes,
+        prio,
+        prio,
         TX_NO_TIME_SLICE,
         TX_AUTO_START);
-    /* phase-364 W1 — a refused create is a RESOURCE condition, not a permanent
-     * one: ThreadX rejects when the priority is out of range (a caller bug) or
-     * when the control block / stack cannot be taken. `NOMEM` tells the caller
-     * to retry rather than to cache the refusal — the distinction issue 0246
-     * turns on. */
-    return rc == TX_SUCCESS ? NROS_PLATFORM_RET_OK : NROS_PLATFORM_RET_NOMEM;
+    if (rc != TX_SUCCESS) {
+        if (slot->owned_stack != NULL) {
+            nros_platform_free(slot->owned_stack);
+            slot->owned_stack = NULL;
+        }
+        /* phase-364 W1 — a refused create is a RESOURCE condition, not a
+         * permanent one: ThreadX rejects when the priority is out of range (a
+         * caller bug) or when the control block cannot be taken. `NOMEM` tells
+         * the caller to retry rather than cache the refusal — the distinction
+         * issue 0246 turns on. */
+        return NROS_PLATFORM_RET_NOMEM;
+    }
+    return NROS_PLATFORM_RET_OK;
 }
 
 int8_t nros_platform_task_join(void *task) {
@@ -347,7 +414,7 @@ int8_t nros_platform_task_join(void *task) {
      * reports completed/terminated. */
     UINT state = 0;
     while (1) {
-        if (tx_thread_info_get((TX_THREAD *) task,
+        if (tx_thread_info_get(&((nros_threadx_task_t *) task)->thread,
                                TX_NULL, &state,
                                TX_NULL, TX_NULL, TX_NULL,
                                TX_NULL, TX_NULL, TX_NULL) != TX_SUCCESS) {
@@ -367,7 +434,9 @@ int8_t nros_platform_task_detach(void *task) {
 
 int8_t nros_platform_task_cancel(void *task) {
     if (task == NULL) return -1;
-    return tx_thread_terminate((TX_THREAD *) task) == TX_SUCCESS ? 0 : -1;
+    return tx_thread_terminate(&((nros_threadx_task_t *) task)->thread) == TX_SUCCESS
+               ? NROS_PLATFORM_RET_OK
+               : NROS_PLATFORM_RET_ERROR;
 }
 
 void nros_platform_task_exit(void) {
@@ -377,7 +446,14 @@ void nros_platform_task_exit(void) {
 
 void nros_platform_task_free(void **task) {
     if (task == NULL || *task == NULL) return;
-    (void) tx_thread_delete((TX_THREAD *) *task);
+    nros_threadx_task_t *slot = (nros_threadx_task_t *) *task;
+    (void) tx_thread_delete(&slot->thread);
+    /* phase-364 W3 — release a stack this port allocated because the caller
+     * supplied none. A caller-provided `stack_mem` is the caller's to free. */
+    if (slot->owned_stack != NULL) {
+        nros_platform_free(slot->owned_stack);
+        slot->owned_stack = NULL;
+    }
 }
 
 /* ---- Mutex (non-recursive + recursive share the same primitive) ----
@@ -552,11 +628,11 @@ size_t nros_platform_wake_storage_align(void) {
  * probes above. `task_init`'s contract says the implementor decides the size;
  * these let a caller ASK instead of hard-coding it (issue 0570's trap). */
 size_t nros_platform_task_storage_size(void) {
-    return sizeof(TX_THREAD);
+    return sizeof(nros_threadx_task_t);
 }
 
 size_t nros_platform_task_storage_align(void) {
-    return _Alignof(TX_THREAD);
+    return _Alignof(nros_threadx_task_t);
 }
 /* phase-364 W2 (RFC-0076 D1) — opaque-storage sizing for the lock family, the
  * siblings of the `wake` and `task` probes.
@@ -584,7 +660,7 @@ _Static_assert(NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE >= sizeof(TX_MUTEX),
                "NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE too small for this port");
 _Static_assert(NROS_PLATFORM_CONDVAR_STORAGE_SIZE >= sizeof(TX_SEMAPHORE),
                "NROS_PLATFORM_CONDVAR_STORAGE_SIZE too small for this port");
-_Static_assert(NROS_PLATFORM_TASK_STORAGE_SIZE >= sizeof(TX_THREAD),
+_Static_assert(NROS_PLATFORM_TASK_STORAGE_SIZE >= sizeof(nros_threadx_task_t),
                "NROS_PLATFORM_TASK_STORAGE_SIZE too small for this port");
 
 

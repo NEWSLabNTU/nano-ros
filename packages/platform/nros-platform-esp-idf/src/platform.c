@@ -161,11 +161,8 @@ typedef struct {
     void *arg;
 } nros_esp_task_t;
 
-typedef struct {
-    const char *name;
-    uint32_t priority;
-    size_t stack_depth;
-} nros_esp_task_attr_t;
+/* phase-364 W3 — private task attr struct deleted; the ABI defines
+ * `nros_platform_task_attr_t` for every port. */
 
 typedef struct {
     void *handle;
@@ -185,6 +182,15 @@ static void esp_task_trampoline(void *raw) {
     vTaskDelete(NULL);
 }
 
+void nros_platform_task_attr_init(nros_platform_task_attr_t *attr) {
+    if (attr == NULL) {
+        return;
+    }
+    memset(attr, 0, sizeof(*attr));
+    attr->priority = INT32_MIN;
+    attr->core = -1;
+}
+
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
     /* phase-364 W1 — INVALID: a NULL where storage or an entry is required. */
@@ -195,15 +201,38 @@ int8_t nros_platform_task_init(void *task, void *attr,
     t->entry = entry;
     t->arg = arg;
 
-    const char *name = "nros";
-    uint32_t priority = tskIDLE_PRIORITY + 1;
-    uint32_t stack_depth = configMINIMAL_STACK_SIZE;
-    if (attr != NULL) {
-        const nros_esp_task_attr_t *a = (const nros_esp_task_attr_t *) attr;
-        if (a->name != NULL)     name = a->name;
-        if (a->priority != 0)    priority = a->priority;
-        if (a->stack_depth != 0) stack_depth = (uint32_t) a->stack_depth;
+    /* phase-364 W3 — one ABI-defined attribute struct; `NULL` = every default. */
+    const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;
+    const char *name = (a != NULL && a->name != NULL) ? a->name : "nros";
+    /* phase-364 W5 — map the normalised band onto this kernel's range.
+     *
+     * FreeRTOS runs the SAME direction as the band (larger = more urgent), so
+     * this is a scale, not an inversion — unlike ThreadX, where the identical
+     * authored number means the opposite. `configMAX_PRIORITIES` is commonly 5
+     * to 32, so distinct band values do collapse onto one level; the band is a
+     * portable ORDERING, not a promise of 256 levels. */
+    uint32_t priority = (uint32_t) (configMAX_PRIORITIES / 2);
+    if (a != NULL) {
+        if (NROS_PLATFORM_PRIORITY_IS_RAW(a->priority)) {
+            priority = (uint32_t) NROS_PLATFORM_PRIORITY_RAW_VALUE(a->priority);
+        } else if (a->priority != NROS_PLATFORM_PRIORITY_INHERIT && a->priority >= 0) {
+            int32_t band = a->priority > NROS_PLATFORM_PRIORITY_MAX
+                               ? NROS_PLATFORM_PRIORITY_MAX
+                               : a->priority;
+            priority = (uint32_t) ((band * (configMAX_PRIORITIES - 1)) / NROS_PLATFORM_PRIORITY_MAX);
+        }
     }
+    if (priority >= (uint32_t) configMAX_PRIORITIES) {
+        priority = (uint32_t) configMAX_PRIORITIES - 1u;
+    }
+    size_t stack_bytes = (a != NULL && a->stack_bytes > 0u)
+                             ? a->stack_bytes
+                             : (size_t) (configMINIMAL_STACK_SIZE * sizeof(StackType_t));
+    /* phase-364 W3 — ESP-IDF's `xTaskCreate` takes the stack size in BYTES,
+     * unlike vanilla FreeRTOS which takes words. The ABI speaks bytes, so this
+     * port passes the value straight through — and that difference is exactly
+     * why a shared field called `stack_depth` was a hazard. */
+    uint32_t stack_depth = (uint32_t) stack_bytes;
 
     TaskHandle_t handle = NULL;
     if (xTaskCreate(esp_task_trampoline, name, stack_depth,

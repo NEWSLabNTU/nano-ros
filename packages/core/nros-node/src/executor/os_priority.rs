@@ -67,6 +67,14 @@ use super::{node_wake::NodeWake, platform_task::PlatformTask};
 /// apply backpressure rather than buffer indefinitely (see the module docs).
 const MAILBOX_DEPTH: usize = 16;
 
+/// Stack for a worker task, in bytes.
+///
+/// phase-364 W3 — stated rather than defaulted. The workers run user callbacks
+/// through `try_process`, so they need more than a port's minimal default; 16
+/// KiB matches what the RTOS glue uses for a tier that carries the
+/// zenoh-pico/executor call depth with its arena on the heap.
+const WORKER_STACK_BYTES: usize = 16384;
+
 /// Distinct non-zero `os_pri` values the pool can serve. Power of two —
 /// `FnvIndexMap` requires it. PiCAS-style assignments use a handful of levels;
 /// exceeding this falls back to cooperative dispatch rather than failing.
@@ -165,8 +173,16 @@ impl OsPriorityWorker {
         });
         let arg = Arc::as_ptr(&ctx) as *mut c_void;
         // SAFETY: `arg` points at a `WorkerCtx` this struct owns and keeps
-        // alive until after the join in `drop`.
-        let task = unsafe { PlatformTask::spawn(worker_entry, arg) }?;
+        // alive until after the join in `drop`. The name is a NUL-terminated
+        // literal with static lifetime.
+        let task = unsafe {
+            PlatformTask::spawn(
+                worker_entry,
+                arg,
+                WORKER_STACK_BYTES,
+                c"nros-os-pri".as_ptr(),
+            )
+        }?;
         Some(Self {
             ctx,
             task: Some(task),

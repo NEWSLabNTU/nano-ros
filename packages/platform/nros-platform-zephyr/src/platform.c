@@ -180,17 +180,40 @@ int nros_zephyr_task_create(pthread_t *thread,
                             void *(*entry)(void *),
                             void *arg);
 
+void nros_platform_task_attr_init(nros_platform_task_attr_t *attr) {
+    if (attr == NULL) {
+        return;
+    }
+    memset(attr, 0, sizeof(*attr));
+    attr->priority = INT32_MIN;
+    attr->core = -1;
+}
+
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
-    (void) attr;
-    /* phase-364 W1 — see the posix port: INVALID for a caller-side impossibility,
-     * NOMEM for a refused create (this port reaches Zephyr's pthread layer, so
-     * it inherits EAGAIN-on-exhaustion semantics). */
+    /* phase-364 W1 — see the posix port: INVALID for a caller-side
+     * impossibility, NOMEM for a refused create (this port reaches Zephyr's
+     * pthread layer, so it inherits EAGAIN-on-exhaustion semantics). */
     if (task == NULL || entry == NULL) return NROS_PLATFORM_RET_INVALID;
+
+    /* phase-364 W3 — `attr` is accepted rather than ignored, but only the
+     * fields this port can honour are read.
+     *
+     * Zephyr's native `k_thread_create` needs a `K_THREAD_STACK_DEFINE` region,
+     * which carries MPU alignment requirements a caller cannot satisfy with a
+     * plain allocation. This port therefore goes through Zephyr's POSIX layer,
+     * where the stack comes from `CONFIG_PTHREAD_DYNAMIC_STACK` — so a
+     * requested `stack_bytes` cannot be applied here and is deliberately not
+     * silently pretended to be. A caller needing an exact Zephyr stack should
+     * declare the thread in the image, which is the Zephyr-native answer. */
+    const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;
+    (void) a;
+
     return nros_zephyr_task_create((pthread_t *) task, entry, arg) == 0
                ? NROS_PLATFORM_RET_OK
                : NROS_PLATFORM_RET_NOMEM;
 }
+
 
 int8_t nros_platform_task_join(void *task) {
     if (task == NULL) return -1;

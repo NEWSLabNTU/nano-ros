@@ -218,37 +218,93 @@ pub mod sys {
 
     /// Spawn a detached tier task with an explicit stack size (issue 0246).
     ///
-    /// Implemented in C (`nuttx_run_tiers.c`) for the reason every other
-    /// `nros_nuttx_*` shim in this crate is: `pthread_attr_t` is
-    /// **Kconfig-dependent** on NuttX, so a Rust-side layout mirror is issue
-    /// 0570 — the bug where a 20-byte Rust `pthread_attr_t` met NuttX's
-    /// 56-byte one and `pthread_attr_init` smashed 36 bytes of the caller's
-    /// frame. The C side is compiled against this kernel's own headers and
-    /// cannot disagree with it.
+    /// phase-364 W3 — this now goes through the ABI's own `task_init`, with a
+    /// `nros_platform_task_attr_t`. It used to call `nros_nuttx_spawn_tier`, a
+    /// bespoke C shim in `nuttx_run_tiers.c`, written for one reason: the ABI
+    /// had no portable way to ask for a stack size, and building a
+    /// `pthread_attr_t` from Rust is issue 0570 (a 20-byte Rust mirror met
+    /// NuttX's 56-byte struct and `pthread_attr_init` smashed 36 bytes of the
+    /// caller's frame). The attribute struct is the ABI's now, so the shim has
+    /// nothing left to do — and the layout that must not be mirrored stays
+    /// inside the port, which is where it always belonged.
     ///
-    /// Returns 0 on success, else the `pthread_create` errno.
+    /// Returns 0 on success, else the platform return code (`NOMEM` for a
+    /// transient refusal — issue 0246's case — which the caller retries).
     pub(crate) fn spawn_tier(
         name: &str,
         stack_bytes: usize,
         entry: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
         arg: *mut c_void,
     ) -> i32 {
+        /// Mirrors `nros_platform_task_attr_t` from `<nros/platform.h>`.
+        #[repr(C)]
+        struct TaskAttr {
+            name: *const c_char,
+            stack_bytes: usize,
+            stack_mem: *mut c_void,
+            priority: i32,
+            core: i8,
+            flags: u8,
+        }
+        const DETACHED: u8 = 0x01;
+
         unsafe extern "C" {
-            fn nros_nuttx_spawn_tier(
-                name: *const c_char,
-                stack_bytes: usize,
+            fn nros_platform_task_init(
+                task: *mut c_void,
+                attr: *mut c_void,
                 entry: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
                 arg: *mut c_void,
-            ) -> c_int;
+            ) -> i8;
+            fn nros_platform_task_storage_size() -> usize;
+            fn nros_platform_task_storage_align() -> usize;
         }
+
         // Same NUL-terminated stack copy the `apply_tier_*` shims use — a
         // `TierSpec` name is a `&str`, never a C string.
         let mut name_buf = [0u8; 64];
         let n = name.len().min(63);
         name_buf[..n].copy_from_slice(&name.as_bytes()[..n]);
-        // SAFETY: `name_buf` is NUL-terminated and outlives the call (the C
-        // side copies it); `entry`/`arg` are the caller's contract.
-        unsafe { nros_nuttx_spawn_tier(name_buf.as_ptr() as *const c_char, stack_bytes, entry, arg) }
+
+        // Task storage is sized by the port, never guessed here.
+        // SAFETY: documented pure probes, callable before any task exists.
+        let (size, align) =
+            unsafe { (nros_platform_task_storage_size(), nros_platform_task_storage_align()) };
+        let Ok(layout) = core::alloc::Layout::from_size_align(size.max(1), align.max(1)) else {
+            return -7; // INVALID
+        };
+        // SAFETY: non-zero size.
+        let storage = unsafe { alloc::alloc::alloc(layout) };
+        if storage.is_null() {
+            return -6; // NOMEM
+        }
+
+        let mut attr = TaskAttr {
+            name: name_buf.as_ptr() as *const c_char,
+            stack_bytes,
+            stack_mem: core::ptr::null_mut(),
+            priority: i32::MIN,
+            core: -1,
+            flags: DETACHED,
+        };
+        // SAFETY: `storage` is the size/alignment the port asked for; `attr`
+        // and `name_buf` outlive the call (the port copies what it keeps);
+        // `entry`/`arg` are the caller's contract.
+        let rc = unsafe {
+            nros_platform_task_init(
+                storage as *mut c_void,
+                (&raw mut attr) as *mut c_void,
+                entry,
+                arg,
+            )
+        };
+        if rc != 0 {
+            // SAFETY: no task took the storage.
+            unsafe { alloc::alloc::dealloc(storage, layout) };
+        }
+        // The task is DETACHED and spins forever, so its storage is
+        // deliberately leaked on success — there is no point at which freeing
+        // it would be correct.
+        rc as i32
     }
 }
 

@@ -15,6 +15,7 @@
 #include "platform_stubs.h"
 
 #include <stddef.h>
+#include <string.h>
 #include <stdint.h>
 
 static uint32_t counters[NROS_STUB_CATEGORY_COUNT];
@@ -87,6 +88,8 @@ void   nros_platform_task_exit(void)                            { bump(NROS_STUB
 void   nros_platform_task_free(void **task)                     { (void) task; bump(NROS_STUB_TASK); }
 /* phase-359 W10 — the task storage probes. Sized for a pointer, which is what
  * this stub's `task_init` writes; the real ports return their own type's size. */
+void   nros_platform_task_attr_init(nros_platform_task_attr_t *a)
+                                                                { if (a) { memset(a, 0, sizeof(*a)); a->priority = INT32_MIN; a->core = -1; } }
 size_t nros_platform_task_storage_size(void)                    { return sizeof(void *); }
 size_t nros_platform_task_storage_align(void)                   { return _Alignof(void *); }
 
