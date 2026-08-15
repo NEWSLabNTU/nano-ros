@@ -94,6 +94,12 @@ file(GLOB _cdds_ddsrt_posix ${CYCLONEDDS_DIR}/src/ddsrt/src/*/posix/*.c)
 #   - filesystem/posix/filesystem.c → DDSRT_HAVE_FILESYSTEM=0 in config.h
 #     but the body references DDSRT_FILESEPCHAR / ddsrt_dir_handle_t
 #     unconditionally; drop to avoid build errors.
+#   - environ/posix/environ.c → setenv / unsetenv, which Zephyr's libc declares
+#     only behind CONFIG_POSIX_API; implicit decls are an ERROR on the gcc 14
+#     the SDK ships, so this TU could not compile at all (issue 0590). Replaced
+#     rather than fixed by enabling the POSIX surface: that surface is pooled
+#     (issues 0371/0496) and is what the native sync backend below exists to
+#     stop depending on.
 #   - sync/posix/sync.c → replaced by the Zephyr-native backend, which is the
 #     whole point of issue 0496: Zephyr's pthread mutexes and condvars come from
 #     fixed static pools, so cyclone's per-entity locks turned graph size into a
@@ -109,6 +115,7 @@ list(REMOVE_ITEM _cdds_ddsrt_posix
     ${CYCLONEDDS_DIR}/src/ddsrt/src/sockets/posix/gethostname.c
     ${CYCLONEDDS_DIR}/src/ddsrt/src/filesystem/posix/filesystem.c
     ${CYCLONEDDS_DIR}/src/ddsrt/src/sync/posix/sync.c
+    ${CYCLONEDDS_DIR}/src/ddsrt/src/environ/posix/environ.c
 )
 
 # Zephyr replacement TUs for the dropped POSIX bodies above.
@@ -118,6 +125,10 @@ set(_cdds_zephyr_overrides
     # (posix / freertos / threadx / windows), because it implements a ddsrt
     # backend rather than patching around one.
     ${CYCLONEDDS_DIR}/src/ddsrt/src/sync/zephyr/sync.c
+    # issue 0590 — no process environment exists on a Zephyr image (nros bakes
+    # locator/domain/node at build time), so this reports NOT_FOUND and accepts
+    # writes without storing. See the TU for why OK beats an error here.
+    ${NROS_ZEPHYR_DIR}/cyclonedds-zephyr/environ_zephyr.c
     ${NROS_ZEPHYR_DIR}/cyclonedds-zephyr/random_zephyr.c
     ${NROS_ZEPHYR_DIR}/cyclonedds-zephyr/process_zephyr.c
     # SHM stub fns — original ddsi_shm_transport.c dropped under
