@@ -915,14 +915,11 @@ macro_rules! nros_platform_export_threading {
                 (*attr).flags = 0;
             }
         }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_task_storage_size() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::task_storage_size()
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_task_storage_align() -> usize {
-            <$ty as ::nros_platform_api::PlatformThreading>::task_storage_align()
-        }
+        // NOTE: `nros_platform_task_storage_{size,align}` are emitted above,
+        // beside their `wake_storage_*` siblings — not here with the lock
+        // family. A second copy landed here and made every port that invokes
+        // this macro fail with E0428; both spans pointed at the same macro
+        // call, which is what a macro emitting a symbol twice looks like.
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_mutex_storage_size() -> usize {
             <$ty as ::nros_platform_api::PlatformThreading>::mutex_storage_size()
