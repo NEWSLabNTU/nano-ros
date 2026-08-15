@@ -414,6 +414,7 @@ check-fast: \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-package-xml-comments check-provider-announcements check-provider-index \
     check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
+    check-board-facts-delivery \
     check-opaque-storage-guards \
     check-workspace-order \
     check-atomic-sync-writes \
@@ -1160,6 +1161,14 @@ check-board-cargo-config-applied:
 # `scripts/test/lane-filter.sh native` excludes nothing of theirs: tier 1 boots
 # whatever images exist, and the cells whose images do not exist vanish into a
 # green. Buildless.
+# phase-351 W5 — every cargo target cmake creates must receive the resolved
+# board facts + site config. The failure this guards is NOT a wrong value but no
+# value, defaulted, with no diagnostic (issue 0529's shape) — which is how the
+# board rung stayed dead from phase-290 to here. Buildless.
+[private]
+check-board-facts-delivery:
+    @python3 scripts/check-board-facts-delivery.py
+
 [private]
 check-lane-scope-consumers:
     @python3 scripts/check-lane-scope-consumers.py

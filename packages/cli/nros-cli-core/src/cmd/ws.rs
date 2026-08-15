@@ -89,6 +89,16 @@ pub enum Sub {
     #[command(name = "check-board-projections", hide = true)]
     CheckBoardProjections(CheckBoardProjectionsArgs),
 
+    /// phase-351 W5 — print one deploy's resolved board FACTS + SITE config as
+    /// `KEY=VALUE` lines, for whoever is about to invoke cargo.
+    ///
+    /// The delivery seam: cargo config is discovered from the invocation CWD
+    /// upward and corrosion runs cargo from the workspace root, so a leaf's own
+    /// `.cargo/config.toml` never reaches a workspace member. The process
+    /// environment does, and its owner is the invoker (cmake, `just`, west).
+    #[command(name = "board-facts")]
+    BoardFacts(crate::cmd::board_facts::BoardFactsArgs),
+
     /// phase-348 W1 — list packages that announce a provision
     /// (`<export><nano_ros_provides kind="rmw" name="zenoh"/></export>`),
     /// across the search path: the nano-ros tree, then this workspace.
@@ -327,6 +337,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::Doctor(a) => run_doctor(a),
         Sub::ModelDims(a) => run_model_dims(a),
         Sub::CheckBoardProjections(a) => run_check_board_projections(a),
+        Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
         Sub::Providers(a) => run_providers(a),
         Sub::Order(a) => run_order(a),
     }
@@ -2802,7 +2813,7 @@ fn extract_cargo_path_deps(body: &str) -> Vec<String> {
 /// In-tree fixtures + examples sit several levels below the nano-ros
 /// root, so this turns the most common "I forgot to set NROS_REPO_DIR"
 /// case into a no-op — patches still flow.
-fn autodetect_nano_ros_path(ws_root: &Path) -> Option<PathBuf> {
+pub(crate) fn autodetect_nano_ros_path(ws_root: &Path) -> Option<PathBuf> {
     let mut cur: Option<&Path> = Some(ws_root);
     while let Some(p) = cur {
         if p.join("packages/core/nros-core/Cargo.toml").is_file() {

@@ -33,6 +33,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 # phase-336 — the cargo-profile resolver. File scope, so the function below
 # does not include() inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCargoProfile.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardFacts.cmake")
 
 # Map PLATFORM -> (nros-cpp platform feature ; std|alloc tier).
 #
@@ -271,6 +272,10 @@ function(nros_synth_runtime_umbrella)
         PROFILE       ${NROS_CARGO_PROFILE}
     )
     nros_cargo_profile_env(nros_ws_runtime-static)
+    # phase-351 W5 — the board rung + site config reach cargo HERE, because a
+    # workspace member's own `.cargo/config.toml` never does (corrosion invokes
+    # cargo from the workspace root).
+    nros_board_facts_env(nros_ws_runtime-static)
     if(NOT TARGET nros_ws_runtime-static)
         message(FATAL_ERROR
             "nros_synth_runtime_umbrella: Corrosion did not create "

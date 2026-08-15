@@ -157,16 +157,35 @@ well rather than reporting a board it can plainly see as unknown.
 arches against 47 — so a ThreadX arch with no NetX counterpart **cannot be
 paired**. The pairing has a validity domain.
 
-## W5 — delivery, per lane
+## W5 — delivery, per lane ✅ (2026-08-15)
 
-- [ ] cmake reads the resolved facts **via the CLI** (the `ws model-dims` seam).
-- [ ] cargo build scripts receive them from whoever invokes cargo — one value,
-      because exactly one board is active per configure (`if/elseif` on
-      `NANO_ROS_BOARD`, and the toolchain file must precede `project()`).
-- [ ] Zephyr uses the explicit export it already uses for knobs (issue 0460).
-- [ ] **The gate:** a build whose deploy names a board must receive the facts,
-      in every lane. Without it the board rung stays as silently dead as it has
-      been since phase-290.
+- [x] `nros ws board-facts <ws> --board <name>` resolves ONE deploy's board rung
+      + site config and prints `KEY=VALUE` lines: `NROS_BOARD`,
+      `NROS_BOARD_TOML`, `NROS_NETSTACK` (W4-validated), `NROS_SDK_<NAME>`,
+      `NROS_CONFIG_FILE_<ROLE>`, `NROS_INCLUDE_DIRS`, `NROS_DEFINES`,
+      `NROS_UPLOAD_<KEY>`. One implementation, shared by every lane — the
+      `ws model-dims` seam, not a second resolver in cmake.
+- [x] cmake: `nros_board_facts_env(<target>)` (`cmake/NanoRosBoardFacts.cmake`),
+      the sibling of `nros_cargo_profile_env`, attaches them with
+      `corrosion_set_env_vars` — the target's own build command, because
+      `set(ENV{})` reaches only the configure-time process (issue 0460).
+- [x] Zephyr: the same VALUES on the `cmake -E env` command
+      `zephyr/cmake/nros_cargo_build.cmake` already builds for the knobs.
+      **Unverified on this host — the Zephyr lane skips (`west not found`).**
+- [x] Gate `check-board-facts-delivery`: every `corrosion_import_crate()` must
+      be followed by the helper, with an EXEMPT map that states why a file
+      carries no board. Mutation-verified.
+
+*Measured:* `== freertos == OK` with
+`nano-ros: board facts for 'mps2-an385-freertos' — 5 value(s) delivered to cargo`.
+
+**Found doing it:** two deploy blocks may name the SAME board —
+`examples/workspaces/mixed` has `[deploy.freertos]` and
+`[deploy.mps2-an385-freertos]`, both on `mps2-an385-freertos`. That is only
+ambiguous if they RESOLVE differently, so the verb compares the ANSWERS and
+refuses only a real disagreement, naming the keys that differ. Refusing on the
+key count alone would have blocked every cmake build of that workspace over a
+distinction with no consequence.
 
 ## W6 — retire the old path
 

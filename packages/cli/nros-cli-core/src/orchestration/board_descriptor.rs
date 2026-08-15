@@ -610,14 +610,16 @@ mod tests {
     #[test]
     fn shipped_boards_declare_a_resolvable_domain() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            // packages/cli/nros-cli-core -> cli -> packages -> repo root
             .ancestors()
-            .nth(2)
+            .nth(3)
             .expect("repo root")
             .to_path_buf();
-        let catalog = match BoardCatalog::load(&root) {
-            Ok(c) => c,
-            Err(_) => return, // out-of-tree consumer: nothing to assert
-        };
+        // No `Err(_) => return` escape: this test asserts about the SHIPPED
+        // descriptors, so a catalog it cannot load is a failure, not a reason
+        // to report green having checked nothing (issue 0571's shape).
+        let catalog = BoardCatalog::load(&root)
+            .unwrap_or_else(|e| panic!("shipped board catalog under {}: {e}", root.display()));
         let mut checked = 0;
         for d in catalog.descriptors() {
             for want in &d.supported_netstacks {

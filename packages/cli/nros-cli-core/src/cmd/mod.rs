@@ -10,6 +10,7 @@
 use clap::Subcommand;
 
 pub mod board;
+pub mod board_facts;
 pub mod bringup;
 pub mod check;
 pub mod check_workspace;

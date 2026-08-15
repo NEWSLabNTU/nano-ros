@@ -8,6 +8,7 @@
 # phase-336 — the shared cargo-profile resolver (`nros profile`), included at
 # FILE scope so a function body never include()s inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosBoardFacts.cmake")
 
 # =============================================================================
 # nros_detect_rust_target()
@@ -419,6 +420,18 @@ function(nros_cargo_build)
         list(APPEND _nros_knob_env "${_knob}=${NROS_RESOLVED_${_knob}}")
     endforeach()
 
+    # phase-351 W5 — the board FACTS + SITE config ride the same command, for
+    # the same reason the knobs do: Zephyr's cargo is spawned by this custom
+    # target, and `set(ENV{})` would only touch the configure-time process.
+    # Corrosion's `corrosion_set_env_vars` (the seam every other lane uses) is
+    # not available here — zephyr-lang-rust builds its own cargo command — so
+    # the delivery is the same VALUES through this lane's own carrier.
+    nros_resolve_board_facts()
+    set(_nros_facts_env "")
+    foreach(_fact IN LISTS NROS_BOARD_FACTS_ENV)
+        list(APPEND _nros_facts_env "${_fact}")
+    endforeach()
+
     # phase-336 — the preset's definition rides on the command, so a crate whose
     # own manifest declares no `nros-*` profile still resolves the name. Empty
     # for a user-owned profile, whose manifest governs.
@@ -427,6 +440,7 @@ function(nros_cargo_build)
             ${_rustup_override}
             ${_cc_env}
             ${_nros_knob_env}
+            ${_nros_facts_env}
             ${NROS_CARGO_PROFILE_ENV}
             NROS_PLATFORM_CFFI_INCLUDE=$ENV{NROS_PLATFORM_CFFI_INCLUDE}
             cargo ${CARGO_ARGS}

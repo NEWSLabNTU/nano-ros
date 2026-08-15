@@ -81,6 +81,7 @@ set(_NROS_BOARD_ROOT  "${CMAKE_CURRENT_LIST_DIR}/../..")
 # phase-336 — the cargo-profile resolver, included at FILE scope (an
 # include() inside the app function would pop with its frame).
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosCargoProfile.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardFacts.cmake")
 set(_NROS_BOARD_DIR
     "${_NROS_BOARD_ROOT}/packages/boards/nros-board-threadx-qemu-riscv64")
 set(_NROS_BOARD_CONFIG_DIR "${_NROS_BOARD_DIR}/config")
@@ -519,6 +520,10 @@ function(nros_threadx_rv64_rust_cyclone_app target)
         PROFILE ${NROS_CARGO_PROFILE}
         FEATURES rmw-cyclonedds)
     nros_cargo_profile_env(${_crate_target}-static)
+    # phase-351 W5 — the board rung + site config reach cargo HERE, because a
+    # workspace member's own `.cargo/config.toml` never does (corrosion invokes
+    # cargo from the workspace root).
+    nros_board_facts_env(${_crate_target}-static)
 
     # Issue #214 — DOMAIN bake for the Rust `Config::default()` (drives the
     # Executor/Cyclone participant; mirrors the C fixtures' `-DNROS_DOMAIN_ID`).
