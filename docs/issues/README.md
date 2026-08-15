@@ -711,7 +711,7 @@ surviving direction: a cold Zephyr leaf costs ~28 s and a pull/rebase/`git stash
 one. Filed as a MEASUREMENT, not a defect, because the premise may already be half-fixed: content-aware
 staleness (a `.srcbaseline` of `(mtime,size,content_hash)` per watched file, shared by both arms since
 phase-353 W2) should make an mtime-only change a refresh rather than a stale, and `codegen-fingerprint`
-(phase-360) should stop a CLI rebuild invalidating what its codegen did not change. The cost is still being
+(phase-363) should stop a CLI rebuild invalidating what its codegen did not change. The cost is still being
 paid — five separate staleness cascades while chasing one tier-2 verdict on 2026-08-15 — but nobody has
 attributed them to genuine input change vs mtime artifact vs tool-fingerprint over-invalidation, and those
 want different fixes. Measure and attribute first; do NOT re-run the wall-clock A/B #509 warned about.
@@ -2186,7 +2186,7 @@ Recently resolved (2026-08-15): **#466** — tier 1's unstated, ORDERED setup co
 defects over three months and all are now closed: the zephyr `skip_probe` freshness hole (`52e6bda8e`); the
 precondition batch (one gate added, `check-artifact-identity-budget` checked and DECLINED because its
 `started_at` filter already answers the case the finding cites, plus the launch-resolve skew now reported);
-the compile-check gate being narrower than the tests it gates (phase-360 W4 — read the closure the build
+the compile-check gate being narrower than the tests it gates (phase-363 W4 — read the closure the build
 MEASURED rather than guessing it); and tool-version drift (`nros setup --tool <name> --check`; `[tool.*]` was
 the one declared class the doctor pass never walked, and `--check` swallowed the tool name). Closing that last
 one surfaced two store layouts carrying two version vocabularies, both already declared in the index.

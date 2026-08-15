@@ -4,7 +4,7 @@ title: "`[source.threadx]` declares upstream at a commit we do not pin — inert
 status: open
 type: bug
 area: build
-related: [issue-0550, issue-0575, phase-360]
+related: [issue-0550, issue-0575, phase-363]
 ---
 
 ## What is true

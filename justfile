@@ -1239,7 +1239,7 @@ check-nuttx-shared-tree-headers:
 # buildless: reports NOT CHECKED, exit 0, on a tree with no configured NuttX or
 # no cross compiler, which is why it also runs in the nuttx lane where both
 # exist.
-# phase-360 W3/W4 — self-test for the one source-signature helper: no type
+# phase-363 W3/W4 — self-test for the one source-signature helper: no type
 # filter, build output cannot leak in, deterministic order, dep-info parsed as
 # Make syntax, and failures fatal. Hermetic (throwaway git repo in $TMPDIR).
 [private]

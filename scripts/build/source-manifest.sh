@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# phase-360 W3 — the ONE way this tree turns a set of source paths into a
+# phase-363 W3 — the ONE way this tree turns a set of source paths into a
 # content signature.
 #
 # WHY A MANIFEST RATHER THAN A CONTENT STREAM
@@ -134,7 +134,7 @@ _nros_hash_relpaths() {
     }
 }
 
-# phase-360 W4 — the row's MEASURED dependency closure.
+# phase-363 W4 — the row's MEASURED dependency closure.
 #
 # A compile-check row exists to compile AGAINST workspace crates, and those are
 # not under its own `dir`. So the source manifest above — however complete for

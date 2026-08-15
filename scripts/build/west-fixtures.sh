@@ -185,7 +185,7 @@ while IFS= read -r record; do
         #
         # Re-stamping is the honest claim, not a paper-over: the reuse branch is
         # only taken when `.inputsig` matches, and that signature covers the
-        # CLI's codegen FINGERPRINT (phase-360) — i.e. what the tool would
+        # CLI's codegen FINGERPRINT (phase-363) — i.e. what the tool would
         # produce — which is a strictly better question than "is it the same
         # binary". The stamp records the weaker fact, so refresh it to the
         # current tool the signature just vouched for.

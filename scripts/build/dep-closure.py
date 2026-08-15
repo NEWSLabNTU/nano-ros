@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""phase-360 W4 — the in-repo source closure a build ACTUALLY read.
+"""phase-363 W4 — the in-repo source closure a build ACTUALLY read.
 
 Prints NUL-separated repo-relative paths, deduplicated and sorted, gathered from
 whichever of these a row's build directory happens to hold:

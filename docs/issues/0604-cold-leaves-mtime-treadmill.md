@@ -4,7 +4,7 @@ title: "Cold leaves after every pull: measure how many are genuinely invalidated
 status: open
 type: performance
 area: build, testing
-related: [issue-0509, issue-0466, issue-0442, issue-0445, phase-286, phase-353, phase-360]
+related: [issue-0509, issue-0466, issue-0442, issue-0445, phase-286, phase-353, phase-363]
 ---
 
 ## Why this exists
@@ -32,7 +32,7 @@ Two mechanisms landed since the treadmill was described, and both attack it:
   `(mtime, size, content_hash)`. A moved mtime with unchanged bytes refreshes the
   entry instead of reporting stale — which is precisely what `git pull --rebase`,
   `git stash push/pop` and a branch switch produce.
-* **`codegen-fingerprint`** (phase-360). Compile-check and workspace signatures
+* **`codegen-fingerprint`** (phase-363). Compile-check and workspace signatures
   hash what the CLI *does*, cached by its binary hash, rather than the binary
   itself. A CLI rebuild that does not change codegen behaviour should therefore
   not invalidate anything.

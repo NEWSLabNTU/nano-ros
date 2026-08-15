@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# phase-360 W3/W4 — self-test for the ONE source-signature helper.
+# phase-363 W3/W4 — self-test for the ONE source-signature helper.
 #
 # The properties below are the ones whose absence cost real investigations, so
 # they are asserted rather than trusted:
