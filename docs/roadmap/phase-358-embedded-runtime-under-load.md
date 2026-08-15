@@ -145,6 +145,34 @@ a fourth symptom before treating it as independent.
 observing the ordering rather than by reading the code. The check for
 "fourth symptom of the mirror overflow" is recorded either way.
 
+**DONE 2026-08-15, except the runtime observation — which is blocked, and the
+blocker is new.** The fix landed (`64fee4e60`): the boot tier adopts its
+declared priority through the same shim its own board's C arm uses. Then the
+guest run the acceptance demands turned up something else.
+
+* **The gate was narrower than the rule.** `sched_dims_applied_e2e`'s
+  tier-priority cell asked only whether the accept marker appeared ANYWHERE in
+  the log; the spawned tier's line satisfied that for the whole image, so the
+  cell was green throughout #579. Replaced with a per-tier, per-value shape
+  (`EachTierOrFailNote`) — the issue-0196 class, and the reason the knob could
+  be accepted and discarded unnoticed.
+* **"Fourth symptom of the mirror overflow?" — no.** #579 already establishes
+  this from an execution trace and records why the misreading repeats; verified
+  independently here: `check-nuttx-libc-struct-sizes` is green
+  (`pthread_attr_t` 56 B vs mirror 56 B).
+* **The ordering could not be observed** — filed as **issue 0583**. On the
+  `workspace-rust-nuttx-realtime` fixture the boot tier never resumes after
+  spawning the low tier, so it never reaches the priority call; being the
+  session owner, its stall means nothing is flushed and the router drops the
+  guest on lease expiry ~7 s in. Evidence: guest console, a NIC packet dump
+  (one TCP connection, guest silent after ~7 s, unanswered router FINs), a
+  revert-rebuild at `64fee4e60^` producing an identical console, and the C++ arm
+  of the SAME board running the same workspace correctly for 60 s at the
+  expected ~10:1 tick ratio.
+
+So W4's code and gate work is complete; its runtime proof is deferred to 0583,
+which is a bigger bug than the one this item was about.
+
 ## W5 — Zephyr Cyclone action images fail at boot, hidden by a timeout (#557)
 
 `tid … is in use!` and `rc=-100` at boot; the readiness timeout converts an

@@ -105,3 +105,54 @@ and discarded.
   prints its name, groups and knobs since #572's instrumentation);
 * whichever of the ThreadX or Zephyr shapes NuttX adopts is written down as the
   rule for the family, not open-coded a third time.
+
+
+## Phase-358 W4, 2026-08-15 — fix landed; three of four acceptance points met, the runtime one is blocked
+
+`64fee4e60` calls `apply_tier_priority(boot_tier)` on the boot path, beside the
+existing `apply_tier_affinity(boot_tier)` and for the reason that call already
+gives: a priority caps no CPU, so it does not risk the shared flush the way
+issue 0246's sporadic budget does.
+
+* **takes effect or is refused loudly** — the shared shim prints
+  `nros: tier priority set tier=… prio=…` on success and
+  `nros: tier priority FAILED … rc=… — tier runs at inherited priority`
+  otherwise. Both spellings now have constants
+  (`NUTTX_TIER_PRIORITY_{,FAILED_}MARKER`); the failure note used to be a bare
+  literal in the e2e cell.
+* **the Rust arm agrees with the C arm of its own board** — same helper,
+  `nuttx_run_tiers.c:289`.
+* **the guest states the boot tier's effective priority** — the boot-tier
+  console line carries `priority {}`; verified on a guest run, which prints
+  `priority 110` for `high`.
+* **one rule for the family** — recorded at the call site: NuttX takes the
+  ThreadX answer (adopt on the caller thread), not the Zephyr one (order so
+  tiers[0] never needs to outrank anything, issue 0251).
+
+### The gate that should have caught this was itself too narrow
+
+`sched_dims_applied_e2e`'s tier-priority cell asserted
+`log.contains(NUTTX_TIER_PRIORITY_MARKER)` — one marker ANYWHERE in the log. The
+spawned `low` tier printed it, so the cell was green for the entire life of this
+bug while the boot tier's declared 110 was dropped. Its own note said
+"applied for the spawned tier", which is the tell.
+
+Replaced with a per-tier, per-value shape (`EachTierOrFailNote`): every
+DECLARING tier must produce its own line naming its OWN declared priority, so
+neither a sibling's line nor a right-tier/wrong-value line satisfies it. This is
+the issue-0196 class — gate coverage narrower than the rule it enforces — and
+the narrower gate is the reason a config knob could be accepted and discarded
+for as long as it was.
+
+### What could NOT be verified, and why
+
+The acceptance asks to observe the ordering rather than read the code. On the
+`workspace-rust-nuttx-realtime` fixture that is not currently possible: the boot
+tier never reaches `apply_tier_priority` at all, because it never resumes after
+spawning the low tier. Filed as issue 0583 with the console, a NIC packet dump,
+and a revert-rebuild showing it pre-dates this fix. The C++ arm of the same board
+runs the same workspace correctly, so the fix's own correctness is not in doubt
+— it is unreachable on one arm.
+
+So this issue stays OPEN on its runtime point, gated behind 0583, with the code
+fix and the gate fix landed.

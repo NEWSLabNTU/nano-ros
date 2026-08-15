@@ -75,6 +75,17 @@ assert against `size_of` of the type they store, and `check-opaque-storage-guard
 `15 macro(s) emitted, all guarded`. A silently substituted size is now a build error naming the macro.
 See `archived/0464-*`.
 
+**#583** (boards, open 2026-08-15) — the nuttx-arm **Rust** realtime entry's BOOT tier never resumes
+after spawning the low tier: its next statement is an unconditional `println!` (the `kept SCHED_FIFO` note,
+whose three conditions the console itself shows are met) and it never appears, so the tier's affinity,
+priority (#0579) and spin never run. Being the SESSION OWNER (#0246) its stall stops the shared zenoh-pico
+flush: a NIC dump shows one TCP connection, the guest silent after ~7 s, and the router FINing unanswered —
+so the spawned tier's publishes never leave the guest. NOT #0579's fix (a revert-rebuild at `64fee4e60^`
+gives an identical console), NOT the #0570 mirror overflow (`check-nuttx-libc-struct-sizes` green), and NOT
+the board — the C++ arm of the SAME board runs the SAME workspace 60 s at the expected ~10:1 ratio. Uncaught
+because `realtime_tiers_e2e`'s `nuttx-arm/rust` row currently SKIPS on a stale native peer fixture.
+See `0583-*`. (2026-08-15)
+
 **#579** (platform-nuttx, open 2026-08-15) — `apply_tier_priority` is called from ONE place, the SPAWNED
 tier path, so the boot tier keeps the init task's priority and its declared `[tiers.*.nuttx] priority` is
 parsed, baked, carried to the board and dropped. The in-tree realtime workspace declares high=110 (boot)

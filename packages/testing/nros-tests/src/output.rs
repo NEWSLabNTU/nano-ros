@@ -665,6 +665,30 @@ pub const NUTTX_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 /// marker (`nros_nuttx_apply_current_priority`, nuttx_run_tiers.c).
 pub const NUTTX_TIER_PRIORITY_MARKER: &str = "nros: tier priority set tier=";
 
+/// The loud-failure sibling: printed when a tier DECLARED a
+/// `[tiers.*.nuttx] priority` but `pthread_setschedparam` rejected it — the
+/// tier runs at its INHERITED priority, loudly. MIRRORS the `FAILED` printf in
+/// `nuttx_run_tiers.c` — keep in lockstep.
+///
+/// issue 0579 / phase-358 W4 — this const exists because the e2e cell spelled
+/// the note as a bare literal, which is the thing that lets a marker be slimmed
+/// out from under a test.
+pub const NUTTX_TIER_PRIORITY_FAILED_MARKER: &str = "nros: tier priority FAILED tier=";
+
+/// Render the per-tier form of either NuttX tier-priority marker, so a test can
+/// assert that a SPECIFIC tier adopted a SPECIFIC declared priority rather than
+/// that some tier adopted something.
+///
+/// issue 0579 / phase-358 W4 — the reason this exists. The tier-priority cell
+/// asserted `log.contains(NUTTX_TIER_PRIORITY_MARKER)`, which one spawned tier
+/// satisfies for the whole image; the boot tier dropped its declared priority
+/// for the life of the bug with that assert green. The rule is "every DECLARING
+/// tier adopts or says why", so the gate has to name the tiers (the issue-0196
+/// class: gate coverage narrower than the rule it enforces).
+pub fn nuttx_tier_priority_line(marker: &str, tier: &str, priority: u32) -> String {
+    format!("{marker}`{tier}` prio={priority}")
+}
+
 /// The honest-fallback sibling: printed when a tier DECLARED a `core` but the
 /// NuttX image lacks `CONFIG_SMP` (or the kernel rejected the pin) — the tier
 /// runs unpinned, loudly. MIRRORS the `FAILED` literals in both NuttX seams —

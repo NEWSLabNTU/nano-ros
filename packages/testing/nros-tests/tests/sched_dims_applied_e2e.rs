@@ -18,8 +18,12 @@
 //!   runtime proof: `sched_setaffinity(cpu 0)` succeeds on any host).
 //! - **StrictCountOne** — exactly one accept marker (zephyr EDF; threadx
 //!   preempt-threshold / time-slice — the fixture bakes exactly one such tier).
-//! - **AcceptOrFailNote** — the accept marker OR the loud failure note (nuttx
-//!   tier-priority).
+//! - **EachTierOrFailNote** — accept marker OR loud failure note, per DECLARING
+//!   TIER and per DECLARED VALUE (nuttx tier-priority). Phase-358 W4 replaced
+//!   the whole-log `AcceptOrFailNote` with this: one tier's line satisfied it
+//!   for the entire image, so the cell stayed green through issue 0579 while
+//!   the boot tier's declared priority was dropped. A per-tier dim needs a
+//!   per-tier assert.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test sched_dims_applied_e2e`.
 
@@ -40,10 +44,10 @@ use nros_tests::{
     output::{
         FREERTOS_CORE_PIN_FALLBACK_MARKER, FREERTOS_CORE_PIN_MARKER,
         NUTTX_CORE_PIN_FALLBACK_MARKER, NUTTX_CORE_PIN_MARKER, NUTTX_SPORADIC_FALLBACK_MARKER,
-        NUTTX_SPORADIC_MARKER, NUTTX_TIER_PRIORITY_MARKER, POSIX_CORE_PIN_FALLBACK_MARKER,
-        POSIX_CORE_PIN_MARKER, THREADX_CORE_PIN_FALLBACK_MARKER, THREADX_CORE_PIN_MARKER,
-        THREADX_PREEMPT_MARKER, THREADX_TIME_SLICE_MARKER, ZEPHYR_CORE_PIN_FALLBACK_MARKER,
-        ZEPHYR_CORE_PIN_MARKER, ZEPHYR_EDF_DEADLINE_MARKER,
+        NUTTX_SPORADIC_MARKER, NUTTX_TIER_PRIORITY_FAILED_MARKER, NUTTX_TIER_PRIORITY_MARKER,
+        POSIX_CORE_PIN_FALLBACK_MARKER, POSIX_CORE_PIN_MARKER, THREADX_CORE_PIN_FALLBACK_MARKER,
+        THREADX_CORE_PIN_MARKER, THREADX_PREEMPT_MARKER, THREADX_TIME_SLICE_MARKER,
+        ZEPHYR_CORE_PIN_FALLBACK_MARKER, ZEPHYR_CORE_PIN_MARKER, ZEPHYR_EDF_DEADLINE_MARKER,
     },
 };
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -83,8 +87,21 @@ enum Shape {
     AcceptOnly,
     /// Exactly one accept marker (the fixture bakes exactly one such tier).
     StrictCountOne,
-    /// Accept marker OR the loud failure note present.
-    AcceptOrFailNote(&'static str),
+    /// issue 0579 / phase-358 W4 — EVERY listed `(tier, declared priority)`
+    /// adopted its OWN declared value, or said loudly why not.
+    ///
+    /// Replaces `AcceptOrFailNote`, which asked only whether the accept marker
+    /// or the failure note appeared ANYWHERE in the log, so on a fixture with
+    /// several declaring tiers it only ever proved that SOME tier adopted
+    /// SOMETHING. That is how #579 lived: the spawned `low`
+    /// tier printed the marker while the boot tier's declared 110 was parsed,
+    /// carried to the board and dropped, with this cell green throughout. A
+    /// per-tier dim needs a per-tier assert (the issue-0196 class — gate
+    /// coverage narrower than the rule it enforces).
+    EachTierOrFailNote {
+        tiers: &'static [(&'static str, u32)],
+        fail_marker: &'static str,
+    },
 }
 
 struct Exec {
@@ -194,8 +211,16 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             stem: "nros: tier priority",
             accept: NUTTX_TIER_PRIORITY_MARKER,
             fallback: None,
-            shape: AcceptOrFailNote("tier priority FAILED"),
-            note: "per-tier SCHED_FIFO priority applied for the spawned tier",
+            // issue 0579 — BOTH tiers, named, with the priority each one
+            // declares in `realtime-rust/src/demo_bringup/system.toml`:
+            // `high` is tiers[0] (the boot tier, 110) and `low` is spawned
+            // (100). Before W4 only `low` ever printed.
+            shape: EachTierOrFailNote {
+                tiers: &[("high", 110), ("low", 100)],
+                fail_marker: NUTTX_TIER_PRIORITY_FAILED_MARKER,
+            },
+            note: "per-tier SCHED_FIFO priority applied for EVERY declaring tier, \
+                   boot tier included (#579)",
         },
         (SD::PreemptThreshold, MP::ThreadxLinux, ML::Rust) => Exec {
             resolver: || build_threadx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
@@ -428,13 +453,31 @@ fn run_cell(cell: &SchedCell) {
                 cell.dim, ex.accept, ex.note
             );
         }
-        Shape::AcceptOrFailNote(fn_note) => {
+        Shape::EachTierOrFailNote { tiers, fail_marker } => {
+            // issue 0579 — assert per DECLARING TIER. Each tier must produce
+            // its own line naming its own declared priority, so neither a
+            // sibling tier's line nor a right-tier/wrong-value line satisfies
+            // it.
+            let missing: Vec<String> = tiers
+                .iter()
+                .filter(|(tier, prio)| {
+                    let ok = nros_tests::output::nuttx_tier_priority_line(ex.accept, tier, *prio);
+                    let loud =
+                        nros_tests::output::nuttx_tier_priority_line(fail_marker, tier, *prio);
+                    !log.contains(&ok) && !log.contains(&loud)
+                })
+                .map(|(tier, prio)| format!("`{tier}` prio={prio}"))
+                .collect();
             assert!(
-                accepted || log.contains(fn_note),
-                "{silence}[{platform} {lang} {:?}] produced NEITHER `{}` NOR the failure note \
-                 `{fn_note}` — silently dropped (RFC-0052 fail-loud). {}\nlog:\n{log}",
+                missing.is_empty(),
+                "{silence}[{platform} {lang} {:?}] {} of {} declaring tiers produced NEITHER \
+                 `{}` NOR `{fail_marker}` with their own declared priority: {} — accepted and \
+                 dropped (RFC-0052 fail-loud). {}\nlog:\n{log}",
                 cell.dim,
+                missing.len(),
+                tiers.len(),
                 ex.accept,
+                missing.join(", "),
                 ex.note
             );
         }
