@@ -14,6 +14,10 @@
 
 #include "platform_stubs.h"
 
+/* The declarations this file implements. Without it the TU hand-declared each
+ * signature and could not see new types (see build.rs). */
+#include <nros/platform.h>
+
 #include <stddef.h>
 #include <string.h>
 #include <stdint.h>

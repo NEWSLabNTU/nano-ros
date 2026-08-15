@@ -71,8 +71,13 @@ fn every_category_dispatches_through_cffi_platform() {
     unsafe { nros_platform_stub_reset_counters() };
 
     // -- Clock --
-    let _ = CffiPlatform::clock_ms();
-    let _ = CffiPlatform::clock_us();
+    // phase-352 retired `clock_ms` / `clock_us` for one nanosecond symbol plus a
+    // declared resolution. This test still called the removed pair, which no
+    // build noticed because nothing enables `c-stub-test` by default — and
+    // `check-retired-platform-clock-symbols` could not notice either: it scans
+    // C/C++ sources, so a retired symbol in Rust is outside its reach.
+    let _ = CffiPlatform::clock_ns();
+    let _ = CffiPlatform::clock_resolution_ns();
 
     // -- Alloc --
     let p = CffiPlatform::alloc(64);
