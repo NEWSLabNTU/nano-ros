@@ -51,6 +51,27 @@ a kernel that gates it.
   active change by another session** (0557's native `k_mutex`/`k_condvar`
   backend), so whoever owns that work should pick, not a drive-by.
 
+## It now fails TIER 1, not just the Zephyr lane (2026-08-15)
+
+Provisioning the Zephyr workspace turned previously-SKIPPED cells into required
+ones: `sched_dims_applied` reports
+
+```
+sched_dims: 4 of 12 cell(s) FAILED:
+  CorePin/zephyr/rust: Test fixture binary MISSING for an in-lane coordinate:
+    zephyr-workspace/build-ws-rs-realtime-entry-zenoh/zephyr/zephyr.exe
+```
+
+That entry is `zephyr-fixture-65` in the lane's make driver; the cyclonedds
+cells are 13–18, and the driver has no `-k`, so the build stops long before 65
+and the workspace entries are never produced. On a tier-1 run at HEAD this is
+the ONE real failure — the other 39 are capability skips (no ROS 2 on this
+host).
+
+So the cost of this issue is no longer "the cyclone cells do not build": while
+it stands, no Zephyr fixture after the cyclone group can be built at all, and
+tier 1 is red on any host with a provisioned Zephyr workspace.
+
 ## Reproduce
 
 ```sh
