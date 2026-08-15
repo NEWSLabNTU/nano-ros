@@ -3,7 +3,12 @@
 **Status (2026-08-16). W3 DONE; W1 and W2 not started.** Three orchestration
 issues that are one dependency chain, not three tasks.
 
-* **W1 (#404, the WCET schema)** — NOT STARTED. Wants an RFC before code.
+* **W1 (#404, the WCET schema)** — **BLOCKED on #403**, which this phase failed
+  to record when it was opened. #404's own Direction section is explicit:
+  "Nothing here should be designed before 0403 produces an artifact … Doing it
+  in the other order would produce a schema shaped around a hypothetical
+  measurement, which is how the keying question gets answered by guess."
+  So W1 is not merely "wants an RFC first" — it cannot be written yet.
 * **W2 (#259, quantitative scheduling)** — blocked on W1, by construction.
 * **W3 (#519, sub-millisecond timer period)** — DONE. The render was already
   correct; what was missing was a test pinning it, now added and proven by
@@ -59,6 +64,19 @@ before implementing.
 
 **Acceptance.** An RFC in `docs/design/` that answers all three questions, and a
 worked example carrying one real measured callback end-to-end.
+
+**BLOCKED, and the blocker is load-bearing rather than procedural.** #404 says
+not to design this before #403 emits an artifact, because a schema written
+against a hypothetical measurement answers the keying question by guess — and
+keying is the question that decides whether a number measured on an STM32F407 at
+168 MHz can be applied to a Cortex-M3 in QEMU.
+
+The "worked example carrying one real measured callback" in the acceptance above
+cannot exist until a producer emits one. That is phase-356 W2 (#403), whose
+first item landed 2026-08-16: the bench now REFUSES to emit zeros from a run
+that could not measure, so whatever it eventually produces will not be a table
+of the most optimistic value a WCET can take. The remaining half — a
+machine-readable artifact instead of prose — is what unblocks this.
 
 ## W2 — Make derived scheduling quantitative (#259)
 

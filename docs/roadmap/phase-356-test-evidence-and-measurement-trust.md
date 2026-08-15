@@ -1,8 +1,15 @@
 # Phase 356 — Test evidence: a sweep you can read afterwards, and numbers you can believe
 
-**Status (2026-08-15). PLANNING — nothing implemented.** Three issues about the
-same failure: a test run that reports something which cannot be checked, or
+**Status (2026-08-16). W2 half done; W1 and W3 not started.** Three issues about
+the same failure: a test run that reports something which cannot be checked, or
 which is not what it appears to be.
+
+* **W2 (#403)** — the dangerous half is FIXED: the WCET bench no longer prints a
+  table of zeros from a run whose cycle counter never counted. It refuses and
+  exits FAILURE. The machine-readable half remains, and it is what unblocks
+  [phase-357](phase-357-wcet-as-declared-data.md) W1 — #404 will not design a
+  schema against a producer that emits nothing structured.
+* **W1 (#527)** and **W3 (#260)** — not started.
 
 **Owns:** [issue 0527](../issues/0527-doctest-run-overwrites-rewritten-junit.md),
 [issue 0403](../issues/0403-wcet-bench-machine-readable.md),
@@ -71,6 +78,20 @@ schema wants to consume rather than a second spelling.
 **Acceptance.** A QEMU run with the cycle counter disabled fails with a message
 naming the counter. The bench's output is machine-readable in whatever form
 phase-357 W1 settles on.
+
+**First half DONE 2026-08-16.** `just qemu test-wcet` exits 1 on QEMU and emits
+ZERO rows matching `min=0 max=0 avg=0` (was 13, one per benchmark). The message
+states why a zero is dangerous — it is indistinguishable from "this operation is
+free", and zero is the most optimistic WCET there is, so consuming it always
+errs toward "schedulable" — rather than merely reporting that the counter is
+dead, which is what it did before while printing the zeros anyway.
+
+That the recipe now FAILS on QEMU is the point: QEMU does not implement DWT
+cycle counting, so this bench cannot measure there. It is `[group("debug")]`
+and no CI lane runs it.
+
+**Second half outstanding:** `print_result` still prints prose with no parser,
+schema or consumer. That is the piece phase-357 W1 is waiting on.
 
 ## W3 — Native sched dims verified only on the FALLBACK arm (#260)
 

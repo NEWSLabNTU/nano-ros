@@ -79,3 +79,48 @@ once it emits parseable output. Whether the declaration is measured per
 callback on hardware, or composed from primitives, is the schema question and
 belongs to 0404 — noted here so the producer is not mistaken for a complete
 answer.
+
+## The second half is DONE 2026-08-16 (phase-356 W2, first item)
+
+The bench no longer manufactures data it did not measure.
+
+Before: it detected the dead counter, printed a NOTE, measured anyway, printed a
+full table of zeros, `[PASS]`, and exited SUCCESS. The warning and the data went
+to the same stream and only the data was shaped like something a tool would
+read — so the zeros are what survived into the log.
+
+Now it refuses: no table, a diagnostic that states WHY zero is dangerous rather
+than merely that the counter is dead, and `EXIT_FAILURE`.
+
+```
+FAIL: the DWT cycle counter is not counting.
+
+      Every measurement would be 0, which is indistinguishable
+      from `this operation is free` — and 0 is the most optimistic
+      WCET there is, so consuming it always errs toward
+      `schedulable` (issue 0403 / issue 0259).
+
+      QEMU does not implement DWT cycle counting. Run this on
+      real hardware; there is nothing to measure here.
+[FAIL]
+```
+
+Verified: `just qemu test-wcet` exits 1 on QEMU, and the run emits **zero** rows
+matching `min=0 max=0 avg=0` (was one per benchmark, 13 of them).
+
+### `just qemu test-wcet` now FAILS on QEMU, and that is the point
+
+QEMU does not implement DWT cycle counting, so this bench cannot measure there
+at all. The recipe failing is that fact, reported. It is `[group("debug")]` and
+no CI lane runs it, so nothing that gates a change goes red; `just qemu
+test-all` aggregates it and will now report the failure, which is correct — it
+was previously reporting a pass for a run that measured nothing.
+
+### What is still open here: the machine-readable half
+
+`print_result` still prints prose (`name: min=… max=… avg=… cycles`) with no
+parser, no schema and no consumer. That is the half issue 0404 is waiting on —
+it cannot design a schema against a producer that emits nothing structured. The
+refusal above is a precondition for that work rather than a substitute: it
+guarantees that whatever the producer eventually emits, it will not be zeros
+from a run that could not measure.

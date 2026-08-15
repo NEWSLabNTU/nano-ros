@@ -399,9 +399,40 @@ fn main() -> ! {
     let dwt_test = cycles();
     let dwt_active = cycles().wrapping_sub(dwt_test) > 0 || dwt_test > 0;
     if !dwt_active {
-        hprintln!("NOTE: DWT cycle counter reads as 0 (QEMU limitation).");
-        hprintln!("      Cycle counts will be 0. Validate on real hardware.");
+        // Issue 0403 — a zero is NOT a measurement, so do not produce one.
+        //
+        // This used to print a NOTE and then measure anyway: a full table of
+        // zeros, `[PASS]`, and EXIT_SUCCESS. The warning and the data went to
+        // the same stream and only the data was shaped like something a tool
+        // would read, so the zeros are what survived into
+        // `logs/latest/qemu-wcet-bench.log`.
+        //
+        // Zero is the most OPTIMISTIC value a WCET can take, so the mistake
+        // always errs toward declaring a chain schedulable — the same failure
+        // issue 0259 removed one layer up, where an absent WCET entered the
+        // arithmetic as zero and the chain looked maximally feasible. Issue
+        // 0404 will not design a schema against a producer that can emit a
+        // number meaning "no data" and a number meaning "free" in the same
+        // field.
+        //
+        // So: refuse. No table, and a failing exit. On QEMU the DWT does not
+        // increment, which means this bench cannot measure there AT ALL —
+        // `just qemu test-wcet` failing on QEMU is that fact, reported.
+        hprintln!("FAIL: the DWT cycle counter is not counting.");
         hprintln!("");
+        hprintln!("      Every measurement would be 0, which is indistinguishable");
+        hprintln!("      from `this operation is free` — and 0 is the most optimistic");
+        hprintln!("      WCET there is, so consuming it always errs toward");
+        hprintln!("      `schedulable` (issue 0403 / issue 0259).");
+        hprintln!("");
+        hprintln!("      QEMU does not implement DWT cycle counting. Run this on");
+        hprintln!("      real hardware; there is nothing to measure here.");
+        hprintln!("");
+        hprintln!("[FAIL]");
+        cortex_m_semihosting::debug::exit(cortex_m_semihosting::debug::EXIT_FAILURE);
+        loop {
+            cortex_m::asm::wfi();
+        }
     }
 
     hprintln!("Iterations per benchmark: {}", ITERATIONS);
