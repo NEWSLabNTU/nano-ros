@@ -549,18 +549,28 @@ impl fmt::Display for NanoRosError {
     }
 }
 
-// Implement std::error::Error when std is available
-#[cfg(feature = "std")]
-impl std::error::Error for NanoRosError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        // Nested errors don't implement std::error::Error in no_std
-        // so we can't return them as source. This is a limitation of no_std.
+// phase-359 — `core::error::Error`, and UNCONDITIONAL.
+//
+// This was `#[cfg(feature = "std")] impl std::error::Error`, with a comment
+// explaining that nested errors "don't implement `std::error::Error` in no_std
+// … a limitation of no_std". That limitation ended when `core::error::Error`
+// stabilised in Rust 1.81; `std::error::Error` has been a re-export of it since.
+// So the gate was not describing a constraint any more, it was WITHHOLDING the
+// trait from every embedded build: no `dyn Error`, no `?` interop against an
+// error trait object, on exactly the targets that most need small error paths.
+//
+// `Display` and `Debug` for both types are already unconditional, which is all
+// the trait requires.
+impl core::error::Error for NanoRosError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        // Still `None`: the nested error types have not been given `Error`
+        // impls yet. That is now a to-do rather than a platform limit, and
+        // saying so is the point of this comment.
         None
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for RclReturnCode {}
+impl core::error::Error for RclReturnCode {}
 
 // === Conversions ===
 

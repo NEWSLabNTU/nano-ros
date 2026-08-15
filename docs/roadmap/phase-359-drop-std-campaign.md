@@ -58,14 +58,14 @@ current Cyclone — to a full-timeout `drive_io` is deliberate, phase-127.C.4.)
 
 ## Baseline
 
-**174** `cfg` mentions of the `std` feature and **140** `std::` paths, nine
+**172** `cfg` mentions of the `std` feature and **136** `std::` paths, nine
 crates (current: after W4, W6 and the first W8 item, and after `#[cfg(test)]`
 code was excluded — see the metric correction below):
 
 | crate | cfg | `std::` |
 | --- | --- | --- |
 | `nros-node` | 105 | 76 |
-| `nros` | 25 | 17 |
+| `nros` | 25 | 16 |
 | `nros-c` | 13 | 9 |
 | `nros-params` | 13 | 18 |
 | `nros-core` | 8 | 6 |
@@ -340,9 +340,52 @@ Remaining in `nros`, and it is genuinely hosted — not more mislabelling:
 | 4 | `node_runtime.rs` |
 
 There is no `no_std` equivalent of an environment, and RFC-0045 makes the env
-rung hosted-only by design, so `init.rs` stays. Two smaller follow-ups:
-`std::error::Error` moved to `core` in Rust 1.81 and is convertible, and
-`time.rs` should reuse W4's clock provider instead of keeping its own epoch.
+rung hosted-only by design, so `init.rs` stays.
+
+#### Follow-up A — `core::error::Error` — **DONE 2026-08-15, and bigger than stated**
+
+Framed as a spelling change. It is not. `nros-core` carried
+
+```rust
+#[cfg(feature = "std")]
+impl std::error::Error for NanoRosError { … }   // + RclReturnCode
+```
+
+with a comment explaining that nested errors "don't implement
+`std::error::Error` in no_std … a limitation of no_std". That limitation ENDED
+when `core::error::Error` stabilised in Rust 1.81. The gate had stopped
+describing a constraint and was simply WITHHOLDING the trait from every embedded
+build — no `dyn Error`, no `?` against an error trait object, on the targets
+that most need small error paths.
+
+Both impls are now UNCONDITIONAL (`Display`/`Debug` were already). Verified in
+both directions: a probe returning `&dyn core::error::Error` from a
+`NanoRosError` compiles for `thumbv7m-none-eabi` under `--no-default-features`;
+restoring the `std` gate fails it with
+`E0277: the trait bound NanoRosError: core::error::Error is not satisfied`.
+
+`nros-core` cfg 7 -> 5, path 5 -> 2. `nros`'s `init.rs` took the same spelling
+(its `cfg` stays — that module reads the environment).
+
+The `source()` still returns `None`, but the reason changed: the nested types
+simply have no `Error` impls yet. That is now a to-do, not a platform limit, and
+the comment says so.
+
+#### Follow-up B — "`time.rs` should reuse W4's clock provider" — **WRONG, declined**
+
+My own item, and inspection killed it. `time.rs`'s no_std arm ALREADY calls
+`nros_platform_clock_ns` — the platform export — so there is no divergence to
+fix there. Only the std arm uses an `Instant` epoch.
+
+And there is nothing to reuse: W4's provider is `Executor::now_us()`, a PRIVATE
+method requiring an `Executor` instance, while `nros::time::now()` is a free
+function for portable node code that has no executor. Different requirements,
+not duplicate implementations.
+
+Unifying the std arm onto `nros_platform_clock_ns` would add a hard LINK
+dependency to std builds that today need none — the same blocker that re-scoped
+W5. The two epochs are also harmless: both are monotonic, and the module's own
+contract is "compare instants, never interpret one absolutely".
 
 Still to do for W8 proper: audit `nros-node`, `nros-params` and `nros-cpp` for
 the same mislabelling, and document what each flavour implies.

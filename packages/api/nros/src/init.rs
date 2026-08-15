@@ -60,8 +60,11 @@ impl core::fmt::Display for InitError {
     }
 }
 
+// `core::error::Error` — `std::error::Error` is a re-export of it since Rust
+// 1.81, so this is the same trait. The `cfg` stays: this whole module reads the
+// environment (`std::env::var`), which has no no_std equivalent.
 #[cfg(feature = "std")]
-impl std::error::Error for InitError {}
+impl core::error::Error for InitError {}
 
 /// Phase 212.L.5 — resolved init context.
 ///
