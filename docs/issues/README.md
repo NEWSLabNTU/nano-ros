@@ -64,6 +64,14 @@ three zephyr compile-check fixtures. NOTE an earlier tier-2 run reported `== zep
 no west installed — a family reporting OK is not proof its toolchain exists. See `archived/0610-*`.
 (2026-08-15)
 
+**#614** (api-c, api-cpp, open 2026-08-16) — `cargo check -p nros-c` (and `-p nros-cpp`) with NO features
+fails on the host: "`#[panic_handler]` function required" + "unwinding panics are not supported without std".
+`--features std` passes, and `just check-c` / `check-cpp` pass because they name features — so nothing in CI is
+red. Cause is deliberate (phase-361 W3's `default = []`, whose consequence the manifest already documents next
+to `panic-spin`); what is missing is any hint that the remedy is `--features std`. Discoverability, not
+correctness — filed at that weight. I first reported it as a rebase regression, which was wrong.
+See `0614-*`. (2026-08-16)
+
 **#615** (build, open 2026-08-16) — `check-feature-contract` clause (d) reasons only about DEP-SITES, so it
 calls `nros-cpp`'s `default = ['panic-spin']` unreachable and asks for it to be emptied. That would BREAK
 the build: `nros-cpp` produces a staticlib — a FINAL artifact — and a `no_std` final artifact with no

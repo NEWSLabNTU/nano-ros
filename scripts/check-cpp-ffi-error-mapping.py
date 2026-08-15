@@ -83,13 +83,33 @@ def main() -> int:
                 failures.append(f"  {mapper} is missing from lib.rs — issue 0586's mappers")
                 continue
             body = m.group(1)
-            # `_ =>` at an arm position (allow `_ if`-free simple wildcard).
-            if re.search(r"^\s*_\s*=>", body, re.M):
+            # An UNCONDITIONAL `_ =>` arm is the thing this forbids. A cfg-gated
+            # one is not the same claim and is sometimes forced:
+            # `TransportError::BackendDynamic` exists per NROS-RMW's `alloc`,
+            # which is not this crate's `alloc`, so a config can see the variant
+            # while the arm naming it is compiled out (E0004 on the cortex-m
+            # Zephyr leaves, 2026-08-16). A `_` under `cfg(not(feature =
+            # "alloc"))` covers exactly that gap and leaves exhaustiveness
+            # intact wherever the two gates agree — which is where the guarantee
+            # was ever meaningful.
+            #
+            # So: reject a wildcard that is NOT immediately preceded by a `#[cfg`
+            # attribute. That keeps the property (no silent catch-all) without
+            # forbidding the one shape the feature graph makes necessary.
+            for wm in re.finditer(r"^([ \t]*)_\s*=>", body, re.M):
+                preceding = body[: wm.start()].rstrip().splitlines()
+                guarded = any(
+                    line.lstrip().startswith(("#[cfg", "#[allow"))
+                    for line in preceding[-2:]
+                )
+                if guarded:
+                    continue
                 failures.append(
-                    f"  {mapper} has a `_` arm.\n"
+                    f"  {mapper} has an UNCONDITIONAL `_` arm.\n"
                     f"    -> name every variant. rustc rejecting an unreachable `_` is the\n"
                     f"       point: a NEW variant then fails to compile until someone decides\n"
-                    f"       what the C++ caller should see, instead of joining the -100 pile."
+                    f"       what the C++ caller should see, instead of joining the -100 pile.\n"
+                    f"       A `#[cfg(...)]`-gated `_` is allowed — see the note in this script."
                 )
 
     if failures:

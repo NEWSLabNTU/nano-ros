@@ -416,6 +416,7 @@ check-fast: \
     check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
     check-board-facts-delivery check-deploy-board-resolves \
     check-opaque-storage-guards check-cpp-ffi-error-mapping check-submodule-pins \
+    check-rust-stdio-on-zephyr \
     check-workspace-order \
     check-atomic-sync-writes \
     check-test-domain-assignment \
@@ -1267,6 +1268,13 @@ check-cpp-ffi-error-mapping:
 [private]
 check-submodule-pins:
     @bash scripts/ci/submodule-pins-check.sh
+
+# Issue 0589 — `std::println!`/`eprintln!` from a crate Zephyr links does not
+# print on native_sim, it recurses in `zvfs_write` until the stack is gone. Go
+# through `cpp_diag!`, which uses std stdio only where that is safe.
+[private]
+check-rust-stdio-on-zephyr:
+    @python3 scripts/check-rust-stdio-on-zephyr.py
 
 # Issue 0452 — the committed cbindgen headers must match a fresh generation.
 # The Rust->C mirror of `check-abi-bindings`, which has guarded the C->Rust

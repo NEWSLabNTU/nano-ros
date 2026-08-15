@@ -666,6 +666,55 @@ pub unsafe extern "C" fn nros_cpp_init(
     }
 }
 
+/// Issue 0589 — the ONE way this crate emits a diagnostic.
+///
+/// `std::eprintln!` is FATAL on Zephyr `native_sim`. Rust std stdio goes through
+/// the POSIX device-io fdtable, and fds 0/1/2 all carry
+/// `stdinout_fd_op_vtable`, whose write method under
+/// `CONFIG_BOARD_NATIVE_POSIX` is
+///
+/// ```c
+/// return zvfs_write(1, buffer, count);   /* called FROM zvfs_write(1, …) */
+/// ```
+///
+/// — unbounded self-recursion. `k_mutex` is recursive so it never deadlocks; it
+/// exhausts the stack and SIGSEGVs the image (observed `lock_count = 104756`).
+/// C/C++ `printf` misses this entirely because picolibc uses the console hook,
+/// which is why it stayed latent until a Rust diagnostic was added to an error
+/// path that actually ran (issue 0557).
+///
+/// So: `eprintln!` where it is safe, and the `nros_log` dispatcher on Zephyr —
+/// which reaches the console when a sink is wired and is silently dropped when
+/// one is not. Never fatal either way. A diagnostic that can kill the image it
+/// is diagnosing is worse than no diagnostic.
+#[cfg(all(feature = "std", not(feature = "platform-zephyr")))]
+#[allow(unused_macros)]
+macro_rules! cpp_diag {
+    ($($arg:tt)+) => { std::eprintln!($($arg)+) };
+}
+
+/// Zephyr arm — see [`cpp_diag`]. Routed through `nros_log` rather than std
+/// stdio, because the latter is fatal here.
+#[cfg(feature = "platform-zephyr")]
+#[allow(unused_macros)]
+macro_rules! cpp_diag {
+    ($($arg:tt)+) => {{
+        let logger: &'static nros_log::Logger = nros_log::get_logger("nros_cpp");
+        nros_log::nros_error!(logger, $($arg)+);
+    }};
+}
+
+/// No-std, non-Zephyr: nothing to write to. The return code carries the
+/// information (issue 0586 made every variant map to a specific one).
+#[cfg(all(not(feature = "std"), not(feature = "platform-zephyr")))]
+#[allow(unused_macros)]
+macro_rules! cpp_diag {
+    ($($arg:tt)+) => {{ $( let _ = &$arg; )+ }};
+}
+
+#[allow(unused_imports)]
+pub(crate) use cpp_diag;
+
 /// issue 0586 — map `TransportError` to the closest `NROS_CPP_RET_*` code.
 ///
 /// The sibling of [`node_error_to_cpp_ret`], and the reason that one no longer
@@ -716,7 +765,6 @@ pub(crate) fn transport_error_to_cpp_ret(err: nros_rmw::TransportError) -> nros_
         // "the mappers themselves are exhaustive (no `_` arm), so rustc already
         // refuses a new variant until someone maps it".
         T::BackendDynamic(_) => NROS_CPP_RET_TRANSPORT_ERROR,
-
         // Entity creation — the C++ surface has codes for these.
         T::PublisherCreationFailed => NROS_CPP_RET_PUBLISH_FAILED,
         T::SubscriberCreationFailed => NROS_CPP_RET_SUBSCRIPTION_FAILED,
@@ -740,6 +788,21 @@ pub(crate) fn transport_error_to_cpp_ret(err: nros_rmw::TransportError) -> nros_
         T::IncompatibleQos => NROS_CPP_RET_NOT_ALLOWED,
         T::Unsupported | T::LoanNotSupported => NROS_CPP_RET_UNSUPPORTED,
         T::TaskStartFailed => NROS_CPP_RET_ERROR,
+
+        // `BackendDynamic` is gated on NROS-RMW's `alloc`, which is NOT this
+        // crate's `alloc`: a cortex-m Zephyr image has the former without the
+        // latter, so the variant EXISTS while the arm above is compiled out and
+        // the match is non-exhaustive (E0004). Covered here, last, where a
+        // wildcard belongs — an earlier attempt put it beside the arm it
+        // complements, which silently shadowed every named arm after it.
+        //
+        // Exhaustiveness (issue 0586) still holds wherever the two gates agree;
+        // this only fills the gap where they do not. `unreachable_patterns` is
+        // allowed because when NEITHER crate has alloc the variant is absent and
+        // this arm is genuinely dead.
+        #[cfg(not(feature = "alloc"))]
+        #[allow(unreachable_patterns)]
+        _ => NROS_CPP_RET_TRANSPORT_ERROR,
     }
 }
 
@@ -766,7 +829,7 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
     // often the only thing that reaches the console. The mapping below is the
     // part that carries the information; the print is a hosted convenience.
     #[cfg(all(feature = "std", not(feature = "platform-zephyr")))]
-    std::eprintln!("nros: NodeError::{err:?}");
+    crate::cpp_diag!("nros: NodeError::{err:?}");
     match err {
         E::NameTooLong => NROS_CPP_RET_INVALID_ARGUMENT,
         E::Serialization | E::Deserialization => NROS_CPP_RET_ERROR,
@@ -2483,7 +2546,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
         }
     }
 
-    std::eprintln!(
+    crate::cpp_diag!(
         "nros: multi-tier run — {} tier(s) over one session",
         n_tiers
     );
@@ -2529,7 +2592,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
                     nros_cpp_executor_open_over_session(sh, core::ptr::null(), domain_id_copy, tptr)
                 };
                 if rc != NROS_CPP_RET_OK {
-                    std::eprintln!(
+                    crate::cpp_diag!(
                         "nros: tier '{tier_name}' FAILED to open its borrowed executor (rc={rc}) — tier will not run"
                     );
                     return;
@@ -2544,7 +2607,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
                 if let Some(setup) = setup_fn {
                     let setup_rc = unsafe { setup(tptr) };
                     if setup_rc != 0 {
-                        std::eprintln!(
+                        crate::cpp_diag!(
                             "nros: tier '{tier_name}' setup FAILED (rc={setup_rc}) — tier will not run"
                         );
                         // Drop borrowed executor (no session close).
@@ -2558,7 +2621,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
                 while !shutdown_clone.load(Ordering::Relaxed) {
                     let rc = unsafe { nros_cpp_spin_once(tptr, 10) };
                     if rc != NROS_CPP_RET_OK {
-                        std::eprintln!(
+                        crate::cpp_diag!(
                             "nros: tier '{tier_name}' spin_once returned rc={rc} — tier loop EXITING"
                         );
                         break;
@@ -2570,7 +2633,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
                 unsafe { core::ptr::drop_in_place(tptr as *mut CppContext) };
             })
             .unwrap_or_else(|e| {
-                std::eprintln!("nros: failed to spawn tier '{tier_name}': {e}");
+                crate::cpp_diag!("nros: failed to spawn tier '{tier_name}': {e}");
                 // Return a dummy thread that immediately exits.
                 std::thread::spawn(|| {})
             });
