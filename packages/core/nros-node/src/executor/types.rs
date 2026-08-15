@@ -348,51 +348,15 @@ struct EnvCache {
 }
 
 #[cfg(feature = "std")]
-fn build_env_cache() -> EnvCache {
-    // Prefer NROS_LOCATOR / NROS_SESSION_MODE; accept legacy ZENOH_*
-    // names with a stderr deprecation warning.
-    let locator = std::env::var("NROS_LOCATOR")
-        .or_else(|_| {
-            std::env::var("ZENOH_LOCATOR").inspect(|_| {
-                std::eprintln!("nros: ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead");
-            })
-        })
-        // Issue 0330 — unset env leaves the locator EMPTY (= absent); the
-        // active backend substitutes its own default.
-        .unwrap_or_default();
-    let domain_id = std::env::var("ROS_DOMAIN_ID")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-    let mode_str = std::env::var("NROS_SESSION_MODE")
-        .or_else(|_| {
-            std::env::var("ZENOH_MODE").inspect(|_| {
-                std::eprintln!("nros: ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead");
-            })
-        })
-        .ok();
-    let mode = match mode_str.as_deref() {
-        Some("peer") => SessionMode::Peer,
-        _ => SessionMode::Client,
-    };
-    let node_name = std::env::var("NROS_NODE_NAME").unwrap_or_default();
-    EnvCache {
-        locator,
-        domain_id,
-        mode,
-        node_name,
-    }
-}
+static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
 
-/// The process-global cache, and why tests do NOT use it.
+/// The process-global env cache — and why tests do not share it.
 ///
-/// Issue 0607 — `try_resolve` reads env PRESENCE live but env VALUES from this
-/// `OnceLock`, which freezes at whichever test touched it first. Under
+/// Issue 0607 — `try_resolve` reads env PRESENCE live but env VALUES from here,
+/// and a `OnceLock` freezes at whichever caller touched it first. Under
 /// `cargo test` every unit test shares one process, so a later test's
-/// `EnvGuard` changes what `std::env::var` reports while the cached VALUE stays
-/// whatever the first caller saw. The two then disagree and
-/// `noop_resolve_matches_from_env` fails comparing `resolve(default, true)`
-/// against `from_env()`:
+/// `EnvGuard` moves what `std::env::var` reports while the cached VALUE stays
+/// behind. The two then disagree and `noop_resolve_matches_from_env` fails:
 ///
 /// ```text
 /// assertion `left == right` failed
@@ -400,27 +364,64 @@ fn build_env_cache() -> EnvCache {
 ///  right: "tcp/env:7447"
 /// ```
 ///
-/// It failed ~1 run in 5 and never single-threaded, and the module's
-/// `env_lock()` cannot help: the mutex serialises MUTATION, and this is a stale
-/// READ of a cache that was already populated. Two tests carried comments
-/// apologising for it and weakening their assertions instead.
+/// It failed ~1 run in 5, never single-threaded, and the module's `env_lock()`
+/// cannot help: a mutex serialises MUTATION, and this is a stale READ of a
+/// cache already populated. Two tests had been weakened to tolerate it.
 ///
-/// So under `cfg(test)` the value is rebuilt per call — tests see live env,
-/// which is the only coherent answer when the env is what they are varying. The
-/// leak is bounded by the number of calls in a test binary and buys back
-/// determinism. Production keeps the `OnceLock`: nothing there mutates the
-/// environment, so freezing it once is both correct and the point.
-#[cfg(all(feature = "std", not(test)))]
-static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
-
-#[cfg(all(feature = "std", not(test)))]
+/// So tests rebuild per call — live env is the only coherent answer when the
+/// env is what they are varying. Production keeps the `OnceLock`: nothing there
+/// mutates the environment, so freezing it once is both correct and the point.
+///
+/// The test/production split is `cfg!(test)` at RUNTIME rather than two
+/// `#[cfg]` attributes, and the builder is a nested `fn` rather than a
+/// cfg-gated one, so this fix adds no `feature = "std"` cfg sites —
+/// `check-std-census` counts those and phase-359 is removing them.
+#[cfg(feature = "std")]
 fn env_cache() -> &'static EnvCache {
-    ENV_CACHE.get_or_init(build_env_cache)
-}
+    fn build() -> EnvCache {
+        // Prefer NROS_LOCATOR / NROS_SESSION_MODE; accept legacy ZENOH_*
+        // names with a stderr deprecation warning.
+        let locator = std::env::var("NROS_LOCATOR")
+            .or_else(|_| {
+                std::env::var("ZENOH_LOCATOR").inspect(|_| {
+                    std::eprintln!("nros: ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead");
+                })
+            })
+            // Issue 0330 — unset env leaves the locator EMPTY (= absent); the
+            // active backend substitutes its own default.
+            .unwrap_or_default();
+        let domain_id = std::env::var("ROS_DOMAIN_ID")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let mode_str = std::env::var("NROS_SESSION_MODE")
+            .or_else(|_| {
+                std::env::var("ZENOH_MODE").inspect(|_| {
+                    std::eprintln!("nros: ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead");
+                })
+            })
+            .ok();
+        let mode = match mode_str.as_deref() {
+            Some("peer") => SessionMode::Peer,
+            _ => SessionMode::Client,
+        };
+        let node_name = std::env::var("NROS_NODE_NAME").unwrap_or_default();
+        EnvCache {
+            locator,
+            domain_id,
+            mode,
+            node_name,
+        }
+    }
 
-#[cfg(all(feature = "std", test))]
-fn env_cache() -> &'static EnvCache {
-    std::boxed::Box::leak(std::boxed::Box::new(build_env_cache()))
+    if cfg!(test) {
+        // `alloc`, not `std::boxed` — the crate already has `extern crate
+        // alloc`, and `check-std-census` counts `std::` paths that phase-359 is
+        // removing. A fix should not add to the ledger it is unrelated to.
+        alloc::boxed::Box::leak(alloc::boxed::Box::new(build()))
+    } else {
+        ENV_CACHE.get_or_init(build)
+    }
 }
 
 #[cfg(feature = "std")]
