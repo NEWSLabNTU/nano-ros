@@ -1,6 +1,6 @@
 # Phase 349 — RTOS integration: make FreeRTOS an imported library like the rest
 
-**Status (2026-08-13). W1 LANDED — with it, [phase-348](phase-348-source-time-provider-discovery.md)
+**Status (2026-08-13). W1 LANDED — with it, [phase-348](archived/phase-348-source-time-provider-discovery.md)
 is complete. W2–W6 open.**
 
 **Implements:** [RFC-0072](../design/0072-rtos-integration-nano-ros-is-a-guest.md).
@@ -83,7 +83,7 @@ in a comment before it was checked; it is true of three lookups out of four.
 
 ### W2.0 — carry the board descriptor to build scripts *(prerequisite)* — **SUPERSEDED**
 
-> Superseded by [phase-351](phase-351-board-facts-and-site-config.md) (2026-08-13).
+> Superseded by [phase-351](archived/phase-351-board-facts-and-site-config.md) (2026-08-13).
 > The leaf-`[env]` carrier landed and works for standalone leaves, but the
 > six-ecosystem survey showed the payload is wrong: it points at the board
 > DESCRIPTOR, when what a build script needs is the RESOLVED facts —

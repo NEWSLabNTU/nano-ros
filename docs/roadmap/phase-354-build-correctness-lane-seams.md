@@ -17,7 +17,7 @@
 [issue 0454](../issues/0454-raw-send-goal-ffi-does-not-strip-cdr-header.md),
 [issue 0532](../issues/0532-platform-clock-abi-unit-and-resolution.md).
 
-**Related:** [phase-345](phase-345-one-door-build-parity.md) (COMPLETE; named
+**Related:** [phase-345](archived/phase-345-one-door-build-parity.md) (COMPLETE; named
 #466 and #374), [phase-344](phase-344-cmake-cache-relocation.md) and
 [phase-347](phase-347-rmw-as-a-declared-provider.md) (both name #493),
 [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md) / [phase-318](archived/) (the tier
@@ -118,7 +118,7 @@ reading the encoder.
 #532 says the platform clock ABI fixes a unit but cannot express resolution, so
 every port either lies or truncates.
 
-[Phase 352](phase-352-platform-clock-ns.md) is COMPLETE and its title is "one
+[Phase 352](archived/phase-352-platform-clock-ns.md) is COMPLETE and its title is "one
 nanosecond symbol, **plus the resolution nobody could ask for**" — which is, on
 its face, exactly #532's subject. So the first task is not design: it is to
 determine whether #532 is already resolved and simply never closed.

@@ -7,7 +7,7 @@
 > Rust entry lane; reopened as issue 0605 rather than left as a green claim, and
 > closed once the values were seen in the generated ninja. A wave whose subject
 > is values arriving silently could not ship an arm that delivered nothing. Supersedes
-[phase-349](phase-349-rtos-integration-shells.md) W2.0, whose leaf-`[env]`
+[phase-349](../phase-349-rtos-integration-shells.md) W2.0, whose leaf-`[env]`
 carrier is retired here (W6).
 
 **Implements:** [RFC-0072](../design/0072-rtos-integration-nano-ros-is-a-guest.md)

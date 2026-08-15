@@ -25,7 +25,7 @@ error, corrected here.
 [issue 0579](../issues/0579-nuttx-boot-tier-priority-never-applied.md).
 
 **Related:** [issue 0567](../issues/archived/0567-zpico-rx-cannot-resume-partial-buffer.md)
-(RESOLVED 2026-08-14 — this UNBLOCKS #506's device half; see W3), [phase-352](phase-352-platform-clock-ns.md)
+(RESOLVED 2026-08-14 — this UNBLOCKS #506's device half; see W3), [phase-352](archived/phase-352-platform-clock-ns.md)
 (COMPLETE), [phase-349](phase-349-rtos-integration-shells.md),
 `docs/reference/platform-implementation-notes.md`.
 

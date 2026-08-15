@@ -43,7 +43,7 @@ sourced into the build.
 **Related:** [phase-340](archived/phase-340-build-artifact-reuse.md) (fixture
 target-dir grouping), [phase-343](phase-343-host-build-graph-duplication.md)
 (host build-dep graph; W1 recovered 63.1 GiB),
-[phase-342](phase-342-test-runtime-reduction.md) (test runtime, COMPLETE).
+[phase-342](archived/phase-342-test-runtime-reduction.md) (test runtime, COMPLETE).
 
 ## Why these four are one phase
 

@@ -42,7 +42,7 @@ Note for anyone rebuilding: provisioning alone is not enough on a tree that has
 already configured — the stale build dirs carry the old topology in their
 `CMakeCache.txt` and must be removed.
 
-**Sibling, not overlap:** [phase-346](phase-346-out-of-tree-board-seam.md) is
+**Sibling, not overlap:** [phase-346](archived/phase-346-out-of-tree-board-seam.md) is
 this problem on the BOARD axis (RFC-0064, a board arrives through an integration
 shell nano-ros never sees). RFC-0071 D8 is where the two converge — one
 descriptor family across rmw / platform / board. Do not duplicate 346's work
@@ -281,7 +281,7 @@ becomes scheduling.
 
 **It is blocked on W2 regardless**: you cannot discover providers that do not
 describe themselves. Filed as
-[phase-348](phase-348-source-time-provider-discovery.md), with these starting
+[phase-348](archived/phase-348-source-time-provider-discovery.md), with these starting
 points already established — the two accepted roots (nano-ros tree,
 user workspace; no `~/.nros`, no env var), first-match-wins shadowing with a
 warning, and `package.xml`'s existing `<depend>` as the ordering source rather

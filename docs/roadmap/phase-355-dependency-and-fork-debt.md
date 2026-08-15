@@ -18,7 +18,7 @@ a backlog line.
 
 **Related:** [RFC-0014](../design/0014-nros-setup-toolchain-management.md) (`nros
 setup` / SDK index — #374 is a promise made there),
-[phase-345](phase-345-one-door-build-parity.md) (COMPLETE; named #374),
+[phase-345](archived/phase-345-one-door-build-parity.md) (COMPLETE; named #374),
 [issue 0496](../issues/archived/) (the work that created #507's two changes).
 
 ## The common shape

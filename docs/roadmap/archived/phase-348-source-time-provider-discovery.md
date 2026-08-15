@@ -1,9 +1,9 @@
 # Phase 348 — Source-time provider discovery: buy the colcon convention, not colcon
 
 **Status (2026-08-13). COMPLETE — W1–W5 landed. The platform half of W2 landed
-as [phase-349](phase-349-rtos-integration-shells.md) W1, once RFC-0072 settled
+as [phase-349](../phase-349-rtos-integration-shells.md) W1, once RFC-0072 settled
 what a platform's name is.** Unblocked by
-[phase-347](phase-347-rmw-as-a-declared-provider.md) W2 — descriptors exist, so
+[phase-347](../phase-347-rmw-as-a-declared-provider.md) W2 — descriptors exist, so
 providers can describe themselves.
 
 W1 shipped the announce mechanism, the scan, and `nros ws providers`. W2
@@ -128,7 +128,7 @@ is what a provision must agree with:
       package.xml beside a descriptor announces provisions of that kind, and
       its names equal the descriptor's exactly, canonical first. Each case
       verified to FAIL under the matching perturbation.
-- [x] platform — **DONE in [phase-349](phase-349-rtos-integration-shells.md) W1.**
+- [x] platform — **DONE in [phase-349](../phase-349-rtos-integration-shells.md) W1.**
       The descriptors live at `config/*/nros-platform.toml` (not
       `packages/platform/`) and were unnamed; W1 added `names`, the alias
       resolution that makes the old spellings keep working, the seven
@@ -199,7 +199,7 @@ ended up settling this one too:
 * `esp32`'s missing platform file and `generic`'s dead `inherits` root are
   carried there as open questions rather than blocking here.
 
-So the platform half of W2 is unblocked by [phase-349](phase-349-rtos-integration-shells.md)
+So the platform half of W2 is unblocked by [phase-349](../phase-349-rtos-integration-shells.md)
 W1, which adds the `names` key. It is deliberately NOT done in this phase: the
 rename is only correct alongside RFC-0072's decision about what a platform is,
 and doing it here would have meant renaming a directory on the strength of a
