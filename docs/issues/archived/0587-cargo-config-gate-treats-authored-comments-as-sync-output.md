@@ -1,7 +1,7 @@
 ---
 id: 587
 title: "`check-cargo-config-tracked` calls six threadx-linux configs \"pure sync output\" and tells you to untrack them — the content it ignores is issue 0582's lesson"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build, testing
@@ -96,3 +96,32 @@ would hit the same wall.
 Whether the other ~39 leaves that commit a config would newly FAIL or PASS under
 a corrected predicate. That number decides whether this is a six-file fix or a
 convention change, and it should be measured before either.
+
+
+## RESOLVED 2026-08-15
+
+`has_authored_content()` no longer excludes comments wholesale. It excludes only
+the decor `nros sync` itself emits — the `# === BEGIN/END nros-managed
+[patch.crates-io] ===` pair and the trailing `# nros-managed` on each patch row
+(`nros-cli-core/src/cmd/ws.rs`). Any other comment came from a human, so the
+predicate needs no judgement about which comments "look important".
+
+Verified both directions rather than just re-running the gate:
+
+* a synthesised config containing ONLY sync's include, patch table and decor
+  still scores as pure — the gate has not been disabled;
+* `examples/threadx-linux/rust/talker/.cargo/config.toml` now scores as
+  authored, so the six stop being reported and issue 0582's paragraph stays in
+  the tree.
+
+**The open question above is answered, and it changes the shape of the finding.**
+All **74** tracked leaf configs score "pure" under the OLD predicate — not six.
+The other 68 were never reported only because the gate has a second condition:
+it flags a tracked pure config only when it does not `includes_committed_projection`.
+The threadx-linux six lost their board projection in `13878a807` (#582), which
+is what exposed them.
+
+So this was never a six-file problem: the predicate was wrong for every config
+in the tree, and a projection exemption was masking it. That also means the fix
+could not have been an allowlist — 68 files were one upstream edit away from the
+same false positive.

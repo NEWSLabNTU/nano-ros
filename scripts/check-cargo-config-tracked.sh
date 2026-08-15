@@ -31,10 +31,26 @@ cd "$repo_root"
 # shellcheck source=scripts/build/prune-dirs.sh
 source scripts/build/prune-dirs.sh
 
-# Content beyond what sync writes: anything that is not blank, a comment, the
-# include line, the patch table header, or an `# nros-managed` entry.
+# Content beyond what sync writes: anything that is not blank, the include line,
+# the patch table header, an `# nros-managed` entry, or sync's own comment decor.
+#
+# Issue 0587 — a COMMENT counts as authored content, and excluding `^\s*#`
+# wholesale is what made this gate demand the deletion of documentation. Six
+# `examples/threadx-linux/rust/*/.cargo/config.toml` files were reported as
+# "pure sync output" with a `git rm --cached` remedy, when the comment IS the
+# file: it records issue 0582's finding (why there is deliberately NO
+# `[build] target` — the literal `x86_64-unknown-linux-gnu` read as a host pin
+# on an x86 machine and a CROSS COMPILE everywhere else) and where the artifact
+# actually lands. `nros sync` will never rewrite that paragraph, so by this
+# repo's own rule — the authored half stays tracked because a clone cannot
+# regenerate it — it is authored content.
+#
+# The predicate needs no judgement about which comments "look important",
+# because sync's output is FIXED and knowable: it emits exactly the BEGIN/END
+# decor below plus a trailing `# nros-managed` on each patch row (see
+# `nros-cli-core/src/cmd/ws.rs`). Any other comment came from a human.
 has_authored_content() {
-    grep -qvE '^\s*$|^\s*#|^include = |^\[patch\.crates-io\]|# nros-managed\s*$' "$1"
+    grep -qvE '^\s*$|^\s*# === (BEGIN|END) nros-managed \[patch\.crates-io\] ===\s*$|^include = |^\[patch\.crates-io\]|# nros-managed\s*$' "$1"
 }
 
 # Issue 0457 — a TRACKED config must not patch a `generated/` message crate

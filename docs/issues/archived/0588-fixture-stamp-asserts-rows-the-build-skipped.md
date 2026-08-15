@@ -1,11 +1,12 @@
 ---
 id: 588
 title: "`build-test-fixtures lane=native` builds nothing, stamps the lane as covered, and turns absent artifacts into hard test failures"
-status: open
+status: resolved
 type: bug
-severity: high
+severity: low
 area: testing, build
 related: [issue-0393, issue-0482, issue-0196, issue-0527]
+supersedes_premise: false
 ---
 
 ## Symptom
@@ -98,3 +99,52 @@ Also unmeasured: how many other rows are in the same state. Four tests failed
 this way (`baremetal_run_plan_runtime`, three `native_example_reqresp` cases),
 but nothing enumerates rows whose artifact is missing while the stamp covers
 them — and that enumeration is the first thing a fix should print.
+
+
+## WITHDRAWN 2026-08-15 — the premise was wrong, in three separate ways
+
+I filed this the same day I hit it, and every load-bearing claim in the text
+above is false. Recording why, because the way I misread the evidence is more
+useful than the issue was.
+
+**1. "builds nothing" — I read the wrong log.** The `build=0` summary belongs to
+`compile-check-fixtures.sh`, a different builder. The native stage's own output
+is REDIRECTED to a per-stage file (`tmp/build-test-fixtures-*/native.log`); the
+driver only tails it on failure, so the top-level log shows `== native ==` and
+`== native == OK` one line apart. That file records the row building normally,
+including its per-RMW variants:
+
+```
+→ examples/native/rust/service-server --no-default-features --features rmw-zenoh
+→ examples/native/rust/service-server --no-default-features --features rmw-xrce
+→ examples/native/rust/service-server --no-default-features --features rmw-cyclonedds
+```
+
+Zero errors in that stage. The build was never skipped.
+
+**2. The MISSING binary was a test naming a NODE, not a binary.** The four
+`native_example_reqresp` failures asked for `add_two_ints_server`, which is the
+example's `[package.metadata.nros.node] name` — the ROS node. Its only `[[bin]]`
+is `service-server`. Fixed upstream the same day by `c385a914a` ("the Rust
+service cell asked for a node name, not a binary"), independently of this issue.
+After that fix the same cells report the binary as present-but-STALE, which is
+the ordinary mtime treadmill, not a coverage gap.
+
+**3. The fifth failure was a capability skip.** `baremetal_run_plan_runtime`
+panics `[SKIPPED] qemu-baremetal-main-e2e fixture not prebuilt` — an out-of-lane
+fixture degrading exactly as designed. It reads as `FAIL` only under a bare
+`cargo nextest`; `just test-all`'s junit rewrite scores it a skip, which is
+documented behaviour.
+
+So there is no stamp-versus-build-set defect here. The stamp did not assert rows
+the build skipped; the build built them.
+
+**What was actually true** is the one thing I should have led with: `find` over
+the whole tree could not locate `add_two_ints_server` — which was evidence that
+the NAME was wrong, not that the build was. I turned "the artifact does not
+exist" into "the builder skipped the row" without checking the builder's own
+log, and then read a summary line from a different builder as confirmation.
+
+Left as `resolved` rather than deleted so the reasoning is searchable next time
+a "MISSING for an in-lane coordinate" appears: check the per-stage log under
+`tmp/build-test-fixtures-*/` before concluding anything about the builder.

@@ -60,31 +60,27 @@ as the two gcc-14 fixes on the zenoh-pico fork. Not established: whether it is n
 failure of these images, so they build somewhere) or which of three fixes is right — the Zephyr ddsrt seam
 is under active change by another session, so that call is theirs. See `0590-*`. (2026-08-15)
 
-**#588** (testing/build, open 2026-08-15) — `just build-test-fixtures lane=native` reports
-`check=0 build=0 cmake=0 cxx=0 cargo-check=0` — it builds NOTHING — and then writes
-`fixture stamp: .fixtures-built (lane=native)`. That stamp promises the lane's fixtures exist, so the
-resolver turns absent artifacts into hard failures instead of skips: four tests that had been skipping now
-fail `Test fixture binary MISSING for an in-lane coordinate`. Established: the binary
-(`add_two_ints_server`) exists NOWHERE — not under the current feature signature nor any of six older
-`cargo-fixtures/linux-*` dirs; the row IS in `fixtures.toml` and in the native lane; the builder ran its
-CODEGEN (`generate-rust: examples/native/rust/service-server`) and then compiled nothing. Same seam as
-0482 one layer down: the freshness half is satisfied (nothing stale) while the existence half is not, and
-the stamp reports only the first. The trap is that running the SANCTIONED builder is what converts a quiet
-gap into a red sweep. NOT investigated: why the row is selected for codegen but not for the build, and how
-many other rows are in the same state. See `0588-*`. (2026-08-15)
+Recently resolved (2026-08-15): **#588** — WITHDRAWN, premise wrong in three ways, recorded because the
+misreading is the useful part. I claimed `build-test-fixtures lane=native` "builds nothing while stamping
+the lane": the `build=0` line belongs to a DIFFERENT builder, and the native stage's output is redirected to
+`tmp/build-test-fixtures-*/native.log`, which shows the row building normally with all three RMW variants
+and zero errors. The MISSING binary was a test naming a ROS NODE (`add_two_ints_server`) where the crate's
+only `[[bin]]` is `service-server` — fixed upstream the same day by `c385a914a`, independently. The fifth
+failure was a capability skip (`[SKIPPED] qemu-baremetal-main-e2e fixture not prebuilt`) that only reads as
+FAIL under bare `cargo nextest`. Lesson kept: `find` failing to locate the artifact was evidence the NAME
+was wrong, not the builder — check the per-stage log before concluding anything about a build.
+See `archived/0588-*`. (2026-08-15)
 
-**#587** (build/testing, open 2026-08-15) — `check-cargo-config-tracked` fails `check-fast`, calling six
-`examples/threadx-linux/rust/*/.cargo/config.toml` "pure sync output" and instructing `git rm --cached`.
-DO NOT: the premise is false and the remedy deletes documentation. Its predicate excludes comment lines, so
-a file whose only authored content is COMMENTS scores as sync output — and in these six the comment IS the
-file: it records issue 0582's finding (why there is deliberately no `[build] target`, because the literal
-`x86_64-unknown-linux-gnu` read as a host pin on x86 and a CROSS COMPILE everywhere else) plus where the
-artifact actually lands. A comment is content a clone cannot regenerate, which is the tracked-half rule
-CLAUDE.md states. It also contradicts issue 0559, which committed these files deliberately. Direction:
-treat content sync would not itself emit as authored — sync's output is fixed and known, so this needs no
-comment-length heuristic; an allowlist would be the hand-kept list this repo keeps paying for. NOT
-measured: whether the other ~39 leaves committing a config pass or fail under a corrected predicate.
-See `0587-*`. (2026-08-15)
+Recently resolved (2026-08-15): **#587** — `check-cargo-config-tracked` called six threadx-linux configs
+"pure sync output" and told you to `git rm --cached` them; the comment IS the file (issue 0582's finding on
+why there is deliberately no `[build] target`). Its predicate excluded ALL comment lines. Fixed by excluding
+only the decor sync itself emits (`# === BEGIN/END nros-managed …` and the trailing `# nros-managed`), so
+any other comment counts as authored — no heuristic needed, because sync's output is fixed and knowable.
+The open question is answered and reframes it: ALL 74 tracked leaf configs score "pure" under the old
+predicate, not six; the other 68 were masked by a second condition (they include a committed board
+projection) which the threadx six lost in #582's edit. So an allowlist would have been wrong — 68 files were
+one upstream edit from the same false positive. Verified both ways: a synthesised pure config is still
+caught. See `archived/0587-*`. (2026-08-15)
 
 **#601** (build, open 2026-08-15) — a COLD cyclonedds fixture build dies `code=127` on
 `/opt/ros/humble/bin/idlc: error while loading shared libraries: libiceoryx_binding_c.so`. The tool is
