@@ -79,3 +79,116 @@ cargo nextest run -p nros-tests --test zephyr example_e2e::case_17_cyclonedds_c_
 Both cases, C and C++, fail identically. `zephyr/rust` Cyclone action
 (`case_16`) is worth checking as a control — if it passes, the fault is
 language-path specific rather than in the backend.
+
+
+## Phase-358 W5, 2026-08-15 — the `tid … is in use!` errors are INCIDENTAL, and they leak a stack each
+
+The issue said a fix must first establish "whether the six `tid in use` errors
+are fatal to participant creation or incidental". They are incidental, and the
+whole chain reads out of source — no guessing, no guest needed:
+
+1. **cyclonedds** (`src/ddsrt/src/threads/posix/threads.c`, `ddsrt_thread_create`)
+   does the ordinary POSIX sequence:
+   `pthread_attr_setstacksize(&attr, …)` → `pthread_create(…, &attr, …)` →
+   `pthread_attr_destroy(&attr)`.
+2. **Zephyr's POSIX layer** allocates the thread stack in
+   `pthread_attr_setstacksize` (`k_thread_stack_alloc` into `attr->stack`,
+   `lib/posix/options/pthread.c`).
+3. `pthread_attr_destroy` then calls `k_thread_stack_free(attr->stack)` — on the
+   stack the just-created, still-running thread is executing on. `dynamic.c`
+   walks the thread list, finds a live owner that is neither `_THREAD_DUMMY` nor
+   `_THREAD_DEAD`, logs **`tid %p is in use!`** and returns `-EBUSY` WITHOUT
+   freeing.
+4. `pthread_attr_destroy` **ignores that return**, zeroes the attr and returns
+   `0`. So the caller sees success, the thread keeps its stack, and nothing about
+   participant creation is harmed.
+
+So the six lines are noise from the standard create-then-destroy-attr idiom, one
+per ddsrt thread. `rc=-100` (`NROS_CPP_RET_TRANSPORT_ERROR`) is NOT caused by
+them, which matches the other clue the issue already flagged: the participant
+handle `49379019` is a handle, not an error, so the failure is downstream.
+
+### The part worth fixing anyway: each one leaks 32 KB
+
+`posix_thread_recycle` frees a dead thread's stack only when the CALLER did not
+destroy the attr:
+
+```c
+if (t->attr.caller_destroys) {
+        t->attr = (struct posix_thread_attr){0};   /* caller owns it — don't free */
+} else {
+        (void)pthread_attr_destroy((pthread_attr_t *)&t->attr);
+}
+```
+
+The caller DID destroy it (step 3), and that destroy failed to free. So neither
+path ever releases the stack: it leaks for the life of the image, at
+`CONFIG_DYNAMIC_THREAD_STACK_SIZE` = **32768 bytes** per ddsrt thread. Six
+threads at boot = ~192 KB out of the 4 MB `CONFIG_HEAP_MEM_POOL_SIZE`, so it is
+survivable at boot and gets worse with every thread the backend creates.
+
+This is a Zephyr-POSIX/ddsrt interaction, not a nano-ros defect, and it is
+adjacent to the pool-exhaustion class in issues 0371/0496 — same seam, different
+resource.
+
+### Still open
+
+What actually returns `-100`. It is downstream of `dds_create_participant` and
+of these six lines.
+
+
+## Phase-358 W5 — the hiding was two layers deep
+
+**Layer 1 (test side) — fixed and verified on the guest.** The verdict now leads
+with the guest's own error instead of the wait that observed it:
+
+```
+[cyclonedds/c/Action] action-server FAILED AT BOOT: nros zephyr entry: run_components failed rc=-100
+  (readiness marker `Waiting for action goals` never arrived; the 60 s wait
+   observed the failure, it did not cause it)
+```
+
+Getting there needed one correction. `first_guest_failure` scanned in LINE
+order, so it led with `<err> os: tid … is in use!` — the benign line, four lines
+above the real one. It is rank-major now: `GUEST_FAILURE_SIGNATURES` is a
+precedence list, an entry's own error code outranks a kernel log line, and
+`is in use!` is ranked deliberately low. Within one signature it still takes the
+first match, so 0552's fault-then-register-dump still reads correctly.
+
+**The control matrix says what this is not.** All three pass on the same
+backend, same board, same fixture build:
+
+| cell | result |
+| --- | --- |
+| `case_11` cyclonedds / **C** / pubsub | PASS |
+| `case_14` cyclonedds / **C** / service | PASS |
+| `case_16` cyclonedds / **Rust** / action | PASS |
+| `case_17` cyclonedds / **C** / action | FAIL rc=-100 |
+
+So not the backend, not the Zephyr sync port, not C, not actions. It is C/C++ ×
+action specifically — and the Rust action passing means the RMW can create these
+entities on this board.
+
+**Layer 2 (guest side) — `-100` was itself a collapse.** The C example's
+`server_configure` returns `nros_cpp_action_server_create`'s rc verbatim, and
+that function ended with:
+
+```rust
+Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+```
+
+`register_action_server_raw` returns a `NodeError`, and it was thrown away.
+`-100` is documented as "the catch-all for unmapped variants", so the guest was
+reporting *transport error* for a cause that need not be transport at all —
+exactly the collapse issue 0436 fixed for `nros_cpp_init`, using a mapper
+(`node_error_to_cpp_ret`) that even names the variant on the error path. Applied
+there, not here. Now applied here.
+
+### The class, not just the site
+
+`grep -rn 'Err(_) => NROS_CPP_RET_TRANSPORT_ERROR' packages/api/nros-cpp/src/`
+finds **16** such sites across `publisher.rs`, `subscription.rs`, `service.rs`
+and `action.rs`. Only the action-server one is fixed here, deliberately: the
+others' fallible calls return different error types (`create_publisher`,
+`commit_slot`, `send_request_raw`, …) and rewriting them blind would be guessing
+at mappings. Filed as a sweep rather than done wrong.

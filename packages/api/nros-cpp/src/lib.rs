@@ -699,7 +699,7 @@ pub unsafe extern "C" fn nros_cpp_init(
 /// Phase 155.C — map `NodeError` to the closest `NROS_CPP_RET_*` code.
 /// Unknown variants stay TRANSPORT_ERROR (-100) — the legacy catch-all.
 #[cfg(feature = "rmw-cffi")]
-fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t {
+pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t {
     use nros_node::NodeError as E;
     use nros_rmw::TransportError as T;
     // Issue 0436 — `-100` is documented as the catch-all for unmapped variants, so
@@ -707,7 +707,19 @@ fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t {
     // That collapse is what made the PX4 bridge's init failure undiagnosable (the
     // #0428 class, one layer out). Name the real variant on the error path — it
     // only runs when something already failed.
-    #[cfg(feature = "std")]
+    //
+    // NOT on Zephyr (issue 0557 / phase-358 W5). Rust std stdio there goes
+    // through the POSIX device-io fdtable, and on a `CONFIG_BOARD_NATIVE_POSIX`
+    // build Zephyr's own `stdinout_write_vmeth` is
+    //
+    //     return zvfs_write(1, buffer, count);
+    //
+    // called FROM `zvfs_write(1, …)` — unbounded self-recursion, observed as a
+    // `k_mutex` with `lock_count = 104756` and a SIGSEGV from stack exhaustion.
+    // So this diagnostic is fatal on exactly the platform whose return code is
+    // often the only thing that reaches the console. The mapping below is the
+    // part that carries the information; the print is a hosted convenience.
+    #[cfg(all(feature = "std", not(feature = "platform-zephyr")))]
     std::eprintln!("nros: NodeError::{err:?}");
     match err {
         E::NameTooLong => NROS_CPP_RET_INVALID_ARGUMENT,
@@ -723,7 +735,24 @@ fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t {
             T::BufferTooSmall | T::MessageTooLarge | T::TooLarge => NROS_CPP_RET_FULL,
             _ => NROS_CPP_RET_TRANSPORT_ERROR,
         },
-        _ => NROS_CPP_RET_TRANSPORT_ERROR,
+        // issue 0557 / phase-358 W5 — these eight used to fall into the `_` arm
+        // below and come out as `-100 TRANSPORT_ERROR`, which is how a Zephyr
+        // Cyclone C action image reported "transport error" for a failure that
+        // never touched the transport. On an embedded guest the return code is
+        // frequently the ONLY thing that reaches the console (issue 0589 makes
+        // the print itself fatal there), so an unmapped variant is not a cosmetic
+        // problem — it is the whole diagnosis.
+        E::ActionCreationFailed => NROS_CPP_RET_ERROR,
+        E::ServiceRequestFailed | E::ServiceReplyFailed => NROS_CPP_RET_SERVICE_FAILED,
+        E::NoSchedContextSlot => NROS_CPP_RET_FULL,
+        E::InvalidSchedContextBinding => NROS_CPP_RET_INVALID_ARGUMENT,
+        E::NodeTableFull | E::ExecutorFull => NROS_CPP_RET_FULL,
+        E::BackendMismatch => NROS_CPP_RET_UNSUPPORTED,
+        // NO wildcard. Every `NodeError` variant is named above, and rustc
+        // rejects a `_` arm here as unreachable — which is the property worth
+        // keeping: adding a variant to `NodeError` now fails to compile until
+        // someone decides what the C++ caller should see, instead of silently
+        // joining the `-100` pile this arm used to be.
     }
 }
 

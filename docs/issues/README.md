@@ -147,6 +147,25 @@ assert against `size_of` of the type they store, and `check-opaque-storage-guard
 `15 macro(s) emitted, all guarded`. A silently substituted size is now a build error naming the macro.
 See `archived/0464-*`.
 
+**#589** (zephyr, api-cpp, open 2026-08-15) — on `native_sim` ANY Rust `println!`/`eprintln!` recurses
+forever and SIGSEGVs the image: Zephyr's `stdinout_write_vmeth` is `return zvfs_write(1, buffer, count)` under
+`CONFIG_BOARD_NATIVE_POSIX`, called FROM `zvfs_write(1, …)` — no termination, `k_mutex` is recursive so it
+never deadlocks, just exhausts the stack (`lock_count = 104756`). C/C++ `printf` uses picolibc's console hook
+and is unaffected, which is why it stayed latent; the config is IDENTICAL in cells that pass, so it is armed in
+every native_sim image and fires only when a Rust std stdio call is reached. Found when #0557's fix routed an
+error through #0436's `eprintln!("nros: NodeError::…")` — `x/s buf` in the backtrace is that literal. Worked
+around by gating that one site on `not(feature = "platform-zephyr")`; 5 more `std::eprintln!` sites in
+`nros-cpp` are the same landmine. See `0589-*`. (2026-08-15)
+
+**#586** (api-cpp, open 2026-08-15) — the C++ FFI throws away the backend error at 15 call sites
+(`Err(_) => NROS_CPP_RET_TRANSPORT_ERROR` in `publisher.rs` 3, `subscription.rs` 5, `service.rs` 7), so a
+C/C++ caller sees "transport error" for a too-long name, a too-small buffer, an in-flight slot or an
+unimplemented op — and on a guest the return code is often the only thing that reaches the console. #0436
+fixed exactly this for `nros_cpp_init` (mapper + `eprintln!` naming the variant); #0557 fixed the action-server
+site and showed the class is still live. NOT swept blind: the fifteen have DIFFERENT error types
+(`create_publisher`, `commit_slot`, `send_request_raw`, …), so one mapper for all of them would be a
+wrong-and-varied answer replacing a wrong-but-uniform one. See `0586-*`. (2026-08-15)
+
 Recently resolved (2026-08-15): **#583** — the nuttx-arm Rust realtime boot tier "stopped scheduling" after
 spawning. Not scheduling and not nano-ros code: the image linked a `std` built 2026-08-10 against crates.io
 `libc`'s 20-byte `pthread_attr_t` while NuttX's is 56, so `pthread_attr_init`/`destroy` wrote 36 bytes past

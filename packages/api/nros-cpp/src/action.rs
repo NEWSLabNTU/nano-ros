@@ -309,7 +309,17 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
             server.handle = Some(handle);
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        // issue 0557 / phase-358 W5 — was `Err(_) => TRANSPORT_ERROR`, which
+        // discarded the `NodeError` and reported `-100` for causes that are not
+        // transport at all. That is the collapse issue 0436 already fixed for
+        // `nros_cpp_init` (via this same mapper, which also names the variant on
+        // the error path) — applied there and not here.
+        //
+        // It cost exactly what that kind of collapse costs: the Zephyr Cyclone C
+        // action image failed with `run_components failed rc=-100` and no way to
+        // tell which precondition the backend rejected, while the Rust action,
+        // the C service and the C pubsub cells on the same backend all passed.
+        Err(e) => crate::node_error_to_cpp_ret(e),
     }
 }
 

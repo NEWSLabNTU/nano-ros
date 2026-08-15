@@ -980,6 +980,16 @@ pub fn ready_marker(role: DemoRole, _lang: crate::matrix::Lang) -> &'static str 
 //   `is in use!`                 Zephyr dynamic thread stack reuse (0557)
 //   `<err> os:`                  any Zephyr kernel error log line
 //   `panicked at`                a Rust panic inside the guest
+//
+// ORDER IS PRECEDENCE, not documentation — `first_guest_failure` scans this
+// list in order and returns the first line matching the highest-ranked
+// signature present (phase-358 W5). Put the most specific, most authoritative
+// signatures first: an entry's own error code beats a kernel log line, and a
+// kernel log line beats a generic `<err>`. `is in use!` is deliberately LOW:
+// issue 0557 established it is benign (Zephyr's `pthread_attr_destroy` frees
+// the stack of the thread it just created, logs `-EBUSY`, and returns 0), and
+// it is printed BEFORE the real failure, so ranking it high made the verdict
+// lead with a red herring.
 pub const GUEST_FAILURE_SIGNATURES: &[&str] = &[
     "run_components failed rc=",
     "ZEPHYR FATAL ERROR",
@@ -992,19 +1002,36 @@ pub const GUEST_FAILURE_SIGNATURES: &[&str] = &[
     "panicked at",
 ];
 
-/// The FIRST guest-side failure line in `output`, if any.
+/// The most SPECIFIC guest-side failure line in `output`, if any.
 ///
-/// First rather than last, deliberately: the earliest failure is usually the
-/// cause and the rest are its consequences (0557's six consecutive `tid … is in
-/// use!` lines, 0552's register dump after the fault line).
+/// Scanning is rank-major: take [`GUEST_FAILURE_SIGNATURES`] in order and
+/// return the first line matching the highest-ranked signature present, not the
+/// earliest failure-ish line in the log.
+///
+/// phase-358 W5 — it used to be plain line order, on the reasoning that "the
+/// earliest failure is usually the cause and the rest are its consequences".
+/// Issue 0557 is the counter-example, and it was the very issue this function
+/// was written for: the guest prints six `tid … is in use!` lines BEFORE
+/// `run_components failed rc=-100`, so line order made the verdict lead with
+/// them. Those lines are benign — Zephyr's `pthread_attr_destroy` calls
+/// `k_thread_stack_free` on the stack of the thread it just created, logs
+/// `-EBUSY`, and returns 0 anyway — so the headline named a red herring while
+/// the entry's own error code sat four lines down. A diagnostic that names the
+/// wrong line is a new hiding place, which is the thing this function exists to
+/// remove.
+///
+/// Within one signature it is still the earliest matching line, so 0552's
+/// fault-then-register-dump and 0557's six consecutive lines each collapse to
+/// their first.
 ///
 /// Returns the whole line, trimmed — callers put it in the headline so the
 /// verdict names the failure instead of naming the wait that observed it.
 pub fn first_guest_failure(output: &str) -> Option<&str> {
-    output.lines().map(str::trim).find(|line| {
-        GUEST_FAILURE_SIGNATURES
-            .iter()
-            .any(|sig| line.contains(sig))
+    GUEST_FAILURE_SIGNATURES.iter().find_map(|sig| {
+        output
+            .lines()
+            .map(str::trim)
+            .find(|line| line.contains(sig))
     })
 }
 
@@ -1020,11 +1047,47 @@ mod guest_failure_tests {
                    <err> os: tid 0x581fa0 is in use!\n\
                    <inf> cyclonedds: dds_create_participant returned 49379019\n\
                    nros zephyr entry: run_components failed rc=-100\n";
-        // The FIRST failure, which is the kernel error rather than the entry's
-        // downstream rc — that ordering is the point of the helper.
+        // phase-358 W5 — this used to expect the `tid … is in use!` line, on
+        // the theory that the earliest failure is the cause. Running the guest
+        // disproved it: those lines are benign (Zephyr's `pthread_attr_destroy`
+        // frees the stack of the thread it just created, logs `-EBUSY`, returns
+        // 0), and leading with them buried the entry's own error code four
+        // lines down — a diagnostic pointing at a red herring, which is the
+        // failure mode this helper exists to prevent.
+        assert_eq!(
+            first_guest_failure(out),
+            Some("nros zephyr entry: run_components failed rc=-100")
+        );
+    }
+
+    #[test]
+    fn a_benign_line_alone_is_still_reported() {
+        // Ranking `is in use!` low must not make it invisible: with nothing
+        // better in the log it is still far more use than a bare timeout.
+        let out = "*** Booting Zephyr OS build v3.7.0 ***\n\
+                   <err> os: tid 0x581fa0 is in use!\n";
         assert_eq!(
             first_guest_failure(out),
             Some("<err> os: tid 0x581fa0 is in use!")
+        );
+    }
+
+    #[test]
+    fn precedence_beats_line_order_but_not_within_a_signature() {
+        // A later, higher-ranked signature wins over an earlier, lower one …
+        let out = "<err> os: tid 0x1 is in use!\n\
+                   <err> os: ***** USAGE FAULT *****\n";
+        assert_eq!(
+            first_guest_failure(out),
+            Some("<err> os: ***** USAGE FAULT *****")
+        );
+        // … while repeats of the SAME signature still collapse to the first,
+        // which is what makes 0552's fault-then-register-dump read correctly.
+        let dump = "<err> os: ***** USAGE FAULT *****\n\
+                    <err> os: ***** USAGE FAULT ***** (second core)\n";
+        assert_eq!(
+            first_guest_failure(dump),
+            Some("<err> os: ***** USAGE FAULT *****")
         );
     }
 
