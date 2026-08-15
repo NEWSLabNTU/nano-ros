@@ -4,7 +4,7 @@ title: "`std` implies `alloc` in half the stack and not the other half — the d
 status: open
 type: bug
 area: build
-related: [rfc-0033, rfc-0005, rfc-0006, issue-0582, phase-360]
+related: [rfc-0033, rfc-0005, rfc-0006, issue-0591, phase-361]
 ---
 
 ## The contradiction
@@ -103,7 +103,7 @@ advertises as a knob:
 - **`nros-platform/alloc`** — 0 `cfg` sites, forwards nowhere. Its only effect
   was being implied by `global-allocator = ["alloc"]`. A user who enabled
   `nros-platform/alloc` expecting an allocator got nothing. **Deleted in
-  phase-360 W2.b (2026-08-15), together with its sibling `threading`**, which
+  phase-361 W2.b (2026-08-15), together with its sibling `threading`**, which
   sat under the same "capability features" comment and was equally inert.
 - **`nros-rmw-cyclonedds/std`** — **this entry was WRONG and is retracted
   (2026-08-15).** The "0 `cfg` sites" came from a grep scoped to `src/`. The
@@ -112,7 +112,7 @@ advertises as a knob:
   `tests/bare_metal_link.rs:24`, both run explicitly with
   `--features bridge-stub,std`. Deleting it made both files
   `unexpected_cfg` errors under `-D warnings`; it has been restored. The lesson
-  is recorded against phase-360 W4(c): a gate for this rule must search
+  is recorded against phase-361 W4(c): a gate for this rule must search
   `tests/`, `benches/` and `examples/`, not just `src/`, or it will make the
   same deletion automatically.
 
@@ -139,13 +139,13 @@ One rule, stated once, for every crate that can build `no_std`:
 
 Item 1 is a behaviour change for out-of-tree consumers on the `std`-without-`alloc`
 path — that path is the bug, so the change is the fix, but it belongs in a
-release note. See phase-360 for sequencing, and issue 0582 for the second half
+release note. See phase-361 for sequencing, and issue 0591 for the second half
 of the same manifest problem (the `default` feature splitting compile units).
 
 ## Current state (2026-08-15) — fixed as filed, after one detour
 
 **Item 1 landed, and the recommendation above is the one that survived.**
-phase-360 W2 first implemented it, then reverted it on the argument that `std`
+phase-361 W2 first implemented it, then reverted it on the argument that `std`
 must not be a way to acquire a heap without asking — which respelled the same
 implication as `cfg(any(feature = "alloc", feature = "std"))` at 123 use sites.
 Measured against `main`, that added 88 std-mentioning `cfg` branches, 66 of them
@@ -162,7 +162,7 @@ alone (`heap::Vec<u32>` serializes); `check-std-census` reports "no crate
 moved"; `check-no-std` and `check-workspace-features` green; seven bare-metal
 target/feature pairs check clean.
 
-Items 2–4 remain open: the one-place statement is phase-360 W1 (not yet written
+Items 2–4 remain open: the one-place statement is phase-361 W1 (not yet written
 into `ARCHITECTURE.md`), the dead declarations are W2.b, and the gate is W4.
 Until W4 exists this is a state, not an invariant — which is why this issue is
 still `open`.

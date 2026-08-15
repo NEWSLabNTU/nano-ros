@@ -49,7 +49,7 @@ the toolchain to a Rust cargo feature or a CMake `-DNANO_ROS_RMW`. Scope is per-
 (nodes inherit; in-process multi-RMW only via `[[bridge]]`); the cargo feature is the lowering
 target, not the user-facing knob.
 
-### The `std` / `alloc` contract (phase-360 W1)
+### The `std` / `alloc` contract (phase-361 W1)
 
 Normative. Every crate feature table points here rather than restating it.
 
@@ -88,8 +88,8 @@ heap gate is already in its final form: dropping `std` needs no `cfg` edit.
 survive on trust — `check-feature-contract` (W4) asserts each clause, and until
 that gate exists each is a measurement rather than an invariant.
 
-→ issue 0587 (the defect that produced the rule), issue 0585 (the 34 implicit
-enables), phase-360, phase-359 (the campaign that removes `std` entirely).
+→ issue 0587 (the defect that produced the rule), issue 0594 (the 34 implicit
+enables), phase-361, phase-359 (the campaign that removes `std` entirely).
 
 **Agnosticism contract.** The `platform-*` / `rmw-*` axis features are lowering targets that
 belong ONLY to (a) **board crates** — the selection point that brings the concrete backend +

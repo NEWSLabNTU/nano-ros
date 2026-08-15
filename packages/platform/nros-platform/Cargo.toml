@@ -14,7 +14,7 @@ keywords = ["embedded", "no-std", "rtos", "platform-abstraction"]
 categories = ["embedded", "no-std", "os"]
 
 [features]
-# phase-360 W3 / issue 0582 — EMPTY. This was the only crate in the platform
+# phase-361 W3 / issue 0591 — EMPTY. This was the only crate in the platform
 # layer still defaulting to `std`; every sibling (`nros-platform-cffi`,
 # `-esp32-qemu`, `-stm32f4`, `nros-baremetal-common`) already had `default = []`.
 default = []
@@ -102,7 +102,7 @@ platform-zephyr = ["dep:nros-platform-cffi"]
 # boards. A Cortex-R5F FreeRTOS-FSP consumer selects `platform-freertos`
 # directly, which is what the alias forwarded to anyway.
 
-# phase-360 W2.b / issue 0585 — `alloc` and `threading` DELETED here (2026-08-15).
+# phase-361 W2.b / issue 0594 — `alloc` and `threading` DELETED here (2026-08-15).
 # They were commented "capability features — enabled by RMW shims to declare
 # requirements": declarative by design, inert in fact. Each had zero `cfg` sites,
 # forwarded nowhere, and was named by nothing in the workspace — an intention
@@ -119,17 +119,17 @@ platform-zephyr = ["dep:nros-platform-cffi"]
 # this feature to wire DDS + heapless futures through the
 # board's heap (`pvPortMalloc` on FreeRTOS, `tx_byte_allocate` on
 # ThreadX, `kmm_malloc` on NuttX, etc.).
-# phase-360 W8.a / issue 0585 — does NOT enable `alloc`. The allocator module
+# phase-361 W8.a / issue 0594 — does NOT enable `alloc`. The allocator module
 # uses only `core::alloc::GlobalAlloc`; `extern crate alloc` is gated separately
 # on the `alloc` feature. Installing a `#[global_allocator]` says "this platform
 # owns a heap", not "this image may allocate" — the second is the user's call.
-# phase-360 W8.c / issue 0585 — this crate is now the SOLE owner of the lang
+# phase-361 W8.c / issue 0594 — this crate is now the SOLE owner of the lang
 # item. `nros-c/global-allocator` forwards here instead of defining a second
 # one; `nros-platform-mps2-an385` and `zpico-alloc` keep their arena and no
 # longer install a competing `#[global_allocator]` of their own.
 global-allocator = []
 
-# phase-360 W8.c — opt-in instrumentation of the global allocator above:
+# phase-361 W8.c — opt-in instrumentation of the global allocator above:
 # `nros_platform::heap_stats::{used, peak}` report the Rust footprint. Moved
 # here from `nros-c` with the allocator it measures. Counts only what the Rust
 # `#[global_allocator]` sees — the port's own `nros_platform_heap_used_bytes`

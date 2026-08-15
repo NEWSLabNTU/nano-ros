@@ -1,5 +1,5 @@
 ---
-id: 584
+id: 593
 title: "`nros/ffi-size-markers` was enabled ONLY by a default feature both consumers disable — a `-p nros-c` build had no size markers"
 status: resolved
 type: bug

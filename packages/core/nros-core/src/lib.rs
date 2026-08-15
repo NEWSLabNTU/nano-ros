@@ -13,7 +13,7 @@
 #[cfg(feature = "std")]
 extern crate std;
 
-// phase-360 W2 (final) / issue 0587 — `alloc` is THE heap predicate, in this
+// phase-361 W2 (final) / issue 0587 — `alloc` is THE heap predicate, in this
 // exact spelling everywhere in the workspace. `std` reaches it through the
 // MANIFEST (`std = ["alloc", …]`), not through a wider `cfg`.
 //

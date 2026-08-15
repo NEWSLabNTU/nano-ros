@@ -60,7 +60,7 @@ const fn parse_usize(s: &str) -> usize {
 // `PlatformAlloc` impl below, the Rust `#[global_allocator]` too. One arena,
 // both languages.
 //
-// phase-360 W8.c / issue 0585 — it no longer installs the lang item itself.
+// phase-361 W8.c / issue 0594 — it no longer installs the lang item itself.
 // The `global-alloc` feature used to put `#[global_allocator]` on this static
 // while `nros-platform/global-allocator` put one on its own adapter over
 // `PlatformAlloc`; a board enabling both got two, which is a hard error, and

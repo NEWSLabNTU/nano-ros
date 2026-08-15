@@ -40,7 +40,7 @@
 //! two. The Rust half reaches it through the platform's `PlatformAlloc` impl,
 //! and `nros-platform` installs the single `#[global_allocator]` in the tree.
 //!
-//! phase-360 W8.c / issue 0585 — [`FreeListHeap`] no longer implements
+//! phase-361 W8.c / issue 0594 — [`FreeListHeap`] no longer implements
 //! [`core::alloc::GlobalAlloc`] itself. Doing so made this crate a second
 //! allocator provider whose users bypassed `nros_platform_alloc`, the sole
 //! allocation funnel of RFC-0034 D6. The C side still allocates from the arena
@@ -481,7 +481,7 @@ impl<const N: usize> FreeListHeap<N> {
 }
 
 // ============================================================================
-// No `GlobalAlloc` impl here — phase-360 W8.c / issue 0585
+// No `GlobalAlloc` impl here — phase-361 W8.c / issue 0594
 // ============================================================================
 //
 // `FreeListHeap` used to implement `GlobalAlloc` behind a `global-alloc`

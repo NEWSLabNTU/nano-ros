@@ -4,7 +4,7 @@ title: The `std` census counts only anchored `cfg` sites, so 69 of 252 are invis
 status: resolved
 type: bug
 area: testing
-related: [phase-359, phase-360, issue-0196, issue-0587]
+related: [phase-359, phase-361, issue-0196, issue-0587]
 resolved_in: "a9d54004e (phase-359 W2)"
 ---
 
@@ -106,7 +106,7 @@ the two are tracked separately because "they move independently. W2 (collapsing
 duplicated fields) deletes `cfg` branches without touching `path` counts."
 **W2 is precisely the work item this blind spot cannot measure.**
 
-**It missed a real 88-site regression.** phase-360's W2.a briefly deleted the
+**It missed a real 88-site regression.** phase-361's W2.a briefly deleted the
 `std ⇒ alloc` edge from six manifests, which re-created the implication at the
 use sites as `cfg(any(feature = "alloc", feature = "std"))` — 123 of them, +88
 net std-mentioning branches against `main`, 66 in `nros-node`. The census

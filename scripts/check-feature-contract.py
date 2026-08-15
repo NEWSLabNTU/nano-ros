@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""phase-360 W4 — the `std`/`alloc` feature contract, asserted.
+"""phase-361 W4 — the `std`/`alloc` feature contract, asserted.
 
 The contract itself is normative text in `docs/design/ARCHITECTURE.md` §2
 ("The `std` / `alloc` contract"); this file is the only thing that makes it an
-INVARIANT rather than a state. Every figure phase-360 reports — 0 implicit
+INVARIANT rather than a state. Every figure phase-361 reports — 0 implicit
 enables, one `#[global_allocator]`, no `no_std` crate defaulting to `std` — was
 a measurement taken by hand, and each one had already drifted at least once
 before it was measured.
@@ -24,7 +24,7 @@ a. **One spelling of the heap, in both layers.** In the manifest: a crate
    the ratchet reported no change.
 
 b. **No `no_std`-capable crate has a non-empty `default` containing `std` or
-   `alloc`.** W3's rule; the reason is issue 0582 (a default `std` splits each
+   `alloc`.** W3's rule; the reason is issue 0591 (a default `std` splits each
    crate into two compile identities inside one cargo invocation).
 
 c. **Every declared `std`/`alloc` feature is USED** — a `cfg` site, or forwarding
@@ -41,7 +41,7 @@ c. **Every declared `std`/`alloc` feature is USED** — a `cfg` site, or forward
 d. **No feature in a `default` set is unreachable.** If every dep-site on a crate
    in this workspace passes `default-features = false` and none names the
    feature, then a `default`-only feature is dead in every real build. That is
-   issue 0584 exactly: `nros/ffi-size-markers` (the `#[used]` attribute keeping
+   issue 0593 exactly: `nros/ffi-size-markers` (the `#[used]` attribute keeping
    the `__NROS_SIZE_*` statics alive for the C/C++ opaque-storage macros) was
    reachable ONLY through `nros`'s default set, which both consumers disable —
    so it appeared in a whole-workspace build by feature unification and vanished
@@ -221,7 +221,7 @@ def clause_b(mans):
             bad.append(
                 f"{rel(man)}: `no_std`-capable crate has `default = {dflt}`.\n"
                 f"      A default heap/std splits the crate into two compile identities in one\n"
-                f"      cargo invocation (issue 0582) and hands embedded users a heap unasked."
+                f"      cargo invocation (issue 0591) and hands embedded users a heap unasked."
             )
     return bad
 
@@ -291,7 +291,7 @@ def clause_d(mans):
                 f"{rel(man)}: `default` names {unreachable}, and all {len(ss)} in-workspace\n"
                 f"      dep-sites on `{nm}` pass `default-features = false` without naming them.\n"
                 f"      Reachable only by feature unification in a whole-workspace build — it\n"
-                f"      disappears in the per-package build cmake runs (issue 0584). Request it\n"
+                f"      disappears in the per-package build cmake runs (issue 0593). Request it\n"
                 f"      at the dep-sites that need it."
             )
     return bad

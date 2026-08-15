@@ -27,7 +27,7 @@ ros-jazzy = []
 # `no_std`-only contract. Test code never enables `std`; the
 # `#[cfg(test)]` tree compiles under `no_std + alloc-free`.
 #
-# phase-360 W2.b — NOT dead, and this phase said it was. The claim was "0 `cfg`
+# phase-361 W2.b — NOT dead, and this phase said it was. The claim was "0 `cfg`
 # sites, no forwarding", measured over `src/` only. It gates two whole
 # integration-test files, each run explicitly with `--features bridge-stub,std`:
 #   tests/registry_race.rs:29   #![cfg(all(feature = "std", feature = "bridge-stub"))]

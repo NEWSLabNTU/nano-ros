@@ -1,5 +1,5 @@
 ---
-id: 583
+id: 592
 title: "a firmware build of `nros` compiles 57 crates; 47 of them exist only to run the `nros::main!` proc-macro"
 status: open
 type: tech-debt

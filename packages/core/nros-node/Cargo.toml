@@ -15,9 +15,9 @@ keywords = ["ros2", "node", "executor", "embedded", "no-std"]
 categories = ["embedded", "no-std"]
 
 [features]
-# phase-360 W3 / issue 0582 — EMPTY; `std` is opt-in per dep-site.
+# phase-361 W3 / issue 0591 — EMPTY; `std` is opt-in per dep-site.
 default = []
-# phase-360 W2 (final) — `portable-atomic-util` is an IMPLEMENTATION dep (the
+# phase-361 W2 (final) — `portable-atomic-util` is an IMPLEMENTATION dep (the
 # no_std stand-in for `std::sync::Arc`), not the heap axis, so it rides `alloc`
 # and `std` reaches it by implying `alloc`. It is declared once, on the feature
 # whose `cfg` sites use it. (phase-359 W2 collapses the five std/alloc field

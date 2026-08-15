@@ -1,5 +1,5 @@
 ---
-id: 585
+id: 594
 title: "`alloc` and `std` are turned on implicitly in 34 places — picking a PLATFORM enables the heap"
 status: open
 type: bug

@@ -14,18 +14,18 @@ keywords = ["ros2", "embedded", "no-std", "robotics", "middleware"]
 categories = ["embedded", "no-std", "network-programming"]
 
 [features]
-# phase-360 W3 / issue 0582 — EMPTY. `no_std` is the baseline; `std` is a thing
+# phase-361 W3 / issue 0591 — EMPTY. `no_std` is the baseline; `std` is a thing
 # you ask for, in one spelling, at your own dep-site. A non-empty `default` also
 # made `default` itself a feature-set member, so a consumer reaching this crate
 # via `default-features = false` + explicit `std` and one reaching it through
 # the default were TWO compile units for identical code.
 default = []
-# phase-360 W2 (final) / issue 0587 — `std` implies `alloc`, in ONE line, and
+# phase-361 W2 (final) / issue 0587 — `std` implies `alloc`, in ONE line, and
 # forwards BOTH to `nros-serdes`. That is the whole fix: the defect was this
 # crate's heap gate and `nros-serdes`'s disagreeing, so a `std`-only build got
 # `heap::{Vec, String}` whose `Serialize` impls had never been compiled.
 # The alternative — independent axes, with `any(alloc, std)` at every use site —
-# was tried and reverted; see `src/lib.rs` and phase-360's phase-359 overlap
+# was tried and reverted; see `src/lib.rs` and phase-361's phase-359 overlap
 # section for why the manifest edge is the spelling that survives.
 std = ["alloc", "nros-serdes/std"]
 alloc = ["nros-serdes/alloc"]

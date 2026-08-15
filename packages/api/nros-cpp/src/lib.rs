@@ -52,7 +52,7 @@ use panic_halt as _;
 // the platform query for the unified figure. Both return `0` on ports that
 // don't instrument their heap.
 //
-// phase-360 W8.c / issue 0585 — this crate defines NONE of it. The four
+// phase-361 W8.c / issue 0594 — this crate defines NONE of it. The four
 // `#[no_mangle]` names above are the same symbols `nros-c` exports, and
 // `nros-c` is a hard dependency below, so enabling `alloc-stats` on both
 // crates produced duplicate definitions of `nros_heap_used_bytes` and friends.
@@ -2814,7 +2814,7 @@ mod qos_override_tests {
 }
 
 // ---------------------------------------------------------------------------
-// phase-360 W8.e / issue 0585 — capabilities REQUIRE the heap / the standard
+// phase-361 W8.e / issue 0594 — capabilities REQUIRE the heap / the standard
 // library, they do not enable it. Turning `alloc` or `std` on for the user
 // silently changes what their firmware image is; naming the feature they must
 // add does not.

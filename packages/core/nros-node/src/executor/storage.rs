@@ -335,7 +335,7 @@ mod tests {
         assert!(executor_storage_layout(CBS, SC, ARENA).align() <= 8);
     }
 
-    // phase-360 W8.e / issue 0585 — this test heap-allocates its backing array,
+    // phase-361 W8.e / issue 0594 — this test heap-allocates its backing array,
     // so it needs `alloc`. It compiled under `--no-default-features` only
     // because feature unification from another workspace member happened to
     // turn `nros-node/alloc` on; nothing does that now.

@@ -17,7 +17,7 @@ readme = "README.md"
 crate-type = ["staticlib", "lib"]
 
 [features]
-# phase-360 W3 / issue 0582 — EMPTY; `std` is opt-in per dep-site.
+# phase-361 W3 / issue 0591 — EMPTY; `std` is opt-in per dep-site.
 default = []
 std = [
     "alloc",
@@ -93,7 +93,7 @@ lifecycle-services = ["rmw-cffi", "nros-c/lifecycle-services"]
 xrce-udp = ["nros-c/xrce-udp"]
 xrce-serial = ["nros-c/xrce-serial"]
 
-# phase-360 W8.c / issue 0585 — `global-allocator` is GONE from this crate. It
+# phase-361 W8.c / issue 0594 — `global-allocator` is GONE from this crate. It
 # was a dead declaration: zero `cfg` sites, forwarding nowhere, while the
 # comment claimed it installed an allocator. The single-runtime rule below
 # already says nros-c owns the lang item and nros-cpp's `platform-*` must not
@@ -113,7 +113,7 @@ critical-section = ["dep:critical-section"]
 # `platform-*` therefore forward to `nros-c/platform-*` (which enable nros-c's
 # `global-allocator` / `critical-section`) and must NOT enable nros-cpp's OWN copies —
 # two of any would conflict in the one crate graph.
-# phase-360 W8.d / issue 0585 — a `platform-*` feature selects the PROVIDER of
+# phase-361 W8.d / issue 0594 — a `platform-*` feature selects the PROVIDER of
 # malloc + panic for this platform (that is the "unified per platform" half of
 # the contract) and NOTHING else. It no longer lists `alloc`: whether the image
 # may allocate is the end user's call, spelled `alloc` at their own dep-site.
@@ -161,7 +161,7 @@ ros-jazzy = [
 # (one instance), so this provides exactly one handler — no duplicate.
 panic-halt = ["dep:panic-halt", "nros-c/panic-halt"]
 
-# phase-360 W8.b / issue 0585 — forwards nros-c's built-in spin-loop panic
+# phase-361 W8.b / issue 0594 — forwards nros-c's built-in spin-loop panic
 # handler. nros-c owns the lang item for the bundled single-runtime staticlib.
 panic-spin = ["nros-c/panic-spin"]
 
@@ -171,7 +171,7 @@ panic-spin = ["nros-c/panic-spin"]
 # `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`. NOTE: counts only the
 # Rust allocator's footprint — zenoh-pico's direct C-side z_malloc/pvPortMalloc
 # traffic is not included (see issue #6).
-# phase-360 W8.c — FORWARDS to nros-c rather than defining a second copy. Both
+# phase-361 W8.c — FORWARDS to nros-c rather than defining a second copy. Both
 # crates exported the same four `#[no_mangle]` names off their own `HeapStats`
 # static, so enabling this on both was a duplicate-symbol link error waiting to
 # happen. Same single-runtime rule as the allocator and the panic handler.
@@ -189,7 +189,7 @@ host-only = true
 host-only-reason = "C++ ABI surface, built per-platform by cmake not by the workspace lane"
 
 [dependencies]
-# phase-360 W3 — `ffi-size-markers` REQUESTED, not inherited from `nros`'s
+# phase-361 W3 — `ffi-size-markers` REQUESTED, not inherited from `nros`'s
 # (now empty) `default`; see the same note on nros-c.
 nros = { version = "0.5.0", path = "../nros", default-features = false, features = ["ffi-size-markers"] }
 nros-node.workspace = true
@@ -216,7 +216,7 @@ nros-rmw = { version = "0.5.0", path = "../../core/nros-rmw", default-features =
 nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
-# phase-360 W8.c — `zpico-alloc` is gone with the duplicate `HeapStats` static;
+# phase-361 W8.c — `zpico-alloc` is gone with the duplicate `HeapStats` static;
 # `alloc-stats` forwards to `nros-c`, which forwards to `nros-platform`.
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on
@@ -257,7 +257,7 @@ nros-build-helpers = { workspace = true }
 # portable-atomic, log ... pulled into the BUILD-dependency graph and recompiled
 # at opt-level=0/panic=unwind. `nros` stays a REGULAR dependency, which is what
 # the nested probe's `cargo build -p nros` resolves through — with
-# `ffi-size-markers` requested at that dep-site (issue 0584), so the probe's
+# `ffi-size-markers` requested at that dep-site (issue 0593), so the probe's
 # `--features=<resolved>` carries it.
 
 [package.metadata.docs.rs]

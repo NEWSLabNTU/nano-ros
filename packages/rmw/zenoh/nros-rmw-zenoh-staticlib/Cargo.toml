@@ -25,7 +25,7 @@ crate-type = ["staticlib"]
 
 [features]
 default = []
-# phase-360 W2.a / W4 — `std` implies `alloc`, one line, like every other crate
+# phase-361 W2.a / W4 — `std` implies `alloc`, one line, like every other crate
 # that declares both. Missed by W2.a's hand-sweep (twelve crates found, this one
 # not) and caught by `check-feature-contract` on its first run, which is the
 # argument for the gate: a hand-sweep's coverage is unverifiable.
@@ -46,7 +46,7 @@ platform-zephyr = ["nros-rmw-zenoh/platform-zephyr"]
 #
 # A SEPARATE feature rather than folding the deps into `platform-zephyr`:
 # `panic-halt` on the std path would collide with std's own panic handler, so
-# phase-360 W8.d / issue 0585 — these rows select the malloc/panic PROVIDER
+# phase-361 W8.d / issue 0594 — these rows select the malloc/panic PROVIDER
 # (`nros-platform/global-allocator`, `panic-halt`) for the platform and nothing
 # else. They no longer list `alloc`/`std`: the heap and the standard library are
 # the end user's call, named at their own dep-site.

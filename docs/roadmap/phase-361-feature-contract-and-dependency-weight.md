@@ -13,25 +13,21 @@ here is a measurement. W2.b (two dead declarations) needs a decision; W5–W7
 nothing else owns — and after the phase-359 reconciliation they are the larger
 part of what is left.
 
-**Numbering.** Drafted offline as "phase-341" against a stale `main` and
-renumbered THREE times, because every renumber read a local maximum that a push
-had already moved. 341 → 345 (2026-08-10, upstream had spent 341–344 and issues
-0467–0471); 345 → 359 (2026-08-15, upstream had spent 345 and 0492–0496);
-359 → 360 (2026-08-15, same day — upstream landed `phase-359-drop-std-campaign`
-while this branch was rebasing onto it). Issues moved with them, and then one
-moved again: 0492–0496 → 0581–0585, and on the next pull **0581 → 0587**,
-because upstream spent 0581 on an unrelated `just book` fix hours after this
-branch claimed it. 0582–0585 are unmoved; 0586 was filed and immediately
-archived (see below).
+**Numbering — FIVE collisions, and the cause is unfixed.** Drafted offline as
+"phase-341"; renumbered 341 → 345 → 359 → 360 → **361**, and the issues with it:
+0467–0471 → 0492–0496 → 0581–0585, then 0581 → 0587 when upstream spent it, then
+0582–0585 → **0591–0594** when upstream spent those too. Every renumber read a
+local maximum; every one was stale before it landed, because `just phase-new` /
+`just issue-new` **cannot reach `origin` from this host** ("Password
+authentication is not supported"), fall back to the racy local-maximum path, and
+push no `refs/*-ids/NNNN` reservation.
 
-Every one of these was `just phase-new` / `just issue-new` falling back to the
-RACY local-maximum path — this host cannot authenticate to `origin` ("Password
-authentication is not supported"), so no `refs/*-ids/NNNN` reservation was ever
-pushed and the local maximum is only ever a guess. **Re-run both tools with a
-working credential before this branch lands**; until then every id here is
-unclaimed. Four collisions is not bad luck: an id read from a local checkout is
-stale the moment another session pushes, and this branch has been out of tree
-long enough for that to happen on every single pull.
+The tools are correct and the instruction is correct; the credential is missing,
+and a reservation nobody can push is not a reservation. **Before this branch
+lands, re-run both with a working credential** — phase-361 and issues 0587–0594
+are all unclaimed as of 2026-08-15. Recorded at this length because five is no
+longer bad luck: a long-lived branch renumbers once per pull, indefinitely, and
+the fix is one working push.
 
 **Touches:** RFC-0005 (RMW layer), RFC-0006 (portable RMW/platform interface),
 RFC-0033 (message field capacity — the `mode = "heap"` types this contract

@@ -18,7 +18,7 @@ extern crate nros_board_threadx_qemu_riscv64 as _;
 
 nros_board_threadx_qemu_riscv64::cyclonedds_app_main!(crate::register);
 
-// phase-360 W8.e / issue 0585 — the backend REQUIRES the heap; it does not
+// phase-361 W8.e / issue 0594 — the backend REQUIRES the heap; it does not
 // silently enable it. Build as `--features rmw-cyclonedds,alloc` (the cmake
 // path spells both in `nros_threadx_rv64_rust_cyclone_app`).
 //

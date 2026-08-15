@@ -1,5 +1,5 @@
 ---
-id: 582
+id: 591
 title: "`default = [\"std\"]` on the no_std crates splits each of them into two compile identities in ONE cargo invocation"
 status: open
 type: tech-debt

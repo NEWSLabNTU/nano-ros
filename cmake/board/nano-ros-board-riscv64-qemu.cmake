@@ -518,7 +518,7 @@ function(nros_threadx_rv64_rust_cyclone_app target)
         CRATE_TYPES staticlib
         NO_DEFAULT_FEATURES
         PROFILE ${NROS_CARGO_PROFILE}
-        # phase-360 W8.e — `alloc` is spelled HERE, by the consumer, because
+        # phase-361 W8.e — `alloc` is spelled HERE, by the consumer, because
         # `rmw-cyclonedds` no longer enables the heap for you. Cyclone
         # allocates, so every one of these six leaves needs it, and each
         # carries a `compile_error!` naming the feature if it is missing.
