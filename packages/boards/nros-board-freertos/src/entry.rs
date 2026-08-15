@@ -709,6 +709,8 @@ where
     // `nros_info!` output is silently dropped on multi-tier entries.
     ::nros_log::init(::nros_log::sinks::default());
 
+    report_tiers_above_transport::<B>(&config, tiers);
+
     let app_pri = Config::to_freertos_priority(config.app_priority);
     let app_stack_words = config.app_stack_bytes / 4;
 
@@ -747,6 +749,63 @@ where
     }
 
     B::exit_failure()
+}
+
+/// Report tiers that will PREEMPT the transport band, naming both numbers in
+/// FreeRTOS units (issue 0623).
+///
+/// Two vocabularies meet in one scheduler and nothing said so. A tier priority
+/// is authored RAW — `[tiers.high.freertos] priority = 5` is FreeRTOS 5 — while
+/// the transport knobs are on the normalised 0–31 band and the board maps them
+/// down: `zenoh_read_priority = 16` becomes FreeRTOS **4**. So an author who
+/// writes 5 against a transport that reads "16" gets a tier ABOVE the transport
+/// band, having reasonably concluded the opposite.
+///
+/// That is not a hypothetical. `nano-ros-rt-eval` ran tiers at 5/4/2 for
+/// exactly this reason; the starved RX drain dropped frames, every publisher
+/// stalled on lwIP retransmission timeouts, and the island froze for 1–3 s at a
+/// time. Its `system.toml` now runs 3/2/1 with a comment explaining the mapping
+/// — knowledge that lived in one consumer's config file and nowhere in nano-ros.
+///
+/// Deliberately a REPORT, not an error. A tier that must preempt transport is a
+/// legitimate design (hard-RT control that would rather lose packets than a
+/// deadline); what is not legitimate is choosing it by accident. Both effective
+/// values are printed so the comparison needs no arithmetic from the reader.
+fn report_tiers_above_transport<B: BoardPrint>(config: &Config, tiers: &'static [TierSpec<'static>]) {
+    // The band's FLOOR: the lowest-priority transport task is the first to be
+    // starved, so it decides whether transport makes progress at all.
+    let read = Config::to_freertos_priority(config.zenoh_read_priority);
+    let lease = Config::to_freertos_priority(config.zenoh_lease_priority);
+    let poll = Config::to_freertos_priority(config.poll_priority);
+    let floor = read.min(lease).min(poll);
+
+    let mut offenders = 0usize;
+    for tier in tiers {
+        let prio = tier.priority.clamp(0, u32::MAX as i64) as u32;
+        if prio >= floor {
+            if offenders == 0 {
+                B::println(format_args!(
+                    "nros: tier priority meets the transport band (FreeRTOS units):"
+                ));
+                B::println(format_args!(
+                    "  transport: zenoh_read {read}, zenoh_lease {lease}, net_poll {poll} (floor {floor})"
+                ));
+            }
+            offenders += 1;
+            B::println(format_args!(
+                "  tier `{}` at {prio} >= {floor} — this tier PREEMPTS transport I/O",
+                tier.name
+            ));
+        }
+    }
+    if offenders > 0 {
+        B::println(format_args!(
+            "  Intended? then nothing to do. If not: tier priorities are RAW FreeRTOS \
+             units, transport priorities are normalised 0-31 mapped DOWN (16 -> {floor}). \
+             Starving the RX drain stalls publishers on lwIP retransmission, which \
+             costs far more than the deadline it was meant to protect (issue 0623)."
+        ));
+    }
 }
 
 fn init_network(config: &Config) -> FrResult<()> {

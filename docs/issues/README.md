@@ -124,6 +124,21 @@ compile-time error instead of a link-time duplicate symbol — louder, not newer
 `packages/cli` is a separate workspace inside the repo), plus a configure-time FATAL_ERROR when two roots
 claim one directory. See `archived/0616-*`.
 
+**#623** (boards/platform, open 2026-08-16) — tier priorities are **RAW per-RTOS** and transport priorities
+are **NORMALISED 0-31**, and both are passed to `xTaskCreate` in one priority space with nothing saying so.
+`[tiers.high.freertos] priority = 5` is FreeRTOS 5; `zenoh_read_priority = 16` is FreeRTOS **4**
+(`(n*7*2+31)/62`). So an author who writes 5 against a transport that reads "16" puts the tier ABOVE the
+transport band having concluded the opposite — and the defaults ship that collision (`app_priority: 12` -> 3
+vs `zenoh_read_priority: 16` -> 4, three unrelated provenances, never compared). Cost is recorded in a
+CONSUMER's config file, not here: `nano-ros-rt-eval` ran 5/4/2, starved the RX drain, and every publisher
+stalled on lwIP retransmission — 1-3 s island-wide freezes. NOT "lower the read task below the tiers": that
+IS the configuration that froze, and the two failure modes sit on opposite sides (transport above tiers
+misses deadlines = #0506; tiers above transport freezes the island). Same defect phase-364 W5 fixed one layer
+down in the platform ABI. Fixed HERE only as a report — `report_tiers_above_transport` prints both effective
+values in FreeRTOS units at boot, verified both ways on the QEMU guest (tier 5 -> fires, tier 3 -> silent).
+Still open: one vocabulary for both, and ThreadX/Zephyr have the same two-vocabulary collision unexamined.
+See `0623-*`. (2026-08-16)
+
 RESOLVED 2026-08-16 — **#0621** a VENDORED nano-ros splices its 272 example packages into the CONSUMER's
 package index. `build_pkg_index` walks the consumer's root, descends into the nano-ros subdirectory and dies
 on the first duplicate — `demo_bringup`, naming two directories inside the dependency for a package the
