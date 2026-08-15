@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-16): **#613** `check-feature-contract` clause (d) failed on
+`nros-board-nuttx`: `default = ['image-runtime']` was unreachable, because its ONE in-workspace dep-site
+(`nros-board-nuttx-qemu`) takes it `default-features = false` and re-enables the feature by name. This is
+the class issue 0593's "Gate" section asked for, found in a second crate — the gate working, not a new
+defect. Naming the feature at that dep-site would have been WRONG: the two FFI bins disable the overlay's
+default precisely to get the runtime OFF, since a C/C++ image gets `#[panic_handler]` and
+`#[global_allocator]` from `nros-c`, and forcing it would duplicate both lang items. Fixed with
+`default = []`; verified inert by diffing resolved features before/after (identical, because the dep-site
+already disabled defaults). See `archived/0613-*`.
+
 **#602** — `[source.threadx]` declares `eclipse-threadx/threadx` at `4b6e8100` while `.gitmodules` declares the
 `NEWSLabNTU` fork and the gitlink records `13d061a7` (whose parent IS `4b6e8100`; the commit between them is our
 LP64 fix). Filed first as "provisioning reverts the fix" — REFUTED: `provision()` returns `Submodule` whenever
