@@ -77,22 +77,22 @@ pub fn resolve(
         let facts = resolve_one(ws, nano_ros_root, &name, &target, env)?;
         resolved.push((name, facts));
     }
-    if let Some((first_name, first)) = resolved.first() {
-        if let Some((other_name, other)) = resolved.iter().find(|(_, f)| f != first) {
-            let differing: Vec<String> = first
-                .keys()
-                .chain(other.keys())
-                .collect::<std::collections::BTreeSet<_>>()
-                .into_iter()
-                .filter(|k| first.get(*k) != other.get(*k))
-                .cloned()
-                .collect();
-            return Err(eyre!(
-                "deploys `{first_name}` and `{other_name}` name the same board but resolve \
+    if let Some((first_name, first)) = resolved.first()
+        && let Some((other_name, other)) = resolved.iter().find(|(_, f)| f != first)
+    {
+        let differing: Vec<String> = first
+            .keys()
+            .chain(other.keys())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .filter(|k| first.get(*k) != other.get(*k))
+            .cloned()
+            .collect();
+        return Err(eyre!(
+            "deploys `{first_name}` and `{other_name}` name the same board but resolve \
                  DIFFERENTLY ({}); pass --deploy to say which one this build is",
-                differing.join(", ")
-            ));
-        }
+            differing.join(", ")
+        ));
     }
     resolved
         .into_iter()
@@ -249,11 +249,11 @@ fn deploys_from_manifest(ws: &Path) -> Result<Option<Vec<PickedDeploy>>> {
         return Ok(None);
     };
     let block = nros.get("deploy").and_then(|d| d.get(deploy_key));
-    let mut target = crate::orchestration::cargo_metadata_schema::DeployTarget::default();
-    target.board = Some(deploy_key.to_string());
-    if let Some(site) = block.and_then(|b| b.get("nros")) {
-        target.nros = Some(site.clone());
-    }
+    let target = crate::orchestration::cargo_metadata_schema::DeployTarget {
+        board: Some(deploy_key.to_string()),
+        nros: block.and_then(|b| b.get("nros")).cloned(),
+        ..Default::default()
+    };
     Ok(Some(vec![(deploy_key.to_string(), target)]))
 }
 

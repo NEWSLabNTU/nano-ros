@@ -4382,22 +4382,6 @@ fn write_board_projection(
     })
 }
 
-/// phase-341 W4 — the regeneration check that REPLACES
-/// `check-board-cargo-config-applied`.
-///
-/// That gate existed because the leaf mirrored the descriptor by hand, so it
-/// asked "does the leaf still carry a REPRESENTATIVE arg from its board?" —
-/// deliberately loose, catching a lost GROUP but not a lost argument. Once the
-/// block is a projection the question changes: not "did a human copy enough of
-/// it" but "is the committed file what the descriptor renders to". That is an
-/// exact comparison, and it makes drift uncommittable rather than detectable.
-///
-/// Shares `render_board_config` with [`write_board_projection`] — checking with
-/// a second implementation of the renderer is how the two spellings drift, which
-/// is the failure this whole phase exists to remove.
-///
-/// Returns one human-readable complaint per leaf that disagrees.
-
 /// The projected body for one leaf.
 ///
 /// ONE renderer, shared by the writer and the checker. They used to compute
@@ -4423,6 +4407,21 @@ fn render_board_projection_body(
     Ok(projected)
 }
 
+/// phase-341 W4 — the regeneration check that REPLACES
+/// `check-board-cargo-config-applied`.
+///
+/// That gate existed because the leaf mirrored the descriptor by hand, so it
+/// asked "does the leaf still carry a REPRESENTATIVE arg from its board?" —
+/// deliberately loose, catching a lost GROUP but not a lost argument. Once the
+/// block is a projection the question changes: not "did a human copy enough of
+/// it" but "is the committed file what the descriptor renders to". That is an
+/// exact comparison, and it makes drift uncommittable rather than detectable.
+///
+/// Shares `render_board_config` with [`write_board_projection`] — checking with
+/// a second implementation of the renderer is how the two spellings drift, which
+/// is the failure this whole phase exists to remove.
+///
+/// Returns one human-readable complaint per leaf that disagrees.
 fn check_board_projection(
     leaf_dir: &Path,
     nano_ros_root: &Path,
