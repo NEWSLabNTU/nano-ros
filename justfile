@@ -1876,6 +1876,7 @@ test verbose="": _require-build-sources _require-fixtures _check-fixtures-stale 
     nros_nextest_record_finish
     echo ""
     echo "JUnit XML: $junit"
+    just _check-skip-budget || failed=1
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some tests failed."
         exit 1
@@ -2451,6 +2452,12 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     echo ""
     echo "JUnit XML:  $junit"
     echo "Other logs: {{LOG_DIR}}/latest/"
+    # Issue 0584 — assert the skips HERE too. The budget was first wired into the
+    # three `$real`-counting tails, and `test-all` — the recipe `ci-matrix`
+    # actually runs — reports through this path instead, so a full sweep never
+    # reached it. Same class as the fixture gate: the sites that were found got
+    # the fix, the site in use did not.
+    just _check-skip-budget || failed=1
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some tests failed."
         exit 1

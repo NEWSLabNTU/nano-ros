@@ -667,6 +667,16 @@ attributed them to genuine input change vs mtime artifact vs tool-fingerprint ov
 want different fixes. Measure and attribute first; do NOT re-run the wall-clock A/B #509 warned about.
 See `0604-*`.
 
+RESOLVED 2026-08-15 (phase-353) — **#611** west fixture REUSE never refreshed `.compile-ok`, so after any
+CLI rebuild the test-side consumer rejected the fixture PERMANENTLY: `.inputsig` (content + codegen
+fingerprint) still matched, so reuse skipped the build, so the stamp kept the old CLI BINARY hash, so
+`require_west_fixture` said "built with a different `nros` CLI" — and rebuilding could not clear it because
+reuse kept skipping. Three tier-2 tests failed exactly that way on a run whose `lane=all` had just reported
+nine families OK. Fixed by re-stamping on the reuse branch, which is the honest claim: reuse is only taken
+when the signature matched, and that signature covers what the tool WOULD PRODUCE, a strictly better
+question than "same binary". Third instance in two days of the issue-0196 shape (after #574, #576): the
+build side writes one stamp, the consumer reads another. See `archived/0611-*`.
+
 RESOLVED 2026-08-15 — **#584** skips were TOLERATED rather than asserted, so `170 skipped` was
 indistinguishable from `170 tests silently did not run`. Three parts landed: `skip_class!` gives the marker
 a machine-readable class (a 170-skip sweep could previously be classified for 4); an absent in-lane fixture

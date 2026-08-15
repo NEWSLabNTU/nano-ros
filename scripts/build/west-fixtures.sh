@@ -172,6 +172,24 @@ while IFS= read -r record; do
     _wf_have="$(cat "$_wf_sig_dir/.inputsig" 2>/dev/null || true)"
     if [ -n "$_wf_want" ] && [ "$_wf_want" = "$_wf_have" ] &&
         [ -e "$bld/$output" ] && [ -f "$bld/.compile-ok" ]; then
+        # RE-STAMP on reuse. `.compile-ok` records the CLI's BINARY hash, and
+        # `require_west_fixture` rejects a fixture whose stamp names a different
+        # `nros` than the current one. Skipping the build without refreshing it
+        # left the old hash in place, so after ANY CLI rebuild the consumer said
+        #
+        #   West fixture … is STALE — built with a different `nros` CLI
+        #
+        # PERMANENTLY: the signature still matched, so reuse kept skipping, so
+        # the stamp was never rewritten, so rebuilding could not clear it. Three
+        # tier-2 tests failed exactly that way.
+        #
+        # Re-stamping is the honest claim, not a paper-over: the reuse branch is
+        # only taken when `.inputsig` matches, and that signature covers the
+        # CLI's codegen FINGERPRINT (phase-360) — i.e. what the tool would
+        # produce — which is a strictly better question than "is it the same
+        # binary". The stamp records the weaker fact, so refresh it to the
+        # current tool the signature just vouched for.
+        west_fixture_stamp "$bld" "$builder"
         echo "   reused $bld ($output) — inputs unchanged"
         n=$((n + 1))
         reused=$((reused + 1))
