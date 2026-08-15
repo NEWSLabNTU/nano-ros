@@ -1,10 +1,20 @@
 # Phase 353 — Build and fixture cost: what the lanes actually pay
 
-**Status (2026-08-15). PLANNING — nothing implemented. Opened to give four
-standing cost issues one owner instead of four.** Each was filed from a real
-measurement; none has a phase. Two of them (#446, #562) are follow-ons to work
-that already landed, so the first task in each case is to re-measure rather than
-to build.
+**Status (2026-08-15). W1 COMPLETE, W4 COMPLETE, W2 direction (1) DONE, W3
+BLOCKED.** Opened to give four standing cost issues one owner instead of four.
+
+* **W1** — #562 verified and RESOLVED (its fix had landed, status never
+  flipped); #446 re-measured and restated.
+* **W4** — probe key narrowed: **25 -> 8** sub-keys, **7.2 G -> 2.2 G** on the
+  same lane, and a second run now adds ZERO new keys.
+* **W2** — the zephyr no-op lane now does nothing: **1668 log lines -> 73,
+  1244 ninja edges -> 0, 129 `Compiling` -> 0.** The 70-leaf per-leaf overhead
+  and the disk-bound finding it is named for remain, so #509 stays open.
+* **W3** — #200 is blocked on a big-disk CI runner and is not actionable
+  locally.
+
+**Remaining:** #509's directions (2) storage and (3) fewer cold leaves, and
+#200's campaign. Both need hardware this host does not have — see each item.
 
 **Owns:** [issue 0446](../issues/0446-build-artifact-reuse-factors.md),
 [issue 0509](../issues/0509-zephyr-lane-per-leaf-overhead.md),
