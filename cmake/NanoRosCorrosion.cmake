@@ -149,6 +149,44 @@ function(nros_report_corrosion origin version location)
     endif()
     message(STATUS
         "nano-ros: Corrosion ${version} via ${origin} [${_topology}] — ${location}")
+
+    # Issue 0493 — REFUSE the broken topology, do not merely narrate it.
+    #
+    # This line classified `< 0.6.0` as a link risk and then configured anyway,
+    # so the only thing standing between a host and the duplicate-symbol failure
+    # was the SDK store happening to hold a newer copy. The store ACCUMULATES
+    # (issue 0500) and `check-cmake-corrosion-prefix` enforces newest-FIRST
+    # ordering, not a version FLOOR: a host with only 0.5.1 installed resolves
+    # it, silently, and gets two `-C metadata` identities of every nros crate in
+    # one `deps/`.
+    #
+    # #493 asked for exactly this and it was never built: "Enforcement, either
+    # way. The invariant is one Rust staticlib exporting the nros symbol set per
+    # configure ... Without it, the next consumer that imports a root-workspace
+    # crate re-creates this silently." That prediction came true on 2026-08-16 as
+    # issue 0616, one lane over, where the same class reappeared with no
+    # Corrosion involved at all. 0616 answered it for the Zephyr lane with a
+    # configure-time FATAL_ERROR when two workspace roots claim one target-dir;
+    # this is the same invariant for the Corrosion lane.
+    #
+    # `unknown` is NOT fatal: a parent project may have loaded Corrosion without
+    # exporting its version, and failing there would break consumers who are not
+    # even at risk. The status line above still says the topology is unknown.
+    if(version MATCHES "^v?0\\.[0-5]\\." AND NOT NROS_ALLOW_LEGACY_CORROSION)
+        message(FATAL_ERROR
+            "nano-ros: Corrosion ${version} shares ONE cargo target-dir across "
+            "workspace roots.\n"
+            "  resolved: ${version} via ${origin} — ${location}\n"
+            "That topology gives the same crate two `-C metadata` identities in one "
+            "`deps/`, so every `#[no_mangle]` export collides at link and "
+            "`nros-platform`'s single `#[global_allocator]` is defined twice "
+            "(issues 0493, 0616).\n"
+            "Fix: provision the pinned copy and clear the trees that cached the old "
+            "topology in their CMakeCache —\n"
+            "    nros setup --tool corrosion\n"
+            "    rm -rf examples/workspaces/*/build-workspace-fixtures*\n"
+            "Override for a deliberate experiment: -DNROS_ALLOW_LEGACY_CORROSION=ON")
+    endif()
 endfunction()
 
 # --------------------------------------------------------------------------
