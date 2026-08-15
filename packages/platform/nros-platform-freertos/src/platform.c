@@ -340,8 +340,9 @@ static void freertos_task_trampoline(void *raw) {
 
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
+    /* phase-364 W1 — INVALID: a NULL where storage or an entry is required. */
     if (task == NULL || entry == NULL) {
-        return -1;
+        return NROS_PLATFORM_RET_INVALID;
     }
     nros_freertos_task_t *t = (nros_freertos_task_t *) task;
     t->handle = NULL;
@@ -372,8 +373,12 @@ int8_t nros_platform_task_init(void *task, void *attr,
         (void *) t,
         priority,
         &handle);
+    /* phase-364 W1 — NOMEM: `xTaskCreate` returns
+     * `errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY` when the heap cannot carry the
+     * stack + TCB. Supported, and may succeed later — the caller must retry
+     * rather than cache (issue 0246's distinction). */
     if (rc != pdPASS) {
-        return -1;
+        return NROS_PLATFORM_RET_NOMEM;
     }
     t->handle = handle;
     return 0;

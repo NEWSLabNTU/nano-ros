@@ -216,7 +216,17 @@ impl Stm32f4Platform {
         _: Option<unsafe extern "C" fn(*mut core::ffi::c_void) -> *mut core::ffi::c_void>,
         _: *mut core::ffi::c_void,
     ) -> i8 {
-        -1
+        // phase-364 W1 — `NROS_PLATFORM_RET_UNSUPPORTED`, not the generic `-1`.
+        // This platform is single-threaded: asking again cannot change the
+        // answer, so a caller may cache the refusal. `-1` said only "it
+        // failed", which a caller must assume is transient and retry forever.
+        //
+        // Spelled as the literal because this crate depends on
+        // `nros-platform-cffi` — where the generated constants live — only
+        // behind its `cffi-export` feature, and this function exists in every
+        // configuration. A Rust-side vocabulary the ports can NAME belongs with
+        // W4's generated export list; recorded there.
+        -5
     }
     pub fn task_join(_: *mut core::ffi::c_void) -> i8 {
         0

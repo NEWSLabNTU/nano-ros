@@ -183,8 +183,13 @@ int nros_zephyr_task_create(pthread_t *thread,
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
     (void) attr;
-    if (task == NULL || entry == NULL) return -1;
-    return nros_zephyr_task_create((pthread_t *) task, entry, arg) == 0 ? 0 : -1;
+    /* phase-364 W1 — see the posix port: INVALID for a caller-side impossibility,
+     * NOMEM for a refused create (this port reaches Zephyr's pthread layer, so
+     * it inherits EAGAIN-on-exhaustion semantics). */
+    if (task == NULL || entry == NULL) return NROS_PLATFORM_RET_INVALID;
+    return nros_zephyr_task_create((pthread_t *) task, entry, arg) == 0
+               ? NROS_PLATFORM_RET_OK
+               : NROS_PLATFORM_RET_NOMEM;
 }
 
 int8_t nros_platform_task_join(void *task) {

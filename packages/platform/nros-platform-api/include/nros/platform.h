@@ -96,16 +96,54 @@
 extern "C" {
 #endif
 
-/* ---- Return codes ---- */
+/* ---- Return codes ----
+ *
+ * phase-364 W1 (RFC-0076 D3). This vocabulary was declared and used by NO
+ * port: 26 entry points returned a bare `int8_t` 0/-1, so "this platform
+ * never does this" and "this failed just now" were the same value.
+ *
+ * That distinction is not academic. A caller may cache `UNSUPPORTED` forever
+ * and MUST retry `NOMEM`: issue 0246 is a transient `pthread_create` failure
+ * on NuttX under load, and phase-359 W10's worker pool — unable to ask — caches
+ * every refusal, disabling a priority level for the process on what may have
+ * been a momentary shortage.
+ *
+ * `nros_platform_ret_t` is `int8_t` because that is the width the functions
+ * already return; it was `int32_t` and, having no users, cost nothing to
+ * narrow. Every code below is non-zero, so a caller testing `!= 0` — which is
+ * every caller today — is unaffected by ports becoming more specific.
+ *
+ * The values are written WITHOUT a cast on purpose. `((nros_platform_ret_t) 0)`
+ * is the more careful C, and it is why bindgen emitted none of these: it cannot
+ * evaluate a cast into a constant, so `nros-platform-cffi` carried a
+ * hand-written Rust copy of all three — a mirror of exactly the kind
+ * `check-ffi-struct-mirrors` exists to prevent, kept in step by nothing. Bare
+ * integer literals cross the generator, so there is now one definition. */
 
-typedef int32_t nros_platform_ret_t;
+typedef int8_t nros_platform_ret_t;
 
 /** Operation completed successfully. */
-#define NROS_PLATFORM_RET_OK              ((nros_platform_ret_t) 0)
+#define NROS_PLATFORM_RET_OK              0
 /** Generic failure not covered by a more specific code. */
-#define NROS_PLATFORM_RET_ERROR           ((nros_platform_ret_t) -1)
-/** The platform does not implement this operation. */
-#define NROS_PLATFORM_RET_UNSUPPORTED     ((nros_platform_ret_t) -5)
+#define NROS_PLATFORM_RET_ERROR           -1
+/** The platform does not implement this operation — and never will, in this
+ *  build. A single-threaded bare-metal port has no tasks; a port without an
+ *  ISR-safe signal has none. Cacheable: asking again cannot change the answer,
+ *  so a caller may record it once and stop trying. */
+#define NROS_PLATFORM_RET_UNSUPPORTED     -5
+/** A resource was exhausted NOW — kernel heap, task slot, handle table. The
+ *  operation is supported and may succeed later. NOT cacheable: a caller that
+ *  treats this as permanent turns a momentary shortage into a dead feature
+ *  (issue 0246). */
+#define NROS_PLATFORM_RET_NOMEM           -6
+/** The caller passed something impossible — a NULL where storage is required,
+ *  a zero-sized stack, an out-of-range priority. Retrying unchanged cannot
+ *  help; this is a bug in the caller, not a condition of the platform. */
+#define NROS_PLATFORM_RET_INVALID         -7
+/** A bounded wait reached its deadline without the event. Not a failure of the
+ *  call — `nros_platform_wake_wait_ms` already returns `1` for this and keeps
+ *  doing so; this code is for the operations that have no such convention. */
+#define NROS_PLATFORM_RET_TIMEOUT         -8
 
 /* ---- Clock (monotonic) ---- */
 

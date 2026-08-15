@@ -187,7 +187,8 @@ static void esp_task_trampoline(void *raw) {
 
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
-    if (task == NULL || entry == NULL) return -1;
+    /* phase-364 W1 — INVALID: a NULL where storage or an entry is required. */
+    if (task == NULL || entry == NULL) return NROS_PLATFORM_RET_INVALID;
     nros_esp_task_t *t = (nros_esp_task_t *) task;
     t->handle = NULL;
     t->join_event = NULL;
@@ -207,7 +208,8 @@ int8_t nros_platform_task_init(void *task, void *attr,
     TaskHandle_t handle = NULL;
     if (xTaskCreate(esp_task_trampoline, name, stack_depth,
                     (void *) t, priority, &handle) != pdPASS) {
-        return -1;
+        /* phase-364 W1 — NOMEM; see the FreeRTOS port. */
+        return NROS_PLATFORM_RET_NOMEM;
     }
     t->handle = handle;
     return 0;

@@ -209,13 +209,20 @@ static void *nros_posix_task_trampoline(void *raw) {
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
     (void) attr;
+    /* phase-364 W1 — INVALID: the caller passed a NULL where storage or an
+     * entry point is required, which retrying cannot fix. */
     if (task == NULL || entry == NULL) {
-        return -1;
+        return NROS_PLATFORM_RET_INVALID;
     }
     pthread_t *t = (pthread_t *) task;
     /* The simple path: forward directly to pthread_create. */
     if (pthread_create(t, NULL, entry, arg) != 0) {
-        return -1;
+        /* phase-364 W1 — NOMEM, not ERROR. `pthread_create` fails with EAGAIN
+         * when the system is out of thread resources, and issue 0246 is exactly
+         * that: a TRANSIENT failure on NuttX under load, which the tier spawn
+         * retries. A caller that reads this as permanent turns a momentary
+         * shortage into a dead feature. */
+        return NROS_PLATFORM_RET_NOMEM;
     }
     /* Reference the trampoline so the compiler doesn't strip it; a
      * future signature change (e.g. argument repacking) will route

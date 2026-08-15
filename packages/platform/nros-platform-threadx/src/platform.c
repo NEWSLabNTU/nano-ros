@@ -300,12 +300,18 @@ typedef struct {
 
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
+    /* phase-364 W1 — INVALID, not the generic ERROR: these are all "the caller
+     * passed something impossible", and retrying unchanged cannot help.
+     *
+     * `attr == NULL` is in that set only until W3, which makes a NULL attr mean
+     * "every default" on every port. It is the one place this port diverges
+     * from posix and zephyr, which ignore `attr` entirely. */
     if (task == NULL || attr == NULL || entry == NULL) {
-        return -1;
+        return NROS_PLATFORM_RET_INVALID;
     }
     const nros_threadx_task_attr_t *a = (const nros_threadx_task_attr_t *) attr;
     if (a->stack_base == NULL || a->stack_depth == 0) {
-        return -1;
+        return NROS_PLATFORM_RET_INVALID;
     }
     /* ThreadX entry signature is `void(*)(ULONG)`. We forward our
      * pointer-shaped `arg` via reinterpretation; same trick the Rust
@@ -327,7 +333,12 @@ int8_t nros_platform_task_init(void *task, void *attr,
         a->priority != 0 ? a->priority : 16,
         TX_NO_TIME_SLICE,
         TX_AUTO_START);
-    return rc == TX_SUCCESS ? 0 : -1;
+    /* phase-364 W1 — a refused create is a RESOURCE condition, not a permanent
+     * one: ThreadX rejects when the priority is out of range (a caller bug) or
+     * when the control block / stack cannot be taken. `NOMEM` tells the caller
+     * to retry rather than to cache the refusal — the distinction issue 0246
+     * turns on. */
+    return rc == TX_SUCCESS ? NROS_PLATFORM_RET_OK : NROS_PLATFORM_RET_NOMEM;
 }
 
 int8_t nros_platform_task_join(void *task) {

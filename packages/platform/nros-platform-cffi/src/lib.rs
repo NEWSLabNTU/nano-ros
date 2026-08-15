@@ -94,12 +94,27 @@ pub type NrosPlatformLogFlushFn = unsafe extern "C" fn();
 // Return codes (mirrors header)
 // ============================================================================
 
-/// Mirrors C `nros_platform_ret_t`.
-pub type NrosPlatformRet = i32;
+// phase-364 W1 — RE-EXPORTED, not mirrored.
+//
+// This block used to be three hand-written constants and a hand-written `i32`
+// alias, none of which had a single user, and all of which could drift from the
+// header silently. They existed because the header wrote its values as
+// `((nros_platform_ret_t) 0)` and bindgen cannot evaluate a cast into a
+// constant, so the generated bindings carried the typedef and none of the
+// codes. The header now writes bare literals, so the generator emits all six
+// and there is one definition of each.
+//
+// `NrosPlatformRet` follows the header's own narrowing to `int8_t` (the width
+// every one of these functions already returned). The constants keep bindgen's
+// `i32` type — a code is compared against a widened return, not stored — so a
+// caller writes `ret as i32 == NROS_PLATFORM_RET_UNSUPPORTED`.
+pub use crate::generated::{
+    NROS_PLATFORM_RET_ERROR, NROS_PLATFORM_RET_INVALID, NROS_PLATFORM_RET_NOMEM,
+    NROS_PLATFORM_RET_OK, NROS_PLATFORM_RET_TIMEOUT, NROS_PLATFORM_RET_UNSUPPORTED,
+};
 
-pub const NROS_PLATFORM_RET_OK: NrosPlatformRet = 0;
-pub const NROS_PLATFORM_RET_ERROR: NrosPlatformRet = -1;
-pub const NROS_PLATFORM_RET_UNSUPPORTED: NrosPlatformRet = -5;
+/// The C `nros_platform_ret_t`, from the generated bindings.
+pub type NrosPlatformRet = crate::generated::nros_platform_ret_t;
 
 // ============================================================================
 // CffiPlatform — trait impls dispatching to the linked C symbols
