@@ -2,7 +2,8 @@
 
 [[board]]
 # phase-341 W3 — 2 leaves deploy to `qemu-esp32-baremetal`.
-names = ["esp32-qemu", "esp32", "esp32c3", "esp32-c3", "qemu-esp32-baremetal"]
+# phase-351 / issue 0606 — `esp32dev` is the PlatformIO board id (`framework = "espidf"` deploys).
+names = ["esp32-qemu", "esp32dev", "esp32", "esp32c3", "esp32-c3", "qemu-esp32-baremetal"]
 platform = "esp32"
 toolchain = "nightly"
 platform_feature = "platform-bare-metal"

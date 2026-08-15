@@ -2,7 +2,7 @@
 id: 606
 title: "`[deploy.*].board` and a descriptor's `names` are different vocabularies —
   three consumers now work around it, and `nros sync` silently skips those leaves"
-status: open
+status: resolved
 type: bug
 area: cli
 related: [issue-0440, rfc-0072, phase-341, phase-351]
@@ -58,7 +58,39 @@ spellings to `names` — `qemu-mps2-an385`, `rtic-mps2-an385`,
 reason — but the set was completed by inspection, not by a rule, so the ones
 nobody hit are still missing.
 
-## Fix shapes (pick one, then delete the workarounds)
+## RESOLVED 2026-08-16 — the field carries a DOWNSTREAM id, and descriptors claim it
+
+Measuring the tree settled which fix shape was right. Nineteen distinct
+`[deploy.*].board` values; five that no descriptor claimed:
+
+    esp32dev  native_sim/native/64  nuttx-qemu-arm  nuttx-qemu-riscv  qemu-armv7a-nsh
+
+They are not misspellings. `native_sim/native/64` is a **Zephyr** board string,
+`esp32dev` is a **PlatformIO** board (its deploy says `framework = "espidf"`),
+`qemu-armv7a-nsh` is the **NuttX** board config. So `[deploy.*].board` names the
+DOWNSTREAM ecosystem's board — and the other fourteen values only looked fine
+because they happen to be spellings a descriptor also uses.
+
+The fix therefore is neither "rename the deploys" nor "guess from the
+directory":
+
+* the nano-ros descriptor that covers a downstream board **claims that
+  spelling** in `names` (what phase-341 W3 already did for other ids);
+* `BoardCatalog::resolve_deploy` gains the DIRECTORY as an alias — stated once,
+  as a rule, with several matches treated as an ambiguity because one directory
+  holds several witnesses (the two NuttX boards);
+* the ad-hoc fallbacks are gone: `board-facts`'s `resolve_board` is now a thin
+  adapter over `resolve_deploy`, and `check-site-config` documents that it
+  applies the same rule rather than inventing one;
+* `check-deploy-board-resolves` fails when a `[deploy.*].board` resolves to zero
+  or several descriptors, naming the value and where it is declared.
+  Mutation-verified.
+
+*Verified:* `nros ws board-facts --board nuttx-qemu-arm` resolves (it errored
+before), `nros sync` reports no unresolved deploy keys, 538 CLI tests green,
+`check-board-projections` green over 41 leaves.
+
+## Fix shapes considered (superseded by the above)
 
 * **Extend `names`** for every `[deploy.*].board` value in the tree, and gate
   that every deploy value resolves. Cheapest, and matches what phase-341 W3

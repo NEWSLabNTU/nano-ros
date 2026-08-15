@@ -4,7 +4,9 @@
 # CMake layer via `rust_cargo_application()`.
 
 [[board]]
-names = ["zephyr"]
+# phase-351 / issue 0606 — the ZEPHYR board string a deploy names — `[deploy.*].board` carries the
+# downstream ecosystem's id, and for Zephyr that is `<board>/<soc>/<variant>`.
+names = ["zephyr", "native_sim/native/64"]
 platform = "zephyr"
 toolchain = "stable"
 platform_feature = "platform-zephyr"

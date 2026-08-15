@@ -300,6 +300,19 @@ impl BoardDescriptor {
         })
     }
 
+    /// issue 0606 — the descriptor's DIRECTORY as an alias:
+    /// `packages/boards/nros-board-<x>/nros-board.toml` → `<x>`.
+    ///
+    /// `None` for an in-memory descriptor (no `source`). Not injective: one
+    /// directory can hold several witnesses (the two NuttX boards), which is
+    /// why the caller treats several matches as an ambiguity rather than
+    /// picking one.
+    pub fn directory_alias(&self) -> Option<String> {
+        let src = self.source.as_deref()?;
+        let dir = std::path::Path::new(src).parent()?.file_name()?.to_str()?;
+        Some(dir.strip_prefix("nros-board-").unwrap_or(dir).to_string())
+    }
+
     /// Resolved board capabilities — the declared `[board.capabilities]` block,
     /// or platform-inferred conservative defaults when omitted (241.C migration).
     pub fn capabilities(&self) -> BoardCapabilities {
@@ -484,6 +497,27 @@ impl BoardCatalog {
             1 => return DeployResolution::Board(by_name[0]),
             0 => {}
             _ => return DeployResolution::Ambiguous(descriptor_labels(&by_name)),
+        }
+        // issue 0606 — the DIRECTORY is an alias, stated here once.
+        //
+        // `[deploy.*].board` and a descriptor's `names` grew apart: the field
+        // carries the DOWNSTREAM ecosystem's board id (Zephyr's
+        // `native_sim/native/64`, PlatformIO's `esp32dev`, NuttX's
+        // `qemu-armv7a-nsh`), while `names` is what nano-ros calls the board.
+        // Most values happen to be in both. Where they were not, three
+        // consumers each grew their own directory fallback — the site-config
+        // gate, `board-facts`, and the standalone-leaf path — which is three
+        // opinions about what a board is called. This is the one rule they now
+        // share; the descriptors carry the downstream ids in `names`.
+        let by_dir: Vec<&BoardDescriptor> = self
+            .descriptors
+            .iter()
+            .filter(|d| d.directory_alias().as_deref() == Some(deploy))
+            .collect();
+        match by_dir.len() {
+            1 => return DeployResolution::Board(by_dir[0]),
+            0 => {}
+            _ => return DeployResolution::Ambiguous(descriptor_labels(&by_dir)),
         }
         let by_platform: Vec<&BoardDescriptor> = self
             .descriptors

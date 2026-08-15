@@ -67,15 +67,12 @@ def board_netstacks():
     Every alias a descriptor lists maps to the same set, because `[deploy.*]`
     may name any of them.
 
-    Keyed by BOTH the descriptor's declared `names` and its directory
-    (`packages/boards/nros-board-<x>` -> `<x>`), because `[deploy.*].board` and
-    a descriptor's `names` are NOT the same vocabulary: every in-tree site block
-    says `board = "mps2-an385-freertos"`, which that descriptor does not list
-    (its names are `freertos`/`freeRTOS`/`FreeRTOS`). phase-341 W3 closed part
-    of that gap by adding deploy spellings to `names`; this one is still open,
-    and `nros sync` cannot resolve those deploys either. Recorded in the
-    phase-351 doc — the gate accepts both spellings rather than pretending the
-    board is unknown.
+    Keyed by the descriptor's declared `names` AND its directory, which is the
+    same rule `BoardCatalog::resolve_deploy` applies (issue 0606: the field
+    carries the DOWNSTREAM ecosystem's board id, the descriptor claims the
+    spellings it covers, and the directory is an alias). `check-deploy-board-
+    resolves` is what keeps the two in step — this gate only asks whether a
+    netstack is inside the resolved board's domain.
     """
     out = {}
     for path in sorted(glob.glob(os.path.join(ROOT, "packages/boards/*/nros-board.toml"))):

@@ -90,14 +90,14 @@ delivered nothing. The pinned overlay was NOT needed. Verified `interop_e2e` 10/
 nothing reports which zenoh a run uses, and the number lives in `zenoh_configure.h`, not any package version.
 See `archived/0609-*`. (2026-08-15)
 
-**#606** (cli, open 2026-08-15) — `[deploy.*].board` and a descriptor's `names` are different vocabularies:
-every in-tree site block says `board = "mps2-an385-freertos"`, which that descriptor does not list
-(`freertos`/`freeRTOS`/`FreeRTOS`), so `BoardCatalog::resolve_deploy` matches nothing and `nros sync` skips
-those board projections — reporting it as a COUNT at the end, never a name. phase-351 hit it three times and
-worked around it three times (the site-config gate keys on names AND directory; `board-facts`'s
-`resolve_board` repeats that in Rust; the standalone-leaf path maps `entry.deploy` onto the board because
-those manifests have no `board =` at all). phase-341 W3 closed part of this by hand; the rest was never
-ruled. Fix = pick ONE mapping, then delete all three fallbacks. See `0606-*`. (2026-08-15)
+RESOLVED 2026-08-16 — **#606** `[deploy.*].board` carries the DOWNSTREAM ecosystem's board id, not a
+nano-ros descriptor name: of 19 distinct values, the 5 nothing claimed were Zephyr's `native_sim/native/64`,
+PlatformIO's `esp32dev` and NuttX's `qemu-armv7a-nsh`/`nuttx-qemu-{arm,riscv}`. The other 14 only looked
+fine because they happen to be spellings a descriptor also uses. Fixed by having each descriptor CLAIM the
+downstream spellings it covers, plus ONE rule in `resolve_deploy` (names, then the directory alias, then
+platform) — which let the three ad-hoc fallbacks be deleted. Gate: `check-deploy-board-resolves`
+(mutation-verified) fails a value that resolves to zero or several descriptors. See `archived/0606-*`.
+(2026-08-16)
 
 **#605** (build, open 2026-08-15) — phase-351 W5's Zephyr arm is INERT for the Rust entry lane. It was
 committed "unverified" while the lane skipped (`west not found`); with the workspace provisioned, a full

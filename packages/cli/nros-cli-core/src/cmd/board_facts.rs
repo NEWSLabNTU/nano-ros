@@ -186,30 +186,17 @@ fn env_key(name: &str) -> String {
         .to_ascii_uppercase()
 }
 
-/// Descriptor for a `[deploy.*].board` value.
+/// Descriptor for a `[deploy.*].board` value — the catalog's ONE rule.
 ///
-/// Matches the declared `names` FIRST, then the directory spelling
-/// (`packages/boards/nros-board-<x>` → `<x>`). The second arm exists because
-/// those are not the same vocabulary: every in-tree site block says
-/// `board = "mps2-an385-freertos"`, which that descriptor does not list among
-/// its names (`freertos` / `freeRTOS` / `FreeRTOS`). phase-341 W3 closed part of
-/// that gap by adding deploy spellings to `names`; until the rest closes,
-/// refusing a board the tree can plainly identify would be the worse failure.
+/// issue 0606: this used to carry its own `names`-then-directory fallback,
+/// one of three such opinions in the tree. `BoardCatalog::resolve_deploy` owns
+/// the rule now (names, then the directory alias, then the platform), so this
+/// is a thin adapter that keeps the error shape callers expect.
 pub fn resolve_board<'a>(catalog: &'a BoardCatalog, board: &str) -> Option<&'a BoardDescriptor> {
-    if let Some(d) = catalog
-        .descriptors()
-        .iter()
-        .find(|d| d.names.iter().any(|n| n == board))
-    {
-        return Some(d);
+    match catalog.resolve_deploy(board) {
+        crate::orchestration::board_descriptor::DeployResolution::Board(d) => Some(d),
+        _ => None,
     }
-    catalog.descriptors().iter().find(|d| {
-        d.source
-            .as_deref()
-            .and_then(|s| Path::new(s).parent()?.file_name()?.to_str())
-            .map(|dir| dir.strip_prefix("nros-board-").unwrap_or(dir) == board)
-            .unwrap_or(false)
-    })
 }
 
 type PickedDeploy = (

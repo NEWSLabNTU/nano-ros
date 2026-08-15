@@ -414,7 +414,7 @@ check-fast: \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-package-xml-comments check-provider-announcements check-provider-index \
     check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
-    check-board-facts-delivery \
+    check-board-facts-delivery check-deploy-board-resolves \
     check-opaque-storage-guards check-cpp-ffi-error-mapping check-submodule-pins \
     check-workspace-order \
     check-atomic-sync-writes \
@@ -1185,6 +1185,14 @@ check-board-cargo-config-applied:
 # board facts + site config. The failure this guards is NOT a wrong value but no
 # value, defaulted, with no diagnostic (issue 0529's shape) — which is how the
 # board rung stayed dead from phase-290 to here. Buildless.
+# issue 0606 — every `[deploy.*].board` resolves to exactly ONE descriptor. The
+# field carries the DOWNSTREAM ecosystem's board id, so the descriptor covering
+# it must claim that spelling; otherwise the deploy resolves to nothing and
+# `nros sync` skips the leaf with a count instead of a name. Buildless.
+[private]
+check-deploy-board-resolves:
+    @python3 scripts/check-deploy-board-resolves.py
+
 [private]
 check-board-facts-delivery:
     @python3 scripts/check-board-facts-delivery.py
