@@ -112,13 +112,13 @@ BASELINE = {
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.
-    # 106 -> 108 by `c3a16a529` (#607), which split the env cache on
-    # `all(feature = "std", test)` / `not(test)` and did not raise this
-    # baseline, leaving `check-fast` red on main. The sites are legitimate —
-    # a test/non-test split of a std-only cache — and are counted only
-    # because the matcher now sees `all(...)` forms. Raised here to unblock;
-    # the work item that removes them is phase-359's, not this branch's.
-    "nros-node": {"cfg": 108, "path": 76},
+    # Two changes met here and both are counted. `c3a16a529` (#607) raised
+    # this to 108/76 by splitting the env cache on
+    # `all(feature = "std", test)` / `not(test)`; phase-359 W10 then removed
+    # the OS-priority pool's, the signalfd forwarder's and the condvar path's
+    # `std` — so the measured figure after both is 91/40, not either side's
+    # number. Set from the tree rather than from arithmetic on the two diffs.
+    "nros-node": {"cfg": 91, "path": 40},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},
