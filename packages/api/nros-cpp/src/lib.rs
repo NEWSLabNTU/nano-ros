@@ -691,7 +691,30 @@ pub(crate) fn transport_error_to_cpp_ret(err: nros_rmw::TransportError) -> nros_
         T::ConnectionFailed | T::Disconnected | T::PublishFailed => NROS_CPP_RET_TRANSPORT_ERROR,
         T::KeepaliveFailed | T::PollFailed | T::JoinFailed => NROS_CPP_RET_TRANSPORT_ERROR,
         T::IncompatibleAbi | T::Backend(_) => NROS_CPP_RET_TRANSPORT_ERROR,
-        #[cfg(feature = "alloc")]
+        // NOT `#[cfg(feature = "alloc")]`, deliberately. The VARIANT is gated on
+        // `nros-rmw/alloc`; this arm used to be gated on `nros-cpp/alloc`, and
+        // that implication only runs one way. Cargo unifies features across the
+        // graph, so anything else enabling `nros-rmw/alloc` made the variant
+        // exist while this arm was compiled out:
+        //
+        //   error[E0004]: non-exhaustive patterns:
+        //     `TransportError::BackendDynamic(_)` not covered
+        //
+        // which took out the whole zephyr fixture family via the cortex-m C++
+        // leaf (thumbv7m-none-eabi) once `nros-cpp`'s `default = []` (phase-361
+        // W3 / issue 0591) made that combination reachable.
+        //
+        // Un-gating is safe because no buildable configuration lacks the
+        // variant: `nros-cpp --no-default-features --features rmw-cffi` fails
+        // to link at all ("no global memory allocator found but one is
+        // required") since `nros-c` pulls the alloc machinery in regardless. If
+        // a genuinely alloc-free build is ever made to work, this line fails to
+        // compile with "no variant named BackendDynamic" — a loud, local error
+        // pointing straight here, which is the right way to find out.
+        //
+        // A `_` arm is NOT the fix: issue 0586's gate states its guarantee as
+        // "the mappers themselves are exhaustive (no `_` arm), so rustc already
+        // refuses a new variant until someone maps it".
         T::BackendDynamic(_) => NROS_CPP_RET_TRANSPORT_ERROR,
 
         // Entity creation — the C++ surface has codes for these.
